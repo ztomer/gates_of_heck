@@ -164,6 +164,7 @@ def test_a_request_a_dead_lander_was_running_is_run_again(tmp_path, env):
     assert git(remote, "rev-parse", "main").strip() == sha
 
 
+@pytest.mark.load_sensitive
 def test_enqueue_starts_a_lander_that_drains_without_anyone_watching(tmp_path, env):
     repo, remote, sha = make_repo(tmp_path, "zeta")
     done = landq(env, "--enqueue", str(repo), sha, "--item", "T.F")

@@ -205,6 +205,7 @@ def test_unknown_flag_rejected(repo):
 # ── per-step timeout ──
 
 
+@pytest.mark.load_sensitive
 def test_step_timeout_kills_hung_step(repo, monkeypatch):
     # The discriminator is the STEP'S OWN END, never the wall clock (GOH.TIMEOUTFLAKE). A step
     # whose ceiling never fired runs to its end, writes `finished` and exits 0; one that was killed
@@ -226,6 +227,7 @@ def test_step_timeout_kills_hung_step(repo, monkeypatch):
             os.kill(int(pid.read_text()), 0)
 
 
+@pytest.mark.load_sensitive
 def test_invalid_timeout_is_usage_error(repo, monkeypatch):
     monkeypatch.setenv("GOH_LCI_TIMEOUT", "soon")
     gatesrc(repo, "true")

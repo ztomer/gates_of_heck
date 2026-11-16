@@ -17,6 +17,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env
 from test_push_gate import PUSH_GATE, _git, _repo
@@ -99,6 +100,7 @@ def test_the_query_answers_for_a_running_ship_above_the_caller(tmp_path):
     assert r.stdout.strip() == str(path)
 
 
+@pytest.mark.load_sensitive
 def test_the_query_refuses_what_it_cannot_prove(tmp_path):
     repo = tmp_path / "r"
     repo.mkdir()

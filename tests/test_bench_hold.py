@@ -48,6 +48,7 @@ def test_the_block_holds_the_host_under_its_label_and_lets_go_after(lock: Path) 
     assert hold.void is False
 
 
+@pytest.mark.load_sensitive
 def test_a_gate_started_during_the_block_waits_for_it_and_names_it(
     lock: Path, tmp_path: Path
 ) -> None:
@@ -67,6 +68,7 @@ def test_a_gate_started_during_the_block_waits_for_it_and_names_it(
     assert "census: theme" in said, said
 
 
+@pytest.mark.load_sensitive
 def test_a_held_host_is_refused_by_name_before_the_block_runs(lock: Path, tmp_path: Path) -> None:
     ready = tmp_path / "ready"
     peer = subprocess.Popen(
@@ -99,6 +101,7 @@ def test_a_hold_past_the_cap_is_refused_and_leaves_no_claim(
     assert not (lock / "exclusive").exists()
 
 
+@pytest.mark.load_sensitive
 def test_a_caller_killed_mid_block_releases_the_host(lock: Path, tmp_path: Path) -> None:
     inside = tmp_path / "inside"
     script = (

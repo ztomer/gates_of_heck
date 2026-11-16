@@ -12,6 +12,7 @@ import fixture_copy_lint
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import pytest
 import source_closure as sc
 
 TESTS = Path(__file__).resolve().parent
@@ -153,6 +154,7 @@ def test_the_copy_detector_sees_every_shape_and_nothing_else() -> None:
     assert fixture_copy_lint.findings(src) == [5, 6, 7, 8, 9, 10]
 
 
+@pytest.mark.load_sensitive
 def test_no_test_copies_part_of_goh_by_hand_beyond_the_seed() -> None:
     seed = json.loads(SEED.read_text(encoding="utf-8"))["unreviewed"]
     now = fixture_copy_lint.census(TESTS)

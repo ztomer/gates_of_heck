@@ -90,6 +90,7 @@ def test_truncated_run_looks_truncated(tmp_path):
 # ---- run_loop -----------------------------------------------------------------
 
 
+@pytest.mark.load_sensitive
 def test_run_loop_runs_pending_units_and_marks_done(tmp_path, fake_api):
     st = _mk_state(tmp_path)
     st.start(["m-alpha"], ["t1", "t2"])
@@ -104,6 +105,7 @@ def test_run_loop_runs_pending_units_and_marks_done(tmp_path, fake_api):
     assert note["done"] == 2 and note["errors"] == 0
 
 
+@pytest.mark.load_sensitive
 def test_run_loop_skips_already_done_units(tmp_path, fake_api):
     st = _mk_state(tmp_path)
     st.start(["m-alpha"], ["t1"])
@@ -119,6 +121,7 @@ def test_run_loop_skips_already_done_units(tmp_path, fake_api):
     assert note["done"] == 1  # carried over from prior run
 
 
+@pytest.mark.load_sensitive
 def test_run_loop_records_unit_failure_without_aborting(tmp_path, fake_api):
     st = _mk_state(tmp_path)
     st.start(["m-alpha"], ["t1", "t2"])
@@ -165,6 +168,7 @@ def test_run_loop_resumes_after_crash(tmp_path):
 # ── round-3 hardening: concurrent writers, corrupt files, key collisions ─────
 
 
+@pytest.mark.load_sensitive
 def test_two_process_writers_lose_no_markers(tmp_path):
     """Regression (2026-08-26): concurrent processes doing read-modify-write
     lost 385 of 400 markers (each writer's stale read clobbered the other's).

@@ -30,6 +30,7 @@ from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "gates"))
 import _head_cache
+import pytest
 
 HOUR = 3600
 
@@ -55,6 +56,7 @@ def _dead_pid() -> int:
 # ── llvm-cov: the byte budget holds in a burst ────────────────────────────────────────────────
 
 
+@pytest.mark.load_sensitive
 def test_a_burst_of_idle_builds_is_evicted_to_the_budget(tmp_path) -> None:
     """Ten builds, all used within the last hour and none running: the old rule spared all ten."""
     cache = tmp_path / "cov"
@@ -66,6 +68,7 @@ def test_a_burst_of_idle_builds_is_evicted_to_the_budget(tmp_path) -> None:
     assert left == {"cur", "b0", "b1"}, (sorted(left), gone)
 
 
+@pytest.mark.load_sensitive
 def test_a_build_whose_gate_is_alive_is_never_evicted(tmp_path) -> None:
     cache = tmp_path / "cov"
     _entry(cache, "cur", 0)
@@ -76,6 +79,7 @@ def test_a_build_whose_gate_is_alive_is_never_evicted(tmp_path) -> None:
     assert left == {"cur", "running"}, sorted(left)
 
 
+@pytest.mark.load_sensitive
 def test_a_shared_build_is_spared_while_any_of_its_crates_runs(tmp_path) -> None:
     """GOH.COVSHAREDBUILD: a repo's crates share one build, several at once, and each adds its pid.
     The first to finish must not leave the build evictable under the others."""
@@ -94,6 +98,7 @@ def test_a_shared_build_is_spared_while_any_of_its_crates_runs(tmp_path) -> None
     assert (shared / ".goh-running").read_text().split() == [str(os.getpid())]
 
 
+@pytest.mark.load_sensitive
 def test_a_build_stamped_inside_the_grace_is_spared(tmp_path) -> None:
     """A run from before the marker existed (or between its stamp and its marker) is not lost."""
     cache = tmp_path / "cov"
@@ -103,6 +108,7 @@ def test_a_build_stamped_inside_the_grace_is_spared(tmp_path) -> None:
     assert (cache / "fresh").is_dir()
 
 
+@pytest.mark.load_sensitive
 def test_the_default_grace_is_unchanged_for_the_head_exports(tmp_path) -> None:
     """The HEAD export cache keeps its hour: nothing there writes a marker."""
     cache = tmp_path / "head"
@@ -112,6 +118,7 @@ def test_the_default_grace_is_unchanged_for_the_head_exports(tmp_path) -> None:
     assert (cache / "hot").is_dir()
 
 
+@pytest.mark.load_sensitive
 def test_the_coverage_gate_marks_its_build_as_running_and_prunes_the_idle(tmp_path) -> None:
     cache = tmp_path / "cov-cache"
     idle = _entry(cache, "0123456789abcdef", 20 * 60, mib=2)  # inside the old hour, not running
@@ -215,6 +222,7 @@ def _ownerless(export_root: Path, name: str, age_s: float) -> Path:
     return export_root / name
 
 
+@pytest.mark.load_sensitive
 def test_an_ownerless_run_dir_idle_past_the_grace_is_reaped(tmp_path) -> None:
     repo = _repo(tmp_path)
     export_root = tmp_path / "exports"
@@ -225,6 +233,7 @@ def test_an_ownerless_run_dir_idle_past_the_grace_is_reaped(tmp_path) -> None:
     assert _run_litter(export_root) == []
 
 
+@pytest.mark.load_sensitive
 def test_a_fresh_ownerless_run_dir_is_left_alone(tmp_path) -> None:
     """The window between a run's mkdir and its `.owner`: another push must not delete it."""
     repo = _repo(tmp_path)
@@ -234,6 +243,7 @@ def test_a_fresh_ownerless_run_dir_is_left_alone(tmp_path) -> None:
     assert fresh.is_dir()
 
 
+@pytest.mark.load_sensitive
 def test_a_stale_ownerless_dir_does_not_make_the_stable_path_look_held(tmp_path) -> None:
     repo = _repo(tmp_path)
     export_root = tmp_path / "exports"
@@ -247,6 +257,7 @@ def test_a_stale_ownerless_dir_does_not_make_the_stable_path_look_held(tmp_path)
 # ── EST.FSEVENTSCHURN: the budget holds while runs are live, under one lock ───────────────────
 
 
+@pytest.mark.load_sensitive
 def test_a_finished_build_inside_the_grace_is_evicted_past_the_budget(tmp_path) -> None:
     """A build whose every recorded user has exited is idle, however recently it was stamped. The
     10-minute grace spared it, so a sweep of repos, one finishing every few minutes, held its
@@ -258,6 +269,7 @@ def test_a_finished_build_inside_the_grace_is_evicted_past_the_budget(tmp_path) 
     assert {p.name for p in cache.iterdir()} == {"cur"}
 
 
+@pytest.mark.load_sensitive
 def test_a_build_being_marked_is_never_evicted(tmp_path) -> None:
     """The marker lock is the decision's lock: a run adding its pid holds it, and a pruner that
     cannot take it leaves the entry alone rather than judge a marker about to change."""
@@ -274,6 +286,7 @@ def test_a_build_being_marked_is_never_evicted(tmp_path) -> None:
     assert entry.is_dir(), "evicted while a run held its marker lock"
 
 
+@pytest.mark.load_sensitive
 def test_a_mark_on_an_evicted_entry_lands_in_the_live_directory(tmp_path) -> None:
     """A pruner renames the entry away under the lock before deleting it; a run that was waiting
     on that lock must not record itself in the tombstone, or its build would read as unused."""

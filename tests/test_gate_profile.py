@@ -8,6 +8,7 @@ failure lines are in the log the profile writes, so a red profile prints them.
 import subprocess
 from pathlib import Path
 
+import pytest
 from _fast_git import fast_init
 from conftest import git, hermetic_env
 from source_closure import copy_closure
@@ -103,6 +104,7 @@ exit 0
 """
 
 
+@pytest.mark.load_sensitive
 def test_each_step_line_is_shown_while_the_gate_runs(tmp_path: Path) -> None:
     goh = _goh_copy(tmp_path, HELD_GATE)
     repo = tmp_path / "repo"

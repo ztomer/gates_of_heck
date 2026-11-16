@@ -166,6 +166,7 @@ def test_a_failing_repo_is_reported_and_does_not_stop_the_rest(sweep):
     assert sweep.calls("DELETE") == ["api -X DELETE repos/o/good/actions/artifacts/1"]
 
 
+@pytest.mark.load_sensitive
 def test_a_hung_gh_call_is_bounded_and_counts_as_that_repos_failure(sweep):
     data = {"stuck": {"hang": True}, "good": {"artifacts": [_art(1, 30)], "retention": 14}}
     p = sweep.run([_repo("stuck"), _repo("good")], data, "--apply", "--timeout", "1", timeout=30)

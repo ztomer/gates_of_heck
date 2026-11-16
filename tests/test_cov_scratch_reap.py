@@ -100,6 +100,7 @@ def test_no_coverage_scratch_outlives_its_run(tmp_path, passing) -> None:
     assert (crate / "target" / "llvm-cov" / "lcov-parts" / "part-workspace.info.log").is_file()
 
 
+@pytest.mark.load_sensitive
 def test_the_budget_holds_against_the_build_a_failing_run_made(tmp_path) -> None:
     """The idle entry fits the budget when the run starts; the run's own build pushes the cache
     past it, and the run fails. The idle entry must go anyway."""
@@ -113,6 +114,7 @@ def test_the_budget_holds_against_the_build_a_failing_run_made(tmp_path) -> None
     assert not idle.exists(), "a failing run's build pushed the cache past its budget unchecked"
 
 
+@pytest.mark.load_sensitive
 def test_the_budget_is_enforced_while_the_run_is_live(tmp_path) -> None:
     """Not only when the run ends: the external command runs mid-run, after the workspace's build,
     and by then the idle entry that build pushed past the budget is already gone."""

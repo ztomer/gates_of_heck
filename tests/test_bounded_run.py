@@ -83,6 +83,7 @@ def run(cmd, timeout=30, grace=1):
 # ── the sweep ────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.load_sensitive
 def test_the_sweep_reaches_a_grandchild(tmp_path: Path) -> None:
     """The case the old `pkill -P` sweep missed, measured above. A grandchild that outlived the
     sweep is an orphan, and an orphan is what makes the NEXT run hang."""
@@ -101,6 +102,7 @@ def test_the_sweep_reaches_a_grandchild(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.load_sensitive
 def test_a_hanging_step_is_reported_not_silently_killed(tmp_path: Path, capsys) -> None:
     """`TIMED OUT after Ns`, with the number. A ceiling nobody gave a value, or that expires without
     saying so, is the 2026-10-03 incident with a shorter fuse."""
@@ -111,6 +113,7 @@ def test_a_hanging_step_is_reported_not_silently_killed(tmp_path: Path, capsys) 
     assert "the step" in captured.err, captured.err
 
 
+@pytest.mark.load_sensitive
 def test_the_ceiling_is_honoured_within_its_own_tolerance() -> None:
     """The bound must be a BOUND. A gate that says 30 s and means "eventually" is the defect."""
     started = time.monotonic()
@@ -132,6 +135,7 @@ def test_a_failing_step_reports_its_own_code_not_124() -> None:
     assert run(["/bin/sh", "-c", "exit 7"]) == 7
 
 
+@pytest.mark.load_sensitive
 def test_the_group_outlives_reparenting_so_a_leak_is_still_visible() -> None:
     """The measurement that makes the canary exact. A leaked child is REPARENTED the instant its
     parent exits — `ps` shows `ppid 1` — so a descendant walk taken at exit finds nothing and a
@@ -162,6 +166,7 @@ def test_the_group_outlives_reparenting_so_a_leak_is_still_visible() -> None:
                 pass
 
 
+@pytest.mark.load_sensitive
 def test_a_step_that_exits_before_its_group_is_asked_for_still_shows_its_leak(monkeypatch) -> None:
     """The group is KNOWN, never asked for. On macOS `getpgid` of a zombie is ESRCH (measured
     2026-10-05), so a step that exited before the wrapper asked -- a fast step on a loaded box --
@@ -254,6 +259,7 @@ def test_a_step_that_leaves_nothing_never_reads_the_process_table(monkeypatch) -
     assert _ps_calls(monkeypatch, "exit 0") == (0, [])
 
 
+@pytest.mark.load_sensitive
 def test_a_step_that_leaves_something_reads_the_table_once(monkeypatch) -> None:
     """Group membership and ancestry come from ONE `ps`, not two: each spawn is per step, per gate."""
     reads, left = _ps_calls(monkeypatch, "/bin/sleep 3 & exit 0")
@@ -271,6 +277,7 @@ def test_a_command_that_does_not_exist_is_127_not_a_silent_pass() -> None:
 # ── the CLI, and its refusals ────────────────────────────────────────────────
 
 
+@pytest.mark.load_sensitive
 def test_usage_errors_are_exit_two() -> None:
     path = Path(bounded_run.__file__)
     for argv in (["--timeout", "30"], ["--timeout", "0", "--", "true"]):
@@ -284,6 +291,7 @@ def test_usage_errors_are_exit_two() -> None:
         assert proc.returncode == 2, (argv, proc.returncode, proc.stdout)
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize("value", ["abc", "0", "-5", "10s"])
 def test_a_bad_ceiling_is_refused_not_ignored(value: str) -> None:
     """A typo'd or non-positive ceiling that is silently ignored leaves the step unbounded, which is
@@ -324,6 +332,7 @@ def test_local_ci_runs_its_steps_through_this_helper() -> None:
     )
 
 
+@pytest.mark.load_sensitive
 def test_common_goh_step_has_a_ceiling() -> None:
     """`goh_step` had NO timeout while `local_ci.sh` did, so the same hang was bounded in one path
     and unbounded in the other. That is the absence of a policy, not two policies."""
@@ -378,6 +387,7 @@ def test_cpu_ceiling_refuses_burner_while_sleeping_step_passes(capsys) -> None:
     assert rc_reap == bounded_run.TIMEOUT_EXIT and "CPU budget" in err_reap, (rc_reap, err_reap)
 
 
+@pytest.mark.load_sensitive
 def test_fixed_work_step_passes_idle_and_under_load(tmp_path: Path) -> None:
     """The same fixed-work CPU step passes both idle and under `tools/load.py 30`."""
     root = Path(__file__).resolve().parent.parent

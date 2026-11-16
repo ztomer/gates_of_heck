@@ -21,6 +21,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, hermetic_env
@@ -86,6 +87,7 @@ def _canary(e: dict, *extra: str) -> tuple[subprocess.CompletedProcess, dict]:
     return r, json.loads(e["state"].read_text())["release_canary"]
 
 
+@pytest.mark.load_sensitive
 def test_the_grace_end_names_the_consumer_it_turns_red_and_refuses_nothing(tmp_path, goh):
     e = _setup(tmp_path, goh)
     r, rec = _canary(e, "--grace", "on")
@@ -115,6 +117,7 @@ def test_the_grace_end_names_the_consumer_it_turns_red_and_refuses_nothing(tmp_p
     assert g["ran"] and g["count"] == 0 and g["turned_red"] == {}, g
 
 
+@pytest.mark.load_sensitive
 def test_off_runs_no_grace_pass_and_says_why(tmp_path, goh):
     e = _setup(tmp_path, goh)
     r, rec = _canary(e, "--grace", "off")

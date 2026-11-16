@@ -116,6 +116,7 @@ def test_the_success_path_ships_every_step_and_records_the_item_done(shipped, tm
     assert len(marks) == 5
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize("step", ["push", "release", "install", "verify"])
 def test_a_failing_step_names_itself_and_carries_its_last_40_log_lines(shipped, tmp_path, step):
     noisy = 'for i in $(seq 1 100); do echo "line $i"; done; exit 3'
@@ -154,6 +155,7 @@ def _sleepers(marker: str) -> list[str]:
     return [ln for ln in ps.splitlines() if marker in ln and "ps -Ao" not in ln]
 
 
+@pytest.mark.load_sensitive
 def test_the_bound_kills_a_hung_step_and_its_whole_group_leaving_no_orphan(shipped, tmp_path):
     marker = f"sleep 731.{os.getpid() % 1000}"
     hung = f"{marker} & {marker} & ( {marker} & wait ) & wait"
@@ -169,6 +171,7 @@ def test_the_bound_kills_a_hung_step_and_its_whole_group_leaving_no_orphan(shipp
     assert not left, f"orphans (PPID=1 once their shell died): {left}"
 
 
+@pytest.mark.load_sensitive
 def test_started_detached_it_returns_at_once_and_the_worker_finishes_alone(shipped, tmp_path):
     t0 = time.monotonic()
     r = _ship(shipped, tmp_path, "--item", "X.ONE", GOH_SHIP_INSTALL="sleep 8")

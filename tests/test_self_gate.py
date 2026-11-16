@@ -19,6 +19,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT, git, hermetic_env
 
@@ -105,6 +106,9 @@ def _commit_gate(clone: Path, tmp_path: Path) -> subprocess.CompletedProcess[str
     )  # fmt: skip
 
 
+@pytest.mark.load_sensitive(
+    reason="the commit gate it runs reads the process table under a 30 s cap (GOH.SELFGATEPS)"
+)
 def test_a_goh_commit_is_judged_by_its_staged_tree_and_that_trees_binary(tmp_path):
     clone, log = _goh_clone(tmp_path)
     tree = git(clone, "write-tree").strip()

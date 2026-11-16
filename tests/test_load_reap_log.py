@@ -58,6 +58,7 @@ def _job(directory: Path, log: Path, *extra: str) -> subprocess.CompletedProcess
         )
 
 
+@pytest.mark.load_sensitive
 def test_a_kill_line_carries_timestamp_pid_command_and_rule(tmp_path: Path) -> None:
     """Planted orphan, real job: the line it leaves names all four."""
     pid = load_kit.orphan(["/bin/sh", "-c", f"sleep 300; : {MARKER}"])
@@ -87,6 +88,7 @@ def test_a_kill_line_carries_timestamp_pid_command_and_rule(tmp_path: Path) -> N
     assert "rule=registry" in line, line
 
 
+@pytest.mark.load_sensitive
 def test_the_house_shape_sweep_names_its_rule_and_the_command(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -102,6 +104,7 @@ def test_the_house_shape_sweep_names_its_rule_and_the_command(
     assert str(fifo) in mine[0].command
 
 
+@pytest.mark.load_sensitive
 def test_the_hand_rolled_sweep_names_its_rule_and_the_command(tmp_path: Path) -> None:
     script = tmp_path / "spin.sh"
     script.write_text("#!/bin/sh\nulimit -t 30\nwhile :; do :; done\n", encoding="utf-8")
@@ -150,6 +153,7 @@ def test_a_log_past_its_cap_is_moved_aside_and_stays_bounded(tmp_path: Path) -> 
     assert log.read_text(encoding="utf-8") == "small\n"
 
 
+@pytest.mark.load_sensitive
 def test_a_sweep_under_the_suite_takes_nothing_outside_its_scope(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -173,6 +177,7 @@ def test_a_sweep_under_the_suite_takes_nothing_outside_its_scope(
     assert [k for k in load_reap.reap_orphans().kills if k.pid == pid]
 
 
+@pytest.mark.load_sensitive
 def test_a_sweep_under_the_suite_with_no_scope_takes_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

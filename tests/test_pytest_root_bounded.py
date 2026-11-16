@@ -16,6 +16,7 @@ from pathlib import Path
 from conftest import REPO_ROOT, hermetic_env
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import pytest
 from prune_kept import prune
 
 MIB = 1 << 20
@@ -49,6 +50,7 @@ def test_a_root_whose_owner_is_alive_is_never_cut(tmp_path) -> None:
     assert root.exists()
 
 
+@pytest.mark.load_sensitive
 def test_a_root_busy_deep_in_its_tree_is_live(tmp_path) -> None:
     """A suite writes `popen-gwK/<test>` dirs as it goes; its root's own mtime stays old."""
     root = _root(tmp_path, "goh-pytest.busy", 1, OLD)

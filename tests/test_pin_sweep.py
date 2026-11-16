@@ -18,6 +18,7 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 from conftest import REPO_ROOT, hermetic_env
 from test_consumer_pins import SCRIPT, TAG, WF, _ahead, _consumer
 from timing_bounds import GiveUp, patience
@@ -80,6 +81,7 @@ def _read(path: Path) -> dict:
         return {}
 
 
+@pytest.mark.load_sensitive
 def test_the_install_commits_and_returns_before_any_consumer_push_gate_runs(tmp_path):
     repos = _consumers(tmp_path, {"one": "exit 0", "two": "exit 0"})
     ship = tmp_path / "ship.json"  # the ship that runs the install: still running while it does

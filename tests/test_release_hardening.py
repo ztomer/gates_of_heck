@@ -155,6 +155,7 @@ class TestNoPushImpliesNoRelease:
 
 
 class TestSelfBuffering:
+    @pytest.mark.load_sensitive
     def test_mid_run_edit_completes_with_original_semantics(self, kit, tmp_path):
         """Editing release.sh while it runs must not corrupt a running release.
 

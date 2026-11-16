@@ -37,6 +37,7 @@ def _wait_for(path: Path, seconds: float = 10) -> str:
     raise AssertionError(f"{path} never written")
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGINT, signal.SIGHUP])
 def test_a_signal_to_the_wrapper_reaps_the_step(tmp_path, sig):
     pidfile = tmp_path / "step.pid"
@@ -83,6 +84,7 @@ def test_a_signal_to_the_wrapper_reaps_the_step(tmp_path, sig):
             pass
 
 
+@pytest.mark.load_sensitive
 def test_a_signal_ignored_at_entry_stays_ignored(tmp_path):
     """nohup's contract: the caller ignored SIGHUP on purpose, and the wrapper must not undo it."""
     pidfile = tmp_path / "step.pid"
@@ -116,6 +118,7 @@ def test_a_signal_ignored_at_entry_stays_ignored(tmp_path):
             pass
 
 
+@pytest.mark.load_sensitive
 def test_a_term_to_a_concurrent_local_ci_reaps_every_running_step(tmp_path):
     repo = tmp_path / "proj"
     repo.mkdir()
@@ -150,6 +153,7 @@ def test_a_term_to_a_concurrent_local_ci_reaps_every_running_step(tmp_path):
                 pass
 
 
+@pytest.mark.load_sensitive
 def test_a_stop_that_lands_while_the_step_is_starting_still_sweeps_it(monkeypatch) -> None:
     """The window between fork and `Popen` returning: the step is running, the wrapper does not yet
     hold it. A stop raised there used to unwind with nothing to sweep, leaving the step running --

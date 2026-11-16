@@ -138,6 +138,7 @@ def reap_tree(root: int) -> None:
 # ── the incident's shape: a step that PASSES and leaks a server ──────────────
 
 
+@pytest.mark.load_sensitive
 def test_a_step_that_leaks_a_server_is_red(wrap, repo: Path) -> None:
     """THE case. The step exits 0 — the suite is green — and the server is still running. This is
     what `lib/bounded_run.py` cannot see, because nothing hung."""
@@ -159,6 +160,7 @@ def test_a_step_that_leaks_a_server_is_red(wrap, repo: Path) -> None:
         reap(snap)
 
 
+@pytest.mark.load_sensitive
 def test_a_leaked_binary_under_the_repos_target_dir_is_red(wrap, repo: Path) -> None:
     """Attribution by PATH, which is the other half and the one the incident needed: the leaked
     process was `…/target/debug/archive_torznab`, naming nothing about being an orphan at first
@@ -192,6 +194,7 @@ def test_a_leaked_binary_under_the_repos_target_dir_is_red(wrap, repo: Path) -> 
 # ── it must not cry wolf, or it gets switched off ────────────────────────────
 
 
+@pytest.mark.load_sensitive
 def test_a_step_that_leaves_nothing_is_green_and_says_nothing_about_orphans(
     wrap, repo: Path
 ) -> None:
@@ -200,6 +203,7 @@ def test_a_step_that_leaves_nothing_is_green_and_says_nothing_about_orphans(
     assert "outlived" not in proc.stdout + proc.stderr
 
 
+@pytest.mark.load_sensitive
 def test_the_canary_never_reports_a_concurrent_gate_run(wrap, repo: Path) -> None:
     """A concurrent canary or runner lives under the same checkout this canary is scanning, so path
     attribution names it ours — and it is not a leak, it is another gate running. Measured under the
@@ -287,6 +291,7 @@ def test_the_report_is_silent_on_verbose_when_there_is_nothing_to_name(capsys) -
 # ── the step's own verdict must survive ──────────────────────────────────────
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize("code", [0, 3, 5])
 def test_the_steps_own_exit_code_is_preserved(wrap, repo: Path, code: int) -> None:
     """A red step is the news. A canary red on top of it must not read as the canary being the
@@ -295,6 +300,7 @@ def test_the_steps_own_exit_code_is_preserved(wrap, repo: Path, code: int) -> No
     assert proc.returncode == code, proc.stdout + proc.stderr
 
 
+@pytest.mark.load_sensitive
 def test_a_green_steps_leak_gets_its_own_exit_code(wrap, repo: Path) -> None:
     """125, distinct from a step that simply failed: the two have opposite fixes — write a guard
     versus fix the test — and one exit status for both sends someone to the wrong one."""
@@ -315,6 +321,7 @@ def test_a_green_steps_leak_gets_its_own_exit_code(wrap, repo: Path) -> None:
 # ── refusals ─────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize(
     "argv", [["wrap"], ["wrap", "--"], ["wrap", "--timeout", "0", "--", "true"]]
 )

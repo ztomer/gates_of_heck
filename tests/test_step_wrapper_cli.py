@@ -62,11 +62,13 @@ def _run(wrapper, *args, **kw):
     )
 
 
+@pytest.mark.load_sensitive
 def test_the_steps_own_code_passes_through(wrapper) -> None:
     assert _run(wrapper, "--timeout", "30", "--", "/bin/sh", "-c", "exit 0").returncode == 0
     assert _run(wrapper, "--timeout", "30", "--", "/bin/sh", "-c", "exit 7").returncode == 7
 
 
+@pytest.mark.load_sensitive
 def test_a_ceiling_times_out_with_124_and_says_so(wrapper) -> None:
     t0 = time.monotonic()
     r = _run(wrapper, "--timeout", "1", "--grace", "1", "--label", "slow", "--", "sleep", "60")
@@ -75,6 +77,7 @@ def test_a_ceiling_times_out_with_124_and_says_so(wrapper) -> None:
     assert_sooner(time.monotonic() - t0, 2, 60, "a 1 s ceiling over a 60 s sleep")
 
 
+@pytest.mark.load_sensitive
 def test_the_ceiling_sweep_reaches_a_grandchild(wrapper, tmp_path: Path) -> None:
     pid = tmp_path / "pid"
     r = _run(wrapper, "--timeout", "1", "--grace", "1", "--", "/bin/bash", "-c",
@@ -91,6 +94,7 @@ def test_the_ceiling_sweep_reaches_a_grandchild(wrapper, tmp_path: Path) -> None
             os.kill(grandchild, signal.SIGKILL)
 
 
+@pytest.mark.load_sensitive
 def test_a_step_that_leaves_a_process_is_named(wrapper, tmp_path: Path) -> None:
     pid = tmp_path / "pid"
     # The leak's own output goes nowhere: holding the captured pipe, it made this run wait out its
@@ -106,21 +110,25 @@ def test_a_step_that_leaves_a_process_is_named(wrapper, tmp_path: Path) -> None:
             os.kill(leaked, signal.SIGKILL)
 
 
+@pytest.mark.load_sensitive
 def test_a_clean_step_says_nothing(wrapper) -> None:
     r = _run(wrapper, "--timeout", "30", "--", "/bin/sh", "-c", "exit 0")
     assert (r.returncode, r.stderr) == (0, ""), r.stderr
 
 
+@pytest.mark.load_sensitive
 def test_a_command_that_does_not_exist_is_127(wrapper) -> None:
     assert _run(wrapper, "--timeout", "30", "--", "/nonexistent/goh-no-such").returncode == 127
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize("args", [[], ["--timeout", "30"], ["--timeout", "0", "--", "true"],
                                   ["--timeout", "-5", "--", "true"]])  # fmt: skip
 def test_usage_and_a_non_positive_ceiling_are_exit_two(wrapper, args) -> None:
     assert _run(wrapper, *args).returncode == 2
 
 
+@pytest.mark.load_sensitive
 def test_a_timed_step_writes_one_timings_line(wrapper, tmp_path: Path) -> None:
     log = tmp_path / "t.jsonl"
     # hermetic: a gate this suite runs under exports its own GOH_TIMINGS_KIND (rust_gate.sh)
@@ -131,6 +139,7 @@ def test_a_timed_step_writes_one_timings_line(wrapper, tmp_path: Path) -> None:
     assert "kind" not in row, row
 
 
+@pytest.mark.load_sensitive
 def test_a_timed_step_records_its_gates_kind(wrapper, tmp_path: Path) -> None:
     """Both writers carry the kind, or the native tier's steps read as uncalibrated (5.3)."""
     log = tmp_path / "t.jsonl"
@@ -140,6 +149,7 @@ def test_a_timed_step_records_its_gates_kind(wrapper, tmp_path: Path) -> None:
     assert row["kind"] == "rust" and "cpu_ms" in row, row
 
 
+@pytest.mark.load_sensitive
 def test_the_steps_child_does_not_inherit_the_gates_kind(wrapper, tmp_path: Path) -> None:
     """The kind labels the gate's own steps: a child that inherited it labelled a test suite's
     fixtures and every nested tool with the outer gate's kind (5.3, goh's own push profile)."""
@@ -150,6 +160,7 @@ def test_the_steps_child_does_not_inherit_the_gates_kind(wrapper, tmp_path: Path
     assert "kind=" in r.stdout and "kind=rust" not in r.stdout, r.stdout
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize(
     "sig", [signal.SIGTERM, signal.SIGINT, signal.SIGHUP], ids=lambda s: s.name
 )
@@ -178,6 +189,7 @@ def test_a_signal_to_the_wrapper_sweeps_the_step(wrapper, tmp_path: Path, sig) -
             os.kill(grandchild, signal.SIGKILL)
 
 
+@pytest.mark.load_sensitive
 def test_a_signal_ignored_at_entry_stays_ignored(wrapper, tmp_path: Path) -> None:
     pid = tmp_path / "pid"
     proc = subprocess.Popen(
@@ -198,6 +210,7 @@ def test_a_signal_ignored_at_entry_stays_ignored(wrapper, tmp_path: Path) -> Non
             os.kill(grandchild, signal.SIGKILL)
 
 
+@pytest.mark.load_sensitive
 def test_cpu_timeout_refuses_burner_and_reaped_children_not_sleep(wrapper) -> None:
     r_sleep = _run(
         wrapper, "--timeout", "30", "--cpu-timeout", "1", "--grace", "1", "--", "sleep", "2.2"
@@ -240,6 +253,7 @@ def test_cpu_timeout_refuses_burner_and_reaped_children_not_sleep(wrapper) -> No
     assert r_reap.returncode == 124 and "CPU budget" in r_reap.stderr, r_reap.stderr
 
 
+@pytest.mark.load_sensitive
 def test_stall_ceiling_catches_sleep_without_wall_limiting_active_work(wrapper) -> None:
     r_stall = _run(
         wrapper,
@@ -262,6 +276,7 @@ def test_stall_ceiling_catches_sleep_without_wall_limiting_active_work(wrapper) 
     )
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize(
     "bad",
     [

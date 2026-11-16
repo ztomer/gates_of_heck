@@ -24,6 +24,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
 from test_gate_slot import LOCAL_CI, Gate, _env
@@ -93,6 +94,7 @@ def _cenv(tmp_path: Path, goh: Path, slots: int = 1) -> dict[str, str]:
     return _env(tmp_path, slots, GOH_BIN=str(goh))
 
 
+@pytest.mark.load_sensitive
 def test_two_old_consumer_full_gates_on_one_slot_run_their_layers_one_at_a_time(tmp_path, goh):
     env = _cenv(tmp_path, goh)
     first = Consumer(tmp_path, "first", env)
@@ -113,6 +115,7 @@ def test_two_old_consumer_full_gates_on_one_slot_run_their_layers_one_at_a_time(
             second.kill()
 
 
+@pytest.mark.load_sensitive
 def test_a_staged_consumer_gate_takes_no_slot(tmp_path, goh):
     env = _cenv(tmp_path, goh)
     holder = Gate(tmp_path, "holder", env)
@@ -125,6 +128,7 @@ def test_a_staged_consumer_gate_takes_no_slot(tmp_path, goh):
         holder.kill()
 
 
+@pytest.mark.load_sensitive
 def test_the_slot_ends_with_the_gate_not_with_a_daemon_it_left(tmp_path, goh):
     env = _cenv(tmp_path, goh)
     daemon = tmp_path / "daemon.pid"
@@ -147,6 +151,7 @@ def test_the_slot_ends_with_the_gate_not_with_a_daemon_it_left(tmp_path, goh):
         gate.kill()
 
 
+@pytest.mark.load_sensitive
 def test_a_consumer_gate_running_local_ci_after_structural_takes_one_slot(tmp_path, goh):
     env = _cenv(tmp_path, goh)
     layer = f'bash "{LOCAL_CI}" --steps-only --step "echo STEP-RAN" .'
@@ -161,6 +166,7 @@ def test_a_consumer_gate_running_local_ci_after_structural_takes_one_slot(tmp_pa
         gate.kill()
 
 
+@pytest.mark.load_sensitive
 def test_structural_full_outside_a_gate_sh_takes_no_slot(tmp_path, goh):
     """A bare `structural.sh --full` (a terminal, a script step) is no gate.sh to hold one for."""
     env = _cenv(tmp_path, goh)

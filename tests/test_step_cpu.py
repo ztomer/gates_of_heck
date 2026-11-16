@@ -45,12 +45,14 @@ def _row(goh: Path, tier: str, tmp_path: Path, cmd: list[str]) -> dict:
     return row
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize("tier", ["native", "python"])
 def test_a_step_that_burns_cpu_records_it(goh: Path, tmp_path: Path, tier: str) -> None:
     row = _row(goh, tier, tmp_path, BURN)
     assert row.get("cpu_ms", 0) >= 400, row
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize("tier", ["native", "python"])
 def test_a_step_that_sleeps_records_little_of_its_wall(
     goh: Path, tmp_path: Path, tier: str

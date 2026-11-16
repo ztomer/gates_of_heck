@@ -13,6 +13,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import pytest
 from conftest import hermetic_env
 from timing_bounds import assert_sooner
 
@@ -77,6 +78,7 @@ def _wait_line(proc: subprocess.Popen, needle: str, timeout: float) -> str:
     raise AssertionError(f"{needle!r} not seen within {timeout}s; got: {out!r}")
 
 
+@pytest.mark.load_sensitive
 def test_second_gate_waits_for_the_first(tmp_path):
     release = tmp_path / "release"
     first = _spawn(tmp_path, 0, release=release)
@@ -95,6 +97,7 @@ def test_second_gate_waits_for_the_first(tmp_path):
     assert (first.returncode, second.returncode) == (0, 0)
 
 
+@pytest.mark.load_sensitive
 def test_a_killed_holder_releases_at_once(tmp_path):
     """SIGKILL runs no trap; the kernel drops the flock with the last fd."""
     first = _spawn(tmp_path, 60)
@@ -110,6 +113,7 @@ def test_a_killed_holder_releases_at_once(tmp_path):
     assert second.returncode == 0
 
 
+@pytest.mark.load_sensitive
 def test_an_orphaned_child_still_using_the_tree_keeps_it(tmp_path):
     """Kill the gate's SHELL only and its child (`swift test`, here `sleep`)
     inherits fd 9 and keeps the lock until it exits. That is the property, not
@@ -143,6 +147,7 @@ def test_an_orphaned_child_still_using_the_tree_keeps_it(tmp_path):
     second.wait(10)
 
 
+@pytest.mark.load_sensitive
 def test_the_lock_file_is_never_removed(tmp_path):
     """Removing the file under a holder would hand the next caller a fresh inode."""
     proc = _spawn(tmp_path, 0)

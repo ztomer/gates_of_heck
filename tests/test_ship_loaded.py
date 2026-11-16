@@ -20,6 +20,7 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 import test_ship
 from conftest import REPO_ROOT, git, hermetic_env
 from test_ship import _result, _ship
@@ -55,6 +56,7 @@ def _greens_after(path: Path, after_s: float) -> list[str]:
     return [sys.executable, "-c", code]
 
 
+@pytest.mark.load_sensitive
 def test_the_release_never_starts_while_the_tips_loaded_run_runs(shipped, tmp_path) -> None:
     cmd = "true"
     seen = tmp_path / "seen.json"
@@ -78,6 +80,7 @@ def test_the_release_never_starts_while_the_tips_loaded_run_runs(shipped, tmp_pa
     assert "before the clock: the tip's loaded verdict: ok" in status.stdout, status.stdout
 
 
+@pytest.mark.load_sensitive
 def test_a_planted_load_only_failure_refuses_the_ship_before_any_step(shipped, tmp_path) -> None:
     env = {"GOH_LOAD_DIR": str(tmp_path / "load"), "GOH_BENCH_LOCK_DIR": str(tmp_path / "bench")}
     bare = subprocess.run([sys.executable, "-c", LOAD_ONLY], env=hermetic_env(**env),

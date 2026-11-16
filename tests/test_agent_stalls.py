@@ -172,6 +172,7 @@ def test_the_hook_is_silent_and_never_blocks_on_what_it_cannot_read(stdin: str) 
     assert (r.returncode, r.stdout) == (0, "")
 
 
+@pytest.mark.load_sensitive
 def test_the_real_process_table_sees_a_holder_and_then_its_absence(tmp_path: Path) -> None:
     """Calibrates lsof_holders both ways on a process THIS test owns (bounded, reaped)."""
     out = tmp_path / "bown.output"

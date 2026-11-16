@@ -77,12 +77,14 @@ def _gone(root: Path) -> bool:
     return True
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize("how", ["exit", "fail"])
 def test_a_run_that_ends_removes_its_root(tmp_path: Path, how: str) -> None:
     root = _run(tmp_path, how, lambda proc, _root: proc.wait(timeout=60))
     assert _gone(root), f"the root outlived a run that ended ({how}): {root}"
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize("sig", [signal.SIGKILL, signal.SIGTERM, signal.SIGHUP])
 def test_a_killed_run_leaves_no_root(tmp_path: Path, sig: signal.Signals) -> None:
     def kill(proc: subprocess.Popen, root: Path) -> None:
@@ -94,6 +96,7 @@ def test_a_killed_run_leaves_no_root(tmp_path: Path, sig: signal.Signals) -> Non
     assert _gone(root), f"a run killed by {sig.name} left its root: {root}"
 
 
+@pytest.mark.load_sensitive
 def test_the_root_names_its_owner_for_the_backstop(tmp_path: Path) -> None:
     """While it runs, the root carries `.goh-owner` (the live pid), so the session-start backstop
     sweep (lib/prune_kept.py) never removes a long-running suite's root from under it."""

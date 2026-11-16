@@ -18,6 +18,7 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 from _own_files import own_source_files
 from conftest import REPO_ROOT
 
@@ -91,6 +92,7 @@ def test_a_test_git_seed_is_removed_when_its_process_exits(tmp_path: Path) -> No
     assert sorted(p.name for p in tmpdir.iterdir()) == []
 
 
+@pytest.mark.load_sensitive
 def test_a_suite_run_sweeps_what_killed_runs_left(tmp_path: Path) -> None:
     """The controller sweeps its TMPDIR at session start: stale `goh-*` goes, young and foreign stay."""
     sys.path.insert(0, str(REPO_ROOT / "tests"))
@@ -105,6 +107,7 @@ def test_a_suite_run_sweeps_what_killed_runs_left(tmp_path: Path) -> None:
     assert sorted(p.name for p in tmp_path.iterdir()) == ["goh-test-git.live", "other.ghi"]
 
 
+@pytest.mark.load_sensitive
 def test_the_session_start_runs_the_sweep(tmp_path: Path) -> None:
     """Wired, not just written: a real (one-test) session in a TMPDIR holding a stale entry."""
     stale = tmp_path / "goh-rust-scope.stale"

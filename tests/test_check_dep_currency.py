@@ -256,6 +256,7 @@ def _crates_io(tmp_path: Path, **latest: str) -> dict:
     return dict(os.environ, GOH_CRATES_IO_CACHE=str(cache))
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize(
     ("triaged", "want"), [("", 1), ("ureq  # held: a parent still needs 2\n", 0)]
 )
@@ -319,6 +320,7 @@ def _currency(
     return r.returncode, json.loads(r.stdout)
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize(
     ("held", "latest", "bucket"),
     [
@@ -344,6 +346,7 @@ def _fatal(doc: dict) -> list[tuple[str, str]]:
     return [(f["severity"], f["name"]) for f in doc["fatal"]]
 
 
+@pytest.mark.load_sensitive
 def test_a_triaged_major_with_its_reason_passes(tmp_path):
     code, doc = _currency(
         tmp_path,
@@ -354,6 +357,7 @@ def test_a_triaged_major_with_its_reason_passes(tmp_path):
     assert (code, _fatal(doc)) == (0, []), doc
 
 
+@pytest.mark.load_sensitive
 def test_a_ratchet_entry_with_no_reason_fails(tmp_path):
     """The list says what is held; the reason says why it may stand. An entry without one is the
     allowlist nobody can re-judge."""
@@ -362,6 +366,7 @@ def test_a_ratchet_entry_with_no_reason_fails(tmp_path):
     assert ("ratchet-unreasoned", "sh") in _fatal(doc), doc
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize(
     ("deps", "latest"),
     [
@@ -380,6 +385,7 @@ def test_a_stale_ratchet_entry_fails_until_it_is_deleted(tmp_path, deps, latest)
     assert ("ratchet-stale", "sh") in _fatal(doc), doc
 
 
+@pytest.mark.load_sensitive
 def test_offline_does_not_judge_an_entry_stale_and_says_so(tmp_path):
     """Staleness needs crates.io's answer; without it the entry is not judged, and the report says
     so rather than calling it clean."""

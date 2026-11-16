@@ -19,6 +19,7 @@ from _mcp_scaffold_kit import REPO_ROOT, SERVER, mc
 # ---- a subprocess whose tool result cannot be serialized at all ----------------
 
 
+@pytest.mark.load_sensitive
 def test_wire_unserializable_tool_result_then_session_survives(tmp_path):
     script = "\n".join(
         [
@@ -116,6 +117,7 @@ def _initialize(d):
     return resp
 
 
+@pytest.mark.load_sensitive
 def test_wire_initialize_list_call_round_trip(server):
     init = _initialize(server)
     assert init["result"]["protocolVersion"] == "2025-06-18"
@@ -140,6 +142,7 @@ def test_wire_initialize_list_call_round_trip(server):
     assert called["result"]["isError"] is False
 
 
+@pytest.mark.load_sensitive
 def test_wire_malformed_json_yields_parse_error_object_not_crash(server):
     server.send_raw("{not json at all")
     resp = server.recv()
@@ -149,6 +152,7 @@ def test_wire_malformed_json_yields_parse_error_object_not_crash(server):
     assert "result" in server.recv()
 
 
+@pytest.mark.load_sensitive
 def test_wire_unknown_method_over_the_wire(server):
     _initialize(server)
     server.send({"jsonrpc": "2.0", "id": 8, "method": "resources/list"})
@@ -160,6 +164,7 @@ def test_wire_unknown_method_over_the_wire(server):
 # ---- wire-level proofs of every crash shape ----------------------------------
 
 
+@pytest.mark.load_sensitive
 def test_wire_unhashable_name_then_session_survives(tmp_path):
     script = "\n".join(
         [
@@ -204,6 +209,7 @@ def test_wire_unhashable_name_then_session_survives(tmp_path):
         proc.wait(timeout=10)
 
 
+@pytest.mark.load_sensitive
 def test_wire_invalid_utf8_bytes_yield_parse_error_then_session_survives():
     # Malformed BYTES must get PARSE_ERROR exactly like malformed syntax —
     # and must NOT kill the loop (a strict text stdin is permanently poisoned
@@ -232,6 +238,7 @@ def test_wire_invalid_utf8_bytes_yield_parse_error_then_session_survives():
         proc.wait(timeout=10)
 
 
+@pytest.mark.load_sensitive
 def test_wire_batch_array_refused_over_the_wire(server):
     server.send_raw(
         '[{"jsonrpc":"2.0","id":1,"method":"ping"},{"jsonrpc":"2.0","id":2,"method":"ping"}]'
@@ -243,6 +250,7 @@ def test_wire_batch_array_refused_over_the_wire(server):
     assert "result" in server.recv()
 
 
+@pytest.mark.load_sensitive
 def test_wire_null_id_answered_with_null_id(server):
     server.send_raw('{"jsonrpc":"2.0","id":null,"method":"ping"}')
     resp = server.recv()
@@ -250,6 +258,7 @@ def test_wire_null_id_answered_with_null_id(server):
     assert "result" in resp
 
 
+@pytest.mark.load_sensitive
 def test_wire_nan_id_token_sanitized_to_null(server):
     # json.loads decodes bare NaN; the reply must carry null, never NaN.
     server.send_raw('{"jsonrpc":"2.0","id":NaN,"method":"ping"}')

@@ -18,6 +18,8 @@ import ast
 import json
 from pathlib import Path
 
+import pytest
+
 TESTS = Path(__file__).resolve().parent
 SEED = TESTS / "env_spread_seed.json"
 
@@ -72,6 +74,7 @@ def test_the_detector_sees_every_spelling_and_nothing_else():
     assert spreads(src) == [2, 3, 4]
 
 
+@pytest.mark.load_sensitive
 def test_no_test_spreads_os_environ_beyond_the_seed():
     seed = json.loads(SEED.read_text(encoding="utf-8"))["files"]
     now = census()

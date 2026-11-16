@@ -7,9 +7,11 @@ import time
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
+import pytest
 from _ordered_pool import in_order
 
 
+@pytest.mark.load_sensitive
 def test_items_run_at_once_and_report_in_item_order(capsys):
     """Each item can only finish while the other runs (a serial pool times out), and the SLOW first
     item's output still comes first."""

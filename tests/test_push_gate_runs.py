@@ -20,6 +20,7 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
 from _fast_git import fast_init
 from test_push_gate import GATE, PUSH_GATE, REPO_ROOT, _git, _repo
 
@@ -101,6 +102,7 @@ def test_a_red_run_leaves_no_run_directory(tmp_path):
     assert _run_litter(export_root) == [], list(export_root.rglob("*"))
 
 
+@pytest.mark.load_sensitive
 def test_a_run_whose_owner_is_dead_is_reaped_by_the_next(tmp_path):
     repo = _repo(tmp_path)
     export_root = tmp_path / "exports"

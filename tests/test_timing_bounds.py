@@ -76,6 +76,7 @@ def test_a_failure_not_clear_of_its_pass_is_a_design_error() -> None:
         timing_bounds.bound(2, 5)
 
 
+@pytest.mark.load_sensitive
 def test_a_give_up_deadline_rereads_the_load_while_it_waits(monkeypatch) -> None:
     # 2026-10-10: a deadline read once at load 1 expired while a push loaded the box mid-wait.
     clock = [100.0]

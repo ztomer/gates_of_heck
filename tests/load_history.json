@@ -1,0 +1,20 @@
+[
+  {"id": "GOH.FLAKE1", "test": "tests/test_load_reap.py::test_the_backstop_kills_an_orphan_no_registry_names", "seen": "failed once in a land gate under load, passed alone (2026-11-02)"},
+  {"id": "GOH.TIMEOUTFLAKE", "test": "tests/test_local_ci.py::test_step_timeout_kills_hung_step", "seen": "failed once inside the land gate on a loaded box, passed alone (237425d6)"},
+  {"id": "GOH.LOADFLAKE", "test": "tests/test_git_deadline_class.py::test_run_writer_stops_the_whole_group_a_hook_included", "seen": "read the hook pid file before it was written, under load in tools/land.sh; 17/17 alone (80bff6c4)"},
+  {"id": "GOH.CI107", "test": "tests/test_gate_slot.py::test_a_push_waits_for_a_slot_and_its_step_limit_counts_from_the_slot", "seen": "the 'taken after Ns waiting' line missing on a slow hosted runner, 3/3 locally (run 43303342787)"},
+  {"id": "GOH.COVDEDUPE2", "test": "tests/test_install.py::test_self_hosted_repo_satisfies_its_own_hook", "seen": "exceeded the drift guard's 60 s ceiling at load 8"},
+  {"id": "GOH.BENCHLOCKFLAKE", "test": "tests/test_bench_lock.py::test_a_measurement_waits_for_a_running_gate_and_drops_a_dead_ones_entry", "seen": "a 3 s wait for a gate expired under load (15ce61fa)"},
+  {"id": "GOH.LOADFLAKES", "test": "tests/test_coverage_phases.py::test_a_step_killed_on_its_ceiling_names_the_phase_it_was_in", "seen": "TIMED OUT after 3s at load 110-180, passed on re-run (516f8c51)"},
+  {"id": "GOH.LOADFLAKES", "test": "tests/test_tree_lock.py::test_second_gate_waits_for_the_first", "seen": "LOCKED at load 110-180, passed on re-run (516f8c51)"},
+  {"id": "GOH.BOUNDEDRUNFLAKE", "test": "tests/test_bounded_run_interrupt.py::test_a_signal_to_the_wrapper_reaps_the_step", "seen": "a 10 s wait starved at load ~200 and failed a land (2026-11-14)"},
+  {"id": "GOH.SELFGATEPS", "test": "tests/test_self_gate.py::test_a_goh_commit_is_judged_by_its_staged_tree_and_that_trees_binary", "seen": "a whole-table ps under a 30 s cap expired at load 50-110 in two lands (2026-11-15)"},
+  {"id": "GOH.ADVISORYLOAD", "test": "tests/test_advisory_db.py::test_an_audit_that_burns_its_cpu_ceiling_is_stopped_and_named", "seen": "timed out after 15 s at load ~100 in a land gate"},
+  {"id": "GOH.VERDICTKEY", "test": "tests/test_land_serial.py::test_two_concurrent_lands_both_land_one_gate_at_a_time", "seen": "a 0.3 s head start lost the race at load ~70, failing the land of 44158daa (af7ddd67)"},
+  {"id": "dca1ff49", "test": "tests/test_bench_lock.py::test_a_drain_past_the_budget_lets_go_at_the_budget", "seen": "waited 5.22 s against a 5 s bound at load 100 (2026-10-08)"},
+  {"id": "1a47f108", "test": "tests/test_bench_lock.py::test_the_cap_bounds_the_whole_block_not_only_the_run", "seen": "timed out after 40 s in a land gate at load 33 (2026-10-08)"},
+  {"id": "4e33f655", "test": "tests/test_session_bench.py::test_a_workload_sharing_nothing_reads_as_parallel", "seen": "speedup 2.98 against a fixed 3.0 at load 55, refused a consumer push (2026-10-08)"},
+  {"id": "75f109c8", "test": "tests/test_session_bench.py::test_a_workload_holding_a_shared_lock_reads_as_serial", "seen": "sigma 0.693 against a fixed 0.7 at load ~40, 3/3 alone (2026-10-08)"},
+  {"id": "GOH.WALLCLOCK", "test": "tests/test_session_bench.py::test_the_slowest_inflating_steps_are_reported", "seen": "a 1.5 ratio over a measured 0.3 s hold read 1.48 on a hosted runner (run 42990295293)"},
+  {"id": "525ef6ce", "test": "tests/test_load_burning.py::test_the_backstop_leaves_a_spinner_with_a_live_parent_alone", "seen": "the fixture's 6 s wall timer ran out on a starved box: 'the fixture never burned a core' (push of 0057e76)"}
+]

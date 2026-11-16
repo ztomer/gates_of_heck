@@ -299,10 +299,16 @@ Every structural checker is native since Phase N3; the Python checkers they port
   `ztomer/gates_of_heck/.github/actions/goh-floors@<release commit>` with `goh-dir`. `test_goh_floors_action.py`.
 * `tools/gate.sh` — this repo's own gate entry (layer 1 + parallel pytest
   on `--full`: `-n 12 --dist loadgroup`, serial fallback without xdist).
-* `tools/loaded_suite.sh [-n N] [-- CMD...]` -- the suite once under `tools/load.py`'s N spinners
-  (default the core count), which `tools/release_goh.sh` runs before its land (GOH.CLASS.HARNESS):
-  a load-sensitive test is red at the release that carries it, its line naming the spinners and the
-  load the run began on. `test_loaded_suite.py`.
+* `tools/loaded_suite.sh [-n N] [-- CMD...]` -- the load-sensitive tests once under `tools/load.py`'s
+  N spinners (default the core count), started on each landed tip by `tools/land.sh`
+  (GOH.CLASS.HARNESS, GOH.SHIPRELREUSE R2): a load-sensitive test is red at the ship that carries
+  it, its line naming the spinners and the load the run began on. `test_loaded_suite.py`. It runs
+  `pytest -m load_sensitive` only (GOH.LOADEDSUBSET): `tests/load_sensitive.py` derives the tests
+  whose verdict can move with load (sleep, clock, poll, spawn beside the test, thread, signal,
+  bounded wait, a deadline handed to the code under test, a literal timeout under 30 s), and
+  `tests/test_load_sensitive.py` refuses one without `@pytest.mark.load_sensitive`, a mark with no
+  signal and no `reason=`, and any load-only failure in `tests/load_history.json` outside the set.
+  The land gate still runs every test.
 * `tools/load.py [N -- CMD...]` — the ONE way to make load on this machine, and it reaps itself.
   It takes the registry slot (`GOH_LOAD_DIR`, default `~/.cache/goh/load`), refusing a second
   experiment while one holds it; starts N spinners, REGISTERING each one (pid + start time)

@@ -208,6 +208,7 @@ def test_safe_subprocess_rejects_string_command_shell_injection_shape():
         mc.run_subprocess("rm -rf /")
 
 
+@pytest.mark.load_sensitive
 def test_safe_subprocess_timeout_raises_named_error():
     with pytest.raises(mc.SubprocessTimeout):
         mc.run_subprocess([sys.executable, "-c", "import time; time.sleep(30)"], timeout=1)

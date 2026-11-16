@@ -67,6 +67,7 @@ def _lock(run: Path) -> Path:
     return locks[0]
 
 
+@pytest.mark.load_sensitive
 def test_a_running_and_a_killed_build_leave_the_checkout_clean(checkout, tmp_path):
     tools = tmp_path / "tools"
     tools.mkdir()

@@ -14,6 +14,7 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 from conftest import REPO_ROOT, git, hermetic_env
 from timing_bounds import GiveUp, patience
 
@@ -41,6 +42,7 @@ def _until_settled(repo: Path, cmd: str) -> str:
     return loaded_verdict.state(loaded_verdict.read(path))
 
 
+@pytest.mark.load_sensitive
 def test_a_passing_run_records_green_by_tree_and_the_ship_proceeds(repo: Path) -> None:
     cmd = "test -f README.md"
     assert _cli(repo, "start", "--cmd", cmd).returncode == 0
@@ -52,6 +54,7 @@ def test_a_passing_run_records_green_by_tree_and_the_ship_proceeds(repo: Path) -
     assert len(git(repo, "worktree", "list").strip().splitlines()) == 1, "the run left a worktree"
 
 
+@pytest.mark.load_sensitive
 def test_a_failing_run_records_red_and_the_ship_refuses_naming_it(repo: Path) -> None:
     assert _cli(repo, "start", "--cmd", "exit 3").returncode == 0
     assert _until_settled(repo, "exit 3") == "red"
@@ -73,6 +76,7 @@ def test_a_running_verdict_is_waited_for(repo: Path) -> None:
     assert "running" in r.stdout and "green" in r.stdout, r.stdout
 
 
+@pytest.mark.load_sensitive
 def test_a_running_record_whose_runner_is_gone_reads_died(repo: Path) -> None:
     path = loaded_verdict.record_path(repo, "HEAD")
     gone = subprocess.Popen(["true"], stdin=subprocess.DEVNULL)
@@ -123,6 +127,7 @@ def test_records_are_json(repo: Path) -> None:
     assert json.loads(r.stdout)["state"] == "green"
 
 
+@pytest.mark.load_sensitive
 def test_a_green_verdict_is_no_verdict_for_another_command(repo: Path) -> None:
     """GOH.VERDICTKEY, the survey's reproduction: green under `--cmd true` answered "green already"
     for `--cmd false`, keyed by the tree alone. The key carries the command (gate_identity.py)."""
@@ -141,6 +146,7 @@ def _commit(repo: Path, files: dict[str, str], msg: str) -> str:
     return git(repo, "rev-parse", "HEAD").strip()
 
 
+@pytest.mark.load_sensitive
 def test_a_tag_created_mid_run_cannot_change_its_result(repo: Path) -> None:
     """GOH.LOADEDTAGRACE: the loaded run of release commit fc32af1a went red with 142 failures
     because v0.125.0 was tagged while it ran, and every test read a version (goh_version.sh) that
@@ -160,6 +166,7 @@ def test_a_tag_created_mid_run_cannot_change_its_result(repo: Path) -> None:
     assert _until_settled(repo, cmd) == "green"
 
 
+@pytest.mark.load_sensitive
 def test_a_release_only_land_records_its_parents_verdict_and_runs_nothing(repo: Path) -> None:
     """A release commit changes CHANGELOG.md and changelog/ only (lib/release_gate.py's one
     definition): its land records its parent's verdict for its own tree, under the same gate
@@ -177,6 +184,7 @@ def test_a_release_only_land_records_its_parents_verdict_and_runs_nothing(repo: 
     assert rec["tree"] == git(repo, "rev-parse", "HEAD^{tree}").strip()
 
 
+@pytest.mark.load_sensitive
 def test_any_other_diff_runs_the_suite(repo: Path) -> None:
     """Calibration: one non-release path beside the changelog, or a release-only commit whose
     parent has no verdict under this command's identity, runs the command -- red here, since the

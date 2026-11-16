@@ -35,6 +35,7 @@ def _run(args: list[str], timeout: float = 60.0) -> subprocess.CompletedProcess[
     )  # fmt: skip
 
 
+@pytest.mark.load_sensitive
 def test_a_busy_slot_refusal_names_the_holder_and_the_exact_rerun_line(tmp_path: Path) -> None:
     args = ["--dir", str(tmp_path), "1", "--", "/bin/sh", "-c", "exit 0"]
     with load_kit.owned(tmp_path, 1, ["/bin/sh", "-c", "sleep 30 # the-holder"]) as tool:
@@ -46,6 +47,7 @@ def test_a_busy_slot_refusal_names_the_holder_and_the_exact_rerun_line(tmp_path:
     assert line in second.stderr, second.stderr
 
 
+@pytest.mark.load_sensitive
 def test_wait_takes_the_slot_once_the_holder_is_done(tmp_path: Path) -> None:
     with load_kit.owned(tmp_path, 1, ["/bin/sh", "-c", "sleep 2"]) as tool:
         tool.wait_for_spinners()
@@ -55,6 +57,7 @@ def test_wait_takes_the_slot_once_the_holder_is_done(tmp_path: Path) -> None:
     assert time.monotonic() - t0 < timing_bounds.patience(30)
 
 
+@pytest.mark.load_sensitive
 def test_a_run_with_no_spinners_waits_for_the_slot_without_being_asked(tmp_path: Path) -> None:
     with load_kit.owned(tmp_path, 1, ["/bin/sh", "-c", "sleep 2"]) as tool:
         tool.wait_for_spinners()
@@ -63,6 +66,7 @@ def test_a_run_with_no_spinners_waits_for_the_slot_without_being_asked(tmp_path:
     assert "waiting for the slot" in gate.stderr + gate.stdout
 
 
+@pytest.mark.load_sensitive
 def test_the_slot_wait_is_bounded_and_says_what_it_waited_on(tmp_path: Path) -> None:
     with load_kit.owned(tmp_path, 1, ["/bin/sh", "-c", "sleep 30 # the-holder"]) as tool:
         tool.wait_for_spinners()
@@ -71,6 +75,7 @@ def test_the_slot_wait_is_bounded_and_says_what_it_waited_on(tmp_path: Path) -> 
     assert "--wait-max of 1s expired" in late.stderr and "the-holder" in late.stderr, late.stderr
 
 
+@pytest.mark.load_sensitive
 def test_a_wait_that_ends_without_running_the_command_is_not_a_pass(tmp_path: Path) -> None:
     """A CadGoose2 agent's `load.py --wait ... -- git push` looked green while nothing was pushed:
     a wait that runs out never ran the command, so it exits nonzero naming the holder."""

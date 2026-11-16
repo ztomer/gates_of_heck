@@ -84,6 +84,7 @@ def test_history_and_versionless_lines_pass(repo, name, line):
     assert r.returncode == 0, r.stdout + r.stderr
 
 
+@pytest.mark.load_sensitive
 def test_the_subject_has_a_floor(repo):
     """A scan that stopped reading Markdown reads as clean: its count is floored like every scanner's."""
     write(repo, "README.md", "# Doc\n")

@@ -17,6 +17,7 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 import test_ship
 from conftest import REPO_ROOT, git
 from test_ship import SHIP, _env, _result
@@ -38,6 +39,7 @@ def _remote_main(repo: Path) -> str:
     return git(repo, "ls-remote", "origin", "refs/heads/main").split()[0]
 
 
+@pytest.mark.load_sensitive
 def test_a_ship_waits_while_a_land_holds_the_lock(shipped: Path, tmp_path: Path) -> None:
     head = git(shipped, "rev-parse", "HEAD").strip()
     lock = shipped / ".git" / "goh-land.lock"
@@ -61,6 +63,7 @@ def test_a_ship_waits_while_a_land_holds_the_lock(shipped: Path, tmp_path: Path)
     assert _result(tmp_path)["status"] == "ok"
 
 
+@pytest.mark.load_sensitive
 def test_a_land_the_ships_release_runs_does_not_wait_on_the_ship(
     shipped: Path, tmp_path: Path
 ) -> None:

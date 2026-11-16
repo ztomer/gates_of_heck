@@ -134,6 +134,7 @@ def _meanwhile(action) -> tuple[threading.Thread, bool]:
     return worker, worker.is_alive()
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize("stage", STAGES)
 def test_a_pass_that_read_mid_start_does_not_lose_a_spinner(tmp_path: Path, stage: str) -> None:
     """LOST UPDATE: the pass reads the registry with one spinner, the tool registers the second,
@@ -174,6 +175,7 @@ def test_a_pass_that_read_mid_start_does_not_lose_a_spinner(tmp_path: Path, stag
         experiment.finish()
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize("stage", STAGES)
 def test_a_pass_that_read_before_finish_does_not_resurrect_the_slot(
     tmp_path: Path, stage: str

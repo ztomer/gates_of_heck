@@ -15,6 +15,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
 from conftest import (
     REPO_ROOT,
     commit_all,
@@ -92,6 +93,7 @@ def test_the_commit_reads_the_tracked_seed_from_the_index(repo: Path, tmp_path: 
     assert r.returncode == 1, "the index's seed holds nothing for a.py: " + r.stdout + r.stderr
 
 
+@pytest.mark.load_sensitive
 def test_two_concurrent_commits_keep_both_prunes(repo: Path, tmp_path: Path) -> None:
     write(repo, "a.py", HEDGE)
     write(repo, "b.py", HEDGE)

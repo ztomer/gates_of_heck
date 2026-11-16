@@ -49,6 +49,7 @@ def test_a_reentrant_lock_held_by_an_ancestor_is_its_own_rule_not_a_refusal() ->
     assert lock_order.refusal("tree", {lock_order.ENV: f"tree@{ME}"}) is not None  # not re-entrant
 
 
+@pytest.mark.load_sensitive
 def test_a_dead_holders_entry_guards_nothing() -> None:
     dead = subprocess.Popen([sys.executable, "-c", ""], stdin=subprocess.DEVNULL)
     dead.wait()

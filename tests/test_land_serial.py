@@ -17,6 +17,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import pytest
 from conftest import REPO_ROOT, git, hermetic_env
 from timing_bounds import GiveUp, assert_sooner, patience
 
@@ -63,6 +64,7 @@ def _main_commits(repo: Path) -> list[str]:
     return git(repo, "log", "--format=%s", "main").split()
 
 
+@pytest.mark.load_sensitive
 def test_two_concurrent_lands_both_land_one_gate_at_a_time(repo: Path, tmp_path: Path) -> None:
     """The DONE state: two lands of disjoint branches started together both land, with no refused
     fast-forward; their gates never overlap; the waiter names the holder."""
@@ -94,6 +96,7 @@ def test_two_concurrent_lands_both_land_one_gate_at_a_time(repo: Path, tmp_path:
     assert "rebased" in out_b, out_b
 
 
+@pytest.mark.load_sensitive
 def test_a_main_that_moved_before_the_land_is_rebased_onto_and_gated(
     repo: Path, tmp_path: Path
 ) -> None:
@@ -109,6 +112,7 @@ def test_a_main_that_moved_before_the_land_is_rebased_onto_and_gated(
     assert (tmp_path / "gates.log").read_text() == "gated with main\n"
 
 
+@pytest.mark.load_sensitive
 def test_a_branch_that_conflicts_with_main_lands_nothing_and_is_left_as_it_was(
     repo: Path, tmp_path: Path
 ) -> None:
@@ -124,6 +128,7 @@ def test_a_branch_that_conflicts_with_main_lands_nothing_and_is_left_as_it_was(
     assert not git(wt, "status", "--porcelain").strip()
 
 
+@pytest.mark.load_sensitive
 def test_a_process_the_gate_leaves_running_does_not_hold_the_lock(
     repo: Path, tmp_path: Path
 ) -> None:

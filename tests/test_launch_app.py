@@ -62,6 +62,7 @@ def _caller_env(**extra: str) -> dict[str, str]:
     return hermetic_env(**{SENTINEL: "caller", "GOH_DIR": "/nonexistent/goh/head/abc", **extra})
 
 
+@pytest.mark.load_sensitive
 def test_a_bare_open_hands_the_app_the_callers_environment(tmp_path: Path) -> None:
     """The control: without it, an absent sentinel below could mean the probe sees nothing."""
     app, out = _probe_app(tmp_path, "bare")
@@ -72,6 +73,7 @@ def test_a_bare_open_hands_the_app_the_callers_environment(tmp_path: Path) -> No
     assert carried, sorted(seen)  # names only, never values
 
 
+@pytest.mark.load_sensitive
 def test_launch_app_gives_the_login_environment(tmp_path: Path) -> None:
     app, out = _probe_app(tmp_path, "clean")
     r = subprocess.run([str(native_goh_path()), "launch-app", "--background", str(app)],
@@ -101,6 +103,7 @@ LSREGISTER = ("/System/Library/Frameworks/CoreServices.framework/Frameworks/"
               "LaunchServices.framework/Support/lsregister")  # fmt: skip
 
 
+@pytest.mark.load_sensitive
 def test_launch_app_by_bundle_id_gives_the_login_environment() -> None:
     """`-b ID` (GOH.LAUNCHAPPID): a caller that knows the app by id, not by path or name. A bare
     `com.example.App` as the TARGET is read as a NAME (`open -a com.example.App`), which fails.

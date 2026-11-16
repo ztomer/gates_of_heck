@@ -12,6 +12,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import pytest
 from conftest import REPO_ROOT
 
 LIB = REPO_ROOT / "lib" / "container_runtime.sh"
@@ -113,6 +114,7 @@ def _wait_for(path: Path, timeout: float = 5.0) -> None:
     raise TimeoutError(f"Timed out waiting for {path}")
 
 
+@pytest.mark.load_sensitive
 def test_docker_down_starts_and_stops_colima(tmp_path: Path) -> None:
     _setup_fakes(tmp_path, docker_up=False)
     state = tmp_path / "state"
@@ -133,6 +135,7 @@ goh_container_runtime_down || exit 4
     assert not (state / "leases").exists() or not list((state / "leases").iterdir())
 
 
+@pytest.mark.load_sensitive
 def test_docker_already_up_never_starts_or_stops_colima(tmp_path: Path) -> None:
     _setup_fakes(tmp_path, docker_up=True)
     state = tmp_path / "state"
@@ -151,6 +154,7 @@ goh_container_runtime_down || exit 4
     assert not (state / "leases").exists() or not list((state / "leases").iterdir())
 
 
+@pytest.mark.load_sensitive
 def test_two_leases_stop_only_on_last_down(tmp_path: Path) -> None:
     _setup_fakes(tmp_path, docker_up=False)
     ready_a = tmp_path / "ready_a"
@@ -211,6 +215,7 @@ goh_container_runtime_down || exit 2
     assert proc_b.returncode == 0
 
 
+@pytest.mark.load_sensitive
 def test_stale_lease_does_not_hold_colima_up(tmp_path: Path) -> None:
     # A lease whose pid is dead is never counted: colima this run started is
     # stopped at its down even though a dead gate's lease file is still there.
@@ -234,6 +239,7 @@ goh_container_runtime_down || exit 3
     assert not (leases / "999999").exists()
 
 
+@pytest.mark.load_sensitive
 def test_colima_start_fails_returns_nonzero_with_log(tmp_path: Path) -> None:
     _setup_fakes(tmp_path, docker_up=False)
     state = tmp_path / "state"
@@ -249,6 +255,7 @@ def test_colima_start_fails_returns_nonzero_with_log(tmp_path: Path) -> None:
     assert not (state / "leases").exists() or not list((state / "leases").iterdir())
 
 
+@pytest.mark.load_sensitive
 def test_no_colima_binary_returns_nonzero_never_skips(tmp_path: Path) -> None:
     _setup_fakes(tmp_path, docker_up=False)
     state = tmp_path / "state"
@@ -263,6 +270,7 @@ def test_no_colima_binary_returns_nonzero_never_skips(tmp_path: Path) -> None:
     assert not (state / "leases").exists() or not list((state / "leases").iterdir())
 
 
+@pytest.mark.load_sensitive
 def test_a_marker_left_by_a_killed_gate_never_stops_a_runtime_goh_cannot_prove(
     tmp_path: Path,
 ) -> None:
@@ -278,6 +286,7 @@ def test_a_marker_left_by_a_killed_gate_never_stops_a_runtime_goh_cannot_prove(
     assert "colima stop" not in calls, calls
 
 
+@pytest.mark.load_sensitive
 def test_a_lock_held_by_a_killed_process_does_not_wedge_the_next(tmp_path: Path) -> None:
     _setup_fakes(tmp_path, docker_up=True)
     holder = _spawn(
@@ -291,6 +300,7 @@ def test_a_lock_held_by_a_killed_process_does_not_wedge_the_next(tmp_path: Path)
     assert res.returncode == 0, res.stderr
 
 
+@pytest.mark.load_sensitive
 def test_a_runtime_someone_elses_container_is_on_is_not_stopped(tmp_path: Path) -> None:
     # Owner ruling OW.27 (2026-10-31): never stop the runtime while anyone
     # else's container is running on it, even when goh started it.
@@ -306,6 +316,7 @@ def test_a_runtime_someone_elses_container_is_on_is_not_stopped(tmp_path: Path) 
     assert "other containers" in res.stdout + res.stderr
 
 
+@pytest.mark.load_sensitive
 def test_down_without_this_process_holding_a_lease_touches_nothing(tmp_path: Path) -> None:
     # Consumers set the EXIT trap before up, so down runs when up never did
     # (a cache hit, an early exit) or failed; a leftover marker must not make
@@ -350,6 +361,7 @@ def _reap(pid_file: Path) -> None:
             pass
 
 
+@pytest.mark.load_sensitive
 def test_the_daemon_colima_leaves_behind_does_not_hold_the_lock(tmp_path: Path) -> None:
     # 2026-11-01: `colima start` ran under the lock, so `colima daemon` and
     # limactl inherited fd 8 and held the flock for the VM's whole life; the
@@ -370,6 +382,7 @@ def test_the_daemon_colima_leaves_behind_does_not_hold_the_lock(tmp_path: Path) 
         _reap(pid_file)
 
 
+@pytest.mark.load_sensitive
 def test_the_daemon_does_not_inherit_a_callers_tree_lock(tmp_path: Path) -> None:
     # tree_lock.sh holds fd 9 for a whole gate run; a runtime started inside one
     # must not pin it past the gate.

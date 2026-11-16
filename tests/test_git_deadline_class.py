@@ -92,6 +92,7 @@ def test_the_dash_c_scan_sees_a_planted_site() -> None:
     assert _seam_calls_with_hand_c(planted) == [1, 3]
 
 
+@pytest.mark.load_sensitive
 def test_repo_drops_a_leaked_git_dir(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -165,6 +166,7 @@ def _with_path(shim: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PATH", f"{shim}:{os.environ['PATH']}")
 
 
+@pytest.mark.load_sensitive
 def test_run_reader_sets_the_no_lock_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import gitrun
 
@@ -176,6 +178,7 @@ def test_run_reader_sets_the_no_lock_env(tmp_path: Path, monkeypatch: pytest.Mon
     assert log.read_text().split() == ["0"]
 
 
+@pytest.mark.load_sensitive
 def test_the_checks_tier_twin_sets_the_same_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -203,6 +206,7 @@ def test_run_writer_terms_a_writer_at_its_deadline_and_its_lock_goes(
     assert not lock.exists(), "SIGKILL stranded index.lock: the writer was not TERMed first"
 
 
+@pytest.mark.load_sensitive
 def test_run_writer_kills_a_git_that_ignores_term_after_the_grace(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -241,6 +245,7 @@ def _pid_written(path: Path, within_s: float) -> int:
     raise AssertionError(f"{path.name} held no pid after {within_s:.0f} s: the hook never wrote it")
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize("late_s", [0.0, 0.6])
 def test_run_writer_stops_the_whole_group_a_hook_included(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, late_s: float
@@ -267,6 +272,7 @@ def test_run_writer_stops_the_whole_group_a_hook_included(
     pytest.fail(f"the hook {pid} outlived the stopped writer's group")
 
 
+@pytest.mark.load_sensitive
 def test_killtree_terms_before_it_kills(tmp_path: Path) -> None:
     import killtree
 

@@ -20,11 +20,11 @@ from timing_bounds import GiveUp, assert_sooner
 
 LIB = REPO_ROOT / "lib" / "bench_lock.sh"
 WATCH_S = 5.0
+pytestmark = pytest.mark.load_sensitive(reason="host locks held by spawned holders")
 
 
 def _env(lock: Path, **extra: str) -> dict[str, str]:
-    """A private bench lock, and the machine's other locks pointed beside it: a test that reached
-    the real desktop or GPU lock would hold it against another session's capture or model run."""
+    """A private bench lock, the desktop and GPU locks beside it, never another session's."""
     env = scrubbed(os.environ, ("GOH_BENCH_", "ZTOOLS_GPU_LOCK_OWNER"))
     private = {
         "GOH_BENCH_LOCK_DIR": str(lock),

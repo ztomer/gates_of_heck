@@ -137,6 +137,7 @@ def _burning(pid: int, floor: float = FLOOR_S) -> bool:
     return _cpu_of(pid) >= floor
 
 
+@pytest.mark.load_sensitive
 def test_the_backstop_kills_an_orphaned_process_burning_a_core_on_a_busy_loop(
     tmp_path: Path,
 ) -> None:
@@ -152,6 +153,7 @@ def test_the_backstop_kills_an_orphaned_process_burning_a_core_on_a_busy_loop(
     assert not load_kit.alive(pid), "the spinner outlived the backstop"
 
 
+@pytest.mark.load_sensitive
 def test_the_backstop_leaves_a_spinner_with_a_live_parent_alone(tmp_path: Path) -> None:
     """NEGATIVE CONTROL. A live parent: the owner is here, and it will reap it. The shape, the
     burn and the code are all the leak's -- only the parent saves it."""
@@ -168,6 +170,7 @@ def test_the_backstop_leaves_a_spinner_with_a_live_parent_alone(tmp_path: Path) 
         )
 
 
+@pytest.mark.load_sensitive
 def test_a_starved_spinner_still_reaches_the_floor(tmp_path: Path) -> None:
     """THE FIXTURE'S BOUND (push of 0057e76, 2026-10-25). A box can hold the spinner off the CPU
     for as long as it likes -- here, stopped outright for longer than the wall-clock timer it once
@@ -185,6 +188,7 @@ def test_a_starved_spinner_still_reaches_the_floor(tmp_path: Path) -> None:
         assert SPINNER_CPU_S > FLOOR_S * 10, "the budget must leave the floor far behind"
 
 
+@pytest.mark.load_sensitive
 def test_the_backstop_leaves_a_near_miss_that_sleeps_alone(tmp_path: Path) -> None:
     """NEGATIVE CONTROL. A loop that SLEEPS instead of spinning: it costs no CPU, and it is not
     the shape. The control must not itself spin, or it would be a process the rule would catch."""
@@ -195,6 +199,7 @@ def test_the_backstop_leaves_a_near_miss_that_sleeps_alone(tmp_path: Path) -> No
     assert load_kit.alive(pid), "the backstop killed a sleeper"
 
 
+@pytest.mark.load_sensitive
 def test_the_backstop_leaves_a_command_line_that_only_looks_like_the_shape_alone(
     tmp_path: Path,
 ) -> None:
@@ -216,6 +221,7 @@ def test_the_backstop_leaves_a_command_line_that_only_looks_like_the_shape_alone
         release.touch()
 
 
+@pytest.mark.load_sensitive
 def test_the_backstop_leaves_a_spinner_that_has_not_burned_alone(tmp_path: Path) -> None:
     """NEGATIVE CONTROL. A process that has just started has no CPU behind it: the floor is what
     separates a spinner from a start-up, and without it the backstop would kill every shell that
@@ -227,6 +233,7 @@ def test_the_backstop_leaves_a_spinner_that_has_not_burned_alone(tmp_path: Path)
     assert load_kit.alive(pid), "the backstop killed a process that had burned nothing"
 
 
+@pytest.mark.load_sensitive
 def test_a_killed_test_run_leaves_no_process_of_its_own_behind(tmp_path: Path) -> None:
     """THE BOUND (2026-10-21). A run that is SIGKILLed cannot clean up -- that is how the eight
     helpers of 2026-10-20 were orphaned -- so every fixture a run starts is bounded by its own

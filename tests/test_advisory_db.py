@@ -73,6 +73,7 @@ def _still_waiting(proc: subprocess.Popen) -> bool:
     return False
 
 
+@pytest.mark.load_sensitive
 def test_a_read_waits_while_a_refresh_holds_the_database(db: Path, tmp_path: Path) -> None:
     refresh = _held(db, fcntl.LOCK_EX)
     with _started(db, tmp_path, "--no-fetch") as (proc, record):
@@ -92,6 +93,7 @@ def test_a_read_waits_while_a_refresh_holds_the_database(db: Path, tmp_path: Pat
     ]
 
 
+@pytest.mark.load_sensitive
 def test_a_refresh_waits_for_a_read_in_progress(db: Path, tmp_path: Path) -> None:
     read = _held(db, fcntl.LOCK_SH)
     with _started(db, tmp_path, "--fetch") as (proc, record):
@@ -103,6 +105,7 @@ def test_a_refresh_waits_for_a_read_in_progress(db: Path, tmp_path: Path) -> Non
     assert "--no-fetch" not in record.read_text().split() and str(db) in record.read_text()
 
 
+@pytest.mark.load_sensitive
 def test_reads_run_together(db: Path, tmp_path: Path) -> None:
     other_read = _held(db, fcntl.LOCK_SH)
     try:
@@ -125,6 +128,7 @@ def test_the_house_audits_go_through_the_seam() -> None:
         assert "advisory_db.bounded(" in text, rel
 
 
+@pytest.mark.load_sensitive
 def test_an_offline_read_with_no_copy_anywhere_fetches_it_once(tmp_path: Path) -> None:
     """Run 42950563400: a hosted runner's fresh HOME had no `~/.cargo/advisory-db` to seed from, and
     `--no-fetch` (GOH_DEPS_OFFLINE=1) audited against nothing, so test_crates_behind's gate died.
@@ -148,6 +152,7 @@ def test_an_offline_read_with_no_copy_anywhere_fetches_it_once(tmp_path: Path) -
 # yanked` never finishes, every worker in getaddrinfo -> nw_path_evaluator -> necp_client_action.
 
 
+@pytest.mark.load_sensitive
 def test_a_fetching_audit_whose_index_does_not_resolve_is_refused_before_it_runs(
     db: Path, tmp_path: Path
 ) -> None:
@@ -163,6 +168,7 @@ def test_a_fetching_audit_whose_index_does_not_resolve_is_refused_before_it_runs
     assert "GOH_DEPS_OFFLINE=1" in err, err
 
 
+@pytest.mark.load_sensitive
 def test_the_lookup_asked_is_the_proxys_when_one_is_set(db: Path, tmp_path: Path) -> None:
     """cargo-audit's client goes through HTTPS_PROXY, so that is the name it would spin on."""
     with _started(db, tmp_path, "--fetch", HTTPS_PROXY="http://goh-audit-proxy.invalid:3128") as (
@@ -175,6 +181,7 @@ def test_the_lookup_asked_is_the_proxys_when_one_is_set(db: Path, tmp_path: Path
     assert "goh-audit-proxy.invalid" in err, err
 
 
+@pytest.mark.load_sensitive
 def test_an_offline_audit_asks_no_lookup(db: Path, tmp_path: Path) -> None:
     """`--no-fetch` reads the cached index only, so an unresolvable name is no reason to refuse."""
     with _started(db, tmp_path, "--no-fetch", GOH_AUDIT_INDEX_HOST="goh-audit-test.invalid") as (
@@ -189,6 +196,7 @@ def test_an_offline_audit_asks_no_lookup(db: Path, tmp_path: Path) -> None:
 SPIN = "exec python3 -c 'n = 0\nwhile n < 2_000_000_000: n += 1'\n"
 
 
+@pytest.mark.load_sensitive
 def test_an_audit_that_burns_its_cpu_ceiling_is_stopped_and_named(db: Path, tmp_path: Path) -> None:
     """The spin itself: CPU, not wall, is what tells it from a wait on cargo's package lock."""
     with _started(db, tmp_path, "--fetch", body=SPIN, GOH_AUDIT_CPU="1", GOH_AUDIT_WALL="60") as (
@@ -202,6 +210,7 @@ def test_an_audit_that_burns_its_cpu_ceiling_is_stopped_and_named(db: Path, tmp_
     assert record.exists()
 
 
+@pytest.mark.load_sensitive
 def test_an_audit_that_outlives_its_wall_ceiling_is_stopped_and_named(
     db: Path, tmp_path: Path
 ) -> None:

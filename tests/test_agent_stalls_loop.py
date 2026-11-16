@@ -66,6 +66,7 @@ def test_a_loopctl_that_fails_never_reaches_the_prompt(tmp_path: Path, body: str
     assert "loopctl stale" in r.stderr, r.stderr
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.skipif(not LOOPCTL.is_file(), reason="no .loop checkout (its CLI is what is asked)")
 def test_the_real_loopctl_names_a_closed_items_agent_and_a_2h_agent(tmp_path: Path) -> None:
     import time

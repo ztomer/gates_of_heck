@@ -27,6 +27,7 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 from conftest import git
 from test_gate_environment import _clean_checkout_of_todays_gates
 from test_ship import _env, make_shipped
@@ -66,6 +67,7 @@ def _wait(path: Path, seconds: float) -> None:
         time.sleep(0.1)
 
 
+@pytest.mark.load_sensitive
 def test_a_ship_finishes_with_its_own_goh_when_the_live_checkout_renames_a_step_flag(
     repo: Path, tmp_path: Path
 ) -> None:

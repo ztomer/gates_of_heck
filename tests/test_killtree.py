@@ -83,6 +83,7 @@ def test_run_captured_returns_completed_process():
     assert out.returncode == 0 and out.stdout.strip() == "captured-ok"
 
 
+@pytest.mark.load_sensitive
 def test_run_captured_kills_whole_group_on_timeout():
     marker = _unique_marker("HELPER")
     with pytest.raises(subprocess.TimeoutExpired):
@@ -90,6 +91,7 @@ def test_run_captured_kills_whole_group_on_timeout():
     _assert_nothing_survives(marker)
 
 
+@pytest.mark.load_sensitive
 def test_a_shell_that_exited_before_the_timeout_still_has_its_group_killed():
     """The direct child is a ZOMBIE when the timeout fires: the shell backgrounded a worker that
     holds the pipe and exited. macOS answers `getpgid` of a zombie with ESRCH, so the group kill
@@ -102,6 +104,7 @@ def test_a_shell_that_exited_before_the_timeout_still_has_its_group_killed():
     _assert_nothing_survives(marker)
 
 
+@pytest.mark.load_sensitive
 def test_a_child_without_its_own_group_falls_back_to_direct_kill():
     # Started WITHOUT start_new_session, the child leads no group: the group kill must degrade to
     # proc.kill(), not escape the timeout handler as a raw OSError.
@@ -136,6 +139,7 @@ def test_run_captured_feeds_stdin_and_captures_both_pipes():
 # ---- site 1: mcp_scaffold.run_subprocess --------------------------------------
 
 
+@pytest.mark.load_sensitive
 def test_mcp_run_subprocess_leaves_no_orphans_on_timeout():
     marker = _unique_marker("MCP")
     with pytest.raises(mc.SubprocessTimeout):
@@ -146,6 +150,7 @@ def test_mcp_run_subprocess_leaves_no_orphans_on_timeout():
 # ---- site 2: check_generated_fresh.generate -----------------------------------
 
 
+@pytest.mark.load_sensitive
 def test_generated_fresh_generate_leaves_no_orphans_on_timeout(tmp_path):
     marker = _unique_marker("FRESH")
     with pytest.raises(subprocess.TimeoutExpired):
@@ -156,6 +161,7 @@ def test_generated_fresh_generate_leaves_no_orphans_on_timeout(tmp_path):
 # ---- site 3: check_baseline_ratchet.load_current -------------------------------
 
 
+@pytest.mark.load_sensitive
 def test_ratchet_load_current_leaves_no_orphans_on_timeout():
     marker = _unique_marker("RATCHET")
     args = argparse.Namespace(

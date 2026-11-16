@@ -56,6 +56,7 @@ def held(tmp_path: Path):
         owner.wait()
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize(
     "command",
     [SWIFT, "cargo test -q", "taskpolicy -c utility cargo build", "./tools/gate.sh --full",
@@ -69,6 +70,7 @@ def test_a_bare_build_or_gate_under_a_held_slot_is_refused_with_the_wait_line(he
     assert 'tools/load.py" --wait 0 -- ' in why, why
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize(
     "command",
     [
@@ -86,6 +88,7 @@ def test_a_free_slot_lets_a_bare_build_run(tmp_path):
     assert _guard("swift test", tmp_path) is None
 
 
+@pytest.mark.load_sensitive
 def test_a_slot_whose_owner_is_gone_lets_it_run(held):
     load_dir, _ = held
     data = reg.read(reg.registry_path(load_dir))
@@ -95,6 +98,7 @@ def test_a_slot_whose_owner_is_gone_lets_it_run(held):
     assert _guard("swift test", load_dir) is None
 
 
+@pytest.mark.load_sensitive
 def test_the_build_lock_refusal_names_the_wait_line(tmp_path):
     """The agents' first refusal (exit 2) named only `--shared-lock-ok`; it names the rerun now."""
     ran = subprocess.run(
@@ -118,6 +122,7 @@ WRITTEN_THEN_RUN = (
 )
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize(
     "command",
     [
@@ -135,6 +140,7 @@ def test_a_heredoc_that_is_text_or_runs_inside_load_py_is_not_bare(held, command
     assert _guard(command, held[0]) is None, command
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize(
     "command",
     [

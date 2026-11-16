@@ -20,6 +20,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import pytest
 from _gatesrc_kit import write_gatesrc
 from conftest import hermetic_env
 
@@ -86,6 +87,7 @@ def _run(goh: Path, tmp: Path, red: bool, sleep: str):
     return r, time.monotonic() - t0, {p.name for p in marks.iterdir()}
 
 
+@pytest.mark.load_sensitive
 def test_delegated_checkers_overlap(goh: Path, tmp_path: Path) -> None:
     """Overlapped, two 2 s checkers add 2 s to the gate's own cost; one after another, 4 s. That
     cost is measured here (0 s checkers), not guessed: a fixed 1.8 s for two 1 s checkers is a
@@ -100,6 +102,7 @@ def test_delegated_checkers_overlap(goh: Path, tmp_path: Path) -> None:
     assert added < 3, f"two 2 s checkers added {added:.1f} s: they ran one after another"
 
 
+@pytest.mark.load_sensitive
 def test_a_red_step_still_joins_every_checker_it_started(goh: Path, tmp_path: Path) -> None:
     r, _, marks = _run(goh, tmp_path, red=True, sleep="1.5")
     assert r.returncode == 1, r.stdout + r.stderr

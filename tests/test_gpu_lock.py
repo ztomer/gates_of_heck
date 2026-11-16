@@ -60,6 +60,7 @@ def test_the_owner_record_is_pid_start_label_and_the_owner_is_exported(lock):
     assert os.environ.get("ZTOOLS_GPU_LOCK_OWNER") is None  # never `in os.environ`: printed whole
 
 
+@pytest.mark.load_sensitive
 def test_a_live_beating_peer_is_refused_by_name_never_stolen(lock, peer):
     _plant(lock, peer.pid, lock.start_time(peer.pid))
     with pytest.raises(lock.GpuBusy, match="peer eval"):
@@ -68,6 +69,7 @@ def test_a_live_beating_peer_is_refused_by_name_never_stolen(lock, peer):
     assert lock.holder() == "peer eval" and lock.foreign_holder() == "peer eval"
 
 
+@pytest.mark.load_sensitive
 def test_a_dead_owner_is_reclaimed(lock, peer):
     pid = peer.pid
     peer.kill()
@@ -77,12 +79,14 @@ def test_a_dead_owner_is_reclaimed(lock, peer):
     assert lock.holder().endswith(f"(pid {os.getpid()})")
 
 
+@pytest.mark.load_sensitive
 def test_a_recycled_pid_does_not_impersonate_the_owner(lock, peer):
     _plant(lock, peer.pid, "Mon Jan  1 00:00:00 2024")
     lock.acquire(log=lambda _: None, nap=lambda _: pytest.fail("waited on an impostor"))
     assert lock.foreign_holder() == ""
 
 
+@pytest.mark.load_sensitive
 def test_a_holder_that_stopped_beating_is_reclaimed_and_one_that_beats_is_not(lock, peer):
     _plant(lock, peer.pid, lock.start_time(peer.pid))
     long_ago = time.time() - 100
@@ -93,6 +97,7 @@ def test_a_holder_that_stopped_beating_is_reclaimed_and_one_that_beats_is_not(lo
     assert lock.holder().endswith(f"(pid {os.getpid()})")
 
 
+@pytest.mark.load_sensitive
 def test_a_heartbeat_moves_the_ceiling_only_for_the_holder(lock, peer):
     _plant(lock, peer.pid, lock.start_time(peer.pid))
     os.utime(lock.lock_dir(), (1, 1))
@@ -141,11 +146,13 @@ def _bash(script, env):
     )
 
 
+@pytest.mark.load_sensitive
 def test_both_halves_spell_a_start_time_byte_for_byte(lock, peer):
     shell = _bash(f"_gpu_lock_start_time {peer.pid}", dict(os.environ))
     assert shell.stdout == lock.start_time(peer.pid) != ""
 
 
+@pytest.mark.load_sensitive
 def test_each_half_refuses_the_other_s_live_lock(lock):
     lock.acquire("python holder", log=lambda _: None)
     # A PEER, not a child: without the owner variable the bash half cannot inherit.
@@ -189,6 +196,7 @@ def test_both_halves_collapse_a_padded_day_the_same_way(lock, monkeypatch):
     assert shell.stdout == lock.start_time(1) == "Thu Oct 2 09:05:07 2026"
 
 
+@pytest.mark.load_sensitive
 def test_quiet_refuses_a_gpu_another_session_holds_and_names_it(tmp_path) -> None:
     """A model run holds the GPU for hours and loads the box under every wall time: quiet.sh
     names it and refuses rather than measuring beside it, and leaves the holder's lock alone."""

@@ -28,6 +28,7 @@ from timing_bounds import assert_sooner
 # ---- round-trip --------------------------------------------------------------
 
 
+@pytest.mark.load_sensitive
 def test_chat_round_trip_extracts_text_and_usage(fake_api):
     t = et.EvalTransport(base_url=fake_api, api_key="k-test")
     out = t.chat("m-alpha", [{"role": "user", "content": "hello"}])
@@ -36,6 +37,7 @@ def test_chat_round_trip_extracts_text_and_usage(fake_api):
     assert out["elapsed"] >= 0.0
 
 
+@pytest.mark.load_sensitive
 def test_chat_sends_bearer_key_and_model(fake_api):
     t = et.EvalTransport(base_url=fake_api, api_key="sekrit")
     out = t.chat("m-beta", [{"role": "user", "content": "hi"}], temperature=0.2)
@@ -47,11 +49,13 @@ def test_chat_sends_bearer_key_and_model(fake_api):
     assert _FakeAPI.last_headers.get("authorization") == "Bearer sekrit"
 
 
+@pytest.mark.load_sensitive
 def test_discover_models_lists_endpoint_ids(fake_api):
     t = et.EvalTransport(base_url=fake_api)
     assert t.discover_models() == ["m-alpha", "m-beta"]
 
 
+@pytest.mark.load_sensitive
 def test_http_error_raises_named_transport_error(fake_api):
     _FakeAPI.http_status = 500
     t = et.EvalTransport(base_url=fake_api)
@@ -59,6 +63,7 @@ def test_http_error_raises_named_transport_error(fake_api):
         t.chat("m-alpha", [{"role": "user", "content": "x"}])
 
 
+@pytest.mark.load_sensitive
 def test_base_url_resolution_args_beat_env(clean_env, monkeypatch, fake_api):
     monkeypatch.setenv("EVAL_BASE_URL", "http://env.example/v1")
     assert et.resolve_base_url() == "http://env.example/v1"
@@ -79,6 +84,7 @@ def test_extract_text_handles_choices_shape():
 # ---- parse-rate guardrail ----------------------------------------------------
 
 
+@pytest.mark.load_sensitive
 def test_chat_json_counts_samples_and_parsed(fake_api):
     t = et.EvalTransport(base_url=fake_api)
     msg = [{"role": "user", "content": "give json"}]
@@ -88,6 +94,7 @@ def test_chat_json_counts_samples_and_parsed(fake_api):
     assert (parsed, samples) == (2, 2)
 
 
+@pytest.mark.load_sensitive
 def test_parse_rate_guardrail_raises_named_exception(fake_api):
     _FakeAPI.content_factory = lambda body: "this is prose, not JSON {"
     t = et.EvalTransport(base_url=fake_api, parse_floor=0.6)
@@ -104,6 +111,7 @@ def test_parse_rate_guardrail_raises_named_exception(fake_api):
     assert samples >= t.min_samples and parsed / samples < 0.6
 
 
+@pytest.mark.load_sensitive
 def test_single_parse_failure_below_min_samples_does_not_raise(fake_api):
     """One fluke must not kill a run whose rate could still recover."""
     calls = {"n": 0}
@@ -123,6 +131,7 @@ def test_single_parse_failure_below_min_samples_does_not_raise(fake_api):
     assert t.parse_stats() == (4, 5)
 
 
+@pytest.mark.load_sensitive
 def test_parse_rate_guardrail_not_triggered_when_floor_met(fake_api):
     _FakeAPI.content_factory = lambda body: (
         '{"ok": true}' if body["messages"][0]["content"] != "bad" else "nope"
@@ -168,6 +177,7 @@ class _DripHandler(BaseHTTPRequestHandler):
             pass  # client gave up — expected under the deadline
 
 
+@pytest.mark.load_sensitive
 def test_whole_call_deadline_bounds_a_slow_drip_body(fake_api=None):
     server = ThreadingHTTPServer(("127.0.0.1", 0), _DripHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -187,6 +197,7 @@ def test_whole_call_deadline_bounds_a_slow_drip_body(fake_api=None):
         server.server_close()
 
 
+@pytest.mark.load_sensitive
 def test_normal_response_still_parses_after_chunked_reads(fake_api):
     # Calibration control: the chunked-deadline read path must not break the
     # ordinary small-body case.

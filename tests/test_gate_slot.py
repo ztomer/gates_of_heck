@@ -101,6 +101,7 @@ class Gate:
         self.proc.wait(timeout=30)
 
 
+@pytest.mark.load_sensitive
 def test_n_plus_one_gates_on_n_slots_one_waits_until_a_holder_ends(tmp_path):
     env = _env(tmp_path, 2)
     gates = [Gate(tmp_path, n, env) for n in ("alpha", "beta")]
@@ -136,6 +137,7 @@ def holder_line(waiter: Gate, repo: str, pid: int, today: str) -> str:
     return next(ln for ln in text.splitlines() if needle in ln)
 
 
+@pytest.mark.load_sensitive
 def test_the_wait_names_each_holder_and_its_end_says_how_long(tmp_path):
     env = _env(tmp_path, 1)
     holder = Gate(tmp_path, "consumer-like", env)
@@ -158,6 +160,7 @@ def test_the_wait_names_each_holder_and_its_end_says_how_long(tmp_path):
         holder.kill()
 
 
+@pytest.mark.load_sensitive
 def test_a_sigkilled_holder_frees_its_slot(tmp_path):
     """No trap runs on SIGKILL. The holder process dies with the group and the kernel drops its lock."""
     env = _env(tmp_path, 1)
@@ -176,6 +179,7 @@ def test_a_sigkilled_holder_frees_its_slot(tmp_path):
         holder.kill()
 
 
+@pytest.mark.load_sensitive
 def test_a_holder_whose_shell_alone_is_killed_frees_its_slot(tmp_path):
     """The holder watches the gate's shell: killed without its group, the slot still comes back."""
     env = _env(tmp_path, 1)
@@ -190,6 +194,7 @@ def test_a_holder_whose_shell_alone_is_killed_frees_its_slot(tmp_path):
         holder.kill()
 
 
+@pytest.mark.load_sensitive
 def test_a_nested_gate_does_not_wait_on_its_parents_slot(tmp_path):
     env = _env(tmp_path, 1)
     inner = GATE.format(goh=REPO_ROOT, name="inner", body="true")
@@ -206,6 +211,7 @@ def test_a_nested_gate_does_not_wait_on_its_parents_slot(tmp_path):
         outer.kill()
 
 
+@pytest.mark.load_sensitive
 def test_a_slot_variable_naming_a_non_ancestor_bypasses_nothing(tmp_path):
     env = _env(tmp_path, 1)
     holder = Gate(tmp_path, "holder", env)
@@ -293,6 +299,7 @@ def _push_proc(repo: Path, tmp_path: Path, env: dict[str, str], log: Path) -> su
         )
 
 
+@pytest.mark.load_sensitive
 def test_a_push_waits_for_a_slot_and_its_step_limit_counts_from_the_slot(tmp_path):
     """local_ci's step ceiling (GOH_LCI_TIMEOUT=2) is shorter than the wait (>2 s) plus the step
     (0.5 s): the push is green only if the ceiling starts when the slot is taken."""
@@ -323,6 +330,7 @@ def test_a_push_waits_for_a_slot_and_its_step_limit_counts_from_the_slot(tmp_pat
         holder.kill()
 
 
+@pytest.mark.load_sensitive
 def test_a_push_gate_nested_in_a_push_gate_does_not_deadlock(tmp_path):
     """A gate that runs another repo's push gate (a metarepo, land.sh -> push gate), on ONE slot."""
     env = _env(tmp_path, 1)
@@ -400,6 +408,7 @@ def _local_ci(tmp_path: Path, name: str, env: dict[str, str], step: str) -> Gate
     return g
 
 
+@pytest.mark.load_sensitive
 def test_n_plus_one_direct_full_gates_on_n_slots_one_waits(tmp_path):
     env = _env(tmp_path, 1)
     first = _local_ci(
@@ -422,6 +431,7 @@ def test_n_plus_one_direct_full_gates_on_n_slots_one_waits(tmp_path):
         first.kill()
 
 
+@pytest.mark.load_sensitive
 def test_a_push_gate_running_gate_sh_full_takes_one_slot_not_two(tmp_path):
     """push_gate -> tools/gate.sh --full -> local_ci, on ONE slot: the inner run reuses it."""
     env = _env(tmp_path, 1)

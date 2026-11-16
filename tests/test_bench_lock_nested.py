@@ -13,6 +13,7 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
 from conftest import REPO_ROOT
 from host_locks import scrubbed
 
@@ -55,6 +56,7 @@ def test_bench_lock_nested_is_public_and_answers_both_ways(tmp_path: Path) -> No
     assert outside.stdout.strip() == "FREE", (outside.stdout, outside.stderr)
 
 
+@pytest.mark.load_sensitive
 def test_a_nested_claim_still_waits_for_a_gate_that_is_not_its_ancestor(tmp_path: Path) -> None:
     lock = tmp_path / "lock"
     (lock / "gates").mkdir(parents=True)

@@ -192,6 +192,7 @@ def test_staged_missing_ruff_is_a_failure_not_a_skip(repo, monkeypatch, tmp_path
     assert "ruff is not installed" in out.stdout + out.stderr
 
 
+@pytest.mark.load_sensitive
 def test_a_hung_ruff_is_timed_out_and_its_group_killed(repo, tmp_path, goh):
     """The port spawns ruff itself, so it owns the ceiling `bounded_run` gave the delegated step:
     a ruff that never returns is cut at GOH_STEP_TIMEOUT, its process GROUP killed, and the run

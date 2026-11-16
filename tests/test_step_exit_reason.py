@@ -15,6 +15,7 @@ import subprocess
 import textwrap
 from pathlib import Path
 
+import pytest
 from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT
 
@@ -27,6 +28,7 @@ def _env(**extra: str) -> dict:
     return env
 
 
+@pytest.mark.load_sensitive
 def test_the_python_wrapper_reports_a_signal_as_128_plus_n() -> None:
     r = subprocess.run(
         [

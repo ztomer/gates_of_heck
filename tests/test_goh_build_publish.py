@@ -133,6 +133,7 @@ def test_a_tree_that_is_not_a_checkout_publishes(tmp_path: Path) -> None:
     assert r.returncode == 0, r.stderr
 
 
+@pytest.mark.load_sensitive
 def test_the_per_root_export_cache_is_pruned(clone: Path, tmp_path: Path) -> None:
     """One export per root goh was ever built from, every HEAD export among them, and nothing
     pruned them: 675 entries, 8.7 GiB (2026-10-17). A build prunes like the HEAD exports."""

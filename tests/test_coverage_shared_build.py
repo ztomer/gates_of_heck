@@ -131,6 +131,7 @@ def test_the_crates_of_one_repo_share_one_build_and_keep_their_own_reports(
     assert _cov(b, cache)[0] == alone_b
 
 
+@pytest.mark.load_sensitive
 def test_crates_of_one_repo_run_side_by_side_on_the_shared_build(tmp_path: Path) -> None:
     """--each-crate runs four crates at once: one crate's run never deletes or reads a sibling's
     binaries, whatever the interleaving."""

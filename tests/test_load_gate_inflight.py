@@ -22,6 +22,7 @@ import time
 from pathlib import Path
 
 import load_kit
+import pytest
 import timing_bounds
 from conftest import REPO_ROOT
 from test_commit_gate_structural import _commit, _consumer
@@ -65,6 +66,7 @@ def _gate_process() -> load_kit.Owned:
     return load_kit.Owned(["/bin/sleep", "120"])
 
 
+@pytest.mark.load_sensitive
 def test_a_live_gate_in_flight_is_refused_and_named(tmp_path: Path) -> None:
     (tmp_path / "load").mkdir()
     try:
@@ -81,6 +83,7 @@ def test_a_live_gate_in_flight_is_refused_and_named(tmp_path: Path) -> None:
         load_kit.reap()
 
 
+@pytest.mark.load_sensitive
 def test_the_override_runs_beside_a_gate(tmp_path: Path) -> None:
     (tmp_path / "load").mkdir()
     try:
@@ -93,6 +96,7 @@ def test_the_override_runs_beside_a_gate(tmp_path: Path) -> None:
         load_kit.reap()
 
 
+@pytest.mark.load_sensitive
 def test_a_dead_pid_is_not_a_gate_and_its_entry_is_pruned(tmp_path: Path) -> None:
     (tmp_path / "load").mkdir()
     dead = subprocess.Popen(["/bin/sh", "-c", "exit 0"], stdin=subprocess.DEVNULL)
@@ -103,6 +107,7 @@ def test_a_dead_pid_is_not_a_gate_and_its_entry_is_pruned(tmp_path: Path) -> Non
     assert not entry.exists(), "a dead gate's entry was left for the next reader"
 
 
+@pytest.mark.load_sensitive
 def test_a_recycled_pid_is_not_the_gate_that_registered(tmp_path: Path) -> None:
     """The entry was written BEFORE the live process with that pid started: the kernel reused
     the number, and the process holding it now is not a gate."""
@@ -125,6 +130,7 @@ def test_the_callers_own_gate_does_not_refuse_it(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.load_sensitive
 def test_wait_starts_once_the_gate_exits(tmp_path: Path) -> None:
     directory = tmp_path / "load"
     directory.mkdir()
@@ -140,6 +146,7 @@ def test_wait_starts_once_the_gate_exits(tmp_path: Path) -> None:
         assert re.search(r"spinners? started", tool.spoken()), tool.spoken()
 
 
+@pytest.mark.load_sensitive
 def test_the_wait_has_its_own_bound_separate_from_max(tmp_path: Path) -> None:
     """GOH.LOADWAIT (2026-11-08): the wait was bounded by the EXPERIMENT's --max, so ZN.APPCHECK's
     `--wait` held 25-50 min and once spent its whole budget queueing. `--wait-max` bounds the wait
@@ -159,6 +166,7 @@ def test_the_wait_has_its_own_bound_separate_from_max(tmp_path: Path) -> None:
         load_kit.reap()
 
 
+@pytest.mark.load_sensitive
 def test_an_expired_wait_names_what_it_waited_for_and_the_load(tmp_path: Path) -> None:
     """On expiry it says WHICH gate it waited on (stage, repo, pid), for how long, and the load
     reading it saw, through the Kare lib's `err` -- not a bare print a reader cannot tell apart."""
@@ -176,6 +184,7 @@ def test_an_expired_wait_names_what_it_waited_for_and_the_load(tmp_path: Path) -
         load_kit.reap()
 
 
+@pytest.mark.load_sensitive
 def test_the_wait_does_not_queue_behind_gates_that_arrive_later(tmp_path: Path) -> None:
     """The cause of the unbounded wait: it waited for the machine to be CLEAR, and with many
     sessions a new gate starts before the last one ends (measured 2026-11-08: a private Swift app

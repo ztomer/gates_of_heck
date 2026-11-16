@@ -38,6 +38,7 @@ def test_a_readable_declaration_passes(repo, value):
     assert r.returncode == 0, r.stdout + r.stderr
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize("value, named", BAD)
 def test_an_unreadable_declaration_is_red(repo, value, named):
     write(repo, ".gatesrc", f"GOH_INSTALLS='{value}'\n")

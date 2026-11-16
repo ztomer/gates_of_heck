@@ -328,6 +328,7 @@ def test_an_outcome_without_a_transcript_is_still_recorded(tmp_path: Path) -> No
     assert line["status"] == "landed" and line["tokens"] is None and line["tool_use_id"] is None
 
 
+@pytest.mark.load_sensitive
 def test_the_outcome_waits_for_the_transcript_to_catch_up(tmp_path: Path) -> None:
     """SubagentStop fires BEFORE the agent's closing entry reaches its transcript (live, 2.1.292:
     the hook saw only the thinking entry; the text entry landed within 2 s), so a hook that reads

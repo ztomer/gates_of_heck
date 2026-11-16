@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# loaded_suite.sh [-n N] [-- CMD...] -- goh's suite, once, under tools/load.py's N spinners.
+# loaded_suite.sh [-n N] [-- CMD...] -- goh's load-sensitive tests once, under load.py's N spinners.
 #
 # GOH.CLASS.HARNESS (2026-11-15): about nineteen flake items in a month were a test right on a quiet
 # box and red at load 110-180 -- found by whichever land happened to run on a busy box, and billed
@@ -8,7 +8,9 @@
 # carries it, named, rather than at a random land later. tests/wall_clock_lint.py is the static half.
 #
 #   N     spinners, default the core count (load.py refuses more unless --oversubscribe)
-#   CMD   default tools/pytest.sh
+#   CMD   default `tools/pytest.sh -m load_sensitive`: only the tests whose verdict can move with
+#         the box's load (GOH.LOADEDSUBSET: tests/load_sensitive.py derives them, and
+#         tests/test_load_sensitive.py keeps every one marked). The land gate runs every test.
 #
 # The load is made the one way (tools/load.py): it waits for the gates in flight (at most 30 min,
 # then exit 75, named), reaps its spinners pass or fail, and bounds the run at 60 min. The last line
@@ -33,11 +35,20 @@ if ! [[ "$spinners" =~ ^[0-9]+$ ]]; then
 fi
 [ "${1:-}" = "--" ] && shift
 cmd=("$@")
-[ ${#cmd[@]} -gt 0 ] || cmd=("$GOH/tools/pytest.sh")
+if [ ${#cmd[@]} -eq 0 ]; then
+    # Only the files that carry the mark are collected: importing all ~450 to deselect 90% of
+    # their tests cost ~24 s of a ~120 s run at load ~100 (GOH.LOADEDSUBSET).
+    marked=()
+    while IFS= read -r f; do
+        marked+=("$f")
+    done < <(cd "$GOH" && grep -l 'pytest\.mark\.load_sensitive' tests/test_*.py)
+    [ ${#marked[@]} -gt 0 ] || die "loaded_suite.sh: no test file carries the load_sensitive mark" 2
+    cmd=("$GOH/tools/pytest.sh" -m load_sensitive "${marked[@]}")
+fi
 
 before="$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}' || true)"
 [ -n "$before" ] || before="$(awk '{print $1}' /proc/loadavg 2>/dev/null || echo unknown)"
-section "the suite once under load: $spinners spinners on load $before"
+section "the load-sensitive tests once under load: $spinners spinners on load $before"
 rc=0
 "$GOH_PY" "$GOH/tools/load.py" --wait --wait-max 30m --max 60m "$spinners" -- "${cmd[@]}" || rc=$?
 if [ "$rc" -ne 0 ]; then

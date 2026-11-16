@@ -15,6 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from conftest import REPO_ROOT, hermetic_env, llvm_cov_shim
 from cov_fakes import SHOW_ENV_FLOW
 
@@ -112,6 +113,7 @@ def test_every_phase_streams_its_start_and_its_elapsed(tmp_path: Path) -> None:
     assert ended == phases, out
 
 
+@pytest.mark.load_sensitive
 def test_a_step_killed_on_its_ceiling_names_the_phase_it_was_in(tmp_path: Path) -> None:
     """A fake external suite stalling past its ceiling: the kill leaves that phase named.
 

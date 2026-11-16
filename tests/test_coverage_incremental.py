@@ -150,6 +150,7 @@ def test_a_recreated_tree_reuses_its_dependencies_build(tmp_path: Path) -> None:
     assert second == first
 
 
+@pytest.mark.load_sensitive
 def test_the_build_cache_keeps_to_its_byte_budget(tmp_path: Path) -> None:
     """The cache counted entries, never bytes: 334 builds inside their week held 11 GiB. A run
     past GOH_COV_CACHE_MAX_GIB evicts the least recently used idle build, never its own."""

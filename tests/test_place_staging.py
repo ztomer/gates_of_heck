@@ -94,6 +94,7 @@ def _stages(dest: Path) -> list[str]:
     return sorted(p.name for p in _run(dest).glob("*/*.staging"))
 
 
+@pytest.mark.load_sensitive
 def test_a_placement_killed_mid_copy_leaves_the_checkout_clean_and_is_reaped(checkout, tmp_path):
     src = tmp_path / "goh-built"
     src.write_bytes(b"\x7fELF" + b"\0" * (4 << 20))
@@ -128,6 +129,7 @@ def test_a_placement_killed_mid_copy_leaves_the_checkout_clean_and_is_reaped(che
     assert dest.read_bytes() == src.read_bytes()
 
 
+@pytest.mark.load_sensitive
 def test_a_failed_copy_removes_its_own_stage(checkout, tmp_path):
     shim = tmp_path / "failing-path"
     shim.mkdir()
@@ -142,6 +144,7 @@ def test_a_failed_copy_removes_its_own_stage(checkout, tmp_path):
     assert _stages(checkout / "bin" / "goh") == []
 
 
+@pytest.mark.load_sensitive
 def test_a_live_placements_stage_is_never_reaped(checkout, tmp_path):
     # Reaping goes by the pid in the name: a stage whose process still runs is mid-copy, not stray.
     live = subprocess.Popen(["sleep", "30"], stdin=subprocess.DEVNULL)
@@ -163,6 +166,7 @@ def test_a_live_placements_stage_is_never_reaped(checkout, tmp_path):
         live.communicate()
 
 
+@pytest.mark.load_sensitive
 def test_a_dead_stage_left_beside_dest_by_an_older_goh_is_reaped(checkout, tmp_path):
     gone = subprocess.Popen(["true"], stdin=subprocess.DEVNULL)
     gone.communicate()  # reaped: its pid names no process now
@@ -176,6 +180,7 @@ def test_a_dead_stage_left_beside_dest_by_an_older_goh_is_reaped(checkout, tmp_p
     assert sorted(p.name for p in (checkout / "bin").iterdir()) == ["goh"]
 
 
+@pytest.mark.load_sensitive
 def test_a_run_root_on_another_filesystem_stages_beside_dest(checkout, tmp_path):
     # rename(2) is atomic only within one filesystem: the seam reads the run root as another one.
     shim = tmp_path / "slow-path"

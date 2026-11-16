@@ -14,6 +14,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import pytest
 from conftest import hermetic_env
 from timing_bounds import assert_sooner
 
@@ -44,6 +45,7 @@ def _bounded(env, *cmd: str, label: str, timeout: int = 20) -> int:
     ).returncode
 
 
+@pytest.mark.load_sensitive
 def test_a_step_is_timed_in_milliseconds_not_seconds(tmp_path):
     """300 ms must read as ~300 ms: whole seconds would say 0, which is the defect."""
     out = tmp_path / "t.jsonl"
@@ -57,6 +59,7 @@ def test_a_step_is_timed_in_milliseconds_not_seconds(tmp_path):
     assert_sooner(row["ms"] / 1000, 0.3, 300, "300 ms read in ms, not us")
 
 
+@pytest.mark.load_sensitive
 def test_the_exit_code_and_a_timeout_are_recorded(tmp_path):
     out = tmp_path / "t.jsonl"
     rc = _bounded(
@@ -72,6 +75,7 @@ def test_the_exit_code_and_a_timeout_are_recorded(tmp_path):
     assert rows["hang"]["rc"] == 124
 
 
+@pytest.mark.load_sensitive
 def test_a_nested_step_names_its_parent(tmp_path):
     """A rust_gate.sh step inside a local_ci.sh step: the inner line must say which outer one."""
     out = tmp_path / "t.jsonl"
@@ -85,6 +89,7 @@ def test_a_nested_step_names_its_parent(tmp_path):
     assert rows["outer"]["parent"] == ""
 
 
+@pytest.mark.load_sensitive
 def test_unset_writes_nothing_and_changes_nothing(tmp_path):
     env = hermetic_env()
     rc = _bounded(env, "true", label="quiet")  # bound first: pytest prints the env argument whole
@@ -92,6 +97,7 @@ def test_unset_writes_nothing_and_changes_nothing(tmp_path):
     assert not list(tmp_path.iterdir())
 
 
+@pytest.mark.load_sensitive
 def test_an_unwritable_file_never_turns_a_step_red(tmp_path):
     """The instrument must not be a reason a gate fails."""
     out = tmp_path / "no" / "such" / "dir" / "t.jsonl"
@@ -101,6 +107,7 @@ def test_an_unwritable_file_never_turns_a_step_red(tmp_path):
     assert rc == 0
 
 
+@pytest.mark.load_sensitive
 def test_concurrent_writers_interleave_whole_lines(tmp_path):
     """A 4-way crate fan-out writes one file at once: every line must still parse."""
     out = tmp_path / "t.jsonl"

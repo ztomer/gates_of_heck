@@ -236,6 +236,7 @@ def test_a_tree_that_moved_during_the_step_is_not_recorded(goh, repo, env):
     assert records(repo) == []
 
 
+@pytest.mark.load_sensitive
 def test_a_record_expires_after_the_ttl(goh, repo, env):
     proven(goh, repo, env)
     later = dict(env, GOH_PROVEN_NOW=str(int(time.time()) + 86400 + 5))
@@ -246,6 +247,7 @@ def test_a_record_expires_after_the_ttl(goh, repo, env):
     assert runs(env) == 3, "GOH_PROVEN_TTL_S was not honoured"
 
 
+@pytest.mark.load_sensitive
 def test_expired_records_are_pruned(goh, repo, env):
     proven(goh, repo, env, STEP)
     later = dict(env, GOH_PROVEN_NOW=str(int(time.time()) + 90000))

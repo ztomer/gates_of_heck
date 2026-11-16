@@ -27,6 +27,7 @@ from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import consumer_pins
+import pytest
 
 sys.path.pop(0)
 
@@ -206,6 +207,7 @@ def test_one_bump_leaves_no_consumer_stale_and_none_ahead_with_a_pin_commit(tmp_
     assert set(pushes["repos"]) == {"busy"}, pushes
 
 
+@pytest.mark.load_sensitive
 def test_a_spent_push_budget_commits_and_names_what_the_next_sweep_pushes(tmp_path):
     repos = _estate(tmp_path)
     r = _bump(tmp_path, tmp_path / "ship.json", "--budget", "0")

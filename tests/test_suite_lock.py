@@ -13,6 +13,7 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
 from conftest import REPO_ROOT
 
 
@@ -58,6 +59,7 @@ def test_a_second_suite_in_the_checkout_is_refused_naming_the_holder(tmp_path: P
     assert os.readlink(lock) == str(os.getpid()), "the refused run took the holder's lock"
 
 
+@pytest.mark.load_sensitive
 def test_a_dead_holders_lock_is_reaped(tmp_path: Path) -> None:
     gone = subprocess.Popen(["true"], stdin=subprocess.DEVNULL)
     gone.wait()

@@ -198,6 +198,7 @@ def _gone(pid, wait=5.0):
         time.sleep(0.05)
 
 
+@pytest.mark.load_sensitive
 def test_a_silent_server_is_red_within_its_timeout_and_is_reaped(repo, tmp_path):
     pidfile = tmp_path / "hang.pid"
     line = server_line(tmp_path, "hang", hang=True, child=str(pidfile))
@@ -215,6 +216,7 @@ def test_a_silent_server_is_red_within_its_timeout_and_is_reaped(repo, tmp_path)
         assert _gone(int(pidfile.read_text())), "the hung server's child outlived the gate"
 
 
+@pytest.mark.load_sensitive
 def test_a_green_server_is_reaped_too_even_what_left_its_group(repo, tmp_path):
     child, detached = tmp_path / "c.pid", tmp_path / "d.pid"
     line = server_line(tmp_path, "kids", child=str(child), detached=str(detached))
@@ -232,6 +234,7 @@ def test_a_server_that_does_not_start_is_red_with_its_stderr(repo):
     )
 
 
+@pytest.mark.load_sensitive
 def test_a_server_that_exited_before_the_write_is_named_as_exited(tmp_path):
     """The race the test above lost under load, made certain: the server is gone before the
     request is written, so the write meets a broken pipe -- and the verdict is still the exit."""
@@ -277,6 +280,7 @@ def test_the_server_runs_with_a_scratch_home_and_never_the_owners(repo, tmp_path
     assert "goh-mcp-wire." in home and not os.path.exists(home), home
 
 
+@pytest.mark.load_sensitive
 def test_no_servers_named_is_a_precondition_not_a_pass(repo):
     write(repo, ".gatesrc", "GOH_MAX_LINES=500\n")
     r = subprocess.run(
@@ -385,6 +389,7 @@ def calls(tmp_path):
     return p.read_text(encoding="utf-8").splitlines() if p.exists() else []
 
 
+@pytest.mark.load_sensitive
 def test_a_slow_build_and_a_fast_server_is_green_the_build_is_not_timed_as_the_answer(
     repo, tmp_path
 ):
@@ -394,12 +399,14 @@ def test_a_slow_build_and_a_fast_server_is_green_the_build_is_not_timed_as_the_a
     assert calls(tmp_path)[0] == "build --release --locked --quiet", calls(tmp_path)
 
 
+@pytest.mark.load_sensitive
 def test_a_built_server_that_never_answers_is_still_red_as_no_answer(repo, tmp_path):
     r = cargo_gate(repo, tmp_path, server_line(tmp_path, "mute", hang=True), timeout=2, build_s=0)
     out = red(r, "wire: no answer to server/discover within 2s")
     assert "build:" not in out, out
 
 
+@pytest.mark.load_sensitive
 def test_a_failed_build_says_build_with_its_output_and_starts_no_server(repo, tmp_path):
     r = cargo_gate(
         repo,
@@ -417,6 +424,7 @@ def test_a_failed_build_says_build_with_its_output_and_starts_no_server(repo, tm
     assert not any(c.startswith("run") for c in calls(tmp_path)), calls(tmp_path)
 
 
+@pytest.mark.load_sensitive
 def test_a_build_past_its_own_bound_says_build_and_is_reaped(repo, tmp_path):
     r = cargo_gate(
         repo,
@@ -431,6 +439,7 @@ def test_a_build_past_its_own_bound_says_build_and_is_reaped(repo, tmp_path):
     assert not any(c.startswith("run") for c in calls(tmp_path)), calls(tmp_path)
 
 
+@pytest.mark.load_sensitive
 def test_a_server_that_moves_home_still_builds_with_the_real_toolchain(repo, tmp_path):
     """monitor names `HOME="$GOH_MCP_SCRATCH" cargo run`: under rustup that is a fresh HOME with no
     toolchain, so every run downloaded one (measured 2026-11-14) inside the bound. The gate pins

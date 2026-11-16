@@ -19,6 +19,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from conftest import REPO_ROOT, hermetic_env
 
 BENCH = REPO_ROOT / "tools" / "session_bench.py"
@@ -90,6 +91,9 @@ def _scored(makespans: dict[int, float]) -> tuple[list[dict], dict[str, float]]:
     return rows, _bench_module().score(rows)
 
 
+@pytest.mark.load_sensitive(
+    reason="history: a measured sigma failed at load ~40 (75f109c8); kept beside its siblings"
+)
 def test_a_workload_holding_a_shared_lock_reads_as_serial() -> None:
     """STRUCTURAL, not timed (GOH.ENVLEAK): a workload with a parallel start s and a serial hold
     L takes s + N*L for N sessions, so its true serialized fraction is L / t1. Fed those
@@ -103,6 +107,9 @@ def test_a_workload_holding_a_shared_lock_reads_as_serial() -> None:
         assert rows[2]["speedup"] < 4 / (1 + 3 * 0.8 * truth), (truth, rows)
 
 
+@pytest.mark.load_sensitive(
+    reason="history: a measured speedup failed at load 55 (4e33f655); kept beside its siblings"
+)
 def test_a_workload_sharing_nothing_reads_as_parallel() -> None:
     """STRUCTURAL: equal makespans at every N are a linear speedup and no contention."""
     rows, usl = _scored({1: 1.0, 2: 1.0, 4: 1.0})
@@ -160,6 +167,9 @@ def _bench_module():
     return session_bench
 
 
+@pytest.mark.load_sensitive(
+    reason="history: a measured ratio failed on a hosted runner (GOH.WALLCLOCK)"
+)
 def test_the_slowest_inflating_steps_are_reported(tmp_path: Path) -> None:
     """The report names the step whose time grew most from one session to many. STRUCTURAL, not
     timed (GOH.WALLCLOCK): the durations are injected as GOH_TIMINGS lines, so the ordering, the

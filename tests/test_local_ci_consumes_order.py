@@ -21,6 +21,7 @@ def repo(tmp_path: Path) -> Path:
     return d
 
 
+@pytest.mark.load_sensitive
 def test_a_consumer_waits_for_its_producer_even_when_the_producer_is_held_back(repo: Path) -> None:
     (repo / "build.sh").write_text("echo built > out.txt\n")
     steps(
@@ -34,6 +35,7 @@ def test_a_consumer_waits_for_its_producer_even_when_the_producer_is_held_back(r
     assert r.returncode == 0, f"the consumer ran before its producer:\n{r.stdout}{r.stderr}"
 
 
+@pytest.mark.load_sensitive
 def test_a_consumer_of_nothing_produced_is_not_held(repo: Path) -> None:
     steps(
         repo,

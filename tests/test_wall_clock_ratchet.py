@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 import wall_clock_lint as lint
 
 TESTS = Path(__file__).resolve().parent
@@ -70,6 +71,7 @@ def test_a_sleep_then_assert_is_seen_in_every_block() -> None:
     assert lint.findings(src) == [(6, "sleep_assert"), (9, "sleep_assert")]
 
 
+@pytest.mark.load_sensitive
 def test_no_test_bounds_a_wait_by_a_literal_beyond_the_seed() -> None:
     seed = json.loads(SEED.read_text(encoding="utf-8"))["unreviewed"]
     now = lint.census(TESTS)

@@ -9,9 +9,11 @@ import time
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import pytest
 from prune_kept import prune
 
 
+@pytest.mark.load_sensitive
 def test_the_newest_and_the_recent_are_kept_and_nothing_else_is_touched(tmp_path) -> None:
     old = time.time() - 7200
     for i in range(25):
@@ -31,6 +33,7 @@ def test_the_newest_and_the_recent_are_kept_and_nothing_else_is_touched(tmp_path
     ]
 
 
+@pytest.mark.load_sensitive
 def test_a_kept_root_with_a_read_only_tree_is_reaped_not_leaked(tmp_path) -> None:
     """A failed run keeps its `goh-pytest.*` root; a consumer test's read-only tree inside it made
     `rmtree(ignore_errors=True)` remove nothing, silently, for ever (2026-11-12)."""

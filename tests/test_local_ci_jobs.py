@@ -61,6 +61,7 @@ def meet(d: Path, me: str, *others: str) -> str:
     )
 
 
+@pytest.mark.load_sensitive
 def test_jobs_run_concurrently_and_report_in_declared_order(repo):
     steps(
         repo,
@@ -76,6 +77,7 @@ def test_jobs_run_concurrently_and_report_in_declared_order(repo):
     assert a < b < c, f"reports are not in declared order:\n{out}"
 
 
+@pytest.mark.load_sensitive
 def test_default_is_serial(repo):
     # Distinct strings for the same reason as below: a repeated step is a proven-cache hit.
     steps(repo, "sleep 0.6", "sleep 0.61")
@@ -84,6 +86,7 @@ def test_default_is_serial(repo):
     assert wall >= 1.2, f"steps overlapped ({wall:.2f} s) without GOH_CI_JOBS"
 
 
+@pytest.mark.load_sensitive
 def test_steps_sharing_a_tag_never_overlap(repo):
     # Each step holds a mkdir lock for its whole run; an overlap makes the second mkdir fail.
     hold = f"mkdir {repo}/lock || exit 7; sleep 0.4; rmdir {repo}/lock"
@@ -96,6 +99,7 @@ def test_steps_sharing_a_tag_never_overlap(repo):
     assert "[db]" in r.stdout, "the tag must stay visible in the step's name"
 
 
+@pytest.mark.load_sensitive
 def test_a_failure_among_concurrent_steps_is_accumulated_and_named(repo):
     a, c = repo / "a.done", repo / "c.done"
     steps(
@@ -112,6 +116,7 @@ def test_a_failure_among_concurrent_steps_is_accumulated_and_named(repo):
     assert "1 of 3 steps failed" in r.stderr
 
 
+@pytest.mark.load_sensitive
 def test_a_timeout_reaps_only_its_own_step(repo):
     done = repo / "sibling.done"
     steps(repo, "sleep 60", f"sleep 1; touch {done}", extra="GOH_CI_JOBS=2\nGOH_LCI_TIMEOUT=2\n")
@@ -122,12 +127,14 @@ def test_a_timeout_reaps_only_its_own_step(repo):
     assert_sooner(wall, 3, 60, "a 2 s timeout over a 60 s step")
 
 
+@pytest.mark.load_sensitive
 def test_a_step_reading_stdin_gets_eof(repo):
     steps(repo, "cat >/dev/null; echo GOT-EOF", "true", extra="GOH_CI_JOBS=2\n")
     r, _ = run_ci(repo)
     assert r.returncode == 0, r.stdout + r.stderr
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize("bad", ["two", "-1", "0"])
 def test_a_bad_job_count_is_a_config_error(repo, bad):
     steps(repo, "true", extra=f"GOH_CI_JOBS={bad}\n")
@@ -153,6 +160,7 @@ def run_cli(cwd: Path, *args: str, **env_extra: str):
     return r, time.monotonic() - t0
 
 
+@pytest.mark.load_sensitive
 def test_jobs_flag_wins_over_gatesrc(repo):
     """A caller that schedules for the repo (rust_gate.sh --each-crate) owns the budget."""
     steps(repo, meet(repo, "a", "b"), meet(repo, "b", "a"), extra="GOH_CI_JOBS=1\n")
@@ -160,6 +168,7 @@ def test_jobs_flag_wins_over_gatesrc(repo):
     assert r.returncode == 0, f"--jobs 2 ran serially:\n{r.stdout}{r.stderr}"
 
 
+@pytest.mark.load_sensitive
 def test_steps_only_ignores_the_repos_own_steps(repo):
     marker = repo / "gatesrc-step-ran"
     steps(repo, f"touch {marker}")
@@ -169,6 +178,7 @@ def test_steps_only_ignores_the_repos_own_steps(repo):
     assert "1 step in" in r.stdout
 
 
+@pytest.mark.load_sensitive
 def test_steps_only_without_steps_is_an_error(repo):
     steps(repo, "true")
     r, _ = run_cli(repo, "--steps-only")
@@ -176,6 +186,7 @@ def test_steps_only_without_steps_is_an_error(repo):
     assert "no steps declared" in r.stderr, r.stderr
 
 
+@pytest.mark.load_sensitive
 def test_the_environment_is_not_configuration(repo, tmp_path):
     """A key is configuration iff the repo's own file says so. Measured: a sweep that exported
     GOH_CI_JOBS=4 made every local_ci the suite ran concurrent, and an order test went red --

@@ -7,6 +7,7 @@ each listed artifact at the same relative path beneath it.
 
 import time
 
+import pytest
 from conftest import commit_all, run_check, write
 from timing_bounds import assert_sooner
 
@@ -88,6 +89,7 @@ def test_write_does_not_invent_missing_outputs(repo):
 # ---- timeout -------------------------------------------------------------------
 
 
+@pytest.mark.load_sensitive
 def test_timeout_kills_hung_generator(repo):
     seed(repo)
     start = time.monotonic()

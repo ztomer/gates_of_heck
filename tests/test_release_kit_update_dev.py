@@ -10,6 +10,7 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
 from conftest import REPO_ROOT, hermetic_env
 
 UPDATE_DEV = REPO_ROOT / "tools" / "release-kit" / "update_dev.sh"
@@ -222,6 +223,7 @@ class TestInstallEverythingThenLaunch:
         os.environ.pop("LSREGISTER", None)
         os.environ.pop("AFTER_INSTALL_CMD", None)
 
+    @pytest.mark.load_sensitive
     def test_a_launch_that_fails_twice_is_named_and_leaves_everything_installed(self, tmp_path):
         bin_dir = _world(tmp_path, running=True)
         self._failing_open(bin_dir, tmp_path, fails=2)
@@ -234,6 +236,7 @@ class TestInstallEverythingThenLaunch:
         ).read_text().strip() == f"-f {tmp_path / 'dest' / 'Demo.app'}"
         assert (tmp_path / "opens").read_text().strip() == "2"
 
+    @pytest.mark.load_sensitive
     def test_a_launch_that_fails_once_is_retried_after_lsregister(self, tmp_path):
         bin_dir = _world(tmp_path, running=True)
         self._failing_open(bin_dir, tmp_path, fails=1)
@@ -242,6 +245,7 @@ class TestInstallEverythingThenLaunch:
         assert (tmp_path / "companion").exists() and (tmp_path / "running").exists()
         assert (tmp_path / "lsreg.log").exists()
 
+    @pytest.mark.load_sensitive
     def test_a_failing_companion_install_launches_nothing(self, tmp_path):
         bin_dir = _world(tmp_path, running=True)
         os.environ["AFTER_INSTALL_CMD"] = "exit 9"

@@ -119,6 +119,7 @@ def _register(directory: Path, entries: list[dict]) -> Path:
     return path
 
 
+@pytest.mark.load_sensitive
 def test_the_backstop_kills_a_registered_orphan(tmp_path: Path) -> None:
     """The leak, caught by the record: the owner is gone, the spinner is ours, it goes."""
     pid = load_kit.orphan()
@@ -130,6 +131,7 @@ def test_the_backstop_kills_a_registered_orphan(tmp_path: Path) -> None:
     assert not list(tmp_path.glob("*.json")), "the registry outlived the experiment"
 
 
+@pytest.mark.load_sensitive
 def test_the_backstop_leaves_a_spinner_with_a_live_parent_alone(tmp_path: Path) -> None:
     """An experiment in progress: its owner is alive and will reap it."""
     with load_kit.owning(["/bin/sh", "-c", "sleep 300"]) as child:
@@ -142,6 +144,7 @@ def test_the_backstop_leaves_a_spinner_with_a_live_parent_alone(tmp_path: Path) 
         assert list(tmp_path.glob("*.json")), "the registry of a live experiment was removed"
 
 
+@pytest.mark.load_sensitive
 def test_the_backstop_leaves_an_unregistered_process_alone(tmp_path: Path) -> None:
     """A process no registry names was never ours to kill."""
     with load_kit.owning(["/bin/sh", "-c", "sleep 300"]) as child:
@@ -149,6 +152,7 @@ def test_the_backstop_leaves_an_unregistered_process_alone(tmp_path: Path) -> No
         assert load_kit.alive(child.proc.pid), "the backstop killed a process it had no record of"
 
 
+@pytest.mark.load_sensitive
 def test_the_backstop_drops_a_pid_the_kernel_reused(tmp_path: Path) -> None:
     """A pid is not an identity: the record's start time is what says the process is the same one."""
     with load_kit.owning(["/bin/sh", "-c", "sleep 300"]) as child:
@@ -159,6 +163,7 @@ def test_the_backstop_drops_a_pid_the_kernel_reused(tmp_path: Path) -> None:
         assert load_kit.alive(proc.pid), "the backstop killed a pid the kernel had reused"
 
 
+@pytest.mark.load_sensitive
 def test_the_backstop_removes_the_registry_when_every_spinner_is_gone(tmp_path: Path) -> None:
     """A record of nothing is a record that blocks the next experiment: it goes."""
     path = _register(tmp_path, [{"pid": 999999, "start": "Tue Jan  1 00:00:00 1990"}])
@@ -180,6 +185,7 @@ def test_the_backstop_removes_the_release_pipes_of_a_dead_owner(tmp_path: Path) 
     assert live.exists(), "a live owner's release pipe was removed"
 
 
+@pytest.mark.load_sensitive
 def test_the_backstop_runs_as_the_minute_job(tmp_path: Path) -> None:
     """The job the machine runs: it kills the orphan and says so, and it exits 0."""
     pid = load_kit.orphan()
@@ -272,6 +278,7 @@ def _the_machines_backstop_fires(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.load_sensitive
 def test_the_backstop_kills_an_orphan_no_registry_names(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -296,6 +303,7 @@ def test_the_backstop_kills_an_orphan_no_registry_names(
     assert not load_kit.alive(pid), "the orphan outlived the backstop"
 
 
+@pytest.mark.load_sensitive
 def test_the_backstop_leaves_a_live_parent_alone(tmp_path: Path) -> None:
     """NEGATIVE CONTROL. An experiment in progress: the spinner has a parent, so the parent will
     reap it. The shape is the house's own, and the owner is dead -- only the parent saves it."""
@@ -310,6 +318,7 @@ def test_the_backstop_leaves_a_live_parent_alone(tmp_path: Path) -> None:
         assert load_kit.alive(pid), "the backstop killed a spinner whose parent was alive"
 
 
+@pytest.mark.load_sensitive
 def test_the_backstop_leaves_a_spinner_whose_owner_is_alive_alone(tmp_path: Path) -> None:
     """NEGATIVE CONTROL. The pipe names the owner, and the owner is alive: nobody may touch it,
     orphan or not. A pid is not an owner, and neither is a name in a file name."""
@@ -322,6 +331,7 @@ def test_the_backstop_leaves_a_spinner_whose_owner_is_alive_alone(tmp_path: Path
         assert load_kit.alive(pid), "the backstop killed a spinner whose owner was alive"
 
 
+@pytest.mark.load_sensitive
 def test_the_backstop_leaves_a_process_of_another_shape_alone(tmp_path: Path) -> None:
     """NEGATIVE CONTROL. Another program's process, orphaned, with the house's words in it: it is
     not the house's spinner, so it is not the house's to kill."""
@@ -339,6 +349,7 @@ BOUNDED_LOOP = (
 )
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize(
     "command,reads",
     [
@@ -363,6 +374,7 @@ def test_the_backstop_leaves_a_command_line_that_only_looks_like_the_shape_alone
     assert load_kit.alive(pid), "the backstop killed a process that only looks like the shape"
 
 
+@pytest.mark.load_sensitive
 def test_a_killed_test_run_leaves_no_spinner_of_the_fixture_behind(tmp_path: Path) -> None:
     """THE BOUND (GOH.LEAK1). A test run that is SIGKILLed cannot clean up -- that is how the three
     helpers behind test_the_backstop_leaves_a_com{1,2,3} were orphaned on 2026-10-31 -- so every
@@ -412,6 +424,7 @@ def test_a_killed_test_run_leaves_no_spinner_of_the_fixture_behind(tmp_path: Pat
         owner.wait()
 
 
+@pytest.mark.load_sensitive
 def test_the_minute_job_cleans_a_leak_the_registry_cannot_name(tmp_path: Path) -> None:
     """THE WHOLE CHAIN (2026-10-20). A load experiment is SIGKILLed, so its registry is pruned
     with the temporary directory that held it, and its spinners are left burning a core each with
@@ -446,6 +459,7 @@ def test_the_minute_job_cleans_a_leak_the_registry_cannot_name(tmp_path: Path) -
     )
 
 
+@pytest.mark.load_sensitive
 def test_the_registry_is_json_a_reader_can_read(tmp_path: Path) -> None:
     """The record is the contract between the tool and the backstop: it is written whole."""
     path = _register(tmp_path, [{"pid": 1234, "start": "Tue Oct 20 12:00:00 2026"}])

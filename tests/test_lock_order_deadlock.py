@@ -18,6 +18,7 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 from conftest import REPO_ROOT, git, hermetic_env
 from timing_bounds import GiveUp, patience
 
@@ -79,6 +80,7 @@ def _until_queued(land: subprocess.Popen[str], tmp_path: Path, needle: str) -> N
         time.sleep(0.05)
 
 
+@pytest.mark.load_sensitive
 def test_a_land_inside_a_load_slot_cannot_deadlock_a_ship(repo: Path, tmp_path: Path) -> None:
     """Today's invocation, `load.py 0 -- bash tools/land.sh`, while a ship holds the land lock:
     the ship's loaded suite must get the slot (it timed out at 1800 s on 2026-11-15)."""
@@ -101,6 +103,7 @@ def test_a_land_inside_a_load_slot_cannot_deadlock_a_ship(repo: Path, tmp_path: 
     assert "refusing to wait on 'land'" in said and "'load'" in said, said
 
 
+@pytest.mark.load_sensitive
 def test_a_bare_land_queued_behind_a_ship_holds_nothing_and_lands_after(
     repo: Path, tmp_path: Path
 ) -> None:

@@ -15,6 +15,7 @@ import site
 import subprocess
 import sys
 
+import pytest
 from conftest import EMOJI_SMILE, REPO_ROOT, git, hermetic_env, write
 
 
@@ -180,6 +181,9 @@ def test_the_self_hosted_hook_runs_on_the_suites_interpreter():
     assert _hook_toolchain_env()["GOH_PY"] == sys.executable
 
 
+@pytest.mark.load_sensitive(
+    reason="a whole-tree hook run near the drift guard's stretched 60 s ceiling (GOH.COVDEDUPE2)"
+)
 def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
     """gates_of_heck itself must pass its own pre-commit: clone-like check by
     installing into a fresh copy of THIS repo's tree and committing. The copy holds

@@ -85,6 +85,7 @@ def test_the_load_directory_can_be_named(monkeypatch, tmp_path: Path) -> None:
     assert reg.load_dir() == tmp_path / "elsewhere"
 
 
+@pytest.mark.load_sensitive
 def test_the_tool_leaves_no_spinner_and_no_registry(tmp_path: Path) -> None:
     """The whole point: an experiment that finishes leaves nothing behind."""
     result = _run(["--dir", str(tmp_path), "3", "--", "/bin/sh", "-c", "sleep 0.3"])
@@ -103,6 +104,7 @@ def test_the_tool_reports_the_commands_own_status(tmp_path: Path) -> None:
     assert result.returncode == 7, (result.returncode, result.stderr)
 
 
+@pytest.mark.load_sensitive
 def test_a_second_experiment_is_refused_while_the_slot_is_held(tmp_path: Path) -> None:
     """Two load experiments at once measure a machine twice as busy, and neither can be told
     from the other afterwards: the slot is one, and the second is told why."""
@@ -114,6 +116,7 @@ def test_a_second_experiment_is_refused_while_the_slot_is_held(tmp_path: Path) -
         assert "tools/load.py --reap" in second.stderr, second.stderr
 
 
+@pytest.mark.load_sensitive
 def test_a_killed_owner_leaves_no_spinner_alive(tmp_path: Path) -> None:
     """The leak of 2026-10-20: the shell that owned the spinners was killed before it could clean
     up. The tool watches for that (its own parent is gone) and cleans up itself."""
@@ -136,6 +139,7 @@ def test_a_killed_owner_leaves_no_spinner_alive(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.load_sensitive
 def test_a_sigkilled_tool_leaves_orphans_the_backstop_kills(tmp_path: Path) -> None:
     """The case a trap cannot cover: the tool itself is SIGKILLed, so nothing in it ran. The
     spinners are re-parented to launchd, and the registry is what the backstop reads."""
@@ -162,6 +166,7 @@ def test_a_sigkilled_tool_leaves_orphans_the_backstop_kills(tmp_path: Path) -> N
         assert not list(tmp_path.glob("*.json")), "the registry outlived the experiment"
 
 
+@pytest.mark.load_sensitive
 def test_the_leak_detector_finds_a_spinner_nobody_owns(tmp_path: Path) -> None:
     """THE INSTRUMENT BITES. A check that cannot see a leak cannot rule one out, so the
     detector is shown a real one: a spinner of the house's shape, left in a directory this suite
@@ -175,6 +180,7 @@ def test_the_leak_detector_finds_a_spinner_nobody_owns(tmp_path: Path) -> None:
         assert [pid for pid, _command in found] == [child.proc.pid], found
 
 
+@pytest.mark.load_sensitive
 def test_a_failing_test_inside_the_owner_leaves_nothing_behind(tmp_path: Path) -> None:
     """THE FAILURE PATH (2026-10-20). A test that dies in the middle never reaches its own
     cleanup, so the OWNER has to do it: the eight orphans of that day were a pytest that died
@@ -218,6 +224,7 @@ def test_the_tool_refuses_a_raw_backgrounded_busy_loop_at_the_tool_boundary(tmp_
 # unless `--oversubscribe` says it is meant.
 
 
+@pytest.mark.load_sensitive
 def test_a_command_that_never_ends_is_reaped_by_the_deadline(tmp_path: Path) -> None:
     """The 10h14m run: the command never ends, so the DEADLINE ends it -- the command, its
     children (one in its group, one that left the group with a session of its own), and every
@@ -259,6 +266,7 @@ def test_a_command_that_never_ends_is_reaped_by_the_deadline(tmp_path: Path) -> 
     assert not list(tmp_path.glob("*.json")), "the registry outlived the deadline"
 
 
+@pytest.mark.load_sensitive
 def test_a_deadline_is_in_force_without_being_asked_for(tmp_path: Path) -> None:
     """No unbounded experiment: without `--max` the registry still carries a finite deadline,
     and it is the tool's bounded default."""
@@ -333,6 +341,7 @@ def test_spinners_within_the_cores_or_named_oversubscription_run(
     assert len(_spinner_pids(result.stdout)) == count, result.stdout
 
 
+@pytest.mark.load_sensitive
 def test_a_second_finish_waits_for_the_first_to_complete(tmp_path: Path, monkeypatch) -> None:
     """THE RACE THE DEADLINE BROUGHT (2026-10-25, the land gate). The owner-watch thread aborts
     (kills the command's tree), the main thread wakes on the dead command and starts `finish`,

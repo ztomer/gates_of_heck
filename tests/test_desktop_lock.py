@@ -110,6 +110,7 @@ def test_forged_peer_lock_survives_foreign_release(tmp_path):
 # ---- deadlock defences ------------------------------------------------------
 
 
+@pytest.mark.load_sensitive
 def test_stale_lock_no_live_owner_is_reclaimed_immediately(lock):
     lock_dir = Path(lock.LOCK_DIR)
     lock_dir.mkdir()
@@ -121,6 +122,7 @@ def test_stale_lock_no_live_owner_is_reclaimed_immediately(lock):
     assert_sooner(time.monotonic() - start, 0.5, 30, "a stale reclaim, not the 30 s timeout")
 
 
+@pytest.mark.load_sensitive
 def test_recycled_pid_does_not_impersonate_the_owner(lock):
     """A LIVE process wearing the recorded PID but with a different start time
     is an impostor; its lock must be reclaimed, not waited on."""
@@ -133,6 +135,7 @@ def test_recycled_pid_does_not_impersonate_the_owner(lock):
     lock.acquire("after reuse", timeout=5, log=lambda *_: None)
 
 
+@pytest.mark.load_sensitive
 def test_live_unwedged_peer_raises_desktop_busy(lock):
     """A genuinely alive owner with matching start time must NOT be reclaimed:
     acquire raises DesktopBusy once the timeout passes."""
@@ -154,6 +157,7 @@ def test_live_unwedged_peer_raises_desktop_busy(lock):
         child.wait()
 
 
+@pytest.mark.load_sensitive
 def test_wedged_but_alive_owner_reclaimed_on_age_ceiling(lock):
     """Liveness says busy forever; only MAX_HOLD frees a wedged owner."""
     child = subprocess.Popen(
@@ -201,6 +205,7 @@ def test_force_remove_clears_a_lock_holding_more_than_its_owner_record(lock):
     assert not lock_dir.exists(), "the lock directory survived a reclaim"
 
 
+@pytest.mark.load_sensitive
 def test_acquire_refuses_to_spin_when_a_reclaim_does_not_clear(lock, monkeypatch):
     """BUG 1, second half. The pre-fix loop was `reclaim; continue` with nothing
     checking whether the reclaim worked, so an unremovable directory meant a
@@ -245,6 +250,7 @@ def test_release_without_acquire_leaves_an_unreadable_owner_lock_alone(lock):
     assert not lock._HELD
 
 
+@pytest.mark.load_sensitive
 def test_truncated_owner_record_with_a_live_pid_is_not_stale(lock):
     """BUG 3. The bash half has only ever REQUIRED field 1, so a record whose
     start time or label line never got written read as HELD there. This half
@@ -273,6 +279,7 @@ def test_owner_label_falls_back_when_the_label_line_is_missing(lock):
     assert lock._owner_label() == "a real run"
 
 
+@pytest.mark.load_sensitive
 def test_timeout_and_max_hold_come_from_the_environment(lock, monkeypatch):
     """The bash half read `${DESKTOP_LOCK_TIMEOUT:-300}` at source time. This one
     took its defaults as function arguments, so the env seam did not exist here at
@@ -291,6 +298,7 @@ def test_timeout_and_max_hold_come_from_the_environment(lock, monkeypatch):
     assert lock._timeout() == lock.DEFAULT_TIMEOUT, "a bad value must fall back, not raise"
 
 
+@pytest.mark.load_sensitive
 def test_the_refusal_message_quotes_the_environments_bound(lock, monkeypatch):
     """The bound in the message is what a reader acts on, so it has to be the one
     that was actually waited -- asserted here rather than only in the shell suite,

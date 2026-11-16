@@ -88,6 +88,7 @@ def test_a_raised_ceiling_is_a_finding(repo):
     assert "raised" in r.stdout + r.stderr
 
 
+@pytest.mark.load_sensitive
 def test_a_deleted_ceiling_file_is_a_finding_not_a_reset(repo):
     ceilings(repo, {"old.py": 2})
     git(repo, "rm", "-q", "tools/py_lint_ceilings.json")

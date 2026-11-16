@@ -142,6 +142,7 @@ def test_a_hostile_name_cannot_escape_the_cache_dir(seam: Seam) -> None:
     assert seam.asked() == ["x", "x"]
 
 
+@pytest.mark.load_sensitive
 def test_lookups_run_concurrently(seam: Seam) -> None:
     """20 names at 0.3 s each add 19 x 0.3 s to one lookup if they run one after another, and
     little if they overlap. One lookup is timed first, in the same test, so the box's load is in

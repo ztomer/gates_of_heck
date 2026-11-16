@@ -145,6 +145,7 @@ def _old_export(cache: Path, name: str, used_ago: float) -> Path:
     return d
 
 
+@pytest.mark.load_sensitive
 def test_the_ceiling_evicts_read_only_exports_whole_and_never_one_in_use(sibling, cache):
     cache.mkdir()
     old = [_old_export(cache, f"old{i}", 7200 + i) for i in range(4)]

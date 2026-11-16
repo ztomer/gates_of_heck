@@ -14,6 +14,7 @@ import os
 import time
 from pathlib import Path
 
+import pytest
 from test_gates_from_head import _env, _structural, consumer, gates  # noqa: F401  (fixtures)
 
 HOUR, DAY = 3600, 86400
@@ -35,6 +36,7 @@ def _exports(cache: Path) -> set[str]:
     return {p.name for p in cache.iterdir() if not p.name.startswith(".")}
 
 
+@pytest.mark.load_sensitive
 def test_every_use_stamps_the_export(gates, consumer, tmp_path) -> None:
     env = _env(tmp_path)
     _structural(gates, consumer, env)
@@ -47,6 +49,7 @@ def test_every_use_stamps_the_export(gates, consumer, tmp_path) -> None:
     assert export.stat().st_mtime_ns == dir_mtime, "the stamp rewrote the export's directory"
 
 
+@pytest.mark.load_sensitive
 def test_an_export_unused_for_a_week_goes_and_a_recent_one_stays(gates, consumer, tmp_path) -> None:
     cache = tmp_path / "head-cache"
     _fake(cache, "old", 8 * DAY)
@@ -58,6 +61,7 @@ def test_an_export_unused_for_a_week_goes_and_a_recent_one_stays(gates, consumer
     assert "recent" in left and len(left) == 2, left
 
 
+@pytest.mark.load_sensitive
 def test_beyond_the_count_the_least_recently_used_go(gates, consumer, tmp_path) -> None:
     cache = tmp_path / "head-cache"
     for i in range(25):
@@ -68,6 +72,7 @@ def test_beyond_the_count_the_least_recently_used_go(gates, consumer, tmp_path) 
     assert {f"e{i:02d}" for i in range(19)} <= left, sorted(left)
 
 
+@pytest.mark.load_sensitive
 def test_an_export_used_within_the_hour_is_never_pruned(gates, consumer, tmp_path) -> None:
     """In use, as far as anything can tell: a gate may be running from it right now."""
     cache = tmp_path / "head-cache"
@@ -93,6 +98,7 @@ def _sized(cache: Path, name: str, used_ago: float, mib: int) -> Path:
     return d
 
 
+@pytest.mark.load_sensitive
 def test_past_the_byte_budget_the_least_recently_used_go(tmp_path) -> None:
     """A count bounds entries, not bytes: 334 coverage builds inside their week held 11 GiB."""
     cache = tmp_path / "cov"
@@ -103,6 +109,7 @@ def test_past_the_byte_budget_the_least_recently_used_go(tmp_path) -> None:
     assert _exports(cache) == {"cur", "b0", "b1"}, sorted(_exports(cache))
 
 
+@pytest.mark.load_sensitive
 def test_the_byte_budget_never_takes_one_used_within_the_hour(tmp_path) -> None:
     cache = tmp_path / "cov"
     _sized(cache, "cur", 0, 1)
@@ -112,6 +119,7 @@ def test_the_byte_budget_never_takes_one_used_within_the_hour(tmp_path) -> None:
     assert _exports(cache) == {"cur", "hot0", "hot1", "hot2"}, sorted(_exports(cache))
 
 
+@pytest.mark.load_sensitive
 def test_without_a_budget_bytes_are_not_counted(tmp_path) -> None:
     cache = tmp_path / "cov"
     for i in range(3):

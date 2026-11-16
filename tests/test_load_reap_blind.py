@@ -87,6 +87,7 @@ def _register_orphan(directory: Path) -> int:
     return pid
 
 
+@pytest.mark.load_sensitive
 def test_a_slow_pgrep_leaves_the_rest_of_the_pass_running(tmp_path, monkeypatch, capsys) -> None:
     """The nine tracebacks: `pgrep` timed out, and the pass ended there."""
     pid = _register_orphan(tmp_path)
@@ -104,6 +105,7 @@ def test_a_slow_pgrep_leaves_the_rest_of_the_pass_running(tmp_path, monkeypatch,
     assert "Traceback" not in out.err, out.err
 
 
+@pytest.mark.load_sensitive
 def test_a_slow_process_table_is_a_stated_blind_spot(tmp_path, monkeypatch, capsys) -> None:
     """The two tracebacks: `ps -ax` timed out inside the burning shape."""
     job = _job()
@@ -113,6 +115,7 @@ def test_a_slow_process_table_is_a_stated_blind_spot(tmp_path, monkeypatch, caps
     assert "timed out" in out.out and "ps -ax" in out.out, out
 
 
+@pytest.mark.load_sensitive
 def test_a_slow_per_pid_read_is_unknown_and_unknown_kills_nothing(tmp_path, monkeypatch) -> None:
     """A read that timed out is not an answer: the owner is not gone, the pid is not reused, the
     spinner is not an orphan. The registry is left as it was, and nothing is killed."""
@@ -134,6 +137,7 @@ def test_a_slow_per_pid_read_is_unknown_and_unknown_kills_nothing(tmp_path, monk
         assert reg.read(path)["pids"] == data["pids"]
 
 
+@pytest.mark.load_sensitive
 def test_a_candidate_that_cannot_be_read_back_is_left_alone(monkeypatch) -> None:
     """The house shape's read-back (`ps -p`) timed out: the candidate is unknown, so it is skipped."""
     _slow(monkeypatch, per_pid=True)
@@ -173,6 +177,7 @@ def _release(fifo: Path) -> None:
         return
 
 
+@pytest.mark.load_sensitive
 def test_a_record_is_settled_after_every_shape_has_killed(tmp_path, monkeypatch) -> None:
     """The push gate of v0.49.1 (2026-10-25): a SIGKILLed tool's registry outlived its spinners.
     Under load the registry pass could not read a spinner's parent (unknown, so kept), and the

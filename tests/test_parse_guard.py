@@ -18,6 +18,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import pytest
 from _own_files import own_source_files
 from conftest import REPO_ROOT
 
@@ -79,6 +80,7 @@ def test_every_executed_script_is_parse_guarded():
     assert not bad, f"not parse-guarded (see this file's docstring): {bad}"
 
 
+@pytest.mark.load_sensitive
 def test_a_guarded_script_survives_being_rewritten_mid_run(tmp_path):
     """The mechanism, calibrated both ways: unguarded, the rewrite changes what runs."""
     body = 'sleep 1\necho "ORIGINAL"\n'

@@ -121,6 +121,7 @@ def _hook():
     return mod
 
 
+@pytest.mark.load_sensitive
 def test_the_shsev_change_is_refused_naming_the_unseeded_consumer(estate):
     r = _canary(estate)
     out = r.stdout + r.stderr
@@ -138,6 +139,7 @@ def test_the_shsev_change_is_refused_naming_the_unseeded_consumer(estate):
     assert said and "unseeded" in said[0] and "goh shell-lint --seed" in said[0], lines
 
 
+@pytest.mark.load_sensitive
 def test_seeding_the_consumer_clears_the_release(estate, goh):
     assert _canary(estate).returncode == 1
     seeded = subprocess.run(
@@ -158,6 +160,7 @@ def test_seeding_the_consumer_clears_the_release(estate, goh):
     assert not [ln for ln in lines if "release canary" in ln], lines
 
 
+@pytest.mark.load_sensitive
 def test_an_uncommitted_seed_is_not_what_the_push_judges(estate, goh):
     # The push gates the COMMIT: a seed written and left uncommitted clears nothing.
     subprocess.run(
@@ -170,6 +173,7 @@ def test_an_uncommitted_seed_is_not_what_the_push_judges(estate, goh):
     assert _canary(estate).returncode == 1
 
 
+@pytest.mark.load_sensitive
 def test_a_head_side_that_cannot_judge_refuses(estate, tmp_path):
     # Fail closed: a consumer the canary could not judge is never a clear release.
     broken = tmp_path / "broken-goh"
@@ -181,6 +185,7 @@ def test_a_head_side_that_cannot_judge_refuses(estate, tmp_path):
     assert _record(estate)["errors"]
 
 
+@pytest.mark.load_sensitive
 def test_a_step_red_on_both_sides_is_named_but_not_this_release(estate):
     # Red under the last release too: the consumer's own debt, said, but not this release's doing.
     r = _canary(estate, "--base-bin", str(estate["head"]))
@@ -190,6 +195,7 @@ def test_a_step_red_on_both_sides_is_named_but_not_this_release(estate):
     assert [k.endswith("unseeded") for k in rec["already_red"]] == [True], rec
 
 
+@pytest.mark.load_sensitive
 def test_an_empty_estate_is_not_a_clear_release(estate):
     (estate["state"].parent / "installed_repos").write_text(f"{REPO_ROOT}\n")
     r = _canary(estate)
@@ -205,6 +211,7 @@ def test_no_gate_input_changed_since_the_base_sweeps_nothing(estate):
     assert _record(estate)["verdict"] == "no-gate-change"
 
 
+@pytest.mark.load_sensitive
 def test_the_estate_audit_keeps_the_canary_record(estate, monkeypatch):
     # Both write the one state file the SessionStart hook reads; the daily audit must not erase it.
     _canary(estate)

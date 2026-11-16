@@ -57,6 +57,7 @@ def test_the_ancestry_walk_reaches_the_top_of_the_tree():
     assert 1 in gate_slot.ancestors()
 
 
+@pytest.mark.load_sensitive
 @linux_only
 def test_the_container_s_init_process_is_accepted_as_the_owner(tmp_path):
     """The consequence, on the platform where it happens: the holder takes the watch when the
@@ -106,6 +107,7 @@ def test_the_pidfd_branch_is_the_one_that_runs_on_linux():
     assert _mechanism_of_a_live_watch() == "pidfd"
 
 
+@pytest.mark.load_sensitive
 @linux_only
 def test_the_holder_reports_the_pidfd_branch_and_not_the_poll(tmp_path):
     """The holder's handshake carries the mechanism, so a run PROVES which watch took the slot."""
@@ -224,6 +226,7 @@ def test_the_pidfd_watch_survives_a_descriptor_select_would_refuse():
         os.close(write_fd)
 
 
+@pytest.mark.load_sensitive
 def test_the_poll_fallback_still_notices_the_owner_going_away(monkeypatch):
     """The fallback is not only reached: it works. A watch that cannot see the owner go would
     hold the slot until the machine was rebooted."""

@@ -70,6 +70,7 @@ def both(goh: Path, root: Path, env: dict, *args: str):
     )
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize(
     "args", [[], ["--offline"], ["--strict"], ["--json"], ["--json", "--strict"]]
 )
@@ -89,6 +90,7 @@ def test_every_shape_reports_the_same(goh: Path, tmp_path: Path, shape: str, arg
 # entry with no reason, or whose crate is no longer behind a major, fails. The reference read
 # `toml` as triaged and `ureq` (not even a dependency) as harmless, so only the empty ratchet still
 # shares a verdict; the new expectations live in tests/test_check_dep_currency.py, which owns them.
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize("triaged", [""])
 def test_the_ratchet_reports_the_same(goh: Path, tmp_path: Path, triaged: str) -> None:
     root = _tree(tmp_path, WORKSPACE)

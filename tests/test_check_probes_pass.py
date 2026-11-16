@@ -201,6 +201,7 @@ def test_gates_without_any_proof_warn_rather_than_fail(tmp_path):
     assert gate.main(["--root", str(root)]) == 0
 
 
+@pytest.mark.load_sensitive
 def test_a_probe_that_hangs_is_a_failure_not_a_wait(tmp_path):
     root = _tree(
         tmp_path,

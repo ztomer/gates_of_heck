@@ -68,6 +68,7 @@ def _sweep(root: Path, timeout: int) -> tuple[dict, dict]:
         return ces.sweep(skeleton, "tools", ces.gate_names(gates), timeout=timeout)
 
 
+@pytest.mark.load_sensitive
 def test_a_starved_gate_inside_the_backstop_gets_its_verdict(tmp_path, starved):
     # Two seconds of wall against a nominal bound of one: the wall alone said "no verdict".
     root = _repo(tmp_path, {"check_slow.py": "import time, sys\ntime.sleep(2)\nsys.exit(1)\n"})
@@ -83,6 +84,7 @@ def _main(root: Path, monkeypatch) -> tuple[int, str]:
     return rc, buf.getvalue()
 
 
+@pytest.mark.load_sensitive
 def test_a_gate_starved_past_the_backstop_is_timed_out_not_red(tmp_path, starved, monkeypatch):
     root = _repo(tmp_path, {"check_hung.py": "import time\ntime.sleep(60)\n"})
     (root / "tools" / ces.ALLOW_FILE).write_text(
@@ -95,6 +97,7 @@ def test_a_gate_starved_past_the_backstop_is_timed_out_not_red(tmp_path, starved
     assert "delete its excuse" not in out and "PASSED over" not in out, out
 
 
+@pytest.mark.load_sensitive
 def test_a_real_finding_beside_a_timeout_is_still_red(tmp_path, starved, monkeypatch):
     # The calibration: a blind gate next to a starved one keeps exit 1 -- the timeout hides nothing.
     root = _repo(
@@ -135,6 +138,7 @@ def _starved_output(tmp_path, monkeypatch) -> str:
     return out
 
 
+@pytest.mark.load_sensitive
 def test_the_canary_reads_a_starved_step_as_no_verdict(tmp_path, starved, monkeypatch):
     v = _canary_mod().parse(1, _structural(_starved_output(tmp_path, monkeypatch)))
     assert v.error is None, v.error
@@ -155,6 +159,7 @@ def _bin(at: Path, text: str, rc: int) -> Path:
     return at
 
 
+@pytest.mark.load_sensitive
 def test_a_starved_consumer_refuses_the_land_as_a_timeout(tmp_path, starved, monkeypatch):
     """End to end: the run refuses (fail closed) and SAYS it was starved; no consumer turned red."""
     step_out = _starved_output(tmp_path / "s", monkeypatch)

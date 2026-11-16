@@ -103,6 +103,7 @@ def _await_cat_under(pid: int) -> None:
     raise AssertionError(f"no cat under {pid}")
 
 
+@pytest.mark.load_sensitive
 @pytest.mark.parametrize(("script", "named"), [("cat; :", True), ("sleep 60 | cat; :", False)])
 def test_the_real_process_table_and_lsof_see_a_reader_on_its_shells_socket(script, named) -> None:
     """This test process stands in for the harness: its `sh` reads one end of a socketpair."""
@@ -190,6 +191,7 @@ def test_a_filter_on_the_harness_socket_is_named() -> None:
     assert [(h.pid, h.reader) for h in found] == [(300, "ugrep")], found
 
 
+@pytest.mark.load_sensitive
 def test_the_real_process_table_sees_a_shell_blocked_in_read() -> None:
     """A real `sh` evals `read x` on one end of a socketpair: named by its own pid, no child."""
     import os

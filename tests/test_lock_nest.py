@@ -25,6 +25,7 @@ from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import lock_order
+import pytest
 
 ME = os.getpid()
 LOAD = REPO_ROOT / "tools" / "load.py"
@@ -53,6 +54,7 @@ def test_a_nested_zero_spinner_run_shares_its_parents_place_in_the_slot(tmp_path
     assert len(outer) == 1, done.stdout  # the outer's own place, still there after the inner ended
 
 
+@pytest.mark.load_sensitive
 def test_a_zero_spinner_run_with_a_stray_load_mark_still_takes_its_place(tmp_path) -> None:
     """A mark naming a live process that is NOT an ancestor (exported by hand, inherited by a
     detached process) shares nothing: the run takes its own place."""
@@ -78,6 +80,7 @@ CHECK = (
 )  # fmt: skip  (the gate runs under set -e)
 
 
+@pytest.mark.load_sensitive
 def test_a_consumer_gate_shs_later_children_are_under_the_slot_taken_for_it(tmp_path, goh):
     """structural.sh --full takes the slot for its parent gate.sh; the gate.sh's own layer, run
     after structural.sh ended, waits on nothing ranked below it."""

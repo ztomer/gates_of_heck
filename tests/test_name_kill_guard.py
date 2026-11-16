@@ -95,6 +95,7 @@ def test_every_unscoped_by_name_kill_is_refused(command: str) -> None:
     assert "kill <pid>" in reason and "TaskStop" in reason and "kill-ok" in reason, reason
 
 
+@pytest.mark.load_sensitive
 def test_the_refusal_names_what_the_pattern_would_hit_now() -> None:
     marker = "goh_nopkill_marker_4242"
     holder = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)", marker],

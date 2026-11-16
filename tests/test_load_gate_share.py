@@ -82,6 +82,7 @@ def _end(proc: subprocess.Popen, release: Path) -> None:
             proc.wait()
 
 
+@pytest.mark.load_sensitive
 def test_two_gates_run_together(tmp_path: Path) -> None:
     release = tmp_path / "release"
     first = _holding_gate(tmp_path, release, "gate-a")
@@ -98,6 +99,7 @@ def test_two_gates_run_together(tmp_path: Path) -> None:
     assert _shared(tmp_path) == [], "a finished gate left its place behind"
 
 
+@pytest.mark.load_sensitive
 def test_the_gates_sharing_the_slot_are_bounded(tmp_path: Path) -> None:
     release = tmp_path / "release"
     first = _holding_gate(tmp_path, release, "gate-a", GOH_LOAD_GATES="1")
@@ -111,6 +113,7 @@ def test_the_gates_sharing_the_slot_are_bounded(tmp_path: Path) -> None:
     assert "gate-a" in late.stderr and "GOH_LOAD_GATES" in late.stderr, late.stderr
 
 
+@pytest.mark.load_sensitive
 def test_an_experiment_is_refused_beside_a_gate(tmp_path: Path) -> None:
     release = tmp_path / "release"
     first = _holding_gate(tmp_path, release, "gate-a")
@@ -123,6 +126,7 @@ def test_an_experiment_is_refused_beside_a_gate(tmp_path: Path) -> None:
     assert "gate-a" in experiment.stderr, experiment.stderr
 
 
+@pytest.mark.load_sensitive
 def test_a_gate_waits_while_an_experiment_holds_the_slot(tmp_path: Path) -> None:
     with load_kit.owned(tmp_path, 1, ["/bin/sh", "-c", "sleep 30 # the-holder"]) as tool:
         tool.wait_for_spinners()
@@ -131,6 +135,7 @@ def test_a_gate_waits_while_an_experiment_holds_the_slot(tmp_path: Path) -> None
     assert "the-holder" in late.stderr, late.stderr
 
 
+@pytest.mark.load_sensitive
 def test_a_waiting_experiment_is_not_starved_by_arriving_gates(tmp_path: Path) -> None:
     """The experiment waits for the gates ahead of it; a gate that arrives behind it waits for it,
     so a stream of gates can never hold the slot shared for ever."""
@@ -158,6 +163,7 @@ def test_a_waiting_experiment_is_not_starved_by_arriving_gates(tmp_path: Path) -
     assert not (tmp_path / "pending.experiment").exists(), "the experiment left its mark behind"
 
 
+@pytest.mark.load_sensitive
 def test_a_dead_gates_place_is_pruned(tmp_path: Path) -> None:
     """A gate SIGKILLed before its cleanup leaves its file; the next claim does not count it."""
     release = tmp_path / "release"
