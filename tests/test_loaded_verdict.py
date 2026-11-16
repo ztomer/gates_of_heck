@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 from conftest import REPO_ROOT, git, hermetic_env
-from timing_bounds import patience
+from timing_bounds import GiveUp, patience
 
 LIB = REPO_ROOT / "lib" / "loaded_verdict.py"
 KIT = REPO_ROOT / "tools" / "release_goh.sh"
@@ -32,8 +32,8 @@ def _cli(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 def _until_settled(repo: Path) -> str:
     path = loaded_verdict.record_path(repo, "HEAD")
-    end = time.monotonic() + patience(60)
-    while time.monotonic() < end:
+    give_up = GiveUp(60)
+    while not give_up.passed():
         now = loaded_verdict.state(loaded_verdict.read(path))
         if now not in {"running", "missing"}:
             return now
