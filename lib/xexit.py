@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """A step's words and its exit code must agree: a `✗` status line at exit 0 is a red step (GOH.XEXIT).
 
-usage: xexit.py [--say LABEL] LOG   prints each `✗` status line in LOG; exit 1 when there is one.
-  --say LABEL: to stderr, with the refusal naming LABEL (what goh_step and local_ci.sh print).
+usage: xexit.py [--say LABEL [--keep]] LOG   prints each `✗` status line in LOG; exit 1 if any.
+  --say LABEL: to stderr, with the refusal naming LABEL (what goh_step and local_ci.sh print): each
+    `✗` line with the indented detail under it (at most DETAIL_LINES each) and the full log's path.
+  --keep: name a copy of LOG beside it instead, for a caller (goh_step) that deletes LOG at exit.
 
 In the house TUI contract `✗` means FAILURE and `⚠` means advisory. A private Swift app's
 census_bench void hold and three render selftests printed `✗` and exited 0, and the gate called them
@@ -35,6 +37,7 @@ _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 
 _LINE_BREAK = re.compile(r"\r\n?|\n")
+DETAIL_LINES = 20
 
 
 def failure_lines(text: str) -> list[str]:
@@ -50,15 +53,66 @@ def failure_lines(text: str) -> list[str]:
     return out
 
 
+def failure_blocks(text: str, per: int = DETAIL_LINES) -> list[str]:
+    # What the refusal SHOWS (GOH.XEXITDETAIL): each `✗` status line and the lines under it that are
+    # indented deeper, up to `per` of them, the rest counted. A header such as `✗ compiler warnings
+    # in our sources:` is nothing without its list: a private Swift app's push (2026-11-16) showed
+    # it bare, which hid that the file it named was a selftest's planted fixture. A blank line, a
+    # line at or left of the `✗`, or another `✗` status line ends the block. The verdict stays
+    # `failure_lines`.
+    lines = [_ANSI.sub("", raw).rstrip() for raw in _LINE_BREAK.split(text)]
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        body = lines[i].lstrip()
+        i += 1
+        if not body.startswith(CROSS):
+            continue
+        depth = len(lines[i - 1]) - len(body)
+        out.append(body)
+        shown = more = 0
+        while i < len(lines):
+            nxt = lines[i]
+            nb = nxt.lstrip()
+            if not nb or len(nxt) - len(nb) <= depth or nb.startswith(CROSS):
+                break
+            if shown < per:
+                out.append(nxt[depth:])
+                shown += 1
+            else:
+                more += 1
+            i += 1
+        if more:
+            out.append(
+                f"  → {more} more {'line' if more == 1 else 'lines'} not shown (full log below)"
+            )
+    return out
+
+
+def _kept_copy(log: Path) -> Path:
+    import shutil
+    import tempfile
+
+    fd, name = tempfile.mkstemp(prefix="goh-xexit-", suffix=".log", dir=log.parent)
+    with open(fd, "wb") as dst, log.open("rb") as src:
+        shutil.copyfileobj(src, dst)
+    return Path(name)
+
+
 def main(argv: list[str]) -> int:
     args = argv[1:]
     label = None
     if args[:1] == ["--say"] and len(args) >= 2:
         label, args = args[1], args[2:]
+    keep = label is not None and args[:1] == ["--keep"]
+    if keep:
+        args = args[1:]
     if len(args) != 1:
-        sys.stderr.write("usage: xexit.py [--say LABEL] LOG\n")
+        sys.stderr.write("usage: xexit.py [--say LABEL [--keep]] LOG\n")
         return 2
-    hits = failure_lines(Path(args[0]).read_text(encoding="utf-8", errors="replace"))
+    log = Path(args[0])
+    text = log.read_text(encoding="utf-8", errors="replace")
+    hits = failure_lines(text)
     if not hits:
         return 0
     if label is None:
@@ -69,12 +123,18 @@ def main(argv: list[str]) -> int:
     )  # tui.lib, whatever the caller's path
     from tui.lib import counted, err
 
-    sys.stderr.write("\n" + "\n".join(hits) + "\n\n")
+    sys.stderr.write("\n" + "\n".join(failure_blocks(text)) + "\n\n")
     err(
         f"{label} printed {counted(len(hits), '✗ line')} above and exited 0"
         " -- a ✗ is a failure in the house"
     )
     err("  contract: exit nonzero, or say ⚠ if it is an advisory (GOH.XEXIT, lib/xexit.py)")
+    try:
+        named = _kept_copy(log) if keep else log
+    except OSError as e:
+        err(f"  full log: not kept ({e})")
+    else:
+        err(f"  full log: {named}")
     return 1
 
 

@@ -328,7 +328,8 @@ goh_step() {
     # Exit 0 is green only when the step did not SAY it failed: a `✗` status line at exit 0 is a
     # step whose words and exit code disagree, and in the house contract the `✗` wins (GOH.XEXIT,
     # lib/xexit.py; an advisory says `⚠`).
-    "$GOH_PY" -S "$GOH_ROOT/lib/xexit.py" --say "$label" "$GOH_LOG" || die "$GOH_NAME: $label failed (exit 0 under a ✗ status line; command: $(goh_cmd_brief "$@"))"
+    # --keep: $GOH_LOG goes at exit, so the refusal names a kept copy (GOH.XEXITDETAIL).
+    "$GOH_PY" -S "$GOH_ROOT/lib/xexit.py" --say "$label" --keep "$GOH_LOG" || die "$GOH_NAME: $label failed (exit 0 under a ✗ status line; command: $(goh_cmd_brief "$@"))"
     if [ -n "${GOH_TIME:-}" ]; then
         ok "$label ($(( $(date +%s) - _goh_t0 ))s)"
     else
