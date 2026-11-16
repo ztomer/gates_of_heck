@@ -112,11 +112,16 @@ def test_every_shape_of_tree_reader_is_chosen_whatever_the_diff(tmp_path, text) 
         tmp_path,
         {"tests/test_r.py": text, "tests/_walker.py": "import os\nos.walk('.')\n"},
     )
-    assert "tests/test_r.py" in at.affected(root, [])
+    assert "tests/test_r.py" in _files(at.affected(root, []))
+
+
+def _files(chosen: dict[str, str]) -> set[str]:
+    """The files a set runs, whole or by their reading tests (GOH.LANDPREDUP)."""
+    return {k.split("::")[0] for k in chosen}
 
 
 def test_the_tree_readers_that_cost_a_land_are_chosen_on_an_empty_diff() -> None:
-    chosen = at.affected(REPO_ROOT, [])
+    chosen = _files(at.affected(REPO_ROOT, []))
     assert [t for t in COST_A_LAND if t not in chosen] == []
 
 

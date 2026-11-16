@@ -105,10 +105,117 @@ def _helpers(root: Path) -> dict[str, str]:
     }
 
 
+def _segment(lines: list[str], node: ast.AST) -> str:
+    """`node`'s source, its decorators included (a parametrize over `REPO_ROOT.rglob(...)`)."""
+    first = min([node.lineno, *(d.lineno for d in getattr(node, "decorator_list", []))])
+    return "\n".join(lines[first - 1 : node.end_lineno])
+
+
+def _refs(node: ast.AST) -> set[str]:
+    """Every name `node` mentions: bare names, attributes (`self.walk`) and argument names (the
+    fixtures a test asks for)."""
+    out: set[str] = set()
+    for n in ast.walk(node):
+        if isinstance(n, ast.Name):
+            out.add(n.id)
+        elif isinstance(n, ast.Attribute):
+            out.add(n.attr)
+        elif isinstance(n, ast.arg):
+            out.add(n.arg)
+    return out
+
+
+def _bound(node: ast.stmt) -> set[str]:
+    """The names a module- or class-level statement binds."""
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return {node.name}
+    out: set[str] = set()
+    for n in ast.walk(node):
+        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+            out.add(n.id)
+        elif isinstance(n, ast.alias):
+            out.add((n.asname or n.name).split(".")[0])
+    return out
+
+
+def reader_nodes(text: str, walking: set[str]) -> list[str] | None:
+    """The tests of a tree-reading file that read the tree, as pytest node ids relative to the
+    file (`test_x`, `TestY::test_z`); None when the file must run whole (GOH.LANDPREDUP).
+
+    A file is a reader when one of its tests is: the rest of it reads no tree, so a land whose
+    diff neither names nor imports it cannot turn those red, and the full gate runs them anyway.
+    Running whole files cost the pre-step 879 s of summed test time on goh's tree (2026-11-16);
+    the reading tests alone are a fraction of it.
+
+    A test reads the tree when its name is test_every_/test_no_, or its source (decorators and
+    signature included) lists or walks the tree or mentions -- through any chain of the module's
+    own functions, fixtures, classes and module-level names -- something that does, or a name
+    from a tests/ helper in `walking`. A module-level statement that walks and binds nothing, a
+    file that does not parse, or a reader file in which no test is found, runs whole."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return None
+    lines = text.splitlines()
+    walkers: set[str] = set(walking)
+    for node in tree.body:  # names a walking helper binds here (`from _self_walk import walk`)
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            mods = {a.name for a in node.names} | (
+                {node.module} if isinstance(node, ast.ImportFrom) and node.module else set()
+            )
+            if any(m.split(".")[0] in walking for m in mods):
+                walkers |= _bound(node)
+    # (name, node) for every top-level and class-level definition or statement
+    units: list[tuple[set[str], ast.AST]] = []
+    for node in tree.body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        units.append((_bound(node), node))
+        if isinstance(node, ast.ClassDef):
+            for sub in node.body:
+                units.append((_bound(sub), sub))
+    for bound, node in units:
+        if TREE_READ.search(_segment(lines, node)):
+            if not bound:
+                return None  # a module-level walk with no name to follow: the whole file
+            walkers |= bound
+    changed = True
+    while changed:
+        changed = False
+        for bound, node in units:
+            if bound - walkers and _refs(node) & walkers:
+                walkers |= bound
+                changed = True
+    found: list[str] = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith(
+            "test"
+        ):
+            if TREE_NAMED.search(f"def {node.name}") or node.name in walkers:
+                found.append(node.name)
+        elif isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
+            whole = node.name in walkers and not any(
+                isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)) and s.name in walkers
+                for s in node.body
+            )
+            for sub in node.body:
+                test = isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)) and sub.name
+                if not (test and test.startswith("test")):
+                    continue
+                if whole or TREE_NAMED.search(f"def {test}") or test in walkers:
+                    found.append(f"{node.name}::{test}")
+    return found or None
+
+
+def _walking(root: Path) -> set[str]:
+    """The tests/ helpers that list or walk the tree, by import name."""
+    return {name for name, text in _helpers(root).items() if TREE_READ.search(text)}
+
+
 def tree_readers(root: Path, tests: dict[str, str] | None = None) -> dict[str, str]:
     """{test file: why it is a tree reader}."""
     tests = _tests(root) if tests is None else tests
-    walking = {name for name, text in _helpers(root).items() if TREE_READ.search(text)}
+    walking = _walking(root)
     found: dict[str, str] = {}
     for rel, text in tests.items():
         if rel in ALWAYS:
@@ -123,7 +230,9 @@ def tree_readers(root: Path, tests: dict[str, str] | None = None) -> dict[str, s
 
 
 def affected(root: Path, changed: list[str]) -> dict[str, str]:
-    """{test file: why it runs before the land} for a change to `changed` (paths from `root`)."""
+    """{test file or node id: why it runs before the land} for a change to `changed` (paths from
+    `root`). A file the diff chooses runs whole; a tree reader the diff does not choose runs only
+    its reading tests (`reader_nodes`), whole when they cannot be told apart."""
     tests = _tests(root)
     chosen: dict[str, str] = {}
     for path in changed:
@@ -142,8 +251,15 @@ def affected(root: Path, changed: list[str]) -> dict[str, str]:
             if _names_path(text, path):
                 chosen[rel] = f"names {path}"
                 break
+    walking = _walking(root)
     for rel, why in tree_readers(root, tests).items():
-        chosen.setdefault(rel, why)
+        if rel in chosen:
+            continue  # chosen whole by the diff
+        nodes = None if rel in ALWAYS else reader_nodes(tests[rel], walking)
+        if nodes is None:
+            chosen[rel] = why
+        else:
+            chosen.update((f"{rel}::{n}", why) for n in nodes)
     return dict(sorted(chosen.items()))
 
 

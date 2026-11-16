@@ -92,12 +92,20 @@ if [ -z "${GOH_LAND_PRE+set}" ] && [ -f "$here/.gatesrc" ]; then
     pre="$(cd "$here" && bash -c 'unset GOH_LAND_PRE; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_PRE-}"')" \
         || { err "land.sh: cannot read $here/.gatesrc"; exit 2; }
 fi
+# ONE RUN PER TEST (GOH.LANDPREDUP): a goh suite run by the pre-step records the tests it passed
+# (GOH_LAND_VERDICTS_RECORD) and the gate's suite skips them on the same tree and tools
+# (GOH_LAND_VERDICTS_REUSE, tests/_land_verdicts.py), the instrumented coverage run keeping every
+# test that ran the binary. One file per land, removed with it; a rebased tip reuses nothing.
+verdicts=""
 if [ -n "$pre" ]; then
+    verdicts="$(mktemp "${TMPDIR:-/tmp}/goh-land-verdicts.XXXXXX")" || exit 2
+    rm -f "$verdicts"   # the pre-step's suite writes it whole, or there is no record
+    trap 'rm -f "$verdicts"' EXIT
     pre_base="$(git -C "$main" rev-parse HEAD)"
     info "pre-land: $pre"
     pre_t0=$SECONDS
-    if ! (cd "$here" && "$GOH_PY" "$GOH/tools/load.py" --background-ok "pre-land" --max 10m 0 -- \
-            bash -c "$pre" pre-land "$pre_base" </dev/null); then
+    if ! (cd "$here" && GOH_LAND_VERDICTS_RECORD="$verdicts" "$GOH_PY" "$GOH/tools/load.py" \
+            --background-ok "pre-land" --max 10m 0 -- bash -c "$pre" pre-land "$pre_base" </dev/null); then
         err "land.sh: the pre-land tests failed on ${tip:0:8} in $((SECONDS - pre_t0)) s, before the land lock and the gate -- nothing landed"
         exit 1
     fi
@@ -173,7 +181,8 @@ info "gate: $gate"
 # docs/decisions/D-0008) -- taken HERE, under the land lock, never around this script: a land queued
 # on the lock then holds nothing a ship holding the lock can be waiting on (GOH.LOCKORDER: land 20
 # before gate_slot 50). 90 minutes bounds the gate as the coordinator's wrapper did.
-if ! GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" "$GOH_PY" "$GOH/tools/load.py" --background-ok "land gate" \
+if ! GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" GOH_LAND_VERDICTS_REUSE="$verdicts" \
+        "$GOH_PY" "$GOH/tools/load.py" --background-ok "land gate" \
         --max 90m 0 -- bash -c "$gate" 7>&- </dev/null; then
     err "land.sh: the gate failed on ${tip:0:8} -- nothing landed"
     exit 1

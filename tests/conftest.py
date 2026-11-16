@@ -9,6 +9,7 @@ import fcntl
 import json
 import os
 import shutil
+import stat as _stat
 import subprocess
 import sys
 import tempfile
@@ -64,6 +65,7 @@ ALLOWED = "→ ✓ ✗ ⚠ ↔ ↑ ↓ ← ⌘ ⌥ ⌨ ⇧ ⌃ ⏎ ⎋ ↵ ⇒ �
 def pytest_configure(config):
     _drift_guard.prebuild_live(config)
     config.pluginmanager.register(_schedule, "goh-longest-first")
+    config.pluginmanager.register(_land_verdicts, "goh-land-verdicts")  # GOH.LANDPREDUP
 
 
 def git(repo: Path, *args: str) -> str:
@@ -161,8 +163,10 @@ def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
 # suite what a consumer calling that path gets -- the native check, same arguments. The table is
 # `checks/_retired.py::NATIVE`, the one spelling.
 import _drift_guard
+import _land_verdicts
 import _schedule
 from _drift_guard import pytest_runtest_makereport  # noqa: F401
+from _goh_request import _remember_request, native_goh_path  # noqa: F401  (an autouse fixture)
 from _retired import NATIVE as _NATIVE
 from _tree_guard import pytest_sessionfinish, pytest_sessionstart  # noqa: F401
 
@@ -202,8 +206,6 @@ def run_gate(repo: Path, gate: str, *args: str) -> subprocess.CompletedProcess:
 # without any Apple toolchain. Set swift_xcrun_log=... to record every xcrun
 # invocation's argv (proves WHICH binary was paired with the profdata).
 
-import json as _json
-import stat as _stat
 
 FAKE_EXPORT = {
     "data": [
@@ -265,7 +267,7 @@ def mk_fake_swift_toolchain(
     (dd / "Logs" / "Test" / "Test-App.xcresult").mkdir()
 
     export_file = root / "export.json"
-    export_json = _json.dumps(FAKE_EXPORT).replace("PROJ", str(src.parent.parent))
+    export_json = json.dumps(FAKE_EXPORT).replace("PROJ", str(src.parent.parent))
     export_file.write_text(export_json)
 
     show_file = root / "show.txt"
@@ -435,22 +437,6 @@ def native_goh(tmp_path_factory) -> Path:
             shutil.copy2(built, staging)
             staging.rename(published)  # atomic: readers see all of it or none
     return published
-
-
-_REQUEST: dict[str, pytest.FixtureRequest] = {}
-
-
-@pytest.fixture(autouse=True)
-def _remember_request(request: pytest.FixtureRequest):
-    """Lets a plain helper (a kit's function) reach the session's binary: `native_goh_path()`."""
-    _REQUEST["now"] = request
-    yield
-    _REQUEST.pop("now", None)
-
-
-def native_goh_path() -> Path:
-    """The session's native `goh`, from a helper with no fixture of its own; built on first use."""
-    return _REQUEST["now"].getfixturevalue("native_goh")
 
 
 def run_goh(cwd: Path, *args: str, **kw) -> subprocess.CompletedProcess:
