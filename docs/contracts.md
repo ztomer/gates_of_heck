@@ -707,6 +707,12 @@ goh_bash5 "$@"`, never `. X && goh_bash5 "$@"`. With `&&`, a missing or unreadab
 * **CI**: the goh-floors action's first step runs `lib/bash5.sh` directly (it prints the bash it
   would use, or fails) and installs Homebrew's bash on a macOS runner that has none, so the hosted
   run re-execs into `/opt/homebrew/bin/bash` exactly as the owner's machine does.
+* **A runner installs one itself** (GOH.INSTALLBASH5): consumer workflows run `install.sh` BEFORE
+  goh-floors, so on the hosted macOS runner (Homebrew, but no Homebrew bash) the guard died there
+  and every such job went red before any repo step (ztools run 43796046671). An EXECUTED script that
+  finds no bash >= 5 on a GitHub Actions runner (`GITHUB_ACTIONS=true`) runs `brew install bash`
+  (its output on stderr) and looks again, beside brew first; off a runner it never installs, and
+  run directly it only answers. Seam: `GOH_BASH_BREW` (the brew to use; `=` empty never installs).
 * Internal re-execs of an already-guarded script use `"$BASH"` (`gates/_from_head.sh`, the release
   kit's self-buffered copy, which ran under a hard-coded `/bin/bash` until then).
 
@@ -715,7 +721,9 @@ file -- only the parse-guard opener, `set` and plain assignments may precede it 
 check on its two exemptions; calibrated on synthetic texts both ways and by hand on 2026-11-12 by
 deleting the guard from `tools/land.sh` and planting a `mapfile` before it in `gates/goh.sh`, both red
 naming the file; plus re-exec keeping args and stdin, no bash 5 dies naming the fix, the
-GOH_BASH_MAJOR seam, the lying-bash refusal, sourced-never-re-execs-and-says-nothing; the
+GOH_BASH_MAJOR seam, the runner install both ways (a fake brew at the runner's path on a
+bash-3.2-only PATH: installs and re-execs on a runner; off one, with `GOH_BASH_BREW=` or a failing
+brew, dies naming the fix), the lying-bash refusal, sourced-never-re-execs-and-says-nothing; the
 fail-closed census over every line that sources the guard, and every distinct guard line run with
 its lib/bash5.sh missing -- or, for the tolerant forms, unreadable -- stops non-zero naming it).
 

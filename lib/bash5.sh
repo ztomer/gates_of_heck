@@ -42,6 +42,16 @@
 #   GOH_BASH_MAJOR       the major version to believe of THIS shell ("old bash" on a machine with
 #                        no bash 3.2, such as Linux CI); dropped before the re-exec, so the child
 #                        judges itself
+#   GOH_BASH_BREW        the brew to install bash with when none is found ("" = never install);
+#                        unset, it is PATH's brew on a GitHub Actions runner and nothing elsewhere
+#
+# ON A CI RUNNER IT INSTALLS ONE (GOH.INSTALLBASH5). The hosted macOS runner has Homebrew but no
+# Homebrew bash, and every consumer workflow runs install.sh BEFORE goh-floors (which installs one):
+# the guard died there and the job went red before any repo step (ztools run 43796046671). So an
+# EXECUTED script that finds no bash >= 5 on a runner (GITHUB_ACTIONS=true) runs `brew install bash`
+# (its output to stderr; stdout stays the script's), then looks again, beside brew first. Off a
+# runner it never installs anything: the owner's machine gets the error naming the fix. Run
+# directly it only answers, as before -- goh-floors asks it whether to install.
 #
 #   bash lib/bash5.sh    (run directly) prints the bash >= 5 the guard would use, or dies: CI asks
 #                        it whether to install one (.github/actions/goh-floors).
@@ -51,7 +61,7 @@ GOH_BASH_FLOOR=5
 # from inside goh_bash5, and a function is never redefined while it runs.
 if ! declare -F goh_bash5 >/dev/null 2>&1; then
 
-# _goh_bash5_say <err|warn> <message> -- Kare style through tui/lib.sh (this copy, never the
+# _goh_bash5_say <err|warn|info> <message> -- Kare style through tui/lib.sh (this copy, never the
 # trampoline to HEAD's export, which runs Python); a bare glyph line when tui/lib.sh is absent.
 _goh_bash5_say() {
     local level="$1" tui
@@ -62,14 +72,17 @@ _goh_bash5_say() {
         "$level" "$*"
     elif [ "$level" = err ]; then
         printf '%s\n' "✗ $*" >&2
+    elif [ "$level" = info ]; then
+        printf '%s\n' "→ $*" >&2
     else
         printf '%s\n' "⚠ $*" >&2
     fi
 }
 
-# _goh_bash5_find -- prints the first candidate whose own BASH_VERSINFO is >= the floor.
+# _goh_bash5_find [first] -- prints the first candidate whose own BASH_VERSINFO is >= the floor;
+# `first` is asked before the list (where `brew install bash` just put one).
 _goh_bash5_find() {
-    local list="${GOH_BASH_CANDIDATES-}" cand v IFS=:
+    local list="${GOH_BASH_CANDIDATES-}" first="${1:-}" cand v IFS=:
     if [ -z "${GOH_BASH_CANDIDATES+set}" ]; then
         case "${OSTYPE:-}" in
             darwin*) list="/opt/homebrew/bin/bash" ;;
@@ -77,6 +90,7 @@ _goh_bash5_find() {
         esac
         list="$list:$(type -P bash 2>/dev/null || true)"
     fi
+    [ -z "$first" ] || list="$first:$list"
     for cand in $list; do
         [ -n "$cand" ] && [ -x "$cand" ] || continue
         v="$("$cand" -c 'printf %s "${BASH_VERSINFO[0]}"' 2>/dev/null </dev/null)" || v=0
@@ -87,6 +101,32 @@ _goh_bash5_find() {
         fi
     done
     return 1
+}
+
+# _goh_bash5_brew -- prints the brew the guard may install bash with, or fails (header: CI RUNNER).
+_goh_bash5_brew() {
+    local brew
+    if [ -n "${GOH_BASH_BREW+set}" ]; then
+        brew="$GOH_BASH_BREW"
+    elif [ "${GITHUB_ACTIONS:-}" = true ]; then
+        brew="$(type -P brew 2>/dev/null || true)"
+    else
+        return 1
+    fi
+    [ -n "$brew" ] && [ -x "$brew" ] || return 1
+    printf '%s\n' "$brew"
+}
+
+# _goh_bash5_install -- on a CI runner with brew, installs Homebrew's bash and prints the bash >= 5
+# found afterwards (brew's own directory first); fails when there is no brew or nothing came of it.
+_goh_bash5_install() {
+    local brew
+    brew="$(_goh_bash5_brew)" || return 1
+    _goh_bash5_say info "no bash >= $GOH_BASH_FLOOR on this CI runner:" \
+"installing Homebrew's ($brew install bash)" >&2   # stdout is the bash found
+    HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 \
+        "$brew" install bash >&2 </dev/null || true
+    _goh_bash5_find "${brew%/*}/bash"
 }
 
 _goh_bash5_fix() {
@@ -111,7 +151,7 @@ goh_bash5() { # "$@" of the caller -- returns on bash >= 5; else re-execs (execu
 "$GOH_BASH_FLOOR, and this is still bash ${BASH_VERSION} -- refused rather than re-run again"
         exit 1
     fi
-    if ! cand="$(_goh_bash5_find)"; then
+    if ! cand="$(_goh_bash5_find)" && ! cand="$(_goh_bash5_install)"; then
         _goh_bash5_say err "$script needs bash >= $GOH_BASH_FLOOR; this is bash ${BASH_VERSION} ($BASH)" \
 "and none was found in ${GOH_BASH_CANDIDATES-the default places and PATH} -- $(_goh_bash5_fix)"
         exit 1

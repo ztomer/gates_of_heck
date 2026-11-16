@@ -262,7 +262,7 @@ def test_old_bash_reexecs_under_bash_5_keeping_args_and_stdin(tmp_path):
 
 def test_old_bash_with_no_bash_5_dies_naming_the_fix(tmp_path):
     old = _old_bash()
-    r = _run([old, str(_script(tmp_path))], GOH_BASH_CANDIDATES=old)
+    r = _run([old, str(_script(tmp_path))], GOH_BASH_CANDIDATES=old, GITHUB_ACTIONS="")
     assert r.returncode == 1 and r.stdout == ""
     assert "needs bash >= 5" in r.stderr and "brew install bash" in r.stderr, r.stderr
     assert "✗" in r.stderr
@@ -273,7 +273,8 @@ def test_the_old_bash_seam_reexecs_on_any_machine(tmp_path):
     r = _run([bash5(), str(_script(tmp_path)), "x"], GOH_BASH_MAJOR="3")
     assert r.returncode == 0, r.stderr
     assert r.stdout.splitlines()[0] == "v=5 n=1 [x]"
-    r = _run([bash5(), str(_script(tmp_path))], GOH_BASH_MAJOR="3", GOH_BASH_CANDIDATES="/x")
+    r = _run([bash5(), str(_script(tmp_path))], GOH_BASH_MAJOR="3", GOH_BASH_CANDIDATES="/x",
+             GITHUB_ACTIONS="")  # fmt: skip
     assert r.returncode == 1 and "none was found in /x" in r.stderr, r.stderr
 
 
@@ -315,3 +316,61 @@ def test_run_directly_it_names_the_bash_it_would_use():
     assert r.returncode == 0 and Path(r.stdout.strip()).is_file(), r.stderr
     r = _run(["bash", str(REPO_ROOT / "lib/bash5.sh")], GOH_BASH_CANDIDATES="/nonexistent")
     assert r.returncode == 1 and "no bash >= 5 found" in r.stderr, r.stderr
+    # run directly it only ANSWERS (goh-floors asks it whether to install): it never installs
+    r = _run(["bash", str(REPO_ROOT / "lib/bash5.sh")], GOH_BASH_CANDIDATES="/nonexistent",
+             GITHUB_ACTIONS="true", GOH_BASH_BREW="/nonexistent/brew")  # fmt: skip
+    assert r.returncode == 1 and "no bash >= 5 found" in r.stderr, r.stderr
+
+
+# GOH.INSTALLBASH5: the hosted macOS runner has Apple's /bin/bash 3.2 and Homebrew, but no
+# /opt/homebrew/bin/bash, and every consumer workflow runs `install.sh` BEFORE goh-floors (which
+# installs one), so the guard died there and the job went red before any repo step (ztools run
+# 43796046671). On a GitHub Actions runner the guard now installs Homebrew's bash itself and
+# re-finds it beside brew; off CI it never installs anything. The fake brew stands at the runner's
+# path (<root>/opt/homebrew/bin/brew) and installs a bash 5 beside itself, as `brew install bash`
+# does.
+def _runner(tmp_path: Path, works: bool = True) -> tuple[Path, Path]:
+    bindir = tmp_path / "opt/homebrew/bin"
+    bindir.mkdir(parents=True)
+    log = tmp_path / "brew.log"
+    brew = bindir / "brew"
+    act = f'ln -s "{bash5()}" "{bindir}/bash"' if works else "exit 1"
+    brew.write_text(f'#!/bin/sh\necho "$*" >> "{log}"\necho brew-noise\n{act}\n')
+    brew.chmod(0o755)
+    return brew, log
+
+
+def _bash32_only(old: str, bindir: Path) -> str:
+    """A PATH whose only bash is 3.2, plus brew's directory -- before brew installs one there."""
+    return f"{bindir}:/usr/bin:/bin" if Path(old) == OLD else f"{bindir}:{Path(old).parent}"
+
+
+def test_on_a_ci_runner_old_bash_installs_homebrew_bash_and_reexecs(tmp_path):
+    old = _old_bash()
+    brew, log = _runner(tmp_path)
+    for seam in ({"GOH_BASH_BREW": str(brew)}, {}):  # the seam, and brew found on PATH
+        (brew.parent / "bash").unlink(missing_ok=True)
+        log.unlink(missing_ok=True)
+        r = _run([old, str(_script(tmp_path)), "a b"], GOH_BASH_CANDIDATES=old,
+                 GITHUB_ACTIONS="true", PATH=_bash32_only(old, brew.parent), **seam)  # fmt: skip
+        assert r.returncode == 0, (seam, r.stderr)
+        assert r.stdout.splitlines() == ["v=5 n=1 [a b]", "stdin=hi marker=unset"], (seam, r)
+        assert log.read_text() == "install bash\n", seam
+        assert "brew-noise" in r.stderr and "Homebrew" in r.stderr, r.stderr  # stdout stays clean
+
+
+def test_off_ci_or_when_brew_fails_old_bash_still_dies_naming_the_fix(tmp_path):
+    old = _old_bash()
+    brew, log = _runner(tmp_path)
+    path = _bash32_only(old, brew.parent)
+    r = _run([old, str(_script(tmp_path))], GOH_BASH_CANDIDATES=old, GITHUB_ACTIONS="", PATH=path)
+    assert r.returncode == 1 and "needs bash >= 5" in r.stderr, r.stderr
+    assert not log.exists(), "the guard installed bash off a CI runner"
+    r = _run([old, str(_script(tmp_path))], GOH_BASH_CANDIDATES=old, GITHUB_ACTIONS="true",
+             GOH_BASH_BREW="", PATH=path)  # fmt: skip
+    assert r.returncode == 1 and not log.exists(), "GOH_BASH_BREW= (empty) still installed"
+    failing, flog = _runner(tmp_path / "f", works=False)
+    r = _run([old, str(_script(tmp_path))], GOH_BASH_CANDIDATES=old, GITHUB_ACTIONS="true",
+             GOH_BASH_BREW=str(failing), PATH=path)  # fmt: skip
+    assert r.returncode == 1 and r.stdout == "" and flog.read_text() == "install bash\n"
+    assert "needs bash >= 5" in r.stderr and "brew install bash" in r.stderr, r.stderr

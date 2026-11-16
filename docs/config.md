@@ -53,6 +53,7 @@ Single schema. CLI flags beat env/.gatesrc where both exist. Unset means
 |---|---|---|
 | `GOH_BASH_CANDIDATES` | macOS `/opt/homebrew/bin/bash`; Linux `/usr/bin/bash:/bin/bash`; then PATH's bash | Colon-separated bash paths the guard asks, in order, for one whose own `BASH_VERSINFO` is >= 5. A test seam: `=/bin/bash` is "no bash 5 found". |
 | `GOH_BASH_MAJOR` | this shell's `BASH_VERSINFO[0]` | The major version the guard believes of the running shell: `3` forces "old bash" where no 3.2 exists. Dropped before the re-exec. |
+| `GOH_BASH_BREW` | on a GitHub Actions runner, PATH's `brew`; elsewhere none | The brew the guard runs `brew install bash` with when an executed script finds no bash >= 5. Empty never installs. A test seam; the default is what fixes the hosted macOS runner (GOH.INSTALLBASH5). |
 | `GOH_BASH_REEXEC` | unset | Not a setting: the loop marker the re-exec exports (the bash it chose), consumed by the bash-5 child. |
 | `GOH_BASH_FLOOR` | `5` | Not a setting: the floor itself, a constant of `lib/bash5.sh` (owner ruling 2026-11-12). |
 
