@@ -12,12 +12,18 @@
 //! * an undeclared key with no entry is red, so a NEW scanner cannot add a silent consumer, and
 //!   the release canary refuses a goh whose new scanner would turn a consumer red before the
 //!   consumer is seeded -- the strand `bare-open` caused on 2026-11-14;
-//! * an entry whose key is now declared, or whose scanner read nothing, is stale and red: the
-//!   repository that declares the floor deletes its entry in the same commit.
+//! * an entry whose key is now declared is RETIRED when it lives in the private store
+//!   (GOH.SEEDPRUNE): the run that sees the declaration deletes it under the store's lock and says
+//!   so, green. A declared key never consults the seed again, so the entry holds nothing, and the
+//!   store is in no tree: a stale red there was cleared only by hand-editing a private file (12
+//!   entries of two private consumers, 2026-11-16). Any declaration retires it, `KEY=0` too --
+//!   the floor itself (`crate::subject::judge`) judges the declared value. A TRACKED entry whose
+//!   key is declared is stale and red: the repository deletes it in the commit that declares it;
+//! * an entry whose scanner read nothing is stale and red.
 //!
 //! Full scope only, as the floors themselves are: at `--staged` a scanner reads only the commit.
 
-use crate::estate_seed::{self, Kind, Report, Sites};
+use crate::estate_seed::{self, Kind, Report, Seed, Settle, Sites};
 use crate::subject::Subject;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -85,10 +91,17 @@ pub fn verdict(
     if !crate::grace::over() {
         return (0, String::new(), advisory(records, floors));
     }
-    let seed = match estate_seed::load(root, KIND, false) {
+    let mut seed = match estate_seed::load(root, KIND, false) {
         Ok(s) => s,
         Err(m) => return (2, String::new(), format!("{} {TAG} {m}\n", goh_tui::ERR)),
     };
+    let repo = if seed.is_empty() {
+        String::new()
+    } else {
+        crate::gitutil::root_commit(root).unwrap_or_default()
+    };
+    let retired = retire(&mut seed, &repo, floors);
+    let said = retire_store(&repo, &retired);
     let found = undeclared(records, floors);
     let report = Report {
         tag: TAG,
@@ -100,7 +113,68 @@ pub fn verdict(
         fix: FIX,
         ok: "every scanner that read something declares its floor".to_string(),
     };
-    estate_seed::verdict(root, false, KIND, &seed, &found, &report)
+    let (code, out, err) = estate_seed::verdict(root, false, KIND, &seed, &found, &report);
+    (code, out, format!("{said}{err}"))
+}
+
+/// The private store's entries for `repo` whose key `floors` declares, taken out of `seed`.
+///
+/// Returned as a settle to 0 (`Settle::store`): a declared key is judged by its floor, never by
+/// the seed, so its store entry holds nothing. A tracked entry stays, and is stale at the verdict.
+fn retire(seed: &mut Seed, repo: &str, floors: &BTreeMap<&'static str, usize>) -> Settle {
+    let mut out = Settle::default();
+    if repo.is_empty() {
+        return out;
+    }
+    seed.retain(|(r, key), held| {
+        let gone = r == repo && held.stored && floors.contains_key(key.as_str());
+        if gone {
+            out.store.insert(key.clone(), 0);
+        }
+        !gone
+    });
+    out
+}
+
+/// Delete `retired`'s entries from the store under its lock, and say what was retired.
+///
+/// A failed write is a warning: the entry is retired again by the next run, and a declared key
+/// never reads it, so it is no headroom for anything.
+fn retire_store(repo: &str, retired: &Settle) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    let Some(dir) = estate_seed::store_dir().filter(|_| !retired.store.is_empty()) else {
+        return out;
+    };
+    let file = dir.join(KIND.file);
+    if let Err(m) = estate_seed::write_settled(&dir, KIND, repo, retired) {
+        let _ = writeln!(
+            out,
+            "{} {TAG} could not retire {} from {}: {m}; the next run retires {}",
+            goh_tui::WARN,
+            goh_tui::counted_as(
+                retired.store.len(),
+                "declared floor's entry",
+                "declared floors' entries"
+            ),
+            file.display(),
+            if retired.store.len() == 1 {
+                "it"
+            } else {
+                "them"
+            }
+        );
+        return out;
+    }
+    for key in retired.store.keys() {
+        let _ = writeln!(
+            out,
+            "{} {TAG} {key}: declared in .gatesrc, its GOH.FLOORREQ entry retired from {} (GOH.SEEDPRUNE)",
+            goh_tui::START,
+            file.display()
+        );
+    }
+    out
 }
 
 #[cfg(test)]

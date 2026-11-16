@@ -120,6 +120,35 @@ def test_a_seeded_undeclared_floor_warns_and_a_declared_one_is_a_stale_entry(rep
     assert code == 1 and "stale" in out and KEY in out, out
 
 
+def test_declaring_a_store_seeded_floor_retires_its_entry_and_stays_green(
+    repo: Path, tmp_path: Path
+) -> None:
+    """GOH.SEEDPRUNE: the private store's entry for a key the repo now declares is RETIRED by the
+    run that sees the declaration -- deleted under the store's lock, said so, green -- never a
+    stale red that only a hand edit of the store could clear. Another repository's entry, and this
+    repository's entry for a key still undeclared, are kept as they were."""
+    _fixture(repo, "")
+    root = git(repo, "rev-list", "--max-parents=0", "HEAD").split()[0]
+    other = "GOH_EMOJI_MIN_FILES"
+    store = tmp_path / "store"
+    store.mkdir()
+    entries = [
+        {"root": root, "repo": "fixture", "path": KEY, "count": 1, "reason": "unreviewed"},
+        {"root": root, "repo": "fixture", "path": other, "count": 1, "reason": "unreviewed"},
+        {"root": "0" * 40, "repo": "elsewhere", "path": KEY, "count": 1, "reason": "unreviewed"},
+    ]
+    (store / "floor_seed.json").write_text(json.dumps({"why": "fixture", "entries": entries}))
+    _declare_all_but(repo, {other})  # declares KEY, leaves `other` seeded and undeclared
+    commit_all(repo)
+    code, out = _full(repo, required=True, GOH_SEED_DIR=str(store))
+    assert code == 0, out
+    assert "retired" in out and KEY in out, out
+    kept = json.loads((store / "floor_seed.json").read_text())["entries"]
+    assert [(e["root"], e["path"]) for e in kept] == [(root, other), ("0" * 40, KEY)], kept
+    code, out = _full(repo, required=True, GOH_SEED_DIR=str(store))
+    assert code == 0 and "retired" not in out, out  # once retired, nothing left to say
+
+
 MODES = [(), ("--full",), ("--full", "--keep-going")]
 
 
