@@ -14,8 +14,9 @@ What the bump could not move, each repo's own gate refuses: `goh goh-pins`, a st
 (crates/goh/src/gohpin/), fails a pin more than ten minor releases behind the running goh, a goh
 checkout at no release, and a tag-reading gate job on a shallow clone.
 
-    goh wf-pin                    # list: one line per stale pin; exit 1 if any
-    goh wf-pin --bump [--tag vX.Y.Z] [--except REPO]...   # rewrite, commit and push each repo's
+    goh wf-pin                    # list each stale pin and unpushed pin commit; exit 1 if any
+    goh wf-pin --bump [--tag vX.Y.Z] [--except REPO]... [--sweep detach|wait|none]
+                                  # rewrite and commit each repo's; the pushes are the sweep's
 
 THE PINS IT READS, in a tracked `.github/workflows/*.yml|yaml` that names goh's repository:
   * `repository: OWNER/gates_of_heck` with `ref: vX.Y.Z` in the same `with:` mapping;
@@ -27,12 +28,15 @@ first pin is the repo's decision. Comments are prose and are not rewritten.
 THE BUMP writes and commits through lib/estate_commit.py, the one door into another repo: the pin
 files alone (and the uv.lock a ruff move relocks), in one commit through the repo's own hooks, or
 nothing (set aside, named: on hold, off its default branch, a land holding its lock, pin files
-uncommitted). Then it PUSHES through the repo's own push gate, with any pin commit an earlier bump
-left unpushed (GOH.PINPROPAGATE: after v0.121.0 seventeen repos sat ahead of origin with one): a pin
-commit left behind is the next writer's rebase. An owner's unpushed commit is never pushed by goh;
-the pin then waits on it, named. Each repo's outcome goes to the ship's record (GOH_SHIP_RESULT,
-consumer_pins.record_path), which goh ship carries into its result. A set-aside or refused repo
-stays stale and is listed by the next run, so the bump exits 0 unless it could not read the estate.
+uncommitted), and each repo's outcome goes to the ship's record (GOH_SHIP_RESULT,
+consumer_pins.record_path), which goh ship carries into its result. Then it hands every pin commit
+ahead of its upstream -- this bump's, and any an earlier one left (GOH.PINPROPAGATE: after v0.121.0
+seventeen repos sat ahead of origin with one) -- to lib/pin_sweep.py, which pushes each through the
+repo's own FULL push gate in a detached, bounded sweep after the ship returns (GOH.PINPUSHGATE: the
+gates were 2010 s of v0.124.0's 2037 s install). An owner's unpushed commit is never pushed by goh;
+the pin then waits on it, named. A set-aside repo stays stale and a pin commit the sweep could not
+push stays ahead (pin_sweep's ledger says why, with its log); the listing names both, so the bump
+exits 0 unless it could not read the estate.
 """
 
 from __future__ import annotations
@@ -54,6 +58,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import consumer_pins
 import estate_commit
 import estate_registry
+import pin_sweep
 from consumer_pins import Pin
 
 GOH = Path(__file__).resolve().parent.parent
@@ -160,8 +165,8 @@ def stale(repo: Path, slug: str, tag: str) -> tuple[dict[str, list[Pin]], dict[s
 
 def bump(repo: Path, old: dict[str, list[Pin]], rold: dict[str, list[Pin]], tag: str,
          ruff: str) -> tuple[str, str]:  # fmt: skip
-    """Move REPO's stale goh pins (OLD) and ruff pins (ROLD) in one commit, then push it:
-    (pushed | committed | refused | set_aside, one line saying what happened)."""
+    """Move REPO's stale goh pins (OLD) and ruff pins (ROLD) in one commit, never pushed here (the
+    sweep's): (committed | refused | set_aside, one line saying what happened)."""
     lock, relock = consumer_pins.relock(repo, sorted(rold), ruff)
     paths = sorted({*old, *rold, *lock})
     if why := estate_commit.set_aside(repo, paths):
@@ -185,9 +190,7 @@ def bump(repo: Path, old: dict[str, list[Pin]], rold: dict[str, list[Pin]], tag:
         done, said = estate_commit.commit_paths(repo, paths, msg, write)
         if not done:
             return "refused", said
-        return consumer_pins.push(
-            repo, f"pinned {', '.join(moved)} {said.removeprefix('committed ')}"
-        )
+        return "committed", f"pinned {', '.join(moved)} {said.removeprefix('committed ')}"
 
 
 def stranded(repo: Path) -> bool:
@@ -205,7 +208,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--tag", help="the goh release to pin (default: goh's newest vX.Y.Z tag)")
     ap.add_argument("--slug", help="goh's GitHub OWNER/NAME (default: from goh's origin)")
-    ap.add_argument("--bump", action="store_true", help="rewrite, commit and push each stale pin")
+    ap.add_argument("--bump", action="store_true", help="rewrite and commit each stale pin")
+    ap.add_argument("--sweep", choices=("detach", "wait", "none"), default="detach",
+                    help="with --bump: the pushes' sweep detached (default), in the foreground, "
+                         "or not started (the next one pushes)")  # fmt: skip
     ap.add_argument(
         "--record",
         default=os.environ.get("GOH_SHIP_RESULT"),
@@ -215,7 +221,7 @@ def main(argv: list[str] | None = None) -> int:
         "--budget",
         type=float,
         default=consumer_pins.BUDGET,
-        help="seconds the sweep's pushes may take in all (default %(default)s)",
+        help="seconds the push sweep may take in all (default %(default)s)",
     )
     ap.add_argument("--except", dest="kept", action="append", type=Path, default=[],
                     help="a repo to list but never bump (repeatable)")  # fmt: skip
@@ -235,8 +241,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     kept = {p.expanduser().resolve() for p in a.kept}
     ruff = consumer_pins.ruff_pin()
-    consumer_pins.budget(a.budget)
-    n_stale = 0
+    n_stale = n_ahead = 0
     jobs: list[tuple[str, Callable[[], tuple[str, str]]]] = []
     record: dict[str, dict[str, str]] = {}
     for repo in repos:
@@ -248,8 +253,9 @@ def main(argv: list[str] | None = None) -> int:
         for rel, lines in loose.items():
             warn(f"{where}: {rel}:{','.join(map(str, lines))} checks out goh at no named release")
         if not old and not rold:
-            if a.bump and stranded(repo):  # an earlier bump's commit: land it now
-                jobs.append((where, partial(consumer_pins.push, repo, "")))
+            if not a.bump and repo.resolve() not in kept and stranded(repo):
+                n_ahead += 1
+                warn(f"{where}: {unpushed_said(repo)}")
             continue
         n_stale += 1
         have = sorted({p.tag for pins in old.values() for p in pins})
@@ -264,20 +270,54 @@ def main(argv: list[str] | None = None) -> int:
             record[where] = {"status": "kept", "said": "--except: left for its owner"}
         else:
             jobs.append((where, partial(bump, repo, old, rold, tag, ruff)))
-    # Each consumer's commit and push gate are its own: moved side by side (GOH.SHIPPROFILE).
-    record |= consumer_pins.sweep(
-        jobs, lambda where, status, said: (ok if status == "pushed" else err)(f"{where}: {said}")
-    )
-    if a.bump and a.record:
-        consumer_pins.write_record(a.record, tag, ruff, dict(sorted(record.items())))
-    if not n_stale:
+
+    # Each consumer's commit is its own: moved side by side (GOH.SHIPPROFILE).
+    def said(where: str, status: str, why: str) -> None:
+        (ok if status == "committed" else err)(f"{where}: {why}")
+
+    record |= consumer_pins.sweep(jobs, said, row="commit", ok="committed")
+    if a.bump:
+        handoff(a, repos, root, kept, tag, ruff, record)
+    if n_ahead and not a.bump:
+        info(f"push them: the next goh ship's sweep, or goh wf-pin --bump "
+             f"({counted(n_ahead, 'repo')} ahead with a pin commit)")  # fmt: skip
+    if not n_stale and not n_ahead:
         ok(f"every goh-owned pin in {counted(len(repos), 'estate repo')} is current "
            f"(goh {tag}, ruff {ruff})")  # fmt: skip
         return 0
     if not a.bump:
-        info(f"move them: goh wf-pin --bump  ({counted(n_stale, 'repo')} behind {tag})")
+        if n_stale:
+            info(f"move them: goh wf-pin --bump  ({counted(n_stale, 'repo')} behind {tag})")
         return 1
     return 0
+
+
+def unpushed_said(repo: Path) -> str:
+    """The listing's line for a repo ahead of its upstream with a pin commit: what the last sweep
+    said of it and its log, from the ledger."""
+    entry = pin_sweep.unpushed(repo) or {}
+    said = entry.get("said") or "no sweep has pushed it yet"
+    log = f"; log {entry['log']}" if entry.get("log") and entry["log"] not in said else ""
+    return f"a pin commit is not pushed: {said}{log}"
+
+
+def handoff(a: argparse.Namespace, repos: list[Path], root: Path, kept: set[Path], tag: str,
+            ruff: str, record: dict[str, dict[str, str]]) -> None:  # fmt: skip
+    """Write the install's record and hand every repo ahead of its upstream with a pin commit to
+    the push sweep (lib/pin_sweep.py), detached unless --sweep says otherwise."""
+    mine = [r for r in repos if r.resolve() != GOH.resolve() and r.resolve() not in kept]
+    ahead = {estate_registry_rel(r, root): r for r in mine if stranded(r)}
+    where = a.record or str(pin_sweep.ledger_path().with_name("wf_pin.json"))
+    sweep = str(pin_sweep.sweep_path(where)) if ahead and a.sweep != "none" else None
+    consumer_pins.write_record(where, tag, ruff, dict(sorted(record.items())), sweep)
+    if not ahead:
+        return
+    if a.sweep == "none":
+        info(f"{counted(len(ahead), 'repo')} ahead with a pin commit; no push sweep (--sweep none)")
+        return
+    path = pin_sweep.start(where, ahead, a.budget, wait=a.sweep == "wait")
+    info(f"push sweep of {counted(len(ahead), 'repo')} "
+         f"{'done' if a.sweep == 'wait' else 'started, detached'}: {path}")  # fmt: skip
 
 
 def estate_registry_rel(repo: Path, root: Path) -> str:

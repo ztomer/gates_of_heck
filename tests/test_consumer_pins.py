@@ -6,9 +6,10 @@ until a hand bump (three more at 0.17.4 the day before). The wf pin: `goh wf-pin
 "ci: pin goh vX" in every consumer and pushed none, so after v0.121.0 about 17 repos sat ahead of
 origin and the next writer inherited a rebase. The fixture is that estate in small: one consumer
 with a stale ruff pin, one with a stale wf pin, one an owner's unpushed commit holds, and one a past
-bump stranded. After ONE `wf_pin.py --bump` (what goh ship's install step runs) no consumer pins an
-old version and none sits ahead of origin with a pin commit; the one that may not be pushed is named
-in the ship's record, never silent.
+bump stranded. After ONE `wf_pin.py --bump` (what goh ship's install step runs) and the push sweep
+it hands off (lib/pin_sweep.py, GOH.PINPUSHGATE; run here in the foreground, `--sweep wait`) no
+consumer pins an old version and none sits ahead of origin with a pin commit; the one that may not
+be pushed is named in the sweep's record, never silent.
 """
 
 from __future__ import annotations
@@ -142,7 +143,7 @@ def _bump(tmp_path: Path, record: Path, *args: str) -> subprocess.CompletedProce
     env["GOH_SHIP_RESULT"] = str(record)
     return subprocess.run(
         [sys.executable, str(SCRIPT), "--root", str(tmp_path / "estate"), "--slug",
-         "owner/gates_of_heck", "--tag", TAG, "--bump", *args],
+         "owner/gates_of_heck", "--tag", TAG, "--bump", "--sweep", "wait", *args],
         capture_output=True, text=True, check=False, env=env, timeout=patience(120),
         stdin=subprocess.DEVNULL,
     )  # fmt: skip
@@ -170,6 +171,7 @@ def test_one_bump_leaves_no_consumer_stale_and_none_ahead_with_a_pin_commit(tmp_
     assert r.returncode == 0, out
     ruffy, wfy, busy, stranded = (repos[k] for k in ("ruffy", "wfy", "busy", "stranded"))
     # The ruff pin: the pyproject's, the lock and the venv all moved, in one commit, pushed.
+    sweep = json.loads(consumer_pins.record_path(record).read_text())["sweep"]
     assert f'"ruff=={RUFF}"' in (ruffy / "pyproject.toml").read_text()
     assert "ruff==0.0.2 in a comment" in (ruffy / "pyproject.toml").read_text()  # prose kept
     assert f'name = "ruff"\nversion = "{RUFF}"' in (ruffy / "uv.lock").read_text()
@@ -189,20 +191,26 @@ def test_one_bump_leaves_no_consumer_stale_and_none_ahead_with_a_pin_commit(tmp_
     assert _ahead(busy) == 2, out
     rec = json.loads(consumer_pins.record_path(record).read_text())
     assert rec["tag"] == TAG and rec["ruff"] == RUFF, rec
-    status = {k: v["status"] for k, v in rec["repos"].items()}
+    status = {k: v["status"] for k, v in rec["repos"].items()}  # the install: commits only
+    assert status == dict.fromkeys(("ruffy", "wfy", "busy"), "committed"), rec
+    pushes = json.loads(Path(sweep).read_text())  # the sweep: each pin commit ahead, pushed
+    status = {k: v["status"] for k, v in pushes["repos"].items()}
     assert status == {"ruffy": "pushed", "wfy": "pushed", "stranded": "pushed",
-                      "busy": "committed"}, rec  # fmt: skip
-    assert "not pushed" in rec["repos"]["busy"]["said"], rec
-    assert "the owner's work" in rec["repos"]["busy"]["said"], rec
+                      "busy": "committed"}, pushes  # fmt: skip
+    assert "not pushed" in pushes["repos"]["busy"]["said"], pushes
+    assert "the owner's work" in pushes["repos"]["busy"]["said"], pushes
     again = _bump(tmp_path, record)
     rec = json.loads(consumer_pins.record_path(record).read_text())
-    assert again.returncode == 0 and set(rec["repos"]) == {"busy"}, again.stdout + again.stderr
+    pushes = json.loads(Path(rec["sweep"]).read_text())
+    assert again.returncode == 0 and not rec["repos"], again.stdout + again.stderr
+    assert set(pushes["repos"]) == {"busy"}, pushes
 
 
 def test_a_spent_push_budget_commits_and_names_what_the_next_sweep_pushes(tmp_path):
     repos = _estate(tmp_path)
     r = _bump(tmp_path, tmp_path / "ship.json", "--budget", "0")
     rec = json.loads(consumer_pins.record_path(tmp_path / "ship.json").read_text())
+    rec = json.loads(Path(rec["sweep"]).read_text())
     assert r.returncode == 0 and rec["repos"]["wfy"]["status"] == "committed", r.stdout + r.stderr
     assert "budget is spent" in rec["repos"]["wfy"]["said"], rec
     assert _ahead(repos["wfy"]) == 1
@@ -215,14 +223,13 @@ def test_the_ship_result_carries_each_consumers_outcome(tmp_path):
     sys.path.pop(0)
     res = {"result": str(tmp_path / "ship.json"), "repo": str(tmp_path), "sha": "a" * 40}
     consumer_pins.record_path(Path(res["result"])).write_text(json.dumps({
-        "schema": 1, "tag": TAG, "ruff": RUFF,
-        "repos": {"ruffy": {"status": "pushed", "said": "pushed abc"},
-                  "busy": {"status": "committed", "said": "committed in abc, not pushed: x"}},
+        "schema": 2, "tag": TAG, "ruff": RUFF, "sweep": str(tmp_path / "ship.sweep.json"),
+        "repos": {"ruffy": {"status": "committed", "said": "pinned in abc"},
+                  "busy": {"status": "set_aside", "said": "set aside: on hold"}},
     }))  # fmt: skip
     ship_status.carry(res)
     c = res["consumer_pins"]
-    assert c["pushed"] == ["ruffy"] and c["not_pushed"] == {
-        "busy": "committed in abc, not pushed: x"
-    }
+    assert c["committed"] == ["ruffy"] and c["not_committed"] == {"busy": "set aside: on hold"}
+    assert c["sweep"] == str(tmp_path / "ship.sweep.json"), c
     line = consumer_pins.line(res)
-    assert line and "1 pushed" in line and "busy (committed in abc, not pushed: x)" in line, line
+    assert line and "1 committed" in line and "busy (set aside: on hold)" in line, line

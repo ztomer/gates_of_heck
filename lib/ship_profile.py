@@ -5,10 +5,11 @@ Owner 2026-11-15: "go ship taking > 1hrs is not very productive". The result sai
 and `install 2037 s`; which gate check, which consumer's push, and how loaded the box was (load
 90-180 on 16 cores those days) were three files and a reflog away. So each step runs with
 GOH_TIMINGS (lib/step_timings.py) at a file beside the result: every bounded step under it -- each
-gate check of the release, each phase release_goh.sh wraps, each consumer's commit and push of the
-install -- appends one row with its `load1`, and `goh ship --status RESULT` prints the rows as one
-table, costliest first. Rows nest (a check inside the land gate inside the release): a row's
-parent is named beside it, and the table is read as "where does it go", never summed.
+gate check of the release, each phase release_goh.sh wraps, each consumer's commit of the install,
+each consumer's push of the sweep after the ship (GOH.PINPUSHGATE) -- appends one row with its
+`load1`, and `goh ship --status RESULT` prints the rows as one table, costliest first. Rows nest
+(a check inside the land gate inside the release): a row's parent is named beside it, and the table
+is read as "where does it go", never summed.
 """
 
 from __future__ import annotations
@@ -16,7 +17,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import step_timings  # lib/: its one importer (lib/ship_status.py) has lib/ on sys.path
+import pin_sweep  # lib/: its one importer (lib/ship_status.py) has lib/ on sys.path
+import step_timings
 
 TOP = 20
 
@@ -31,13 +33,15 @@ def profile(stem: Path, name: str) -> str:
 
 
 def rows(res: dict) -> list[tuple[str, dict]]:
-    """(step name, row) for every timings row the result's steps recorded."""
+    """(step name, row) for every timings row the result's steps recorded, and the push sweep's
+    after the ship as step `sweep` (GOH.PINPUSHGATE): its rows are never the install's."""
+    files = [(s["name"], s["timings"]) for s in res.get("steps", []) if s.get("timings")]
+    if sweep := (res.get("consumer_pins") or {}).get("sweep"):
+        files.append(("sweep", str(pin_sweep.timings_path(sweep))))
     out = []
-    for s in res.get("steps", []):
-        if not s.get("timings"):
-            continue
+    for name, path in files:
         try:
-            out += [(s["name"], r) for r in step_timings.load(s["timings"])]
+            out += [(name, r) for r in step_timings.load(path)]
         except OSError:
             continue
     return out

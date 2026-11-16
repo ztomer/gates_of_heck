@@ -7,10 +7,11 @@ file beside the result: every bounded step under it (each gate check of the rele
 pin and push of the install) lands one row with the 1-min load average at its start, and
 `goh ship --status RESULT` prints them as one table, costliest first.
 
-And the install's consumers are pushed CONCURRENTLY (easy win A): GOH.PINPROPAGATE made the sweep
-push each consumer through its own push gate, one after another, and the install went from 86 s
-(v0.121.0) to 1974-2037 s (v0.122.0-v0.124.0), the sum of 12 consumer gates where the slowest alone
-was 756 s. The sweep now runs as many consumers at once as the machine's gate slots allow.
+And the consumers are pushed CONCURRENTLY (easy win A): GOH.PINPROPAGATE made the sweep push each
+consumer through its own push gate, one after another, and the install went from 86 s (v0.121.0) to
+1974-2037 s (v0.122.0-v0.124.0), the sum of 12 consumer gates where the slowest alone was 756 s.
+The sweep now runs as many consumers at once as the machine's gate slots allow -- after the ship,
+since GOH.PINPUSHGATE: the install commits, and its rows are the commits, the sweep's the pushes.
 """
 
 from __future__ import annotations
@@ -94,12 +95,15 @@ def test_the_install_pushes_its_consumers_concurrently_each_profiled(tmp_path):
                        GOH_SHIP_RESULT=str(tmp_path / "ship.json"), GOH_GATE_SLOTS="3",
                        GOH_TIMINGS=str(timings))  # fmt: skip
     r = subprocess.run([sys.executable, str(SCRIPT), "--root", str(tmp_path / "estate"), "--slug",
-                        "owner/gates_of_heck", "--tag", TAG, "--bump"], capture_output=True,
+                        "owner/gates_of_heck", "--tag", TAG, "--bump", "--sweep", "wait"],
+                       capture_output=True,
                        text=True, check=False, env=env, timeout=patience(120),
                        stdin=subprocess.DEVNULL)  # fmt: skip
     out = r.stdout + r.stderr
     assert r.returncode == 0, out
     rec = json.loads((tmp_path / "ship.pins.json").read_text())
+    assert {k: v["status"] for k, v in rec["repos"].items()} == dict.fromkeys(names, "committed")
+    rec = json.loads(Path(rec["sweep"]).read_text())
     assert {k: v["status"] for k, v in rec["repos"].items()} == dict.fromkeys(names, "pushed"), rec
     said = log.read_text()
     assert "leaked" not in said, said  # a consumer's gate is its own, never the ship's profile
@@ -110,8 +114,11 @@ def test_the_install_pushes_its_consumers_concurrently_each_profiled(tmp_path):
     assert set(spans) == set(names), said
     # every gate started before any other ended: they ran at once, not one after another
     assert max(s["start"] for s in spans.values()) < min(s["end"] for s in spans.values()), spans
-    rows = {x["label"]: x for x in _rows(timings)}
+    rows = {x["label"]: x for x in _rows(timings)}  # the install's: each consumer's commit
+    pushes = {x["label"]: x for x in _rows(tmp_path / "ship.sweep.timings.jsonl")}
     for n in names:
-        row = rows[f"consumer {n}"]
+        row = rows[f"commit {n}"]
         assert row["tier"] == "consumer" and isinstance(row["load1"], float), rows
-        assert row["ms"] >= 1400, row  # the commit AND its push, not the listing
+        row = pushes[f"push {n}"]
+        assert row["tier"] == "consumer" and isinstance(row["load1"], float), pushes
+        assert row["ms"] >= 1400, row  # the push through its gate, in the sweep

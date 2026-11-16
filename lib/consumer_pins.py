@@ -1,4 +1,5 @@
-"""THE MANIFEST of the pins goh owns in a consumer; how a goh release lands them (GOH.PINPROPAGATE).
+"""THE MANIFEST of the pins goh owns in a consumer; how a goh release lands them (GOH.PINPROPAGATE,
+GOH.PINPUSHGATE).
 
 A consumer carries copies of versions goh decides. On 2026-11-15 two of them stranded the estate:
 
@@ -12,11 +13,14 @@ A consumer carries copies of versions goh decides. On 2026-11-15 two of them str
 So a pin goh owns is never hand-bumped, and a pin commit is never left behind. PINS below is the one
 list; each row says where its version is WRITTEN (never here: a version written twice is the class).
 `goh wf-pin --bump`, which goh ship's install step runs after each goh release, moves every stale
-pin of every row in one commit per consumer through that repo's own hooks (lib/estate_commit.py),
-then PUSHES it through the repo's own push gate -- together with any pin commit an earlier bump left
-unpushed -- or records why not, per repo, in the ship's record (`record_path`), which goh ship
-carries into its result as `consumer_pins` and says on `--status` and the verify card. An owner's
-unpushed commit is never pushed by goh: the pin commit then waits on it, named.
+pin of every row in one commit per consumer through that repo's own hooks (lib/estate_commit.py)
+and records each outcome in the ship's record (`record_path`), which goh ship carries into its
+result as `consumer_pins`. The PUSHES are not the ship's (GOH.PINPUSHGATE, ruling 2026-11-15): each
+runs that consumer's FULL push gate (v0.124.0: 2010 s of the install's 2037 s), so lib/pin_sweep.py
+pushes every pin commit ahead of its upstream -- this one's and any an earlier bump left -- in a
+detached, bounded sweep after the ship returns, and records each outcome where `goh ship --status`
+and the next `goh wf-pin` listing read it. An owner's unpushed commit is never pushed by goh: the
+pin commit then waits on it, named.
 """
 
 from __future__ import annotations
@@ -207,10 +211,11 @@ def ahead(repo: Path, fetch: bool = False) -> tuple[str | None, list[tuple[str, 
     return ref, _commits(repo, f"{ref}..HEAD")
 
 
-def push(repo: Path, said: str) -> tuple[str, str]:
-    """Push the pin commits ahead of REPO's upstream through its own push gate: ("pushed", why) or
-    ("committed", why not). Only goh's pin commits are ever pushed: an owner's commit in the span
-    leaves it all for the owner's push, named."""
+def push(repo: Path, said: str, log: Path | None = None) -> tuple[str, str]:
+    """Push the pin commits ahead of REPO's upstream through its own push gate: ("pushed", why),
+    ("refused", why, its gate's log named) or ("committed", why not). Only goh's pin commits are
+    ever pushed: an owner's commit in the span leaves it all for the owner's push, named. LOG keeps
+    the gate's output (a refusal names it); without one it goes to a temporary file."""
     lead = f"{said}; " if said else ""
     ref, span = ahead(repo, fetch=True)
     if ref is None:
@@ -235,17 +240,21 @@ def push(repo: Path, said: str) -> tuple[str, str]:
             f"{lead}not pushed: the sweep's push budget is spent; the next ship's sweep pushes it",
         )
     remote, branch = ref.split("/", 1)
-    with tempfile.NamedTemporaryFile("w+", prefix="goh-pins-push.", suffix=".log") as log:
+    with tempfile.TemporaryDirectory(prefix="goh-pins-push.") as tmp:
+        path = Path(log) if log is not None else Path(tmp) / "push.log"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
         env = [f"{k}={v}" for k, v in estate_commit.env().items()]  # its gate, not this ship's
         out = bounded_run.run_step(
             ["env", "-i", *env, "git", "-C", str(repo), "push", "-q", remote,
              f"HEAD:refs/heads/{branch}"],
-            min(TIMEOUT, left), 5, f"pins push {repo.name}", log.name,
+            min(TIMEOUT, left), 5, f"pins push {repo.name}", str(path),
         )  # fmt: skip
-        log.seek(0)
-        tail = " | ".join([ln for ln in log.read().splitlines() if ln.strip()][-3:])
+        text = path.read_text(encoding="utf-8", errors="replace")
+        tail = " | ".join([ln for ln in text.splitlines() if ln.strip()][-3:])
     if out.code or out.timed_out:
-        return "committed", f"{lead}NOT pushed: its push gate refused ({tail or out.code})"
+        kept = f"; log {path}" if log is not None else ""
+        return "refused", f"{lead}NOT pushed: its push gate refused ({tail or out.code}){kept}"
     return "pushed", f"{lead}pushed {counted(len(span), 'pin commit')} to {ref}"
 
 
@@ -260,15 +269,17 @@ def width(jobs: int) -> int:
 
 
 def sweep(jobs: list[tuple[str, Callable[[], tuple[str, str]]]],
-          said: Callable[[str, str, str], None]) -> dict[str, dict[str, str]]:  # fmt: skip
-    """Run each (where, job) -- one consumer's commit and push -- `width` at a time; each is one
-    profile row `consumer WHERE` with the load at its start, and SAID hears it as it ends."""
+          said: Callable[[str, str, str], None], row: str = "consumer",
+          ok: str = "pushed") -> dict[str, dict[str, str]]:  # fmt: skip
+    """Run each (where, job) -- one consumer's commit, or its push -- `width` at a time; each is one
+    profile row `ROW WHERE` with the load at its start (failed unless its status is OK), and SAID
+    hears it as it ends."""
 
     def one(where: str, job: Callable[[], tuple[str, str]]) -> tuple[str, str, str]:
         t0, load1 = time.monotonic(), step_timings.load_now()
         status, why = job()
-        step_timings.record(f"consumer {where}", (time.monotonic() - t0) * 1000,
-                            int(status != "pushed"), "consumer", load1=load1)  # fmt: skip
+        step_timings.record(f"{row} {where}", (time.monotonic() - t0) * 1000,
+                            int(status != ok), "consumer", load1=load1)  # fmt: skip
         said(where, status, why)
         return where, status, why
 
@@ -306,16 +317,17 @@ def record_path(result: Path | str) -> Path:
     return Path(result).with_suffix(".pins.json")
 
 
-def write_record(result: str, tag: str, ruff: str, repos: dict[str, dict[str, str]]) -> None:
+def write_record(result: str, tag: str, ruff: str, repos: dict[str, dict[str, str]],
+                 sweep: str | None = None) -> None:  # fmt: skip
     path = record_path(result)
     path.parent.mkdir(parents=True, exist_ok=True)
-    body = {"schema": 1, "tag": tag, "ruff": ruff, "repos": repos}
+    body = {"schema": 2, "tag": tag, "ruff": ruff, "repos": repos, "sweep": sweep}
     path.write_text(json.dumps(body, indent=1) + "\n", encoding="utf-8")
 
 
 def carry(res: dict) -> None:
-    """The sweep's record into the ship result RES as `consumer_pins`, once the install step wrote
-    it: the repos it pushed, and every other one with why not."""
+    """The install's record into the ship result RES as `consumer_pins`, once the install step wrote
+    it: the repos it committed in, every other one with why not, and the push sweep's record."""
     try:
         rec = json.loads(record_path(res["result"]).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -323,19 +335,22 @@ def carry(res: dict) -> None:
     repos = rec.get("repos") or {}
     res["consumer_pins"] = {
         "tag": rec.get("tag"), "ruff": rec.get("ruff"),
-        "pushed": sorted(k for k, v in repos.items() if v.get("status") == "pushed"),
-        "not_pushed": {k: v.get("said", "") for k, v in sorted(repos.items())
-                       if v.get("status") != "pushed"},
+        "committed": sorted(k for k, v in repos.items() if v.get("status") == "committed"),
+        "not_committed": {k: v.get("said", "") for k, v in sorted(repos.items())
+                          if v.get("status") != "committed"},
+        "sweep": rec.get("sweep"),
     }  # fmt: skip
 
 
 def line(res: dict) -> str | None:
-    """The one line a ship says about its consumers' pins, or None."""
+    """The one line a ship says about its install's pin commits, or None (the pushes are the
+    sweep's: lib/pin_sweep.py lines)."""
     c = res.get("consumer_pins")
     if not c:
         return None
-    head = f"consumer pins (goh {c.get('tag')}, ruff {c.get('ruff')}): {len(c['pushed'])} pushed"
-    if not c["not_pushed"]:
+    done, left = c.get("committed", c.get("pushed", [])), c.get("not_committed", {})
+    head = f"consumer pins (goh {c.get('tag')}, ruff {c.get('ruff')}): {len(done)} committed"
+    if not left:
         return head
-    named = "; ".join(f"{k} ({v})" for k, v in c["not_pushed"].items())
-    return f"{head}; {len(c['not_pushed'])} not: {named}"
+    named = "; ".join(f"{k} ({v})" for k, v in left.items())
+    return f"{head}; {len(left)} not: {named}"

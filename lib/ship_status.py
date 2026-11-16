@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import canary_grace  # tools/ship.py, the one importer, puts lib/ on sys.path
 import consumer_pins
+import pin_sweep
 import ship_profile
 
 from tui.lib import err, info, ok, step
@@ -30,7 +31,8 @@ def save(res: dict) -> None:
 
 def carry(res: dict) -> None:
     """What a step left for the result: the release canary's grace-end finding (GOH.CANARYGRACE)
-    and, once goh's install step swept the estate, each consumer's pins (GOH.PINPROPAGATE)."""
+    and, once goh's install step committed them, each consumer's pins and the record of the sweep
+    that pushes them after the ship (GOH.PINPROPAGATE, GOH.PINPUSHGATE)."""
     canary_grace.carry(res)
     consumer_pins.carry(res)
 
@@ -56,6 +58,7 @@ def status(result: str) -> int:
     for said in (canary_grace.line(res), consumer_pins.line(res)):
         if said:
             step(said)
+    pin_sweep.say(res)  # the consumers' pushes, after the ship and apart from its install
     if prof := ship_profile.table(res):  # where the time went (GOH.SHIPPROFILE)
         step(prof[0])
         print("\n".join(prof[1:]))
