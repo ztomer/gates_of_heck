@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 
 from conftest import REPO_ROOT, git, hermetic_env
-from timing_bounds import assert_sooner, patience
+from timing_bounds import GiveUp, assert_sooner, patience
 
 LAND = REPO_ROOT / "tools" / "land.sh"
 # The fake gate: its start and end in $LAND_LOG, a second's work between them.
@@ -36,11 +36,21 @@ def _branch(repo: Path, tmp_path: Path, name: str, path: str = "") -> Path:
     return wt
 
 
-def _start(wt: Path, tmp_path: Path, gate: str = GATE) -> subprocess.Popen[str]:
+def _start(
+    wt: Path, tmp_path: Path, gate: str = GATE, out=subprocess.PIPE
+) -> subprocess.Popen[str]:
     env = hermetic_env(drop_git=True, GOH_LAND_GATE=gate, LAND_LOG=str(tmp_path / "gates.log"))
-    return subprocess.Popen(["bash", str(LAND)], cwd=wt, env=env, stdout=subprocess.PIPE,
+    return subprocess.Popen(["bash", str(LAND)], cwd=wt, env=env, stdout=out,
                             stderr=subprocess.STDOUT, text=True,
                             stdin=subprocess.DEVNULL)  # fmt: skip
+
+
+def _until(what: str, done) -> None:
+    """Wait on an observable state, never on a guess of how long a start takes under load."""
+    give_up = GiveUp(60)
+    while not done():
+        assert not give_up.passed(), f"never saw: {what}"
+        time.sleep(0.05)
 
 
 def _land(wt: Path, tmp_path: Path, gate: str = GATE) -> tuple[int, str]:
@@ -57,17 +67,29 @@ def test_two_concurrent_lands_both_land_one_gate_at_a_time(repo: Path, tmp_path:
     """The DONE state: two lands of disjoint branches started together both land, with no refused
     fast-forward; their gates never overlap; the waiter names the holder."""
     a, b = _branch(repo, tmp_path, "lane-a"), _branch(repo, tmp_path, "lane-b")
-    pa = _start(a, tmp_path)
-    time.sleep(0.3)  # lane-a takes the lock first, so the waiter is lane-b
-    pb = _start(b, tmp_path)
+    # lane-a's gate holds the lock until lane-b is SEEN waiting on it: at load 70 a 0.3 s head start
+    # let lane-a finish before lane-b reached the lock (the land of 44158daa, 2026-11-15).
+    hold = tmp_path / "hold"
+    os.mkfifo(hold)
+    gate = GATE.replace("sleep 1;", f'[ "$b" != lane-a ] || read -r _ <"{hold}"; sleep 1;')
+    log = tmp_path / "gates.log"
+    pa = _start(a, tmp_path, gate)
+    _until("lane-a's gate started", lambda: log.exists() and "start lane-a" in log.read_text())
+    b_out = tmp_path / "lane-b.out"
+    with b_out.open("w") as sink:
+        pb = _start(b, tmp_path, gate, out=sink)
+    _until("lane-b waiting on the lock", lambda: "waiting" in b_out.read_text())
+    with hold.open("w") as release:
+        release.write("go\n")
     out_a, _ = pa.communicate(timeout=patience(60))
-    out_b, _ = pb.communicate(timeout=patience(60))
+    pb.wait(timeout=patience(60))
+    out_b = b_out.read_text()
     assert pa.returncode == 0, out_a
     assert pb.returncode == 0, out_b
     assert {"lane-a", "lane-b"} <= set(_main_commits(repo)), _main_commits(repo)
     assert git(repo, "rev-parse", "main").strip() == git(b, "rev-parse", "HEAD").strip()
-    log = (tmp_path / "gates.log").read_text().split("\n")
-    assert log[:4] == ["start lane-a", "end lane-a", "start lane-b", "end lane-b"], log
+    ran = log.read_text().split("\n")
+    assert ran[:4] == ["start lane-a", "end lane-a", "start lane-b", "end lane-b"], ran
     assert "waiting" in out_b and "lane-a" in out_b, out_b
     assert "rebased" in out_b, out_b
 
