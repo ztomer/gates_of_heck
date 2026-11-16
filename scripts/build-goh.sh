@@ -12,6 +12,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# shellcheck source=tui/lib.sh
+. "${PROJECT_ROOT}/tui/lib.sh"
 
 OS="${GOH_BUILD_OS:-$(uname -s)}"
 ARCH="${GOH_BUILD_ARCH:-$(uname -m)}"
@@ -84,7 +86,7 @@ case "${1:-}" in
     if [[ "${3:-}" == "--as-release" ]]; then
       AS_RELEASE="${4:-}"
       [[ "${AS_RELEASE}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
-        || { echo "✗ build-goh: --as-release needs vX.Y.Z (got '${AS_RELEASE}')" >&2; exit 2; }
+        || die "build-goh: --as-release needs vX.Y.Z (got '${AS_RELEASE}')" 2
     fi
     ;;
 esac
@@ -103,11 +105,10 @@ if [[ -n "${AS_RELEASE}" ]]; then
   # A commit, never the name HEAD: every `REV != HEAD` below means "the store only", and a build
   # as a tag HEAD does not carry must never reach bin/goh (a literal `--rev HEAD` placed it there).
   REV="$(git_here rev-parse -q --verify "${REV}^{commit}" 2>/dev/null)" \
-    || { echo "✗ build-goh: --as-release names no commit of this checkout" >&2; exit 2; }
+    || die "build-goh: --as-release names no commit of this checkout" 2
   carried="$(goh_release_at "${PROJECT_ROOT}" "${REV}")"
   if [[ -n "${carried}" && "${carried}" != "${AS_RELEASE}" ]]; then
-    echo "✗ build-goh: ${REV} is tagged ${carried}; it is never built as ${AS_RELEASE}" >&2
-    exit 2
+    die "build-goh: ${REV} is tagged ${carried}; it is never built as ${AS_RELEASE}" 2
   fi
 fi
 STAMP="$(head_stamp)"
