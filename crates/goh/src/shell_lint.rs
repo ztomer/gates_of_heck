@@ -117,7 +117,16 @@ fn rc_identity(path: &Path) -> String {
 }
 
 /// The `.shellcheckrc` files shellcheck would find for `src`: its directory and every parent.
-fn dir_rc_key(src: &Path, memo: &mut std::collections::HashMap<PathBuf, String>) -> String {
+///
+/// An rc inside the judged tree is named by its path IN the tree, never where the tree sits: the
+/// absolute path made every checkout a cache of its own, so the push export, a release worktree
+/// and each lane's worktree re-ran shellcheck over the same bytes (104 files, 36.4 s in v0.125.0's
+/// reduced push, GOH.TAGPUSHGATE). An rc above the tree is the machine's and keeps its path.
+fn dir_rc_key(
+    base: &Path,
+    src: &Path,
+    memo: &mut std::collections::HashMap<PathBuf, String>,
+) -> String {
     let Some(dir) = src.parent() else {
         return String::new();
     };
@@ -128,8 +137,10 @@ fn dir_rc_key(src: &Path, memo: &mut std::collections::HashMap<PathBuf, String>)
         .ancestors()
         .filter_map(|d| {
             let rc = d.join(".shellcheckrc");
-            rc.is_file()
-                .then(|| format!("{}={}", rc.display(), rc_identity(&rc)))
+            rc.is_file().then(|| {
+                let name = rc.strip_prefix(base).unwrap_or(&rc);
+                format!("{}={}", name.display(), rc_identity(&rc))
+            })
         })
         .collect();
     let key = key.join(";");
@@ -263,7 +274,7 @@ fn judge(scope: &crate::shell_lint_scope::Scope, severity: &str) -> Result<Judge
             let deps = scope.deps.key(disp)?;
             Some(format!(
                 "{tools}|rc={}|{disp}|{deps}",
-                dir_rc_key(src, &mut memo)
+                dir_rc_key(&scope.base, src, &mut memo)
             ))
         })
         .collect();
