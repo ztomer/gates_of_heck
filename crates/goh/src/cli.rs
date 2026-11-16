@@ -41,8 +41,8 @@ pub enum Commands {
     /// The commit gate's verdict on these paths before the commit: `gates/commit_gate.sh` itself,
     /// over the index `git commit -- <path>...` would commit (`tools/lint.py`, GOH.CLASS.PARITY).
     Lint(PassArgs),
-    /// Enqueue a commit to land, or drain the queue: ONE lander runs each repo's push gate (or its
-    /// ship) in order and records the outcome on the item (`tools/landq.py`, GOH.LANDQUEUE).
+    /// Enqueue a commit or a worktree to land, wait on it, or drain the queue: ONE lander runs each
+    /// push gate, ship or land.sh in order, recording the outcome on the item (`tools/landq.py`).
     Land(PassArgs),
     /// Name estate repos with stale stock hooks; `--refresh` fixes them (`hooks_refresh.py`)
     Hooks(PassArgs),

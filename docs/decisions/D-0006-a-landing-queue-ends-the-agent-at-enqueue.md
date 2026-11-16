@@ -25,7 +25,10 @@
 - **Ruling:** (GOH.LANDQUEUE, 2026-11-14) option 3, `tools/landq.py`. A push lands exactly the
   enqueued sha (`SHA:refs/heads/BRANCH`); `--ship` runs `goh ship --wait` and refuses a checkout
   whose HEAD moved past the sha (a ship releases HEAD). A red gate pushes nothing (git refuses a
-  push its pre-push hook fails) and records the log path.
+  push its pre-push hook fails) and records the log path. (GOH.LANDQLAND, 2026-11-16; owner
+  2026-11-15: "move the lanes onto the landing queue") `--land WORKTREE` runs that worktree's
+  `tools/land.sh` bare in the lander -- the one land lock still serialises lands -- refuses a tip
+  that moved after enqueue unrun, and `goh land --wait ID` is the lane's one wait on the outcome.
 - **Falsifier:** `tests/test_landq.py`: two requests' gates overlap in time, or run out of enqueue
   order; a red gate's sha reaches the remote or its outcome lacks the log; a request left in
   `running/` is never run. Each was seen red against a broken lander (concurrent runs, an

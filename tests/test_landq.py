@@ -191,3 +191,81 @@ def test_the_goh_binary_dispatches_land(goh, tmp_path, env):
     assert done.returncode == 0, done.stdout + done.stderr
     assert len(list((tmp_path / "landq" / "pending").iterdir())) == 1
     assert os.environ.get("GOH_LANDQ_DIR") != env["GOH_LANDQ_DIR"]
+
+
+# MODE LAND (GOH.LANDQLAND, owner 2026-11-15: "move the lanes onto the landing queue"): a lane
+# hands its worktree's tip to the lander, which runs tools/land.sh bare there -- the one land lock,
+# the land gate, the fast-forward of main -- and records the outcome; the lane waits on the record.
+def _land_wt(repo: Path, tmp_path: Path) -> tuple[Path, str]:
+    wt = tmp_path / "wt"
+    git(repo, "worktree", "add", "-q", "-b", "feature", str(wt))
+    write(wt, "f.txt", "feature\n")
+    git(wt, "add", "f.txt")
+    git(wt, "commit", "-q", "--no-verify", "-m", "feature")
+    return wt, git(wt, "rev-parse", "HEAD").strip()
+
+
+def test_a_green_land_request_fast_forwards_main_and_records_landed(repo, tmp_path, env):
+    wt, tip = _land_wt(repo, tmp_path)
+    env = {**env, "GOH_LAND_GATE": "true"}
+    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.L", "--no-start")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert landq(env, "--drain").returncode == 0
+    got = recorded(env)["T.L"]
+    assert got["state"] == "landed" and got["sha"] == tip and got["mode"] == "land", got
+    assert git(repo, "rev-parse", "HEAD").strip() == tip  # land.sh moved main, nothing else did
+    assert "landed" in Path(got["log"]).read_text()
+
+
+def test_a_red_land_gate_lands_nothing_and_records_the_log(repo, tmp_path, env):
+    wt, tip = _land_wt(repo, tmp_path)
+    before = git(repo, "rev-parse", "HEAD").strip()
+    env = {**env, "GOH_LAND_GATE": "echo red-gate-says-why; false"}
+    assert landq(env, "--enqueue", "--land", str(wt), "--item", "T.R", "--no-start").returncode == 0
+    landq(env, "--drain")
+    got = recorded(env)["T.R"]
+    assert got["state"] == "red" and got["sha"] == tip, got
+    assert "red-gate-says-why" in Path(got["log"]).read_text(), got
+    assert git(repo, "rev-parse", "HEAD").strip() == before
+
+
+def test_a_land_whose_tip_moved_after_enqueue_is_refused_unrun(repo, tmp_path, env):
+    wt, _ = _land_wt(repo, tmp_path)
+    before = git(repo, "rev-parse", "HEAD").strip()
+    env = {**env, "GOH_LAND_GATE": "true"}
+    assert landq(env, "--enqueue", "--land", str(wt), "--item", "T.M", "--no-start").returncode == 0
+    write(wt, "f.txt", "moved\n")
+    git(wt, "commit", "-qam", "moved", "--no-verify")
+    landq(env, "--drain")
+    got = recorded(env)["T.M"]
+    assert got["state"] == "red" and "moved" in got["why"], got
+    assert git(repo, "rev-parse", "HEAD").strip() == before  # not the enqueued tip, nor the new one
+
+
+def test_enqueue_land_refuses_the_main_checkout_and_a_dirty_tree(repo, tmp_path, env):
+    done = landq(env, "--enqueue", "--land", str(repo), "--item", "T.N", "--no-start")
+    assert done.returncode == 2 and "main checkout" in done.stdout + done.stderr, done.stdout
+    wt, _ = _land_wt(repo, tmp_path)
+    write(wt, "f.txt", "uncommitted\n")
+    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.N", "--no-start")
+    assert done.returncode == 2 and "uncommitted" in done.stdout + done.stderr, done.stdout
+    pending = tmp_path / "landq" / "pending"
+    assert not pending.exists() or not list(pending.iterdir())
+
+
+@pytest.mark.load_sensitive
+@pytest.mark.parametrize(("gate", "code", "state"), [("true", 0, "landed"), ("false", 1, "red")])
+def test_wait_blocks_until_the_outcome_and_exits_by_it(repo, tmp_path, env, gate, code, state):
+    """`goh land --wait ID` is the lane's one wait: no lander running (--no-start) is started."""
+    wt, tip = _land_wt(repo, tmp_path)
+    env = {**env, "GOH_LAND_GATE": gate}
+    assert landq(env, "--enqueue", "--land", str(wt), "--item", "T.W", "--no-start").returncode == 0
+    done = landq(env, "--wait", "T.W", "--timeout", "90")
+    assert done.returncode == code, done.stdout + done.stderr
+    assert state in done.stdout + done.stderr and tip[:8] in done.stdout + done.stderr
+    assert recorded(env)["T.W"]["state"] == state
+
+
+def test_wait_on_an_item_with_no_request_says_so(env):
+    done = landq(env, "--wait", "T.NONE")  # refused at once: nothing to wait on
+    assert done.returncode == 2 and "T.NONE" in done.stdout + done.stderr
