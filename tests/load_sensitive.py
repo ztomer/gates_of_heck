@@ -1,11 +1,10 @@
-"""The tests that can fail under load and pass without it: the loaded run's set (GOH.LOADEDSUBSET).
+"""The tests that can fail under load and pass without it (GOH.LOADEDSUBSET).
 
-The loaded run (tools/loaded_suite.sh, recorded per tree by lib/loaded_verdict.py) ran the whole
-suite under 16 spinners, 470-570 s, and every ship after a land waited for it. A test whose verdict
-cannot move with the box's load gains nothing from that run: the land gate already ran it. This
-module DERIVES the tests whose verdict can move, so the loaded run runs only those
-(`pytest -m load_sensitive`), and tests/test_load_sensitive.py refuses a test the derivation names
-that does not carry the marker -- the set cannot rot as tests are added.
+The post-land loaded run once ran the whole suite under 16 spinners, 470-570 s, then this set
+alone; it caught nothing in 13 runs and is gone (GOH.LOADEDDROP). This module DERIVES the tests
+whose verdict can move with the box's load, and tests/test_load_sensitive.py refuses -- at commit,
+through gates/staged_guards.sh -- a test the derivation names that does not carry the marker, so a
+new waiting test is declared and the set (`pytest -m load_sensitive`) cannot rot as tests are added.
 
 A test is load-sensitive when it, or a helper or fixture it reaches, does one of these (SIGNALS):
 

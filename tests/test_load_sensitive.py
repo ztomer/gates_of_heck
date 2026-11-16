@@ -1,12 +1,20 @@
-"""The loaded run runs only the tests whose verdict can move with the box's load (GOH.LOADEDSUBSET).
+"""Every test whose verdict can move with the box's load says so (GOH.LOADEDSUBSET, GOH.LOADEDDROP).
 
 tests/load_sensitive.py derives the set (and says what it does not see); the marker
-`@pytest.mark.load_sensitive` carries it in the source, so `tools/loaded_suite.sh` selects it with
-`-m load_sensitive` while the land gate still runs every test. These keep the two the same set: a
-test the derivation names without the mark is red (a new waiting, sleeping or spawning test cannot
-slip out of the loaded run), a mark the derivation does not back must say why, and every load-only
-failure seen so far (tests/load_history.json, each with where it was seen) is inside the set.
+`@pytest.mark.load_sensitive` carries it in the source, so the set is one selection away
+(`tools/load.py N -- tools/pytest.sh -m load_sensitive` when a flake is chased) while the land gate
+runs every test. These keep the two the same set: a test the derivation names without the mark is
+red (a new waiting, sleeping or spawning test is declared, never slipped in), a mark the
+derivation does not back must say why, and every load-only failure seen so far
+(tests/load_history.json, each with where it was seen) is inside the set.
+
+The post-land loaded run that once ran this set (tools/loaded_suite.sh) is gone (GOH.LOADEDDROP:
+0 real catches in 13 runs), so this static half runs at COMMIT: the line below declares that it
+reads the staged tests, and gates/staged_guards.sh runs it over the index whenever a commit stages
+one (tests/test_loaded_drop.py keeps the directive).
 """
+
+# goh-reads-staged: tests
 
 from __future__ import annotations
 
@@ -150,17 +158,17 @@ def test_a_planted_unmarked_waiting_test_is_refused_and_a_reasonless_mark_is_sta
 
 def test_every_load_sensitive_test_carries_the_marker() -> None:
     """THE GATE: a test that sleeps, reads a clock, polls, spawns beside itself, signals, waits or
-    names a deadline is in the loaded run -- `@pytest.mark.load_sensitive` above it."""
+    names a deadline says so -- `@pytest.mark.load_sensitive` above it."""
     missing = _unmarked(ls.Census.of(TESTS))
     assert not missing, (
-        f"load-sensitive, without @pytest.mark.{ls.MARK}: {len(missing)} -- the loaded run "
-        "(tools/loaded_suite.sh) runs only marked tests, so these would never meet load before a "
-        "ship (tests/load_sensitive.py says why each is named):\n  " + "\n  ".join(missing)
+        f"load-sensitive, without @pytest.mark.{ls.MARK}: {len(missing)} -- bound each wait "
+        "(timing_bounds.patience, GiveUp) and mark it (tests/load_sensitive.py says why each is "
+        "named):\n  " + "\n  ".join(missing)
     )
 
 
 def test_no_mark_without_a_signal_or_a_reason() -> None:
-    """A mark the derivation does not back costs the loaded run time for nothing, unless the test
+    """A mark the derivation does not back names a test load cannot move, unless the test
     has a deadline the scan cannot see; then the mark says which (`reason=`)."""
     stale = _stale(ls.Census.of(TESTS))
     assert not stale, (
@@ -171,7 +179,7 @@ def test_no_mark_without_a_signal_or_a_reason() -> None:
 
 def test_every_historical_load_failure_is_in_the_set() -> None:
     """Each load-only failure seen so far (lands on busy boxes, hosted runners, consumer pushes)
-    names a test that still exists and is marked, so the loaded run would have run it."""
+    names a test that still exists and is marked, so the set holds every one seen."""
     census = ls.Census.of(TESTS)
     marked = census.marked()
     entries = json.loads(HISTORY.read_text(encoding="utf-8"))
@@ -180,18 +188,13 @@ def test_every_historical_load_failure_is_in_the_set() -> None:
     gone = [e["test"] for e in entries if e["test"] not in exists]
     assert not gone, f"history names tests that no longer exist: {gone}"
     outside = [f"{e['id']}: {e['test']}" for e in entries if e["test"] not in marked]
-    assert not outside, "historical load-only failures outside the loaded set:\n  " + "\n  ".join(
+    assert not outside, "historical load-only failures outside the marked set:\n  " + "\n  ".join(
         outside
     )
     assert all(e.get("seen") for e in entries), "every history entry says where it was seen"
 
 
-def test_the_loaded_run_runs_the_set_and_the_land_gate_runs_everything() -> None:
-    loaded = (REPO_ROOT / "tools" / "loaded_suite.sh").read_text(encoding="utf-8")
-    assert f'cmd=("$GOH/tools/pytest.sh" -m {ls.MARK} "${{marked[@]}}")' in loaded, (
-        "tools/loaded_suite.sh's default command does not select the load-sensitive set"
-    )
-    assert f"grep -l 'pytest\\.mark\\.{ls.MARK}' tests/test_*.py" in loaded
+def test_the_land_gate_runs_everything_and_the_marker_is_registered() -> None:
     runner = (REPO_ROOT / "tools" / "pytest.sh").read_text(encoding="utf-8")
     assert f"-m {ls.MARK}" not in runner, "tools/pytest.sh (the land gate's suite) narrows itself"
     pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")

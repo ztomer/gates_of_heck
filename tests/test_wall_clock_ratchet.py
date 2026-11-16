@@ -8,7 +8,14 @@ The seed, tests/wall_clock_seed.json, is exactly the sites each file held when t
 (`unreviewed`: nobody has yet read whether each is a give-up or the subject's own clock). A NEW
 site is red, and so is an entry larger than its file's count -- a fixed site takes its exemption
 with it -- so the list only shrinks (close-the-class). Empty is closed.
+
+It runs at COMMIT, not only at push: the line below declares that it reads the staged tests, so
+gates/staged_guards.sh runs it over the index whenever a commit stages one (GOH.LOADEDDROP: the
+post-land loaded run is gone, and this static half is what stands between a new literal wait and
+a land; tests/test_loaded_drop.py keeps the directive).
 """
+
+# goh-reads-staged: tests
 
 from __future__ import annotations
 

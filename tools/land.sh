@@ -186,22 +186,5 @@ fi
 identity="$("$GOH_PY" "$GOH/lib/gate_identity.py" key --mode "$mode" </dev/null 7>&-)" || identity=unknown
 printf '%s %s\n' "$tip" "$identity" >>"$(git -C "$main" rev-parse --path-format=absolute --git-common-dir)/goh-landed"
 ok "landed ${tip:0:8} on $(git -C "$main" rev-parse --abbrev-ref HEAD) in $main (nothing pushed)"
-# THE LOADED SUITE LEAVES THE SHIP (GOH.SHIPRELREUSE R2). A repo that declares GOH_LAND_LOADED (goh:
-# tools/loaded_suite.sh) has it started now on the tip just landed, in the background, its verdict
-# recorded by tree (lib/loaded_verdict.py): the release cut from this tip reads it instead of
-# running it. The runner outlives this script in a session of its own; its load.py accounts and
-# reaps every spinner. A start that fails is said, never a failed land: the ship refuses the tip.
-loaded=""
-if [ -f "$here/.gatesrc" ]; then
-    loaded="$(cd "$here" && bash -c 'unset GOH_LAND_LOADED; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_LOADED-}"')" || loaded=""
-fi
-if [ -n "$loaded" ] && [ -n "${GATES_OF_HECK_SUITE_RUNNER:-}" ]; then
-    # A land run by a test of goh's own suite (a clone carrying this .gatesrc) must not start a
-    # second suite under load behind the first: tools/pytest.sh refuses a nested suite anyway.
-    info "land.sh: inside a running goh suite (pid $GATES_OF_HECK_SUITE_RUNNER) -- the loaded run of ${tip:0:8} is not started"
-elif [ -n "$loaded" ]; then
-    "$GOH_PY" "$GOH/lib/loaded_verdict.py" start --repo "$main" --sha "$tip" --cmd "$loaded" 7>&- </dev/null \
-        || warn "land.sh: the loaded run of ${tip:0:8} did not start -- a ship of it will refuse until it has a verdict"
-fi
 exit
 } # parse-guard

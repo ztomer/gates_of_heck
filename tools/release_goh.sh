@@ -11,9 +11,7 @@
 #      `release: vVERSION -- TITLE` commit through the hooks. Nothing else: the version is the tag
 #      (lib/goh_version.sh), never a number in Cargo.toml (GOH.SHIPRELREUSE), and `goh tag-version`
 #      reads the release from this commit's CHANGELOG.md (.gatesrc GOH_TAG_VERSION_SOURCES);
-#   3. the tip's loaded verdict (lib/loaded_verdict.py: the suite once under tools/load.py's
-#      spinners, GOH.CLASS.HARNESS, run by the land that landed the tip -- GOH.SHIPRELREUSE R2),
-#      then tools/land.sh from that worktree, gated by lib/release_gate.py (the structural gate and
+#   3. tools/land.sh from that worktree, gated by lib/release_gate.py (the structural gate and
 #      the tests that read the release files when that is all the commit changed, R3): main moves
 #      only through land (.gatesrc GOH_LANDED_ONLY), never a commit in the main checkout and
 #      never GOH_MAIN_COMMIT_OK;
@@ -82,7 +80,7 @@ if [ -e "$wt" ]; then  # a release killed before its trap ran
         exit 1
     fi
 fi
-tip="$(git rev-parse HEAD)"   # the land-gated tip the release is cut from: its loaded verdict
+tip="$(git rev-parse HEAD)"   # the land-gated tip the release is cut from: its release gate's base
 git worktree add -q -b "$branch" "$wt" "$tip"
 # The worktree and its branch go on every exit: landed, main holds the commit; refused, nothing moved.
 # The tagged build below is waited for, never left running past the kit (it only fills the store).
@@ -111,7 +109,7 @@ release: ${heading#\#\# }
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 MSG
 )
-# THE TAGGED BUILD, BESIDE THE WAIT, THE LAND AND THE PUSH (GOH.TAGPUSHGATE). A tagged commit's
+# THE TAGGED BUILD, BESIDE THE LAND AND THE PUSH (GOH.TAGPUSHGATE). A tagged commit's
 # stamp names its tag, so its goh is a build of its own; the first gate to ask for it was the tag
 # push's tag check, which rebuilt goh there: 98.6 s of v0.125.0's ship at load 190, on the critical
 # path. Built here as the tag it will carry (build-goh.sh --as-release, into the store), it is ready
@@ -125,19 +123,9 @@ prebuild=$!
 info "release: building goh as $TAG beside the land (pid $prebuild)"
 (
     cd "$wt"
-    # The suite once under deliberate load, before main moves (GOH.CLASS.HARNESS): a test the box's
-    # load turns red is this release's refusal, named, not a random later land's. It is no longer
-    # RUN here (485-511 s of every release step): each land starts it on the tip it landed and
-    # records the verdict by tree (.gatesrc GOH_LAND_LOADED, lib/loaded_verdict.py), and this
-    # release's commit differs from that tip only in the changelog, so the tip's verdict is read:
-    # waited for while it runs, refused red, died or missing (GOH.SHIPRELREUSE R2). Each phase is
-    # one row of goh ship's profile (timed: lib/step_timings.py, GOH.SHIPPROFILE). Under goh ship
-    # this read is instant: the ship worker waited for the verdict under the land lock before its
-    # first step (tools/ship.py before_clock, GOH.SHIPLOADEDWAIT), never inside this step's clock.
-    # The verdict of the command land started (GOH_LAND_LOADED): the record is keyed by it (GOH.VERDICTKEY).
-    loaded="$(bash -c 'unset GOH_LAND_LOADED; [ -f .gatesrc ] && . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_LOADED-}"')"
-    timed "release: the tip's loaded verdict" "$GOH_PY" "$GOH/lib/loaded_verdict.py" wait \
-        --repo "$main" --sha "$tip" --max 3600 ${loaded:+--cmd "$loaded"}
+    # No loaded verdict is read (GOH.LOADEDDROP): the post-land loaded run caught nothing in 13
+    # runs and cost every ship its wait; tests/test_load_sensitive.py and the wall-clock ratchet
+    # keep the static guard, at commit.
     # The land's gate (GOH.SHIPRELREUSE R3): this commit changes only release files, so it runs the
     # structural gate and the tests that read them (lib/release_gate.py); a diff since the tip with
     # anything else in it -- main moved and land rebased -- runs the full gate land would have run.

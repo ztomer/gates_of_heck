@@ -12,7 +12,7 @@ under a hand-set GOH_LAND_GATE=true wrote exactly as a full gate's.
 
 The three parts:
   * MODE -- the command or gate mode the verdict is of (`full` for a land's own push gate, else
-    the GOH_LAND_GATE string; a loaded run's command);
+    the GOH_LAND_GATE string);
   * the CONTENT of the gates that ran: every file under gates/ checks/ lib/ tools/ tui/ of the
     gates root by path, kind and bytes -- ONE formula, so a checkout and its commit's head export
     key alike (GOH.VERDICTKEYDRIFT: two formulas put one tree's loaded verdict under two keys and
@@ -22,8 +22,9 @@ The three parts:
     and mtime (no spawn: an upgrade rewrites the binary); a rustup proxy also by the toolchain
     binary it resolves to (`rustup which`, not the RUSTUP_TOOLCHAIN spelling); plus the selected
     Xcode. An absent tool is its own token, so installing one changes the identity.
-Used by gates/_proven.sh's step identity, lib/loaded_verdict.py's record key and tools/land.sh's
-goh-landed line (read by the push rule). Pinned by tests/test_verdict_key.py.
+Used by gates/_proven.sh's step identity and tools/land.sh's goh-landed line (read by the push
+rule); the loaded run's record key went with that run (GOH.LOADEDDROP). Pinned by
+tests/test_verdict_key.py.
 """
 
 from __future__ import annotations

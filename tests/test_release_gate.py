@@ -117,9 +117,6 @@ def test_the_release_kit_hands_its_land_this_gate_with_the_tip_it_cut_from(repo:
     (tools / "land.sh").chmod(0o755)
     (repo / "CHANGELOG.md").write_text("# CHANGELOG\n\n## Unreleased\n\n* **Two.** b\n")
     tip = _commit(repo, "feat: two")
-    import loaded_verdict  # the tip's loaded verdict (R2), green: this test is about the land
-
-    loaded_verdict.write(loaded_verdict.record_path(repo, "HEAD"), {"state": "green", "ended": 0})
     r = subprocess.run(["bash", str(KIT), "0.2.0"], cwd=repo, env=hermetic_env(drop_git=True),
                        capture_output=True, text=True, timeout=patience(60),
                        stdin=subprocess.DEVNULL, check=False)  # fmt: skip

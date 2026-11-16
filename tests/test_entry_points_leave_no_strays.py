@@ -154,10 +154,6 @@ def test_the_release_worktree_lives_under_the_run_root(repo: Path, tmp_path: Pat
     (repo / "Cargo.toml").write_text('[workspace.package]\nversion = "0.1.0"\n')
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "feat: x")
-    sys.path.insert(0, str(REPO_ROOT / "lib"))
-    import loaded_verdict  # the tip's loaded verdict, green (GOH.SHIPRELREUSE R2)
-
-    loaded_verdict.write(loaded_verdict.record_path(repo, "HEAD"), {"state": "green", "ended": 0})
     run = tmp_path / "run"
     kit = REPO_ROOT / "tools" / "release_goh.sh"
     for _ in range(2):  # twice: the second finds the one stable path free again

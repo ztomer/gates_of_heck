@@ -208,9 +208,6 @@ GOH_SHIP_RELEASE='tools/release_goh.sh {version}'
 # so a pushed release tag is held to the stanza its own commit cut, CHANGELOG.md's newest heading.
 GOH_TAG_VERSION_SOURCES='changelog:CHANGELOG.md'
 GOH_SHIP_RELEASE_PUSHES=1
-# Each land starts the suite once under load on the tip it landed and records the verdict by tree
-# (lib/loaded_verdict.py); the release kit reads that verdict instead of running it (GOH.SHIPRELREUSE).
-GOH_LAND_LOADED='tools/loaded_suite.sh'
 # The release commit's push re-runs only what its land ran: release files only on a parent whose land
 # was green (goh-landed) runs the structural gate and the release files' readers (lib/release_gate.py).
 GOH_PUSH_RELEASE_REUSE=on

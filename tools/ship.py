@@ -436,12 +436,10 @@ def worker(result: str, resume: bool = False) -> int:
         res["pid"] = os.getpid()
         save(res)
         import land_lock  # here, not at the top: tools/ship.py's import ceiling (E402) is spent
-        import loaded_verdict  # the tip's loaded verdict, waited for before the clock
 
         queue, who = land_lock.path(Path(res["repo"])), f"goh ship {res['name']} @ {res['sha'][:8]}"
         with land_lock.held(queue, who, info):  # lock-order: land, under the ship lock
-            ready = resume or loaded_verdict.before_clock(res, command)
-            return run_steps(res, "verify" if resume else STEPS[0]) if ready else 1
+            return run_steps(res, "verify" if resume else STEPS[0])
 
 
 def start(args: argparse.Namespace) -> int:

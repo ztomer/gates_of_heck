@@ -137,7 +137,7 @@ def load_now() -> float | None:
 
 def timed(label: str, argv: list[str], tier: str = "phase") -> int:
     """Run ARGV (stdout, stderr inherited) as one recorded row LABEL whose children name it their
-    parent: a phase that is no bounded step (a release's loaded suite, its land) still shows."""
+    parent: a phase that is no bounded step (a release's land, its push) still shows."""
     import subprocess
     import time
 

@@ -66,5 +66,5 @@ addopts = "--strict-markers"
 markers = [
     "slow: needs a real toolchain (swiftlint, a release build); skip with -m 'not slow'",
     "xdist_group: pin tests to one worker under --dist loadgroup (also declared by pytest-xdist)",
-    "load_sensitive: can fail under load and pass without it; the loaded run runs only these (tests/load_sensitive.py)",
+    "load_sensitive: can fail under load and pass without it (tests/load_sensitive.py derives the set)",
 ]

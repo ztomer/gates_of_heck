@@ -112,7 +112,6 @@ def test_the_release_commit_changes_only_the_changelog(repo: Path, tmp_path: Pat
     seen = tmp_path / "release-commit.txt"
     tools = repo / "tools"
     tools.mkdir()
-    (tools / "loaded_suite.sh").write_text("#!/bin/bash\nexit 0\n")
     (tools / "land.sh").write_text(
         f'#!/bin/bash\ngit show --name-status --format= HEAD >"{seen}"\nexit 1\n'
     )
@@ -123,12 +122,6 @@ def test_the_release_commit_changes_only_the_changelog(repo: Path, tmp_path: Pat
     (repo / "changelog" / "X.md").write_text("* **Two.** b\n")
     git(repo, "add", ".gatesrc", "changelog", "tools")
     _commit(repo, "# CHANGELOG\n\n## Unreleased\n\n## v0.1.0 -- first\n\n* **One.** a\n")
-    import sys
-
-    sys.path.insert(0, str(REPO_ROOT / "lib"))
-    import loaded_verdict  # the tip's loaded verdict (R2), green: this test is about the commit
-
-    loaded_verdict.write(loaded_verdict.record_path(repo, "HEAD"), {"state": "green", "ended": 0})
     r = _kit(repo, "0.2.0")
     assert seen.is_file(), r.stdout + r.stderr
     assert sorted(seen.read_text().split("\n")) == sorted(
