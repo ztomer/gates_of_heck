@@ -31,6 +31,22 @@ judged as a command in its own right (against the whole outer command text, whic
 Ways out, named in the refusal: wait on the PID (`while kill -0 $pid`), the bracket trick, or
 `wait` for a job the shell started itself. The one escape is `# pgrep-ok: <reason>`.
 
+EVERY OTHER PLACE THE CALL CAN STAND (GOH.PGREPSELF, 2026-11-16). The same invariant holds for a
+`pgrep -f` / `pkill -f` that is no loop condition: `pgrep -f foo || foo &`, `if pgrep -f X`, a
+`$(pgrep -f X | wc -l)`, a `pkill -f X` after the command that started X. Two lane loops, a
+fleet-deploy over ssh and a camoufox neighbour kill met it (2026-11-15). `judge_anywhere` refuses
+
+  * a `pgrep -f`/`pkill -f` at the top level whose pattern, read as a regex, matches the command's
+    text at TWO places or more (its own spelling is one; the second is "elsewhere", so the shell
+    that runs the command matches too -- one spelling alone is left to run, as before);
+  * one inside a `sh|bash|zsh -c '<script>'` string or an `ssh host '<script>'` remote command whose
+    pattern matches that string: the shell started for it holds the script in its command line, so
+    one spelling is enough.
+
+It passes when the command excludes its own pid (`$$`, `$BASHPID`, `$PPID`), and the bracket form
+passes by itself. The refusal names the safe forms: a pid file or `$!`, waiting on a log line, the
+bracket form. Same escape.
+
 Not judged: a file. A script's command line is `bash script.sh`, which does not contain the
 script's patterns, so the loop is not a self-match there.
 """
@@ -63,6 +79,20 @@ WAY_OUT = (
     "`wait` for a job the shell itself started. To keep the loop on purpose, add "
     "`# pgrep-ok: <reason>` to the command."
 )
+
+
+def _reason_anywhere(prog: str, pattern: str) -> str:
+    bracket = f"[{pattern[0]}]{pattern[1:]}" if pattern[:1].isalnum() else "[f]oo"
+    return (
+        f"This `{prog} -f {pattern}` matches the shell that runs it: the pattern appears in that "
+        "shell's OWN command line (the whole command, or the `sh -c` string / ssh remote command "
+        f'that holds it), and `{prog}` skips itself, never its parent -- so "is it running" is '
+        "always yes, a wait on it never ends, and a kill can take the shell down. Use the pid of "
+        'what YOU started (`cmd & pid=$!`, or a pid file: `kill -0 "$(cat x.pid)"`), wait on a '
+        "log line (`tail -f x.log | grep -m1 ready`), or the bracket form "
+        f"(`{prog} -f '{bracket}'`; the regex cannot match its own spelling, e.g. `[f]oo` for "
+        "`foo`). To keep it on purpose, add `# pgrep-ok: <reason>` to the command."
+    )
 
 
 def _reason(prog: str, pattern: str) -> str:
@@ -202,6 +232,97 @@ def _judge_loop(original: str, start: int, end: int, context: str) -> str | None
     return None
 
 
+_OWN_PID = re.compile(r"\$\$|\$\{\$\}|\$\{?BASHPID\}?|\$\{?PPID\}?")
+_SSH_ARG = set("bcDEeFIiJLlmOopQRSWw")  # ssh options that take an argument
+_OPEN_SUBST = re.compile(r"\$\([^)]*$|`[^`]*$")  # inside an unclosed `$(` or backtick
+
+
+def _nested(command: str) -> list[str]:
+    """The scripts the command hands to a shell of its own: `sh|bash|zsh -c '<script>'` and the
+    remote command of `ssh [opts] host <script>` (which sshd runs as `sh -c "<script>"`)."""
+    lex = shlex.shlex(command.replace("\n", " ; "), posix=True, punctuation_chars=";&|")
+    lex.whitespace_split = True
+    lex.commenters = "#"
+    try:
+        toks = list(lex)
+    except ValueError:
+        return []
+    segs: list[list[str]] = [[]]
+    for tok in toks:
+        if set(tok) <= set(";&|"):
+            segs.append([])
+        else:
+            segs[-1].append(tok)
+    found = []
+    for seg in segs:
+        for index, tok in enumerate(seg):
+            name = os.path.basename(tok)
+            if name in _SHELLS:
+                for at in range(index + 1, min(index + 4, len(seg) - 1)):
+                    if seg[at].startswith("-") and "c" in seg[at][1:]:
+                        found.append(seg[at + 1])
+                        break
+            elif name == "ssh":
+                at = index + 1
+                while at < len(seg) and seg[at].startswith("-"):
+                    at += 2 if len(seg[at]) == 2 and seg[at][1] in _SSH_ARG else 1
+                if at + 1 < len(seg):  # seg[at] is the host; the rest is the remote command
+                    found.append(" ".join(seg[at + 1 :]))
+            else:
+                continue
+            break
+    return found
+
+
+def _selfmatching(script: str, context: str, minimum: int) -> str | None:
+    """The refusal for a `pgrep -f` / `pkill -f` that is CODE in `script` and whose pattern matches
+    `context` at `minimum` places or more (the call's own spelling is one of them), or None."""
+    masked = busyloop.mask(script)
+    for match in _PROG.finditer(script):
+        prefix = script[: match.start()].rsplit("\n", 1)[-1]
+        if masked[match.start()] != script[match.start()] and not _OPEN_SUBST.search(prefix):
+            continue  # quoted text, a heredoc body or a comment: not a call
+        prog = match.group("prog")
+        if not prog.startswith("p"):  # pgrep / pkill (the grep family is _PROG's other half)
+            continue
+        argv = _split(script[match.end() : _end_of_command(script, match.end())])
+        if argv is None:
+            continue
+        flags, pos = _flags(argv, _PGREP_ARG)
+        if "f" not in flags or "x" in flags or not pos or not pos[-1]:
+            continue
+        pattern = pos[-1]
+        try:
+            rx = re.compile(pattern, re.IGNORECASE if "i" in flags else 0)
+        except re.error:
+            rx = re.compile(re.escape(pattern))
+        if len(rx.findall(context)) >= minimum:
+            return _reason_anywhere(prog, pattern)
+    return None
+
+
+def judge_anywhere(command: str) -> str | None:
+    """The refusal for a `pgrep -f` / `pkill -f` that matches the shell running it, wherever the
+    call stands (GOH.PGREPSELF), or None. `# pgrep-ok: <reason>`; see the module docstring."""
+    if ESCAPE.search(command):
+        return None
+    # The top level: the call's own spelling is one match; a second is "elsewhere".
+    reason = None if _OWN_PID.search(command) else _selfmatching(command, command, 2)
+    if reason:
+        return reason
+    pending, seen = _nested(command), set()
+    while pending:  # a script handed to a shell: that shell's command line IS the script
+        script = pending.pop()
+        if script in seen:
+            continue
+        seen.add(script)
+        reason = None if _OWN_PID.search(script) else _selfmatching(script, script, 1)
+        if reason:
+            return reason
+        pending += _nested(script)
+    return None
+
+
 def judge(command: str, context: str | None = None) -> str | None:
     """The refusal for a command whose wait loop matches its own shell, or None.
 
@@ -210,6 +331,7 @@ def judge(command: str, context: str | None = None) -> str | None:
     """
     if ESCAPE.search(command):
         return None
+    top = context is None
     context = command if context is None else context
     masked = busyloop.mask(command)
     for match in _LOOP.finditer(masked):
@@ -227,4 +349,4 @@ def judge(command: str, context: str | None = None) -> str | None:
                     if reason:
                         return reason
                     break
-    return None
+    return judge_anywhere(command) if top else None
