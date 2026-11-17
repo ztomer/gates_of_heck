@@ -52,7 +52,12 @@ def test_a_rebased_land_records_the_landed_tips_identity(tmp_path: Path) -> None
     _git(wt, "commit", "-q", "--no-verify", "-m", "lane")
     # main moves a GATE byte under the lane: the rebased tip's gates are not the branch tip's
     lib = main / "lib" / "gate_identity.py"
-    lib.write_text(lib.read_text() + "# main moved\n")
+    # One byte more on a line it has: the file may sit at the 500-line cap, and the land's pre-step
+    # judges the rebased tree (GOH.PREPARITY), so a 501st line would be a red main, not a moved one.
+    lib.write_text(
+        lib.read_text().replace("    sys.exit(main())\n", "    sys.exit(main())  # moved\n", 1)
+    )
+    assert "# moved" in lib.read_text(), "the fixture must move a gate byte"
     _git(main, "commit", "-q", "--no-verify", "-am", "main moved a gate")
     env = hermetic_env(drop_git=True, GOH_LAND_GATE="true")
     for k in ("GOH_LIVE", "GOH_LIVE_ROOT", "PYTEST_CURRENT_TEST", "PYTHONPATH"):

@@ -118,8 +118,49 @@ fi
 # test that ran the binary. One file per land, removed with it. A rebased tip CARRIES verdicts from
 # the pre-step's tree and main's recorded tip, for what the diff between them does not choose
 # (GOH.VERDICTCARRY, the one store's `carry` path).
-if [ -n "$pre" ]; then
-    verdicts="$(mktemp "${TMPDIR:-/tmp}/goh-land-verdicts.XXXXXX")" || exit 2
+# land_rebase -- the branch on top of main as it is now: sets base, moves tip, and sets rebased=1
+# when it had to move. A conflict aborts the rebase and lands nothing.
+land_rebase() {
+    rebased=0
+    base="$(git -C "$main" rev-parse HEAD)"
+    git merge-base --is-ancestor "$base" "$tip" && return 0
+    # The registries every lane appends to merge by ROW (.gitattributes `merge=goh-rows`,
+    # lib/row_merge.py, GOH.LANDUNION): two lanes' independent rows were a red and a full queue
+    # wait (3 on 2026-11-17); two edits to one row still conflict. A repo's own config need not
+    # define the driver: it is defined here, for this rebase only.
+    rows=()
+    if [ -f "$GOH/lib/row_merge.py" ]; then
+        printf -v driver '%q %q %%O %%A %%B %%P' "$GOH_PY" "$GOH/lib/row_merge.py"
+        rows=(-c "merge.goh-rows.driver=$driver")
+    fi
+    if ! git "${rows[@]}" rebase -q "$base" 7>&- >/dev/null 2>&1 </dev/null; then
+        conflicted="$(GIT_OPTIONAL_LOCKS=0 git diff --name-only --diff-filter=U 7>&- 2>/dev/null </dev/null | paste -sd ' ' -)" || conflicted=""
+        git rebase --abort 7>&- >/dev/null 2>&1 </dev/null || true
+        err "land.sh: $branch conflicts with main ${base:0:8} in ${conflicted:-(unnamed)} -- the rebase was aborted, $branch is left at ${tip:0:8}; rebase it by hand -- nothing landed"
+        exit 1
+    fi
+    now="$(git rev-parse HEAD)"
+    info "rebased $branch onto main ${base:0:8}: ${tip:0:8} -> ${now:0:8}"
+    tip="$now"
+    # The gates that judge the tip are the TIP's (GOH.VERDICTKEYDRIFT). Run from this checkout,
+    # this script is the head export of the tip BEFORE the rebase (goh_from_head, above), and the
+    # gate, the goh-landed identity and the loaded run's record key all came from that export:
+    # b54b9d62 landed rebased from 380f48d0, its loaded verdict was recorded under 380f48d0's gates
+    # (aa4f97f2) and the ship, reading under b54b9d62's, found none. Only when the rebased checkout
+    # IS the gates checkout: a consumer's rebase moves no gates, and a caller's pinned export stays.
+    if [ -f "$GOH/.goh-head" ] && [ -n "${GOH_LIVE_ROOT:-}" ] \
+            && [ "$(cd "$GOH_LIVE_ROOT" 2>/dev/null && pwd -P)" = "$(cd "$here" && pwd -P)" ] \
+            && goh_export_rev "$here" "$tip" "$tip"; then
+        GOH="$_goh_export"
+        export GOH_DIR="$GOH"
+        goh_path_front PYTHONPATH "$GOH"
+        info "the gates are ${tip:0:8}'s now: $GOH"
+    fi
+    rebased=1
+}
+# land_pre -- the pre-step on the tip as it is now; exits 1 on a red set (THE PRE-STEP, above).
+land_pre() {
+    [ -n "$verdicts" ] || verdicts="$(mktemp "${TMPDIR:-/tmp}/goh-land-verdicts.XXXXXX")" || exit 2
     rm -f "$verdicts"   # the pre-step's suite writes it whole, or there is no record
     pre_base="$(git -C "$main" rev-parse HEAD)"
     info "pre-land: $pre"
@@ -127,19 +168,20 @@ if [ -n "$pre" ]; then
     # pre-step starts while long gates hold every long slot -- a land queues for a long slot ONCE,
     # for its gate. As a `ship` gate it queued twice, and a lane that would go red waited up to
     # 632 s first (2026-11-16). The wait is printed apart from the run: the step stamps its start.
-    pre_start="$(mktemp "${TMPDIR:-/tmp}/goh-land-prestart.XXXXXX")" || exit 2
+    [ -n "$pre_start" ] || pre_start="$(mktemp "${TMPDIR:-/tmp}/goh-land-prestart.XXXXXX")" || exit 2
+    : >"$pre_start"
     pre_max="${GOH_LAND_PRE_MAX:-10m}"   # the deadline; a seam so a test can reach it
     pre_t0=$(date +%s)
     pre_rc=0
     (cd "$here" && GOH_LAND_VERDICTS_RECORD="$verdicts" GOH_GATE_CLASS=short "$GOH_PY" "$GOH/tools/load.py" \
         --background-ok "pre-land" --max "$pre_max" 0 -- \
         bash -c 'date +%s >"$1"; shift; exec bash -c "$@"' pre-mark "$pre_start" "$pre" pre-land "$pre_base" \
-        </dev/null) || pre_rc=$?
+        </dev/null 7>&-) || pre_rc=$?
     pre_t1=$(date +%s)
     pre_s=""
     IFS= read -r pre_s <"$pre_start" 2>/dev/null || true
     [[ "$pre_s" =~ ^[0-9]+$ ]] || pre_s=$pre_t1   # never started: all of it was the wait
-    pre_wall=$((pre_t1 - pre_t0))
+    pre_wall=$((${pre_wall:-0} + pre_t1 - pre_t0))
     pre_took="in $((pre_t1 - pre_t0)) s: waited $((pre_s - pre_t0)) s, ran $((pre_t1 - pre_s)) s"
     # A pre-step that reached its deadline (load.py's EXIT_DEADLINE, 124) found nothing: it exists
     # to fail FAST, and the gate runs the whole suite anyway -- no verdict, never red
@@ -161,7 +203,16 @@ if [ -n "$pre" ]; then
     else
         ok "pre-land green $pre_took"
     fi
-fi
+}
+# THE TIP MAIN WILL HOLD (GOH.PREPARITY class 3): a branch behind main is rebased BEFORE its pre-step,
+# outside the lock (the rebase moves the branch, never main). The pre-step judged the tip as the lane
+# left it and the rebase came after, under the lock: PREPARITY's land went green at 3709f571, was
+# rebased onto a main holding gates/_proven.sh at 500 lines, and went red in the full gate at 501;
+# every lane older than a ship failed changelog_tags so (REUSEAUDIT2 dd8403da). The enqueue's run
+# (GOH_LAND_PRE_ONLY) moves nothing: the queue holds the sha the lane enqueued.
+rebased=0
+[ -n "${GOH_LAND_PRE_ONLY:-}" ] || land_rebase
+[ -z "$pre" ] || land_pre
 # GOH_LAND_PRE_ONLY (GOH.ENQUEUEPRE): `goh land --enqueue` runs the pre-step in the caller's worktree
 # before it queues the tip -- this script, so the set, the lane and the deadline are the lander's own
 # -- and stops here: no lock, no gate, no fast-forward. 0 is green or no verdict, 1 is a red set.
@@ -209,39 +260,12 @@ if [ "$tip" = "$base" ]; then
     exit 1
 fi
 # Gate the commit main will fast-forward to: the branch on top of main as it is now, under the lock.
-if ! git merge-base --is-ancestor "$base" "$tip"; then
-    # The registries every lane appends to merge by ROW (.gitattributes `merge=goh-rows`,
-    # lib/row_merge.py, GOH.LANDUNION): two lanes' independent rows were a red and a full queue
-    # wait (3 on 2026-11-17); two edits to one row still conflict. A repo's own config need not
-    # define the driver: it is defined here, for this rebase only.
-    rows=()
-    if [ -f "$GOH/lib/row_merge.py" ]; then
-        printf -v driver '%q %q %%O %%A %%B %%P' "$GOH_PY" "$GOH/lib/row_merge.py"
-        rows=(-c "merge.goh-rows.driver=$driver")
-    fi
-    if ! git "${rows[@]}" rebase -q "$base" 7>&- >/dev/null 2>&1 </dev/null; then
-        conflicted="$(GIT_OPTIONAL_LOCKS=0 git diff --name-only --diff-filter=U 7>&- 2>/dev/null </dev/null | paste -sd ' ' -)" || conflicted=""
-        git rebase --abort 7>&- >/dev/null 2>&1 </dev/null || true
-        err "land.sh: $branch conflicts with main ${base:0:8} in ${conflicted:-(unnamed)} -- the rebase was aborted, $branch is left at ${tip:0:8}; rebase it by hand -- nothing landed"
-        exit 1
-    fi
-    now="$(git rev-parse HEAD)"
-    info "rebased $branch onto main ${base:0:8}: ${tip:0:8} -> ${now:0:8}"
-    tip="$now"
-    # The gates that judge the tip are the TIP's (GOH.VERDICTKEYDRIFT). Run from this checkout,
-    # this script is the head export of the tip BEFORE the rebase (goh_from_head, above), and the
-    # gate, the goh-landed identity and the loaded run's record key all came from that export:
-    # b54b9d62 landed rebased from 380f48d0, its loaded verdict was recorded under 380f48d0's gates
-    # (aa4f97f2) and the ship, reading under b54b9d62's, found none. Only when the rebased checkout
-    # IS the gates checkout: a consumer's rebase moves no gates, and a caller's pinned export stays.
-    if [ -f "$GOH/.goh-head" ] && [ -n "${GOH_LIVE_ROOT:-}" ] \
-            && [ "$(cd "$GOH_LIVE_ROOT" 2>/dev/null && pwd -P)" = "$(cd "$here" && pwd -P)" ] \
-            && goh_export_rev "$here" "$tip" "$tip"; then
-        GOH="$_goh_export"
-        export GOH_DIR="$GOH"
-        goh_path_front PYTHONPATH "$GOH"
-        info "the gates are ${tip:0:8}'s now: $GOH"
-    fi
+# Main moved again while the pre-step ran (another lane landed): the rebased tip is pre-stepped
+# again, before the gate, so the red only the merged tree has is still the pre-step's (GOH.PREPARITY).
+land_rebase
+if [ "$rebased" = 1 ] && [ -n "$pre" ]; then
+    info "pre-land: main moved during the pre-step -- again on ${tip:0:8}"
+    land_pre
 fi
 info "gate: $gate"
 # In the gate's environment only, never exported: an exported GOH_ key is gate bookkeeping and must be
