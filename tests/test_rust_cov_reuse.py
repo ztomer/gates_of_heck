@@ -298,6 +298,33 @@ def test_a_gates_root_behind_another_on_pythonpath_is_shadowed(repo: Path, tmp_p
     assert _run(repo, PYTHONPATH=f"{a}:{old}") == "MEASURED"
 
 
+def test_more_copies_of_one_gates_and_their_docs_are_no_new_input(
+    repo: Path, tmp_path: Path
+) -> None:
+    """GOH.VERDICTFREEINLINE's land (tests, gates/verdict_free_keys.txt, docs, changelog) measured
+    again, 830 s, and named docs/ and changelog/ as what moved in PYTHONPATH: that PYTHONPATH held
+    one more copy of the same gates (`goh:shadowed` once more), and a line that keys no files named
+    the whole tree's diff. A wholly shadowed root and a repeated entry are no input; a gates root's
+    docs/ and changelog/ are not its coverage scripts; a real PYTHONPATH miss names no file."""
+    a = _gates_copy(tmp_path / "head" / "a")
+    b = _gates_copy(tmp_path / "head" / "b")
+    for rel in ("docs/config.md", "changelog/GOH.X.md"):
+        (b / rel).parent.mkdir(parents=True, exist_ok=True)
+        (b / rel).write_text("prose\n")
+    assert _run(repo, PYTHONPATH=f"{a}:/usr/lib/py") == "MEASURED"
+    _write(repo, "docs/note.md", "prose\n")  # the tree moves, by no input
+    assert _run(repo, PYTHONPATH=f"{b}:{a}:/usr/lib/py:{b}") == "PLAIN"
+    c = _gates_copy(tmp_path / "head" / "c")
+    edited = c / "gates/_coverage_rust.sh"
+    edited.write_text(edited.read_text() + "\n# an edit\n")
+    _write(repo, "changelog/GOH.Y.md", "prose\n")
+    ran, out = _run_out(repo, PYTHONPATH=f"{c}:/usr/lib/py")
+    assert ran == "MEASURED", out
+    decision = _decision(out)
+    assert "PYTHONPATH (its gates roots by content) moved" in decision, decision
+    assert "docs/" not in decision and "changelog/" not in decision, decision
+
+
 def test_the_runner_is_an_input_and_the_suite_is_not(repo: Path) -> None:
     """The external command runs the binary THROUGH a runner (goh's ./tools/pytest.sh): what it
     selects and how it runs moves the number, so it and what it sources are keyed; the suite it

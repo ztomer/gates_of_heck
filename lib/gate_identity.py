@@ -320,22 +320,29 @@ def pythonpath(value: str, repo: Path, scope: Callable[[Path], list[str]]) -> st
     last one's measurement (GOH.RUSTCOVKEYSCOPE: three lands in a row re-measured, 468-476 s each)
     nor any proven step (GOH.PROVENPYPATH). A gates root BEHIND another is keyed by the files of
     its scope the roots ahead lack: the rest is never read from it. ~/.zshrc puts the live checkout
-    there, main before the land, and keyed whole it moved the key once after every change."""
+    there, main before the land, and keyed whole it moved the key once after every change. One
+    whose every file is ahead is no input at all, and an entry met before adds nothing: as
+    `goh:shadowed` each, the land after GOH.RUSTCOVKEYSCOPE's re-measured (830 s) because its
+    PYTHONPATH carried one more copy of the same gates than the last land's had."""
     top = repo.resolve()
-    out = []
+    out: list[str] = []
     ahead: set[str] = set()
     for entry in value.split(":"):
         d = Path(entry).resolve() if entry else None
         if d is not None and d == top:
-            out.append("repo")
+            label = "repo"
         elif d is not None and d.is_dir() and _is_goh_root(d):
             scripts = scope(d)
             rest = [r for r in scripts if r not in ahead]
-            out.append("goh:" + (content(d, rest) if rest else "shadowed"))
             ahead |= set(scripts)
+            if not rest:
+                continue  # wholly shadowed: nothing in scope is ever read from it
+            label = "goh " + content(d, rest)
         else:
-            out.append(entry)
-    return ":".join(out)
+            label = f"path {entry}"
+        if label not in out:
+            out.append(label)
+    return "; ".join(out)
 
 
 def _uncovered(repo: Path, inputs: list[str]) -> list[str]:

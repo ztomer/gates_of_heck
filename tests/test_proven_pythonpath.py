@@ -44,9 +44,14 @@ def _second_export(first: Path, tmp_path: Path) -> Path:
 def test_two_head_export_paths_of_one_content_share_a_proven_step(goh, repo, env, tmp_path):  # noqa: F811
     a = _export(goh, tmp_path)
     b = _second_export(a, tmp_path)
+    # What no gate imports or reads: the next commit's docs/ and changelog/ (GOH.VERDICTFREEINLINE's
+    # land re-measured beside such a diff).
+    for rel in ("docs/config.md", "changelog/GOH.X.md"):
+        (b / rel).parent.mkdir(parents=True, exist_ok=True)
+        (b / rel).write_text("prose\n")
     first = _prove(goh, repo, env, f"{a}:/usr/lib/py")
     assert first.returncode == 0 and runs(env) == 1, first.stdout + first.stderr
-    second = _prove(goh, repo, env, f"{b}:/usr/lib/py")
+    second = _prove(goh, repo, env, f"{b}:{a}:/usr/lib/py:{b}")  # one more copy, as lands vary
     assert second.returncode == 0, second.stdout + second.stderr
     assert runs(env) == 1, f"a second path of one content on PYTHONPATH re-ran: {second.stdout}"
     assert "proven on this tree" in second.stdout, second.stdout
@@ -79,7 +84,7 @@ def test_a_root_behind_another_is_keyed_only_by_what_the_one_ahead_lacks(goh, tm
         return gate_identity.pythonpath(pp, tmp_path / "repo", gate_identity.gate_files)
 
     base = key(f"{a}:{live}")
-    assert base.endswith(":goh:shadowed"), base
+    assert base == key(str(a)) == key(f"{a}:{live}:{a}"), "a wholly shadowed root moved the key"
     with open(live / "tui" / "lib.py", "a") as f:
         f.write("# shadowed by a's copy\n")
     assert key(f"{a}:{live}") == base

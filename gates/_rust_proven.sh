@@ -315,7 +315,12 @@ _rust_cov_moved() {
                 k = order[i]
                 if (k in seen) continue
                 seen[k] = 1
-                if (then[k] != now[k]) printf "%s\t%s\n", k, files(then[k]) " " files(now[k])
+                if (then[k] == now[k]) continue
+                # Trimmed: a line that keys no files has no paths, and a lone " " read as some made
+                # a bare `git diff --` name every changed file of the tree (docs, changelog) for
+                # PYTHONPATH (GOH.PROVENPYPATH).
+                p = files(then[k]) " " files(now[k]); gsub(/^ +| +$/, "", p)
+                printf "%s\t%s\n", k, p
             }
         }' "$1" <(printf '%s\n' "$2"))
     printf '%s\n' "${out:-nothing it keys}"

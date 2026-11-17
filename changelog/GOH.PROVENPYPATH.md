@@ -8,3 +8,9 @@
   imports still moves the key. The estate-corpus cache had the same hole twice: it keyed GOH_DIR's
   path and the export's `bin/goh` launcher (a fresh copy, new mtime, in every export); it keys the
   gates there by content now.
+* The land after GOH.RUSTCOVKEYSCOPE's (GOH.VERDICTFREEINLINE, tests/docs/changelog and
+  `gates/verdict_free_keys.txt`) still re-measured Rust coverage (830 s), naming `docs/` and
+  `changelog/` as what moved in PYTHONPATH. Neither had: its PYTHONPATH held one more copy of the
+  same gates, keyed as one more `goh:shadowed`, and a key line that names no files made the miss
+  run a bare `git diff --` over the whole tree. A wholly shadowed gates root and a repeated entry are
+  no input now, and such a line names no files.
