@@ -67,6 +67,7 @@ REUSE = "GOH_LAND_VERDICTS_REUSE"
 BIN_MARK = "goh_bin"  # a user property: the test ran the native binary
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CARRY = "carry"  # the audited reuse path (lib/reuse.py)
+DROPPED_KEY = "goh_land_verdicts_dropped"  # worker -> controller: nodes it deselected
 WORKER_KEY = "goh_land_reuse"  # the controller's decision, handed to each xdist worker
 ANCESTORS = 20  # first-parent commits of HEAD searched for a recorded tree
 SOURCES = 2  # ... of which this many records are carried from (each costs one affected_tests run)
@@ -264,6 +265,16 @@ def _whole(config) -> bool:
 def pytest_sessionfinish(session) -> None:
     if not _controller(session.config):
         return
+    # Every node reused or carried is a green run, not "no tests ran" (GOH.CARRYALL: the v0.130.0
+    # release gate deselected all 5812 and pytest's exit 5 failed the land). An empty collection
+    # with nothing deselected stays 5. Mapped before the store reads exitstatus: a whole run
+    # records `full`, so the next tree can carry from it.
+    if (
+        session.exitstatus == pytest.ExitCode.NO_TESTS_COLLECTED
+        and _state.get("dropped")
+        and not _failed
+    ):
+        session.exitstatus = pytest.ExitCode.OK
     path = _on(RECORD)
     if path and path != os.devnull:  # /dev/null: the store's record alone (a full run by hand)
         passed = {n: n in _bin for n in sorted(_called - _failed)}
@@ -470,3 +481,14 @@ def pytest_collection_modifyitems(config, items) -> None:
     if drop:
         config.hook.pytest_deselected(items=drop)
         items[:] = keep
+        if _controller(config):
+            _state["dropped"] = len(drop)
+        else:  # under xdist the controller collects nothing: the worker tells it
+            config.workeroutput[DROPPED_KEY] = len(drop)
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node, error) -> None:
+    """xdist, in the controller: how many collected nodes a worker deselected as passed."""
+    n = getattr(node, "workeroutput", {}).get(DROPPED_KEY, 0)
+    _state["dropped"] = max(int(_state.get("dropped", 0)), n)  # each worker collects the whole set

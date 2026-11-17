@@ -291,6 +291,25 @@ def test_the_pre_steps_passes_are_recorded_and_the_gates_suite_skips_them(
     assert "1 failed, 2 passed, 1 skipped" in cov.stdout, cov.stdout
 
 
+@pytest.mark.parametrize("workers", [[], ["-n", "2"]], ids=["serial", "xdist"])
+def test_a_run_whose_every_node_is_reused_exits_green_and_an_empty_one_does_not(
+    tmp_path: Path, workers: list[str]
+) -> None:
+    """GOH.CARRYALL: the v0.130.0 release gate reused or carried every node, pytest exited 5 ("no
+    tests ran") and the land failed. All deselected by the plan is green; nothing collected and
+    nothing deselected is still 5."""
+    (tmp_path / "conftest.py").write_text(SESSION_CONFTEST)
+    (tmp_path / "test_s.py").write_text("def test_pass():\n    pass\n")
+    rec = tmp_path / "rec.json"
+    assert _session(tmp_path, GOH_LAND_VERDICTS_RECORD=str(rec)).returncode == 0
+    reused = _session(tmp_path, *workers, GOH_LAND_VERDICTS_REUSE=str(rec))
+    assert "1 tests passed by the pre-land run are reused" in reused.stdout + reused.stderr
+    assert reused.returncode == 0, reused.stdout + reused.stderr
+    (tmp_path / "test_s.py").write_text("X = 1\n")
+    empty = _session(tmp_path, *workers, GOH_LAND_VERDICTS_REUSE=str(rec))
+    assert empty.returncode == 5, empty.stdout + empty.stderr
+
+
 def test_a_test_asking_for_the_binary_is_marked(goh, request) -> None:
     assert (lv.BIN_MARK, True) in request.node.user_properties
 
