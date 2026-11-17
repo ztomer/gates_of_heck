@@ -1,4 +1,4 @@
-"""Which code runs the goh binary, and which paths build it (GOH.AFFECTEDBINARY).
+"""Which code runs the goh binary, and which paths build it (GOH.AFFECTEDBINARY, GOH.BUILDINCLUDES).
 
 tools/affected_tests.py chooses, for a change to the binary's build inputs, every test that runs
 the binary: such a test names no crates/ path and imports no changed module, so no other edge
@@ -29,9 +29,18 @@ FIXTURES = {"goh", "native_goh"}  # the fixtures a test asks for by argument nam
 WORD = re.compile(r"(?<![A-Za-z0-9_-])[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![A-Za-z0-9_-])")
 
 
-def builds(path: str) -> bool:
-    """`path` is an input of the native binary's build (lib/gate_identity.py BUILD)."""
-    return any(path == b or path.startswith(f"{b}/") for b in gate_identity.BUILD)
+def build_inputs_in(root, changed: list[str]) -> list[str]:
+    """Each of `changed` that is an input of the native binary's build at `root`: the four roots
+    and each file a crate embeds (gate_identity.build_inputs, derived from the crates' include
+    literals, GOH.BUILDINCLUDES). The one reader every consumer of "the build changed" asks: this
+    edge, the verdict carry (tests/_land_verdicts.py)."""
+    inputs = gate_identity.build_inputs(root)
+    return [p for p in changed if any(p == b or p.startswith(f"{b}/") for b in inputs)]
+
+
+def build_input(root, changed: list[str]) -> str | None:
+    """The first of `changed` that is an input of the build at `root` (build_inputs_in), if any."""
+    return next(iter(build_inputs_in(root, changed)), None)
 
 
 def names(code: str) -> bool:
@@ -114,14 +123,16 @@ def choose(graph, tests: dict[str, str], changed: list[str], chosen: dict[str, s
     (lib/crate_reach.py, GOH.AFFECTEDBINARY2). A change whose reach cannot be told (main.rs,
     Cargo.toml, a module every run reaches) still chooses them all."""
     crate = crate_reach.Crate(graph.root)
-    inputs = [p for p in changed if builds(p) or p in crate.includes]
+    built = set(build_inputs_in(graph.root, changed))
+    inputs = [p for p in changed if p in built or p in crate.includes]
     if not inputs:
         return
     reach: set[str] = set()
     whole: str | None = None
     for path in inputs:
         subs = crate.subcommands(path)
-        if subs is None:
+        unplaced = path in built and path not in crate.includes and path not in crate.module
+        if subs is None or (unplaced and not subs):  # an embed the reach cannot place: every one
             whole = whole or path
         else:
             reach |= subs

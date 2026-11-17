@@ -32,7 +32,7 @@ every diff). Its sources: the pre-step's tree (the record names its commit) and 
 records on HEAD's first-parent chain (main's tip, which the last land's gate recorded). It carries
 nothing from a tree whose diff touches what pytest loads before every test (affected_tests'
 Closure.base, pyproject.toml, tools/pytest.sh), and no node that ran the native binary across a
-change to its build inputs (lib/gate_identity.py BUILD). A carried node is recorded as passed on
+change to its build inputs (binary_runners.build_input). A carried node is recorded as passed on
 the new tree, so the next land carries it on; only a run that carried nothing from another tree
 and failed nothing is FULL, and the release kit refuses a tip without a full record
 (GOH_SHIP_FULL_SUITE, `reuse.py full-suite`). Each source is one use of the audited path: one use
@@ -198,10 +198,10 @@ def choose(root: Path, changed: list[str]) -> tuple[set[str] | None, str]:
     return set(affected_tests.affected(root, changed)), ""
 
 
-def _builds(changed: list[str]) -> bool:
-    """A change to the native binary's build inputs (lib/gate_identity.py BUILD)."""
-    build = _lib("gate_identity").BUILD
-    return any(p == b or p.startswith(f"{b}/") for p in changed for b in build)
+def _builds(changed: list[str], root: Path = REPO_ROOT) -> bool:
+    """A change to the native binary's build inputs at `root`: the four roots and each file a
+    crate embeds (lib/binary_runners.py build_input, GOH.BUILDINCLUDES)."""
+    return _lib("binary_runners").build_input(root, changed) is not None
 
 
 def carried(passed: dict[str, bool], chosen: set[str], coverage: bool, binary: bool) -> set[str]:

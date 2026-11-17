@@ -88,7 +88,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from tool_shim import fingerprint, past_shims  # lib/, beside this file
 
 TOOLS = ("rustc", "cargo", "python3", "swift", "shellcheck", "ruff", "cargo-llvm-cov", "xcodebuild")
-# The binary's build roots; its full inputs add each file a crate embeds (build_inputs).
+# The binary's build ROOTS; its inputs add each file a crate embeds: ask build_inputs, never this.
 BUILD = ("crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml")
 PARTS = ("gates", "checks", "lib", "tools", "tui", *BUILD)
 GOH_ROOT = Path(__file__).resolve().parent.parent
