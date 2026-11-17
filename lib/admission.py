@@ -131,6 +131,12 @@ def admit_here(repo: str, max_wait: float | None = None) -> Admitted:
     _HELD.append(fd)
     os.environ["GOH_GATE_SLOT"] = f"{path} {os.getpid()}"
     os.environ[lock_order.ENV] = lock_order.with_held("gate_slot", os.getpid())
+    # THE WIDTH (GOH.POOLSHARE): the gate this process runs gets cores / the gates admitted now,
+    # this one included, in every runner's own variable (lib/worker_share.py RUNNER_ENV).
+    import worker_share
+
+    workers = worker_share.divide(worker_share.cores(), worker_share.admitted(directory))
+    os.environ.update(worker_share.runner_env(workers))  # never an inherited share: another gate's
     return Admitted("taken", index=idx, slots=slots, waited=waited, gate_class=gate_class)
 
 
@@ -151,7 +157,8 @@ def run_admitted(label: str, wait_s: float, say: Callable[[str], None]) -> bool:
         slot = f"{got.index + 1}/{got.slots}"
         say(
             f"load: gate slot {slot} taken after {got.waited:.0f}s "
-            f"(GOH_GATE_SLOTS, class {got.gate_class})"
+            f"(GOH_GATE_SLOTS, class {got.gate_class}); "
+            f"workers {os.environ.get('GOH_GATE_WORKERS', '?')} (GOH.POOLSHARE)"
         )
     else:
         say("load: gate slots off (GOH_GATE_SLOTS=0)")

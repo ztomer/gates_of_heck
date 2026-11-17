@@ -355,7 +355,9 @@ def main(argv=None):
     from concurrent.futures import ThreadPoolExecutor
 
     before = stamp(root)
-    with ThreadPoolExecutor(max_workers=min(len(probes), os.cpu_count() or 4)) as pool:
+    share = os.environ.get("GOH_GATE_WORKERS", "")  # this gate's share of the cores (GOH.POOLSHARE)
+    width = int(share) if share.isdigit() and int(share) > 0 else os.cpu_count() or 4
+    with ThreadPoolExecutor(max_workers=min(len(probes), width)) as pool:
         verdicts = list(pool.map(lambda probe: run_one(probe[0], probe[1], cwd=root), probes))
     if tree_changed(root, before, probes, run_one):  # parallel probes race a probe writing in it
         return 1

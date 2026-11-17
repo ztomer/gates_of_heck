@@ -35,6 +35,10 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/_common.sh"
+# THIS GATE'S SHARE of the cores in every runner it starts (GOH.POOLSHARE): the admission's, or --
+# under a consumer gate.sh whose slot structural.sh took for it -- counted from the slots.
+# shellcheck source=lib/worker_share.sh
+. "$HERE/../lib/worker_share.sh" && goh_workers_ensure || exit 1
 
 repo="${1:-$PWD}"
 cd "$repo"

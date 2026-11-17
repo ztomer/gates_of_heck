@@ -6,7 +6,7 @@
 # tests' group went 2026-10-06: test_release_hardening.py rewrites a copy of
 # release.sh now, not the real one, and tests/_tree_guard.py fails any run in
 # which a test moves the checkout.
-# -n 12, the cap (fewer cores, fewer workers): measured 2026-10-06 against 8 (67/79 s vs 74/96 s, interleaved) once
+# -n 12, the cap (a smaller share of the cores, fewer workers): measured 2026-10-06 against 8 (67/79 s vs 74/96 s, interleaved) once
 # the spawn cuts landed; 16 was a draw with 12 under load, and leaves no
 # headroom for the other sessions sharing the box.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
@@ -87,9 +87,14 @@ command -v swiftlint >/dev/null 2>&1 || die "swiftlint is not on PATH (goh's own
 command -v rustfmt >/dev/null 2>&1 || die "rustfmt is not on PATH (goh's own hook: the rustfmt check) -- rustup component add rustfmt"
 ARGS=(-q)
 if "$GOH_PY" -c "import xdist" 2>/dev/null; then
-    # The machine's cores, capped at 12 (run 42950563400: `-n 12` on a 3-core hosted runner
-    # starved a cold goh build and a structural --full past their 600 s timeouts).
-    cores="${GOH_SUITE_CORES:-$(sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}"
+    # THIS GATE'S SHARE of the cores, capped at 12 (run 42950563400: `-n 12` on a 3-core hosted
+    # runner starved a cold goh build and a structural --full past their 600 s timeouts). Never the
+    # machine (GOH.POOLSHARE, 2026-11-17: a suite sized to all 16 cores beside four other gates each
+    # sized the same put ~220 threads on 16 cores): inside a gate, its admission's GOH_GATE_WORKERS;
+    # outside one (a land's pre-step), cores / (the gates admitted now + this run).
+    # shellcheck source=lib/worker_share.sh
+    . "$GOH/lib/worker_share.sh"
+    cores="${GOH_SUITE_CORES:-$(goh_workers)}"
     case "$cores" in '' | *[!0-9]* | 0) die "cannot read this machine's core count (got '$cores')" 2 ;; esac
     [ "$cores" -gt 12 ] && cores=12
     ARGS+=(-n "$cores" --dist loadgroup)

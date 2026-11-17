@@ -52,7 +52,6 @@
   "test_push_gate_race.py": 1,
   "test_push_gate_runs.py": 1,
   "test_py_staged.py": 2,
-  "test_pytest_runner_args.py": 1,
   "test_pytest_runner_basetemp.py": 1,
   "test_required_tools_floors.py": 2,
   "test_required_tools_manifest.py": 2,

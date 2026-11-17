@@ -30,6 +30,7 @@ def _run(tmp_path: Path, lock: Path) -> tuple[subprocess.CompletedProcess, Path]
         if k not in ("GATES_OF_HECK_SUITE_RUNNER", "GATES_OF_HECK_SUITE_NESTED_OK")
     }
     env.update(GOH_PY=str(stub), GOH_PY_OK=str(stub), GATES_OF_HECK_SUITE_LOCK=str(lock))
+    env["GOH_SUITE_CORES"] = "2"  # the count's seam: the stub answers no share (GOH.POOLSHARE)
     done = subprocess.run(
         ["bash", str(REPO_ROOT / "tools" / "pytest.sh")],
         env=env,

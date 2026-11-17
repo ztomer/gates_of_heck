@@ -58,6 +58,10 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/_common.sh"
+# THIS GATE'S SHARE of the cores in every runner it starts (GOH.POOLSHARE): the admission's, or --
+# under a consumer gate.sh whose slot structural.sh took for it -- counted from the slots.
+# shellcheck source=lib/worker_share.sh
+. "$HERE/../lib/worker_share.sh" && goh_workers_ensure || exit 1
 
 lint_only=""
 if [ "${1:-}" = "--lint-only" ]; then
@@ -145,12 +149,12 @@ case "$MODE" in
     _pfx="$(git rev-parse --show-prefix 2>/dev/null || true)"
     _spm_log=".build/swift-build-warnings.log"; mkdir -p .build
     goh_step "build + tests (warnings as errors)" /usr/bin/env bash -c \
-        '"$1" build --build-tests -Xswiftc -warnings-as-errors >"$2" 2>&1; rc=$?; cat "$2"
+        '"$1" build --build-tests --jobs "$GOH_GATE_WORKERS" -Xswiftc -warnings-as-errors >"$2" 2>&1; rc=$?; cat "$2"
          [ "$rc" -eq 0 ] || exit "$rc"; exec "$3" "$4" --log "$2" --dirs "$5"' _ \
         "$SWIFT" "$_spm_log" "$GOH_PY" "$HERE/../checks/check_swift_warnings.py" \
         "${GOH_SWIFT_WARN_DIRS:-${_pfx}Sources,${_pfx}Tests}"
     if [ -n "${GOH_SWIFT_COV_MIN:-}" ]; then
-        goh_step "test + coverage" "$SWIFT" test --enable-code-coverage
+        goh_step "test + coverage" "$SWIFT" test --jobs "$GOH_GATE_WORKERS" --enable-code-coverage
         _cov_args=(--min "$GOH_SWIFT_COV_MIN")
         # Where THIS toolchain wrote the payload: the layout moved with
         # Swift 6.3 (.build/<triple>/debug -> .build/out/Products/Debug),
@@ -166,7 +170,7 @@ case "$MODE" in
         goh_step "coverage >= ${GOH_SWIFT_COV_MIN}%${GOH_SWIFT_COV_FLOORS:+ + per-target floors}" \
             "$GOH_PY" "$HERE/../checks/check_swift_coverage.py" "${_cov_args[@]}"
     else
-        goh_step "test" "$SWIFT" test
+        goh_step "test" "$SWIFT" test --jobs "$GOH_GATE_WORKERS"
         warn "no coverage floor — set GOH_SWIFT_COV_MIN in .gatesrc"
     fi
     ;;
@@ -191,7 +195,8 @@ case "$MODE" in
     dd=".build/xcode-dd"
     goh_step "xcodebuild test (-scheme $GOH_SWIFT_SCHEME)" \
         xcodebuild test -project "$proj" -scheme "$GOH_SWIFT_SCHEME" \
-        -derivedDataPath "$dd" -enableCodeCoverage YES
+        -derivedDataPath "$dd" -enableCodeCoverage YES \
+        -jobs "$GOH_GATE_WORKERS" -maximum-parallel-testing-workers "$GOH_GATE_WORKERS"
     # NO WARNINGS, judged from what the compiler said. This mode used to run the
     # bare `xcodebuild test` above and enforce nothing, under a header promising
     # warnings-as-errors: koffee_oss carried twelve, four of them Swift 6

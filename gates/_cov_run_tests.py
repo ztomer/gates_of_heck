@@ -156,6 +156,22 @@ class _Run:
         self.secs = 0.0
 
 
+def split_share(jobs: int, runs: list[_Run], share: str) -> int:
+    """The binaries run at once SPLIT the gate's share (GOH_GATE_WORKERS, GOH.POOLSHARE): at most
+    `share` of them, each on share // jobs test threads -- `jobs` binaries each on the whole share
+    were `jobs` gates' worth of threads. A repo's own lower RUST_TEST_THREADS (tests that cannot
+    overlap) stays. No share (a run outside any gate): `jobs` and the binaries' defaults."""
+    if not (share.strip().isdigit() and int(share) > 0):
+        return jobs
+    jobs = min(jobs, int(share))
+    threads = max(1, int(share) // jobs)
+    for run in runs:
+        have = run.env.get("RUST_TEST_THREADS", "")
+        keep = have.isdigit() and 0 < int(have) < threads
+        run.env["RUST_TEST_THREADS"] = have if keep else str(threads)
+    return jobs
+
+
 def _go(run: _Run, live: set, lock: threading.Lock) -> _Run:
     t0 = time.monotonic()
     proc = subprocess.Popen(
@@ -212,6 +228,7 @@ def main(argv: list[str]) -> int:
     runs.sort(key=lambda r: -os.path.getsize(r.argv[0]))  # the big ones first: the step's tail
     jobs = int(os.environ.get("GOH_COV_RUST_JOBS") or DEFAULT_JOBS)
     jobs = max(1, min(jobs, len(runs)))
+    jobs = split_share(jobs, runs, os.environ.get("GOH_GATE_WORKERS", ""))
 
     live: set = set()
     lock = threading.Lock()

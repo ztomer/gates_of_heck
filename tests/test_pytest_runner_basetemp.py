@@ -37,6 +37,7 @@ def _run(tmp_path: Path, exit_code: int):
     # nested suites deep, until the machine stalled (2026-10-25). GOH_PY_OK marks it resolved.
     env = {**os.environ, "GOH_PY": str(stub), "GOH_PY_OK": str(stub),
            "GATES_OF_HECK_SUITE_NESTED_OK": "1"}  # fmt: skip
+    env["GOH_SUITE_CORES"] = "2"  # the count's seam: the stub answers no share (GOH.POOLSHARE)
     done = subprocess.run(
         ["bash", str(REPO_ROOT / "tools" / "pytest.sh")],
         env=env,

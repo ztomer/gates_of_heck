@@ -7,25 +7,31 @@ one does and selected nothing. The stub interpreter below records the argv the r
 
 from __future__ import annotations
 
+import fcntl
 import os
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 from conftest import REPO_ROOT
 
 
-def _argv(tmp_path: Path, *args: str, cores: str | None = None) -> list[str]:
+def _argv(tmp_path: Path, *args: str, cores: str | None = None, **extra: str) -> list[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     record = tmp_path / "argv"
     stub = bin_dir / "python3"
+    # The share (lib/worker_share.py) is asked of the REAL interpreter: it is what is under test.
     stub.write_text(
-        f'#!/bin/bash\nif [ "$1" = -c ]; then exit 0; fi\nprintf "%s\\n" "$@" > "{record}"\n'
+        f'#!/bin/bash\ncase "$*" in *worker_share.py*) exec "{sys.executable}" "$@" ;; esac\n'
+        f'if [ "$1" = -c ]; then exit 0; fi\nprintf "%s\\n" "$@" > "{record}"\n'
     )
     stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
-    env = {**os.environ, "GOH_PY": str(stub), "GOH_PY_OK": str(stub),
-           "GATES_OF_HECK_SUITE_NESTED_OK": "1"}  # fmt: skip
+    (tmp_path / "slots").mkdir(exist_ok=True)
+    env = {k: v for k, v in os.environ.items() if k not in ("GOH_GATE_WORKERS", "GOH_GATE_SLOT")}
+    env.update(GOH_PY=str(stub), GOH_PY_OK=str(stub), GATES_OF_HECK_SUITE_NESTED_OK="1")
+    env.update(GOH_GATE_CORES="16", GOH_GATE_SLOT_DIR=str(tmp_path / "slots"), **extra)
     if cores is not None:
         env["GOH_SUITE_CORES"] = cores
     done = subprocess.run(["bash", str(REPO_ROOT / "tools" / "pytest.sh"), *args], env=env,
@@ -63,3 +69,23 @@ def test_the_worker_count_follows_the_machines_cores(tmp_path):
     many = _argv(tmp_path / "many", cores="32")
     assert few[few.index("-n") + 1] == "3", few
     assert many[many.index("-n") + 1] == "12", many
+
+
+def test_inside_a_gate_the_workers_are_its_admissions_share(tmp_path):
+    """GOH.POOLSHARE: a suite sized to all 16 cores beside four other gates sized the same put ~220
+    threads on 16 cores (2026-11-17). Inside a gate the count is the admission's share."""
+    argv = _argv(tmp_path, GOH_GATE_WORKERS="5")
+    assert argv[argv.index("-n") + 1] == "5", argv
+
+
+def test_outside_any_gate_the_workers_are_a_share_beside_the_admitted_gates(tmp_path):
+    """A land's pre-step runs this under no slot: with one gate admitted it is the second of two,
+    so 16 cores give it 8 workers, not the cap of 12."""
+    (tmp_path / "slots").mkdir()
+    other = open(tmp_path / "slots" / "slot-0", "w")  # noqa: SIM115  -- another gate's slot
+    fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        argv = _argv(tmp_path)
+    finally:
+        other.close()
+    assert argv[argv.index("-n") + 1] == "8", argv

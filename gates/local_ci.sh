@@ -224,6 +224,10 @@ run_step() {
     # shellcheck disable=SC2086  # a command STRING is the feature here; see the header
     # The native canary (`goh canary`; tests/test_orphan_canary.py runs both) when resolved, else the Python.
     goh_unbind_git   # a step is a test suite: it never sees git's repository variables (GOH.HOOKGITENV)
+    # JOBS STEPS AT ONCE SHARE ONE GATE'S WIDTH (GOH.POOLSHARE): each runs on 1/JOBS of the share its
+    # admission exported, never the whole of it -- four cargo steps each sized to the gate were four
+    # gates' worth of threads under one slot.
+    [ "$JOBS" -le 1 ] || goh_workers_export --split "$JOBS" || exit 1
     if [ -x "${GOH_RESOLVED_BIN:-}" ]; then
         exec "$GOH_RESOLVED_BIN" canary "${args[@]}" -- bash -c -- "$cmd" </dev/null
     fi

@@ -19,6 +19,8 @@
 # GOH_GATE_SLOTS=N   how many gates at once (default: one per eight cores, at least one;
 #                    `python3 lib/gate_slot.py default` prints it). `0` turns the limit off.
 # GOH_GATE_SLOT_DIR  the lock files (default ~/.cache/goh/slots): machine-wide on purpose.
+# GOH_GATE_WORKERS   set BY the admission: this gate's share of the cores, with every runner's own
+#                    variable beside it (lib/worker_share.py RUNNER_ENV, GOH.POOLSHARE).
 # GOH_GATE_SLOT      set BY a gate holding a slot, "<slot file> <owner pid>", so a gate nested
 #                    inside it takes none (never set it by hand: one naming a pid that is not an
 #                    ancestor is ignored).
@@ -32,6 +34,8 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 . "${BASH_SOURCE[0]%/*}/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
 # shellcheck source=lib/lock_order.sh
 . "${BASH_SOURCE[0]%/*}/lock_order.sh" || exit 1   # the one lock order (GOH.LOCKORDER)
+# shellcheck source=lib/worker_share.sh
+. "${BASH_SOURCE[0]%/*}/worker_share.sh" || exit 1   # how wide an admitted gate runs (GOH.POOLSHARE)
 GATE_SLOT_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gate_slot.py" # beside this file
 GATE_SLOT_PID="" # the holder process (lib/gate_slot.py hold); gate_slot_release ends it
 
@@ -120,6 +124,9 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller> <class | "">
     [ -n "$mech" ] || mech="poll"
     export GOH_GATE_SLOT="$path $owner"
     goh_lock_mark gate_slot
+    # THE WIDTH (GOH.POOLSHARE): cores / the gates admitted now, this one included, exported in the
+    # variables every runner it starts reads. Counted afresh: an inherited share is another gate's.
+    goh_workers_export --admitted --dir "$dir" || { err "gate slot: cannot size this gate's workers (lib/worker_share.py)"; exit 1; }
     local whose="(GOH_GATE_SLOTS, class $class)"
     if [ -n "$mode" ]; then
         # Never this shell's to release: the holder ends with the gate.sh it was taken for.
@@ -136,6 +143,7 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller> <class | "">
         info "$word $((idx + 1))/$total taken $whose"
     fi
     info "  owner watch: $mech"
+    info "  workers: $GOH_GATE_WORKERS (cores / gates admitted now, GOH.POOLSHARE)"
 }
 
 gate_slot_release() {

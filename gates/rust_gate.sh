@@ -64,6 +64,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # --each-crate --list [repo]: the crates that would gate, one per line, biggest first; runs nothing.
 [ "${1:-}" = --each-crate ] && { shift; exec bash "$HERE/rust_each_crate.sh" "$@"; }
 . "$HERE/_common.sh"
+# THIS GATE'S SHARE of the cores in every runner it starts (GOH.POOLSHARE): the admission's, or --
+# under a consumer gate.sh whose slot structural.sh took for it -- counted from the slots.
+# shellcheck source=lib/worker_share.sh
+. "$HERE/../lib/worker_share.sh" && goh_workers_ensure || exit 1
 
 # GOH_RUST_GROUPS (env, read BEFORE .gatesrc so a repo file cannot narrow its own gate): which of
 # the three groups below this run proves. rust_each_crate.sh runs `repo` once and `crate,coverage`

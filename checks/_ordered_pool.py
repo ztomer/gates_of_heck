@@ -48,7 +48,10 @@ def in_order(fn, items):
             out.local.buffer = errs.local.buffer = None
 
     try:
-        with ThreadPoolExecutor(max_workers=min(len(items), os.cpu_count() or 4)) as pool:
+        # This gate's share of the cores (GOH_GATE_WORKERS, GOH.POOLSHARE); the machine outside one.
+        share = os.environ.get("GOH_GATE_WORKERS", "")
+        width = int(share) if share.isdigit() and int(share) > 0 else os.cpu_count() or 4
+        with ThreadPoolExecutor(max_workers=min(len(items), width)) as pool:
             results = list(pool.map(one, items))
     finally:
         sys.stdout, sys.stderr = saved

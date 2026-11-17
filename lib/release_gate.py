@@ -61,7 +61,15 @@ RELEASE_FILE = "CHANGELOG.md"
 RELEASE_DIR = "changelog/"
 READS_RELEASE_FILES = re.compile(r"CHANGELOG\.md|changelog/|[\"']changelog[\"']")
 STRUCTURAL = "./gates/structural.sh --full"
-RUNNER = f"{shlex.quote(sys.executable)} -m pytest -q -p no:cacheprovider -n auto --dist loadgroup"
+
+
+def runner() -> str:
+    """The probe's pytest: THIS gate's share of the cores (lib/worker_share.py, GOH.POOLSHARE),
+    never xdist's automatic count, which is the machine's."""
+    import worker_share  # lib/, beside this file
+
+    python = shlex.quote(sys.executable)
+    return f"{python} -m pytest -q -p no:cacheprovider -n {worker_share.share()} --dist loadgroup"
 
 
 def names(root: Path) -> list[str]:
@@ -180,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
         if verb == "run":
             p.add_argument("--full", required=True)
             p.add_argument("--structural", default=STRUCTURAL)
-            p.add_argument("--runner", default=RUNNER)
+            p.add_argument("--runner", default="")
     a = ap.parse_args(argv)
     root = a.root.resolve()
     if a.verb == "names":
@@ -192,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.verb == "push-decide":
         print(" ".join(decide_push(root)))
         return 0
-    return run(root, a.base, a.full, a.structural, a.runner)
+    return run(root, a.base, a.full, a.structural, a.runner or runner())
 
 
 if __name__ == "__main__":

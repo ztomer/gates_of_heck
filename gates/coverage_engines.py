@@ -98,12 +98,20 @@ def bundle_executables(macos_dir):
     )
 
 
+def workers() -> list[str]:
+    """This gate's share of the cores (GOH_GATE_WORKERS, exported by coverage_gate.sh's
+    goh_workers_ensure, GOH.POOLSHARE) as the one flag both swift and xcodebuild read for their
+    build width; nothing when no gate sized one (a direct call keeps the runner's default)."""
+    n = os.environ.get("GOH_GATE_WORKERS", "").strip()
+    return [n] if n.isdigit() and int(n) > 0 else []
+
+
 def run_spm(ignore_re):
     precondition("swift", "swift test --enable-code-coverage")
     precondition("xcrun", "xcrun llvm-cov reads the profdata")
     if (
         subprocess.run(
-            ["swift", "test", "--enable-code-coverage"],
+            ["swift", "test", *(f"--jobs={n}" for n in workers()), "--enable-code-coverage"],
             capture_output=True,
             stdin=subprocess.DEVNULL,
             check=False,
@@ -208,6 +216,11 @@ def run_xcodebuild(args):
             "-enableCodeCoverage",
             "YES",
             "-quiet",
+            *(
+                flag
+                for n in workers()
+                for flag in ("-jobs", n, "-maximum-parallel-testing-workers", n)
+            ),
         ],
         capture_output=True,
         text=True,
