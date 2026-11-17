@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # _proven_identity.sh — the proven key's identity, sourced by gates/_proven.sh (split out of it at
 # the 500-line cap, GOH.PREPARITY); its callers provide PROVEN_GOH_ROOT, _PROVEN_IDENTITY_PY,
 # PROVEN_ENV_DEFAULT, GOH_PY, hash_hex and _proven_closure_on. The run-constant half (the gates
