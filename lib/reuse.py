@@ -14,7 +14,6 @@ any caller can query:
                                                      # exit 0, the record printed: a green verdict
                                                      # on SHA's TREE under today's gate identity;
                                                      # exit 1, the reason on stderr: a miss
-    reuse.py shadow-log                              # the sampled reused-vs-fresh comparisons
 
 THE KEY. A reuse path REGISTERS its name and its key fields (`register`, below, the one table).
 A record's key is sha256 over the path name and each field's value in the registered order; a
@@ -42,10 +41,11 @@ is no longer written, and read here only, by sha, for a base pushed before the s
 without it every consumer's first floor push re-ran its whole gate. TTL a year: the base is the
 remote's tip, however old.
 
-THE SHADOW CHECK. A reused verdict is a claim that a fresh run would agree. `shadow_due` picks a
-deterministic sample of keys (GOH_REUSE_SHADOW=RATE, 0..1, default 0: off), and a caller that
-re-ran the work anyway hands both answers to `shadow_report`, which appends one JSON line to
-shadow.jsonl in the store; a disagreement is the finding that the key is missing an input.
+THE AUDIT. A reused verdict is a claim that a fresh run would agree. Every reuse in goh is a
+registered path here -- its sites, its store, how its shadow re-runs it and at what rate -- whether
+its records live in this store or still in their own (docs/reuse.md); lib/reuse_audit.py samples
+the reuses, compares each sample with a fresh run, and turns a path off in one recorded state when
+they disagree (GOH.REUSEAUDIT). tests/test_reuse_audit.py refuses a reuse site no path names.
 
 The store's root: GOH_REUSE_DIR (absolute), else $XDG_STATE_HOME/goh/reuse, else
 ~/.local/state/goh/reuse. Nothing else reads or writes under it, nor the legacy record files named
@@ -64,7 +64,6 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
         __import__("_from_head").reexec(__file__)
 
 import argparse
-import contextlib
 import hashlib
 import json
 import os
@@ -85,25 +84,41 @@ DAY_S = 86400
 LEGACY = ("goh-landed", "goh-pushed")
 
 
+# How a path's sampled reuse is re-run (lib/reuse_audit.py): at the site, right then ("inline");
+# by hosted CI's full gate of the pushed commit, read later ("ci"); or not yet ("": `unsampled`
+# says why, and the audit's report names the path UNSAMPLED -- never clean).
+SHADOWS = ("inline", "ci", "")
+
+
 @dataclass(frozen=True)
 class ReusePath:
     name: str
     fields: tuple[str, ...]
     ttl_s: int
     doc: str
+    store: str = "lib/reuse.py"  # where its records live until GOH.ONEVERDICT2 moves them here
+    sites: tuple[str, ...] = ()  # the files that skip work on its verdict (test_reuse_audit.py)
+    shadow: str = ""
+    every: int = 10  # one use in `every` is sampled (1: every use -- a ship's)
+    min_samples: int = 3  # compared samples a window needs, or the path turns off (starved)
+    unsampled: str = ""
 
 
 PATHS: dict[str, ReusePath] = {}
 
 
-def register(name: str, fields: tuple[str, ...], ttl_s: int, doc: str) -> ReusePath:
-    """Name a reuse path and the fields its key is made of. Once per name, at least one field."""
+def register(name: str, fields: tuple[str, ...], ttl_s: int, doc: str, **audit) -> ReusePath:
+    """Name a reuse path and the fields its key is made of. Once per name, at least one field;
+    a path with no shadow says why (`unsampled`)."""
     if name in PATHS:
         raise ValueError(f"reuse path {name!r} is registered twice")
     if not fields or len(set(fields)) != len(fields):
         raise ValueError(f"reuse path {name!r}: its key fields must be distinct and non-empty")
-    PATHS[name] = ReusePath(name, tuple(fields), ttl_s, doc)
-    return PATHS[name]
+    p = ReusePath(name, tuple(fields), ttl_s, doc, **audit)
+    if p.shadow not in SHADOWS or bool(p.shadow) == bool(p.unsampled) or p.every < 1:
+        raise ValueError(f"reuse path {name!r}: a shadow of {SHADOWS}, or `unsampled` and why")
+    PATHS[name] = p
+    return p
 
 
 GATE = register(
@@ -111,6 +126,9 @@ GATE = register(
     ("repo", "tree", "identity"),
     DAY_S,
     "a green gate over a commit's tree: the push gate writes; ship verdict, the release rule read",
+    sites=("lib/ship_verdict.py",),
+    unsampled="its fresh side is a full gate of the tree: hosted CI for a public repo, an idle "
+    "local slot for a private one; the drain that reads them is slice 2 (GOH.REUSEAUDIT)",
 )
 
 
@@ -119,7 +137,59 @@ PUSHED = register(
     ("repo", "tree"),
     365 * DAY_S,
     "a tree some push gate judged green, under any gates: the floor rule's base (config_push.py)",
+    sites=("lib/config_push.py",),
+    unsampled="identity-free on purpose: its fresh side is a gate of the remote's tip under the "
+    "gates that pushed it, which no later run has (docs/reuse.md)",
 )
+
+# The reuse paths whose records still live in their own stores (docs/reuse.md, the order): each
+# registered with its key fields and sites, so the audit counts, samples and switches it off.
+LANDED = register(
+    "landed", ("repo", "sha", "identity"), 365 * DAY_S,
+    "the release push rule: release files only on a parent whose land was green (release_gate.py)",
+    store="goh-landed", sites=("lib/release_gate.py",), shadow="ci", every=1, min_samples=1,
+)  # fmt: skip
+register(
+    "origin", ("repo", "sha", "remote"), 0,
+    "the push gate's 'the remote already has this commit': nothing new to gate",
+    store="the remote's refs", sites=("gates/push_gate.sh",),
+    unsampled="its fresh side is the store's verdict on the tree; slice 2 asks it at the skip",
+)  # fmt: skip
+ESTATE = register(
+    "estate", ("identity", "entry", "corpus"), 7 * DAY_S,
+    "check_estate_corpus's VERIFIED entry, keyed on the checker, the entry and the corpus stat",
+    store="~/.cache/goh/estate-corpus", sites=("checks/_estate_cache.py",), shadow="inline",
+)  # fmt: skip
+TEST = register(
+    "test", ("identity", "node"), DAY_S,
+    "a land's pre-step pass, deselected from its gate's suite (tests/_land_verdicts.py)",
+    store="one land's GOH_LAND_VERDICTS_RECORD file", sites=("tests/_land_verdicts.py",),
+    unsampled="a sampled node must be one choice every xdist worker collects alike: slice 2",
+)  # fmt: skip
+register(
+    "affected", ("repo", "base", "head"), 0,
+    "the pre-land test set chosen from the diff (tools/affected_tests.py)",
+    store="none: the diff", sites=("tools/affected_tests.py",),
+    unsampled="a selection the full gate re-runs whole: it skips nothing but through `test`",
+)  # fmt: skip
+register(
+    "step", ("repo", "tree", "step", "identity", "env"), DAY_S,
+    "a proven gate step: skipped when its inputs and the gates are unchanged",
+    store="goh-proven", sites=("gates/_proven.sh", "crates/goh/src/proven.rs"),
+    unsampled="two faces (shell, Rust); the shadow re-runs the step: slice 2",
+)  # fmt: skip
+register(
+    "rustcov", ("repo", "rust_identity"), DAY_S,
+    "the Rust coverage measurement and its sccache/llvm-cov build, reused by identity",
+    store="goh-proven (gates/_rust_proven.sh)", sites=("gates/_rust_proven.sh",),
+    unsampled="the Rust-layer lane holds its files; its shadow is hosted CI's uncached build",
+)  # fmt: skip
+register(
+    "file", ("checker", "key"), 30 * DAY_S,
+    "a per-file checker verdict (shell-lint's cache)",
+    store="~/.cache/goh/verdicts", sites=("crates/goh/src/verdict_cache.rs",),
+    unsampled="the hot per-file path's Rust face of the API: slice 2",
+)  # fmt: skip
 
 
 def root() -> Path:
@@ -219,28 +289,6 @@ def prune(path: str | ReusePath) -> int:
             f.unlink(missing_ok=True)
             gone += 1
     return gone
-
-
-# The sampled shadow check (header): the future reuse paths' audit (GOH.REUSEAUDIT).
-def shadow_due(k: str) -> bool:
-    try:
-        rate = float(os.environ.get("GOH_REUSE_SHADOW", "0") or 0)
-    except ValueError:
-        rate = 0.0
-    return rate > 0 and int(k[:8], 16) < rate * 0x100000000
-
-
-def shadow_report(path: str | ReusePath, fields: dict[str, str], reused: str | None,
-                  fresh: str) -> bool:  # fmt: skip
-    """Append the reused and the fresh verdict for one key; True when they agree."""
-    p = _path(path)
-    agree = reused == fresh
-    line = {"path": p.name, "key": key(p, fields), "fields": fields, "reused": reused,
-            "fresh": fresh, "agree": agree, "epoch": now()}  # fmt: skip
-    root().mkdir(parents=True, exist_ok=True)
-    with (root() / "shadow.jsonl").open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(line, sort_keys=True) + "\n")
-    return agree
 
 
 # --- the `gate` path ---------------------------------------------------------------------------
@@ -348,7 +396,6 @@ def main(argv: list[str] | None = None) -> int:
     lg.add_argument("--repo", type=Path, default=Path.cwd())
     lg.add_argument("--sha", required=True)
     lg.add_argument("--how", default="full")
-    sub.add_parser("shadow-log")
     a = ap.parse_args(argv)
     if a.verb == "paths":
         for p in PATHS.values():
@@ -369,9 +416,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(json.dumps(rec, sort_keys=True))
         return 0
-    with contextlib.suppress(FileNotFoundError):
-        print((root() / "shadow.jsonl").read_text(encoding="utf-8"), end="")
-    return 0
+    return 2
 
 
 if __name__ == "__main__":

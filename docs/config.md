@@ -269,7 +269,7 @@ the key fields it registers (`reuse.py paths`). The map of every store onto it: 
 |---|---|---|
 | `GOH_REUSE_DIR` | `$XDG_STATE_HOME/goh/reuse`, else `~/.local/state/goh/reuse` | The store's root; a relative path is refused. |
 | `GOH_REUSE_TTL_S` | the path's own (`gate`: `86400`) | Record lifetime in seconds; an older record is a miss. |
-| `GOH_REUSE_SHADOW` | `0` (off) | The share of keys (0..1, chosen by key, so the same keys every run) whose reused verdict a caller re-checks fresh and logs to `shadow.jsonl` in the store. |
+| (the reuse audit) | no setting | `lib/reuse_audit.py` (GOH.REUSEAUDIT): each registered path's sample share (`every`) and window minimum (`min_samples`) live in `lib/reuse.py`'s one table, and a path's on/off state in the store (`<root>/audit/<path>.json`), never in an environment variable. A disagreement files its fault through `GOH_LOOPCTL` (into `GOH_LOOP_QUEUE` when set). |
 | `GOH_REUSE_NOW` | internal | Clock seam for the tests (epoch seconds). Not user config. |
 | `GOH_GATE_VERDICTS` | retired | The per-ship `green <sha>` file the push gate wrote under `goh ship` (GOH.VERDICTAPI); gone with GOH.ONEVERDICT, the push records into the store above. Neither set nor read; `lib/pin_sweep.py` still drops it from a child's environment. |
 

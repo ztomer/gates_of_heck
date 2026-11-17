@@ -40,6 +40,10 @@ def estate(tmp_path: Path, monkeypatch) -> dict:
             stdin=subprocess.DEVNULL,
         )
     monkeypatch.setenv("GOH_ESTATE_CACHE", str(tmp_path / "cache"))
+    # Its own reuse audit (GOH.REUSEAUDIT): in a shared one the tenth hit of the suite -- a sampled
+    # one, judged afresh -- lands in whichever test makes it, and a "materialises nothing" test
+    # would see the corpus rebuilt.
+    monkeypatch.setenv("GOH_REUSE_DIR", str(tmp_path / "reuse"))
     monkeypatch.setenv("GOH_BIN", str(native_goh_path()))
     monkeypatch.setenv("GOH_DIR", str(REPO_ROOT))
     monkeypatch.delenv("GOH_PROVEN", raising=False)

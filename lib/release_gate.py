@@ -53,6 +53,9 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gate_identity  # lib/, beside this file: the one identity (GOH.VERDICTKEY)
 import reuse  # lib/, beside this file: the one verdict store (GOH.ONEVERDICT)
+import reuse_audit  # ... and its auditor (GOH.REUSEAUDIT)
+
+GITHUB = re.compile(r"github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?/?$")
 
 RELEASE_FILE = "CHANGELOG.md"
 RELEASE_DIR = "changelog/"
@@ -123,6 +126,21 @@ def decide_push(root: Path, head: str = "HEAD") -> tuple[str, str]:
     other = next((p for p in paths if not release_only([p])), None)
     if other is not None:
         return "full", f"{other} is not a release file (the diff since {parent[:8]})"
+    return audited(root, parent, recorded, sha)
+
+
+def audited(root: Path, parent: str, recorded: str, sha: str) -> tuple[str, str]:
+    """The land verdict's reuse, through the audit (lib/reuse_audit.py path `landed`): a path the
+    audit turned off is the full gate; every reuse queues its shadow, hosted CI's full gate of the
+    pushed commit (goh's own lands and releases: CI runs it on every push), read by the lander."""
+    fields = {"repo": reuse.repo_id(root), "sha": parent, "identity": recorded}
+    if reuse_audit.use("landed", fields) == "off":
+        return "full", "the audit turned the land verdict's reuse off (reuse_audit.py report)"
+    url = subprocess.run(["git", "-C", str(root), "remote", "get-url", "origin"], text=True,
+                         capture_output=True, check=False, stdin=subprocess.DEVNULL)  # fmt: skip
+    url = url.stdout
+    if m := GITHUB.search(url.strip()):
+        reuse_audit.enqueue("landed", fields, "green", slug=m.group(1), sha=sha)
     return "release", parent
 
 

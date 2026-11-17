@@ -15,6 +15,10 @@ verdict depends on, and pinned way by way in tests/test_estate_corpus_cache.py:
   the export's bin/goh, a launcher copied fresh into each) no land found the last one's records
   (GOH.PROVENPYPATH).
 
+AUDITED (GOH.REUSEAUDIT). A hit is a reuse of the path `estate` (lib/reuse.py): `reusable` asks the
+audit first, and one hit in ten is judged afresh anyway and compared (`shadowed`); a path the audit
+turned off is never reused.
+
 Only a VERIFIED entry is recorded; "blind" and "unavailable" are asked again. A record older than
 TTL_S, or one that does not parse, is a miss. GOH_PROVEN=0 or GOH_ESTATE_CACHE=off (or 0, false, no) turns it off;
 GOH_ESTATE_CACHE=<absolute dir> moves it; a relative one turns it off (default ~/.cache/goh/estate-corpus).
@@ -177,6 +181,59 @@ def lookup(key: str) -> dict | None:
     if time.time() - float(rec.get("at", 0)) > TTL_S:
         return None
     return rec
+
+
+_AUDIT: list = []
+_SHADOW: dict = {}  # checker -> the estate fields of the hit this run re-judges
+_FRESH: set = set()  # checkers re-judged for a disagreement's second run: never a reuse
+
+
+def _audit():
+    """lib/reuse_audit.py of this checkout, else GOH_DIR's; None outside any (the skeleton)."""
+    if not _AUDIT:
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        found = None
+        for root in (here, os.environ.get("GOH_DIR", "")):
+            lib = os.path.join(root, "lib", "reuse_audit.py") if root else ""
+            if lib and os.path.isfile(lib):
+                import sys
+
+                sys.path.insert(0, os.path.dirname(lib))
+                found = importlib.import_module("reuse_audit")
+                break
+        _AUDIT.append(found)
+    return _AUDIT[0]
+
+
+def reusable(key: str, ident: str, entry: dict) -> dict | None:
+    """The record to reuse, or None: a miss, a path the audit turned off, or a sampled hit (the
+    entry is then judged afresh and `shadowed` compares the two)."""
+    seen = None if entry["checker"] in _FRESH else lookup(key)
+    audit = _audit()
+    if seen is None or audit is None:
+        return seen
+    fields = {"identity": ident, "entry": entry["checker"], "corpus": key}
+    decided = audit.use("estate", fields)
+    if decided == "shadow":
+        _SHADOW[entry["checker"]] = (key, fields)
+    return seen if decided == "reuse" else None
+
+
+def shadowed(checker: str, fresh: str, again) -> str:
+    """The fresh verdict; a sampled hit's is compared with the reused "verified" first."""
+    if checker not in _SHADOW:
+        return fresh
+    key, fields = _SHADOW.pop(checker)
+
+    def both() -> tuple[str, str]:
+        _FRESH.add(checker)
+        try:
+            return ("verified" if lookup(key) else "absent"), again()
+        finally:
+            _FRESH.discard(checker)
+
+    _audit().compare("estate", fields, "verified", fresh, both)
+    return fresh
 
 
 def record(key: str, line: str) -> None:

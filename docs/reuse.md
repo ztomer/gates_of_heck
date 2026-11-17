@@ -41,10 +41,21 @@ the push log text instead of calling `goh ship verdict`; until it does, it misse
   calibrated twice: a proven step keyed on four tools of eight, a loaded verdict on the tree alone).
 * A record carries its key, fields, verdict, writer and epoch. Absent, unreadable, under another
   key, or older than the TTL is a MISS, with the reason returned.
-* THE SHADOW CHECK. `shadow_due(key)` picks a deterministic share of keys (`GOH_REUSE_SHADOW`,
-  0..1, off by default); a caller that re-ran the work hands the reused and the fresh verdict to
-  `shadow_report`, which appends a line to `shadow.jsonl` in the store. A disagreement names a key
-  missing an input (GOH.REUSEAUDIT reads it).
+* THE AUDIT (GOH.REUSEAUDIT, `lib/reuse_audit.py`). Every reuse in goh is a registered path, its
+  records here or still in their own store: `register` names its key fields, its SITES (the files
+  that skip work on it), its store and its SHADOW. A site asks `use(path, fields)` first: "reuse",
+  "shadow" (one use in `every`, counted, never by chance: do the work anyway, then `compare`) or
+  "off". A disagreement re-runs both sides (the store read again, the work done again) and only a
+  repeated one turns the path off: one recorded state, `<root>/audit/<path>.json`, with both
+  verdicts, the key and the fault item it filed (`loopctl file`). It stays off until `reuse_audit.py
+  enable PATH --fix SHA --test FILE::TEST` names the fix and the test that misses on the lacking
+  input. A window (7 days) that compared fewer samples than min(min_samples, the samples it drew)
+  is STARVED and turns the path off too; fewer drawn than min_samples reads "thin", never clean.
+  goh's own shadow is hosted CI's full gate of every push (a "ci" shadow, queued, read once by the
+  idle lander through `loopctl ci`); local shadows are for private consumers (slice 2).
+  `reuse_audit.py report [--json]` is the per-path count of uses, samples, disagreements and flakes.
+  `tests/test_reuse_audit.py` refuses a reuse site no path names, an ask of an unregistered path
+  and a path registered outside the one table.
 
 The gate identity is `lib/gate_identity.py`'s key: the gate mode, the gates' content (goh's
 version is its bytes, so no version string is keyed), the goh binary and every tool a step may run.
@@ -75,4 +86,13 @@ moves; one on the live checkout keeps it only while goh's main does not move.
    keeps only the GOH_LANDED_ONLY provenance line.
 4. The proven-step and Rust coverage records, then the per-test land record, then the per-file
    checker cache. GOH.VERDICTCARRY, GOH.CANARYMEMO, GOH.PROVENCLOSURE and GOH.PINPUSHREUSE register
-   paths here instead of adding stores; GOH.REUSEAUDIT turns on the shadow sample.
+   paths here instead of adding stores, each with its shadow.
+
+## The audited paths (GOH.REUSEAUDIT)
+
+| Path | Shadow | Site |
+|---|---|---|
+| `estate` | inline, 1 in 10: the entry judged afresh | `checks/_estate_cache.py` (`reusable`, `shadowed`) |
+| `landed` | ci, every release push: hosted CI's full gate of the pushed commit | `lib/release_gate.py` (`audited`) |
+| `gate`, `test`, `origin`, `step`, `rustcov`, `file` | none yet: each says why (`reuse_audit.py report`) | slice 2 |
+| `pushed`, `affected` | none by design: `pushed` is identity-free; `affected` skips nothing but through `test` | |

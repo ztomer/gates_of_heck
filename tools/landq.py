@@ -335,7 +335,24 @@ def drain() -> int:
             sys.stderr.flush()
             os.execv(sys.executable, [sys.executable, str(fresh), "--drain"])
         if not any((q / "pending").glob("*.json")):  # enqueued after the last look: ours to run
+            audit_drain()
             return 0
+
+
+def audit_drain() -> None:
+    """The idle lander reads the reuse audit's queued CI shadows (lib/reuse_audit.py drain,
+    GOH.REUSEAUDIT): no gate is waiting, and a read is one `loopctl ci` per shadow, never a poll."""
+    sys.path.insert(0, str(live_root() / "lib"))
+    try:
+        import reuse  # the store's root, as the audit names it
+    except ImportError:
+        return
+    finally:
+        sys.path.pop(0)
+    script = live_root() / "lib" / "reuse_audit.py"
+    if any((reuse.root() / "audit" / "pending").glob("*.json")) and script.is_file():
+        subprocess.run([sys.executable, str(script), "drain"], check=False, timeout=600,
+                       stdin=subprocess.DEVNULL)  # fmt: skip
 
 
 def status() -> int:

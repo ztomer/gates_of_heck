@@ -288,7 +288,7 @@ def judge(entry, bad):
 
     ident = _estate_cache.current_identity(os.path.abspath(__file__), GOH)
     key = _estate_cache.entry_key(ident, entry, source, files)
-    if seen := _estate_cache.lookup(key):  # nothing it depends on moved (checks/_estate_cache.py)
+    if seen := _estate_cache.reusable(key, ident, entry):  # nothing it depends on moved
         ok(f"{seen['line']} -- verified {int(time.time() - seen['at'])}s ago, inputs unchanged")
         return "verified"
     with tempfile.TemporaryDirectory(prefix="goh-estate.") as td:
@@ -350,8 +350,8 @@ def judge(entry, bad):
 
 
 def _judged(entry, bad):
-    mine = []
-    state = judge(entry, mine)
+    state = judge(entry, mine := [])
+    state = _estate_cache.shadowed(entry["checker"], state, lambda: judge(entry, []))
     bad.extend(mine)  # list.extend is atomic under the GIL; order is fixed by the replay below
     return state
 

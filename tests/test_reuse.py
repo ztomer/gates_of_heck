@@ -29,7 +29,7 @@ REUSE = REPO_ROOT / "lib" / "reuse.py"
 @pytest.fixture
 def store(tmp_path, monkeypatch):
     monkeypatch.setenv("GOH_REUSE_DIR", str(tmp_path / "store"))
-    for name in ("GOH_REUSE_TTL_S", "GOH_REUSE_NOW", "GOH_REUSE_SHADOW", "GOH_BIN"):
+    for name in ("GOH_REUSE_TTL_S", "GOH_REUSE_NOW", "GOH_BIN"):
         monkeypatch.delenv(name, raising=False)
     return tmp_path / "store"
 
@@ -77,18 +77,6 @@ def test_a_record_older_than_its_ttl_is_pruned(store, monkeypatch):
     kept = reuse.record("gate", young, "green")
     assert reuse.prune("gate") == 1
     assert not old.exists() and kept.exists()
-
-
-def test_the_shadow_check_samples_by_key_and_logs_a_disagreement(store, monkeypatch):
-    assert not reuse.shadow_due("f" * 64)  # off by default
-    monkeypatch.setenv("GOH_REUSE_SHADOW", "1")
-    assert reuse.shadow_due("f" * 64) and reuse.shadow_due("0" * 64)
-    monkeypatch.setenv("GOH_REUSE_SHADOW", "0.5")
-    assert reuse.shadow_due("0" * 64) and not reuse.shadow_due("f" * 64)  # deterministic
-    assert reuse.shadow_report("gate", FIELDS, "green", "green")
-    assert not reuse.shadow_report("gate", FIELDS, "green", "red")
-    lines = [json.loads(x) for x in (store / "shadow.jsonl").read_text().splitlines()]
-    assert [x["agree"] for x in lines] == [True, False]
 
 
 def recorded_hows(store: Path, sha: str) -> list[str]:
