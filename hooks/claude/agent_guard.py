@@ -33,6 +33,9 @@ by hand; this hook keeps them structurally (tests/test_claude_agent_guard.py):
   fraction of checkable spawns in the classes `opus_to_cheap.from` names runs on the cheap tier. Either is an
   `updatedInput` with the new model and effort, and `explored: true` on the ledger line. A spawn
   without the `checkable` tag is never routed down (tests/test_agent_guard_exploration.py).
+* Adaptive lanes (GOH.ADAPTLANES, `lane_room.py`): a write spawn asks lib/capacity.py's reading
+  (`goh capacity`) whether the machine has room for another lane; GOH_LANE_ADMIT `warn` (default)
+  says so, `refuse` refuses naming the reading, a failed reading admits; `lane-starts.jsonl`.
 * Every allowed spawn is one line in `$XDG_CACHE_HOME/goh/agent-spawns.jsonl`; SubagentStop adds
   the outcome line -- tokens summed from the agent's transcript, the report's `Status:` and the
   report itself (the audit checks its shas) -- so a wrong choice either way is visible as data.
@@ -70,6 +73,7 @@ from typing import Any
 
 import appstate  # the owner's login-item apps, put back after an agent (GOH.APPSTATE)
 import ci_door  # a direct gh CI read past loopctl's door (GOH.GHDOOR)
+import lane_room  # a write spawn starts only while the machine has room (GOH.ADAPTLANES)
 import model_choice  # the rules file's one reader, beside this script
 import scratch_guard  # a fixed-name file in the shared scratchpad root (GOH.AGENTSCRATCH)
 from ci_judge import judge_ci as _judge_ci  # the CI-watching judge, beside this script
@@ -309,6 +313,12 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
         why, escape = judge_type(agent_type, declared, prompt, rules)
         if why:
             return _deny(why, rules)
+    lane = lane_room.Verdict()
+    tier = None if exempt else (rules.rule(*declared.split("@")) or {}).get("tier")
+    if lane_room.is_write(tier, rules.lean.get("read_only_tiers") or []):
+        lane = lane_room.judge(event, agent_type, declared)
+        if lane.deny:
+            return _deny(lane.deny, rules)
     route = None
     if not exempt:
         route = rules.route(declared, info["tags"], hashlib.sha256(prompt.encode()).hexdigest())
@@ -332,10 +342,10 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
         "prompt_sha": hashlib.sha256(final.encode()).hexdigest(), "first_line": _first_line(prompt),
         "apps": appstate.snapshot(event.get("tool_use_id")),
         "profile": rules.profile or None, "profile_why": rules.profile_why,
-        "meter": _meter(rules.meter),
+        "meter": _meter(rules.meter), "lane": (lane.record or {}).get("verdict"),
     })  # fmt: skip
-    if warning:
-        out["systemMessage"] = warning
+    if said := " ".join(m for m in (lane.message, warning) if m):
+        out["systemMessage"] = said
     return out or None
 
 

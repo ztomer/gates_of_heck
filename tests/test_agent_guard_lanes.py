@@ -1,0 +1,101 @@
+"""A write spawn starts only while the machine has room for another lane (GOH.ADAPTLANES).
+
+Lane counts were hand-set constants and every session decided alone, so lanes started into a box
+whose two gate slots were already held, at a load of 40-130 on 16 cores. agent_guard asks
+lib/capacity.py's reading -- the one `goh capacity --json` prints -- on every write spawn of every
+session (GOH_LANE_ADMIT: `warn` says so and admits, `refuse` refuses naming the reading, `off`
+asks nothing), never on a read-only one, admits with a warning when the reading fails, and records
+every judged spawn in `$XDG_STATE_HOME/goh/lane-starts.jsonl` for the weekly review.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+from conftest import hermetic_env
+from test_capacity import Planted
+from test_claude_agent_guard import GOOD, GUARD, _allowed, _reason, _spawn
+from timing_bounds import patience
+
+READ_ONLY = {"description": "look", "subagent_type": "Explore", "prompt": "Where is foo defined?"}
+
+
+def _run(event: Any, tmp: Path, env: dict[str, str]) -> dict[str, Any] | None:
+    r = subprocess.run(
+        [sys.executable, str(GUARD)], input=json.dumps(event), capture_output=True, text=True,
+        env=hermetic_env(XDG_CACHE_HOME=str(tmp / "cache"), XDG_STATE_HOME=str(tmp / "state"),
+                         **env),
+        timeout=patience(60), check=False,
+    )  # fmt: skip
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout) if r.stdout.strip() else None
+
+
+def _lanes(tmp: Path) -> list[dict[str, Any]]:
+    path = tmp / "state" / "goh" / "lane-starts.jsonl"
+    return [json.loads(ln) for ln in path.read_text().splitlines()] if path.exists() else []
+
+
+def _judge(tmp: Path, mode: str, *, room: bool, ti: dict[str, Any] = GOOD, **extra: str):
+    p = Planted(tmp, waiting=not room)
+    if room:
+        p.env["GOH_LOADAVG_READING"] = "0 0 0"
+    try:
+        return _run(_spawn(ti), tmp, {**p.env, "GOH_LANE_ADMIT": mode, **extra})
+    finally:
+        p.close()
+
+
+def test_refuse_mode_refuses_a_write_spawn_with_no_room_naming_the_reading(tmp_path) -> None:
+    reason = _reason(_judge(tmp_path, "refuse", room=False))
+    for needle in ("no room for another write lane", "1 gate waiting for a slot",
+                   "per core", "goh capacity", "GOH_LANE_ADMIT"):  # fmt: skip
+        assert needle in reason, (needle, reason)
+    (line,) = _lanes(tmp_path)
+    assert (line["verdict"], line["mode"], line["subagent_type"]) == ("refused", "refuse",
+                                                                      "repo-worker")  # fmt: skip
+    assert line["reading"]["waiting"]["long"] == 1 and line["why"], line
+
+
+def test_refuse_mode_admits_a_write_spawn_when_there_is_room(tmp_path) -> None:
+    out = _judge(tmp_path, "refuse", room=True)
+    _allowed(out)
+    assert "no room" not in (out or {}).get("systemMessage", "")
+    (line,) = _lanes(tmp_path)
+    assert line["verdict"] == "room" and line["why"] == [], line
+
+
+def test_warn_mode_admits_with_no_room_and_says_so(tmp_path) -> None:
+    out = _judge(tmp_path, "warn", room=False)
+    _allowed(out)
+    assert "no room for another write lane" in out["systemMessage"], out
+    assert _lanes(tmp_path)[0]["verdict"] == "warned"
+
+
+def test_a_reading_that_fails_admits_with_a_warning_even_in_refuse_mode(tmp_path) -> None:
+    out = _judge(tmp_path, "refuse", room=False, GOH_LOADAVG_READING="garbage")
+    _allowed(out)
+    assert "could not be read" in out["systemMessage"] and "admitted" in out["systemMessage"]
+    assert _lanes(tmp_path)[0]["verdict"] == "unread"
+
+
+def test_a_read_only_spawn_is_never_judged_or_refused(tmp_path) -> None:
+    out = _judge(tmp_path, "refuse", room=False, ti=READ_ONLY)
+    assert out is None or "permissionDecision" not in out.get("hookSpecificOutput", {}), out
+    assert _lanes(tmp_path) == []
+
+
+def test_off_asks_nothing(tmp_path) -> None:
+    _allowed(_judge(tmp_path, "off", room=False))
+    assert _lanes(tmp_path) == []
+
+
+def test_an_unknown_mode_is_warn_and_says_so(tmp_path) -> None:
+    out = _judge(tmp_path, "refuze", room=False)
+    _allowed(out)
+    assert "GOH_LANE_ADMIT='refuze'" in out["systemMessage"], out
+    assert _lanes(tmp_path)[0]["verdict"] == "warned"
