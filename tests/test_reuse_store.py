@@ -26,7 +26,7 @@ SCOPE = ("bin", "checks", "crates", "gates", "hooks", "lib", "scripts", "tools",
 # (file, store) still naming a store outside the API: each a path not yet moved (docs/reuse.md).
 TODAY = {
     ("tools/land.sh", "goh-landed"),  # the land record's writer (another lane holds land.sh)
-    ("gates/push_gate.sh", "goh-landed"),  # GOH_LANDED_ONLY's refusal reads it by sha
+    ("gates/_push_refusals.sh", "goh-landed"),  # GOH_LANDED_ONLY's refusal reads it by sha
     ("gates/_proven.sh", "goh-proven"),  # the proven-step cache, shell face
     ("crates/goh/src/proven.rs", "goh-proven"),  # ... and its Rust face
     ("crates/goh/src/verdict_cache.rs", "goh/verdicts"),  # the per-file checker cache

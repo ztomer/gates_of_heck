@@ -4,6 +4,7 @@
 # file stood at the 500-line cap (GOH.CAPHEADROOM); it reads push_gate.sh's globals (root, refs_file,
 # remote_name, remote_url, zero, tag_check, export_root) at call time. Sourced, never run.
 # shellcheck shell=bash
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 
 # The tag check, run with .gatesrc in the ENVIRONMENT and nothing else changed.
 # IN A SUBSHELL, and that is the load-bearing word: `set -a` marks the shell that
