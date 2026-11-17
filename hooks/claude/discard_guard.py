@@ -65,6 +65,9 @@ gate's pytest temp root, and another lane's land failed with 1281 FileNotFoundEr
 recursive rm (or `find -delete`/`-exec rm`) whose glob can reach a goh temp root is refused; one
 named root runs. The escape is `# temp-sweep-ok: <reason>`. The rule is `lib/temp_sweep.py`.
 
+THE SKIPPED HOOKS (GOH.NOVERIFYGUARD). `git commit`/`git push` with `--no-verify`, commit's `-n` or
+a command-line `core.hooksPath` is refused. Escape: `# no-verify-ok: <reason>`; `lib/no_verify.py`.
+
 THE UNFED READER (GOH.STDINHANG). A stdin reader nothing feeds (`cat > f` beside a heredoc hung
 5h51m on the harness's socket) is refused. Escape: `# stdin-ok: <reason>`; `lib/stdin_reader.py`.
 
@@ -137,34 +140,21 @@ try:
 except ImportError:
     self_match = None
 
-# The secret render (SRV.NTFYROTATE, 2026-11-08), the same way: a missing rule fails open.
-try:
-    import secret_render
-except ImportError:
-    secret_render = None
 
-# The by-name kill of a shared command (GOH.PKILLNAME, 2026-11-08), the same way: fails open.
-try:
-    import name_kill
-except ImportError:
-    name_kill = None
+def _optional(name: str):
+    """A shared rule module, or None when it is not there: a missing rule fails OPEN."""
+    try:
+        return __import__(name)
+    except ImportError:
+        return None
 
-# The stash / reset / branch switch in a shared checkout (GOH.NORESET, 2026-11-11): fails open.
-try:
-    import shared_checkout
-except ImportError:
-    shared_checkout = None
 
-# A glob rm over goh's per-run temp roots (GOH.FLAKYENVCOV, 2026-11-14): fails open.
-try:
-    import temp_sweep
-except ImportError:
-    temp_sweep = None
-
-try:  # a stdin reader nothing feeds (GOH.STDINHANG): fails open
-    import stdin_reader
-except ImportError:
-    stdin_reader = None
+secret_render = _optional("secret_render")  # SRV.NTFYROTATE, 2026-11-08
+name_kill = _optional("name_kill")  # the by-name kill of a shared command, GOH.PKILLNAME
+shared_checkout = _optional("shared_checkout")  # stash/reset/switch, GOH.NORESET
+temp_sweep = _optional("temp_sweep")  # a glob rm over goh's per-run temp roots, GOH.FLAKYENVCOV
+stdin_reader = _optional("stdin_reader")  # a stdin reader nothing feeds, GOH.STDINHANG
+no_verify = _optional("no_verify")  # a git commit/push that skips the hooks, GOH.NOVERIFYGUARD
 
 # The tools whose input holds a shell command (Bash, Monitor): ONE list, `lib/shell_tools.py`.
 try:
@@ -481,6 +471,7 @@ def main() -> int:
             or judge_name_kill(command)
             or (temp_sweep.judge(command) if temp_sweep else None)
             or (stdin_reader.judge(command) if stdin_reader else None)
+            or (no_verify.judge(command) if no_verify else None)
             or judge_priority(command)
             or judge_bare(command)
         )
