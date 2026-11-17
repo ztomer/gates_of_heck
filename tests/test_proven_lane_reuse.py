@@ -109,18 +109,28 @@ def test_a_miss_after_an_environment_change_names_the_line(goh, repo, env, tmp_p
     assert "its key moved in: env CI -- re-run" in again.stdout, again.stdout
 
 
+def _explain(export, cwd, base_env, **ci):
+    e = {k: v for k, v in base_env.items() if k != "CI"} | ci  # CI is pinned here, never inherited
+    e |= {"GOH_DIR": str(export), "GOH_HEAD_CACHE": str(export.parent)}
+    return subprocess.run(["bash", str(export / "gates" / "proven.sh"), "--explain", "--", "true"],
+                          cwd=cwd, env=e, capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                          timeout=patience(120), check=False)  # fmt: skip
+
+
 def test_explain_prints_the_identity_lines_and_runs_nothing(goh, repo, env, tmp_path):  # noqa: F811
+    """CI is pinned, not inherited: a hosted runner has CI=true and prints `env CI=true`, a laptop
+    has none and prints `env CI unset` (v0.129.0 was red on hosted CI asserting only the second)."""
     export = _export(_with_crates(goh), tmp_path)
-    e = dict(env, GOH_DIR=str(export), GOH_HEAD_CACHE=str(export.parent))
-    r = subprocess.run(["bash", str(export / "gates" / "proven.sh"), "--explain", "--", "true"],
-                       cwd=repo, env=e, capture_output=True, text=True, stdin=subprocess.DEVNULL,
-                       timeout=patience(120), check=False)  # fmt: skip
-    assert r.returncode == 0, r.stdout + r.stderr
-    lines = r.stdout.splitlines()
-    assert lines[0].startswith("key ") and lines[1].startswith("tree ") and lines[2] == "step true"
-    assert any(x.startswith("goh content ") for x in lines), r.stdout
-    assert any(x.startswith("env CI ") for x in lines), r.stdout
-    assert runs(env) == 0
+    for ci, want in (({}, "env CI unset"), ({"CI": "true"}, "env CI=true")):
+        r = _explain(export, repo, env, **ci)
+        assert r.returncode == 0, r.stdout + r.stderr
+        lines = r.stdout.splitlines()
+        assert (
+            lines[0].startswith("key ") and lines[1].startswith("tree ") and lines[2] == "step true"
+        )
+        assert any(x.startswith("goh content ") for x in lines), r.stdout
+        assert want in lines, (want, r.stdout)
+        assert runs(env) == 0
 
 
 def test_test_only_follows_path_attributes_and_module_trees(tmp_path: Path) -> None:

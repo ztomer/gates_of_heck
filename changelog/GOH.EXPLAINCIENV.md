@@ -1,0 +1,1 @@
+* proven: `tests/test_proven_lane_reuse.py::test_explain_prints_the_identity_lines_and_runs_nothing` pins `CI` itself -- once unset (`env CI unset`) and once `CI=true` (`env CI=true`) -- instead of inheriting it; v0.129.0 was red on hosted CI (run 44026755203) because every hosted runner has `CI=true` and the test asserted only the unset form (GOH.EXPLAINCIENV)
