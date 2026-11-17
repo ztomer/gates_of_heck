@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -21,6 +20,9 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT, commit_all, git, hermetic_env, write
+
+sys.path.insert(0, str(REPO_ROOT / "lib"))
+import source_closure as sc
 from timing_bounds import GiveUp, patience
 
 LANDQ = REPO_ROOT / "tools" / "landq.py"
@@ -315,8 +317,19 @@ exit 0
 
 def test_a_land_that_changes_the_lander_is_honoured_by_the_next_request(tmp_path, env):
     code = tmp_path / "goh"
-    for d in ("tools", "lib", "tui", "checks", "gates"):
-        shutil.copytree(REPO_ROOT / d, code / d, ignore=shutil.ignore_patterns("__pycache__"))
+    # The lander and its closure; importlib's module names are said beside it.
+    named = ("lib/bounded_run.py", "lib/gitrun.py", "lib/lock_order.py", "lib/lock_order.tsv")
+    named += ("checks/_gitutil.py",)
+    sc.copy_closure(
+        code,
+        "tools/landq.py",
+        extra=(
+            *named,
+            *sorted(
+                str(p.relative_to(REPO_ROOT)) for p in (REPO_ROOT / "tui").glob("*") if p.is_file()
+            ),
+        ),
+    )
     fast_init(code, "main")
     git(code, "config", "user.email", "t@example.invalid")
     git(code, "config", "user.name", "t")
