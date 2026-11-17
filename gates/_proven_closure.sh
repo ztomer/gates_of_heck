@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # _proven_closure.sh — a proven step's goh closure line, sourced by gates/_proven.sh (its callers
 # provide proven_dir, proven_tree, _proven_goh_roots, _proven_memo_key, GOH_PY, PROVEN_GOH_ROOT).
 _PROVEN_CLOSURE_PY="$PROVEN_GOH_ROOT/lib/step_closure.py"
