@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+## v0.129.0 -- ADVISORYLOAD, DISPLAYSEAMDOC, LANDQSHA, PROVENPYPATH, LANDERSTALECODE, SCREENDOCMASK, AFFECTEDTRANSITIVE, TAGVERSIONRC, SWEEPSLOTS, PRESTEPADMIT, ONEVERDICT slice 1, CANARYFLAKE, SELFGATEPS, CALIBXDIST
+
+* test(advisory_db): the nine fixed `proc.wait(timeout=15|30)` bounds in tests/test_advisory_db.py wait by `patience()`, so the CPU-ceiling test no longer times out at load ~100 (GOH.ADVISORYLOAD); the wall-clock seed's entry for the file falls from 10 to 1 (the deliberate 1.5 s blocked window)
+
+- `goh land` pre-step: `tools/affected_tests.py` follows imports transitively (tests/ helpers, checks/, lib/, tools/ via `lib/source_closure.py`'s reader) and a script a test names with what it sources, so tests/test_gate_slot_race.py is chosen for a change to lib/gate_slot.py, which only its checks/ probe names (SLOTFAIR land 1 lost 706 s). A file's own code naming a changed path counts, its prose does not; what tests/conftest.py loads for every test is the base and chooses nothing. Selection on goh's own tree, files before/after: empty diff 180/180; GOH.LANDERSTALECODE 180/180; GOH.PROOFKEY 202/229; GOH.DISPLAYSEAMDOC 182/182. Selecting takes ~4 s on a non-empty diff (0.9 s before) (GOH.AFFECTEDTRANSITIVE).
+
+* test(gate_calibration): the self-proof sweep of this repo runs on its own snapshot of the tree (tests/calib_snapshot.py), not the live checkout, so a sibling xdist worker writing into the checkout can no longer turn `test_the_gate_agrees_with_the_reader_on_this_repo` red; a sibling write is shown red on the shared tree and unseen on the snapshot (GOH.CALIBXDIST)
+
+* fix(release_canary): one side's `goh structural --full` over a consumer is bounded by a CPU stall of 900 s and a wall backstop of 3600 s (the house's bound, as the empty-scope sweep's), never a 900 s wall ceiling alone; a run starved at load 80-150 gets its verdict instead of "past its 900 s ceiling" refusing the consumer (GOH.CANARYFLAKE)
+
+* `no_display_seam` reads code, not prose, in Python and shell: docstrings, block-string statements,
+  comments and quoted-heredoc bodies are blanked (new `checks/_prose_mask.py`, line count kept 1:1)
+  before the live-screen and `app_launch` patterns run, so ZeroThunder's `tools/publish_bundle.py`
+  docstring "exec Contents/MacOS/ZeroThunder" passes while the same words in a `subprocess.run`
+  argument, a shell line or an unquoted heredoc still go red. The shell guard must now appear in
+  code too: a comment naming `GOH_HEADLESS` no longer exempts a script (GOH.DISPLAYSEAMDOC).
+
+- `goh land`: the long-lived lander re-reads the digest of its own code (tools/landq.py and lib/ on the live checkout's HEAD) between requests and re-execs a fresh lander when a land changed it, so the very next request runs the new code instead of waiting for a restart (GOH.LANDERSTALECODE).
+
+* `goh land` mode land records the commit main now holds as the landing's `sha` (land.sh may rebase the tip), and the enqueued tip as `enqueued`: `loopctl done` reads landing.sha, so it refused GOH.LANDQLAND, whose rebased commit had landed and shipped (GOH.LANDQSHA).
+
+* **One verdict store, one reuse API (GOH.ONEVERDICT).** `lib/reuse.py` is the store every reuse path records and looks up through: a path registers its name and key fields, a partial key raises, and an old, unreadable or foreign record is a miss with its reason; a sampled shadow check (`GOH_REUSE_SHADOW`) logs a reused verdict against a fresh one. Its first path, `gate`, is (repo, tree, gate identity): the push gate records every commit it gated green on EVERY push, not only into the per-ship `GOH_GATE_VERDICTS` file under `goh ship` (removed, with the result's `verdicts` field), and `goh ship verdict` reads the store, a land's `goh-landed` line under today's identity counting too. koffee_big ship 20261115T121828Z-952ef800 spent 3137.5 s in its release step because the land queue had pushed and gated the handoff, ship's push had "nothing to gate", and the kit re-ran the full gate: that verdict is now found by tree. The floor rule's base moves too: `goh-pushed` becomes the store's `pushed` path, keyed by the tree alone on purpose (lib/config_push.py certifies only what the remote gains), written by the same call; the retired file is read only for a base pushed before the store. A changed tree or gate misses (tests/test_reuse.py), and `tests/test_reuse_store.py` refuses a store named in code outside the API, its allowlist the stores still to move (`docs/reuse.md`, the map and the order). Still open: the version-bump commit's second gate (GOH.RELVERDICTREUSE), the land record's writer, the proven-step, coverage, per-test and per-file caches.
+
+* fix(land): the pre-step is admitted in the short lane (the commit gate's slots, which no long gate takes), so a land queues for a long gate slot once, for its gate, and its pre-step starts while long gates hold every long slot; the pre-land line names the wait apart from the run (`pre-land green in T s: waited N s, ran M s`), where `pre-land green in 787 s` hid a 632 s wait (GOH.PRESTEPADMIT)
+
+* proven: a goh change to TEST sources alone (a `#[cfg(test)] mod x;` file and its module tree, a crate's `tests/`) keeps every proven key: `lib/gate_identity.py` `test_only` proves them from the declaring source, never by name, and an embedded file stays keyed; a `tests.rs` the build compiles is keyed as before (GOH.PROOFKEY)
+* proven: a record keeps the identity lines it was keyed under (`goh-proven/.id/<key>`, plus the goh manifest once per goh content), and a miss on a tree and step that passed before says what moved -- `proven on this tree 18m ago by <label>, under other gates — goh changed since in crates/goh/src/settle.rs -- re-run`, or `but its key moved in: env CI` -- then re-runs; `proven.sh --explain` prints a step's key and identity lines and runs nothing. Measured on a private consumer 2026-11-16: all nine records reconstructed byte for byte; each of its three lane-to-push re-runs (18, 10, 26 min) differed only in `goh content` (goh landed during the lane's gate) and the export path on PYTHONPATH (fixed by GOH.PROVENPYPATH) (GOH.PROOFKEY)
+
+* `no_screen_presentation` (`goh screen`) reads code, not prose, in Python: comments (trailing ones
+  included) and docstring/block-string statements are blanked by the shared lexer
+  (`pylex::Lexed::code_only`, the Rust twin of `checks/_prose_mask.py`) before the patterns run, so
+  a docstring or comment naming `pyautogui` passes while an import, call or argument string still
+  fails. `tests/fixtures/prose_mask` is one fixture set both masks must judge alike
+  (`tests/test_prose_mask_parity.py`) (GOH.SCREENDOCMASK).
+
+* test(load_kit): the suite's whole-process-table `ps` is judged by CPU stall (lib/pgid_cpu.py), never a 30 s wall cap, so a starved `ps` at load 50-150 no longer fails the suite-end leak check on whichever test ran last; a structural test refuses any whole-table `ps` under `timeout=` in tests/ (GOH.SELFGATEPS)
+* test(bench_lock): `_waits_then_runs` releases the host's holder when the gate SAYS it is waiting (read from its stderr, bounded by patience()), not after a fixed 2.5 s the load stretched past; a gate started 4 s late is the pinned case (GOH.SELFGATEPS's class)
+
+* fix(pin_sweep): the push sweep holds no gate slot of its own; each consumer push gate is admitted by its own `tools/load.py` and gives the slot back when it ends, so a sweep never runs more consumer gates than the slots it holds (it ran `width` = 2 gates nested in ONE slot, three heavy gates while admission counted two) and a land enqueued during a sweep waits at most one consumer gate (GOH.SWEEPSLOTS)
+
+* `goh tag-version --root X` and `goh lock-version --root X` read `GOH_TAG_VERSION_SOURCES` from the environment, else from X's own `.gatesrc` (`gatesrc::repo_setting`, the one resolver for a repo setting read by name): `loopctl done`'s tag gate ran them on a scratch checkout with nothing sourced, so goh's placeholder `0.0.0` was judged against the default sources and every done between releases was refused (GOH.TAGVERSIONRC). The other `--root` subcommands read their settings through `gatesrc::load` already.
+* `goh lock-version`'s release arm, now fed the repo's sources in every pipeline, skips a declared placeholder `0.0.0` (goh's own) and an own-literal member no `cargo:` source names (divoom-control's `nowplaying` helper); both were silent only because the structural step never saw the key.
+
 ## v0.128.1 -- RUSTCOVKEYSCOPE, VERDICTFREEINLINE, PROVENPYPATH
 
 * Proven steps are reused from one goh land to the next (GOH.PROVENPYPATH). Every proven key held

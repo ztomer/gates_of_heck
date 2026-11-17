@@ -1,1 +1,0 @@
-* test(gate_calibration): the self-proof sweep of this repo runs on its own snapshot of the tree (tests/calib_snapshot.py), not the live checkout, so a sibling xdist worker writing into the checkout can no longer turn `test_the_gate_agrees_with_the_reader_on_this_repo` red; a sibling write is shown red on the shared tree and unseen on the snapshot (GOH.CALIBXDIST)

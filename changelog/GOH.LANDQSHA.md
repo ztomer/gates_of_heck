@@ -1,1 +1,0 @@
-* `goh land` mode land records the commit main now holds as the landing's `sha` (land.sh may rebase the tip), and the enqueued tip as `enqueued`: `loopctl done` reads landing.sha, so it refused GOH.LANDQLAND, whose rebased commit had landed and shipped (GOH.LANDQSHA).

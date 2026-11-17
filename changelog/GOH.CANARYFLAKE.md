@@ -1,1 +1,0 @@
-* fix(release_canary): one side's `goh structural --full` over a consumer is bounded by a CPU stall of 900 s and a wall backstop of 3600 s (the house's bound, as the empty-scope sweep's), never a 900 s wall ceiling alone; a run starved at load 80-150 gets its verdict instead of "past its 900 s ceiling" refusing the consumer (GOH.CANARYFLAKE)
