@@ -218,6 +218,27 @@ def _gate_kinds(rows: list[dict]) -> dict[str, str]:
     return {label: next(iter(ks)) for label, ks in under.items() if label and len(ks) == 1}
 
 
+def control_drifts(rows: list[dict]) -> dict[str, float]:
+    """Each kind's control drift between the run's two ends: (last - first) / first of the kind's
+    control CPU, for a kind with at least two controls. The one definition `calibrated` prints and
+    the budget ledger records (lib/timing_ledger.py), so the two never disagree."""
+    controls: dict[str, list[float]] = {}
+    for r in rows:
+        if r.get("control") and r.get("kind") and "cpu_ms" in r:
+            controls.setdefault(r["kind"], []).append(r["cpu_ms"])
+    return {
+        kind: ((ctl[-1] - ctl[0]) / ctl[0] if ctl[0] else float("inf"))
+        for kind, ctl in controls.items()
+        if len(ctl) >= 2
+    }
+
+
+def worst_control_drift(rows: list[dict]) -> float | None:
+    """The control drift furthest from zero, or None when no kind had a control on both sides."""
+    drifts = [d for d in control_drifts(rows).values() if d != float("inf")]
+    return max(drifts, key=abs) if drifts else None
+
+
 def calibrated(rows: list[dict]) -> str:
     """Each kinded step's figure: its CPU over the mean of its kind's controls, or why a kind has no
     ratio (fewer than two controls, one before the gate and one after, or a control that drifted);
@@ -248,7 +269,7 @@ def calibrated(rows: list[dict]) -> str:
                 f"{kind}: uncalibrated, {counted(len(ctl), 'control')} -- one before and one after are needed"
             )
             continue
-        drift = (ctl[-1] - ctl[0]) / ctl[0] if ctl[0] else float("inf")
+        drift = control_drifts(rows)[kind]
         if abs(drift) > CONTROL_DRIFT:
             out.append(f"{kind}: void, the control drifted {drift:+.1%} between the run's two ends")
             continue

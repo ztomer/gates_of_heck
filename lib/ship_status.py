@@ -20,6 +20,17 @@ TAIL = 40  # a failed step's last log lines, carried in the result
 profile = ship_profile.profile  # each step's GOH_TIMINGS file (tools/ship.py's one name for it)
 
 
+def ledger(res: dict) -> None:
+    """The finished ship's rows in the timing ledger (`goh budget`: `<repo> ship` and `<repo>
+    release`, GOH.GATEBUDGET); a fault is said, never raised: the instrument never fails a ship."""
+    try:
+        import budget  # lib/, on the path through tools/ship.py, the one importer
+
+        budget.record_ship(res)
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        info(f"goh ship: the timing ledger was not written: {e}")
+
+
 def save(res: dict) -> None:
     """Write RES to its result path whole (a temp file renamed over it)."""
     path = Path(res["result"])

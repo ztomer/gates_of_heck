@@ -320,6 +320,7 @@ def plan(args: argparse.Namespace) -> dict:
         "timeout_s": timeout, "loopctl": str(loopctl()), "result": str(out),
         "status": "running", "started": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         "steps": [], "failed_step": None, "tail": [], "undo": [], "pid": None,
+        "load1": os.getloadavg()[0],  # the box's load at the ship's START, for the budget's row
     }  # fmt: skip
 
 
@@ -407,10 +408,12 @@ def run_steps(res: dict, first: str = STEPS[0]) -> int:
         res.update(status="failed", failed_step=name, tail=tail(log))
         res["finished"] = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
         save(res)
+        ship_status.ledger(res)
         err(f"{name} {entry['status']} (exit {out.code}, {secs} s): {res['result']}")
         return 1
     res.update(status="ok", finished=dt.datetime.now(dt.UTC).isoformat(timespec="seconds"))
     save(res)
+    ship_status.ledger(res)
     return 0
 
 

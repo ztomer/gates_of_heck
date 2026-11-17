@@ -35,15 +35,15 @@ pub enum Commands {
     /// List each live subagent idle past a threshold while it waits on its own background work
     /// (`hooks/claude/agent_stalls.py`; its flags pass through). Exit 1 when any is stalled.
     AgentStalls(PassArgs),
-    /// Land a green HEAD unwatched: pre-push gate, release kit, install, `loopctl verify`, then
-    /// `loopctl done` (`tools/ship.py`, GOH.SHIP; flags pass through). Detached unless `--wait`.
+    /// Land a green HEAD unwatched: push gate, release, install, verify, done (`tools/ship.py`).
     Ship(PassArgs),
-    /// The commit gate's verdict on these paths before the commit: `gates/commit_gate.sh` itself,
-    /// over the index `git commit -- <path>...` would commit (`tools/lint.py`, GOH.CLASS.PARITY).
+    /// The commit gate's verdict on these paths before the commit (`tools/lint.py`).
     Lint(PassArgs),
     /// Enqueue a commit or a worktree to land, wait on it, or drain the queue: ONE lander runs each
     /// push gate, ship or land.sh in order, recording the outcome on the item (`tools/landq.py`).
     Land(PassArgs),
+    /// Every subject's time budget: ARMED, BREACHED or CLEARED, last and median runs (`lib/budget.py`).
+    Budget(PassArgs),
     /// Name estate repos with stale stock hooks; `--refresh` fixes them (`hooks_refresh.py`)
     Hooks(PassArgs),
     /// Name estate workflows pinning an older goh release; `--bump` moves them (`wf_pin.py`)

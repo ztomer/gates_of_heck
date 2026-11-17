@@ -56,6 +56,25 @@ set -euo pipefail
 GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # shellcheck source=tui/lib.sh
 . "$GOH/tui/lib.sh"
+# shellcheck source=lib/timing_ledger.sh
+. "$GOH/lib/timing_ledger.sh"
+
+# ONE EXIT: the pre-step's scratch files go, and the land's ledger row is written (GOH.GATEBUDGET,
+# lib/budget.py KINDS `land`: from the land lock taken to main fast-forwarded or the land refused;
+# the wait for the lock is its own field, not gate time). A land that never took the lock (a
+# refusal before it, a failed pre-step) measured no gate and writes no row. The ledger never fails
+# a land: the script's exit status is what it was.
+verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall=""
+# shellcheck disable=SC2329  # invoked by the EXIT trap below
+land_exit() {
+    local rc=$?
+    rm -f "$verdicts" "$pre_start"
+    [ ! -s "${land_timings:-}" ] && rm -f "${land_timings:-}" "${land_timings:-}.log" "${land_timings:-}.controls.log"
+    goh_span_record land "$(goh_repo_id "${main:-.}")" "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" \
+        ${land_timings:+--timings "${GOH_TIMINGS:-$land_timings}"} --field "wait_lock_s=$lock_wait" \
+        --field "exit=$rc" ${pre_wall:+--field "pre_s=$pre_wall"} --field "sha=$(printf %.12s "${tip:-}")" || true
+}
+trap land_exit EXIT
 
 here="$(git rev-parse --show-toplevel)"
 main="$(git worktree list --porcelain | { read -r _ path; printf '%s' "$path"; })"
@@ -96,11 +115,9 @@ fi
 # (GOH_LAND_VERDICTS_RECORD) and the gate's suite skips them on the same tree and tools
 # (GOH_LAND_VERDICTS_REUSE, tests/_land_verdicts.py), the instrumented coverage run keeping every
 # test that ran the binary. One file per land, removed with it; a rebased tip reuses nothing.
-verdicts=""
 if [ -n "$pre" ]; then
     verdicts="$(mktemp "${TMPDIR:-/tmp}/goh-land-verdicts.XXXXXX")" || exit 2
     rm -f "$verdicts"   # the pre-step's suite writes it whole, or there is no record
-    trap 'rm -f "$verdicts"' EXIT
     pre_base="$(git -C "$main" rev-parse HEAD)"
     info "pre-land: $pre"
     # The SHORT lane (GOH.PRESTEPADMIT): the commit gate's slots, which no long gate takes, so the
@@ -108,7 +125,6 @@ if [ -n "$pre" ]; then
     # for its gate. As a `ship` gate it queued twice, and a lane that would go red waited up to
     # 632 s first (2026-11-16). The wait is printed apart from the run: the step stamps its start.
     pre_start="$(mktemp "${TMPDIR:-/tmp}/goh-land-prestart.XXXXXX")" || exit 2
-    trap 'rm -f "$verdicts" "$pre_start"' EXIT
     pre_t0=$(date +%s)
     pre_rc=0
     (cd "$here" && GOH_LAND_VERDICTS_RECORD="$verdicts" GOH_GATE_CLASS=short "$GOH_PY" "$GOH/tools/load.py" \
@@ -119,6 +135,7 @@ if [ -n "$pre" ]; then
     pre_s=""
     IFS= read -r pre_s <"$pre_start" 2>/dev/null || true
     [[ "$pre_s" =~ ^[0-9]+$ ]] || pre_s=$pre_t1   # never started: all of it was the wait
+    pre_wall=$((pre_t1 - pre_t0))
     pre_took="in $((pre_t1 - pre_t0)) s: waited $((pre_s - pre_t0)) s, ran $((pre_t1 - pre_s)) s"
     if [ "$pre_rc" -ne 0 ]; then
         err "land.sh: the pre-land tests failed on ${tip:0:8} $pre_took, before the land lock and the gate -- nothing landed"
@@ -131,6 +148,7 @@ fi
 . "$GOH/lib/lock_order.sh" || exit 1
 lock="$(git -C "$main" rev-parse --path-format=absolute --git-common-dir)/goh-land.lock"
 exec 7>>"$lock"
+lock_t0="${EPOCHREALTIME/,/.}"
 holder=""
 IFS= read -r holder <"$lock" 2>/dev/null || true
 # A land run BY the lock's holder (goh ship's release kit, lib/land_lock.py) is that holder's own
@@ -155,6 +173,8 @@ else
     : >"$lock"   # ours now: who we are, for the next waiter's line
     printf '%s @ %s (pid %s, since %s)\n' "$branch" "${tip:0:8}" "$$" "$(date '+%H:%M:%S')" >&7
 fi
+lock_wait="$(awk -v a="$lock_t0" -v b="${EPOCHREALTIME/,/.}" 'BEGIN { printf "%.1f", b - a }')"
+goh_span_start   # the land's START (lib/budget.py KINDS): the lock is ours, the rebase and the gate follow
 # Refuse BEFORE the gate what could never land (G15): a pre-commit hook that refused the commit left
 # the tip at the base, and "landed" was printed over a no-op merge. Landing is a state change, so the
 # state is checked, not the exit code of the merge.
@@ -197,7 +217,10 @@ info "gate: $gate"
 # on the lock then holds nothing a ship holding the lock can be waiting on (GOH.LOCKORDER: land 20
 # before gate_slot 50). 90 minutes bounds the gate as the coordinator's wrapper did. Class `ship`
 # (GOH_GATE_CLASS, consumed by lib/admission.py): ahead of every `work` waiter (GOH.SLOTFAIR).
+# GOH_TIMING_VIA: the push gate this runs is this land's, so it leaves the ledger row to land.sh.
+land_timings="$(mktemp "${TMPDIR:-/tmp}/goh-land-timings.XXXXXX")" || land_timings=""
 if ! GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" GOH_LAND_VERDICTS_REUSE="$verdicts" GOH_GATE_CLASS=ship \
+        GOH_TIMING_VIA=land GOH_TIMINGS="${GOH_TIMINGS:-$land_timings}" \
         "$GOH_PY" "$GOH/tools/load.py" --background-ok "land gate" \
         --max 90m 0 -- bash -c "$gate" 7>&- </dev/null; then
     err "land.sh: the gate failed on ${tip:0:8} -- nothing landed"

@@ -70,7 +70,7 @@ GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
 # shellcheck source=lib/repo_writes.sh
 . "$GOH/lib/repo_writes.sh"
 # shellcheck source=lib/push_runs.sh
-. "$GOH/lib/push_runs.sh"; . "$GOH/lib/suite_cache_guard.sh"; . "$GOH/lib/sccache_dir.sh"   # the last pins SCCACHE_DIR before any repo code runs
+. "$GOH/lib/push_runs.sh"; . "$GOH/lib/suite_cache_guard.sh"; . "$GOH/lib/timing_ledger.sh"; . "$GOH/lib/sccache_dir.sh"   # the last pins SCCACHE_DIR before any repo code runs
 # shellcheck source=lib/gate_slot.sh
 . "$GOH/lib/gate_slot.sh"
 bench_lock_join "pre-push" # the whole push is one registration; a measurement waits for it
@@ -434,6 +434,7 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
     change_base="$(push_change_base "$root" "$commit" "${remote_sha:-$zero}" "$remote_name")"   # lib/push_runs.sh
     repo_before="$(goh_repo_snapshot "$root")"   # what the gate may not write (lib/repo_writes.sh)
     slept_mark="$(goh_sleep_mark)"
+    goh_span_start   # the full gate's START: after the slot, the export and the checks (lib/budget.py KINDS)
     # The structural layer and the steps .gatesrc DECLARES run whatever the repo's gate calls (6.7,
     # test_push_gate_ci_steps.py), each marking its tree; a release-only commit: lib/push_runs.sh.
     release_base="$(push_release_base "$root" "$worktree")"
@@ -458,6 +459,8 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
                 GOH_DIR="$GOH" bash "$GOH/gates/local_ci.sh" "$worktree"
             }; }; fi) 2>&1 | tee "$log"
     status="${PIPESTATUS[0]}"
+    # The full gate's END: one ledger row (GOH.GATEBUDGET); none for a release-only or floor push, none under a land
+    [ -n "$release_base$config_base${GOH_TIMING_VIA:-}" ] || goh_push_row "$root" "$status" "$commit"
     rm -f "$structural_mark" "$steps_mark"
     set -e
     goh_repo_writes "$root" "$repo_before" || { err "pre-push: nothing pushed"; exit 1; }

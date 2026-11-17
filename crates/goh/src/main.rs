@@ -161,9 +161,8 @@ fn main() {
     std::process::exit(code);
 }
 
-/// `goh agent-stalls`, `goh ship` and `goh hooks`: the house interpreter on one of goh's Python entry points,
-/// its exit code passed through (GOH.STALLAGENT, GOH.SHIP). One implementation each: the
-/// coordinator's hook runs the same `agent_stalls.py`, and `tools/ship.py` is the pipeline.
+/// `goh ship`, `goh budget`, `goh hooks`...: the house interpreter on one of goh's Python entry
+/// points, its exit code passed through (GOH.SHIP): one implementation each, `tools/ship.py` the pipeline.
 fn house_script(name: &str, rel: &str, args: &[String]) -> i32 {
     let py = match house_python::path() {
         Ok(py) => py,
@@ -200,6 +199,7 @@ fn run_core(command: Commands) -> i32 {
         Commands::Ship(a) => house_script("ship", "tools/ship.py", &a.args),
         Commands::Lint(a) => house_script("lint", "tools/lint.py", &a.args),
         Commands::Land(a) => house_script("land", "tools/landq.py", &a.args),
+        Commands::Budget(a) => house_script("budget", "lib/budget.py", &a.args),
         Commands::Hooks(a) => house_script("hooks", "scripts/hooks_refresh.py", &a.args),
         Commands::WfPin(a) => house_script("wf-pin", "scripts/wf_pin.py", &a.args),
         Commands::BareOpen(a) => paths(a.exclude, |x| bareopen::run_command(a.staged, x)),

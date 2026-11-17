@@ -1,0 +1,75 @@
+# shellcheck shell=bash
+# lib/timing_ledger.sh -- a span's wall, cpu-s and load for the timing ledger (GOH.GATEBUDGET).
+#
+#   . "$GOH/lib/timing_ledger.sh"
+#   goh_span_start                        # the span's START: wall clock, reaped-children CPU, load
+#   ... the work, in this shell or its children ...
+#   goh_span_record KIND REPO OK [--timings FILE] [--field K=V]...
+#                                         # the span's END: one row, subject "<REPO> <KIND>"
+#
+# One implementation of the shell side, so `gates/push_gate.sh` and `tools/land.sh` measure a span
+# the same way (lib/budget.py KINDS names each kind's start and end). CPU is bash's own `times`:
+# the user+system time of every child this shell has reaped (and theirs), so a delta around the work
+# is the work's tree; a daemon nobody reaps is not in it. The record is written by
+# lib/timing_ledger.py, which never fails: a ledger that cannot be written leaves a gate's exit alone.
+# Sourced, never run. Pinned by tests/test_timing_ledger.py.
+
+# Sets _goh_cpu_now to the seconds of CPU the children of THIS shell have used so far, one decimal
+# ("0.0" when unreadable). A global, never printed for a `$( )`: `times` in a command substitution
+# is the substitution's own subshell, whose children are none (the first version read 0.0 always).
+goh_children_cpu() {
+    local f
+    _goh_cpu_now="0.0"
+    f="$(mktemp "${TMPDIR:-/tmp}/goh-times.XXXXXX")" || return 0
+    times >"$f"
+    _goh_cpu_now="$(awk 'NR == 2 { for (i = 1; i <= 2; i++) { gsub(",", ".", $i); split($i, a, /[ms]/); s += a[1] * 60 + a[2] } }
+                        END { printf "%.1f", s + 0 }' "$f")"
+    rm -f "$f"
+}
+
+# The box's 1-minute load average ("" when unreadable).
+goh_load1() {
+    local l
+    l="$(sysctl -n vm.loadavg 2>/dev/null | awk '{ print $2 }')"
+    [ -n "$l" ] || l="$(awk '{ print $1 }' /proc/loadavg 2>/dev/null)"
+    printf '%s' "$l"
+}
+
+# The repository's own name, whichever worktree DIR is: the directory holding the common git dir
+# (a lane's `wt` worktree is `ztools`'s ledger subject, never `wt`).
+goh_repo_id() {
+    local common
+    common="$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""
+    if [ -n "$common" ]; then basename "$(dirname "$common")"; else basename "$1"; fi
+}
+
+# The push gate's row: REPO's `push` span ends with STATUS (0 passed) on COMMIT.
+goh_push_row() {
+    local ok=0
+    [ "$2" -ne 0 ] || ok=1
+    goh_span_record push "$(goh_repo_id "$1")" "$ok" ${GOH_TIMINGS:+--timings "$GOH_TIMINGS"} \
+        --field "sha=${3:0:12}"
+}
+
+goh_span_start() {
+    _goh_span_t0="${EPOCHREALTIME/,/.}"
+    goh_children_cpu
+    _goh_span_cpu0="$_goh_cpu_now"
+    _goh_span_load="$(goh_load1)"
+}
+
+goh_span_record() {
+    local kind="$1" repo="$2" ok="$3"
+    shift 3
+    [ -n "${_goh_span_t0:-}" ] || return 0   # no start: nothing was measured
+    local now cpu1 wall cpu args=()
+    now="${EPOCHREALTIME/,/.}"
+    goh_children_cpu
+    cpu1="$_goh_cpu_now"
+    wall="$(awk -v a="$_goh_span_t0" -v b="$now" 'BEGIN { printf "%.1f", b - a }')"
+    cpu="$(awk -v a="${_goh_span_cpu0:-0}" -v b="$cpu1" 'BEGIN { printf "%.1f", b - a }')"
+    [ -z "${_goh_span_load:-}" ] || args+=(--load "$_goh_span_load")
+    _goh_span_t0=""   # one record per span
+    "$GOH_PY" "$GOH/lib/timing_ledger.py" record --kind "$kind" --repo "$repo" --wall "$wall" \
+        --cpu "$cpu" --ok "$ok" "${args[@]}" "$@" >/dev/null 2>&1 </dev/null || true
+}
