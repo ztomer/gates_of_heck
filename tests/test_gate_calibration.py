@@ -15,15 +15,18 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from calib_snapshot import snapshot
 from conftest import REPO_ROOT as ROOT
 
 sys.path.insert(0, str(ROOT / "checks"))
 import _calibration as reader
 import check_probes_pass as gate
+from _gitutil import tree_files
 
 CHECK = ROOT / "checks" / "check_probes_pass.py"
 
@@ -81,9 +84,16 @@ NOT_HERE: set[str] = set()
 
 
 @pytest.fixture(scope="module")
-def ran_here() -> dict:
+def calibration_root(tmp_path_factory) -> Path:
+    """This repo as it is now, copied (GOH.CALIBXDIST): the sweep stamps the tree it is given, so
+    it must not be the live checkout a sibling worker can write into while it runs."""
+    return snapshot(ROOT, tmp_path_factory.mktemp("calibration") / "repo")
+
+
+@pytest.fixture(scope="module")
+def ran_here(calibration_root) -> dict:
     """The sweep over THIS repo, once: running every self-proof is ~8 s, and two tests read it."""
-    return green_probes(ROOT)
+    return green_probes(calibration_root)
 
 
 def test_the_house_registry_holds_against_this_repo(ran_here):
@@ -123,8 +133,13 @@ def test_a_checker_missing_from_the_registry_is_red_through_the_gate(tmp_path):
     assert "check_orphan.py" in got.stderr and "no entry" in got.stderr, got.stderr
 
 
-def test_the_gate_agrees_with_the_reader_on_this_repo():
-    assert run_gate(ROOT).returncode == 0
+def test_the_gate_agrees_with_the_reader_on_this_repo(calibration_root):
+    got = run_gate(calibration_root)
+    assert got.returncode == 0, got.stdout + got.stderr
+
+
+def test_the_snapshot_holds_what_the_tree_holds(calibration_root):
+    assert set(tree_files(str(ROOT))) <= set(tree_files(str(calibration_root)))
 
 
 def test_every_registered_key_names_a_gate_this_repo_has():
