@@ -277,3 +277,19 @@ def test_wait_on_an_item_never_takes_another_items_request(repo, tmp_path, env):
     assert landq(env, "--enqueue", "--land", str(wt), "--item", "X-B", "--no-start").returncode == 0
     done = landq(env, "--wait", "B")
     assert done.returncode == 2 and "no request for B" in done.stdout + done.stderr, done.stderr
+
+
+def test_a_rebased_land_records_the_sha_on_main_as_landing_sha(repo, tmp_path, env):
+    """GOH.LANDQSHA: loopctl done reads landing.sha, so it must be the commit main holds; the
+    enqueued tip, which land.sh rebased away, keeps its own name."""
+    wt, tip = _land_wt(repo, tmp_path)
+    write(repo, "m.txt", "main moved\n")
+    git(repo, "add", "m.txt")
+    git(repo, "commit", "-q", "--no-verify", "-m", "main moved")
+    env = {**env, "GOH_LAND_GATE": "true"}
+    assert landq(env, "--enqueue", "--land", str(wt), "--item", "T.S", "--no-start").returncode == 0
+    assert landq(env, "--drain").returncode == 0
+    got = recorded(env)["T.S"]
+    on_main = git(repo, "rev-parse", "HEAD").strip()
+    assert got["state"] == "landed" and on_main != tip, got
+    assert got["sha"] == on_main and got["enqueued"] == tip, got

@@ -26,7 +26,8 @@ SHA, the remote and branch the checkout tracks, the item, and the mode:
           goh lane gates with its tip's gates), else the kit's. The sha is the worktree's HEAD at
           enqueue; a tip that moved since is refused unrun (the request judged another commit),
           and the enqueue refuses the main checkout and a tree with uncommitted tracked changes.
-          The outcome's `landed` is main's new tip (land.sh may have rebased the branch onto it).
+          The outcome's `sha` (and `landed`) is main's new tip (land.sh may have rebased the
+          branch onto it); the enqueued tip is kept as `enqueued`.
 A red gate pushes nothing: git refuses the push when its pre-push hook fails; land.sh lands nothing.
 
 THE WAIT. The enqueue returns at once. `goh land --wait ID` (an item, or a request's path or name)
@@ -248,7 +249,10 @@ def run_one(q: Path, path: Path) -> dict:
     info(f"land {Path(req['repo']).name} @ {req['sha'][:8]} ({req['mode']}) -> {log}")
     res = bounded_run.run_step(argv_for(req), timeout, GRACE, f"land {req['mode']}", str(log))
     if res.code == 0 and not res.timed_out:
-        main_tip = {"landed": git(Path(req["repo"]), "rev-parse", "HEAD")} if land else {}
+        # GOH.LANDQSHA: land.sh may rebase the tip, and `loopctl done` reads landing.sha, so the
+        # sha recorded is the one main now holds; the enqueued tip keeps its own name.
+        on_main = git(Path(req["repo"]), "rev-parse", "HEAD") if land else ""
+        main_tip = {"sha": on_main, "enqueued": req["sha"], "landed": on_main} if land else {}
         return {**outcome, "state": "landed", **main_tip}
     why = f"timed out after {timeout}s" if res.timed_out else f"exit {res.code}"
     return {**outcome, "state": "red", "why": why}
