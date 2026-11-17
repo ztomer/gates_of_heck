@@ -66,6 +66,7 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
     del _sys.path[0]
 
 import argparse
+import contextlib
 import importlib
 import json
 import os
@@ -305,10 +306,24 @@ def drain_held(q: Path, digest: str = "") -> bool:
     return True
 
 
-def drain() -> int:
+def home() -> Path:
+    """The queue's state dir, made, and the lander's working directory from here on (GOH.LANDERCWD).
+
+    The lander is started from whatever directory its enqueuer was in, often a lane worktree that is
+    removed when the lane is cleaned: an inherited directory that is gone breaks every relative path
+    and every child that inherits it (`getcwd: cannot access parent directories`). Each land names
+    its repo and worktree by absolute path, so nothing needs the directory it started in."""
     q = qdir()
+    with contextlib.suppress(OSError):  # the start directory is already gone: an absolute state
+        q = q.resolve()  # dir needs no cwd
     for d in DIRS:
         (q / d).mkdir(parents=True, exist_ok=True)
+    os.chdir(q)
+    return q
+
+
+def drain() -> int:
+    q = home()
     digest = code_digest()  # what this lander runs; a land that changes it re-execs a fresh one
     while True:
         fd = take_lock(q)
@@ -325,6 +340,7 @@ def drain() -> int:
             sys.stdout.flush()
             sys.stderr.flush()
             env = dict(os.environ, PYTHONPATH=live_pythonpath(os.environ.get("PYTHONPATH", "")))
+            os.chdir(q)  # the fresh lander inherits the state dir, whatever happened to it since
             os.execve(sys.executable, [sys.executable, str(fresh), "--drain"], env)
         if not any((q / "pending").glob("*.json")):  # enqueued after the last look: ours to run
             audit_drain()
