@@ -96,7 +96,7 @@ if [ "$explain" = 1 ]; then
         printf 'key none (the cache is off, or the working tree is no tree git can name)\n'
     fi
     printf 'step %s\n' "$step_cmd"
-    _proven_closure_line "$step_cmd" </dev/null
+    ! _proven_closure_on || _proven_closure_line "$step_cmd" </dev/null
     proven_identity </dev/null
     exit 0
 fi

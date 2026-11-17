@@ -30,7 +30,7 @@ _proven_goh_mkey() {
 # _proven_noted <step> — the identity lines a record keeps: the step's goh closure line (as `goh`,
 # so a miss names the goh files that moved, GOH.PROVENCLOSURE), then proven_identity's.
 _proven_noted() {
-    printf 'goh %s\n' "$(_proven_closure_line "$1")"
+    ! _proven_closure_on || printf 'goh %s\n' "$(_proven_closure_line "$1")"
     proven_identity
 }
 

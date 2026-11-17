@@ -29,7 +29,7 @@ _proven_closures_args() {
 }
 
 proven_closures_prime() {
-    [ "${PROVEN_ON:-1}" = 1 ] || return 0
+    [ "${PROVEN_ON:-1}" = 1 ] && _proven_closure_on || return 0
     local s _pc_args
     _proven_closures_args </dev/null
     for s in "$@"; do _pc_args+=(--step "$s"); done
@@ -37,6 +37,28 @@ proven_closures_prime() {
         || GOH_PROVEN_CLOSURES=""
     GOH_PROVEN_CLOSURES_FOR="$(_proven_memo_key)"
     export GOH_PROVEN_CLOSURES GOH_PROVEN_CLOSURES_FOR
+}
+
+# THE SWITCH (GOH.PROVENCLOSURE2). GOH_PROVEN_CLOSURE=on keys as above; off (the default, until
+# GOH.REUSEAUDIT samples `step`) keys every step on the whole goh content as before GOH.PROVENCLOSURE:
+# the bare step, the `goh` content lines in the identity (lib/gate_identity.py proven), and no
+# closure computed at all. proven_settings refuses any other value (exit 2).
+_proven_closure_on() { [ "${GOH_PROVEN_CLOSURE:-off}" = on ]; }
+_proven_closure_valid() {
+    case "${GOH_PROVEN_CLOSURE:-off}" in
+        off|on) return 0 ;;
+    esac
+    printf 'GOH_PROVEN_CLOSURE must be off or on (got %s)\n' "'${GOH_PROVEN_CLOSURE}'" >&2
+    return 2
+}
+
+# _proven_key_step <step> — the step part of the key: the step, then its closure line when on.
+_proven_key_step() {
+    if _proven_closure_on; then
+        printf '%s\n%s\n' "$1" "$(_proven_closure_line "$1")"
+    else
+        printf '%s\n' "$1"
+    fi
 }
 
 # _proven_closure_line <step> — the step's goh line: from the prime, else one call of its own.

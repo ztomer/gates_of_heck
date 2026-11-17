@@ -264,6 +264,7 @@ TTL. Rationale and the full key: the header of `gates/proven.sh`.
 | `GOH_PROVEN` | unset (on) | `0` disables the cache: every step runs, nothing is recorded. |
 | `GOH_PROVEN_TTL_S` | `86400` | Record lifetime in seconds; older records are ignored and pruned. Non-numeric values are exit-2 usage errors. |
 | `GOH_PROVEN_ENV` | unset | Space-separated environment variable NAMES (in `.gatesrc`) whose values join the key, beside the built-in `CI RUSTFLAGS RUSTDOCFLAGS CARGO_BUILD_TARGET`. PYTHONPATH is keyed apart, by content: each gates root on it by the gates' files, any other entry by its path (`lib/gate_identity.py` `pythonpath`); named here it is keyed by its path as well. Name a variable here when a step's verdict depends on it. |
+| `GOH_PROVEN_CLOSURE` | `off` | `on` keys each proven step on its own goh closure (`lib/step_closure.py`, GOH.PROVENCLOSURE); `off` keys every step on the whole goh content, as before, and computes no closure. Staged off until GOH.REUSEAUDIT samples `step` (GOH.PROVENCLOSURE2). Any other value is an exit-2 usage error. |
 | `GOH_PROVEN_NOW` | internal | Clock seam for the tests (epoch seconds). Not user config. |
 
 ### The one verdict store (lib/reuse.py, GOH.ONEVERDICT)

@@ -42,6 +42,7 @@ proven_settings() {
             return 2 ;;
     esac
     PROVEN_TTL="${GOH_PROVEN_TTL_S:-86400}"
+    _proven_closure_valid || return 2
     case "${GOH_PROVEN:-1}" in
         0) PROVEN_ON=0 ;;
         *) PROVEN_ON=1 ;;
@@ -100,17 +101,16 @@ _proven_tool() {
 # The run-constant half of proven_identity: the gates checkout's identity and the toolchains.
 # ~110 ms, and every step's key was computed twice in every group of every gate (a private server
 # workspace push: ~174 times). `proven_settings` asks it ONCE and exports it for the same working
-# directory, PATH, toolchain override, gates root, GOH_LIVE mode and PYTHONPATH (its content is
-# in it); a key computed anywhere else asks again (tests/test_proven_identity_once.py).
+# directory, PATH, toolchain override, gates root, GOH_LIVE, PYTHONPATH and GOH_PROVEN_CLOSURE;
+# a key computed anywhere else asks again (tests/test_proven_identity_once.py).
 _proven_memo_key() {
-    printf '%s|%s|%s|%s|%s|%s|%s' "$PWD" "$PATH" "${RUSTUP_TOOLCHAIN:-}" "${PROVEN_GOH_ROOT:-}" \
-        "${GOH_DIR:-}" "${GOH_LIVE:-}" "${PYTHONPATH-<unset>}"
+    printf '%s|%s|%s|%s|%s|%s|%s|%s' "$PWD" "$PATH" "${RUSTUP_TOOLCHAIN:-}" "${PROVEN_GOH_ROOT:-}" \
+        "${GOH_DIR:-}" "${GOH_LIVE:-}" "${PYTHONPATH-<unset>}" "${GOH_PROVEN_CLOSURE:-off}"
 }
 
 proven_identity_prime() {
     [ "${PROVEN_ON:-1}" = 1 ] || return 0
-    # Only where the export can reach the steps: a `$(proven_settings)` that only validates (as
-    # local_ci.sh does, to capture the message) would compute it for nobody.
+    # Only where the export reaches the steps: local_ci.sh's validating `$(proven_settings)` is not.
     [ "${BASH_SUBSHELL:-0}" = 0 ] || return 0
     local k
     k="$(_proven_memo_key)"
@@ -174,6 +174,7 @@ _proven_identity_slow() {
     top="$(git rev-parse --show-toplevel 2>/dev/null)" || top="$PWD"
     args+=(--repo "$top")
     [ -z "${PYTHONPATH+set}" ] || args+=(--pythonpath "$PYTHONPATH")
+    ! _proven_closure_on || args+=(--closure)   # off: the roots' content lines (GOH.PROVENCLOSURE2)
     "$GOH_PY" -S "$_PROVEN_IDENTITY_PY" proven "${args[@]}" </dev/null 2>/dev/null \
         || printf 'goh unreadable %s\n' "$$"
     # Toolchains for the languages the repo tracks (`swift --version` alone ~0.7 s: no Swift, no cost).
@@ -256,7 +257,7 @@ proven_key() (
     local tree key kstep
     goh_bind_hook_index
     [ "${PROVEN_ON:-1}" = 1 ] || return 1
-    kstep="$1"$'\n'"$(_proven_closure_line "$1")"
+    kstep="$(_proven_key_step "$1")"
     if _proven_native_key; then
         _proven_identity_live | "$GOH_RESOLVED_BIN" proven key -- "$kstep"
         return
@@ -350,7 +351,7 @@ proven_scoped_key() (
     goh_bind_hook_index
     [ "${PROVEN_ON:-1}" = 1 ] || return 1
     [ "$#" -gt 0 ] || return 1
-    step="$step"$'\n'"$(_proven_closure_line "$step")"
+    step="$(_proven_key_step "$step")"
     if _proven_native_key; then
         _proven_identity_live | "$GOH_RESOLVED_BIN" proven key -- "$step" "$@"
         return

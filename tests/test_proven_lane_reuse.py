@@ -122,7 +122,7 @@ def test_explain_prints_the_identity_lines_and_runs_nothing(goh, repo, env, tmp_
     has none and prints `env CI unset` (v0.129.0 was red on hosted CI asserting only the second)."""
     export = _export(_with_crates(goh), tmp_path)
     for ci, want in (({}, "env CI unset"), ({"CI": "true"}, "env CI=true")):
-        r = _explain(export, repo, env, **ci)
+        r = _explain(export, repo, dict(env, GOH_PROVEN_CLOSURE="on"), **ci)  # its closure line
         assert r.returncode == 0, r.stdout + r.stderr
         lines = r.stdout.splitlines()
         assert (

@@ -9,7 +9,7 @@ under a hand-set GOH_LAND_GATE=true wrote exactly as a full gate's.
 
     gate_identity.py tools                    # one line per tool a gate step may invoke
     gate_identity.py key --mode MODE [--root GOH]   # sha256 of MODE, the gates' content, the tools
-    gate_identity.py proven [--root GOH...] [--repo R --pythonpath PP]
+    gate_identity.py proven [--root GOH...] [--repo R --pythonpath PP] [--closure]
                                               # gates/_proven.sh's run-constant identity: each root
                                               # once by content, PYTHONPATH by content, the tools
     gate_identity.py keyed --root GOH...      # the paths that content covers, one per line
@@ -236,13 +236,16 @@ def key(mode: str, root: Path = GOH_ROOT) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def proven(roots: list[Path], path: str | None = None, repo: Path | None = None) -> list[str]:
-    """gates/_proven.sh's run-constant half: PYTHONPATH by `by_step_closure` (GOH.PROVENPYPATH),
-    then the tools."""
-    del roots  # their content is each step's closure line now (lib/step_closure.py)
+def proven(roots: list[Path], path: str | None = None, repo: Path | None = None,
+           closure: bool = False) -> list[str]:  # fmt: skip
+    """gates/_proven.sh's run-constant half: one `goh` line per distinct root identity (a checkout
+    and its export are one), PYTHONPATH by content (scope gate_files, GOH.PROVENPYPATH), the tools.
+    `closure` (GOH_PROVEN_CLOSURE=on): no goh lines, each step's closure line keys them instead."""
     where = repo if repo is not None else Path.cwd()
-    pp = "unset" if path is None else pythonpath(path, where, by_step_closure) or "goh only"
-    return [f"pythonpath {pp}", *tools()]
+    pp = "unset" if path is None else ((pythonpath(path, where, by_step_closure) or "goh only")
+          if closure else pythonpath(path, where, gate_files))  # fmt: skip
+    seen = [] if closure else list(dict.fromkeys(f"goh {identity(r)}" for r in roots))
+    return [*seen, f"pythonpath {pp}", *tools()]
 
 
 def by_step_closure(_root: Path) -> list[str]:
@@ -462,6 +465,7 @@ def main(argv: list[str] | None = None) -> int:
     pv.add_argument("--root", type=Path, action="append", default=[])
     pv.add_argument("--repo", type=Path, help="the repo a PYTHONPATH entry may be")
     pv.add_argument("--pythonpath", help="PYTHONPATH as the gate has it (absent: unset)")
+    pv.add_argument("--closure", action="store_true", help="GOH_PROVEN_CLOSURE=on")
     r = sub.add_parser("rust")
     r.add_argument("--repo", type=Path, required=True)
     r.add_argument("--root", type=Path, default=GOH_ROOT)
@@ -480,7 +484,7 @@ def main(argv: list[str] | None = None) -> int:
         print("\n".join(tools()))
         return 0
     if a.verb == "proven":
-        print("\n".join(proven([r.resolve() for r in a.root], a.pythonpath, a.repo)))
+        print("\n".join(proven([r.resolve() for r in a.root], a.pythonpath, a.repo, a.closure)))
         return 0
     if a.verb == "manifest":
         print("\n".join(manifest([r.resolve() for r in a.root])))

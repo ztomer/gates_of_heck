@@ -266,9 +266,13 @@ def test_goh_proven_0_disables_the_cache(goh, repo, env):
 
 
 @pytest.mark.parametrize("change", ["edit", "untracked", "commit"])
-def test_a_change_to_the_gates_invalidates_what_they_proved(goh, repo, env, change):
-    """Of the steps it can decide: an edit to the runner (local_ci.sh) is in every step's closure;
-    a new gate or file the step never reaches leaves its proof standing (GOH.PROVENCLOSURE)."""
+@pytest.mark.parametrize("mode", ["off", "on"])
+def test_a_change_to_the_gates_invalidates_what_they_proved(goh, repo, env, change, mode):
+    """Closure keying on: of the steps it can decide, an edit to the runner (local_ci.sh) is in
+    every step's closure; a new gate or file the step never reaches leaves its proof standing
+    (GOH.PROVENCLOSURE). Off (the default, GOH.PROVENCLOSURE2): any change to the gates' content."""
+    if mode == "on":
+        env = dict(env, GOH_PROVEN_CLOSURE="on")
     proven(goh, repo, env)
     if change == "edit":
         with open(goh / "gates" / "local_ci.sh", "a") as f:
@@ -280,7 +284,7 @@ def test_a_change_to_the_gates_invalidates_what_they_proved(goh, repo, env, chan
         _git(goh, "add", "gates/NOTE")
         _git(goh, "commit", "-q", "-m", "gates moved")
     proven(goh, repo, env)
-    assert runs(env) == (2 if change == "edit" else 1)
+    assert runs(env) == (2 if change == "edit" or mode == "off" else 1)
 
 
 def test_an_env_var_the_repo_names_is_part_of_the_key(goh, repo, env):
