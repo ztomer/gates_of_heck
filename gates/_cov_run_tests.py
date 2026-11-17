@@ -10,9 +10,12 @@ run binaries. The binaries are already built (the JSON the build step wrote name
 (`LLVM_PROFILE_FILE` carries `%p-%m`), so the run needs no cargo: this starts up to JOBS of them at
 once, each as `cargo test` would -- cwd the package's root, the CARGO_PKG_* / CARGO_MANIFEST_DIR
 variables of its manifest, CARGO_BIN_EXE_<name> for its package's binaries, the library path of
-its dependencies -- and reports like it: each binary's output whole, the failures LAST (so the
-gate's tail and its `test X ... FAILED` / `test result: FAILED` readers see them), exit 101 when
-any binary failed, never fail-fast (a red binary does not hide a second).
+its dependencies, the `[env]` table of cargo's config files (`_cargo_env_table`), in the gate's own
+session (a process group of its own, never a session: a session leader that opens a tty takes it as
+its controlling terminal, which cargo test never lets a test do) -- and reports like it: each
+binary's output whole, the failures LAST (so the gate's tail and its `test X ... FAILED` /
+`test result: FAILED` readers see them), exit 101 when any binary failed, never fail-fast (a red
+binary does not hide a second).
 
 JOBS: GOH_COV_RUST_JOBS, else 6; 1 is the old serial run. The biggest binaries start
 first (a long one started last is the whole step's tail). A build that names NO test executable is
@@ -41,6 +44,8 @@ import subprocess
 import sys
 import threading
 import time
+import tomllib
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -92,6 +97,42 @@ def _package_env(pkg: dict) -> dict[str, str]:
     }
 
 
+def _cargo_env_table(cwd: Path, environ: Mapping[str, str], cargo_home: Path) -> dict[str, str]:
+    """The variables cargo's `[env]` table sets for a process it runs from `cwd` (GOH.SWEEPREDS130).
+
+    Every `.cargo/config.toml` (else the legacy `.cargo/config`) from `cwd` up to the root, then
+    `cargo_home/config.toml`; a deeper file wins a key. An entry is a string or a table
+    `{value, force, relative}`: it yields to a variable already in `environ` unless `force`, and a
+    `relative` value is joined to the directory holding that `.cargo`. A file that is no TOML is
+    refused naming it (ValueError), as cargo refuses it.
+    """
+    files = []
+    for d in (cwd.resolve(), *cwd.resolve().parents):
+        found = [
+            d / ".cargo" / n for n in ("config.toml", "config") if (d / ".cargo" / n).is_file()
+        ]
+        files.extend(found[:1])
+    home = cargo_home / "config.toml"
+    if home.is_file() and home.resolve() not in {f.resolve() for f in files}:
+        files.append(home)
+    table: dict[str, tuple[object, Path]] = {}
+    for f in reversed(files):  # the lowest first: a deeper file overwrites
+        try:
+            env = tomllib.loads(f.read_text()).get("env", {})
+        except (tomllib.TOMLDecodeError, OSError) as e:
+            raise ValueError(f"{f}: {e}") from e
+        for key, entry in env.items():
+            table[key] = (entry, f.parent.parent)
+    out: dict[str, str] = {}
+    for key, (entry, base) in table.items():
+        spec = entry if isinstance(entry, dict) else {"value": entry}
+        if key in environ and not spec.get("force", False):
+            continue
+        value = str(spec.get("value", ""))
+        out[key] = str(base / value) if spec.get("relative", False) else value
+    return out
+
+
 def _libpath_var() -> str:
     return "DYLD_FALLBACK_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
 
@@ -120,7 +161,7 @@ def _go(run: _Run, live: set, lock: threading.Lock) -> _Run:
     proc = subprocess.Popen(
         run.argv, cwd=run.cwd, env=run.env, stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace",
-        start_new_session=True,
+        process_group=0,  # a group for `stop` to kill; a SESSION would make it take a tty it opens
     )  # fmt: skip
     with lock:
         live.add(proc)
@@ -143,6 +184,12 @@ def main(argv: list[str]) -> int:
         check=True, capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout)  # fmt: skip
     by_manifest = {os.path.realpath(p["manifest_path"]): p for p in meta["packages"]}
     sysroot = _sysroot_lib()
+    cargo_home = Path(os.environ.get("CARGO_HOME") or Path.home() / ".cargo")
+    try:
+        config_env = _cargo_env_table(Path.cwd(), os.environ, cargo_home)
+    except ValueError as e:
+        print(f"_cov_run_tests: a cargo config is unreadable: {e}")
+        return 1
     runs: list[_Run] = []
     for msg in tests:
         exe = msg["executable"]
@@ -151,6 +198,7 @@ def main(argv: list[str]) -> int:
             print(f"_cov_run_tests: no workspace package owns {msg.get('manifest_path')!r} ({exe})")
             return 1
         env = dict(os.environ)
+        env.update(config_env)
         env.update(_package_env(pkg))
         env["CARGO_CRATE_NAME"] = msg["target"]["name"].replace("-", "_")
         for name, path in bins.get(msg.get("package_id", ""), {}).items():

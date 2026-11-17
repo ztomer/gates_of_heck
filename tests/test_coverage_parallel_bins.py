@@ -9,7 +9,8 @@ tests behind a mutex, the other cores idle. `gates/_cov_run_tests.py` starts the
 The instrument that can tell serial from concurrent is a RENDEZVOUS: each binary's one test
 creates its own file and waits for every other binary's. Run one after another the first waits out
 its patience and fails; run together all pass. The same fixture proves a binary runs as cargo runs
-it (its package's root as cwd, CARGO_MANIFEST_DIR), that profiles of concurrent processes still
+it (its package's root as cwd, CARGO_MANIFEST_DIR, the `.cargo/config.toml` [env] table, and in the
+gate's session, never a session leader of its own), that profiles of concurrent processes still
 land in the one report, that a red binary is named and never hides a second, and that
 GOH_COV_RUST_JOBS=1 is the old serial run.
 """
@@ -44,6 +45,11 @@ LIB = "pub fn shared() -> u32 {\n    41\n}\n"
 RENDEZVOUS = """\
 use std::{{fs, path::Path, thread, time::{{Duration, Instant}}}};
 
+extern "C" {{
+    fn getsid(pid: i32) -> i32;
+    fn getpid() -> i32;
+}}
+
 #[test]
 fn meets_the_others() {{
     let rv = Path::new(&std::env::var("COVRV").unwrap()).to_path_buf();
@@ -52,6 +58,15 @@ fn meets_the_others() {{
     let manifest = Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).canonicalize().unwrap();
     assert_eq!(here, manifest, "a test binary runs in its package's root, as cargo runs it");
     assert_eq!(std::env::var("CARGO_PKG_NAME").unwrap(), "cov");
+    assert_eq!(
+        std::env::var("COV_FROM_CONFIG").as_deref(),
+        Ok("from-config"),
+        "a .cargo/config.toml [env] variable reaches the test, as cargo sets it"
+    );
+    // A session leader with no terminal that opens a tty without O_NOCTTY takes it as its own
+    // controlling terminal (sys_updater's pty test, 2026-11-17): cargo never setsids a test.
+    let (sid, pid) = unsafe {{ (getsid(0), getpid()) }};
+    assert_ne!(sid, pid, "a test binary is no session leader: cargo test never setsids one");
     fs::write(rv.join("{me}"), "").unwrap();
     let t0 = Instant::now();
     while !{names}.iter().all(|n| rv.join(n).exists()) {{
@@ -80,6 +95,8 @@ def _crate(root: Path, names: list[str], *, bad: bool = False) -> Path:
         (root / "tests" / f"{n}.rs").write_text(RENDEZVOUS.format(me=n, names=quoted, wait=WAIT_S))
     if bad:
         (root / "tests" / "zbad.rs").write_text(BAD)
+    (root / ".cargo").mkdir()
+    (root / ".cargo" / "config.toml").write_text('[env]\nCOV_FROM_CONFIG = "from-config"\n')
     subprocess.run(
         ["cargo", "generate-lockfile", "-q"], cwd=root, check=True, stdin=subprocess.DEVNULL
     )
