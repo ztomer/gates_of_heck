@@ -20,8 +20,11 @@ row as `<exe>+children`. Its FAMILY (`families`) is, in order: a system daemon b
 land.sh is the land's, a cargo under gate.sh under push_gate.sh the push gate's; else an app bundle
 (`app:<Name>`); else the nearest tool in its ancestry (rust-build, rust-test, swift-build, pytest,
 python, node, git), or `exe:<name>`; under an agent (claude, opencode, agy, codex) and no house
-context, `agent:<that>`. Its REPO is the repository of its working directory and, for a linked
-worktree, the worktree (a lane's `<ITEM>/wt` is `<ITEM>`).
+context, `agent:<that>`. tools/load.py is a context only for its spinners (and itself when it runs
+any): the command it wraps keeps its own family, and a `load.py 0` (no spinners, a gate waiting for
+its slot) is booked to that command's family and repo (GOH.LOADSOURCES2). Its REPO is the
+repository of its working directory and, for a linked worktree, the
+worktree (a lane's `<ITEM>/wt` is `<ITEM>`).
 
 THE LEDGER holds names and numbers only: family, repo, worktree, executable basename, cpu-s, rss MB,
 and per sample the interval, the machine's busy cpu-s (host CPU ticks), the 1-minute load, the core
@@ -86,11 +89,11 @@ DAEMONS = {
 CONTEXTS = (  # matched on an exe or script basename; the OUTERMOST in the ancestry wins
     ("land", {"land.sh", "landq.py", "land_prestep.py", "affected_tests.py"}),
     ("ship", {"ship.py"}),
-    ("push-gate", {"push_gate.sh", "pre-push"}),
+    ("push-gate", {"push_gate.sh", "pre-push", "ci_hook.sh"}),  # ci_hook.sh: a pre-push hook body
     ("commit-gate", {"pre-commit", "commit-msg", "commit_msg.sh"}),
     ("pin-sweep", {"pin_sweep.py"}),
     ("gate", {"gate.sh", "structural.sh", "local_ci.sh", "coverage_gate.sh"}),
-    ("load-experiment", {"load.py"}),
+    ("load-experiment", {"load.py"}),  # only its spinners and itself when N>0 (`_is_spinner`)
     ("load-sources", {"load_sources.py", "load_sources.sh"}),
     ("sccache", {"sccache"}),
 )
@@ -147,13 +150,53 @@ def _tool(p: Proc) -> str | None:
     return "python" if _PY.match(p.exe) or p.exe == "python3" else None
 
 
-def family(pid: int, procs: dict[int, Proc]) -> str:
+LOAD_PY = "load.py"
+
+
+def _is_load(p: Proc) -> bool:
+    return LOAD_PY in _labels(p)
+
+
+def _is_spinner(p: Proc, procs: dict[int, Proc]) -> bool:
+    """tools/load.py starts each spinner as `/bin/sh -c SPINNER_COMMAND`: a shell with no script,
+    straight under load.py. The command it wraps is everything else under it."""
+    parent = procs.get(p.ppid)
+    return parent is not None and _is_load(parent) and p.exe == "sh" and not p.script
+
+
+def _children(procs: dict[int, Proc]) -> dict[int, list[int]]:
+    kids: dict[int, list[int]] = defaultdict(list)
+    for pid, c in procs.items():
+        kids[c.ppid].append(pid)
+    return kids
+
+
+def proxy(pid: int, procs: dict[int, Proc], kids: dict[int, list[int]] | None = None) -> int:
+    """The process whose family and repo `pid` is booked to: itself, except a load.py running NO
+    spinners (N=0, GOH.LOADSOURCES2), which only waits on its command and is booked to it."""
+    me = procs[pid]
+    if not _is_load(me):
+        return pid
+    kids = _children(procs) if kids is None else kids
+    mine = kids.get(pid, [])
+    if not mine or any(_is_spinner(procs[k], procs) for k in mine):
+        return pid
+    return mine[0]
+
+
+def family(pid: int, procs: dict[int, Proc], kids: dict[int, list[int]] | None = None) -> str:
+    pid = proxy(pid, procs, kids)
     me = procs[pid]
     for fam, names in DAEMONS.items():
         if me.exe in names:
             return fam
     chain = _chain(pid, procs)
+    # load.py is a context only for its spinners and itself: the command it wraps is its own
+    # (a CI hook under `load.py 0` is the hook's, GOH.LOADSOURCES2).
+    under_load = me if _is_load(me) else next((c for c in chain if _is_spinner(c, procs)), None)
     for anc in reversed(chain):  # outermost first
+        if _is_load(anc) and under_load is None:
+            continue
         for fam, names in CONTEXTS:
             if _labels(anc) & names:
                 return fam
@@ -167,7 +210,8 @@ def family(pid: int, procs: dict[int, Proc]) -> str:
 
 
 def families(procs: dict[int, Proc]) -> dict[int, str]:
-    return {pid: family(pid, procs) for pid in procs}
+    kids = _children(procs)
+    return {pid: family(pid, procs, kids) for pid in procs}
 
 
 def attribute(
@@ -241,10 +285,11 @@ class RepoResolver:
 def record(prev: Snapshot, cur: Snapshot, repo_of: RepoResolver, self_s: float) -> dict:
     """One ledger line: the interval's CPU, grouped by (family, repo, worktree, exe)."""
     own, reaped = attribute(prev.procs, cur.procs)
-    fam = families(cur.procs)
+    kids = _children(cur.procs)
+    fam = {pid: family(pid, cur.procs, kids) for pid in cur.procs}
     rows: dict[tuple[str, str, str, str], list[float]] = defaultdict(lambda: [0.0, 0.0])
     for pid, c in cur.procs.items():
-        repo, wt = repo_of(c.cwd)
+        repo, wt = repo_of(cur.procs[proxy(pid, cur.procs, kids)].cwd)
         for exe, cpu, rss in (
             (c.exe, own.get(pid, 0.0), c.rss_kb),
             (c.exe + "+children", reaped.get(pid, 0.0), 0),

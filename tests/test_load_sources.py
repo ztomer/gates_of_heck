@@ -74,6 +74,42 @@ def test_a_family_is_the_outermost_house_context_else_the_nearest_tool():
     assert fam[901] == "agent:python"
 
 
+LOADPY = {  # GOH.LOADSOURCES2: a load.py with N=0 wraps a gate; with N>0 it also runs spinners
+    1: Proc(1, 0, "launchd", "/sbin/launchd", 0, None, 0, None),
+    100: p(100, 1, "claude", path=CLAUDE),
+    10: p(10, 100, "python3", script="load.py", cwd="/w/agent-repo"),  # N=0: no spinner child
+    11: p(11, 10, "bash", script="ci_hook.sh", cwd="/w/consumer"),  # the command: a pre-push hook
+    12: p(12, 11, "cargo", cwd="/w/consumer"),
+    20: p(20, 100, "python3", script="load.py", cwd="/w/goh"),  # N=1
+    21: p(21, 20, "sh", cwd="/w/goh"),  # a spinner: `/bin/sh -c SPINNER_COMMAND`, no script
+    22: p(22, 20, "bash", script="land.sh", cwd="/w/goh"),  # the command under test
+    23: p(23, 22, "cargo", cwd="/w/goh"),
+}
+
+
+def test_a_load_py_without_spinners_is_its_commands_and_spinners_stay_the_experiments():
+    fam = ls.families(LOADPY)
+    assert fam[12] == "push-gate" and fam[11] == "push-gate"  # ci_hook.sh is the pre-push body
+    assert fam[10] == "push-gate"  # N=0: the wrapper is booked to what it wraps
+    assert fam[21] == "load-experiment" and fam[20] == "load-experiment"  # N>0: the spinners
+    assert fam[23] == "land" and fam[22] == "land"  # ... and the command is still its own
+    prev = _snap(0, 100.0, dict(LOADPY))
+    cur = _snap(
+        30,
+        130.0,
+        {
+            **LOADPY,
+            10: p(10, 100, "python3", 2.0, script="load.py", cwd="/w/agent-repo"),
+            12: p(12, 11, "cargo", 20.0, cwd="/w/consumer"),
+            21: p(21, 20, "sh", 6.0, cwd="/w/goh"),
+        },
+    )
+    rec = ls.record(prev, cur, lambda cwd: (cwd.rsplit("/", 1)[-1] if cwd else "", ""), 0.0)
+    assert ["push-gate", "consumer", "", "cargo", 20.0, 0.0] in rec["rows"]
+    assert ["push-gate", "consumer", "", "python3", 2.0, 0.0] in rec["rows"]  # the child's repo
+    assert ["load-experiment", "goh", "", "sh", 6.0, 0.0] in rec["rows"]
+
+
 def test_a_child_reaped_between_samples_is_counted_once():
     # prev: P own 1, C own 2. cur: P own 1.5; C gone, reaped by P with final own 3, and a
     # sibling born and reaped unseen burned 2: P's reaped time rose 0 -> 5.
