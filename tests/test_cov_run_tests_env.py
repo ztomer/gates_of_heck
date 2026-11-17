@@ -18,7 +18,7 @@ import pytest
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "gates"))
-from _cov_run_tests import _cargo_env_table
+from _cargo_config import _cargo_env_table
 
 
 def _cfg(dir_: Path, body: str, name: str = "config.toml") -> None:

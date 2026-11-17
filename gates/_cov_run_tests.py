@@ -10,7 +10,9 @@ run binaries. The binaries are already built (the JSON the build step wrote name
 (`LLVM_PROFILE_FILE` carries `%p-%m`), so the run needs no cargo: this starts up to JOBS of them at
 once, each as `cargo test` would -- cwd the package's root, the CARGO_PKG_* / CARGO_MANIFEST_DIR
 variables of its manifest, CARGO_BIN_EXE_<name> for its package's binaries, the library path of
-its dependencies, the `[env]` table of cargo's config files (`_cargo_env_table`), in the gate's own
+its dependencies, the `[env]` table of cargo's config files (`_cargo_env_table`), through the
+RUNNER those files or CARGO_TARGET_<TRIPLE>_RUNNER name (`_cargo_runner`, GOH.COVRUNNER), in the
+gate's own
 session (a process group of its own, never a session: a session leader that opens a tty takes it as
 its controlling terminal, which cargo test never lets a test do) -- and reports like it: each
 binary's output whole, the failures LAST (so the gate's tail and its `test X ... FAILED` /
@@ -44,10 +46,10 @@ import subprocess
 import sys
 import threading
 import time
-import tomllib
-from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+from _cargo_config import _build_target, _cargo_env_table, _cargo_runner, _rustc_target
 
 FAILED = 101  # cargo test's own exit code for a red test binary
 DEFAULT_JOBS = 6  # explicit, never sized to the machine (tests/test_suite_drift.py)
@@ -95,42 +97,6 @@ def _package_env(pkg: dict) -> dict[str, str]:
         "CARGO_PKG_RUST_VERSION": pkg.get("rust_version") or "",
         "CARGO_PKG_README": pkg.get("readme") or "",
     }
-
-
-def _cargo_env_table(cwd: Path, environ: Mapping[str, str], cargo_home: Path) -> dict[str, str]:
-    """The variables cargo's `[env]` table sets for a process it runs from `cwd` (GOH.SWEEPREDS130).
-
-    Every `.cargo/config.toml` (else the legacy `.cargo/config`) from `cwd` up to the root, then
-    `cargo_home/config.toml`; a deeper file wins a key. An entry is a string or a table
-    `{value, force, relative}`: it yields to a variable already in `environ` unless `force`, and a
-    `relative` value is joined to the directory holding that `.cargo`. A file that is no TOML is
-    refused naming it (ValueError), as cargo refuses it.
-    """
-    files = []
-    for d in (cwd.resolve(), *cwd.resolve().parents):
-        found = [
-            d / ".cargo" / n for n in ("config.toml", "config") if (d / ".cargo" / n).is_file()
-        ]
-        files.extend(found[:1])
-    home = cargo_home / "config.toml"
-    if home.is_file() and home.resolve() not in {f.resolve() for f in files}:
-        files.append(home)
-    table: dict[str, tuple[object, Path]] = {}
-    for f in reversed(files):  # the lowest first: a deeper file overwrites
-        try:
-            env = tomllib.loads(f.read_text()).get("env", {})
-        except (tomllib.TOMLDecodeError, OSError) as e:
-            raise ValueError(f"{f}: {e}") from e
-        for key, entry in env.items():
-            table[key] = (entry, f.parent.parent)
-    out: dict[str, str] = {}
-    for key, (entry, base) in table.items():
-        spec = entry if isinstance(entry, dict) else {"value": entry}
-        if key in environ and not spec.get("force", False):
-            continue
-        value = str(spec.get("value", ""))
-        out[key] = str(base / value) if spec.get("relative", False) else value
-    return out
 
 
 def _libpath_var() -> str:
@@ -203,8 +169,15 @@ def main(argv: list[str]) -> int:
     cargo_home = Path(os.environ.get("CARGO_HOME") or Path.home() / ".cargo")
     try:
         config_env = _cargo_env_table(Path.cwd(), os.environ, cargo_home)
+        runner = _cargo_runner(
+            Path.cwd(), os.environ, cargo_home,
+            lambda: _rustc_target(_build_target(Path.cwd(), os.environ, cargo_home), os.environ),
+        )  # fmt: skip
     except ValueError as e:
         print(f"_cov_run_tests: a cargo config is unreadable: {e}")
+        return 1
+    except (OSError, subprocess.CalledProcessError) as e:
+        print(f"_cov_run_tests: rustc could not name the target or its cfgs: {e}")
         return 1
     runs: list[_Run] = []
     for msg in tests:
@@ -224,8 +197,10 @@ def main(argv: list[str]) -> int:
         env[var] = ":".join(d for d in dirs if d)
         kind = "unit tests" if "test" not in msg["target"]["kind"] else "integration test"
         label = f"{msg['target']['name']} ({kind}, {pkg['name']})"
-        runs.append(_Run(label, [exe], str(Path(pkg["manifest_path"]).parent), env))
-    runs.sort(key=lambda r: -os.path.getsize(r.argv[0]))  # the big ones first: the step's tail
+        runs.append(
+            _Run(label, [*(runner or []), exe], str(Path(pkg["manifest_path"]).parent), env)
+        )
+    runs.sort(key=lambda r: -os.path.getsize(r.argv[-1]))  # the big ones first: the step's tail
     jobs = int(os.environ.get("GOH_COV_RUST_JOBS") or DEFAULT_JOBS)
     jobs = max(1, min(jobs, len(runs)))
     jobs = split_share(jobs, runs, os.environ.get("GOH_GATE_WORKERS", ""))
