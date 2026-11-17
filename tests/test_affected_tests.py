@@ -397,4 +397,4 @@ def test_goh_declares_the_selector_as_its_pre_step() -> None:
         cwd=REPO_ROOT, capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
         env=hermetic_env(drop_git=True),
     ).stdout  # fmt: skip
-    assert 'tools/affected_tests.py --run --base "$1"' in pre, pre
+    assert 'tools/affected_tests.py --run --structural --base "$1"' in pre, pre

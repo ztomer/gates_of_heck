@@ -59,8 +59,11 @@ from tui.lib import counted, info, ok
 # Tree readers that neither a test name nor a tree-walking call in their own source gives away.
 ALWAYS = ("tests/test_self_walk.py", "tests/test_python_from_head.py")
 TREE_NAMED = re.compile(r"^\s*def (test_every_|test_no_)", re.MULTILINE)
+# ... or that RUNS a tool over the whole checkout, `cwd=REPO_ROOT` (tests/test_gate_temp_leaks.py
+# runs `structural.sh --full` there; GOH.PREPARITY: red in two lands no pre-step chose it for).
 TREE_READ = re.compile(
     r"ls-files|ls_files|\.rglob\(|os\.walk\(|REPO_ROOT\b[^\n]*\.(?:glob|iterdir)\("
+    r"|cwd=(?:str\()?REPO_ROOT\)?\s*[,)]"
 )
 
 
@@ -306,22 +309,49 @@ def main(argv: list[str]) -> int:
     ap.add_argument(
         "--run", action="store_true", help="run the set with the root's tools/pytest.sh"
     )
+    ap.add_argument(
+        "--structural", action="store_true", help="--run: gates/structural.sh --full first"
+    )
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     changed = args.changed if args.changed is not None else changed_paths(root, args.base)
     chosen = affected(root, changed)
     if args.run:
+        if args.structural and (rc := structural(root)):
+            return rc
         return run(root, changed, chosen)
     for rel, why in chosen.items():
         print(f"{rel}  # {why}" if args.why else rel)
     return 0
 
 
+def structural(root: Path) -> int:
+    """The structural gates over the whole branch, before any test (GOH.PREPARITY): the 500-line
+    cap, the roadmap, the seeds -- seconds, where the land gate met them after ~10 min of suite
+    (GOH.AFFECTEDBINARY's land). This checkout's gates/structural.sh, as the land gate runs it."""
+    info("pre-land: the structural gates over the branch first (gates/structural.sh --full)")
+    script = Path(__file__).resolve().parent.parent / "gates" / "structural.sh"
+    return subprocess.run(
+        ["bash", str(script), "--full"], cwd=root, check=False, stdin=subprocess.DEVNULL
+    ).returncode
+
+
+def phases(root: Path, chosen: dict[str, str]) -> tuple[list[str], list[str]]:
+    """(the JUDGES, the rest): the chosen nodes of the tree readers, which judge every file or key
+    of the tree whatever the diff names, and then the tests the diff chose."""
+    readers = tree_readers(root)
+    judges = [n for n in chosen if n.split("::")[0] in readers]
+    return judges, [n for n in chosen if n not in judges]
+
+
 def run(root: Path, changed: list[str], chosen: dict[str, str]) -> int:
-    """tools/pytest.sh over the set. An EMPTY set runs nothing: pytest.sh with no file runs the
-    whole suite, which is the full gate's job, never the pre-step's. Inside a running goh suite (a
-    fixture land of a goh copy) it runs nothing either and says so: pytest.sh refuses a nested
-    suite, and the suite around it is already running these tests."""
+    """tools/pytest.sh over the set: the JUDGES first, in a run of their own, then the rest
+    (GOH.PREPARITY: one run of both reached the 600 s deadline at load 175 with no verdict, and
+    two judges it held went red in the land 444 s later; ADAPTLANES). A red judge is a red
+    verdict before the slow tests start; the two runs' records are one (`_merge`). An EMPTY set
+    runs nothing: pytest.sh with no file runs the whole suite, which is the full gate's job, never
+    the pre-step's. Inside a running goh suite (a fixture land of a goh copy) it runs nothing
+    either and says so: pytest.sh refuses a nested suite, and the suite around it runs these."""
     if not chosen:
         why = f"no test is chosen by {counted(len(changed), 'changed path')}"
         ok(f"pre-land: {why}")
@@ -337,16 +367,43 @@ def run(root: Path, changed: list[str], chosen: dict[str, str]) -> int:
         info(f"pre-land: {why}")
         _ran_nothing(why)
         return 0
-    readers = len(tree_readers(root))
+    judges, rest = phases(root, chosen)
     info(
-        f"pre-land: {counted(len(chosen), 'test file')} -- {readers} tree readers, the rest chosen "
-        f"by {counted(len(changed), 'changed path')}"
+        f"pre-land: {counted(len(chosen), 'test')} -- {len(judges)} judging the whole tree "
+        f"first, then {len(rest)} chosen by {counted(len(changed), 'changed path')}"
     )
-    return subprocess.run(
-        ["bash", str(root / "tools" / "pytest.sh"), "-q", *chosen],
-        check=False,  # no cwd: pytest.sh runs in its own checkout, the root
-        stdin=subprocess.DEVNULL,
-    ).returncode
+    record = os.environ.get("GOH_LAND_VERDICTS_RECORD", "")
+    first = Path(f"{record}.judges") if record and record != os.devnull else None
+    for n, nodes in enumerate((judges, rest)):
+        if not nodes:
+            continue
+        rc = subprocess.run(
+            ["bash", str(root / "tools" / "pytest.sh"), "-q", *nodes],
+            check=False,  # no cwd: pytest.sh runs in its own checkout, the root
+            stdin=subprocess.DEVNULL,
+        ).returncode
+        if rc:
+            return rc
+        if first and n == 0 and rest and Path(record).is_file():
+            Path(record).replace(first)  # the rest's run writes its own; _merge joins them
+    if first and first.is_file():
+        _merge(Path(record), first)
+    return 0
+
+
+def _merge(record: Path, first: Path) -> None:
+    """The judges' record joined into the rest's, when both judged the same tree and tip."""
+    try:
+        a, b = json.loads(first.read_text()), json.loads(record.read_text())
+    except (OSError, ValueError):
+        a, b = None, None
+    if a and b and (a.get("identity"), a.get("sha")) == (b.get("identity"), b.get("sha")):
+        b["passed"] = {**a.get("passed", {}), **b.get("passed", {})}
+        record.write_text(json.dumps(b))
+    elif a and not record.is_file():
+        first.replace(record)
+        return
+    first.unlink(missing_ok=True)
 
 
 def _ran_nothing(why: str) -> None:
