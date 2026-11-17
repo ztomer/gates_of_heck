@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+## v0.128.1 -- RUSTCOVKEYSCOPE, VERDICTFREEINLINE, PROVENPYPATH
+
+* Proven steps are reused from one goh land to the next (GOH.PROVENPYPATH). Every proven key held
+  `env PYTHONPATH=<path>`, and goh's land puts the tip's head export (`~/.cache/goh/head/<sha>`, new
+  per commit) first on PYTHONPATH, so every group (crate, repo, structural, ...) was keyed by that
+  path and none was ever found again. PYTHONPATH now joins the run-constant identity by content,
+  through the one formula the Rust coverage key already used (`lib/gate_identity.py` `pythonpath`):
+  each gates root on it by the gates' files (the coverage key: its coverage scripts), a root behind
+  another only by the files the one ahead lacks, any other entry by its path; a changed file a gate
+  imports still moves the key. The estate-corpus cache had the same hole twice: it keyed GOH_DIR's
+  path and the export's `bin/goh` launcher (a fresh copy, new mtime, in every export); it keys the
+  gates there by content now.
+* The land after GOH.RUSTCOVKEYSCOPE's (GOH.VERDICTFREEINLINE, tests/docs/changelog and
+  `gates/verdict_free_keys.txt`) still re-measured Rust coverage (830 s), naming `docs/` and
+  `changelog/` as what moved in PYTHONPATH. Neither had: its PYTHONPATH held one more copy of the
+  same gates, keyed as one more `goh:shadowed`, and a key line that names no files made the miss
+  run a bare `git diff --` over the whole tree. A wholly shadowed gates root and a repeated entry are
+  no input now, and such a line names no files.
+
+* The Rust coverage measurement is reused on goh's own lands at last, and a miss names what moved
+  (GOH.RUSTCOVKEYSCOPE). After GOH.RUSTCOVREUSE three lands in a row measured in full (468-476 s
+  each, the last a `lib/` and tests-only diff) and said "no measurement of this workspace is
+  recorded yet" beside three records. Two defects: the miss read the store with a `grep | xargs ls`
+  pipeline that met the store's directories, grep exited 2, and rust_gate's pipefail read that as
+  no record; and the key named PYTHONPATH by path, where every land puts the tip's head export
+  (`~/.cache/goh/head/<sha>`, new per commit). PYTHONPATH is now keyed as the measurement reads it,
+  each gates root on it by its coverage scripts' content, and one behind
+  another (the live checkout ~/.zshrc adds, main before the land) only by the files the one ahead lacks. The key gains what the number depends on
+  and lacked: the runner the external command drives the binary through (goh's `tools/pytest.sh`
+  and what it sources, imports or runs). Still not inputs, by the owner's rule: `tests/` and the
+  scripts the suite exercises. Each measurement keeps its input lines beside its record, so the
+  next miss says which moved (`the Rust build inputs (crates/goh/src/x.rs)`, `GOH_COV_FLOOR_RUST`,
+  `the suite's runner (tools/pytest.sh)`, `PYTHONPATH`).
+
+* A GOH_* key passed inline or by `env` can no longer reach a proven step's key unseen
+  (GOH.VERDICTFREEINLINE). `tests/test_verdict_free_keys.py` found only `export GOH_X`, so a value
+  set the way `gates/push_gate.sh` sets GOH_STRUCTURAL_MARK (`GOH_X=v cmd`), by `env GOH_X=v cmd`, or
+  by Python's `dict(os.environ, ...)` / `os.environ[...] =` was invisible, and every key of that
+  class hid GOH.RUSTCOVREUSE. The test now reads every form, each key passed on is on
+  `gates/verdict_free_keys.txt` or in a reasoned exemption (a stale exemption fails), and a fixture
+  with an inline per-push key goes red. It found real gaps, now on the list: GOH_STAGED_TWIN_MARK
+  (a new temp file per commit), GOH_CHANGE_BASE (a new commit per push) and the four GOH_SHIP_* keys
+  (new per ship); `GOH_SHIP_SUMMARY` and `GOH_SHIP_ITEM` gained their docs/config.md rows.
+
 ## v0.128.0 -- RUSTCOVREUSE, LANDQLAND, PGREPSELF
 
 * `goh land --enqueue --land <worktree> --item ID` hands a lane's worktree tip to the lander, which runs that worktree's `tools/land.sh` bare (the one land lock, the land gate, the fast-forward of main) and records `landed` (with main's new tip) or `red` with the log on the item; a red lands nothing, a tip that moved after enqueue is refused unrun, and the enqueue refuses the main checkout and an uncommitted tree. `goh land --wait ID` is the lane's one wait: it blocks until the outcome, prints it (a red log's tail too), exits 0 landed / 1 red / 3 timed out, and starts a lander when a request sits pending with none (GOH.LANDQLAND, owner 2026-11-15: "move the lanes onto the landing queue"). land.sh run by hand is unchanged.
