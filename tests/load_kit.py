@@ -43,6 +43,7 @@ from pathlib import Path
 
 import pytest
 import timing_bounds
+from ps_table import live_processes
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
@@ -75,28 +76,6 @@ def alive(pid: int) -> bool:
     )  # fmt: skip
     text = state.stdout.strip()
     return bool(text) and not text.startswith("Z")
-
-
-def live_processes() -> list[tuple[int, int, str]]:
-    """Every live process: its pid, its parent, and its whole command line."""
-    result = subprocess.run(
-        ["ps", "-ww", "-ax", "-o", "pid=,ppid=,command="],
-        capture_output=True,
-        text=True,
-        stdin=subprocess.DEVNULL,
-        timeout=30,
-        check=False,
-    )  # fmt: skip
-    out: list[tuple[int, int, str]] = []
-    for line in result.stdout.splitlines():
-        parts = line.strip().split(None, 2)
-        if len(parts) != 3:
-            continue
-        try:
-            out.append((int(parts[0]), int(parts[1]), parts[2]))
-        except ValueError:
-            continue
-    return out
 
 
 def leaked_spinners(roots: list[str] | None = None) -> list[tuple[int, str]]:

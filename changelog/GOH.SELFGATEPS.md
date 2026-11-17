@@ -1,0 +1,1 @@
+* test(load_kit): the suite's whole-process-table `ps` is judged by CPU stall (lib/pgid_cpu.py), never a 30 s wall cap, so a starved `ps` at load 50-150 no longer fails the suite-end leak check on whichever test ran last; a structural test refuses any whole-table `ps` under `timeout=` in tests/ (GOH.SELFGATEPS)
