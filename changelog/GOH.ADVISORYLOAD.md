@@ -1,0 +1,1 @@
+* test(advisory_db): the nine fixed `proc.wait(timeout=15|30)` bounds in tests/test_advisory_db.py wait by `patience()`, so the CPU-ceiling test no longer times out at load ~100 (GOH.ADVISORYLOAD); the wall-clock seed's entry for the file falls from 10 to 1 (the deliberate 1.5 s blocked window)

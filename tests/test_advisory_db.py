@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT, hermetic_env
+from timing_bounds import patience
 
 SEAM = REPO_ROOT / "lib" / "advisory_db.py"
 BLOCKED_FOR_S = 1.5
@@ -82,7 +83,7 @@ def test_a_read_waits_while_a_refresh_holds_the_database(db: Path, tmp_path: Pat
             assert not record.exists()
         finally:
             refresh.close()
-        assert proc.wait(timeout=30) == 0
+        assert proc.wait(timeout=patience(30)) == 0
     assert record.read_text().split() == [
         "audit",
         "--file",
@@ -101,7 +102,7 @@ def test_a_refresh_waits_for_a_read_in_progress(db: Path, tmp_path: Path) -> Non
             assert _still_waiting(proc), "a refresh rewrote the database under a read"
         finally:
             read.close()
-        assert proc.wait(timeout=30) == 0
+        assert proc.wait(timeout=patience(30)) == 0
     assert "--no-fetch" not in record.read_text().split() and str(db) in record.read_text()
 
 
@@ -110,7 +111,7 @@ def test_reads_run_together(db: Path, tmp_path: Path) -> None:
     other_read = _held(db, fcntl.LOCK_SH)
     try:
         with _started(db, tmp_path, "--no-fetch") as (proc, record):
-            assert proc.wait(timeout=30) == 0, "a read waited for another read"
+            assert proc.wait(timeout=patience(30)) == 0, "a read waited for another read"
         assert record.exists()
     finally:
         other_read.close()
@@ -138,7 +139,7 @@ def test_an_offline_read_with_no_copy_anywhere_fetches_it_once(tmp_path: Path) -
     bare = tmp_path / "home"  # no ~/.cargo/advisory-db to seed from, as on the hosted runner
     bare.mkdir()
     with _started(missing, tmp_path, "--no-fetch", HOME=str(bare)) as (proc, record):
-        assert proc.wait(timeout=30) == 0
+        assert proc.wait(timeout=patience(30)) == 0
     got = record.read_text().split()
     assert "--no-fetch" not in got and str(missing) in got, got
 
@@ -161,7 +162,7 @@ def test_a_fetching_audit_whose_index_does_not_resolve_is_refused_before_it_runs
         proc,
         record,
     ):
-        assert proc.wait(timeout=30) != 0
+        assert proc.wait(timeout=patience(30)) != 0
         err = proc.stderr.read().decode()
     assert not record.exists(), "cargo audit ran against an index that does not resolve"
     assert "goh-audit-test.invalid" in err and "does not resolve" in err, err
@@ -175,7 +176,7 @@ def test_the_lookup_asked_is_the_proxys_when_one_is_set(db: Path, tmp_path: Path
         proc,
         record,
     ):
-        assert proc.wait(timeout=30) != 0
+        assert proc.wait(timeout=patience(30)) != 0
         err = proc.stderr.read().decode()
     assert not record.exists()
     assert "goh-audit-proxy.invalid" in err, err
@@ -188,7 +189,7 @@ def test_an_offline_audit_asks_no_lookup(db: Path, tmp_path: Path) -> None:
         proc,
         record,
     ):
-        assert proc.wait(timeout=30) == 0
+        assert proc.wait(timeout=patience(30)) == 0
     assert record.exists()
 
 
@@ -203,7 +204,7 @@ def test_an_audit_that_burns_its_cpu_ceiling_is_stopped_and_named(db: Path, tmp_
         proc,
         record,
     ):
-        rc = proc.wait(timeout=15)
+        rc = proc.wait(timeout=patience(15))
         err = proc.stderr.read().decode()
     assert rc == 124, (rc, err)
     assert "CPU" in err and "GOH.AUDITSPIN" in err and "yanked" in err, err
@@ -218,7 +219,7 @@ def test_an_audit_that_outlives_its_wall_ceiling_is_stopped_and_named(
         proc,
         _record,
     ):
-        rc = proc.wait(timeout=15)
+        rc = proc.wait(timeout=patience(15))
         err = proc.stderr.read().decode()
     assert rc == 124, (rc, err)
     assert "1 s" in err and "GOH.AUDITSPIN" in err, err
