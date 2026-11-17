@@ -81,6 +81,9 @@ from _display_frames import (
 from _gitutil import content_bytes, listed_files, repo_root
 from _marker_reason import is_justified
 
+# Python and shell get the same treatment Swift does: prose naming a live call is not one.
+from _prose_mask import python_code_only, shell_code_only
+
 # `swift_code_only` blanks Swift comments AND string literals while preserving line count 1:1, so
 # a doc comment explaining the rule is not a violation. The consumer's own gate never masked,
 # because a line-based skip was enough over its roots; over a whole app source tree it is not.
@@ -287,14 +290,16 @@ def check_python(rel, text, policy, out):
                 )
                 return
         return  # a declared harness is the point of the helper, not a violation
-    launches = _launches_app(text, policy)
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith(COMMENTS[".py"]):
+    code_text = python_code_only(text)
+    code = code_text.split("\n")
+    launches = _launches_app(code_text, policy)
+    for i, line in enumerate(code):
+        stripped = lines[i].strip()
+        if not line.strip():
             continue
         if policy.silenced(lines, i):
             continue
-        near = "\n".join(lines[max(0, i - LOOKBACK) : i + 1])
+        near = "\n".join(code[max(0, i - LOOKBACK) : i + 1])
         hit = (LIVE_SCREEN.search(line) and EXECUTES.search(near)) or (
             launches and policy.app_launch.search(line)
         )
@@ -309,12 +314,13 @@ def check_shell(rel, text, policy, out):
     """A shell harness cannot import the helper, so the contract is a one-line guard naming the
     offscreen variable its policy declares."""
     lines = scan_lines(text)
-    if policy.shell_guard in text:
+    code_text = shell_code_only(text)
+    if policy.shell_guard in code_text:
         return
-    launches = _launches_app(text, policy)
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped or stripped.startswith(COMMENTS[".sh"]):
+    launches = _launches_app(code_text, policy)
+    for i, line in enumerate(code_text.split("\n")):
+        stripped = lines[i].strip()
+        if not line.strip():
             continue
         if policy.silenced(lines, i):
             continue

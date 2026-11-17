@@ -301,7 +301,7 @@ RULES = (
         "return rel in self.seam or rel in self.exclude",
         "return rel in self.seam",
     ),
-    ("shell-guard", "if policy.shell_guard in text:", "if False:"),
+    ("shell-guard", "if policy.shell_guard in code_text:", "if False:"),
     ("shell-pass-global", 'if ext == ".sh":', "if False:"),
     (
         "declared-exempt",
@@ -363,6 +363,7 @@ def test_the_probe_goes_red_when_one_rule_is_dropped(tmp_path, label, old, new):
         "_marker_reason.py",
         "_gitutil.py",
         "_swift_text.py",
+        "_prose_mask.py",
         "_display_frames.py",
         "_display_seam_tiers.py",
     ):
@@ -378,3 +379,64 @@ def test_the_probe_goes_red_when_one_rule_is_dropped(tmp_path, label, old, new):
     )
     assert got.returncode == 1, f"the probe stayed green without the {label} rule:\n{got.stdout}"
     assert "wrong" in got.stderr, got.stderr
+
+
+# ── prose is not code (GOH.DISPLAYSEAMDOC) ─────────────────────────────────────
+#
+# ZeroThunder's tools/publish_bundle.py was refused because its DOCSTRING said
+# "exec Contents/MacOS/ZeroThunder": the app_launch pattern matched prose. The gate reads code,
+# so a docstring, a comment, or a quoted heredoc saying the words passes, and the same words in
+# a real call still go red.
+
+APP = {"app_launch": r"Contents/MacOS/ZeroThunder"}
+
+
+@pytest.mark.parametrize(
+    ("rel", "body"),
+    [
+        (
+            "tools/publish_bundle.py",
+            (
+                '"""Publish the bundle.\n\nNever exec Contents/MacOS/ZeroThunder here; launchd\n'
+                'does, and osascript is not run either.\n"""\n\nimport os\n\n\n'
+                'def f():\n    """subprocess.run screencapture: prose."""\n    return os.sep\n'
+            ),
+        ),
+        ("tools/c.py", "import os  # exec Contents/MacOS/ZeroThunder via subprocess\n"),
+        (
+            "tools/h.sh",
+            "#!/bin/sh\ncat <<'EOF'\nThen exec Contents/MacOS/ZeroThunder or osascript.\nEOF\n",
+        ),
+        ("tools/t.sh", "#!/bin/sh\necho done  # never osascript here\n"),
+    ],
+    ids=["py-docstring", "py-comment", "sh-quoted-heredoc", "sh-trailing-comment"],
+)
+def test_prose_naming_a_live_call_is_not_a_violation(tmp_path, rel, body):
+    root = estate(tmp_path, {rel: body}, APP)
+    got = run_checker(root, "--policy", "policy.json")
+    assert got.returncode == 0, got.stdout + got.stderr
+
+
+@pytest.mark.parametrize(
+    ("rel", "body", "line"),
+    [
+        (
+            "tools/p.py",
+            '"""Doc."""\nimport subprocess\nsubprocess.run(["Z.app/Contents/MacOS/ZeroThunder"])\n',
+            3,
+        ),
+        (
+            "tools/q.py",
+            '"""Doc."""\nimport subprocess\nsubprocess.run(["osascript", "-e", "x"])\n',
+            3,
+        ),
+        ("tools/r.sh", "#!/bin/sh\n# doc\nexec Z.app/Contents/MacOS/ZeroThunder\n", 3),
+        ("tools/s.sh", "#!/bin/sh\ncat <<EOF\n$(osascript -e x)\nEOF\n", 3),
+    ],
+    ids=["py-launch", "py-osascript", "sh-launch", "sh-unquoted-heredoc"],
+)
+def test_the_same_words_in_code_still_go_red(tmp_path, rel, body, line):
+    root = estate(tmp_path, {rel: body}, APP)
+    got = run_checker(root, "--policy", "policy.json")
+    assert got.returncode == 1, got.stdout + got.stderr
+    assert f"{rel}:{line}:" in got.stderr, got.stderr
