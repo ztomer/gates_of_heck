@@ -11,13 +11,13 @@ this reads two graphs from the crate itself, never a hand list:
     A path ending in an upper-case name (`skills::DEFAULT_MIN_SKILLS`, clap's defaults in cli_args)
     reads a CONSTANT: the module is reached, the code it calls is not. An `impl` of a type or trait
     defined in another file is reached from that file (the method runs through its value);
-  * the DISPATCH table: main.rs's match arms, `Commands::Variant ... =>`, each with the modules it
-    calls, directly or through a main.rs helper (`paths`, `declared`, `house_script`); a variant's
-    subcommand is its kebab-case name, the way clap derives it (cli.rs).
+  * the DISPATCH table: the match arms of main.rs and ported.rs (split at the cap), `Commands::X
+    ... =>`, each with the modules it calls, directly or through a helper of either (`paths`,
+    `house_script`); a variant's subcommand is its kebab-case name, as clap derives it (cli.rs).
 
 A path whose reach cannot be told chooses EVERY subcommand (`subcommands` returns None): anything
 under crates/ outside goh's src modules (Cargo.toml, build.rs, another crate, the step manifest,
-main.rs, a file no `mod` declares), a module main() reaches before dispatch (cli, cli_args,
+a DISPATCH file, a file no `mod` declares), a module main() reaches before dispatch (cli, cli_args,
 platform, goh_dir: every run parses its argv through them), and an `impl` naming no type or trait
 of the crate (a blanket impl runs through values no edge follows). A file outside crates/ that a
 non-test module `include_str!`s is its includer's (lib/busyloop_shapes.json is busyloop's).
@@ -34,6 +34,7 @@ SRC = "crates/goh/src"
 BUILD = ("crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml")  # lib/gate_identity.py's
 MAIN = f"{SRC}/main.rs"
 CLI = f"{SRC}/cli.rs"
+DISPATCH = (MAIN, f"{SRC}/ported.rs")  # the files holding `Commands::` arms
 IDENT = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
 PATH = re.compile(r"(?<![\w.:])[A-Za-z_]\w*(?:\s*::\s*[A-Za-z_]\w*)+")
 USE = re.compile(r"\buse\s+([^;]*);")
@@ -206,7 +207,8 @@ class Crate:
         def item(target: Mod, rest: list[str], alias: str = "") -> None:
             if target == ():
                 if rest and rest[0] in self.helpers and rest[0] not in inside:
-                    more = self.refs(MAIN, self.helpers[rest[0]], inside | {rest[0]})
+                    where, text = self.helpers[rest[0]]
+                    more = self.refs(where, text, inside | {rest[0]})
                     deep.update(more[0])
                     shallow.update(more[1])
             elif not rest:
@@ -226,17 +228,20 @@ class Crate:
             target, rest = self._resolve(here, segs, bound)
             if target or segs[0] in ("crate", "super", "self"):
                 item(target, rest)
-        return deep - {rel, MAIN}, shallow - deep - {rel, MAIN}
+        own = {rel, *DISPATCH}
+        return deep - own, shallow - deep - own
 
     @cached_property
-    def helpers(self) -> dict[str, str]:
-        """{main.rs function that dispatches nothing: its code, signature included}."""
-        code = self.code.get(MAIN, "")
+    def helpers(self) -> dict[str, tuple[str, str]]:
+        """{DISPATCH file's function that dispatches nothing: (its file, its code, signature
+        included)}."""
         out = {}
-        for m in FN.finditer(code):  # the signature's types name modules too
-            text = code[m.start() : _body(code, m.end())[1]]
-            if "Commands::" not in text and m.group(1) != "main":
-                out[m.group(1)] = text
+        for rel in DISPATCH:
+            code = self.code.get(rel, "")
+            for m in FN.finditer(code):  # the signature's types name modules too
+                text = code[m.start() : _body(code, m.end())[1]]
+                if "Commands::" not in text and m.group(1) != "main":
+                    out[m.group(1)] = (rel, text)
         return out
 
     def _impl_sources(self, rel: str) -> set[str] | None:
@@ -269,7 +274,7 @@ class Crate:
     def edges(self) -> dict[str, Calls]:
         """{file: what it calls into, what it reads a constant of}, with each file that `impl`s a
         type or trait defined elsewhere reached from the definer."""
-        out = {rel: self.refs(rel) for rel in self.module if rel != MAIN}
+        out = {rel: self.refs(rel) for rel in self.module if rel not in DISPATCH}
         for rel in out:
             for source in self._impl_sources(rel) or ():
                 if source in out:
@@ -280,7 +285,9 @@ class Crate:
     def foreign(self) -> set[str]:
         """Files with an `impl` naming neither a type of theirs nor one of the crate's
         (`impl<T: Read> Ext for T`): reached through values no edge follows."""
-        return {rel for rel in self.module if rel != MAIN and self._impl_sources(rel) is None}
+        return {
+            rel for rel in self.module if rel not in DISPATCH and self._impl_sources(rel) is None
+        }
 
     def closure(self, calls: Calls) -> set[str]:
         """Every file a run entering `calls[0]` executes, and the files of the constants it reads
@@ -321,47 +328,50 @@ class Crate:
 
     @cached_property
     def dispatch(self) -> tuple[dict[str, Calls], Calls]:
-        """({subcommand: what its arm calls into, with main.rs helpers followed}, what main.rs
-        reaches outside every arm: main() and the helpers it calls before dispatching)."""
-        code = self.code.get(MAIN, "")
-        fns: dict[str, tuple[int, int]] = {}
-        for m in FN.finditer(code):  # the span holds the signature: its types name modules too
-            fns[m.group(1)] = (m.start(), _body(code, m.end())[1])
-        dispatchers = {f for f, (lo, hi) in fns.items() if "Commands::" in code[lo:hi]}
+        """({subcommand: what its arm calls into, with DISPATCH helpers followed}, what the
+        DISPATCH files reach outside every arm: main() and the helpers it calls before
+        dispatching)."""
         helpers = self.helpers
 
-        def reach(text: str, seen: set[str]) -> Calls:
-            deep, shallow = self.refs(MAIN, text)
+        def reach(rel: str, text: str, seen: set[str]) -> Calls:
+            deep, shallow = self.refs(rel, text)
             for f in sorted(set(IDENT.findall(text)) & set(helpers) - seen - {"main"}):
                 seen.add(f)
-                more = reach(helpers[f], seen)
+                more = reach(*helpers[f], seen)
                 deep, shallow = deep | more[0], shallow | more[1]
             return deep, shallow
 
         entry: dict[str, Calls] = {}
-        called: set[str] = set()
-        for f in sorted(dispatchers):
-            lo, hi = fns[f]
-            marks = list(ARM.finditer(code, lo, hi))
-            for k, m in enumerate(marks):
-                if m.group(1):
-                    seen: set[str] = set()
-                    deep, shallow = reach(
-                        code[m.start() : marks[k + 1].start() if k + 1 < len(marks) else hi], seen
-                    )
-                    was = entry.get(kebab(m.group(1)), (set(), set()))
-                    entry[kebab(m.group(1))] = (was[0] | deep, was[1] | shallow)
-                    called |= seen
-        outside = code
-        for f, (lo, hi) in sorted(fns.items(), key=lambda kv: -kv[1][0]):
-            if f in dispatchers or f in called:
-                outside = outside[:lo] + outside[hi:]
-        return entry, reach(outside, set(dispatchers))
+        outer: Calls = (set(), set())
+        spans, called = {}, set()
+        for rel in (r for r in DISPATCH if r in self.module):
+            code = self.code[rel]
+            fns = {m.group(1): (m.start(), _body(code, m.end())[1]) for m in FN.finditer(code)}
+            dispatchers = {f for f, (lo, hi) in fns.items() if "Commands::" in code[lo:hi]}
+            spans[rel] = (fns, dispatchers)
+            for f in sorted(dispatchers):
+                marks = list(ARM.finditer(code, *fns[f]))
+                for k, m in enumerate(marks):
+                    if m.group(1):
+                        seen: set[str] = set()
+                        end = marks[k + 1].start() if k + 1 < len(marks) else fns[f][1]
+                        deep, shallow = reach(rel, code[m.start() : end], seen)
+                        was = entry.get(kebab(m.group(1)), (set(), set()))
+                        entry[kebab(m.group(1))] = (was[0] | deep, was[1] | shallow)
+                        called |= seen
+        for rel, (fns, dispatchers) in spans.items():  # an arm's helpers leave every outside
+            outside = self.code[rel]
+            for f, (lo, hi) in sorted(fns.items(), key=lambda kv: -kv[1][0]):
+                if f in dispatchers or f in called:
+                    outside = outside[:lo] + outside[hi:]
+            more = reach(rel, USE.sub("", outside), set(dispatchers))  # an import calls nothing
+            outer = (outer[0] | more[0], outer[1] | more[1])
+        return entry, outer
 
     @cached_property
     def shared(self) -> set[str]:
         """Modules every run reaches (main() and what it calls before dispatch), and the foreign."""
-        return self.closure(self.dispatch[1]) | self.foreign | {MAIN}
+        return self.closure(self.dispatch[1]) | self.foreign | set(DISPATCH)
 
     @cached_property
     def reaches(self) -> dict[str, set[str]]:
