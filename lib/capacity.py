@@ -15,7 +15,9 @@ registry (GOH.ADMITREGISTRY); the load average over the cores; memory (lib/mem_a
 free disk on the build volume (the volume of `~/.cache`, where the shared build dirs and sccache
 live; GOH_CAPACITY_DISK moves it); and the CPU WEIGHT of the gates in flight: each holder's median
 cpu-s per wall-s over its runs in the one timing record (lib/timing_ledger.py), the machine's median
-when its repo has none. `gate_weight` is that weight, the one GOH.CPUADMIT's admission is to reuse.
+when its repo has none (a holder's repo is its record's repository key among the registered repos:
+a lane worktree's label says `wt`). `gate_weight` is that weight; GOH.CPUADMIT replayed admitting
+by it and kept the count (docs/decisions/D-0009).
 
 THE RULE (`room`): another write lane has room while no long-lane gate waits for a slot
 (GOH_LANE_MAX_WAITING), the 5-minute load per core is at or under GOH_LANE_LOAD_PER_CORE (the 5-min,
@@ -50,12 +52,15 @@ import os
 import shutil
 import statistics
 import sys
+from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import admission
+import estate_registry
 import gate_lanes
 import gate_slot
+import lock_order
 import mem_admit
 import timing_ledger
 
@@ -106,6 +111,20 @@ def gate_weight(repo: str, rows: list[dict]) -> tuple[float | None, str]:
     return None, "no runs"
 
 
+def repos_by_key() -> dict[str, str]:
+    """{repository key: repo name} of the registered repos and this checkout: the key a slot
+    record carries (lib/lock_order.py `repo_key`, a hash of the git common dir) is the SAME in
+    every worktree of a repository, where the record's label is the worktree's directory."""
+    paths = [*estate_registry.existing(), Path(__file__).resolve().parent.parent]
+    return {k: timing_ledger.repo_name(str(p)) for p in paths if (k := lock_order.repo_key(p))}
+
+
+def holder_repo(label: str, key: str, known: dict[str, str]) -> str:
+    """The repository a slot holder's gate is for: by its record's key among `known`, else the
+    label's first field (a lane worktree's label says `wt`, GOH.CPUADMIT)."""
+    return known.get(key) or label.split(":")[0].strip()
+
+
 def _slots(unread: list[str]) -> dict[str, Any]:
     try:
         directory, total = admission.configured()
@@ -113,15 +132,19 @@ def _slots(unread: list[str]) -> dict[str, Any]:
         unread.append(f"gate slots: {e}")
         return {"dir": None, "total": None, "held": None, "free": None, "holders": []}
     holders = []
+    known: dict[str, str] | None = None  # read once, and only when a holder has a key
     if total and os.path.isdir(directory):
         for i in range(total):
             path = gate_slot.slot_path(directory, i)
             if not os.path.exists(path) or not gate_slot.held(path):
                 continue
-            rec = gate_slot.record(path)
-            pid, repo, since = rec if rec else (None, "", None)
+            rec = gate_slot.record_scoped(path)
+            pid, label, since, key = rec if rec else (None, "", None, "")
+            if key and known is None:
+                known = repos_by_key()
             holders.append({"slot": os.path.basename(path), "pid": pid,
-                            "repo": repo.split(":")[0].strip(), "since": since})  # fmt: skip
+                            "repo": holder_repo(label, key, known or {}),
+                            "since": since})  # fmt: skip
     free = None if not total else total - len(holders)
     return {"dir": directory, "total": total, "held": len(holders), "free": free,
             "holders": holders}  # fmt: skip

@@ -112,6 +112,40 @@ def test_an_idle_reading_has_room_and_an_unknown_holder_weighs_the_machine_media
     assert (holder["repo"], holder["weight"], holder["weight_from"]) == ("wt", 6.5, "all runs")
 
 
+def test_a_holder_in_a_lane_worktree_is_weighed_as_its_repository(tmp_path) -> None:
+    # GOH.CPUADMIT: a lane's gate runs in `<scratch>/wt`, so its slot record's label says `wt`
+    # (tools/load.py labels by the working directory) and it was weighed by every repo's median
+    # (1.27-1.63 on 2026-11-17) instead of goh's (5.21). The record's repository key is the git
+    # common dir the worktree shares with its repository: found among the registered repos, it
+    # names the repo the timing record knows.
+    # The layout git writes for a linked worktree, planted (no git spawned): the worktree's .git
+    # file points at <main>/.git/worktrees/wt, whose `commondir` leads back to <main>/.git.
+    main = tmp_path / "gates_of_heck"
+    admin = main / ".git" / "worktrees" / "wt"
+    admin.mkdir(parents=True)
+    (admin / "commondir").write_text("../..\n")
+    wt = tmp_path / "lane" / "wt"
+    wt.mkdir(parents=True)
+    (wt / ".git").write_text(f"gitdir: {admin}\n")
+    import lock_order
+
+    key = lock_order.repo_key(wt)
+    assert key and key == lock_order.repo_key(main)
+    state = tmp_path / "estate" / "estate_audit.json"
+    state.parent.mkdir()
+    (state.parent / "installed_repos").write_text(f"{main}\n")
+    p = Planted(tmp_path, waiting=False, holder="wt: cargo test")
+    os.ftruncate(p.fd, 0)
+    os.pwrite(p.fd, f"{os.getpid()}\twt: cargo test\t1794900000\t{key}".encode(), 0)
+    p.env["GOH_ESTATE_STATE"] = str(state)
+    try:
+        r = _cli(p.env, "--json")
+    finally:
+        p.close()
+    (holder,) = json.loads(r.stdout)["slots"]["holders"]
+    assert (holder["repo"], holder["weight"], holder["weight_from"]) == ("goh", 7.0, "goh")
+
+
 def test_a_reading_that_fails_is_named_unread_and_never_judged_no_room(tmp_path) -> None:
     p = Planted(tmp_path)
     p.env["GOH_LOADAVG_READING"] = "not a load"
