@@ -178,7 +178,11 @@ def test_the_scanner_change_chooses_its_runners_and_not_every_binary_test() -> N
     assert "tests/test_tui_marks.py" in chosen  # tuimarks calls layerparity::push_text
     assert "tests/test_goh_structural.py" in chosen  # layer-parity is a structural step
     assert OTHER not in chosen
-    assert len(chosen) < 200, len(chosen)  # 188 on 2026-11-17, 283 before
+    # A share of every runner, not a count: a new test of a gate that runs the binary is one more
+    # runner of both (199 on main 2026-11-17, then 200 of 295 with tests/test_proven_tool_line.py
+    # red at the old `< 200`: GOH.PREPARITY's land). GOH.AFFECTEDBINARY chose every one, 283.
+    runners = _binary(REPO_ROOT, "crates/goh/src/main.rs")
+    assert len(chosen) < 0.75 * len(runners), (len(chosen), len(runners))
     every = set(at.affected(REPO_ROOT, ["crates/goh/src/main.rs"]))
     assert chosen < every and OTHER in every, sorted(chosen - every)
 
