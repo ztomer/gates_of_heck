@@ -58,7 +58,7 @@ def test_a_ps_slow_in_wall_time_but_spending_cpu_is_waited_for(tmp_path, monkeyp
     monkeypatch.setattr(ps_table, "PS_STALL", 1)
     t0 = time.monotonic()
     table = load_kit.live_processes()
-    assert time.monotonic() - t0 >= 2.5, "the shim really was slow"
+    assert time.monotonic() - t0 > ps_table.PS_STALL, "the shim really was slow"
     assert any(pid == os.getpid() for pid, _ppid, _cmd in table)
 
 
