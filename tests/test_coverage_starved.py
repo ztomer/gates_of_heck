@@ -28,7 +28,8 @@ PASSING_CARGO = (
 #!/bin/bash
 case "$1" in
   metadata)
-    echo '{"packages":[{"name":"ft","targets":[{"name":"ft","kind":["lib"]}]}]}'
+    echo '{"packages":[{"name":"ft","manifest_path":"'"$PWD"'/Cargo.toml",
+      "targets":[{"name":"ft","kind":["lib"]}]}]}'
     exit 0 ;;
   build)  # the external part's instrumented binaries, named the way cargo's artifact list does
     exe="$CARGO_LLVM_COV_TARGET_DIR/debug/ft"

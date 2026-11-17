@@ -167,7 +167,7 @@ def test_the_rust_coverage_runs_unbind_before_cargo_test():
     """cargo-llvm-cov is too slow for a unit suite (test_coverage_gate.py); the two subshells that
     start the suite are read instead: each unbinds before its first launch."""
     body = (REPO_ROOT / "gates" / "_coverage_rust.sh").read_text()
-    for launch in ("cargo test --locked --workspace", 'bash -c "$EXTERNAL"'):
+    for launch in ("gates/_cov_run_tests.py", 'bash -c "$EXTERNAL"'):
         before = body[: body.index(launch)]
         assert re.search(r"^\s*goh_unbind_git\b", before.rsplit("if (", 1)[-1], re.MULTILINE), (
             launch

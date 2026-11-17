@@ -28,7 +28,8 @@ FAKE_CARGO = (
 [ -n "${FAKE_CALLS:-}" ] && echo "$*" >> "$FAKE_CALLS"
 case "$1" in
   metadata)
-    echo '{"packages":[{"name":"ph","targets":[{"name":"ph","kind":["lib"]}]}]}'
+    echo '{"packages":[{"name":"ph","manifest_path":"'"$PWD"'/Cargo.toml",
+      "targets":[{"name":"ph","kind":["lib"]}]}]}'
     exit 0 ;;
 esac
 """
@@ -100,7 +101,7 @@ def test_every_phase_streams_its_start_and_its_elapsed(tmp_path: Path) -> None:
     assert r.returncode == 0, out
     phases = [
         "workspace: instrumented build",
-        "workspace: cargo test",
+        "workspace: test binaries",
         "workspace: report",
         "external: instrumented build",
         "external: true",
@@ -169,7 +170,7 @@ def test_the_external_suite_drives_an_optimized_instrumented_build(tmp_path: Pat
     """The plain suite drives a RELEASE goh; under coverage it drove an unoptimized one, which
     measured 5-20x slower a call (an `emoji` scan 70 ms release, 1,439 ms debug-instrumented,
     271 ms instrumented at opt-level 2; 2026-11-12, GOH.COVPHASES). The external part's build is
-    optimized; the workspace's cargo test keeps the debug profile it always measured."""
+    optimized; the workspace's test binaries keep the debug profile it always measured."""
     proj, env = _setup(tmp_path)
     calls = tmp_path / "calls"
     env["FAKE_CALLS"] = str(calls)

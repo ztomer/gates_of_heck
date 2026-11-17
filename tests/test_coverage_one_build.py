@@ -26,10 +26,12 @@ LEAKY_CARGO = (
 #!/bin/bash
 state="$FAKE_STATE"
 echo "$*" >> "$state.calls"
+# the one run of the one test executable: it records the profile it would leave (the leak model)
+FAKE_TEST_BODY='echo lib >> "$FAKE_STATE.profile"'
 case "$1" in
   metadata)
-    cat <<'JSON'
-{"packages":[{"name":"lk","targets":[{"name":"lk","kind":["lib"]},
+    cat <<JSON
+{"packages":[{"name":"lk","manifest_path":"$PWD/Cargo.toml","targets":[{"name":"lk","kind":["lib"]},
  {"name":"a","kind":["test"]},{"name":"b","kind":["test"]}]}]}
 JSON
     exit 0 ;;
@@ -54,11 +56,6 @@ case "$1" in
       while read -r t; do echo "DA:1,1"; echo "# ran $t"; done < "$state.profile"
       echo "LF:1"; echo "LH:1"; echo "end_of_record"
     } > "$out"
-    exit 0 ;;
-  test)
-    me="lib"; prev=""
-    for a in "$@"; do [ "$prev" = "--test" ] && me="$a"; prev="$a"; done
-    echo "$me" >> "$state.profile"
     exit 0 ;;
 esac
 exit 0
@@ -92,9 +89,10 @@ def test_one_instrumented_run_of_exactly_the_declared_targets_and_one_build(tmp_
     )
     assert r.returncode == 0, r.stdout + r.stderr
     calls = (tmp_path / "state.calls").read_text().splitlines()
-    runs = [c.split() for c in calls if c.startswith("test ") and "--no-run" not in c]
-    assert len(runs) == 1, runs  # ONE instrumented run, not one per target
-    run = runs[0]
+    builds = [c.split() for c in calls if c.startswith("test ") and "--no-run" in c]
+    assert len(builds) == 1, builds  # ONE build; no second `cargo test` run of any kind
+    assert not [c for c in calls if c.startswith("test ") and "--no-run" not in c], calls
+    run = builds[0]
     # exactly the declared kinds: a lib and tests here, no bin; never examples or benches
     assert "--lib" in run and "--tests" in run and "--bins" not in run, run
     assert not {"--all-targets", "--examples", "--benches"} & set(run), run
@@ -115,19 +113,8 @@ def test_one_instrumented_run_of_exactly_the_declared_targets_and_one_build(tmp_
 FAILING_TEST_CARGO = (
     """\
 #!/bin/bash
-case "$1" in
-  metadata)
-    echo '{"packages":[{"name":"ft","targets":[{"name":"ft","kind":["lib"]}]}]}'
-    exit 0 ;;
-esac
-"""
-    + SHOW_ENV_FLOW
-    + """\
-case "$1" in
-  llvm-cov)
-    exit 0 ;;
-  test)
-    cat <<'OUT'
+# what the build's one test executable prints and exits with (the runner runs it; no `cargo test`)
+FAKE_TEST_BODY="cat <<'OUT'
 running 2 tests
 test tests::fine ... ok
 test tests::parses_the_header ... FAILED
@@ -144,7 +131,19 @@ failures:
 test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out
 error: test failed, to rerun pass `--lib`
 OUT
-    exit 101 ;;
+exit 101"
+case "$1" in
+  metadata)
+    echo '{"packages":[{"name":"ft","manifest_path":"'"$PWD"'/Cargo.toml",
+      "targets":[{"name":"ft","kind":["lib"]}]}]}'
+    exit 0 ;;
+esac
+"""
+    + SHOW_ENV_FLOW
+    + """\
+case "$1" in
+  llvm-cov)
+    exit 0 ;;
 esac
 exit 0
 """

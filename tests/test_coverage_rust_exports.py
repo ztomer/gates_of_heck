@@ -41,9 +41,9 @@ if [ "$1 $2" = "llvm-cov clean" ]; then exit 0; fi
 """
     + SHOW_ENV_FLOW
     + """\
-# The run: CARGO_STUB_DROP=all fails it here, its tests red, before any report exists; any other
-# drop passes the run and fails the report below.
-if [ "$1" = "test" ]; then [ "${CARGO_STUB_DROP:-}" != all ]; exit; fi
+# The run is the test executable the build above names (FAKE_TEST_BODY): CARGO_STUB_DROP=all makes
+# it fail, its tests red, before any report exists; any other drop passes the run and fails the
+# report below.
 tname=""; out=""; prev=""
 for a in "$@"; do
   case "$prev" in
@@ -107,6 +107,9 @@ def setup_fixture(tmp_path: Path, parts: dict[str, str], meta=META) -> Path:
     cargo.write_text(CARGO_STUB)
     cargo.chmod(0o755)
     meta_file = tmp_path / "meta.json"
+    meta = json.loads(json.dumps(meta))  # META is shared: this fixture's own copy
+    for pkg in meta["packages"]:  # the runner finds a test executable's package by its manifest
+        pkg["manifest_path"] = str(proj / "Cargo.toml")
     meta_file.write_text(json.dumps(meta))
     parts_dir = tmp_path / "canned-parts"
     parts_dir.mkdir()
@@ -133,6 +136,8 @@ def run_rust_gate(
     env["CARGO_STUB_PARTS"] = str(parts_dir)
     if drop:
         env["CARGO_STUB_DROP"] = drop
+        if drop == "all":
+            env["FAKE_TEST_BODY"] = "exit 101"
     else:
         env.pop("CARGO_STUB_DROP", None)
     if fail_leave is not None:

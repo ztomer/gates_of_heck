@@ -228,8 +228,8 @@ case "$1 $2" in
 esac
 case "$1" in
   metadata)
-    cat <<'JSON'
-{"packages":[{"name":"covfix","targets":[{"name":"covfix","kind":["lib"]}]}]}
+    cat <<JSON
+{"packages":[{"name":"covfix","manifest_path":"$PWD/Cargo.toml","targets":[{"name":"covfix","kind":["lib"]}]}]}
 JSON
     exit 0 ;;
   llvm-cov)

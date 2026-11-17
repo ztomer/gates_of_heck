@@ -235,7 +235,7 @@ _rust_cov_inputs() {
     printf 'rust-coverage v3\nstep %s\n%s\n' "$1" "$ident"
     if [ -n "$extra" ]; then printf 'GOH_DIR %s\n' "$extra"; fi
     for v in $(compgen -v GOH_COV_); do
-        case "$v" in GOH_COV_CACHE|GOH_COV_CACHE_*) continue ;; esac   # where, and how big: no verdict
+        case "$v" in GOH_COV_CACHE|GOH_COV_CACHE_*|GOH_COV_RUST_JOBS) continue ;; esac   # where, how big, how wide: no verdict
         printf 'cov %s=%s\n' "$v" "${!v}"
     done
     # PYTHONPATH is the identity's line above, read by content (the live half names it nowhere).
