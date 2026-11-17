@@ -7,12 +7,14 @@
 #   goh_span_record KIND REPO OK [--timings FILE] [--field K=V]...
 #                                         # the span's END: one row, subject "<REPO> <KIND>"
 #
-# One implementation of the shell side, so `gates/push_gate.sh` and `tools/land.sh` measure a span
+# One implementation of the shell side, so the push gate and the land measure a span
 # the same way (lib/budget.py KINDS names each kind's start and end). CPU is bash's own `times`:
 # the user+system time of every child this shell has reaped (and theirs), so a delta around the work
 # is the work's tree; a daemon nobody reaps is not in it. The record is written by
 # lib/timing_ledger.py, which never fails: a ledger that cannot be written leaves a gate's exit alone.
 # Sourced, never run. Pinned by tests/test_timing_ledger.py.
+
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 
 # Sets _goh_cpu_now to the seconds of CPU the children of THIS shell have used so far, one decimal
 # ("0.0" when unreadable). A global, never printed for a `$( )`: `times` in a command substitution

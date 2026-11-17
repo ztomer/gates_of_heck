@@ -408,12 +408,12 @@ def run_steps(res: dict, first: str = STEPS[0]) -> int:
         res.update(status="failed", failed_step=name, tail=tail(log))
         res["finished"] = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
         save(res)
-        ship_status.ledger(res)
+        ship_status.record_ship_timing(res)
         err(f"{name} {entry['status']} (exit {out.code}, {secs} s): {res['result']}")
         return 1
     res.update(status="ok", finished=dt.datetime.now(dt.UTC).isoformat(timespec="seconds"))
     save(res)
-    ship_status.ledger(res)
+    ship_status.record_ship_timing(res)
     return 0
 
 

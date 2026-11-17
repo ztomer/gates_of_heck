@@ -90,28 +90,28 @@ KINDS: dict[str, Kind] = {
         15 * MIN,
         "last",
         "gate.sh --full's start in the clean export to its exit; slot wait and export excluded",
-        "gates/push_gate.sh",
+        "the push gate",
     ),
     "land": Kind(
         10 * MIN,
         15 * MIN,
         "last",
         "land lock taken to main fast-forwarded (or the land refused); lock wait a field",
-        "tools/land.sh",
+        "the land step",
     ),
     "ship": Kind(
         10 * MIN,
         15 * MIN,
         "last",
         "the result JSON's `started` to its `finished`, every step",
-        "tools/ship.py",
+        "goh ship",
     ),
     "release": Kind(
         10 * MIN,
         15 * MIN,
         "last",
         "the ship's release step: its start to its exit, the kit's whole run",
-        "tools/ship.py",
+        "goh ship",
     ),
     "ci": Kind(
         10 * MIN,
@@ -121,7 +121,7 @@ KINDS: dict[str, Kind] = {
         "",
     ),
     "commit": Kind(30, 60, "median5", "pre-commit or commit-msg: hook start to exit", ""),
-    "pre-land": Kind(2 * MIN, 3 * MIN, "last", "land.sh's pre-step: request to exit", ""),
+    "pre-land": Kind(2 * MIN, 3 * MIN, "last", "the land's pre-step: request to exit", ""),
     "gate slot wait": Kind(10 * MIN, 15 * MIN, "median5", "slot requested to flock taken", ""),
     "load place wait": Kind(
         10 * MIN, 15 * MIN, "median5", "place requested to granted or expired", ""
@@ -292,7 +292,7 @@ def ship_rows(res: dict) -> list[dict]:
 
 
 def record_ship(res: dict) -> None:
-    """A finished ship's rows (ship.py's last act); a ref already in the ledger is not doubled."""
+    """A finished ship's rows (goh ship's last act); a ref already in the ledger is not doubled."""
     for row in ship_rows(res):
         if row["ref"] not in timing_ledger.known_refs(row["kind"], row["repo"]):
             timing_ledger.append(row)

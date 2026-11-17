@@ -34,7 +34,7 @@ def test_a_row_names_its_subject_and_carries_the_measurement(monkeypatch, tmp_pa
 
 
 def test_the_gates_checkout_is_goh_in_every_subject() -> None:
-    assert timing_ledger.repo_name("/Users/x/Projects/gates_of_heck") == "goh"
+    assert timing_ledger.repo_name("/srv/repos/gates_of_heck") == "goh"
     assert timing_ledger.repo_name("ztools/") == "ztools"
     assert timing_ledger.subject_of("", "gate slot wait") == "gate slot wait"
 

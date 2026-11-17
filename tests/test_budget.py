@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -285,14 +284,13 @@ def _cli(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_goh_budget_prints_every_state_and_json_carries_the_same(tmp_path: Path) -> None:
-    os.environ["GOH_TIMING_DIR"] = str(tmp_path / "t")
-    try:
-        for wall in (9 * MIN, 16 * MIN):
-            timing_ledger.record("push", "ztools", wall, cpu_s=500.0, load1=3.0)
-        timing_ledger.record("land", "monitor", 5 * MIN)
-    finally:
-        del os.environ["GOH_TIMING_DIR"]
+def test_goh_budget_prints_every_state_and_json_carries_the_same(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("GOH_TIMING_DIR", str(tmp_path / "t"))
+    for wall in (9 * MIN, 16 * MIN):
+        timing_ledger.record("push", "ztools", wall, cpu_s=500.0, load1=3.0)
+    timing_ledger.record("land", "monitor", 5 * MIN)
     text = _cli(tmp_path)
     assert text.returncode == 0, text.stderr
     assert (
@@ -368,10 +366,8 @@ def test_the_push_gate_writes_one_row_per_full_gate_and_none_under_a_land(tmp_pa
     sha = git(repo, "rev-parse", "HEAD").strip()
 
     def push(**extra: str) -> subprocess.CompletedProcess[str]:
-        env = dict(
-            os.environ,
+        env = hermetic_env(
             GATE_REPORT=str(tmp_path / "report.txt"),
-            GOH_DIR=str(REPO_ROOT),
             GOH_PUSH_LOGS=str(tmp_path / "logs"),
             GOH_PUSH_WORKTREES=str(tmp_path / "exports"),
             GOH_TIMING_DIR=str(tmp_path / "ledger"),
@@ -410,14 +406,16 @@ def test_the_ship_pipeline_ends_by_writing_its_rows(monkeypatch, tmp_path: Path)
     import ship_status
 
     res = ship_result("routines", "2026-11-17T01:00:00+00:00", "2026-11-17T01:13:30+00:00", 500.0)
-    ship_status.ledger(res)
+    ship_status.record_ship_timing(res)
     assert {r["subject"] for r in timing_ledger.read()} == {"routines ship", "routines release"}
     monkeypatch.setenv("GOH_TIMING_DIR", str(tmp_path / "x" / "y"))
     (tmp_path / "x").write_text("a file, so the ledger directory cannot be made")
-    ship_status.ledger({**res, "result": "/x/other.json"})  # a ledger fault is said, not raised
+    ship_status.record_ship_timing(
+        {**res, "result": "/x/other.json"}
+    )  # a ledger fault is said, not raised
 
 
 def test_ship_py_calls_the_ledger_on_both_exits() -> None:
     src = SHIP.read_text(encoding="utf-8")
     body = src[src.index("def run_steps") : src.index("\ndef ", src.index("def run_steps") + 10)]
-    assert body.count("ship_status.ledger(res)") == 2 and 'res["finished"]' in body
+    assert body.count("ship_status.record_ship_timing(res)") == 2 and 'res["finished"]' in body

@@ -20,7 +20,7 @@ TAIL = 40  # a failed step's last log lines, carried in the result
 profile = ship_profile.profile  # each step's GOH_TIMINGS file (tools/ship.py's one name for it)
 
 
-def ledger(res: dict) -> None:
+def record_ship_timing(res: dict) -> None:
     """The finished ship's rows in the timing ledger (`goh budget`: `<repo> ship` and `<repo>
     release`, GOH.GATEBUDGET); a fault is said, never raised: the instrument never fails a ship."""
     try:
