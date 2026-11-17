@@ -352,6 +352,36 @@ pub fn load(root: &Path) -> Result<Gatesrc, String> {
     from_pairs(&parse_pairs(&text))
 }
 
+/// One repo setting for a subcommand given the repo to judge (`--root`).
+///
+/// The environment's value when it names one (the push gate sources `.gatesrc` and exports it, a
+/// caller may override), else `root`'s own `.gatesrc`, else `None`.
+///
+/// GOH.TAGVERSIONRC: `goh tag-version --root X` read `GOH_TAG_VERSION_SOURCES` from the
+/// environment alone, so only a caller that had sourced X's `.gatesrc` got X's answer;
+/// `loopctl done` runs it on a scratch checkout with nothing sourced, and goh's placeholder
+/// `0.0.0` in Cargo.toml was judged against the default sources. One resolver for every
+/// subcommand that reads a repo setting by name, so none re-learns the lesson.
+///
+/// # Errors
+/// `root`'s `.gatesrc` exists and cannot be read.
+pub fn repo_setting(root: &Path, key: &str) -> Result<Option<String>, String> {
+    setting_from(root, key, std::env::var(key).ok())
+}
+
+/// [`repo_setting`] with the environment's value passed in, so a test never touches the process's.
+fn setting_from(root: &Path, key: &str, env: Option<String>) -> Result<Option<String>, String> {
+    if let Some(given) = env.filter(|v| !v.is_empty()) {
+        return Ok(Some(given));
+    }
+    let path = root.join(".gatesrc");
+    if !path.exists() {
+        return Ok(None);
+    }
+    let text = std::fs::read_to_string(&path).map_err(|e| format!(".gatesrc unreadable: {e}"))?;
+    Ok(parse_pairs(&text).remove(key).filter(|v| !v.is_empty()))
+}
+
 /// Which exemption a direct `goh <check>` applies when no `--exclude` is given.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Exempt {

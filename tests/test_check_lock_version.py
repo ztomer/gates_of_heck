@@ -447,3 +447,54 @@ def test_an_unknown_version_source_is_a_usage_error_not_a_traceback(tmp_path, mo
     r = _run(repo)
     assert r.returncode == 2, r.stdout + r.stderr
     assert "unknown version source 'bogus:x'" in r.stderr and "Traceback" not in r.stderr, r.stderr
+
+
+def test_the_repos_gatesrc_names_its_version_sources_when_the_environment_does_not(
+    tmp_path, monkeypatch
+):
+    """GOH.TAGVERSIONRC: `--root` names the repo, so its `.gatesrc` is read (the environment still
+    overrides); a bad source there is the same usage error as in the environment."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _workspace(repo, "1.0.0", "1.0.0")
+    write(repo, ".gatesrc", "GOH_TAG_VERSION_SOURCES='bogus:x'\n")
+    monkeypatch.delenv("GOH_TAG_VERSION_SOURCES", raising=False)
+    r = _run(repo)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "unknown version source 'bogus:x'" in r.stderr, r.stderr
+
+
+def test_a_declared_placeholder_version_is_no_release_to_compare_with_the_changelog(
+    tmp_path, monkeypatch
+):
+    """GOH.TAGVERSIONRC: goh's manifests say 0.0.0 (its version is its tag) and its `.gatesrc`
+    names the changelog: "release 0.128.1 but goh locks 0.0.0" is no one-place bump (a lag is)."""
+    monkeypatch.delenv("GOH_TAG_VERSION_SOURCES", raising=False)
+    for manifest, expect in (("0.0.0", 0), ("0.4.0", 1)):
+        repo = tmp_path / f"repo{expect}"
+        repo.mkdir()
+        _workspace(repo, manifest, manifest)
+        write(repo, ".gatesrc", "GOH_TAG_VERSION_SOURCES='changelog:CHANGELOG.md'\n")
+        write(repo, "CHANGELOG.md", "# CHANGELOG\n\n## v0.5.0 -- cut\n\n* x\n")
+        r = _run(repo)
+        assert r.returncode == expect, (manifest, r.stdout + r.stderr)
+
+
+def test_a_member_no_cargo_source_names_is_no_release_carrier(tmp_path, monkeypatch):
+    """GOH.TAGVERSIONRC: divoom-control's own-0.1.0 `nowplaying` helper is named by no `cargo:`
+    source, so it is no carrier of the release; a member a source DOES name still is."""
+    monkeypatch.delenv("GOH_TAG_VERSION_SOURCES", raising=False)
+    for sources, expect in (("file:VERSION cargo:crates/web/Cargo.toml", 0), ("file:VERSION", 1)):
+        repo = tmp_path / f"repo{expect}"
+        repo.mkdir()
+        _forgotten_member(repo)
+        write(repo, "crates/hc/Cargo.toml", '[package]\nname = "healthcheck"\nversion = "0.1.0"\n')
+        write(
+            repo,
+            "Cargo.lock",
+            '[[package]]\nname = "healthcheck"\nversion = "0.1.0"\n\n'
+            '[[package]]\nname = "web"\nversion = "1.79.3"\n',
+        )
+        write(repo, ".gatesrc", f"GOH_TAG_VERSION_SOURCES='{sources}'\n")
+        r = _run(repo)
+        assert r.returncode == expect, (sources, r.stdout + r.stderr)

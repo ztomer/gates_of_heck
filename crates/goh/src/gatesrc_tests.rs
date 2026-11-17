@@ -126,3 +126,39 @@ fn length_union_is_additive() {
     cfg.line_exclude = "third_party/".to_owned();
     assert_eq!(length_exclude(&cfg), "vendor/|third_party/");
 }
+
+/// GOH.TAGVERSIONRC: a setting read for `--root X` is X's own `.gatesrc`'s, the environment's
+/// value wins when it names one, and neither is `None`.
+#[test]
+fn a_repo_setting_is_the_environments_else_the_repos_gatesrc() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path();
+    let key = "GOH_TAG_VERSION_SOURCES";
+    assert_eq!(setting_from(root, key, None), Ok(None), "no file, no env");
+    std::fs::write(
+        root.join(".gatesrc"),
+        "GOH_TAG_VERSION_SOURCES='changelog:CHANGELOG.md'\n",
+    )
+    .expect("write");
+    let repo_value = Some("changelog:CHANGELOG.md".to_owned());
+    assert_eq!(
+        setting_from(root, key, None),
+        Ok(repo_value.clone()),
+        "the file's value"
+    );
+    assert_eq!(
+        setting_from(root, key, Some(String::new())),
+        Ok(repo_value),
+        "an empty environment value names nothing"
+    );
+    assert_eq!(
+        setting_from(root, key, Some("cargo:Cargo.toml".to_owned())),
+        Ok(Some("cargo:Cargo.toml".to_owned())),
+        "the environment overrides"
+    );
+    assert_eq!(
+        setting_from(root, "GOH_OTHER", None),
+        Ok(None),
+        "a key the file lacks"
+    );
+}

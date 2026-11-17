@@ -8,6 +8,8 @@
 //! arm 2 compares the release version a source OUTSIDE the manifests declares
 //! (`GOH_TAG_VERSION_SOURCES`) with what the members declare and lock.
 
+mod release;
+
 use goh_tui::{ERR, OK, START};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -203,34 +205,6 @@ fn member_manifests(root: &Path, members: &[String]) -> Vec<PathBuf> {
         .collect()
 }
 
-/// `[(label, version)]` the release sources declare, from the working tree.
-fn release_version(root: &Path, spec: &str) -> Result<Vec<(String, String)>, String> {
-    let strategies = crate::versrc::Strategies::new()?;
-    let mut found = Vec::new();
-    for (kind, path) in crate::versrc::parse_sources(spec)? {
-        let files: Vec<(String, PathBuf)> = if path.contains(['*', '?', '[']) {
-            glob(root, &path)
-                .into_iter()
-                .filter(|p| p.is_file())
-                .map(|p| (rel(root, &p), p))
-                .collect()
-        } else {
-            let p = root.join(&path);
-            if p.is_file() {
-                vec![(path, p)]
-            } else {
-                Vec::new()
-            }
-        };
-        for (label, p) in files {
-            for (_, v) in strategies.extract(&kind, &read(&p)).unwrap_or_default() {
-                found.push((label.clone(), v));
-            }
-        }
-    }
-    Ok(found)
-}
-
 /// `(findings, examined, notes)`.
 fn audit(root: &Path, spec: &str) -> Result<(Vec<String>, usize, Vec<String>), String> {
     let mut notes = Vec::new();
@@ -273,7 +247,7 @@ fn audit(root: &Path, spec: &str) -> Result<(Vec<String>, usize, Vec<String>), S
     // declares no version to inherit, every member (a private server workspace's per-crate
     // literals). A member writing its own literal under a workspace version has opted out (6.18:
     // app-legacy).
-    let mut release_members: Vec<(String, String)> = Vec::new();
+    let mut release_members: Vec<release::Member> = Vec::new();
     let mut stale: BTreeSet<String> = BTreeSet::new();
     let mut compared = 0usize;
     for manifest in &manifests {
@@ -313,12 +287,13 @@ fn audit(root: &Path, spec: &str) -> Result<(Vec<String>, usize, Vec<String>), S
             }
             Some(lv) => {
                 if tracks_release {
-                    release_members.push((name, lv.clone()));
+                    let own = matches!(pkg.version, Version::Own(_)).then(|| r.clone());
+                    release_members.push((name, lv.clone(), own));
                 }
             }
         }
     }
-    release_findings(
+    release::findings(
         root,
         spec,
         &release_members,
@@ -327,52 +302,6 @@ fn audit(root: &Path, spec: &str) -> Result<(Vec<String>, usize, Vec<String>), S
         &mut notes,
     )?;
     Ok((findings, compared, notes))
-}
-
-/// Arm 2: the release number a source OUTSIDE the manifests declares, against what each member
-/// that carries the release declares and locks.
-fn release_findings(
-    root: &Path,
-    spec: &str,
-    members: &[(String, String)],
-    stale: &BTreeSet<String>,
-    findings: &mut Vec<String>,
-    notes: &mut Vec<String>,
-) -> Result<(), String> {
-    let declared = release_version(root, spec)?;
-    let numbers: BTreeSet<&str> = declared.iter().map(|(_, v)| v.as_str()).collect();
-    if numbers.len() > 1 {
-        let said: Vec<String> = declared
-            .iter()
-            .map(|(l, v)| format!("{l} says {v}"))
-            .collect();
-        findings.push(format!(
-            "this repo declares {} different release versions ({}) — the release number is a claim with no single answer",
-            numbers.len(),
-            said.join(", ")
-        ));
-        return Ok(());
-    }
-    if numbers.is_empty() {
-        return Ok(());
-    }
-    let outside = declared.iter().find(|(l, _)| !l.ends_with("Cargo.toml"));
-    let Some((label, release)) = outside else {
-        notes.push(
-            "the only declared release version is the workspace's own; nothing outside the manifests declares a release number to compare the lockfile against"
-                .to_owned(),
-        );
-        return Ok(());
-    };
-    for (name, lv) in members {
-        if stale.contains(name) || lv == release {
-            continue;
-        }
-        findings.push(format!(
-            "{label}: the declared release version is {release} but {name} declares and locks {lv} — the release number was bumped in one place only"
-        ));
-    }
-    Ok(())
 }
 
 /// (exit code, [(to stderr?, line)]).
@@ -393,10 +322,10 @@ fn run(root: Option<&str>, json: bool) -> (i32, Vec<(bool, String)>) {
             )],
         );
     }
-    let spec = std::env::var("GOH_TAG_VERSION_SOURCES")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| crate::versrc::DEFAULT_SOURCES.join(" "));
+    let spec = match crate::gatesrc::repo_setting(&root, "GOH_TAG_VERSION_SOURCES") {
+        Ok(v) => v.unwrap_or_else(|| crate::versrc::DEFAULT_SOURCES.join(" ")),
+        Err(e) => return (2, vec![(true, format!("{ERR} [lock_version] {e}"))]),
+    };
     let (findings, examined, notes) = match audit(&root, &spec) {
         Ok(v) => v,
         Err(e) => return (2, vec![(true, format!("{ERR} [lock_version] {e}"))]),

@@ -203,10 +203,10 @@ fn run(
     else {
         return fail("not a git repository — pass --root".to_owned());
     };
-    let spec = std::env::var("GOH_TAG_VERSION_SOURCES")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| crate::versrc::DEFAULT_SOURCES.join(" "));
+    let spec = match crate::gatesrc::repo_setting(Path::new(&root), "GOH_TAG_VERSION_SOURCES") {
+        Ok(v) => v.unwrap_or_else(|| crate::versrc::DEFAULT_SOURCES.join(" ")),
+        Err(e) => return fail(e),
+    };
     let sources = match crate::versrc::parse_sources(&spec) {
         Ok(s) => s,
         Err(e) => return fail(e),
