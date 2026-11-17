@@ -7,6 +7,7 @@
     "starts failing (a stale excuse is permission nobody needs)."
   ],
   "legitimate": {
+    "check_worker_share.py": "its subject is the pools a repo's gate scripts START, and a tree with no gate script starts none: there is nothing it could size to the machine, so passing is the true answer, not a silence. It names how many gate scripts it read on every run, and goh's own layers -- what a consumer with no script of its own runs -- are held by tests/test_worker_share.py",
     "check_estate_corpus.py": "its subject is the CONSUMER ESTATE, not the tree it is invoked in: it copies real subtrees out of other repos into a temp directory and never reads this repo at all, so a tree with no content cannot blind it. Not a silence -- every entry that could not be measured is named and counted in the summary, and an estate that is not on this machine reads 0/N verified, not N/N",
     "check_display_seam.py": "requires --policy and says so: it has no opinion about a consumer's display, and a default policy would be a wrong opinion rather than a convenient one. The sweep cannot supply a policy, so the gate is excused here rather than counted as having looked. Before 2026-10-03 the sweep scored its argparse usage error as a healthy refusal, so the gate had never run and nothing said so",
     "check_tests_registered.py": "requires --buildsystem, and the answer genuinely differs per build system — there is no default that is right rather than merely convenient. Same history: scored as a healthy refusal while never having run",
