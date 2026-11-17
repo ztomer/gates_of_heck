@@ -10,12 +10,15 @@ test below is one way a hit could be wrong.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT, native_goh_path
+from test_proven import goh  # noqa: F401  (fixture: a committed copy of the gates)
+from test_proven_goh_content import _export
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
 import check_estate_corpus as sweep
@@ -171,3 +174,47 @@ def test_an_absolute_cache_dir_is_kept(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("GOH_PROVEN", raising=False)
     monkeypatch.setenv("GOH_ESTATE_CACHE", str(tmp_path / "c"))
     assert _estate_cache.cache_dir() == str(tmp_path / "c")
+
+
+def _goh_export(gates: Path, tmp_path: Path) -> Path:
+    """The head export of the gates copy, as gates/_from_head.sh cuts one: the commit's files,
+    `.goh-head`, and the launcher bin/goh every export gets a fresh copy of."""
+    dest = _export(gates, tmp_path)
+    (dest / "bin").mkdir()
+    shutil.copy(gates / "gates" / "_export_bin_goh.sh", dest / "bin" / "goh")
+    return dest
+
+
+def _moved(export: Path, where: Path) -> Path:
+    """The same export at another path: the next land's ~/.cache/goh/head/<sha>."""
+    dest = where / export.name
+    shutil.copytree(export, dest, symlinks=True)
+    return dest
+
+
+def test_two_head_export_paths_of_one_content_share_one_identity(
+    goh,  # noqa: F811
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """GOH.PROVENPYPATH: goh's land runs the tip's head export, a new path per commit, and the key
+    held GOH_DIR's path and the export launcher's path and mtime: no land found the last one's
+    records. The gates there are keyed by content now, and one changed gate byte still misses."""
+    import _estate_cache
+
+    for k in ("GOH_BIN", "GOH_RESOLVED_BIN", "GOH_RESOLVED_FOR", "GOH_LIVE"):
+        monkeypatch.delenv(k, raising=False)
+    src = str(REPO_ROOT / "checks" / "check_estate_corpus.py")
+    a = _goh_export(goh, tmp_path)
+    b = _moved(a, tmp_path / "head2")
+
+    def ident(root: Path) -> str:
+        monkeypatch.setenv("GOH_DIR", str(root))
+        return _estate_cache.current_identity(src, str(root))
+
+    assert ident(a) == ident(b)
+    assert _estate_cache._binary(str(a)) == ("export bin/goh",), _estate_cache._binary(str(a))
+    c = _moved(a, tmp_path / "head3")  # a new export: the identity is read once per process
+    with open(c / "gates" / "goh.sh", "a") as f:
+        f.write("# one byte more\n")
+    assert ident(c) != ident(a)

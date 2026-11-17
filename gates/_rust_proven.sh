@@ -238,8 +238,8 @@ _rust_cov_inputs() {
         case "$v" in GOH_COV_CACHE|GOH_COV_CACHE_*) continue ;; esac   # where, and how big: no verdict
         printf 'cov %s=%s\n' "$v" "${!v}"
     done
-    # PYTHONPATH is the identity's line above, read by content; this one names it by path.
-    _proven_identity_live </dev/null | sed '/^env PYTHONPATH=/d'
+    # PYTHONPATH is the identity's line above, read by content (the live half names it nowhere).
+    _proven_identity_live </dev/null
 }
 
 # rust_cov_key <step> -- prints the measurement's key on this tree's inputs (_rust_cov_inputs); or

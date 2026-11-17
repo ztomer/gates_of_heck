@@ -9,7 +9,11 @@ verdict depends on, and pinned way by way in tests/test_estate_corpus_cache.py:
 * every corpus file's path, size and mtime_ns -- the instrument lib/tree_stamp.py uses, so an
   edit, a new file or a removed one is a miss;
 * `identity()`: the checker's own source, the native binary (path, size, mtime_ns) it runs, and
-  every GOH_* the checkers read.
+  every GOH_* the checkers read -- GOH_DIR by the CONTENT of the gates there (lib/gate_identity.py
+  `identity`, the formula every proven step keys a gates root by), never its path: goh's land runs
+  the tip's head export, ~/.cache/goh/head/<sha>, a new path per commit, and keyed by it (and by
+  the export's bin/goh, a launcher copied fresh into each) no land found the last one's records
+  (GOH.PROVENPYPATH).
 
 Only a VERIFIED entry is recorded; "blind" and "unavailable" are asked again. A record older than
 TTL_S, or one that does not parse, is a miss. GOH_PROVEN=0 or GOH_ESTATE_CACHE=off (or 0, false, no) turns it off;
@@ -19,10 +23,12 @@ GOH_ESTATE_CACHE=<absolute dir> moves it; a relative one turns it off (default ~
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import subprocess
 import time
+from pathlib import Path
 
 TTL_S = 7 * 86400
 
@@ -57,14 +63,40 @@ def cache_dir() -> str | None:
     return where or os.path.join(os.path.expanduser("~"), ".cache", "goh", "estate-corpus")
 
 
-def identity(source: bytes, env: dict, binary: tuple) -> str:
-    """The checker side of a key: its source, its GOH_* configuration, its native binary."""
-    h = hashlib.sha256(b"estate-corpus v1\n")
+def identity(source: bytes, env: dict, binary: tuple, goh: str = "") -> str:
+    """The checker side of a key: its source, its GOH_* configuration, its native binary, the
+    gates that run it (`goh`, their content: goh_identity)."""
+    h = hashlib.sha256(b"estate-corpus v2\n")
     h.update(source)
     for k in sorted(env):
         h.update(f"\n{k}={env[k]}".encode())
     h.update(f"\nbinary {binary!r}".encode())
+    h.update(f"\ngoh {goh}".encode())
     return h.hexdigest()
+
+
+_IDENTITY_OF: dict = {}
+
+
+def goh_identity(goh_dir: str) -> str:
+    """The gates at goh_dir as lib/gate_identity.py names a gates root: their content, the binary's
+    build inputs included (what an export's bin/goh runs is that content's build). Read once per
+    process, as the source is. The formula is the one beside this file, else GOH_DIR's (the
+    empty-scope sweep's skeleton has no lib/); with neither, the path, which misses more and is
+    never wrong."""
+    if goh_dir not in _IDENTITY_OF:
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        found = f"path {goh_dir}"
+        for root in (here, goh_dir):
+            lib = os.path.join(root, "lib", "gate_identity.py") if root else ""
+            if lib and os.path.isfile(lib):
+                spec = importlib.util.spec_from_file_location("_estate_gate_identity", lib)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                found = mod.identity(Path(goh_dir).resolve())
+                break
+        _IDENTITY_OF[goh_dir] = found
+    return _IDENTITY_OF[goh_dir]
 
 
 _RESOLVED: dict = {}
@@ -85,11 +117,24 @@ def _binary(goh_dir: str) -> tuple:
             stdin=subprocess.DEVNULL,
         ).stdout.strip()
     path = _RESOLVED[chooser]
+    if _export_launcher(path, goh_dir):  # runs the content's build: goh_identity keys it
+        return ("export bin/goh",)
     try:
         st = os.stat(path)
     except OSError:
         return (path, None, None)
     return (path, st.st_size, st.st_mtime_ns)
+
+
+def _export_launcher(path: str, goh_dir: str) -> bool:
+    """path is a head export's bin/goh (gates/_export_bin_goh.sh, copied into every export): the
+    native build of the export's commit, so the export's content, never the copy's path or mtime."""
+    top = os.path.realpath(goh_dir) if goh_dir else ""
+    return (
+        bool(top)
+        and os.path.isfile(os.path.join(top, ".goh-head"))
+        and os.path.realpath(path) == os.path.join(top, "bin", "goh")
+    )
 
 
 _SOURCE: dict = {}
@@ -101,9 +146,9 @@ def current_identity(source_path: str, goh_dir: str) -> str:
         with open(source_path, "rb") as handle:
             _SOURCE[source_path] = handle.read()
     env = {k: v for k, v in os.environ.items() if k.startswith("GOH_")}
-    free = set(_verdict_free())
+    free = set(_verdict_free()) | {"GOH_DIR"}  # by content: goh_identity
     env = {k: v for k, v in env.items() if k not in free}
-    return identity(_SOURCE[source_path], env, _binary(goh_dir))
+    return identity(_SOURCE[source_path], env, _binary(goh_dir), goh_identity(goh_dir))
 
 
 def entry_key(ident: str, entry: dict, source_root: str, files: list[str]) -> str:

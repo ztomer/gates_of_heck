@@ -9,8 +9,9 @@ under a hand-set GOH_LAND_GATE=true wrote exactly as a full gate's.
 
     gate_identity.py tools                    # one line per tool a gate step may invoke
     gate_identity.py key --mode MODE [--root GOH]   # sha256 of MODE, the gates' content, the tools
-    gate_identity.py proven --root GOH...     # gates/_proven.sh's run-constant identity: each root
-                                              # once by content, then the tools
+    gate_identity.py proven [--root GOH...] [--repo R --pythonpath PP]
+                                              # gates/_proven.sh's run-constant identity: each root
+                                              # once by content, PYTHONPATH by content, the tools
     gate_identity.py keyed --root GOH...      # the paths that content covers, one per line
     gate_identity.py rust --repo R [--root GOH] [--external CMD] [--pythonpath PP]
                                               # the Rust coverage verdict's inputs, as lines
@@ -50,8 +51,11 @@ member or path dependency outside the keyed inputs has no such identity (exit 1)
 could not move the key, so the coverage runs.
 Used by gates/_proven.sh's step identity (its goh roots, GOH.PROVENIDENTITY: it kept a formula of
 its own, HEAD sha and diff for a checkout, the PATH for an export, so a commit's checkout and its
-head export never reused each other's proven steps) and tools/land.sh's goh-landed line (read by
-the push rule); the loaded run's record key went with that run (GOH.LOADEDDROP). Pinned by
+head export never reused each other's proven steps; and PYTHONPATH, by the one `pythonpath` formula
+the coverage key uses, scope gate_files: by path, a land's head export made every key new,
+GOH.PROVENPYPATH), checks/_estate_cache.py (GOH_DIR by `identity`, not its path), and
+tools/land.sh's goh-landed line (read by the push rule); the loaded run's record key went with
+that run (GOH.LOADEDDROP). Pinned by
 tests/test_verdict_key.py and tests/test_proven_goh_content.py.
 """
 
@@ -75,6 +79,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 TOOLS = ("rustc", "cargo", "python3", "swift", "shellcheck", "ruff", "cargo-llvm-cov", "xcodebuild")
@@ -204,15 +209,20 @@ def key(mode: str, root: Path = GOH_ROOT) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def proven(roots: list[Path]) -> list[str]:
+def proven(roots: list[Path], path: str | None = None, repo: Path | None = None) -> list[str]:
     """gates/_proven.sh's run-constant goh half: one `goh` line per distinct root identity (a
-    checkout and its commit's export are one), then the tools."""
+    checkout and its commit's export are one), PYTHONPATH as a gate imports from it (pythonpath,
+    scope gate_files: `unset` when it is), then the tools. PYTHONPATH was the live half's
+    `env PYTHONPATH=<path>`, and goh's land puts the tip's head export first on it, a new path for
+    every commit: no proven step was ever reused from one land to the next (GOH.PROVENPYPATH)."""
     seen: list[str] = []
     for root in roots:
         line = f"goh {identity(root)}"
         if line not in seen:
             seen.append(line)
-    return [*seen, *tools()]
+    where = repo if repo is not None else Path.cwd()
+    pp = "unset" if path is None else pythonpath(path, where, gate_files)
+    return [*seen, f"pythonpath {pp}", *tools()]
 
 
 def keyed(roots: list[Path]) -> list[str]:
@@ -293,15 +303,24 @@ def _is_goh_root(d: Path) -> bool:
     return (d / "lib" / "gate_identity.py").is_file() and (d / RUST_MEASURE).is_file()
 
 
-def pythonpath(value: str, repo: Path) -> str:
-    """PYTHONPATH as the measurement reads it: each entry that is the repo is `repo` (its inputs
-    are keyed apart), each that is a gates root is that root's coverage scripts by CONTENT, any
-    other by its path. goh's own land prepends the tip's head export, ~/.cache/goh/head/<sha>, a
-    new path for every commit: keyed by path, no land ever found the last one's measurement
-    (GOH.RUSTCOVKEYSCOPE: three lands in a row re-measured, 468-476 s each). A gates root BEHIND
-    another is keyed by the files of its closure the roots ahead lack: the rest is never read from
-    it. ~/.zshrc puts the live checkout there, main before the land, and keyed whole it moved the
-    key once after every coverage-script change."""
+def gate_files(root: Path) -> list[str]:
+    """What a gate can import from a gates root on PYTHONPATH: the gates' own files, the ones
+    `content` keys (PARTS, bytecode aside). Gate code imports nothing of a gates root outside them
+    (tests/test_proven_pythonpath.py walks every import), so its tests/, docs/ and hooks/ are not
+    what a proven step read."""
+    return [r for r in _files(root) if "__pycache__" not in r.split("/")]
+
+
+def pythonpath(value: str, repo: Path, scope: Callable[[Path], list[str]]) -> str:
+    """PYTHONPATH as a verdict reads it, the ONE formula the proven steps (scope gate_files) and the
+    Rust coverage measurement (scope rust_gate_scripts) key it by: each entry that is the repo is
+    `repo` (its inputs are keyed apart), each that is a gates root is the files of scope(root) by
+    CONTENT, any other by its path. goh's own land prepends the tip's head export,
+    ~/.cache/goh/head/<sha>, a new path for every commit: keyed by path, no land ever found the
+    last one's measurement (GOH.RUSTCOVKEYSCOPE: three lands in a row re-measured, 468-476 s each)
+    nor any proven step (GOH.PROVENPYPATH). A gates root BEHIND another is keyed by the files of
+    its scope the roots ahead lack: the rest is never read from it. ~/.zshrc puts the live checkout
+    there, main before the land, and keyed whole it moved the key once after every change."""
     top = repo.resolve()
     out = []
     ahead: set[str] = set()
@@ -310,7 +329,7 @@ def pythonpath(value: str, repo: Path) -> str:
         if d is not None and d == top:
             out.append("repo")
         elif d is not None and d.is_dir() and _is_goh_root(d):
-            scripts = rust_gate_scripts(d)
+            scripts = scope(d)
             rest = [r for r in scripts if r not in ahead]
             out.append("goh:" + (content(d, rest) if rest else "shadowed"))
             ahead |= set(scripts)
@@ -363,7 +382,7 @@ def rust(repo: Path, root: Path = GOH_ROOT, external: str | None = None,
         runner = runner_files(repo, external)
         lines.append(f"runner {content(repo, runner) if runner else 'none'} {' '.join(runner)}")
     if path is not None:
-        lines.append(f"pythonpath {pythonpath(path, repo)}")
+        lines.append(f"pythonpath {pythonpath(path, repo, rust_gate_scripts)}")
     return [*lines, *tools()]
 
 
@@ -396,8 +415,11 @@ def main(argv: list[str] | None = None) -> int:
     k = sub.add_parser("key")
     k.add_argument("--mode", required=True)
     k.add_argument("--root", type=Path, default=GOH_ROOT)
-    for verb in ("proven", "keyed"):
-        sub.add_parser(verb).add_argument("--root", type=Path, action="append", required=True)
+    sub.add_parser("keyed").add_argument("--root", type=Path, action="append", required=True)
+    pv = sub.add_parser("proven")
+    pv.add_argument("--root", type=Path, action="append", default=[])
+    pv.add_argument("--repo", type=Path, help="the repo a PYTHONPATH entry may be")
+    pv.add_argument("--pythonpath", help="PYTHONPATH as the gate has it (absent: unset)")
     r = sub.add_parser("rust")
     r.add_argument("--repo", type=Path, required=True)
     r.add_argument("--root", type=Path, default=GOH_ROOT)
@@ -415,9 +437,11 @@ def main(argv: list[str] | None = None) -> int:
     if a.verb == "tools":
         print("\n".join(tools()))
         return 0
-    if a.verb in ("proven", "keyed"):
-        roots = [r.resolve() for r in a.root]
-        print("\n".join(proven(roots) if a.verb == "proven" else keyed(roots)))
+    if a.verb == "proven":
+        print("\n".join(proven([r.resolve() for r in a.root], a.pythonpath, a.repo)))
+        return 0
+    if a.verb == "keyed":
+        print("\n".join(keyed([r.resolve() for r in a.root])))
         return 0
     print(key(a.mode, a.root.resolve()))
     return 0

@@ -24,8 +24,9 @@ PROVEN_GOH_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 _PROVEN_IDENTITY_PY="$PROVEN_GOH_ROOT/lib/gate_identity.py"
 
 # Environment variables whose values change what a gate step concludes, keyed by default. The
-# repo adds its own with GOH_PROVEN_ENV (space-separated names) in .gatesrc.
-PROVEN_ENV_DEFAULT="CI RUSTFLAGS RUSTDOCFLAGS CARGO_BUILD_TARGET PYTHONPATH"
+# repo adds its own with GOH_PROVEN_ENV (space-separated names) in .gatesrc. PYTHONPATH is not one:
+# it is keyed by CONTENT in the run-constant half (_proven_identity_slow, GOH.PROVENPYPATH).
+PROVEN_ENV_DEFAULT="CI RUSTFLAGS RUSTDOCFLAGS CARGO_BUILD_TARGET"
 
 # proven_settings — validate the knobs once; prints the error and returns 2 on a bad value.
 # GOH_PROVEN=0 disables the cache; GOH_PROVEN_TTL_S is the record lifetime in seconds.
@@ -95,11 +96,11 @@ _proven_tool() {
 # The run-constant half of proven_identity: the gates checkout's identity and the toolchains.
 # ~110 ms, and every step's key was computed twice in every group of every gate (a private server
 # workspace push: ~174 times). `proven_settings` asks it ONCE and exports it for the same working
-# directory, PATH, toolchain override, gates root and GOH_LIVE mode; a key computed anywhere else
-# asks again (tests/test_proven_identity_once.py).
+# directory, PATH, toolchain override, gates root, GOH_LIVE mode and PYTHONPATH (its content is
+# in it); a key computed anywhere else asks again (tests/test_proven_identity_once.py).
 _proven_memo_key() {
-    printf '%s|%s|%s|%s|%s|%s' "$PWD" "$PATH" "${RUSTUP_TOOLCHAIN:-}" "${PROVEN_GOH_ROOT:-}" \
-        "${GOH_DIR:-}" "${GOH_LIVE:-}"
+    printf '%s|%s|%s|%s|%s|%s|%s' "$PWD" "$PATH" "${RUSTUP_TOOLCHAIN:-}" "${PROVEN_GOH_ROOT:-}" \
+        "${GOH_DIR:-}" "${GOH_LIVE:-}" "${PYTHONPATH-<unset>}"
 }
 
 proven_identity_prime() {
@@ -154,16 +155,22 @@ proven_keyed_roots() {
 }
 
 _proven_identity_slow() {
-    local d files roots=()
+    local d files top args=()
     # The gates roots by CONTENT, the one formula lib/gate_identity.py keys a land by: a checkout and
     # its commit's head export hold the same bytes and share their proven steps (GOH.PROVENIDENTITY;
-    # this file keyed a checkout by HEAD and diff, an export by its path). Then every tool a step may
+    # this file keyed a checkout by HEAD and diff, an export by its path). PYTHONPATH the same way,
+    # each gates root on it by the gates' content (gate_identity.pythonpath, the formula the Rust
+    # coverage key uses): keyed by path, the head export goh's land puts first on it, a new path per
+    # commit, made every key new on every land (GOH.PROVENPYPATH). An argument, not the environment:
+    # gate_identity.py re-runs HEAD's copy, which rewrites the variable. Then every tool a step may
     # invoke, by its bytes (GOH.VERDICTKEY). Unreadable: a line no other run has, so no hit.
     while IFS= read -r d; do
-        [ -n "$d" ] && roots+=(--root "$d")
+        [ -n "$d" ] && args+=(--root "$d")
     done < <(_proven_goh_roots)
-    if [ "${#roots[@]}" -gt 0 ]; then set -- proven ${roots[@]+"${roots[@]}"}; else set -- tools; fi
-    "$GOH_PY" -S "$_PROVEN_IDENTITY_PY" "$@" </dev/null 2>/dev/null \
+    top="$(git rev-parse --show-toplevel 2>/dev/null)" || top="$PWD"
+    args+=(--repo "$top")
+    [ -z "${PYTHONPATH+set}" ] || args+=(--pythonpath "$PYTHONPATH")
+    "$GOH_PY" -S "$_PROVEN_IDENTITY_PY" proven "${args[@]}" </dev/null 2>/dev/null \
         || printf 'goh unreadable %s\n' "$$"
     # Toolchains for the languages the repo tracks (`swift --version` alone ~0.7 s: no Swift, no cost).
     files="$(git ls-files 2>/dev/null)"
@@ -258,7 +265,7 @@ proven_what_moved() (
         printf '%s (a step rewrote an input of its own key)\n' "${names:-a kept input}"
         return 0
     fi
-    printf "the gates' identity (the gates_of_heck checkout or a toolchain)\n"
+    printf "the gates' identity (the gates_of_heck checkout, PYTHONPATH's gates or a toolchain)\n"
 )
 
 # _proven_kept_lines <entry> <live> — the `keep` lines of <live> that belong to one kept entry.
