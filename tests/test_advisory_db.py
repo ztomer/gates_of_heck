@@ -16,6 +16,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
@@ -264,8 +265,7 @@ def test_a_refresh_fetches_from_upstream_not_the_copy_it_was_seeded_from(
     import advisory_db
 
     seed = tmp_path / "seed"
-    seed.mkdir()
-    _git("init", "-q", cwd=seed)
+    fast_init(seed)
     _git(
         "-c",
         "user.email=t@t",

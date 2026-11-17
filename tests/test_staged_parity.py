@@ -80,6 +80,7 @@ SLOW: dict[tuple[str, str], str] = {
         "rust_gate.sh",
         "every advisory exemption in $cfg/.cargo/audit.toml has its reason and still fires",
     ): "lockfile",
+    ("rust_gate.sh", "every shared advisory ruling still holds in $lock"): "lockfile",
     (
         "rust_gate.sh",
         "every Cargo.lock at its newest compatible releases (cargo update --dry-run)",
