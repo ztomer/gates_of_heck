@@ -215,7 +215,13 @@ def run_one(q: Path, path: Path) -> dict:
     if res.code == 0 and not res.timed_out:
         # GOH.LANDQSHA: land.sh may rebase the tip, and `loopctl done` reads landing.sha, so the
         # sha recorded is the one main now holds; the enqueued tip keeps its own name.
-        on_main = git(Path(req["repo"]), "rev-parse", "HEAD") if land else ""
+        on_main, main = "", Path(req["repo"])
+        try:
+            if land:
+                on_main = landq_batch.strict_git(main, "rev-parse", "HEAD", tries=3)
+        except landq_batch.GitFailed as e:  # GOH.BATCHGITFAIL: landed, so never an empty sha
+            why = f"landed, but main's HEAD is unreadable ({e}): check main before enqueueing again"
+            return {**outcome, "state": "red", "why": why}
         main_tip = {"sha": on_main, "enqueued": req["sha"], "landed": on_main} if land else {}
         return {**outcome, "state": "landed", **main_tip}
     why = f"timed out after {timeout}s" if res.timed_out else f"exit {res.code}"
@@ -273,6 +279,7 @@ def drain_held(q: Path, digest: str = "") -> bool:
     for stale in sorted((q / "running").glob("*.json")):
         stale.replace(q / "pending" / stale.name)
         warn(f"{stale.name}: its lander died mid-request -- running it again")
+    fails: dict[str, int] = {}  # passes each request has been left pending by a git failure
     while pending := sorted((q / "pending").glob("*.json")):
         paths = [q / "running" / p.name for p in landq_batch.pick(pending)]  # GOH.LANDBATCH
         for path in paths:
@@ -282,9 +289,17 @@ def drain_held(q: Path, digest: str = "") -> bool:
         except Exception as e:  # noqa: BLE001 -- one broken request must not strand the rest
             red = {"sha": "", "repo": "", "state": "red", "why": f"lander: {e}", "log": ""}
             outcomes = [red] * len(paths)
+        held = False
         for path, outcome in zip(paths, outcomes, strict=True):
+            if (
+                outcome := landq_batch.hold(q, path, outcome, fails, warn)
+            ) is None:  # GOH.BATCHGITFAIL
+                held = True
+                continue
             record(path, outcome, landq_batch.read(path).get("item", ""))
             path.unlink(missing_ok=True)
+        if held:
+            time.sleep(landq_batch.PAUSE)  # the git failure may be load: not a hot retry loop
         if digest and code_digest() != digest:
             return False
     return True

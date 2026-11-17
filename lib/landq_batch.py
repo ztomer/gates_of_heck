@@ -24,7 +24,16 @@ GOH_LAND_TIMEOUT is not bisected (hours more of gates for what is most likely th
 whole stack is red, `timed out`. Every record carries `batch`: {id, items, gates}, the gate runs the
 batch spent, which `goh land --report` counts as gates per landed item (lib/landq_report.py).
 
-Pinned by tests/test_landq_batch.py.
+A GIT READ THAT FAILS (GOH.BATCHGITFAIL). Every git read the batch makes is strict: a failure or a
+timeout is a GitFailed, never an empty string standing for a tree, a commit or main's sha. The
+batch step stops loudly (the error in the lander log and each stopped item's own log), the worktrees
+it stacked go back to their enqueued commits, and what it had not yet judged comes back `pending`:
+`hold` puts it back in pending/ for the lander's next pass, and after RETRIES passes records it red
+with the git error. Items an earlier half already landed keep their records. A git failure AFTER the
+gate landed the stack cannot take the land back: those items are recorded red, saying so (`landed,
+but main's HEAD is unreadable`), with their enqueued sha, never an empty one.
+
+Pinned by tests/test_landq_batch.py and tests/test_landq_batch_git.py.
 """
 
 from __future__ import annotations
@@ -32,6 +41,8 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -42,6 +53,47 @@ import land_lock
 import landq_report
 
 DEFAULT = 3
+RETRIES = 3  # passes a git failure may keep a request pending before it is recorded red
+PAUSE = 30.0  # seconds the lander waits before it tries again after one
+READ_PAUSE = 1.0  # seconds between those reads
+READ_TRIES = 3  # reads of main's HEAD after the gate landed the stack: it is too late to give up
+
+
+class GitFailed(RuntimeError):
+    """A git read the batch needs failed or timed out (GOH.BATCHGITFAIL)."""
+
+
+def strict_git(repo: Path, *args: str, tries: int = 1) -> str:
+    """`git ARGS` in REPO, its non-empty output; GitFailed after TRIES failed reads, saying why."""
+    why = ""
+    for attempt in range(tries):
+        if attempt:
+            time.sleep(READ_PAUSE)
+        try:
+            done = gitrun.run_reader(args, repo=repo, timeout=60)
+        except (subprocess.TimeoutExpired, OSError) as e:
+            why = f"{type(e).__name__}: {e}"
+            continue
+        if done.returncode == 0 and done.stdout.strip():
+            return done.stdout.strip()
+        why = f"exit {done.returncode}: {done.stderr.strip() or '(no output)'}"
+    raise GitFailed(f"git {' '.join(args)} in {repo}: {why}")
+
+
+def hold(q: Path, path: Path, outcome: dict, fails: dict[str, int], say: Callable[[str], None]
+         ) -> dict | None:  # fmt: skip
+    """The record for OUTCOME, or None when its request went back to pending/ (a git failure)."""
+    if outcome.get("state") != "pending":
+        fails.pop(path.stem, None)
+        return outcome
+    n = fails[path.stem] = fails.get(path.stem, 0) + 1
+    if n >= RETRIES:
+        fails.pop(path.stem)
+        say(f"{path.stem}: git failed {n} passes in a row -- recorded red")
+        return {**outcome, "state": "red", "why": f"git failed {n} passes: {outcome['why']}"}
+    say(f"{path.stem}: git failed ({outcome['why']}) -- pending again, pass {n} of {RETRIES}")
+    path.replace(q / "pending" / path.name)
+    return None
 
 
 def cap() -> int:
@@ -119,8 +171,15 @@ class Batch:
         return Path(self.items[0].req["repo"])
 
     def git(self, repo: Path, *args: str) -> str:
-        done = gitrun.run_reader(args, repo=repo, timeout=60)
-        return done.stdout.strip() if done.returncode == 0 else ""
+        """A strict read (GitFailed); never '' standing for a tree or a sha."""
+        return strict_git(repo, *args)
+
+    def peek(self, repo: Path, *args: str) -> str:
+        """A read whose failure is an answer ('' = unreadable): a worktree that may be gone."""
+        try:
+            return strict_git(repo, *args)
+        except GitFailed:
+            return ""
 
     def outcome(self, it: Item, state: str, log: Path, **extra: str) -> None:
         it.outcome = {"sha": extra.pop("sha", it.req["sha"]), "repo": it.req["repo"],
@@ -179,13 +238,7 @@ class Batch:
         else:
             state, log, why = self.gate(top, len(stacked))
         if state == "landed":
-            main = self.git(self.main, "rev-parse", "HEAD")
-            for it in stacked:
-                on = gitrun.run_reader(("merge-base", "--is-ancestor", it.tip, main),
-                                       repo=self.main, timeout=60).returncode == 0  # fmt: skip
-                sha = it.tip if on else main  # land.sh rebased the stack after all: main holds it
-                self.outcome(it, "landed", self.own_log(it, log, "landed"), sha=sha,
-                             enqueued=it.req["sha"], landed=sha)  # fmt: skip
+            self.landed(stacked, log)
             return
         if state == "timeout" or len(stacked) == 1:
             for it in stacked:
@@ -196,17 +249,53 @@ class Batch:
         self.settle(stacked[:half])
         self.settle(stacked[half:])
 
+    def on_main(self, tip: str, main: str) -> bool:
+        """Whether TIP is an ancestor of MAIN: exit 1 is `no`, any other failure is GitFailed."""
+        try:
+            code = gitrun.run_reader(("merge-base", "--is-ancestor", tip, main), repo=self.main,
+                                     timeout=60).returncode  # fmt: skip
+        except (subprocess.TimeoutExpired, OSError) as e:
+            raise GitFailed(f"git merge-base --is-ancestor in {self.main}: {e}") from e
+        if code > 1:
+            raise GitFailed(f"git merge-base --is-ancestor {tip[:8]} in {self.main}: exit {code}")
+        return code == 0
+
+    def landed(self, stacked: list[Item], log: Path) -> None:
+        """The gate landed STACKED: each item's record names the commit main holds for it. The land
+        cannot be taken back, so an unreadable main is red with the enqueued sha (never '')."""
+        try:
+            main = strict_git(self.main, "rev-parse", "HEAD", tries=READ_TRIES)
+            shas = [it.tip if self.on_main(it.tip, main) else main for it in stacked]
+        except GitFailed as e:
+            why = f"landed, but main's HEAD is unreadable ({e}): check main before enqueueing again"
+            self.kit.say(f"batch {self.id}: {why}")
+            for it in stacked:
+                self.outcome(it, "red", self.own_log(it, log, why), why=why)
+            return
+        for it, sha in zip(stacked, shas, strict=True):  # sha is main when land.sh rebased
+            self.outcome(it, "landed", self.own_log(it, log, "landed"), sha=sha,
+                         enqueued=it.req["sha"], landed=sha)  # fmt: skip
+
     def restore(self, it: Item) -> None:
         """A red item's branch back at its enqueued commit: stacked, it may sit on another item's
         commits that never landed, and the lane would land them with its own."""
         wt = Path(it.req["worktree"])
-        if it.tip == it.req["sha"] or self.git(wt, "rev-parse", "HEAD") != it.tip:
+        if it.tip == it.req["sha"] or self.peek(wt, "rev-parse", "HEAD") != it.tip:
             return
         gitrun.run_writer(("reset", "-q", "--keep", it.req["sha"]), repo=wt, deadline_s=60)
 
+    def stalled(self, live: list[Item], why: GitFailed) -> None:
+        """A git read failed mid-step: what no half has judged yet is `pending` (module doc)."""
+        self.kit.say(f"batch {self.id}: {why} -- left pending, tried again")
+        for it in live:
+            if it.outcome is None:
+                self.outcome(it, "pending", it.log, why=str(why))
+                with it.log.open("a") as f:
+                    f.write(f"batch {self.id}: {why} -- nothing landed for this request; pending\n")
+
     def run(self) -> list[dict]:
         for it in self.items:
-            it.tip = self.git(Path(it.req["worktree"]), "rev-parse", "HEAD")
+            it.tip = self.peek(Path(it.req["worktree"]), "rev-parse", "HEAD")
             if it.tip != it.req["sha"]:
                 at, want = it.tip or "(unreadable)", it.req["sha"]
                 it.log.write_text(f"{it.req['worktree']} is at {at}, not the enqueued {want} "
@@ -215,11 +304,14 @@ class Batch:
         live = [it for it in self.items if it.outcome is None]
         self.kit.say(f"batch {self.id}: {len(live)} of {len(self.items)} lands of {self.main}")
         with land_lock.held(land_lock.path(self.main), f"landq batch {self.id}", self.kit.say):
-            main = self.git(self.main, "rev-parse", "HEAD")
-            for it in live:
-                it.upstream = self.git(self.main, "merge-base", main, it.tip)
-            if live:
-                self.settle(live)
+            try:
+                main = self.git(self.main, "rev-parse", "HEAD")
+                for it in live:
+                    it.upstream = self.git(self.main, "merge-base", main, it.tip)
+                if live:
+                    self.settle(live)
+            except GitFailed as e:
+                self.stalled(live, e)
             for it in live:
                 if it.outcome and it.outcome["state"] != "landed":
                     self.restore(it)
