@@ -68,6 +68,131 @@ def test_every_way_a_test_names_or_imports_a_changed_file_chooses_it(tmp_path, t
     assert "tests/test_x.py" in at.affected(root, ["tools/load.py"])
 
 
+def test_the_gate_slot_race_test_is_chosen_for_the_wait_text_its_probe_reads() -> None:
+    """GOH.AFFECTEDTRANSITIVE: SLOTFAIR land 1 lost 706 s. tests/test_gate_slot_race.py imports
+    checks/_gate_slot_probe.py, whose instrumented copy reads lib/gate_slot.py's wait text; it names
+    that path nowhere itself, and the one-level selection stopped at the test."""
+    why = at.affected(REPO_ROOT, ["lib/gate_slot.py"])
+    assert "tests/test_gate_slot_race.py" in why, sorted(why)
+
+
+def test_a_helper_a_test_imports_that_names_a_changed_path_chooses_the_test(tmp_path) -> None:
+    """The probe shape: the test imports a checks/ module that reads (names) the changed file."""
+    root = _tree(
+        tmp_path,
+        {
+            "tests/test_race.py": "from _probe import Trial\n",
+            "checks/_probe.py": 'WAIT = "lib/waiter.py"\n',
+            "lib/waiter.py": "",
+        },
+    )
+    assert at.affected(root, ["lib/waiter.py"]) == {
+        "tests/test_race.py": "reaches lib/waiter.py through checks/_probe.py -> lib/waiter.py"
+    }
+
+
+def test_a_helper_naming_a_data_file_chooses_the_tests_that_reach_it(tmp_path) -> None:
+    """A data file is no script, so no edge: the helper in the closure NAMES it."""
+    root = _tree(
+        tmp_path,
+        {
+            "tests/test_race.py": "from _probe import Trial\n",
+            "checks/_probe.py": 'WAIT = "docs/wait.txt"\n',
+            "tests/test_other.py": "",
+        },
+    )
+    assert at.affected(root, ["docs/wait.txt"]) == {
+        "tests/test_race.py": "reaches checks/_probe.py, which names docs/wait.txt"
+    }
+
+
+def test_what_pytest_loads_before_every_test_does_not_choose_every_test(tmp_path) -> None:
+    """tests/conftest.py's closure is in every test's: followed, a change in it chose 443 of 464
+    files. It is the base; the diff chooses by what a test itself imports or names."""
+    root = _tree(
+        tmp_path,
+        {
+            "tests/conftest.py": "import shared\n",
+            "lib/shared.py": "",
+            "tests/test_a.py": "from conftest import X\n",
+            "tests/test_b.py": "from conftest import X\nimport shared\n",
+        },
+    )
+    assert list(at.affected(root, ["lib/shared.py"])) == ["tests/test_b.py"]
+
+
+def test_prose_naming_a_changed_path_is_not_a_read_of_it(tmp_path) -> None:
+    """A docstring or comment in a module the test imports mentions the file; code names it."""
+    root = _tree(
+        tmp_path,
+        {
+            "tests/test_a.py": "import _prose\n",
+            "tests/test_b.py": "import _code\n",
+            "tests/_prose.py": '"""Reads docs/wait.txt."""\n# and docs/wait.txt\n',
+            "tests/_code.py": 'P = ROOT / "docs" / "wait.txt"\n',
+        },
+    )
+    assert list(at.affected(root, ["docs/wait.txt"])) == ["tests/test_b.py"]
+
+
+def test_a_script_a_test_runs_does_not_bring_the_scripts_it_mentions(tmp_path) -> None:
+    root = _tree(
+        tmp_path,
+        {
+            "tests/test_run.py": 'S = REPO_ROOT / "tools" / "run.sh"\n',
+            "tools/run.sh": '#!/bin/bash\nexec "$GOH_DIR/tools/inner.sh" docs/data.txt\n',
+            "tools/inner.sh": '#!/bin/bash\n. "$GOH_DIR/lib/deep.sh"\n',
+            "lib/deep.sh": "",
+        },
+    )
+    assert at.affected(root, ["lib/deep.sh"]) == {}
+    assert at.affected(root, ["docs/data.txt"]) == {}  # the script's own mention is not a run
+
+
+def test_a_fixture_chain_of_three_imports_is_followed(tmp_path) -> None:
+    root = _tree(
+        tmp_path,
+        {
+            "tests/test_a.py": "from _b import x\n",
+            "tests/_b.py": "from _c import x\n",
+            "tests/_c.py": "import leaf\n",
+            "lib/leaf.py": "",
+            "tests/test_other.py": "import _unrelated\n",
+            "tests/_unrelated.py": "",
+        },
+    )
+    assert at.affected(root, ["lib/leaf.py"]) == {
+        "tests/test_a.py": "reaches lib/leaf.py through tests/_b.py -> tests/_c.py -> lib/leaf.py"
+    }
+
+
+def test_a_test_running_a_script_by_path_inherits_what_the_script_sources(tmp_path) -> None:
+    root = _tree(
+        tmp_path,
+        {
+            "tests/test_run.py": 'S = REPO_ROOT / "tools" / "run.sh"\n',
+            "tools/run.sh": '#!/bin/bash\n. "$GOH_DIR/lib/inner.sh"\n',
+            "lib/inner.sh": "",
+            "tests/test_other.py": 'S = REPO_ROOT / "tools" / "other.sh"\n',
+            "tools/other.sh": "#!/bin/bash\n",
+        },
+    )
+    assert list(at.affected(root, ["lib/inner.sh"])) == ["tests/test_run.py"]
+
+
+def test_an_import_cycle_ends_and_a_missing_module_is_no_edge(tmp_path) -> None:
+    root = _tree(
+        tmp_path,
+        {
+            "tests/test_a.py": "import _b\nimport no_such_module\n",
+            "tests/_b.py": "import _c\n",
+            "tests/_c.py": "import _b\nimport leaf\n",
+            "lib/leaf.py": "",
+        },
+    )
+    assert list(at.affected(root, ["lib/leaf.py"])) == ["tests/test_a.py"]
+
+
 def test_a_test_that_names_nothing_changed_and_reads_no_tree_is_not_chosen(tmp_path) -> None:
     root = _tree(
         tmp_path,

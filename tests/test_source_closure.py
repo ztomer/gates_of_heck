@@ -166,3 +166,11 @@ def test_no_test_copies_part_of_goh_by_hand_beyond_the_seed() -> None:
     )
     stale = {f: (n, now.get(f, 0)) for f, n in seed.items() if now.get(f, 0) < n}
     assert not stale, f"lower these seed entries to the file's count -- file: (seed, now): {stale}"
+
+
+def test_a_reader_names_the_directories_modules_are_looked_for_in(tmp_path) -> None:
+    """tools/affected_tests.py reads the tests' closure, whose runner puts tools/ on sys.path."""
+    root = _tree(tmp_path, {"tests/t.py": "import tool\n", "tools/tool.py": ""})
+    assert sc.direct(root / "tests/t.py", root, root)[0] == []
+    found = sc.direct(root / "tests/t.py", root, root, (*sc.PY_DIRS, "tools"))[0]
+    assert [p.relative_to(root).as_posix() for p in found] == ["tools/tool.py"]

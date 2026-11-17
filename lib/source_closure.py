@@ -167,7 +167,7 @@ def _existing(candidates: list[Path]) -> Path | None:
     return None
 
 
-def _py_deps(path: Path, root: Path) -> list[Path]:
+def _py_deps(path: Path, root: Path, py_dirs: tuple[str, ...] = PY_DIRS) -> list[Path]:
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"))
     except (SyntaxError, UnicodeDecodeError):
@@ -193,7 +193,7 @@ def _py_deps(path: Path, root: Path) -> list[Path]:
             names += [f"{node.module}.{a.name}" for a in node.names]
         for name in names:
             rel = name.replace(".", "/")
-            for base in [path.parent, *(root / d for d in PY_DIRS)]:
+            for base in [path.parent, *(root / d for d in py_dirs)]:
                 found = _module(base, rel)
                 if found:
                     deps.append(found)
@@ -210,10 +210,14 @@ def _module(base: Path, rel: str) -> Path | None:
     return _existing([base / f"{rel}.py", base / rel / "__init__.py"])
 
 
-def direct(path: Path, root: Path = ROOT, goh: Path = ROOT) -> tuple[list[Path], list[str]]:
-    """What `path` sources or imports, and the source lines it could not place."""
+def direct(
+    path: Path, root: Path = ROOT, goh: Path = ROOT, py_dirs: tuple[str, ...] = PY_DIRS
+) -> tuple[list[Path], list[str]]:
+    """What `path` sources or imports, and the source lines it could not place. `py_dirs` are the
+    directories (beside the file and the root always) a module is looked for in: a reader of the
+    tests, whose runner puts tools/ on sys.path too, names its own."""
     if path.suffix == ".py":
-        return _py_deps(path, root), []
+        return _py_deps(path, root, py_dirs), []
     if _is_shell(path):
         return _shell_deps(path, root, goh)
     return [], []
