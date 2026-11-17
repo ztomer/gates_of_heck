@@ -18,6 +18,7 @@ import load_sources as ls
 from proc_table import Proc, Snapshot, parse_ps, script_of
 
 CLAUDE = "/opt/agents/claude-code/2.1/x/claude"
+PYAPP = "/opt/py/Python.framework/Resources/Python.app/Contents/MacOS/Python"
 
 
 def p(pid, ppid, exe, cpu=0.0, child=0.0, *, path=None, cwd=None, script=None, start=None, rss=0):
@@ -54,7 +55,7 @@ TABLE = {
     700: p(700, 1, "python3", script="pin_sweep.py"),
     800: p(800, 1, "foo", path="/usr/local/bin/foo"),
     900: p(900, 100, "python3", script="affected_tests.py"),
-    901: p(901, 100, "Python", script="foo.py"),
+    901: p(901, 100, "Python", script="foo.py", path=PYAPP),  # a framework Python is no app
 }
 
 

@@ -157,7 +157,7 @@ def family(pid: int, procs: dict[int, Proc]) -> str:
         for fam, names in CONTEXTS:
             if _labels(anc) & names:
                 return fam
-    if ".app/Contents/" in me.path:
+    if ".app/Contents/" in me.path and not _PY.match(me.exe):  # a framework Python is a tool
         return "app:" + me.path.split(".app/Contents/", 1)[0].rsplit("/", 1)[-1]
     agent = any(a.exe in AGENTS for a in chain)
     if me.exe in AGENTS:
