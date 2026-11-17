@@ -33,6 +33,15 @@ tree. Writers: gates/push_gate.sh (every commit it gated, every push, not only u
 and, read through `landed_identity` until tools/land.sh writes here, the land record `goh-landed`.
 Readers: `goh ship verdict` (lib/ship_verdict.py), the release push rule (lib/release_gate.py).
 
+THE `pushed` PATH: (repo, tree), deliberately WITHOUT the gate identity. The floor rule
+(lib/config_push.py) asks whether the remote's tip was ever push-gated green: a commit the remote
+holds is never re-gated under newer gates, so the floor push certifies only what the remote gains
+under today's structural gate, and a key with the identity would turn the rule off at every goh
+change. The same `record-gate` call writes it, beside `gate`. The `goh-pushed` file it replaces
+is no longer written, and read here only, by sha, for a base pushed before the store (LEGACY):
+without it every consumer's first floor push re-ran its whole gate. TTL a year: the base is the
+remote's tip, however old.
+
 THE SHADOW CHECK. A reused verdict is a claim that a fresh run would agree. `shadow_due` picks a
 deterministic sample of keys (GOH_REUSE_SHADOW=RATE, 0..1, default 0: off), and a caller that
 re-ran the work anyway hands both answers to `shadow_report`, which appends one JSON line to
@@ -73,7 +82,7 @@ FORMAT = "reuse v1"
 DAY_S = 86400
 # Record files outside the store that a reuse path still writes, read only through this module
 # until their writers move here (docs/reuse.md, the order).
-LEGACY = ("goh-landed",)
+LEGACY = ("goh-landed", "goh-pushed")
 
 
 @dataclass(frozen=True)
@@ -102,6 +111,14 @@ GATE = register(
     ("repo", "tree", "identity"),
     DAY_S,
     "a green gate over a commit's tree: the push gate writes; ship verdict, the release rule read",
+)
+
+
+PUSHED = register(
+    "pushed",
+    ("repo", "tree"),
+    365 * DAY_S,
+    "a tree some push gate judged green, under any gates: the floor rule's base (config_push.py)",
 )
 
 
@@ -188,6 +205,22 @@ def lookup(path: str | ReusePath, fields: dict[str, str]) -> tuple[dict | None, 
     return rec, ""
 
 
+def prune(path: str | ReusePath) -> int:
+    """Delete the path's records older than its TTL (and unreadable ones); the count removed. A
+    writer calls it once per write batch, so the store stays the size of one TTL of verdicts."""
+    p = _path(path)
+    gone = 0
+    for f in (root() / p.name).glob("*/*.json"):
+        try:
+            epoch = json.loads(f.read_text(encoding="utf-8")).get("epoch")
+        except (OSError, ValueError, AttributeError):
+            epoch = None
+        if not isinstance(epoch, int) or not 0 <= now() - epoch < ttl(p):
+            f.unlink(missing_ok=True)
+            gone += 1
+    return gone
+
+
 # The sampled shadow check (header): the future reuse paths' audit (GOH.REUSEAUDIT).
 def shadow_due(k: str) -> bool:
     try:
@@ -249,7 +282,29 @@ def record_gate(repo: Path, shas: list[str], by: str) -> list[Path]:
         ident = identity.setdefault(how, gate_identity.key(how))
         fields = {"repo": rid, "tree": tree, "identity": ident}
         out.append(record(GATE, fields, "green", by, {"sha": sha, "how": how}))
+        record(PUSHED, {"repo": rid, "tree": tree}, "green", by, {"sha": sha, "how": how})
+    prune(GATE)
+    prune(PUSHED)
     return out
+
+
+def pushed(repo: Path, sha: str) -> bool:
+    """True when a push gate judged sha's tree green, under whatever gates it ran (`pushed`)."""
+    tree = _git(repo, "rev-parse", "--verify", "--quiet", f"{sha}^{{tree}}")
+    rid = repo_id(repo)
+    if not tree or not rid:
+        return False
+    rec, _ = lookup(PUSHED, {"repo": rid, "tree": tree})
+    if rec is not None:
+        return rec.get("verdict") == "green"
+    # The file this path replaced, read-only: a remote tip pushed before the store existed is
+    # still a green base, or the first floor push of every consumer re-ran its whole gate.
+    common = _git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    try:
+        lines = (Path(common) / "goh-pushed").read_text(encoding="utf-8").splitlines()
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    return any(ln.split()[:1] == [sha] for ln in lines)
 
 
 def landed_identity(repo: Path, sha: str) -> str | None:

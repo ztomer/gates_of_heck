@@ -70,6 +70,15 @@ def test_an_old_or_foreign_record_misses(store, monkeypatch):
     assert "unreadable" in reuse.lookup("gate", FIELDS)[1]
 
 
+def test_a_record_older_than_its_ttl_is_pruned(store, monkeypatch):
+    old = reuse.record("gate", FIELDS, "green")
+    young = {**FIELDS, "tree": "u" * 40}
+    monkeypatch.setenv("GOH_REUSE_NOW", str(int(json.loads(old.read_text())["epoch"]) + 86400))
+    kept = reuse.record("gate", young, "green")
+    assert reuse.prune("gate") == 1
+    assert not old.exists() and kept.exists()
+
+
 def test_the_shadow_check_samples_by_key_and_logs_a_disagreement(store, monkeypatch):
     assert not reuse.shadow_due("f" * 64)  # off by default
     monkeypatch.setenv("GOH_REUSE_SHADOW", "1")
@@ -158,3 +167,32 @@ def test_paths_lists_every_registered_path_with_its_fields(tmp_path):
     out = _cli(tmp_path / "store", "paths")
     assert out.returncode == 0, out.stderr
     assert out.stdout.splitlines()[0].startswith("gate\trepo,tree,identity\t")
+
+
+def _pushed(store: Path, repo: Path, sha: str, **env: str) -> bool:
+    code = "import sys; sys.path.insert(0, sys.argv[1]); import reuse, pathlib; " \
+           "print(reuse.pushed(pathlib.Path(sys.argv[2]), sys.argv[3]))"  # fmt: skip
+    out = subprocess.run([sys.executable, "-c", code, str(REPO_ROOT / "lib"), str(repo), sha],
+                         env=hermetic_env(drop_git=True, GOH_REUSE_DIR=str(store), **env),
+                         capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
+                         timeout=patience(60))  # fmt: skip
+    return out.stdout.strip() == "True"
+
+
+def test_the_pushed_path_is_the_tree_alone_under_any_gate(tmp_path):
+    """The floor rule's base (lib/config_push.py): keyed WITHOUT the gate identity on purpose."""
+    store = tmp_path / "store"
+    repo = _repo(tmp_path)
+    one = _git(repo, "rev-parse", "HEAD")
+    assert not _pushed(store, repo, one)
+    assert _cli(store, "record-gate", "--repo", str(repo), f"{one}:config").returncode == 0
+    assert _pushed(store, repo, one)
+    other_gate = tmp_path / "goh"
+    other_gate.write_text("another goh binary\n")
+    assert _pushed(store, repo, one, GOH_BIN=str(other_gate))  # another goh: still the base
+    (repo / "a.txt").write_text("two\n")
+    _git(repo, "commit", "-q", "-am", "two")
+    two = _git(repo, "rev-parse", "HEAD")
+    assert not _pushed(store, repo, two)  # a changed tree misses
+    (repo / ".git" / "goh-pushed").write_text(f"{two} full\n")
+    assert _pushed(store, repo, two)  # the retired file's base still counts, read-only

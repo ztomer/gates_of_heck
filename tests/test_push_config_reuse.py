@@ -3,15 +3,17 @@
 GOH.CFGPUSHSCOPE (owner, 2026-11-16). A consumer push whose diff was one `.gatesrc` floor line ran
 the repo's whole push gate (scripts 1002 s, game_asset_factory 894 s at load 44-140). Now
 gates/push_gate.sh asks lib/config_push.py: when the diff since the remote's tip is `.gatesrc`
-scanner-floor lines only, and that tip has a green push verdict (`goh-pushed`, which every green
-push records), the push runs the real `gates/structural.sh --full` -- the one reader of a floor --
-and reuses the tip's verdict for the rest. Anything else is the full gate, and the push says why.
+scanner-floor lines only, and that tip has a green push verdict (lib/reuse.py's `pushed`, which
+every green push records), the push runs the real `gates/structural.sh --full` -- the one reader
+of a floor -- and reuses the tip's verdict for the rest. Anything else is the full gate, and the
+push says why.
 Each fixture is a consumer whose tools/gate.sh reports `full` to a file; the structural gate is
 the real one, so a floor the tree cannot meet goes red on the short path too.
 """
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -55,8 +57,10 @@ def _push(repo: Path, tmp_path: Path, remote_sha: str) -> tuple[int, list[str], 
     return p.returncode, ran, p.stdout + p.stderr
 
 
-def _pushed(repo: Path) -> Path:
-    return repo / ".git" / "goh-pushed"
+def _pushed(tmp_path: Path) -> list[str]:
+    """The shas the store's `pushed` path holds green (lib/reuse.py)."""
+    recs = [json.loads(f.read_text()) for f in (tmp_path / "reuse" / "pushed").glob("*/*.json")]
+    return [r["sha"] for r in recs if r.get("verdict") == "green"]
 
 
 def _gated_tip(repo: Path, tmp_path: Path) -> str:
@@ -86,14 +90,14 @@ def test_a_floor_only_commit_on_a_push_gated_tip_runs_the_structural_gate_only(
     repo, tmp_path
 ) -> None:
     tip = _gated_tip(_consumer(repo), tmp_path)
-    assert _pushed(repo).read_text().split()[:1] == [tip]
+    assert _pushed(tmp_path) == [tip]
     sha = _floor(repo, "GOH_EMOJI_MIN_FILES=1\n", "GOH_EMOJI_MIN_FILES=2  # read 3\n")
     rc, ran, out = _push(repo, tmp_path, tip)
     assert rc == 0, out
     assert ran == [], (ran, out)  # tools/gate.sh never ran: the tip's verdict stands for it
     assert f"{SHORT} {tip[:8]}" in out and "all structural gates passed" in out, out
     # Recorded like any green push, so the next floor push chains on it.
-    assert sha in _pushed(repo).read_text().split(), out
+    assert sha in _pushed(tmp_path), out
     assert recorded_hows(tmp_path / "reuse", sha) == ["config"], out  # its gate: the floor rule
 
 
@@ -103,7 +107,7 @@ def test_a_floor_the_tree_cannot_meet_is_red_on_the_short_path(repo, tmp_path) -
     rc, ran, out = _push(repo, tmp_path, tip)
     assert rc != 0 and ran == [], (ran, out)
     assert f"{SHORT} {tip[:8]}" in out and "GOH_SECRETS_MIN_FILES" in out, out
-    assert sha not in _pushed(repo).read_text().split(), out
+    assert sha not in _pushed(tmp_path), out
 
 
 def test_a_floor_plus_a_code_change_takes_the_full_gate(repo, tmp_path) -> None:

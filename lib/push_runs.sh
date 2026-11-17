@@ -140,7 +140,8 @@ push_change_base() {
 # THE RECORDED VERDICT (GOH.VERDICTAPI, GOH.ONEVERDICT): push_gate.sh calls this after every gated
 # ref passed and none moved, with the repo and each commit it gated as `<sha>:<how>` (how empty: the
 # full gate, else release or config). Each is recorded green in the one verdict store's `gate` path
-# (lib/reuse.py), keyed by the repo, the commit's TREE and the gate identity of how -- on EVERY
+# (lib/reuse.py), keyed by the repo, the commit's TREE and the gate identity of how, and in its
+# `pushed` path by the tree alone (the floor rule's base, lib/config_push.py) -- on EVERY
 # push, not only one `goh ship` runs: the per-ship file this wrote before (GOH_GATE_VERDICTS) never
 # saw a commit the land queue pushed, so ship's own push had "nothing to gate" and the release kit
 # re-ran the full gate (koffee_big, 3137.5 s). `goh ship verdict --sha` reads it
@@ -153,21 +154,6 @@ push_record_verdicts() {
     "$GOH_PY" "${BASH_SOURCE[0]%/*}/reuse.py" record-gate --repo "$root" --by push -- "$@" \
         >/dev/null </dev/null \
         || warn "pre-push: the gate verdict was not recorded (lib/reuse.py) -- a ship re-gates these commits"
-}
-
-# THE PUSHED RECORD (GOH.CFGPUSHSCOPE; lib/config_push.py's header). push_record_pushed ROOT
-# SHA:HOW... appends `<sha> <how>` (HOW full when empty, release, or config for a floor push) to
-# `goh-pushed` in ROOT's common git dir, called beside push_record_verdicts once every gated ref
-# passed and none moved: the green push verdict a later floor-only push reuses. Bounded: past 1000 lines the newest 500 are kept.
-push_record_pushed() {
-    local root="$1" file c how
-    shift
-    [ "$#" -gt 0 ] || return 0
-    file="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)/goh-pushed" || return 0
-    for c in "$@"; do how="${c#*:}"; printf '%s %s\n' "${c%%:*}" "${how:-full}" >>"$file"; done
-    if [ "$(wc -l <"$file")" -gt 1000 ]; then
-        tail -n 500 "$file" >"$file.tmp" && mv -f "$file.tmp" "$file"
-    fi
 }
 
 # THE FLOOR RULE (GOH.CFGPUSHSCOPE). push_config_base WORKTREE BASE prints BASE when

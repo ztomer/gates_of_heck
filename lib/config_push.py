@@ -15,13 +15,13 @@ runs `gates/structural.sh --full` alone (which judges every floor, and every key
 assignment) only when ALL hold; anything else is the full gate, and the push says why:
 
   * BASE is the remote's tip (a new branch has none) and an ancestor of the commit;
-  * BASE has a green push verdict: the push gate appends `<sha> <how>` to `goh-pushed` in the
-    common git dir after every gated ref passed and none moved (push_record_pushed in
-    lib/push_runs.sh), so a red push and a push no gate ran (`--no-verify`, another machine) are
-    both absent. The record is the tree's, not the gates': a commit the remote already holds is not
-    re-gated under newer gates (gates/push_gate.sh, "WHAT IS NOT GATED"), and BASE is exactly such
-    a commit, so the floor push certifies what the remote GAINS -- the floor lines -- under today's
-    structural gate;
+  * BASE has a green push verdict: the push gate records each commit's tree in the one verdict
+    store's `pushed` path (lib/reuse.py, GOH.ONEVERDICT; the `goh-pushed` file it replaced) after
+    every gated ref passed and none moved, so a red push and a push no gate ran (`--no-verify`,
+    another machine) are both absent. The record is the tree's, not the gates': a commit the
+    remote already holds is not re-gated under newer gates (gates/push_gate.sh, "WHAT IS NOT
+    GATED"), and BASE is exactly such a commit, so the floor push certifies what the remote GAINS
+    -- the floor lines -- under today's structural gate;
   * the diff BASE..commit is `.gatesrc` and nothing else;
   * every line that diff adds or removes is blank, a comment, or `KEY=<digits>` with an optional
     trailing comment, KEY a scanner floor: one of `crate::subject`'s keys, read from the gates'
@@ -53,8 +53,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import reuse  # lib/, beside this file: the one verdict store (GOH.ONEVERDICT)
+
 GATESRC = ".gatesrc"
-PUSHED = "goh-pushed"
 SUBJECTS = Path("crates") / "goh" / "src" / "subject.rs"
 SUBJECT_KEY = re.compile(r'^\s*key:\s*"(GOH_[A-Z0-9_]+)",\s*$', re.MULTILINE)
 FLOOR_LINE = re.compile(r"^(GOH_[A-Z0-9_]+)=([0-9]+)(?:\s+#.*)?\s*$")
@@ -72,16 +74,6 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True,
                           env=env, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
-
-
-def pushed(root: Path, sha: str) -> bool:
-    """True when the push gate recorded sha green in `goh-pushed` (common git dir)."""
-    common = _git(root, "rev-parse", "--path-format=absolute", "--git-common-dir").stdout.strip()
-    try:
-        lines = (Path(common) / PUSHED).read_text(encoding="utf-8").splitlines()
-    except (FileNotFoundError, NotADirectoryError):
-        return False
-    return any(ln.split()[:1] == [sha] for ln in lines)
 
 
 def changed_lines(root: Path, base: str, head: str) -> list[str]:
@@ -107,8 +99,8 @@ def decide(root: Path, base: str, goh: Path, head: str = "HEAD") -> tuple[str, s
     paths = [p for p in diff.stdout.splitlines() if p]
     if diff.returncode != 0 or GATESRC not in paths:
         return "quiet", f"it does not change {GATESRC} since {base[:8]}"
-    if not pushed(root, base):
-        return "full", f"the remote's {base[:8]} has no green push verdict ({PUSHED})"
+    if not reuse.pushed(root, base):
+        return "full", f"the remote's {base[:8]} has no green push verdict (lib/reuse.py)"
     other = next((p for p in paths if p != GATESRC), None)
     if other is not None:
         return "full", f"{other} is not {GATESRC} (the diff since {base[:8]})"

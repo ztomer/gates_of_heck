@@ -48,6 +48,9 @@ the push log text instead of calling `goh ship verdict`; until it does, it misse
 
 The gate identity is `lib/gate_identity.py`'s key: the gate mode, the gates' content (goh's
 version is its bytes, so no version string is keyed), the goh binary and every tool a step may run.
+Its limit, by design: a goh land between a consumer's push and its ship is other gates, so the
+ship misses and re-gates. A consumer whose hooks run a pinned goh keeps one identity until the pin
+moves; one on the live checkout keeps it only while goh's main does not move.
 
 ## Every store, mapped
 
@@ -55,7 +58,7 @@ version is its bytes, so no version string is keyed), the goh binary and every t
 |---|---|---|---|
 | `GOH_GATE_VERDICTS` per-ship file, `green <sha>` (push gate writes under `goh ship`; `goh ship verdict` reads) | sha, one ship | `gate` (repo, tree, identity of full/release/config) | MOVED: the push gate records every push; the query reads the store; the file and the variable are gone |
 | `goh-landed`, `<sha> <identity>` (tools/land.sh writes; the release push rule and GOH_LANDED_ONLY read) | sha + identity | `gate`: a land is a full gate's green verdict on the tip's tree | READ through the API (`landed_identity`; `lookup_gate` counts a land line under today's identity). The writer moves when tools/land.sh's lane is free; the GOH_LANDED_ONLY refusal is provenance (did this sha come through land), not reuse, and stays sha-keyed |
-| `goh-pushed`, `<sha> full\|release\|config` (push gate writes; lib/config_push.py's floor rule reads) | sha, how; NO identity | `gate`, the same record the push now writes (how is the identity's mode) | TO MOVE: config_push asks `lookup_gate(base, how)`; the file goes |
+| `goh-pushed`, `<sha> full\|release\|config` (push gate wrote; lib/config_push.py's floor rule read) | sha, how; NO identity | `pushed` (repo, tree): deliberately no identity, the floor rule certifies only what the remote gains under today's structural gate, so a key with the identity would turn it off at every goh change | MOVED: the same `record-gate` call writes it; config_push asks `reuse.pushed`; the file is no longer written, read only for a base pushed before the store |
 | `goh-proven/<key>`, proven-step cache (gates/_proven.sh, `goh proven`, G2f) | tree, step, gate identity lines, keyed env | a `step` path (repo, tree, step, identity, env) | TO MOVE: two faces (shell, Rust); the record's artifact list rides as extra fields |
 | Rust coverage record (gates/_rust_proven.sh) | rust identity lines | a `rustcov` path (repo, rust identity) | TO MOVE, with the proven cache |
 | `~/.cache/goh/verdicts/<checker>/` (`GOH_VERDICT_DIR`, crates/goh/src/verdict_cache.rs) | per file: checker, bytes, path, tools | a `file` path (checker, key) | TO MOVE last: a Rust face of the API, hot per-file path (shell-lint) |
@@ -68,8 +71,8 @@ version is its bytes, so no version string is keyed), the goh binary and every t
 1. `gate`: the push gate's verdicts, `goh ship verdict`, the land record read (this item).
 2. GOH.RELVERDICTREUSE: the release kit's version-bump commit, release files only on a parent the
    store holds green, asks `lookup_gate(parent)` (the koffee_big second gate).
-3. `goh-pushed` onto `gate`; then tools/land.sh writes `record-gate` and `goh-landed` keeps only
-   the GOH_LANDED_ONLY provenance line.
+3. `goh-pushed` onto `pushed` (done). Then tools/land.sh writes `record-gate`, and `goh-landed`
+   keeps only the GOH_LANDED_ONLY provenance line.
 4. The proven-step and Rust coverage records, then the per-test land record, then the per-file
    checker cache. GOH.VERDICTCARRY, GOH.CANARYMEMO, GOH.PROVENCLOSURE and GOH.PINPUSHREUSE register
    paths here instead of adding stores; GOH.REUSEAUDIT turns on the shadow sample.
