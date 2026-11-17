@@ -60,13 +60,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+import _land_audit  # tests/, beside this file: the audited `test` and `carry` uses
 import pytest
 
 RECORD = "GOH_LAND_VERDICTS_RECORD"
 REUSE = "GOH_LAND_VERDICTS_REUSE"
 BIN_MARK = "goh_bin"  # a user property: the test ran the native binary
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CARRY = "carry"  # the audited reuse path (lib/reuse.py)
+CARRY = "carry"  # the audited reuse path (lib/reuse.py); a same-tree node's, `test`: _land_audit
 DROPPED_KEY = "goh_land_verdicts_dropped"  # worker -> controller: nodes it deselected
 WORKER_KEY = "goh_land_reuse"  # the controller's decision, handed to each xdist worker
 ANCESTORS = 20  # first-parent commits of HEAD searched for a recorded tree
@@ -134,6 +135,11 @@ def _in_store():
             os.environ.pop("GOH_REUSE_DIR", None)
         else:
             os.environ["GOH_REUSE_DIR"] = was
+
+
+def _store_or_none():
+    """`_in_store`, when a store is named to count in; else None."""
+    return _in_store if _store() else None
 
 
 def _lib(name: str):
@@ -306,31 +312,16 @@ def _record_store(session) -> None:
 
 
 def _shadows() -> None:
-    """Each sampled source: its carried nodes ran; a failure among them is a disagreement."""
-    plan = _state.get("plan") or {}
-    if not plan.get("shadows"):
-        return
-    with _in_store() as (_, audit):
-        for sh in plan["shadows"]:
-            nodes = set(sh["nodes"])
-            if not nodes & (_called | _failed):
-                continue  # none ran (an interrupted run): nothing to compare
-            bad = sorted(nodes & _failed)
-            fresh = "red" if bad else "green"
-            audit.compare(CARRY, sh["fields"], "green", fresh,
-                          lambda sh=sh, bad=bad: _again(sh, bad))  # fmt: skip
-
-
-def _again(sh: dict, bad: list[str]) -> tuple[str, str]:
-    """Both sides again: the record read again, the failed carried nodes run again in a child."""
-    with _in_store() as (reuse, _):
-        rec, _ = reuse.lookup(CARRY, sh["fields"])
-    reused = "green" if rec and all(n in rec.get("passed", {}) for n in bad) else ""
-    env = {k: v for k, v in os.environ.items() if k not in (RECORD, REUSE, STORE, "GOH_REUSE_DIR")}
-    r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *bad],
-                       cwd=sh["rootdir"], env=env, capture_output=True, text=True,
-                       stdin=subprocess.DEVNULL, check=False)  # fmt: skip
-    return reused, "green" if r.returncode == 0 else "red"
+    """Each sampled source's carried nodes, each sampled same-tree node, ran: a failure among
+    them is a disagreement, re-run in a child pytest first (tests/_land_audit.py)."""
+    _land_audit.shadows(
+        _state.get("plan") or {},
+        _in_store,
+        _called,
+        _failed,
+        (RECORD, REUSE, STORE, "GOH_REUSE_DIR"),
+        lambda n: n in reusable(_on(REUSE), identity(), instrumented())[0],
+    )
 
 
 def reusable(path: str, here: str | None, coverage: bool) -> tuple[set[str], str]:
@@ -369,8 +360,10 @@ def _plan(config) -> dict:
     coverage = instrumented()
     same, why = reusable(path, identity(), coverage) if path else (set(), "")
     lines = [f"land verdicts: {len(same)} tests passed by the pre-land run are reused ({why})"]
-    skipped = {n: b for n, b in _file_passed(path).items() if n in same}
-    plan = {"lines": lines, "skipped": skipped, "other": 0, "shadows": []}
+    plan = {"lines": lines, "skipped": {}, "other": 0, "shadows": []}
+    if same:  # each node one use of the audited `test` path, decided here for every worker
+        same = _land_audit.audited(plan, same, identity(), str(config.rootpath), _store_or_none())
+    plan["skipped"] = {n: b for n, b in _file_passed(path).items() if n in same}
     if path:
         _carry(plan, _file_sha(path), coverage, Path(config.rootpath))
     plan["skip"] = set(plan["skipped"])

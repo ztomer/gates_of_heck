@@ -236,7 +236,7 @@ def refusals(rel: str, text: str) -> list[str]:
 
 def _tracked() -> list[str]:
     argv = ["git", "-C", str(REPO_ROOT), "ls-files", "-co", "--exclude-standard", "--", *SCOPE,
-            "tests/_land_verdicts.py"]  # fmt: skip
+            "tests/_land_verdicts.py", "tests/_land_audit.py"]  # fmt: skip
     out = subprocess.run(argv, capture_output=True, text=True, check=True,
                          stdin=subprocess.DEVNULL).stdout.split()  # fmt: skip
     return [r for r in out if r.endswith((".py", ".sh", ".rs")) and (REPO_ROOT / r).is_file()]
@@ -254,11 +254,12 @@ def test_every_registered_site_exists_and_every_sampled_one_asks_the_audit():
             assert (REPO_ROOT / site).is_file(), f"{p.name}: no site {site}"
             if p.shadow:  # Python asks `use("NAME", ...)`; shell, the CLI`s `use NAME`
                 text = (REPO_ROOT / site).read_text()
-                asks = f'use("{p.name}"' in text or f'reuse_audit.py" use {p.name} ' in text
+                asks = any(f'{verb}("{p.name}"' in text for verb in ("use", "use_many"))
+                asks = asks or f'reuse_audit.py" use {p.name} ' in text
                 assert asks, (p.name, site)
     sampled = sorted(p.name for p in reuse.PATHS.values() if p.shadow)
     # slice 1, GOH.VERDICTCARRY's `carry`, GOH.REUSEAUDIT2's; the rest say why (`unsampled`)
-    assert sampled == ["carry", "estate", "landed", "step"], sampled
+    assert sampled == ["carry", "estate", "landed", "step", "test"], sampled
 
 
 def test_the_check_refuses_an_unregistered_reuse():

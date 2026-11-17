@@ -129,8 +129,8 @@ GATE = register(
     DAY_S,
     "a green gate over a commit's tree: the push gate writes; ship verdict, the release rule read",
     sites=("lib/ship_verdict.py",),
-    unsampled="its fresh side is a full gate of the tree: hosted CI for a public repo, an idle "
-    "local slot for a private one; the drain that reads them is slice 2 (GOH.REUSEAUDIT)",
+    unsampled="its fresh side is a full gate of the tree in an idle local slot, which only the "
+    "idle lander (tools/landq.py) schedules; hosted CI's gate of a public repo reads via `landed`",
 )
 
 
@@ -155,7 +155,8 @@ register(
     "origin", ("repo", "sha", "remote"), 0,
     "the push gate's 'the remote already has this commit': nothing new to gate",
     store="the remote's refs", sites=("gates/push_gate.sh",),
-    unsampled="its fresh side is the store's verdict on the tree; slice 2 asks it at the skip",
+    unsampled="no verdict is reused: the skip is a scope rule (the remote gains no code), and a "
+    "fresh gate of a commit the remote holds judges old code under today's tools (push_gate.sh)",
 )  # fmt: skip
 ESTATE = register(
     "estate", ("identity", "entry", "corpus"), 7 * DAY_S,
@@ -165,8 +166,8 @@ ESTATE = register(
 TEST = register(
     "test", ("identity", "node"), DAY_S,
     "a land's pre-step pass, deselected from its gate's suite (tests/_land_verdicts.py)",
-    store="one land's GOH_LAND_VERDICTS_RECORD file", sites=("tests/_land_verdicts.py",),
-    unsampled="a sampled node must be one choice every xdist worker collects alike: slice 2",
+    store="one land's GOH_LAND_VERDICTS_RECORD file", sites=("tests/_land_audit.py",),
+    shadow="inline",  # one use per node, decided by the controller for every worker
 )  # fmt: skip
 CARRY = register(
     "carry", ("repo", "tree", "tools"), DAY_S,
@@ -193,13 +194,17 @@ register(
     "rustcov", ("repo", "rust_identity"), DAY_S,
     "the Rust coverage measurement and its sccache/llvm-cov build, reused by identity",
     store="goh-proven (gates/_rust_proven.sh)", sites=("gates/_rust_proven.sh",),
-    unsampled="the Rust-layer lane holds its files; its shadow is hosted CI's uncached build",
+    unsampled="a shadow is a whole instrumented build and measurement, minutes a sample, under "
+    "rust_gate's set -e (a red one ends the gate uncompared); hosted CI's uncached build is its "
+    "fresh side for a public repo",
 )  # fmt: skip
 register(
     "file", ("checker", "key"), 30 * DAY_S,
     "a per-file checker verdict (shell-lint's cache)",
     store="~/.cache/goh/verdicts", sites=("crates/goh/src/verdict_cache.rs",),
-    unsampled="the hot per-file path's Rust face of the API: slice 2",
+    unsampled="the per-file hot path inside the goh binary, thousands of hits a gate at "
+    "microseconds each against a ~60 ms ask of lib/reuse_audit.py: it needs the audit's counter "
+    "in Rust",
 )  # fmt: skip
 
 
