@@ -86,6 +86,13 @@ def words(rel: str, text: str, code: str) -> set[str]:
     }
 
 
+def _reached(graph, rel: str) -> dict:
+    """What `rel` reaches by imports, sources and the scripts it names -- not a shell script's
+    variable-rooted runs (lib/test_closure.py `uses`), which the binary's subcommand reading does
+    not narrow (GOH.PREPARITY: they took a scanner change's runners from 188 files to 243)."""
+    return graph.reach(rel, runs=False)[0]
+
+
 def invoked(graph, rel: str, text: str, subcommands: set[str]) -> set[str] | None:
     """The subcommands test `rel` can run: the words naming one in the test and in every file it
     reaches (a gate script runs the binary through a resolver the base sources, so it names none
@@ -93,7 +100,7 @@ def invoked(graph, rel: str, text: str, subcommands: set[str]) -> set[str] | Non
     subcommand) when a file that runs the binary itself names none: its argv comes from somewhere
     this cannot read."""
     found: set[str] = set()
-    for dep in [rel, *graph.reach(rel)[0]]:
+    for dep in [rel, *_reached(graph, rel)]:
         dep_text = text if dep == rel else graph.texts.get(dep, "")
         own = words(dep, dep_text, graph.code(dep)) & subcommands
         if not own and runs(dep_text, graph.code(dep)) and (dep == rel or names(graph.code(dep))):
@@ -109,7 +116,7 @@ def runners(graph, tests: dict[str, str], build: str) -> dict[str, str]:
     for rel, text in tests.items():
         if runs(text, graph.code(rel)):
             via = ""
-        elif dep := next((d for d in graph.reach(rel)[0] if names(graph.code(d))), None):
+        elif dep := next((d for d in _reached(graph, rel) if names(graph.code(d))), None):
             via = f" through {dep}"
         else:
             continue

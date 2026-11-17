@@ -33,6 +33,10 @@ THE SET is the union of
     though the test says neither (SLOTFAIR land 1, 706 s). A naming edge (a file naming a script
     it runs) is followed from a test and the tests/ and checks/ helpers it reaches, never from a
     lib/ or tools/ module's prose, and never twice in a row: a script's own mentions are not run.
+    What a reached SHELL script runs by a variable-rooted path (`"$GOH_PY" "$ROOT/lib/x.py"`) is
+    an edge, a file pytest loads before every test included (GOH.PREPARITY: gates/_rust_proven.sh
+    runs lib/gate_identity.py, which tests/_land_verdicts.py imports; the pre-step missed
+    tests/test_rust_gate.py and the land gate went red on 14 of its tests).
   * the BINARY'S RUNNERS (GOH.AFFECTEDBINARY): a build-input change chooses every test running it.
 A deleted file is a changed path too: a test still naming it is the one that will go red.
 """
@@ -49,8 +53,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from checks import _prose_mask
-from lib import binary_runners, source_closure
+from lib import binary_runners, source_closure, test_closure
 from tui.lib import counted, info, ok
 
 # Tree readers that neither a test name nor a tree-walking call in their own source gives away.
@@ -95,144 +98,10 @@ def _module_names(path: str) -> set[str]:
 _names_path = source_closure.names_path
 
 
-# Where a test's runner finds a module: beside the file, the root, and these (tools/ is on the
-# sys.path of the tests that import a tool).
-PY_DIRS = (*source_closure.PY_DIRS, "tools")
-SKIP_DIRS = {".git", "target", "node_modules", "__pycache__", ".venv", "venv", "dist", "build"}
-
-
-def _files(root: Path) -> dict[str, str]:
-    """{path: text} of every Python and shell file under `root` (bin/ commands included)."""
-    out: dict[str, str] = {}
-    for current, dirnames, names in os.walk(root):
-        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and not d.startswith("."))
-        for name in sorted(names):
-            p = Path(current, name)
-            if p.suffix in (".py", ".sh", ".bash") or p.parent.name == "bin":
-                out[p.relative_to(root).as_posix()] = p.read_text(
-                    encoding="utf-8", errors="replace"
-                )
-    return out
-
-
-class Closure:
-    """The dependency graph of a tree, built lazily: file -> what it imports or sources
-    (lib/source_closure.py), and file -> the scripts its text names."""
-
-    def __init__(self, root: Path) -> None:
-        self.root = root
-        self.texts = _files(root)
-        self.scripts = [p for p in self.texts if not Path(p).name.startswith("test_")]
-        self._edges: dict[str, list[str]] = {}
-        self._named: dict[str, list[str]] = {}
-        self._names: dict[tuple[str, str], bool] = {}
-        self._base: set[str] | None = None
-        self._code: dict[str, str] = {}
-
-    def code(self, rel: str) -> str:
-        """`rel`'s code with its prose blanked (checks/_prose_mask.py): a docstring or comment
-        that mentions a script is no run of it."""
-        if rel not in self._code:
-            text = self.texts.get(rel, "")
-            mask = (
-                _prose_mask.python_code_only if rel.endswith(".py") else _prose_mask.shell_code_only
-            )
-            self._code[rel] = mask(text)
-        return self._code[rel]
-
-    def names(self, rel: str, path: str) -> bool:
-        """Whether the code of `rel` names `path`."""
-        key = (rel, path)
-        if key not in self._names:
-            self._names[key] = (
-                Path(path).name in self.texts.get(rel, "")  # the cheap test first
-                and _names_path(self.code(rel), path)
-            )
-        return self._names[key]
-
-    def imports(self, rel: str) -> list[str]:
-        """The files `rel` imports or sources that exist in the tree, in order."""
-        if rel not in self._edges:
-            found, _ = source_closure.direct(self.root / rel, self.root, self.root, PY_DIRS)
-            edges = []
-            for dep in found:
-                try:
-                    edge = dep.relative_to(self.root).as_posix()
-                except ValueError:
-                    continue  # outside the tree
-                if edge != rel and edge not in edges:
-                    edges.append(edge)
-            self._edges[rel] = edges
-        return self._edges[rel]
-
-    def named(self, rel: str) -> list[str]:
-        """The scripts `rel` names by path (it runs them): tests/ and checks/ files only."""
-        if rel not in self._named:
-            runs = rel.startswith(("tests/", "checks/"))
-            self._named[rel] = [
-                s for s in (self.scripts if runs else []) if s != rel and self.names(rel, s)
-            ]
-        return self._named[rel]
-
-    def base(self) -> set[str]:
-        """tests/conftest.py and all it reaches: what pytest loads before EVERY test (the reference
-        kits, suite home, the gate libraries they copy). A change in it is in every test's closure,
-        so the closure cannot choose among tests by it (it chose 443 of 464 files); such a change
-        is the full gate's, and the tests that import or name the changed file are chosen by the
-        diff as before."""
-        if self._base is None:
-            self._base = set()
-            if "tests/conftest.py" in self.texts:
-                self._base = {"tests/conftest.py", *self.reach("tests/conftest.py", ())[0]}
-        return self._base
-
-    def reach(
-        self, test: str, skip: set[str] | None = None
-    ) -> tuple[dict[str, tuple[str, ...]], set[str]]:
-        """({file: the chain from the test to it}, the files among them it IMPORTS rather than
-        runs), for everything the test depends on, nearest first, the base excepted (`skip` None)
-        or the files in `skip`. Imports are followed at any depth; a name is followed only out of
-        a test or a tests/ or checks/ helper, and the script it names brings its imports and
-        sources, not the scripts that script mentions in turn."""
-        skip = self.base() if skip is None else skip
-        chains: dict[str, tuple[str, ...]] = {}
-        read: set[str] = set()  # reached by imports alone: their own code is read, so it counts
-        todo: list[tuple[str, tuple[str, ...], bool]] = [(test, (), True)]
-        while todo:
-            rel, chain, by_import = todo.pop(0)
-
-            def visit(dep: str, by_import: bool, rel=rel, chain=chain) -> None:
-                if dep == test or dep in skip:
-                    return
-                if dep not in chains or (by_import and dep not in read):
-                    chains.setdefault(dep, (*chain, dep))
-                    if by_import:
-                        read.add(dep)
-                    todo.append((dep, chains[dep], by_import))
-
-            for dep in self.imports(rel):
-                visit(dep, by_import)
-            if by_import:
-                for dep in self.named(rel):
-                    visit(dep, False)
-        return chains, read
-
-
-def _transitive(graph: Closure, test: str, changed: list[str]) -> str | None:
-    """Why `test` is chosen by something it reaches (not by its own text), or None."""
-    reached, read = graph.reach(test)
-    for path in changed:
-        if path in reached:
-            chain = reached[path]
-            return f"reaches {path}" + (f" through {' -> '.join(chain)}" if len(chain) > 1 else "")
-    for node, chain in reached.items():
-        if node not in read:
-            continue  # a script the test runs: what it sources counts, what it mentions does not
-        for path in changed:
-            if path != node and graph.names(node, path):
-                via = node + (f" through {' -> '.join(chain)}" if len(chain) > 1 else "")
-                return f"reaches {via}, which names {path}"
-    return None
+# The graph (lib/test_closure.py); tests/_land_verdicts.py reads Closure here.
+Closure = test_closure.Closure
+PY_DIRS = test_closure.PY_DIRS
+_transitive = test_closure.transitive
 
 
 def _tests(root: Path) -> dict[str, str]:

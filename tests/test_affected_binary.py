@@ -24,6 +24,8 @@ from conftest import REPO_ROOT
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 import affected_tests as at
 
+from checks import _prose_mask  # the root is on sys.path now (affected_tests put it there)
+
 SCANNER = "crates/goh/src/layerparity.rs"
 INCIDENT = "tests/test_check_moving_tags.py"  # GRACESHAPES, 2026-11-17: red in the land gate
 
@@ -98,7 +100,7 @@ def test_every_test_that_asks_the_binary_by_a_plain_read_is_chosen_on_the_real_t
         args = {
             a.arg for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) for a in n.args.args
         }
-        code = at._prose_mask.python_code_only(text)
+        code = _prose_mask.python_code_only(text)
         if (asked.search(code) or args & {"goh", "native_goh"}) and f"tests/{p.name}" not in chosen:
             missed.append(p.name)
     assert not missed, missed

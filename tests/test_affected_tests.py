@@ -147,8 +147,41 @@ def test_a_script_a_test_runs_does_not_bring_the_scripts_it_mentions(tmp_path) -
             "lib/deep.sh": "",
         },
     )
-    assert at.affected(root, ["lib/deep.sh"]) == {}
+    # run.sh EXECS inner.sh by a rooted path, so what inner.sh sources is in the test's closure
+    # (GOH.PREPARITY: this line pinned {} -- the blindness that missed test_rust_gate.py)
+    assert list(at.affected(root, ["lib/deep.sh"])) == ["tests/test_run.py"]
     assert at.affected(root, ["docs/data.txt"]) == {}  # the script's own mention is not a run
+
+
+def test_a_script_a_sourced_gate_runs_by_a_rooted_path_chooses_the_test(tmp_path) -> None:
+    """GOH.BUILDINCLUDES 73ba690b: tests/test_rust_gate.py runs gates/rust_gate.sh, which sources
+    gates/_rust_proven.sh, which runs `"$GOH_PY" -S "$PROVEN_GOH_ROOT/lib/gate_identity.py"`. The
+    pre-step did not choose the test for a lib/gate_identity.py change; the land gate went red on
+    14 of its tests. A path rooted at a variable in a shell script's code is a use of the file,
+    direct or through a variable that holds it; a bare path in a message is not."""
+    root = _tree(
+        tmp_path,
+        {
+            "tests/test_gate.py": 'G = REPO_ROOT / "gates" / "fx_gate.sh"\n',
+            "gates/fx_gate.sh": '#!/bin/bash\n. "$HERE/_fx_proven.sh"\n',
+            "gates/_fx_proven.sh": (
+                '#!/bin/bash\nid="$("$GOH_PY" -S "$ROOT/lib/ident.py" rust)"\n'
+                '_PY="$ROOT/lib/keyed.py"\n"$GOH_PY" "$_PY" keyed\n'
+                'err "see lib/told.py for why"  # a message names it: no run\n'
+            ),
+            "lib/ident.py": "",
+            "lib/keyed.py": "",
+            "lib/told.py": "",
+        },
+    )
+    assert list(at.affected(root, ["lib/ident.py"])) == ["tests/test_gate.py"]
+    assert list(at.affected(root, ["lib/keyed.py"])) == ["tests/test_gate.py"]
+    assert at.affected(root, ["lib/told.py"]) == {}
+
+
+def test_the_rust_gate_test_is_chosen_for_a_gate_identity_change_on_the_real_tree() -> None:
+    why = at.affected(REPO_ROOT, ["lib/gate_identity.py"])
+    assert "tests/test_rust_gate.py" in why, sorted(k for k in why if "rust_gate" in k)
 
 
 def test_a_fixture_chain_of_three_imports_is_followed(tmp_path) -> None:

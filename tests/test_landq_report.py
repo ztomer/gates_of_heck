@@ -92,7 +92,7 @@ def test_the_report_reproduces_the_hand_computed_table(tmp_path):
         670, 3300, 400, 2900,
     )  # fmt: skip
     assert rep["unloaded_s"] == 300  # the shortest green run: C
-    assert alpha["cause"] == {}  # PREPARITY fills it
+    assert alpha["cause"] == {"other": 1}  # B's log says nothing of why (lib/land_cause.py)
 
 
 def test_no_run_time_is_ever_negative_and_a_reused_log_is_unknown(tmp_path):
