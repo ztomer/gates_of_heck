@@ -291,7 +291,6 @@ rust_advisories() {
     # SHARED RULINGS (GOH.SHAREDADVISORY, docs/shared-advisories.md): an advisory every consumer
     # inherits through one upstream is ignored from goh's one file, only in a lock where its
     # blocking crate still reaches the advised one; a lock whose blocker dropped it is red.
-    local shared
     while IFS="$(printf '\t')" read -r cfg lock; do
         # Its re-open condition met here: a step BEFORE the audit (whose red would stop the run
         # first), so the run is red and names the ruling.
@@ -299,18 +298,22 @@ rust_advisories() {
             goh_step_in "$top/$cfg" "every shared advisory ruling still holds in $lock" \
                 "$GOH_PY" "$HERE/../lib/shared_advisories.py" dropped "$top/$lock"
         fi
-        shared="$("$GOH_PY" "$HERE/../lib/shared_advisories.py" ignores "$top/$lock")" \
-            || die "[rust] could not read goh's shared advisories (above)"
-        # shellcheck disable=SC2086 # `--ignore ID` pairs, split into words on purpose
+        # The wrapper adds the shared `--ignore ID`s itself (GOH.AUDITONCE): one place, so a
+        # consumer's own audit step through it honours the same rulings as this one.
         goh_step_in "$top/$cfg" "no known advisory in $lock (cargo audit: warnings, unmaintained, unsound, yanked)" \
             "$GOH_PY" "$HERE/../lib/advisory_db.py" run "$fetch" -- cargo audit --file "$top/$lock" \
-            --deny warnings --deny unmaintained --deny unsound --deny yanked $shared
+            --deny warnings --deny unmaintained --deny unsound --deny yanked
         fetch="--no-fetch"
         behind_args="$behind_args --lock $lock"
         if [ -f "$top/$cfg/.cargo/audit.toml" ]; then
             case "$ratchets" in *"|$cfg|"*) ;; *) ratchets="$ratchets|$cfg|" ;; esac
         fi
     done <<<"$plan"
+    # ONE AUDIT ROUTE (GOH.AUDITONCE): a repo's own `cargo audit` beside this one -- a GOH_CI_STEPS
+    # step or a tools/ script -- skipped the shared rulings and refused the v0.130.0 pin pushes on
+    # the advisory they cover. Only the wrapper above may run one.
+    goh_step "no raw cargo audit outside goh's advisory-db wrapper (GOH_CI_STEPS, tools/)" \
+        "$GOH_PY" "$HERE/../checks/check_raw_audit.py" --empty-ok "$top"
     # One ratchet per config, judged against every lock it governs (an entry is stale only when it
     # fires against none of them). No config: nothing is exempted, so nothing to ratchet.
     while IFS="|" read -r -d "|" cfg; do

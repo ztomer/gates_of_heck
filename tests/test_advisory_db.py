@@ -289,3 +289,63 @@ def test_a_refresh_fetches_from_upstream_not_the_copy_it_was_seeded_from(
     with advisory_db.held(fetch=True):
         pass
     assert _git("remote", "get-url", "origin", cwd=db) == advisory_db.UPSTREAM
+
+
+# GOH.AUDITONCE (2026-11-17). A consumer's own audit step went through this wrapper, not through
+# rust_gate.sh, so it never saw goh's shared rulings and refused the v0.130.0 pin pushes on
+# RUSTSEC-2026-0543 (chrono via rmcp). The wrapper now applies them per lock, exactly as the gate:
+# an ignore only where the blocker still reaches the advised crate. The fake cargo fails unless it
+# was told to ignore the advisory, which is what a real audit of such a lock does.
+CHRONO = "RUSTSEC-2026-0543"
+GRUDGING = f'for a in "$@"; do [ "$a" = {CHRONO} ] && exit 0; done\necho "{CHRONO}" >&2\nexit 1\n'
+
+
+def _pkg(name: str, *deps: str) -> str:
+    listed = "".join(f' "{d}",\n' for d in deps)
+    return f'\n[[package]]\nname = "{name}"\nversion = "1.0.0"\n' + (
+        f"dependencies = [\n{listed}]\n" if deps else ""
+    )
+
+
+def _audit_lock(tmp_path: Path, db: Path, lock: str, *, flag: str = "--file") -> tuple[int, str]:
+    (tmp_path / "Cargo.lock").write_text("version = 4\n" + lock)
+    fake = tmp_path / "bin" / "cargo"
+    fake.parent.mkdir(exist_ok=True)
+    fake.write_text("#!/bin/sh\n" + GRUDGING)
+    fake.chmod(0o755)
+    env = hermetic_env(GOH_ADVISORY_DB=str(db))
+    env["PATH"] = f"{fake.parent}:{env['PATH']}"
+    where = [flag, str(tmp_path / "Cargo.lock")] if flag else []
+    r = subprocess.run(
+        ["python3", str(SEAM), "run", "--no-fetch", "--", "cargo", "audit", *where],
+        env=env,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
+        timeout=patience(30),
+    )
+    return r.returncode, r.stderr
+
+
+@pytest.mark.parametrize("flag", ["--file", "-f", ""])
+def test_the_wrapper_applies_the_shared_ruling_where_the_blocker_reaches_the_crate(
+    db: Path, tmp_path: Path, flag: str
+) -> None:
+    rc, err = _audit_lock(tmp_path, db, _pkg("rmcp", "chrono") + _pkg("chrono"), flag=flag)
+    assert rc == 0, err
+
+
+def test_the_wrapper_keeps_the_advisory_red_where_no_blocker_carries_it(
+    db: Path, tmp_path: Path
+) -> None:
+    rc, err = _audit_lock(tmp_path, db, _pkg("app", "chrono") + _pkg("chrono"))
+    assert rc == 1 and CHRONO in err, err
+
+
+def test_the_wrapper_names_a_ruling_whose_blocker_dropped_the_crate(
+    db: Path, tmp_path: Path
+) -> None:
+    rc, err = _audit_lock(tmp_path, db, _pkg("rmcp") + _pkg("app", "chrono") + _pkg("chrono"))
+    assert rc == 1 and "no longer depends on chrono" in err, err

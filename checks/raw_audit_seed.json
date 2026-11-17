@@ -1,0 +1,3 @@
+{
+  "_doc": "check_raw_audit.py's seed: {repo: {path: reason}}, a raw `cargo audit` outside goh's advisory-db wrapper that may stand until its repo drops it. Empty at landing (GOH.AUDITONCE, 2026-11-17): the five repos that carried one (antiknob tools/repo_gates.sh; house-lib and sys_updater GOH_CI_STEPS raw; divoom-control, app_updates and routines through the wrapper) were fixed first. SHRINK-ONLY; `--estate` refuses an entry that no longer fires."
+}

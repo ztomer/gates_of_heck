@@ -14,9 +14,11 @@ reason = "..."
 reopen = "rmcp no longer requires chrono"
 ```
 
-* **The gate.** `gates/rust_gate.sh` adds `--ignore ID` to each lock's `cargo audit` only where the
-  blocker still reaches the advised crate through the lock's dependency graph
-  (`lib/shared_advisories.py ignores LOCK`). A lock that carries the crate some other way is not
+* **The gate.** Every goh `cargo audit` goes through `lib/advisory_db.py run -- cargo audit`, which
+  adds `--ignore ID` for the lock it reads only where the blocker still reaches the advised crate
+  through the lock's dependency graph (`lib/shared_advisories.py ignores LOCK` gives the same
+  answer). That covers `gates/rust_gate.sh` and a consumer's own GOH_CI_STEPS audit alike
+  (GOH.AUDITONCE); a raw `cargo audit` there is refused by `checks/check_raw_audit.py`. A lock that carries the crate some other way is not
   covered. In a lock that carries both crates where the blocker no longer reaches the advised one,
   the re-open condition is met, and the gate goes red before the audit runs
   (`every shared advisory ruling still holds in LOCK`).

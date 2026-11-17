@@ -1,5 +1,5 @@
 """The cases of the shared-gate canary whose gate RUNS a program the repo names (a generator, an
-MCP server), split out of `_canary_cases.py` at its 500-line cap.
+MCP server, the `.gatesrc` it sources), split out of `_canary_cases.py` at its 500-line cap.
 
 The MCP wire case is one planted stdio server, spoken to live by `check_mcp_wire.py`: newest protocol by discovery, one
 tool, and its annotations are the variable -- none (red), both hints stated (green). The version is
@@ -43,6 +43,21 @@ CASES = [
         {
             ".gatesrc": "GOH_MCP_SERVERS='python3 srv.py'\nGOH_MCP_TIMEOUT=30\n",
             "srv.py": _MCP_SRV % '{"readOnlyHint": True, "destructiveHint": False}',
+        },
+    ),
+    # GOH.AUDITONCE: GOH_CI_STEPS is SOURCED from .gatesrc, as the runner reads it.
+    (
+        "no raw cargo audit outside goh's advisory-db wrapper",
+        "check_raw_audit.py",
+        [],
+        {
+            "README.md": "a repo\n",
+            ".gatesrc": "GOH_CI_STEPS='./gates/rust_gate.sh:cargo audit --deny warnings'\n",
+        },
+        {
+            "README.md": "a repo\n",
+            ".gatesrc": 'GOH_CI_STEPS=\'python3 "$GOH_DIR/lib/advisory_db.py" run --fetch --'
+            " cargo audit'\n",
         },
     ),
 ]

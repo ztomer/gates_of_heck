@@ -33,6 +33,14 @@ one is set, else the index's -- and refuses, naming it, when it does not resolve
 group under a CPU ceiling (`GOH_AUDIT_CPU`, default 30 s; a 412-crate scan with its fetch costs
 under 1 s) and a wall ceiling (`GOH_AUDIT_WALL`, default 360 s: cargo-audit may wait up to 300 s
 for cargo's package lock, which costs no CPU), and a stop names the stall.
+
+EVERY AUDIT HONOURS goh's SHARED RULINGS (GOH.AUDITONCE, 2026-11-17). A consumer's own audit step
+(GOH_CI_STEPS) ran through this wrapper, not through rust_gate.sh, so it never saw
+gates/shared_advisories.toml and refused the v0.130.0 pin pushes on RUSTSEC-2026-0543 (chrono via
+rmcp). So `run -- cargo audit` adds `--ignore ID` for each ruling that covers the lock it reads
+(`--file`/`-f`, else ./Cargo.lock) exactly as the gate does (lib/shared_advisories.py: only where
+the blocker still reaches the advised crate), and refuses, naming it, a ruling whose blocker
+dropped the crate.
 """
 
 from __future__ import annotations
@@ -48,6 +56,7 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
         pass
     del _sys.path[0]
 
+import itertools
 import os
 import socket
 import subprocess
@@ -60,8 +69,9 @@ from pathlib import Path
 
 try:  # the one acquire path (lib/lock_order.py, GOH.LOCKORDER), imported as `X` or as `lib.X`
     import lock_order
+    import shared_advisories
 except ImportError:
-    from lib import lock_order
+    from lib import lock_order, shared_advisories
 
 SHARED = Path.home() / ".cargo" / "advisory-db"
 UPSTREAM = "https://github.com/RustSec/advisory-db.git"
@@ -257,6 +267,45 @@ def bounded(
     return subprocess.CompletedProcess(argv, code, stdout, stderr)
 
 
+def _audited_lock(argv: list[str]) -> Path | None:
+    """The Cargo.lock a `cargo [+toolchain] audit ...` argv reads; None for any other command."""
+    rest = argv[1:]
+    if rest and rest[0].startswith("+"):
+        rest = rest[1:]
+    if not argv or Path(argv[0]).name != "cargo" or not rest or rest[0] != "audit":
+        return None
+    lock = "Cargo.lock"
+    for i, a in enumerate(rest[1:], start=1):
+        if a in ("--file", "-f") and i + 1 < len(rest):
+            lock = rest[i + 1]
+        elif a.startswith("--file="):
+            lock = a.split("=", 1)[1]
+    return Path(lock)
+
+
+def shared_rulings(argv: list[str]) -> tuple[list[str], list[str]]:
+    """(`--ignore ID` args the shared rulings add for this audit's lock, the rulings it re-opens):
+    the same answer lib/shared_advisories.py gives rust_gate.sh. An ID the argv already ignores is
+    not added twice."""
+    lock = _audited_lock(argv)
+    if lock is None or not lock.is_file():
+        return [], []
+    text = lock.read_text(encoding="utf-8")
+    have = {b for a, b in itertools.pairwise(argv) if a == "--ignore"}
+    have |= {a.split("=", 1)[1] for a in argv if a.startswith("--ignore=")}
+    add: list[str] = []
+    reopened: list[str] = []
+    for e in shared_advisories.load():
+        if shared_advisories.dropped(e, text):
+            reopened.append(
+                f"{e.id}: {e.blocker} no longer depends on {e.crate} in {lock} ({e.reopen}):"
+                f" re-open the ruling in {shared_advisories.path()}"
+            )
+        elif e.id not in have and shared_advisories.applies(e, text):
+            add += ["--ignore", e.id]
+    return add, reopened
+
+
 def main(argv: list[str]) -> int:
     if (
         len(argv) < 4
@@ -267,8 +316,14 @@ def main(argv: list[str]) -> int:
         print("usage: advisory_db.py run --fetch|--no-fetch -- cargo audit ...", file=sys.stderr)
         return 2
     fetch = argv[1] == "--fetch"
+    shared, reopened = shared_rulings(argv[3:])
+    if reopened:
+        print("\n".join(reopened), file=sys.stderr)
+        return 1
     with held(fetch) as db:
-        return bounded([*argv[3:], *audit_args(db, fetch)], fetch, capture=False).returncode
+        return bounded(
+            [*argv[3:], *shared, *audit_args(db, fetch)], fetch, capture=False
+        ).returncode
 
 
 if __name__ == "__main__":

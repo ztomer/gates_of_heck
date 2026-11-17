@@ -83,6 +83,10 @@ SLOW: dict[tuple[str, str], str] = {
     ("rust_gate.sh", "every shared advisory ruling still holds in $lock"): "lockfile",
     (
         "rust_gate.sh",
+        "no raw cargo audit outside goh's advisory-db wrapper (GOH_CI_STEPS, tools/)",
+    ): "the repo's sourced GOH_CI_STEPS and every tools/ script, whole",
+    (
+        "rust_gate.sh",
         "every Cargo.lock at its newest compatible releases (cargo update --dry-run)",
     ): "registry read",
     ("rust_gate.sh", "lint policy is inherited"): "manifest",
