@@ -150,3 +150,33 @@ def test_a_sleeping_span_spends_wall_and_no_cpu(tmp_path: Path) -> None:
     """Calibration: wall and cpu-s are different instruments (a loaded box inflates the first)."""
     row = _span(tmp_path, "sleep 1.2")
     assert row["wall_s"] >= 1.2 and row["cpu_s"] < 0.5, row
+
+
+def test_the_push_row_carries_the_slot_wait_once(tmp_path: Path) -> None:
+    """The push gate's span starts after its slot (GOH.LOADSOURCES): the wait is timed from the
+    ask, rides the next push row, and a second ref's row in the same push carries none."""
+    env = hermetic_env(
+        GOH_TIMING_DIR=str(tmp_path / "ledger"), GOH_PY=sys.executable, GOH=str(REPO_ROOT)
+    )
+    script = (
+        f'. "{LEDGER_SH}"; goh_slot_asked; sleep 1.2; goh_slot_taken; goh_span_start; '
+        f'goh_push_row "{tmp_path}" 0 aaaaaaaaaaaa; goh_span_start; '
+        f'goh_push_row "{tmp_path}" 0 bbbbbbbbbbbb'
+    )
+    r = subprocess.run(
+        ["bash", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=patience(60),
+        stdin=subprocess.DEVNULL,
+        check=False,
+    )
+    assert r.returncode == 0, r.stderr
+    first, second = [
+        json.loads(ln) for ln in (tmp_path / "ledger" / "ledger.jsonl").read_text().splitlines()
+    ]
+    assert (
+        first["sha"] == "aaaaaaaaaaaa" and 1.2 <= first["slot_wait_s"] < first["slot_asked_at"]
+    ), first
+    assert first["epoch"] - first["slot_asked_at"] >= 1.2 and "slot_wait_s" not in second, second

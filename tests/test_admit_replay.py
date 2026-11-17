@@ -102,6 +102,22 @@ def test_jobs_from_the_ledger_start_where_the_span_started_and_drop_the_slot_wai
     ]
 
 
+def test_a_push_that_recorded_its_slot_wait_arrives_when_it_asked():
+    # GOH.LOADSOURCES: the push row carries slot_wait_s; the job arrived 30 s before its span.
+    rows = [
+        {
+            "kind": "push",
+            "repo": "x",
+            "epoch": T0 + 100,
+            "wall_s": 100.0,
+            "cpu_s": 200.0,
+            "slot_wait_s": 30.0,
+        }
+    ]
+    (j,) = ar.jobs_from(rows)
+    assert (j.arrive, j.work, j.demand) == (T0 - 30, 200.0, 2.0)
+
+
 def test_the_weight_is_the_median_of_the_runs_before_it_never_a_later_one():
     rows = [
         {"kind": "push", "repo": "x", "epoch": T0 + 10, "wall_s": 10.0, "cpu_s": 10.0},  # 1

@@ -20,6 +20,7 @@ TOOLS = REPO_ROOT / "tools"
 JOBS = {
     "install_load_reap.sh": "com.ztomer.goh-load-reap",
     "install_actions_sweep.sh": "com.ztomer.goh-actions-sweep",
+    "install_load_sources.sh": "com.ztomer.goh-load-sources",
 }
 
 

@@ -11,13 +11,14 @@ The ruling is docs/decisions/D-0009; this is the instrument it was decided with.
 
 THE JOBS are the day's `push` and `land` rows of the timing record (lib/timing_ledger.py) that carry
 a CPU reading. A job's ARRIVAL is its span's start (epoch - wall_s): a push gate's span starts after
-its slot (the push gate's span), so its own wait is not in the record and the replay's waits are a
-LOWER bound; a land's span starts at the land lock, before the slot, so the slot wait the queue
-recorded for that sha (`$GOH_LANDQ_DIR/done/*.json` `slot_wait_s`) is taken off its run. Its WORK is
-cpu_s; its DEMAND is cpu_s over the run (the cores it actually burned, x `--scale` for the cores it
-would burn on an idle box, which the record cannot see); its WEIGHT, what the CPU rule admits it by,
-is the median cpu-s per wall-s of its repo's runs BEFORE it (every repo's when it has none; cores /
-slots, which is what a count assumes, when there are none) -- never a later run.
+its slot, so the wait it records (`slot_wait_s`, since GOH.LOADSOURCES; none before, where the
+replay's waits are a LOWER bound) is taken off its arrival; a land's span starts at the land lock,
+before the slot, so the slot wait the queue recorded for that sha (`$GOH_LANDQ_DIR/done/*.json`
+`slot_wait_s`) is taken off its run. Its WORK is cpu_s; its DEMAND is cpu_s over the run (the cores
+it actually burned, x `--scale` for the cores it would burn on an idle box, which the record cannot
+see); its WEIGHT, what the CPU rule admits it by, is the median cpu-s per wall-s of its repo's runs
+BEFORE it (every repo's when it has none; cores / slots, which is what a count assumes, when there
+are none) -- never a later run.
 
 THE MACHINE is a fluid share: `cores` cores, `background` cores of other work always runnable, and
 while the demand (background + every running job's) exceeds the cores each job runs at demand x
@@ -180,6 +181,8 @@ def jobs_from(
         if r.get("kind") not in KINDS or _ratio(r) is None:
             continue
         start = float(r["epoch"]) - float(r["wall_s"])
+        if r["kind"] == "push":  # its span starts after the slot; the wait it recorded comes first
+            start -= float(r.get("slot_wait_s") or 0.0)
         keyed.append((start, r))
     keyed.sort(key=lambda p: p[0])
     seen: list[tuple[float, str, float]] = []  # (end, repo, ratio) of every row, for the weights
