@@ -1,0 +1,1 @@
+- A land's pre-step that reaches its deadline no longer reads as red. `tools/land.sh` prints `pre-land: no verdict after Ns at load L -- the gate decides` and goes on to the land lock and the gate, which runs the whole suite anyway. A pre-step that fails is still red and lands nothing. The deadline is `GOH_LAND_PRE_MAX` (default 10m) (GOH.PRESTEPDEADLINE).

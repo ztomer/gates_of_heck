@@ -127,10 +127,11 @@ if [ -n "$pre" ]; then
     # for its gate. As a `ship` gate it queued twice, and a lane that would go red waited up to
     # 632 s first (2026-11-16). The wait is printed apart from the run: the step stamps its start.
     pre_start="$(mktemp "${TMPDIR:-/tmp}/goh-land-prestart.XXXXXX")" || exit 2
+    pre_max="${GOH_LAND_PRE_MAX:-10m}"   # the deadline; a seam so a test can reach it
     pre_t0=$(date +%s)
     pre_rc=0
     (cd "$here" && GOH_LAND_VERDICTS_RECORD="$verdicts" GOH_GATE_CLASS=short "$GOH_PY" "$GOH/tools/load.py" \
-        --background-ok "pre-land" --max 10m 0 -- \
+        --background-ok "pre-land" --max "$pre_max" 0 -- \
         bash -c 'date +%s >"$1"; shift; exec bash -c "$@"' pre-mark "$pre_start" "$pre" pre-land "$pre_base" \
         </dev/null) || pre_rc=$?
     pre_t1=$(date +%s)
@@ -139,11 +140,19 @@ if [ -n "$pre" ]; then
     [[ "$pre_s" =~ ^[0-9]+$ ]] || pre_s=$pre_t1   # never started: all of it was the wait
     pre_wall=$((pre_t1 - pre_t0))
     pre_took="in $((pre_t1 - pre_t0)) s: waited $((pre_s - pre_t0)) s, ran $((pre_t1 - pre_s)) s"
-    if [ "$pre_rc" -ne 0 ]; then
+    # A pre-step that reached its deadline (load.py's EXIT_DEADLINE, 124) found nothing: it exists
+    # to fail FAST, and the gate runs the whole suite anyway -- no verdict, never red
+    # (GOH.PRESTEPDEADLINE: GOH.REUSEAUDIT's land, killed at 82% of a green-so-far run).
+    if [ "$pre_rc" -eq 124 ]; then
+        load1="$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')"
+        [ -n "$load1" ] || load1="$(cut -d' ' -f1 /proc/loadavg 2>/dev/null)"
+        info "pre-land: no verdict after $((pre_t1 - pre_s)) s at load ${load1:-?} -- the gate decides ($pre_took)"
+    elif [ "$pre_rc" -ne 0 ]; then
         err "land.sh: the pre-land tests failed on ${tip:0:8} $pre_took, before the land lock and the gate -- nothing landed"
         exit 1
+    else
+        ok "pre-land green $pre_took"
     fi
-    ok "pre-land green $pre_took"
 fi
 # The land lock (GOH.LANDSERIAL, header): fd 7, held until this script exits.
 # shellcheck source=lib/lock_order.sh
