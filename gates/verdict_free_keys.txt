@@ -36,3 +36,12 @@ GOH_LAND_VERDICTS_RECORD
 GOH_LAND_VERDICTS_REUSE
 GOH_STRUCTURAL_MARK
 GOH_CI_STEPS_MARK
+# Passed inline (`GOH_X=v cmd`), which the first version of the test never saw (GOH.VERDICTFREEINLINE):
+# a new temp file per commit, a new commit per push, a new value per ship. No cached step reads them:
+# crates-behind reads GOH_CHANGE_BASE and is not proven-cached; the ship and release steps read GOH_SHIP_*.
+GOH_STAGED_TWIN_MARK
+GOH_CHANGE_BASE
+GOH_SHIP_VERSION
+GOH_SHIP_RESULT
+GOH_SHIP_SUMMARY
+GOH_SHIP_ITEM
