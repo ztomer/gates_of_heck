@@ -84,8 +84,8 @@ fi
 # slot, so a test the lane never ran fails in seconds, not after a lock wait, a slot wait and ~8 min
 # of suite (GOH.ONEADMISSION's first land, 2026-11-16, lost to tests/test_lock_order.py). Declared in
 # .gatesrc as GOH_LAND_PRE (goh's: tools/affected_tests.py --run, the changed paths' tests and every
-# tree reader); run with main's tip as $1, in the worktree, admitted like any gate (a 0-spinner
-# load.py run takes a gate slot, lib/admission.py) and released before the lock is queued for, so
+# tree reader); run with main's tip as $1, in the worktree, admitted in the short lane (a 0-spinner
+# load.py run takes a gate slot, lib/admission.py; GOH.PRESTEPADMIT below) and released before the lock is queued for, so
 # it nests no lock (GOH.LOCKORDER). Bounded at 10 min; a repo that declares none has no pre-step.
 pre="${GOH_LAND_PRE-}"
 if [ -z "${GOH_LAND_PRE+set}" ] && [ -f "$here/.gatesrc" ]; then
@@ -103,13 +103,28 @@ if [ -n "$pre" ]; then
     trap 'rm -f "$verdicts"' EXIT
     pre_base="$(git -C "$main" rev-parse HEAD)"
     info "pre-land: $pre"
-    pre_t0=$SECONDS
-    if ! (cd "$here" && GOH_LAND_VERDICTS_RECORD="$verdicts" GOH_GATE_CLASS=ship "$GOH_PY" "$GOH/tools/load.py" \
-            --background-ok "pre-land" --max 10m 0 -- bash -c "$pre" pre-land "$pre_base" </dev/null); then
-        err "land.sh: the pre-land tests failed on ${tip:0:8} in $((SECONDS - pre_t0)) s, before the land lock and the gate -- nothing landed"
+    # The SHORT lane (GOH.PRESTEPADMIT): the commit gate's slots, which no long gate takes, so the
+    # pre-step starts while long gates hold every long slot -- a land queues for a long slot ONCE,
+    # for its gate. As a `ship` gate it queued twice, and a lane that would go red waited up to
+    # 632 s first (2026-11-16). The wait is printed apart from the run: the step stamps its start.
+    pre_start="$(mktemp "${TMPDIR:-/tmp}/goh-land-prestart.XXXXXX")" || exit 2
+    trap 'rm -f "$verdicts" "$pre_start"' EXIT
+    pre_t0=$(date +%s)
+    pre_rc=0
+    (cd "$here" && GOH_LAND_VERDICTS_RECORD="$verdicts" GOH_GATE_CLASS=short "$GOH_PY" "$GOH/tools/load.py" \
+        --background-ok "pre-land" --max 10m 0 -- \
+        bash -c 'date +%s >"$1"; shift; exec bash -c "$@"' pre-mark "$pre_start" "$pre" pre-land "$pre_base" \
+        </dev/null) || pre_rc=$?
+    pre_t1=$(date +%s)
+    pre_s=""
+    IFS= read -r pre_s <"$pre_start" 2>/dev/null || true
+    [[ "$pre_s" =~ ^[0-9]+$ ]] || pre_s=$pre_t1   # never started: all of it was the wait
+    pre_took="in $((pre_t1 - pre_t0)) s: waited $((pre_s - pre_t0)) s, ran $((pre_t1 - pre_s)) s"
+    if [ "$pre_rc" -ne 0 ]; then
+        err "land.sh: the pre-land tests failed on ${tip:0:8} $pre_took, before the land lock and the gate -- nothing landed"
         exit 1
     fi
-    ok "pre-land green in $((SECONDS - pre_t0)) s"
+    ok "pre-land green $pre_took"
 fi
 # The land lock (GOH.LANDSERIAL, header): fd 7, held until this script exits.
 # shellcheck source=lib/lock_order.sh
