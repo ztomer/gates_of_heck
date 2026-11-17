@@ -86,9 +86,11 @@ def test_a_path_that_is_no_build_input_chooses_none_of_them(tmp_path, path) -> N
 
 def test_every_test_that_asks_the_binary_by_a_plain_read_is_chosen_on_the_real_tree() -> None:
     """The class, found a second way: the fixture or helper names a test asks for, read raw. The
-    selector's own reading (code only, through helpers) may be wider, never narrower."""
+    selector's own reading (code only, through helpers) may be wider, never narrower. A change to
+    main.rs reaches every subcommand; a scanner's chooses only its subcommands' runners
+    (GOH.AFFECTEDBINARY2, tests/test_affected_binary_reach.py)."""
     asked = re.compile(r"\b(?:run_goh|native_goh_path|native_goh|GOH_TEST_BIN)\b")
-    chosen = at.affected(REPO_ROOT, [SCANNER])
+    chosen = at.affected(REPO_ROOT, ["crates/goh/src/main.rs"])
     missed = []
     for p in sorted((REPO_ROOT / "tests").glob("test_*.py")):
         text = p.read_text(encoding="utf-8")
