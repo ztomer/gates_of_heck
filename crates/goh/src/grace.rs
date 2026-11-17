@@ -19,6 +19,10 @@
 //! `GOH_GRACE` is the ambient override, for the suites that judge the new behaviour (`over`) and for
 //! goh's own keyless fixtures (`within`); unset, the day decides. No `.gatesrc` can say it.
 
+pub mod ahead;
+
+/// The day `OVER_FROM` falls on, as the warnings within the grace name it.
+pub const OVER_DAY: &str = "2026-11-23";
 /// 2026-11-23T00:00:00Z, seconds since the epoch.
 pub const OVER_FROM: u64 = 1_795_392_000;
 /// The ambient override: `over` or `within`.
@@ -61,6 +65,22 @@ pub fn over_at_from(seam: Option<&str>, now: u64, from: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `OVER_DAY` is the date `OVER_FROM` is (Hinnant's civil-from-days).
+    #[test]
+    fn the_named_day_is_the_day_that_decides() {
+        let z = i64::try_from(OVER_FROM / 86_400).unwrap_or(0) + 719_468;
+        let era = z.div_euclid(146_097);
+        let doe = z.rem_euclid(146_097);
+        let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let d = doy - (153 * mp + 2) / 5 + 1;
+        let m = if mp < 10 { mp + 3 } else { mp - 9 };
+        let y = yoe + era * 400 + i64::from(m <= 2);
+        assert_eq!(OVER_DAY, format!("{y:04}-{m:02}-{d:02}"));
+        assert_eq!(OVER_FROM % 86_400, 0, "midnight UTC");
+    }
 
     #[test]
     fn the_day_decides_and_the_seam_overrides_it() {

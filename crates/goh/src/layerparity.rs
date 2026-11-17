@@ -250,7 +250,7 @@ pub fn gaps(text: &str, counts: &[usize; LAYERS.len()]) -> Sites {
 }
 
 /// The verdict for the repo at `root`: `(exit code, stdout, stderr)`. Nothing is judged within the
-/// grace.
+/// grace; what it will judge is shown.
 fn judge(root: &Path, exclude: &str, staged: bool) -> (i32, String, String) {
     let store = estate_seed::store_dir();
     judge_at(
@@ -271,9 +271,6 @@ fn judge_at(
     store: Option<&Path>,
 ) -> (i32, String, String) {
     use goh_tui::ERR;
-    if !over {
-        return (0, String::new(), String::new());
-    }
     let fail = |m: String| (2, String::new(), format!("{ERR} {TAG} {m}\n"));
     let exclude = match crate::steps::compile_exclude(exclude) {
         Ok(x) => x,
@@ -288,14 +285,19 @@ fn judge_at(
         Ok(v) => v.into_iter().collect(),
         Err(m) => return fail(m),
     };
-    let seed = match estate_seed::load_scoped(root, store, KIND, staged) {
-        Ok(s) => s,
-        Err(m) => return fail(m),
-    };
     let found = gaps(
         &push_text(root, &tree, staged),
         &counts(root, &tree, exclude.as_ref(), staged),
     );
+    if !over {
+        // Judged from the grace's end, the seed never loaded for a verdict (GOH.GRACEEND); the gaps
+        // the day will find are the warning (GOH.GRACESHAPES).
+        return crate::grace::ahead::warn_only((root, staged), (KIND, TAG), Ok(found));
+    }
+    let seed = match estate_seed::load_scoped(root, store, KIND, staged) {
+        Ok(s) => s,
+        Err(m) => return fail(m),
+    };
     let report = Report {
         tag: TAG,
         item: "GOH.LAYERPARITY",

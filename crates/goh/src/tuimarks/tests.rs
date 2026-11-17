@@ -303,8 +303,12 @@ fn status_markers_runs_only_when_a_push_runs_it() {
 }
 
 #[test]
-fn within_the_grace_nothing_is_judged() {
+fn within_the_grace_nothing_is_judged_and_the_day_is_shown() {
     let r = planted();
     let (code, out, err) = judge_at(r.path(), &["tools/setup.sh".to_string()], "", false, false);
-    assert_eq!((code, out.as_str(), err.as_str()), (0, "", ""));
+    assert_eq!((code, out.as_str()), (0, ""));
+    assert!(
+        err.contains("2026-11-23") && err.contains("tools/setup.sh:"),
+        "{err}"
+    );
 }

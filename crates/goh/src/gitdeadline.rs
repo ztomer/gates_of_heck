@@ -195,9 +195,6 @@ fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<S
     let python = crate::bareopen_py::sources(root, &files, exclude.as_ref(), staged);
     crate::subject::record(&crate::subject::GIT_DEADLINE, shell.len() + python.len());
     let mut out = Sites::new();
-    if !crate::grace::over() {
-        return Ok(out); // read, so the floor counts them; judged from the grace's end
-    }
     let mut add = |rel: &String, text: &str, hits: Vec<(usize, &str)>| {
         let rows: Vec<&str> = text.lines().collect();
         let found: Vec<String> = hits
@@ -224,14 +221,12 @@ fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<S
 fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, String, String) {
     use goh_tui::ERR;
     if !crate::grace::over() {
-        // Read (the floor counts it), never judged, and the seed never loaded: a scan that finds
-        // nothing within the grace read every seeded entry as stale and settled it away, the
-        // week the entries had to be written in (GOH.GRACEEND). tui-marks and layer-parity do
-        // the same.
-        return match sites(root, files, exclude, staged) {
-            Ok(_) => (0, String::new(), String::new()),
-            Err(m) => (2, String::new(), format!("{ERR} {TAG} {m}\n")),
-        };
+        // The scan is made (the floor counts it) and never judged, and the seed never loaded for
+        // a verdict: a scan that finds nothing within the grace read every seeded entry as stale
+        // and settled it away, the week the entries had to be written in (GOH.GRACEEND). What
+        // the day will find is the warning (GOH.GRACESHAPES). tui-marks and layer-parity do the same.
+        let day = sites(root, files, exclude, staged);
+        return crate::grace::ahead::warn_only((root, staged), (KIND, TAG), day);
     }
     let seed = match estate_seed::load(root, KIND, staged) {
         Ok(s) => s,

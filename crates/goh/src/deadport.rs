@@ -190,7 +190,6 @@ pub fn scan(rel: &str, text: &str) -> Option<Vec<(usize, String)>> {
 
 fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<Sites, String> {
     let exclude = crate::steps::compile_exclude(exclude)?;
-    let judged = crate::grace::over_from(OVER_FROM);
     let mut read = 0usize;
     let mut out = Sites::new();
     for rel in files {
@@ -211,9 +210,6 @@ fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<S
             continue;
         };
         read += 1;
-        if !judged {
-            continue; // read, so the floor counts it; judged from the grace's end
-        }
         let rows: Vec<&str> = text.split('\n').collect();
         let found: Vec<String> = hits
             .into_iter()
@@ -234,12 +230,11 @@ fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<S
 fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, String, String) {
     use goh_tui::ERR;
     if !crate::grace::over_from(OVER_FROM) {
-        // Read (the floor counts it), never judged, and the seed never loaded, so no entry
-        // written within the grace reads as stale (GOH.GRACEEND; git-deadline does the same).
-        return match sites(root, files, exclude, staged) {
-            Ok(_) => (0, String::new(), String::new()),
-            Err(m) => (2, String::new(), format!("{ERR} {TAG} {m}\n")),
-        };
+        // The scan is made (the floor counts it) and never judged, and the seed never loaded for
+        // a verdict, so no entry written within the grace reads as stale (GOH.GRACEEND). What the
+        // day will find is the warning (GOH.GRACESHAPES).
+        let day = sites(root, files, exclude, staged);
+        return crate::grace::ahead::warn_only((root, staged), (KIND, TAG), day);
     }
     let seed = match estate_seed::load(root, KIND, staged) {
         Ok(s) => s,

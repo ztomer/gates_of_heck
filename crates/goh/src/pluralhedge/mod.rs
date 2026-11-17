@@ -53,7 +53,12 @@ fn lang(root: &Path, rel: &str, staged: bool) -> Option<scan::Lang> {
 }
 
 /// The sites in the subject among `files`.
-fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<Sites, String> {
+fn sites(
+    root: &Path,
+    files: &[String],
+    (exclude, staged): (&str, bool),
+    continuation: bool,
+) -> Result<Sites, String> {
     let exclude = crate::steps::compile_exclude(exclude)?;
     let mut read = 0;
     let mut out = Sites::new();
@@ -71,7 +76,7 @@ fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<S
         };
         read += 1;
         let lines: Vec<&str> = text.lines().collect();
-        let found: Vec<String> = scan::findings(&text, lang)
+        let found: Vec<String> = scan::findings_in(&text, lang, continuation)
             .into_iter()
             .map(|f| {
                 format!(
@@ -114,10 +119,20 @@ fn judge_seeded(
     all: bool,
 ) -> (i32, String, String) {
     use goh_tui::ERR;
-    let found = match sites(root, files, exclude, staged) {
+    let over = crate::grace::over();
+    let mut found = match sites(root, files, (exclude, staged), over) {
         Ok(s) => s,
         Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
     };
+    // The continuation shape is judged from the grace's end: shown, and a seeded site held, now.
+    let mut warn = String::new();
+    if !over {
+        if let Ok(day) = sites(root, files, (exclude, staged), true) {
+            let seeded = crate::grace::ahead::seeded(root, seed);
+            let shown = crate::grace::ahead::shown(TAG, found, &day, &seeded);
+            (found, warn) = (shown.held, shown.warn);
+        }
+    }
     let report = Report {
         tag: TAG,
         item: "GOH.PLURALHEDGE",
@@ -125,7 +140,8 @@ fn judge_seeded(
         fix: FIX,
         ok: "every count in a string meets its noun".to_string(),
     };
-    estate_seed::verdict_listed(root, staged, KIND, seed, &found, &report, all)
+    let v = estate_seed::verdict_listed(root, staged, KIND, seed, &found, &report, all);
+    crate::grace::ahead::with(v, &warn)
 }
 
 /// `goh plural-hedge [--staged] [--exclude RE] [--all]`.

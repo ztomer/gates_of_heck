@@ -182,8 +182,9 @@ fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, St
 /// The grace changes the VERDICT, never the RECORD (GOH.TUIMARKSSETTLE): within it the run is made
 /// all the same, so a commit that fixes a seeded mark journals its settle and `goh seed-settle`
 /// retires the entry, and the stale entries do not pile up unseen to meet each consumer as a wall
-/// of red at its first push after `crate::grace::OVER_FROM`. Its answer is then discarded: exit 0,
-/// nothing printed, a failed read of the seed included.
+/// of red at its first push after `crate::grace::OVER_FROM`. Its verdict is then discarded, a
+/// failed read of the seed included: exit 0, and the sites the day will find red as the warning
+/// (GOH.GRACESHAPES).
 fn judge_at(
     root: &Path,
     files: &[String],
@@ -191,24 +192,39 @@ fn judge_at(
     staged: bool,
     over: bool,
 ) -> (i32, String, String) {
-    let judged = judge_all(root, files, exclude, staged);
+    let (judged, found) = judge_all(root, files, exclude, staged);
     if over {
         judged
     } else {
-        (0, String::new(), String::new())
+        crate::grace::ahead::warn_only((root, staged), (KIND, TAG), Ok(found))
     }
 }
 
-/// The verdict of the full run, the grace or not.
-fn judge_all(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, String, String) {
+/// The verdict of the full run, the grace or not, and the sites it judged (none when it refused).
+fn judge_all(
+    root: &Path,
+    files: &[String],
+    exclude: &str,
+    staged: bool,
+) -> ((i32, String, String), Sites) {
     use goh_tui::ERR;
     let seed = match estate_seed::load(root, KIND, staged) {
         Ok(s) => s,
-        Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
+        Err(m) => {
+            return (
+                (2, String::new(), format!("{ERR} {TAG} {m}\n")),
+                Sites::new(),
+            )
+        }
     };
     let found = match sites(root, files, exclude, staged) {
         Ok(s) => s,
-        Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
+        Err(m) => {
+            return (
+                (2, String::new(), format!("{ERR} {TAG} {m}\n")),
+                Sites::new(),
+            )
+        }
     };
     let report = Report {
         tag: TAG,
@@ -220,7 +236,10 @@ fn judge_all(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32
         fix: FIX,
         ok: "every status line goes through the house TUI lib".to_string(),
     };
-    estate_seed::verdict(root, staged, KIND, &seed, &found, &report)
+    (
+        estate_seed::verdict(root, staged, KIND, &seed, &found, &report),
+        found,
+    )
 }
 
 /// `goh tui-marks [--staged] [--exclude RE]`.

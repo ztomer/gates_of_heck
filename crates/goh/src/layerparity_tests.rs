@@ -141,8 +141,13 @@ fn an_unseeded_gap_is_red_once_the_grace_is_over_and_nothing_within_it() {
     );
     let (code, _, err) = judge_at(r.path(), "", true, true, None);
     assert_eq!(code, 1, "the commit scope reads the whole index: {err}");
-    let within = judge_at(r.path(), "", false, false, None);
-    assert_eq!(within, (0, String::new(), String::new()));
+    // Nothing is judged within the grace, and the gap the day will judge is shown (GOH.GRACESHAPES).
+    let (code, out, err) = judge_at(r.path(), "", false, false, None);
+    assert_eq!((code, out.as_str()), (0, ""));
+    assert!(
+        err.contains("2026-11-23") && err.contains("no swift layer at push"),
+        "{err}"
+    );
 }
 
 #[test]

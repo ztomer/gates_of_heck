@@ -50,6 +50,7 @@ pub mod shlex;
 pub mod yaml;
 
 use goh_tui::{ERR, OK};
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
@@ -125,8 +126,8 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
 /// floor counts it) but not judged, and a release line (`rust:1`) passes (`scan::scan_at`).
 fn judge_at(root: &Path, files: &[String], staged: bool, over: bool) -> (i32, String, String) {
     let scope = if staged { "staged" } else { "tracked" };
-    let mut listing = String::new();
-    let mut n = 0usize;
+    let mut found = crate::estate_seed::Sites::new();
+    let mut day = crate::estate_seed::Sites::new();
     let mut tally = Tally::default();
     for rel in files.iter().filter(|r| scan::maybe_in_scope(r)) {
         let Some(blob) = crate::gitutil::content_bytes(root, rel, staged) else {
@@ -148,15 +149,34 @@ fn judge_at(root: &Path, files: &[String], staged: bool, over: bool) -> (i32, St
         if s.unparsed {
             tally.unparsed.push(rel.clone());
         }
-        for f in &s.findings {
-            n += 1;
-            let _ = writeln!(listing, "    {rel}:{}: {}", f.line, describe(&f.problem));
+        let row = |f: &scan::Finding| format!("    {rel}:{}: {}", f.line, describe(&f.problem));
+        if !s.findings.is_empty() {
+            found.insert(rel.clone(), s.findings.iter().map(row).collect());
+        }
+        if !over {
+            let ahead = scan::scan_at(rel, &text, true).findings;
+            if !ahead.is_empty() {
+                day.insert(rel.clone(), ahead.iter().map(row).collect());
+            }
         }
     }
     crate::subject::record(&crate::subject::MOVING_TAGS, tally.refs);
+    // A release line and a script's image are judged from the grace's end: shown now. No seed
+    // here (`# moving-tag-ok:` is the exemption), so every one the day finds is named.
+    let warn = if over {
+        String::new()
+    } else {
+        crate::grace::ahead::shown(TAG, found.clone(), &day, &BTreeMap::new()).warn
+    };
+    let n: usize = found.values().map(Vec::len).sum();
+    let listing = found.values().flatten().fold(String::new(), |mut acc, l| {
+        acc.push_str(l);
+        acc.push('\n');
+        acc
+    });
     if n == 0 {
         let ok = format!("{OK} {TAG} OK — {scope}: {}\n", tally.summary());
-        return (0, ok, String::new());
+        return (0, ok, warn);
     }
     let mut err = format!(
         "{ERR} {TAG} {n} container {n_image} on a moving tag ({scope}):\n",
@@ -180,7 +200,7 @@ fn judge_at(root: &Path, files: &[String], staged: bool, over: bool) -> (i32, St
          names the two apart and does NOT rule which one a repository must use -- the owner\n    \
          does.\n",
     );
-    (1, String::new(), err)
+    (1, String::new(), format!("{warn}{err}"))
 }
 
 /// `goh moving-tags [--staged]`.

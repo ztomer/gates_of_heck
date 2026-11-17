@@ -63,14 +63,16 @@ impl Declared {
     }
 }
 
-/// Read every rule over `tree` (repo-relative, the scope's listing). `queue` is asked only when
-/// the roadmap cites the queue.
+/// Read every rule over `tree` (repo-relative, the scope's listing).
+///
+/// `queue` is asked only when the roadmap cites the queue. `bold`: the bold-paragraph entry shape
+/// is read, judged from `crate::grace::OVER_FROM` (`scan::read_in`).
 pub fn gather(
     root: &Path,
     tree: &[String],
     exclude: Option<&crate::pathfilter::PathFilter>,
     declared: &Declared,
-    staged: bool,
+    (staged, bold): (bool, bool),
     queue: impl FnOnce() -> Result<BTreeMap<String, String>, String>,
 ) -> Gathered {
     let roadmap = match declared {
@@ -107,7 +109,7 @@ pub fn gather(
         ));
         return g;
     };
-    let read = scan::read(&String::from_utf8_lossy(&text));
+    let read = scan::read_in(&String::from_utf8_lossy(&text), bold);
     g.entries = read.entries.len();
     g.phases = read.phases;
     let mut findings = read.findings;
@@ -203,11 +205,43 @@ fn verdict(
         Ok(x) => x,
         Err(m) => return (2, format!("{ERR} {TAG} {m}\n")),
     };
-    let g = gather(root, &tree, exclude.as_ref(), &declared, staged, || {
-        queue::load(queue_flag)
-    });
+    let over = crate::grace::over();
+    let mut g = gather(
+        root,
+        &tree,
+        exclude.as_ref(),
+        &declared,
+        (staged, over),
+        || queue::load(queue_flag),
+    );
     match seeds(root, staged) {
-        Ok((now, head)) => judge::judge(&g, &now, head.as_ref()),
+        Ok((now, head)) => {
+            // Bold-paragraph entries are judged from the grace's end: shown, and a seeded key
+            // held, now (GOH.GRACESHAPES).
+            let mut warn = String::new();
+            if !over {
+                let day = gather(
+                    root,
+                    &tree,
+                    exclude.as_ref(),
+                    &declared,
+                    (staged, true),
+                    || queue::load(queue_flag),
+                );
+                let shown =
+                    crate::grace::ahead::shown(TAG, std::mem::take(&mut g.found), &day.found, &now);
+                (g.found, warn) = (shown.held, shown.warn);
+            }
+            let (code, text) = judge::judge(&g, &now, head.as_ref());
+            (
+                code,
+                if code == 2 {
+                    text
+                } else {
+                    format!("{warn}{text}")
+                },
+            )
+        }
         Err(m) => (2, format!("{ERR} {TAG} {m}\n")),
     }
 }
@@ -255,9 +289,14 @@ fn write_seed(root: &Path, cfg: &crate::gatesrc::Gatesrc, queue_flag: Option<&st
             return 2;
         }
     };
-    let g = gather(root, &tree, exclude.as_ref(), &declared, false, || {
-        queue::load(queue_flag)
-    });
+    let g = gather(
+        root,
+        &tree,
+        exclude.as_ref(),
+        &declared,
+        (false, crate::grace::over()),
+        || queue::load(queue_flag),
+    );
     let old = match seeds(root, false) {
         Ok((now, _)) => root.join(SEED_FILE).exists().then_some(now),
         Err(m) => {

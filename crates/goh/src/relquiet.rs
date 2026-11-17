@@ -238,11 +238,6 @@ fn word(w: &str) -> &str {
     w.trim_matches('"')
 }
 
-/// The sites in the release scripts among `files`, and the scripts they call once the grace is over.
-fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<Sites, String> {
-    sites_at(root, files, (exclude, staged), crate::grace::over())
-}
-
 /// `sites` with the grace decided: `over` follows the release scripts' calls.
 fn sites_at(
     root: &Path,
@@ -298,10 +293,20 @@ fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, St
         Ok(s) => s,
         Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
     };
-    let found = match sites(root, files, exclude, staged) {
+    let over = crate::grace::over();
+    let mut found = match sites_at(root, files, (exclude, staged), over) {
         Ok(s) => s,
         Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
     };
+    // The scripts a release calls are judged from the grace's end: shown, and a seeded site held, now.
+    let mut warn = String::new();
+    if !over {
+        if let Ok(day) = sites_at(root, files, (exclude, staged), true) {
+            let seeded = crate::grace::ahead::seeded(root, &seed);
+            let shown = crate::grace::ahead::shown(TAG, found, &day, &seeded);
+            (found, warn) = (shown.held, shown.warn);
+        }
+    }
     let scripts = files.iter().filter(|f| is_release_script(f)).count();
     let report = Report {
         tag: TAG,
@@ -316,7 +321,8 @@ fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, St
             n_file = goh_tui::noun(scripts, "file")
         ),
     };
-    estate_seed::verdict(root, staged, KIND, &seed, &found, &report)
+    let v = estate_seed::verdict(root, staged, KIND, &seed, &found, &report);
+    crate::grace::ahead::with(v, &warn)
 }
 
 /// `goh release-quiet [--staged] [--exclude RE]`.
