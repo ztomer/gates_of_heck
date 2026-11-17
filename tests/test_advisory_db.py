@@ -238,3 +238,54 @@ def test_bounded_captures_and_names_the_stall_last(tmp_path: Path, monkeypatch) 
     assert "GOH.AUDITSPIN" in r.stderr.strip().splitlines()[-1], r.stderr
     ok = mod.bounded(["sh", "-c", 'printf "{}"'], fetch=False)
     assert (ok.returncode, ok.stdout) == (0, "{}"), ok
+
+
+def _git(*args: str, cwd: Path | None = None) -> str:
+    return subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=True,
+        stdin=subprocess.DEVNULL,
+    ).stdout.strip()
+
+
+def test_a_refresh_fetches_from_upstream_not_the_copy_it_was_seeded_from(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """GOH.SHAREDADVISORY found it: the copy cloned `--local` from `~/.cargo/advisory-db` kept that
+    clone as `origin`, and cargo-audit fetches through `origin`, so every refresh re-read the stale
+    seed (1509 advisories, two days behind; RUSTSEC-2026-0543 unseen). A seeded copy, and an old
+    one, point `origin` at the upstream before a refresh."""
+    import sys
+
+    sys.path.insert(0, str(REPO_ROOT / "lib"))
+    import advisory_db
+
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    _git("init", "-q", cwd=seed)
+    _git(
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "s",
+        cwd=seed,
+    )
+    monkeypatch.setattr(advisory_db, "SHARED", seed)
+    db = tmp_path / "cache" / "advisory-db"
+    monkeypatch.setenv("GOH_ADVISORY_DB", str(db))
+    with advisory_db.held(fetch=False):
+        pass
+    assert _git("remote", "get-url", "origin", cwd=db) == advisory_db.UPSTREAM
+    # an old copy, seeded before the fix: repaired by the next refresh
+    _git("remote", "set-url", "origin", str(seed), cwd=db)
+    with advisory_db.held(fetch=True):
+        pass
+    assert _git("remote", "get-url", "origin", cwd=db) == advisory_db.UPSTREAM

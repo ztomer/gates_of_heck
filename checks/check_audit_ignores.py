@@ -16,6 +16,14 @@ place cargo-audit reads it -- and refuses:
     python3 checks/check_audit_ignores.py [--no-fetch]                # from the workspace root
     python3 checks/check_audit_ignores.py --no-fetch --repo R [--lock L] # from a config's directory
 
+    python3 checks/check_audit_ignores.py --shared [--estate ROOT] [--no-fetch]
+
+`--shared` judges goh's own gates/shared_advisories.toml (GOH.SHAREDADVISORY) against the ESTATE,
+not one repo: an entry is stale only when it fires in no tracked lock of any repo under ROOT
+(default GOH_ESTATE_ROOT or ~/Projects, unioned with the estate registry), and one whose blocking
+crate no longer reaches the advised crate in a lock carrying both is named as its re-open
+condition met.
+
 rust_gate.sh passes --no-fetch: its own audit step fetched the database a moment before. It audits
 EVERY tracked lock of the repo (lib/rust_locks.py), and one `.cargo/audit.toml` may judge several
 (a private server workspace's root config governs 31): with `--repo`, the locks are the ones
@@ -48,7 +56,9 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 import advisory_db
+import estate_registry
 import rust_locks
+import shared_advisories
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import foreign_repo_env
@@ -126,12 +136,72 @@ def lockfile() -> str | None:
     return lock if r.returncode == 0 and os.path.isfile(lock) else None
 
 
+def estate_locks(root: Path, registry: bool) -> list[str]:
+    """Every tracked Cargo.lock of every repo in the estate."""
+    walked = estate_registry.walk_repos(root)
+    repos = estate_registry.union(walked)[0] if registry else walked
+    locks = []
+    for repo in repos:
+        r = subprocess.run(
+            ["git", "-C", str(repo), "ls-files", "-z", "--", "Cargo.lock", "**/Cargo.lock"],
+            capture_output=True,
+            text=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
+            env=foreign_repo_env(),
+        )
+        locks += [str(repo / p) for p in r.stdout.split("\0") if p]
+    return locks
+
+
+def shared(root: Path, registry: bool, fetch: bool) -> int:
+    """The estate ratchet over goh's shared rulings."""
+    try:
+        entries = shared_advisories.load()
+    except (OSError, ValueError) as e:
+        err(f"[audit_ignores] {e}")
+        return 1
+    if not entries:
+        ok("[audit_ignores] no shared advisory ruling")
+        return 0
+    locks = estate_locks(root, registry)
+    try:
+        live = firing_any(locks, fetch=fetch)
+    except RuntimeError as e:
+        err(f"[audit_ignores] could not read which advisories fire: {e}")
+        return 1
+    src = shared_advisories.path()
+    bad = [
+        f"{src}: {e.id} fires in no estate lock ({len(locks)} under {root}) -- delete the entry"
+        for e in entries
+        if e.id not in live
+    ]
+    for lock in locks:
+        text = Path(lock).read_text(encoding="utf-8")
+        bad += [
+            f"{src}: {e.id}: {e.blocker} no longer depends on {e.crate} in {lock} ({e.reopen})"
+            for e in entries
+            if shared_advisories.dropped(e, text)
+        ]
+    for line in bad:
+        err(f"[audit_ignores] {line}")
+    if bad:
+        return 1
+    ok(f"[audit_ignores] {counted(len(entries), 'shared ruling')}, each still firing in the estate")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--no-fetch", action="store_true", help="judge against the cached database")
     ap.add_argument("--repo", help="judge against every lock rust_locks audits from this dir")
     ap.add_argument("--lock", help="with --repo: the gate's own workspace lock, tracked or not")
+    ap.add_argument("--shared", action="store_true", help="judge goh's shared rulings")
+    ap.add_argument("--estate", help="with --shared: the estate root (no registry)")
     args = ap.parse_args()
+    if args.shared:
+        default = os.environ.get("GOH_ESTATE_ROOT") or str(Path.home() / "Projects")
+        return shared(Path(args.estate or default), not args.estate, not args.no_fetch)
     if args.repo:
         repo = Path(args.repo).resolve()
         cfg = Path.cwd().resolve().relative_to(repo).as_posix() or "."

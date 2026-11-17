@@ -64,6 +64,7 @@ except ImportError:
     from lib import lock_order
 
 SHARED = Path.home() / ".cargo" / "advisory-db"
+UPSTREAM = "https://github.com/RustSec/advisory-db.git"
 INDEX_HOST = "index.crates.io"
 DEFAULT_CPU_S = 30
 DEFAULT_WALL_S = 360
@@ -90,6 +91,30 @@ def _seed(db: Path) -> None:
             capture_output=True,
             stdin=subprocess.DEVNULL,
         )
+        _upstream(db)
+
+
+def _upstream(db: Path) -> None:
+    """`origin` is the upstream: cargo-audit fetches through `origin`, and a copy cloned from the
+    local seed kept the seed there, so every refresh re-read it however stale it was
+    (GOH.SHAREDADVISORY: two days and 18 advisories behind, RUSTSEC-2026-0543 among them)."""
+    if not (db / ".git").exists():
+        return
+    git = ["git", "-C", str(db), "remote"]
+    url = subprocess.run(
+        [*git, "get-url", "origin"],
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
+    ).stdout.strip()
+    if url != UPSTREAM:
+        subprocess.run(
+            [*git, "set-url", "origin", UPSTREAM],
+            capture_output=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
+        )
 
 
 @contextmanager
@@ -102,6 +127,8 @@ def held(fetch: bool) -> Iterator[Path]:
         lock_order.flock(lock, "advisory_db", shared=not exclusive)
         if not db.exists():
             _seed(db)
+        elif exclusive:
+            _upstream(db)
         yield db
 
 

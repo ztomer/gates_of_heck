@@ -1,0 +1,12 @@
+# The estate's shared advisory rulings (GOH.SHAREDADVISORY; docs/shared-advisories.md).
+# One entry per advisory every consumer inherits through ONE upstream with no release free of it.
+# rust_gate.sh ignores an entry only in a lock where `blocker` still reaches `crate`;
+# check_audit_ignores.py --shared --estate R refuses one that fires in no estate lock.
+# A new DIRECT use stays red through the cargo-deny ban recipe in the doc.
+
+[[advisory]]
+id = "RUSTSEC-2026-0543"
+crate = "chrono"
+blocker = "rmcp"
+reason = "chrono unmaintained (2026-11-17), every version, no patch; rmcp 3.10.0 (newest) needs chrono non-optionally and enables schemars' chrono04"
+reopen = "rmcp no longer requires chrono"

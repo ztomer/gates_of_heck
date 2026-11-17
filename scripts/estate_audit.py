@@ -56,6 +56,7 @@ import advisory_db
 import estate_registry
 import gate_coverage
 import hook_currency
+import shared_advisories
 
 DENY = [
     "--deny",
@@ -235,10 +236,22 @@ def push_findings(
             kinds = gate_coverage.denied_kinds(repo, a)
             got, error = audit(repo / a.lock, db, fetch, repo / a.cwd)
             got = [f for f in got if f["kind"] == "vulnerability" or f["kind"] in kinds]
+            # goh's shared rulings, as rust_gate.sh passes them (GOH.SHAREDADVISORY)
+            waived = shared_ids(repo / a.lock)
+            got = [f for f in got if f["id"] not in waived]
         if error:
             errors.append(f"{a.tool}: {error}")
         found += [f for f in got if f not in found]
     return found, errors
+
+
+def shared_ids(lock: Path) -> set[str]:
+    """The shared advisory rulings covering this lock: its blocker still reaches the crate."""
+    try:
+        text = lock.read_text(encoding="utf-8")
+        return {e.id for e in shared_advisories.load() if shared_advisories.applies(e, text)}
+    except (OSError, ValueError):
+        return set()
 
 
 def _finding(entry: dict, kind: str) -> dict:

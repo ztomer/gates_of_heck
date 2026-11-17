@@ -288,10 +288,23 @@ rust_advisories() {
     # read ("unexpected start of advisory"), so no goh audit reads one being rewritten. The first
     # audit fetches it; the rest read that copy (a fetch per lock was 18 of a private server
     # workspace's 21 s).
+    # SHARED RULINGS (GOH.SHAREDADVISORY, docs/shared-advisories.md): an advisory every consumer
+    # inherits through one upstream is ignored from goh's one file, only in a lock where its
+    # blocking crate still reaches the advised one; a lock whose blocker dropped it is red.
+    local shared
     while IFS="$(printf '\t')" read -r cfg lock; do
+        # Its re-open condition met here: a step BEFORE the audit (whose red would stop the run
+        # first), so the run is red and names the ruling.
+        if ! "$GOH_PY" "$HERE/../lib/shared_advisories.py" dropped "$top/$lock" >/dev/null 2>&1; then
+            goh_step_in "$top/$cfg" "every shared advisory ruling still holds in $lock" \
+                "$GOH_PY" "$HERE/../lib/shared_advisories.py" dropped "$top/$lock"
+        fi
+        shared="$("$GOH_PY" "$HERE/../lib/shared_advisories.py" ignores "$top/$lock")" \
+            || die "[rust] could not read goh's shared advisories (above)"
+        # shellcheck disable=SC2086 # `--ignore ID` pairs, split into words on purpose
         goh_step_in "$top/$cfg" "no known advisory in $lock (cargo audit: warnings, unmaintained, unsound, yanked)" \
             "$GOH_PY" "$HERE/../lib/advisory_db.py" run "$fetch" -- cargo audit --file "$top/$lock" \
-            --deny warnings --deny unmaintained --deny unsound --deny yanked
+            --deny warnings --deny unmaintained --deny unsound --deny yanked $shared
         fetch="--no-fetch"
         behind_args="$behind_args --lock $lock"
         if [ -f "$top/$cfg/.cargo/audit.toml" ]; then
