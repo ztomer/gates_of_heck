@@ -33,6 +33,10 @@ THE SET is the union of
     though the test says neither (SLOTFAIR land 1, 706 s). A naming edge (a file naming a script
     it runs) is followed from a test and the tests/ and checks/ helpers it reaches, never from a
     lib/ or tools/ module's prose, and never twice in a row: a script's own mentions are not run.
+  * the BINARY'S RUNNERS (GOH.AFFECTEDBINARY): a change to the binary's build inputs (crates/,
+    Cargo.toml, Cargo.lock, rust-toolchain.toml) chooses every test that runs the goh binary
+    (lib/binary_runners.py): GRACESHAPES changed scanners, this pre-step was green, and the land
+    gate went red on tests/test_check_moving_tags.py, which runs `goh moving-tags`, naming no path.
 A deleted file is a changed path too: a test still naming it is the one that will go red.
 """
 
@@ -49,7 +53,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from checks import _prose_mask
-from lib import source_closure
+from lib import binary_runners, source_closure
 from tui.lib import counted, info, ok
 
 # Tree readers that neither a test name nor a tree-walking call in their own source gives away.
@@ -408,6 +412,9 @@ def affected(root: Path, changed: list[str]) -> dict[str, str]:
         for rel in tests:
             if rel not in chosen and (why := _transitive(graph, rel, changed)):
                 chosen[rel] = why
+        if build := next((p for p in changed if binary_runners.builds(p)), None):
+            for rel, why in binary_runners.runners(graph, tests, build).items():
+                chosen.setdefault(rel, why)
     walking = _walking(root)
     for rel, why in tree_readers(root, tests).items():
         if rel in chosen:

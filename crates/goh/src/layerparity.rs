@@ -236,9 +236,10 @@ pub fn gaps(text: &str, counts: &[usize; LAYERS.len()]) -> Sites {
         if push.iter().any(|p| p.is_match(text)) {
             continue;
         }
+        let verb = if *n == 1 { "is" } else { "are" };
         let line = format!(
-            "    tools/gate.sh: no {} layer at push -- {} are linted at commit ({}) and judged whole \
-             by nothing; add to --full: {}",
+            "    tools/gate.sh: no {} layer at push -- {} {verb} linted at commit ({}) and judged \
+             whole by nothing; add to --full: {}",
             layer.lang,
             goh_tui::counted(*n, &format!("tracked {} file", layer.ext)),
             layer.commit,

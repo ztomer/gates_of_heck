@@ -97,6 +97,17 @@ fn a_language_the_tree_does_not_hold_needs_no_layer() {
 }
 
 #[test]
+fn the_listing_line_agrees_in_number() {
+    let one = &gaps("", &[0, 1, 0])[&key(&LAYERS[1])][0];
+    assert!(
+        one.contains("1 tracked .py file is linted") && !one.contains("file are"),
+        "{one}"
+    );
+    let two = &gaps("", &[0, 2, 0])[&key(&LAYERS[1])][0];
+    assert!(two.contains("2 tracked .py files are linted"), "{two}");
+}
+
+#[test]
 fn the_root_swiftlint_excludes_are_read() {
     let yml =
         "# fixtures\nexcluded:\n  - tests/fixtures\n  - \"build/\"\n  - ./Vendor # third party\n\
