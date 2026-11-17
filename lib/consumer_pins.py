@@ -246,18 +246,30 @@ def push(repo: Path, said: str, log: Path | None = None) -> tuple[str, str]:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
         env = [f"{k}={v}" for k, v in estate_commit.env().items()]  # its gate, not this ship's
+        mark = Path(tmp) / "started"  # stamped once load.py admits the push: the slot wait apart
+        t0 = time.time()
         out = bounded_run.run_step(
             # Its own gate slot (GOH.SWEEPSLOTS): tools/load.py admits THIS gate and releases the
             # slot when it ends, so a sweep runs no more gates than the slots it holds and a land
             # waits at most one consumer gate. The sweep's own process holds none.
             ["env", "-i", *env, sys.executable, str(LOAD), "--max", f"{min(TIMEOUT, left) + 60}s",
-             "--wait-max", f"{left}s", "0", "--", "git", "-C", str(repo), "push", "-q", remote,
-             f"HEAD:refs/heads/{branch}"],
+             "--wait-max", f"{left}s", "0", "--", "sh", "-c", 'date +%s >"$0"; exec "$@"',
+             str(mark), "git", "-C", str(repo), "push", "-q", remote, f"HEAD:refs/heads/{branch}"],
             min(TIMEOUT, left), 5, f"pins push {repo.name}", str(path),
         )  # fmt: skip
+        took = int(time.time() - t0)
+        started = mark.read_text().strip() if mark.exists() else ""
+        waited = int(started) - int(t0) if started.isdigit() else took
         text = path.read_text(encoding="utf-8", errors="replace")
         tail = " | ".join([ln for ln in text.splitlines() if ln.strip()][-3:])
-    if out.code or out.timed_out:
+    # A push the sweep's budget killed is no verdict of its gate (GOH.SWEEPTIMEOUT): the log's tail
+    # is then bash echoing the killed hook job, so it is never quoted as a reason.
+    if out.timed_out:
+        return "committed", (
+            f"{lead}not pushed: the sweep budget ended its push after {took}s "
+            f"(waited {max(0, waited)}s for a slot); the next ship sweep pushes it"
+        )
+    if out.code:
         kept = f"; log {path}" if log is not None else ""
         return "refused", f"{lead}NOT pushed: its push gate refused ({tail or out.code}){kept}"
     return "pushed", f"{lead}pushed {counted(len(span), 'pin commit')} to {ref}"

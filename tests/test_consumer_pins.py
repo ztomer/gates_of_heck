@@ -235,3 +235,29 @@ def test_the_ship_result_carries_each_consumers_outcome(tmp_path):
     assert c["sweep"] == str(tmp_path / "ship.sweep.json"), c
     line = consumer_pins.line(res)
     assert line and "1 committed" in line and "busy (set aside: on hold)" in line, line
+
+
+def _stubbed_push(monkeypatch, tmp_path: Path, script: str, timeout: int) -> tuple[str, str]:
+    """push() with its git reads stubbed and its push run as SCRIPT under a TIMEOUT-second bound."""
+    real = consumer_pins.bounded_run.run_step
+    monkeypatch.setattr(consumer_pins, "ahead", lambda repo, fetch=False: ("o/main", [("a", "s")]))
+    monkeypatch.setattr(consumer_pins, "is_pin_commit", lambda *a: True)
+    monkeypatch.setattr(consumer_pins.estate_commit, "git",
+                        lambda *a: subprocess.CompletedProcess(a, 0, "0", ""))  # fmt: skip
+    monkeypatch.setattr(consumer_pins.bounded_run, "run_step",
+                        lambda argv, _t, grace, label, out: real(
+                            ["sh", "-c", script], timeout, grace, label, out))  # fmt: skip
+    return consumer_pins.push(tmp_path, "pinned", tmp_path / "push.log")
+
+
+def test_a_push_the_budget_killed_is_committed_not_refused(monkeypatch, tmp_path):
+    killed_job = "echo 'printf %s GOH_CI_STEPS 2>&1 | tee log'; sleep 30"
+    status, said = _stubbed_push(monkeypatch, tmp_path, killed_job, 1)
+    assert status == "committed", said
+    assert "the sweep budget ended its push after " in said and "for a slot" in said, said
+    assert "GOH_CI_STEPS" not in said and "refused" not in said, said
+
+
+def test_a_push_its_gate_refused_stays_refused_with_its_own_lines(monkeypatch, tmp_path):
+    status, said = _stubbed_push(monkeypatch, tmp_path, "echo 'ruff: 3 errors'; exit 1", 30)
+    assert status == "refused" and "ruff: 3 errors" in said, said
