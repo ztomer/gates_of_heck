@@ -18,6 +18,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env
 
 FILES = 150
@@ -31,7 +32,7 @@ def _kept(tmp_path: Path) -> tuple[Path, Path]:
         (d / f"mod_{i}.py").write_text(f"x = {i}\n")
     (repo / ".venv" / "bin").mkdir()
     (repo / ".venv" / "bin" / "empty").write_text("")
-    subprocess.run(["git", "init", "-q", str(repo)], check=True, stdin=subprocess.DEVNULL)
+    fast_init(repo)
     shim, log = tmp_path / "shim", tmp_path / "shasum.log"
     shim.mkdir()
     real = shutil.which("shasum")

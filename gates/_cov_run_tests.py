@@ -14,7 +14,7 @@ its dependencies -- and reports like it: each binary's output whole, the failure
 gate's tail and its `test X ... FAILED` / `test result: FAILED` readers see them), exit 101 when
 any binary failed, never fail-fast (a red binary does not hide a second).
 
-JOBS: GOH_COV_RUST_JOBS, else min(cpus, 8); 1 is the old serial run. The biggest binaries start
+JOBS: GOH_COV_RUST_JOBS, else 6; 1 is the old serial run. The biggest binaries start
 first (a long one started last is the whole step's tail). A build that names NO test executable is
 refused: a run of nothing is not a pass. The line at the end says how many ran, at what width,
 and the wall time against the sum of the binaries' own (the speedup, on the log).
@@ -45,6 +45,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 FAILED = 101  # cargo test's own exit code for a red test binary
+DEFAULT_JOBS = 6  # explicit, never sized to the machine (tests/test_suite_drift.py)
 
 
 def _artifacts(json_path: Path) -> tuple[list[dict], dict[str, dict[str, str]]]:
@@ -161,7 +162,7 @@ def main(argv: list[str]) -> int:
         label = f"{msg['target']['name']} ({kind}, {pkg['name']})"
         runs.append(_Run(label, [exe], str(Path(pkg["manifest_path"]).parent), env))
     runs.sort(key=lambda r: -os.path.getsize(r.argv[0]))  # the big ones first: the step's tail
-    jobs = int(os.environ.get("GOH_COV_RUST_JOBS") or min(os.cpu_count() or 1, 8))
+    jobs = int(os.environ.get("GOH_COV_RUST_JOBS") or DEFAULT_JOBS)
     jobs = max(1, min(jobs, len(runs)))
 
     live: set = set()

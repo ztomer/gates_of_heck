@@ -48,11 +48,16 @@ def test_the_coverage_group_is_the_suite_run() -> None:
 
 
 def test_cargo_test_runs_once_and_doctests_are_not_dropped() -> None:
-    """The coverage group's instrumented `cargo test` covers every lib, bin and test target with
+    """The coverage group's instrumented test run covers every lib, bin and test target with
     every feature; doctests are what it does not run, so the step that remains runs exactly them."""
     cargo_tests = [s for s in _steps() if s.startswith("cargo test")]
     assert cargo_tests == ["cargo test --workspace --doc --locked"], cargo_tests
     cov = (REPO_ROOT / "gates" / "_coverage_rust.sh").read_text(encoding="utf-8")
-    assert re.search(r"cargo test --locked --workspace \$KINDS --all-features", cov), (
+    # The coverage group BUILDS every lib, bin and test target with every feature and runs the
+    # executables itself, concurrently (GOH.COVPARBINS): the build line and the runner stay.
+    assert re.search(r"cargo test --no-run --locked --workspace \$KINDS --all-features", cov), (
+        "the coverage group no longer builds the workspace's tests"
+    )
+    assert "gates/_cov_run_tests.py" in cov, (
         "the coverage group no longer runs the workspace's tests"
     )

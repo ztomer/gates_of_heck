@@ -292,7 +292,7 @@ PYEOF
             # another: monitor's coverage step was 197 s of 82 serially run binaries (load 87 -> 40),
             # five of them 12-31 s that serialise their own tests, the other cores idle. The build
             # above named every test executable; _cov_run_tests.py runs them up to GOH_COV_RUST_JOBS
-            # at a time (default min(cpus, 8); 1 = serial), each with its own profile (`%p-%m`), the
+            # at a time (default 6; 1 = serial), each with its own profile (`%p-%m`), the
             # cwd and CARGO_* of a `cargo test` run. 101 is a red binary (named, never fail-fast);
             # any other code is a refusal of the runner and an incomplete export, not red tests.
             cov_phase "workspace: test binaries" "$WORKSPACE_PART.log"
