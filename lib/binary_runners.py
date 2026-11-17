@@ -69,3 +69,10 @@ def runners(graph, tests: dict[str, str], build: str) -> dict[str, str]:
             continue
         out[rel] = f"runs the goh binary{via}, built from {build}"
     return out
+
+
+def choose(graph, tests: dict[str, str], changed: list[str], chosen: dict[str, str]) -> None:
+    """Add to `chosen` every test that runs the binary when `changed` holds a build input."""
+    if build := next((p for p in changed if builds(p)), None):
+        for rel, why in runners(graph, tests, build).items():
+            chosen.setdefault(rel, why)
