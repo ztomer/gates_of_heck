@@ -32,11 +32,10 @@ TREE = "HEAD^{tree}"
 
 
 @pytest.fixture
-def lq(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """The lander module, in this process, under the batch tests' hermetic environment."""
+def env(tmp_path: Path) -> dict[str, str]:
     fake = tmp_path / "loopctl.py"
     fake.write_text(FAKE_LOOPCTL)
-    env = hermetic_env(
+    return hermetic_env(
         drop_git=True,
         GOH_LANDQ_DIR=str(tmp_path / "landq"),
         GOH_LOOPCTL=str(fake),
@@ -45,6 +44,11 @@ def lq(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         GOH_LAND_GATE=GATE,
         GATE_LOG=str(tmp_path / "gate.log"),
     )
+
+
+@pytest.fixture
+def lq(env: dict[str, str], monkeypatch: pytest.MonkeyPatch):
+    """The lander module, in this process, under the batch tests' hermetic environment."""
     for key in [k for k in os.environ if k.startswith(("GIT_", "GOH_")) and k not in env]:
         monkeypatch.delenv(key)
     for key, value in env.items():
@@ -93,9 +97,8 @@ def run_batch(lq, q: Path, paths: list[Path], say: list[str]) -> list[dict]:
 
 
 def test_a_failed_tree_read_leaves_the_stack_pending_and_never_gates_a_guess(
-    repo, tmp_path, lq, monkeypatch
+    repo, tmp_path, env, lq, monkeypatch
 ):
-    env = dict(os.environ)
     q, wts, paths = enqueue_three(repo, tmp_path, env, {"two.txt": "2\n"})
     seen = fail_when(monkeypatch, lambda a, kw: TREE in a)
     say: list[str] = []
@@ -111,9 +114,8 @@ def test_a_failed_tree_read_leaves_the_stack_pending_and_never_gates_a_guess(
 
 
 def test_a_tree_read_failing_after_a_red_gate_is_no_red_verdict_for_an_ungated_tree(
-    repo, tmp_path, lq, monkeypatch
+    repo, tmp_path, env, lq, monkeypatch
 ):
-    env = dict(os.environ)
     q, _, paths = enqueue_three(repo, tmp_path, env, {"two.txt": "2\n", "bad.txt": "planted\n"})
     calls: list[int] = []
 
@@ -131,9 +133,8 @@ def test_a_tree_read_failing_after_a_red_gate_is_no_red_verdict_for_an_ungated_t
 
 
 def test_a_stack_landed_with_an_unreadable_main_is_never_recorded_with_an_empty_sha(
-    repo, tmp_path, lq, monkeypatch
+    repo, tmp_path, env, lq, monkeypatch
 ):
-    env = dict(os.environ)
     q, _, paths = enqueue_three(repo, tmp_path, env, {"two.txt": "2\n"})
     gate_log = Path(env["GATE_LOG"])
     seen = fail_when(
@@ -149,9 +150,8 @@ def test_a_stack_landed_with_an_unreadable_main_is_never_recorded_with_an_empty_
 
 
 def test_a_single_land_with_an_unreadable_main_is_never_recorded_with_an_empty_sha(
-    repo, tmp_path, lq, monkeypatch
+    repo, tmp_path, env, lq, monkeypatch
 ):
-    env = dict(os.environ)
     q, _, paths = enqueue_three(repo, tmp_path, env, {"two.txt": "2\n"})
     only = paths[0]
     for other in paths[1:]:
@@ -187,9 +187,10 @@ def test_a_request_a_git_failure_left_pending_is_tried_again_then_recorded_red(t
     assert landq_batch.hold(q, path, done, {"r1": 2}, say.append) == done  # a verdict resets it
 
 
-def test_the_lander_retries_a_pending_request_on_its_next_pass(repo, tmp_path, lq, monkeypatch):
+def test_the_lander_retries_a_pending_request_on_its_next_pass(
+    repo, tmp_path, env, lq, monkeypatch
+):
     monkeypatch.chdir(tmp_path)  # drain() makes the queue dir this process's own (GOH.LANDERCWD)
-    env = dict(os.environ)
     q = Path(env["GOH_LANDQ_DIR"])
     wts = [(lane(repo, tmp_path, "one", {"one.txt": "1\n"}), "T.ONE")]
     enqueue_all(env, wts)
