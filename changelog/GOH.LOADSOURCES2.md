@@ -1,1 +1,0 @@
-* `goh load --report` books a `tools/load.py 0` (no spinners) to the command it wraps, family and repo: another session's CI hook under `load.py --max 2h 0` was ranked as `load-experiment` (13.3% of busy CPU in the first hour). Spinners, and a load.py running them, stay `load-experiment`; `ci_hook.sh` is a pre-push hook body (`push-gate`).
