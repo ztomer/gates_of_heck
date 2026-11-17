@@ -424,23 +424,29 @@ def rust(repo: Path, root: Path = GOH_ROOT, external: str | None = None,
     return [*lines, *tools()]
 
 
+def clean_tree(root: Path) -> str | None:
+    """HEAD's tree when the checkout at root holds exactly it (no change, no untracked file). With
+    `suite_tools`, the two halves of `suite` apart: a verdict CARRIED from another tree keys its
+    record by the tree it judged and the tools (tests/_land_verdicts.py, GOH.VERDICTCARRY)."""
+    status = _git(root, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all")
+    tree = _git(root, "rev-parse", "HEAD^{tree}")  # a reader never takes index.lock (above)
+    if status.returncode or tree.returncode or status.stdout.strip():
+        return None
+    return tree.stdout.decode().strip() or None
+
+
+def suite_tools() -> str:
+    """The tools a test verdict was reached with, without the tree (`suite` adds the tree)."""
+    return hashlib.sha256("\n".join(["suite-tools v1", *tools()]).encode()).hexdigest()
+
+
 def suite(root: Path) -> str | None:
     """The identity of a TEST verdict on root (GOH.LANDPREDUP): a test reads the whole tree, not
     only the gates' part, so its key is the commit's tree -- git's own content identity, by path,
     mode and bytes, the formula `content` applies to the gates' part -- plus the tools above. A
     checkout with any change to it, untracked files included, has no identity: its bytes are not
     the tree's, and a verdict on it is not reusable. None outside a checkout."""
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    env["GIT_OPTIONAL_LOCKS"] = "0"  # a reader never takes index.lock
-    out = []
-    for args in (("status", "--porcelain", "--untracked-files=all"), ("rev-parse", "HEAD^{tree}")):
-        r = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True,
-                           env=env, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
-        if r.returncode != 0:
-            return None
-        out.append(r.stdout.strip())
-    status, tree = out
-    if status or not tree:
+    if (tree := clean_tree(root)) is None:
         return None
     text = "\n".join(["suite-identity v1", f"tree {tree}", *tools()])
     return hashlib.sha256(text.encode()).hexdigest()

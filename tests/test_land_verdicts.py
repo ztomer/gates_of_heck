@@ -262,6 +262,7 @@ def test_the_pre_steps_passes_are_recorded_and_the_gates_suite_skips_them(
     rec = tmp_path / "rec.json"
     _session(tmp_path, *workers, GOH_LAND_VERDICTS_RECORD=str(rec))
     got = json.loads(rec.read_text())
+    assert got.pop("sha")  # the commit the pre-step judged: the gate carries from its tree
     assert got == {
         "identity": "ID",
         "passed": {"test_s.py::test_pass": False, "test_s.py::test_ran_the_binary": True},

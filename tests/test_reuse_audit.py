@@ -255,7 +255,8 @@ def test_every_registered_site_exists_and_every_sampled_one_asks_the_audit():
             if p.shadow:
                 assert f'use("{p.name}"' in (REPO_ROOT / site).read_text(), (p.name, site)
     sampled = sorted(p.name for p in reuse.PATHS.values() if p.shadow)
-    assert sampled == ["estate", "landed"], sampled  # slice 1; the rest say why (`unsampled`)
+    # slice 1 and GOH.VERDICTCARRY's `carry`; the rest say why (`unsampled`)
+    assert sampled == ["carry", "estate", "landed"], sampled
 
 
 def test_the_check_refuses_an_unregistered_reuse():

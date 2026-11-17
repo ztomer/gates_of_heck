@@ -114,7 +114,9 @@ fi
 # ONE RUN PER TEST (GOH.LANDPREDUP): a goh suite run by the pre-step records the tests it passed
 # (GOH_LAND_VERDICTS_RECORD) and the gate's suite skips them on the same tree and tools
 # (GOH_LAND_VERDICTS_REUSE, tests/_land_verdicts.py), the instrumented coverage run keeping every
-# test that ran the binary. One file per land, removed with it; a rebased tip reuses nothing.
+# test that ran the binary. One file per land, removed with it. A rebased tip CARRIES verdicts from
+# the pre-step's tree and main's recorded tip, for what the diff between them does not choose
+# (GOH.VERDICTCARRY, the one store's `carry` path).
 if [ -n "$pre" ]; then
     verdicts="$(mktemp "${TMPDIR:-/tmp}/goh-land-verdicts.XXXXXX")" || exit 2
     rm -f "$verdicts"   # the pre-step's suite writes it whole, or there is no record

@@ -21,6 +21,26 @@ also coverage the crate's floor counts, so a test that ran the native binary (as
 reusable, the plain run of a reused Rust measurement included (GOH.RUSTCOVSKIP: its binary
 directory is named, no profile is).
 
+CARRIED ACROSS TREES (GOH.VERDICTCARRY). With three lanes landing, main moved under 5 of 8 green
+pre-steps (2026-11-16), so a land's gate re-ran the whole suite (551-731 s at load). A verdict is
+keyed by what decides it, and a test's inputs are narrower than the tree (rule 15): every run that
+records (either key above) also merges its passes into the one store's `carry` path (lib/reuse.py:
+the repo, the TREE it judged, the tools), and the gate's run deselects a node that passed on another
+tree T when the diff T..HEAD does not choose it -- tools/affected_tests.py, the selection the
+pre-step already trusts, asked on HEAD's tree. Tree readers always run (affected chooses them on
+every diff). Its sources: the pre-step's tree (the record names its commit) and the nearest
+records on HEAD's first-parent chain (main's tip, which the last land's gate recorded). It carries
+nothing from a tree whose diff touches what pytest loads before every test (affected_tests'
+Closure.base, pyproject.toml, tools/pytest.sh), and no node that ran the native binary across a
+change to its build inputs (lib/gate_identity.py BUILD). A carried node is recorded as passed on
+the new tree, so the next land carries it on; only a run that carried nothing from another tree
+and failed nothing is FULL, and the release kit refuses a tip without a full record
+(GOH_SHIP_FULL_SUITE, `reuse.py full-suite`). Each source is one use of the audited path: one use
+in ten is a SHADOW -- its carried nodes run anyway, and a failure among them is a disagreement,
+re-run once in a child pytest before it turns the path off (lib/reuse_audit.py). The controller
+decides once and hands its workers the node list (xdist `workerinput`), so every worker deselects
+alike and the audit counts one use per source.
+
 Both keys are set by tools/land.sh for one land and are verdict-free (gates/verdict_free_keys.txt):
 a path to one land's record is bookkeeping, and the proof a gate records is the same with or
 without it, because a reused verdict is a verdict on the same tree. A hermetic child (a fixture
@@ -31,6 +51,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -40,6 +61,11 @@ RECORD = "GOH_LAND_VERDICTS_RECORD"
 REUSE = "GOH_LAND_VERDICTS_REUSE"
 BIN_MARK = "goh_bin"  # a user property: the test ran the native binary
 REPO_ROOT = Path(__file__).resolve().parent.parent
+CARRY = "carry"  # the audited reuse path (lib/reuse.py)
+WORKER_KEY = "goh_land_reuse"  # the controller's decision, handed to each xdist worker
+ANCESTORS = 20  # first-parent commits of HEAD searched for a recorded tree
+SOURCES = 2  # ... of which this many records are carried from (each costs one affected_tests run)
+SUITE_WIDE = ("pyproject.toml", "tools/pytest.sh", "gates/_pytest_root.sh")
 
 _state: dict[str, object] = {}
 _bin: set[str] = set()
@@ -56,6 +82,89 @@ def identity(root: Path = REPO_ROOT) -> str | None:
     return gate_identity.suite(root)
 
 
+def _lib(name: str):
+    sys.path.insert(0, str(REPO_ROOT / "lib"))
+    try:
+        return __import__(name)
+    finally:
+        sys.path.pop(0)
+
+
+def here(root: Path = REPO_ROOT) -> tuple[str, str] | None:
+    """(tree, tools) of this checkout when it is clean (lib/gate_identity.py)."""
+    gi = _lib("gate_identity")
+    tree = gi.clean_tree(root)
+    return None if tree is None else (tree, gi.suite_tools())
+
+
+def _git(root: Path, *args: str) -> str:
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env["GIT_OPTIONAL_LOCKS"] = "0"
+    r = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, env=env,
+                       stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def trees(root: Path, pre_sha: str) -> list[tuple[str, str]]:
+    """(commit, tree) to carry from, nearest first: the pre-step's commit, then HEAD's first-parent
+    ancestors (HEAD's own tree is the pre-step's when nothing rebased)."""
+    shas = [pre_sha] if pre_sha else []
+    shas += _git(root, "rev-list", "--first-parent", f"--max-count={ANCESTORS}", "HEAD~1").split()
+    out = []
+    for sha in shas:
+        tree = _git(root, "rev-parse", "--verify", "--quiet", f"{sha}^{{tree}}")
+        if tree:
+            out.append((sha, tree))
+    return out
+
+
+def diff(root: Path, sha: str) -> list[str] | None:
+    """The paths whose bytes differ between sha's tree and HEAD's; None when git cannot say."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env["GIT_OPTIONAL_LOCKS"] = "0"
+    r = subprocess.run(["git", "-C", str(root), "diff", "--name-only", "--no-renames", sha, "HEAD"],
+                       capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL,
+                       check=False)  # fmt: skip
+    return [ln for ln in r.stdout.splitlines() if ln] if r.returncode == 0 else None
+
+
+def choose(root: Path, changed: list[str]) -> tuple[set[str] | None, str]:
+    """(what tools/affected_tests.py runs for `changed` on root: files and node ids, why) -- None
+    when the change is suite-wide, so nothing may be carried across it."""
+    sys.path.insert(0, str(root / "tools"))
+    try:
+        import affected_tests
+    finally:
+        sys.path.pop(0)
+    wide = [p for p in changed if p in SUITE_WIDE or Path(p).name == "conftest.py"]
+    base = affected_tests.Closure(root).base()
+    wide += [p for p in changed if p in base]
+    if wide:
+        return None, f"{wide[0]} is loaded before every test"
+    return set(affected_tests.affected(root, changed)), ""
+
+
+def _builds(changed: list[str]) -> bool:
+    """A change to the native binary's build inputs (lib/gate_identity.py BUILD)."""
+    build = _lib("gate_identity").BUILD
+    return any(p == b or p.startswith(f"{b}/") for p in changed for b in build)
+
+
+def carried(passed: dict[str, bool], chosen: set[str], coverage: bool, binary: bool) -> set[str]:
+    """The nodes of a record of another tree this run may skip: not in a file the diff chooses,
+    not a node it chooses (a parametrized node by its function), not one that ran the native
+    binary under coverage or across a change to the binary's build (`binary`)."""
+    files = {c for c in chosen if "::" not in c}
+    out = set()
+    for node, ran_bin in passed.items():
+        if ran_bin and (coverage or binary):
+            continue
+        if node.split("::")[0] in files or node.split("[")[0] in chosen:
+            continue
+        out.add(node)
+    return out
+
+
 def _controller(config) -> bool:
     return not hasattr(config, "workerinput")
 
@@ -69,10 +178,11 @@ def mark_binary(node) -> None:
 def pytest_sessionstart(session) -> None:
     if os.environ.get(RECORD) and _controller(session.config):
         _state["identity"] = identity()
+        _state["sha"] = _git(REPO_ROOT, "rev-parse", "HEAD")
 
 
 def pytest_runtest_logreport(report) -> None:
-    if not os.environ.get(RECORD):
+    if not (os.environ.get(RECORD) or os.environ.get(REUSE)):
         return
     if (BIN_MARK, True) in report.user_properties:
         _bin.add(report.nodeid)
@@ -82,14 +192,77 @@ def pytest_runtest_logreport(report) -> None:
         _called.add(report.nodeid)
 
 
+def _here() -> tuple[str, str] | None:
+    if "here" not in _state:
+        _state["here"] = here()
+    return _state["here"]  # type: ignore[return-value]
+
+
+def _whole(config) -> bool:
+    """This run is the whole suite: no node, -k, -m, --deselect or --lf narrowed it."""
+    o = config.option
+    if any(getattr(o, k, None) for k in ("keyword", "markexpr", "deselect", "lf")):
+        return False
+    roots = {Path(config.rootpath), Path(config.rootpath) / "tests"}
+    return all("::" not in a and Path(a).resolve() in roots for a in config.args)
+
+
 def pytest_sessionfinish(session) -> None:
-    path = os.environ.get(RECORD)
-    if not path or not _controller(session.config):
+    if not _controller(session.config):
         return
-    passed = {n: n in _bin for n in sorted(_called - _failed)}
-    tmp = Path(f"{path}.{os.getpid()}.tmp")
-    tmp.write_text(json.dumps({"identity": _state.get("identity"), "passed": passed}))
-    tmp.replace(path)  # atomic: a reader sees a whole record or the old one
+    path = os.environ.get(RECORD)
+    if path and path != os.devnull:  # /dev/null: the store's record alone (a full run by hand)
+        passed = {n: n in _bin for n in sorted(_called - _failed)}
+        tmp = Path(f"{path}.{os.getpid()}.tmp")
+        rec = {"identity": _state.get("identity"), "sha": _state.get("sha"), "passed": passed}
+        tmp.write_text(json.dumps(rec))
+        tmp.replace(path)  # atomic: a reader sees a whole record or the old one
+    if path or os.environ.get(REUSE):
+        _shadows()
+        _record_store(session)
+
+
+def _record_store(session) -> None:
+    """Merge this run's verdicts, and the ones it skipped as passed, into the tree's record."""
+    me = _here()
+    if me is None:
+        return
+    plan = _state.get("plan") or {}
+    rootdir = Path(session.config.rootpath)
+    passed = {n: n in _bin for n in _called - _failed}
+    for n, ran_bin in plan.get("skipped", {}).items():  # passed here: same tree, or carried
+        if (rootdir / n.split("::")[0]).is_file():
+            passed.setdefault(n, ran_bin)
+    other = int(plan.get("other", 0))
+    full = _whole(session.config) and session.exitstatus == 0 and not _failed and not other
+    by = "land gate" if os.environ.get(REUSE) else "pre-land"
+    _lib("reuse").record_suite(REPO_ROOT, me[0], me[1], passed, set(_failed), full, by, other)
+
+
+def _shadows() -> None:
+    """Each sampled source: its carried nodes ran; a failure among them is a disagreement."""
+    plan = _state.get("plan") or {}
+    audit = _lib("reuse_audit")
+    for sh in plan.get("shadows", []):
+        nodes = set(sh["nodes"])
+        if not nodes & (_called | _failed):
+            continue  # none ran (an interrupted run): nothing to compare
+        bad = sorted(nodes & _failed)
+        fresh = "red" if bad else "green"
+        audit.compare(CARRY, sh["fields"], "green", fresh, lambda sh=sh, bad=bad: _again(sh, bad))
+
+
+def _again(sh: dict, bad: list[str]) -> tuple[str, str]:
+    """Both sides again: the record read again, the failed carried nodes run again in a child."""
+    reuse = _lib("reuse")
+    f = sh["fields"]
+    rec, _ = reuse.lookup(CARRY, f)
+    reused = "green" if rec and all(n in rec.get("passed", {}) for n in bad) else ""
+    env = {k: v for k, v in os.environ.items() if k not in (RECORD, REUSE)}
+    r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *bad],
+                       cwd=sh["rootdir"], env=env, capture_output=True, text=True,
+                       stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+    return reused, "green" if r.returncode == 0 else "red"
 
 
 def reusable(path: str, here: str | None, coverage: bool) -> tuple[set[str], str]:
@@ -116,26 +289,114 @@ def instrumented() -> bool:
     return all(os.environ.get(k) for k in ("GOH_COVERAGE_BIN_DIR", "LLVM_PROFILE_FILE"))
 
 
-def _reusable(config) -> tuple[set[str], str]:
-    if "reuse" not in _state:
-        path = os.environ.get(REUSE, "")
-        coverage = instrumented()
-        _state["reuse"] = reusable(path, identity(), coverage) if path else (set(), "")
-    return _state["reuse"]  # type: ignore[return-value]
+def _plan(config) -> dict:
+    """What this run skips, decided ONCE, by the controller; an xdist worker reads its decision."""
+    if "plan" in _state:
+        return _state["plan"]  # type: ignore[return-value]
+    if not _controller(config):
+        raw = config.workerinput.get(WORKER_KEY)
+        _state["plan"] = {"skip": set(json.loads(raw)) if raw else set(), "lines": []}
+        return _state["plan"]  # type: ignore[return-value]
+    path = os.environ.get(REUSE, "")
+    coverage = instrumented()
+    same, why = reusable(path, identity(), coverage) if path else (set(), "")
+    lines = [f"land verdicts: {len(same)} tests passed by the pre-land run are reused ({why})"]
+    skipped = {n: b for n, b in _file_passed(path).items() if n in same}
+    plan = {"lines": lines, "skipped": skipped, "other": 0, "shadows": []}
+    if path:
+        _carry(plan, _file_sha(path), coverage, Path(config.rootpath))
+    plan["skip"] = set(plan["skipped"])
+    _state["plan"] = plan
+    return plan
 
 
-def pytest_report_header(config) -> str | None:
+def _file_passed(path: str) -> dict[str, bool]:
+    try:
+        rec = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    passed = rec.get("passed") if isinstance(rec, dict) else None
+    return passed if isinstance(passed, dict) else {}
+
+
+def _file_sha(path: str) -> str:
+    try:
+        rec = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    sha = rec.get("sha") if isinstance(rec, dict) else ""
+    return sha if isinstance(sha, str) else ""
+
+
+def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
+    """Add to `plan` the nodes carried from the recorded trees: each source, one audited use."""
+    lines: list[str] = plan["lines"]
+    me = _here()
+    if me is None:
+        lines.append("land verdicts: nothing carried (this checkout has no identity)")
+        return
+    tree, tools = me
+    reuse, audit = _lib("reuse"), _lib("reuse_audit")
+    taken = 0
+    for sha, src in trees(REPO_ROOT, pre_sha):
+        if taken >= SOURCES:
+            break
+        rec, _ = reuse.lookup_suite(REPO_ROOT, src, tools)
+        if rec is None:
+            continue
+        taken += 1
+        passed = rec["passed"]
+        if src == tree:
+            nodes, how = {n for n, b in passed.items() if not (coverage and b)}, "the same tree"
+        else:
+            changed = diff(REPO_ROOT, sha)
+            chosen, why = choose(REPO_ROOT, changed) if changed is not None else (None, "no diff")
+            if chosen is None:
+                lines.append(f"land verdicts: nothing carried from {sha[:8]}: {why}")
+                continue
+            nodes = carried(passed, chosen, coverage, _builds(changed or []))
+            how = f"{len(changed or [])} paths differ, affected_tests chooses {len(chosen)}"
+        nodes -= set(plan["skipped"])
+        if not nodes:
+            continue
+        fields = reuse.carry_fields(REPO_ROOT, src, tools)
+        decision = audit.use("carry", fields)
+        if decision == "off":
+            lines.append("land verdicts: nothing carried: the audit turned `carry` off "
+                         "(lib/reuse_audit.py report)")  # fmt: skip
+            return
+        if decision == "shadow":
+            plan["shadows"].append({"fields": fields, "nodes": sorted(nodes), "sha": sha,
+                                    "rootdir": str(rootdir)})  # fmt: skip
+            lines.append(f"land verdicts: {len(nodes)} carried from {sha[:8]} RUN anyway: the "
+                         f"audit's shadow ({how})")  # fmt: skip
+            continue
+        plan["skipped"].update((n, bool(passed[n])) for n in nodes)
+        if src != tree:
+            plan["other"] += len(nodes)
+        lines.append(f"land verdicts: {len(nodes)} deselected, carried from {sha[:8]} ({how})")
+    for sh in plan["shadows"]:  # a node another source skips does not run: not this shadow's
+        sh["nodes"] = [n for n in sh["nodes"] if n not in plan["skipped"]]
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_configure_node(node) -> None:
+    """xdist, in the controller: hand each worker the one decision."""
+    if os.environ.get(REUSE):
+        node.workerinput[WORKER_KEY] = json.dumps(sorted(_plan(node.config)["skip"]))
+
+
+def pytest_report_header(config) -> list[str] | None:
     if not os.environ.get(REUSE):
         return None
-    nodes, why = _reusable(config)
-    return f"land verdicts: {len(nodes)} tests passed by the pre-land run are reused ({why})"
+    return _plan(config)["lines"]
 
 
 @pytest.hookimpl(trylast=True)
 def pytest_collection_modifyitems(config, items) -> None:
     if not os.environ.get(REUSE):
         return
-    nodes, _ = _reusable(config)
+    nodes = _plan(config)["skip"]
     if not nodes:
         return
     keep, drop = [], []

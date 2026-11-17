@@ -47,6 +47,15 @@ if [ -n "$(GIT_OPTIONAL_LOCKS=0 git status --porcelain --untracked-files=no)" ];
     err "release_goh.sh: $main has uncommitted changes; a release names a commit -- nothing moved"
     exit 1
 fi
+# A FULL SUITE VERDICT ON THE TIP (GOH.VERDICTCARRY): a land's suite carries verdicts from other
+# trees (tests/_land_verdicts.py), so a land's green is no proof that every test ran on this tree.
+# A repo that carries declares GOH_SHIP_FULL_SUITE=on, and its release needs a run that judged
+# every test here itself (lib/reuse.py full-suite); it is made off the ship's path.
+full_on="$(bash -c 'unset GOH_SHIP_FULL_SUITE; [ -f .gatesrc ] && . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_SHIP_FULL_SUITE-}"')"
+if [ "$full_on" = on ] && ! "$GOH_PY" "$GOH/lib/reuse.py" full-suite --repo "$main" --sha "$(git rev-parse HEAD)" >/dev/null; then
+    err "release_goh.sh: no full suite run judged $(git rev-parse --short HEAD)'s tree (above): run \`GOH_LAND_VERDICTS_RECORD=/dev/null tools/pytest.sh\` in a clean checkout of it -- nothing moved"
+    exit 1
+fi
 if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
     err "release_goh.sh: $TAG already exists; a tag is never moved -- nothing moved"
     exit 1

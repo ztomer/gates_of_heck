@@ -74,6 +74,7 @@ moves; one on the live checkout keeps it only while goh's main does not move.
 | Rust coverage record (gates/_rust_proven.sh) | rust identity lines | a `rustcov` path (repo, rust identity) | TO MOVE, with the proven cache |
 | `~/.cache/goh/verdicts/<checker>/` (`GOH_VERDICT_DIR`, crates/goh/src/verdict_cache.rs) | per file: checker, bytes, path, tools | a `file` path (checker, key) | TO MOVE last: a Rust face of the API, hot per-file path (shell-lint) |
 | `GOH_LAND_VERDICTS_RECORD/REUSE` (tests/_land_verdicts.py) | per test, one land's temp file | a `test` path (repo, tree, test id, suite identity) | TO MOVE: makes the pre-step's passes reusable beyond one land |
+| the `carry` path (tests/_land_verdicts.py, GOH.VERDICTCARRY) | repo, tree, tools; the record holds each passed node | `carry`, in the one store | MOVED: every land's suite merges its passes; the gate carries a node across the diff affected_tests does not choose it for; a run that carried nothing is the FULL verdict a release needs (`reuse.py full-suite`, GOH_SHIP_FULL_SUITE) |
 | `goh-loaded/<tree>-<identity>.json` | tree + identity | none | GONE (GOH.LOADEDDROP removed the loaded run) |
 | `lib/run_path` run dirs (`~/.local/state/goh/run`) | physical tree path | none | NOT A STORE: temp, lock and staging places; nothing reused from them is a verdict |
 
@@ -94,5 +95,6 @@ moves; one on the live checkout keeps it only while goh's main does not move.
 |---|---|---|
 | `estate` | inline, 1 in 10: the entry judged afresh | `checks/_estate_cache.py` (`reusable`, `shadowed`) |
 | `landed` | ci, every release push: hosted CI's full gate of the pushed commit | `lib/release_gate.py` (`audited`) |
+| `carry` | inline, 1 in 10: the carried nodes of a source run anyway; a failure among them is re-run in a child pytest, and a repeat turns `carry` off | `tests/_land_verdicts.py` (`_carry`, `_shadows`) |
 | `gate`, `test`, `origin`, `step`, `rustcov`, `file` | none yet: each says why (`reuse_audit.py report`) | slice 2 |
 | `pushed`, `affected` | none by design: `pushed` is identity-free; `affected` skips nothing but through `test` | |

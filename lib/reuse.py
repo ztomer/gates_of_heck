@@ -10,6 +10,8 @@ any caller can query:
     reuse.py paths                                   # the registered paths and their key fields
     reuse.py record-gate --repo R [--] SHA[:HOW]...  # the push gate: each SHA green under HOW
                                                      # (full, release or config; default full)
+    reuse.py full-suite --repo R --sha SHA           # exit 0: goh's whole suite judged SHA's
+                                                     # tree itself (the `carry` path's record)
     reuse.py lookup-gate --repo R --sha SHA [--how full]
                                                      # exit 0, the record printed: a green verdict
                                                      # on SHA's TREE under today's gate identity;
@@ -165,6 +167,12 @@ TEST = register(
     "a land's pre-step pass, deselected from its gate's suite (tests/_land_verdicts.py)",
     store="one land's GOH_LAND_VERDICTS_RECORD file", sites=("tests/_land_verdicts.py",),
     unsampled="a sampled node must be one choice every xdist worker collects alike: slice 2",
+)  # fmt: skip
+CARRY = register(
+    "carry", ("repo", "tree", "tools"), DAY_S,
+    "goh's suite passes on a tree, carried to a tree whose diff from it does not choose them "
+    "(tools/affected_tests.py) -- the land gate's suite deselects them (tests/_land_verdicts.py)",
+    sites=("tests/_land_verdicts.py",), shadow="inline",
 )  # fmt: skip
 register(
     "affected", ("repo", "base", "head"), 0,
@@ -384,6 +392,56 @@ def lookup_gate(repo: Path, sha: str, how: str = "full") -> tuple[dict | None, s
     return None, why
 
 
+# --- the `carry` path (GOH.VERDICTCARRY) ---------------------------------------------------------
+
+
+def carry_fields(repo: Path, tree: str, tools: str) -> dict[str, str]:
+    return {"repo": repo_id(repo), "tree": tree, "tools": tools}
+
+
+def record_suite(repo: Path, tree: str, tools: str, passed: dict[str, bool], failed: set[str],
+                 full: bool, by: str, carried: int = 0) -> Path:  # fmt: skip
+    """Merge one suite run's verdicts on `tree` into its record: `passed` ({node: it ran the
+    native binary}) joins the record's passes, a node in `failed` leaves them. `full` says this
+    run judged every test of the tree itself (none carried from another tree, nothing failed); a
+    record stays full only while no later run on the tree fails."""
+    fields = carry_fields(repo, tree, tools)
+    old, _ = lookup(CARRY, fields)
+    merged = {n: bool(b) for n, b in (old or {}).get("passed", {}).items() if n not in failed}
+    merged.update(passed)
+    was_full = bool(old and old.get("full"))
+    whole = (full or was_full) and not failed
+    extra = {"passed": merged, "full": whole, "carried": carried}
+    out = record(CARRY, fields, "red" if failed else "green", by, extra)
+    prune(CARRY)
+    return out
+
+
+def lookup_suite(repo: Path, tree: str, tools: str) -> tuple[dict | None, str]:
+    """The suite record of `tree` under `tools`, or (None, why it missed)."""
+    rec, why = lookup(CARRY, carry_fields(repo, tree, tools))
+    if rec is not None and not isinstance(rec.get("passed"), dict):
+        return None, f"the carry record {rec.get('file')} holds no passes"
+    return rec, why
+
+
+def full_suite(repo: Path, sha: str) -> tuple[dict | None, str]:
+    """A FULL suite verdict on sha's tree under today's tools: a run that judged every test there
+    itself. The release kit refuses a tip without one (GOH_SHIP_FULL_SUITE): a land whose suite
+    carried verdicts from another tree is no full run, however green."""
+    tree = _git(repo, "rev-parse", "--verify", "--quiet", f"{sha}^{{tree}}")
+    if not tree or not repo_id(repo):
+        return None, f"{sha} names no commit tree in {repo}"
+    rec, why = lookup_suite(repo, tree, gate_identity.suite_tools())
+    if rec is None:
+        return None, f"no suite run recorded on tree {tree[:12]} under these tools ({why})"
+    if not rec.get("full"):
+        carried = rec.get("carried") or 0
+        how = f"{carried} tests carried from another tree" if carried else "a partial or red run"
+        return None, f"the suite record of tree {tree[:12]} is no full run ({how})"
+    return rec, ""
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="verb", required=True)
@@ -396,6 +454,9 @@ def main(argv: list[str] | None = None) -> int:
     lg.add_argument("--repo", type=Path, default=Path.cwd())
     lg.add_argument("--sha", required=True)
     lg.add_argument("--how", default="full")
+    fs = sub.add_parser("full-suite")
+    fs.add_argument("--repo", type=Path, default=Path.cwd())
+    fs.add_argument("--sha", required=True)
     a = ap.parse_args(argv)
     if a.verb == "paths":
         for p in PATHS.values():
@@ -415,6 +476,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"reuse: miss: {why}", file=sys.stderr)
             return 1
         print(json.dumps(rec, sort_keys=True))
+        return 0
+    if a.verb == "full-suite":
+        rec, why = full_suite(a.repo, a.sha)
+        if rec is None:
+            print(f"reuse: no full suite verdict: {why}", file=sys.stderr)
+            return 1
+        print(f"full suite verdict: {rec['file']} (tree {rec['fields']['tree'][:12]})")
         return 0
     return 2
 
