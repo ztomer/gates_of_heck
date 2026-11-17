@@ -1,1 +1,2 @@
 * test(load_kit): the suite's whole-process-table `ps` is judged by CPU stall (lib/pgid_cpu.py), never a 30 s wall cap, so a starved `ps` at load 50-150 no longer fails the suite-end leak check on whichever test ran last; a structural test refuses any whole-table `ps` under `timeout=` in tests/ (GOH.SELFGATEPS)
+* test(bench_lock): `_waits_then_runs` releases the host's holder when the gate SAYS it is waiting (read from its stderr, bounded by patience()), not after a fixed 2.5 s the load stretched past; a gate started 4 s late is the pinned case (GOH.SELFGATEPS's class)

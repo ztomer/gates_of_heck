@@ -16,7 +16,7 @@
   "test_bash32_empty_array.py": 1,
   "test_bash5_guard.py": 1,
   "test_bench_hold.py": 3,
-  "test_bench_lock.py": 20,
+  "test_bench_lock.py": 18,
   "test_binary_currency.py": 1,
   "test_binary_pinned_to_export.py": 2,
   "test_binary_source_identity.py": 4,

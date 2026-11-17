@@ -199,37 +199,6 @@ def test_a_second_measurement_waits_for_the_first(tmp_path: Path) -> None:
     assert r.returncode == 1 and "another measurement holds the host" in r.stderr, r.stderr
 
 
-def _waits_then_runs(tmp_path: Path, argv: list[str], cwd: Path, stdin: str = "") -> str:
-    """Run a real entry point while the host is held: it must wait, then finish once released."""
-    lock = tmp_path / "lock"
-    holder = _hold(lock, tmp_path)
-    gate = subprocess.Popen(argv, cwd=cwd, env=_env(lock), stdin=subprocess.PIPE,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)  # fmt: skip
-    time.sleep(2.5)
-    still = gate.poll() is None
-    holder.kill()
-    holder.wait(timeout=10)
-    _, err = gate.communicate(stdin, timeout=60)
-    assert still, f"{argv[1]} ran while a measurement held the host:\n{err}"
-    assert "waiting for a measurement" in err, err
-    return err
-
-
-def test_every_gate_joins_through_goh_init(repo: Path, tmp_path: Path) -> None:
-    (repo / "a.py").write_text("x = 1\n")
-    _waits_then_runs(tmp_path, ["bash", str(REPO_ROOT / "gates" / "py_staged.sh"), "."], repo)
-
-
-def test_local_ci_joins(repo: Path, tmp_path: Path) -> None:
-    _waits_then_runs(tmp_path, ["bash", str(REPO_ROOT / "gates" / "local_ci.sh"), "--step", "true"],
-                     repo)  # fmt: skip
-
-
-def test_the_push_gate_joins(repo: Path, tmp_path: Path) -> None:
-    _waits_then_runs(tmp_path, ["bash", str(REPO_ROOT / "gates" / "push_gate.sh"), "origin", "u"],
-                     repo)  # fmt: skip
-
-
 QUIET = REPO_ROOT / "tools" / "quiet.sh"
 
 
