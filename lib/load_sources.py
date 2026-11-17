@@ -395,7 +395,11 @@ def sample(interval: float, duration: float, d: Path) -> int:
 
     def snap() -> Snapshot:
         return Snapshot(
-            time.time(), rd.busy_s(), os.getloadavg()[0], os.cpu_count() or 1, rd.snapshot()
+            time.time(),
+            rd.busy_s(),
+            os.getloadavg()[0],
+            os.sysconf("SC_NPROCESSORS_ONLN") or 1,
+            rd.snapshot(),
         )
 
     def used() -> float:

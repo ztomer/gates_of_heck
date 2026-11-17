@@ -17,7 +17,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 import load_sources as ls
 from proc_table import Proc, Snapshot, parse_ps, script_of
 
-CLAUDE = "/Users/u/Library/Application Support/Claude/claude-code/2.1/x/claude"
+CLAUDE = "/opt/agents/claude-code/2.1/x/claude"
 
 
 def p(pid, ppid, exe, cpu=0.0, child=0.0, *, path=None, cwd=None, script=None, start=None, rss=0):
@@ -121,7 +121,7 @@ def _snap(t, busy, procs, load1=4.0):
 
 
 def test_a_record_keeps_names_and_numbers_never_paths_or_arguments():
-    secret = "/Users/u/Projects/secret-dir"
+    secret = "/srv/u/Projects/secret-dir"
     prev = _snap(0, 100.0, {7: p(7, 1, "Python", 1.0, 0, script="pytest", cwd=secret)})
     cur = _snap(
         30,
