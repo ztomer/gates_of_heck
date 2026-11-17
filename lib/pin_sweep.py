@@ -3,7 +3,7 @@
 (GOH.PINPUSHGATE).
 
     lib/pin_sweep.py supervise SWEEP.json   # what start() detaches: wait for the ship, then run
-    lib/pin_sweep.py run SWEEP.json         # the pushes, under tools/load.py (never by hand)
+    lib/pin_sweep.py run SWEEP.json         # the pushes, each gate under load.py (not by hand)
 
 WHY. GOH.PINPROPAGATE made goh ship's install push every consumer's pin commit through that
 consumer's FULL push gate, inside the ship: at v0.124.0 the install took 2037 s, 2010 s of it those
@@ -15,13 +15,14 @@ the goh the consumer's gate runs, so the consumer's full gate is the release's t
 HOW. `scripts/wf_pin.py --bump` commits, then start() writes the sweep's record beside the ship
 result (`<result>.sweep.json`) and detaches `supervise` in a session of its own. It waits for the
 ship that started it to return (its result leaves `running`, or its worker is gone; bounded by
-SHIP_WAIT), then runs the pushes through tools/load.py -- the one way load is made: a gate's place
-in the load slot, a deadline (BOUND) after which the whole tree is killed, and a supervisor that is
-alive for as long as it is, so it reaps it. Each consumer is pushed `consumer_pins.width` at a time
-(the gate slots, GOH.SHIPPROFILE), its gate's output kept (`<result>.sweep.pushes/NAME.log`), and
-its outcome written to the record as it ends: pushed, refused (with that log), or committed and not
-pushed with why (an owner's commit ahead, behind its upstream, the budget spent). What the sweep
-never reached -- killed at its bound, the slot refused -- the supervisor names the same way.
+SHIP_WAIT), then runs the pushes, bounded (BOUND, after which their session is killed), each
+consumer's gate through tools/load.py -- the one way load is made: one gate slot per consumer gate,
+given back when it ends (GOH.SWEEPSLOTS), so a land interleaves after at most one consumer gate.
+Each consumer is pushed `consumer_pins.width` at a time (the gate slots, GOH.SHIPPROFILE), its
+gate's output kept (`<result>.sweep.pushes/NAME.log`), and its outcome written to the record as it
+ends: pushed, refused (with that log), or committed and not pushed with why (an owner's commit
+ahead, behind its upstream, the budget spent). What the sweep never reached -- killed at its bound,
+the slot refused -- the supervisor names the same way.
 
 WHO READS IT. `goh ship --status RESULT` prints the sweep's rows apart from the install's (lines()),
 and its profile rows (`<result>.sweep.timings.jsonl`) in the table as step `sweep`. Every outcome
@@ -57,14 +58,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import consumer_pins
 import estate_registry
+import killtree
 import step_timings
 
 from tui.lib import counted, err, info, ok, step
 
 GOH = Path(__file__).resolve().parent.parent
-LOAD = GOH / "tools" / "load.py"
 SHIP_WAIT = 3600  # how long the sweep waits for its ship to return (goh ship's step bound)
-BOUND = consumer_pins.BUDGET + 300  # load.py's deadline: the pushes' budget, then their grace
+BOUND = consumer_pins.BUDGET + 300  # the sweep's deadline: the pushes' budget, then their grace
 POLL = 1.0
 _lock = threading.Lock()
 
@@ -176,7 +177,8 @@ def _ship_running(rec: dict) -> bool:
 
 
 def supervise(path: Path) -> int:
-    """Wait for the ship, run the pushes under load.py, then name whatever they never reached."""
+    """Wait for the ship, run the pushes (each gate under load.py), then name what they never
+    reached."""
     rec = read(path)
     deadline = time.monotonic() + SHIP_WAIT
     if _ship_running(rec):
@@ -184,10 +186,19 @@ def supervise(path: Path) -> int:
     while _ship_running(rec) and time.monotonic() < deadline:
         time.sleep(POLL)
     update(path, lambda b: b.update(status="running", started=now()))
-    argv = [sys.executable, str(LOAD), "--max", f"{BOUND}s", "0", "--", sys.executable,
-            str(Path(__file__).resolve()), "run", str(path)]  # fmt: skip
-    code = subprocess.run(argv, check=False, stdin=subprocess.DEVNULL).returncode
-    why = (f"not pushed: the sweep ended before its push (tools/load.py exit {code}; "
+    # The sweep's own process holds NO gate slot (GOH.SWEEPSLOTS): each consumer gate takes one
+    # through tools/load.py and gives it back when it ends (consumer_pins.push). Under one slot of
+    # its own, `width` gates ran nested in it -- three heavy gates while admission counted two.
+    # Bounded here as load.py bounded it: at BOUND the whole session is killed.
+    argv = [sys.executable, str(Path(__file__).resolve()), "run", str(path)]
+    env = {k: v for k, v in os.environ.items() if k != "GOH_GATE_SLOT"}
+    proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, env=env, start_new_session=True)
+    try:
+        code = proc.wait(timeout=BOUND)
+    except subprocess.TimeoutExpired:
+        killtree.stop_group(proc.pid, proc=proc)  # TERM first: a killed git leaves its lock
+        code = proc.wait()
+    why = (f"not pushed: the sweep ended before its push (exit {code}; bound {BOUND} s; "
            f"log {rec.get('log')}); the next ship's sweep pushes it")  # fmt: skip
     left: list[tuple[str, str]] = []
 

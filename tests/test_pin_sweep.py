@@ -187,3 +187,20 @@ def test_ship_status_shows_the_install_row_and_the_sweeps_rows_apart(tmp_path):
     table = next(x for x in lines if "push good" in x and " s " in x)
     assert "sweep" in table and "400.0" in table, out  # the sweep's own row, never the install's
     assert any("commit good" in x and "install" in x for x in lines), out
+
+
+def test_each_consumer_gate_holds_a_gate_slot_of_its_own_released_after_it(tmp_path):
+    # GOH.SWEEPSLOTS: the sweep held ONE slot (its load.py) and ran `width` consumer gates inside
+    # it, each nested in that slot -- three heavy gates while admission counted two. Each gate now
+    # takes its own slot (its own tools/load.py) and gives it back when it ends, so a land
+    # enqueued during a sweep waits at most one consumer gate.
+    body = 'echo "slot $GOH_GATE_SLOT" >>{log}'.format(log=tmp_path / "slots.log")
+    _consumers(tmp_path, {"one": body, "two": body, "three": body})
+    r = _wf_pin(tmp_path, "--bump", "--sweep", "wait", GOH_SHIP_RESULT=str(tmp_path / "s.json"))
+    out = r.stdout + r.stderr
+    assert r.returncode == 0, out
+    rec = _read(tmp_path / "s.sweep.json")
+    assert {v["status"] for v in rec["repos"].values()} == {"pushed"}, rec
+    holders = (tmp_path / "slots.log").read_text().splitlines()
+    assert len(holders) == 3 and all(h.split()[-1].isdigit() for h in holders), holders
+    assert len({h.split()[-1] for h in holders}) == 3, holders  # one holder per consumer gate

@@ -49,6 +49,7 @@ from tui.lib import counted
 
 GOH = Path(__file__).resolve().parent.parent
 
+LOAD = GOH / "tools" / "load.py"  # each push gate is admitted by it, one slot per gate
 TIMEOUT = 1800  # one consumer's push gate at most
 # The whole sweep's pushes, under goh ship's step bound (GOH_SHIP_TIMEOUT, 3600 s): a sweep killed
 # by that bound records nothing, so it stops pushing first and names what it left for the next one.
@@ -246,7 +247,11 @@ def push(repo: Path, said: str, log: Path | None = None) -> tuple[str, str]:
         path.write_text("", encoding="utf-8")
         env = [f"{k}={v}" for k, v in estate_commit.env().items()]  # its gate, not this ship's
         out = bounded_run.run_step(
-            ["env", "-i", *env, "git", "-C", str(repo), "push", "-q", remote,
+            # Its own gate slot (GOH.SWEEPSLOTS): tools/load.py admits THIS gate and releases the
+            # slot when it ends, so a sweep runs no more gates than the slots it holds and a land
+            # waits at most one consumer gate. The sweep's own process holds none.
+            ["env", "-i", *env, sys.executable, str(LOAD), "--max", f"{min(TIMEOUT, left) + 60}s",
+             "--wait-max", f"{left}s", "0", "--", "git", "-C", str(repo), "push", "-q", remote,
              f"HEAD:refs/heads/{branch}"],
             min(TIMEOUT, left), 5, f"pins push {repo.name}", str(path),
         )  # fmt: skip
