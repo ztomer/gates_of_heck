@@ -1,0 +1,1 @@
+- `goh land`: the long-lived lander re-reads the digest of its own code (tools/landq.py and lib/ on the live checkout's HEAD) between requests and re-execs a fresh lander when a land changed it, so the very next request runs the new code instead of waiting for a restart (GOH.LANDERSTALECODE).

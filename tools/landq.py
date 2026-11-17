@@ -40,6 +40,9 @@ moves a request to `running/`, runs it under lib/bounded_run.py (GOH_LAND_TIMEOU
 its whole process group swept on expiry), writes `done/<name>.json` and the log under `logs/`, and
 records the outcome on the item: `loopctl set ID landing {"state": "landed"|"red", "sha", "log",
 "at"} --json`, which the coordinator reads on its tick and re-dispatches a red one with the log.
+Between requests it re-reads the digest of its own code (tools/landq.py and lib/ on the live
+checkout's HEAD); a land that changed it makes the lander release the lock and exec a fresh one,
+so the very next request runs the new code (GOH.LANDERSTALECODE).
 After the last request it releases the lock and looks once more: a request enqueued in that
 window either sees the lock free and starts its own lander, or is seen here.
 
@@ -277,7 +280,21 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
     mark(f"{item or Path(outcome['repo']).name}: {outcome['state']} @ {outcome['sha'][:8]}")
 
 
-def drain_held(q: Path) -> None:
+def live_root() -> Path:
+    """The checkout this lander's code comes from: an export names it in GOH_LIVE_ROOT."""
+    return Path(os.environ.get("GOH_LIVE_ROOT") or ROOT)
+
+
+def code_digest() -> str:
+    """The lander's code on the live checkout's HEAD: tools/landq.py and lib/ (GOH.LANDERSTALECODE).
+
+    A checkout is read through git, so a land that moves main changes it; a copy outside any
+    checkout hashes nothing and never re-execs."""
+    return git(live_root(), "rev-parse", "HEAD:tools/landq.py", "HEAD:lib")
+
+
+def drain_held(q: Path, digest: str = "") -> bool:
+    """Run every pending request; False when the lander's code changed and it must re-exec."""
     # A request a dead lander was running goes back to the front: its name keeps its place.
     for stale in sorted((q / "running").glob("*.json")):
         stale.replace(q / "pending" / stale.name)
@@ -292,21 +309,31 @@ def drain_held(q: Path) -> None:
             outcome = {"sha": "", "repo": "", "state": "red", "why": f"lander: {e}", "log": ""}
         record(path, outcome, item)
         path.unlink(missing_ok=True)
+        if digest and code_digest() != digest:
+            return False
+    return True
 
 
 def drain() -> int:
     q = qdir()
     for d in DIRS:
         (q / d).mkdir(parents=True, exist_ok=True)
+    digest = code_digest()  # what this lander runs; a land that changes it re-execs a fresh one
     while True:
         fd = take_lock(q)
         if fd is None:
             info(f"a lander already holds {q / 'lander.lock'}")
             return 0
         try:
-            drain_held(q)
+            current = drain_held(q, digest)
         finally:
             os.close(fd)
+        if not current:
+            fresh = live_root() / "tools" / "landq.py"
+            info(f"the lander's code changed on {live_root()}: re-running {fresh}")
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os.execv(sys.executable, [sys.executable, str(fresh), "--drain"])
         if not any((q / "pending").glob("*.json")):  # enqueued after the last look: ours to run
             return 0
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -20,7 +21,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT, commit_all, git, hermetic_env, write
-from timing_bounds import GiveUp
+from timing_bounds import GiveUp, patience
 
 LANDQ = REPO_ROOT / "tools" / "landq.py"
 FAKE_LOOPCTL = """\
@@ -293,3 +294,57 @@ def test_a_rebased_land_records_the_sha_on_main_as_landing_sha(repo, tmp_path, e
     on_main = git(repo, "rev-parse", "HEAD").strip()
     assert got["state"] == "landed" and on_main != tip, got
     assert got["sha"] == on_main and got["enqueued"] == tip, got
+
+
+# GOH.LANDERSTALECODE: the lander is long-lived, so a land that changes ITS code (tools/landq.py or
+# lib/) must be honoured by the very next request, not by whenever the lander happens to restart.
+EDIT_HOOK = """\
+#!/bin/sh
+python3 - "$CODE_COPY/tools/landq.py" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+old = 'outcome = {**outcome, "at": now()}'
+assert old in s, "the marker's anchor moved"
+open(p, "w").write(s.replace(old, 'outcome = {**outcome, "at": now(), "newcode": True}'))
+PY
+git -C "$CODE_COPY" commit -qam "land a change to the lander"
+exit 0
+"""
+
+
+def test_a_land_that_changes_the_lander_is_honoured_by_the_next_request(tmp_path, env):
+    code = tmp_path / "goh"
+    for d in ("tools", "lib", "tui", "checks", "gates"):
+        shutil.copytree(REPO_ROOT / d, code / d, ignore=shutil.ignore_patterns("__pycache__"))
+    fast_init(code, "main")
+    git(code, "config", "user.email", "t@example.invalid")
+    git(code, "config", "user.name", "t")
+    commit_all(code, "the lander's code")
+    first, _, sha1 = make_repo(tmp_path, "mu")
+    hook = first / ".git" / "hooks" / "pre-push"
+    hook.write_text(EDIT_HOOK)  # this land changes the lander's code on its main
+    second, _, sha2 = make_repo(tmp_path, "nu")
+    env = {**env, "CODE_COPY": str(code)}
+    lq = [sys.executable, str(code / "tools" / "landq.py")]
+
+    def run(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [*lq, *args],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=patience(120),
+            check=False,
+            stdin=subprocess.DEVNULL,
+        )
+
+    for repo, sha, item in ((first, sha1, "T.M"), (second, sha2, "T.N")):
+        got = run("--enqueue", str(repo), sha, "--item", item, "--no-start")
+        assert got.returncode == 0, got.stdout + got.stderr
+    done = run("--drain")
+    assert done.returncode == 0, done.stdout + done.stderr
+    out = recorded(env)
+    assert out["T.M"]["state"] == "landed" and "newcode" not in out["T.M"], out
+    assert out["T.N"]["state"] == "landed", out
+    assert out["T.N"].get("newcode") is True, "the next request ran the lander's OLD code"
