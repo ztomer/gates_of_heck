@@ -35,6 +35,8 @@
 #   pass it VERBATIM as GOH_CI_STEPS spells it, or the push-time run keys a different step.
 #   --label  who is recording (shown by a later skip); default "proven.sh"
 #   --log    send the step's output to FILE; this script's own lines stay on stdout
+#   --explain print the step's key, tree and identity LINES (what the key hashes) and run nothing;
+#            each record keeps its lines under .id/, so a later miss names what moved (GOH.PROOFKEY)
 # Exit: the step's code; 0 when skipped; 2 on a usage or configuration error.
 # GOH_PROVEN=0 disables the cache (always run, never record).
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
@@ -50,10 +52,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 label="proven.sh"
 log=""
+explain=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --label) [ $# -ge 2 ] || die "proven: --label needs a name" 2; label="$2"; shift 2 ;;
         --log)   [ $# -ge 2 ] || die "proven: --log needs a file" 2; log="$2"; shift 2 ;;
+        --explain) explain=1; shift ;;
         -h|--help) sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0 ;;
         --) shift; break ;;
         -*) die "proven: unknown option: $1" 2 ;;
@@ -83,6 +87,17 @@ if ! proven_decl_valid "$step_cmd"; then
     die "proven: a declaration in the step string is not produces=/consumes=, or names a path with a space in it" 2
 fi
 
+if [ "$explain" = 1 ]; then
+    if pair="$(proven_key "$step_cmd" </dev/null)"; then
+        printf 'key %s\ntree %s\n' "${pair% *}" "${pair#* }"
+    else
+        printf 'key none (the cache is off, or the working tree is no tree git can name)\n'
+    fi
+    printf 'step %s\n' "$step_cmd"
+    proven_identity </dev/null
+    exit 0
+fi
+
 run_it() {
     if [ -n "$log" ]; then
         bash -c "$run_cmd" >"$log" 2>&1 </dev/null
@@ -106,6 +121,8 @@ if pair="$(proven_key "$step_cmd" </dev/null)"; then
             exit 0
         fi
         step "$label: proven on this tree $age ago by $by, but $owed -- re-run"
+    elif why="$(proven_miss_reason "$key" "$tree" "$step_cmd" </dev/null)" && [ -n "$why" ]; then
+        step "$label: $why -- re-run"
     fi
     ignored_before="$(proven_ignored </dev/null)"  # what it MADE (proven_made)
     if [ "$fresh" = 1 ]; then
@@ -129,6 +146,8 @@ if [ "$rc" -eq 0 ] && [ -n "$key" ]; then
     if [ "$moved" = 0 ]; then
         rec=0
         proven_record "$key" "$tree" "$step_cmd" "$label" || rec=$?
+        [ "$rec" -ne 0 ] || proven_note_identity "$key" </dev/null \
+            || warn "proven: could not keep the identity the record was keyed under"
         [ "$rec" -ne 0 ] || proven_made_note "$step_cmd" "$fresh" "$(proven_made <(printf '%s\n' "$ignored_before") "$stamp" </dev/null)" \
             || warn "proven: could not remember what the step made"
         if [ "$rec" -eq 2 ]; then

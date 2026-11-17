@@ -153,22 +153,52 @@ def _files(root: Path, parts: tuple[str, ...] | list[str] = PARTS) -> list[str]:
     return sorted(rels)
 
 
-def content(root: Path, parts: tuple[str, ...] | list[str] = PARTS) -> str:
+def _entries(root: Path, parts: tuple[str, ...] | list[str], skip: frozenset[str] = frozenset()):
+    """(rel, kind, bytes) of each keyed file under root: bytecode and `skip` left out."""
+    for rel in _files(root, parts):
+        if "__pycache__" in rel.split("/") or rel in skip:
+            continue
+        p = root / rel
+        if p.is_symlink():
+            yield rel, b"l", os.readlink(p).encode()
+        else:
+            yield rel, (b"x" if p.stat().st_mode & 0o111 else b"f"), p.read_bytes()
+
+
+def content(root: Path, parts: tuple[str, ...] | list[str] = PARTS,
+            skip: frozenset[str] = frozenset()) -> str:  # fmt: skip
     """sha256 of the gates' bytes under root, ONE formula wherever they are read: each file's
     repo-relative path, kind (link, executable, file) and bytes. A checkout and the head export of
     its commit hold the same bytes and key alike; two formulas (`ls-files -s` plus the diff here,
     path and bytes there) put one commit's verdict under two keys (GOH.VERDICTKEYDRIFT)."""
     h = hashlib.sha256()
-    for rel in _files(root, parts):
-        if "__pycache__" in rel.split("/"):
-            continue
-        p = root / rel
-        if p.is_symlink():
-            kind, data = b"l", os.readlink(p).encode()
-        else:
-            kind, data = (b"x" if p.stat().st_mode & 0o111 else b"f"), p.read_bytes()
+    for rel, kind, data in _entries(root, parts, skip):
         h.update(rel.encode() + b"\0" + kind + b"\0" + str(len(data)).encode() + b"\0" + data)
     return h.hexdigest()
+
+
+def manifest(roots: list[Path]) -> list[str]:
+    """`<sha256> <kind> <path>` per file the proven identity keys under the roots (the first root
+    holding a path wins), test-only Rust left out as `identity` leaves it: a record keeps the one
+    its pass was keyed under, so a later miss on the same tree names the goh files that moved
+    (GOH.PROOFKEY) instead of a bare new key."""
+    out: dict[str, str] = {}
+    for root in roots:
+        for rel, kind, data in _entries(root, PARTS, test_only(root)):
+            out.setdefault(rel, f"{hashlib.sha256(data).hexdigest()} {kind.decode()} {rel}")
+    return [out[r] for r in sorted(out)]
+
+
+def test_only(root: Path) -> frozenset[str]:
+    """The Rust sources under root's crates/ that no release build compiles (GOH.PROOFKEY,
+    lib/rust_test_only.py): a change to these alone is no new verdict, the binary the gates run is
+    the same program. A file a crate embeds (build_inputs) stays keyed whatever its place."""
+    if not (root / "crates").is_dir():
+        return frozenset()
+    import rust_test_only  # lib/, beside this file
+
+    rels = [r for r in _files(root, ("crates",)) if r.endswith(".rs")]
+    return rust_test_only.find(root, rels, lambda: build_inputs(root))
 
 
 def build_inputs(root: Path) -> list[str]:
@@ -201,7 +231,7 @@ def binary(root: Path) -> str:
 def identity(root: Path) -> str:
     """The gates root as one line: its content, and the binary if it is not the content's build."""
     extra = binary(root)
-    return f"content {content(root)}" + (f" {extra}" if extra else "")
+    return f"content {content(root, PARTS, test_only(root))}" + (f" {extra}" if extra else "")
 
 
 def key(mode: str, root: Path = GOH_ROOT) -> str:
@@ -308,7 +338,8 @@ def gate_files(root: Path) -> list[str]:
     `content` keys (PARTS, bytecode aside). Gate code imports nothing of a gates root outside them
     (tests/test_proven_pythonpath.py walks every import), so its tests/, docs/ and hooks/ are not
     what a proven step read."""
-    return [r for r in _files(root) if "__pycache__" not in r.split("/")]
+    skip = test_only(root)
+    return [r for r in _files(root) if "__pycache__" not in r.split("/") and r not in skip]
 
 
 def pythonpath(value: str, repo: Path, scope: Callable[[Path], list[str]]) -> str:
@@ -423,6 +454,7 @@ def main(argv: list[str] | None = None) -> int:
     k.add_argument("--mode", required=True)
     k.add_argument("--root", type=Path, default=GOH_ROOT)
     sub.add_parser("keyed").add_argument("--root", type=Path, action="append", required=True)
+    sub.add_parser("manifest").add_argument("--root", type=Path, action="append", required=True)
     pv = sub.add_parser("proven")
     pv.add_argument("--root", type=Path, action="append", default=[])
     pv.add_argument("--repo", type=Path, help="the repo a PYTHONPATH entry may be")
@@ -446,6 +478,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if a.verb == "proven":
         print("\n".join(proven([r.resolve() for r in a.root], a.pythonpath, a.repo)))
+        return 0
+    if a.verb == "manifest":
+        print("\n".join(manifest([r.resolve() for r in a.root])))
         return 0
     if a.verb == "keyed":
         print("\n".join(keyed([r.resolve() for r in a.root])))

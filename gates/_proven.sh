@@ -19,6 +19,8 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 . "${BASH_SOURCE[0]%/*}/../lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
 # shellcheck source=gates/_proven_artifacts.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_proven_artifacts.sh"
+# shellcheck source=gates/_proven_why.sh
+. "$(dirname "${BASH_SOURCE[0]}")/_proven_why.sh"
 PROVEN_GOH_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # The identity's one formula, beside this file: a caller may name another PROVEN_GOH_ROOT to key.
 _PROVEN_IDENTITY_PY="$PROVEN_GOH_ROOT/lib/gate_identity.py"

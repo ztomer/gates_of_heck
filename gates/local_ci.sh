@@ -312,7 +312,7 @@ _later_runs() {
 # _start <i> -- a proven hit is done at once; anything else is launched in the background. A
 # HOLLOW hit (its products are not here: proven_owed) runs when a later step will.
 _start() {
-    local i="$1" pair hit age by owed
+    local i="$1" pair hit age by owed why
     PKEY[i]="" PTREE[i]="" PLIVE[i]="" NOTE[i]=""
     [ "$LIVE" -eq 1 ] && info "[$i/$_n] (${SRC[i]}) ${CMD[i]}"
     if pair="$(proven_key "${CMD[i]}" </dev/null)"; then
@@ -329,6 +329,8 @@ _start() {
                 return 0
             fi
             NOTE[i]="proven on this tree $age ago by $by, but $owed and a later step runs -- re-run"
+        elif why="$(proven_miss_reason "${PKEY[i]}" "${PTREE[i]}" "${CMD[i]}" </dev/null)" && [ -n "$why" ]; then
+            NOTE[i]="$why -- re-run"  # GOH.PROOFKEY: what moved since this tree last passed
         fi
     fi
     HIT[i]=""; STATE[i]=running; RUNNING=$((RUNNING + 1))
@@ -376,6 +378,8 @@ _report() { # _report <i>
         if ! proven_kept_check "$cmd" "${PLIVE[i]}" "$_moved" </dev/null; then _rec=3  # GOH.KEEP1
         elif [ "$_moved" = 0 ]; then
             proven_record "${PKEY[i]}" "${PTREE[i]}" "$cmd" "local_ci" </dev/null || _rec=$?
+            [ "$_rec" -ne 0 ] || proven_note_identity "${PKEY[i]}" </dev/null \
+                || warn "[$i/$_n] could not keep the identity the record was keyed under"
             [ "$_rec" -ne 0 ] || proven_made_note "$cmd" "$PROVEN_FRESH" "$(proven_made "$LOGDIR/ignored-$i" "$LOGDIR/stamp-$i" </dev/null)" </dev/null \
                 || warn "[$i/$_n] could not remember what the step made"
             [ "$_rec" -eq 0 ] || [ "$_rec" -eq 2 ] || warn "[$i/$_n] could not write the proven record"
