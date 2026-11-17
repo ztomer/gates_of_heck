@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 from test_push_gate import PUSH_GATE, _git, _repo
-from timing_bounds import GiveUp, assert_sooner
+from timing_bounds import GiveUp, assert_sooner, patience
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LIB = REPO_ROOT / "lib" / "gate_slot.sh"
@@ -91,7 +91,7 @@ class Gate:
 
     def finish(self) -> int:
         self.release.touch()
-        return self.proc.wait(timeout=60)
+        return self.proc.wait(timeout=patience(60))
 
     def kill(self) -> None:
         try:
@@ -472,3 +472,21 @@ def test_the_round_preflight_runs_inside_a_slot():
         'pre="$(setting GOH_ROUND_PREFLIGHT)"'
     )
     assert "gate_slot_release" in round_sh
+
+
+def test_a_gates_finish_wait_stretches_with_the_load(tmp_path, monkeypatch):
+    """GOH.COVHEADLINE: Gate.finish waited a fixed 60 s, and the consumer test built on it timed
+    out at load ~77 (16 s alone). The wait is a give-up deadline: patience() scales it."""
+    import timing_bounds
+
+    waited: list[float] = []
+
+    class Proc:
+        def wait(self, timeout: float) -> int:
+            waited.append(timeout)
+            return 0
+
+    gate = Gate.__new__(Gate)
+    gate.release, gate.proc = tmp_path / "release", Proc()
+    monkeypatch.setattr(timing_bounds, "load_factor", lambda: 5.0)
+    assert gate.finish() == 0 and waited == [300.0]

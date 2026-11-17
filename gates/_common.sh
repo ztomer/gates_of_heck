@@ -259,6 +259,11 @@ goh_step() {
     local _goh_t0 _goh_rc=0 _goh_limit
     _goh_t0=$(date +%s)
     _goh_limit="$(goh_step_timeout)"
+    # A step may NAME ITS OWN CAUSE (GOH.COVHEADLINE): it writes one line to $GOH_STEP_HEADLINE, and a
+    # failure then headlines that line instead of "<label> failed". The coverage step's red cause is
+    # a failing test that starved the measurement, and the label sent the reader to the floor.
+    local _goh_headline="$GOH_LOG.headline"
+    rm -f "$_goh_headline"
     # `if cmd; then rc=0; else rc=$?; fi` and NEVER `if ! cmd; then rc=$?`. In the negated form `$?`
     # is the status of the `!` — 0 when the command FAILED — so a step that died came back
     # successful and the gate ran on. Caught by tests/test_tui_integration.py
@@ -274,7 +279,7 @@ goh_step() {
         # its CLI contract is the Python's (tests/test_step_wrapper_cli.py) -- else the Python.
         local _goh_wrap=("$GOH_PY" -S "$GOH_ROOT/lib/bounded_run.py")
         [ -x "${GOH_RESOLVED_BIN:-}" ] && _goh_wrap=("$GOH_RESOLVED_BIN" step)
-        if ( goh_unbind_git; exec "${_goh_wrap[@]}" --timeout "$_goh_wall" \
+        if ( goh_unbind_git; GOH_STEP_HEADLINE="$_goh_headline" exec "${_goh_wrap[@]}" --timeout "$_goh_wall" \
                 --cpu-timeout "$_goh_cpu" --stall "$_goh_limit" \
                 --grace "${GOH_STEP_GRACE:-5}" --label "$label" -- "$@" ) >"$GOH_LOG" 2>&1; then
             _goh_rc=0
@@ -283,7 +288,7 @@ goh_step() {
         fi
     else
         step "$label (UNBOUNDED — GOH_STEP_TIMEOUT=0)"
-        if ( goh_unbind_git; "$@" ) >"$GOH_LOG" 2>&1; then
+        if ( goh_unbind_git; GOH_STEP_HEADLINE="$_goh_headline" "$@" ) >"$GOH_LOG" 2>&1; then
             _goh_rc=0
         else
             _goh_rc=$?
@@ -323,8 +328,13 @@ goh_step() {
         fi
         tail -n "$_goh_tail" "$GOH_LOG" >&2
         printf '\n'
+        local _goh_why=""
+        [ ! -f "$_goh_headline" ] || IFS= read -r _goh_why <"$_goh_headline" || true
+        rm -f "$_goh_headline"
+        [ -z "$_goh_why" ] || die "$GOH_NAME: $_goh_why"
         die "$GOH_NAME: $label failed ($(goh_exit_reason "$_goh_rc" "$_goh_limit"); command: $(goh_cmd_brief "$@"))"
     fi
+    rm -f "$_goh_headline"
     # Exit 0 is green only when the step did not SAY it failed: a `✗` status line at exit 0 is a
     # step whose words and exit code disagree, and in the house contract the `✗` wins (GOH.XEXIT,
     # lib/xexit.py; an advisory says `⚠`).

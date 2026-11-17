@@ -29,6 +29,7 @@ from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
 from test_gate_slot import LOCAL_CI, Gate, _env
 from test_push_gate import _git
+from timing_bounds import patience
 
 # The pre-v0.37 consumer shape: structural first, then a layer of its own, no slot code anywhere.
 OLD_GATE = """#!/usr/bin/env bash
@@ -122,7 +123,7 @@ def test_a_staged_consumer_gate_takes_no_slot(tmp_path, goh):
     try:
         holder.wait_for("TAKEN")
         staged = Consumer(tmp_path, "staged", env, scope="--staged")
-        assert staged.proc.wait(timeout=60) == 0, staged.out()
+        assert staged.proc.wait(timeout=patience(60)) == 0, staged.out()
         assert "gate slot" not in staged.out(), staged.out()
     finally:
         holder.kill()
@@ -135,7 +136,7 @@ def test_the_slot_ends_with_the_gate_not_with_a_daemon_it_left(tmp_path, goh):
     layer = f'nohup sleep 120 >/dev/null 2>&1 & echo $! > "{daemon}"'
     gate = Consumer(tmp_path, "daemon", env, layer=layer)
     try:
-        assert gate.proc.wait(timeout=60) == 0, gate.out()
+        assert gate.proc.wait(timeout=patience(60)) == 0, gate.out()
         assert "gate slot 1/1 taken" in gate.out(), gate.out()
         after = Gate(tmp_path, "after", env, body="true")
         try:
@@ -157,7 +158,7 @@ def test_a_consumer_gate_running_local_ci_after_structural_takes_one_slot(tmp_pa
     layer = f'bash "{LOCAL_CI}" --steps-only --step "echo STEP-RAN" .'
     gate = Consumer(tmp_path, "nested", env, layer=layer)
     try:
-        assert gate.proc.wait(timeout=60) == 0, gate.out()
+        assert gate.proc.wait(timeout=patience(60)) == 0, gate.out()
         text = gate.out()
         assert "STEP-RAN" in text, text
         assert text.count("gate slot 1/1 taken") == 1, text

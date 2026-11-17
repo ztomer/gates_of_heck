@@ -79,6 +79,7 @@ for _tui in "${GOH_GIT_ROOT:-}/tui/lib.sh" tui/lib.sh "$GOH_ROOT/tui/lib.sh"; do
     [ -n "$_tui" ] && [ -f "$_tui" ] && . "$_tui" && break
 done
 unset _tui
+. "$GOH_ROOT/tui/plural.sh"  # plural_noun: a vendored lib.sh predates it
 # info/err/warn only: the gate and _coverage_rust.sh call nothing else (an unused `ok` was SC2329).
 if command -v _lib_info >/dev/null 2>&1; then
     info() { _lib_info "$*"; }; warn() { _lib_warn "$*"; }; err() { _lib_err "$*"; }
@@ -115,6 +116,19 @@ export_failed() {
     fi
     if [ "${3:-}" = tests ] && [ "$named" = 0 ]; then
         err "$1: TESTS FAILED under coverage: the run names none -- see the tail below"
+    fi
+    # The step's headline (goh_step's GOH_STEP_HEADLINE, GOH.COVHEADLINE): the cause, not the floor.
+    if [ "${3:-}" = tests ] && [ -n "${GOH_STEP_HEADLINE:-}" ] && [ ! -s "$GOH_STEP_HEADLINE" ]; then
+        local names n first
+        names="$({ sed -n 's/^test \(.*\) \.\.\. FAILED$/\1/p' "$2"; sed -nE 's/^(FAILED|ERROR) ([^ ]+::[^ ]*).*/\2/p' "$2"; } | sort -u)"
+        n="$(printf '%s' "$names" | grep -c . || true)"   # grep -c exits 1 on a count of 0
+        first="$(printf '%s\n' "$names" | sed -n 1p)"
+        if [ "$n" -gt 0 ]; then
+            printf 'coverage: %s %s failed under coverage (%s) -- not measured\n' \
+                "$n" "$(plural_noun "$n" test)" "$first" >"$GOH_STEP_HEADLINE"
+        else
+            printf 'coverage: tests failed under coverage (the run names none) -- not measured\n' >"$GOH_STEP_HEADLINE"
+        fi
     fi
     # GOH_TAIL long, like the failed step around it (run 42944992082: the step printed whole and
     # this fixed 25-line tail under it kept one red test's reason of 65); a cut tail counts its cut.
