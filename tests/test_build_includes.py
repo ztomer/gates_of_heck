@@ -15,13 +15,12 @@ until covered).
 from __future__ import annotations
 
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 import _land_verdicts as lv
 import pytest
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, commit_all, write
 
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -33,14 +32,9 @@ RUNNER = "tests/test_runs_goh.py"
 PLANTED = "data/planted.json"
 
 
-def _git(root: Path, *args: str) -> None:
-    subprocess.run(["git", "-C", str(root), "-c", "user.email=t@t", "-c", "user.name=t", *args],
-                   check=True, capture_output=True, stdin=subprocess.DEVNULL)  # fmt: skip
-
-
-def _planted(tmp_path: Path) -> Path:
-    """A committed tree: a crate that includes PLANTED (outside crates/), one test that runs the
-    binary, one that does not."""
+def _planted(repo: Path) -> Path:
+    """A committed tree (the `repo` fixture): a crate that includes PLANTED (outside crates/), one
+    test that runs the binary, one that does not."""
     files = {
         "Cargo.toml": "[workspace]\n",
         "crates/app/src/main.rs": f'const P: &str = include_str!("../../../{PLANTED}");\n',
@@ -49,24 +43,21 @@ def _planted(tmp_path: Path) -> Path:
         "tests/test_pure.py": "def test_a():\n    assert 1\n",
     }
     for rel, text in files.items():
-        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / rel).write_text(text)
-    _git(tmp_path, "init", "-q")
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-q", "-m", "x")
-    return tmp_path
+        write(repo, rel, text)
+    commit_all(repo)
+    return repo
 
 
-def test_a_planted_include_outside_crates_joins_the_build_inputs(tmp_path: Path) -> None:
-    root = _planted(tmp_path)
+def test_a_planted_include_outside_crates_joins_the_build_inputs(repo: Path) -> None:
+    root = _planted(repo)
     inputs = gate_identity.build_inputs(root)
     assert PLANTED in inputs and inputs[:4] == list(gate_identity.BUILD), inputs
 
 
 def test_a_planted_include_chooses_each_test_that_runs_the_binary_and_no_other(
-    tmp_path: Path,
+    repo: Path,
 ) -> None:
-    chosen = at.affected(_planted(tmp_path), [PLANTED])
+    chosen = at.affected(_planted(repo), [PLANTED])
     assert RUNNER in chosen and "tests/test_pure.py" not in chosen, sorted(chosen)
 
 
@@ -77,8 +68,8 @@ def test_the_real_embeds_choose_the_tests_that_run_the_binary() -> None:
     assert "goh binary" in chosen["tests/test_check_moving_tags.py"], chosen
 
 
-def test_the_carry_reruns_a_binary_test_across_a_planted_include_change(tmp_path: Path) -> None:
-    root = _planted(tmp_path)
+def test_the_carry_reruns_a_binary_test_across_a_planted_include_change(repo: Path) -> None:
+    root = _planted(repo)
     changed = [PLANTED]
     chosen, why = lv.choose(root, changed)
     assert chosen is not None, why
