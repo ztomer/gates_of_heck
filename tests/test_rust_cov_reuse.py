@@ -112,6 +112,23 @@ def test_a_tree_whose_rust_is_unchanged_reuses_the_measurement(repo: Path) -> No
     assert _run(repo) == "PLAIN"
 
 
+def test_what_the_identity_says_on_stderr_is_no_input_of_the_key(
+    repo: Path, tmp_path: Path
+) -> None:
+    """GOH.PREPARITY: under load a head export fails now and then, and gate_identity.py says so on
+    stderr ("could not export ... running the working tree"). The key read its stderr too, so the
+    re-check after a measurement saw "moved", recorded nothing, and the next run measured again
+    where it reuses (VERDICTCARRY's land at load ~150: five of these tests red). An interpreter
+    that writes a different line to stderr on every run plays that warning here."""
+    noisy = tmp_path / "noisy-python"
+    noisy.write_text(
+        f'#!/bin/bash\necho "noise $$ $RANDOM" >&2\nexec {shutil.which("python3")} "$@"\n'
+    )
+    noisy.chmod(0o755)
+    assert _run(repo, GOH_PY=str(noisy)) == "MEASURED"
+    assert _run(repo, GOH_PY=str(noisy)) == "PLAIN"
+
+
 @pytest.mark.parametrize(
     ("rel", "text"),
     [

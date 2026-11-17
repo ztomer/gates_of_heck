@@ -248,8 +248,15 @@ _rust_cov_inputs() {
     # PYTHONPATH as an argument: gate_identity.py re-runs HEAD's copy, which rewrites the variable.
     args=(--external "$GOH_COV_RUST_EXTERNAL")
     [ -z "${PYTHONPATH+set}" ] || args+=(--pythonpath "$PYTHONPATH")
+    # Its STDOUT is the identity; its stderr is no input (GOH.PREPARITY: a head export that failed
+    # under load said so there, and a key that read it differed on every run -- measured, "moved",
+    # unrecorded, measured again). A failure is asked again for the line that says why.
     ident="$(cd "$top" && "$GOH_PY" -S "$PROVEN_GOH_ROOT/lib/gate_identity.py" rust --repo "$top" \
-        "${args[@]}" </dev/null 2>&1)" || { echo "no identity: $(printf '%s\n' "$ident" | tail -n 1)"; return 1; }
+        "${args[@]}" </dev/null 2>/dev/null)" || {
+        echo "no identity: $(cd "$top" && "$GOH_PY" -S "$PROVEN_GOH_ROOT/lib/gate_identity.py" rust \
+            --repo "$top" "${args[@]}" </dev/null 2>&1 | tail -n 1)"
+        return 1
+    }
     # GOH_DIR's path is not in the step (_rust_step), so its scripts are keyed by content when it is
     # another checkout than the one running this.
     d="$(cd "${GOH_DIR:-$PROVEN_GOH_ROOT}" 2>/dev/null && /bin/pwd -P)" || d=""

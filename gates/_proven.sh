@@ -89,11 +89,12 @@ EOF
     goh_index_tree . 2>/dev/null  # a private copy of the index: never its shared lock (lib/run_path.sh)
 }
 
-# _proven_tool <name> <version command...> — one toolchain line; absent tools a fixed token.
+# _proven_tool <name> <cmd...> — one toolchain line, stdout's (stderr's when stdout is silent: GOH.PREPARITY)
 _proven_tool() {
-    local name="$1"; shift
+    local name="$1" line; shift
     if command -v "$name" >/dev/null 2>&1; then
-        printf 'tool %s %s\n' "$name" "$("$@" 2>&1 </dev/null | head -n 1)"
+        line="$("$@" 2>/dev/null </dev/null)"   # a rustup notice on stderr keyed one tree apart
+        printf 'tool %s %s\n' "$name" "$(printf '%s\n' "${line:-$("$@" 2>&1 </dev/null)}" | head -n 1)"
     else
         printf 'tool %s absent\n' "$name"
     fi
