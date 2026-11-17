@@ -190,6 +190,31 @@ _proven_identity_slow() {
 }
 
 # The half read fresh on every key: the environment and the ignored files a build reads.
+# _proven_keep_lines <top> <path> -- `keep <path under top> <sha256>` for every regular file under
+# <path>, sorted by path, from ONE hashing process per batch of arguments (GOH.RUSTPROVENKEY). It was
+# a `$(hash_hex "$p")` per file -- a subshell, `shasum` and `cut` -- and a kept `.venv` of 3,037
+# files cost 72 s per call at load 78; a group asks for it three or four times, which was the 107,
+# 148 and 151 s silent gaps of game_asset_factory's push gate (2026-11-15). Where no batch hasher
+# exists (a `cksum -a` only host) the per-file loop is the fallback, with the same lines.
+_proven_keep_lines() {
+    local top="$1" dir="$2" p hasher=()
+    if command -v shasum >/dev/null 2>&1; then hasher=(shasum -a 256)
+    elif command -v sha256sum >/dev/null 2>&1; then hasher=(sha256sum)
+    fi
+    if [ "${#hasher[@]}" -eq 0 ]; then
+        find "$dir" -type f -print 2>/dev/null | env LC_ALL=C sort | while IFS= read -r p; do
+            printf 'keep %s %s\n' "${p#"$top"/}" "$(hash_hex "$p")"
+        done
+        return 0
+    fi
+    # "<64 hex><space><space or *><path>": the path starts at column 67.
+    find "$dir" -type f -print0 2>/dev/null | env LC_ALL=C sort -z \
+        | xargs -0 "${hasher[@]}" 2>/dev/null \
+        | env LC_ALL=C awk -v top="$top/" '{ p = substr($0, 67); if (index(p, top) == 1) p = substr(p, length(top) + 1)
+            print "keep " p " " substr($0, 1, 64) }'
+    return 0   # an unreadable file is a missing line, never a failed key (pipefail callers)
+}
+
 _proven_identity_live() {
     local name
     for name in $PROVEN_ENV_DEFAULT ${GOH_PROVEN_ENV:-}; do
@@ -207,9 +232,7 @@ _proven_identity_live() {
     top="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
     for f in ${GOH_EXPORT_KEEP:-}; do
         if [ -e "$top/$f" ]; then
-            find "$top/$f" -type f -print 2>/dev/null | env LC_ALL=C sort | while IFS= read -r p; do
-                printf 'keep %s %s\n' "${p#"$top"/}" "$(hash_hex "$p")"
-            done
+            _proven_keep_lines "$top" "$top/$f"
         else
             printf 'keep %s absent\n' "$f"
         fi

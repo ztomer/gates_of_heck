@@ -124,31 +124,26 @@ _rust_key() { # <mode> <step>
     fi
 }
 
-# rust_proven_group <group> <crate|tree> <function> -- run the function's steps unless proven.
-rust_proven_group() {
-    local group="$1" mode="$2" fn="$3" step pair="" pkey="" ptree="" hit age by escaped live="" moved=0
-    [ "$mode" = crate ] && _rust_scope_init
-    step="$(_rust_step "$group")"
-    if pair="$(_rust_key "$mode" "$step" </dev/null)"; then
-        read -r pkey ptree <<<"$pair"
-        live="$(_proven_identity_live </dev/null)"
-        if hit="$(proven_lookup "$pkey" "$step")"; then
-            read -r age by <<<"$hit"
-            # The coverage decision is shown on a pass (`↔`), as rust_coverage_reuse's is.
-            if [ "$group" = coverage ]; then
-                measure "[rust] $group checks: proven on these inputs $age ago by $by -- skipped"
-            else
-                ok "[rust] $group checks: proven on these inputs $age ago by $by -- skipped"
-            fi
-            return 0
-        fi
-    fi
-    "$fn"
-    [ -n "$pkey" ] || return 0
+# _rust_phase_end <label> <EPOCHREALTIME at its start> -- the bookkeeping around a group is a NAMED row
+# in the step table (GOH_TIMINGS, tier `phase`), and a line when it took 2 s or more, never a silent
+# gap (GOH.RUSTPROVENKEY: game_asset_factory's push gate spent 107, 148 and 151 s between two named
+# steps, in the keying and recording of three groups whose work took 21 s).
+_rust_phase_end() {
+    local ms now="$EPOCHREALTIME"
+    ms=$(( (${now/[.,]/} - ${2/[.,]/}) / 1000 ))
+    [ -z "${GOH_TIMINGS:-}" ] \
+        || "$GOH_PY" "$PROVEN_GOH_ROOT/lib/step_timings.py" record "$1" "$ms" 0 phase </dev/null || true
+    [ "$ms" -lt 2000 ] || measure "$1: $((ms / 1000)) s"
+    return 0
+}
+
+# _rust_group_record <group> <mode> <step> <pkey> <ptree> <live> -- after a GREEN group: the key
+# again, the kept-rewrite verdict, the dep-info check, the record. 0 recorded or not worth recording.
+_rust_group_record() {
+    local group="$1" mode="$2" step="$3" pkey="$4" ptree="$5" live="$6" moved=0 escaped where
     # GOH.KEEP1: a kept path the group rewrote is NAMED, and red unless the repo's ratchet carries
     # it. The ratchet names the group by this label, not by the step string, which carries a hash.
     [ "$(_rust_key "$mode" "$step" </dev/null)" = "$pkey $ptree" ] || moved=1
-    local where
     where="$(_rust_where)"
     [ "$group" = repo ] && where="(repo)"
     proven_kept_check "rust_gate $group $where" "$live" "$moved" || return 1
@@ -171,6 +166,36 @@ rust_proven_group() {
     fi
     proven_record "$pkey" "$ptree" "$step" "rust_gate" </dev/null \
         || warn "[rust] could not write the proven record for the $group checks"
+}
+
+# rust_proven_group <group> <crate|tree> <function> -- run the function's steps unless proven.
+rust_proven_group() {
+    local group="$1" mode="$2" fn="$3" step pair="" pkey="" ptree="" hit age by live="" t0 rc=0
+    t0="$EPOCHREALTIME"
+    [ "$mode" = crate ] && _rust_scope_init
+    step="$(_rust_step "$group")"
+    if pair="$(_rust_key "$mode" "$step" </dev/null)"; then
+        read -r pkey ptree <<<"$pair"
+        live="$(_proven_identity_live </dev/null)"
+        if hit="$(proven_lookup "$pkey" "$step")"; then
+            _rust_phase_end "[rust] $group: proven key" "$t0"
+            read -r age by <<<"$hit"
+            # The coverage decision is shown on a pass (`↔`), as rust_coverage_reuse's is.
+            if [ "$group" = coverage ]; then
+                measure "[rust] $group checks: proven on these inputs $age ago by $by -- skipped"
+            else
+                ok "[rust] $group checks: proven on these inputs $age ago by $by -- skipped"
+            fi
+            return 0
+        fi
+    fi
+    _rust_phase_end "[rust] $group: proven key" "$t0"
+    "$fn"
+    [ -n "$pkey" ] || return 0
+    t0="$EPOCHREALTIME"
+    _rust_group_record "$group" "$mode" "$step" "$pkey" "$ptree" "$live" || rc=$?
+    _rust_phase_end "[rust] $group: proven record" "$t0"
+    return "$rc"
 }
 
 # ── THE RUST COVERAGE VERDICT, REUSED (GOH.RUSTCOVSKIP) ─────────────────────────────────────────
