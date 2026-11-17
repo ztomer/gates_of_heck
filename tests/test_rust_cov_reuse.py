@@ -81,6 +81,8 @@ def repo(tmp_path: Path) -> Path:
 def _run_out(repo: Path, **env: str) -> tuple[str, str]:
     e = hermetic_env(drop_git=True, ROOT=str(REPO_ROOT), **{"GOH_COV_RUST_EXTERNAL": "true", **env})
     e.pop("GOH_RESOLVED_BIN", None)
+    if "PYTHONPATH" not in env:  # an input of the key: the test's own, never the caller's
+        e.pop("PYTHONPATH", None)
     r = subprocess.run(["bash", "-c", HARNESS], cwd=repo, env=e, capture_output=True, text=True,
                        timeout=patience(120), stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     out = r.stdout + r.stderr
@@ -265,21 +267,31 @@ def _gates_copy(dest: Path) -> Path:
     return dest
 
 
+def _real_dirs(tmp_path: Path) -> tuple[Path, Path]:
+    """Two directories on PYTHONPATH that are no gates root: there, so keyed by path (an entry
+    that is not there is no input, gate_identity.pythonpath)."""
+    out = (tmp_path / "py", tmp_path / "other")
+    for d in out:
+        d.mkdir(exist_ok=True)
+    return out
+
+
 def test_a_head_export_on_pythonpath_is_keyed_by_content(repo: Path, tmp_path: Path) -> None:
     """goh's land puts the tip's head export, ~/.cache/goh/head/<sha>, first on PYTHONPATH, and the
     key named it by path: every land, lib/ or tests/ only, measured again for 468-476 s
     (GOH.RUSTCOVKEYSCOPE). Two exports with the same coverage scripts are one input; one whose
     coverage scripts differ, or another directory on the path, is another."""
+    py, other = _real_dirs(tmp_path)
     a = _gates_copy(tmp_path / "head" / "a")
     b = _gates_copy(tmp_path / "head" / "b")
-    assert _run(repo, PYTHONPATH=f"{a}:/usr/lib/py") == "MEASURED"
-    assert _run(repo, PYTHONPATH=f"{b}:/usr/lib/py") == "PLAIN"
+    assert _run(repo, PYTHONPATH=f"{a}:{py}") == "MEASURED"
+    assert _run(repo, PYTHONPATH=f"{b}:{py}") == "PLAIN"
     c = _gates_copy(tmp_path / "head" / "c")
     edited = c / "gates/_coverage_rust.sh"
     edited.write_text(edited.read_text() + "\n# an edit\n")
-    assert _run(repo, PYTHONPATH=f"{c}:/usr/lib/py") == "MEASURED"
-    assert _run(repo, PYTHONPATH=f"{c}:/usr/lib/other") == "MEASURED"
-    _, out = _run_out(repo, PYTHONPATH=f"{b}:/usr/lib/other")
+    assert _run(repo, PYTHONPATH=f"{c}:{py}") == "MEASURED"
+    assert _run(repo, PYTHONPATH=f"{c}:{other}") == "MEASURED"
+    _, out = _run_out(repo, PYTHONPATH=f"{b}:{other}")
     assert "PYTHONPATH (its gates roots by content) moved" in _decision(out)
 
 
@@ -298,6 +310,31 @@ def test_a_gates_root_behind_another_on_pythonpath_is_shadowed(repo: Path, tmp_p
     assert _run(repo, PYTHONPATH=f"{a}:{old}") == "MEASURED"
 
 
+def test_a_pruned_export_behind_the_tip_is_no_new_input(repo: Path, tmp_path: Path) -> None:
+    """A land's PYTHONPATH carries earlier head exports behind the tip's, and lib/head_export.py
+    prunes the oldest whenever another land exports one: shadowed, it was no input; gone, it was
+    keyed by its path, so a running suite saw "PYTHONPATH moved" between two runs of one test
+    (GOH.VERDICTCARRY's land, 5 red) and a real land measured again for nothing."""
+    a = _gates_copy(tmp_path / "head" / "a")
+    old = _gates_copy(tmp_path / "head" / "old")
+    assert _run(repo, PYTHONPATH=f"{a}:{old}") == "MEASURED"
+    shutil.rmtree(old)
+    assert _run(repo, PYTHONPATH=f"{a}:{old}") == "PLAIN"
+
+
+def test_the_callers_pythonpath_is_no_input_of_these_runs(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each run's PYTHONPATH is the test's own (none, unless it names one): the caller's held the
+    live checkout and a land's head exports, which move under a running suite."""
+    live = _gates_copy(tmp_path / "live")
+    monkeypatch.setenv("PYTHONPATH", str(live))
+    assert _run(repo) == "MEASURED"
+    edited = live / "gates/_coverage_rust.sh"
+    edited.write_text(edited.read_text() + "\n# main moved under the suite\n")
+    assert _run(repo) == "PLAIN"
+
+
 def test_more_copies_of_one_gates_and_their_docs_are_no_new_input(
     repo: Path, tmp_path: Path
 ) -> None:
@@ -306,19 +343,20 @@ def test_more_copies_of_one_gates_and_their_docs_are_no_new_input(
     one more copy of the same gates (`goh:shadowed` once more), and a line that keys no files named
     the whole tree's diff. A wholly shadowed root and a repeated entry are no input; a gates root's
     docs/ and changelog/ are not its coverage scripts; a real PYTHONPATH miss names no file."""
+    py, _ = _real_dirs(tmp_path)
     a = _gates_copy(tmp_path / "head" / "a")
     b = _gates_copy(tmp_path / "head" / "b")
     for rel in ("docs/config.md", "changelog/GOH.X.md"):
         (b / rel).parent.mkdir(parents=True, exist_ok=True)
         (b / rel).write_text("prose\n")
-    assert _run(repo, PYTHONPATH=f"{a}:/usr/lib/py") == "MEASURED"
+    assert _run(repo, PYTHONPATH=f"{a}:{py}") == "MEASURED"
     _write(repo, "docs/note.md", "prose\n")  # the tree moves, by no input
-    assert _run(repo, PYTHONPATH=f"{b}:{a}:/usr/lib/py:{b}") == "PLAIN"
+    assert _run(repo, PYTHONPATH=f"{b}:{a}:{py}:{b}") == "PLAIN"
     c = _gates_copy(tmp_path / "head" / "c")
     edited = c / "gates/_coverage_rust.sh"
     edited.write_text(edited.read_text() + "\n# an edit\n")
     _write(repo, "changelog/GOH.Y.md", "prose\n")
-    ran, out = _run_out(repo, PYTHONPATH=f"{c}:/usr/lib/py")
+    ran, out = _run_out(repo, PYTHONPATH=f"{c}:{py}")
     assert ran == "MEASURED", out
     decision = _decision(out)
     assert "PYTHONPATH (its gates roots by content) moved" in decision, decision

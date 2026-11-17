@@ -344,22 +344,23 @@ def gate_files(root: Path) -> list[str]:
 
 def pythonpath(value: str, repo: Path, scope: Callable[[Path], list[str]]) -> str:
     """PYTHONPATH as a verdict reads it, the ONE formula the proven steps (scope gate_files) and the
-    Rust coverage measurement (scope rust_gate_scripts) key it by: each entry that is the repo is
-    `repo` (its inputs are keyed apart), each that is a gates root is the files of scope(root) by
-    CONTENT, any other by its path. goh's own land prepends the tip's head export,
-    ~/.cache/goh/head/<sha>, a new path for every commit: keyed by path, no land ever found the
-    last one's measurement (GOH.RUSTCOVKEYSCOPE: three lands in a row re-measured, 468-476 s each)
+    Rust coverage measurement (scope rust_gate_scripts) key it by: an entry that is the repo is
+    `repo` (keyed apart), a gates root the files of scope(root) by CONTENT, any other its path.
+    goh's land prepends the tip's head export, ~/.cache/goh/head/<sha>, a new path per commit:
+    keyed by path no land found the last one's measurement (GOH.RUSTCOVKEYSCOPE, 468-476 s each)
     nor any proven step (GOH.PROVENPYPATH). A gates root BEHIND another is keyed by the files of
-    its scope the roots ahead lack: the rest is never read from it. ~/.zshrc puts the live checkout
-    there, main before the land, and keyed whole it moved the key once after every change. One
-    whose every file is ahead is no input at all, and an entry met before adds nothing: as
-    `goh:shadowed` each, the land after GOH.RUSTCOVKEYSCOPE's re-measured (830 s) because its
-    PYTHONPATH carried one more copy of the same gates than the last land's had."""
+    its scope the roots ahead lack (~/.zshrc puts the live checkout there, main before the land);
+    one whose every file is ahead, or met before, is no input (one more copy of the same gates
+    re-measured, 830 s). An entry that is not there is no input either: head_export.py prunes the
+    oldest export when a land makes one, and keyed by path it moved the key under a running suite
+    (GOH.VERDICTCARRY2)."""
     top = repo.resolve()
     out: list[str] = []
     ahead: set[str] = set()
     for entry in value.split(":"):
         d = Path(entry).resolve() if entry else None
+        if d is not None and not d.exists():
+            continue
         if d is not None and d == top:
             label = "repo"
         elif d is not None and d.is_dir() and _is_goh_root(d):

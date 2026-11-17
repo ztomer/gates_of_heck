@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import json
 import os
 import re
 import subprocess
@@ -458,15 +459,19 @@ def run(root: Path, changed: list[str], chosen: dict[str, str]) -> int:
     fixture land of a goh copy) it runs nothing either and says so: pytest.sh refuses a nested
     suite, and the suite around it is already running these tests."""
     if not chosen:
-        ok(f"pre-land: no test is chosen by {counted(len(changed), 'changed path')}")
+        why = f"no test is chosen by {counted(len(changed), 'changed path')}"
+        ok(f"pre-land: {why}")
+        _ran_nothing(why)
         return 0
     if os.environ.get("GATES_OF_HECK_SUITE_RUNNER") and not os.environ.get(
         "GATES_OF_HECK_SUITE_NESTED_OK"
     ):
-        info(
-            f"pre-land: {counted(len(chosen), 'test file')} not run: inside a running goh suite "
+        why = (
+            f"{counted(len(chosen), 'test file')} not run: inside a running goh suite "
             f"(runner pid {os.environ['GATES_OF_HECK_SUITE_RUNNER']}), which runs them"
         )
+        info(f"pre-land: {why}")
+        _ran_nothing(why)
         return 0
     readers = len(tree_readers(root))
     info(
@@ -478,6 +483,15 @@ def run(root: Path, changed: list[str], chosen: dict[str, str]) -> int:
         check=False,  # no cwd: pytest.sh runs in its own checkout, the root
         stdin=subprocess.DEVNULL,
     ).returncode
+
+
+def _ran_nothing(why: str) -> None:
+    """The land's record when no suite ran to write it: no verdict, and why. tools/land.sh refuses a
+    green pre-step with no record in a tree whose suite records one (GOH.VERDICTCARRY2)."""
+    path = os.environ.get("GOH_LAND_VERDICTS_RECORD", "")
+    if not path or path == os.devnull:
+        return
+    Path(path).write_text(json.dumps({"identity": None, "sha": None, "passed": {}, "ran": why}))
 
 
 if __name__ == "__main__":

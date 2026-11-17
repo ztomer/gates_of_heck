@@ -151,6 +151,13 @@ if [ -n "$pre" ]; then
     elif [ "$pre_rc" -ne 0 ]; then
         err "land.sh: the pre-land tests failed on ${tip:0:8} $pre_took, before the land lock and the gate -- nothing landed"
         exit 1
+    elif [ -f "$here/tests/_land_verdicts.py" ] && [ ! -s "$verdicts" ]; then
+        # A tree whose suite records (tests/_land_verdicts.py) owes a record from a green pre-step:
+        # for days tests/suite_home.py dropped GOH_LAND_VERDICTS_RECORD, every land went green with
+        # none, and reuse and carry were inert with nothing said (GOH.VERDICTCARRY2). A pre-step
+        # that ran no test says so in the record (tools/affected_tests.py); none, or empty, is a fault.
+        err "land.sh: the pre-land tests were green on ${tip:0:8} $pre_took but wrote no verdict record ($verdicts) although tests/_land_verdicts.py records one -- GOH_LAND_VERDICTS_RECORD did not reach the suite (tests/suite_home.py CALLER_INPUTS?) -- nothing landed"
+        exit 1
     else
         ok "pre-land green $pre_took"
     fi

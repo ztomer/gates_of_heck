@@ -10,6 +10,8 @@ pre-step before the land lock and the gate, a red one landing nothing.
 
 from __future__ import annotations
 
+import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -285,6 +287,25 @@ def test_inside_a_running_suite_the_set_is_named_not_run(tmp_path, monkeypatch, 
     root = _tree(tmp_path, {"tests/test_x.py": ""})  # no tools/pytest.sh: a run would exit 127
     assert at.run(root, [], {"tests/test_x.py": "changed"}) == 0
     assert "not run: inside a running goh suite" in capsys.readouterr().out
+
+
+def test_a_pre_step_that_runs_no_test_says_so_in_its_record(tmp_path, monkeypatch) -> None:
+    """tools/land.sh refuses a green pre-step that wrote no record in a tree whose suite records
+    (GOH.VERDICTCARRY2): when this runs no test, the record it hands back names why, and holds no
+    verdict; /dev/null (a run by hand) is never written."""
+    root = _tree(tmp_path, {"tests/test_x.py": ""})
+    rec = tmp_path / "rec.json"
+    monkeypatch.setenv("GOH_LAND_VERDICTS_RECORD", str(rec))
+    assert at.run(root, ["README.md"], {}) == 0
+    got = json.loads(rec.read_text())
+    assert got["passed"] == {} and got["identity"] is None and "no test is chosen" in got["ran"]
+    rec.unlink()
+    monkeypatch.setenv("GATES_OF_HECK_SUITE_RUNNER", "1")
+    monkeypatch.delenv("GATES_OF_HECK_SUITE_NESTED_OK", raising=False)
+    assert at.run(root, [], {"tests/test_x.py": "changed"}) == 0
+    assert "inside a running goh suite" in json.loads(rec.read_text())["ran"]
+    monkeypatch.setenv("GOH_LAND_VERDICTS_RECORD", os.devnull)
+    assert at.run(root, [], {"tests/test_x.py": "changed"}) == 0
 
 
 def _declare(wt: Path, body: str) -> None:

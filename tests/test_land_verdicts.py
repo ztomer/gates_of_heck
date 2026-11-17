@@ -322,6 +322,34 @@ def test_land_hands_the_pre_steps_record_to_its_gate_and_removes_it(repo, tmp_pa
     assert not Path(path.strip()).exists(), "the land's record outlived it"
 
 
+def test_a_green_pre_step_that_wrote_no_record_is_a_fault(repo, tmp_path) -> None:
+    """tests/suite_home.py dropped GOH_LAND_VERDICTS_RECORD from the suite for days, and every land
+    went green with no record: reuse and carry were inert and nothing said so (GOH.VERDICTCARRY2).
+    In a tree whose suite records (tests/_land_verdicts.py), a green pre-step with no record, or an
+    empty one, lands nothing and names the fault; a tree with no recorder owes none."""
+    wt = _worktree(repo, tmp_path)
+    seen = tmp_path / "seen"
+    (wt / "tests").mkdir(exist_ok=True)
+    (wt / "tests" / "_land_verdicts.py").write_text("# the recorder\n")
+    git(wt, "add", "tests")
+    for pre in ("true", ': > "$GOH_LAND_VERDICTS_RECORD"'):
+        _declare(wt, f"GOH_LAND_PRE='{pre}'\nGOH_LAND_GATE='echo gate >> {seen}'\n")
+        before = _main(repo)
+        r = _land(wt)
+        out = r.stdout + r.stderr
+        assert r.returncode == 1, out
+        assert "wrote no verdict record" in r.stderr and "nothing landed" in r.stderr, out
+        assert not seen.exists() and _main(repo) == before, out
+    _declare(wt, "GOH_LAND_PRE='printf x > \"$GOH_LAND_VERDICTS_RECORD\"'\nGOH_LAND_GATE='true'\n")
+    r = _land(wt)
+    assert r.returncode == 0, r.stdout + r.stderr
+    # Calibration: the same empty pre-step, in a tree with no recorder, lands.
+    git(wt, "rm", "-q", "tests/_land_verdicts.py")
+    _declare(wt, "GOH_LAND_PRE='true'\nGOH_LAND_GATE='true'\n")
+    r = _land(wt)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
 def test_a_land_with_no_pre_step_gives_its_gate_no_record(repo, tmp_path) -> None:
     wt = _worktree(repo, tmp_path)
     seen = tmp_path / "seen"

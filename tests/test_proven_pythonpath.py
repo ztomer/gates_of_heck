@@ -41,7 +41,17 @@ def _second_export(first: Path, tmp_path: Path) -> Path:
     return dest
 
 
+def _real_dirs(tmp_path: Path) -> tuple[Path, Path]:
+    """Two directories on PYTHONPATH that are no gates root: there, so keyed by path (an entry
+    that is not there is no input, gate_identity.pythonpath)."""
+    out = (tmp_path / "py", tmp_path / "other")
+    for d in out:
+        d.mkdir(exist_ok=True)
+    return out
+
+
 def test_two_head_export_paths_of_one_content_share_a_proven_step(goh, repo, env, tmp_path):  # noqa: F811
+    py, _ = _real_dirs(tmp_path)
     a = _export(goh, tmp_path)
     b = _second_export(a, tmp_path)
     # What no gate imports or reads: the next commit's docs/ and changelog/ (GOH.VERDICTFREEINLINE's
@@ -49,9 +59,9 @@ def test_two_head_export_paths_of_one_content_share_a_proven_step(goh, repo, env
     for rel in ("docs/config.md", "changelog/GOH.X.md"):
         (b / rel).parent.mkdir(parents=True, exist_ok=True)
         (b / rel).write_text("prose\n")
-    first = _prove(goh, repo, env, f"{a}:/usr/lib/py")
+    first = _prove(goh, repo, env, f"{a}:{py}")
     assert first.returncode == 0 and runs(env) == 1, first.stdout + first.stderr
-    second = _prove(goh, repo, env, f"{b}:{a}:/usr/lib/py:{b}")  # one more copy, as lands vary
+    second = _prove(goh, repo, env, f"{b}:{a}:{py}:{b}")  # one more copy, as lands vary
     assert second.returncode == 0, second.stdout + second.stderr
     assert runs(env) == 1, f"a second path of one content on PYTHONPATH re-ran: {second.stdout}"
     assert "proven on this tree" in second.stdout, second.stdout
@@ -60,6 +70,7 @@ def test_two_head_export_paths_of_one_content_share_a_proven_step(goh, repo, env
 def test_one_changed_imported_file_on_pythonpath_reruns(goh, repo, env, tmp_path):  # noqa: F811
     """Calibration of the reuse above: content keying still sees a file a gate imports, and a
     root that is no gates root is still keyed by its path."""
+    _, other = _real_dirs(tmp_path)
     a = _export(goh, tmp_path)
     b = _second_export(a, tmp_path)
     assert _prove(goh, repo, env, str(a)).returncode == 0 and runs(env) == 1
@@ -67,8 +78,8 @@ def test_one_changed_imported_file_on_pythonpath_reruns(goh, repo, env, tmp_path
         f.write("# one byte more\n")
     again = _prove(goh, repo, env, str(b))
     assert again.returncode == 0 and runs(env) == 2, again.stdout + again.stderr
-    other = _prove(goh, repo, env, f"{b}:/usr/lib/other")
-    assert other.returncode == 0 and runs(env) == 3, other.stdout + other.stderr
+    elsewhere = _prove(goh, repo, env, f"{b}:{other}")
+    assert elsewhere.returncode == 0 and runs(env) == 3, elsewhere.stdout + elsewhere.stderr
     unset = _prove(goh, repo, env, None)
     assert unset.returncode == 0 and runs(env) == 4, unset.stdout + unset.stderr
 
@@ -95,6 +106,25 @@ def test_a_root_behind_another_is_keyed_only_by_what_the_one_ahead_lacks(goh, tm
     (a / "docs").mkdir()
     (a / "docs" / "note.md").write_text("prose\n")
     assert key(str(a)) == alone
+
+
+def test_an_entry_that_is_not_there_is_no_input(goh, tmp_path):  # noqa: F811
+    """A land's PYTHONPATH carries earlier head exports behind the tip's, and lib/head_export.py
+    prunes the oldest whenever another land exports: a wholly shadowed root was no input, and gone
+    it was keyed `path <it>`, so the key moved under a running suite and the Rust coverage reuse
+    tests measured twice (GOH.VERDICTCARRY2's land). Python reads nothing from a missing entry."""
+    live = tmp_path / "head" / "old"
+    shutil.copytree(goh, live, symlinks=True)
+
+    def key(pp: str) -> str:
+        return gate_identity.pythonpath(pp, tmp_path / "repo", gate_identity.gate_files)
+
+    before = key(f"{goh}:{live}")
+    shutil.rmtree(live)
+    assert key(f"{goh}:{live}") == before == key(str(goh)), "a pruned entry moved the key"
+    # Calibration: a directory that IS there and is no gates root is still keyed, by its path.
+    (tmp_path / "py").mkdir()
+    assert key(f"{goh}:{tmp_path / 'py'}") != before
 
 
 def test_the_coverage_key_and_the_proven_identity_share_one_formula():
