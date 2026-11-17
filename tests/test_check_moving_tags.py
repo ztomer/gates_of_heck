@@ -252,9 +252,12 @@ def test_a_marker_on_an_image_that_moves_from_the_grace_end_is_green_before_and_
     write(repo, "compose.yml", f"services:\n  db:\n    {reason}\n    image: postgres:16.4.1\n")
     write(repo, "tools/run.sh", f"#!/bin/sh\n{reason}\ndocker pull nginx:1.27.2\n")
     commit_all(repo)
-    for grace, stale in (("within", 1), ("over", 2)):
+    # Within the grace the script's stale marker is not red but SHOWN, as a warning naming the day
+    # (GOH.GRACESHAPES): one red line (compose.yml), one warned (tools/run.sh), exit 1 either way.
+    for grace, stale in (("within", 2), ("over", 2)):
         r = run_goh(repo, "moving-tags", env=hermetic_env(GOH_GRACE=grace))
         assert r.returncode == 1 and r.stderr.count("exempts nothing") == stale, (
             f"{grace}: {r.stderr}"
         )
         assert "compose.yml:3:" in r.stderr, r.stderr
+        assert ("2026-11-23" in r.stderr) == (grace == "within"), f"{grace}: {r.stderr}"
