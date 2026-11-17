@@ -160,3 +160,13 @@ def test_the_weight_is_one_function_cpuadmit_can_call() -> None:
     assert capacity.gate_weight("a", rows) == (2.0, "a")
     assert capacity.gate_weight("b", rows) == (2.0, "all runs")
     assert capacity.gate_weight("a", []) == (None, "no runs")
+
+
+def test_an_empty_load_seam_reads_the_os(tmp_path) -> None:
+    p = Planted(tmp_path, waiting=False)
+    p.env["GOH_LOADAVG_READING"] = ""
+    try:
+        got = json.loads(_cli(p.env, "--json").stdout)
+    finally:
+        p.close()
+    assert got["unread"] == [] and len(got["load"]["avg"]) == 3, got

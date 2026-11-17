@@ -144,8 +144,8 @@ def _waiting(directory: str | None) -> dict[str, int]:
 
 
 def _loadavg() -> list[float]:
-    seam = os.environ.get("GOH_LOADAVG_READING")
-    if seam is None:
+    seam = os.environ.get("GOH_LOADAVG_READING", "")
+    if not seam.strip():  # unset or empty: the OS's, as every GOH_* reads an empty value
         return [round(x, 2) for x in os.getloadavg()]
     try:
         avg = [float(x) for x in seam.split()]

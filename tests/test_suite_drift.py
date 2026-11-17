@@ -73,6 +73,9 @@ CPU_COUNT_POOLS = {
     # Not a pool: the core count an agent's outcome line records beside the load average, which the
     # weekly usage review judges per core (GOH.ULTRARULES).
     "hooks/claude/agent_guard.py": 1,
+    # Not a pool: the core count `goh capacity` divides the load average by, the lane-start rule's
+    # load per core (GOH.ADAPTLANES).
+    "lib/capacity.py": 1,
 }
 
 _INIT = re.compile(r'"init"|git init')
