@@ -84,8 +84,9 @@ fn warning(tag: &str, red: &[&String], files: usize) -> String {
     if red.is_empty() {
         return String::new();
     }
+    let verb = if red.len() == 1 { "is" } else { "are" };
     let mut out = format!(
-        "{} {tag} {} in {} turn red from {}, when the new shapes are judged (a warning until \
+        "{} {tag} {} in {} {verb} red from {}, when the new shapes are judged (a warning until \
          then): fix them, or seed them with `goh seed-add`\n",
         goh_tui::WARN,
         goh_tui::counted(red.len(), "site"),

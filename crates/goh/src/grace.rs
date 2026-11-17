@@ -16,6 +16,13 @@
 //! that is a finding only from the day is accepted before it, never reported stale.
 //! `movingtag::scan::scan_at`, `bareopen` and `gitdeadline` hold to it.
 //!
+//! THE GRACE SHOWS WHAT ITS END TURNS RED (GOH.GRACESHAPES). A shape held back judges nothing, but it
+//! is never silent: `ahead` reads the scan the way the day will and names every site only the day
+//! finds, as a warning with the exit unchanged, and holds a seeded one at the count the day will
+//! make, so a consumer can fix or seed a site before it turns red. One helper for every scanner
+//! that switches on `over()`; the scanners that print their own (`shape-diff`, the floors'
+//! advisory) already say it.
+//!
 //! `GOH_GRACE` is the ambient override, for the suites that judge the new behaviour (`over`) and for
 //! goh's own keyless fixtures (`within`); unset, the day decides. No `.gatesrc` can say it.
 

@@ -271,6 +271,12 @@ fn judge_at(
     store: Option<&Path>,
 ) -> (i32, String, String) {
     use goh_tui::ERR;
+    // Within the grace a commit's run stays as it was: listing the whole index for a gate that
+    // judges nothing is a git spawn on every commit, and the push scope reads the same tree and
+    // shows the gaps (GOH.GRACESHAPES; tests/test_goh_git_spawns.py is the ratchet).
+    if !over && staged {
+        return (0, String::new(), String::new());
+    }
     let fail = |m: String| (2, String::new(), format!("{ERR} {TAG} {m}\n"));
     let exclude = match crate::steps::compile_exclude(exclude) {
         Ok(x) => x,
