@@ -478,6 +478,20 @@ def _never_publish_the_live_goh():
         os.environ["GOH_SKIP_BUILD"] = previous
 
 
+@pytest.fixture(autouse=True)
+def _a_test_leaves_the_directory_it_found():
+    """A test that changes this worker's directory (GOH.LANDERCWD: an in-process `lander.drain()`
+    chdirs to its state dir, in a tmp dir pytest later removes) gives every later test in the worker
+    a dead cwd: `git clone` exit 128, `getcwd: cannot access parent directories`."""
+    try:
+        start = os.getcwd()
+    except OSError:
+        start = ""
+    yield
+    if start and os.path.isdir(start):
+        os.chdir(start)
+
+
 def llvm_cov_shim(bin_: Path) -> None:
     """The gate requires `cargo-llvm-cov` on PATH up front, at its floor (required_tools.tsv); the
     fake `cargo` above answers its subcommand, so the binary only has to report a version."""

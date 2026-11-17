@@ -23,6 +23,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 from timing_bounds import patience
 
 LANDQ = REPO_ROOT / "tools" / "landq.py"
+START = os.getcwd()  # the directory this worker collects (and so runs) from
 # Start the lander from a directory, delete the directory, THEN exec it: its cwd is a dead inode.
 DOOMED = (
     "import os, sys; d = sys.argv[1]; os.chdir(d); os.rmdir(d); "
@@ -95,3 +96,16 @@ def test_a_lander_re_running_its_fresh_code_does_so_from_its_state_dir(tmp_path,
     with pytest.raises(Exec):
         lq.drain()
     assert ran["cwd"] == str(state.resolve()), ran
+
+
+def test_an_in_process_drain_moves_this_process_to_the_state_dir(tmp_path, monkeypatch):
+    lq = landq_module()
+    monkeypatch.setenv("GOH_LANDQ_DIR", str(tmp_path / "state"))
+    monkeypatch.setattr(lq, "drain_held", lambda q, digest="": True)
+    assert lq.drain() == 0
+    assert os.getcwd() == str((tmp_path / "state").resolve())
+
+
+def test_the_next_test_finds_the_directory_the_one_before_it_found():
+    """conftest's `_a_test_leaves_the_directory_it_found`: the drain above left no mark here."""
+    assert os.getcwd() == START
