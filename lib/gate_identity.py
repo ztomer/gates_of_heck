@@ -298,15 +298,22 @@ def pythonpath(value: str, repo: Path) -> str:
     are keyed apart), each that is a gates root is that root's coverage scripts by CONTENT, any
     other by its path. goh's own land prepends the tip's head export, ~/.cache/goh/head/<sha>, a
     new path for every commit: keyed by path, no land ever found the last one's measurement
-    (GOH.RUSTCOVKEYSCOPE: three lands in a row re-measured, 468-476 s each)."""
+    (GOH.RUSTCOVKEYSCOPE: three lands in a row re-measured, 468-476 s each). A gates root BEHIND
+    another is keyed by the files of its closure the roots ahead lack: the rest is never read from
+    it. ~/.zshrc puts the live checkout there, main before the land, and keyed whole it moved the
+    key once after every coverage-script change."""
     top = repo.resolve()
     out = []
+    ahead: set[str] = set()
     for entry in value.split(":"):
         d = Path(entry).resolve() if entry else None
         if d is not None and d == top:
             out.append("repo")
         elif d is not None and d.is_dir() and _is_goh_root(d):
-            out.append("goh:" + content(d, rust_gate_scripts(d)))
+            scripts = rust_gate_scripts(d)
+            rest = [r for r in scripts if r not in ahead]
+            out.append("goh:" + (content(d, rest) if rest else "shadowed"))
+            ahead |= set(scripts)
         else:
             out.append(entry)
     return ":".join(out)

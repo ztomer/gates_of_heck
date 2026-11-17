@@ -283,6 +283,21 @@ def test_a_head_export_on_pythonpath_is_keyed_by_content(repo: Path, tmp_path: P
     assert "PYTHONPATH (its gates roots by content) moved" in _decision(out)
 
 
+def test_a_gates_root_behind_another_on_pythonpath_is_shadowed(repo: Path, tmp_path: Path) -> None:
+    """~/.zshrc puts the live checkout on PYTHONPATH behind the land's head export, and it is main
+    BEFORE the land: keyed whole it moved the key once after every coverage-script change. A file
+    the root ahead of it also has is never read from it; only the rest is keyed."""
+    a = _gates_copy(tmp_path / "head" / "a")
+    old = _gates_copy(tmp_path / "live")
+    assert _run(repo, PYTHONPATH=f"{a}:{old}") == "MEASURED"
+    edited = old / "gates/_coverage_rust.sh"
+    edited.write_text(edited.read_text() + "\n# main moved\n")
+    assert _run(repo, PYTHONPATH=f"{a}:{old}") == "PLAIN"
+    # A coverage-closure file only the root behind has is read from it, so it is keyed.
+    (a / "gates/lcov_merge.py").unlink()
+    assert _run(repo, PYTHONPATH=f"{a}:{old}") == "MEASURED"
+
+
 def test_the_runner_is_an_input_and_the_suite_is_not(repo: Path) -> None:
     """The external command runs the binary THROUGH a runner (goh's ./tools/pytest.sh): what it
     selects and how it runs moves the number, so it and what it sources are keyed; the suite it

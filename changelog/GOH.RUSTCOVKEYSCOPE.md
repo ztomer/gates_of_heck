@@ -5,7 +5,8 @@
   pipeline that met the store's directories, grep exited 2, and rust_gate's pipefail read that as
   no record; and the key named PYTHONPATH by path, where every land puts the tip's head export
   (`~/.cache/goh/head/<sha>`, new per commit). PYTHONPATH is now keyed as the measurement reads it,
-  each gates root on it by its coverage scripts' content. The key gains what the number depends on
+  each gates root on it by its coverage scripts' content, and one behind
+  another (the live checkout ~/.zshrc adds, main before the land) only by the files the one ahead lacks. The key gains what the number depends on
   and lacked: the runner the external command drives the binary through (goh's `tools/pytest.sh`
   and what it sources, imports or runs). Still not inputs, by the owner's rule: `tests/` and the
   scripts the suite exercises. Each measurement keeps its input lines beside its record, so the
