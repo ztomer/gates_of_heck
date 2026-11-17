@@ -82,6 +82,22 @@ def identity(root: Path = REPO_ROOT) -> str | None:
     return gate_identity.suite(root)
 
 
+STORE = "GOH_LAND_VERDICTS_STORE"  # the caller's store root (tests/suite_home.py `_land_store`)
+
+
+def _store() -> str:
+    """The store this run records into and carries from: GOH_REUSE_DIR, else the caller's that
+    suite_home resolved before it replaced HOME; "" (no store: nothing recorded or carried) in a
+    fixture session that names neither."""
+    return os.environ.get("GOH_REUSE_DIR") or os.environ.get(STORE, "")
+
+
+def _reuse():
+    """lib/reuse.py, its root pinned to `_store()`."""
+    os.environ["GOH_REUSE_DIR"] = _store()
+    return _lib("reuse")
+
+
 def _lib(name: str):
     sys.path.insert(0, str(REPO_ROOT / "lib"))
     try:
@@ -179,6 +195,7 @@ def pytest_sessionstart(session) -> None:
     if os.environ.get(RECORD) and _controller(session.config):
         _state["identity"] = identity()
         _state["sha"] = _git(REPO_ROOT, "rev-parse", "HEAD")
+    _say(session)
 
 
 def pytest_runtest_logreport(report) -> None:
@@ -225,7 +242,7 @@ def pytest_sessionfinish(session) -> None:
 def _record_store(session) -> None:
     """Merge this run's verdicts, and the ones it skipped as passed, into the tree's record."""
     me = _here()
-    if me is None:
+    if me is None or not _store():
         return
     plan = _state.get("plan") or {}
     rootdir = Path(session.config.rootpath)
@@ -236,12 +253,14 @@ def _record_store(session) -> None:
     other = int(plan.get("other", 0))
     full = _whole(session.config) and session.exitstatus == 0 and not _failed and not other
     by = "land gate" if os.environ.get(REUSE) else "pre-land"
-    _lib("reuse").record_suite(REPO_ROOT, me[0], me[1], passed, set(_failed), full, by, other)
+    _reuse().record_suite(REPO_ROOT, me[0], me[1], passed, set(_failed), full, by, other)
 
 
 def _shadows() -> None:
     """Each sampled source: its carried nodes ran; a failure among them is a disagreement."""
     plan = _state.get("plan") or {}
+    if plan.get("shadows"):
+        _reuse()
     audit = _lib("reuse_audit")
     for sh in plan.get("shadows", []):
         nodes = set(sh["nodes"])
@@ -254,7 +273,7 @@ def _shadows() -> None:
 
 def _again(sh: dict, bad: list[str]) -> tuple[str, str]:
     """Both sides again: the record read again, the failed carried nodes run again in a child."""
-    reuse = _lib("reuse")
+    reuse = _reuse()
     f = sh["fields"]
     rec, _ = reuse.lookup(CARRY, f)
     reused = "green" if rec and all(n in rec.get("passed", {}) for n in bad) else ""
@@ -332,11 +351,12 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
     """Add to `plan` the nodes carried from the recorded trees: each source, one audited use."""
     lines: list[str] = plan["lines"]
     me = _here()
-    if me is None:
-        lines.append("land verdicts: nothing carried (this checkout has no identity)")
+    if me is None or not _store():
+        why = "this checkout has no identity" if _store() else "no verdict store is named"
+        lines.append(f"land verdicts: nothing carried ({why})")
         return
     tree, tools = me
-    reuse, audit = _lib("reuse"), _lib("reuse_audit")
+    reuse, audit = _reuse(), _lib("reuse_audit")
     taken = 0
     for sha, src in trees(REPO_ROOT, pre_sha):
         if taken >= SOURCES:
@@ -386,10 +406,13 @@ def pytest_configure_node(node) -> None:
         node.workerinput[WORKER_KEY] = json.dumps(sorted(_plan(node.config)["skip"]))
 
 
-def pytest_report_header(config) -> list[str] | None:
-    if not os.environ.get(REUSE):
-        return None
-    return _plan(config)["lines"]
+def _say(session) -> None:
+    """What the gate skips, said even under -q (a report header is not): one line per source."""
+    if not (os.environ.get(REUSE) and _controller(session.config)):
+        return
+    term = session.config.pluginmanager.get_plugin("terminalreporter")
+    for line in _plan(session.config)["lines"]:
+        (term.write_line if term else print)(line)
 
 
 @pytest.hookimpl(trylast=True)

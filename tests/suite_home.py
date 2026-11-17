@@ -82,12 +82,30 @@ CALLER_INPUTS = (
     "GOH_COVERAGE_BIN_DIR",
     # gates/staged_guards.sh marks its run of the staged guards (tests/_drift_guard.py).
     "GOH_STAGED_GUARD_RUN",
+    # tools/land.sh's pre-step and gate hand the suite its verdict record (tests/_land_verdicts.py,
+    # GOH.LANDPREDUP): dropped here, as they were until GOH.VERDICTCARRY, no land reused a verdict.
+    "GOH_LAND_VERDICTS_RECORD",
+    "GOH_LAND_VERDICTS_REUSE",
+    # ... and the CALLER's verdict store, resolved before this home replaces HOME (`_land_store`).
+    "GOH_LAND_VERDICTS_STORE",
 )
 # What the suite sets for itself, after the drop: GOH_DIR (below, its own checkout -- unset, the
 # binary judged the default checkout's checkers, D.GOH1), GOH_GRACE (below), GOH_LIVE
 # (conftest), GOH_ESTATE_STATE (conftest's session fixture) and the private lock and cache roots
 # (host_locks.py, per test).
 SUITE_ROOT = str(Path(__file__).resolve().parent.parent)
+
+
+def _land_store() -> None:
+    """A land's suite records into the caller's store (lib/reuse.py root), not this home's."""
+    if not (
+        os.environ.get("GOH_LAND_VERDICTS_RECORD") or os.environ.get("GOH_LAND_VERDICTS_REUSE")
+    ):
+        return
+    named, state = os.environ.get("GOH_REUSE_DIR", ""), os.environ.get("XDG_STATE_HOME", "")
+    base = Path(state) if state.startswith("/") else Path(REAL_HOME) / ".local" / "state"
+    store = named if named.startswith("/") else str(base / "goh" / "reuse")
+    os.environ.setdefault("GOH_LAND_VERDICTS_STORE", store)
 
 
 def _drop_ship_inputs() -> None:
@@ -134,6 +152,7 @@ def _enter() -> None:
         MARKER
     ):  # a nested run (an xdist worker, a suite a test starts) keeps its own
         return
+    _land_store()
     _drop_caller_goh()
     real = Path(REAL_HOME)
     keep = {

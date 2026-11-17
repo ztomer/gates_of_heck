@@ -226,3 +226,21 @@ def test_the_release_kit_refuses_a_tip_without_a_full_suite_verdict(repo: Path, 
     assert r.returncode == 1, r.stdout + r.stderr
     assert "no full suite verdict" in r.stderr and "nothing moved" in r.stderr, r.stderr
     assert not git(repo, "branch", "--list", "release-*").strip()
+
+
+# -- the suite's own home keeps a land's keys and the caller's store --------------------------
+
+
+def test_the_suite_home_keeps_the_land_keys_and_resolves_the_callers_store(tmp_path) -> None:
+    """tests/suite_home.py drops every caller GOH_* it does not name (GOH.LIVEROOTLEAK): the land
+    keys were among them, so no land's suite ever recorded or reused a verdict."""
+    probe = (
+        "import os, sys; sys.path.insert(0, sys.argv[1]); import suite_home; "
+        "e = os.environ; print(e.get('GOH_LAND_VERDICTS_REUSE'), e.get('GOH_LAND_VERDICTS_STORE'))"
+    )
+    env = hermetic_env(GOH_LAND_VERDICTS_REUSE="/x/rec.json", XDG_STATE_HOME=str(tmp_path))
+    env.pop("GATES_OF_HECK_SUITE_REAL_HOME", None)
+    r = subprocess.run([sys.executable, "-c", probe, str(REPO_ROOT / "tests")], env=env,
+                       capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
+                       timeout=patience(60))  # fmt: skip
+    assert r.stdout.split() == ["/x/rec.json", str(tmp_path / "goh" / "reuse")], r.stdout + r.stderr
