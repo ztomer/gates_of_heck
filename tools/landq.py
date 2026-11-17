@@ -2,7 +2,7 @@
 """goh land: the landing queue (GOH.LANDQUEUE, owner 2026-11-11).
 
     goh land --enqueue REPO SHA [--item ID] [--ship [--summary TEXT]] [--no-start]
-    goh land --enqueue --land WORKTREE [--item ID] [--no-start]
+    goh land --enqueue --land WORKTREE [--item ID] [--no-start] [--no-pre REASON]
     goh land --wait ID|REQUEST [--timeout S]  # block until it finished: exit 0 landed, 1 red
     goh land --drain        # the lander: run every request in order, then exit
     goh land --status       # what is pending, running, and how each finished
@@ -29,6 +29,15 @@ SHA, the remote and branch the checkout tracks, the item, and the mode:
           The outcome's `sha` (and `landed`) is main's new tip (land.sh may have rebased the
           branch onto it); the enqueued tip is kept as `enqueued`.
 A red gate pushes nothing: git refuses the push when its pre-push hook fails; land.sh lands nothing.
+
+THE ENQUEUE PRE-STEP (GOH.ENQUEUEPRE). `--enqueue --land` first runs the land pre-step
+(GOH_LAND_PRE, the tests the diff chooses plus every tree reader) in the caller's worktree, by
+land.sh itself (GOH_LAND_PRE_ONLY=1: it stops before the lock), and refuses a red tip naming
+the failing tests: a tree reader the lane never ran used to meet its first run inside THIS serial
+queue, holding it (GOH.REUSEAUDIT's land: 537 s, red on three). A pre-step past its deadline
+is no verdict (GOH.PRESTEPDEADLINE): the tip queues and the line says so. The lander's own
+pre-step is still the authority after a rebase. `--no-pre REASON` skips the run, printing the
+reason.
 
 THE WAIT. The enqueue returns at once. `goh land --wait ID` (an item, or a request's path or name)
 blocks until that item's newest request reached done/, prints its outcome (and a red log's tail),
@@ -83,6 +92,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / "lib")]
 bounded_run = importlib.import_module("bounded_run")
 gitrun = importlib.import_module("gitrun")
 lock_order = importlib.import_module("lock_order")
+land_prestep = importlib.import_module("land_prestep")
 _tui = importlib.import_module("tui.lib")
 err, info, ok, warn = _tui.err, _tui.info, _tui.ok, _tui.warn
 
@@ -176,6 +186,15 @@ def land_script(wt: Path) -> Path:
     """The land.sh a lane runs by hand from WT: the worktree's own, else the kit's."""
     own = wt / "tools" / "land.sh"
     return own if own.is_file() else ROOT / "tools" / "land.sh"
+
+
+def prestep(req: dict) -> None:
+    """GOH.ENQUEUEPRE (lib/land_prestep.py): the pre-step first, then the queue."""
+    wt = Path(req["worktree"])
+    try:
+        land_prestep.run(wt, req["sha"], land_script(wt), git_bindings())
+    except land_prestep.Red as e:
+        raise Refused(str(e)) from None
 
 
 def write_json(path: Path, data: dict) -> None:
@@ -427,6 +446,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--item", default="")
     ap.add_argument("--ship", action="store_true", help="run goh ship --wait, not a bare push")
     ap.add_argument("--summary", default="")
+    ap.add_argument("--no-pre", metavar="REASON", nargs="?", const="",
+                    help="skip the enqueue's pre-step run; a reason is required")  # fmt: skip
     ap.add_argument("--no-start", action="store_true", help="enqueue only; start no lander")
     args = ap.parse_args(argv)
     if args.drain:
@@ -440,6 +461,12 @@ def main(argv: list[str] | None = None) -> int:
             if args.enqueue or args.ship:
                 raise Refused("--land takes the worktree only: no REPO SHA, no --ship")
             req = land_request(args.land, args.item)
+            if args.no_pre is None:
+                prestep(req)
+            elif not args.no_pre.strip():
+                raise Refused("--no-pre needs a reason: --no-pre 'why this tip skips the pre-step'")
+            else:
+                warn(f"--no-pre: the enqueue's pre-step skipped: {args.no_pre}")
         elif len(args.enqueue) != 2:
             raise Refused("--enqueue takes REPO SHA (or --land WORKTREE)")
         else:

@@ -319,6 +319,7 @@ def test_a_land_that_changes_the_lander_is_honoured_by_the_next_request(tmp_path
     code = tmp_path / "goh"
     # The lander and its closure; importlib's module names are said beside it.
     named = ("lib/bounded_run.py", "lib/gitrun.py", "lib/lock_order.py", "lib/lock_order.tsv")
+    named += ("lib/land_prestep.py", "lib/killtree.py")
     named += ("checks/_gitutil.py",)
     sc.copy_closure(
         code,
@@ -361,3 +362,57 @@ def test_a_land_that_changes_the_lander_is_honoured_by_the_next_request(tmp_path
     assert out["T.M"]["state"] == "landed" and "newcode" not in out["T.M"], out
     assert out["T.N"]["state"] == "landed", out
     assert out["T.N"].get("newcode") is True, "the next request ran the lander's OLD code"
+
+
+# THE ENQUEUE PRE-STEP (GOH.ENQUEUEPRE): the land pre-step's set runs in the caller's worktree
+# BEFORE a tip is queued, so a tree reader the lane never ran fails there, not inside the SERIAL
+# queue (GOH.REUSEAUDIT's land held it 537 s, then went red on three of them). The lander's own
+# pre-step stays the authority after a rebase.
+def _pending(tmp_path: Path) -> list[Path]:
+    pending = tmp_path / "landq" / "pending"
+    return list(pending.iterdir()) if pending.exists() else []
+
+
+def test_enqueue_refuses_a_tip_whose_pre_step_fails_and_names_the_test(repo, tmp_path, env):
+    wt, _ = _land_wt(repo, tmp_path)
+    pre = "echo 'FAILED tests/test_wiring.py::test_every_doc_row - planted'; exit 1"
+    env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": pre}
+    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.P", "--no-start")
+    out = done.stdout + done.stderr
+    assert done.returncode != 0 and "tests/test_wiring.py::test_every_doc_row" in out, out
+    assert "nothing enqueued" in out, out
+    assert _pending(tmp_path) == []
+
+
+def test_enqueue_queues_a_green_tip_after_running_the_pre_step_once(repo, tmp_path, env):
+    wt, tip = _land_wt(repo, tmp_path)
+    seen = tmp_path / "seen"
+    env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": f"echo pre >> {seen}"}
+    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.G", "--no-start")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert seen.read_text() == "pre\n"  # the enqueue ran it, in the worktree, and landed nothing
+    assert git(repo, "rev-parse", "HEAD").strip() != tip
+    assert len(_pending(tmp_path)) == 1
+
+
+def test_enqueue_queues_a_tip_whose_pre_step_hit_its_deadline_and_says_so(repo, tmp_path, env):
+    """GOH.PRESTEPDEADLINE: no verdict is not red; the lander's gate decides."""
+    wt, _ = _land_wt(repo, tmp_path)
+    env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": "sleep 30", "GOH_LAND_PRE_MAX": "2s"}
+    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.D", "--no-start")
+    out = done.stdout + done.stderr
+    assert done.returncode == 0, out
+    assert "no verdict" in out and "queued" in out, out
+    assert len(_pending(tmp_path)) == 1
+
+
+def test_enqueue_no_pre_names_its_reason_and_skips_the_pre_step(repo, tmp_path, env):
+    wt, _ = _land_wt(repo, tmp_path)
+    env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": "exit 1"}
+    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.X", "--no-start", "--no-pre")
+    assert done.returncode == 2 and "--no-pre needs a reason" in done.stdout + done.stderr
+    assert _pending(tmp_path) == []
+    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.X", "--no-start",
+                 "--no-pre", "lane ran the set by hand")  # fmt: skip
+    assert done.returncode == 0 and "lane ran the set by hand" in done.stdout + done.stderr
+    assert len(_pending(tmp_path)) == 1

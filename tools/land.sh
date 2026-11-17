@@ -69,6 +69,7 @@ verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall=""
 land_exit() {
     local rc=$?
     rm -f "$verdicts" "$pre_start"
+    [ -z "${GOH_LAND_PRE_ONLY:-}" ] || return "$rc"   # the enqueue's pre-step run is no land: no ledger row
     [ ! -s "${land_timings:-}" ] && rm -f "${land_timings:-}" "${land_timings:-}.log" "${land_timings:-}.controls.log"
     goh_span_record land "$(goh_repo_id "${main:-.}")" "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" \
         ${land_timings:+--timings "${GOH_TIMINGS:-$land_timings}"} --field "wait_lock_s=$lock_wait" \
@@ -153,6 +154,12 @@ if [ -n "$pre" ]; then
     else
         ok "pre-land green $pre_took"
     fi
+fi
+# GOH_LAND_PRE_ONLY (GOH.ENQUEUEPRE): `goh land --enqueue` runs the pre-step in the caller's worktree
+# before it queues the tip -- this script, so the set, the lane and the deadline are the lander's own
+# -- and stops here: no lock, no gate, no fast-forward. 0 is green or no verdict, 1 is a red set.
+if [ -n "${GOH_LAND_PRE_ONLY:-}" ]; then
+    exit 0
 fi
 # The land lock (GOH.LANDSERIAL, header): fd 7, held until this script exits.
 # shellcheck source=lib/lock_order.sh
