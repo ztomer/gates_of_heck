@@ -116,7 +116,8 @@ def test_the_real_pre_set_runs_a_slow_readers_reading_tests_not_the_file() -> No
     """test_bench_lock.py was 101 s of the 879 s the whole-file pre-set summed (2026-11-16)."""
     chosen = at.affected(REPO_ROOT, [])
     assert "tests/test_bench_lock.py" not in chosen
-    assert "tests/test_bench_lock.py::test_every_gate_joins_through_goh_init" in chosen
+    assert "tests/test_bench_lock_joins.py" not in chosen
+    assert "tests/test_bench_lock_joins.py::test_every_gate_joins_through_goh_init" in chosen
     for always in at.ALWAYS:
         assert always in chosen, always
 
