@@ -115,7 +115,7 @@
   "tests/bench_load_fakes.py": 2,
   "tests/conftest.py": 14,
   "tests/goh_structural_cases.py": 3,
-  "tests/host_locks.py": 1,
+  "tests/host_locks.py": 0,
   "tests/load_kit.py": 1,
   "tests/suite_home.py": 1,
   "tests/test_actions_sweep.py": 1,

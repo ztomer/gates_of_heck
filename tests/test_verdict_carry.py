@@ -240,6 +240,7 @@ def test_the_suite_home_keeps_the_land_keys_and_resolves_the_callers_store(tmp_p
     )
     env = hermetic_env(GOH_LAND_VERDICTS_REUSE="/x/rec.json", XDG_STATE_HOME=str(tmp_path))
     env.pop("GATES_OF_HECK_SUITE_REAL_HOME", None)
+    env.pop("GOH_REUSE_DIR", None)  # each test's own (tests/host_locks.py): the XDG one is asked
     r = subprocess.run([sys.executable, "-c", probe, str(REPO_ROOT / "tests")], env=env,
                        capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
                        timeout=patience(60))  # fmt: skip

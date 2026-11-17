@@ -43,11 +43,9 @@ is no longer written, and read here only, by sha, for a base pushed before the s
 without it every consumer's first floor push re-ran its whole gate. TTL a year: the base is the
 remote's tip, however old.
 
-THE AUDIT. A reused verdict is a claim that a fresh run would agree. Every reuse in goh is a
-registered path here -- its sites, its store, how its shadow re-runs it and at what rate -- whether
-its records live in this store or still in their own (docs/reuse.md); lib/reuse_audit.py samples
-the reuses, compares each sample with a fresh run, and turns a path off in one recorded state when
-they disagree (GOH.REUSEAUDIT). tests/test_reuse_audit.py refuses a reuse site no path names.
+THE AUDIT. Every reuse in goh is a registered path here -- its sites, store, shadow and rate --
+wherever its records live (docs/reuse.md); lib/reuse_audit.py samples, compares and switches off
+(GOH.REUSEAUDIT). tests/test_reuse_audit.py refuses a reuse site no path names.
 
 The store's root: GOH_REUSE_DIR (absolute), else $XDG_STATE_HOME/goh/reuse, else
 ~/.local/state/goh/reuse. Nothing else reads or writes under it, nor the legacy record files named
@@ -102,6 +100,7 @@ class ReusePath:
     sites: tuple[str, ...] = ()  # the files that skip work on its verdict (test_reuse_audit.py)
     shadow: str = ""
     every: int = 10  # one use in `every` is sampled (1: every use -- a ship's)
+    every_unbacked: int = 0  # the rate where no hosted CI backs the skip (backstop=False); 0: every
     min_samples: int = 3  # compared samples a window needs, or the path turns off (starved)
     unsampled: str = ""
 
@@ -117,7 +116,8 @@ def register(name: str, fields: tuple[str, ...], ttl_s: int, doc: str, **audit) 
     if not fields or len(set(fields)) != len(fields):
         raise ValueError(f"reuse path {name!r}: its key fields must be distinct and non-empty")
     p = ReusePath(name, tuple(fields), ttl_s, doc, **audit)
-    if p.shadow not in SHADOWS or bool(p.shadow) == bool(p.unsampled) or p.every < 1:
+    if p.shadow not in SHADOWS or bool(p.shadow) == bool(p.unsampled) or p.every < 1 \
+            or p.every_unbacked < 0:  # fmt: skip
         raise ValueError(f"reuse path {name!r}: a shadow of {SHADOWS}, or `unsampled` and why")
     PATHS[name] = p
     return p
@@ -184,8 +184,10 @@ register(
     "step", ("repo", "tree", "step", "closure", "identity", "env"), DAY_S,
     "a proven gate step: skipped when its inputs and the goh files that can decide it (its "
     "closure, lib/step_closure.py, GOH.PROVENCLOSURE) are unchanged",
-    store="goh-proven", sites=("gates/_proven.sh", "crates/goh/src/proven.rs"),
-    unsampled="two faces (shell, Rust); the shadow re-runs the step: slice 2",
+    # proven.sh and local_ci.sh ask before a skip; a repo no hosted CI gates is sampled 4x as
+    # often. The kill switch closure keying's flip waits on (GOH.PROVENCLOSURE2).
+    store="goh-proven", sites=("gates/_proven_audit.sh",), shadow="inline", every=16,
+    every_unbacked=4,
 )  # fmt: skip
 register(
     "rustcov", ("repo", "rust_identity"), DAY_S,

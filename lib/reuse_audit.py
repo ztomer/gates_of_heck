@@ -6,6 +6,10 @@ disagree (GOH.REUSEAUDIT; docs/reuse.md).
     reuse_audit.py enable PATH --fix SHA --test NODE   # back on after a disagreement: the fix, and
                                             # the test that misses on the input it lacked
     reuse_audit.py enable PATH --why TEXT   # back on after a starved window
+    reuse_audit.py use PATH [--unbacked] K=V...   # a shell site's ask: reuse, shadow or off
+    reuse_audit.py compare PATH --reused R --fresh F [--again R2 F2] K=V...
+                                            # its sampled reuse against the fresh run (exit 0:
+                                            # they agree; 1: they do not)
 
 WHY. Every speedup skips work on a recorded verdict, and a skip keyed on less than its real inputs
 makes the gate lie while reading faster (GOH.PROVENBUILD skipped a build an export needed;
@@ -125,8 +129,10 @@ def state(path: str) -> dict:
     return rec
 
 
-def use_many(path: str, keys: list[dict[str, str]]) -> list[str]:
-    """One decision per reuse a site is about to make, in order: "reuse", "shadow" or "off"."""
+def use_many(path: str, keys: list[dict[str, str]], backstop: bool = True) -> list[str]:
+    """One decision per reuse a site is about to make, in order: "reuse", "shadow" or "off".
+    `backstop=False`: nothing else re-runs what these reuses skip (a repo no hosted CI gates), so
+    they are counted apart and sampled one in the path's `every_unbacked`."""
     p = reuse._path(path)
     for fields in keys:
         reuse.key(p, fields)  # a partial key raises, as a lookup's does
@@ -139,15 +145,19 @@ def use_many(path: str, keys: list[dict[str, str]]) -> list[str]:
                 out.append("off")
                 continue
             win["uses"] += 1
-            due = bool(p.shadow) and win["uses"] % p.every == 0
+            n, every = win["uses"], p.every
+            if not backstop and p.every_unbacked:
+                win["unbacked"] = n = win.get("unbacked", 0) + 1
+                every = p.every_unbacked
+            due = bool(p.shadow) and n % every == 0
             win["sampled"] += due
             out.append("shadow" if due else "reuse")
         _write(rec)
     return out
 
 
-def use(path: str, fields: dict[str, str]) -> str:
-    return use_many(path, [fields])[0]
+def use(path: str, fields: dict[str, str], backstop: bool = True) -> str:
+    return use_many(path, [fields], backstop)[0]
 
 
 def compare(path: str, fields: dict[str, str], reused: str, fresh: str,
@@ -302,6 +312,20 @@ def report() -> list[dict]:
     return rows
 
 
+def _shell_site(a: argparse.Namespace) -> int:
+    """`use` and `compare` for a shell site (gates/_proven_audit.sh): the fields as K=V words."""
+    fields = dict(f.partition("=")[::2] for f in a.fields)
+    try:
+        if a.verb == "use":
+            print(use(a.path, fields, backstop=not a.unbacked))
+            return 0
+        again = (lambda: tuple(a.again)) if a.again else None
+        return 0 if compare(a.path, fields, a.reused, a.fresh, again) else 1
+    except KeyError as e:
+        print(f"reuse audit: {e}", file=sys.stderr)
+        return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="verb", required=True)
@@ -313,7 +337,19 @@ def main(argv: list[str] | None = None) -> int:
     en.add_argument("--test", default="")
     en.add_argument("--why", default="")
     en.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent)
+    us = sub.add_parser("use")
+    us.add_argument("path")
+    us.add_argument("--unbacked", action="store_true")
+    us.add_argument("fields", nargs="*")
+    co = sub.add_parser("compare")
+    co.add_argument("path")
+    co.add_argument("--reused", required=True)
+    co.add_argument("--fresh", required=True)
+    co.add_argument("--again", nargs=2, default=None)
+    co.add_argument("fields", nargs="*")
     a = ap.parse_args(argv)
+    if a.verb in ("use", "compare"):
+        return _shell_site(a)
     if a.verb == "drain":
         print("\n".join(drain()) or "reuse audit: no CI shadow queued")
         return 0

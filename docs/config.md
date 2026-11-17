@@ -263,7 +263,7 @@ TTL. Rationale and the full key: the header of `gates/proven.sh`.
 | `GOH_PROVEN` | unset (on) | `0` disables the cache: every step runs, nothing is recorded. |
 | `GOH_PROVEN_TTL_S` | `86400` | Record lifetime in seconds; older records are ignored and pruned. Non-numeric values are exit-2 usage errors. |
 | `GOH_PROVEN_ENV` | unset | Space-separated environment variable NAMES (in `.gatesrc`) whose values join the key, beside the built-in `CI RUSTFLAGS RUSTDOCFLAGS CARGO_BUILD_TARGET`. PYTHONPATH is keyed apart, by content: each gates root on it by the gates' files, any other entry by its path (`lib/gate_identity.py` `pythonpath`); named here it is keyed by its path as well. Name a variable here when a step's verdict depends on it. |
-| `GOH_PROVEN_CLOSURE` | `off` | `on` keys each proven step on its own goh closure (`lib/step_closure.py`, GOH.PROVENCLOSURE); `off` keys every step on the whole goh content, as before, and computes no closure. Staged off until GOH.REUSEAUDIT samples `step` (GOH.PROVENCLOSURE2). Any other value is an exit-2 usage error. |
+| `GOH_PROVEN_CLOSURE` | `off` | `on` keys each proven step on its own goh closure (`lib/step_closure.py`, GOH.PROVENCLOSURE); `off` keys every step on the whole goh content, as before, and computes no closure. Staged off (GOH.PROVENCLOSURE2) until the reuse audit, which samples `step` (GOH.REUSEAUDIT2, `gates/_proven_audit.sh`), has seen 3 ships with no disagreement. Any other value is an exit-2 usage error. |
 | `GOH_PROVEN_NOW` | internal | Clock seam for the tests (epoch seconds). Not user config. |
 
 ### The one verdict store (lib/reuse.py, GOH.ONEVERDICT)
@@ -275,7 +275,7 @@ the key fields it registers (`reuse.py paths`). The map of every store onto it: 
 |---|---|---|
 | `GOH_REUSE_DIR` | `$XDG_STATE_HOME/goh/reuse`, else `~/.local/state/goh/reuse` | The store's root; a relative path is refused. |
 | `GOH_REUSE_TTL_S` | the path's own (`gate`: `86400`) | Record lifetime in seconds; an older record is a miss. |
-| (the reuse audit) | no setting | `lib/reuse_audit.py` (GOH.REUSEAUDIT): each registered path's sample share (`every`) and window minimum (`min_samples`) live in `lib/reuse.py`'s one table, and a path's on/off state in the store (`<root>/audit/<path>.json`), never in an environment variable. A disagreement files its fault through `GOH_LOOPCTL` (into `GOH_LOOP_QUEUE` when set). |
+| (the reuse audit) | no setting | `lib/reuse_audit.py` (GOH.REUSEAUDIT): each registered path's sample share (`every`, and `every_unbacked` for a repo tracking no GitHub workflow) and window minimum (`min_samples`) live in `lib/reuse.py`'s one table, and a path's on/off state in the store (`<root>/audit/<path>.json`), never in an environment variable. A disagreement files its fault through `GOH_LOOPCTL` (into `GOH_LOOP_QUEUE` when set). |
 | `GOH_REUSE_NOW` | internal | Clock seam for the tests (epoch seconds). Not user config. |
 | `GOH_GATE_VERDICTS` | retired | The per-ship `green <sha>` file the push gate wrote under `goh ship` (GOH.VERDICTAPI); gone with GOH.ONEVERDICT, the push records into the store above. Neither set nor read; `lib/pin_sweep.py` still drops it from a child's environment. |
 

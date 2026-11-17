@@ -112,8 +112,8 @@ def test_one_use_in_every_is_sampled_exactly_and_an_off_path_reuses_nothing(monk
     assert set(got) == {"reuse", "shadow"}
     with pytest.raises(KeyError):
         reuse_audit.use("estate", {"identity": "i"})  # a partial key is no reuse
-    step = dict.fromkeys(reuse.PATHS["step"].fields, "v")
-    assert reuse_audit.use_many("step", [step] * 12) == ["reuse"] * 12  # unsampled: no shadow
+    file = dict.fromkeys(reuse.PATHS["file"].fields, "v")
+    assert reuse_audit.use_many("file", [file] * 12) == ["reuse"] * 12  # unsampled: no shadow
     monkeypatch.setattr(reuse_audit, "file_fault", lambda *a: "not filed: test")
     rec = reuse_audit._read("estate")
     reuse_audit._off(reuse.PATHS["estate"], rec, "disagree", "planted", {})
@@ -149,7 +149,7 @@ def test_a_window_with_its_samples_compared_stays_on_and_a_thin_one_is_never_cle
     rows = {r["path"]: r for r in reuse_audit.report()}
     assert rows["landed"]["verdict"] == "sampled" and rows["landed"]["window"]["compared"] == 3
     assert rows["estate"]["verdict"].startswith("thin")
-    assert rows["step"]["verdict"].startswith("UNSAMPLED")
+    assert rows["file"]["verdict"].startswith("UNSAMPLED")
     monkeypatch.setenv("GOH_REUSE_NOW", str(1000 + reuse_audit.WINDOW_S))
     assert reuse_audit.state("landed")["state"] == "on"
 
@@ -252,11 +252,13 @@ def test_every_registered_site_exists_and_every_sampled_one_asks_the_audit():
         assert p.sites, f"{p.name} names no site"
         for site in p.sites:
             assert (REPO_ROOT / site).is_file(), f"{p.name}: no site {site}"
-            if p.shadow:
-                assert f'use("{p.name}"' in (REPO_ROOT / site).read_text(), (p.name, site)
+            if p.shadow:  # Python asks `use("NAME", ...)`; shell, the CLI`s `use NAME`
+                text = (REPO_ROOT / site).read_text()
+                asks = f'use("{p.name}"' in text or f'reuse_audit.py" use {p.name} ' in text
+                assert asks, (p.name, site)
     sampled = sorted(p.name for p in reuse.PATHS.values() if p.shadow)
-    # slice 1 and GOH.VERDICTCARRY's `carry`; the rest say why (`unsampled`)
-    assert sampled == ["carry", "estate", "landed"], sampled
+    # slice 1, GOH.VERDICTCARRY's `carry`, GOH.REUSEAUDIT2's; the rest say why (`unsampled`)
+    assert sampled == ["carry", "estate", "landed", "step"], sampled
 
 
 def test_the_check_refuses_an_unregistered_reuse():

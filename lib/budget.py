@@ -61,6 +61,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import reuse_audit  # lib/: each reuse path's counts (GOH.REUSEAUDIT2)
 import timing_ledger
 
 MIN = 60
@@ -336,6 +337,20 @@ def unmeasured(seen: set[str]) -> list[dict]:
     return out
 
 
+def reuse_rows() -> list[dict]:
+    """Each registered reuse path's window, as `reuse_audit.py report` counts it: what the time
+    saved by skipping work stands on (GOH.REUSEAUDIT2)."""
+    out = []
+    for r in reuse_audit.report():
+        counts = {k: r["window"].get(k, 0) for k in REUSE_COUNTS}
+        out.append({"path": r["path"], "state": r["state"], "every": r["every"],
+                    "verdict": r["verdict"], **counts})  # fmt: skip
+    return out
+
+
+REUSE_COUNTS = ("uses", "sampled", "compared", "disagreed", "flakes")
+
+
 def snapshot() -> dict:
     rows = timing_ledger.read()
     judged = [judge(s, r) for s, r in sorted(subjects(rows).items())]
@@ -343,6 +358,7 @@ def snapshot() -> dict:
         "ledger": str(timing_ledger.ledger_path()),
         "subjects": judged,
         "unmeasured": unmeasured({j["subject"] for j in judged}),
+        "reuse": reuse_rows(),
     }
 
 
@@ -378,6 +394,12 @@ def render(snap: dict) -> str:
             )
     for u in snap["unmeasured"]:
         out.append(f"· {u['subject']}: unmeasured ({u['why']})")
+    out.append("goh reuse audit: each path's skips this window (lib/reuse_audit.py report)")
+    out.append(f"  {'path':<9} {'state':<5} " + " ".join(f"{k:>9}" for k in REUSE_COUNTS))
+    for r in snap["reuse"]:
+        mark = "✗" if r["state"] != "on" else "✓" if r["verdict"] == "sampled" else "·"
+        counts = " ".join(f"{r[k]:>9}" for k in REUSE_COUNTS)
+        out.append(f"{mark} {r['path']:<9} {r['state']:<5} {counts}  {r['verdict']}")
     return "\n".join(out)
 
 

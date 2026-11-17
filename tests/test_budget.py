@@ -21,6 +21,8 @@ from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import budget
+import reuse
+import reuse_audit
 import timing_ledger
 
 MIN = 60.0
@@ -302,6 +304,21 @@ def test_goh_budget_prints_every_state_and_json_carries_the_same(
     by = {j["subject"]: j for j in snap["subjects"]}
     assert (by["ztools push"]["state"], by["monitor land"]["state"]) == ("BREACHED", "ARMED")
     assert by["ztools push"]["last_s"] == 960.0 and by["ztools push"]["load1"] == 3.0
+
+
+def test_goh_budget_lists_every_reuse_path_with_its_counts(tmp_path: Path) -> None:
+    """GOH.REUSEAUDIT2: what the skips stand on, per path, beside the time they save."""
+    fields = dict.fromkeys(reuse.PATHS["step"].fields, "v")
+    reuse_audit.use_many("step", [fields] * 5, backstop=False)
+    reuse_audit.compare("step", fields, "green", "red", lambda: ("green", "green"))
+    by = {r["path"]: r for r in json.loads(_cli(tmp_path, "--json").stdout)["reuse"]}
+    assert set(by) == set(reuse.PATHS)
+    step = by["step"]
+    assert (step["uses"], step["sampled"], step["compared"], step["flakes"]) == (5, 1, 1, 1)
+    text = _cli(tmp_path).stdout
+    [line] = [x for x in text.splitlines() if x[2:].startswith("step ")]
+    assert line.split()[1:8] == ["step", "on", "5", "1", "1", "0", "1"], line
+    assert "UNSAMPLED" in next(x for x in text.splitlines() if x[2:].startswith("file "))
 
 
 # -- the writers: land.sh, goh ship's result, the push gate --------------------------------------

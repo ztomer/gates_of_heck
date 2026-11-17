@@ -39,10 +39,11 @@ proven_closures_prime() {
     export GOH_PROVEN_CLOSURES GOH_PROVEN_CLOSURES_FOR
 }
 
-# THE SWITCH (GOH.PROVENCLOSURE2). GOH_PROVEN_CLOSURE=on keys as above; off (the default, until
-# GOH.REUSEAUDIT samples `step`) keys every step on the whole goh content as before GOH.PROVENCLOSURE:
-# the bare step, the `goh` content lines in the identity (lib/gate_identity.py proven), and no
-# closure computed at all. proven_settings refuses any other value (exit 2).
+# THE SWITCH (GOH.PROVENCLOSURE2). GOH_PROVEN_CLOSURE=on keys as above; off (the default, until the
+# reuse audit sampling `step`, gates/_proven_audit.sh, has seen 3 clean ships) keys every step on
+# the whole goh content as before GOH.PROVENCLOSURE: the bare step, the `goh` content lines in the
+# identity (lib/gate_identity.py proven), and no closure computed at all. proven_settings refuses
+# any other value (exit 2).
 _proven_closure_on() { [ "${GOH_PROVEN_CLOSURE:-off}" = on ]; }
 _proven_closure_valid() {
     case "${GOH_PROVEN_CLOSURE:-off}" in

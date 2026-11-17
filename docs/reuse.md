@@ -52,7 +52,8 @@ the push log text instead of calling `goh ship verdict`; until it does, it misse
   input. A window (7 days) that compared fewer samples than min(min_samples, the samples it drew)
   is STARVED and turns the path off too; fewer drawn than min_samples reads "thin", never clean.
   goh's own shadow is hosted CI's full gate of every push (a "ci" shadow, queued, read once by the
-  idle lander through `loopctl ci`); local shadows are for private consumers (slice 2).
+  idle lander through `loopctl ci`). A repo no hosted CI gates has nothing behind its skips: a
+  path with `every_unbacked` counts such uses apart and samples them at that higher rate.
   `reuse_audit.py report [--json]` is the per-path count of uses, samples, disagreements and flakes.
   `tests/test_reuse_audit.py` refuses a reuse site no path names, an ask of an unregistered path
   and a path registered outside the one table.
@@ -96,5 +97,6 @@ moves; one on the live checkout keeps it only while goh's main does not move.
 | `estate` | inline, 1 in 10: the entry judged afresh | `checks/_estate_cache.py` (`reusable`, `shadowed`) |
 | `landed` | ci, every release push: hosted CI's full gate of the pushed commit | `lib/release_gate.py` (`audited`) |
 | `carry` | inline, 1 in 10: the carried nodes of a source run anyway; a failure among them is re-run in a child pytest, and a repeat turns `carry` off | `tests/_land_verdicts.py` (`_carry`, `_shadows`) |
-| `gate`, `test`, `origin`, `step`, `rustcov`, `file` | none yet: each says why (`reuse_audit.py report`) | slice 2 |
+| `step` | inline, 1 in 16 hits, 1 in 4 where the repo tracks no GitHub workflow (no hosted CI behind the skip): the step runs anyway; a red one runs again and its record is looked up again, and a repeat turns `step` off, so every later hit runs (GOH.REUSEAUDIT2; the closure keying's kill switch, GOH.PROVENCLOSURE2) | `gates/_proven_audit.sh` (`proven_audit_use`, `proven_audit_judge`), asked by `gates/proven.sh` and `gates/local_ci.sh` before a skip |
+| `gate`, `test`, `origin`, `rustcov`, `file` | none yet: each says why (`reuse_audit.py report`) | slice 2 |
 | `pushed`, `affected` | none by design: `pushed` is identity-free; `affected` skips nothing but through `test` | |

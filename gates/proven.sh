@@ -109,7 +109,7 @@ run_it() {
     fi
 }
 
-key="" tree="" live="" fresh=0 ignored_before="" stamp=""
+key="" tree="" live="" fresh=0 ignored_before="" stamp="" audit=""
 if pair="$(proven_key "$step_cmd" </dev/null)"; then
     read -r key tree <<<"$pair"
     live="$(_proven_identity_live </dev/null)"
@@ -119,9 +119,14 @@ if pair="$(proven_key "$step_cmd" </dev/null)"; then
     if hit="$(proven_lookup "$key" "$step_cmd")"; then
         read -r age by <<<"$hit"
         if ! owed="$(proven_owed "$step_cmd" "$fresh" </dev/null)"; then
-            [ -z "$log" ] || : >"$log"
-            step "$label: proven on this tree $age ago by $by — skipped"
-            exit 0
+            # Every skip asks the reuse audit first (gates/_proven_audit.sh, GOH.REUSEAUDIT2).
+            audit="$(proven_audit_use "$key" "$tree" "$step_cmd")"
+            if [ "$audit" = reuse ]; then
+                [ -z "$log" ] || : >"$log"
+                step "$label: proven on this tree $age ago by $by — skipped"
+                exit 0
+            fi
+            owed="$(proven_audit_why "$audit")"
         fi
         step "$label: proven on this tree $age ago by $by, but $owed -- re-run"
     elif why="$(proven_miss_reason "$key" "$tree" "$step_cmd" </dev/null)" && [ -n "$why" ]; then
@@ -138,6 +143,9 @@ set +e
 run_it
 rc=$?
 set -e
+if [ "$audit" = shadow ] && ! proven_audit_judge "$key" "$tree" "$step_cmd" "$rc" run_it; then
+    err "$label: the proven record said green, this run says otherwise (reuse audit: reuse_audit.py report)"
+fi
 if [ "$rc" -eq 0 ] && [ -n "$key" ]; then
     after="$(proven_key "$step_cmd" </dev/null || true)"
     moved=0; [ "$after" = "$key $tree" ] || moved=1

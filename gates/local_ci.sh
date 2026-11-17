@@ -315,7 +315,7 @@ _later_runs() {
 # HOLLOW hit (its products are not here: proven_owed) runs when a later step will.
 _start() {
     local i="$1" pair hit age by owed why
-    PKEY[i]="" PTREE[i]="" PLIVE[i]="" NOTE[i]=""
+    PKEY[i]="" PTREE[i]="" PLIVE[i]="" NOTE[i]="" AUDIT[i]=""
     [ "$LIVE" -eq 1 ] && info "[$i/$_n] (${SRC[i]}) ${CMD[i]}"
     if pair="$(proven_key "${CMD[i]}" </dev/null)"; then
         read -r "PKEY[i]" "PTREE[i]" <<<"$pair"
@@ -324,13 +324,19 @@ _start() {
             read -r age by <<<"$hit"
             owed="$(proven_owed "${CMD[i]}" "$PROVEN_FRESH" </dev/null)"
             if [ -z "$owed" ] || ! _later_runs "$i"; then
+                AUDIT[i]="$(proven_audit_use "${PKEY[i]}" "${PTREE[i]}" "${CMD[i]}")"  # GOH.REUSEAUDIT2
+            fi
+            if [ "${AUDIT[i]:-}" = reuse ]; then
                 [ -z "$owed" ] || NOTE[i]="$owed, and no later step runs to need them"
                 HIT[i]="$age $by"; STATE[i]="done"; RC[i]=0; proven_hit_marks "${CMD[i]}" "$ROOT"
                 [ -z "${GOH_TIMINGS:-}" ] \
                     || "$GOH_PY" "$GOH_ROOT/lib/step_timings.py" record "${CMD[i]}" 0 0 step hit </dev/null
                 return 0
+            elif [ -n "${AUDIT[i]:-}" ]; then
+                NOTE[i]="proven on this tree $age ago by $by, but $(proven_audit_why "${AUDIT[i]}") -- re-run"
+            else
+                NOTE[i]="proven on this tree $age ago by $by, but $owed and a later step runs -- re-run"
             fi
-            NOTE[i]="proven on this tree $age ago by $by, but $owed and a later step runs -- re-run"
         elif why="$(proven_miss_reason "${PKEY[i]}" "${PTREE[i]}" "${CMD[i]}" </dev/null)" && [ -n "$why" ]; then
             NOTE[i]="$why -- re-run"  # GOH.PROOFKEY: what moved since this tree last passed
         fi
@@ -361,6 +367,8 @@ _launch() { # start every pending step a slot and its tags allow, in declared or
     return 0
 }
 
+_again() { ( run_step "$LOGDIR/step-$1.again.log" "${RUN[$1]}" "$1" ) </dev/null; }  # a red shadow's second run
+
 _report() { # _report <i>
     local i="$1" rc="${RC[$1]}" cmd="${CMD[$1]}" logf="$LOGDIR/step-$1.log" age by
     [ "$LIVE" -eq 1 ] || info "[$i/$_n] (${SRC[i]}) $cmd"
@@ -373,6 +381,8 @@ _report() { # _report <i>
         return 0
     fi
     _rec=0; [ "$rc" -ne 0 ] || "$GOH_PY" -S "$GOH_ROOT/lib/xexit.py" --say "[$i/$_n]" "$logf" </dev/null || { rc=1; RC[i]=1; }  # ✗ at exit 0 is red (GOH.XEXIT)
+    [ "${AUDIT[i]:-}" != shadow ] || proven_audit_judge "${PKEY[i]}" "${PTREE[i]}" "$cmd" "$rc" _again "$i" \
+        || err "[$i/$_n] the proven record said green, this run says otherwise (reuse_audit.py report)"
     if [ "$rc" -eq 0 ] && [ -n "${PKEY[i]}" ]; then
         # Recorded only if the tree and the gates did not move, and the kept-rewrite ratchet is green.
         _moved=0; [ "$(proven_key "$cmd" </dev/null)" = "${PKEY[i]} ${PTREE[i]}" ] || _moved=1

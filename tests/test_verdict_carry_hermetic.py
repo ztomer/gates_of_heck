@@ -127,10 +127,11 @@ def test_a_session_a_test_starts_never_records_into_the_lands_store(
     (d / "test_child.py").write_text(CHILD_TEST)
     store = tmp_path / "store"
     land = {key: str(d / "rec.json"), "GOH_LAND_VERDICTS_STORE": str(store)}
+    env = hermetic_env(drop_git=True, GOH_LOOPCTL=str(d / "no-loopctl"), **land)
+    env.pop("GOH_REUSE_DIR")  # each test's own (tests/host_locks.py): a land names its store
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-rA", "test_outer.py"],
-        cwd=d, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=False,
-        env=hermetic_env(drop_git=True, GOH_LOOPCTL=str(d / "no-loopctl"), **land),
+        cwd=d, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=False, env=env,
         timeout=patience(120),
     )  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr

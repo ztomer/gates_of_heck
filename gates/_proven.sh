@@ -22,10 +22,11 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 # shellcheck source=gates/_proven_why.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_proven_why.sh"
 PROVEN_GOH_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-# The identity's one formula, beside this file: a caller may name another PROVEN_GOH_ROOT to key.
-_PROVEN_IDENTITY_PY="$PROVEN_GOH_ROOT/lib/gate_identity.py"
+_PROVEN_IDENTITY_PY="$PROVEN_GOH_ROOT/lib/gate_identity.py"   # the identity's one formula (a caller may name another root)
 # shellcheck source=gates/_proven_closure.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_proven_closure.sh"   # each step's goh closure (GOH.PROVENCLOSURE)
+# shellcheck source=gates/_proven_audit.sh
+. "$(dirname "${BASH_SOURCE[0]}")/_proven_audit.sh"   # every skip asks the reuse audit (GOH.REUSEAUDIT2)
 
 # Environment variables whose values change what a gate step concludes, keyed by default. The
 # repo adds its own with GOH_PROVEN_ENV (space-separated names) in .gatesrc. PYTHONPATH is not one:

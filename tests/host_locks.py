@@ -31,6 +31,10 @@ HOST_LOCKS = (
 CACHE_ROOTS = (
     "GOH_PUSH_LOGS",
     "GOH_PUSH_WORKTREES",
+    # The verdict store and its reuse audit (lib/reuse.py, lib/reuse_audit.py): a test's proven
+    # hits are counted there and one in a path's `every` re-run, so a store shared across tests
+    # made which hit a test's gate re-ran depend on the tests before it (GOH.REUSEAUDIT2).
+    "GOH_REUSE_DIR",
 )
 
 # A push worktree must be PHYSICAL and outside the temp directory (SwiftLint's baseline matches
@@ -56,7 +60,7 @@ def scrubbed(environ, prefixes: tuple[str, ...], keep: tuple[str, ...] = ()) -> 
 def no_test_reaches_a_host_lock(tmp_path_factory, monkeypatch):
     """Every test, and every process it starts, gets private copies of the machine's locks."""
     root = tmp_path_factory.mktemp("host-locks")
-    for name in HOST_LOCKS + ("GOH_PUSH_LOGS",):
+    for name in (*HOST_LOCKS, "GOH_PUSH_LOGS", "GOH_REUSE_DIR"):
         monkeypatch.setenv(name, str(root / name.lower()))
     monkeypatch.setenv("GOH_PUSH_WORKTREES", tempfile.mkdtemp(dir=_WORKTREES))
     monkeypatch.delenv("ZTOOLS_GPU_LOCK_OWNER", raising=False)
