@@ -26,7 +26,9 @@ def _run(tmp_path: Path, exit_code: int):
         "#!/bin/bash\n"
         # -c: the xdist probe; `-m pytest --version`: the runner's pytest refusal (CI.PUBLIC2);
         # gates/ruff_agree.py: the one-ruff preflight (GOH.TOOLHYGIENE).
-        'if [ "$1" = -c ] || [ "$3" = --version ] || [ "${1##*/}" = ruff_agree.py ]; then\n'
+        # Only the suite's own run is recorded (a call after it, the timing ledger's row,
+        # GOH.GATEBUDGET2, would overwrite it): `-c`, `--version` and every script exit 0.
+        'if [ "$1 $2" != "-m pytest" ] || [ "$3" = --version ]; then\n'
         "  exit 0\nfi\n"
         f'printf "%s\\n" "$PYTEST_DEBUG_TEMPROOT" > "{argv}"\n'
         f"exit {exit_code}\n"

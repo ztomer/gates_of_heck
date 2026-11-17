@@ -25,7 +25,10 @@ def _argv(tmp_path: Path, *args: str, cores: str | None = None, **extra: str) ->
     # The share (lib/worker_share.py) is asked of the REAL interpreter: it is what is under test.
     stub.write_text(
         f'#!/bin/bash\ncase "$*" in *worker_share.py*) exec "{sys.executable}" "$@" ;; esac\n'
-        f'if [ "$1" = -c ]; then exit 0; fi\nprintf "%s\\n" "$@" > "{record}"\n'
+        # Only the suite's own run is recorded: a call after it (the timing ledger's row,
+        # GOH.GATEBUDGET2) would overwrite the argv under test.
+        f'if [ "$1 $2" != "-m pytest" ] || [ "$3" = --version ]; then exit 0; fi\n'
+        f'printf "%s\\n" "$@" > "{record}"\n'
     )
     stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
     (tmp_path / "slots").mkdir(exist_ok=True)

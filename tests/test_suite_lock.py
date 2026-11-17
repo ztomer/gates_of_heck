@@ -21,7 +21,8 @@ def _run(tmp_path: Path, lock: Path) -> tuple[subprocess.CompletedProcess, Path]
     seen = tmp_path / "seen"
     stub = tmp_path / "python3"
     stub.write_text(
-        f'#!/bin/bash\nif [ "$1" = -c ]; then exit 0; fi\nreadlink "{lock}" > "{seen}"\nexit 0\n'
+        f'#!/bin/bash\nif [ "$1 $2" != "-m pytest" ] || [ "$3" = --version ]; then exit 0; fi\n'
+        f'readlink "{lock}" > "{seen}"\nexit 0\n'
     )
     stub.chmod(0o755)
     env = {

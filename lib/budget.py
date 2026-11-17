@@ -61,6 +61,8 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import cip_history  # lib/: the CIP lanes' push gates, the ledger's first rows (GOH.GATEBUDGET2)
+import land_attempts  # lib/: each land attempt a row, an item's retries one run (GOH.GATEBUDGET2)
 import reuse_audit  # lib/: each reuse path's counts (GOH.REUSEAUDIT2)
 import timing_ledger
 
@@ -131,7 +133,18 @@ KINDS: dict[str, Kind] = {
     "landq wait": Kind(10 * MIN, 15 * MIN, "median5", "enqueued to started", ""),
     "landq run": Kind(10 * MIN, 15 * MIN, "median5", "started to finished", ""),
     "land retries": Kind(
-        10 * MIN, 15 * MIN, "last", "an item's first land attempt to the one that lands", ""
+        10 * MIN,
+        15 * MIN,
+        "last",
+        "an item's land attempts summed, the first to the one that lands (lib/land_attempts.py)",
+        "goh land: each request's `land attempt` row",
+    ),
+    "suite": Kind(
+        10 * MIN,
+        15 * MIN,
+        "last",
+        "tools/pytest.sh's whole run: pytest's start to its exit (`suite:carried` reused verdicts)",
+        "tools/pytest.sh",
     ),
 }
 
@@ -202,7 +215,10 @@ def trend(runs: list[dict], kind: Kind) -> dict:
 
 
 def subjects(rows: list[dict]) -> dict[str, list[dict]]:
+    """Each subject's runs in TIME order (a backfill appends rows older than live ones); land
+    attempts become their items' `land retries` runs."""
     out: dict[str, list[dict]] = {}
+    rows = sorted([*rows, *land_attempts.retry_runs(rows)], key=lambda r: r.get("epoch", 0))
     for r in rows:
         if kind_of(r.get("kind", "")) is not None and isinstance(r.get("wall_s"), (int, float)):
             out.setdefault(r["subject"], []).append(r)
@@ -233,6 +249,9 @@ def judge(subject: str, rows: list[dict]) -> dict:
     }
     if last.get("top_steps"):
         out["top_steps"] = last["top_steps"]
+    if last.get("attempts"):
+        out["attempts"] = last["attempts"]
+        out["chain"] = land_attempts.chain_line(last)
     return out
 
 
@@ -387,6 +406,8 @@ def render(snap: dict) -> str:
             f"{GLYPH[j['state']]} {j['subject']:<{width}}  {j['state']:<9} {_min(j['last_s']):>9} "
             f"{_min(j['median_s']):>9} {_min(j['cpu_s']):>8} {load:>6}  {shown}{red}"
         )
+        if j.get("chain"):
+            out.append(f"    last: {j['chain']}")
         if j["state"] == BREACHED and j.get("top_steps"):
             out.append(
                 "    breach, costliest steps: "
@@ -417,6 +438,8 @@ def main(argv: list[str]) -> int:
         return 0
     if not a.no_backfill:
         backfill_ships()  # idempotent: the ships that predate the ledger, or finished without it
+        cip_history.backfill()  # the CIP lanes' push gates (GOH.GATEBUDGET2)
+        land_attempts.backfill(land_attempts.done_dir())  # the queue's timed attempts
     snap = snapshot()
     print(json.dumps(snap, ensure_ascii=False, indent=2) if a.json else render(snap))
     return 0

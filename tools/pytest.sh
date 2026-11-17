@@ -108,8 +108,18 @@ TARGET=(tests/)
 for a in "$@"; do
     [ -e "${a%%::*}" ] && { TARGET=(); break; }
 done
+# THE SUITE'S CPU-S (GOH.GATEBUDGET2, lib/budget.py KINDS `suite`): a WHOLE run (no argument)
+# is a `goh suite` row in the timing ledger, `goh suite:carried` when it reused another run's
+# verdicts (GOH_LAND_VERDICTS_REUSE); its wall moves with the box's load, its cpu-s does not. A
+# narrowed run measures a selection and writes none. The ledger never fails the suite.
+# shellcheck source=lib/timing_ledger.sh
+. "$GOH/lib/timing_ledger.sh"
+suite_kind=suite
+[ ! -s "${GOH_LAND_VERDICTS_REUSE:-}" ] || suite_kind=suite:carried
+[ "$#" -ne 0 ] || goh_span_start
 rc=0
 "$GOH_PY" -m pytest "${TARGET[@]}" "${ARGS[@]}" "$@" || rc=$?
+[ "$#" -ne 0 ] || goh_span_record "$suite_kind" goh "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" --field "exit=$rc"
 if [ "$rc" -eq 0 ]; then
     goh_rm_tree "$PYTEST_DEBUG_TEMPROOT"
 else

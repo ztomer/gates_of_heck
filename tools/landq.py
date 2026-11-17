@@ -79,6 +79,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / "lib")]
 bounded_run = importlib.import_module("bounded_run")
 gitrun = importlib.import_module("gitrun")
+land_attempts = importlib.import_module("land_attempts")
 lock_order = importlib.import_module("lock_order")
 land_prestep = importlib.import_module("land_prestep")
 landq_batch = importlib.import_module("landq_batch")
@@ -230,7 +231,13 @@ def run_one(q: Path, path: Path) -> dict:
 
 
 def record(req_path: Path, outcome: dict, item: str) -> None:
+    """The outcome to loopctl, done/ and the timing ledger. It names its ITEM and which ATTEMPT
+    at it this was (a re-enqueue after a red is attempt n+1, lib/land_attempts.py), and every
+    attempt -- red, timed out, landed -- is one `land attempt` row (GOH.GATEBUDGET2)."""
+    done_dir = req_path.parent.parent / "done"
+    named = land_attempts.item_of(req_path, {"item": item})
     outcome = {**outcome, "at": now()}
+    outcome.update(item=named, attempt=land_attempts.attempt_of(done_dir, named))
     if item:
         tool = loopctl()
         if tool.is_file():
@@ -243,7 +250,11 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
         else:
             outcome["recorded"] = False
             warn(f"no loopctl at {tool} (GOH_LOOPCTL): {item}'s outcome is only in done/")
-    write_json(req_path.parent.parent / "done" / req_path.name, outcome)
+    write_json(done_dir / req_path.name, outcome)
+    try:
+        land_attempts.record(outcome, req_path.stem)
+    except Exception as e:  # noqa: BLE001 -- the instrument is never the reason a land fails
+        warn(f"{named}: its attempt row was not written to the timing ledger: {e}")
     mark = ok if outcome["state"] == "landed" else err
     mark(f"{item or Path(outcome['repo']).name}: {outcome['state']} @ {outcome['sha'][:8]}")
 
