@@ -262,3 +262,20 @@ pub struct SeedAddArgs {
     /// A seed file's shape (`why` + `entries`), or the bare `entries` array.
     pub input: std::path::PathBuf,
 }
+
+/// What `goh seed-settle --help` adds: how a journal is produced (GOH.TUIMARKSSETTLE).
+const SEED_SETTLE_HELP: &str = "A journal is written by a seeded check run at a commit \
+(`goh tui-marks --staged`, and the other seeded checks) when `GOH_SEED_PENDING` names a directory: \
+it lowers or deletes the entries of the paths the commit changed and journals that there instead \
+of writing the store. The commit hook sets the variable, runs every step, and runs this only if \
+all passed; a refused commit's journal is dropped unapplied. By hand: `GOH_SEED_PENDING=<dir> goh \
+tui-marks --staged`, then `goh seed-settle <dir>`. `tui-marks` journals within the grace \
+(`GOH_GRACE`) too. The store is `GOH_SEED_DIR`, else `$XDG_STATE_HOME/goh/seeds`.";
+
+/// `goh seed-settle`: apply a passed commit's journals.
+#[derive(clap::Args, Debug)]
+#[command(after_long_help = SEED_SETTLE_HELP)]
+pub struct SeedSettleArgs {
+    /// The pending directory the checks journalled into (`GOH_SEED_PENDING`).
+    pub pending: std::path::PathBuf,
+}

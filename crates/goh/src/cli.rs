@@ -411,7 +411,7 @@ pub enum Commands {
         registry: bool,
     },
     /// Apply a passed commit's journalled seed settles (`gates/commit_gate.sh`, GOH.SEEDREFUSED).
-    SeedSettle { pending: PathBuf },
+    SeedSettle(crate::cli_args::SeedSettleArgs),
     /// Add a sweep's pending entries to a private-store seed file (GOH.GRACEEND).
     SeedAdd(crate::cli_args::SeedAddArgs),
     /// Fail on a private repository's name (the private store's list) in this tracked tree.

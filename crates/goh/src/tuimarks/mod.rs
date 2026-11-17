@@ -171,12 +171,19 @@ fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<S
     Ok(out)
 }
 
-/// The verdict over `files`: `(exit code, stdout, stderr)`. Nothing is judged within the grace.
+/// The verdict over `files`: `(exit code, stdout, stderr)`. Nothing is judged within the grace, but
+/// the run is still made: see `judge_at`.
 fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, String, String) {
     judge_at(root, files, exclude, staged, crate::grace::over())
 }
 
 /// `judge` with the grace decided (`crate::grace`).
+///
+/// The grace changes the VERDICT, never the RECORD (GOH.TUIMARKSSETTLE): within it the run is made
+/// all the same, so a commit that fixes a seeded mark journals its settle and `goh seed-settle`
+/// retires the entry, and the stale entries do not pile up unseen to meet each consumer as a wall
+/// of red at its first push after `crate::grace::OVER_FROM`. Its answer is then discarded: exit 0,
+/// nothing printed, a failed read of the seed included.
 fn judge_at(
     root: &Path,
     files: &[String],
@@ -184,10 +191,17 @@ fn judge_at(
     staged: bool,
     over: bool,
 ) -> (i32, String, String) {
-    use goh_tui::ERR;
-    if !over {
-        return (0, String::new(), String::new());
+    let judged = judge_all(root, files, exclude, staged);
+    if over {
+        judged
+    } else {
+        (0, String::new(), String::new())
     }
+}
+
+/// The verdict of the full run, the grace or not.
+fn judge_all(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, String, String) {
+    use goh_tui::ERR;
     let seed = match estate_seed::load(root, KIND, staged) {
         Ok(s) => s,
         Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
