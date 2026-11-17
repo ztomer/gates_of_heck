@@ -7,10 +7,8 @@
     goh land --drain        # the lander: run every request in order, then exit
     goh land --status       # what is pending, running, and how each finished
 
-WHY. Every agent ran its own push gate, so its lifetime was the machine's queue: pushes measured
-in this session's transcripts took 1197 s, 1196 s, 1298 s and 1523 s (the gate itself, run under
-three other gates' load: a private consumer's `make ci` hook alone was 1276 s of its 1298 s),
-and one waited 1308 s for a gate slot before it began. The agent sat idle through all of it.
+WHY. Every agent ran its own push gate, so its lifetime was the machine's queue: pushes took
+1197-1523 s in transcripts under three other gates' load, and one waited 1308 s for a gate slot.
 Now an agent ends at "committed and enqueued"; what follows is nobody's turn.
 
 THE REQUEST is one JSON file under `<dir>/pending/` (GOH_LANDQ_DIR, default
@@ -52,17 +50,15 @@ records the outcome on the item: `loopctl set ID landing {"state": "landed"|"red
 Between requests it re-reads the digest of its own code (tools/landq.py and lib/ on the live
 checkout's HEAD); a land that changed it makes the lander release the lock and exec a fresh one,
 so the very next request runs the new code (GOH.LANDERSTALECODE).
-After the last request it releases the lock and looks once more: a request enqueued in that
-window either sees the lock free and starts its own lander, or is seen here.
+After the last request it releases the lock and looks once more: a request enqueued meanwhile
+starts its own lander or is seen here.
 
-WHERE IT RUNS, AND A REBOOT (decided:
-docs/decisions/D-0006-a-landing-queue-ends-the-agent-at-enqueue.md). Not a launchd agent:
-`--enqueue` starts a detached lander (own session) when none holds the lock, and the
-coordinator's tick may run `goh land --drain` to restart one. A request survives a reboot because
-it is a file: one a dead lander left in `running/` is moved back to the front of `pending/` by the
-next lander and run again (a push of a sha the remote already has is a no-op, and lands).
+WHERE IT RUNS, AND A REBOOT (D-0006, docs/decisions/). Not a launchd agent: `--enqueue` starts a
+detached lander (own session) when none holds the lock, and the coordinator's tick may run
+`goh land --drain`. A request survives a reboot because it is a file: one a dead lander left in
+`running/` returns to the front of `pending/` and runs again (a pushed sha is a no-op).
 
-Pinned by tests/test_landq.py.
+Pinned by tests/test_landq.py; `--report` (GOH.LANDREPORT): lib/landq_report.py.
 """
 
 from __future__ import annotations
@@ -93,6 +89,7 @@ bounded_run = importlib.import_module("bounded_run")
 gitrun = importlib.import_module("gitrun")
 lock_order = importlib.import_module("lock_order")
 land_prestep = importlib.import_module("land_prestep")
+landq_report = importlib.import_module("landq_report")
 _tui = importlib.import_module("tui.lib")
 err, info, ok, warn = _tui.err, _tui.info, _tui.ok, _tui.warn
 
@@ -336,7 +333,7 @@ def drain_held(q: Path, digest: str = "") -> bool:
         batch[0].replace(path)
         item = json.loads(path.read_text()).get("item", "")
         try:
-            outcome = run_one(q, path)
+            outcome = landq_report.timed(run_one, q, path)
         except Exception as e:  # noqa: BLE001 -- one broken request must not strand the rest
             outcome = {"sha": "", "repo": "", "state": "red", "why": f"lander: {e}", "log": ""}
         record(path, outcome, item)
@@ -455,6 +452,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--drain", action="store_true")
     mode.add_argument("--status", action="store_true")
     mode.add_argument("--wait", metavar="ID|REQUEST", help="block until it finished (THE WAIT)")
+    landq_report.add_arguments(mode, ap)
     ap.add_argument("--land", metavar="WORKTREE", help="run tools/land.sh there (mode land)")
     ap.add_argument("--timeout", type=float, default=WAIT_TIMEOUT, help="--wait's bound, seconds")
     ap.add_argument("--item", default="")
@@ -464,6 +462,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="skip the enqueue's pre-step run; a reason is required")  # fmt: skip
     ap.add_argument("--no-start", action="store_true", help="enqueue only; start no lander")
     args = ap.parse_args(argv)
+    if args.report:
+        return landq_report.run(qdir(), args.since, args.json)
     if args.drain:
         return drain()
     if args.status:

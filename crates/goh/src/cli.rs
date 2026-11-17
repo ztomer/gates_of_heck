@@ -38,7 +38,8 @@ pub enum Commands {
     Ship(PassArgs),
     /// The commit gate's verdict on these paths before the commit (`tools/lint.py`).
     Lint(PassArgs),
-    /// Enqueue a commit or worktree to land, wait on it, or drain the queue (`tools/landq.py`).
+    /// Enqueue, wait on or drain the landing queue, or `--report` its wall time (`tools/landq.py`).
+    #[command(alias = "landq")]
     Land(PassArgs),
     /// Every subject's time budget: ARMED, BREACHED or CLEARED, last and median runs (`lib/budget.py`).
     Budget(PassArgs),
@@ -50,8 +51,7 @@ pub enum Commands {
     WfPin(PassArgs),
     /// Run a step under a ceiling; report what it left running (`lib/orphan_canary.py wrap`).
     Canary(CanaryArgs),
-    /// A fix or perf commit names its Class and Siblings; a third instance ends the class
-    /// (`gates/commit_msg.sh`, `gates/push_gate.sh`; opt-in by `GOH_COMMIT_CLASS`).
+    /// A fix or perf commit names its Class and Siblings; a third ends the class (`GOH_COMMIT_CLASS`).
     CommitClass {
         /// The message file git hands a commit-msg hook.
         file: Option<String>,
