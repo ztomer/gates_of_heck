@@ -212,13 +212,15 @@ pub fn check_text(scanner: &Scanner, rel: &str, text: &str) -> Vec<Hit> {
     if language == Language::Python && scanner.py_guard.is_match(text) {
         return Vec::new();
     }
-    let masked;
-    let scan_lines: Option<Vec<&str>> = if language == Language::Swift {
-        masked = mask_swift(text);
-        Some(masked.split('\n').collect())
-    } else {
-        None
+    // Python prose (comments, docstrings) is blanked by the shared lexer,
+    // so a docstring naming an API is not a call; a file that does not
+    // tokenize is read whole, never guessed (GOH.SCREENDOCMASK).
+    let masked: Option<String> = match language {
+        Language::Swift => Some(mask_swift(text)),
+        Language::Python => crate::pylex::lex(text).map(|lexed| lexed.code_only(text)),
+        Language::ObjC => None,
     };
+    let scan_lines: Option<Vec<&str>> = masked.as_deref().map(|m| m.split('\n').collect());
     // `split("\n")` on BOTH sides, never `lines()`: the mask preserves
     // newlines 1:1 and `lines()` would additionally break on `\v` etc.,
     // desyncing the two lists.
@@ -258,7 +260,7 @@ pub fn check_text(scanner: &Scanner, rel: &str, text: &str) -> Vec<Hit> {
                     if rx.find_iter(probe).next().is_none() {
                         continue;
                     }
-                    if *needs_exec && !scanner.py_executes.is_match(line) {
+                    if *needs_exec && !scanner.py_executes.is_match(probe) {
                         continue;
                     }
                     why = Some(*w);

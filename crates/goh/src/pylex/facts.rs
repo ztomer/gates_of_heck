@@ -38,6 +38,45 @@ impl Lexed {
         self.stmts.iter().filter_map(|s| self.str_stmt(s)).collect()
     }
 
+    /// `text` with its PROSE blanked, line count and columns kept: every
+    /// comment and every statement that is only a `str` literal become
+    /// spaces, so a scanner reads code. An argument string stays (it is
+    /// code). The Rust twin of `checks/_prose_mask.py::python_code_only`;
+    /// `tests/test_prose_mask_parity.py` holds both to one fixture set.
+    #[must_use]
+    pub fn code_only(&self, text: &str) -> String {
+        let mut rows: Vec<Vec<char>> = text.split('\n').map(|l| l.chars().collect()).collect();
+        let mut blank = |(r0, c0): (usize, usize), (r1, c1): (usize, usize)| {
+            for row in r0..=r1 {
+                let Some(line) = rows.get_mut(row - 1) else {
+                    continue;
+                };
+                let start = if row == r0 { c0 } else { 0 };
+                let end = if row == r1 {
+                    c1.min(line.len())
+                } else {
+                    line.len()
+                };
+                for ch in line.iter_mut().take(end).skip(start) {
+                    *ch = ' ';
+                }
+            }
+        };
+        for s in &self.stmts {
+            if self.str_stmt(s).is_some() {
+                let t = self.stmt_toks(s);
+                blank(t[0].start, t[t.len() - 1].end);
+            }
+        }
+        for &(row, col) in &self.comments {
+            blank((row, col), (row, usize::MAX));
+        }
+        rows.iter()
+            .map(|r| r.iter().collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     /// Line ranges of the docstrings: the first statement of a module,
     /// `def` or `class` body, when it is only a `str` literal.
     #[must_use]

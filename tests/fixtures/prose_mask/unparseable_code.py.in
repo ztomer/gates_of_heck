@@ -1,0 +1,1 @@
+"""A docstring in a file that does not tokenize is read, never guessed: pyautogui
