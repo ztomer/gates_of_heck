@@ -331,8 +331,11 @@ def structural(root: Path) -> int:
     (GOH.AFFECTEDBINARY's land). This checkout's gates/structural.sh, as the land gate runs it."""
     info("pre-land: the structural gates over the branch first (gates/structural.sh --full)")
     script = Path(__file__).resolve().parent.parent / "gates" / "structural.sh"
+    from checks._gitutil import local_env_vars  # git's own list of what binds it to one repo
+
+    env = {k: v for k, v in os.environ.items() if k not in local_env_vars()}  # the ROOT's git
     return subprocess.run(
-        ["bash", str(script), "--full"], cwd=root, check=False, stdin=subprocess.DEVNULL
+        ["bash", str(script), "--full"], cwd=root, env=env, check=False, stdin=subprocess.DEVNULL
     ).returncode
 
 
