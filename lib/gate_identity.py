@@ -35,7 +35,8 @@ The three parts:
     cargo-llvm-cov and xcodebuild, the PATH hit, the binary it resolves to and that binary's size
     and mtime (no spawn: an upgrade rewrites the binary); a rustup proxy also by the toolchain
     binary it resolves to (`rustup which`, not the RUSTUP_TOOLCHAIN spelling); plus the selected
-    Xcode. An absent tool is its own token, so installing one changes the identity.
+    Xcode. An absent tool is its own token, so installing one changes the identity. A shim naming
+    the binary it runs is keyed as that binary (lib/tool_shim.py, GOH.VERDICTCARRY3).
 THE RUST COVERAGE VERDICT (GOH.RUSTCOVSKIP, `rust`). A goh land spent 600-900 s measuring Rust
 coverage when its diff touched no Rust (GOH.XEXITDETAIL: 896.62 s of a 21:37 land, for Python and
 shell). The measurement's own inputs are narrower than the gates: the repo's Rust build inputs
@@ -82,20 +83,14 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from tool_shim import fingerprint, past_shims  # lib/, beside this file
+
 TOOLS = ("rustc", "cargo", "python3", "swift", "shellcheck", "ruff", "cargo-llvm-cov", "xcodebuild")
 # The binary's build roots; its full inputs add each file a crate embeds (build_inputs).
 BUILD = ("crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml")
 PARTS = ("gates", "checks", "lib", "tools", "tui", *BUILD)
 GOH_ROOT = Path(__file__).resolve().parent.parent
-
-
-def _fingerprint(path: str) -> str:
-    real = os.path.realpath(path)
-    try:
-        st = os.stat(real)
-    except OSError:
-        return f"{path} -> {real} unreadable"
-    return f"{path} -> {real} {st.st_size} {st.st_mtime_ns}"
 
 
 def tools() -> list[str]:
@@ -108,15 +103,16 @@ def tools() -> list[str]:
     for name in TOOLS:
         # The interpreter running this is the house one every caller names; keyed by its bytes.
         hit = os.path.realpath(sys.executable) if name == "python3" else shutil.which(name)
-        line = f"tool {name} {_fingerprint(hit) if hit else 'absent'}"
+        hit = past_shims(hit)  # a shim first on PATH: the binary it runs (lib/tool_shim.py)
+        line = f"tool {name} {fingerprint(hit) if hit else 'absent'}"
         proxy = os.path.realpath(hit) if hit else ""
         if proxy and os.path.basename(proxy) == "rustup":  # a proxy: key what it runs
             got = _run([proxy, "which", name])
-            line += f" runs {_fingerprint(got) if os.path.isabs(got) else 'unresolved ' + got}"
+            line += f" runs {fingerprint(got) if os.path.isabs(got) else 'unresolved ' + got}"
         out.append(line)
     # An explicit GOH_BIN is the binary every gate runs (gates/_goh_bin.sh), whatever the content.
     named = os.environ.get("GOH_BIN", "")
-    out.append(f"tool goh-bin {_fingerprint(named) if named else 'unset'}")
+    out.append(f"tool goh-bin {fingerprint(named) if named else 'unset'}")
     xsel = shutil.which("xcode-select")
     out.append(f"xcode {os.environ.get('DEVELOPER_DIR') or (_run([xsel, '-p']) if xsel else '')}")
     return out

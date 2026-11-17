@@ -312,6 +312,19 @@ def code_digest() -> str:
     return git(live_root(), "rev-parse", "HEAD:tools/landq.py", "HEAD:lib")
 
 
+def live_pythonpath(value: str) -> str:
+    """PYTHONPATH as a re-run lander inherits it: each entry once, the ones that exist and are no
+    head export (`.goh-head`). The fresh copy's own C4 re-run (gates/_from_head.py) puts ITS export
+    first; kept, every earlier one stayed behind it, pruned or not -- the drainer's environment
+    grew one export per re-exec and every gate it started inherited them (GOH.VERDICTCARRY3)."""
+    out: list[str] = []
+    for entry in value.split(os.pathsep):
+        export = os.path.isfile(os.path.join(entry, ".goh-head"))
+        if entry and entry not in out and os.path.isdir(entry) and not export:
+            out.append(entry)
+    return os.pathsep.join(out)
+
+
 def drain_held(q: Path, digest: str = "") -> bool:
     """Run every pending request; False when the lander's code changed and it must re-exec."""
     # A request a dead lander was running goes back to the front: its name keeps its place.
@@ -352,7 +365,8 @@ def drain() -> int:
             info(f"the lander's code changed on {live_root()}: re-running {fresh}")
             sys.stdout.flush()
             sys.stderr.flush()
-            os.execv(sys.executable, [sys.executable, str(fresh), "--drain"])
+            env = dict(os.environ, PYTHONPATH=live_pythonpath(os.environ.get("PYTHONPATH", "")))
+            os.execve(sys.executable, [sys.executable, str(fresh), "--drain"], env)
         if not any((q / "pending").glob("*.json")):  # enqueued after the last look: ours to run
             audit_drain()
             return 0

@@ -416,3 +416,42 @@ def test_enqueue_no_pre_names_its_reason_and_skips_the_pre_step(repo, tmp_path, 
                  "--no-pre", "lane ran the set by hand")  # fmt: skip
     assert done.returncode == 0 and "lane ran the set by hand" in done.stdout + done.stderr
     assert len(_pending(tmp_path)) == 1
+
+
+# GOH.VERDICTCARRY3: a lander that re-runs its fresh code put that code's head export first on
+# PYTHONPATH and kept every earlier one behind it, pruned or not -- the drainer's environment grew
+# one dead export per re-exec, and every gate it started inherited them. A re-run keeps only the
+# entries that still exist and are no head export (the fresh copy's own C4 re-run adds its own).
+def test_a_lander_re_running_its_fresh_code_keeps_only_live_pythonpath_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("landq_reexec_probe", LANDQ)
+    assert spec and spec.loader
+    lq = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lq)
+    export, live = tmp_path / "head" / "abc", tmp_path / "live"
+    export.mkdir(parents=True)
+    (export / ".goh-head").write_text("abc\n")
+    live.mkdir()
+    dead = tmp_path / "head" / "pruned"
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(map(str, (export, dead, live, export, live))))
+    monkeypatch.setenv("GOH_LANDQ_DIR", str(tmp_path / "q"))
+    monkeypatch.setattr(lq, "code_digest", lambda: "old")
+    monkeypatch.setattr(lq, "drain_held", lambda q, digest="": False)
+    ran: dict[str, object] = {}
+
+    class Exec(Exception):
+        pass
+
+    def execve(path, argv, env=None):
+        ran.update(argv=argv, env=env)  # os.execv: None, the environment as it stands
+        raise Exec
+
+    monkeypatch.setattr(lq.os, "execv", execve)
+    monkeypatch.setattr(lq.os, "execve", execve)
+    with pytest.raises(Exec):
+        lq.drain()
+    assert isinstance(ran["env"], dict), "the lander re-ran with its inherited environment"
+    assert ran["env"]["PYTHONPATH"] == str(live), ran["env"]["PYTHONPATH"]

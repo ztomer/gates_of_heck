@@ -38,6 +38,7 @@ import atexit
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -64,6 +65,11 @@ def load_factor() -> float:
     return max(1.0, max(one, five) / (os.cpu_count() or 1))
 
 
+sys.path.insert(0, str(_ROOT / "lib"))
+try:
+    from tool_shim import SHIM_MARK  # the one spelling the identity reads
+finally:
+    sys.path.pop(0)
 _REAL_CARGO = shutil.which("cargo")
 BUILD_DIR = tempfile.mkdtemp(prefix="goh-test-cargo-build.")
 atexit.register(shutil.rmtree, BUILD_DIR, True)
@@ -73,6 +79,9 @@ if _REAL_CARGO:
     with open(os.path.join(_shim_dir, "cargo"), "w", encoding="utf-8") as _f:
         _f.write(
             "#!/bin/sh\n"
+            # The verdict identity keys the cargo this runs, not this per-run file: keyed by its
+            # own path, every suite run had its own tools key (lib/tool_shim.py).
+            f"{SHIM_MARK}{_REAL_CARGO}\n"
             'dir="$PWD"; prev=""\n'
             'for a; do [ "$prev" = "--manifest-path" ] && dir="$(dirname "$a")"; prev="$a"; done\n'
             # A workspace outside this checkout is a throwaway: its build goes where the run removes it,
