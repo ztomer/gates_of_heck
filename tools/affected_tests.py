@@ -91,15 +91,8 @@ def _module_names(path: str) -> set[str]:
     return {".".join(p.with_suffix("").parts), p.stem}
 
 
-def _names_path(text: str, path: str) -> bool:
-    """A file at the root (`.gatesrc`, `install.sh`) is named only as `REPO_ROOT / ".gatesrc"`: its
-    bare name is every fixture's own copy (80 tests write a `.gatesrc`), not goh's."""
-    parts = Path(path).parts
-    if len(parts) == 1:
-        return re.search(rf"\bREPO_ROOT\s*/\s*[\"']{re.escape(path)}[\"']", text) is not None
-    if path in text:
-        return True
-    return all(f'"{c}"' in text or f"'{c}'" in text for c in parts)
+# The one naming rule (lib/source_closure.py): the `named` edge of a proven step's closure too.
+_names_path = source_closure.names_path
 
 
 # Where a test's runner finds a module: beside the file, the root, and these (tools/ is on the

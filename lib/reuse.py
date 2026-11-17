@@ -181,8 +181,9 @@ register(
     unsampled="a selection the full gate re-runs whole: it skips nothing but through `test`",
 )  # fmt: skip
 register(
-    "step", ("repo", "tree", "step", "identity", "env"), DAY_S,
-    "a proven gate step: skipped when its inputs and the gates are unchanged",
+    "step", ("repo", "tree", "step", "closure", "identity", "env"), DAY_S,
+    "a proven gate step: skipped when its inputs and the goh files that can decide it (its "
+    "closure, lib/step_closure.py, GOH.PROVENCLOSURE) are unchanged",
     store="goh-proven", sites=("gates/_proven.sh", "crates/goh/src/proven.rs"),
     unsampled="two faces (shell, Rust); the shadow re-runs the step: slice 2",
 )  # fmt: skip

@@ -50,7 +50,8 @@ GOH.RUSTCOVKEYSCOPE), plus the tools. gates/_rust_proven.sh keys the coverage re
 on a hit the instrumented build and report are skipped and the tests still run, plain. A workspace
 member or path dependency outside the keyed inputs has no such identity (exit 1): a change there
 could not move the key, so the coverage runs.
-Used by gates/_proven.sh's step identity (its goh roots, GOH.PROVENIDENTITY: it kept a formula of
+Used by lib/step_closure.py (each proven step's goh roots by its CLOSURE, GOH.PROVENCLOSURE;
+GOH.PROVENIDENTITY: gates/_proven.sh kept a formula of
 its own, HEAD sha and diff for a checkout, the PATH for an export, so a commit's checkout and its
 head export never reused each other's proven steps; and PYTHONPATH, by the one `pythonpath` formula
 the coverage key uses, scope gate_files: by path, a land's head export made every key new,
@@ -236,19 +237,17 @@ def key(mode: str, root: Path = GOH_ROOT) -> str:
 
 
 def proven(roots: list[Path], path: str | None = None, repo: Path | None = None) -> list[str]:
-    """gates/_proven.sh's run-constant goh half: one `goh` line per distinct root identity (a
-    checkout and its commit's export are one), PYTHONPATH as a gate imports from it (pythonpath,
-    scope gate_files: `unset` when it is), then the tools. PYTHONPATH was the live half's
-    `env PYTHONPATH=<path>`, and goh's land puts the tip's head export first on it, a new path for
-    every commit: no proven step was ever reused from one land to the next (GOH.PROVENPYPATH)."""
-    seen: list[str] = []
-    for root in roots:
-        line = f"goh {identity(root)}"
-        if line not in seen:
-            seen.append(line)
+    """gates/_proven.sh's run-constant half: PYTHONPATH by `by_step_closure` (GOH.PROVENPYPATH),
+    then the tools."""
+    del roots  # their content is each step's closure line now (lib/step_closure.py)
     where = repo if repo is not None else Path.cwd()
-    pp = "unset" if path is None else pythonpath(path, where, gate_files)
-    return [*seen, f"pythonpath {pp}", *tools()]
+    pp = "unset" if path is None else pythonpath(path, where, by_step_closure) or "goh only"
+    return [f"pythonpath {pp}", *tools()]
+
+
+def by_step_closure(_root: Path) -> list[str]:
+    """`pythonpath`'s proven scope: a gates root on it is read by each step's closure instead."""
+    return []
 
 
 def keyed(roots: list[Path]) -> list[str]:
@@ -268,13 +267,14 @@ _RUN = re.compile(
 )
 
 
-def _closure(seeds: set[str], root: Path, goh: Path) -> set[str]:
-    """seeds and every file under root they source, import (lib/source_closure.py) or run."""
-    import source_closure  # lib/, beside this file; only the rust verb needs it
+def _closure(seeds: set[str], root: Path, goh: Path, named_edges: bool = False) -> set[str]:
+    """seeds and every file under root they source, import (lib/source_closure.py) or run; with
+    `named_edges`, every file their code names by path too (a data file, a script it runs)."""
+    import source_closure  # lib/, beside this file
 
     files = set(seeds)
     while True:
-        found, _ = source_closure.closure(sorted(files), root, goh)
+        found, _ = source_closure.closure(sorted(files), root, goh, named_edges)
         grown = set(found)
         for rel in found:
             if not rel.endswith(".sh"):

@@ -133,7 +133,7 @@ def test_the_coverage_key_and_the_proven_identity_share_one_formula():
     calls = [n for n in ast.walk(ast.parse(src))
              if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "pythonpath"]  # fmt: skip
     scopes = sorted(ast.unparse(c.args[2]) for c in calls)
-    assert scopes == ["gate_files", "rust_gate_scripts"], scopes
+    assert scopes == ["by_step_closure", "rust_gate_scripts"], scopes
     proven = (REPO_ROOT / "gates" / "_proven.sh").read_text()
     default = next(ln for ln in proven.splitlines() if ln.startswith("PROVEN_ENV_DEFAULT="))
     assert "PYTHONPATH" not in default, "PYTHONPATH keyed by path in the live half: " + default

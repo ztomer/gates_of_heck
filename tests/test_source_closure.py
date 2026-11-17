@@ -174,3 +174,44 @@ def test_a_reader_names_the_directories_modules_are_looked_for_in(tmp_path) -> N
     assert sc.direct(root / "tests/t.py", root, root)[0] == []
     found = sc.direct(root / "tests/t.py", root, root, (*sc.PY_DIRS, "tools"))[0]
     assert [p.relative_to(root).as_posix() for p in found] == ["tools/tool.py"]
+
+
+def test_a_module_loaded_by_a_literal_name_is_followed_and_a_runtime_one_is_counted(
+    tmp_path,
+) -> None:
+    """GOH.PROVENCLOSURE: a gate that loads its scanner with importlib read as importing nothing
+    (the gap GOH.LANDERSTALECODE found), so a key on its closure missed a change to the scanner."""
+    root = _tree(
+        tmp_path,
+        {
+            "lib/runner.py": "import importlib\nm = importlib.import_module('scan')\n"
+            "n = __import__('other')\nk = importlib.import_module(name_from_argv)\n",
+            "checks/scan.py": "X = 1\n",
+            "lib/other.py": "Y = 2\n",
+        },
+    )
+    files, _ = sc.closure(["lib/runner.py"], root)
+    assert files == ["checks/scan.py", "lib/other.py", "lib/runner.py"]
+    import ast
+
+    assert sc.dynamic_imports(ast.parse((root / "lib/runner.py").read_text())) == 1
+
+
+def test_a_data_file_the_code_names_is_an_edge_and_prose_naming_it_is_not(tmp_path) -> None:
+    """The `named` edge, one rule with tools/affected_tests.py: a literal path in CODE is a read; a
+    docstring or comment saying it is not. Off by default (a fixture copies what is sourced)."""
+    root = _tree(
+        tmp_path,
+        {
+            "checks/check_x.py": '"""Reads lib/prose_only.json, says the docstring."""\n'
+            "# and lib/comment_only.json in a comment\n"
+            "SHAPES = ROOT / 'lib' / 'shapes.json'\nRULES = 'lib/rules.toml'\n",
+            "lib/shapes.json": "{}\n",
+            "lib/rules.toml": "\n",
+            "lib/prose_only.json": "{}\n",
+            "lib/comment_only.json": "{}\n",
+        },
+    )
+    assert sc.closure(["checks/check_x.py"], root)[0] == ["checks/check_x.py"]
+    files, _ = sc.closure(["checks/check_x.py"], root, named_edges=True)
+    assert files == ["checks/check_x.py", "lib/rules.toml", "lib/shapes.json"]

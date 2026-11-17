@@ -81,6 +81,8 @@ if [ -n "$top" ] && [ -f "$top/.gatesrc" ]; then
     . "$top/.gatesrc"
 fi
 proven_settings || exit 2
+PROVEN_BY_CLOSURE=1   # the step keyed on its own goh closure (gates/_proven.sh), not exported
+proven_closures_prime "$step_cmd"
 # The ARTIFACT DECLARATION (gates/_proven.sh): a typo in it is a gate that silently checks
 # nothing, so it is refused BEFORE the step runs, not after.
 if ! proven_decl_valid "$step_cmd"; then
@@ -94,6 +96,7 @@ if [ "$explain" = 1 ]; then
         printf 'key none (the cache is off, or the working tree is no tree git can name)\n'
     fi
     printf 'step %s\n' "$step_cmd"
+    _proven_closure_line "$step_cmd" </dev/null
     proven_identity </dev/null
     exit 0
 fi
@@ -146,7 +149,7 @@ if [ "$rc" -eq 0 ] && [ -n "$key" ]; then
     if [ "$moved" = 0 ]; then
         rec=0
         proven_record "$key" "$tree" "$step_cmd" "$label" || rec=$?
-        [ "$rec" -ne 0 ] || proven_note_identity "$key" </dev/null \
+        [ "$rec" -ne 0 ] || proven_note_identity "$key" "$step_cmd" </dev/null \
             || warn "proven: could not keep the identity the record was keyed under"
         [ "$rec" -ne 0 ] || proven_made_note "$step_cmd" "$fresh" "$(proven_made <(printf '%s\n' "$ignored_before") "$stamp" </dev/null)" \
             || warn "proven: could not remember what the step made"

@@ -27,15 +27,22 @@ _proven_goh_mkey() {
     printf 'm-%s\n' "$(grep '^goh ' <<<"$1" | hash_hex /dev/stdin)"
 }
 
-# proven_note_identity <key> — beside the record: the identity lines it was keyed under, and the
-# goh manifest for them unless one is kept already; then sidecars of pruned records go.
+# _proven_noted <step> — the identity lines a record keeps: the step's goh closure line (as `goh`,
+# so a miss names the goh files that moved, GOH.PROVENCLOSURE), then proven_identity's.
+_proven_noted() {
+    printf 'goh %s\n' "$(_proven_closure_line "$1")"
+    proven_identity
+}
+
+# proven_note_identity <key> <step> — beside the record: the identity lines it was keyed under, and
+# the goh manifest for them unless one is kept already; then sidecars of pruned records go.
 proven_note_identity() (
     local key="$1" dir rdir ident m f name keep
     goh_bind_hook_index
     rdir="$(proven_dir)" || return 1
     dir="$rdir/.id"
     mkdir -p "$dir" || return 1
-    ident="$(proven_identity)"
+    ident="$(_proven_noted "${2:-}")"
     if ! { printf '%s\n' "$ident" >"$dir/.tmp.$BASHPID" && mv -f "$dir/.tmp.$BASHPID" "$dir/$key"; }; then
         rm -f "$dir/.tmp.$BASHPID"
         return 1
@@ -92,7 +99,7 @@ proven_miss_reason() (
     now="$(proven_now)"
     [ $((now - best_epoch)) -lt "${PROVEN_TTL:-86400}" ] || return 0
     old="$(cat "$dir/$best")"
-    new="$(proven_identity)"
+    new="$(_proven_noted "$step")"
     [ "$old" != "$new" ] || return 0
     kinds="$(diff <(printf '%s\n' "$old") <(printf '%s\n' "$new") \
         | awk '$1 == "<" || $1 == ">" {

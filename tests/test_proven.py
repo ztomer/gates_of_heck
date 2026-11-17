@@ -166,10 +166,13 @@ def test_bytecode_a_gate_wrote_is_not_work_in_progress_on_the_gates(goh, repo, e
     assert runs(env) == 1, "a bytecode cache invalidated the gates identity"
     assert "proven on this tree" in after_cache.stdout, after_cache.stdout
 
-    # ...and a genuine edit to a checker is still genuine work in progress.
+    # ...and a genuine edit to a checker the step runs is still genuine work in progress.
+    step = f'python3 "$GOH_DIR/checks/check_tag_version.py" --help >/dev/null 2>&1; {STEP}'
+    proven(goh, repo, env, step)
+    assert runs(env) == 2
     (goh / "checks" / "check_tag_version.py").write_text("# edited\n", encoding="utf-8")
-    assert proven(goh, repo, env).returncode == 0
-    assert runs(env) == 2, "a real change to the gates did NOT invalidate the cache"
+    assert proven(goh, repo, env, step).returncode == 0
+    assert runs(env) == 3, "a real change to the gates did NOT invalidate the cache"
 
 
 def test_a_staged_only_change_still_has_a_key(goh, repo, env):
@@ -264,6 +267,8 @@ def test_goh_proven_0_disables_the_cache(goh, repo, env):
 
 @pytest.mark.parametrize("change", ["edit", "untracked", "commit"])
 def test_a_change_to_the_gates_invalidates_what_they_proved(goh, repo, env, change):
+    """Of the steps it can decide: an edit to the runner (local_ci.sh) is in every step's closure;
+    a new gate or file the step never reaches leaves its proof standing (GOH.PROVENCLOSURE)."""
     proven(goh, repo, env)
     if change == "edit":
         with open(goh / "gates" / "local_ci.sh", "a") as f:
@@ -275,7 +280,7 @@ def test_a_change_to_the_gates_invalidates_what_they_proved(goh, repo, env, chan
         _git(goh, "add", "gates/NOTE")
         _git(goh, "commit", "-q", "-m", "gates moved")
     proven(goh, repo, env)
-    assert runs(env) == 2
+    assert runs(env) == (2 if change == "edit" else 1)
 
 
 def test_an_env_var_the_repo_names_is_part_of_the_key(goh, repo, env):

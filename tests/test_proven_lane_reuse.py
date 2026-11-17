@@ -128,7 +128,7 @@ def test_explain_prints_the_identity_lines_and_runs_nothing(goh, repo, env, tmp_
         assert (
             lines[0].startswith("key ") and lines[1].startswith("tree ") and lines[2] == "step true"
         )
-        assert any(x.startswith("goh content ") for x in lines), r.stdout
+        assert any(x.startswith("closure ") for x in lines), r.stdout
         assert want in lines, (want, r.stdout)
         assert runs(env) == 0
 

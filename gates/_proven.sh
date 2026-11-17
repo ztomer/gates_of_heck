@@ -24,6 +24,8 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 PROVEN_GOH_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # The identity's one formula, beside this file: a caller may name another PROVEN_GOH_ROOT to key.
 _PROVEN_IDENTITY_PY="$PROVEN_GOH_ROOT/lib/gate_identity.py"
+# shellcheck source=gates/_proven_closure.sh
+. "$(dirname "${BASH_SOURCE[0]}")/_proven_closure.sh"   # each step's goh closure (GOH.PROVENCLOSURE)
 
 # Environment variables whose values change what a gate step concludes, keyed by default. The
 # repo adds its own with GOH_PROVEN_ENV (space-separated names) in .gatesrc. PYTHONPATH is not one:
@@ -251,15 +253,16 @@ _proven_native_key() {
 # keys: under a commit hook that carried its index (`commit -a`, gates/_git_env.sh) the tree is the
 # one being committed, and that binding must not outlive the key.
 proven_key() (
-    local tree key
+    local tree key kstep
     goh_bind_hook_index
     [ "${PROVEN_ON:-1}" = 1 ] || return 1
+    kstep="$1"$'\n'"$(_proven_closure_line "$1")"
     if _proven_native_key; then
-        _proven_identity_live | "$GOH_RESOLVED_BIN" proven key -- "$1"
+        _proven_identity_live | "$GOH_RESOLVED_BIN" proven key -- "$kstep"
         return
     fi
     tree="$(proven_tree)" && [ -n "$tree" ] || return 1
-    key="$({ printf 'proven v1\ntree %s\nstep %s\n' "$tree" "$1"; proven_identity; } \
+    key="$({ printf 'proven v1\ntree %s\nstep %s\n' "$tree" "$kstep"; proven_identity; } \
         | hash_hex /dev/stdin)" && [ -n "$key" ] || return 1
     printf '%s %s\n' "$key" "$tree"
 )
@@ -347,6 +350,7 @@ proven_scoped_key() (
     goh_bind_hook_index
     [ "${PROVEN_ON:-1}" = 1 ] || return 1
     [ "$#" -gt 0 ] || return 1
+    step="$step"$'\n'"$(_proven_closure_line "$step")"
     if _proven_native_key; then
         _proven_identity_live | "$GOH_RESOLVED_BIN" proven key -- "$step" "$@"
         return

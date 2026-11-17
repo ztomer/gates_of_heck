@@ -129,6 +129,7 @@ SRC_GATESRC="${GOH_CI_STEPS:-}"
 [ -n "$CLI_JOBS" ] && GOH_CI_JOBS="$CLI_JOBS"
 _proven_err="$(proven_settings 2>&1)" || die "$_proven_err"
 proven_settings
+PROVEN_BY_CLOSURE=1   # each step keyed on its own goh closure (gates/_proven.sh), not exported
 
 LCI_LIMIT="$(lci_limit)" || exit 2   # each step's ceiling, GOH_LCI_TIMEOUT (gates/_local_ci_config.sh)
 
@@ -254,6 +255,7 @@ while IFS="	" read -r src cmd; do
 done <<EOF
 $ALL_STEPS
 EOF
+[ "$n" -eq 0 ] || proven_closures_prime "${CMD[@]}"   # every step's goh closure, one call
 
 # A STOPPED run stops its steps. Each runs in the background under its own wrapper, so a TERM to
 # this script used to end the script alone and leave every running step going, unowned
@@ -378,7 +380,7 @@ _report() { # _report <i>
         if ! proven_kept_check "$cmd" "${PLIVE[i]}" "$_moved" </dev/null; then _rec=3  # GOH.KEEP1
         elif [ "$_moved" = 0 ]; then
             proven_record "${PKEY[i]}" "${PTREE[i]}" "$cmd" "local_ci" </dev/null || _rec=$?
-            [ "$_rec" -ne 0 ] || proven_note_identity "${PKEY[i]}" </dev/null \
+            [ "$_rec" -ne 0 ] || proven_note_identity "${PKEY[i]}" "${CMD[i]}" </dev/null \
                 || warn "[$i/$_n] could not keep the identity the record was keyed under"
             [ "$_rec" -ne 0 ] || proven_made_note "$cmd" "$PROVEN_FRESH" "$(proven_made "$LOGDIR/ignored-$i" "$LOGDIR/stamp-$i" </dev/null)" </dev/null \
                 || warn "[$i/$_n] could not remember what the step made"
