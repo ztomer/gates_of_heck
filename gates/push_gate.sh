@@ -490,7 +490,7 @@ for pair in ${gated_refs:-}; do
         exit 1
     fi
 done
-push_record_verdicts ${gated_commits:-}   # `green <sha>` in GOH_GATE_VERDICTS (lib/push_runs.sh)
+push_record_verdicts "$root" ${gated_how:-}   # each green in the one verdict store (lib/push_runs.sh, lib/reuse.py)
 push_record_pushed "$root" ${gated_how:-}   # `<sha> full|release|config` in goh-pushed: the floor rule's base
 [ "$gated" -gt 0 ] || info "pre-push: nothing to gate (deletes, or commits the remote already has)"
 exit

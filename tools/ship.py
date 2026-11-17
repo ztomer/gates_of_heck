@@ -318,7 +318,6 @@ def plan(args: argparse.Namespace) -> dict:
         "release_pushes": cfg["GOH_SHIP_RELEASE_PUSHES"] == "1",
         "preflight": [c for w, c in asked if w == "GOH_SHIP_PREFLIGHT"],
         "timeout_s": timeout, "loopctl": str(loopctl()), "result": str(out),
-        "verdicts": str(out.with_suffix(".verdicts")),  # gates/push_gate.sh's record (VERDICTAPI)
         "status": "running", "started": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         "steps": [], "failed_step": None, "tail": [], "undo": [], "pid": None,
     }  # fmt: skip
@@ -372,8 +371,7 @@ def run_steps(res: dict, first: str = STEPS[0]) -> int:
     for k in git_bindings():
         os.environ.pop(k, None)
     os.environ.update(GOH_SHIP_VERSION=res["version"], GOH_SHIP_RESULT=res["result"],
-                      GOH_SHIP_SUMMARY=res["summary"], GOH_SHIP_ITEM=res["item"] or "",
-                      GOH_GATE_VERDICTS=res.get("verdicts", ""))  # fmt: skip
+                      GOH_SHIP_SUMMARY=res["summary"], GOH_SHIP_ITEM=res["item"] or "")  # fmt: skip
     stem = Path(res["result"]).with_suffix("")
     for name in STEPS[STEPS.index(first) :]:
         cmd, why = command(res, name)

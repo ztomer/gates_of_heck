@@ -260,6 +260,19 @@ TTL. Rationale and the full key: the header of `gates/proven.sh`.
 | `GOH_PROVEN_ENV` | unset | Space-separated environment variable NAMES (in `.gatesrc`) whose values join the key, beside the built-in `CI RUSTFLAGS RUSTDOCFLAGS CARGO_BUILD_TARGET`. PYTHONPATH is keyed apart, by content: each gates root on it by the gates' files, any other entry by its path (`lib/gate_identity.py` `pythonpath`); named here it is keyed by its path as well. Name a variable here when a step's verdict depends on it. |
 | `GOH_PROVEN_NOW` | internal | Clock seam for the tests (epoch seconds). Not user config. |
 
+### The one verdict store (lib/reuse.py, GOH.ONEVERDICT)
+
+Every reuse path records and looks up its verdicts through `lib/reuse.py`, under one root, each by
+the key fields it registers (`reuse.py paths`). The map of every store onto it: `docs/reuse.md`.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `GOH_REUSE_DIR` | `$XDG_STATE_HOME/goh/reuse`, else `~/.local/state/goh/reuse` | The store's root; a relative path is refused. |
+| `GOH_REUSE_TTL_S` | the path's own (`gate`: `86400`) | Record lifetime in seconds; an older record is a miss. |
+| `GOH_REUSE_SHADOW` | `0` (off) | The share of keys (0..1, chosen by key, so the same keys every run) whose reused verdict a caller re-checks fresh and logs to `shadow.jsonl` in the store. |
+| `GOH_REUSE_NOW` | internal | Clock seam for the tests (epoch seconds). Not user config. |
+| `GOH_GATE_VERDICTS` | retired | The per-ship `green <sha>` file the push gate wrote under `goh ship` (GOH.VERDICTAPI); gone with GOH.ONEVERDICT, the push records into the store above. Neither set nor read; `lib/pin_sweep.py` still drops it from a child's environment. |
+
 `rust_gate.sh` proves its three groups separately (`gates/_rust_proven.sh`): the crate group and coverage on the crate's own inputs (`goh rust-scope`), the repo-wide scans on the whole tree. The same `GOH_PROVEN` / `GOH_PROVEN_TTL_S` apply; every `GOH_*` in the environment is part of each group's key.
 
 ## Per-file verdict cache (BACKLOG P4)
@@ -314,7 +327,6 @@ a repo with no v-tag, or a HEAD already tagged; past the newest tag it is refuse
 | `GOH_SHIP_RESULT` | set by `goh ship` | Exported to every step: the result JSON's path. Never set by hand. |
 | `GOH_SHIP_SUMMARY` | set by `goh ship` | Exported to every step: `--summary`, the title of the release's changelog stanza (`tools/release_goh.sh`, the release kit). Never set by hand. Not a setting: no gate reads it, so it is on `gates/verdict_free_keys.txt`. |
 | `GOH_SHIP_ITEM` | set by `goh ship` | Exported to every step: `--item`, the queue item the ship records. Never set by hand. Not a setting: no gate reads it, so it is on `gates/verdict_free_keys.txt`. |
-| `GOH_GATE_VERDICTS` | set by `goh ship` | The file the push gate appends `green <sha>` to for every commit it gated green and that did not move (`lib/push_runs.sh` `push_record_verdicts`); `goh ship` names the result's `verdicts` path for its whole run, and `goh ship verdict --sha SHA` reads it (`lib/ship_verdict.py`, GOH.VERDICTAPI, contracts section 29). Not a setting. |
 
 ## Claude Code hooks (`hooks/claude/`, wired in `~/.claude/settings.json`)
 

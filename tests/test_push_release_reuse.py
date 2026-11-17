@@ -17,6 +17,7 @@ from pathlib import Path
 
 from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, git, hermetic_env
+from test_reuse import recorded_hows
 from timing_bounds import patience
 
 PUSH_GATE = REPO_ROOT / "gates" / "push_gate.sh"
@@ -80,9 +81,8 @@ def _push(wt: Path, tmp_path: Path) -> tuple[int, list[str], str]:
     sha = git(wt, "rev-parse", "HEAD").strip()
     report = tmp_path / "report.txt"
     report.unlink(missing_ok=True)
-    verdicts = tmp_path / "verdicts.txt"
     env = hermetic_env(
-        drop_git=True, GATE_REPORT=str(report), GOH_GATE_VERDICTS=str(verdicts),
+        drop_git=True, GATE_REPORT=str(report), GOH_REUSE_DIR=str(tmp_path / "reuse"),
         GOH_PUSH_LOGS=str(tmp_path / "push-logs"), GOH_PUSH_WORKTREES=str(tmp_path / "exports"),
     )  # fmt: skip
     p = subprocess.run(
@@ -108,8 +108,9 @@ def test_a_release_only_commit_on_a_land_verified_parent_is_gated_reduced(repo, 
     assert rc == 0, out
     assert ran == ["structural", "pytest"], (ran, out)
     assert f"release files only since {parent[:8]}" in out, out
-    # Its own verdict: the push records the commit green, as for a full gate (GOH_GATE_VERDICTS).
-    assert f"green {sha}" in (tmp_path / "verdicts.txt").read_text(), out
+    # Its own verdict: the push records the commit green, under the release gate's identity, never
+    # the full gate's (lib/reuse.py): a ship asking for a full verdict on its tree misses.
+    assert recorded_hows(tmp_path / "reuse", sha) == ["release"], out
 
 
 def test_a_non_release_file_in_the_diff_takes_the_full_gate(repo, tmp_path) -> None:

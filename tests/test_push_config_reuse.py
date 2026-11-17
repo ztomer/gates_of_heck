@@ -17,6 +17,7 @@ from pathlib import Path
 
 from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, git, hermetic_env
+from test_reuse import recorded_hows
 from timing_bounds import patience
 
 PUSH_GATE = REPO_ROOT / "gates" / "push_gate.sh"
@@ -42,7 +43,7 @@ def _push(repo: Path, tmp_path: Path, remote_sha: str) -> tuple[int, list[str], 
     report = tmp_path / "report.txt"
     report.unlink(missing_ok=True)
     env = hermetic_env(
-        drop_git=True, GATE_REPORT=str(report), GOH_GATE_VERDICTS=str(tmp_path / "verdicts.txt"),
+        drop_git=True, GATE_REPORT=str(report), GOH_REUSE_DIR=str(tmp_path / "reuse"),
         GOH_PUSH_LOGS=str(tmp_path / "push-logs"), GOH_PUSH_WORKTREES=str(tmp_path / "exports"),
     )  # fmt: skip
     p = subprocess.run(
@@ -93,7 +94,7 @@ def test_a_floor_only_commit_on_a_push_gated_tip_runs_the_structural_gate_only(
     assert f"{SHORT} {tip[:8]}" in out and "all structural gates passed" in out, out
     # Recorded like any green push, so the next floor push chains on it.
     assert sha in _pushed(repo).read_text().split(), out
-    assert f"green {sha}" in (tmp_path / "verdicts.txt").read_text(), out
+    assert recorded_hows(tmp_path / "reuse", sha) == ["config"], out  # its gate: the floor rule
 
 
 def test_a_floor_the_tree_cannot_meet_is_red_on_the_short_path(repo, tmp_path) -> None:

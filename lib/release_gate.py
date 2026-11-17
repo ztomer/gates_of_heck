@@ -52,6 +52,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gate_identity  # lib/, beside this file: the one identity (GOH.VERDICTKEY)
+import reuse  # lib/, beside this file: the one verdict store (GOH.ONEVERDICT)
 
 RELEASE_FILE = "CHANGELOG.md"
 RELEASE_DIR = "changelog/"
@@ -97,15 +98,10 @@ def _git_out(root: Path, *args: str) -> str:
 
 
 def land_identity(root: Path, sha: str) -> str | None:
-    """The gate identity tools/land.sh recorded with sha (`<sha> <identity>` in goh-landed, written
-    only after a green gate), `""` for a line without one, None when no land recorded sha."""
-    common = Path(_git_out(root, "rev-parse", "--path-format=absolute", "--git-common-dir"))
-    try:
-        lines = (common / "goh-landed").read_text(encoding="utf-8").splitlines()
-    except FileNotFoundError:
-        return None
-    found = [ln.split()[1:] for ln in lines if ln.split()[:1] == [sha]]
-    return (found[-1][:1] or [""])[0] if found else None
+    """The gate identity tools/land.sh recorded with sha, read through the one reuse API
+    (lib/reuse.py landed_identity, GOH.ONEVERDICT): `""` for a line without one, None when no land
+    recorded sha."""
+    return reuse.landed_identity(root, sha)
 
 
 def decide_push(root: Path, head: str = "HEAD") -> tuple[str, str]:
@@ -117,7 +113,7 @@ def decide_push(root: Path, head: str = "HEAD") -> tuple[str, str]:
     parent = parents[0]
     recorded = land_identity(root, parent)
     if recorded is None:
-        return "full", f"its parent {parent[:8]} has no green land verdict (goh-landed)"
+        return "full", f"its parent {parent[:8]} has no green land verdict (tools/land.sh's record)"
     if recorded != gate_identity.key("full"):
         why = "is not the full gate's under these gates and tools (lib/gate_identity.py)"
         return "full", f"its parent {parent[:8]}'s land verdict {why}"

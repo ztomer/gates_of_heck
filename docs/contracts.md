@@ -735,19 +735,24 @@ read the push log for `pre-push: gating <ref> @ <sha>` and `gates: all green`, s
 line turned the skip off and nobody saw it. The verdict is a record now:
 
 * **Written** by `gates/push_gate.sh` (`push_record_verdicts`, `lib/push_runs.sh`): after every
-  gated ref passed AND none moved while it was gated, one `green <sha>` line per gated commit in
-  the file `GOH_GATE_VERDICTS` names. A commit the remote already held was never gated: no line.
-* **Named** by `goh ship`: the result's `verdicts` field (`<result>.verdicts`), exported as
-  `GOH_GATE_VERDICTS` to every step of the run, so a push made by the release kit records too.
+  gated ref passed AND none moved while it was gated, each gated commit is recorded green in the
+  one verdict store's `gate` path (`lib/reuse.py`, GOH.ONEVERDICT, `docs/reuse.md`), keyed by the
+  repo's common git dir, the commit's TREE and the gate identity (`lib/gate_identity.py`) of how it
+  was gated (full, release, config), on every push -- not only one `goh ship` runs. The per-ship
+  `green <sha>` file (`GOH_GATE_VERDICTS`, the result's `verdicts` field) is gone: it never saw a
+  commit the land queue had pushed, so ship's own push had nothing to gate and the kit re-gated
+  (koffee_big ship 20261115T121828Z-952ef800, 3137.5 s release step).
 * **Read** by `goh ship verdict --sha SHA [--repo DIR]` (`lib/ship_verdict.py`): exit 0 and the ship
   record's path printed only when a record of that repo is `running`, its worker pid is an ANCESTOR
-  of the caller (a stale or hand-written record has no live worker above it), and its verdict file
-  holds `green SHA`; otherwise exit 1, nothing printed; 2 is a bad invocation. There is no flag or
-  variable that makes it say yes.
+  of the caller (a stale or hand-written record has no live worker above it), and the store holds a
+  green FULL-gate verdict on SHA's tree under today's gate identity, younger than a day (a land's
+  `goh-landed` line under that identity counts); otherwise exit 1 and the miss's reason on stderr;
+  2 is a bad invocation. There is no flag or variable that makes it say yes.
 
-Pinned by `tests/test_ship_verdict.py` (a green gate writes the sha, a red one nothing; the query
-answers for a running ship above the caller and refuses another sha, a finished ship, a dead
-worker; the ship worker names the file), each seen red against a broken writer or reader.
+Pinned by `tests/test_ship_verdict.py` (a green gate records the tree, a red one nothing; the query
+answers for a running ship above the caller and refuses another tree, a finished ship, a dead
+worker) and `tests/test_reuse.py` (a changed tree, a changed gate, a partial key, an old record and
+a record under another key each miss), each seen red against a broken writer or reader.
 
 ## 30. A test's dead endpoint is a port the test holds, never a literal in the ephemeral range
 

@@ -137,15 +137,22 @@ push_change_base() {
     fi
 }
 
-# THE RECORDED VERDICT (GOH.VERDICTAPI, docs/contracts.md section 29): push_gate.sh calls this
-# after every gated ref passed and none moved, with the commits it gated green; each gets one
-# `green <sha>` line in the file GOH_GATE_VERDICTS names (`goh ship` names one per ship, and
-# `goh ship verdict --sha` reads it, lib/ship_verdict.py). A reader never parses the gate's log
-# text. A commit the remote already held was not gated, so it gets no line.
+# THE RECORDED VERDICT (GOH.VERDICTAPI, GOH.ONEVERDICT): push_gate.sh calls this after every gated
+# ref passed and none moved, with the repo and each commit it gated as `<sha>:<how>` (how empty: the
+# full gate, else release or config). Each is recorded green in the one verdict store's `gate` path
+# (lib/reuse.py), keyed by the repo, the commit's TREE and the gate identity of how -- on EVERY
+# push, not only one `goh ship` runs: the per-ship file this wrote before (GOH_GATE_VERDICTS) never
+# saw a commit the land queue pushed, so ship's own push had "nothing to gate" and the release kit
+# re-ran the full gate (koffee_big, 3137.5 s). `goh ship verdict --sha` reads it
+# (lib/ship_verdict.py); a reader never parses the gate's log text. A store that cannot be written
+# is said, never fatal: a missing verdict costs a later re-gate, never a wrong skip.
 push_record_verdicts() {
-    [ -n "${GOH_GATE_VERDICTS:-}" ] || return 0
-    local c
-    for c in "$@"; do printf 'green %s\n' "$c" >>"$GOH_GATE_VERDICTS"; done
+    local root="$1"
+    shift
+    [ "$#" -gt 0 ] || return 0
+    "$GOH_PY" "${BASH_SOURCE[0]%/*}/reuse.py" record-gate --repo "$root" --by push -- "$@" \
+        >/dev/null </dev/null \
+        || warn "pre-push: the gate verdict was not recorded (lib/reuse.py) -- a ship re-gates these commits"
 }
 
 # THE PUSHED RECORD (GOH.CFGPUSHSCOPE; lib/config_push.py's header). push_record_pushed ROOT

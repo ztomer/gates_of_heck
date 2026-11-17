@@ -1,18 +1,22 @@
 """`goh ship verdict --sha SHA [--repo DIR]`: the RECORDED gate verdict of the ship running the
 caller (GOH.VERDICTAPI; docs/contracts.md section 29).
 
-A release kit started by `goh ship` may skip re-running the full gate over a commit ship's push
-step already gated -- but only on a verdict goh RECORDED, never on its log text (koffee_big read
-"pre-push: gating <ref> @ <sha>" and "gates: all green" out of the push log, so a reworded line
-turned the skip off with no one told). The record: the ship worker exports GOH_GATE_VERDICTS (the
-result's `verdicts` path) for its whole run, and gates/push_gate.sh appends `green <sha>` there
-for every commit it gated, after every gated ref passed and none moved. A commit the remote
-already held was never gated, so it has no line.
+A release kit started by `goh ship` may skip re-running the full gate over a commit already gated --
+but only on a verdict goh RECORDED, never on its log text (koffee_big read "pre-push: gating <ref>
+@ <sha>" and "gates: all green" out of the push log, so a reworded line turned the skip off with no
+one told). The record is the one verdict store's `gate` path (lib/reuse.py, GOH.ONEVERDICT): the
+push gate records every commit it gated green, keyed by the repo, the commit's TREE and the gate
+identity, on every push -- not only a push `goh ship` runs. The per-ship `green <sha>` file this
+read before (GOH_GATE_VERDICTS) missed the commit that matters most: one the land queue had
+already pushed, which ship's own push then had "nothing to gate" (koffee_big ship
+20261115T121828Z-952ef800, a 3137.5 s release step of two full gates).
 
 The answer is yes (exit 0, the ship record's path printed) only when a ship record of REPO is
 `running`, its worker pid is an ANCESTOR of the caller (a stale or hand-written record has no live
-worker above the caller), and its verdict file holds `green SHA`. Anything else is no (exit 1,
-nothing printed); a bad invocation is 2. Pinned by tests/test_ship_verdict.py.
+worker above the caller), and the store holds a green full-gate verdict on SHA's tree under the
+gates and tools of today (lib/reuse.py lookup_gate: a land's record counts too). Anything else is
+no (exit 1, the miss's reason on stderr); a bad invocation is 2. Pinned by
+tests/test_ship_verdict.py.
 """
 
 from __future__ import annotations
@@ -21,9 +25,11 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
-ENV = "GOH_GATE_VERDICTS"
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import reuse  # lib/, beside this file: the one verdict store (GOH.ONEVERDICT)
 
 
 def ship_dir() -> Path:
@@ -44,18 +50,12 @@ def ancestors(pid: int) -> set[int]:
     return seen
 
 
-def green(verdicts: str, sha: str) -> bool:
-    try:
-        lines = Path(verdicts).read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return False
-    return f"green {sha}" in lines
-
-
-def verdict(repo: Path, sha: str, caller: int | None = None) -> Path | None:
-    """The record proving SHA green under the running ship above CALLER, or None."""
+def verdict(repo: Path, sha: str, caller: int | None = None) -> tuple[Path | None, str]:
+    """(the running ship's record, "") when SHA is green under the ship above CALLER, else
+    (None, why not)."""
     repo = repo.resolve()
     live = ancestors(os.getpid() if caller is None else caller)
+    why = f"no running ship of {repo.name} is above this process"
     for path in sorted((ship_dir() / repo.name).glob("*.json")):
         try:
             rec = json.loads(path.read_text(encoding="utf-8"))
@@ -63,10 +63,12 @@ def verdict(repo: Path, sha: str, caller: int | None = None) -> Path | None:
             continue
         if not isinstance(rec, dict) or Path(str(rec.get("repo", ""))).resolve() != repo:
             continue
-        running = rec.get("status") == "running" and rec.get("pid") in live
-        if running and green(str(rec.get("verdicts") or ""), sha):
-            return path
-    return None
+        if rec.get("status") != "running" or rec.get("pid") not in live:
+            continue
+        found, why = reuse.lookup_gate(repo, sha)
+        if found is not None:
+            return path, ""
+    return None, why
 
 
 def main(argv: list[str]) -> int:
@@ -77,8 +79,9 @@ def main(argv: list[str]) -> int:
     top = subprocess.run(["git", "-C", args.repo, "rev-parse", "--show-toplevel"],
                          capture_output=True, text=True, stdin=subprocess.DEVNULL,
                          check=False).stdout.strip()  # fmt: skip
-    found = verdict(Path(top or args.repo), args.sha)
+    found, why = verdict(Path(top or args.repo), args.sha)
     if found is None:
+        print(f"goh ship verdict: no: {why}", file=sys.stderr)
         return 1
     print(found)
     return 0
