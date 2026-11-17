@@ -20,8 +20,10 @@ never summed as a negative or a guess. Rows are per repo and UTC day of the fini
 
 JSON shape (`--json`; docs/map.md): {"since", "unloaded_s", "rows": [row...], "totals": row}; a row
 is {"repo", "day", "attempts", "landed", "red", "cause", "queue_wait_s", "gate_s", "slot_wait_s",
-"run_s", "load_avg", "gates_per_landed", "unknown"}. `cause` counts the row's reds by cause
-(lib/land_cause.py, GOH.PREPARITY: the reading the hand count was made with). `unloaded_s` is
+"run_s", "load_avg", "gates", "gates_per_landed", "unknown"}. `gates` is the land gates run: one
+per attempt, but a batch's items (their `batch` {id, gates}, lib/landq_batch.py) share theirs.
+`cause` counts the row's reds by cause (lib/land_cause.py, GOH.PREPARITY: the reading the hand
+count was made with). `unloaded_s` is
 the shortest green run in the window: what a gate costs when nothing else is running.
 
 Pinned by tests/test_landq_report.py.
@@ -94,6 +96,7 @@ class Attempt:
     slot_s: float | None = None
     load: float | None = None
     cause: str | None = None  # a red attempt's (lib/land_cause.py)
+    batch: tuple[str, int] | None = None  # (batch id, the gate runs it spent): GOH.LANDBATCH
 
     @property
     def day(self) -> str:
@@ -149,7 +152,7 @@ def read_attempts(queue: Path, birth_of: Callable[[Path], float | None] = birth)
         if slot is None and start is not None and log is not None and log.is_file():
             slot = slot_wait_s(log.read_text(errors="replace"))
         load = rec.get("load_start")
-        cause = None
+        cause, batch = None, rec.get("batch")
         if rec.get("state") != "landed":
             text = log.read_text(errors="replace") if log is not None and log.is_file() else ""
             cause = land_cause.classify(rec, text)
@@ -165,15 +168,24 @@ def read_attempts(queue: Path, birth_of: Callable[[Path], float | None] = birth)
                 slot_s=float(slot) if isinstance(slot, int | float) else None,
                 load=float(load) if isinstance(load, int | float) else None,
                 cause=cause,
+                batch=_batch(batch),
             )
         )
     return out
+
+
+def _batch(rec: object) -> tuple[str, int] | None:
+    """A record's batch (GOH.LANDBATCH) as (id, gate runs), or None for a land judged alone."""
+    return (str(rec.get("id")), int(rec.get("gates") or 0)) if isinstance(rec, dict) else None
 
 
 def _row(repo: str, day: str, atts: list[Attempt]) -> dict:
     known = [a for a in atts if a.started is not None]
     loads = [a.load for a in atts if a.load is not None]
     landed = sum(a.state == "landed" for a in atts)
+    # A batch's items share its gate runs (GOH.LANDBATCH): counted once, not once per item.
+    shared = dict(a.batch for a in atts if a.batch)
+    gates = sum(a.batch is None for a in atts) + sum(shared.values())
     return {
         "repo": repo,
         "day": day,
@@ -186,7 +198,8 @@ def _row(repo: str, day: str, atts: list[Attempt]) -> dict:
         "slot_wait_s": round(sum(a.slot_s or 0.0 for a in known), 1),
         "run_s": round(sum(a.run_s or 0.0 for a in known), 1),
         "load_avg": round(sum(loads) / len(loads), 1) if loads else None,
-        "gates_per_landed": round(len(atts) / landed, 2) if landed else None,
+        "gates": gates,
+        "gates_per_landed": round(gates / landed, 2) if landed else None,
         "unknown": len(atts) - len(known),
     }
 
@@ -266,7 +279,11 @@ def timed(run_one: Callable[..., dict], *args: object) -> dict:
     finished (to the millisecond), the seconds its log says it waited for a gate slot, and the
     box's load at the start and the end. Additive: an older reader ignores the keys."""
     started, load_start = dt.datetime.now(dt.UTC), load1()
-    outcome = run_one(*args)
+    return stamped(run_one(*args), started, load_start)
+
+
+def stamped(outcome: dict, started: dt.datetime, load_start: float | None) -> dict:
+    """OUTCOME with timed()'s keys, for a run that began at STARTED (a batch's items share it)."""
     finished = dt.datetime.now(dt.UTC)
     log = Path(outcome["log"]) if outcome.get("log") else None
     text = log.read_text(errors="replace") if log and log.is_file() else ""

@@ -69,7 +69,7 @@ verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall=""
 land_exit() {
     local rc=$?
     rm -f "$verdicts" "$pre_start"
-    [ -z "${GOH_LAND_PRE_ONLY:-}" ] || return "$rc"   # the enqueue's pre-step run is no land: no ledger row
+    [ -z "${GOH_LAND_PRE_ONLY:-}${GOH_LAND_STACK_ONTO:-}" ] || return "$rc"   # the enqueue's pre-step run, a stacking rebase: no land, no ledger row
     [ ! -s "${land_timings:-}" ] && rm -f "${land_timings:-}" "${land_timings:-}.log" "${land_timings:-}.controls.log"
     goh_span_record land "$(goh_repo_id "${main:-.}")" "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" \
         ${land_timings:+--timings "${GOH_TIMINGS:-$land_timings}"} --field "wait_lock_s=$lock_wait" \
@@ -119,11 +119,21 @@ fi
 # the pre-step's tree and main's recorded tip, for what the diff between them does not choose
 # (GOH.VERDICTCARRY, the one store's `carry` path).
 # land_rebase -- the branch on top of main as it is now: sets base, moves tip, and sets rebased=1
-# when it had to move. A conflict aborts the rebase and lands nothing.
+# when it had to move. A conflict aborts the rebase and lands nothing. STACKED (GOH_LAND_STACK_ONTO,
+# below): onto that commit instead, carrying only the branch's own commits above
+# GOH_LAND_STACK_UPSTREAM -- a commit of a batch item dropped from below it is not carried.
 land_rebase() {
     rebased=0
-    base="$(git -C "$main" rev-parse HEAD)"
-    git merge-base --is-ancestor "$base" "$tip" && return 0
+    local upon=() below=""
+    base="${GOH_LAND_STACK_ONTO:-$(git -C "$main" rev-parse HEAD)}"
+    if [ -n "${GOH_LAND_STACK_ONTO:-}" ]; then
+        [ "${GOH_LAND_STACK_UPSTREAM:-}" != "$base" ] || return 0
+        upon=(--onto "$base" "${GOH_LAND_STACK_UPSTREAM:?GOH_LAND_STACK_ONTO needs GOH_LAND_STACK_UPSTREAM}")
+        below=" plus the batch stacked on it below $branch"
+    else
+        git merge-base --is-ancestor "$base" "$tip" && return 0
+        upon=("$base")
+    fi
     # The registries every lane appends to merge by ROW (.gitattributes `merge=goh-rows`,
     # lib/row_merge.py, GOH.LANDUNION): two lanes' independent rows were a red and a full queue
     # wait (3 on 2026-11-17); two edits to one row still conflict. A repo's own config need not
@@ -133,10 +143,10 @@ land_rebase() {
         printf -v driver '%q %q %%O %%A %%B %%P' "$GOH_PY" "$GOH/lib/row_merge.py"
         rows=(-c "merge.goh-rows.driver=$driver")
     fi
-    if ! git "${rows[@]}" rebase -q "$base" 7>&- >/dev/null 2>&1 </dev/null; then
+    if ! git "${rows[@]}" rebase -q "${upon[@]}" 7>&- >/dev/null 2>&1 </dev/null; then
         conflicted="$(GIT_OPTIONAL_LOCKS=0 git diff --name-only --diff-filter=U 7>&- 2>/dev/null </dev/null | paste -sd ' ' -)" || conflicted=""
         git rebase --abort 7>&- >/dev/null 2>&1 </dev/null || true
-        err "land.sh: $branch conflicts with main ${base:0:8} in ${conflicted:-(unnamed)} -- the rebase was aborted, $branch is left at ${tip:0:8}; rebase it by hand -- nothing landed"
+        err "land.sh: $branch conflicts with main ${base:0:8}$below in ${conflicted:-(unnamed)} -- the rebase was aborted, $branch is left at ${tip:0:8}; rebase it by hand -- nothing landed"
         exit 1
     fi
     now="$(git rev-parse HEAD)"
@@ -211,6 +221,14 @@ land_pre() {
 # every lane older than a ship failed changelog_tags so (REUSEAUDIT2 dd8403da). The enqueue's run
 # (GOH_LAND_PRE_ONLY) moves nothing: the queue holds the sha the lane enqueued.
 rebased=0
+# STACKED (GOH.LANDBATCH, tools/landq.py's batch, lib/landq_batch.py): the lander, holding the land
+# lock, stacks several lanes' branches -- each rebased onto the one below it -- and gates the tip
+# once. Each branch is moved by this script's own rebase (the row merge driver with it), then it
+# stops: no pre-step, no lock, no gate.
+if [ -n "${GOH_LAND_STACK_ONTO:-}" ]; then
+    land_rebase
+    exit 0
+fi
 [ -n "${GOH_LAND_PRE_ONLY:-}" ] || land_rebase
 [ -z "$pre" ] || land_pre
 # GOH_LAND_PRE_ONLY (GOH.ENQUEUEPRE): `goh land --enqueue` runs the pre-step in the caller's worktree

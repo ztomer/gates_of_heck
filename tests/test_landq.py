@@ -319,7 +319,7 @@ def test_a_land_that_changes_the_lander_is_honoured_by_the_next_request(tmp_path
     code = tmp_path / "goh"
     # The lander and its closure; importlib's module names are said beside it.
     named = ("lib/bounded_run.py", "lib/gitrun.py", "lib/lock_order.py", "lib/lock_order.tsv")
-    named += ("lib/land_prestep.py", "lib/killtree.py")
+    named += ("lib/land_prestep.py", "lib/killtree.py", "lib/landq_batch.py", "lib/land_lock.py")
     named += ("checks/_gitutil.py",)
     sc.copy_closure(
         code,

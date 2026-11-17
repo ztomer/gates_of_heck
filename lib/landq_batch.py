@@ -1,0 +1,238 @@
+"""The landing queue's batch (GOH.LANDBATCH): several pending lands of one repo, ONE land gate.
+
+WHY. The lander gated one land at a time, each rebased on main and gated alone, so with three
+lanes a lane waited about as long in the queue as it spent gated (2026-11-17: 572 agent-minutes
+queued against 711 gated). Merge-queue style, the head of the queue now takes the land requests of
+its repo behind it, in queue order, up to GOH_LANDQ_BATCH (default 3; 1 is the one-by-one queue).
+A push or ship of that repo ends the take: it runs after what was enqueued before it.
+
+THE STACK. Holding the repo's land lock (lib/land_lock.py, so no other land moves main meanwhile),
+the lander rebases each item's branch onto the one below it -- the first onto main -- by the
+lander's own tools/land.sh in its stacking mode (GOH_LAND_STACK_ONTO / _UPSTREAM: the same rebase,
+row merge driver and conflict message a land has; only the item's own commits move, so an item
+dropped from below is never carried). An item whose rebase conflicts is red (`conflict`, its log
+the rebase's) and the rest stack without it. Then the TIP's land.sh runs as any land does -- its
+pre-step, gate and fast-forward, under the lander's hold (GOH_LAND_LOCK_OWNER) -- and verdict carry
+and reuse apply to the tip's tree as to any tree.
+
+THE VERDICT. Green lands every item: each done record names the item's OWN commit (an ancestor of
+main, so `loopctl done` and a ship's ancestry check read it), and `goh land --wait ID` returns per
+item. Red bisects: the first half is restacked on main and gated, then the second half on whatever
+landed; a lone red item is red with ITS log (the run that judged its tree, under a header naming
+the batch). A stack whose tree an earlier run already judged red is not gated again. A run past
+GOH_LAND_TIMEOUT is not bisected (hours more of gates for what is most likely the machine): its
+whole stack is red, `timed out`. Every record carries `batch`: {id, items, gates}, the gate runs the
+batch spent, which `goh land --report` counts as gates per landed item (lib/landq_report.py).
+
+Pinned by tests/test_landq_batch.py.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import json
+import os
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import bounded_run
+import gitrun
+import land_lock
+import landq_report
+
+DEFAULT = 3
+
+
+def cap() -> int:
+    """GOH_LANDQ_BATCH: the most land requests one gate judges; 1 is the one-by-one queue."""
+    try:
+        return max(1, int(os.environ.get("GOH_LANDQ_BATCH") or DEFAULT))
+    except ValueError:
+        return DEFAULT
+
+
+def read(path: Path) -> dict:
+    """A request, or {} when it is no JSON object (one broken file never stops the take)."""
+    try:
+        req = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return req if isinstance(req, dict) else {}
+
+
+def pick(pending: list[Path]) -> list[Path]:
+    """The requests the queue's head runs with: it alone, or (a land) it and the land requests of
+    its repo behind it, in queue order, up to cap(); a push or ship of that repo ends the take."""
+    head = read(pending[0])
+    if head.get("mode") != "land" or cap() == 1:
+        return pending[:1]
+    out = [pending[0]]
+    for path in pending[1:]:
+        req = read(path)
+        if len(out) == cap():
+            break
+        if req.get("repo") != head.get("repo"):
+            continue
+        if req.get("mode") != "land" or not req.get("worktree"):
+            break
+        out.append(path)
+    return out
+
+
+@dataclass
+class Kit:
+    """What the batch borrows from the lander (tools/landq.py)."""
+
+    unset: list[str]  # `env -u...`: git's repository bindings, never inherited
+    stacker: Path  # the lander's own land.sh: it knows the stacking mode whatever a lane's copy is
+    land_script: Callable[[Path], Path]  # the land.sh a lane runs by hand from its worktree
+    timeout: int
+    grace: float
+    say: Callable[[str], None]
+
+
+@dataclass
+class Item:
+    path: Path
+    req: dict
+    log: Path
+    tip: str = ""
+    upstream: str = ""  # the commit below the item's own commits
+    outcome: dict | None = None
+
+
+@dataclass
+class Batch:
+    q: Path
+    kit: Kit
+    items: list[Item]
+    gates: int = 0
+    red_trees: dict[str, tuple[Path, str]] = field(default_factory=dict)
+
+    @property
+    def id(self) -> str:
+        return self.items[0].path.stem
+
+    @property
+    def main(self) -> Path:
+        return Path(self.items[0].req["repo"])
+
+    def git(self, repo: Path, *args: str) -> str:
+        done = gitrun.run_reader(args, repo=repo, timeout=60)
+        return done.stdout.strip() if done.returncode == 0 else ""
+
+    def outcome(self, it: Item, state: str, log: Path, **extra: str) -> None:
+        it.outcome = {"sha": extra.pop("sha", it.req["sha"]), "repo": it.req["repo"],
+                      "mode": "land", "log": str(log), "state": state, **extra}  # fmt: skip
+
+    def own_log(self, it: Item, run_log: Path, verdict: str) -> Path:
+        """The item's log: a header naming the batch, then the run that judged its tree."""
+        text = run_log.read_text(errors="replace") if run_log.is_file() else ""
+        head = f"batch {self.id}: {verdict} by the gate run {run_log.name}\n"
+        with it.log.open("a") as f:
+            f.write(head + text)
+        return it.log
+
+    def stack(self, items: list[Item]) -> list[Item]:
+        """ITEMS rebased each onto the one below, the first onto main; a conflict drops one."""
+        base, out = self.git(self.main, "rev-parse", "HEAD"), []
+        for it in items:
+            if it.upstream != base:
+                argv = ["env", *self.kit.unset, f"GOH_LAND_STACK_ONTO={base}",
+                        f"GOH_LAND_STACK_UPSTREAM={it.upstream}", "bash", "-c",
+                        'cd -- "$1" && exec bash "$2"', "stack", it.req["worktree"],
+                        str(self.kit.stacker)]  # fmt: skip
+                res = bounded_run.run_step(argv, 600, self.kit.grace, "land stack", str(it.log))
+                if res.code or res.timed_out:
+                    self.kit.say(f"batch {self.id}: {it.path.stem} does not stack on {base[:8]}")
+                    self.outcome(it, "red", it.log, why=f"conflict: did not stack on {base[:8]}")
+                    continue
+                it.tip, it.upstream = self.git(Path(it.req["worktree"]), "rev-parse", "HEAD"), base
+            out.append(it)
+            base = it.tip
+        return out
+
+    def gate(self, top: Item, size: int) -> tuple[str, Path, str]:
+        """The tip's land.sh, as a lane runs it by hand: (landed|red|timeout, its log, why)."""
+        self.gates += 1
+        log = self.q / "logs" / f"{self.id}.gate{self.gates}.log"
+        wt = Path(top.req["worktree"])
+        self.kit.say(f"batch {self.id}: gate {self.gates} on {top.tip[:8]}, {size} stacked")
+        argv = ["env", *self.kit.unset, "bash", "-c", 'cd -- "$1" && exec bash "$2"', "land",
+                str(wt), str(self.kit.land_script(wt))]  # fmt: skip
+        res = bounded_run.run_step(argv, self.kit.timeout, self.kit.grace, "land batch", str(log))
+        if res.timed_out:
+            return "timeout", log, f"timed out after {self.kit.timeout}s"
+        return ("landed" if res.code == 0 else "red"), log, f"exit {res.code}"
+
+    def settle(self, items: list[Item]) -> None:
+        """Gate ITEMS stacked; green lands them all, red splits them in two (module doc)."""
+        stacked = self.stack(items)
+        if not stacked:
+            return
+        top = stacked[-1]
+        tree = self.git(Path(top.req["worktree"]), "rev-parse", "HEAD^{tree}")
+        if tree in self.red_trees:
+            state, (log, why) = "red", self.red_trees[tree]
+            self.kit.say(f"batch {self.id}: {top.tip[:8]}'s tree was gated red in {log.name}")
+        else:
+            state, log, why = self.gate(top, len(stacked))
+        if state == "landed":
+            main = self.git(self.main, "rev-parse", "HEAD")
+            for it in stacked:
+                on = gitrun.run_reader(("merge-base", "--is-ancestor", it.tip, main),
+                                       repo=self.main, timeout=60).returncode == 0  # fmt: skip
+                sha = it.tip if on else main  # land.sh rebased the stack after all: main holds it
+                self.outcome(it, "landed", self.own_log(it, log, "landed"), sha=sha,
+                             enqueued=it.req["sha"], landed=sha)  # fmt: skip
+            return
+        if state == "timeout" or len(stacked) == 1:
+            for it in stacked:
+                self.outcome(it, "red", self.own_log(it, log, why), why=why)
+            return
+        self.red_trees[tree] = (log, why)
+        half = len(stacked) // 2
+        self.settle(stacked[:half])
+        self.settle(stacked[half:])
+
+    def restore(self, it: Item) -> None:
+        """A red item's branch back at its enqueued commit: stacked, it may sit on another item's
+        commits that never landed, and the lane would land them with its own."""
+        wt = Path(it.req["worktree"])
+        if it.tip == it.req["sha"] or self.git(wt, "rev-parse", "HEAD") != it.tip:
+            return
+        gitrun.run_writer(("reset", "-q", "--keep", it.req["sha"]), repo=wt, deadline_s=60)
+
+    def run(self) -> list[dict]:
+        for it in self.items:
+            it.tip = self.git(Path(it.req["worktree"]), "rev-parse", "HEAD")
+            if it.tip != it.req["sha"]:
+                at, want = it.tip or "(unreadable)", it.req["sha"]
+                it.log.write_text(f"{it.req['worktree']} is at {at}, not the enqueued {want} "
+                                  "-- nothing landed; enqueue again\n")  # fmt: skip
+                self.outcome(it, "red", it.log, why="tip moved after enqueue")
+        live = [it for it in self.items if it.outcome is None]
+        self.kit.say(f"batch {self.id}: {len(live)} of {len(self.items)} lands of {self.main}")
+        with land_lock.held(land_lock.path(self.main), f"landq batch {self.id}", self.kit.say):
+            main = self.git(self.main, "rev-parse", "HEAD")
+            for it in live:
+                it.upstream = self.git(self.main, "merge-base", main, it.tip)
+            if live:
+                self.settle(live)
+            for it in live:
+                if it.outcome and it.outcome["state"] != "landed":
+                    self.restore(it)
+        self.kit.say(f"batch {self.id}: {len(self.items)} items, {self.gates} gate runs")
+        info = {"id": self.id, "items": len(self.items), "gates": self.gates}
+        return [{**(it.outcome or {}), "batch": info} for it in self.items]
+
+
+def run(q: Path, paths: list[Path], kit: Kit, run_one: Callable[[Path, Path], dict]) -> list[dict]:
+    """The outcomes of the requests at PATHS (in running/, queue order), one per path: a lone
+    request is RUN_ONE's, as before batches; the batch's items share its start and load."""
+    if len(paths) == 1:
+        return [landq_report.timed(run_one, q, paths[0])]
+    started, load = dt.datetime.now(dt.UTC), landq_report.load1()
+    items = [Item(p, json.loads(p.read_text()), q / "logs" / f"{p.stem}.log") for p in paths]
+    return [landq_report.stamped(o, started, load) for o in Batch(q, kit, items).run()]

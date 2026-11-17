@@ -7,9 +7,7 @@
     goh land --drain        # the lander: run every request in order, then exit
     goh land --status       # what is pending, running, and how each finished
 
-WHY. Every agent ran its own push gate, so its lifetime was the machine's queue: pushes took
-1197-1523 s in transcripts under three other gates' load, and one waited 1308 s for a gate slot.
-Now an agent ends at "committed and enqueued"; what follows is nobody's turn.
+WHY. An agent ran its own push gate (1197-1523 s under load); now it ends at "committed, enqueued".
 
 THE REQUEST is one JSON file under `<dir>/pending/` (GOH_LANDQ_DIR, default
 ~/.local/state/goh/landq), named by enqueue time so a listing is the order. It names the repo, the
@@ -18,47 +16,41 @@ SHA, the remote and branch the checkout tracks, the item, and the mode:
           pre-push gate (which takes the machine-wide gate slot itself, lib/gate_slot.sh)
     ship  `tools/ship.py --wait --repo REPO --item ID` (push, release, install, verify, done); the
           checkout's HEAD must still BE the sha, or the ship would release a different commit
-    land  `bash tools/land.sh`, bare, in the WORKTREE (GOH.LANDQLAND, owner 2026-11-15: "move the
-          lanes onto the landing queue"): the land lock, the land gate, the fast-forward of main,
-          exactly as a lane ran it by hand -- the worktree's own tools/land.sh when it has one (a
-          goh lane gates with its tip's gates), else the kit's. The sha is the worktree's HEAD at
-          enqueue; a tip that moved since is refused unrun (the request judged another commit),
+    land  `bash tools/land.sh`, bare, in the WORKTREE (GOH.LANDQLAND): the land lock, the land
+          gate, the fast-forward of main, as a lane ran it by hand -- the worktree's own
+          tools/land.sh when it has one (a goh lane gates with its tip's gates), else the kit's.
+          The sha is the worktree's HEAD at enqueue; a tip that moved since is refused unrun,
           and the enqueue refuses the main checkout and a tree with uncommitted tracked changes.
-          The outcome's `sha` (and `landed`) is main's new tip (land.sh may have rebased the
-          branch onto it); the enqueued tip is kept as `enqueued`.
-A red gate pushes nothing: git refuses the push when its pre-push hook fails; land.sh lands nothing.
+          The outcome's `sha` (and `landed`) is the commit main holds for it (land.sh may have
+          rebased it); the enqueued tip is kept as `enqueued`.
+A red gate pushes nothing (git refuses the push when its pre-push hook fails), nor lands.
 
-THE ENQUEUE PRE-STEP (GOH.ENQUEUEPRE). `--enqueue --land` first runs the land pre-step
-(GOH_LAND_PRE, the tests the diff chooses plus every tree reader) in the caller's worktree, by
-land.sh itself (GOH_LAND_PRE_ONLY=1: it stops before the lock), and refuses a red tip naming
-the failing tests: a tree reader the lane never ran used to meet its first run inside THIS serial
-queue, holding it (GOH.REUSEAUDIT's land: 537 s, red on three). A pre-step past its deadline
-is no verdict (GOH.PRESTEPDEADLINE): the tip queues and the line says so. The lander's own
-pre-step is still the authority after a rebase. `--no-pre REASON` skips the run, printing the
-reason.
+THE ENQUEUE PRE-STEP (GOH.ENQUEUEPRE). `--enqueue --land` first runs land.sh's pre-step
+(GOH_LAND_PRE; GOH_LAND_PRE_ONLY=1 stops it before the lock) in the caller's worktree and refuses
+a red tip naming the failing tests: a tree reader the lane never ran met its first run inside THIS
+serial queue (GOH.REUSEAUDIT's land: 537 s, red on three). Past its deadline is no verdict and the
+tip queues (GOH.PRESTEPDEADLINE). The lander's own pre-step is still the authority after a
+rebase. `--no-pre REASON` skips the run, printing the reason.
 
-THE WAIT. The enqueue returns at once. `goh land --wait ID` (an item, or a request's path or name)
-blocks until that item's newest request reached done/, prints its outcome (and a red log's tail),
-and exits 0 landed, 1 red, 3 when --timeout passed first; a request pending with no lander holding
-the lock starts one, so a wait never sits on a queue nobody drains.
+THE WAIT. `goh land --wait ID` (an item, or a request's path or name) blocks until that item's
+newest request reached done/, prints its outcome (and a red log's tail), and exits 0 landed, 1
+red, 3 past --timeout; a pending request with no lander starts one: no wait sits on an idle queue.
 
-THE LANDER is one process: it holds an flock on `<dir>/lander.lock`, so a second exits at once. It
+THE LANDER is one process holding an flock on `<dir>/lander.lock` (a second exits at once). It
 moves a request to `running/`, runs it under lib/bounded_run.py (GOH_LAND_TIMEOUT, default 3600 s,
-its whole process group swept on expiry), writes `done/<name>.json` and the log under `logs/`, and
-records the outcome on the item: `loopctl set ID landing {"state": "landed"|"red", "sha", "log",
-"at"} --json`, which the coordinator reads on its tick and re-dispatches a red one with the log.
-Between requests it re-reads the digest of its own code (tools/landq.py and lib/ on the live
-checkout's HEAD); a land that changed it makes the lander release the lock and exec a fresh one,
-so the very next request runs the new code (GOH.LANDERSTALECODE).
-After the last request it releases the lock and looks once more: a request enqueued meanwhile
-starts its own lander or is seen here.
+its process group swept on expiry), writes `done/<name>.json` and `logs/<name>.log`, and records
+`loopctl set ID landing {"state": "landed"|"red", "sha", "log", "at"} --json` on the item, which the
+coordinator's tick re-dispatches when red. A land request takes up to GOH_LANDQ_BATCH-1 more of its
+repo with it: stacked, ONE land gate on the tip, a red bisected (GOH.LANDBATCH, lib/landq_batch.py).
+Between requests it re-reads its code's digest (tools/landq.py and lib/ on the live checkout's
+HEAD) and, changed by a land, releases the lock and execs a fresh copy (GOH.LANDERSTALECODE). After
+the last request it releases the lock and looks once more for one enqueued meanwhile.
 
-WHERE IT RUNS, AND A REBOOT (D-0006, docs/decisions/). Not a launchd agent: `--enqueue` starts a
-detached lander (own session) when none holds the lock, and the coordinator's tick may run
-`goh land --drain`. A request survives a reboot because it is a file: one a dead lander left in
-`running/` returns to the front of `pending/` and runs again (a pushed sha is a no-op).
+WHERE IT RUNS, AND A REBOOT (D-0006, docs/decisions/). No launchd agent: `--enqueue` starts a
+detached lander when none holds the lock, and the coordinator's tick may run `--drain`. A request
+is a file, so it survives a reboot: one a dead lander left in `running/` runs again first.
 
-Pinned by tests/test_landq.py; `--report` (GOH.LANDREPORT): lib/landq_report.py.
+Pinned by tests/test_landq.py (batches: tests/test_landq_batch.py); `--report`: lib/landq_report.py.
 """
 
 from __future__ import annotations
@@ -89,14 +81,14 @@ bounded_run = importlib.import_module("bounded_run")
 gitrun = importlib.import_module("gitrun")
 lock_order = importlib.import_module("lock_order")
 land_prestep = importlib.import_module("land_prestep")
+landq_batch = importlib.import_module("landq_batch")
 landq_report = importlib.import_module("landq_report")
 _tui = importlib.import_module("tui.lib")
 err, info, ok, warn = _tui.err, _tui.info, _tui.ok, _tui.warn
 
 GRACE = 5
 DEFAULT_TIMEOUT = 3600
-# land.sh bounds its pre-step at 10 min and its gate at 90, and may first wait for the land lock.
-LAND_TIMEOUT = 2 * 3600
+LAND_TIMEOUT = 2 * 3600  # land.sh: a 10 min pre-step, a 90 min gate, and a wait for the lock first
 WAIT_TIMEOUT = 3 * 3600
 POLL = 2.0
 DIRS = ("pending", "running", "done", "logs")
@@ -244,6 +236,12 @@ def argv_for(req: dict) -> list[str]:
     return [*env, "git", "-C", req["repo"], "push", req["remote"], ref]
 
 
+def batch_kit() -> landq_batch.Kit:
+    timeout = int(os.environ.get("GOH_LAND_TIMEOUT") or LAND_TIMEOUT)
+    return landq_batch.Kit([f"-u{k}" for k in git_bindings()], ROOT / "tools" / "land.sh",
+                           land_script, timeout, GRACE, info)  # fmt: skip
+
+
 def run_one(q: Path, path: Path) -> dict:
     """Run one request already in running/; return its outcome."""
     req = json.loads(path.read_text())
@@ -328,16 +326,18 @@ def drain_held(q: Path, digest: str = "") -> bool:
     for stale in sorted((q / "running").glob("*.json")):
         stale.replace(q / "pending" / stale.name)
         warn(f"{stale.name}: its lander died mid-request -- running it again")
-    while batch := sorted((q / "pending").glob("*.json")):
-        path = q / "running" / batch[0].name
-        batch[0].replace(path)
-        item = json.loads(path.read_text()).get("item", "")
+    while pending := sorted((q / "pending").glob("*.json")):
+        paths = [q / "running" / p.name for p in landq_batch.pick(pending)]  # GOH.LANDBATCH
+        for path in paths:
+            (q / "pending" / path.name).replace(path)
         try:
-            outcome = landq_report.timed(run_one, q, path)
+            outcomes = landq_batch.run(q, paths, batch_kit(), run_one)
         except Exception as e:  # noqa: BLE001 -- one broken request must not strand the rest
-            outcome = {"sha": "", "repo": "", "state": "red", "why": f"lander: {e}", "log": ""}
-        record(path, outcome, item)
-        path.unlink(missing_ok=True)
+            red = {"sha": "", "repo": "", "state": "red", "why": f"lander: {e}", "log": ""}
+            outcomes = [red] * len(paths)
+        for path, outcome in zip(paths, outcomes, strict=True):
+            record(path, outcome, landq_batch.read(path).get("item", ""))
+            path.unlink(missing_ok=True)
         if digest and code_digest() != digest:
             return False
     return True
