@@ -49,6 +49,7 @@ pub mod gohpin;
 pub mod grace;
 pub mod homepaths;
 pub mod hookindex;
+pub mod house_cmds;
 pub mod house_python;
 pub mod index_view;
 pub mod installs;
@@ -129,7 +130,7 @@ pub mod workflowpin;
 use goh_tui::ERR;
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches};
 use cli::{Cli, Commands};
 
 pub(crate) fn goh_root() -> PathBuf {
@@ -153,7 +154,11 @@ fn main() {
         goh_tui::eoutln!("{ERR} {reason}");
         std::process::exit(1);
     }
-    let cli = Cli::parse();
+    let matches = house_cmds::command(Cli::command()).get_matches();
+    if let Some((name, script, args)) = house_cmds::chosen(&matches) {
+        std::process::exit(house_script(name, script, &args));
+    }
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     let code = match run_ported(cli.command).or_else(|command| run_scanners(*command)) {
         Ok(code) => code,
         Err(command) => run_core(*command),
@@ -184,9 +189,6 @@ fn house_script(name: &str, rel: &str, args: &[String]) -> i32 {
         )
 }
 
-/// `goh agent-stalls`' entry point (one line in `run_core`, which is at clippy's length cap).
-const STALLS: &str = "hooks/claude/agent_stalls.py";
-
 /// The commands that are not Phase N1 ports.
 fn run_core(command: Commands) -> i32 {
     match command {
@@ -194,14 +196,6 @@ fn run_core(command: Commands) -> i32 {
             cargo_dir,
             check_depinfo,
         } => rust_scope::run_command(&cargo_dir, check_depinfo.as_deref()),
-        Commands::AgentStalls(a) => house_script("agent-stalls", STALLS, &a.args),
-        Commands::Ship(a) => house_script("ship", "tools/ship.py", &a.args),
-        Commands::Lint(a) => house_script("lint", "tools/lint.py", &a.args),
-        Commands::Land(a) => house_script("land", "tools/landq.py", &a.args),
-        Commands::Budget(a) => house_script("budget", "lib/budget.py", &a.args),
-        Commands::Capacity(a) => house_script("capacity", "lib/capacity.py", &a.args),
-        Commands::Hooks(a) => house_script("hooks", "scripts/hooks_refresh.py", &a.args),
-        Commands::WfPin(a) => house_script("wf-pin", "scripts/wf_pin.py", &a.args),
         Commands::BareOpen(a) => paths(a.exclude, |x| bareopen::run_command(a.staged, x)),
         Commands::RunPaths(a) => paths(a.exclude, |x| runpaths::run_command(a.staged, x)),
         Commands::LaunchApp(a) => launchapp::run_args(a),

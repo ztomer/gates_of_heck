@@ -1,0 +1,12 @@
+# The goh subcommands that run one house script, one per line (GOH.LANDUNION): NAME[|ALIAS...] TAB
+# SCRIPT (from the goh root) TAB the line `goh --help` prints. Adding one is this one line: no
+# shared line of cli.rs or main.rs, and .gitattributes merges the table by row (lib/row_merge.py).
+# The script takes every argument, `--help` included (GOH.SHIPADOPT). Order is the help order.
+agent-stalls	hooks/claude/agent_stalls.py	Each live subagent idle past a threshold on its own background work; exit 1 if any stalls
+ship	tools/ship.py	Land a green HEAD unwatched: push gate, release, install, verify, done (`tools/ship.py`)
+lint	tools/lint.py	The commit gate's verdict on these paths before the commit (`tools/lint.py`)
+land|landq	tools/landq.py	Enqueue, wait on or drain the landing queue, or `--report` its wall time (`tools/landq.py`)
+budget	lib/budget.py	Every subject's time budget: ARMED, BREACHED or CLEARED, last and median runs (`lib/budget.py`)
+capacity	lib/capacity.py	The machine's room for another write lane: slots, load, memory, disk (`lib/capacity.py`)
+hooks	scripts/hooks_refresh.py	Name estate repos with stale stock hooks; `--refresh` fixes them (`hooks_refresh.py`)
+wf-pin	scripts/wf_pin.py	Name estate workflows pinning an older goh release; `--bump` moves them (`wf_pin.py`)

@@ -1,0 +1,7 @@
+# Registries every lane appends to, merged by ROW (lib/row_merge.py, GOH.LANDUNION): two lanes'
+# independent rows rebase cleanly; two edits to one row still conflict. tools/land.sh defines the
+# driver for its rebase; where `merge.goh-rows.driver` is undefined git merges these as text.
+docs/map.md merge=goh-rows
+docs/config.md merge=goh-rows
+gates/verdict_free_keys.txt merge=goh-rows
+crates/goh/house_scripts.tsv merge=goh-rows

@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 pub use crate::cli_args::{
-    CanaryArgs, CratesBehindArgs, DepsArgs, ExcludeStagedArgs, LaunchAppArgs, PassArgs,
-    PluralHedgeArgs, ProvenAction, RoadmapArgs, SkillsArgs, StagedArgs, StepArgs, TagVersionArgs,
+    CanaryArgs, CratesBehindArgs, DepsArgs, ExcludeStagedArgs, LaunchAppArgs, PluralHedgeArgs,
+    ProvenAction, RoadmapArgs, SkillsArgs, StagedArgs, StepArgs, TagVersionArgs,
 };
 
 #[derive(Debug, Parser)]
@@ -32,23 +32,8 @@ pub enum Commands {
     },
     /// Run a command under a ceiling, its group swept on expiry or a signal (`lib/bounded_run.py`).
     Step(StepArgs),
-    /// Each live subagent idle past a threshold on its own background work; exit 1 if any stalls.
-    AgentStalls(PassArgs),
-    /// Land a green HEAD unwatched: push gate, release, install, verify, done (`tools/ship.py`).
-    Ship(PassArgs),
-    /// The commit gate's verdict on these paths before the commit (`tools/lint.py`).
-    Lint(PassArgs),
-    /// Enqueue, wait on or drain the landing queue, or `--report` its wall time (`tools/landq.py`).
-    #[command(alias = "landq")]
-    Land(PassArgs),
-    /// Every subject's time budget: ARMED, BREACHED or CLEARED, last and median runs (`lib/budget.py`).
-    Budget(PassArgs),
-    /// The machine's room for another write lane: slots, load, memory, disk (`lib/capacity.py`).
-    Capacity(PassArgs),
-    /// Name estate repos with stale stock hooks; `--refresh` fixes them (`hooks_refresh.py`)
-    Hooks(PassArgs),
-    /// Name estate workflows pinning an older goh release; `--bump` moves them (`wf_pin.py`)
-    WfPin(PassArgs),
+    // The subcommands that only run a house script are not here: one line each in
+    // `crates/goh/house_scripts.tsv` (`house_cmds`, GOH.LANDUNION).
     /// Run a step under a ceiling; report what it left running (`lib/orphan_canary.py wrap`).
     Canary(CanaryArgs),
     /// A fix or perf commit names its Class and Siblings; a third ends the class (`GOH_COMMIT_CLASS`).

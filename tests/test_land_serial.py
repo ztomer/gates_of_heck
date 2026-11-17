@@ -123,9 +123,31 @@ def test_a_branch_that_conflicts_with_main_lands_nothing_and_is_left_as_it_was(
     before = git(repo, "rev-parse", "main").strip()
     rc, out = _land(wt, tmp_path, "true")
     assert rc == 1 and "conflicts" in out and "nothing landed" in out, out
+    assert "in README.md --" in out, out  # the red line names what conflicted (GOH.LANDUNION)
     assert git(repo, "rev-parse", "main").strip() == before
     assert git(wt, "rev-parse", "HEAD").strip() == tip  # the rebase was aborted, not left half-done
     assert not git(wt, "status", "--porcelain").strip()
+
+
+@pytest.mark.load_sensitive
+def test_a_row_each_lane_added_to_a_registry_lands_both(repo: Path, tmp_path: Path) -> None:
+    """GOH.LANDUNION: a registry .gitattributes merges by row (`merge=goh-rows`) rebases with
+    land.sh's own driver, so the second of two lanes adding a row at one place lands, both rows in;
+    the repo's config defines no driver (without one, the same rebase conflicts as text)."""
+    rows = "| Key | Default |\n|---|---|\n| `GOH_A` | 1 |\n"
+    (repo / ".gitattributes").write_text("keys.md merge=goh-rows\n")
+    (repo / "keys.md").write_text(rows)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "--no-verify", "-m", "registry")
+    lanes = {}
+    for name in ("lane-a", "lane-b"):
+        lanes[name] = wt = _branch(repo, tmp_path, name)
+        (wt / "keys.md").write_text(rows + f"| `GOH_{name[-1].upper()}{name[-1].upper()}` | 2 |\n")
+        git(wt, "commit", "-q", "--no-verify", "-am", f"{name} row")
+    for name, wt in lanes.items():
+        rc, out = _land(wt, tmp_path, "true")
+        assert rc == 0, (name, out)
+    assert (repo / "keys.md").read_text() == rows + "| `GOH_BB` | 2 |\n| `GOH_AA` | 2 |\n"
 
 
 @pytest.mark.load_sensitive

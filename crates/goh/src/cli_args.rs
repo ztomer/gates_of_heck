@@ -8,18 +8,6 @@ use clap::Subcommand;
 
 use crate::skills;
 
-/// A subcommand that hands every argument to one of goh's Python entry points (`goh agent-stalls`,
-/// `goh ship`), its flags included.
-///
-/// `--help` too: clap's own help flag is off, so `goh ship --help` prints the script's usage, not
-/// clap's one-line `[ARGS]...` (GOH.SHIPADOPT).
-#[derive(Debug, clap::Args)]
-#[command(disable_help_flag = true)]
-pub struct PassArgs {
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-    pub args: Vec<String>,
-}
-
 /// The one flag of a check that polices commits and takes no path exemption.
 #[derive(Debug, clap::Args)]
 pub struct StagedArgs {

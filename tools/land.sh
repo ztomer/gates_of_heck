@@ -210,9 +210,19 @@ if [ "$tip" = "$base" ]; then
 fi
 # Gate the commit main will fast-forward to: the branch on top of main as it is now, under the lock.
 if ! git merge-base --is-ancestor "$base" "$tip"; then
-    if ! git rebase -q "$base" 7>&- >/dev/null 2>&1 </dev/null; then
+    # The registries every lane appends to merge by ROW (.gitattributes `merge=goh-rows`,
+    # lib/row_merge.py, GOH.LANDUNION): two lanes' independent rows were a red and a full queue
+    # wait (3 on 2026-11-17); two edits to one row still conflict. A repo's own config need not
+    # define the driver: it is defined here, for this rebase only.
+    rows=()
+    if [ -f "$GOH/lib/row_merge.py" ]; then
+        printf -v driver '%q %q %%O %%A %%B %%P' "$GOH_PY" "$GOH/lib/row_merge.py"
+        rows=(-c "merge.goh-rows.driver=$driver")
+    fi
+    if ! git "${rows[@]}" rebase -q "$base" 7>&- >/dev/null 2>&1 </dev/null; then
+        conflicted="$(GIT_OPTIONAL_LOCKS=0 git diff --name-only --diff-filter=U 7>&- 2>/dev/null </dev/null | paste -sd ' ' -)" || conflicted=""
         git rebase --abort 7>&- >/dev/null 2>&1 </dev/null || true
-        err "land.sh: $branch conflicts with main ${base:0:8} -- the rebase was aborted, $branch is left at ${tip:0:8}; rebase it by hand -- nothing landed"
+        err "land.sh: $branch conflicts with main ${base:0:8} in ${conflicted:-(unnamed)} -- the rebase was aborted, $branch is left at ${tip:0:8}; rebase it by hand -- nothing landed"
         exit 1
     fi
     now="$(git rev-parse HEAD)"
