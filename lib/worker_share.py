@@ -25,9 +25,11 @@ runners that read no variable (`swift test`, `xcodebuild`) take the share as a f
 layer that starts them (`share()` here, `goh_gate_workers` in lib/gate_slot.sh). A gate that runs
 N steps at once (gates/local_ci.sh GOH_CI_JOBS) gives each step `--split N` of its share.
 
-The ratchet that refuses a NEW machine-sized pool in a gate script -- an os.cpu_count pool,
-xdist's auto count, swift's parallel flag with no worker count, a make or cargo job flag with no
-count, the coreutils and sysctl core counts -- is tests/test_worker_share.py (MACHINE_SIZED).
+THE SHAPE of a machine-sized pool -- xdist's auto count, swift's parallel flag with no worker
+count, a build runner's job flag with no count, the coreutils and sysctl core counts -- is
+MACHINE_SIZED below, ONE definition read twice: goh's own scripts by the ratchet in
+tests/test_worker_share.py, every consumer's gate scripts by checks/check_worker_share.py, which
+`structural.sh --full` runs in every repo goh gates (GOH.POOLSHARE2).
 """
 
 from __future__ import annotations
@@ -44,6 +46,7 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 
 import argparse
 import os
+import re
 import sys
 
 import gate_slot
@@ -63,6 +66,17 @@ RUNNER_ENV = (
     "RUST_TEST_THREADS",  # libtest: tests at once inside one test binary
     "NEXTEST_TEST_THREADS",  # cargo nextest's --test-threads
 )
+
+
+MACHINE_SIZED = re.compile(r"""(?x)
+    (?:-n|--numprocesses)[\s=]+(?:auto|logical)\b         # pytest-xdist: every core
+  | --parallel(?![\w-])(?!.*--num-workers)                # swift test: a worker per core
+  | \b(?:g?make|cargo|ninja|cmake)\b[^|;&]*?              # a build runner's job flag
+    (?<![\w-])-j(?![\w$"'{-])(?!\s*[\d$"'])               #   with no bound at all
+  | (?<![\w-])nproc(?![\w-])                              # the machine's count, by name
+  | hw\.(?:ncpu|logicalcpu|physicalcpu|activecpu)
+  | _NPROCESSORS_(?:ONLN|CONF)
+""")
 
 
 def cores(environ: dict[str, str] | None = None) -> int:

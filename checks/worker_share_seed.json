@@ -1,0 +1,32 @@
+{
+  "_doc": [
+    "THE SEED of checks/check_worker_share.py (GOH.POOLSHARE2): per repo (its origin's name), how",
+    "many lines each gate script had that size a pool to the machine when the gate was born",
+    "(2026-11-17). A repo is keyed by its origin's name, or by root:<first commit> when it is",
+    "private and this public tree must not name it. Over its count a file is red; under it the",
+    "gate asks for the entry to be lowered. It only shrinks: an entry goes when its repo reads",
+    "the share (goh_workers)."
+  ],
+  "CadGoose": {
+    ".gatesrc": 1,
+    "tools/profiling/crash_debug.sh": 1,
+    "tools/profiling/hotspot_profile.sh": 1,
+    "tools/profiling/mem_watch.sh": 1,
+    "tools/profiling/multi_goose_profile.sh": 1,
+    "tools/profiling/run_multi_goose_test.sh": 1,
+    "tools/profiling/run_soak_test.sh": 1,
+    "tools/profiling/run_trail_test.sh": 1
+  },
+  "Koffee_big": {
+    "tools/gates_toolchains.sh": 1
+  },
+  "root:b040e28966693ce1dd58386fe4179d90b16a599e": {
+    "tools/repo_tests.sh": 1
+  },
+  "multitop": {
+    ".gatesrc": 1
+  },
+  "ztools": {
+    ".gatesrc": 1
+  }
+}

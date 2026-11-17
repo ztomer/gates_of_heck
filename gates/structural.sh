@@ -333,6 +333,12 @@ if (unset GOH_MCP_SERVERS; cd "$_goh_mcp_top" && [ -f .gatesrc ] && . ./.gatesrc
 fi
 # `= 1`, never `-n`: KEEP_GOING is 0 or 1, both non-empty, so `-n` sent EVERY --full run down the
 # keep-going path and the fail-fast default was never in force (tests/test_check_mcp_wire.py).
+# ── A GATE SCRIPT RUNS ON ITS SHARE (checks/check_worker_share.py, GOH.POOLSHARE2). ───────────
+# goh's own scripts are held by tests/test_worker_share.py; this holds every repo goh gates: a pool
+# sized to the machine in .gatesrc, a Makefile, a *.mk or tools/ is red at the push that adds it.
+section "worker share (no gate script sizes a pool to the machine)"
+"$GOH_PY" "$GOH_ROOT/checks/check_worker_share.py" "$_goh_mcp_top" || _goh_mcp_rc=$?
+[ "$_goh_mcp_rc" -eq 0 ] || [ "$KEEP_GOING" = 1 ] || exit "$_goh_mcp_rc"
 if [ "$KEEP_GOING" = 1 ]; then
     "$goh_native" structural --full --keep-going || exit $?
     exit "$_goh_mcp_rc"

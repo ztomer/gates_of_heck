@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import fcntl
 import os
-import re
 import subprocess
 import sys
 import time
@@ -242,14 +241,7 @@ def test_the_coverage_engines_hand_swift_and_xcodebuild_the_share(monkeypatch):
 # THE RATCHET (GOH.POOLSHARE): a gate script never sizes a pool to the MACHINE. tests/
 # test_suite_drift.py holds `cpu_count()`; this holds the rest of the class, in every tracked
 # script goh runs or vends (gates/, lib/, tools/, checks/, hooks/, scripts/, the installers).
-MACHINE_SIZED = re.compile(r"""(?x)
-    (?:-n|--numprocesses)[\s=]+(?:auto|logical)\b      # pytest-xdist: every core
-  | --parallel(?![\w-])(?!.*--num-workers)             # swift test: a worker per core
-  | (?<![\w-])-j(?![\w$"'{-])(?!\s*[\d$"'])            # make/cargo -j: no bound at all
-  | (?<![\w-])nproc(?![\w-])                           # the machine's count, by name
-  | hw\.(?:ncpu|logicalcpu|physicalcpu|activecpu)
-  | _NPROCESSORS_(?:ONLN|CONF)
-""")
+MACHINE_SIZED = worker_share.MACHINE_SIZED  # the one definition (checks/check_worker_share.py)
 MACHINE_SIZED_SITES = {
     # Not a pool: the CPU-seconds ceiling of one bounded step (limit x cores), the wrapper's
     # backstop for a spinning step, not a count of workers.
@@ -257,8 +249,11 @@ MACHINE_SIZED_SITES = {
     "gates/local_ci.sh": 1,
     # Not a pool: the sampler's own core count, the denominator of a load reading.
     "lib/load_sources.py": 1,
-    # Not a pool: THE count the share divides (GOH_GATE_CORES its seam).
-    "lib/worker_share.py": 1,
+    # Not a pool: THE count the share divides (GOH_GATE_CORES its seam), and MACHINE_SIZED's own
+    # spelling of coreutils' count.
+    "lib/worker_share.py": 2,
+    # Not a run: the consumer check's planted probe files and the doc naming the fix.
+    "checks/check_worker_share.py": 6,
     # Not a run: a flag a scanned command may carry, named so the scan reads past it.
     "lib/secret_render.py": 1,
 }
@@ -303,6 +298,7 @@ def test_no_new_machine_sized_pool_in_a_gate_script():
         "make -j",
         "make -j && x",
         "cargo build -j  ",
+        'cmake --build "$B" --target x -j',
         'n="$(nproc)"',
         "sysctl -n hw.ncpu",
         "getconf _NPROCESSORS_ONLN",
@@ -323,6 +319,8 @@ def test_the_ratchet_sees_every_shape_of_a_machine_sized_pool(line):
         "pytest -n 8",
         "--parallel-testing-enabled",
         "nproc_x",
+        "footprint -j 42",
+        "READ = ['footprint', '-j', str(pid)]",
     ],
 )
 def test_the_ratchet_passes_a_bounded_pool(line):
