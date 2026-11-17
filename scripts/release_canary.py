@@ -65,6 +65,7 @@ import canary_grace
 import estate_registry
 import killtree
 import not_applicable
+import pgid_cpu
 from canary_sides import export, git_run as _git, resolve
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "gates"))
@@ -72,7 +73,8 @@ import step_tools  # crate::grace's date, read from grace.rs (its one home)
 
 ROOT = Path(__file__).resolve().parent.parent
 KEY = "release_canary"
-RUN_TIMEOUT_S = 900
+RUN_TIMEOUT_S = 900  # the STALL bound; the wall backstop is WALL_FACTOR times it
+WALL_FACTOR = 4  # stepcmd::gate_bounds, as checks/_empty_scope_run.py
 JOBS = 4
 # What no gate runs: a change confined to these sweeps nothing.
 NOT_GATE_INPUTS = (":(exclude)docs", ":(exclude)tests", ":(exclude)*.md")
@@ -203,30 +205,35 @@ def parse(rc: int, out: str) -> Verdict:
 
 
 def structural(side: Side, tree: Path) -> Verdict:
-    """One side's native gates over one consumer, in a session of its own: a run past its
-    ceiling is killed with everything it spawned (shellcheck, the probes), never left running."""
-    try:
-        proc = subprocess.Popen(
-            [str(side.bin), "structural", "--full", "--keep-going"],
-            cwd=tree,
-            env=_env(side),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            start_new_session=True,
-            stdin=subprocess.DEVNULL,
-        )
-    except OSError as e:
-        return Verdict(error=str(e))
-    try:
-        out, _ = proc.communicate(timeout=RUN_TIMEOUT_S)
-    except subprocess.TimeoutExpired:
-        killtree.stop_group(
-            proc.pid, proc=proc
-        )  # its own session: the group id is its pid; TERM, then KILL
-        proc.communicate()
-        return Verdict(error=f"past its {RUN_TIMEOUT_S} s ceiling, killed")
-    return parse(proc.returncode, out)
+    """One side's native gates over one consumer, in a session of its own: a run that STALLS for
+    RUN_TIMEOUT_S (no CPU, nothing runnable) or outlasts four times it is killed with everything
+    it spawned (shellcheck, the probes), never left running. A wall ceiling alone read a run
+    starved at load 80-150 as the consumer's refusal (GOH.CANARYFLAKE; the sweep's own bound,
+    GOH.CANARYLOAD): the machine was slow, not the tree. Output goes to an unlinked file, so
+    nothing waits on a pipe while the run is judged by what it spends."""
+    with tempfile.TemporaryFile() as sink:
+        try:
+            proc = subprocess.Popen(
+                [str(side.bin), "structural", "--full", "--keep-going"],
+                cwd=tree,
+                env=_env(side),
+                stdout=sink,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                stdin=subprocess.DEVNULL,
+            )
+        except OSError as e:
+            return Verdict(error=str(e))
+        expired = pgid_cpu.wait_for_exit(
+            proc, killtree.session_pgid(proc), RUN_TIMEOUT_S * WALL_FACTOR, "goh structural",
+            cpu_timeout=None, stall=RUN_TIMEOUT_S,
+        )  # fmt: skip
+        if expired is not None:
+            killtree.stop_group(proc.pid, proc=proc)  # its own session: TERM, then KILL
+            proc.wait()
+            return Verdict(error=f"{expired}, killed")
+        sink.seek(0)
+        return parse(proc.returncode, sink.read().decode("utf-8", "replace"))
 
 
 def remedy(step: str, found: list[str]) -> str:
