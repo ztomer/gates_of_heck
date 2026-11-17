@@ -66,7 +66,6 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
     del _sys.path[0]
 
 import argparse
-import datetime as dt
 import importlib
 import json
 import os
@@ -83,6 +82,13 @@ lock_order = importlib.import_module("lock_order")
 land_prestep = importlib.import_module("land_prestep")
 landq_batch = importlib.import_module("landq_batch")
 landq_report = importlib.import_module("landq_report")
+landq_request = importlib.import_module("landq_request")
+landq_look = importlib.import_module("landq_look")
+Refused, request, land_request = (
+    landq_request.Refused,
+    landq_request.request,
+    landq_request.land_request,
+)
 _tui = importlib.import_module("tui.lib")
 err, info, ok, warn = _tui.err, _tui.info, _tui.ok, _tui.warn
 
@@ -90,12 +96,7 @@ GRACE = 5
 DEFAULT_TIMEOUT = 3600
 LAND_TIMEOUT = 2 * 3600  # land.sh: a 10 min pre-step, a 90 min gate, and a wait for the lock first
 WAIT_TIMEOUT = 3 * 3600
-POLL = 2.0
 DIRS = ("pending", "running", "done", "logs")
-
-
-class Refused(Exception):
-    pass
 
 
 def qdir() -> Path:
@@ -106,13 +107,7 @@ def loopctl() -> Path:
     return Path(os.environ.get("GOH_LOOPCTL") or Path.home() / "Projects/.loop/tools/loopctl.py")
 
 
-def git(repo: Path, *args: str) -> str:
-    done = gitrun.run_reader(args, repo=repo, timeout=60)
-    return done.stdout.strip() if done.returncode == 0 else ""
-
-
-def now() -> str:
-    return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+git, now = landq_request.git, landq_request.now
 
 
 def git_bindings() -> tuple[str, ...]:
@@ -121,54 +116,6 @@ def git_bindings() -> tuple[str, ...]:
     from _gitutil import local_env_vars
 
     return local_env_vars()
-
-
-def request(repo_arg: str, sha_arg: str, item: str, ship: bool, summary: str) -> dict:
-    """The request for SHA in REPO, refused when the checkout cannot land it."""
-    top = git(Path(repo_arg), "rev-parse", "--show-toplevel")
-    if not top:
-        raise Refused(f"{repo_arg} is not a git checkout")
-    repo = Path(top)
-    found = gitrun.run_reader(
-        ("rev-parse", "--verify", f"{sha_arg}^{{commit}}"), repo=repo, timeout=60
-    )
-    sha = found.stdout.strip() if found.returncode == 0 else ""
-    if not sha:
-        raise Refused(
-            f"{repo}: no commit {sha_arg} in this checkout ({found.stderr.strip()}) -- "
-            "commit it, then enqueue"
-        )
-    upstream = git(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
-    if not upstream:
-        raise Refused(f"{repo}: the branch tracks no remote branch; nothing to push to")
-    remote, _, branch = upstream.partition("/")
-    if ship and not item:
-        raise Refused("--ship needs --item: the ship records that item done")
-    return {"repo": str(repo), "sha": sha, "remote": remote, "branch": branch, "item": item,
-            "mode": "ship" if ship else "push", "summary": summary,
-            "enqueued_at": now()}  # fmt: skip
-
-
-def land_request(wt_arg: str, item: str) -> dict:
-    """The request to land WORKTREE's tip by tools/land.sh, refused where land.sh refuses."""
-    top = git(Path(wt_arg), "rev-parse", "--show-toplevel")
-    if not top:
-        raise Refused(f"{wt_arg} is not a git checkout")
-    wt = Path(top)
-    listing = git(wt, "worktree", "list", "--porcelain").splitlines()
-    main = listing[0].removeprefix("worktree ") if listing else ""
-    if not main or Path(main).resolve() == wt.resolve():
-        raise Refused(f"{wt} is the main checkout; land.sh lands a branch's worktree into it")
-    dirty = gitrun.run_reader(
-        ("status", "--porcelain", "--untracked-files=no"), repo=wt, timeout=60
-    )
-    if dirty.returncode or dirty.stdout.strip():
-        raise Refused(f"{wt}: uncommitted changes to tracked files -- commit them, then enqueue")
-    sha = git(wt, "rev-parse", "HEAD")
-    branch = git(wt, "rev-parse", "--abbrev-ref", "HEAD")
-    return {"repo": main, "worktree": str(wt), "sha": sha, "remote": "", "branch": branch,
-            "item": item, "mode": "land", "summary": "",
-            "enqueued_at": now()}  # fmt: skip
 
 
 def land_script(wt: Path) -> Path:
@@ -385,64 +332,11 @@ def audit_drain() -> None:
                        stdin=subprocess.DEVNULL)  # fmt: skip
 
 
-def status() -> int:
-    q = qdir()
-    for d in ("pending", "running"):
-        for f in sorted((q / d).glob("*.json")) if (q / d).is_dir() else []:
-            r = json.loads(f.read_text())
-            info(
-                f"{d}: {r.get('item') or '-'} {Path(r['repo']).name} @ {r['sha'][:8]} ({r['mode']})"
-            )
-    for f in sorted((q / "done").glob("*.json"))[-10:] if (q / "done").is_dir() else []:
-        r = json.loads(f.read_text())
-        info(f"done: {f.stem} {r['state']} @ {r['sha'][:8]} {r.get('log', '')}")
-    return 0
-
-
-def find_request(q: Path, what: str) -> Path | None:
-    """WHAT's newest request, wherever it is now: a request's path or name, else an item ID."""
-    name = Path(what).name.removesuffix(".json")
-    newest: tuple[str, Path] | None = None
-    for d in ("pending", "running", "done"):
-        for f in (q / d).glob("*.json") if (q / d).is_dir() else []:
-            if f.stem == name:
-                return f
-            mine = f.stem.partition("-")[2] == what.replace("/", "_")  # `<ns>-<item>`, exactly
-            if mine and (not newest or f.name > newest[0]):
-                newest = (f.name, f)
-    return newest[1] if newest else None
-
-
-def wait(what: str, timeout: float) -> int:
-    """Block until WHAT's newest request is done; exit by its outcome (module doc, THE WAIT)."""
-    q = qdir()
-    found = find_request(q, what)
-    if found is None:
-        err(f"goh land --wait: no request for {what} under {q}")
-        return 2
-    name, start_by = found.name, time.monotonic() + timeout
-    nudged = 0.0
-    while not (q / "done" / name).is_file():
-        if time.monotonic() > start_by:
-            err(f"goh land --wait: {what} ({name}) has not finished after {timeout:.0f}s")
-            return 3
-        if (q / "pending" / name).is_file() and time.monotonic() - nudged > 30:
-            if (fd := take_lock(q)) is not None:  # nobody drains: start the lander
-                os.close(fd)
-                start_lander()
-            nudged = time.monotonic()
-        time.sleep(POLL)
-    r = json.loads((q / "done" / name).read_text())
-    sha = r.get("landed") or r.get("sha", "")
-    line = f"{what}: {r['state']} @ {sha[:8]} ({r.get('mode', '?')}) log {r.get('log', '')}"
-    if r["state"] == "landed":
-        ok(line)
-        return 0
-    err(f"{line}: {r.get('why', '')}")
-    log = Path(r.get("log") or "/nonexistent")
-    for tail in log.read_text(errors="replace").splitlines()[-30:] if log.is_file() else []:
-        print(f"  {tail}", file=sys.stderr)
-    return 1
+def nudge() -> None:
+    """Start the lander when nobody drains (`--wait` on a pending request)."""
+    if (fd := take_lock(qdir())) is not None:
+        os.close(fd)
+        start_lander()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -467,9 +361,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.drain:
         return drain()
     if args.status:
-        return status()
+        return landq_look.status(qdir())
     if args.wait is not None:
-        return wait(args.wait, args.timeout)
+        return landq_look.wait(qdir(), args.wait, args.timeout, nudge)
     try:
         if args.land is not None:
             if args.enqueue or args.ship:

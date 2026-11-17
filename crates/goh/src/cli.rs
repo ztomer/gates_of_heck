@@ -8,6 +8,10 @@ pub use crate::cli_args::{
     CanaryArgs, CratesBehindArgs, DepsArgs, ExcludeStagedArgs, LaunchAppArgs, PluralHedgeArgs,
     ProvenAction, RoadmapArgs, SkillsArgs, StagedArgs, StepArgs, TagVersionArgs,
 };
+pub use crate::cli_scan_args::{
+    ClaimDerivationArgs, CredentialUrlsArgs, EarlyExitPipeArgs, KillByNameArgs, MdLinksArgs,
+    PythonFormattedArgs, SubprocessStdinArgs, UnreapedSpawnArgs, VersionProvenanceArgs,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "goh", about = "Static structural gates", version = env!("GOH_VERSION"))]
@@ -88,23 +92,7 @@ pub enum Commands {
     },
     /// Every child process names its stdin, from the AST. A structural step where
     /// `GOH_SUBPROCESS_STDIN=on`.
-    SubprocessStdin {
-        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
-        /// its structural gate applies it; `--exclude ''` opts out.
-        #[arg(long)]
-        exclude: Option<String>,
-        /// Staged blobs (the index being committed).
-        #[arg(long)]
-        staged: bool,
-        /// Judge this one file from the working tree and print JSON `{path, calls, findings}`;
-        /// exit 1 when it has findings. For a repo's own verify step and the test harness.
-        #[arg(long)]
-        source: Option<String>,
-        /// Rewrite the allowlist from today's findings: entries still in use kept as written, new
-        /// ones `unreviewed`, stale ones dropped. Refuses over uncommitted Python.
-        #[arg(long, conflicts_with_all = ["staged", "source"])]
-        seed: bool,
-    },
+    SubprocessStdin(SubprocessStdinArgs),
     /// The proven-step cache's key, lookup and record, in-process (`gates/_proven.sh` delegates).
     Proven {
         #[command(subcommand)]
@@ -208,20 +196,7 @@ pub enum Commands {
     },
     /// Fail on a version string that names no commit, no build date, or no
     /// build script behind them (native port of `check_version_provenance`).
-    VersionProvenance {
-        /// Repository root.
-        #[arg(default_value = ".")]
-        root: String,
-        /// JSON list of paths known not to comply; may only shrink.
-        #[arg(long)]
-        baseline: Option<String>,
-        /// Only the files the index holds (pre-commit scope).
-        #[arg(long)]
-        staged: bool,
-        /// Machine-readable output.
-        #[arg(long)]
-        json: bool,
-    },
+    VersionProvenance(VersionProvenanceArgs),
     /// Fail on a shell file that does not parse, errors in shellcheck, or exceeds its seed.
     ShellLint {
         /// Regex on paths to skip. Unset: the repo's `.gatesrc` `GOH_EXCLUDE`; `''` opts out.
@@ -235,28 +210,9 @@ pub enum Commands {
         seed: bool,
     },
     /// Fail when the repo's Python is not ruff-formatted.
-    PythonFormatted {
-        /// Trees to check (default: the repo).
-        trees: Vec<String>,
-        /// Judge the staged `.py` files' index blobs.
-        #[arg(long)]
-        staged: bool,
-        /// Prove the gate: a mis-formatted file is refused and a formatted one passes.
-        #[arg(long)]
-        selftest: bool,
-    },
+    PythonFormatted(PythonFormattedArgs),
     /// Fail on a credential in `.git/config` (native port of `check_no_credential_urls`).
-    CredentialUrls {
-        /// Repo to judge (default: the enclosing one).
-        #[arg(long)]
-        root: Option<String>,
-        /// Findings as JSON on stdout.
-        #[arg(long)]
-        json: bool,
-        /// Judge one URL and print `[kind, host, fingerprint]` or `null`.
-        #[arg(long)]
-        verdict: Option<String>,
-    },
+    CredentialUrls(CredentialUrlsArgs),
     /// Dependency currency: a pin below the graph fails; crates.io drift reports (`dep_currency`).
     Deps(DepsArgs),
     /// Fail when `cargo update --dry-run` would move a lock to newer compatible releases.
@@ -285,75 +241,18 @@ pub enum Commands {
     },
     /// Fail on a relative markdown link that resolves to no file or no anchor
     /// (native port of `check_md_links`).
-    MdLinks {
-        /// Repository to read (default: the cwd's repo).
-        #[arg(long)]
-        root: Option<String>,
-        /// Judge the index, not the working tree.
-        #[arg(long)]
-        staged: bool,
-        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
-        /// its structural gate applies it; `--exclude ''` opts out.
-        #[arg(long)]
-        exclude: Option<String>,
-        /// Machine-readable output.
-        #[arg(long)]
-        json: bool,
-        /// Print the anchors and links of the markdown on stdin, as JSON.
-        #[arg(long)]
-        anchors: bool,
-    },
+    MdLinks(MdLinksArgs),
     /// Re-derive every marked number in prose (native port of `check_claim_derivation`).
-    ClaimDerivation {
-        /// Repository to read (default: the cwd's repo).
-        #[arg(long)]
-        root: Option<String>,
-        /// Judge the index, not the working tree.
-        #[arg(long)]
-        staged: bool,
-        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
-        /// its structural gate applies it; `--exclude ''` opts out.
-        #[arg(long)]
-        exclude: Option<String>,
-        /// Machine-readable output.
-        #[arg(long)]
-        json: bool,
-        /// Print the claims stdin makes, read as this path, as JSON (the grammar's test seam).
-        #[arg(long, value_name = "PATH")]
-        parse_claims: Option<String>,
-    },
+    ClaimDerivation(ClaimDerivationArgs),
     /// Fail on a tracked JavaScript source that does not parse (native port of
     /// `check_js_syntax`). The goal is the BROWSER'S: `.js` is a classic script, `.mjs` a
     /// module, `.cjs` node's `CommonJS`; a template is judged by its substituted form.
     JsSyntax,
     /// Fail on a process kill by NAME (native port of `check_no_kill_by_name`).
-    KillByName {
-        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
-        /// its structural gate applies it; `--exclude ''` opts out.
-        #[arg(long)]
-        exclude: Option<String>,
-        /// Staged blobs (polices the index, like the Python checker).
-        #[arg(long)]
-        staged: bool,
-        /// Print the code lines read from stdin for this path, as JSON.
-        #[arg(long)]
-        code_lines: Option<String>,
-    },
+    KillByName(KillByNameArgs),
     /// Fail on an early-exit consumer (`grep -q`, `grep -m`, `head`, awk `exit`, sed `q`) reading
     /// a pipe in a script that turns pipefail on: the producer's SIGPIPE becomes the verdict.
-    EarlyExitPipe {
-        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
-        /// its structural gate applies it; `--exclude ''` opts out.
-        #[arg(long)]
-        exclude: Option<String>,
-        /// Staged blobs (polices the index).
-        #[arg(long, conflicts_with = "seed")]
-        staged: bool,
-        /// Write today's findings as `early_exit_pipe_seed.json`, the per-file counts the
-        /// structural step holds the tree to (each may only fall).
-        #[arg(long)]
-        seed: bool,
-    },
+    EarlyExitPipe(EarlyExitPipeArgs),
     /// Fail on a statement after an `exec` that replaced the shell: it can never run.
     DeadAfterExec(ExcludeStagedArgs),
     /// Fail on a shell source expanding the hook's carried index outside `goh_bind_hook_index`.
@@ -431,18 +330,7 @@ pub enum Commands {
     /// One roadmap (`GOH_ROADMAP`) of open entries, each with an id and a `Done when:`.
     Roadmap(RoadmapArgs),
     /// Fail on a test spawn no guard reaps, or whose reap sits below a line that can panic.
-    UnreapedSpawn {
-        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
-        /// its structural gate applies it; `--exclude ''` opts out.
-        #[arg(long)]
-        exclude: Option<String>,
-        /// Staged blobs (polices the index, like the Python checker).
-        #[arg(long)]
-        staged: bool,
-        /// Judge stdin as one file with this extension; print JSON verdicts.
-        #[arg(long)]
-        verdicts: Option<String>,
-    },
+    UnreapedSpawn(UnreapedSpawnArgs),
     /// Fail when a crate is exempt from its workspace lint policy
     /// (native port of `check_lints_optin`).
     Lints {

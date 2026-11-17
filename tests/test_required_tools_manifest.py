@@ -69,10 +69,8 @@ def _scanned() -> set[tuple[str, str]]:
         ("checks", "*.py"),
         ("scripts", "*.sh"),
         ("lib", "*.sh"),
-        (
-            "tools",
-            "*.py",
-        ),  # tools/ship.py's git-cliff (layer `ship`, never inferred: CI ships nothing)
+        ("lib", "*.py"),  # ship_version.py's git-cliff (layer `ship`: CI ships nothing)
+        ("tools", "*.py"),
         ("tools", "*.sh"),  # tools/pytest.sh's pytest (layer `goh-suite`)
         ("crates/goh/src", "**/*.rs"),
     ):

@@ -18,7 +18,7 @@
   "checks/check_claim_derivation.py": 2,
   "checks/check_display_seam.py": 4,
   "checks/check_empty_scope.py": 2,
-  "checks/check_estate_corpus.py": 9,
+  "checks/check_estate_corpus.py": 5,
   "checks/check_file_length.py": 1,
   "checks/check_generated_fresh.py": 1,
   "checks/check_git_env.py": 2,

@@ -87,12 +87,9 @@ import argparse
 import datetime as dt
 import json
 import os
-import re
 import shlex
-import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -100,13 +97,21 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "lib"))
 import bounded_run
-import gitrun
-import ship_changelog
 import ship_item
 import ship_pushed
 import ship_status
 import ship_undo
 import ship_verify
+from ship_preflight import preflights, run_preflights
+from ship_version import (
+    SEMVER,
+    Refused,
+    git,
+    git_bindings,
+    newest_tag,
+    next_version,
+    unbound_env,
+)
 
 from tui.lib import err, info, ok, step
 
@@ -115,25 +120,6 @@ save, tail = ship_status.save, ship_status.tail  # the result file, a step log (
 GRACE, DEFAULT_TIMEOUT = 5, 3600
 KEYS = ("GOH_SHIP_RELEASE", "GOH_SHIP_INSTALL", "GOH_SHIP_TIMEOUT", "GOH_SHIP_RELEASE_PUSHES",
         "GOH_SHIP_PREFLIGHT", "GOH_SHIP_CHANGELOG", "GOH_CHANGELOG_FRAGMENTS")  # fmt: skip
-SEMVER = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
-
-
-def git_bindings() -> tuple[str, ...]:
-    """The variables that bind git to one repository: git's own list (`--local-env-vars`,
-    checks/_gitutil.py), never a hand copy -- the copy here held 6 of git's 15 (GOH.ENVLEAK)."""
-    sys.path.insert(0, str(ROOT / "checks"))
-    from _gitutil import local_env_vars
-
-    return local_env_vars()
-
-
-class Refused(Exception):
-    pass
-
-
-def git(repo: Path, *args: str) -> str:
-    done = gitrun.run_reader(args, repo=repo, timeout=60)
-    return done.stdout.strip() if done.returncode == 0 else ""
 
 
 def config(repo: Path) -> dict[str, str]:
@@ -154,66 +140,6 @@ def config(repo: Path) -> dict[str, str]:
     return {k: found.get(k, "") for k in KEYS}
 
 
-def newest_tag(repo: Path) -> str:
-    for tag in git(repo, "tag", "--list", "v*", "--sort=-v:refname").splitlines():
-        if SEMVER.match(tag):
-            return tag
-    return ""
-
-
-CLIFF_TAGS = r"^v[0-9]+\.[0-9]+\.[0-9]+$"  # SEMVER, as git-cliff's --tag-pattern
-
-
-def cliff_version(repo: Path, tag: str) -> str:
-    """git-cliff's next version after TAG (X.Y.Z), or "" when it finds nothing to bump."""
-    if not shutil.which("git-cliff"):
-        raise Refused("the next version is git-cliff's answer and git-cliff is not on PATH: "
-                      "brew install git-cliff (or pass --version X.Y.Z / --bump KIND)")  # fmt: skip
-    done = subprocess.run(["git-cliff", "--bumped-version", "--tag-pattern", CLIFF_TAGS],
-                          cwd=repo, env=unbound_env(), capture_output=True, text=True,
-                          stdin=subprocess.DEVNULL, check=False, timeout=120)  # fmt: skip
-    lines = done.stdout.split()
-    if done.returncode != 0 or not lines or not SEMVER.match(lines[-1]):
-        why = (done.stderr.strip().splitlines() or [f"exit {done.returncode}"])[-1]
-        raise Refused(f"git-cliff --bumped-version gave no vX.Y.Z: {why}")
-    return "" if lines[-1] == tag else lines[-1].removeprefix("v")
-
-
-def next_version(repo: Path, tag: str, version: str | None, bump: str | None,
-                 releases: bool = True) -> str:  # fmt: skip
-    if version:
-        if bump:
-            raise Refused(f"--version {version} and --bump {bump} both name the version: pass one")
-        if not re.fullmatch(r"\d+\.\d+\.\d+", version.removeprefix("v")):
-            raise Refused(f"--version {version!r} is not X.Y.Z")
-        return version.removeprefix("v")
-    if bump == "none":
-        held = [t for t in git(repo, "tag", "--points-at", "HEAD").splitlines() if SEMVER.match(t)]
-        if tag and not held:
-            raise Refused(f"--bump none ships no release, but {repo.name} tags releases and HEAD "
-                          f"is past {tag}, so it would land untagged: pass --version X.Y.Z for "
-                          "the version a commit already bumped (the kit tags it), or --bump "
-                          "patch|minor|major to cut the next")  # fmt: skip
-        return ""
-    m = SEMVER.match(tag)
-    if not m:  # a first release names its version: nothing to bump from (GOH.FIRSTTAG)
-        if releases:
-            raise Refused(f"{repo.name} has no v-tag, so there is no version to bump: pass "
-                          "--version X.Y.Z for its first release (or --bump none)")  # fmt: skip
-        return ""
-    major, minor, patch = (int(x) for x in m.groups())
-    if not bump:
-        found = cliff_version(repo, tag)
-        if found:
-            return found
-        bump = "patch"
-    if bump == "major":
-        return f"{major + 1}.0.0"
-    if bump == "minor":
-        return f"{major}.{minor + 1}.0"
-    return f"{major}.{minor}.{patch + 1}"
-
-
 def default_out(name: str, sha: str) -> Path:
     base = Path(os.environ.get("GOH_SHIP_DIR") or Path.home() / ".local/state/goh/ship")
     stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -222,52 +148,6 @@ def default_out(name: str, sha: str) -> Path:
 
 def loopctl() -> Path:
     return Path(os.environ.get("GOH_LOOPCTL") or Path.home() / "Projects/.loop/tools/loopctl.py")
-
-
-def preflights(repo: Path, cfg: dict[str, str], version: str, summary="") -> list[tuple[str, str]]:
-    """The commands asked before the push when the release step will run, in order: goh's
-    changelog reading (GOH.SHIPUNRELEASED: a private Rust app's kit said `Unreleased is empty:
-    nothing to release` after its push), then the repo's GOH_SHIP_PREFLIGHT, each as (whose,
-    command). None when no release runs."""
-    if not (cfg["GOH_SHIP_RELEASE"] and version):
-        return []
-    if any(SEMVER.match(t) for t in git(repo, "tag", "--points-at", "HEAD").splitlines()):
-        return []
-    try:
-        out = ship_changelog.reading(repo, cfg["GOH_SHIP_CHANGELOG"], version, summary,
-                                     cfg["GOH_CHANGELOG_FRAGMENTS"])  # fmt: skip
-    except ValueError as e:
-        raise Refused(str(e)) from None
-    if cfg["GOH_SHIP_PREFLIGHT"].strip():
-        out.append(("GOH_SHIP_PREFLIGHT", cfg["GOH_SHIP_PREFLIGHT"].replace("{version}", version)))
-    return out
-
-
-def run_preflights(repo: Path, cmds: list[tuple[str, str]], version: str, args: argparse.Namespace,
-                   timeout: int) -> None:  # fmt: skip
-    """Run each preflight under the ship's bound; the first refusal raises Refused, naming it."""
-    env = ["env", *(f"-u{k}" for k in git_bindings()), f"GOH_SHIP_VERSION={version}",
-           f"GOH_SHIP_SUMMARY={args.summary or ''}",
-           f"GOH_SHIP_ITEM={args.item or ''}"]  # fmt: skip
-    cd = f"cd {shlex.quote(str(repo))} || exit 2; "
-    for whose, cmd in cmds:
-        fd, logname = tempfile.mkstemp(prefix="goh-ship-preflight.", suffix=".log")
-        os.close(fd)
-        log = Path(logname)
-        try:
-            argv = [*env, "bash", "-c", cd + cmd]
-            out = bounded_run.run_step(argv, timeout, GRACE, "ship preflight",
-                                       str(log))  # fmt: skip
-            said = [ln for ln in tail(log) if ln.strip()][-8:]
-        finally:
-            log.unlink(missing_ok=True)
-        if out.code == 0 and not out.timed_out:
-            continue
-        what = f"timed out after {timeout}s" if out.timed_out else f"exit {out.code}"
-        raise Refused(
-            f"{repo.name}: the release preflight ({whose}) refuses v{version} before anything is "
-            f"pushed ({what}): `{cmd}`\n  " + "\n  ".join(said or ["(it printed nothing)"])
-        )
 
 
 def plan(args: argparse.Namespace) -> dict:
@@ -358,12 +238,6 @@ def command(res: dict, name: str) -> tuple[str | None, str]:
         return None, "no --item to record"
     verb = "progress" if res.get("progress") else "done"  # a slice stays open (LOOP.SHIPSLICE)
     return f"{py} {lc} {verb} {shlex.quote(res['item'])} --shipped {shlex.quote(res['result'])}", ""
-
-
-def unbound_env() -> dict[str, str]:
-    """This environment without git's repository bindings: a step runs in the shipped repo, never in
-    whatever repository a hook that started `goh ship` had bound (contract #12)."""
-    return {k: v for k, v in os.environ.items() if k not in git_bindings()}
 
 
 def run_steps(res: dict, first: str = STEPS[0]) -> int:
