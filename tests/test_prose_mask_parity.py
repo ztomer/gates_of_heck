@@ -8,15 +8,14 @@ import, a call, an argument string, a file that does not tokenize) and fails bot
 
 from __future__ import annotations
 
-import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from conftest import hermetic_env
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures" / "prose_mask"
@@ -50,13 +49,15 @@ def test_python_mask_judges_the_fixture(name: str) -> None:
 @pytest.mark.parametrize("name", CASES)
 def test_goh_screen_judges_the_fixture_the_same_way(goh: Path, tmp_path: Path, name: str) -> None:
     fast_init(tmp_path)
-    shutil.copy(FIXTURES / name, tmp_path / name.removesuffix(".in"))
+    # Fixture DATA, not a goh script with a source closure: written from its text.
+    source = (FIXTURES / name).read_text()
+    (tmp_path / name.removesuffix(".in")).write_text(source)
     r = subprocess.run(
         [str(goh), "screen", name.removesuffix(".in")],
         cwd=tmp_path,
         capture_output=True,
         text=True,
-        env=dict(os.environ, GOH_DIR=str(ROOT)),
+        env=hermetic_env(GOH_DIR=str(ROOT)),
         stdin=subprocess.DEVNULL,
         check=False,
     )
