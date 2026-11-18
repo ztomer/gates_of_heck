@@ -174,7 +174,15 @@ run_rust() {
             goh_unbind_git   # the suite is a test run: it never sees git's repository variables (GOH.HOOKGITENV)
             export CARGO_TARGET_DIR="$PROJ/target/llvm-cov-external"
             export CARGO_BUILD_BUILD_DIR="$COV_CACHE/$COV_KEY/external"
-            showenv="$(cargo llvm-cov show-env --sh 2>/dev/null)" || exit 1
+            # ONE TREE, ONE BINARY, FROM ANY CHECKOUT (GOH.COVCARRY3). A per-test profile is keyed
+            # on this binary's bytes, and one tree built 131f8444.. in one lane and 8218270f.. in
+            # another: the coverage map named the checkout (its compilation dir) and the debug map
+            # every object's path in the build dir (keyed on the checkout's path, above). So the
+            # workspace root is remapped away (`--remap-path-prefix`: its crates' file names are
+            # relative, put back under $PROJ after the report) and the build carries no debug info
+            # (`debug=false` below: coverage reads the coverage map, never DWARF; 26 s against 37 s
+            # for goh). tests/test_coverage_bin_identity.py.
+            showenv="$(cargo llvm-cov show-env --sh --remap-path-prefix 2>/dev/null)" || exit 1
             eval "$showenv"
             cargo llvm-cov clean --profraw-only >/dev/null 2>&1 || true
             cov_phase "external: instrumented build" "$part.log"
@@ -184,7 +192,7 @@ run_rust() {
             # opt-level 2). Counters are placed before LLVM optimizes, so what they count is the
             # same; the debug profile, its assertions and its target dir are kept. `--config`, not
             # an exported variable: CMD's own builds never see it.
-            cargo build --locked --bins --config profile.dev.opt-level=2 \
+            cargo build --locked --bins --config profile.dev.opt-level=2 --config profile.dev.debug=false \
                 --message-format=json-render-diagnostics \
                 >"$part.json" 2>"$part.log" 3>&- || exit 1
             "$GOH_PY" "$GOH_ROOT/gates/_cov_prune.py" "$part.json" >>"$part.log" 2>&1 3>&- || exit 1
@@ -202,6 +210,19 @@ run_rust() {
             CARGO_LLVM_COV_BUILD_DIR="$CARGO_LLVM_COV_TARGET_DIR/cov-view" \
                 cargo llvm-cov report ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
                 --lcov --output-path "$part" >>"$part.log" 2>&1 3>&- || exit 1
+            # The remapped names back under this checkout's workspace root, the names the
+            # workspace part (built unremapped) and the floor read. (An --ignore regex meets the
+            # relative names: an unanchored one, the only kind a checkout-independent regex is,
+            # reads them alike.)
+            ws="$(cargo locate-project --workspace --message-format plain 2>>"$part.log")" || exit 1
+            "$GOH_PY" -S -c 'import sys
+ws, path = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as f:
+    lines = f.read().splitlines(keepends=True)
+out = ["SF:" + ws + "/" + ln[3:] if ln.startswith("SF:") and not ln.startswith("SF:/") else ln
+       for ln in lines]
+with open(path, "w", encoding="utf-8") as f:
+    f.write("".join(out))' "${ws%/*}" "$part" >>"$part.log" 2>&1 3>&- || exit 1
             cov_phase ""
         ); then
             : >"$part.ok"
