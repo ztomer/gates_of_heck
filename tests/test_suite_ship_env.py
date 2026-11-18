@@ -78,3 +78,30 @@ def test_the_entry_keeps_only_the_gates_inputs_and_sets_its_own_root(tmp_path):
     assert {k: got.get(k) for k in inputs} == inputs, "a declared input was dropped"
     assert "GOH_LIVE_ROOT" not in got
     assert got["GOH_DIR"] == str(REPO_ROOT), "the suite's GOH_DIR is its own checkout"
+
+
+def _entered_pythonpath(tmp_path, pythonpath: str | None) -> str | None:
+    """The PYTHONPATH a fresh suite entry leaves, under the caller's `pythonpath` (None: unset)."""
+    env = hermetic_env()
+    env.pop("GATES_OF_HECK_SUITE_REAL_HOME", None)  # enter afresh
+    env.pop("PYTHONPATH", None)
+    if pythonpath is not None:
+        env["PYTHONPATH"] = pythonpath
+    probe = (
+        "import json, os, sys; sys.path.insert(0, sys.argv[1]); import suite_home; "
+        "print(json.dumps(os.environ.get('PYTHONPATH')))"
+    )
+    got = subprocess.run(
+        [sys.executable, "-c", probe, str(REPO_ROOT / "tests")],
+        env=env, cwd=tmp_path, capture_output=True, text=True, check=True,
+        stdin=subprocess.DEVNULL,
+    )  # fmt: skip
+    return __import__("json").loads(got.stdout)
+
+
+def test_the_suites_pythonpath_is_its_own_checkout_whatever_the_caller_set(tmp_path):
+    """GOH.ORPHANCANARYENV: a child a test spawned found goh's `tui` only through the CALLER's
+    PYTHONPATH, so `env -u PYTHONPATH` failed a test the land suites passed -- and a caller's
+    pointing at main had a worktree's children import main's modules (D.GOH1 again)."""
+    for caller in (None, "/a/main/checkout", f"{REPO_ROOT}:/elsewhere"):
+        assert _entered_pythonpath(tmp_path, caller) == str(REPO_ROOT), caller

@@ -1,0 +1,1 @@
+- **suite**: a test's children no longer depend on the caller's PYTHONPATH: the suite pins it to its own checkout (tests/suite_home.py), and the orphan canary's missing-runner test builds a fake goh root that carries goh's `tui`, so `env -u PYTHONPATH tools/pytest.sh` passes it (GOH.ORPHANCANARYENV).

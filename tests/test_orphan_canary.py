@@ -336,18 +336,28 @@ def test_usage_errors_are_exit_two(repo: Path, argv: list[str]) -> None:
     assert proc.returncode == 2, (argv, proc.returncode, proc.stdout, proc.stderr)
 
 
-def test_a_missing_runner_is_refused_not_silently_unbounded(tmp_path: Path) -> None:
+@pytest.mark.parametrize("pythonpath", [None, str(Path(CANARY).resolve().parent.parent)])
+def test_a_missing_runner_is_refused_not_silently_unbounded(
+    tmp_path: Path, pythonpath: str | None
+) -> None:
     """Without `lib/bounded_run.py` every step would run with no ceiling — the defect this exists to
-    close. So an absent runner is exit 2, never a quiet pass."""
+    close. So an absent runner is exit 2, never a quiet pass. The fake tree is a goh root with no
+    runner: its `tui` is goh's own, so the child imports through its own root, never through an
+    inherited PYTHONPATH (GOH.ORPHANCANARYENV: unset, the copy died on `No module named 'tui'`)."""
     fake = tmp_path / "lib"
     fake.mkdir()
     (fake / "orphan_canary.py").write_text(Path(CANARY).read_text(encoding="utf-8"))
+    (tmp_path / "tui").symlink_to(Path(CANARY).resolve().parent.parent / "tui")
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    if pythonpath is not None:
+        env["PYTHONPATH"] = pythonpath
     proc = subprocess.run(
         [sys.executable, str(fake / "orphan_canary.py"), "wrap", "--", "/bin/sh", "-c", "exit 0"],
         capture_output=True,
         text=True,
         check=False,
         stdin=subprocess.DEVNULL,
+        env=env,
     )
     assert proc.returncode == 2, proc.stdout + proc.stderr
     assert "bounded_run.py is missing" in proc.stderr, proc.stderr

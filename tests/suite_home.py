@@ -143,6 +143,10 @@ def _drop_caller_goh() -> None:
     for name in [k for k in os.environ if k.startswith("GOH_") and k not in CALLER_INPUTS]:
         del os.environ[name]
     os.environ["GOH_DIR"] = SUITE_ROOT
+    # The import path is a LOCATION too (GOH.ORPHANCANARYENV): a child a test spawned found goh's
+    # `tui` only through the caller's PYTHONPATH, so `env -u PYTHONPATH` failed what the land
+    # suites passed, and a caller's naming main had a worktree's children import main's modules.
+    os.environ["PYTHONPATH"] = SUITE_ROOT
 
 
 def furnish(home: Path, reads: tuple[str, ...]) -> Path:
