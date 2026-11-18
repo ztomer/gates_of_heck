@@ -12,13 +12,18 @@ and reads the other and the template unchanged.
 from __future__ import annotations
 
 import atexit
+import contextlib
 import ctypes
 import errno
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
+
+from timing_bounds import patience
 
 # clonefile(2) cannot serve these: another volume, a filesystem without clones. Any other error is
 # a real one and is raised.
@@ -84,10 +89,66 @@ def template(factory, key: str, build) -> Path:
     built = _TEMPLATES.setdefault(id(factory), (factory, {}))[1]
     if key not in built:
         tree = factory.mktemp(f"template-{key}") / key
-        build(tree)
-        _refuse_self_reference(tree)
+        _build_quietly(build, tree)
         built[key] = tree
     return built[key]
+
+
+# GOH.TEMPLATEQUIET (2026-11-18): every commit a build makes detaches `git maintenance run`, which
+# takes and drops .git/objects/maintenance.lock while the template is scanned and cloned (the
+# 2026-10-08 race, fixed by hand in two fixtures and missed by the rest). The build runs under an
+# XDG config that turns auto-maintenance and auto-gc off: git reads it for EVERY git the build
+# spawns, and no env helper drops it (`hermetic_env(drop_git=True)` drops GIT_CONFIG_*, and
+# `_fast_git` every GIT_*; neither touches XDG_CONFIG_HOME).
+_QUIET_GIT_CONFIG = "[maintenance]\n\tauto = false\n[gc]\n\tauto = 0\n"
+
+
+@contextlib.contextmanager
+def quiet_git() -> Iterator[None]:
+    """For the duration: every git started from this process reads a config with no background
+    maintenance (the process's own environment is restored on exit)."""
+    home = tempfile.mkdtemp(prefix="goh-quiet-git.")
+    cfg = Path(home) / "git"
+    cfg.mkdir()
+    (cfg / "config").write_text(_QUIET_GIT_CONFIG)
+    saved = os.environ.get("XDG_CONFIG_HOME")
+    os.environ["XDG_CONFIG_HOME"] = home
+    try:
+        yield
+    finally:
+        if saved is None:
+            os.environ.pop("XDG_CONFIG_HOME", None)
+        else:
+            os.environ["XDG_CONFIG_HOME"] = saved
+        shutil.rmtree(home, ignore_errors=True)
+
+
+# Blocks (in a shell, so no test that reaches `template` is a polling one: the wait runs only when
+# the quiet config did not hold, and tests/load_sensitive.py would mark every template user for it)
+# until no git under $1 holds a background lock.
+_WAIT_FOR_LOCKS = (
+    'while [ -n "$(find "$1" \\( -name maintenance.lock -o -name gc.pid -o -name gc.log.lock \\) '
+    '-print -quit)" ]; do sleep 0.02; done'
+)
+
+
+def _wait_quiescent(tree: Path) -> None:
+    """Return once no git under `tree` holds a background lock: what a detached `git maintenance
+    run` the build started anyway (a build that sets its own GIT_CONFIG_*) leaves behind. Bounded
+    by the box's patience; a lock that never clears is a TimeoutExpired naming the command."""
+    subprocess.run(
+        ["sh", "-c", _WAIT_FOR_LOCKS, "sh", str(tree)],
+        check=True, stdin=subprocess.DEVNULL, timeout=patience(30.0),
+    )  # fmt: skip
+
+
+def _build_quietly(build, tree: Path) -> None:
+    """Build the template `tree` with background git off, make it quiescent, then refuse it if it
+    points at its own directory."""
+    with quiet_git():
+        build(tree)
+    _wait_quiescent(tree)
+    _refuse_self_reference(tree)
 
 
 def _refuse_self_reference(tree: Path) -> None:
@@ -117,7 +178,6 @@ def process_template(key: str, build) -> Path:
         home = Path(tempfile.mkdtemp(prefix="goh-template-" + key + "."))
         atexit.register(shutil.rmtree, home, True)
         tree = home / key
-        build(tree)
-        _refuse_self_reference(tree)
+        _build_quietly(build, tree)
         _PROCESS_TEMPLATES[key] = tree
     return _PROCESS_TEMPLATES[key]

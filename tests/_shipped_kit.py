@@ -48,7 +48,6 @@ def shipped_clone(tmp_path: Path, factory) -> Path:
 def _build_shipped(root: Path) -> None:
     proj = root / "proj"
     fast_init(proj, "main")
-    git(proj, "config", "maintenance.auto", "false")
     write(proj, "README.md", "# fixture\n")
     commit_all(proj)
     make_shipped(proj, root)

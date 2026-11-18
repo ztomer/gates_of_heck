@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import _tree_clone
@@ -154,3 +155,68 @@ def test_process_template_builds_once_and_clones_stay_apart(tmp_path: Path) -> N
     before = _state(tmp_path / "b")
     _write_everything(tmp_path / "a")
     assert _state(tmp_path / "b") == before == _state(one)
+
+
+def _git_sees(tree: Path, key: str) -> str:
+    """What a git the build spawned would do about background work: the effective values."""
+    from conftest import hermetic_env
+
+    out = []
+    for env in (hermetic_env(drop_git=True), hermetic_env(), None):
+        run = subprocess.run(
+            ["git", "-C", str(tree), "config", "--get", key],
+            capture_output=True, text=True, env=env, check=False, stdin=subprocess.DEVNULL,
+        )  # fmt: skip
+        out.append(run.stdout.strip())
+    return "/".join(out)
+
+
+@pytest.mark.parametrize("via", ["template", "process_template"])
+def test_every_git_a_template_build_spawns_has_background_work_off(
+    tmp_path_factory, tmp_path: Path, via: str
+) -> None:
+    """GOH.TEMPLATEQUIET (2026-11-18): a commit detaches `git maintenance run`, which takes and
+    drops .git/objects/maintenance.lock while the template is scanned and cloned (a ship's
+    instrumented run died on FileNotFoundError, the 2026-10-08 race again). The build runs with
+    auto-maintenance and auto-gc off for EVERY git it spawns, through any env helper
+    (`hermetic_env(drop_git=True)` drops GIT_CONFIG_*), and no template site sets it by hand.
+    """
+    seen: dict[str, str] = {}
+
+    def build(tree: Path) -> None:
+        tree.mkdir()
+        fast_init(tree, "main")
+        write(tree, "README.md", "# fixture\n")
+        commit_all(tree)
+        seen["maintenance"] = _git_sees(tree, "maintenance.auto")
+        seen["gc"] = _git_sees(tree, "gc.auto")
+
+    key = f"quiet-{via}-{tmp_path.name}"
+    if via == "template":
+        _tree_clone.template(tmp_path_factory, key, build)
+    else:
+        process_template(key, build)
+    assert seen == {"maintenance": "false/false/false", "gc": "0/0/0"}
+    # ... and only for the build: a test's own git is not the template's.
+    assert _git_sees(tmp_path, "maintenance.auto") != "false/false/false"
+
+
+@pytest.mark.load_sensitive
+def test_a_template_is_quiescent_before_it_is_scanned_or_cloned(
+    tmp_path_factory, tmp_path: Path
+) -> None:
+    """Whatever a build leaves running in its tree (here a detached process holding a lock for
+    0.4 s, as `git maintenance run` does) has finished when the template is handed out."""
+
+    def build(tree: Path) -> None:
+        tree.mkdir()
+        fast_init(tree, "main")
+        lock = tree / ".git" / "objects" / "maintenance.lock"
+        # The shell backgrounds the holder and exits, as git detaches `maintenance run`.
+        script = f"( touch '{lock}'; sleep 0.4; rm -f '{lock}' ) </dev/null >/dev/null 2>&1 &"
+        subprocess.run(["sh", "-c", script], check=True, stdin=subprocess.DEVNULL)
+        while not lock.exists():
+            time.sleep(0.005)
+
+    built = _tree_clone.template(tmp_path_factory, f"quiesce-{tmp_path.name}", build)
+    assert not (built / ".git" / "objects" / "maintenance.lock").exists()

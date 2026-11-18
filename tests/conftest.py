@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 import suite_home  # (FIRST: the suite's own HOME and TMPDIR, before anything reads them)
-from _tree_clone import clone_tree  # (no HOME/TMPDIR read: ctypes, os, shutil)
+from _tree_clone import clone_tree, template  # (no HOME/TMPDIR read: ctypes, os, shutil)
 from env_probe import print_safe  # (no HOME/TMPDIR read: re, shlex)
 
 # THE SUITE TESTS THE TREE IT IS IN. Consumers run the gates from an export of HEAD (C4,
@@ -104,18 +104,18 @@ def commit_all(repo: Path, msg: str = "fixture") -> None:
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", msg)
 
 
-@pytest.fixture(scope="session")
-def _repo_template(tmp_path_factory) -> Path:
-    """`repo`'s starting state, made by git ONCE per worker: 614 tests took `repo`, and three git
-    spawns each were ~1800 per run for one identical repository (2026-10-06). No auto-maintenance:
-    a commit detaches `git maintenance run`, whose lock the copies raced (shutil.Error, 2026-10-08)."""
-    r = tmp_path_factory.mktemp("repo-template") / "proj"
+def _build_repo_template(r: Path) -> None:
     r.mkdir()
     git(r, "init", "-q", "-b", "main")
-    git(r, "config", "maintenance.auto", "false")
     write(r, "README.md", "# fixture\n")
     commit_all(r)
-    return r
+
+
+@pytest.fixture(scope="session")
+def _repo_template(tmp_path_factory) -> Path:
+    """`repo`'s starting state, built by git ONCE per worker (614 tests took it; 2026-10-06), through
+    `template`: no auto-maintenance while it builds (GOH.TEMPLATEQUIET)."""
+    return template(tmp_path_factory, "repo", _build_repo_template)
 
 
 @pytest.fixture
