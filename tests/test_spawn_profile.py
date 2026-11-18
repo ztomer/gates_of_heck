@@ -23,7 +23,7 @@ needs_cc = pytest.mark.skipif(shutil.which("cc") is None, reason="the shims are 
 
 
 def test_kinds_and_scripts_are_named_from_argv() -> None:
-    assert spawn_profile.classify("/opt/homebrew/Cellar/python@3.15/bin/python3.15") == "python"
+    assert spawn_profile.classify("/opt/x/Python.app/Contents/MacOS/Python") == "python"
     assert spawn_profile.classify("/bin/sh") == "bash"
     assert spawn_profile.classify("git-remote-https") == "git"
     assert spawn_profile.classify("/usr/bin/true") == "other"

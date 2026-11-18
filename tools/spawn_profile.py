@@ -228,9 +228,10 @@ def cmd_run(args: argparse.Namespace) -> int:
         env["PYTHONEXECUTABLE"] = str(shims["python3"])
         env.pop("GOH_PY_OK", None)
     if "goh" in shims:
-        env["GOH_TEST_BIN"] = str(
-            shims["goh"]
-        )  # the suite's binary seam (tests/conftest.py native_goh)
+        # The goh shim's path, for a command that hands it to a binary seam itself, such as the
+        # suite's: `-- bash -c 'GOH_TEST_BIN="$SPAWN_PROFILE_GOH" tools/pytest.sh'`. Never set
+        # here: a GOH_ key passed to a child is gate bookkeeping (tests/test_verdict_free_keys.py).
+        env["SPAWN_PROFILE_GOH"] = str(shims["goh"])
     meta = {"cmd": args.cmd, "load_start": load1(), "t0": time.time(), "reals": reals}
     start = time.monotonic()
     before = os.times()
@@ -399,7 +400,9 @@ def main(argv: list[str] | None = None) -> int:
         help="ps sample period in s (0: off) for the blind share",
     )
     r.add_argument(
-        "--goh", default="", help="the goh binary to shim: first on PATH and GOH_TEST_BIN"
+        "--goh",
+        default="",
+        help="the goh binary to shim: first on PATH, its path in SPAWN_PROFILE_GOH",
     )
     r.add_argument("cmd", nargs=argparse.REMAINDER)
     p = sub.add_parser("report", help="summarize a run's ledger")
