@@ -96,10 +96,9 @@ def env(tmp_path: Path, goh: Path, native_goh: Path) -> dict:
         for k, v in os.environ.items()
         if k not in GIT_VARS and not k.startswith(("GOH_PROVEN", "GOH_LAND"))
     }
-    e["GOH_DIR"] = str(goh)
-    # The copy holds no `bin/goh`, and since Phase N3 there is no Python tier to answer in its
-    # place: the binary is named, as a consumer's CI names one it built.
-    e["GOH_BIN"] = str(native_goh)
+    # PYTHONPATH too: an inherited one names live trees, and the copy is what the gates key on.
+    e["GOH_DIR"] = e["PYTHONPATH"] = str(goh)
+    e["GOH_BIN"] = str(native_goh)  # the copy has no bin/goh: named, as a consumer's CI names one
     e["COUNT"] = str(tmp_path / "count")  # each real run of a step appends a line here
     e["NO_COLOR"] = "1"
     return e

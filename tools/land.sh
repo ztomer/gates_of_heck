@@ -343,8 +343,13 @@ land_timings="$(mktemp "$(goh_tmp)/goh-land-timings.XXXXXX")" || land_timings=""
 land_gate() {
     local cmd="${3:-$1/tools/gate_profile.sh .}"
     info "gate: $cmd (under $2's gates)"
-    local path; path="$(goh_path_front PYTHONPATH "$1"; printf %s "$PYTHONPATH")"
-    if ! GOH_DIR="$1" PYTHONPATH="$path" GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" GOH_LAND_VERDICTS_REUSE="$verdicts" \
+    # An export's gates are put first; a consumer's land (ROOT is the kit) keeps the caller's GOH_DIR
+    # and PYTHONPATH, the ones the push after it runs under: forced to the kit, the proof keyed roots
+    # the push's key did not, and the push re-ran what the land had proven (GOH.PRESTEPHEAD's
+    # 8150234a; tests/test_proven.py::test_land_leaves_a_proof_the_push_that_follows_reuses).
+    local over=()
+    [ "$1" = "$GOH" ] || over=(GOH_DIR="$1" PYTHONPATH="$(goh_path_front PYTHONPATH "$1"; printf %s "$PYTHONPATH")")
+    if ! env ${over[@]+"${over[@]}"} GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" GOH_LAND_VERDICTS_REUSE="$verdicts" \
             GOH_GATE_CLASS=ship GOH_TIMING_VIA=land GOH_TIMINGS="${GOH_TIMINGS:-$land_timings}" \
             "$GOH_PY" "$1/tools/load.py" --background-ok "land gate" \
             --max 90m 0 -- bash -c "$cmd" 7>&- 8<&- </dev/null; then
