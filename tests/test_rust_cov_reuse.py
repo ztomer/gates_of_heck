@@ -238,6 +238,16 @@ def test_a_floor_set_in_gatesrc_is_part_of_the_key(repo: Path) -> None:
     assert _run(repo, FLOOR="99") == "MEASURED"
 
 
+def test_the_diff_coverage_allowlist_is_part_of_the_key(repo: Path) -> None:
+    """GOH.DIFFCOV: the allowlist decides the coverage verdict (an exempted line, a stale entry),
+    and lives outside the Rust inputs: an edit to it reused the old measurement unjudged."""
+    _write(repo, "diffcov_allow.json", '{"entries": []}\n')
+    assert _run(repo) == "MEASURED"
+    assert _run(repo) == "PLAIN"
+    _write(repo, "diffcov_allow.json", '{"entries": [{"file": "f", "text": "t", "reason": "r"}]}\n')
+    assert _run(repo) == "MEASURED"
+
+
 def test_every_run_prints_its_decision_and_why(repo: Path) -> None:
     """A miss was silent: nothing said the reuse had even been looked for."""
     _, out = _run_out(repo)

@@ -239,7 +239,7 @@ rust_proven_group() {
 # _rust_cov_inputs <step> -- the measurement's inputs on this tree, one line each (the key is their
 # hash; a record's copy names what moved on the next miss); or why there are none, and 1.
 _rust_cov_inputs() {
-    local top ident extra="" v d args
+    local top ident extra="" v d args allow
     [ "$PROVEN_ON" = 1 ] || { echo "the proven cache is off (GOH_PROVEN=0)"; return 1; }
     [ -n "${GOH_COV_RUST_EXTERNAL:-}" ] || { echo "no external suite (GOH_COV_RUST_EXTERNAL)"; return 1; }
     # shellcheck disable=SC2154  # cargo_dir is the sourcing gate's (rust_gate.sh)
@@ -266,6 +266,10 @@ _rust_cov_inputs() {
     fi
     printf 'rust-coverage v3\nstep %s\n%s\n' "$1" "$ident"
     if [ -n "$extra" ]; then printf 'GOH_DIR %s\n' "$extra"; fi
+    # The diff coverage allowlist decides the verdict too (gates/diff_cov.py, GOH.DIFFCOV): by content.
+    allow="${GOH_COV_DIFF_ALLOW:-diffcov_allow.json}"
+    case "$allow" in /*) ;; *) allow="$top/$allow" ;; esac
+    if [ -f "$allow" ]; then printf 'diffcov-allow %s\n' "$(hash_hex "$allow")"; fi
     for v in $(compgen -v GOH_COV_); do
         case "$v" in GOH_COV_CACHE|GOH_COV_CACHE_*|GOH_COV_RUST_JOBS) continue ;; esac   # where, how big, how wide: no verdict
         printf 'cov %s=%s\n' "$v" "${!v}"

@@ -98,12 +98,14 @@ unset GOH_COV_FLOOR_RUST GOH_COV_RUST_EXTERNAL GOH_RUST_LINT_CONFIGS GOH_RUST_LI
       GOH_CROSS_REPO_ROOT GOH_PYTHON_FORMATTED GOH_SKILLS_CORPUS \
       GOH_STEP_TIMEOUT GOH_STEP_GRACE GOH_LCI_TIMEOUT 2>/dev/null || true
 
-# GOH_CHANGE_BASE (the push gate's: where the pushed change starts) is read by ONE step, crates-behind,
-# which runs outside the proven groups; it is a new value on every push, so while it sat in the
-# environment every group's key (the GOH_* configuration, _rust_proven.sh _rust_step) was a new key
-# on every push and no group, the Rust coverage measurement included, was ever reused from one land to
-# the next (GOH.RUSTCOVREUSE). Out of the environment, then, and handed to that step alone: nothing a
-# group runs can read it, so no group's verdict depends on it.
+# GOH_CHANGE_BASE (the push gate's: where the pushed change starts) is read by TWO steps: crates-behind,
+# outside the proven groups, and the coverage step's diff coverage (gates/diff_cov.py, GOH.DIFFCOV).
+# It is a new value on every push, so while it sat in the environment every group's key (the GOH_*
+# configuration, _rust_proven.sh _rust_step) was a new key on every push and no group, the Rust
+# coverage measurement included, was ever reused from one land to the next (GOH.RUSTCOVREUSE). Out
+# of the environment, then, and handed to those two calls alone: no group KEY reads it. So a reused
+# coverage verdict (same tree, or same Rust inputs) carries the diff coverage judged against the base
+# of the run that measured it; a recorded run was green on its own change.
 _change_base=()
 [ -n "${GOH_CHANGE_BASE+set}" ] && _change_base=(env "GOH_CHANGE_BASE=$GOH_CHANGE_BASE")
 unset GOH_CHANGE_BASE
@@ -360,12 +362,12 @@ rust_repo_checks() {
 rust_coverage_checks() {
     if [ -n "${GOH_COV_FLOOR_RUST:-}" ]; then
         goh_step "coverage (floor ${GOH_COV_FLOOR_RUST}%)" \
-            bash "$HERE/coverage_gate.sh" --lang rust \
+            ${_change_base[@]+"${_change_base[@]}"} bash "$HERE/coverage_gate.sh" --lang rust \
             ${GOH_COV_RUST_EXTERNAL:+--external "$GOH_COV_RUST_EXTERNAL"} \
             --floor "$GOH_COV_FLOOR_RUST" "$cargo_dir"
     else
         goh_step "coverage (per-target floors)" \
-            bash "$HERE/coverage_gate.sh" --lang rust \
+            ${_change_base[@]+"${_change_base[@]}"} bash "$HERE/coverage_gate.sh" --lang rust \
             ${GOH_COV_RUST_EXTERNAL:+--external "$GOH_COV_RUST_EXTERNAL"} \
             --floors-json "$GOH_COV_FLOORS_JSON" "$cargo_dir"
     fi

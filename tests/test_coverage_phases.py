@@ -107,6 +107,7 @@ def test_every_phase_streams_its_start_and_its_elapsed(tmp_path: Path) -> None:
         "external: true",
         "external: report",
         "merge + floor",
+        "diff coverage",
     ]
     started = re.findall(r"phase '([^']+)' started \d\d:\d\d:\d\dZ", out)
     assert started == phases, out

@@ -360,8 +360,15 @@ PYEOF
     if [ -n "$INCLUDE" ]; then _MERGE_ARGS+=(--include "$INCLUDE"); fi
     if [ -n "$MARKER_CEILING" ]; then _MERGE_ARGS+=(--marker-ceiling "$MARKER_CEILING"); fi
     cov_phase "merge + floor" ""
-    local merge_rc=0
+    local merge_rc=0 diff_rc=0
     "$GOH_PY" "$GOH_ROOT/gates/lcov_merge.py" "${_MERGE_ARGS[@]}" "$PARTS" || merge_rc=$?
+    # THE CHANGE'S LINES (GOH.DIFFCOV): a second, separate reader of the same parts -- every
+    # executable Rust line the change adds or edits is covered, named file:line when not
+    # (gates/diff_cov.py; GOH_COV_DIFF on|warn|off). It reads the report, never makes it.
+    cov_phase "diff coverage" ""
+    "$GOH_PY" "$GOH_ROOT/gates/diff_cov.py" ${INCLUDE:+--include "$INCLUDE"} --repo "$PROJ" "$PARTS" \
+        || diff_rc=$?
     cov_phase ""
-    return "$merge_rc"   # the EXIT trap (cov_reap) reaps the scratch and prunes to the budget
+    [ "$merge_rc" = 0 ] || return "$merge_rc"   # the EXIT trap (cov_reap) reaps the scratch
+    return "$diff_rc"
 }
