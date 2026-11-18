@@ -218,8 +218,32 @@ def check(
     return 1 if problems else 0
 
 
+def _repo_exclude() -> re.Pattern[str] | None:
+    """GOH_EXCLUDE as the repo's `.gatesrc` declares it (sourced in a child, as every entry point
+    reads it; the ambient environment is not the repo's declaration)."""
+    root = _git("rev-parse", "--show-toplevel").stdout.strip()
+    if not root or not (Path(root) / ".gatesrc").is_file():
+        return None
+    read = (
+        'unset GOH_EXCLUDE; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_EXCLUDE:-}"'
+    )
+    got = subprocess.run(
+        ["bash", "-c", read], cwd=root, capture_output=True, text=True, check=False,
+        stdin=subprocess.DEVNULL,
+    ).stdout  # fmt: skip
+    try:
+        return re.compile(got) if got else None
+    except re.error as e:
+        sys.exit(f"GOH_EXCLUDE={got!r} in .gatesrc is not a regex: {e}")
+
+
 def seed(out: str, runner: str) -> int:
-    tracked = [f for f in _git("ls-files", "*.py").stdout.splitlines() if f]
+    # An excluded path is judged by no Python gate (py_staged.sh drops it at both scopes,
+    # GOH.PYSTAGEDEXCLUDE), so its findings are no debt the repo carries.
+    rx = _repo_exclude()
+    tracked = [
+        f for f in _git("ls-files", "*.py").stdout.splitlines() if f and not (rx and rx.search(f))
+    ]
     counts = {f: len(v) for f, v in sorted(findings(runner, tracked).items()) if v}
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     Path(out).write_text(json.dumps(counts, indent=2, sort_keys=True) + "\n")

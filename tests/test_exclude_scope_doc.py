@@ -42,6 +42,7 @@ CONSUMERS: dict[str, tuple[str, ...]] = {
     "gates/rust_gate.sh": ("`#[allow]`/`#[expect]`", "emptiness asserts"),
     "gates/rust_each_crate.sh": ("`--each-crate`",),
     "gates/py_staged.sh": ("`py_staged.sh`'s ruff, staged and `--all`",),
+    "gates/py_lint_ceiling.py": ("`py_lint_ceiling.py --seed`",),
 }
 # Where the key is defined and parsed, not applied (the parser's tests moved beside it at the
 # line cap, and they read the key the way the parser does).
@@ -55,7 +56,9 @@ def _row() -> str:
 
 
 def _readers() -> set[str]:
-    paths = [*SRC.rglob("*.rs"), *(ROOT / "gates").glob("*.sh")]
+    # gates/*.py too: py_lint_ceiling.py --seed read the key and no list named it
+    # (GOH.PYSTAGEDEXCLUDE)
+    paths = [*SRC.rglob("*.rs"), *(ROOT / "gates").glob("*.sh"), *(ROOT / "gates").glob("*.py")]
     return {
         str(p.relative_to(ROOT)) for p in paths if READS_KEY.search(p.read_text(encoding="utf-8"))
     } - DEFINERS

@@ -121,6 +121,23 @@ def test_seed_writes_every_tracked_files_count(repo):
     assert json.loads(out.read_text()) == {"old.py": 2}
 
 
+def test_seed_leaves_out_what_goh_exclude_names(repo):
+    """GOH.PYSTAGEDEXCLUDE, the seed half: an excluded path is judged by no Python gate, so its
+    findings are no debt this repo carries (ZSUS_14_Portrait_Mount_v20's v20_archive/ was seeded
+    as 81 findings of ceiling for files no commit gate reads)."""
+    write(repo, ".gatesrc", "GOH_EXCLUDE='^vendor/'\n")
+    write(repo, "vendor/old.py", TWO_FINDINGS)
+    write(repo, "mine.py", TWO_FINDINGS)
+    commit_all(repo, "debt")
+    out = repo / "tools" / "py_lint_ceilings.json"
+    r = subprocess.run(
+        ["python3", str(SEED), "--seed", str(out)], cwd=repo, capture_output=True, text=True,
+        check=False, stdin=subprocess.DEVNULL,
+    )  # fmt: skip
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert json.loads(out.read_text()) == {"mine.py": 2}
+
+
 # THE HOUSE SET (RUFF.RULES, gates/ruff_house.py). koffee_big's ruff.toml selected PLW1510 alone, so
 # its `ruff check` read as a lint gate and checked one rule. A finding from the house set is a
 # finding under ceilings whatever the repo selects: B006 (a mutable default) is outside both
