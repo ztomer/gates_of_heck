@@ -18,8 +18,9 @@ import time
 from pathlib import Path
 
 import pytest
+from _tree_clone import clone_tree, template
 from conftest import FAKE_GH, REPO_ROOT, hermetic_env
-from test_release_kit import add_github_origin
+from test_release_kit import GITHUB_ORIGIN
 
 # Same xdist group as test_release_kit.py (see its comment): the
 # mid-run-edit test below corrupts release.sh on purpose; anything running a
@@ -82,10 +83,27 @@ def tag_message(repo: Path, tag: str) -> str:
 
 
 @pytest.fixture
-def kit(tmp_path: Path) -> dict:
-    """A real project repo with a bare origin, stanza'd CHANGELOG, fake gh."""
-    proj = tmp_path / "proj"
-    proj.mkdir()
+def kit(tmp_path: Path, tmp_path_factory) -> dict:
+    """A real project repo with a bare origin, stanza'd CHANGELOG, fake gh: built once per worker,
+    each part cloned per test (GOH.FIXTURECOST)."""
+    built = template(tmp_path_factory, "release-hardening", _build_kit)
+    for part in ("proj", "origin.git", "bin", "gh-state"):
+        clone_tree(built / part, tmp_path / part)
+    proj, origin = tmp_path / "proj", tmp_path / "origin.git"
+    sh(proj, "config", f"url.{origin}.insteadOf", GITHUB_ORIGIN)
+    return {
+        "proj": proj,
+        "origin": origin,
+        "bin": tmp_path / "bin",
+        "gh_state": tmp_path / "gh-state",
+        "gh_log": tmp_path / "gh.log",
+    }
+
+
+def _build_kit(root: Path) -> None:
+    """The kit's parts, all but the origin's `insteadOf` (an absolute path, set per clone)."""
+    proj = root / "proj"
+    proj.mkdir(parents=True)
     sh(proj, "init", "-q", "-b", "main")
     (proj / "CHANGELOG.md").write_text(
         f"# CHANGELOG\n\n## {TAG}\n\n{STANZA_BODY}\n\n## v1.1.0\n\n- older\n",
@@ -94,28 +112,18 @@ def kit(tmp_path: Path) -> dict:
     # The commit being tagged declares its version, as the tag check requires (GOH.REL2).
     (proj / "VERSION").write_text(f"{VERSION}\n", encoding="utf-8")
     commit_all(proj)
-
-    origin = tmp_path / "origin.git"
+    origin = root / "origin.git"
     subprocess.run(
         ["git", "clone", "-q", "--bare", str(proj), str(origin)],
         check=True,
         stdin=subprocess.DEVNULL,
     )
-    add_github_origin(proj, origin)
-
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    gh_state = tmp_path / "gh-state"
-    gh_state.mkdir()
-    (bin_dir / "gh").write_text(FAKE_GH)
-    (bin_dir / "gh").chmod(0o755)
-    return {
-        "proj": proj,
-        "origin": origin,
-        "bin": bin_dir,
-        "gh_state": gh_state,
-        "gh_log": tmp_path / "gh.log",
-    }
+    sh(origin, "remote", "remove", "origin")  # it named the template's proj
+    sh(proj, "remote", "add", "origin", GITHUB_ORIGIN)
+    (root / "bin").mkdir()
+    (root / "gh-state").mkdir()
+    (root / "bin" / "gh").write_text(FAKE_GH)
+    (root / "bin" / "gh").chmod(0o755)
 
 
 class TestNoPushImpliesNoRelease:

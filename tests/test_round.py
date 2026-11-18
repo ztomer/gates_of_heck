@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _tree_clone import clone_tree, template
 from conftest import REPO_ROOT, hermetic_env
 
 ROUND = REPO_ROOT / "gates" / "round.sh"
@@ -24,10 +25,22 @@ def _git(cwd: Path, *args: str) -> str:
 
 
 @pytest.fixture
-def proj(tmp_path: Path) -> Path:
-    remote = tmp_path / "remote.git"
-    _git(tmp_path, "init", "-q", "--bare", "-b", "main", str(remote))
+def proj(tmp_path: Path, tmp_path_factory) -> Path:
+    """A project pushed to a bare remote: built once per worker, cloned per test; only the remote's
+    URL (an absolute path) is written per test (GOH.FIXTURECOST)."""
+    built = template(tmp_path_factory, "round", _build_proj)
+    for part in ("remote.git", "proj"):
+        clone_tree(built / part, tmp_path / part)
     p = tmp_path / "proj"
+    _git(p, "remote", "set-url", "origin", str(tmp_path / "remote.git"))
+    return p
+
+
+def _build_proj(root: Path) -> None:
+    remote = root / "remote.git"
+    root.mkdir()
+    _git(root, "init", "-q", "--bare", "-b", "main", str(remote))
+    p = root / "proj"
     p.mkdir()
     fast_init(p, "main")
     for k, v in (("user.email", "t@t"), ("user.name", "t"), ("core.hooksPath", ".githooks")):
@@ -37,8 +50,8 @@ def proj(tmp_path: Path) -> Path:
     _git(p, "commit", "-q", "-m", "base")
     _git(p, "remote", "add", "origin", str(remote))
     _git(p, "push", "-q", "-u", "origin", "main")
+    _git(p, "remote", "set-url", "origin", "set-per-clone")
     (p / ".githooks").mkdir()
-    return p
 
 
 def _round(p: Path, *args: str) -> subprocess.CompletedProcess[str]:
