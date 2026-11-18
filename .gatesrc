@@ -91,11 +91,14 @@ GOH_INSTALLED_VERSION_MIN_FILES=10      # [11] Markdown files that are not dated
 GOH_ROADMAP=docs/BACKLOG.md
 GOH_SKILLS_ROOT=$HOME/.claude/skills
 
-# COVERAGE FLOOR for crates/goh: 95, the house floor. Measured 97.91% on
+# COVERAGE FLOOR for crates/goh: 93.1. Was 95, the house floor, measured 97.91% on
 # 2026-09-14 once crates/goh/tests/cli.rs drove the binary end to end over
 # fixture repos -- the same exercise the Python parity suites give it from
-# pytest, where llvm-cov cannot see it. Ratchet: up only.
-GOH_COV_FLOOR_RUST=95
+# pytest, where llvm-cov cannot see it. 2026-11-18 (GOH.SPANFORGIVE): a Rust line is now
+# covered only by its own count, no function-span forgiveness; the honest figure is 93.10%
+# (26352/28304 lines), floor set to it rounded down (owner ruling "Yes, ratchet"), test-up
+# filed. Ratchet: up only.
+GOH_COV_FLOOR_RUST=93.1
 # The second cfg goh ships (house rule 3: macOS arm64 and Linux x86_64); its std is in
 # rust-toolchain.toml. Measured 2026-11-11: 11.7 s, clean (GOH.LANDGAPS).
 GOH_RUST_LINT_CONFIGS='--target x86_64-unknown-linux-gnu'

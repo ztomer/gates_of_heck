@@ -57,6 +57,12 @@ MAIN = (
 )
 
 
+# 7 of the 8 coverable lines: the closing brace of the `if` carries its own never-taken
+# continuation region, and a line is covered only by its own count (GOH.SPANFORGIVE), so the
+# honest reading is 87.5%, not the 100% the function span used to forgive.
+FLOOR = "85"
+
+
 def _crate(root: Path) -> Path:
     c = root / "binonly"
     (c / "src").mkdir(parents=True)
@@ -72,10 +78,16 @@ def _crate(root: Path) -> Path:
 
 def test_a_binary_covered_only_from_outside_is_counted(tmp_path: Path) -> None:
     crate = _crate(tmp_path)
-    alone = run_gate(crate, "--lang", "rust", "--floor", "90")
+    alone = run_gate(crate, "--lang", "rust", "--floor", FLOOR)
     assert alone.returncode == 1, "cargo test alone should NOT cover a bin with no tests"
     seen = run_gate(
-        crate, "--lang", "rust", "--floor", "90", "--external", '"$GOH_COVERAGE_BIN_DIR/binonly" go'
+        crate,
+        "--lang",
+        "rust",
+        "--floor",
+        FLOOR,
+        "--external",
+        '"$GOH_COVERAGE_BIN_DIR/binonly" go',
     )
     assert seen.returncode == 0, seen.stdout + seen.stderr
 
