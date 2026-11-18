@@ -192,6 +192,9 @@ fn root_for(root: Option<&str>) -> Result<PathBuf, String> {
         || std::env::current_dir().unwrap_or_default(),
         PathBuf::from,
     );
+    if let Some(top) = crate::gitroot::layout_toplevel(&cwd) {
+        return Ok(realpath(&top));
+    }
     if !git(&cwd, &["rev-parse", "--git-dir"])?.status.success() {
         return Err(
             "not a git repo -- .git/config is this gate's subject and there is none".to_owned(),

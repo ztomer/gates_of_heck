@@ -44,6 +44,7 @@ pub mod gatesrc;
 pub mod gatesrc_dupes;
 pub mod gitargv;
 pub mod gitdeadline;
+pub mod gitroot;
 pub mod gitutil;
 pub mod goh_dir;
 pub mod gohpin;

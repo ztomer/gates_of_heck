@@ -1,10 +1,11 @@
-//! The one place `gates_of_heck` calls into libc: four things safe `std` cannot do, each a single
+//! The one place `gates_of_heck` calls into libc: five things safe `std` cannot do, each a single
 //! syscall, for `goh step` (the native step wrapper, roadmap 4C.1).
 //!
 //! * [`ignored_at_entry`] -- `nohup`'s contract: a signal the caller IGNORED must stay ignored, so
 //!   the wrapper must not install a handler over it, and only `sigaction` reads the disposition;
 //! * [`killpg`] -- signal a whole process group (the step's tree, reparented children included);
 //! * [`group_alive`] -- `killpg(pgid, 0)`: whether anything is left in the group;
+//! * [`euid`] -- `geteuid`: whose repos git trusts, for the in-process repo-root lookup;
 //! * [`children_cpu_ms`] -- `getrusage(RUSAGE_CHILDREN)`: the CPU every reaped descendant spent,
 //!   so a step's own work is on record beside its wall time (BACKLOG 4.4: the box is never quiet).
 //!
@@ -30,6 +31,14 @@ pub fn ignored_at_entry(signal: i32) -> bool {
     // SAFETY: sigaction returned 0, so it wrote a complete `sigaction` into `old`.
     let old = unsafe { old.assume_init() };
     old.sa_sigaction == libc::SIG_IGN
+}
+
+/// The effective user id of this process (`geteuid`): who git would call the owner of a repo it
+/// trusts, which `goh`'s in-process repo-root lookup must match before it answers for git.
+#[must_use]
+pub fn euid() -> u32 {
+    // SAFETY: a plain syscall with no arguments; it cannot fail and touches no memory of ours.
+    unsafe { libc::geteuid() }
 }
 
 /// `killpg(pgid, signal)`.

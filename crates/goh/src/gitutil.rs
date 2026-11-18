@@ -31,14 +31,8 @@ pub fn repo_root() -> Option<String> {
     {
         return known.clone();
     }
-    let out = Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .ok()?;
-    let top = out
-        .status
-        .success()
-        .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned());
+    // The layout answers in process (`gitroot`, GOH.RUSTROOT); git only for a layout it does not model.
+    let top = crate::gitroot::toplevel(&cwd).map(|p| p.to_string_lossy().into_owned());
     roots
         .lock()
         .unwrap_or_else(PoisonError::into_inner)

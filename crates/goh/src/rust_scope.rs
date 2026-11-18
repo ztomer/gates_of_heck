@@ -63,8 +63,11 @@ pub(crate) fn metadata(dir: &Path, no_deps: bool) -> Result<serde_json::Value, S
 }
 
 pub(crate) fn repo_root(dir: &Path) -> Result<PathBuf, String> {
-    let top = run(dir, "git", &["rev-parse", "--show-toplevel"])?;
-    std::fs::canonicalize(top.trim()).map_err(|e| format!("repo root: {e}"))
+    let top = match crate::gitroot::layout_toplevel(dir) {
+        Some(top) => top,
+        None => PathBuf::from(run(dir, "git", &["rev-parse", "--show-toplevel"])?.trim()),
+    };
+    std::fs::canonicalize(top).map_err(|e| format!("repo root: {e}"))
 }
 
 pub(crate) fn rel(root: &Path, path: &Path) -> Option<String> {

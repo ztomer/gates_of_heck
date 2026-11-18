@@ -63,9 +63,11 @@ def _calls(goh: Path, tmp_path: Path, *args: str) -> Counter:
 
 
 @pytest.mark.parametrize("mode", ["--staged", "--full"])
-def test_the_binary_asks_for_the_top_level_once(goh: Path, tmp_path: Path, mode: str) -> None:
+def test_the_binary_never_asks_git_for_the_top_level(goh: Path, tmp_path: Path, mode: str) -> None:
+    """The layout answers in process (`gitroot.rs`, GOH.RUSTROOT); it was one spawn per run, and
+    a land gate ran ~3,100 of them."""
     calls = _calls(goh, tmp_path, mode)
-    assert calls["rev-parse --show-toplevel"] <= 1, calls
+    assert calls["rev-parse --show-toplevel"] == 0, calls
 
 
 def test_a_staged_run_of_the_binary_spawns_git_at_most_this_often(

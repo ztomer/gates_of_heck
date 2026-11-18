@@ -141,10 +141,9 @@ impl IndexView {
         if phys.starts_with(&top) {
             return Ok(None);
         }
-        let Ok(other) = git_out(&phys, &["rev-parse", "--show-toplevel"], None) else {
+        let Some(other) = crate::gitroot::toplevel(&phys) else {
             return Ok(None);
         };
-        let other = PathBuf::from(String::from_utf8_lossy(&other).trim());
         let other = other.canonicalize().unwrap_or(other);
         let rel = phys
             .strip_prefix(&other)
