@@ -44,7 +44,6 @@ lib/mcp_scaffold.py
 lib/reuse.py
 scripts/estate_audit.py
 scripts/model_choice_watch.py
-scripts/release_canary.py
 scripts/spend_watch.py
 tests/_land_verdicts.py
 tests/conftest.py

@@ -90,7 +90,8 @@ def _canary(e: dict, *extra: str) -> tuple[subprocess.CompletedProcess, dict]:
 @pytest.mark.load_sensitive
 def test_the_grace_end_names_the_consumer_it_turns_red_and_refuses_nothing(tmp_path, goh):
     e = _setup(tmp_path, goh)
-    r, rec = _canary(e, "--grace", "on")
+    # --fresh: base and head are one binary here, so the memo would answer HEAD from the base run
+    r, rec = _canary(e, "--grace", "on", "--fresh")
     out = r.stdout + r.stderr
     assert r.returncode == 0, out  # named, never the release's refusal before the date
     assert rec["verdict"] == "clear" and not rec["turned_red"] and not rec["already_red"], rec

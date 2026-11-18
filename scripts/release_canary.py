@@ -29,6 +29,12 @@ NAMED under `grace_over` in the record (count, repos, steps), never this release
 the date; `goh ship` carries it into its result and card (lib/ship_canary.py). From the date the
 day's pass judges it, so the extra pass stops (`--grace auto`; `on`/`off` force it).
 
+THE MEMO (GOH.CANARYMEMO). Each side's verdict over a consumer is kept (lib/canary_memo.py) under
+what decides it -- the side's gate content, binary, tools, seed store and grace, and the consumer's
+committed HEAD -- so a land under the same gates as the last spends no run and names the sweep it
+reused, a consumer whose HEAD moved is swept alone, and the base side holds until the next
+release. `--fresh` reuses nothing.
+
 It is a step of this repo's own gate (`.gatesrc` GOH_CI_STEPS), so `tools/land.sh` runs it before
 main moves -- the moment consumers start running the change -- and the push runs it again.
 
@@ -45,12 +51,11 @@ import argparse
 import concurrent.futures as cf
 import datetime as dt
 import os
-import re
 import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 # Each directory on the path right before what it holds: a path insert is not code to ruff (E402).
@@ -62,11 +67,12 @@ from tui.lib import counted, err, info, ok, warn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import canary_grace
+import canary_memo
 import estate_registry
 import killtree
 import not_applicable
 import pgid_cpu
-from canary_sides import export, git_run as _git, resolve
+from canary_sides import Verdict, common_dir, export, git_run as _git, parse, resolve
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "gates"))
 import step_tools  # crate::grace's date, read from grace.rs (its one home)
@@ -97,12 +103,6 @@ SEEDS = {
     "no early-exit pipe under pipefail": "goh early-exit-pipe --seed",
     "every child process names its stdin": "goh subprocess-stdin --seed",
 }
-STEP_HEAD = re.compile(r"^· (.+) \(≤\d+s\)$")
-STEP_OK = re.compile(r"^✓ (.+)$")
-STEP_RED = re.compile(r"^✗ structural: (.+) failed \(")
-FOUND = re.compile(r"^✗ \[")
-# The house's words for a bound that fired (bounded_run.py, stepcmd.rs, _empty_scope_run.py).
-TIMED_OUT = "TIMED OUT after"
 
 
 @dataclass
@@ -112,16 +112,7 @@ class Side:
     gohdir: Path
     live: Path  # the gates checkout an export's binary is resolved from (GOH_LIVE_ROOT)
     grace: str | None = None  # GOH_GRACE for this side; None: the day decides, as at a push
-
-
-@dataclass
-class Verdict:
-    green: set[str] = field(default_factory=set)
-    red: set[str] = field(default_factory=set)
-    found: dict[str, list[str]] = field(default_factory=dict)
-    # {step: its TIMED OUT line}: a step red ONLY because a bound fired gave no verdict.
-    timed_out: dict[str, str] = field(default_factory=dict)
-    error: str | None = None
+    memo: str = ""  # the side's half of the memo key (canary_memo.side_key); "": never reused
 
 
 def last_release(goh: Path) -> str | None:
@@ -141,13 +132,8 @@ def consumers(root: Path, state: Path, goh: Path) -> tuple[list[Path], list[str]
     estate, problems = estate_registry.union(
         estate_registry.walk_repos(root), estate_registry.registry_path(state)
     )
-    own = _common_dir(goh)
-    return [r for r in estate if (r / ".gatesrc").is_file() and _common_dir(r) != own], problems
-
-
-def _common_dir(repo: Path) -> str:
-    r = _git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
-    return str(Path(r.stdout.strip()).resolve()) if r.returncode == 0 else f"?{repo}"
+    own = common_dir(goh)
+    return [r for r in estate if (r / ".gatesrc").is_file() and common_dir(r) != own], problems
 
 
 def _env(side: Side) -> dict:
@@ -163,45 +149,6 @@ def _env(side: Side) -> dict:
     if side.grace:
         env["GOH_GRACE"] = side.grace
     return env
-
-
-def _starved(block: list[str]) -> str | None:
-    """A step's TIMED OUT line, when its output carries no `✗` finding of its own; else None."""
-    lines = [ln.strip() for ln in block]
-    if any(ln.startswith("✗") for ln in lines):
-        return None
-    return next((ln[:200] for ln in lines if TIMED_OUT in ln), None)
-
-
-def parse(rc: int, out: str) -> Verdict:
-    """One `goh structural --full --keep-going` run, step by step. An exit that is not 0 or 1, or
-    one its output does not account for, is an ERROR -- never read as green.
-
-    A red step whose output says TIMED OUT and carries no `✗` finding of its own was STARVED
-    (GOH.CANARYLOAD: Adv360's empty-scope sweep at load ~80 read as "turned red -- fix the
-    findings"): it lands in `timed_out`, never in `red`. A timeout beside a finding stays red."""
-    v, step, block = Verdict(), None, []
-    for line in out.splitlines():
-        if m := STEP_HEAD.match(line):
-            step, block = m.group(1), []
-        elif m := STEP_RED.match(line):
-            if why := _starved(block):
-                v.timed_out[m.group(1)] = why
-            else:
-                v.red.add(m.group(1))
-        elif (m := STEP_OK.match(line)) and m.group(1) != "all structural gates passed":
-            v.green.add(m.group(1))
-        elif FOUND.match(line) and step:
-            v.found.setdefault(step, []).append(line[1:].strip())
-        block.append(line)
-    tail = " | ".join(out.strip().splitlines()[-3:])
-    if rc not in (0, 1):
-        v.error = f"exit {rc}: {tail}"
-    elif rc == 1 and not v.red and not v.timed_out:
-        v.error = f"exit 1 naming no failed step: {tail}"
-    elif rc == 0 and (v.red or not v.green):
-        v.error = f"exit 0 over {len(v.red)} red, {counted(len(v.green), 'green step')}: {tail}"
-    return v
 
 
 def structural(side: Side, tree: Path) -> Verdict:
@@ -243,19 +190,9 @@ def remedy(step: str, found: list[str]) -> str:
     return "fix the findings (`goh structural --full --keep-going` in the repo lists them)"
 
 
-def _fresh(tree: Path) -> None:
-    """The clone as committed again: a side's run leaves nothing the next side reads."""
-    _git(tree, "reset", "-q", "--hard")
-    _git(tree, "clean", "-q", "-fdx")
-
-
-def grace_end(over: Side, tree: Path, now: Verdict) -> dict:
-    """{turned_red, errors, seconds}: HEAD once more at the grace's end, against its pass under the
-    day (`now`). A step red only there is NAMED; nothing here refuses the release."""
-    _fresh(tree)
-    t0 = time.monotonic()
-    then = structural(over, tree)
-    secs = round(time.monotonic() - t0, 1)
+def grace_end(over: Side, then: Verdict, secs: float, now: Verdict) -> dict:
+    """{turned_red, errors, seconds}: HEAD once more at the grace's end (`then`), against its pass
+    under the day (`now`). A step red only there is NAMED; nothing here refuses the release."""
     if then.error:
         return {"turned_red": [], "errors": [f"under {over.label}: {then.error}"], "seconds": secs}
     flips = [{"step": s, "found": then.found.get(s, [])[:3]} for s in sorted(then.red - now.red)]
@@ -267,26 +204,18 @@ def grace_end(over: Side, tree: Path, now: Verdict) -> dict:
     return {"turned_red": flips, "errors": starved, "seconds": secs}
 
 
-def judge(repo: Path, base: Side, head: Side, scratch: Path, over: Side | None = None) -> dict:
+def judge(repo: Path, base: Side, head: Side, scratch: Path, over: Side | None = None,
+          memo: canary_memo.Memo | None = None, where: str = "") -> dict:  # fmt: skip
     """{turned_red: [...], already_red: [...], errors: [...]} for one consumer; with `over`, HEAD
-    at the grace's end too, under `grace` (grace_end)."""
-    tree = scratch / "tree"
-    env = {**foreign_repo_env(), "GIT_LFS_SKIP_SMUDGE": "1"}
-    c = subprocess.run(
-        ["git", "clone", "-q", "--shared", "--no-tags", str(repo), str(tree)],
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-        stdin=subprocess.DEVNULL,
-    )
-    if c.returncode != 0:
-        return {"errors": [f"cloning it: {c.stderr.strip()}"]}
-    was = structural(base, tree)
-    _fresh(tree)
-    t0 = time.monotonic()
-    now = structural(head, tree)
-    head_secs = round(time.monotonic() - t0, 1)
+    at the grace's end too, under `grace` (grace_end). Each side's verdict may be the memo's."""
+    memo = memo or canary_memo.Memo(None, {}, reuse=False)
+    runs = canary_memo.Runs(repo, where or str(repo), scratch, memo, structural)
+    try:
+        was, _ = runs.side(base)
+        now, head_secs = runs.side(head)
+        then = runs.side(over) if over is not None and not now.error else None
+    except canary_memo.CloneError as e:
+        return {"errors": [f"cloning it: {e}"]}
     if now.error:
         return {"errors": [f"under {head.label}: {now.error}"]}
     # A base that could not judge (a .gatesrc key it predates, say) proves no step green: every red
@@ -311,8 +240,8 @@ def judge(repo: Path, base: Side, head: Side, scratch: Path, over: Side | None =
     if was.error and out["turned_red"]:
         out["base_error"] = was.error
     out["head_seconds"] = head_secs
-    if over is not None:
-        out["grace"] = grace_end(over, tree, now)
+    if over is not None and then is not None:
+        out["grace"] = grace_end(over, *then, now)
     return out
 
 
@@ -324,7 +253,13 @@ def _where(repo: Path, root: Path) -> str:
 
 
 def sweep(
-    repos: list[Path], root: Path, base: Side, head: Side, jobs: int, over: Side | None = None
+    repos: list[Path],
+    root: Path,
+    base: Side,
+    head: Side,
+    jobs: int,
+    over: Side | None = None,
+    memo: canary_memo.Memo | None = None,
 ) -> dict:
     turned, already, errors, grace, t0 = {}, {}, [], canary_grace.empty(), time.monotonic()
     with (
@@ -332,7 +267,7 @@ def sweep(
         cf.ThreadPoolExecutor(max_workers=jobs) as pool,
     ):
         futs = {
-            pool.submit(judge, r, base, head, Path(tmp) / str(i), over): r
+            pool.submit(judge, r, base, head, Path(tmp) / str(i), over, memo, _where(r, root)): r
             for i, r in enumerate(repos)
         }
         for fut in cf.as_completed(futs):
@@ -347,6 +282,8 @@ def sweep(
     out["sweep_seconds"] = round(time.monotonic() - t0, 1)
     if over is not None:
         out["grace_over"] = canary_grace.closed(grace)
+    if memo is not None:
+        out["memo"], out["memo_records"] = memo.summary(), memo.kept()
     return out
 
 
@@ -421,7 +358,10 @@ def run(args: argparse.Namespace) -> tuple[dict, int]:
             replace(head, label=f"{head.label} at GOH_GRACE=over", grace="over") if want else None
         )
         rec["grace_over"] = {"ran": False, "count": None, "why": why}
-        rec.update(sweep(repos, args.root, base, head, args.jobs, over))
+        old, by = canary_memo.records(args.state, KEY), {"ran_at": now, "head_sha": rec["head_sha"]}
+        memo = canary_memo.Memo(old, by, reuse=not args.fresh)
+        canary_memo.key_sides((base, head, over), step_tools.over_from)
+        rec.update(sweep(repos, args.root, base, head, args.jobs, over, memo))
         rec["grace_over"]["over_from"] = canary_grace.day(when)
     bad = rec["turned_red"] or rec["errors"]
     rec["verdict"] = "refused" if bad else "clear"
@@ -451,6 +391,7 @@ def say(rec: dict) -> None:
                 for line in f["found"]:
                     info(f"      found: {line}")
     canary_grace.say(rec.get("grace_over") or {})
+    canary_memo.say(rec.get("memo") or {})
     if rec["verdict"] == "refused":
         err("release canary: REFUSED -- fix or seed each consumer above (in that repo), then land")
         err("  again; a consumer that should leave the estate leaves its registry, by name")
@@ -479,9 +420,16 @@ def main() -> int:
         default="auto",
         help="HEAD once more at GOH_GRACE=over (auto: while crate::grace's date is ahead)",
     )
+    ap.add_argument(
+        "--fresh",
+        action="store_true",
+        help="reuse no recorded consumer verdict (each run's is still recorded)",
+    )
     args = ap.parse_args()
     args.root, args.goh = args.root.resolve(), args.goh.resolve()
     rec, rc = run(args)
+    if "memo_records" not in rec:  # nothing swept: the records stay for the next land
+        rec["memo_records"] = canary_memo.records(args.state, KEY)
     estate_registry.update_state(args.state, lambda old: {**old, KEY: rec})
     say(rec)
     return rc
