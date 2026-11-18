@@ -220,6 +220,22 @@ def test_a_green_land_request_fast_forwards_main_and_records_landed(repo, tmp_pa
     assert "landed" in Path(got["log"]).read_text()
 
 
+def test_a_landed_request_carries_its_request_time_and_is_one_e2e_row(repo, tmp_path, env):
+    """GOH.LANDTARGET: the done record keeps the request's time (taken before the enqueue's
+    pre-step) and the pre-step's seconds, and the lander writes the item's end-to-end row."""
+    wt, _ = _land_wt(repo, tmp_path)
+    env = {**env, "GOH_LAND_GATE": "true", "GOH_TIMING_DIR": str(tmp_path / "timing")}
+    assert landq(env, "--enqueue", "--land", str(wt), "--item", "T.E", "--no-start").returncode == 0
+    assert landq(env, "--drain").returncode == 0
+    (rec,) = [json.loads(p.read_text()) for p in (tmp_path / "landq" / "done").glob("*.json")]
+    assert rec["requested"].endswith("Z") and isinstance(rec["pre_s"], float), rec
+    rows = [
+        json.loads(ln) for ln in (tmp_path / "timing" / "ledger.jsonl").read_text().splitlines()
+    ]
+    (e2e,) = [r for r in rows if r["kind"].startswith("land e2e")]
+    assert (e2e["kind"], e2e["item"], e2e["from"]) == ("land e2e plain", "T.E", "requested"), e2e
+
+
 def test_a_red_land_gate_lands_nothing_and_records_the_log(repo, tmp_path, env):
     wt, tip = _land_wt(repo, tmp_path)
     before = git(repo, "rev-parse", "HEAD").strip()
@@ -321,6 +337,7 @@ def test_a_land_that_changes_the_lander_is_honoured_by_the_next_request(tmp_path
     named = ("lib/bounded_run.py", "lib/gitrun.py", "lib/lock_order.py", "lib/lock_order.tsv")
     named += ("lib/land_prestep.py", "lib/killtree.py", "lib/landq_batch.py", "lib/land_lock.py")
     named += ("lib/landq_request.py", "lib/landq_look.py", "lib/land_attempts.py")
+    named += ("lib/land_e2e.py",)
     named += ("lib/idle_suite.py", "lib/landq_inflight.py")
     named += ("checks/_gitutil.py", "tools/land.sh")
     sc.copy_closure(

@@ -31,6 +31,9 @@ it:
 The relative guard needs no ARM: an UNARMED subject, which the 10 / 15 states cannot defend, still
 shows a run that moved +REL over its own median.
 
+A breach is never silent (lib/budget_breach.py: `breaches` in the JSON). The land END TO END:
+lib/land_e2e.py (GOH.LANDTARGET).
+
 A SUBJECT'S START AND END are the sentences in KINDS[kind].span, one per kind, so every writer of a
 kind measures the same span. Subjects no writer feeds yet (`writer` false) are listed UNMEASURED,
 never silently absent; so is a repo that ships through goh but has no row.
@@ -61,8 +64,10 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import budget_breach  # lib/: a BREACHED subject named for the coordinator (GOH.LANDTARGET)
 import cip_history  # lib/: the CIP lanes' push gates, the ledger's first rows (GOH.GATEBUDGET2)
 import land_attempts  # lib/: each land attempt a row, an item's retries one run (GOH.GATEBUDGET2)
+import land_e2e  # lib/: a land end to end, request to main, one run per item (GOH.LANDTARGET)
 import reuse_audit  # lib/: each reuse path's counts (GOH.REUSEAUDIT2)
 import timing_ledger
 
@@ -72,6 +77,13 @@ REL = 0.25  # the relative guard: this run's cpu-s over the median of the runs b
 WINDOW = 5  # runs behind a median
 MIN_BASE = 3  # prior runs the relative guard needs before it judges
 UNARMED, ARMED, BREACHED, CLEARED = "UNARMED", "ARMED", "BREACHED", "CLEARED"
+# OWNER TARGET 2026-11-18 (GOH.LANDTARGET): a goh land end to end in 5 min plain, 10 min
+# instrumented (the coverage step ran). BREACH, owner 2026-11-18: "yes, 7.5 and 15 for the
+# breach" (the ship's 1.5x hysteresis). Move them here.
+LAND_E2E_PLAIN_ARM_S = 5 * MIN
+LAND_E2E_PLAIN_BREACH_S = 7.5 * MIN
+LAND_E2E_INSTRUMENTED_ARM_S = 10 * MIN
+LAND_E2E_INSTRUMENTED_BREACH_S = 15 * MIN
 
 
 @dataclass(frozen=True)
@@ -83,6 +95,7 @@ class Kind:
     agg: str  # "last" (the last run) or "median5" (the median of the last five)
     span: str  # where the subject starts and ends
     writer: str  # who appends it; "" when no writer feeds it yet (listed UNMEASURED)
+    wall_trend: bool = True  # False: the relative guard judges cpu-s only, never the wall
 
 
 # THE ONE TABLE (owner 2026-11-15): every threshold lives here, none in code. tests/test_budget.py
@@ -139,6 +152,24 @@ KINDS: dict[str, Kind] = {
         "an item's land attempts summed, the first to the one that lands (lib/land_attempts.py)",
         "goh land: each request's `land attempt` row",
     ),
+    land_e2e.PLAIN: Kind(
+        LAND_E2E_PLAIN_ARM_S,
+        LAND_E2E_PLAIN_BREACH_S,
+        "median5",
+        "an item's land request (before the enqueue's pre-step) to main fast-forwarded, its "
+        "retries in it; no coverage step",
+        "lib/land_e2e.py from landq done/ and logs/",
+        wall_trend=False,
+    ),
+    land_e2e.INSTRUMENTED: Kind(
+        LAND_E2E_INSTRUMENTED_ARM_S,
+        LAND_E2E_INSTRUMENTED_BREACH_S,
+        "median5",
+        "an item's land request (before the enqueue's pre-step) to main fast-forwarded, its "
+        "retries in it; the land ran the coverage step",
+        "lib/land_e2e.py from landq done/ and logs/",
+        wall_trend=False,
+    ),
     "suite": Kind(
         10 * MIN,
         15 * MIN,
@@ -193,6 +224,8 @@ def trend(runs: list[dict], kind: Kind) -> dict:
         return {"verdict": "new", "delta": None, "metric": "wall_s"}
     last, base = runs[-1], runs[:-1][-WINDOW:]
     metric = "cpu_s" if "cpu_s" in last and all("cpu_s" in r for r in base) else "wall_s"
+    if metric == "wall_s" and not kind.wall_trend:
+        return {"verdict": "no cpu-s", "delta": None, "metric": "cpu_s"}
     if len(base) < MIN_BASE:
         return {"verdict": "new", "delta": None, "metric": metric}
     median = statistics.median(r[metric] for r in base)
@@ -236,6 +269,7 @@ def judge(subject: str, rows: list[dict]) -> dict:
         "state": state_of(runs, kind) if runs else UNARMED,
         "arm_s": kind.arm_s,
         "breach_s": kind.breach_s,
+        "agg": kind.agg,
         "runs": len(rows),
         "last_s": last["wall_s"],
         "last_ok": bool(last.get("ok", True)),
@@ -347,6 +381,10 @@ def unmeasured(seen: set[str]) -> list[dict]:
     """What the budget should cover and has no run for: a kind no writer feeds, and each repo that
     ships through goh (a result directory) with no `ship` row."""
     out = [{"subject": k, "why": "no writer yet"} for k, v in KINDS.items() if not v.writer]
+    kinds = {s.partition(" ")[2] for s in seen}
+    out += [
+        {"subject": k, "why": "no landed run recorded"} for k in land_e2e.KINDS if k not in kinds
+    ]
     base = ship_dir()
     if base.is_dir():
         for d in sorted(p for p in base.iterdir() if p.is_dir()):
@@ -377,13 +415,13 @@ def snapshot() -> dict:
     return {
         "ledger": str(timing_ledger.ledger_path()),
         "subjects": judged,
+        "breaches": budget_breach.breaches(judged),
         "unmeasured": unmeasured({j["subject"] for j in judged}),
         "reuse": reuse_rows(),
     }
 
 
-def _min(s: float | None) -> str:
-    return "-" if s is None else (f"{s:.0f} s" if s < 120 else f"{s / 60:.1f} min")
+_min = budget_breach.minutes
 
 
 GLYPH = {ARMED: "✓", CLEARED: "✓", BREACHED: "✗", UNARMED: "·"}
@@ -416,6 +454,8 @@ def render(snap: dict) -> str:
             )
     for u in snap["unmeasured"]:
         out.append(f"· {u['subject']}: unmeasured ({u['why']})")
+    for b in snap["breaches"]:
+        out.append(f"✗ {b['subject']} BREACHED: {b['action']}")
     out.append("goh reuse audit: each path's skips this window (lib/reuse_audit.py report)")
     out.append(f"  {'path':<9} {'state':<5} " + " ".join(f"{k:>9}" for k in REUSE_COUNTS))
     for r in snap["reuse"]:
@@ -441,6 +481,7 @@ def main(argv: list[str]) -> int:
         backfill_ships()  # idempotent: the ships that predate the ledger, or finished without it
         cip_history.backfill()  # the CIP lanes' push gates (GOH.GATEBUDGET2)
         land_attempts.backfill(land_attempts.done_dir())  # the queue's timed attempts
+        land_e2e.backfill(land_attempts.done_dir().parent)  # each landed item end to end
     snap = snapshot()
     print(json.dumps(snap, ensure_ascii=False, indent=2) if a.json else render(snap))
     return 0

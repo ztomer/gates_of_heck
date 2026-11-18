@@ -84,6 +84,7 @@ bounded_run = importlib.import_module("bounded_run")
 gitrun = importlib.import_module("gitrun")
 idle_suite = importlib.import_module("idle_suite")
 land_attempts = importlib.import_module("land_attempts")
+land_e2e = importlib.import_module("land_e2e")
 lock_order = importlib.import_module("lock_order")
 land_prestep = importlib.import_module("land_prestep")
 landq_batch = importlib.import_module("landq_batch")
@@ -135,10 +136,12 @@ def prestep(req: dict) -> None:
     """GOH.ENQUEUEPRE (lib/land_prestep.py): the pre-step first, then the queue."""
     wt = Path(req["worktree"])
     landq_inflight.mark(qdir(), req["item"] or Path(req["repo"]).name)  # until this enqueue exits
+    t0 = time.monotonic()
     try:
         land_prestep.run(wt, req["sha"], land_script(wt), git_bindings())
     except land_prestep.Red as e:
         raise Refused(str(e)) from None
+    req["pre_s"] = round(time.monotonic() - t0, 1)  # the e2e's pre-step share (lib/land_e2e.py)
 
 
 def write_json(path: Path, data: dict) -> None:
@@ -243,6 +246,10 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
     done_dir = req_path.parent.parent / "done"
     named = land_attempts.item_of(req_path, {"item": item})
     outcome = {**outcome, "at": now()}
+    req = landq_batch.read(req_path)  # its request time (before the pre-step): the e2e's start
+    for key, field in (("enqueued_at", "requested"), ("pre_s", "pre_s")):
+        if req.get(key) is not None:
+            outcome[field] = req[key]
     outcome.update(item=named, attempt=land_attempts.attempt_of(done_dir, named))
     if item:
         tool = loopctl()
@@ -261,6 +268,10 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
         land_attempts.record(outcome, req_path.stem)
     except Exception as e:  # noqa: BLE001 -- the instrument is never the reason a land fails
         warn(f"{named}: its attempt row was not written to the timing ledger: {e}")
+    try:
+        land_e2e.backfill(done_dir.parent)  # GOH.LANDTARGET: the item end to end, once it landed
+    except Exception as e:  # noqa: BLE001 -- the instrument is never the reason a land fails
+        warn(f"{named}: its end-to-end row was not written to the timing ledger: {e}")
     if why := selection_miss.record_land(done_dir.parent, outcome, named):  # GOH.SELECTAUDIT
         warn(why)
     mark = ok if outcome["state"] == "landed" else err
