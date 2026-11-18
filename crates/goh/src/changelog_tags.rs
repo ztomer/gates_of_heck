@@ -18,8 +18,12 @@
 //! version headings, holds a tag set that is not the repository's (a CI checkout fetches one or
 //! none), so the run names why and how to fetch them, exits 0 and calls no seed entry stale.
 //!
+//! REACH (GOH.TAGSREACH): only the tags reachable from `HEAD` are judged (`git tag --merged HEAD`;
+//! at `--staged`, `HEAD` is the staged commit's parent), so a branch cut before a release does not
+//! fail for a tag, and a heading, that only later main commits have.
+//!
 //! SCOPE: the repo's `CHANGELOG.md`, else `docs/CHANGELOG.md`; a repo with neither has nothing to
-//! judge and says so. Both scopes: the file and the tags are read whole either way (the index's
+//! judge and says so. Both scopes: the file and the reachable tags are read whole either way (the index's
 //! copy of the changelog at `--staged`).
 //!
 //! WIRING: a structural step in EVERY repo with a changelog. The estate's findings on the day it
@@ -151,18 +155,30 @@ fn changelog_of(files: &[String]) -> Option<&'static str> {
         .find(|c| files.iter().any(|f| f == c))
 }
 
-/// The repo's `v*` tags.
+/// The repo's `v*` tags REACHABLE from `HEAD` (GOH.TAGSREACH): the judged commit is `HEAD`, or its
+/// staged child, so the tags of its own history are the ones its changelog can answer for. A tag on
+/// a later main commit names a heading a branch cut before that release cannot have yet. A repo
+/// with no commit has no tag.
 fn tags(root: &Path) -> Result<Vec<String>, String> {
-    let out = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["tag", "-l", "v*"])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .map_err(|e| format!("git tag: {e}"))?;
+    let git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .map_err(|e| format!("git {}: {e}", args[0]))
+    };
+    if !git(&["rev-parse", "--verify", "-q", "HEAD"])?
+        .status
+        .success()
+    {
+        return Ok(Vec::new());
+    }
+    let out = git(&["tag", "-l", "--merged", "HEAD", "v*"])?;
     if !out.status.success() {
-        return Err("git tag -l v* failed".to_string());
+        return Err("git tag -l --merged HEAD v* failed".to_string());
     }
     Ok(String::from_utf8_lossy(&out.stdout)
         .split_whitespace()
@@ -281,127 +297,5 @@ pub fn step(repo: &Path, staged: bool) -> Option<i32> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn tags(t: &[&str]) -> Vec<String> {
-        t.iter().map(|s| (*s).to_string()).collect()
-    }
-
-    const GOOD: &str = "# CHANGELOG\n\n## Unreleased\n\n## v1.2.0 -- two\n\n* b\n\n## v1.1.0 — one (2026-11-01)\n\n* a\n";
-
-    #[test]
-    fn a_changelog_that_agrees_with_its_tags_passes() {
-        assert_eq!(
-            findings("CHANGELOG.md", GOOD, &tags(&["v1.1.0", "v1.2.0"]), None),
-            Vec::<String>::new()
-        );
-        // The pending stanza, its tag not cut yet: VERSION's, or the newest above every tag.
-        assert_eq!(
-            findings("CHANGELOG.md", GOOD, &tags(&["v1.1.0"]), Some("1.2.0")),
-            Vec::<String>::new()
-        );
-        assert_eq!(
-            findings("CHANGELOG.md", GOOD, &tags(&["v1.1.0"]), None),
-            Vec::<String>::new()
-        );
-        // A heading older than the first tag names no tag and is history, not a finding.
-        assert_eq!(
-            findings("CHANGELOG.md", GOOD, &tags(&["v1.2.0"]), None),
-            Vec::<String>::new()
-        );
-    }
-
-    #[test]
-    fn a_planted_orphan_tail_is_found() {
-        let text = GOOD.replace("## v1.1.0 — one (2026-11-01)", " — one (2026-11-01)");
-        let f = findings("CHANGELOG.md", &text, &tags(&["v1.2.0"]), None);
-        assert_eq!(f.len(), 1, "{f:?}");
-        assert!(
-            f[0].contains("CHANGELOG.md:9:") && f[0].contains("heading tail"),
-            "{f:?}"
-        );
-    }
-
-    #[test]
-    fn a_tag_with_no_heading_is_found() {
-        let f = findings(
-            "CHANGELOG.md",
-            GOOD,
-            &tags(&["v1.1.0", "v1.1.1", "v1.2.0"]),
-            None,
-        );
-        assert_eq!(
-            f,
-            vec!["    CHANGELOG.md: tag v1.1.1 has no `## v1.1.1` heading"]
-        );
-    }
-
-    #[test]
-    fn a_heading_no_tag_names_is_found_unless_it_is_current() {
-        let text = format!("{GOOD}\n## v1.0.0\n");
-        let f = findings("CHANGELOG.md", &text, &tags(&["v1.0.0", "v1.2.0"]), None);
-        assert_eq!(f, vec!["    CHANGELOG.md:9: `## v1.1.0` names no tag"]);
-        // Two stanzas above every tag: only one is pending.
-        let f = findings("CHANGELOG.md", &text, &tags(&["v1.0.0"]), Some("1.2.0"));
-        assert_eq!(f, vec!["    CHANGELOG.md:9: `## v1.1.0` names no tag"]);
-    }
-
-    #[test]
-    fn a_clone_whose_tags_cannot_be_trusted_is_not_judged() {
-        let why = untrusted(true, &tags(&["v1.2.0"]), GOOD).unwrap_or_default();
-        assert!(
-            why.contains("shallow") && why.contains("fetch-depth: 0"),
-            "{why}"
-        );
-        let why = untrusted(false, &tags(&["vnext"]), GOOD).unwrap_or_default();
-        assert!(why.contains("no v* tag"), "{why}");
-        assert_eq!(untrusted(false, &tags(&["v1.1.0"]), GOOD), None);
-        // Before the first release there is nothing to compare: a pass, not a refusal.
-        assert_eq!(
-            untrusted(false, &[], "# CHANGELOG\n\n## Unreleased\n"),
-            None
-        );
-    }
-
-    #[test]
-    fn a_planted_shallow_clone_is_not_judged_and_its_seed_is_not_called_stale() {
-        // GOH.SHALLOWROOT: in a --depth 1 clone the tags are the fetch's, so a clean-looking
-        // changelog is no verdict. A changelog with an orphan heading tail, tagged, then cloned.
-        let r = goh_testkit::repo_with(&[(
-            "CHANGELOG.md",
-            &GOOD.replace("## v1.1.0 — one (2026-11-01)", " — one (2026-11-01)"),
-        )])
-        .expect("fixture");
-        r.git(&["commit", "-qm", "root"]).expect("commit");
-        r.git(&["tag", "v1.2.0"]).expect("tag");
-        let full = judge(r.path(), &["CHANGELOG.md".to_string()], false);
-        assert_eq!(full.0, 1, "the full clone finds it: {full:?}");
-        let dst = tempfile::tempdir().expect("tmp");
-        let url = format!("file://{}", r.path().display());
-        goh_testkit::git_in(dst.path(), &["clone", "-q", "--depth", "1", &url, "c"])
-            .expect("shallow clone");
-        let clone = dst.path().join("c");
-        assert!(crate::gitutil::is_shallow(&clone));
-        let (code, out, err) = judge(&clone, &["CHANGELOG.md".to_string()], false);
-        assert_eq!(code, 0, "{out}{err}");
-        assert!(
-            err.contains("NOT JUDGED") && err.contains("shallow clone") && !out.contains("OK"),
-            "{out}{err}"
-        );
-    }
-
-    #[test]
-    fn headings_without_a_v_and_non_release_tags_are_read() {
-        let text = "## Unreleased\n\n## 0.8.0 - 2026-10-20\n\n## [0.3.1]\n";
-        assert_eq!(
-            findings(
-                "CHANGELOG.md",
-                text,
-                &tags(&["v0.3.1", "v0.8.0", "vnext"]),
-                None
-            ),
-            Vec::<String>::new()
-        );
-    }
-}
+#[path = "changelog_tags_tests.rs"]
+mod tests;
