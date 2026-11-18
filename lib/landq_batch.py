@@ -205,8 +205,9 @@ class Batch:
         base, out = self.git(self.main, "rev-parse", "HEAD"), []
         for it in items:
             if it.upstream != base:
-                argv = ["env", *self.kit.unset, f"GOH_LAND_STACK_ONTO={base}",
-                        f"GOH_LAND_STACK_UPSTREAM={it.upstream}", "bash", "-c",
+                argv = ["env", *self.kit.unset, *land_slot.label(it.req),
+                        f"GOH_LAND_STACK_ONTO={base}", f"GOH_LAND_STACK_UPSTREAM={it.upstream}",
+                        "bash", "-c",
                         'cd -- "$1" && exec bash "$2"', "stack", it.req["worktree"],
                         str(self.kit.stacker)]  # fmt: skip
                 res = bounded_run.run_step(argv, 600, self.kit.grace, "land stack", str(it.log))
@@ -227,7 +228,8 @@ class Batch:
         log = self.q / "logs" / f"{self.id}.gate{self.gates}.log"
         wt = Path(top.req["worktree"])
         self.kit.say(f"batch {self.id}: gate {self.gates} on {top.tip[:8]}, {size} stacked")
-        argv = ["env", *self.kit.unset, "bash", "-c", 'cd -- "$1" && exec bash "$2"', "land",
+        argv = ["env", *self.kit.unset, *land_slot.label(top.req), "bash", "-c",
+                'cd -- "$1" && exec bash "$2"', "land",
                 str(wt), str(self.kit.land_script(wt))]  # fmt: skip
         res = bounded_run.run_step(argv, self.kit.timeout, self.kit.grace, "land batch", str(log))
         if res.timed_out:

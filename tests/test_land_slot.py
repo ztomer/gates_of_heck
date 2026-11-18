@@ -97,6 +97,7 @@ def test_an_edit_in_the_lane_during_the_land_does_not_change_the_verdict(repo, t
     ran = Path(env["GATE_LOG"]).read_text().split()
     assert ran and str(wt.resolve()) not in ran, ran  # the gate never ran in the lane
     assert (wt / "f.txt").read_text() == "bad\n"  # and the lane's edit is the lane's
+    assert "land lane @" in Path(got["log"]).read_text()  # named by the lane's branch, not HEAD
 
 
 def test_the_lander_never_moves_the_lanes_tip(repo, tmp_path):

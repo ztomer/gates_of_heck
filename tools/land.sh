@@ -100,7 +100,10 @@ if [ "$(cd "$here" && pwd -P)" = "$(cd "$main" && pwd -P)" ]; then
     exit 2
 fi
 tip="$(git rev-parse HEAD)"
-branch="$(git rev-parse --abbrev-ref HEAD)"
+# In goh's detached checkout of the enqueued sha (GOH.LANDSNAPSHOT, lib/land_slot.py) the queue
+# names the lane's branch, so every line says whose land this is; read once, never in the gate's env.
+branch="${GOH_LAND_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
+unset GOH_LAND_BRANCH
 gate="${GOH_LAND_GATE:-}"
 if [ -z "$gate" ] && [ -f "$here/.gatesrc" ]; then
     gate="$(cd "$here" && bash -c 'unset GOH_LAND_GATE; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_GATE-}"')" \

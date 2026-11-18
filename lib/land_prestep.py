@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 killtree = importlib.import_module("killtree")
+land_slot = importlib.import_module("land_slot")
 _tui = importlib.import_module("tui.lib")
 info, warn = _tui.info, _tui.warn
 
@@ -45,26 +46,33 @@ def adopt(req: dict, keep: Path) -> None:
 
 def lander_env(req: dict) -> list[str]:
     """The lander's tools/land.sh reads the kept verdict from GOH_LAND_PRE_FROM."""
-    return [f"GOH_LAND_PRE_FROM={req['pre']['keep']}"] if req.get("pre") else []
+    kept = [f"GOH_LAND_PRE_FROM={req['pre']['keep']}"] if req.get("pre") else []
+    return [*kept, *land_slot.label(req)]
 
 
 def run_kept(req: dict, q: Path, script: Path, bindings: tuple[str, ...]) -> float:
     """`run` on REQ's worktree and sha, its green verdict kept under Q and named on REQ (`pre`);
     the lander's land.sh removes the keep once read (lib/land_pre_reuse.sh)."""
     keep = keep_path(q, req["sha"])
-    took = run(Path(req["worktree"]), req["sha"], script, bindings, keep)
+    took = run(Path(req["worktree"]), req["sha"], script, bindings, keep, land_slot.label(req))
     adopt(req, keep)
     return took
 
 
 def run(
-    wt: Path, sha: str, script: Path, bindings: tuple[str, ...], keep: Path | None = None
+    wt: Path,
+    sha: str,
+    script: Path,
+    bindings: tuple[str, ...],
+    keep: Path | None = None,
+    label: list[str] | None = None,
 ) -> float:
     """Run SCRIPT's pre-step in WT; its seconds, or raise Red unless green or past its deadline. A
     green verdict is KEPT at `keep` (the judged sha; its record at `keep`.record) for the lander's
     tools/land.sh, which reuses it where the tip moved only in paths no test reads
     (GOH.PRELANDTWICE)."""
     kept = [f"GOH_LAND_PRE_KEEP={keep}"] if keep else []
+    kept += label or []
     argv = ["env", *(f"-u{k}" for k in bindings), "GOH_LAND_PRE_ONLY=1", *kept, "bash", "-c",
             'cd -- "$1" && exec bash "$2"', "land", str(wt), str(script)]  # fmt: skip
     timeout = int(os.environ.get("GOH_ENQUEUE_PRE_TIMEOUT") or TIMEOUT)

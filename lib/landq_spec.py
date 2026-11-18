@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING
 
 import admission
 import killtree
+import land_slot
 
 if TYPE_CHECKING:
     from landq_batch import Batch, Item
@@ -150,8 +151,9 @@ def start(b: Batch, second: list[Item]) -> Spec | None:
     b.kit.say(f"batch {b.id}: gate {b.gates} on {top.tip[:8]}, {len(stacked)} stacked on main "
               f"{base[:8]} beside the first half (speculative)")  # fmt: skip
     read, write = os.pipe()
-    argv = ["env", *b.kit.unset, f"{MARK}={read}", "bash", "-c", 'cd -- "$1" && exec bash "$2"',
-            "land", str(wt), str(b.kit.land_script(wt))]  # fmt: skip
+    argv = ["env", *b.kit.unset, *land_slot.label(top.req), f"{MARK}={read}", "bash", "-c",
+            'cd -- "$1" && exec bash "$2"', "land", str(wt),
+            str(b.kit.land_script(wt))]  # fmt: skip
     spec = Spec(stacked, base, tree, log, write, b.kit.timeout, b.kit.grace)
     threading.Thread(target=spec.run, args=(argv, read), name=f"landq-spec-{b.id}",
                      daemon=True).start()  # fmt: skip

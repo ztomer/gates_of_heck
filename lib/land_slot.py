@@ -184,6 +184,11 @@ def release(q: Path, main: Path, wt: str, token: str) -> None:
     owner.unlink(missing_ok=True)
 
 
+def label(req: dict) -> list[str]:
+    """`env` words naming REQ's lane branch to tools/land.sh: a slot's own HEAD is detached."""
+    return [f"GOH_LAND_BRANCH={req['branch']}"] if req.get("slot") and req.get("branch") else []
+
+
 def done(q: Path, req: dict) -> dict:
     """REQ recorded: its slot released; what the record keeps of it (the checkout's seconds)."""
     release_req(q, req)
