@@ -424,3 +424,16 @@ pub fn step() -> Option<i32> {
         }
     }
 }
+
+#[cfg(test)]
+mod root_tests {
+    use super::*;
+
+    #[test]
+    fn an_explicit_root_inside_a_work_tree_resolves_to_its_top_level() {
+        let repo = goh_testkit::repo_with(&[("a/b.txt", "x\n")]).unwrap_or_else(|e| panic!("{e}"));
+        let inner = repo.path().join("a");
+        let got = root_for(inner.to_str());
+        assert_eq!(got, Ok(realpath(repo.path())));
+    }
+}

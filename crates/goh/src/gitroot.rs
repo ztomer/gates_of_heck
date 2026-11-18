@@ -72,11 +72,9 @@ pub fn layout_toplevel_with(dir: &Path, env: &dyn Fn(&str) -> Option<OsString>) 
     }
     let cwd = dir.canonicalize().ok()?;
     let dev = std::fs::metadata(&cwd).ok()?.dev();
-    for d in cwd.ancestors() {
-        let meta = std::fs::metadata(d).ok()?;
-        if meta.dev() != dev {
-            return None;
-        }
+    // A walk that crosses a filesystem ends there: git stops too, so the question is git's.
+    let same_fs = |d: &&Path| std::fs::metadata(d).is_ok_and(|m| m.dev() == dev);
+    for d in cwd.ancestors().take_while(same_fs) {
         let dotgit = d.join(".git");
         let gitdir = match std::fs::metadata(&dotgit) {
             Ok(m) if m.is_dir() => dotgit,
@@ -85,42 +83,41 @@ pub fn layout_toplevel_with(dir: &Path, env: &dyn Fn(&str) -> Option<OsString>) 
                 let line = text.lines().next()?;
                 d.join(line.strip_prefix("gitdir: ")?)
             }
-            Ok(_) => return None,
-            Err(_) if d.join("HEAD").is_file() && d.join("objects").is_dir() => return None,
-            Err(_) => continue,
+            Err(_) if !(d.join("HEAD").is_file() && d.join("objects").is_dir()) => continue,
+            // a bare repo, the inside of a git dir, or a `.git` that is neither file nor directory
+            _ => return None,
         };
-        return certain(d, &gitdir).then(|| d.to_path_buf());
+        return certain(d, &gitdir).map(|()| d.to_path_buf());
     }
     None
 }
 
-/// Is `gitdir` a plain, ordinary git dir of the work tree `top`, owned by us?
-fn certain(top: &Path, gitdir: &Path) -> bool {
-    if !gitdir.join("HEAD").is_file() {
-        return false;
-    }
-    let common = match std::fs::read_to_string(gitdir.join("commondir")) {
-        Ok(rel) => gitdir.join(rel.trim_end()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => gitdir.to_path_buf(),
-        Err(_) => return false,
+/// `Some` when `gitdir` is a plain, ordinary git dir of the work tree `top`, owned by us.
+fn certain(top: &Path, gitdir: &Path) -> Option<()> {
+    gitdir.join("HEAD").is_file().then_some(())?;
+    let link = gitdir.join("commondir");
+    let common = if link.exists() {
+        gitdir.join(std::fs::read_to_string(link).ok()?.trim_end())
+    } else {
+        gitdir.to_path_buf()
     };
-    if !common.join("objects").is_dir()
-        || gitdir.join("config.worktree").exists()
-        || !plain_config(&common.join("config"))
-    {
-        return false;
-    }
     let me = goh_sys::euid();
-    [top, gitdir, &common]
+    let ours = [top, gitdir, &common]
         .iter()
-        .all(|p| std::fs::metadata(p).is_ok_and(|m| m.uid() == me))
+        .all(|p| std::fs::metadata(p).is_ok_and(|m| m.uid() == me));
+    (common.join("objects").is_dir()
+        && !gitdir.join("config.worktree").exists()
+        && plain_config(&common.join("config"))
+        && ours)
+        .then_some(())
 }
 
 /// A config that cannot move the work tree: no `worktree` word anywhere, no include, `bare` false.
 fn plain_config(path: &Path) -> bool {
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return false;
-    };
+    std::fs::read_to_string(path).is_ok_and(|text| plain_text(&text))
+}
+
+fn plain_text(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
     if lower.contains("worktree") || lower.contains("include") {
         return false;
