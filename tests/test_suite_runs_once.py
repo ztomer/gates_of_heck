@@ -40,7 +40,8 @@ def test_no_step_runs_the_suite_beside_the_coverage_group() -> None:
 def test_the_coverage_group_is_the_suite_run() -> None:
     assert "./gates/rust_gate.sh" in _steps()
     assert "tools/pytest.sh" in _key("GOH_COV_RUST_EXTERNAL")
-    assert _key("GOH_COV_FLOOR_RUST").split()[0].isdigit(), (
+    # A floor is a number, a decimal once a ratchet lands on a measured value (93.1).
+    assert re.fullmatch(r"\d+(\.\d+)?", _key("GOH_COV_FLOOR_RUST").split()[0]), (
         "no floor: the coverage group never runs"
     )
     # The calibration reader agrees: a test cited as a proof still runs on every push.
