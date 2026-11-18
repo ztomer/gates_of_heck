@@ -7,6 +7,7 @@
 # never indexes a directory whose name ends in `.noindex`, so every root lives under one that does.
 # A TMPDIR that IS a goh.noindex is used as it is; one below it nests a second, which costs nothing.
 # `tests/tmp_root_lint.py` refuses a mktemp in gates/, lib/ or tools/ that bypasses this helper.
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 goh_tmp() {
     local base="${TMPDIR:-/tmp}"
     base="${base%/}"

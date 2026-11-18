@@ -106,7 +106,7 @@ def test_local_ci_accepts_78_only_on_a_hosted_run(tmp_path, hosted):
     tmp.mkdir()
     env = _env(hosted, GOH_PROVEN="0", TMPDIR=str(tmp))
     rc, out = _run(["bash", str(LOCAL_CI), "--step", "bash na.sh", "--step", "true"], env, repo)
-    kept = sorted(p.name for p in tmp.glob("goh-local-ci.*"))
+    kept = sorted(p.name for p in tmp.glob("goh.noindex/goh-local-ci.*"))  # GOH.TMPNOINDEX
     if hosted:
         assert rc == 0, out
         assert "[1/2] NOT APPLICABLE on this hosted runner" in out and "s needs e" in out, out

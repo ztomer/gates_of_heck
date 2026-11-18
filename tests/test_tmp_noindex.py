@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 import tmp_root_lint as lint
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 from test_claude_load_guard import _decide
 from test_pytest_runner_basetemp import _run
 
@@ -42,7 +42,7 @@ def test_a_pytest_run_root_lives_under_the_noindex_parent(tmp_path, monkeypatch)
 def test_the_helper_never_nests_a_second_noindex(tmp_path) -> None:
     lib = REPO_ROOT / "lib" / "tmp_root.sh"
     for tmpdir, want in ((tmp_path, tmp_path / NOINDEX), (tmp_path / NOINDEX, tmp_path / NOINDEX)):
-        env = {**os.environ, "TMPDIR": f"{tmpdir}/"}
+        env = hermetic_env(TMPDIR=f"{tmpdir}/")
         r = subprocess.run(["bash", "-c", f'. "{lib}"; goh_tmp'], capture_output=True, text=True,
                            env=env, stdin=subprocess.DEVNULL, check=True)  # fmt: skip
         assert Path(r.stdout.strip()) == want and want.is_dir(), r.stdout

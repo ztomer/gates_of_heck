@@ -81,9 +81,10 @@ def test_fails(tmp_path):
 
 def test_the_root_keeps_only_a_failed_tests_tmp_path_and_cuts_old_roots(tmp_path) -> None:
     tmpdir = tmp_path / "T"
-    tmpdir.mkdir()
+    parent = tmpdir / "goh.noindex"  # where every root lives (lib/tmp_root.sh, GOH.TMPNOINDEX)
+    parent.mkdir(parents=True)
     for i in range(4):
-        _root(tmpdir, f"goh-pytest.old{i}", 1, OLD + i)
+        _root(parent, f"goh-pytest.old{i}", 1, OLD + i)
     proj = tmp_path / "proj"
     proj.mkdir()
     (proj / "test_mixed.py").write_text(PASSES_AND_FAILS)
@@ -105,7 +106,7 @@ def test_the_root_keeps_only_a_failed_tests_tmp_path_and_cuts_old_roots(tmp_path
     lines = r.stdout.split()
     assert r.returncode == 0 and lines, r.stdout + r.stderr
     root = Path(lines[-1])
-    names = sorted(p.name for p in tmpdir.iterdir())
+    names = sorted(p.name for p in parent.iterdir())
     assert names == sorted(["goh-pytest.old2", "goh-pytest.old3", root.name]), names
     kept = sorted(p.parent.name for p in root.rglob("evidence"))
     assert kept == ["test_fails0"], kept

@@ -231,7 +231,7 @@ def test_a_failed_warm_up_shows_its_cause_and_keeps_its_log(tmp_path: Path) -> N
     r = _run(tmp_path, FAILS, "--sessions", "1", "--warmup", "1")
     assert r.returncode == 1, r.stdout + r.stderr
     assert "the cause of it" in r.stderr, r.stderr
-    kept = list(tmp_path.glob("goh-session-bench.*/logs/warm0-c0-s0.log"))
+    kept = list(tmp_path.glob("goh.noindex/goh-session-bench.*/logs/warm0-c0-s0.log"))
     assert len(kept) == 1, r.stderr
 
 
