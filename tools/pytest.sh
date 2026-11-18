@@ -118,9 +118,19 @@ if "$GOH_PY" -c "import xdist" 2>/dev/null; then
     # machine (GOH.POOLSHARE, 2026-11-17: a suite sized to all 16 cores beside four other gates each
     # sized the same put ~220 threads on 16 cores): inside a gate, its admission's GOH_GATE_WORKERS;
     # outside one (a land's pre-step), cores / (the gates admitted now + this run).
+    # THE SHARE IS LIVE (GOH.SHAREGROW, lib/worker_share.py): xdist starts at the ceiling (12, or the
+    # machine's cores when fewer) and each worker takes a token from the pool below before each
+    # test, so the run is as wide as cores / the gates admitted NOW -- it grows the moment another
+    # gate leaves (the SELECTAUDIT land ran at -n 4 for 11+ minutes on a box at load 7.9 of 16,
+    # 2026-11-17) and shrinks when one is admitted. GOH_SUITE_CORES pins a fixed count, no pool.
     # shellcheck source=lib/worker_share.sh
     . "$GOH/lib/worker_share.sh"
-    cores="${GOH_SUITE_CORES:-$(goh_workers)}"
+    if [ -n "${GOH_SUITE_CORES:-}" ]; then
+        cores="$GOH_SUITE_CORES"
+    else
+        goh_share_pool "$PYTEST_DEBUG_TEMPROOT/share-pool" 12 || die "cannot start the suite's live share (lib/worker_share.py pool)" 2
+        cores="$GOH_SHARE_CEIL"
+    fi
     case "$cores" in '' | *[!0-9]* | 0) die "cannot read this machine's core count (got '$cores')" 2 ;; esac
     [ "$cores" -gt 12 ] && cores=12
     ARGS+=(-n "$cores" --dist loadgroup)

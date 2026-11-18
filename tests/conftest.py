@@ -66,6 +66,7 @@ def pytest_configure(config):
     _drift_guard.prebuild_live(config)
     config.pluginmanager.register(_schedule, "goh-longest-first")
     config.pluginmanager.register(_land_verdicts, "goh-land-verdicts")  # GOH.LANDPREDUP
+    config.pluginmanager.import_plugin("_share_tokens")  # the live share (GOH.SHAREGROW)
 
 
 def git(repo: Path, *args: str) -> str:
@@ -159,9 +160,8 @@ def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
     return env
 
 
-# A retired checker's path -> the native check that replaced it (Phase N3): `run_check` gives a
-# suite what a consumer calling that path gets -- the native check, same arguments. The table is
-# `checks/_retired.py::NATIVE`, the one spelling.
+# A retired checker's path -> the native check that replaced it (Phase N3, `checks/_retired.py::
+# NATIVE`): `run_check` gives a suite what a consumer calling that path gets, same arguments.
 import _drift_guard
 import _land_verdicts
 import _schedule

@@ -10,6 +10,9 @@
 #     goh_workers_ensure
 #         # a layer's entry: export them unless the admission already did (a layer under a consumer
 #         # gate.sh whose slot structural.sh took FOR it inherits nothing, so it counts)
+#     goh_share_pool <dir> <ceiling>
+#         # export GOH_SHARE_POOL/CEIL/OWN: a run started at its ceiling whose workers take a token
+#         # per test from the LIVE share (GOH.SHAREGROW; tools/pytest.sh, tests/_share_tokens.py)
 #     goh_workers
 #         # print this gate's share: the flag for a runner that reads no variable (swift, xcodebuild, make)
 
@@ -28,6 +31,14 @@ goh_workers_export() {
 
 goh_workers_ensure() {
     [ -n "${GOH_GATE_WORKERS:-}" ] || goh_workers_export --split 1   # counted: one gate, unsplit
+}
+
+goh_share_pool() { # goh_share_pool <dir> <ceiling> -- export a live-share token pool for one run
+    local line out
+    out="$("$GOH_PY" -S "$WORKER_SHARE_HELPER" pool --path "$1" --ceiling "$2")" || return 1
+    while IFS= read -r line; do
+        [ -n "$line" ] && export "${line?}"
+    done <<<"$out"
 }
 
 goh_workers() {

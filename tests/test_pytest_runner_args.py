@@ -29,10 +29,15 @@ def _argv(tmp_path: Path, *args: str, cores: str | None = None, **extra: str) ->
         # GOH.GATEBUDGET2) would overwrite the argv under test.
         f'if [ "$1 $2" != "-m pytest" ] || [ "$3" = --version ]; then exit 0; fi\n'
         f'printf "%s\\n" "$@" > "{record}"\n'
+        f'env | grep "^GOH_SHARE_" > "{record}.env" || true\n'
     )
     stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
     (tmp_path / "slots").mkdir(exist_ok=True)
-    env = {k: v for k, v in os.environ.items() if k not in ("GOH_GATE_WORKERS", "GOH_GATE_SLOT")}
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("GOH_GATE_WORKERS", "GOH_GATE_SLOT") and not k.startswith("GOH_SHARE_")
+    }
     env.update(GOH_PY=str(stub), GOH_PY_OK=str(stub), GATES_OF_HECK_SUITE_NESTED_OK="1")
     env.update(GOH_GATE_CORES="16", GOH_GATE_SLOT_DIR=str(tmp_path / "slots"), **extra)
     if cores is not None:
@@ -74,16 +79,24 @@ def test_the_worker_count_follows_the_machines_cores(tmp_path):
     assert many[many.index("-n") + 1] == "12", many
 
 
-def test_inside_a_gate_the_workers_are_its_admissions_share(tmp_path):
-    """GOH.POOLSHARE: a suite sized to all 16 cores beside four other gates sized the same put ~220
-    threads on 16 cores (2026-11-17). Inside a gate the count is the admission's share."""
-    argv = _argv(tmp_path, GOH_GATE_WORKERS="5")
-    assert argv[argv.index("-n") + 1] == "5", argv
+def _share_env(tmp_path: Path) -> dict[str, str]:
+    lines = (tmp_path / "argv.env").read_text().splitlines()
+    return dict(line.split("=", 1) for line in lines)
 
 
-def test_outside_any_gate_the_workers_are_a_share_beside_the_admitted_gates(tmp_path):
+def test_inside_a_gate_the_run_starts_at_its_ceiling_on_a_live_token_pool(tmp_path):
+    """GOH.SHAREGROW: the admission's fixed share (5 here) no longer sizes xdist; the run starts at
+    the ceiling and its workers take tokens from the share as it is NOW (test_share_grow.py)."""
+    argv = _argv(tmp_path, GOH_GATE_WORKERS="5", GOH_SHARE_OWN="0")
+    assert argv[argv.index("-n") + 1] == "12", argv
+    env = _share_env(tmp_path)
+    assert env["GOH_SHARE_CEIL"] == "12" and env["GOH_SHARE_OWN"] == "0", env
+    assert Path(env["GOH_SHARE_POOL"]).name == "share-pool", env
+
+
+def test_outside_any_gate_the_pool_counts_the_run_as_one_more_beside_the_admitted(tmp_path):
     """A land's pre-step runs this under no slot: with one gate admitted it is the second of two,
-    so 16 cores give it 8 workers, not the cap of 12."""
+    so its tokens are 8 of 16 cores (GOH_SHARE_OWN=1), not the ceiling of 12."""
     (tmp_path / "slots").mkdir()
     other = open(tmp_path / "slots" / "slot-0", "w")  # noqa: SIM115  -- another gate's slot
     fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -91,4 +104,5 @@ def test_outside_any_gate_the_workers_are_a_share_beside_the_admitted_gates(tmp_
         argv = _argv(tmp_path)
     finally:
         other.close()
-    assert argv[argv.index("-n") + 1] == "8", argv
+    assert argv[argv.index("-n") + 1] == "12", argv
+    assert _share_env(tmp_path)["GOH_SHARE_OWN"] == "1"

@@ -31,6 +31,7 @@ the variable names, and a scrubbed child reaches the same toolchain and caches a
 from __future__ import annotations
 
 import atexit
+import json
 import os
 import shutil
 import site
@@ -113,7 +114,21 @@ def _drop_ship_inputs() -> None:
         del os.environ[name]
 
 
+# The suite's LIVE SHARE (GOH.SHAREGROW): tools/pytest.sh's token pool and what the count reads
+# (GOH_SHARE_*, lib/worker_share.py) are the RUNNER's, not any test's. Packed under a name no scrub
+# drops, so the xdist workers this process starts find them (tests/_share_tokens.py unpacks and
+# removes them in each worker); every test's own environment still has no GOH_SHARE_*.
+SHARE_PACKED = "GATES_OF_HECK_SUITE_SHARE"
+
+
+def _pack_share() -> None:
+    share = {k: v for k, v in os.environ.items() if k.startswith("GOH_SHARE_")}
+    if share.get("GOH_SHARE_POOL"):
+        os.environ[SHARE_PACKED] = json.dumps(share)
+
+
 def _drop_caller_goh() -> None:
+    _pack_share()
     for name in [k for k in os.environ if k.startswith("GOH_") and k not in CALLER_INPUTS]:
         del os.environ[name]
     os.environ["GOH_DIR"] = SUITE_ROOT

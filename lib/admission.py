@@ -137,7 +137,9 @@ def admit_here(repo: str, max_wait: float | None = None) -> Admitted:
     import worker_share
 
     workers = worker_share.divide(worker_share.cores(), worker_share.admitted(directory))
-    os.environ.update(worker_share.runner_env(workers))  # never an inherited share: another gate's
+    os.environ.update(
+        worker_share.runner_env(workers, mine=0)
+    )  # never an inherited share: another gate's
     return Admitted("taken", index=idx, slots=slots, waited=waited, gate_class=gate_class)
 
 

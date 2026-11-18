@@ -287,6 +287,11 @@ trap '_stop HUP 129' HUP
 
 HELD=","        # the tags of the steps running now, comma-delimited
 RUNNING=0
+# THE LIVE SPLIT (GOH.SHAREGROW): how many steps run NOW, read by each step's live-share runners
+# (lib/worker_share.py live), joined to any enclosing scheduler's file: each divides.
+[ "$JOBS" -le 1 ] || { STEPS_FILE="$LOGDIR/live-steps"; export GOH_SHARE_STEPS="${GOH_SHARE_STEPS:+$GOH_SHARE_STEPS:}$STEPS_FILE"; }
+_live_steps() { [ -z "${STEPS_FILE:-}" ] || { printf '%s\n' "$RUNNING" >"$STEPS_FILE.tmp" && mv -f "$STEPS_FILE.tmp" "$STEPS_FILE"; }; }
+_live_steps
 mkfifo "$LOGDIR/done"
 exec 3<>"$LOGDIR/done"
 # Every write and read goes through fd 3, so the name is not needed past
@@ -345,7 +350,7 @@ _start() {
             NOTE[i]="$why -- re-run"  # GOH.PROOFKEY: what moved since this tree last passed
         fi
     fi
-    HIT[i]=""; STATE[i]=running; RUNNING=$((RUNNING + 1))
+    HIT[i]=""; STATE[i]=running; RUNNING=$((RUNNING + 1)); _live_steps
     HELD="${HELD}${TAGS[i]#,}"; [ -z "${PKEY[i]}" ] || { proven_ignored >"$LOGDIR/ignored-$i"; [ "$PROVEN_FRESH" = 0 ] || : >"$LOGDIR/stamp-$i"; } </dev/null  # proven_made
     # Command strings from the repo's own .gatesrc / CLI — shell semantics are the feature
     # (pipelines, env prefixes); the source is repo-local config, the same trust level as every
@@ -462,7 +467,7 @@ while [ "$NEXT" -le "$n" ]; do
     if [ "$RUNNING" -eq 0 ]; then _launch; continue; fi
     read -r -u 3 _i _rc
     wait "${WRAP[_i]}" 2>/dev/null || true
-    RC[_i]="$_rc"; STATE[_i]="done"; RUNNING=$((RUNNING - 1))
+    RC[_i]="$_rc"; STATE[_i]="done"; RUNNING=$((RUNNING - 1)); _live_steps
     _rest="${TAGS[_i]#,}"
     while [ -n "$_rest" ]; do
         _t="${_rest%%,*}"; _rest="${_rest#*,}"

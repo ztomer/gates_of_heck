@@ -135,6 +135,8 @@ def split_share(jobs: int, runs: list[_Run], share: str) -> int:
         have = run.env.get("RUST_TEST_THREADS", "")
         keep = have.isdigit() and 0 < int(have) < threads
         run.env["RUST_TEST_THREADS"] = have if keep else str(threads)
+        if not keep:  # the live share's runner (lib/worker_share.py run) divides it the same way
+            run.env["GOH_SHARE_DIV"] = str(jobs)
     return jobs
 
 
