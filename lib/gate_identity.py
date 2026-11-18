@@ -85,6 +85,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import identity_cache  # lib/, beside this file: the cross-process memo (GOH.IDENTITYPORT)
 from tool_shim import fingerprint, past_shims  # lib/, beside this file
 
 TOOLS = ("rustc", "cargo", "python3", "swift", "shellcheck", "ruff", "cargo-llvm-cov", "xcodebuild")
@@ -134,10 +135,9 @@ def _files(root: Path, parts: tuple[str, ...] | list[str] = PARTS) -> list[str]:
     """The gates' files under root, repo-relative: a checkout's tracked and untracked-unignored
     ones that exist, or every file of an export (a `git archive` of a commit: its tracked files)."""
     if (root / ".git").exists():
-        listed = _git(root, "ls-files", "-z", "-co", "--exclude-standard", "--", *parts)
-        if listed.returncode == 0:
-            rels = {r for r in listed.stdout.decode().split("\0") if r}
-            return sorted(r for r in rels if os.path.lexists(root / r))
+        listed = identity_cache.listed(root, tuple(parts), PARTS, BUILD[1:], _git)
+        if listed is not None:
+            return sorted(r for r in listed if os.path.lexists(root / r))
     rels = []
     for part in parts:
         top = root / part
@@ -202,12 +202,8 @@ def build_inputs(root: Path) -> list[str]:
     """The paths the stamp names at root's HEAD, from the one formula (lib/goh_version.sh --inputs,
     GOH.STAMPINPUTS): the build roots, then each file a crate embeds -- an uncommitted edit to
     lib/busyloop_shapes.json is a binary that is not the content's build too."""
-    script = GOH_ROOT / "lib" / "goh_version.sh"
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    out = subprocess.run(["bash", str(script), "--inputs", str(root), "HEAD"], capture_output=True,
-                         text=True, env=env, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
-    listed = out.stdout.split() if out.returncode == 0 else []
-    return listed or list(BUILD)
+    script = GOH_ROOT / "lib" / "goh_version.sh"  # memoized (lib/identity_cache.py)
+    return identity_cache.stamp_inputs(root, script, GOH_ROOT / "lib" / "bash5.sh") or list(BUILD)
 
 
 def binary(root: Path) -> str:

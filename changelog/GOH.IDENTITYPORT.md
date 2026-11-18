@@ -1,0 +1,1 @@
+- lib/gate_identity.py keeps its `git ls-files` listing and `goh_version.sh --inputs` answer across processes (lib/identity_cache.py, GOH.IDENTITYPORT): the listing keyed on the index, every directory and ignore rule it depends on, the inputs on HEAD's commit and the script's bytes; a part inside PARTS is a filter of one listing.
