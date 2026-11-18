@@ -27,6 +27,7 @@ def test_kinds_and_scripts_are_named_from_argv() -> None:
     assert spawn_profile.classify("/bin/sh") == "bash"
     assert spawn_profile.classify("git-remote-https") == "git"
     assert spawn_profile.classify("/usr/bin/true") == "other"
+    assert spawn_profile.classify("rustc") == "rustc"  # cargo's child: never shimmed, never "blind"
     row = {"kind": "python3", "argv": "-I -S /x/gates/lib/gitrun.py status"}
     assert spawn_profile.script_of(row) == "lib/gitrun.py"
     assert spawn_profile.script_of({"kind": "python3", "argv": "-m pytest -q"}) == "-m pytest"
@@ -125,5 +126,19 @@ def test_report_prints_the_priced_table(tmp_path: Path) -> None:
     assert (top["caller"], top["callee"], top["n"]) == ("gates/a.sh", "lib/b.py", 2)
     assert summary["start_cpu_s"] == pytest.approx(0.04)
     assert summary["start_share_cpu"] == pytest.approx(0.04)
-    # the bash row's own cpu is its rusage minus its two python children
     assert summary["by_kind"] == {"python": 2, "bash": 1}
+
+
+def test_the_blind_share_counts_only_the_kinds_a_shim_was_aimed_at(tmp_path: Path) -> None:
+    """A sampled bash the ledger has (as shim or child) is seen; one it lacks is blind; a `tee` was
+    never shimmed, so it is listed apart and moves no share."""
+    (tmp_path / "ledger.tsv").write_text(
+        "bash\t10\t11\t1\t0\t1.0\t0.1\t0.1\t0\tx.sh\n", encoding="utf-8"
+    )
+    (tmp_path / "samples.tsv").write_text(
+        "1\t10\tbash\n1\t11\t/opt/bin/bash\n1\t12\t/bin/bash\n2\t12\t/bin/bash\n1\t13\ttee\n",
+        encoding="utf-8",
+    )
+    blind = spawn_profile.summarize(tmp_path)["blind"]
+    assert blind["by_kind"] == {"bash": {"sampled_pids": 3, "blind_pids": 1, "time_share": 0.5}}
+    assert blind["unshimmed_comm"] == [["tee", 1]] or blind["unshimmed_comm"] == [("tee", 1)]

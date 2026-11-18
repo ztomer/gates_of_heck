@@ -26,9 +26,14 @@ def classify(comm: str) -> str:
         return "git"
     if base == "goh":
         return "goh"
-    if base in ("cargo", "rustc", "cargo-clippy", "clippy-driver", "rustdoc"):
+    if base == "cargo":
         return "cargo"
+    if base in ("rustc", "cargo-clippy", "clippy-driver", "rustdoc", "cargo-llvm-cov"):
+        return "rustc"  # cargo's own children: no shim, by design
     return "other"
+
+
+SHIMMED = ("python", "bash", "git", "goh", "cargo")
 
 
 def read_ledger(path: Path) -> list[dict]:
@@ -176,10 +181,16 @@ def blind_share(out: Path, rows: list[dict]) -> dict:
     weight: Counter = Counter()
     blind_w: Counter = Counter()
     blind_n: Counter = Counter()
+    pids_n: Counter = Counter()
     blind_comm: Counter = Counter()
+    unshimmed: Counter = Counter()
     for pid, (comm, n) in seen.items():
         kind = classify(comm)
+        if kind not in SHIMMED:  # a kind with no shim is not "blind", it was never aimed at
+            unshimmed[os.path.basename(comm)] += n
+            continue
         weight[kind] += n
+        pids_n[kind] += 1
         if pid not in known:
             blind_w[kind] += n
             blind_n[kind] += 1
@@ -187,12 +198,17 @@ def blind_share(out: Path, rows: list[dict]) -> dict:
     total = sum(weight.values())
     return {
         "sampled": True,
-        "pids": len(seen),
+        "pids": sum(pids_n.values()),
         "blind_pids": sum(blind_n.values()),
         "blind_time_share": round(sum(blind_w.values()) / total, 4) if total else None,
         "by_kind": {
-            k: {"blind_pids": blind_n[k], "time_share": round(blind_w[k] / weight[k], 4)}
+            k: {
+                "sampled_pids": pids_n[k],
+                "blind_pids": blind_n[k],
+                "time_share": round(blind_w[k] / weight[k], 4),
+            }
             for k in weight
         },
+        "unshimmed_comm": unshimmed.most_common(8),
         "top_blind_comm": blind_comm.most_common(8),
     }
