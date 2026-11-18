@@ -50,10 +50,12 @@ goh_py_runner
 # GOH_EXCLUDE, applied the same way to BOTH scopes (GOH.PYSTAGEDEXCLUDE, 2026-11-18): `re.search`
 # over each repo-relative path on stdin, the kept ones on stdout. Until then only --all applied it, so
 # a vendored file staged in a commit was refused at the commit and exempt at the push.
+# The pattern goes to the child as an ARGUMENT, not in its environment: a GOH_* key passed on is
+# hashed into cache keys as bookkeeping (tests/test_verdict_free_keys.py), and this one is a setting.
 goh_py_unexcluded() {
-    GOH_EXCLUDE="${GOH_EXCLUDE:-}" "$GOH_PY" -S -c '
-import os, re, sys
-pattern = os.environ["GOH_EXCLUDE"]
+    "$GOH_PY" -S -c '
+import re, sys
+pattern = sys.argv[1]
 try:
     rx = re.compile(pattern) if pattern else None
 except re.error as e:
@@ -61,7 +63,7 @@ except re.error as e:
 for line in sys.stdin.read().splitlines():
     if line and not (rx and rx.search(line)):
         print(line)
-'
+' "${GOH_EXCLUDE:-}"
 }
 
 STAGED=()
