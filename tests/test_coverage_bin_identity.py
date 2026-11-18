@@ -44,6 +44,9 @@ MAIN = (
 )
 
 
+# 7 of 8 coverable lines (the `if`'s closing brace carries a never-taken continuation region;
+# a line is covered only by its own count, GOH.SPANFORGIVE): the floor is below that 87.5%, and
+# the test is about the binary's bytes, not the number.
 def _checkout(root: Path) -> Path:
     c = root / "binonly"
     (c / "src").mkdir(parents=True)
@@ -70,7 +73,7 @@ def _gate(crate: Path, out: Path) -> subprocess.CompletedProcess:
             "--lang",
             "rust",
             "--floor",
-            "90",
+            "85",
             "--external",
             ext,
             str(crate),
