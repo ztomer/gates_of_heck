@@ -2,7 +2,7 @@
 """lib/ship_full_run.py -- a ship makes the instrumented full run it stands on (GOH.SHIPSTARVE).
 
 The owner's term (GOH.COVCARRY, 2026-11-17): "a fresh full instrumented run happens on main's tip
-before every ship". Only the idle lander made that run (lib/idle_suite.py), and it yields the moment
+before every ship". Only the idle lander made that run (idle_suite), and it yields the moment
 any land is pending or running; with up to 8 lanes the queue is rarely idle, so a ship starved. And
 a ship waits for the land lock, then releases whatever main became meanwhile: a run made for the tip
 it started on is stale by the time it holds the lock (2026-11-18: the ship of 8150234a waited 20
@@ -12,7 +12,7 @@ So the ship's FIRST step (`suite`, tools/ship.py) runs here, holding the land lo
 under it, so the run judges exactly the tip the release kit then checks (lib/ship_suite.py) and
 releases. A tip that already has its instrumented full run (the idle lander's, or an earlier ship's)
 is not run again: the step is skipped, saying whose run it stands on. The run is the idle lander's
-own command (idle_suite.INSTRUMENTED, the coverage gate's Rust mode with its external suite) with
+own command (full_run.INSTRUMENTED, the coverage gate's Rust mode with its external suite) with
 GOH_LAND_VERDICTS_RECORD=/dev/null, in a detached worktree kept between ships beside the ship
 results (`<ship dir>/suite-wt`: its build caches stay warm), admitted as class `ship` (ahead of
 every `work` waiter). It never yields: a land waits on the lock the ship holds, as for any ship
@@ -43,16 +43,16 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import idle_suite  # lib/: the instrumented command, the worktree, the .gatesrc read
+import full_run  # lib/: the instrumented command, the worktree, the .gatesrc read (no lock)
 import ship_suite  # lib/: the check the release kit makes
 
 ROOT = Path(__file__).resolve().parent.parent
-MAX = idle_suite.MAX
+MAX = full_run.MAX
 
 
 def skip_reason(repo: Path, sha: str) -> str:
     """Why the ship of REPO at SHA owes no run of its own ("" when it owes one)."""
-    if not idle_suite.declares_full(repo):
+    if not full_run.declares_full(repo):
         return "the repo declares no GOH_SHIP_FULL_SUITE=on"
     rec, _ = ship_suite.full_suite(repo, sha)
     if rec is not None:
@@ -62,19 +62,19 @@ def skip_reason(repo: Path, sha: str) -> str:
 
 def default_argv() -> list[str]:
     return [sys.executable, str(ROOT / "tools" / "load.py"), "--background-ok", "ship full suite",
-            "--max", MAX, "0", "--", "bash", "-c", idle_suite.INSTRUMENTED]  # fmt: skip
+            "--max", MAX, "0", "--", "bash", "-c", full_run.INSTRUMENTED]  # fmt: skip
 
 
 def run(repo: Path, wt: Path, argv: list[str] | None = None) -> int:
     """The instrumented full run on REPO's HEAD in WT, its output the step's log; its exit."""
-    sha = idle_suite._git(repo, "rev-parse", "HEAD").stdout.strip()
+    sha = full_run._git(repo, "rev-parse", "HEAD").stdout.strip()
     if not sha:
         print(f"ship full suite: {repo} names no HEAD", flush=True)
         return 1
     if why := skip_reason(repo, sha):
         print(f"ship full suite: none owed: {why}", flush=True)
         return 0
-    if why := idle_suite.prepare(repo, wt, sha):
+    if why := full_run.prepare(repo, wt, sha):
         print(f"ship full suite: no worktree at {sha[:8]}: {why}", flush=True)
         return 1
     print(f"ship full suite on {sha[:8]} in {wt}", flush=True)

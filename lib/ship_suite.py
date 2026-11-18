@@ -2,7 +2,7 @@
 
 Owner, 2026-11-17, the terms for carrying coverage profiles across trees (D-0011 option 4): "a
 fresh full instrumented run happens on main's tip before every ship". The idle lander makes it
-(lib/idle_suite.py INSTRUMENTED: the coverage gate's Rust mode, its external suite against the
+(lib/full_run.py INSTRUMENTED: the coverage gate's Rust mode, its external suite against the
 instrumented binary); the suite's record says its run was instrumented (lib/reuse.py
 record_suite); and `reuse.py full-suite` -- the release kit's check (tools/release_goh.sh) -- asks
 `full_suite` here, which refuses a tip whose full record drove the plain binary. Split from
@@ -25,8 +25,8 @@ def full_suite(repo: Path, sha: str) -> tuple[dict | None, str]:
     itself, against the INSTRUMENTED binary. The release kit refuses a tip without one
     (GOH_SHIP_FULL_SUITE): a land whose suite carried verdicts from another tree is no full run,
     however green, and a plain full run is not the fresh instrumented run every ship stands on
-    (GOH.COVCARRY: the owner's term 2, made by lib/idle_suite.py; the shadow of the coverage
-    carry, lib/prof_carry.py)."""
+    (GOH.COVCARRY: the owner's term 2, made by the idle lander or the ship, lib/full_run.py; the
+    shadow of the coverage carry, lib/prof_carry.py)."""
     tree = reuse._git(repo, "rev-parse", "--verify", "--quiet", f"{sha}^{{tree}}")
     if not tree or not reuse.repo_id(repo):
         return None, f"{sha} names no commit tree in {repo}"
@@ -40,5 +40,5 @@ def full_suite(repo: Path, sha: str) -> tuple[dict | None, str]:
     if not rec.get("instrumented"):
         return None, (f"the full run of tree {tree[:12]} drove the plain binary: a ship needs a "
                       "fresh INSTRUMENTED full run (lib/ship_full_run.py, "
-                      "lib/idle_suite.py)")  # fmt: skip
+                      "or the idle lander)")  # fmt: skip
     return rec, ""
