@@ -22,7 +22,23 @@ goh_pytest_root() {
     local tmp; tmp="$(goh_tmp)" || return 1   # 94% of what mds walked in gates (GOH.TMPNOINDEX)
     "${GOH_PY:-python3}" -S "${BASH_SOURCE[0]%/*}/../lib/prune_kept.py" "$tmp" goh-pytest. \
         "${GOH_PYTEST_KEEP:-3}" 3600 --max-bytes "${GOH_PYTEST_KEEP_BYTES:-1073741824}" 2>/dev/null || true
-    PYTEST_DEBUG_TEMPROOT="$(mktemp -d "$tmp/goh-pytest.XXXXXX")"
+    # A SLOT, NOT A FRESH NAME (GOH.FSCHURN, 2026-11-18): the lowest `goh-pytest.slotNN` that does
+    # not exist, made by an atomic mkdir, so a passing run's root (removed by its caller) is the next
+    # run's, and every tmp_path below it -- pytest numbers them from 0 under a fresh root -- is the
+    # same path run after run. A random name per run made every path a test wrote one fseventsd had
+    # never seen; it sat at one core and 11.7 GB with goh 78-99% of the events on /. A live run's
+    # root and a red run's kept one hold their slots (prune_kept bounds the kept); past the last
+    # of the 32 slots, a fresh name as before. Pinned by tests/test_reused_temp_names.py.
+    local n=0
+    PYTEST_DEBUG_TEMPROOT=""
+    while [ "$n" -lt 32 ]; do
+        if mkdir "$tmp/goh-pytest.slot$(printf %02d "$n")" 2>/dev/null; then
+            PYTEST_DEBUG_TEMPROOT="$tmp/goh-pytest.slot$(printf %02d "$n")"
+            break
+        fi
+        n=$((n + 1))
+    done
+    [ -n "$PYTEST_DEBUG_TEMPROOT" ] || PYTEST_DEBUG_TEMPROOT="$(mktemp -d "$tmp/goh-pytest.XXXXXX")"
     printf '%s\n' "$$" >"$PYTEST_DEBUG_TEMPROOT/.goh-owner"
     PYTEST_ADDOPTS="-o tmp_path_retention_policy=failed${PYTEST_ADDOPTS:+ $PYTEST_ADDOPTS}"
     export PYTEST_DEBUG_TEMPROOT PYTEST_ADDOPTS

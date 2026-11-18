@@ -19,10 +19,10 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
+from _reused_tmp import reused_mkdtemp
 from timing_bounds import patience
 
 # clonefile(2) cannot serve these: another volume, a filesystem without clones. Any other error is
@@ -107,7 +107,7 @@ _QUIET_GIT_CONFIG = "[maintenance]\n\tauto = false\n[gc]\n\tauto = 0\n"
 def quiet_git() -> Iterator[None]:
     """For the duration: every git started from this process reads a config with no background
     maintenance (the process's own environment is restored on exit)."""
-    home = tempfile.mkdtemp(prefix="goh-quiet-git.")
+    home = reused_mkdtemp("goh-quiet-git.")
     cfg = Path(home) / "git"
     cfg.mkdir()
     (cfg / "config").write_text(_QUIET_GIT_CONFIG)
@@ -187,7 +187,7 @@ def process_template(key: str, build) -> Path:
     """`template` for a helper called with only a path (no `tmp_path_factory`): built once per
     process in a temp dir of its own, removed when the process exits."""
     if key not in _PROCESS_TEMPLATES:
-        home = Path(tempfile.mkdtemp(prefix="goh-template-" + key + "."))
+        home = Path(reused_mkdtemp("goh-template-" + key + "."))
         atexit.register(shutil.rmtree, home, True)
         tree = home / key
         _build_quietly(build, tree)

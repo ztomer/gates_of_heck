@@ -29,6 +29,7 @@ from test_claude_load_guard import _decide
         "find $TMPDIR -maxdepth 1 -name 'goh-pytest.*' -exec rm -rf {} +",
         'find /tmp -name "goh-*" -delete',
         "rm --recursive --force $TMPDIR/goh-pytest.?????? ",
+        "rm -rf $TMPDIR/goh.noindex/goh-pytest.slot*",  # the reused slots (GOH.FSCHURN)
     ],
 )
 def test_a_glob_sweep_over_goh_temp_roots_is_refused(tmp_path, command):
@@ -41,6 +42,7 @@ def test_a_glob_sweep_over_goh_temp_roots_is_refused(tmp_path, command):
     "command",
     [
         'rm -rf "$TMPDIR/goh-pytest.ab12CD"',  # one named root: one run's own
+        'rm -rf "$TMPDIR/goh.noindex/goh-pytest.slot03"',  # ...and one named slot
         "rm -rf build/*.o",
         "rm -rf ~/scratch/item/*",
         "rm $TMPDIR/goh-pytest.*",  # not recursive: removes no root

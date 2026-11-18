@@ -39,10 +39,10 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
+from _reused_tmp import reused_mkdtemp
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -71,10 +71,10 @@ try:
 finally:
     sys.path.pop(0)
 _REAL_CARGO = shutil.which("cargo")
-BUILD_DIR = tempfile.mkdtemp(prefix="goh-test-cargo-build.")
+BUILD_DIR = reused_mkdtemp("goh-test-cargo-build.")
 atexit.register(shutil.rmtree, BUILD_DIR, True)
 if _REAL_CARGO:
-    _shim_dir = tempfile.mkdtemp(prefix="goh-drift-cargo.")
+    _shim_dir = reused_mkdtemp("goh-drift-cargo.")
     atexit.register(shutil.rmtree, _shim_dir, True)  # one per worker per run, 42 had leaked
     with open(os.path.join(_shim_dir, "cargo"), "w", encoding="utf-8") as _f:
         _f.write(

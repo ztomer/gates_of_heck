@@ -31,6 +31,8 @@ the variable names, and a scrubbed child reaches the same toolchain and caches a
 from __future__ import annotations
 
 import atexit
+import contextlib
+import fcntl
 import json
 import os
 import shutil
@@ -158,6 +160,53 @@ def furnish(home: Path, reads: tuple[str, ...]) -> Path:
     return home
 
 
+# The slot locks this process holds for its whole life (GOH.FSCHURN): released by the kernel when
+# it exits, however it exits. Held here so no garbage collection closes one.
+_HELD: list[int] = []
+SLOTS = 256
+
+
+def _writable_rmtree(path: Path) -> None:
+    """Remove `path`, a tree a killed run left, read-only parts included."""
+
+    def again(func, name, _exc) -> None:
+        os.chmod(os.path.dirname(name), 0o700)
+        with contextlib.suppress(FileNotFoundError):
+            os.chmod(name, 0o700)
+        func(name)
+
+    shutil.rmtree(path, onexc=again)
+
+
+def claim_home(parent: Path) -> Path:
+    """A home of this process's own under `parent` at a REUSED name (GOH.FSCHURN, 2026-11-18).
+
+    A fresh `home.XXXXXXXX` for every suite run (its xdist workers share it) made every path the
+    suite wrote below it -- push worktrees, caches, state -- a path fseventsd had never seen, and
+    fseventsd sat at one core and 11.7 GB with goh 78-99% of the file events on /. So a home is a
+    SLOT, `home.slotNN`, the lowest one whose lock (`home.slotNN.lock`, an flock the kernel drops
+    when this process ends, however it ends) is free. A home a killed process left behind is emptied
+    before its slot is handed out again; past the last slot, a fresh name as before."""
+    parent.mkdir(parents=True, exist_ok=True)
+    for n in range(SLOTS):
+        fd = os.open(parent / f"home.slot{n:02d}.lock", os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(fd)
+            continue
+        _HELD.append(fd)
+        home = parent / f"home.slot{n:02d}"
+        if os.path.lexists(home):  # a killed process's: its lock was free, so no one holds it
+            if home.is_dir() and not home.is_symlink():
+                _writable_rmtree(home)
+            else:
+                home.unlink()
+        home.mkdir()
+        return home.resolve()
+    return Path(tempfile.mkdtemp(prefix="home.", dir=parent)).resolve()
+
+
 def _enter() -> None:
     _drop_ship_inputs()
     # token-pool's state dir holds the Claude meter agent_guard's budget guard reads
@@ -182,7 +231,7 @@ def _enter() -> None:
             os.environ[name] = str(path)
     parent = real / ".cache" / "goh" / "suite"
     parent.mkdir(parents=True, exist_ok=True)
-    home = Path(tempfile.mkdtemp(prefix="home.", dir=parent)).resolve()
+    home = claim_home(parent)
     atexit.register(shutil.rmtree, home, True)
     furnish(home, READ)
     os.environ[MARKER] = REAL_HOME

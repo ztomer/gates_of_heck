@@ -12,8 +12,9 @@ import atexit
 import os
 import shutil
 import subprocess
-import tempfile
 from pathlib import Path
+
+from _reused_tmp import reused_mkdtemp
 
 _TEMPLATES: dict[str, Path] = {}
 
@@ -34,7 +35,7 @@ def fast_init(repo: Path | str, branch: str | None = None) -> None:
         return
     key = branch or ""
     if key not in _TEMPLATES:
-        seed = Path(tempfile.mkdtemp(prefix="goh-test-git."))
+        seed = Path(reused_mkdtemp("goh-test-git."))
         # Removed when the worker exits: 23 had been stranded in one temp dir (a private Swift app,
         # 2026-10-07).
         atexit.register(shutil.rmtree, seed, True)

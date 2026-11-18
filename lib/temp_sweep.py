@@ -10,7 +10,8 @@ nothing sweeps the shared name.
 THE RULE, in the CODE of a Bash command (`lib/shell_segments.py`: quoted text, heredoc bodies and
 comments are not commands):
   * `rm` with `-r`/`-R`/`--recursive` and an operand whose LAST component is a glob matching a
-    goh temp root's name (`goh-pytest.ab12CD`, `goh-suite-cov-cache.ab12CD`) and either names goh
+    goh temp root's name (`goh-pytest.slot00`, `goh-pytest.ab12CD`, `goh-suite-cov-cache.ab12CD`)
+    and either names goh
     (`goh-*`, `goh-pytest.*`) or sits in a temp directory (`$TMPDIR/*`, `/tmp/*`, /var/folders);
   * `find` with `-delete` or `-exec rm`, whose `-name`/`-iname` glob matches such a name.
 So is `rm -r` of their one parent, `$TMPDIR/goh.noindex` (GOH.TMPNOINDEX), by name or not.
@@ -27,16 +28,17 @@ import shell_segments
 
 ESCAPE = re.compile(r"#\s*temp-sweep-ok:\s*\S")
 GLOB = re.compile(r"[*?\[]")
-# The names goh gives its per-run temp roots, as a mktemp would spell one.
-ROOTS = ("goh-pytest.ab12CD", "goh-suite-cov-cache.ab12CD")
+# The names goh gives its per-run temp roots: a reused slot (gates/_pytest_root.sh, GOH.FSCHURN),
+# and a fresh one as a mktemp would spell it.
+ROOTS = ("goh-pytest.slot00", "goh-pytest.ab12CD", "goh-suite-cov-cache.ab12CD")
 PARENT = "goh.noindex"  # the one parent of them all (lib/tmp_root.sh): removing it is every sweep
 TEMP_DIR = re.compile(r"(\$\{?TMPDIR|^/tmp(/|$)|^/private/tmp(/|$)|/var/folders/)")
 WAY_OUT = (
-    "goh's per-run temp roots ($TMPDIR/goh-pytest.XXXXXX) belong to the gates that made them, "
-    "and a glob reaches the LIVE ones of every other session (GOH.FLAKYENVCOV: a land failed "
-    "with 1281 FileNotFoundError errors). Remove the ONE root your run made, by its full name, "
-    "or leave kept roots to lib/prune_kept.py, which spares a live owner's. A deliberate sweep "
-    "says so in the command: `# temp-sweep-ok: <reason>`."
+    "goh's per-run temp roots ($TMPDIR/goh.noindex/goh-pytest.slotNN) belong to the gates that "
+    "made them, and a glob reaches the LIVE ones of every other session (GOH.FLAKYENVCOV: a land "
+    "failed with 1281 FileNotFoundError errors). Remove the ONE root your run made, by its full "
+    "name, or leave kept roots to lib/prune_kept.py, which spares a live owner's. A deliberate "
+    "sweep says so in the command: `# temp-sweep-ok: <reason>`."
 )
 
 

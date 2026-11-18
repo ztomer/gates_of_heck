@@ -5,10 +5,10 @@ from __future__ import annotations
 import atexit
 import os
 import shutil
-import tempfile
 from pathlib import Path
 
 import pytest
+from _reused_tmp import reused_mkdtemp
 
 # The machine-wide locks, by the variable that moves each one. A test that reached the REAL
 # lock waited on whatever the host was doing: two bench_lock tests ran `quiet.sh`, which took the
@@ -42,7 +42,7 @@ CACHE_ROOTS = (
 # under ~/.cache/goh/suite -- one per process, removed when it exits -- never the user's push root.
 _SUITE_HOME = Path(os.path.expanduser("~/.cache/goh/suite"))
 _SUITE_HOME.mkdir(parents=True, exist_ok=True)
-_WORKTREES = Path(tempfile.mkdtemp(prefix="push.", dir=_SUITE_HOME)).resolve()
+_WORKTREES = Path(reused_mkdtemp("push.", dir=_SUITE_HOME)).resolve()
 atexit.register(shutil.rmtree, _WORKTREES, True)
 
 # Every variable an env scrub must KEEP: each names a private location, not an opt-in.
@@ -62,7 +62,7 @@ def no_test_reaches_a_host_lock(tmp_path_factory, monkeypatch):
     root = tmp_path_factory.mktemp("host-locks")
     for name in (*HOST_LOCKS, "GOH_PUSH_LOGS", "GOH_REUSE_DIR"):
         monkeypatch.setenv(name, str(root / name.lower()))
-    monkeypatch.setenv("GOH_PUSH_WORKTREES", tempfile.mkdtemp(dir=_WORKTREES))
+    monkeypatch.setenv("GOH_PUSH_WORKTREES", reused_mkdtemp("t", dir=_WORKTREES))
     monkeypatch.delenv("ZTOOLS_GPU_LOCK_OWNER", raising=False)
     # A fixture gate runs inside a suite memory admission already let start (tools/pytest.sh, or
     # the gate around it): it never waits on the host's memory reading (lib/mem_admit.py).

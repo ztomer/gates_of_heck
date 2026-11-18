@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 import suite_home  # (FIRST: the suite's own HOME and TMPDIR, before anything reads them)
-from _tree_clone import clone_tree, template  # (no HOME/TMPDIR read: ctypes, os, shutil)
+from _tree_clone import clone_tree, reused_mkdtemp, template  # (no HOME/TMPDIR read at import)
 from env_probe import print_safe  # (no HOME/TMPDIR read: re, shlex)
 
 # THE SUITE TESTS THE TREE IT IS IN. Consumers run the gates from an export of HEAD (C4,
@@ -125,7 +125,7 @@ def repo(tmp_path: Path, _repo_template: Path) -> Path:
     return tmp_path / "proj"
 
 
-_SUITE_COV_CACHE = tempfile.mkdtemp(prefix="goh-suite-cov-cache.")
+_SUITE_COV_CACHE = reused_mkdtemp("goh-suite-cov-cache.")
 atexit.register(shutil.rmtree, _SUITE_COV_CACHE, True)
 
 
