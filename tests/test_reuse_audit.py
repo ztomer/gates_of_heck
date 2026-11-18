@@ -45,7 +45,7 @@ def store(tmp_path, monkeypatch) -> Path:
 def fake_loopctl(tmp_path, monkeypatch) -> Path:
     """A loopctl that logs each call. `ci` answers as FAKE_CI names it: its first line the exit
     (default 0, green), the rest what loopctl prints. `file` refuses as rules.class_first does
-    (~/Projects/.loop/tools/loopq.py class_refusal): an item names its class, or `class_of: none`
+    (the loop queue's tools/loopq.py class_refusal): an item names its class, or `class_of: none`
     with a `class_why`, or it is not filed."""
     log = tmp_path / "loopctl.jsonl"
     script = tmp_path / "loopctl.py"
