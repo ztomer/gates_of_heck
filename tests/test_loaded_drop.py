@@ -64,7 +64,8 @@ def test_a_ships_first_step_is_its_push_not_a_loaded_wait(shipped: Path, tmp_pat
     res = _result(tmp_path)
     assert r.returncode == 0, f"{r.stdout}{r.stderr}\n{res.get('tail')}"
     assert "before_clock" not in res, res
-    assert res["steps"][0]["name"] == "push", res["steps"]
+    ran = [s["name"] for s in res["steps"] if s["status"] != "skipped"]  # `suite`: none declared
+    assert ran[0] == "push", res["steps"]
 
 
 def test_a_new_test_with_an_unbounded_wait_loop_is_refused_at_commit(repo: Path) -> None:

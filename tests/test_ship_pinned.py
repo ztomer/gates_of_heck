@@ -107,7 +107,8 @@ def test_a_ship_finishes_with_its_own_goh_when_the_live_checkout_renames_a_step_
     res = json.loads(out.read_text())
     assert res["status"] == "ok", json.dumps(res, indent=1)
     assert [(s["name"], s["status"]) for s in res["steps"]] == [
-        ("push", "ok"), ("release", "ok"), ("install", "skipped"), ("verify", "ok"), ("done", "ok"),
+        ("suite", "skipped"), ("push", "ok"), ("release", "ok"), ("install", "skipped"),
+        ("verify", "ok"), ("done", "ok"),
     ]  # fmt: skip
     seen = (tmp_path / "kit.seen").read_text().split()
     assert seen[1:] == [started_at, "HAS-BIN"], (

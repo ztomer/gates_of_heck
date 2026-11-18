@@ -39,5 +39,6 @@ def full_suite(repo: Path, sha: str) -> tuple[dict | None, str]:
         return None, f"the suite record of tree {tree[:12]} is no full run ({how})"
     if not rec.get("instrumented"):
         return None, (f"the full run of tree {tree[:12]} drove the plain binary: a ship needs a "
-                      "fresh INSTRUMENTED full run (lib/idle_suite.py)")  # fmt: skip
+                      "fresh INSTRUMENTED full run (lib/ship_full_run.py, "
+                      "lib/idle_suite.py)")  # fmt: skip
     return rec, ""

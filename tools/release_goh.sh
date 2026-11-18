@@ -54,7 +54,7 @@ fi
 # the owner's term 2); the idle lander makes it off the ship's path (lib/idle_suite.py).
 full_on="$(bash -c 'unset GOH_SHIP_FULL_SUITE; [ -f .gatesrc ] && . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_SHIP_FULL_SUITE-}"')"
 if [ "$full_on" = on ] && ! "$GOH_PY" "$GOH/lib/reuse.py" full-suite --repo "$main" --sha "$(git rev-parse HEAD)" >/dev/null; then
-    err "release_goh.sh: no full suite run judged $(git rev-parse --short HEAD)'s tree (above): the idle lander makes one (lib/idle_suite.py INSTRUMENTED, run with GOH_LAND_VERDICTS_RECORD=/dev/null in a clean checkout of it) -- nothing moved"
+    err "release_goh.sh: no full suite run judged $(git rev-parse --short HEAD)'s tree (above): goh ship's suite step makes one under the land lock (lib/ship_full_run.py; the idle lander's lib/idle_suite.py INSTRUMENTED, run with GOH_LAND_VERDICTS_RECORD=/dev/null in a clean checkout of it) -- nothing moved"
     exit 1
 fi
 if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then

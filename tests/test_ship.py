@@ -67,6 +67,7 @@ def test_the_success_path_ships_every_step_and_records_the_item_done(shipped, tm
     res = _result(tmp_path)
     assert res["status"] == "ok", res
     assert [(s["name"], s["status"]) for s in res["steps"]] == [
+        ("suite", "skipped"),  # no GOH_SHIP_FULL_SUITE declared (tests/test_ship_starve.py)
         ("push", "ok"),
         ("release", "ok"),
         ("install", "skipped"),
@@ -79,7 +80,7 @@ def test_the_success_path_ships_every_step_and_records_the_item_done(shipped, tm
     # nothing but a mark per step is printed
     marks = [ln for ln in r.stdout.splitlines() if ln.strip()]
     assert all(("✓" in ln) or ("·" in ln) for ln in marks), r.stdout
-    assert len(marks) == 5
+    assert len(marks) == 6
 
 
 @pytest.mark.load_sensitive

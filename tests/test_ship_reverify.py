@@ -59,6 +59,7 @@ def test_a_green_reverify_records_the_ship_ok_and_runs_the_done_step(shipped, tm
     assert res["status"] == "ok", res
     assert "failed_step" not in res and "tail" not in res, res
     assert [(s["name"], s["status"]) for s in res["steps"]] == [
+        ("suite", "skipped"),
         ("push", "ok"),
         ("release", "ok"),
         ("install", "ok"),
@@ -67,7 +68,7 @@ def test_a_green_reverify_records_the_ship_ok_and_runs_the_done_step(shipped, tm
     ]
     assert [s["status"] for s in res["retried"]] == ["failed"]  # the first verify is kept, apart
     assert ["done", "X.ONE", "--shipped", str(tmp_path / "ship.json")] in _calls(tmp_path)
-    verify_log = Path(res["steps"][3]["log"]).read_text()
+    verify_log = Path(res["steps"][4]["log"]).read_text()
     assert "working tree" not in verify_log, verify_log  # done reads the GREEN card's log
 
 
@@ -78,7 +79,7 @@ def test_a_reverify_still_red_leaves_the_ship_failed_at_verify(shipped, tmp_path
     res = _result(tmp_path)
     assert (res["status"], res["failed_step"]) == ("failed", "verify"), res
     assert any("working tree" in ln for ln in res["tail"]), res["tail"]
-    assert [s["name"] for s in res["steps"]] == ["push", "release", "install", "verify"]
+    assert [s["name"] for s in res["steps"]] == ["suite", "push", "release", "install", "verify"]
     assert not [c for c in _calls(tmp_path) if c[0] in ("done", "progress")]
 
 

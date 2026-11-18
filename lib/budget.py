@@ -106,7 +106,7 @@ KINDS: dict[str, Kind] = {
         10 * MIN,
         15 * MIN,
         "last",
-        "the result JSON's `started` to its `finished`, every step",
+        "the ship's own run: land lock taken to `finished`, every step; lock wait a field",
         "goh ship",
     ),
     "release": Kind(
@@ -266,8 +266,8 @@ def _parse(ts: str) -> dt.datetime | None:
 
 
 def ship_rows(res: dict) -> list[dict]:
-    """The `ship` row (started to finished) and the `release` row (the release step's seconds) of a
-    ship result; none for a result still running, one for a ship that failed before its release."""
+    """The `ship` row (its OWN run `own_s`, the queue's `land_wait_s` a field: GOH.SHIPSTARVE) and
+    the `release` row of a ship result; none while running, one for a ship failed before release."""
     start, end = _parse(res.get("started", "")), _parse(res.get("finished", ""))
     if not start or not end or res.get("schema") != 1 or "name" not in res:
         return []
@@ -278,7 +278,7 @@ def ship_rows(res: dict) -> list[dict]:
         timing_ledger.row_for(
             "ship",
             repo,
-            (end - start).total_seconds(),
+            res["own_s"] if "own_s" in res else (end - start).total_seconds(),
             ok=ok,
             ref=ref,
             at=end,
@@ -288,6 +288,7 @@ def ship_rows(res: dict) -> list[dict]:
             item=res.get("item"),
             version=res.get("version"),
             failed_step=res.get("failed_step"),
+            land_wait_s=res.get("land_wait_s"),
             top_steps=sorted(
                 ([s["name"], s["seconds"]] for s in res.get("steps", []) if "seconds" in s),
                 key=lambda p: -p[1],
