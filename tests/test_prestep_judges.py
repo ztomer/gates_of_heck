@@ -129,7 +129,8 @@ JUDGES = (
 def test_goh_s_own_judges_run_first_for_any_change() -> None:
     chosen = at.affected(REPO_ROOT, ["lib/a_new_module.py"])
     judges, rest = at.phases(REPO_ROOT, chosen)
-    missing = [j for j in JUDGES if j not in judges]
+    # a judge chosen whole (a test reading a changed directory, lib/declared_reads.py) runs too
+    missing = [j for j in JUDGES if j not in judges and j.split("::")[0] not in judges]
     assert not missing, missing
     assert not set(judges) & set(rest)
 
