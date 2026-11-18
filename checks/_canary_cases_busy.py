@@ -37,4 +37,13 @@ CASES = [
         {"tools/gate.sh": "#!/bin/sh\npython3 -m pytest -n auto -q\n"},
         {"tools/gate.sh": '#!/bin/sh\npython3 -m pytest -n "$(goh_workers)" -q\n'},
     ),
+    # Here because the main table is at its cap (GOH.FRAGGATE): a changelog fragment the release
+    # step would refuse, by the release kit's own rule.
+    (
+        "a changelog fragment with a heading is refused",
+        "check_changelog_fragments.py",
+        [],
+        {"changelog/X.md": "# X\n\n* an entry\n"},
+        {"changelog/X.md": "* an entry\n", "changelog/README.md": "# Fragments\n"},
+    ),
 ]

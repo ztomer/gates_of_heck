@@ -53,8 +53,8 @@ def _build_goh_copy(d: Path) -> None:
     for part in ("gates", "checks"):
         shutil.copytree(REPO_ROOT / part, d / part, ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copytree(REPO_ROOT / "tui", d / "tui", ignore=shutil.ignore_patterns("__pycache__"))
-    # the profile land.sh gates with (test_land_leaves_a_proof_the_push_reuses)
-    (d / "tools").mkdir()
+    kit = "tools/release-kit/changelog_fragments.py"  # the fragment step's rule (GOH.FRAGGATE)
+    __import__("_hook_goh").source_closure.copy_closure(d, kit)
     shutil.copy2(REPO_ROOT / "tools" / "gate_profile.sh", d / "tools" / "gate_profile.sh")
     # `lib/` because `local_ci.sh` runs every step through `lib/bounded_run.py` — the per-step
     # CEILING and the whole-subtree sweep. A fixture that assembles an incomplete checkout gets a

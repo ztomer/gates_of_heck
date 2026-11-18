@@ -51,6 +51,19 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
         "build/main.obj": b"\x64\x86\x03\x00.text\x00",
         "a.py": b"x = 1\n",
     },
+    # A changelog fragment is entries only, judged at commit by the release kit's own reader
+    # (GOH.FRAGGATE): the ship refused one with a heading that every commit gate had passed.
+    "fragment_heading_red": {
+        ".gatesrc": GATESRC,
+        "changelog/X.md": b"# X\n\n* an entry\n",
+        "a.py": b"x = 1\n",
+    },
+    "fragment_green": {
+        ".gatesrc": GATESRC,
+        "changelog/X.md": b"* an entry\n",
+        "changelog/README.md": b"# Fragments\n",
+        "a.py": b"x = 1\n",
+    },
     "build_output_mesh_green": {
         ".gatesrc": GATESRC,
         "assets/ship.obj": b"# mesh\nv 0 0 0\nf 1 1 1\n",
@@ -286,6 +299,8 @@ EXPECTED: dict[str, tuple[int, str | None]] = {
     "home_path_green": (0, None),
     "build_output_red": (1, "no tracked build output"),
     "build_output_mesh_green": (0, None),
+    "fragment_heading_red": (1, "every changelog fragment is entries only"),
+    "fragment_green": (0, None),
     "home_path_red": (1, "no hard-coded home paths"),
     "kill_by_name_green": (0, None),
     "kill_by_name_red": (1, "no process kill by name"),

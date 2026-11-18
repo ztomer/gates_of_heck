@@ -268,6 +268,22 @@ def test_staged_tracked_build_output_step_is_at_commit_scope_too(
     assert (r.returncode, _failing(r.stdout, r.stderr)) == expected, r.stdout + r.stderr
 
 
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        ("fragment_heading_red", (1, "every changelog fragment is entries only")),
+        ("fragment_green", (0, None)),
+    ],
+)
+def test_staged_changelog_fragment_is_judged_at_commit(
+    goh: Path, tmp_path: Path, case: str, expected
+) -> None:
+    """GOH.FRAGGATE: a fragment the ship's release preflight refuses is refused at commit."""
+    repo = make_repo(tmp_path, FULL_CASES[case])
+    r = _run_goh(goh, repo, staged=True)
+    assert (r.returncode, _failing(r.stdout, r.stderr)) == expected, r.stdout + r.stderr
+
+
 def test_staged_ignores_unstaged_dirt(goh: Path, tmp_path: Path) -> None:
     repo = make_repo(tmp_path, {".gatesrc": GATESRC, "a.py": b"x = 1\n"})
     (repo / "a.py").write_bytes(b"x = 1\n<<<<<<< ours\n")

@@ -56,6 +56,51 @@ pub fn step_tracked_build_output(
     }
 }
 
+/// The label the changelog-fragment step announces; the same line is in `structural_steps.txt`.
+const FRAGMENT_LABEL: &str = "every changelog fragment is entries only";
+
+/// `checks/check_changelog_fragments.py`: a fragment the release step would refuse.
+///
+/// A `changelog/*.md` with a heading or no entry is refused at commit instead of at ship (GOH.FRAGGATE). Delegated so the
+/// rule is the release kit's own (`changelog_fragments.refusal`), never a second copy.
+#[must_use]
+pub fn step_changelog_fragments(
+    repo: &std::path::Path,
+    checks: &std::path::Path,
+    staged: bool,
+) -> Option<i32> {
+    fragments_with(crate::house_python::path(), repo, checks, staged)
+}
+
+/// The fragment step over a resolved interpreter (or the resolver's refusal, which fails it by name).
+fn fragments_with(
+    py: Result<String, String>,
+    repo: &std::path::Path,
+    checks: &std::path::Path,
+    staged: bool,
+) -> Option<i32> {
+    let py = match py {
+        Ok(py) => py,
+        Err(why) => {
+            let start = crate::step_report::begin(FRAGMENT_LABEL);
+            return Some(crate::step_report::fail(
+                FRAGMENT_LABEL,
+                "lib/house_python.sh",
+                &why,
+                start,
+            ));
+        }
+    };
+    let mut args = vec!["check_changelog_fragments.py".to_owned()];
+    if staged {
+        args.push("--staged".to_owned());
+    }
+    match delegated(checks, repo, FRAGMENT_LABEL, &py, &args) {
+        0 => None,
+        code => Some(code),
+    }
+}
+
 #[must_use]
 pub fn step_full_only(
     repo: &std::path::Path,
@@ -101,4 +146,23 @@ pub fn step_full_only(
         return Some(probes_code);
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_fragment_step_fails_by_name_without_an_interpreter_and_reds_on_a_red_checker() {
+        let dir = std::env::temp_dir();
+        assert!(
+            fragments_with(Err("no python".to_owned()), &dir, &dir, true).is_some_and(|c| c != 0)
+        );
+        // `false` stands in for an interpreter whose checker found a fragment the release refuses.
+        assert!(fragments_with(Ok("false".to_owned()), &dir, &dir, true).is_some_and(|c| c != 0));
+        assert_eq!(
+            fragments_with(Ok("true".to_owned()), &dir, &dir, false),
+            None
+        );
+    }
 }

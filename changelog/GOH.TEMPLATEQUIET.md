@@ -1,6 +1,4 @@
-# GOH.TEMPLATEQUIET
-
-Every fixture template builds with git's background work off. `tests/_tree_clone.py` runs each
+* Every fixture template builds with git's background work off. `tests/_tree_clone.py` runs each
 `template()` / `process_template()` / `from_template()` build under an XDG git config with
 `maintenance.auto=false` and `gc.auto=0` (read by every git the build spawns, which
 `hermetic_env(drop_git=True)` and `_fast_git` cannot drop), then waits until no `maintenance.lock`

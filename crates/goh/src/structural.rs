@@ -145,6 +145,7 @@ pub fn run(staged: bool, full: bool, keep_going: bool) -> i32 {
     let _drain = prefetch::Drain;
     let specs = prefetch::collect(|| {
         let _ = steps_delegated::step_tracked_build_output(&repo, &checks, staged);
+        let _ = steps_delegated::step_changelog_fragments(&repo, &checks, staged);
         let _ = steps_delegated::step_full_only(&repo, &checks, staged);
     });
     prefetch::start(specs, &checks, &repo);
@@ -252,6 +253,7 @@ fn late_steps(
         substdin::step(cfg, files, staged),
         crate::changelog_tags::step(repo, staged),
         crate::changelog_fragments::step(repo, cfg, staged),
+        steps_delegated::step_changelog_fragments(repo, checks, staged),
         crate::gatesrc_dupes::step(repo, files, staged),
         crate::layerparity::step(repo, cfg, staged),
         steps_delegated::step_full_only(repo, checks, staged),

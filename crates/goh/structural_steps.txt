@@ -3,6 +3,7 @@ a file that calls X calls Y
 a workflow runs a current goh on a clone with its tags
 cap-exempt files within their ceilings
 every .gatesrc key is set once
+every changelog fragment is entries only
 every child process names its stdin
 every language linted at commit is gated at push
 every scanner read its declared subject

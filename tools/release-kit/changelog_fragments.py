@@ -50,11 +50,30 @@ def read(d: Path) -> tuple[list[tuple[Path, list[str]]], list[str]]:
         except (OSError, UnicodeDecodeError) as e:
             findings.append(f"{p}: cannot be read as UTF-8 text: {e}")
             continue
-        if any(ln.startswith("#") for ln in lines):
-            findings.append(f"{p}: holds a heading; a fragment is entries only (the release "
-                            "step writes the heading)")  # fmt: skip
-        elif not any(ln.startswith(("* ", "- ")) for ln in lines):
-            findings.append(f"{p}: holds no entry (a `* ` item at column 0)")
+        why = refusal(lines)
+        if why:
+            findings.append(f"{p}: {why}")
         else:
             out.append((p, lines))
     return out, findings
+
+
+def is_fragment(rel: str) -> bool:
+    """Is repo-relative `rel` a fragment: `changelog/*.md` (or `docs/changelog/*.md`), not the
+    README. The commit gate (checks/check_changelog_fragments.py) scopes by this."""
+    parts = rel.split("/")
+    return (
+        parts[:-1] in (["changelog"], ["docs", "changelog"])
+        and parts[-1].endswith(".md")
+        and parts[-1] not in SKIP
+    )
+
+
+def refusal(lines: list[str]) -> str | None:
+    """Why the release step refuses a fragment of these lines, or None. One rule, read by the
+    release (`read`) and the commit gate alike, so a commit can never land what the ship refuses."""
+    if any(ln.startswith("#") for ln in lines):
+        return "holds a heading; a fragment is entries only (the release step writes the heading)"
+    if not any(ln.startswith(("* ", "- ")) for ln in lines):
+        return "holds no entry (a `* ` item at column 0)"
+    return None

@@ -47,6 +47,7 @@ pub const BURN_DOWN: &[&str] = &[
     "no git stopped at a deadline holding a lock",
     "every language linted at commit is gated at push",
     "no changelog entry under Unreleased",
+    "every changelog fragment is entries only",
     "no unreaped spawns in tests",
     "no vendored copies of house files",
     "one roadmap, open entries only",
@@ -440,6 +441,7 @@ pub const ROWS: &[Row] = &[
     // On main (GOH.LAYERPARITY, GOH.CLASS.CHECKOUT) before this table landed.
     unreviewed("every language linted at commit is gated at push"),
     unreviewed("no changelog entry under Unreleased"),
+    unreviewed("every changelog fragment is entries only"),
     unreviewed("no unreaped spawns in tests"),
     unreviewed("no vendored copies of house files"),
     unreviewed("one roadmap, open entries only"),
