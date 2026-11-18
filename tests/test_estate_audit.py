@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _tree_clone import from_template
 from conftest import REPO_ROOT
 
 pytestmark = pytest.mark.skipif(
@@ -142,14 +143,17 @@ def _hook(state: Path) -> str:
 
 
 @pytest.fixture
-def estate(tmp_path: Path) -> Path:
-    root = tmp_path / "Projects"
+def estate(tmp_path: Path, tmp_path_factory) -> Path:
+    """Three repositories: built once per worker, cloned per test (GOH.FIXTURECOST)."""
+    return from_template(tmp_path_factory, "estate-audit", _build_estate, tmp_path / "Projects")
+
+
+def _build_estate(root: Path) -> None:
     _repo(root, "hit", "goh-fixture-crate")
     _repo(root / "group", "clean", "goh-other-crate")
     # A repository inside another one's tree (a nested server repo): its parent does not track
     # its files, so the walk must not stop at the parent.
     _repo(root / "group" / "clean", "nested", "goh-fixture-crate")
-    return root
 
 
 def test_a_new_advisory_is_reported_by_the_next_run_and_at_session_start(tmp_path, estate):

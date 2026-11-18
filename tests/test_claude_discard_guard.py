@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _tree_clone import from_template
 from conftest import REPO_ROOT, hermetic_env
 
 GUARD = REPO_ROOT / "hooks" / "claude" / "discard_guard.py"
@@ -32,14 +33,17 @@ def _git(repo: Path, *args: str) -> None:
 
 
 @pytest.fixture
-def repo(tmp_path: Path) -> Path:
-    r = tmp_path / "r"
+def repo(tmp_path: Path, tmp_path_factory) -> Path:
+    """Two committed files: built once per worker, cloned per test (GOH.FIXTURECOST)."""
+    return from_template(tmp_path_factory, "discard-guard", _build_repo, tmp_path / "r")
+
+
+def _build_repo(r: Path) -> None:
     fast_init(r, "main")
     (r / "a.txt").write_text("one\n")
     (r / "b.txt").write_text("two\n")
     _git(r, "add", "-A")
     _git(r, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "seed")
-    return r
 
 
 def _decide(command: str, cwd: Path) -> str | None:

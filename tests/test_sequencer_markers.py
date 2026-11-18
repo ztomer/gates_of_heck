@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _tree_clone import from_template
 from conftest import REPO_ROOT, hermetic_env, native_goh_path, run_goh
 
 # A diff3 resolution that kept the base section: the 2026-10-08 CHANGELOG.md, in miniature.
@@ -60,10 +61,14 @@ def _commit(repo: Path, rel: str, body: str, msg: str) -> str:
 
 
 @pytest.fixture
-def consumer(tmp_path: Path) -> Path:
+def consumer(tmp_path: Path, tmp_path_factory) -> Path:
     """A repo wired the way install.sh wires one (every stock hook FILE in .githooks/), with a
-    diff3 conflict waiting: `side` and `main` both edit CHANGELOG.md from one base."""
-    repo = tmp_path / "consumer"
+    diff3 conflict waiting: `side` and `main` both edit CHANGELOG.md from one base. Built once per
+    worker, cloned per test (GOH.FIXTURECOST)."""
+    return from_template(tmp_path_factory, "sequencer", _build_consumer, tmp_path / "consumer")
+
+
+def _build_consumer(repo: Path) -> None:
     fast_init(repo, "main")
     for k, v in (("user.email", "t@t"), ("user.name", "t"), ("merge.conflictStyle", "diff3")):
         _git(repo, "config", k, v)
@@ -81,7 +86,6 @@ def consumer(tmp_path: Path) -> Path:
     _git(repo, "checkout", "-q", "main")
     _commit(repo, "CHANGELOG.md", "# changes\nmain entry\n", "main")
     _git(repo, "config", "core.hooksPath", ".githooks")
-    return repo
 
 
 def _rebase_resolving_with(repo: Path, body: str, *backend: str) -> subprocess.CompletedProcess:

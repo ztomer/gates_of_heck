@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 from _fast_git import fast_init
+from _tree_clone import from_template
 from conftest import REPO_ROOT, hermetic_env
 
 AUDIT = REPO_ROOT / "scripts" / "agent_audit.py"
@@ -48,23 +49,27 @@ def _git(repo: Path, *args: str) -> str:
 
 
 @pytest.fixture
-def estate(tmp_path: Path) -> dict[str, Any]:
+def estate(tmp_path: Path, tmp_path_factory) -> dict[str, Any]:
+    """One repository with two commits, built once per worker, cloned per test (GOH.FIXTURECOST)."""
     root = tmp_path / "estate"
-    repo = root / "r1"
+    root.mkdir()
+    repo = from_template(tmp_path_factory, "audit-r1", _build_r1, root / "r1")
+    gh = tmp_path / "gh.py"
+    gh.write_text(FAKE_GH)
+    old, new = _git(repo, "rev-parse", "HEAD~1", "HEAD").split()
+    return {"root": root, "old": old, "new": new, "gh": gh, "tmp": tmp_path}
+
+
+def _build_r1(repo: Path) -> None:
     repo.mkdir(parents=True)
     fast_init(repo, "main")
     _git(repo, "config", "user.email", "t@t")
     _git(repo, "config", "user.name", "t")
-    shas = []
     for i in range(2):
         (repo / "f").write_text(str(i))
         _git(repo, "add", "f")
         _git(repo, "commit", "-q", "-m", f"c{i}")
-        shas.append(_git(repo, "rev-parse", "HEAD"))
     _git(repo, "remote", "add", "origin", "git@github.com:o/r1.git")
-    gh = tmp_path / "gh.py"
-    gh.write_text(FAKE_GH)
-    return {"root": root, "old": shas[0], "new": shas[1], "gh": gh, "tmp": tmp_path}
 
 
 def _ledger(tmp: Path, report: str, status: str = "landed") -> Path:

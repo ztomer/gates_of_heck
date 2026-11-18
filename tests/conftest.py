@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 import suite_home  # (FIRST: the suite's own HOME and TMPDIR, before anything reads them)
+from _tree_clone import clone_tree  # (no HOME/TMPDIR read: ctypes, os, shutil)
 
 # THE SUITE TESTS THE TREE IT IS IN. Consumers run the gates from an export of HEAD (C4,
 # gates/_from_head.sh); this suite exists to judge the change under test, so it asks for the working
@@ -118,10 +119,9 @@ def _repo_template(tmp_path_factory) -> Path:
 
 @pytest.fixture
 def repo(tmp_path: Path, _repo_template: Path) -> Path:
-    """An initialized git repo with one committed file: a fresh COPY of the template per test."""
-    r = tmp_path / "proj"
-    shutil.copytree(_repo_template, r, symlinks=True)
-    return r
+    """An initialized git repo with one committed file: a CLONE of the template per test."""
+    clone_tree(_repo_template, tmp_path / "proj")
+    return tmp_path / "proj"
 
 
 _SUITE_COV_CACHE = tempfile.mkdtemp(prefix="goh-suite-cov-cache.")

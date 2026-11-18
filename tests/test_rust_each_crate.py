@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 from _gatesrc_kit import write_gatesrc
+from _tree_clone import from_template
 from conftest import hermetic_env
 from test_rust_gate_scoped_cache import _crate, _git, _native, gates  # noqa: F401  # fixtures
 
@@ -30,8 +31,13 @@ pytestmark = [
 
 
 @pytest.fixture
-def estate(tmp_path: Path) -> Path:
-    repo = tmp_path / "repo"
+def estate(tmp_path: Path, tmp_path_factory) -> Path:
+    """Three crates, locked and staged: built once per worker (three `cargo generate-lockfile`s and
+    a git init), cloned per test (GOH.FIXTURECOST)."""
+    return from_template(tmp_path_factory, "each-crate", _build_estate, tmp_path / "repo")
+
+
+def _build_estate(repo: Path) -> None:
     repo.mkdir()
     _crate(repo, "b")
     _crate(repo, "a", deps='b = { path = "../b" }\n', lib="pub fn g() -> u64 {\n    b::f()\n}\n")
@@ -50,7 +56,6 @@ def estate(tmp_path: Path) -> Path:
         )
     _git(repo, "init", "-q")
     _git(repo, "add", "-A")
-    return repo
 
 
 def _each(

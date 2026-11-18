@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _tree_clone import from_template
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import source_closure
@@ -43,8 +44,13 @@ def check(tree: Path, **env: str) -> subprocess.CompletedProcess[str]:
 
 
 @pytest.fixture
-def clone(tmp_path: Path) -> Path:
-    tree = tmp_path / "goh"
+def clone(tmp_path: Path, tmp_path_factory) -> Path:
+    """A depth-1 clone of goh's HEAD with today's build-goh.sh: cloned once per worker, then
+    clonefile'd per test (GOH.FIXTURECOST)."""
+    return from_template(tmp_path_factory, "build-publish", _build_clone, tmp_path / "goh")
+
+
+def _build_clone(tree: Path) -> None:
     subprocess.run(
         ["git", "clone", "--quiet", "--depth", "1", f"file://{ROOT}", str(tree)],
         check=True,
@@ -53,7 +59,6 @@ def clone(tmp_path: Path) -> Path:
     shutil.copy2(
         SCRIPT, tree / "scripts" / "build-goh.sh"
     )  # the script under test, committed or not
-    return tree
 
 
 def test_a_clean_tree_publishes(clone: Path) -> None:

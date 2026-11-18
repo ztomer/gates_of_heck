@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _tree_clone import from_template
 from conftest import REPO_ROOT
 
 GIT_VARS = (
@@ -43,10 +44,7 @@ def _git(repo: Path, *args: str) -> str:
     ).stdout.strip()
 
 
-@pytest.fixture
-def goh(tmp_path: Path) -> Path:
-    """A committed copy of the gates this suite tests."""
-    d = tmp_path / "goh"
+def _build_goh_copy(d: Path) -> None:
     # WHOLE directories, not a list of the files the gates were last seen to need: this fixture
     # carried a curated list, and it broke every time a gate gained a dependency (the tag check's
     # `_version_sources.py`, then `goh.sh` when the tag check moved behind it). The estate is
@@ -54,36 +52,39 @@ def goh(tmp_path: Path) -> Path:
     for part in ("gates", "checks"):
         shutil.copytree(REPO_ROOT / part, d / part, ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copytree(REPO_ROOT / "tui", d / "tui", ignore=shutil.ignore_patterns("__pycache__"))
-    (
-        d / "tools"
-    ).mkdir()  # the profile land.sh gates with (test_land_leaves_a_proof_the_push_reuses)
+    # the profile land.sh gates with (test_land_leaves_a_proof_the_push_reuses)
+    (d / "tools").mkdir()
     shutil.copy2(REPO_ROOT / "tools" / "gate_profile.sh", d / "tools" / "gate_profile.sh")
     # `lib/` because `local_ci.sh` runs every step through `lib/bounded_run.py` — the per-step
     # CEILING and the whole-subtree sweep. A fixture that assembles an incomplete checkout gets a
     # correct "No such file" refusal about a tree the test itself built wrong, which is the same
     # mistake the comment above records for `checks/`. The estate is `gates/` + `checks/` + `lib/`
     # + `tui/`; a copy that omits one of them is not the estate.
-    shutil.copytree(
-        REPO_ROOT / "lib",
-        d / "lib",
-        ignore=shutil.ignore_patterns("__pycache__", "desktop_lock"),
-    )
+    lib_skip = shutil.ignore_patterns("__pycache__", "desktop_lock")
+    shutil.copytree(REPO_ROOT / "lib", d / "lib", ignore=lib_skip)
     fast_init(d, "main")
     _git(d, "add", "-A")
     _git(d, "commit", "-q", "-m", "gates")
-    return d
 
 
 @pytest.fixture
-def repo(tmp_path: Path) -> Path:
-    r = tmp_path / "repo"
+def goh(tmp_path: Path, tmp_path_factory) -> Path:
+    """A committed copy of the gates this suite tests: built once per worker, cloned per test."""
+    return from_template(tmp_path_factory, "goh", _build_goh_copy, tmp_path / "goh")
+
+
+def _build_repo(r: Path) -> None:
     r.mkdir()
     fast_init(r, "main")
     (r / "src.txt").write_text("one\n")
     (r / ".gitignore").write_text("build/\n")
     _git(r, "add", "-A")
     _git(r, "commit", "-q", "-m", "one")
-    return r
+
+
+@pytest.fixture
+def repo(tmp_path: Path, tmp_path_factory) -> Path:
+    return from_template(tmp_path_factory, "proven-repo", _build_repo, tmp_path / "repo")
 
 
 @pytest.fixture

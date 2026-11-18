@@ -23,6 +23,7 @@ import _fake_cargo
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _tree_clone import from_template
 from conftest import hermetic_env
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -78,9 +79,13 @@ def _native(goh: Path, gates: Path, monkeypatch) -> None:
 
 
 @pytest.fixture
-def estate(tmp_path: Path) -> Path:
-    """crates/a uses crates/b by path; crates/c stands alone. Each is its own workspace."""
-    repo = tmp_path / "repo"
+def estate(tmp_path: Path, tmp_path_factory) -> Path:
+    """crates/a uses crates/b by path; crates/c stands alone. Each is its own workspace. Built once
+    per worker, cloned per test (GOH.FIXTURECOST)."""
+    return from_template(tmp_path_factory, "scoped-cache", _build_estate, tmp_path / "repo")
+
+
+def _build_estate(repo: Path) -> None:
     repo.mkdir()
     _crate(repo, "b")
     _crate(repo, "a", deps='b = { path = "../b" }\n', lib="pub fn g() -> u64 {\n    b::f()\n}\n")
@@ -98,7 +103,6 @@ def estate(tmp_path: Path) -> Path:
         )
     fast_init(repo)
     _git(repo, "add", "-A")
-    return repo
 
 
 @pytest.fixture
