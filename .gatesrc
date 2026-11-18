@@ -197,6 +197,11 @@ GOH_LANDED_ONLY=main
 # every test naming a changed path or importing a changed module, and every tree reader -- the structural
 # gates and the tree readers FIRST, so a deadline on the rest never swallows them (GOH.PREPARITY). $1 is main's tip.
 GOH_LAND_PRE='"$GOH_PY" tools/affected_tests.py --run --structural --base "$1"'
+# A tree the lander moved (rebased under the lock, or stacked in a batch) whose gate MEASURES coverage
+# runs this instead (GOH.PRESTEPDUP, lib/pre_fast.py): the instrumented suite re-runs every test the
+# set would, under the lock that took away the set's fail-fast. A gate that may reuse the set's
+# verdict (GOH.SUITEONCE) still gets the whole set.
+GOH_LAND_PRE_FAST='"$GOH_PY" tools/affected_tests.py --run --fast-only'
 
 # NO GOH_EXPORT_KEEP (G2c). bin/goh was carried into the pre-push export (2026-10-15) because the
 # export held no binary and every native checker said "goh binary not built". That need is gone at

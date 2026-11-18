@@ -64,7 +64,7 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # the wait for the lock is its own field, not gate time). A land that never took the lock (a
 # refusal before it, a failed pre-step) measured no gate and writes no row. The ledger never fails
 # a land: the script's exit status is what it was.
-verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall="" pre_run="" pre_workers="" pre_reused="" suite_reused=""
+verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall="" pre_run="" pre_workers="" pre_reused="" suite_reused="" pre_fast_ran=""
 # shellcheck disable=SC2329  # invoked by the EXIT trap below
 land_exit() {
     local rc=$?
@@ -76,7 +76,8 @@ land_exit() {
         ${land_timings:+--timings "${GOH_TIMINGS:-$land_timings}"} --field "wait_lock_s=$lock_wait" \
         --field "exit=$rc" ${pre_wall:+--field "pre_s=$pre_wall"} \
         ${pre_run:+--field "pre_run_s=$pre_run" --field "pre_workers=$pre_workers"} \
-        ${pre_reused:+--field "pre_reused=$pre_reused"} ${suite_reused:+--field "suite_reused=$suite_reused"} --field "sha=$(printf %.12s "${tip:-}")" || true
+        ${pre_reused:+--field "pre_reused=$pre_reused"} ${suite_reused:+--field "suite_reused=$suite_reused"} \
+        ${pre_fast_ran:+--field "pre_fast=1"} --field "sha=$(printf %.12s "${tip:-}")" || true
 }
 trap land_exit EXIT
 # SPECULATIVE (GOH.LANDBISECTPAR, lib/landq_spec.py): the batch gates a red stack's second half on
@@ -121,11 +122,17 @@ fi
 # tree reader); run with main's tip as $1, in the worktree, admitted in the short lane (a 0-spinner
 # load.py run takes a gate slot, lib/admission.py; GOH.PRESTEPADMIT below) and released before the lock is queued for, so
 # it nests no lock (GOH.LOCKORDER). Bounded by its share (lib/pre_deadline.py: 10-25 min); a repo that declares none has no pre-step.
-pre="${GOH_LAND_PRE-}"
-if [ -z "${GOH_LAND_PRE+set}" ] && [ -f "$here/.gatesrc" ]; then
-    pre="$(cd "$here" && bash -c 'unset GOH_LAND_PRE; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_PRE-}"')" \
+# gatesrc_var NAME -- NAME from the environment, else the tree's .gatesrc (empty when neither sets it).
+gatesrc_var() {
+    if [ -n "${!1+set}" ] || [ ! -f "$here/.gatesrc" ]; then printf %s "${!1-}"; return; fi
+    (cd "$here" && bash -c 'unset "$1"; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${!1-}"' gatesrc "$1") \
         || { err "land.sh: cannot read $here/.gatesrc"; exit 2; }
-fi
+}
+pre="$(gatesrc_var GOH_LAND_PRE)" || exit 2
+# THE FAST SET ON A MOVED TREE (GOH.PRESTEPDUP, lib/land_pre_reuse.sh land_pre_fast): what runs
+# instead of the set on a tree moved after a pre-step judged the lane, when the gate measures coverage.
+pre_fast="$(gatesrc_var GOH_LAND_PRE_FAST)" || exit 2
+cov_ext="$(gatesrc_var GOH_COV_RUST_EXTERNAL)" || exit 2
 # ONE RUN PER TEST (GOH.LANDPREDUP): a goh suite run by the pre-step records the tests it passed
 # (GOH_LAND_VERDICTS_RECORD) and the gate's suite skips them on the same tree and tools
 # (GOH_LAND_VERDICTS_REUSE, tests/_land_verdicts.py), the instrumented coverage run keeping every
@@ -238,6 +245,16 @@ land_pre() {
 # every lane older than a ship failed changelog_tags so (REUSEAUDIT2 dd8403da). The enqueue's run
 # (GOH_LAND_PRE_ONLY) moves nothing: the queue holds the sha the lane enqueued.
 rebased=0
+lock="$(git -C "$main" rev-parse --path-format=absolute --git-common-dir)/goh-land.lock"
+# land_lock_ours -- this land runs BY the land lock's holder (goh ship's release kit, the lander's
+# batch; lib/land_lock.py): GOH_LAND_LOCK_OWNER names this lock and a live pid, and the lock file
+# names that same pid.
+land_lock_ours() {
+    local owner="${GOH_LAND_LOCK_OWNER:-}" line=""
+    local pid="${owner##* }"
+    { IFS= read -r line <"$lock"; } 2>/dev/null || true
+    [ "${owner% *}" = "$lock" ] && [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && [[ "$line" == *"(pid $pid,"* ]]
+}
 # STACKED (GOH.LANDBATCH, tools/landq.py's batch, lib/landq_batch.py): the lander, holding the land
 # lock, stacks several lanes' branches -- each rebased onto the one below it -- and gates the tip
 # once. Each branch is moved by this script's own rebase (the row merge driver with it), then it
@@ -263,17 +280,11 @@ fi
 # The land lock (GOH.LANDSERIAL, header): fd 7, held until this script exits.
 # shellcheck source=lib/lock_order.sh
 . "$GOH/lib/lock_order.sh" || exit 1
-lock="$(git -C "$main" rev-parse --path-format=absolute --git-common-dir)/goh-land.lock"
 exec 7>>"$lock"
 lock_t0="${EPOCHREALTIME/,/.}"
 holder=""
 IFS= read -r holder <"$lock" 2>/dev/null || true
-# A land run BY the lock's holder (goh ship's release kit, lib/land_lock.py) is that holder's own
-# land: GOH_LAND_LOCK_OWNER names this lock and a live pid, and the file names that same pid.
-owner="${GOH_LAND_LOCK_OWNER:-}"
-owner_pid="${owner##* }"
-if [ "${owner% *}" = "$lock" ] && [ -n "$owner_pid" ] && kill -0 "$owner_pid" 2>/dev/null \
-    && [[ "$holder" == *"(pid $owner_pid,"* ]]; then
+if land_lock_ours; then
     info "land lock held for this land by its caller: $holder"
 else
     # The order first (GOH.LOCKORDER): a land inside a holder of a later lock -- the slot of
