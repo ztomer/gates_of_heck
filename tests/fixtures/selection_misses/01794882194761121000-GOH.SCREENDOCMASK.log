@@ -1,0 +1,2 @@
+FAILED tests/test_no_env_spread.py::test_no_test_spreads_os_environ_beyond_the_seed
+FAILED tests/test_source_closure.py::test_no_test_copies_part_of_goh_by_hand_beyond_the_seed

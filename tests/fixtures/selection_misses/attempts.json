@@ -1,0 +1,475 @@
+[
+ {
+  "changed": [
+   "changelog/GOH.LANDERSTALECODE.md",
+   "tests/test_landq.py",
+   "tools/landq.py"
+  ],
+  "chosen": [
+   "tests/test_source_closure.py::test_every_spelling_of_the_scripts_own_directory_is_followed",
+   "tests/test_source_closure.py::test_no_test_copies_part_of_goh_by_hand_beyond_the_seed",
+   "tests/test_source_closure.py::test_the_copy_detector_sees_every_shape_and_nothing_else"
+  ],
+  "item": "GOH.LANDERSTALECODE",
+  "selected": 310,
+  "sha": "9f3815f6f81263ada1b8238c6495b3133d509170",
+  "stem": "01794880988508237000-GOH.LANDERSTALECODE"
+ },
+ {
+  "changed": [
+   "changelog/GOH.SCREENDOCMASK.md",
+   "crates/goh/src/pylex/facts.rs",
+   "crates/goh/src/screen.rs",
+   "tests/fixtures/prose_mask/README.md",
+   "tests/fixtures/prose_mask/argument_string_code.py",
+   "tests/fixtures/prose_mask/call_code.py",
+   "tests/fixtures/prose_mask/docstring_prose.py",
+   "tests/fixtures/prose_mask/heredoc_prose.py",
+   "tests/fixtures/prose_mask/trailing_comment_prose.py",
+   "tests/fixtures/prose_mask/unparseable_code.py.in",
+   "tests/test_prose_mask_parity.py"
+  ],
+  "chosen": [
+   "tests/test_no_env_spread.py::test_no_test_spreads_os_environ_beyond_the_seed",
+   "tests/test_source_closure.py::test_every_spelling_of_the_scripts_own_directory_is_followed",
+   "tests/test_source_closure.py::test_no_test_copies_part_of_goh_by_hand_beyond_the_seed",
+   "tests/test_source_closure.py::test_the_copy_detector_sees_every_shape_and_nothing_else"
+  ],
+  "item": "GOH.SCREENDOCMASK",
+  "selected": 310,
+  "sha": "bed90bc1a8ce2712473b92373e9a401a471f49b5",
+  "stem": "01794882194761121000-GOH.SCREENDOCMASK"
+ },
+ {
+  "changed": [
+   "changelog/GOH.PRESTEPADMIT.md",
+   "changelog/GOH.SWEEPSLOTS.md",
+   "lib/consumer_pins.py",
+   "lib/pin_sweep.py",
+   "tests/test_land_prestep_admit.py",
+   "tests/test_pin_sweep.py",
+   "tools/land.sh"
+  ],
+  "chosen": [
+   "tests/test_git_deadline_class.py::test_a_group_kill_is_term_first_everywhere",
+   "tests/test_git_deadline_class.py::test_a_seam_call_names_its_repo_by_keyword_never_by_a_hand_written_dash_c",
+   "tests/test_git_deadline_class.py::test_the_rust_git_readers_take_no_optional_lock"
+  ],
+  "item": "GOH.SWEEPSLOTS",
+  "selected": 322,
+  "sha": "fda19517731611910ed3bc1918b05563435174a5",
+  "stem": "01794886841140800000-GOH.SWEEPSLOTS"
+ },
+ {
+  "changed": [
+   "changelog/GOH.CALIBXDIST.md",
+   "changelog/GOH.CANARYFLAKE.md",
+   "changelog/GOH.SELFGATEPS.md",
+   "scripts/release_canary.py",
+   "tests/calib_snapshot.py",
+   "tests/load_kit.py",
+   "tests/ps_table.py",
+   "tests/test_calibration_snapshot.py",
+   "tests/test_gate_calibration.py",
+   "tests/test_ps_table_unbounded.py",
+   "tests/test_release_canary_run_bound.py",
+   "tests/wall_clock_seed.json"
+  ],
+  "chosen": [
+   "tests/test_ps_table_unbounded.py"
+  ],
+  "item": "GOH.CANARYFLAKE",
+  "selected": 331,
+  "sha": "4a3878cd414ad0321435bfa0035abe2d48b78a7b",
+  "stem": "01794888177953492000-GOH.CANARYFLAKE"
+ },
+ {
+  "changed": [
+   "changelog/GOH.CALIBXDIST.md",
+   "changelog/GOH.CANARYFLAKE.md",
+   "changelog/GOH.SELFGATEPS.md",
+   "scripts/release_canary.py",
+   "tests/calib_snapshot.py",
+   "tests/load_kit.py",
+   "tests/ps_table.py",
+   "tests/test_bench_lock.py",
+   "tests/test_bench_lock_joins.py",
+   "tests/test_calibration_snapshot.py",
+   "tests/test_gate_calibration.py",
+   "tests/test_ps_table_unbounded.py",
+   "tests/test_release_canary_run_bound.py",
+   "tests/wall_clock_seed.json"
+  ],
+  "chosen": [
+   "tests/test_land_verdicts.py",
+   "tests/test_self_walk.py"
+  ],
+  "item": "GOH.CANARYFLAKE",
+  "selected": 330,
+  "sha": "ff17dafbe86c7f0418f3650190adee832abd6fd7",
+  "stem": "01794891768348198000-GOH.CANARYFLAKE"
+ },
+ {
+  "changed": [
+   "changelog/GOH.GATEBUDGET.md",
+   "crates/goh/src/cli.rs",
+   "crates/goh/src/main.rs",
+   "docs/config.md",
+   "docs/map.md",
+   "gates/push_gate.sh",
+   "gates/verdict_free_keys.txt",
+   "lib/budget.py",
+   "lib/ship_status.py",
+   "lib/step_timings.py",
+   "lib/timing_ledger.py",
+   "lib/timing_ledger.sh",
+   "tests/test_budget.py",
+   "tests/test_timing_ledger.py",
+   "tools/land.sh",
+   "tools/ship.py"
+  ],
+  "chosen": [
+   "tests/test_bash5_guard.py",
+   "tests/test_check_lock_order.py",
+   "tests/test_no_env_spread.py::test_no_test_spreads_os_environ_beyond_the_seed",
+   "tests/test_self_walk.py"
+  ],
+  "item": "GOH.GATEBUDGET",
+  "selected": 360,
+  "sha": "4eb80ef910d161e19eb501e56214612672167164",
+  "stem": "01794894396231918000-GOH.GATEBUDGET"
+ },
+ {
+  "changed": [
+   "changelog/GOH.GATEBUDGET.md",
+   "crates/goh/src/cli.rs",
+   "crates/goh/src/main.rs",
+   "docs/config.md",
+   "docs/map.md",
+   "gates/push_gate.sh",
+   "gates/verdict_free_keys.txt",
+   "lib/budget.py",
+   "lib/ship_status.py",
+   "lib/step_timings.py",
+   "lib/timing_ledger.py",
+   "lib/timing_ledger.sh",
+   "tests/test_budget.py",
+   "tests/test_timing_ledger.py",
+   "tools/land.sh",
+   "tools/ship.py"
+  ],
+  "chosen": [
+   "tests/test_land_identity.py"
+  ],
+  "item": "GOH.GATEBUDGET",
+  "selected": 360,
+  "sha": "49b8f76899daf811c148824cc78e597dd0e37cdd",
+  "stem": "01794895180983711000-GOH.GATEBUDGET"
+ },
+ {
+  "changed": [
+   "changelog/GOH.COVPARBINS.md",
+   "changelog/GOH.RUSTPROVENKEY.md",
+   "docs/config.md",
+   "docs/map.md",
+   "gates/_cov_run_tests.py",
+   "gates/_coverage_rust.sh",
+   "gates/_proven.sh",
+   "gates/_rust_proven.sh",
+   "tests/cov_fakes.py",
+   "tests/test_coverage_gate.py",
+   "tests/test_coverage_one_build.py",
+   "tests/test_coverage_parallel_bins.py",
+   "tests/test_coverage_phases.py",
+   "tests/test_coverage_rust_exports.py",
+   "tests/test_coverage_starved.py",
+   "tests/test_gate_tests_unbound.py",
+   "tests/test_proven_kept_hash.py",
+   "tests/test_rust_group_phases.py"
+  ],
+  "chosen": [
+   "tests/test_gate_temp_leaks.py",
+   "tests/test_self_walk.py",
+   "tests/test_suite_drift.py::test_no_new_git_init_in_tests",
+   "tests/test_suite_drift.py::test_no_new_pool_sized_to_the_machine",
+   "tests/test_suite_runs_once.py"
+  ],
+  "item": "GOH.COVPARBINS",
+  "selected": 347,
+  "sha": "715be5c660c6f76c75f4c05ea26be540e5429974",
+  "stem": "01794895491639978000-GOH.COVPARBINS"
+ },
+ {
+  "changed": [
+   "changelog/GOH.REUSEAUDIT.md",
+   "checks/_estate_cache.py",
+   "checks/check_estate_corpus.py",
+   "docs/config.md",
+   "docs/reuse.md",
+   "lib/release_gate.py",
+   "lib/reuse.py",
+   "lib/reuse_audit.py",
+   "tests/conftest.py",
+   "tests/test_reuse.py",
+   "tests/test_reuse_audit.py",
+   "tools/landq.py"
+  ],
+  "chosen": [
+   "tests/test_check_lock_order.py",
+   "tests/test_suite_drift.py",
+   "tests/test_wiring.py"
+  ],
+  "item": "GOH.REUSEAUDIT",
+  "selected": 439,
+  "sha": "e18682d5e23e61bea8f7178111f8d94a801847cb",
+  "stem": "01794895871444946000-GOH.REUSEAUDIT"
+ },
+ {
+  "changed": [
+   "changelog/GOH.PRESTEPDEADLINE.md",
+   "changelog/GOH.SWEEPTIMEOUT.md",
+   "docs/config.md",
+   "lib/consumer_pins.py",
+   "tests/test_consumer_pins.py",
+   "tests/test_land_prestep_deadline.py",
+   "tools/land.sh"
+  ],
+  "chosen": [
+   "tests/test_gate_slot_consumer.py"
+  ],
+  "item": "GOH.PRESTEPDEADLINE",
+  "selected": 361,
+  "sha": "cabf8d20e8bd84cbd78109326cdc58d3918e925e",
+  "stem": "01794901269066425000-GOH.PRESTEPDEADLINE"
+ },
+ {
+  "changed": [
+   "bare_open_seed.json",
+   "changelog/GOH.GRACESHAPES.md",
+   "crates/goh/src/bareopen.rs",
+   "crates/goh/src/bareopen/tests.rs",
+   "crates/goh/src/deadport.rs",
+   "crates/goh/src/gitdeadline.rs",
+   "crates/goh/src/grace.rs",
+   "crates/goh/src/grace/ahead.rs",
+   "crates/goh/src/layerparity.rs",
+   "crates/goh/src/layerparity_tests.rs",
+   "crates/goh/src/movingtag/mod.rs",
+   "crates/goh/src/pluralhedge/mod.rs",
+   "crates/goh/src/relquiet.rs",
+   "crates/goh/src/roadmap/mod.rs",
+   "crates/goh/src/tuimarks/mod.rs",
+   "crates/goh/src/tuimarks/tests.rs",
+   "crates/goh/tests/cli_grace_ahead.rs"
+  ],
+  "chosen": [
+   "tests/test_check_moving_tags.py::test_no_path_exemption_reaches_it",
+   "tests/test_check_moving_tags.py::test_no_tag_is_latest"
+  ],
+  "item": "GOH.GRACESHAPES",
+  "selected": 341,
+  "sha": "355f2e74d6939f6247ca4ba41e19f243e425ecd0",
+  "stem": "01794905649898067000-GOH.GRACESHAPES"
+ },
+ {
+  "changed": [
+   "docs/config.md",
+   "gates/verdict_free_keys.txt",
+   "tests/_land_verdicts.py",
+   "tests/suite_home.py",
+   "tests/test_verdict_carry.py"
+  ],
+  "chosen": [
+   "tests/test_rust_cov_reuse.py"
+  ],
+  "item": "GOH.VERDICTCARRY",
+  "selected": 318,
+  "sha": "750108830b640b1207a6f30c39f84d51abcd6b88",
+  "stem": "01794906480231087000-GOH.VERDICTCARRY"
+ },
+ {
+  "changed": [
+   "changelog/GOH.AFFECTEDBINARY.md",
+   "crates/goh/src/layerparity.rs",
+   "crates/goh/src/layerparity_tests.rs",
+   "docs/config.md",
+   "docs/map.md",
+   "lib/binary_runners.py",
+   "tests/test_affected_binary.py",
+   "tools/affected_tests.py"
+  ],
+  "chosen": [
+   "tests/test_gate_temp_leaks.py",
+   "tests/test_install.py",
+   "tests/test_self_walk.py"
+  ],
+  "item": "GOH.AFFECTEDBINARY",
+  "selected": 425,
+  "sha": "6c67758f6cef5743dbc87635bb3fdfca4165d08c",
+  "stem": "01794913857478758000-GOH.AFFECTEDBINARY"
+ },
+ {
+  "changed": [
+   "changelog/GOH.ADAPTLANES.md",
+   "crates/goh/src/cli.rs",
+   "crates/goh/src/main.rs",
+   "docs/config.md",
+   "docs/map.md",
+   "hooks/claude/agent_guard.py",
+   "hooks/claude/lane_room.py",
+   "lib/capacity.py",
+   "tests/test_agent_guard_lanes.py",
+   "tests/test_capacity.py"
+  ],
+  "chosen": [
+   "tests/test_suite_drift.py",
+   "tests/test_verdict_free_keys.py"
+  ],
+  "item": "GOH.ADAPTLANES",
+  "selected": 428,
+  "sha": "262916c762c2ee10f11f7e20dc12f79279d0daf9",
+  "stem": "01794921071702426000-GOH.ADAPTLANES"
+ },
+ {
+  "changed": [
+   "changelog/GOH.ADAPTLANES.md",
+   "crates/goh/src/cli.rs",
+   "crates/goh/src/main.rs",
+   "docs/config.md",
+   "docs/map.md",
+   "gates/verdict_free_keys.txt",
+   "hooks/claude/agent_guard.py",
+   "hooks/claude/lane_room.py",
+   "lib/capacity.py",
+   "tests/test_agent_guard_lanes.py",
+   "tests/test_capacity.py",
+   "tests/test_suite_drift.py"
+  ],
+  "chosen": [
+   "tests/test_gate_temp_leaks.py",
+   "tests/test_self_walk.py"
+  ],
+  "item": "GOH.ADAPTLANES",
+  "selected": 431,
+  "sha": "32c24b29fccdb4c5bc08f7e5722b15b5d8fa9d98",
+  "stem": "01794923704486046000-GOH.ADAPTLANES"
+ },
+ {
+  "changed": [
+   "changelog/GOH.BUILDINCLUDES.md",
+   "docs/config.md",
+   "docs/map.md",
+   "lib/binary_runners.py",
+   "lib/gate_identity.py",
+   "tests/_land_verdicts.py",
+   "tests/test_build_includes.py"
+  ],
+  "chosen": [
+   "tests/test_rust_gate.py::test_every_resolving_cargo_call_in_the_house_gates_is_locked",
+   "tests/test_rust_gate.py::test_no_allow_is_never_skipped_for_want_of_a_local_copy",
+   "tests/test_rust_gate.py::test_no_floor_warns_and_skips_coverage",
+   "tests/test_rust_gate_scoped_cache.py"
+  ],
+  "item": "GOH.BUILDINCLUDES",
+  "selected": 322,
+  "sha": "73ba690b6e9e524cce4e384d111d658e9d74c649",
+  "stem": "01794927733060900000-GOH.BUILDINCLUDES"
+ },
+ {
+  "changed": [
+   "changelog/GOH.REUSEAUDIT2.md",
+   "docs/config.md",
+   "docs/map.md",
+   "docs/reuse.md",
+   "gates/_proven.sh",
+   "gates/_proven_audit.sh",
+   "gates/_proven_closure.sh",
+   "gates/local_ci.sh",
+   "gates/proven.sh",
+   "lib/budget.py",
+   "lib/reuse.py",
+   "lib/reuse_audit.py",
+   "tests/host_locks.py",
+   "tests/test_budget.py",
+   "tests/test_proven_audit.py",
+   "tests/test_reuse_audit.py",
+   "tests/test_verdict_carry.py",
+   "tests/test_verdict_carry_hermetic.py",
+   "tools/py_lint_ceilings.json"
+  ],
+  "chosen": [
+   "tests/test_gate_temp_leaks.py",
+   "tests/test_self_walk.py"
+  ],
+  "item": "GOH.REUSEAUDIT2",
+  "selected": 376,
+  "sha": "dd8403da003b7bb3d6fae699d059dc79bb81ad4c",
+  "stem": "01794936385498002000-GOH.REUSEAUDIT2"
+ },
+ {
+  "changed": [
+   ".gatesrc",
+   "changelog/GOH.PREPARITY.md",
+   "docs/map.md",
+   "gates/_proven.sh",
+   "gates/_rust_proven.sh",
+   "lib/binary_runners.py",
+   "lib/land_cause.py",
+   "lib/landq_report.py",
+   "lib/test_closure.py",
+   "tests/test_affected_binary.py",
+   "tests/test_affected_tests.py",
+   "tests/test_land_cause.py",
+   "tests/test_landq_report.py",
+   "tests/test_prestep_judges.py",
+   "tests/test_proven_tool_line.py",
+   "tests/test_rust_cov_reuse.py",
+   "tools/affected_tests.py"
+  ],
+  "chosen": [
+   "tests/test_affected_binary_reach.py",
+   "tests/test_gate_temp_leaks.py",
+   "tests/test_install.py",
+   "tests/test_land_identity.py",
+   "tests/test_self_walk.py"
+  ],
+  "item": "GOH.PREPARITY",
+  "selected": 376,
+  "sha": "3709f571b06d452aa7c70b1e43de9ce317058ae9",
+  "stem": "01794937581210237000-GOH.PREPARITY"
+ },
+ {
+  "changed": [
+   "changelog/GOH.CAPHEADROOM.md",
+   "checks/_estate_table.py",
+   "checks/check_estate_corpus.py",
+   "crates/goh/src/cli.rs",
+   "crates/goh/src/cli_scan_args.rs",
+   "crates/goh/src/main.rs",
+   "crates/goh/src/ported.rs",
+   "docs/map.md",
+   "gates/_push_refusals.sh",
+   "gates/push_gate.sh",
+   "gates/required_tools.tsv",
+   "lib/landq_look.py",
+   "lib/landq_request.py",
+   "lib/ship_preflight.py",
+   "lib/ship_version.py",
+   "tests/cap_headroom_allow.txt",
+   "tests/test_cap_headroom.py",
+   "tests/test_landq.py",
+   "tests/test_required_tools_manifest.py",
+   "tests/test_reuse_store.py",
+   "tools/landq.py",
+   "tools/py_lint_ceilings.json",
+   "tools/ship.py"
+  ],
+  "chosen": [
+   "tests/test_affected_binary_reach.py"
+  ],
+  "item": "GOH.CAPHEADROOM",
+  "selected": 456,
+  "sha": "42b91c6ccfae6a2835f219969d50ffbb9c87ba7e",
+  "stem": "01794952654092782000-GOH.CAPHEADROOM"
+ }
+]

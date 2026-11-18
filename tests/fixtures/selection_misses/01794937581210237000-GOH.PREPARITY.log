@@ -1,0 +1,5 @@
+37:    FAILED tests/test_self_walk.py::test_goh_obeys_every_scanner_it_ships_but_for_its_seed@self-walk
+38:    FAILED tests/test_affected_binary_reach.py::test_the_scanner_change_chooses_its_runners_and_not_every_binary_test
+39:    FAILED tests/test_gate_temp_leaks.py::test_structural_full_leaves_nothing_in_tmpdir
+40:    FAILED tests/test_install.py::test_self_hosted_repo_satisfies_its_own_hook - ...
+41:    FAILED tests/test_land_identity.py::test_a_rebased_land_records_the_landed_tips_identity

@@ -1,0 +1,2 @@
+FAILED tests/test_self_walk.py::test_goh_obeys_every_scanner_it_ships_but_for_its_seed@self-walk
+FAILED tests/test_gate_temp_leaks.py::test_structural_full_leaves_nothing_in_tmpdir

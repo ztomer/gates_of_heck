@@ -38,6 +38,8 @@ THE SET is the union of
     runs lib/gate_identity.py, which tests/_land_verdicts.py imports; the pre-step missed
     tests/test_rust_gate.py and the land gate went red on 14 of its tests).
   * the BINARY'S RUNNERS (GOH.AFFECTEDBINARY): a build-input change chooses every test running it.
+  * the READERS of a changed path (GOH.SELECTAUDIT, lib/declared_reads.py): a test globbing or
+    copying a spelled directory, or declaring `TREE_READS = (...)`, for a path under what it reads.
 A deleted file is a changed path too: a test still naming it is the one that will go red.
 """
 
@@ -53,7 +55,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from lib import binary_runners, source_closure, test_closure
+from lib import binary_runners, declared_reads, source_closure, test_closure
 from tui.lib import counted, info, ok
 
 # Tree readers that neither a test name nor a tree-walking call in their own source gives away.
@@ -275,6 +277,7 @@ def affected(root: Path, changed: list[str]) -> dict[str, str]:
             if rel not in chosen and (why := _transitive(graph, rel, changed)):
                 chosen[rel] = why
         binary_runners.choose(graph, tests, changed, chosen)
+        declared_reads.choose(root, tests, changed, chosen)
     walking = _walking(root)
     for rel, why in tree_readers(root, tests).items():
         if rel in chosen:

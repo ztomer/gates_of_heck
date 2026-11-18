@@ -1,0 +1,5 @@
+FAILED tests/test_bash5_guard.py::test_every_tracked_bash_file_runs_the_guard_first
+FAILED tests/test_check_lock_order.py::test_the_clean_tree_has_no_finding - a...
+FAILED tests/test_check_lock_order.py::test_this_tree_sorts_in_the_table_order
+FAILED tests/test_self_walk.py::test_goh_obeys_every_scanner_it_ships_but_for_its_seed@self-walk
+FAILED tests/test_no_env_spread.py::test_no_test_spreads_os_environ_beyond_the_seed

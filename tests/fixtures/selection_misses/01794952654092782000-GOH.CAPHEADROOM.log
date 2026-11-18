@@ -1,0 +1,2 @@
+FAILED tests/test_affected_binary_reach.py::test_the_dispatch_table_has_an_arm_for_every_variant_on_the_real_tree
+FAILED tests/test_affected_binary_reach.py::test_the_scanner_change_chooses_its_runners_and_not_every_binary_test

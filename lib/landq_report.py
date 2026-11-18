@@ -24,7 +24,9 @@ is {"repo", "day", "attempts", "landed", "red", "cause", "queue_wait_s", "gate_s
 per attempt, but a batch's items (their `batch` {id, gates}, lib/landq_batch.py) share theirs.
 `cause` counts the row's reds by cause (lib/land_cause.py, GOH.PREPARITY: the reading the hand
 count was made with). `unloaded_s` is
-the shortest green run in the window: what a gate costs when nothing else is running.
+the shortest green run in the window: what a gate costs when nothing else is running. `selection`
+is the selection-miss ledger by day (lib/selection_miss.py, GOH.SELECTAUDIT): {day: {judged,
+missed, tests, full, full_missed}}, a red attempt judged against its diff's selection.
 
 Pinned by tests/test_landq_report.py.
 """
@@ -43,9 +45,10 @@ from typing import Any
 from tui.lib import counted
 
 try:
-    from lib import land_cause
+    from lib import land_cause, selection_miss
 except ImportError:  # run with lib/ itself on the path (tools/landq.py)
     import land_cause  # type: ignore[no-redef]
+    import selection_miss  # type: ignore[no-redef]
 
 TAKEN = re.compile(r"gate slot \d+/\d+ taken after (\d+)s")
 WAITED = re.compile(r"waited (?:(\d+)m )?(\d+)s for a gate slot")
@@ -266,12 +269,25 @@ def render(rep: dict) -> str:
             lines.append(
                 f"  {counted(r['unknown'], 'attempt')} with no known start: not in the sums"
             )
+    lines += _selection_lines(rep.get("selection") or {})
     ref = rep["unloaded_s"]
     lines.append(
         "minutes: wait = enqueue to start, gate = start to done = slot + run; "
         f"unloaded reference (shortest green run): {'-' if ref is None else f'{ref:.0f}s'}"
     )
     return "\n".join(lines)
+
+
+def _selection_lines(days: dict[str, dict]) -> list[str]:
+    """The selection misses per day: reds whose failed tests the pre-step's selection did not
+    choose, of the reds judged, and the idle full runs' shadow."""
+    out = []
+    for day, d in days.items():
+        rate = f"{d['missed'] / d['judged']:.0%}" if d["judged"] else "-"
+        out.append(f"selection misses {day}: {d['missed']} of {counted(d['judged'], 'red land')} "
+                   f"judged ({rate}), {counted(d['tests'], 'test')} not chosen; full-run shadow: "
+                   f"{d['full_missed']} of {d['full']}")  # fmt: skip
+    return out
 
 
 def timed(run_one: Callable[..., dict], *args: object) -> dict:
@@ -308,6 +324,7 @@ def add_arguments(mode: Any, ap: Any) -> None:
 
 def run(queue: Path, since: str, as_json: bool) -> int:
     rep = build(read_attempts(queue), since)
+    rep["selection"] = selection_miss.summary(selection_miss.read(queue), since)
     print(json.dumps(rep, indent=1) if as_json else render(rep))
     return 0
 

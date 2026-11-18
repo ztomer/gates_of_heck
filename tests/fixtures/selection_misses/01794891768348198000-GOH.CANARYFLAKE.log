@@ -1,0 +1,3 @@
+FAILED tests/test_land_verdicts.py::test_the_real_pre_set_runs_a_slow_readers_reading_tests_not_the_file
+FAILED tests/test_self_walk.py::test_goh_obeys_every_scanner_it_ships_but_for_its_seed@self-walk
+FAILED tests/test_self_walk.py::test_a_planted_violation_turns_its_scanner_red@self-walk

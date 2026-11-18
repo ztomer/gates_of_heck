@@ -20,7 +20,8 @@ TERM then KILL -- the moment a request is pending: it yields, and the lander dra
 a time (`<q>/idle-suite/lock`); a tip already judged here (green or red, `last.json`) is not run
 again until main moves. Off with GOH_LANDQ_IDLE_SUITE=off, and inside a goh suite (IN_SUITE). The
 run's own `goh suite` row is the timing ledger's (tools/pytest.sh); its log is
-`<q>/logs/idle-suite-<sha>.log`.
+`<q>/logs/idle-suite-<sha>.log`. Each green or red run is measured against the selection for the
+diff since the previous run's tip (lib/selection_miss.py's shadow, GOH.SELECTAUDIT): never a skip.
 
 Pinned by tests/test_idle_suite.py.
 """
@@ -40,6 +41,7 @@ import gitrun
 import killtree
 import lock_order
 import reuse
+import selection_miss
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -102,6 +104,10 @@ def default_argv() -> list[str]:
             "--max", MAX, "0", "--", "bash", "tools/pytest.sh"]  # fmt: skip
 
 
+def log_of(q: Path, sha: str) -> Path:
+    return q / "logs" / f"idle-suite-{sha[:12]}.log"
+
+
 def pending(q: Path) -> bool:
     """A request is waiting or already running: an enqueue starts a lander of its own, which moves
     the request to running/ within milliseconds, so pending/ alone would miss it."""
@@ -141,6 +147,11 @@ def run(
         except BlockingIOError:
             return "busy"
         outcome = _run_locked(q, main, state, sha, say, argv or default_argv(), poll)
+        prev = str(last.get("sha") or "")  # GOH.SELECTAUDIT: the shadow since the last run
+        if outcome in ("green", "red") and (
+            why := selection_miss.shadow(q, main, prev, sha, log_of(q, sha))
+        ):
+            say(why)
     finally:
         os.close(fd)
     record = {"sha": sha, "outcome": outcome, "at": dt.datetime.now(dt.UTC).isoformat()}
@@ -159,7 +170,7 @@ def _run_locked(q: Path, main: Path, state: Path, sha: str, say: Callable[[str],
     if why:
         say(f"idle full suite: no worktree at {sha[:8]}: {why}")
         return "failed"
-    log = q / "logs" / f"idle-suite-{sha[:12]}.log"
+    log = log_of(q, sha)
     log.parent.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, GOH_LAND_VERDICTS_RECORD=os.devnull, GOH_GATE_CLASS="work")
     say(f"idle full suite on main {sha[:8]} in {wt} -> {log}")

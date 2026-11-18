@@ -90,6 +90,7 @@ landq_batch = importlib.import_module("landq_batch")
 landq_report = importlib.import_module("landq_report")
 landq_request = importlib.import_module("landq_request")
 landq_look = importlib.import_module("landq_look")
+selection_miss = importlib.import_module("selection_miss")
 Refused, request, land_request = (
     landq_request.Refused,
     landq_request.request,
@@ -259,6 +260,8 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
         land_attempts.record(outcome, req_path.stem)
     except Exception as e:  # noqa: BLE001 -- the instrument is never the reason a land fails
         warn(f"{named}: its attempt row was not written to the timing ledger: {e}")
+    if why := selection_miss.record_land(done_dir.parent, outcome, named):  # GOH.SELECTAUDIT
+        warn(why)
     mark = ok if outcome["state"] == "landed" else err
     mark(f"{item or Path(outcome['repo']).name}: {outcome['state']} @ {outcome['sha'][:8]}")
 

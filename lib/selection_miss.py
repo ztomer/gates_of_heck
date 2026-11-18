@@ -1,0 +1,228 @@
+"""lib/selection_miss.py -- the selection-miss ledger and the full run's shadow (GOH.SELECTAUDIT).
+
+The pre-step (tools/affected_tests.py) runs the tests a diff chooses; a test it did not choose
+that goes red later costs a whole land gate. Nothing counted those, so whether the selector is
+safe was a feeling. Here every judged red is read against the selection its diff makes:
+
+    judge(...)        the failed tests of a log (pytest's `FAILED tests/...` summary lines, the
+                      gate's failure-lines copy included) against the selection: one `judged` row
+                      (source, item, sha, day, changed, selected, failed, missed) and one `miss`
+                      row per failed test the selection did not choose
+    record_land(...)  tools/landq.py, on every red land attempt: the selection is recomputed by
+                      the tip's OWN selector over `git archive <sha>` for the diff from main's
+                      merge base -- the set the item's pre-step ran
+    shadow(...)       lib/idle_suite.py, after each idle full run on main: the selection for the
+                      diff since the last full run, against that run's failures. A measure, never
+                      a skip: the full suite still runs every test
+    replay(...)       the done/ records' red attempts, base from main's reflog at the enqueue
+                      (`python3 lib/selection_miss.py --replay --since DAY`)
+
+Ledger: `<landq>/selection_misses.jsonl`; `goh land --report` shows misses per day (summary()).
+A test the selection chose is never a miss, wherever it went red (a red pre-step is the selection
+working; a chosen test red only in the gate is the rebase or load). Pinned by
+tests/test_selection_miss.py.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import json
+import os
+import re
+import subprocess
+import sys
+import tarfile
+import tempfile
+from collections.abc import Iterable
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import gitrun
+
+LEDGER = "selection_misses.jsonl"
+FAILED = re.compile(r"^(?:\d+:)?[ \t]*FAILED (tests/[^\s@]+)", re.MULTILINE)
+SELECTOR = "tools/affected_tests.py"
+
+
+def failed_tests(text: str) -> list[str]:
+    return sorted(set(FAILED.findall(text)))
+
+
+def covered(test: str, chosen: Iterable[str]) -> bool:
+    """Whether the selection ran TEST: its file whole, its node, or the class holding it."""
+    node = re.sub(r"\[.*$", "", test)
+    file = node.split("::")[0]
+    return any(c in (file, node) or node.startswith(f"{c}::") for c in chosen)
+
+
+def judge(source: str, item: str, sha: str, day: str, changed: list[str], chosen: list[str],
+          failed: list[str]) -> list[dict]:  # fmt: skip
+    missed = [t for t in failed if not covered(t, chosen)]
+    base = {"source": source, "item": item, "sha": sha, "day": day}
+    head = {"kind": "judged", **base, "changed": changed, "selected": len(chosen),
+            "failed": len(failed), "missed": len(missed)}  # fmt: skip
+    return [head, *({"kind": "miss", **base, "test": t, "selected": len(chosen)} for t in missed)]
+
+
+def _git(repo: Path, *args: str) -> str:
+    """A git READ in REPO (lib/gitrun.py: under its deadline, no inherited GIT_* answers)."""
+    out = gitrun.run_reader(list(args), repo=repo, timeout=300)
+    if out.returncode:
+        raise subprocess.CalledProcessError(out.returncode, ["git", *args], out.stdout, out.stderr)
+    return out.stdout
+
+
+def changed(repo: Path, base: str, sha: str) -> list[str]:
+    out = _git(repo, "diff", "--name-only", "--no-renames", f"{base}...{sha}")
+    return [line for line in out.splitlines() if line]
+
+
+def selection(repo: Path, sha: str, paths: list[str]) -> list[str] | None:
+    """What SHA's own selector chooses for PATHS, run over `git archive SHA`; None when SHA has no
+    selector (a repo whose pre-step is not tools/affected_tests.py)."""
+    with tempfile.TemporaryDirectory(prefix="goh-selection.") as tmp:
+        tar = Path(tmp) / "tree.tar"
+        _git(repo, "archive", "-o", str(tar), sha)
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        tree = Path(tmp) / "tree"
+        with tarfile.open(tar) as t:
+            t.extractall(tree, filter="data")
+        if not (tree / SELECTOR).is_file():
+            return None
+        env.pop("PYTHONPATH", None)  # the tip's own lib/, never the caller's
+        argv = [sys.executable, str(tree / SELECTOR), "--root", str(tree), "--changed", *paths]
+        out = subprocess.run(argv, capture_output=True, text=True, cwd=tree, env=env,
+                             stdin=subprocess.DEVNULL, timeout=600, check=True)  # fmt: skip
+        return out.stdout.split()
+
+
+def append(q: Path, rows: list[dict]) -> int:
+    """Append ROWS to the ledger, each (kind, source, item, sha, test) once; the count written."""
+    path = q / LEDGER
+    have = {_key(r) for r in read(q)}
+    new = [r for r in rows if _key(r) not in have]
+    if new:
+        with path.open("a") as out:
+            out.writelines(json.dumps(r, sort_keys=True) + "\n" for r in new)
+    return len(new)
+
+
+def _key(row: dict) -> tuple:
+    return tuple(row.get(k) for k in ("kind", "source", "item", "sha", "test"))
+
+
+def read(q: Path) -> list[dict]:
+    try:
+        lines = (q / LEDGER).read_text().splitlines()
+    except OSError:
+        return []
+    out = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict):
+            out.append(row)
+    return out
+
+
+def _measure(q: Path, source: str, item: str, repo: Path, base: str, sha: str, log: Path,
+             day: str) -> list[dict]:  # fmt: skip
+    failed = failed_tests(log.read_text(errors="replace")) if log.is_file() else []
+    paths = changed(repo, _git(repo, "merge-base", base, sha).strip(), sha)
+    chosen = selection(repo, sha, paths)
+    if chosen is None:
+        return []
+    rows = judge(source, item, sha, day, paths, chosen, failed)
+    append(q, rows)
+    return rows
+
+
+def _today() -> str:
+    return dt.datetime.now(dt.UTC).strftime("%Y-%m-%d")
+
+
+def record_land(q: Path, outcome: dict, item: str) -> str:
+    """A red land attempt's rows; never raises (the instrument never fails a land): why it could
+    not judge, or ""."""
+    log = Path(outcome.get("log") or "")
+    if outcome.get("state") == "landed" or outcome.get("mode") != "land" or not log.is_file():
+        return ""
+    try:
+        if not failed_tests(log.read_text(errors="replace")):
+            return ""
+        repo, sha = Path(outcome["repo"]), str(outcome["sha"])
+        _measure(q, "land", item, repo, "HEAD", sha, log, _today())
+    except Exception as e:  # noqa: BLE001 -- a broken instrument says so, and the land goes on
+        return f"{item}: the selection-miss ledger could not judge it: {e}"
+    return ""
+
+
+def shadow(q: Path, repo: Path, base: str, sha: str, log: Path) -> str:
+    """The idle full run's shadow: its failures against the selection for BASE..SHA."""
+    if not base or base == sha:
+        return ""
+    try:
+        _measure(q, "full", f"main@{sha[:8]}", repo, base, sha, log, _today())
+    except Exception as e:  # noqa: BLE001
+        return f"idle full suite: the selection shadow could not judge {sha[:8]}: {e}"
+    return ""
+
+
+def replay(q: Path, since: str = "") -> list[dict]:
+    """Judge every red land attempt in done/ from SINCE (a UTC day): main from its reflog at the
+    enqueue, the log the attempt left."""
+    out: list[dict] = []
+    for path in sorted((q / "done").glob("*.json")):
+        try:
+            rec = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        ns, _, item = path.stem.partition("-")
+        day = dt.datetime.fromtimestamp(int(ns) / 1e9, dt.UTC).strftime("%Y-%m-%d")
+        log = Path(rec.get("log") or "")
+        if rec.get("state") == "landed" or rec.get("mode") != "land" or day < since:
+            continue
+        if not log.is_file() or not failed_tests(log.read_text(errors="replace")):
+            continue
+        base = f"main@{{{int(ns) // 10**9}}}"
+        try:
+            out += _measure(q, "land", item, Path(rec["repo"]), base, rec["sha"], log, day)
+        except (OSError, subprocess.SubprocessError) as e:
+            print(f"{path.stem}: not judged: {e}", file=sys.stderr)
+    return out
+
+
+def summary(rows: list[dict], since: str = "") -> dict[str, dict]:
+    """{day: {judged, missed (judged reds with a miss), tests (missed tests), full (shadow runs),
+    full_missed}} from SINCE."""
+    out: dict[str, dict] = {}
+    for r in rows:
+        if r.get("kind") != "judged" or str(r.get("day")) < since:
+            continue
+        d = out.setdefault(str(r["day"]), dict.fromkeys(("judged", "missed", "tests", "full",
+                                                          "full_missed"), 0))  # fmt: skip
+        full = r.get("source") == "full"
+        d["full" if full else "judged"] += 1
+        d["full_missed" if full else "missed"] += bool(r.get("missed"))
+        d["tests"] += int(r.get("missed") or 0)
+    return dict(sorted(out.items()))
+
+
+def main(argv: list[str]) -> int:
+    import argparse
+
+    ap = argparse.ArgumentParser(description="replay the selection-miss ledger from done/")
+    ap.add_argument("--replay", action="store_true", required=True)
+    ap.add_argument("--since", default="")
+    ap.add_argument("--queue", default=os.environ.get("GOH_LANDQ_DIR")
+                    or str(Path.home() / ".local/state/goh/landq"))  # fmt: skip
+    args = ap.parse_args(argv)
+    for r in replay(Path(args.queue), args.since):
+        print(json.dumps({k: v for k, v in r.items() if k != "changed"}, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

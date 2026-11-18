@@ -1,0 +1,1 @@
+41:    FAILED tests/test_ps_table_unbounded.py::test_a_ps_slow_in_wall_time_but_spending_cpu_is_waited_for

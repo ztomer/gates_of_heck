@@ -1,0 +1,5 @@
+FAILED tests/test_rust_cov_reuse.py::test_every_run_prints_its_decision_and_why
+FAILED tests/test_rust_cov_reuse.py::test_a_tree_whose_rust_is_unchanged_reuses_the_measurement
+FAILED tests/test_rust_cov_reuse.py::test_per_push_bookkeeping_does_not_void_the_measurement
+FAILED tests/test_rust_cov_reuse.py::test_a_rust_input_change_measures_again[Cargo.lock-None]
+FAILED tests/test_rust_cov_reuse.py::test_a_rust_input_change_measures_again[crates/a/src/new.rs-// a new source\n]

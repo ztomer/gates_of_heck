@@ -1,0 +1,1 @@
+41:    FAILED tests/test_check_moving_tags.py::test_a_marker_on_an_image_that_moves_from_the_grace_end_is_green_before_and_after
