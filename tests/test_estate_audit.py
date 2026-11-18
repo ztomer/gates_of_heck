@@ -130,7 +130,11 @@ def _hook(state: Path) -> str:
         input='{"source": "startup"}',
         capture_output=True,
         text=True,
-        env={"GOH_ESTATE_STATE": str(state), "PATH": "/usr/bin:/bin"},
+        env={
+            "GOH_ESTATE_STATE": str(state),
+            "GOH_REUSE_DIR": str(state.parent / "reuse"),
+            "PATH": "/usr/bin:/bin",
+        },
         check=False,
     )
     assert r.returncode == 0, r.stderr

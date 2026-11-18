@@ -47,12 +47,14 @@ the push log text instead of calling `goh ship verdict`; until it does, it misse
   "shadow" (one use in `every`, counted, never by chance: do the work anyway, then `compare`) or
   "off". A disagreement re-runs both sides (the store read again, the work done again) and only a
   repeated one turns the path off: one recorded state, `<root>/audit/<path>.json`, with both
-  verdicts, the key and the fault item it filed (`loopctl file`). It stays off until `reuse_audit.py
+  verdicts, the key and the fault item it filed (`loopctl file`, as `class_of: none`; one loopctl
+  refused is named at every SessionStart). It stays off until `reuse_audit.py
   enable PATH --fix SHA --test FILE::TEST` names the fix and the test that misses on the lacking
   input. A window (7 days) that compared fewer samples than min(min_samples, the samples it drew)
   is STARVED and turns the path off too; fewer drawn than min_samples reads "thin", never clean.
   goh's own shadow is hosted CI's full gate of every push (a "ci" shadow, queued, read once by the
-  idle lander through `loopctl ci`). A repo no hosted CI gates has nothing behind its skips: a
+  idle lander through `loopctl ci`; a run that judged nothing, cancelled or timed out, is no fresh
+  side and is dropped uncompared, never red). A repo no hosted CI gates has nothing behind its skips: a
   path with `every_unbacked` counts such uses apart and samples them at that higher rate.
   `reuse_audit.py report [--json]` is the per-path count of uses, samples, disagreements and flakes.
   `tests/test_reuse_audit.py` refuses a reuse site no path names, an ask of an unregistered path

@@ -43,13 +43,26 @@ def store(tmp_path, monkeypatch) -> Path:
 
 @pytest.fixture
 def fake_loopctl(tmp_path, monkeypatch) -> Path:
-    """A loopctl that logs each call; `ci` answers the exit FAKE_CI names (default 0, green)."""
+    """A loopctl that logs each call. `ci` answers as FAKE_CI names it: its first line the exit
+    (default 0, green), the rest what loopctl prints. `file` refuses as rules.class_first does
+    (~/Projects/.loop/tools/loopq.py class_refusal): an item names its class, or `class_of: none`
+    with a `class_why`, or it is not filed."""
     log = tmp_path / "loopctl.jsonl"
     script = tmp_path / "loopctl.py"
     script.write_text(
         "import json, os, sys\n"
         f"open({str(log)!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
-        "sys.exit(int(open(os.environ['FAKE_CI']).read()) if 'ci' in sys.argv[1:2] else 0)\n"
+        "if 'ci' in sys.argv[1:2]:\n"
+        "    code, _, said = open(os.environ['FAKE_CI']).read().partition('\\n')\n"
+        "    print(said, end='')\n"
+        "    sys.exit(int(code))\n"
+        "if 'file' in sys.argv:\n"
+        "    new = json.loads(sys.argv[sys.argv.index('--json') + 1])\n"
+        "    named = new.get('class_closure') or (new.get('class_of') == 'none'\n"
+        "                                         and str(new.get('class_why') or '').strip())\n"
+        "    if not named:\n"
+        "        print(f\"\\u2717 {new['id']}: name its class (rules.class_first)\")\n"
+        "        sys.exit(1)\n"
     )
     ci = tmp_path / "ci_exit"
     ci.write_text("0")
@@ -190,13 +203,97 @@ def test_a_ci_shadow_is_compared_on_its_read_and_a_red_one_only_on_a_second(
     reuse_audit.drain()
     assert reuse_audit.state("landed")["window"]["agreed"] == 1
     reuse_audit.enqueue("landed", FIELDS, "green", slug="o/n", sha="c" * 40)
-    ci.write_text("1")
+    ci.write_text("1\n\u2717 CI red: gate failure (run 8)\n")
     assert "read again" in reuse_audit.drain()[0]
     assert reuse_audit.state("landed")["state"] == "on"
     reuse_audit.drain()
     rec = reuse_audit.state("landed")
     assert rec["state"] == "off" and rec["evidence"]["fresh"] == "red"
     assert not list((reuse.root() / "audit" / "pending").glob("*.json"))
+
+
+RED = "1\n\u2717 CI red: gate failure (run 8)\n"
+
+
+@pytest.mark.parametrize("said", [
+    "1\n\u2717 CI red: gate cancelled (run 44203722455): no verdict for cccccccc\n",
+    "1\n\u2717 CI red: gate timed_out (run 44203722455)\n",
+    "1\n\u2717 CI red: job gate cancelled (run 44203722455)\n",
+    "4\n\u00b7 CI none: Actions off (no CI verdict exists; the local gate is the record)\n",
+])  # fmt: skip
+def test_a_cancelled_or_timed_out_ci_run_is_no_verdict_and_a_real_red_still_disagrees(
+    fake_loopctl, tmp_path, said
+) -> None:
+    """GOH.REUSEOFFLANDED: v0.133.0's CI run 44203722455 was cancelled at GitHub's limit, `loopctl
+    ci` exits 1 for it ("no verdict"), and the audit read that exit as red: the landed path turned
+    off on a run that judged nothing. A run that ends without judging is no fresh side, so the
+    shadow is dropped uncompared; a real failure read twice still turns the path off."""
+    ci = tmp_path / "ci_exit"
+    reuse_audit.enqueue("landed", FIELDS, "green", slug="o/n", sha="c" * 40)
+    ci.write_text(said)
+    assert "no verdict" in reuse_audit.drain()[0]
+    reuse_audit.drain()
+    rec = reuse_audit.state("landed")
+    assert rec["state"] == "on" and rec["window"]["compared"] == 0, rec
+    assert not list((reuse.root() / "audit" / "pending").glob("*.json"))
+    reuse_audit.enqueue("landed", FIELDS, "green", slug="o/n", sha="d" * 40)
+    ci.write_text(RED)
+    reuse_audit.drain()
+    reuse_audit.drain()
+    rec = reuse_audit.state("landed")
+    assert rec["state"] == "off" and rec["evidence"]["fresh"] == "red", rec
+
+
+def test_an_unread_ci_answer_is_kept_never_red(fake_loopctl, tmp_path) -> None:
+    """`loopctl ci` exits 1 for an unread answer too: it is kept for the next drain, never red."""
+    ci = tmp_path / "ci_exit"
+    reuse_audit.enqueue("landed", FIELDS, "green", slug="o/n", sha="e" * 40)
+    ci.write_text("1\n\u2717 CI unread: the runs read failed; tried o/n\n")
+    assert "kept" in reuse_audit.drain()[0]
+    assert "kept" in reuse_audit.drain()[0]
+    assert reuse_audit.state("landed")["window"]["compared"] == 0
+
+
+def test_a_path_turned_off_files_its_fault_under_class_first(fake_loopctl, tmp_path) -> None:
+    """GOH.REUSEAUDITFILE: the fault went to loopctl with no class, rules.class_first refused it,
+    and the record only said "fault not filed". It is filed as `class_of: none`, naming the path."""
+    ci = tmp_path / "ci_exit"
+    reuse_audit.enqueue("landed", FIELDS, "green", slug="o/n", sha="f" * 40)
+    ci.write_text(RED)
+    reuse_audit.drain()
+    reuse_audit.drain()
+    rec = reuse_audit.state("landed")
+    assert rec["state"] == "off" and rec["fault"] == "filed GOH.REUSEOFFLANDED", rec
+    [fault] = filed(fake_loopctl)
+    assert fault["class_of"] == "none" and "'landed'" in fault["class_why"], fault
+
+
+HOOK = REPO_ROOT / "hooks" / "claude" / "estate_advisories.py"
+
+
+def _session_start(tmp_path: Path, store: Path) -> str:
+    r = subprocess.run([sys.executable, str(HOOK)], input='{"source": "startup"}',
+                       capture_output=True, text=True, check=False,
+                       env={"GOH_ESTATE_STATE": str(tmp_path / "estate" / "audit.json"),
+                            "GOH_REUSE_DIR": str(store), "PATH": "/usr/bin:/bin"})  # fmt: skip
+    assert r.returncode == 0, r.stderr
+    return r.stdout
+
+
+def test_an_unfiled_fault_is_named_at_session_start(tmp_path, store, monkeypatch) -> None:
+    """A path off whose fault loopctl refused alerted nobody: SessionStart, which every session's
+    context carries, names it until it is filed or the path is enabled."""
+    monkeypatch.setenv("GOH_LOOPCTL", str(tmp_path / "no-loopctl.py"))
+    every(monkeypatch, "carry", 1)
+    reuse_audit.compare("carry", dict.fromkeys(reuse.PATHS["carry"].fields, "x"), "green", "red",
+                        again=lambda: ("green", "red"))  # fmt: skip
+    assert reuse_audit.state("carry")["fault"].startswith("not filed")
+    said = [ln for ln in _session_start(tmp_path, store).splitlines() if "reuse" in ln]
+    assert len(said) == 1 and "carry" in said[0] and "not filed" in said[0], said
+    rec = json.loads((store / "audit" / "carry.json").read_text())
+    rec["fault"] = "filed GOH.REUSEOFFCARRY"
+    (store / "audit" / "carry.json").write_text(json.dumps(rec))
+    assert not [ln for ln in _session_start(tmp_path, store).splitlines() if "reuse" in ln]
 
 
 # --- the structural check: no reuse but a registered path's ------------------------------------

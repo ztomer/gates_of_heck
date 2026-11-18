@@ -10,6 +10,8 @@ older than STALE_AFTER_H (tests/test_estate_audit.py). It names, in one line, th
 aside for having no `.gatesrc`. And it says what the last RELEASE CANARY found (GOH.CANARY,
 scripts/release_canary.py): a goh change that turns a consumer red at push, refused at land and
 named here, by repo and the seed it needs, until a run clears it (tests/test_release_canary.py).
+And it names a reuse path the reuse audit turned off whose fault item was never filed
+(GOH.REUSEAUDITFILE, tests/test_reuse_audit.py).
 
 It also names every registered estate repo with commits AHEAD of its upstream (GOH.AHEADREPORT):
 a commit landed in a repo other than the item's own -- a learning written into ~/.claude/skills from
@@ -174,8 +176,24 @@ def ahead_lines(registry: Path) -> list[str]:
     return lines
 
 
+def reuse_lines() -> list[str]:
+    """A reuse path the audit turned off whose fault item was NOT filed (loopctl refused it, or no
+    loopctl answered): the record alone alerts nobody, so every session is told (GOH.REUSEAUDITFILE,
+    lib/reuse_audit.py unfiled)."""
+    try:
+        import reuse_audit  # lib/, on the path above; its store is GOH_REUSE_DIR's
+    except ImportError:
+        return []
+    try:
+        off = reuse_audit.unfiled()
+    except (OSError, ValueError):
+        return []
+    return [f"✗ goh reuse audit: {line} -- file it by hand, or `reuse_audit.py report`"
+            for line in off]  # fmt: skip
+
+
 def report(state: Path, now: dt.datetime) -> list[str]:
-    return _audit(state, now) + ahead_lines(estate_registry.registry_path(state))
+    return _audit(state, now) + ahead_lines(estate_registry.registry_path(state)) + reuse_lines()
 
 
 def _audit(state: Path, now: dt.datetime) -> list[str]:

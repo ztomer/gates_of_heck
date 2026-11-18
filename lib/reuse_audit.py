@@ -30,7 +30,10 @@ disagreement both re-runs repeat turns the path off. One that does not repeat is
 
 OFF IS ONE RECORDED STATE: `<store>/audit/<path>.json`, never an environment variable. It names
 the cause, both verdicts and the key, and a fault item is filed (`loopctl file`; GOH_LOOPCTL and
-GOH_LOOP_QUEUE are the seams; one that cannot be filed is named in the record). It stays off until
+GOH_LOOP_QUEUE are the seams; it names its class as rules.class_first asks, `class_of: none`; one
+that cannot be filed is named in the record and at every SessionStart, hooks/claude/
+estate_advisories.py). A CI run that judged nothing (cancelled, timed out, no CI) is no fresh side:
+its shadow is dropped uncompared, never read as red (GOH.REUSEOFFLANDED). It stays off until
 `enable` names the fix commit and the calibrated-miss test it added, both found in the tree.
 
 A STARVED SAMPLER IS NEVER CLEAN. Each path's counters run in a window (WINDOW_S). When a window
@@ -54,6 +57,7 @@ import argparse
 import contextlib
 import json
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Callable, Iterator
@@ -65,7 +69,14 @@ import reuse  # lib/, beside this file: the one store and its path registry
 
 WINDOW_S = 7 * reuse.DAY_S
 COUNTS = ("uses", "sampled", "compared", "agreed", "disagreed", "flakes")
-CI_GREEN, CI_RED = 0, 1  # `loopctl ci`'s verdict exits; any other leaves the shadow queued
+CI_GREEN, CI_RED, CI_NONE = 0, 1, 4  # `loopctl ci`'s exits; 3 pending, 75 throttled stay queued
+# `loopctl ci` exits 1 for red AND for unread, and for a run that ended without judging (cancelled
+# at GitHub's limit or superseded, timed out), which it prints as "red" with "no verdict". Its
+# printed state line decides: v0.133.0's cancelled run 44203722455 read as red and turned `landed`
+# off (GOH.REUSEOFFLANDED). NO_VERDICT, a run that judged nothing: the shadow is dropped uncompared.
+NO_VERDICT = "none"
+_CI_LINE = re.compile(r"\bCI (green|red|unread|pending|none|throttled): (.*)")
+_UNJUDGED = re.compile(r"\b(?:cancelled|timed_out)\b|\bno verdict\b")
 
 
 def _dir() -> Path:
@@ -199,7 +210,11 @@ def file_fault(p: reuse.ReusePath, cause: str, why: str, line: dict) -> str:
             "item": f"The reuse path {p.name!r} ({p.doc}) is OFF: {cause}: {why}. Both verdicts "
             f"and the key: {json.dumps(line, sort_keys=True)}",
             "done_state": f"the missing key input found and keyed, a test that misses on it, and "
-            f"`reuse_audit.py enable {p.name} --fix SHA --test NODE`"}  # fmt: skip
+            f"`reuse_audit.py enable {p.name} --fix SHA --test NODE`",
+            # rules.class_first (loopctl): each path's off is its own instance, no open closure's
+            "class_of": "none",
+            "class_why": f"the reuse path {p.name!r} turned off on its own evidence ({cause}); its "
+            "cause is that path's key or reader, found from this record"}  # fmt: skip
     argv = [sys.executable, loopctl, *(["--queue", queue] if queue else []), "file", "--json",
             json.dumps(item)]  # fmt: skip
     try:
@@ -211,6 +226,21 @@ def file_fault(p: reuse.ReusePath, cause: str, why: str, line: dict) -> str:
     if r.returncode == 0 or "already exists" in said:
         return f"filed {iid}"
     return f"not filed: {said[-200:]}"
+
+
+def unfiled() -> list[str]:
+    """One line per path that is off with its fault NOT filed: read-only (no roll, no lock), for
+    SessionStart (hooks/claude/estate_advisories.py), so a refused filing alerts someone."""
+    out = []
+    for name in reuse.PATHS:
+        try:
+            rec = json.loads((_dir() / f"{name}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        fault = str(rec.get("fault") or "") if isinstance(rec, dict) else ""
+        if rec.get("state") == "off" and not fault.startswith("filed "):
+            out.append(f"{name} off ({rec.get('cause')}), fault {fault or 'not filed'}")
+    return out
 
 
 def enable(path: str, *, root: Path, fix: str = "", test: str = "", why: str = "") -> str:
@@ -254,14 +284,29 @@ def enqueue(path: str, fields: dict[str, str], reused: str, *, slug: str, sha: s
     return dest
 
 
+def ci_verdict(code: int, said: str) -> str:
+    """`loopctl ci`'s answer as the audit's fresh side: "green", "red", NO_VERDICT (a run that
+    judged nothing: it never will) or "" (unread for now: kept). A red needs its printed line."""
+    m = _CI_LINE.search(said)
+    state, text = (m.group(1), m.group(2)) if m else ("", "")
+    if code == CI_GREEN:
+        return "green"
+    if code == CI_NONE:
+        return NO_VERDICT
+    if code != CI_RED or state != "red":
+        return ""
+    return NO_VERDICT if _UNJUDGED.search(text) else "red"
+
+
 def _ci(slug: str, sha: str) -> str:
     loopctl = os.environ.get("GOH_LOOPCTL") or str(Path.home() / "Projects/.loop/tools/loopctl.py")
     try:
         r = subprocess.run([sys.executable, loopctl, "ci", sha, "--repo", slug], timeout=120,
-                           capture_output=True, check=False, stdin=subprocess.DEVNULL)  # fmt: skip
+                           capture_output=True, text=True, check=False,
+                           stdin=subprocess.DEVNULL)  # fmt: skip
     except (OSError, subprocess.TimeoutExpired):
         return ""
-    return {CI_GREEN: "green", CI_RED: "red"}.get(r.returncode, "")
+    return ci_verdict(r.returncode, r.stdout + r.stderr)
 
 
 def drain() -> list[str]:
@@ -278,6 +323,11 @@ def drain() -> list[str]:
         fresh = _ci(e["slug"], e["sha"])
         if not fresh:
             said.append(f"{e['path']} {e['sha'][:12]}: CI unread, kept")
+            continue
+        if fresh == NO_VERDICT:  # cancelled, timed out, no CI: nothing to compare, ever
+            f.unlink(missing_ok=True)
+            said.append(f"{e['path']} {e['sha'][:12]}: CI no verdict (cancelled, timed out or "
+                        "none), dropped uncompared")  # fmt: skip
             continue
         e["reads"].append(fresh)
         if fresh != e["reused"] and len(e["reads"]) < 2:
