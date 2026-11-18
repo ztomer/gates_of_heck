@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT, commit_all, git, write
-from timing_bounds import patience
+from timing_bounds import GiveUp, assert_sooner
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import idle_suite
@@ -80,8 +80,8 @@ def test_a_pending_land_stops_the_suite_at_once(main, tmp_path) -> None:
     over = threading.Event()  # the run returned: nothing left to arrive for
 
     def arrive() -> None:
-        end = time.monotonic() + patience(60)
-        while not started.exists() and not over.is_set() and time.monotonic() < end:
+        give_up = GiveUp(60)
+        while not started.exists() and not over.is_set() and not give_up.passed():
             time.sleep(0.05)
         # Where an enqueue's own lander has already moved it: running/, not pending/.
         (q / "running").mkdir(exist_ok=True)
@@ -95,7 +95,7 @@ def test_a_pending_land_stops_the_suite_at_once(main, tmp_path) -> None:
     finally:
         over.set()
         t.join()
-    assert time.monotonic() - t0 < patience(60)
+    assert_sooner(time.monotonic() - t0, 5, 600, "a pending land stops the idle suite")
     assert json.loads((q / "idle-suite" / "last.json").read_text())["outcome"] == "yielded"
 
 

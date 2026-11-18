@@ -36,6 +36,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import gitrun
 import killtree
 import lock_order
 import reuse
@@ -50,10 +51,14 @@ MAX = "90m"  # a land gate's own bound
 IN_SUITE = ("GATES_OF_HECK_SUITE_RUNNER", "GATES_OF_HECK_SUITE_REAL_HOME")
 
 
-def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
+def _git(repo: Path, *args: str, write: bool = False) -> subprocess.CompletedProcess:
+    """git in REPO (no inherited GIT_* answers for it): a reader under a timeout, a writer
+    (worktree add, checkout, clean) TERMed as a group at its deadline so no lock is stranded."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
-                          env=env, stdin=subprocess.DEVNULL, check=False, timeout=600)  # fmt: skip
+    if not write:
+        return gitrun.run_reader(list(args), cwd=repo, timeout=120, env=env)
+    done = gitrun.run_writer(list(args), cwd=repo, deadline_s=600, env=env)
+    return done or subprocess.CompletedProcess(["git", *args], 124, "", "stopped at its deadline")
 
 
 def main_checkout(live: Path) -> Path | None:
@@ -83,10 +88,10 @@ def prepare(main: Path, wt: Path, sha: str) -> str:
         steps = [(wt, "checkout", "-q", "--detach", "-f", sha), (wt, "clean", "-fdq")]
     else:
         wt.parent.mkdir(parents=True, exist_ok=True)
-        _git(main, "worktree", "prune")
+        _git(main, "worktree", "prune", write=True)
         steps = [(main, "worktree", "add", "-q", "--detach", "-f", str(wt), sha)]
     for repo, *args in steps:
-        done = _git(repo, *args)
+        done = _git(repo, *args, write=True)
         if done.returncode:
             return f"git {' '.join(args[:2])}: {done.stderr.strip()[:300]}"
     return ""
