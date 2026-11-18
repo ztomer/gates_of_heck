@@ -64,7 +64,7 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # the wait for the lock is its own field, not gate time). A land that never took the lock (a
 # refusal before it, a failed pre-step) measured no gate and writes no row. The ledger never fails
 # a land: the script's exit status is what it was.
-verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall=""
+verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall="" pre_run="" pre_workers=""
 # shellcheck disable=SC2329  # invoked by the EXIT trap below
 land_exit() {
     local rc=$?
@@ -73,7 +73,8 @@ land_exit() {
     [ ! -s "${land_timings:-}" ] && rm -f "${land_timings:-}" "${land_timings:-}.log" "${land_timings:-}.controls.log"
     goh_span_record land "$(goh_repo_id "${main:-.}")" "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" \
         ${land_timings:+--timings "${GOH_TIMINGS:-$land_timings}"} --field "wait_lock_s=$lock_wait" \
-        --field "exit=$rc" ${pre_wall:+--field "pre_s=$pre_wall"} --field "sha=$(printf %.12s "${tip:-}")" || true
+        --field "exit=$rc" ${pre_wall:+--field "pre_s=$pre_wall"} \
+        ${pre_run:+--field "pre_run_s=$pre_run" --field "pre_workers=$pre_workers"} --field "sha=$(printf %.12s "${tip:-}")" || true
 }
 trap land_exit EXIT
 
@@ -106,7 +107,7 @@ fi
 # .gatesrc as GOH_LAND_PRE (goh's: tools/affected_tests.py --run, the changed paths' tests and every
 # tree reader); run with main's tip as $1, in the worktree, admitted in the short lane (a 0-spinner
 # load.py run takes a gate slot, lib/admission.py; GOH.PRESTEPADMIT below) and released before the lock is queued for, so
-# it nests no lock (GOH.LOCKORDER). Bounded at 10 min; a repo that declares none has no pre-step.
+# it nests no lock (GOH.LOCKORDER). Bounded by its share (lib/pre_deadline.py: 10-25 min); a repo that declares none has no pre-step.
 pre="${GOH_LAND_PRE-}"
 if [ -z "${GOH_LAND_PRE+set}" ] && [ -f "$here/.gatesrc" ]; then
     pre="$(cd "$here" && bash -c 'unset GOH_LAND_PRE; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_PRE-}"')" \
@@ -180,19 +181,27 @@ land_pre() {
     # 632 s first (2026-11-16). The wait is printed apart from the run: the step stamps its start.
     [ -n "$pre_start" ] || pre_start="$(mktemp "${TMPDIR:-/tmp}/goh-land-prestart.XXXXXX")" || exit 2
     : >"$pre_start"
-    pre_max="${GOH_LAND_PRE_MAX:-10m}"   # the deadline; a seam so a test can reach it
+    # THE DEADLINE FOLLOWS THE SHARE (GOH.PRESTEPSHARE, lib/pre_deadline.py): taken after the
+    # admission, from the share it gave and the worker-seconds the ledger measured; GOH_LAND_PRE_MAX
+    # is its floor (a wide share), GOH_LAND_PRE_CEIL its ceiling, load.py's --max the backstop.
+    pre_max="${GOH_LAND_PRE_MAX:-10m}" pre_ceil="${GOH_LAND_PRE_CEIL:-25m}"   # seams a test can reach
+    pre_back="$("$GOH_PY" "$GOH/lib/pre_deadline.py" show --workers 1 --floor "$pre_max" --ceiling "$pre_ceil")" || exit 2
     pre_t0=$(date +%s)
     pre_rc=0
     (cd "$here" && GOH_LAND_VERDICTS_RECORD="$verdicts" GOH_GATE_CLASS=short "$GOH_PY" "$GOH/tools/load.py" \
-        --background-ok "pre-land" --max "$pre_max" 0 -- \
-        bash -c 'date +%s >"$1"; shift; exec bash -c "$@"' pre-mark "$pre_start" "$pre" pre-land "$pre_base" \
-        </dev/null 7>&-) || pre_rc=$?
+        --background-ok "pre-land" --max "$((pre_back + 60))" 0 -- \
+        "$GOH_PY" "$GOH/lib/pre_deadline.py" run --mark "$pre_start" --floor "$pre_max" --ceiling "$pre_ceil" \
+        -- bash -c "$pre" pre-land "$pre_base" </dev/null 7>&-) || pre_rc=$?
     pre_t1=$(date +%s)
-    pre_s=""
-    IFS= read -r pre_s <"$pre_start" 2>/dev/null || true
+    pre_s="" pre_workers="" pre_limit="" pre_run=""
+    read -r pre_s pre_workers pre_limit <"$pre_start" 2>/dev/null || true
     [[ "$pre_s" =~ ^[0-9]+$ ]] || pre_s=$pre_t1   # never started: all of it was the wait
     pre_wall=$((${pre_wall:-0} + pre_t1 - pre_t0))
-    pre_took="in $((pre_t1 - pre_t0)) s: waited $((pre_s - pre_t0)) s, ran $((pre_t1 - pre_s)) s"
+    pre_took="in $((pre_t1 - pre_t0)) s: waited $((pre_s - pre_t0)) s, ran $((pre_t1 - pre_s)) s of ${pre_limit:-?} s at ${pre_workers:-?} workers"
+    # A run that reached a verdict is the ledger's measure of what the set costs (lib/pre_deadline.py WORK).
+    if [ "$pre_rc" -ne 124 ] && [[ "$pre_workers" =~ ^[0-9]+$ ]]; then
+        pre_run=$((pre_t1 - pre_s))
+    fi
     # A pre-step that reached its deadline (load.py's EXIT_DEADLINE, 124) found nothing: it exists
     # to fail FAST, and the gate runs the whole suite anyway -- no verdict, never red
     # (GOH.PRESTEPDEADLINE: GOH.REUSEAUDIT's land, killed at 82% of a green-so-far run).

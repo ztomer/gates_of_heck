@@ -20,7 +20,7 @@ def _land(repo: Path, tmp_path: Path, pre: str) -> tuple[subprocess.CompletedPro
     wt = _worktree(repo, tmp_path)
     seen = tmp_path / "seen"
     _declare(wt, f"GOH_LAND_GATE='echo gate >> {seen}'\nGOH_LAND_PRE='{pre}'\n")
-    env = hermetic_env(drop_git=True, GOH_LAND_PRE_MAX="2s")
+    env = hermetic_env(drop_git=True, GOH_LAND_PRE_MAX="2s", GOH_LAND_PRE_CEIL="2s")
     env.pop("GATES_OF_HECK_SUITE_RUNNER", None)
     r = subprocess.run(["bash", str(LAND)], cwd=wt, env=env, capture_output=True, text=True,
                        stdin=subprocess.DEVNULL, timeout=patience(120), check=False)  # fmt: skip

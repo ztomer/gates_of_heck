@@ -400,7 +400,13 @@ def test_enqueue_queues_a_green_tip_after_running_the_pre_step_once(repo, tmp_pa
 def test_enqueue_queues_a_tip_whose_pre_step_hit_its_deadline_and_says_so(repo, tmp_path, env):
     """GOH.PRESTEPDEADLINE: no verdict is not red; the lander's gate decides."""
     wt, _ = _land_wt(repo, tmp_path)
-    env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": "sleep 30", "GOH_LAND_PRE_MAX": "2s"}
+    env = {
+        **env,
+        "GOH_LAND_GATE": "true",
+        "GOH_LAND_PRE": "sleep 30",
+        "GOH_LAND_PRE_MAX": "2s",
+        "GOH_LAND_PRE_CEIL": "2s",
+    }
     done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.D", "--no-start")
     out = done.stdout + done.stderr
     assert done.returncode == 0, out

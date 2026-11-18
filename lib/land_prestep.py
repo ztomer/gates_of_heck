@@ -19,7 +19,8 @@ killtree = importlib.import_module("killtree")
 _tui = importlib.import_module("tui.lib")
 info, warn = _tui.info, _tui.warn
 
-# land.sh bounds the set at GOH_LAND_PRE_MAX (10 min) after a wait for a short-lane slot.
+# land.sh bounds the set at its share's deadline (lib/pre_deadline.py: at most GOH_LAND_PRE_CEIL,
+# 25 min) after a wait for a short-lane slot.
 TIMEOUT = 30 * 60
 
 
