@@ -50,7 +50,7 @@ import sys
 from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
+from tui.lib import counted, err  # the count meets its noun (GOH.HEDGEOWN)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _lcov_floor_maps as floor_maps  # GOH.CRATEFLOOR: crate_floors / file_floors
@@ -261,7 +261,7 @@ def merge(parts, floor, include_re="", floors_json=None, marker_ceiling=None, su
                 print(f"    {name}", file=sys.stderr)
             return 1
     for msg in map_fails:
-        print(f"✗ [coverage] {msg}", file=sys.stderr)
+        err(f"[coverage] {msg}")
     if map_fails:
         per_file_fail = True
     if marker_ceiling and os.path.exists(marker_ceiling):

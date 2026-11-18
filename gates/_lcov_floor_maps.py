@@ -15,6 +15,7 @@ cap. A crate is the nearest enclosing Cargo.toml of a measured file.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import sys
@@ -22,6 +23,11 @@ import tomllib
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import err, measure
+
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "checks")
+)
+from _gitutil import tree_files
 
 
 def load_entries(raw, key: str, path: str):
@@ -102,9 +108,11 @@ def crates_of(files) -> dict[str, set[str]]:
 
 def repo_crate_names(cwd: str) -> set[str]:
     """Every crate of the repo the merger runs in -- a repo gated crate by crate measures one of
-    them per run, and an entry for another is not stale."""
-    manifests: list[str] = []
-    try:
+    them per run, and an entry for another is not stale. The repo is the git top of `cwd` (else
+    `cwd`), listed the way every checker lists a tree (checks/_gitutil.py: git's listing, never a
+    descent of `target/`)."""
+    top = cwd
+    with contextlib.suppress(OSError, subprocess.CalledProcessError):
         top = subprocess.run(
             ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
             capture_output=True,
@@ -112,22 +120,10 @@ def repo_crate_names(cwd: str) -> set[str]:
             check=True,
             stdin=subprocess.DEVNULL,
         ).stdout.strip()
-        listed = subprocess.run(
-            ["git", "-C", top, "ls-files", "-z", "--", "Cargo.toml", "*/Cargo.toml"],
-            capture_output=True,
-            text=True,
-            check=True,
-            stdin=subprocess.DEVNULL,
-        ).stdout
-        manifests = [os.path.join(top, p) for p in listed.split("\0") if p]
-    except (OSError, subprocess.CalledProcessError):
-        for root, dirs, files in os.walk(cwd):
-            dirs[:] = [d for d in dirs if d not in (".git", "target", "node_modules")]
-            if "Cargo.toml" in files:
-                manifests.append(os.path.join(root, "Cargo.toml"))
     names: set[str] = set()
-    for m in manifests:
-        names |= _names_of(os.path.dirname(m))
+    for rel in tree_files(top):
+        if os.path.basename(rel) == "Cargo.toml":
+            names |= _names_of(os.path.dirname(os.path.join(top, rel)))
     return names
 
 
