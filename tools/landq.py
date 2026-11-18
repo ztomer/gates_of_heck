@@ -88,16 +88,14 @@ land_e2e = importlib.import_module("land_e2e")
 lock_order = importlib.import_module("lock_order")
 land_prestep = importlib.import_module("land_prestep")
 landq_batch = importlib.import_module("landq_batch")
+landq_early = importlib.import_module("landq_early")
 landq_report = importlib.import_module("landq_report")
 landq_request = importlib.import_module("landq_request")
 landq_look = importlib.import_module("landq_look")
 landq_inflight = importlib.import_module("landq_inflight")
 selection_miss = importlib.import_module("selection_miss")
-Refused, request, land_request = (
-    landq_request.Refused,
-    landq_request.request,
-    landq_request.land_request,
-)
+Refused, request = landq_request.Refused, landq_request.request
+land_request = landq_request.land_request
 _tui = importlib.import_module("tui.lib")
 err, info, ok, warn = _tui.err, _tui.info, _tui.ok, _tui.warn
 
@@ -149,12 +147,12 @@ def write_json(path: Path, data: dict) -> None:
     tmp.replace(path)
 
 
-def enqueue(req: dict) -> Path:
+def enqueue(req: dict, into: str = "pending") -> Path:
     q = qdir()
-    for d in DIRS:
+    for d in (*DIRS, into):
         (q / d).mkdir(parents=True, exist_ok=True)
     slug = (req["item"] or Path(req["repo"]).name).replace("/", "_")
-    path = q / "pending" / f"{time.time_ns():020d}-{slug}.json"
+    path = q / into / f"{time.time_ns():020d}-{slug}.json"
     write_json(path, req)
     return path
 
@@ -314,13 +312,12 @@ def drain_held(q: Path, digest: str = "") -> bool:
             outcomes = [red] * len(paths)
         held = False
         for path, outcome in zip(paths, outcomes, strict=True):
-            if (
-                outcome := landq_batch.hold(q, path, outcome, fails, warn)
-            ) is None:  # GOH.BATCHGITFAIL
+            if (outcome := landq_batch.hold(q, path, outcome, fails, warn)) is None:
                 held = True
                 continue
             record(path, outcome, landq_batch.read(path).get("item", ""))
             path.unlink(missing_ok=True)
+        landq_early.sweep(q, record, info)  # GOH.EARLYCONFLICT: red now, not at its turn
         if held:
             time.sleep(landq_batch.PAUSE)  # the git failure may be load: not a hot retry loop
         if digest and code_digest() != digest:
@@ -438,6 +435,9 @@ def main(argv: list[str] | None = None) -> int:
     except Refused as e:
         err(f"goh land: {e} -- nothing enqueued")
         return 2
+    if req["mode"] == "land" and (red := landq_early.at_enqueue(qdir(), req, enqueue, record)):
+        err(f"goh land: {red.splitlines()[0]} -- recorded red at enqueue, nothing queued")
+        return 1
     path = enqueue(req)
     if not args.no_start:
         start_lander()
