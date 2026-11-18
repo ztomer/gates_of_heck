@@ -11,7 +11,6 @@ crates/goh/src/crates_behind.rs
 crates/goh/src/estate_seed.rs
 crates/goh/src/estate_seed/add.rs
 crates/goh/src/gatesrc.rs
-crates/goh/src/gitutil.rs
 crates/goh/src/movingtag/tests.rs
 crates/goh/src/provenance.rs
 crates/goh/src/pylex/mod.rs

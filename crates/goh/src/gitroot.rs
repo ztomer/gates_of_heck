@@ -146,27 +146,23 @@ mod tests {
     }
 
     fn git(dir: &Path, args: &[&str]) {
-        let mut cmd = Command::new("git");
-        for k in STEERING.iter().chain(&["GIT_INDEX_FILE", "GIT_PREFIX"]) {
-            cmd.env_remove(k);
-        }
-        let out = cmd
-            .args(["-c", "protocol.file.allow=always", "-c", "user.name=t"])
-            .args(["-c", "user.email=t@t", "-c", "init.defaultBranch=main"])
-            .args(args)
-            .current_dir(dir)
-            .stdin(Stdio::null())
-            .output();
-        assert!(out.is_ok_and(|o| o.status.success()), "git {args:?}");
+        let mut full = vec![
+            "-c",
+            "protocol.file.allow=always",
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "init.defaultBranch=main",
+        ];
+        full.extend_from_slice(args);
+        assert!(goh_testkit::git_in(dir, &full).is_ok(), "git {args:?}");
     }
 
     /// git's own answer with the steering variables cleared (the gate runs under a hook's).
     fn git_says(dir: &Path) -> Option<PathBuf> {
-        let mut cmd = Command::new("git");
-        for k in STEERING.iter().chain(&["GIT_INDEX_FILE", "GIT_PREFIX"]) {
-            cmd.env_remove(k);
-        }
-        let out = cmd
+        let out = goh_testkit::git_command()
             .args(["rev-parse", "--show-toplevel"])
             .current_dir(dir)
             .stdin(Stdio::null())
