@@ -19,6 +19,11 @@
 //! Cargo.toml's version is a placeholder nobody reads, so a release commit changes no build input.
 //! A tagged commit's stamp ends in ` vX.Y.Z` (the same script), so its build is never the untagged
 //! build of the same trees that the store already holds.
+//!
+//! AN INSTRUMENTED BUILD SAYS NO COMMIT (GOH.COVCARRY2). Under cargo-llvm-cov (`CARGO_LLVM_COV` set)
+//! the version is `lib/goh_version.sh --coverage`: the release, or `X.Y.Z-coverage` past it. The
+//! coverage step keys each test's profile on that binary's bytes, and `-N-g<sha>` moved them on a
+//! commit that touched no build input (b851b948 -> d2454263), so no profile could ever be reused.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -97,7 +102,9 @@ fn version(root: &Path, stamp: &str) -> String {
     if let Some(given) = std::env::var("GOH_VERSION").ok().filter(|s| !s.is_empty()) {
         return given;
     }
-    let v = goh_version(root, &[])
+    let coverage = std::env::var_os("CARGO_LLVM_COV").is_some_and(|v| !v.is_empty());
+    let args: &[&str] = if coverage { &["--coverage"] } else { &[] };
+    let v = goh_version(root, args)
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| "unknown".to_owned());
     if stamp == "dirty" {
@@ -116,6 +123,7 @@ fn main() {
     println!("cargo:rustc-env=GOH_SOURCE_STAMP={stamp}");
     println!("cargo:rerun-if-env-changed=GOH_SOURCE_STAMP");
     println!("cargo:rerun-if-env-changed=GOH_VERSION");
+    println!("cargo:rerun-if-env-changed=CARGO_LLVM_COV");
     println!(
         "cargo:rerun-if-changed={}",
         root.join("lib").join("goh_version.sh").display()

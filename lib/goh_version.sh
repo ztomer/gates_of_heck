@@ -28,7 +28,7 @@
 #
 # Sourced: goh_version_at ROOT [REV], goh_release_at ROOT [REV], goh_stamp_at ROOT REV [RELEASE].
 # Sourced: goh_stamp_inputs_at ROOT [REV] too (the inputs, one per line).
-# Run: `bash lib/goh_version.sh [--release|--stamp|--inputs] ROOT [REV]` prints the one asked for.
+# Run: `bash lib/goh_version.sh [--release|--stamp|--inputs|--coverage] ROOT [REV]` prints the one asked for.
 
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 
@@ -66,6 +66,20 @@ goh_version_at() {
     else
         printf 'unknown\n'
     fi
+}
+
+# goh_coverage_version_at ROOT [REV] -- what an INSTRUMENTED build of REV reports (GOH.COVCARRY2):
+# the release, or the release it sits past as `X.Y.Z-coverage` -- no commit in it. The coverage step
+# keys a test's profile on the instrumented binary's BYTES, and `-N-g<sha>` moved them on every
+# commit: b851b948 -> d2454263 touched no build input and moved goh's sha256. gohpin reads only the
+# release part, and goh_require_current takes any `X.Y.Z-*` past a release (gates/structural.sh).
+goh_coverage_version_at() {
+    local v
+    v="$(goh_version_at "$1" "${2:-HEAD}")"
+    case "$v" in
+        *-*-g*) printf '%s-coverage\n' "${v%%-*}" ;;
+        *) printf '%s\n' "$v" ;;
+    esac
 }
 
 # goh_stamp_inputs_at ROOT [REV] -- the build inputs the stamp names, one per line (GOH.STAMPINPUTS):
@@ -139,7 +153,8 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
         --release) want=release; shift ;;
         --stamp) want=stamp; shift ;;
         --inputs) want=stamp_inputs; shift ;;
+        --coverage) want=coverage_version; shift ;;
     esac
-    [ -n "${1:-}" ] || { printf 'usage: goh_version.sh [--release|--stamp|--inputs] ROOT [REV]\n' >&2; exit 2; }
+    [ -n "${1:-}" ] || { printf 'usage: goh_version.sh [--release|--stamp|--inputs|--coverage] ROOT [REV]\n' >&2; exit 2; }
     "goh_${want}_at" "$1" "${2:-HEAD}"
 fi

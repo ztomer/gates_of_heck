@@ -154,3 +154,43 @@ def test_the_inputs_are_the_four_roots_then_every_embedded_path(repo: Path) -> N
     got = _ask(repo, "--inputs").split("\n")
     assert got == ["crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml",
                    "gates/tools.tsv", "lib/shapes.json"]  # fmt: skip
+
+
+def test_an_instrumented_build_keeps_its_version_across_a_commit_of_no_build_input(
+    repo: Path,
+) -> None:
+    """GOH.COVCARRY2 (a): the coverage step's instrumented build is keyed on its BYTES (a profile
+    is a measurement of one binary), and the version past a release is `X.Y.Z-N-g<sha>`: every
+    commit moved it, b851b948 -> d2454263 touched no build input and still moved goh's sha256
+    (ffc588ad.. -> ac33429a..). `--coverage` is what such a build reports: the release it sits
+    past, no commit in it; a release itself is unchanged, and `unknown` stays `unknown`."""
+    assert _ask(repo, "--coverage") == "unknown"
+    _inputs(repo)
+    git(repo, "tag", "v1.2.3")
+    assert _ask(repo, "--coverage") == "1.2.3"
+    _commit(repo, "a")
+    first = _ask(repo, "--coverage")
+    assert first == "1.2.3-coverage", first
+    plain = _ask(repo)
+    (repo / "README").write_text("a doc, not a build input\n")
+    git(repo, "add", "-A")
+    _commit(repo, "b")
+    assert _ask(repo) != plain  # calibration: the plain version moves with the commit
+    assert _ask(repo, "--coverage") == first
+
+
+def test_the_binary_reports_the_version_its_build_kind_asks_for(goh: Path) -> None:
+    """build.rs asks `--coverage` exactly when cargo-llvm-cov drives the build (CARGO_LLVM_COV):
+    under the coverage step the suite's binary is built here from this tree and reports exactly
+    that; a plain build (the store's, possibly of another commit with this source) never does."""
+    import _land_verdicts
+
+    got = subprocess.run([str(goh), "--version"], capture_output=True, text=True, check=True,
+                         stdin=subprocess.DEVNULL).stdout.split()[-1]  # fmt: skip
+    if not _land_verdicts.instrumented():
+        assert not got.endswith("-coverage"), got
+        return
+    inputs = _ask(REPO_ROOT, "--inputs").split()
+    dirty = git(REPO_ROOT, "status", "--porcelain", "--", *inputs)
+    want = _ask(REPO_ROOT, "--coverage") + ("-dirty" if dirty.strip() else "")
+    assert got == want

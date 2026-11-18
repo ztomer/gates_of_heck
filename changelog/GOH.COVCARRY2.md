@@ -1,0 +1,1 @@
+* The coverage step's instrumented goh no longer says which commit built it: under cargo-llvm-cov `build.rs` asks `lib/goh_version.sh --coverage`, the release or `X.Y.Z-coverage` past it, so a commit that touches no build input leaves the instrumented binary's bytes, the key a carried profile needs, where they were (b851b948 -> d2454263 moved them) (GOH.COVCARRY2).
