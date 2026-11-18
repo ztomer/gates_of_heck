@@ -148,7 +148,9 @@ def test_a_red_middle_item_bisects_out_and_the_others_land(repo, tmp_path, env):
     assert own.name.endswith("T.TWO.log") and "planted-red-in-two" in own.read_text(), own
     assert str(own) not in (got["T.ONE"]["log"], got["T.THREE"]["log"])
     runs = gate_runs(env)
-    assert runs[0] == "three" and len(runs) <= 4, runs  # the stack, then the bisection
+    # The stack, then the bisection: serial it was <= 4 runs in 4 rounds; with each red split's
+    # second half gated on main beside the first (GOH.LANDBISECTPAR) it is <= 5 runs in 3 rounds.
+    assert runs[0] == "three" and len(runs) <= 5, runs
     assert all(got[i]["batch"]["gates"] == len(runs) for i in ("T.ONE", "T.TWO", "T.THREE")), got
     waited = landq(env, "--wait", "T.TWO", "--timeout", str(patience(30)))
     assert waited.returncode == 1 and "planted-red-in-two" in waited.stderr, waited.stderr

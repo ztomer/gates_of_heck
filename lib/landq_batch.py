@@ -18,11 +18,13 @@ and reuse apply to the tip's tree as to any tree.
 THE VERDICT. Green lands every item: each done record names the item's OWN commit (an ancestor of
 main, so `loopctl done` and a ship's ancestry check read it), and `goh land --wait ID` returns per
 item. Red bisects: the first half is restacked on main and gated, then the second half on whatever
-landed; a lone red item is red with ITS log (the run that judged its tree, under a header naming
-the batch). A stack whose tree an earlier run already judged red is not gated again. A run past
-GOH_LAND_TIMEOUT is not bisected (hours more of gates for what is most likely the machine): its
-whole stack is red, `timed out`. Every record carries `batch`: {id, items, gates}, the gate runs the
-batch spent, which `goh land --report` counts as gates per landed item (lib/landq_report.py).
+landed -- with the second half gated on main BESIDE the first, in the second gate slot, and used
+when the first lands nothing (GOH.LANDBISECTPAR, lib/landq_spec.py); a lone red item is red with
+ITS log (the run that judged its tree, under a header naming the batch). A stack whose tree an
+earlier run already judged red is not gated again. A run past GOH_LAND_TIMEOUT is not bisected
+(hours more of gates for what is most likely the machine): its whole stack is red, `timed out`.
+Every record carries `batch`: {id, items, gates}, the gate runs the batch spent, which
+`goh land --report` counts as gates per landed item (lib/landq_report.py).
 
 A GIT READ THAT FAILS (GOH.BATCHGITFAIL). Every git read the batch makes is strict: a failure or a
 timeout is a GitFailed, never an empty string standing for a tree, a commit or main's sha. The
@@ -51,6 +53,7 @@ import bounded_run
 import gitrun
 import land_lock
 import landq_report
+import landq_spec
 
 DEFAULT = 3
 RETRIES = 3  # passes a git failure may keep a request pending before it is recorded red
@@ -161,6 +164,7 @@ class Batch:
     items: list[Item]
     gates: int = 0
     red_trees: dict[str, tuple[Path, str]] = field(default_factory=dict)
+    spec: landq_spec.Spec | None = None  # the second half's run on main, in flight
 
     @property
     def id(self) -> str:
@@ -193,8 +197,9 @@ class Batch:
             f.write(head + text)
         return it.log
 
-    def stack(self, items: list[Item]) -> list[Item]:
-        """ITEMS rebased each onto the one below, the first onto main; a conflict drops one."""
+    def stack(self, items: list[Item], trial: bool = False) -> list[Item] | None:
+        """ITEMS rebased each onto the one below, the first onto main; a conflict drops one.
+        A TRIAL (the speculative stack, lib/landq_spec.py) judges nothing: a conflict is None."""
         base, out = self.git(self.main, "rev-parse", "HEAD"), []
         for it in items:
             if it.upstream != base:
@@ -204,6 +209,8 @@ class Batch:
                         str(self.kit.stacker)]  # fmt: skip
                 res = bounded_run.run_step(argv, 600, self.kit.grace, "land stack", str(it.log))
                 if res.code or res.timed_out:
+                    if trial:
+                        return None
                     self.kit.say(f"batch {self.id}: {it.path.stem} does not stack on {base[:8]}")
                     self.outcome(it, "red", it.log, why=f"conflict: did not stack on {base[:8]}")
                     continue
@@ -228,7 +235,7 @@ class Batch:
     def settle(self, items: list[Item]) -> None:
         """Gate ITEMS stacked; green lands them all, red splits them in two (module doc)."""
         stacked = self.stack(items)
-        if not stacked:
+        if not stacked:  # never None: not a trial
             return
         top = stacked[-1]
         tree = self.git(Path(top.req["worktree"]), "rev-parse", "HEAD^{tree}")
@@ -246,8 +253,7 @@ class Batch:
             return
         self.red_trees[tree] = (log, why)
         half = len(stacked) // 2
-        self.settle(stacked[:half])
-        self.settle(stacked[half:])
+        landq_spec.split(self, stacked[:half], stacked[half:])
 
     def on_main(self, tip: str, main: str) -> bool:
         """Whether TIP is an ancestor of MAIN: exit 1 is `no`, any other failure is GitFailed."""

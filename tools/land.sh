@@ -77,6 +77,18 @@ land_exit() {
         ${pre_run:+--field "pre_run_s=$pre_run" --field "pre_workers=$pre_workers"} --field "sha=$(printf %.12s "${tip:-}")" || true
 }
 trap land_exit EXIT
+# SPECULATIVE (GOH.LANDBISECTPAR, lib/landq_spec.py): the batch gates a red stack's second half on
+# main beside the first. GOH_LAND_HOLD_FD names a pipe it reads from: the branch is never rebased
+# (main left the base it was stacked on: exit 3), and a green gate waits on that pipe for `go`
+# before main moves; anything else, or the batch gone (EOF), lands nothing, exit 3. Moved to fd 8
+# before fd 7 is the lock's, closed for every long child, and never in the gate's environment.
+hold=""
+if [ -n "${GOH_LAND_HOLD_FD:-}" ]; then
+    exec 8<&"$GOH_LAND_HOLD_FD"
+    [ "$GOH_LAND_HOLD_FD" = 8 ] || exec {GOH_LAND_HOLD_FD}<&-
+    hold=8
+    unset GOH_LAND_HOLD_FD
+fi
 
 here="$(git rev-parse --show-toplevel)"
 main="$(git worktree list --porcelain | { read -r _ path; printf '%s' "$path"; })"
@@ -133,6 +145,10 @@ land_rebase() {
         below=" plus the batch stacked on it below $branch"
     else
         git merge-base --is-ancestor "$base" "$tip" && return 0
+        if [ -n "$hold" ]; then
+            info "speculative: main ${base:0:8} is not below ${tip:0:8} any more -- not rebased, nothing landed"
+            exit 3
+        fi
         upon=("$base")
     fi
     # The registries every lane appends to merge by ROW (.gitattributes `merge=goh-rows`,
@@ -191,7 +207,7 @@ land_pre() {
     (cd "$here" && GOH_LAND_VERDICTS_RECORD="$verdicts" GOH_GATE_CLASS=short "$GOH_PY" "$GOH/tools/load.py" \
         --background-ok "pre-land" --max "$((pre_back + 60))" 0 -- \
         "$GOH_PY" "$GOH/lib/pre_deadline.py" run --mark "$pre_start" --floor "$pre_max" --ceiling "$pre_ceil" \
-        -- bash -c "$pre" pre-land "$pre_base" </dev/null 7>&-) || pre_rc=$?
+        -- bash -c "$pre" pre-land "$pre_base" </dev/null 7>&- 8<&-) || pre_rc=$?
     pre_t1=$(date +%s)
     pre_s="" pre_workers="" pre_limit="" pre_run=""
     read -r pre_s pre_workers pre_limit <"$pre_start" 2>/dev/null || true
@@ -308,9 +324,19 @@ land_timings="$(mktemp "$(goh_tmp)/goh-land-timings.XXXXXX")" || land_timings=""
 if ! GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" GOH_LAND_VERDICTS_REUSE="$verdicts" GOH_GATE_CLASS=ship \
         GOH_TIMING_VIA=land GOH_TIMINGS="${GOH_TIMINGS:-$land_timings}" \
         "$GOH_PY" "$GOH/tools/load.py" --background-ok "land gate" \
-        --max 90m 0 -- bash -c "$gate" 7>&- </dev/null; then
+        --max 90m 0 -- bash -c "$gate" 7>&- 8<&- </dev/null; then
     err "land.sh: the gate failed on ${tip:0:8} -- nothing landed"
     exit 1
+fi
+if [ -n "$hold" ]; then
+    info "speculative gate green on ${tip:0:8} -- waiting for the batch's word"
+    word=""
+    IFS= read -r word <&8 || true
+    exec 8<&-
+    if [ "$word" != go ]; then
+        info "speculative green on ${tip:0:8} not used: the batch's base is not main's (${word:-no word}) -- nothing landed"
+        exit 3
+    fi
 fi
 now="$(git rev-parse HEAD)"
 if [ "$now" != "$tip" ]; then
