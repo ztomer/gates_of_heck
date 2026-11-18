@@ -27,7 +27,7 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 set -euo pipefail
 GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # shellcheck source=tui/lib.sh
-. "$GOH/tui/lib.sh"
+. "$GOH/tui/lib.sh"; . "$GOH/lib/tmp_root.sh"   # goh_tmp: every temp root under $TMPDIR/goh.noindex, never Spotlight-indexed (GOH.TMPNOINDEX)
 # shellcheck source=lib/house_python.sh
 . "$GOH/lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
 # shellcheck source=lib/run_path.sh
@@ -125,7 +125,7 @@ MSG
 # when the tag is made. Only the store is written, keyed by that stamp: a release refused below, or
 # one whose land rebased onto other build inputs, leaves an entry no stamp asks for, and the tag
 # push builds what it needs as before.
-prebuild_log="$(mktemp "${TMPDIR:-/tmp}/goh-release-build.XXXXXX")"
+prebuild_log="$(mktemp "$(goh_tmp)/goh-release-build.XXXXXX")"
 bash "$main/scripts/build-goh.sh" --rev "$(git -C "$wt" rev-parse HEAD)" --as-release "$TAG" \
     >"$prebuild_log" 2>&1 </dev/null &
 prebuild=$!
@@ -147,7 +147,7 @@ info "release: building goh as $TAG beside the land (pid $prebuild)"
 # Its push gate takes the same reduced set: release files only on a parent whose land was green
 # (.gatesrc GOH_PUSH_RELEASE_REUSE, lib/release_gate.py push-decide; anything else is the full gate).
 timed "release: push main" git push origin main
-notes="$(mktemp "${TMPDIR:-/tmp}/goh-release-notes.XXXXXX")"
+notes="$(mktemp "$(goh_tmp)/goh-release-notes.XXXXXX")"
 awk -v h="## $TAG" 'index($0, h) == 1 && (length($0) == length(h) || substr($0, length(h) + 1, 1) == " ") { on = 1; next }
     on && /^## / { exit } on { print }' CHANGELOG.md | sed -e '/./,$!d' >"$notes"
 [ -s "$notes" ] || { err "release_goh.sh: the $TAG stanza is empty in the landed CHANGELOG.md"; rm -f "$notes"; exit 1; }

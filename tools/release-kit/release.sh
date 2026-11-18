@@ -86,18 +86,17 @@ set -euo pipefail
 # `sed ... "$0"` and every diagnostic naming the script) and parsing stays
 # coupled to a concurrent writer instead of a finished snapshot. A temp copy
 # needs nothing newer than macOS's stock bash 3.2 (no mapfile/readarray).
+GOH="${GOH_DIR:-$HOME/Projects/gates_of_heck}"
+# shellcheck disable=SC1091
+source "$GOH/tui/lib.sh"; . "$GOH/lib/tmp_root.sh"   # goh_tmp: every temp root under $TMPDIR/goh.noindex (GOH.TMPNOINDEX)
 if [ -z "${GOH_RELEASE_BUFFERED:-}" ]; then
-  _SELF_COPY="$(mktemp "${TMPDIR:-/tmp}/goh-release-buffered.XXXXXX")"
+  _SELF_COPY="$(mktemp "$(goh_tmp)/goh-release-buffered.XXXXXX")"
   cat "$0" > "${_SELF_COPY}"
   export GOH_RELEASE_BUFFERED="${_SELF_COPY}"
   exec "$BASH" "${_SELF_COPY}" "$@"   # bash >= 5: the guard above ran first
 fi
 _SELF_COPY="${GOH_RELEASE_BUFFERED}"
 unset GOH_RELEASE_BUFFERED
-
-GOH="${GOH_DIR:-$HOME/Projects/gates_of_heck}"
-# shellcheck disable=SC1091
-source "$GOH/tui/lib.sh"
 
 VERSION=""
 GATE_CMD="${GOH_RELEASE_GATE:-}"
@@ -288,7 +287,7 @@ if [ -n "$ARCHIVE_BUILD" ]; then
   if [ "$DRY_RUN" = 1 ]; then
     plan "git archive HEAD | tar -x into a temp dir; run: ${ARCHIVE_BUILD}"
   else
-    ARCHIVE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/goh-release-archive.XXXXXX")"
+    ARCHIVE_DIR="$(mktemp -d "$(goh_tmp)/goh-release-archive.XXXXXX")"
     git archive --format=tar HEAD | tar -x -C "$ARCHIVE_DIR" \
       || fail "git archive HEAD could not be extracted"
     ( cd "$ARCHIVE_DIR" && GOH_RELEASE_VERSION="$VERSION" bash -c "$ARCHIVE_BUILD" ) \
@@ -345,7 +344,7 @@ bump --version, or move the tag deliberately: git tag -f ${TAG} && git push -f o
 elif [ "$DRY_RUN" = 1 ]; then
   plan "git tag -a ${TAG} at $(git rev-parse --short HEAD)"
 else
-  BODY="$(mktemp "${TMPDIR:-/tmp}/goh-release-body.XXXXXX")"
+  BODY="$(mktemp "$(goh_tmp)/goh-release-body.XXXXXX")"
   stanza_body "$VERSION" > "$BODY"
   [ -s "$BODY" ] || printf '%s\n' "${TAG}" > "$BODY"
   # --cleanup=verbatim: without it git strips '#' lines from -F messages as
@@ -413,7 +412,7 @@ backfill_releases() {
   for v in $versions; do
     if grep -qxF "v${v}" <<<"$existing"; then continue; fi
     if ! has_stanza "$v"; then no_stanza="${no_stanza:+${no_stanza}, }v${v}"; continue; fi
-    BACKFILL_NOTES="${BACKFILL_NOTES:-$(mktemp "${TMPDIR:-/tmp}/goh-release-backfill.XXXXXX")}"
+    BACKFILL_NOTES="${BACKFILL_NOTES:-$(mktemp "$(goh_tmp)/goh-release-backfill.XXXXXX")}"
     stanza_body "$v" > "$BACKFILL_NOTES"
     [ -s "$BACKFILL_NOTES" ] || printf '%s\n' "v${v}" > "$BACKFILL_NOTES"
     gh release create "v${v}" --title "v${v}" --notes-file "$BACKFILL_NOTES" \
@@ -450,7 +449,7 @@ else
   # Backfills first, each --latest=false: the API makes a new release Latest
   # unless told otherwise, so the release cut NOW is created last and stays it.
   backfill_releases
-  NOTES="$(mktemp "${TMPDIR:-/tmp}/goh-release-notes.XXXXXX")"
+  NOTES="$(mktemp "$(goh_tmp)/goh-release-notes.XXXXXX")"
   stanza_body "$VERSION" > "$NOTES"
   if gh release view "$TAG" --repo "$GH_REPO_SLUG" >/dev/null 2>&1; then
     ok "GitHub release ${TAG} already exists — leaving it (idempotent)"

@@ -52,7 +52,7 @@ unset _goh_tui
 # shellcheck source=lib/sccache_dir.sh
 . "$GOH_ROOT/lib/sccache_dir.sh"  # a repo's test sandbox moves HOME, never the compile cache (GOH.CACHEBOUND)
 # shellcheck source=lib/rm_tree.sh
-. "$GOH_ROOT/lib/rm_tree.sh"  # goh_rm_tree: cleanup of a tree a consumer wrote, read-only or not
+. "$GOH_ROOT/lib/rm_tree.sh"; . "$GOH_ROOT/lib/tmp_root.sh"  # goh_rm_tree: cleanup of a consumer's tree; goh_tmp: temp roots
 # shellcheck source=lib/bench_lock.sh
 . "$GOH_ROOT/lib/bench_lock.sh"  # a measurement holds off every gate on the host (goh_init)
 
@@ -114,7 +114,7 @@ GOH_TREE_CHECKED=""
 # would be the gate being wrong. A no-op outside a git repo, and once per run.
 goh_tree_stamp() {
     [ -z "$GOH_TREE_STAMP_FILE" ] && [ -n "$GOH_GIT_ROOT" ] || return 0
-    GOH_TREE_STAMP_FILE="$(mktemp "${TMPDIR:-/tmp}/goh-stamp.XXXXXX")"
+    GOH_TREE_STAMP_FILE="$(mktemp "$(goh_tmp)/goh-stamp.XXXXXX")"
     "$GOH_PY" "$GOH_ROOT/lib/tree_stamp.py" take "$GOH_GIT_ROOT" "$GOH_TREE_STAMP_FILE" \
         || die "$GOH_NAME: cannot stamp the tree at $GOH_GIT_ROOT"
 }
@@ -132,7 +132,7 @@ goh_init() {
     GOH_NAME="$1"
     # Portable form: BSD mktemp accepts `-t name`, GNU mktemp needs XXXXXX --
     # the BSD form failed every Linux CI run of the structural gate (2026-09-14).
-    GOH_LOG="$(mktemp "${TMPDIR:-/tmp}/goh-$GOH_NAME.XXXXXX")"
+    GOH_LOG="$(mktemp "$(goh_tmp)/goh-$GOH_NAME.XXXXXX")"
     # Accumulate: a second goh_init must not orphan the first log.
     goh_cleanup_add "$GOH_LOG"
     # One gate tree, one registration: a measurement (tools/quiet.sh) waits for it to finish.
@@ -472,7 +472,7 @@ goh_index_view() {
         || die "$GOH_NAME: cannot resolve the git dir of $top"
     # Every step is checked by hand: callers use this in an `if`, where
     # `set -e` is off, and an empty $snap would make the prefix `/`.
-    snap="$(mktemp -d "${TMPDIR:-/tmp}/goh-index.XXXXXX")" && [ -n "$snap" ] \
+    snap="$(mktemp -d "$(goh_tmp)/goh-index.XXXXXX")" && [ -n "$snap" ] \
         || die "$GOH_NAME: cannot create a temp dir for the index export"
     goh_cleanup_add "$snap"
     if ! git -C "$top" ls-files -z -- "${rel:-.}" \

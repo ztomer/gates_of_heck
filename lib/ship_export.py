@@ -21,6 +21,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import gitrun
+from tmp_root import goh_tmp  # every temp root under $TMPDIR/goh.noindex (GOH.TMPNOINDEX)
 
 
 class ExportError(Exception):
@@ -40,7 +41,7 @@ def _git(where: Path | None, *args: str, write: bool = False) -> str:
 @contextlib.contextmanager
 def exported(repo: Path, name: str, sha: str, remote: str, branch: str) -> Iterator[Path]:
     """The LOOPCTL_ROOT under which NAME is a clean checkout of SHA (see the module doc)."""
-    root = Path(tempfile.mkdtemp(prefix="goh-ship-verify."))
+    root = Path(tempfile.mkdtemp(dir=goh_tmp(), prefix="goh-ship-verify."))
     try:
         co = root / name
         co.parent.mkdir(parents=True, exist_ok=True)

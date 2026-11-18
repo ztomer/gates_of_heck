@@ -19,10 +19,11 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 # Sets _goh_cpu_now to the seconds of CPU the children of THIS shell have used so far, one decimal
 # ("0.0" when unreadable). A global, never printed for a `$( )`: `times` in a command substitution
 # is the substitution's own subshell, whose children are none (the first version read 0.0 always).
+. "${BASH_SOURCE[0]%/*}/tmp_root.sh"   # goh_tmp: every temp root under $TMPDIR/goh.noindex, never Spotlight-indexed (GOH.TMPNOINDEX)
 goh_children_cpu() {
     local f
     _goh_cpu_now="0.0"
-    f="$(mktemp "${TMPDIR:-/tmp}/goh-times.XXXXXX")" || return 0
+    f="$(mktemp "$(goh_tmp)/goh-times.XXXXXX")" || return 0
     times >"$f"
     _goh_cpu_now="$(awk 'NR == 2 { for (i = 1; i <= 2; i++) { gsub(",", ".", $i); split($i, a, /[ms]/); s += a[1] * 60 + a[2] } }
                         END { printf "%.1f", s + 0 }' "$f")"

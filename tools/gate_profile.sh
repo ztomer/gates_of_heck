@@ -22,11 +22,12 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GOH="$(cd "$HERE/.." && pwd)"
+. "$GOH/lib/tmp_root.sh"   # goh_tmp: every temp root under $TMPDIR/goh.noindex, never Spotlight-indexed (GOH.TMPNOINDEX)
 [ $# -ge 1 ] && [ -d "$1" ] || { echo "usage: gate_profile.sh <repo> [top]" >&2; exit 2; }
 repo="$(cd "$1" && pwd -P)"
 top="${2:-20}"
 sha="$(git -C "$repo" rev-parse HEAD)" || { echo "gate_profile: $repo is not a git repo" >&2; exit 2; }
-out="${GOH_TIMINGS:-$(mktemp "${TMPDIR:-/tmp}/goh-timings.XXXXXX")}"
+out="${GOH_TIMINGS:-$(mktemp "$(goh_tmp)/goh-timings.XXXXXX")}"
 zero=0000000000000000000000000000000000000000
 proven=0
 [ -n "${GOH_PROFILE_PROVEN:-}" ] && proven=1

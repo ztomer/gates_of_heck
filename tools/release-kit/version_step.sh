@@ -15,7 +15,7 @@ release_version_step() {
   local _vtop _vrefs _vrc
   begin "version" "HEAD declares ${VERSION}"
   _vtop="$(git rev-parse --show-toplevel)"
-  _vrefs="$(mktemp "${TMPDIR:-/tmp}/goh-release-refs.XXXXXX")"
+  _vrefs="$(mktemp "$(goh_tmp)/goh-release-refs.XXXXXX")"
   printf 'refs/tags/%s %s refs/tags/%s 0000000000000000000000000000000000000000\n' \
     "$TAG" "$(git rev-parse HEAD)" "$TAG" > "$_vrefs"
   _vrc=0
@@ -108,7 +108,7 @@ bump --version, or move the tag deliberately: git tag -f ${TAG} && git push -f o
 # into a scratch copy, as step 0b's own; any other refusal of it is step 0b's to report.
 release_cut_pending() {
   local _pcut _prc=0
-  _pcut="$(mktemp "${TMPDIR:-/tmp}/goh-release-cutp.XXXXXX")"
+  _pcut="$(mktemp "$(goh_tmp)/goh-release-cutp.XXXXXX")"
   cp CHANGELOG.md "$_pcut" || { rm -f "$_pcut"; fail "cannot copy CHANGELOG.md"; }
   bash "$GOH/gates/python.sh" "$GOH/tools/release-kit/changelog_cut.py" cut --version "$VERSION" \
     ${TITLE:+--title "$TITLE"} ${FRAGS:+--fragments "$FRAGS"} --file "$_pcut" >/dev/null 2>"$_pcut.err" || _prc=1
@@ -134,7 +134,7 @@ release_changelog_cut() {
   local _ccut _csubj _folded=()
   [ "$CHANGELOG_CHECK" = 1 ] && [ -f CHANGELOG.md ] || return 0
   release_fragments
-  _ccut="$(mktemp "${TMPDIR:-/tmp}/goh-release-cut.XXXXXX")"
+  _ccut="$(mktemp "$(goh_tmp)/goh-release-cut.XXXXXX")"
   cp CHANGELOG.md "$_ccut" || fail "cannot copy CHANGELOG.md"
   if ! bash "$GOH/gates/python.sh" "$GOH/tools/release-kit/changelog_cut.py" cut --version "$VERSION" \
       ${TITLE:+--title "$TITLE"} ${FRAGS:+--fragments "$FRAGS"} --file "$_ccut" >/dev/null 2>"$_ccut.err"; then

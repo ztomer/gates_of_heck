@@ -56,7 +56,7 @@ set -euo pipefail
 goh_hook_unbind || exit $?
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-. "$HERE/../tui/lib.sh"
+. "$HERE/../tui/lib.sh"; . "$HERE/../lib/tmp_root.sh"   # goh_tmp: every temp root under $TMPDIR/goh.noindex, never Spotlight-indexed (GOH.TMPNOINDEX)
 # shellcheck source=lib/repo_writes.sh
 . "$HERE/../lib/repo_writes.sh"
 root="$(git rev-parse --show-toplevel)"
@@ -84,8 +84,8 @@ structural="$HERE/structural.sh"
 # leaves its file; the pid it names is dead, and every reader ignores and prunes it.
 bench_lock_join "pre-commit"
 mark=""
-twins="$(mktemp "${TMPDIR:-/tmp}/goh-staged-twins.XXXXXX")"
-pending="$(mktemp -d "${TMPDIR:-/tmp}/goh-seed-pending.XXXXXX")"
+twins="$(mktemp "$(goh_tmp)/goh-staged-twins.XXXXXX")"
+pending="$(mktemp -d "$(goh_tmp)/goh-seed-pending.XXXXXX")"
 trap 'rm -rf "$twins" "$pending" ${mark:+"$mark"} ${BENCH_LOCK_ENTRY:+"$BENCH_LOCK_ENTRY"}' EXIT
 export GOH_SEED_PENDING="$pending"
 root_phys="$(cd "$root" && pwd -P)"
@@ -102,7 +102,7 @@ status=0
 if [ ! -f "$gate" ]; then
     bash "$structural" --staged || status=$?
 else
-    mark="$(mktemp "${TMPDIR:-/tmp}/goh-structural-mark.XXXXXX")"
+    mark="$(mktemp "$(goh_tmp)/goh-structural-mark.XXXXXX")"
     # A commit gate is SHORT (GOH.SLOTFAIR): a gate.sh --staged that takes a gate slot (the .loop
     # queue's, which carries its whole Python layer) takes it in the short lane, never behind a
     # push, a land or a 49-min test run (lib/gate_slot.py LANES; consumed by the acquire).

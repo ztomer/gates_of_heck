@@ -14,6 +14,7 @@ import bounded_run
 import ship_changelog
 from ship_status import tail
 from ship_version import SEMVER, Refused, git, git_bindings
+from tmp_root import goh_tmp  # every temp root under $TMPDIR/goh.noindex (GOH.TMPNOINDEX)
 
 
 def preflights(repo: Path, cfg: dict[str, str], version: str, summary="") -> list[tuple[str, str]]:
@@ -43,7 +44,7 @@ def run_preflights(repo: Path, cmds: list[tuple[str, str]], version: str, args: 
            f"GOH_SHIP_ITEM={args.item or ''}"]  # fmt: skip
     cd = f"cd {shlex.quote(str(repo))} || exit 2; "
     for whose, cmd in cmds:
-        fd, logname = tempfile.mkstemp(prefix="goh-ship-preflight.", suffix=".log")
+        fd, logname = tempfile.mkstemp(dir=goh_tmp(), prefix="goh-ship-preflight.", suffix=".log")
         os.close(fd)
         log = Path(logname)
         try:

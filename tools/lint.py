@@ -28,6 +28,8 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GATE = os.path.join(os.path.dirname(HERE), "gates", "commit_gate.sh")
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "lib"))
+from tmp_root import goh_tmp  # noqa: E402  # never Spotlight-indexed (GOH.TMPNOINDEX)
 
 
 def _git(*args: str, env: dict[str, str] | None = None) -> str:
@@ -53,7 +55,7 @@ def main(argv: list[str]) -> int:
         print(f"✗ goh lint: no such path: {', '.join(missing)}", file=sys.stderr)
         return 2
     paths = [os.path.relpath(os.path.abspath(p), root) for p in argv]
-    scratch = tempfile.mkdtemp(prefix="goh-lint.")
+    scratch = tempfile.mkdtemp(dir=goh_tmp(), prefix="goh-lint.")
     try:
         temp_index = os.path.join(scratch, "index")
         if os.path.exists(index):

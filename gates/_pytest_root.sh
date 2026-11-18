@@ -10,6 +10,7 @@
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=lib/rm_tree.sh
 . "${BASH_SOURCE[0]%/*}/../lib/rm_tree.sh"   # goh_rm_tree: the removal that copes with a read-only tree
+. "${BASH_SOURCE[0]%/*}/../lib/tmp_root.sh"  # goh_tmp: $TMPDIR/goh.noindex, which Spotlight never indexes
 #
 # A failed run keeps its root, and a kept root held ~5 GiB: every test's tmp_path, ~100 MiB each
 # where a test cloned this repo. Eleven of them were 55.3 GiB of TMPDIR (2026-11-12, GOH.PYTESTTMP).
@@ -18,10 +19,10 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 # older kept ones are cut to the newest GOH_PYTEST_KEEP (3), at most GOH_PYTEST_KEEP_BYTES (1 GiB)
 # in all. A live run's root is never cut: its `.goh-owner` pid is alive (lib/prune_kept.py).
 goh_pytest_root() {
-    local tmp="${TMPDIR:-/tmp}"
-    "${GOH_PY:-python3}" -S "${BASH_SOURCE[0]%/*}/../lib/prune_kept.py" "${tmp%/}" goh-pytest. \
+    local tmp; tmp="$(goh_tmp)" || return 1   # 94% of what mds walked in gates (GOH.TMPNOINDEX)
+    "${GOH_PY:-python3}" -S "${BASH_SOURCE[0]%/*}/../lib/prune_kept.py" "$tmp" goh-pytest. \
         "${GOH_PYTEST_KEEP:-3}" 3600 --max-bytes "${GOH_PYTEST_KEEP_BYTES:-1073741824}" 2>/dev/null || true
-    PYTEST_DEBUG_TEMPROOT="$(mktemp -d "${tmp%/}/goh-pytest.XXXXXX")"
+    PYTEST_DEBUG_TEMPROOT="$(mktemp -d "$tmp/goh-pytest.XXXXXX")"
     printf '%s\n' "$$" >"$PYTEST_DEBUG_TEMPROOT/.goh-owner"
     PYTEST_ADDOPTS="-o tmp_path_retention_policy=failed${PYTEST_ADDOPTS:+ $PYTEST_ADDOPTS}"
     export PYTEST_DEBUG_TEMPROOT PYTEST_ADDOPTS

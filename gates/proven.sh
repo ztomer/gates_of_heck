@@ -46,7 +46,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tui/lib.sh
-. "$HERE/../tui/lib.sh"
+. "$HERE/../tui/lib.sh"; . "$HERE/../lib/tmp_root.sh"   # goh_tmp: every temp root under $TMPDIR/goh.noindex, never Spotlight-indexed (GOH.TMPNOINDEX)
 # shellcheck source=gates/_proven.sh
 . "$HERE/_proven.sh"
 
@@ -134,7 +134,7 @@ if pair="$(proven_key "$step_cmd" </dev/null)"; then
     fi
     ignored_before="$(proven_ignored </dev/null)"  # what it MADE (proven_made)
     if [ "$fresh" = 1 ]; then
-        stamp="$(mktemp "${TMPDIR:-/tmp}/goh-proven-stamp.XXXXXX")" || stamp=""
+        stamp="$(mktemp "$(goh_tmp)/goh-proven-stamp.XXXXXX")" || stamp=""
         trap 'rm -f "${stamp:-}"' EXIT
     fi
 fi

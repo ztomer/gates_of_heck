@@ -13,10 +13,11 @@ GOH_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 source "${GOH_DIR:-$GOH_ROOT}/tui/lib.sh"
 cd "$(dirname "$0")"
 source desktop_lock.sh
+source ../tmp_root.sh   # goh_tmp: every temp root under $TMPDIR/goh.noindex, never Spotlight-indexed (GOH.TMPNOINDEX)
 
 PASS=0
 FAIL=0
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/goh-desktop-lock-test.XXXXXX")"
+TMP="$(mktemp -d "$(goh_tmp)/goh-desktop-lock-test.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 check() {
     if [[ "$2" == "$3" ]]; then ok "$1"; PASS=$((PASS + 1))

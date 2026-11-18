@@ -186,12 +186,12 @@ gate_slot_acquire "$(basename "$ROOT")"
 # A red run KEEPS its logs (the failure names them), so they were unbounded: 619 in one temp dir
 # (a private Swift app, 2026-10-06). Kept now: the newest 20, and anything touched within the hour
 # -- a live run's dir is written as it runs, so a concurrent run is never pruned.
-"$GOH_PY" -S "$GOH_ROOT/lib/prune_kept.py" "${TMPDIR:-/tmp}" goh-local-ci. 2>/dev/null || true
+"$GOH_PY" -S "$GOH_ROOT/lib/prune_kept.py" "$(goh_tmp)" goh-local-ci. 2>/dev/null || true
 # The backstop for what a KILLED run could not remove (a trap does not run on SIGKILL): any of our
 # own `goh-*` entries untouched for 12 hours. Every gate's own files are removed at its exit
 # (goh_cleanup_add, tests/test_gate_temp_leaks.py); this bounds the rest.
 "$GOH_PY" -S "$GOH_ROOT/lib/prune_kept.py" "${TMPDIR:-/tmp}" --backstop 2>/dev/null || true
-LOGDIR=$(mktemp -d "${TMPDIR:-/tmp}/goh-local-ci.XXXXXX")
+LOGDIR=$(mktemp -d "$(goh_tmp)/goh-local-ci.XXXXXX")
 FAILED=0
 FAILED_NAMES=""
 PROVEN_SKIPPED=0

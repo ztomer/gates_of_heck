@@ -219,9 +219,10 @@ def bench(args) -> int:
     sessions = sorted({1, *(int(n) for n in args.sessions.split(","))})
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
     from prune_kept import prune  # a failed bench keeps its work dir; keep the newest few only
+    from tmp_root import goh_tmp  # never Spotlight-indexed (GOH.TMPNOINDEX)
 
-    prune(tempfile.gettempdir(), "goh-session-bench.")
-    work = Path(tempfile.mkdtemp(prefix="goh-session-bench."))
+    prune(goh_tmp(), "goh-session-bench.")
+    work = Path(tempfile.mkdtemp(dir=goh_tmp(), prefix="goh-session-bench."))
     logs = work / "logs"
     logs.mkdir()
     try:

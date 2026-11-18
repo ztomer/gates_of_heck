@@ -205,7 +205,7 @@ git -C "$root" worktree prune >/dev/null 2>&1 || true
 # it, and a stream read twice is a stream read once. Captured to a file (a
 # variable would be fine too — ref lines carry no NUL — but a file also survives
 # `set -u` on a push with no refs at all).
-refs_file="$(mktemp "${TMPDIR:-/tmp}/goh-push-refs.XXXXXX")"
+refs_file="$(mktemp "$(goh_tmp)/goh-push-refs.XXXXXX")"
 cat >"$refs_file"
 
 push_refusals   # the tag, disk, commit-message and landed-only refusals (gates/_push_refusals.sh)
@@ -309,8 +309,8 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
     # test_push_gate_ci_steps.py), each marking its tree; a release-only commit: lib/push_runs.sh.
     release_base="$(push_release_base "$root" "$worktree")"
     config_base="$([ -n "$release_base" ] || push_config_base "$worktree" "${remote_sha:-$zero}")"   # floors only
-    structural_mark="$(mktemp "${TMPDIR:-/tmp}/goh-structural-mark.XXXXXX")"
-    steps_mark="$(mktemp "${TMPDIR:-/tmp}/goh-ci-steps-mark.XXXXXX")"
+    structural_mark="$(mktemp "$(goh_tmp)/goh-structural-mark.XXXXXX")"
+    steps_mark="$(mktemp "$(goh_tmp)/goh-ci-steps-mark.XXXXXX")"
     # shellcheck source=/dev/null # the .gatesrc below is the gated repo's, unknown at lint (GOH.SHX2)
     (cd "$worktree" && if [ -n "$release_base" ]; then
             GOH_CROSS_REPO_ROOT="$root" GOH_CHANGE_BASE="$change_base" push_release_run "$release_base"

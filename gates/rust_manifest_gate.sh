@@ -46,7 +46,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 cd "${1:-$PWD}"
 
-log="$(mktemp "${TMPDIR:-/tmp}/goh-cargo-manifest.XXXXXX")"
+log="$(mktemp "$(goh_tmp)/goh-cargo-manifest.XXXXXX")"
 trap 'rm -f "$log"' EXIT
 
 # A compile failure is a real failure and must not be swallowed while looking

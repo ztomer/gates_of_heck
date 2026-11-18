@@ -40,6 +40,9 @@ import tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "checks"))
 from _gitutil import foreign_repo_env
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from tmp_root import goh_tmp  # never Spotlight-indexed (GOH.TMPNOINDEX)
+
 NAME = "path_invariance"
 # The symlinks macOS ships from the root into /private: a path under /private/<x> is also /<x>.
 PRIVATE_ALIASES = ("tmp", "var", "etc")
@@ -115,7 +118,7 @@ def main(argv: list[str]) -> int:
     if top.returncode != 0:
         print(f"✗ [{NAME}] not inside a git checkout: {top.stderr.strip()}", file=sys.stderr)
         return 2
-    scratch = tempfile.mkdtemp(prefix="goh-path-invariance.")
+    scratch = tempfile.mkdtemp(dir=goh_tmp(), prefix="goh-path-invariance.")
     home_cache = os.path.expanduser("~/.cache/goh")
     home_scratch = None
     try:

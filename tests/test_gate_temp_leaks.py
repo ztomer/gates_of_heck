@@ -19,7 +19,11 @@ from test_rust_gate import CURRENT, clone, warm_crate  # noqa: F401  # warm_crat
 
 
 def _left(tmpdir: Path) -> list[str]:
-    return sorted(p.name for p in tmpdir.iterdir())
+    """What a gate left in TMPDIR, inside the one parent every root lives under (GOH.TMPNOINDEX)
+    too; the empty parent itself is the machine's, kept for the next run."""
+    parent = tmpdir / "goh.noindex"
+    inner = sorted(f"goh.noindex/{p.name}" for p in parent.iterdir()) if parent.is_dir() else []
+    return sorted(p.name for p in tmpdir.iterdir() if p != parent) + inner
 
 
 def test_a_gate_whose_name_has_a_space_removes_its_log(repo, tmp_path) -> None:

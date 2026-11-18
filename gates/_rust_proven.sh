@@ -50,7 +50,7 @@ _rust_scope_init() {
     # goh-tui, R3.13) is left to the identity rather than refusing the whole scope.
     GOH_PROVEN_KEYED_ROOTS="$(proven_keyed_roots)"
     export GOH_PROVEN_KEYED_ROOTS
-    f="$(mktemp "${TMPDIR:-/tmp}/goh-rust-scope.XXXXXX")"
+    f="$(mktemp "$(goh_tmp)/goh-rust-scope.XXXXXX")"
     goh_cleanup_add "$f" "$f.err"  # it was never removed: ~4,700 leaked (a private Swift app, 2026-10-06)
     # shellcheck disable=SC2154  # cargo_dir is the sourcing gate's (rust_gate.sh), set before this runs
     if "$goh_native" rust-scope "$cargo_dir" >"$f" 2>"$f.err" && [ -s "$f" ]; then

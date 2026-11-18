@@ -59,8 +59,10 @@ def _run(tmp_path: Path, how: str, end) -> Path:
         try:
             assert proc.stdout is not None
             root = Path(proc.stdout.readline().strip())
-            # The subject is present: a root of the suite's own name, under the test's temp dir.
-            assert root.parent == real and root.name.startswith("goh-suite-tmp."), root
+            # The subject is present: a root of the suite's own name, under the test's temp dir's
+            # one unindexed parent (GOH.TMPNOINDEX).
+            assert root.parent == real / "goh.noindex", root
+            assert root.name.startswith("goh-suite-tmp."), root
             end(proc, root)
         finally:
             proc.kill()

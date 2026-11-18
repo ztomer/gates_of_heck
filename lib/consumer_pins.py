@@ -44,6 +44,7 @@ import gate_slot
 import land_lock
 import lock_order
 import step_timings
+from tmp_root import goh_tmp  # every temp root under $TMPDIR/goh.noindex (GOH.TMPNOINDEX)
 
 from tui.lib import counted
 
@@ -241,7 +242,7 @@ def push(repo: Path, said: str, log: Path | None = None) -> tuple[str, str]:
             f"{lead}not pushed: the sweep's push budget is spent; the next ship's sweep pushes it",
         )
     remote, branch = ref.split("/", 1)
-    with tempfile.TemporaryDirectory(prefix="goh-pins-push.") as tmp:
+    with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-pins-push.") as tmp:
         path = Path(log) if log is not None else Path(tmp) / "push.log"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")

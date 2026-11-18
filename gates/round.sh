@@ -92,7 +92,7 @@ fi
 # again.
 hooks="$(git config core.hooksPath 2>/dev/null || echo .git/hooks)"
 if [ -x "$hooks/commit-msg" ]; then
-    msg_file="$(mktemp "${TMPDIR:-/tmp}/goh-round-msg.XXXXXX")"
+    msg_file="$(mktemp "$(goh_tmp)/goh-round-msg.XXXXXX")"
     printf '%s\n' "$msg" >"$msg_file"
     if ! "$hooks/commit-msg" "$msg_file"; then
         rm -f "$msg_file"

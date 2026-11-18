@@ -171,7 +171,7 @@ land_rebase() {
 }
 # land_pre -- the pre-step on the tip as it is now; exits 1 on a red set (THE PRE-STEP, above).
 land_pre() {
-    [ -n "$verdicts" ] || verdicts="$(mktemp "${TMPDIR:-/tmp}/goh-land-verdicts.XXXXXX")" || exit 2
+    [ -n "$verdicts" ] || verdicts="$(mktemp "$(goh_tmp)/goh-land-verdicts.XXXXXX")" || exit 2
     rm -f "$verdicts"   # the pre-step's suite writes it whole, or there is no record
     pre_base="$(git -C "$main" rev-parse HEAD)"
     info "pre-land: $pre"
@@ -179,7 +179,7 @@ land_pre() {
     # pre-step starts while long gates hold every long slot -- a land queues for a long slot ONCE,
     # for its gate. As a `ship` gate it queued twice, and a lane that would go red waited up to
     # 632 s first (2026-11-16). The wait is printed apart from the run: the step stamps its start.
-    [ -n "$pre_start" ] || pre_start="$(mktemp "${TMPDIR:-/tmp}/goh-land-prestart.XXXXXX")" || exit 2
+    [ -n "$pre_start" ] || pre_start="$(mktemp "$(goh_tmp)/goh-land-prestart.XXXXXX")" || exit 2
     : >"$pre_start"
     # THE DEADLINE FOLLOWS THE SHARE (GOH.PRESTEPSHARE, lib/pre_deadline.py): taken after the
     # admission, from the share it gave and the worker-seconds the ledger measured; GOH_LAND_PRE_MAX
@@ -304,7 +304,7 @@ info "gate: $gate"
 # before gate_slot 50). 90 minutes bounds the gate as the coordinator's wrapper did. Class `ship`
 # (GOH_GATE_CLASS, consumed by lib/admission.py): ahead of every `work` waiter (GOH.SLOTFAIR).
 # GOH_TIMING_VIA: the push gate this runs is this land's, so it leaves the ledger row to land.sh.
-land_timings="$(mktemp "${TMPDIR:-/tmp}/goh-land-timings.XXXXXX")" || land_timings=""
+land_timings="$(mktemp "$(goh_tmp)/goh-land-timings.XXXXXX")" || land_timings=""
 if ! GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" GOH_LAND_VERDICTS_REUSE="$verdicts" GOH_GATE_CLASS=ship \
         GOH_TIMING_VIA=land GOH_TIMINGS="${GOH_TIMINGS:-$land_timings}" \
         "$GOH_PY" "$GOH/tools/load.py" --background-ok "land gate" \

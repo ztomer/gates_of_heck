@@ -57,6 +57,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "checks"))
+sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 from _gate_slot_probe import (
     Trial,
@@ -93,7 +94,9 @@ def main(argv: list[str]) -> int:
             raise SystemExit(f"unknown argument {flag!r}")
 
     root = REPO_ROOT
-    tmp = Path(tempfile.mkdtemp(prefix="goh-race-probe."))
+    from tmp_root import goh_tmp  # never Spotlight-indexed (GOH.TMPNOINDEX)
+
+    tmp = Path(tempfile.mkdtemp(dir=goh_tmp(), prefix="goh-race-probe."))
     try:
         if pause > 0 or stamp:
             root = instrumented_copy(REPO_ROOT, tmp / "instrumented", pause, shape=shape)

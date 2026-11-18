@@ -99,7 +99,7 @@ swift_lint_with_baseline() {
     [ -f "$GOH_SWIFT_LINT_BASELINE" ] \
         || die "GOH_SWIFT_LINT_BASELINE points at nothing: $GOH_SWIFT_LINT_BASELINE"
     local report rc=0
-    report="$(mktemp "${TMPDIR:-/tmp}/goh-swiftlint-report.XXXXXX")"
+    report="$(mktemp "$(goh_tmp)/goh-swiftlint-report.XXXXXX")"
     step "swiftlint --strict (baseline: $(basename "$GOH_SWIFT_LINT_BASELINE"))"
     swiftlint lint --strict --quiet --reporter json >"$report" || rc=$?
     if ! "$GOH_PY" "$HERE/swift_lint_baseline.py" \

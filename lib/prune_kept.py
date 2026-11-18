@@ -168,8 +168,14 @@ def prune(
 
 
 def backstop(directory: str) -> list[str]:
-    """Every `goh-*` entry no run has touched for BACKSTOP_IDLE_S: what a killed run left."""
-    return prune(directory, "goh-", keep=0, idle=BACKSTOP_IDLE_S)
+    """Every `goh-*` entry no run has touched for BACKSTOP_IDLE_S: what a killed run left, in
+    `directory` and in its `goh.noindex`, the parent every root lives under (lib/tmp_root.py)."""
+    removed = prune(directory, "goh-", keep=0, idle=BACKSTOP_IDLE_S)
+    if os.path.basename(os.path.normpath(directory)) != "goh.noindex":
+        removed += prune(
+            os.path.join(directory, "goh.noindex"), "goh-", keep=0, idle=BACKSTOP_IDLE_S
+        )
+    return removed
 
 
 if __name__ == "__main__":

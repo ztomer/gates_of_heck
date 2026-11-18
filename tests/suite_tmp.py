@@ -145,7 +145,9 @@ def _enter() -> None:
     if root and os.path.isdir(root):
         tmp = Path(root)
     else:
-        tmp = Path(tempfile.mkdtemp(prefix="goh-suite-tmp.", dir=real))
+        parent = Path(real) / "goh.noindex"  # never Spotlight-indexed (GOH.TMPNOINDEX)
+        parent.mkdir(exist_ok=True)
+        tmp = Path(tempfile.mkdtemp(prefix="goh-suite-tmp.", dir=parent))
         atexit.register(shutil.rmtree, tmp, True)
         _reap_on_exit(tmp)
         os.environ["PYTEST_DEBUG_TEMPROOT"] = str(tmp)

@@ -47,6 +47,9 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
+from tmp_root import goh_tmp  # never Spotlight-indexed (GOH.TMPNOINDEX)
+
 # Apple's required iconset members: (filename, pixel size). Fixed order.
 LADDER = [
     ("icon_16x16.png", 16),
@@ -183,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = args.out_dir.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    work = Path(tempfile.mkdtemp(prefix="goh-icons-"))
+    work = Path(tempfile.mkdtemp(dir=goh_tmp(), prefix="goh-icons-"))
     try:
         base = normalize_source(src, work)
         w, h = png_dimensions(base)

@@ -33,7 +33,8 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 # shellcheck source=lib/house_python.sh
 . "${BASH_SOURCE[0]%/*}/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
 # shellcheck source=lib/lock_order.sh
-. "${BASH_SOURCE[0]%/*}/lock_order.sh" || exit 1   # the one lock order (GOH.LOCKORDER)
+. "${BASH_SOURCE[0]%/*}/lock_order.sh" || exit 1
+. "${BASH_SOURCE[0]%/*}/tmp_root.sh"   # goh_tmp: every temp root under $TMPDIR/goh.noindex, never Spotlight-indexed (GOH.TMPNOINDEX)   # the one lock order (GOH.LOCKORDER)
 # shellcheck source=lib/worker_share.sh
 . "${BASH_SOURCE[0]%/*}/worker_share.sh" || exit 1   # how wide an admitted gate runs (GOH.POOLSHARE)
 GATE_SLOT_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gate_slot.py" # beside this file
@@ -80,7 +81,7 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller> <class | "">
         return 0
     fi
     goh_lock_check gate_slot || exit 78   # never wait on a slot inside a later lock's holder
-    fifo="$(mktemp -u "${TMPDIR:-/tmp}/goh-gate-slot.XXXXXX")"
+    fifo="$(mktemp -u "$(goh_tmp)/goh-gate-slot.XXXXXX")"
     mkfifo "$fifo"
     "$GOH_PY" -S "$helper" hold --dir "$dir" ${n:+--slots "$n"} --owner "$owner" --repo "$repo" \
         --handshake "$fifo" --class "$class" ${mode:+"$mode"} </dev/null &

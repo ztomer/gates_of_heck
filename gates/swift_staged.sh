@@ -35,8 +35,8 @@ if [ "${1:-}" = "--lint-root" ]; then
     dir="$2" baseline="$3"
     shift 3
     cd "$dir"
-    errs="$(mktemp "${TMPDIR:-/tmp}/goh-swiftlint-err.XXXXXX")"
-    report="$(mktemp "${TMPDIR:-/tmp}/goh-swiftlint-report.XXXXXX")"
+    errs="$(mktemp "$(goh_tmp)/goh-swiftlint-err.XXXXXX")"
+    report="$(mktemp "$(goh_tmp)/goh-swiftlint-report.XXXXXX")"
     trap 'rm -f "$errs" "$report"' EXIT
     rc=0
     if [ -n "$baseline" ]; then

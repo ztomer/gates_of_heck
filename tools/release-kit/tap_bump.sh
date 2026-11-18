@@ -19,6 +19,7 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 set -euo pipefail
 # shellcheck source=lib/goh_root.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../../lib/goh_root.sh" && goh_dir_repair   # a dead export GOH_DIR (GOH.TRANSIENTDIR)
+. "${BASH_SOURCE[0]%/*}/../../lib/tmp_root.sh"   # goh_tmp: every temp root under $TMPDIR/goh.noindex, never Spotlight-indexed (GOH.TMPNOINDEX)
 GOH="${GOH_DIR:-$HOME/Projects/gates_of_heck}"
 # shellcheck disable=SC1091
 source "$GOH/tui/lib.sh"
@@ -53,7 +54,7 @@ elif grep -q '/' <<<"$TAP"; then
 else
   die "tap_bump: --tap must be ORG/REPO or a local git path (got '${TAP}')"
 fi
-work="$(mktemp -d "${TMPDIR:-/tmp}/goh-tap-bump.XXXXXX")"
+work="$(mktemp -d "$(goh_tmp)/goh-tap-bump.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 git clone -q "$src" "$work/tap" || die "tap_bump: could not clone ${TAP}"
 file="$work/tap/${SUBDIR}/${NAME}.rb"
