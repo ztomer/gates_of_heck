@@ -206,17 +206,20 @@ def test_the_admission_names_the_live_runner_unless_the_repo_has_its_own(tmp_pat
     assert got["GOH_SHARE_OWN"] == "0"
     (tmp_path / ".cargo").mkdir()
     (tmp_path / ".cargo" / "config.toml").write_text("[target.'cfg(unix)']\nrunner = 'x.sh'\n")
-    assert var not in worker_share.runner_env(8, clean, mine=0)
+    named = worker_share.runner_env(8, clean, mine=0).get(var)
+    assert named is None, named
     assert (
         worker_share.runner_env(8, {**clean, "RUST_TEST_THREADS": "1"})["GOH_SHARE_RUST_PINNED"]
         == "1"
     )
-    assert "GOH_SHARE_RUST_PINNED" not in worker_share.runner_env(8, clean)
+    pinned = worker_share.runner_env(8, clean).get("GOH_SHARE_RUST_PINNED")
+    assert pinned is None
 
 
 def test_a_worker_takes_tokens_only_under_xdist_and_starts_nothing_holding_the_pool(tmp_path):
     env = {"GOH_SHARE_POOL": str(tmp_path / "p"), "GOH_SHARE_CEIL": "4"}
-    assert worker_share.tokens_from_env(dict(env)) is None  # the controller
+    controller = worker_share.tokens_from_env(dict(env))
+    assert controller is None  # the controller
     ctl = dict(env)
     worker_share.tokens_from_env(ctl)
     assert "GOH_SHARE_POOL" in ctl  # kept for the workers it starts
@@ -272,3 +275,20 @@ def test_local_ci_publishes_its_running_steps_to_their_live_share(tmp_path):
     assert [(tmp_path / n).read_text().strip() for n in ("a", "b")] == ["4", "4"]
     count = Path((tmp_path / "a.file").read_text().strip().split(":")[-1])
     assert count.name == "live-steps", count
+
+
+def test_the_coverage_gate_runs_its_binaries_through_the_live_runner_without_asking_rustc(tmp_path):
+    """gates/_cov_run_tests.py starts the test binaries itself through cargo's runner: the live
+    runner the admission named is taken as it is -- asking rustc for the target (as a repo's own
+    runner needs) failed every coverage run on a PATH with no rustc."""
+    sys.path.insert(0, str(REPO_ROOT / "gates"))
+    import _cargo_config
+
+    var = worker_share.cargo_runner_var()
+    live = {var: f"/py -S {REPO_ROOT}/lib/worker_share.py run"}
+
+    def no_rustc():
+        raise AssertionError("rustc asked")
+
+    got = _cargo_config._cargo_runner(tmp_path, live, tmp_path / "home", no_rustc)
+    assert got == ["/py", "-S", f"{REPO_ROOT}/lib/worker_share.py", "run"], got

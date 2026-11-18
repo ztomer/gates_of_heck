@@ -29,7 +29,8 @@ def _argv(tmp_path: Path, *args: str, cores: str | None = None, **extra: str) ->
         # GOH.GATEBUDGET2) would overwrite the argv under test.
         f'if [ "$1 $2" != "-m pytest" ] || [ "$3" = --version ]; then exit 0; fi\n'
         f'printf "%s\\n" "$@" > "{record}"\n'
-        f'env | grep "^GOH_SHARE_" > "{record}.env" || true\n'
+        f'printf "%s\\n" "GOH_SHARE_POOL=$GOH_SHARE_POOL" "GOH_SHARE_CEIL=$GOH_SHARE_CEIL"'
+        f' "GOH_SHARE_OWN=$GOH_SHARE_OWN" > "{record}.env"\n'
     )
     stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
     (tmp_path / "slots").mkdir(exist_ok=True)

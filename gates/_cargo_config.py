@@ -14,6 +14,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 Cfgs = Mapping[str, "set[str] | None"]
+LIVE_RUNNER = "worker_share.py run"  # lib/worker_share.py runner_env's cargo runner
 
 
 def _cargo_env_table(cwd: Path, environ: Mapping[str, str], cargo_home: Path) -> dict[str, str]:
@@ -163,13 +164,16 @@ def _cargo_runner(
     triple and its cfgs, from rustc) is asked only when some runner is declared at all: a repo
     with none needs no rustc.
     """
-    declared = any(k.startswith("CARGO_TARGET_") and k.endswith("_RUNNER") for k in environ)
+    named = [k for k in environ if k.startswith("CARGO_TARGET_") and k.endswith("_RUNNER")]
     files = list(reversed(_config_files(cwd, Path(cargo_home))))  # the lowest first
     tables = [(f, _load(f).get("target", {})) for f in files]
-    declared = declared or any(
-        isinstance(t, dict) and "runner" in t for _, tt in tables for t in tt.values()
-    )
-    if not declared:
+    in_files = any(isinstance(t, dict) and "runner" in t for _, tt in tables for t in tt.values())
+    live = [k for k in named if environ[k].strip().endswith(LIVE_RUNNER)]
+    if not in_files and named and live == named:
+        # goh's live-share runner, named by the admission for the HOST only where the repo names no
+        # runner of its own (lib/worker_share.py run, GOH.SHAREGROW): no rustc needed to pick it.
+        return _path_and_args(environ[live[0]], cwd.resolve(), live[0])
+    if not (named or in_files):
         return None
     target, cfgs = target_info()
     var = "CARGO_TARGET_" + target.upper().replace("-", "_").replace(".", "_") + "_RUNNER"
