@@ -4,7 +4,7 @@
 
 # ── rust ────────────────────────────────────────────────────────────────────
 # Ported from app_updates/tools/coverage_check.sh; see lineage above. ONE instrumented run of
-# every declared lib/bin/test target, its lcov fed to the CGU-normalizing merger below.
+# every declared lib/bin/test target, its lcov fed to the line-union merger below.
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # ── THE PHASES, STREAMED (GOH.COVPHASES) ─────────────────────────────────────
 # A step killed on its ceiling shows the tail of what it printed, and this mode printed three intro
@@ -150,12 +150,12 @@ run_rust() {
     # (The clearing runs in the show-env environment below, where this run's profiles land.)
 
     # ONE RUN, ONE EXPORT. The rust mode exported one lcov part PER TEST TARGET (`--no-clean`, the
-    # profile reset between targets) and unioned them. The phantom misses that design was credited
-    # with come from aggregating duplicate instantiations, and the CGU-normalizing merger fixes
-    # those whatever the part count: A/B on all 29 crates of a private server workspace
-    # (2026-10-06), one combined run of the same targets gave the IDENTICAL merged report -- same
-    # percentage, same covered and coverable line counts, every crate -- for 173 s against 226 s,
-    # one cargo invocation and one export per crate instead of one per target.
+    # profile reset between targets) and unioned them. Instantiations need no per-target parts:
+    # llvm-cov's line rows already union them, whatever the part count: A/B on all 29 crates of a
+    # private server workspace (2026-10-06), one combined run of the same targets gave the
+    # IDENTICAL merged report -- same percentage, same covered and coverable line counts, every
+    # crate -- for 173 s against 226 s, one cargo invocation and one export per crate instead of
+    # one per target.
 
     # THE EXTERNAL PART (--external / GOH_COV_RUST_EXTERNAL): a crate whose behaviour suite drives
     # its binary from outside `cargo test` (gates_of_heck: the pytest suite runs `goh` thousands of

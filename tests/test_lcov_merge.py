@@ -11,6 +11,8 @@ module surface directly:
     name contains a comma used to crash on int('_Z4other')
   - malformed DA/FNDA records exit 2 NAMING file+line (never an uncaught
     traceback masquerading as exit-1 below-floor)
+  - no span forgiveness: a zero line inside an executed function is a miss,
+    a zero-count clone's rows never lower a line another instantiation ran
 """
 
 import subprocess
@@ -84,7 +86,7 @@ def test_two_field_fn_with_comma_in_mangled_name_parses(tmp_path):
     assert "100%" in r.stdout
 
 
-def test_three_field_fn_still_bounded_by_declared_end(tmp_path):
+def test_three_field_fn_lines_are_judged_by_their_own_counts(tmp_path):
     body = [
         "SF:src/lib.rs",
         "FN:1,4,_Za",
@@ -93,15 +95,15 @@ def test_three_field_fn_still_bounded_by_declared_end(tmp_path):
         "DA:2,0",
         "DA:3,1",
         "DA:4,1",
-        "DA:8,0",  # beyond declared end: NOT forgiven
+        "DA:8,0",  # beyond the declared end
         "end_of_record",
     ]
     pd = tmp_path / "parts"
     write_part(pd, "part-a.info", "\n".join(body) + "\n")
     r = run_merge(pd, floor="100")
     assert r.returncode == 1
-    # line 2 forgiven (inside executed span); line 8 named.
-    assert "src/lib.rs: 8" in r.stdout, r.stdout
+    # line 2 is inside the executed span and was forgiven until GOH.SPANFORGIVE: both named.
+    assert "src/lib.rs: 2, 8" in r.stdout, r.stdout
 
 
 def test_malformed_da_exits_2_naming_file_and_line(tmp_path):
@@ -232,3 +234,66 @@ def test_an_exemption_may_name_its_file_relative_to_the_project(tmp_path: Path) 
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "stale" not in r.stdout + r.stderr, r.stdout + r.stderr
+
+
+# ── no span forgiveness: a line is covered by its own count (GOH.SPANFORGIVE) ─
+# The merger counted a zero-count line inside ANY executed function as covered: "span forgiveness",
+# meant for phantom misses from zero-count clones of instantiated generics. A real producer has no
+# such phantom: cargo-llvm-cov's DA rows are already the union over every instantiation of the file
+# (fixtures/lcov_generics: cargo-llvm-cov 0.9.1, LLVM 23, `lib.rs` there -- `generic::<u8>` and the
+# non-test build's `plain` are FNDA:0 clones, and every line some instantiation ran reads DA>0). So
+# the span only ever forgave lines NO instantiation ran: an untaken `if` arm of a called function.
+
+FIXTURES = Path(__file__).parent / "fixtures" / "lcov_generics"
+
+
+def _missed(stdout: str) -> list[int]:
+    rows = [r for r in stdout.splitlines() if r.startswith("  src/lib.rs: ")]
+    return [int(n) for n in rows[0].split(": ", 1)[1].split(", ")] if rows else []
+
+
+def test_a_never_run_line_inside_an_executed_function_reads_uncovered(tmp_path):
+    """Two-field records (today's cargo-llvm-cov): _Za ran, its line 2 did not. It used to be
+    forgiven by _Za's open-ended span and the floor read 100%."""
+    pd = tmp_path / "parts"
+    write_part(pd, "part-workspace.info", part(das=((1, 1), (2, 0), (3, 1))))
+    r = run_merge(pd, floor="100")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "66.67%" in r.stdout and _missed(r.stdout) == [2], r.stdout
+
+
+def test_a_zero_count_clone_of_an_instantiated_generic_reads_covered(tmp_path):
+    """The case forgiveness was for, met by the union of DA rows: a clone's own zero rows, in the
+    same part or another, never lower a line another instantiation ran."""
+    pd = tmp_path / "parts"
+    ran = "_RINvCsAAAA_2pa1gmEB2_"
+    clone = "_RINvCsBBBB_2pa1ghEB2_"
+    write_part(
+        pd,
+        "part-workspace.info",
+        f"SF:src/lib.rs\nFN:1,{ran}\nFN:1,{clone}\nFNDA:4,{ran}\nFNDA:0,{clone}\n"
+        "DA:1,4\nDA:2,4\nDA:1,0\nDA:2,0\nend_of_record\n",
+    )
+    write_part(
+        pd,
+        "part-external.info",
+        f"SF:src/lib.rs\nFN:1,{clone}\nFNDA:0,{clone}\nDA:1,0\nDA:2,0\nend_of_record\n",
+    )
+    r = run_merge(pd, floor="100")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "100.0% of coverable lines" in r.stdout, r.stdout
+
+
+def test_the_real_producers_generics_read_by_their_own_counts(tmp_path):
+    """The real export: the untaken arms of three executed functions (lines 18, 26, 34 of
+    fixtures/lcov_generics/lib.rs) are misses; the FNDA:0 clones of `generic`, `plain`, `inl` and
+    `gen_branch` cost nothing; only never-run functions' lines join them. 29 of 38, never 32."""
+    pd = tmp_path / "parts"
+    pd.mkdir()
+    (pd / "part-workspace.info").write_text(
+        (FIXTURES / "part-workspace.info").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    r = run_merge(pd, floor="100")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "76.32% of coverable lines" in r.stdout and "29/38" in r.stdout, r.stdout
+    assert _missed(r.stdout) == [11, 12, 13, 18, 26, 34, 39, 40, 41], r.stdout

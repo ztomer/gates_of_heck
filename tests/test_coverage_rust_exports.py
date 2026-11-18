@@ -9,14 +9,13 @@ Contracts pinned here:
   - a valid-but-empty run is named, and the merger refuses a report over zero lines
   - FN records parse in BOTH live formats: two-field (start,name — today's
     cargo-llvm-cov) and three-field (start,end,name — geninfo)
-  - a three-field fn's forgiveness span is bounded by its declared end;
-    two-field spans stay open-ended exactly as before
+  - every line is judged by its own count in both formats: no function span
+    forgives a zero line (GOH.SPANFORGIVE)
 
 Red proofs: the shortfall and empty-part tests were written FIRST and failed
 against pre-fix coverage_gate.sh (failed exports were warned away and the run
-continued; empty parts passed silently). The three-field forgiveness test
-failed against pre-fix code (three-field names parsed as "end,mame", so FNDA
-never matched and nothing was forgiven).
+continued; empty parts passed silently). The span tests were red on the span
+forgiveness GOH.SPANFORGIVE removed (lines 2 / 2, 8, 9 read covered).
 """
 
 import hashlib
@@ -253,8 +252,9 @@ def test_every_declared_target_exported_is_green(tmp_path):
 
 # ── C: merger FN parsing ────────────────────────────────────────────────────
 # Fixture shape: fn _Za declared lines 1-4 (three-field), executed (FNDA 5);
-# line 2 is a phantom zero-count row INSIDE the span; lines 8-10 are
-# module-tail rows BEYOND the declared end.
+# line 2 is a zero-count row INSIDE the span, which the span used to forgive
+# (GOH.SPANFORGIVE: no instantiation ran it); lines 8-10 are module-tail rows
+# BEYOND the declared end.
 
 
 THREE_FIELD_LIB = build_part(
@@ -267,25 +267,15 @@ THREE_FIELD_LIB = build_part(
 THREE_FIELD = {"lib.info": THREE_FIELD_LIB, "all.info": THREE_FIELD_LIB}
 
 
-def test_uncovered_line_inside_three_field_span_is_forgiven(tmp_path):
+def test_a_zero_line_inside_a_three_field_span_is_a_miss(tmp_path):
     proj = setup_fixture(tmp_path, THREE_FIELD)
     r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts")
     assert r.returncode == 1, r.stdout + r.stderr
     missed = missed_lines(r.stdout)
-    assert missed == [8, 9, 10], (
-        f"line 2 (inside the declared span) must be forgiven; got missed={missed}"
-    )
-
-
-def test_module_tail_beyond_three_field_end_is_NOT_forgiven(tmp_path):
-    proj = setup_fixture(tmp_path, THREE_FIELD)
-    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts")
-    assert r.returncode == 1, r.stdout + r.stderr
-    missed = missed_lines(r.stdout)
-    assert set(missed) == {8, 9, 10}, "tail lines past the declared end must stay uncovered"
-    # The denominator stays honest: 4 of 7 coverable lines ran.
+    assert missed == [2, 8, 9, 10], f"line 2 ran in no instantiation; got missed={missed}"
+    # The numerator stays honest: 3 of 7 coverable lines ran.
     pct_line = next(l for l in r.stdout.splitlines() if "[coverage]" in l)
-    assert "57.14%" in pct_line, pct_line
+    assert "42.86%" in pct_line, pct_line
 
 
 TWO_FIELD_LIB = build_part(
@@ -298,14 +288,15 @@ TWO_FIELD_LIB = build_part(
 TWO_FIELD = {"lib.info": TWO_FIELD_LIB, "all.info": TWO_FIELD_LIB}
 
 
-def test_two_field_corpus_keeps_open_ended_spans_exactly_as_before(tmp_path):
-    """Legacy byte-identical behavior: without a declared end, the executed
-    fn's open-ended span forgives EVERYTHING after it (lines 2, 8, 9 here).
-    Changing this moves live cargo-llvm-cov consumers' numbers — pinned."""
+def test_a_two_field_corpus_names_every_zero_line_after_an_executed_fn(tmp_path):
+    """Today's cargo-llvm-cov format. The executed fn's open-ended span forgave EVERYTHING after
+    it (lines 2, 8, 9 here) and read 100%: a test pinned that as "byte-identical" until
+    GOH.SPANFORGIVE. 3 of 6 lines ran."""
     proj = setup_fixture(tmp_path, TWO_FIELD)
     r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts")
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "100%" in r.stdout
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert missed_lines(r.stdout) == [2, 8, 9], r.stdout
+    assert "50.0%" in r.stdout, r.stdout
 
 
 # ── B: cpp mode — a failing suite must stop the measurement ─────────────────

@@ -12,9 +12,8 @@ arm) is not executable here and not judged. Lines the floor already carried are 
 
 A SEPARATE READER of the report: it never produces, merges or changes the parts (`part-*.info`,
 read with lcov_merge's own parser), so it judges whatever merged report the coverage run makes.
-It is strict where the floor forgives: the floor counts a zero line inside an executed function
-as covered (lcov_merge's span forgiveness for duplicate instantiations); a changed line is judged
-by its own count, since an untaken arm of a called function is exactly the untested line.
+It judges a changed line by its own best count, as the floor does since GOH.SPANFORGIVE removed
+the floor's span forgiveness: an untaken arm of a called function is exactly the untested line.
 
 THE BASE, first found: `--base`; GOH_CHANGE_BASE (the push gate's: the remote's tip, so a
 consumer's push judges what it pushes); the merge base with the branch's upstream; the merge base
@@ -183,7 +182,7 @@ def report(parts: list[str], top: str, include: str) -> dict[tuple[str, int], in
     line_best: dict = defaultdict(int)
     try:
         for pf in parts:
-            parse_part(pf, line_best, defaultdict(int), {}, {})
+            parse_part(pf, line_best)
     except LcovError as exc:
         raise Refused(str(exc)) from exc
     inc = None

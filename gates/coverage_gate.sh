@@ -35,14 +35,15 @@
 #
 # Lineage (ported, then unified):
 #   rust  ← ~/Projects/app_updates/tools/coverage_check.sh (the best copy):
-#           cargo llvm-cov, then a merge pass that strips CGU hashes so
-#           duplicate template/function instantiations group together
-#           (llvm-cov emits one record per instantiation; naive aggregation
-#           reports phantom misses from zero-count clones of functions other
-#           clones demonstrably ran). Reports EXACT uncovered lines when below
-#           floor. Its ancestor ~/Projects/monitor/tools/coverage_check.sh was
-#           a single aggregated export + --fail-under-lines: the phantom misses
-#           were that AGGREGATION's, which the merger fixes. app_updates also
+#           cargo llvm-cov, then a merge pass that unions the parts' line
+#           rows by best count (gates/lcov_merge.py) and reports EXACT
+#           uncovered lines when below floor. Its "span forgiveness" (a zero
+#           line inside any executed function counted covered, for phantom
+#           misses from zero-count clones) was removed by GOH.SPANFORGIVE: the
+#           export's DA rows already union every instantiation, so the span
+#           forgave only lines no instantiation ran. Its ancestor
+#           ~/Projects/monitor/tools/coverage_check.sh was a single aggregated
+#           export + --fail-under-lines. app_updates also
 #           exported one part per test target; since 2026-10-06 one run of
 #           every target is exported once (identical merged report on all 29
 #           a private server workspace crates, 226 -> 173 s; _coverage_rust.sh).
