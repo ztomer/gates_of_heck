@@ -23,11 +23,66 @@
 #   GOH_PY=<path>          use exactly this interpreter -- still judged against the floor
 #   GOH_PY_SEARCH=<dirs>   search ONLY these colon-separated directories (a planted fake 3.9)
 # The verdict is exported (GOH_PY, GOH_PY_OK) so a process tree resolves once.
+#
+# PROBE CACHE (GOH.PYPROBECACHE, 2026-11-18). A scrubbed env (a hermetic test, a foreign-repo check)
+# drops GOH_PY_OK, and each such tree re-ran every candidate's version probe: 126 python3 starts in
+# one land pre-step (tools/spawn_profile.py). A probe's answer is a fact of the FILE, so it is kept in
+# ${XDG_CACHE_HOME:-~/.cache}/goh/house_python.tsv, keyed by the path and the identity of the file it
+# resolves to (device, inode, mtime, size -- one `stat` for all candidates); a replaced or touched
+# interpreter misses and is probed again. Pinned by tests/test_house_python.py.
 
 # _goh_house_py_version <python>: its major.minor.micro, or nothing and 1.
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
+_goh_house_py_lib="$(cd "$_goh_d" && pwd)"
 _goh_house_py_version() {
     "$1" -I -S -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null </dev/null
+}
+
+# _goh_house_py_ids <path>...: fill _goh_py_id[path]=dev:inode:mtime:size, one stat for all.
+_goh_house_py_ids() {
+    local line
+    _goh_py_id=()
+    [ "$#" -gt 0 ] || return 0
+    if [[ "${OSTYPE:-}" == darwin* ]]; then
+        line="$(/usr/bin/stat -L -f '%d:%i:%m:%z	%N' -- "$@" 2>/dev/null)"
+    else
+        line="$(stat -L -c '%d:%i:%Y:%s	%n' -- "$@" 2>/dev/null)"
+    fi
+    while IFS=$'\t' read -r id path; do
+        [ -n "$path" ] && _goh_py_id["$path"]="$id"
+    done <<<"$line"
+}
+
+# _goh_house_py_cache_load: fill _goh_py_seen[path<TAB>id]=version from the cache file.
+_goh_house_py_cache_load() {
+    local p i v
+    _goh_py_seen=()
+    _goh_py_cache=""
+    local root="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
+    [ -n "$root" ] || return 0
+    _goh_py_cache="$root/goh/house_python.tsv"
+    [ -r "$_goh_py_cache" ] || return 0
+    while IFS=$'\t' read -r p i v; do
+        [ -n "$v" ] && _goh_py_seen["$p"$'\t'"$i"]="$v"
+    done <"$_goh_py_cache"
+}
+
+# _goh_house_py_cached_version <python>: its version from the cache, or a probe recorded in it.
+_goh_house_py_cached_version() {
+    local id="${_goh_py_id[$1]:-}" ver
+    if [ -n "$id" ] && [ -n "${_goh_py_seen["$1"$'\t'"$id"]:-}" ]; then
+        printf '%s\n' "${_goh_py_seen["$1"$'\t'"$id"]}"
+        return 0
+    fi
+    ver="$(_goh_house_py_version "$1")" || return 1
+    [ -n "$ver" ] || return 1
+    if [ -n "$id" ] && [ -n "$_goh_py_cache" ]; then
+        (   # one short O_APPEND line: concurrent writers interleave whole lines
+            . "$_goh_house_py_lib/suite_cache_guard.sh" && goh_suite_cache_ok "$_goh_py_cache" house_python.sh \
+                && mkdir -p "${_goh_py_cache%/*}" && printf '%s\t%s\t%s\n' "$1" "$id" "$ver" >>"$_goh_py_cache"
+        ) 2>/dev/null || true
+    fi
+    printf '%s\n' "$ver"
 }
 
 # _goh_house_py_ge <a> <b>: a >= b, numerically, field by field (3.15.1 >= 3.15; 3.9.6 < 3.15).
@@ -56,10 +111,14 @@ goh_house_python() {
         return 0
     fi
     local floor dirs dir cand v best="" best_v="" seen=":"
+    local -a cands=()
+    declare -gA _goh_py_id=() _goh_py_seen=()
+    _goh_house_py_cache_load
     floor="$(goh_house_python_floor)"
     if [ -n "${GOH_PY:-}" ]; then
         best="$GOH_PY"
-        best_v="$(_goh_house_py_version "$GOH_PY")" || {
+        _goh_house_py_ids "$GOH_PY"
+        best_v="$(_goh_house_py_cached_version "$GOH_PY")" || {
             echo "✗ goh: GOH_PY=$GOH_PY cannot say its Python version -- point it at a python3 at or above ${floor:-the floor}" >&2
             return 1
         }
@@ -77,13 +136,17 @@ goh_house_python() {
                 [ -x "$cand" ] || continue
                 case "$seen" in *":$cand:"*) continue ;; esac
                 seen="$seen$cand:"
-                v="$(_goh_house_py_version "$cand")" || continue
-                if [ -z "$best_v" ] || ! _goh_house_py_ge "$best_v" "$v"; then   # strictly newer
-                    best="$cand" best_v="$v"
-                fi
+                cands+=("$cand")
             done
         done
         unset IFS
+        _goh_house_py_ids "${cands[@]}"
+        for cand in "${cands[@]}"; do
+            v="$(_goh_house_py_cached_version "$cand")" || continue
+            if [ -z "$best_v" ] || ! _goh_house_py_ge "$best_v" "$v"; then   # strictly newer
+                best="$cand" best_v="$v"
+            fi
+        done
         if [ -z "$best" ]; then
             echo "✗ goh: no python3 found (searched: $dirs) -- the house interpreter is Python ${floor:-3} or newer; install it (brew install python), or set GOH_PY" >&2
             return 1

@@ -1,0 +1,1 @@
+- The house-python version probe is cached per interpreter file (path, device, inode, mtime, size) in `${XDG_CACHE_HOME:-~/.cache}/goh/house_python.tsv`: a tree whose env dropped GOH_PY_OK no longer restarts every python3 candidate; a touched or replaced interpreter is probed again (GOH.PYPROBECACHE).

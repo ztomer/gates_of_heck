@@ -138,3 +138,30 @@ def test_this_suite_runs_on_the_house_interpreter() -> None:
     assert required_tools.at_least(f"{sys.version_info[0]}.{sys.version_info[1]}", FLOOR), (
         sys.version
     )
+
+
+def _counting(directory: Path, version: str, log: Path) -> Path:
+    """A `python3` that reports `version` and appends one line to `log` per probe."""
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "python3"
+    path.write_text(f"#!/bin/sh\necho x >> {log}\necho {version}\n")
+    path.chmod(0o755)
+    return path
+
+
+def test_a_probe_is_cached_by_the_interpreter_file(tmp_path: Path) -> None:
+    """GOH.PYPROBECACHE: a tree whose env lost GOH_PY_OK resolves without starting the interpreter
+    again; a touched (mtime) or replaced interpreter is probed afresh, and its new answer wins."""
+    log = tmp_path / "probes.log"
+    fake = _counting(tmp_path / "bin", "3.99.0", log)
+    env = {"GOH_PY_SEARCH": str(fake.parent), "XDG_CACHE_HOME": str(tmp_path / "cache")}
+    for _ in range(3):
+        done = _resolve(**env)
+        assert done.returncode == 0, done.stderr
+        assert done.stdout.strip() == str(fake)
+    assert log.read_text().count("x") == 1, "a cached interpreter was probed again"
+    fake.write_text(f"#!/bin/sh\necho x >> {log}\necho 3.9.6\n")
+    os.utime(fake, (1_000_000_000, 1_000_000_000))
+    done = _resolve(**env)
+    assert log.read_text().count("x") == 2, "a changed interpreter was not probed again"
+    assert done.returncode == 1 and "3.9.6" in done.stderr, done.stderr
