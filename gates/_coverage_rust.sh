@@ -70,7 +70,7 @@ cov_reap() { # the EXIT trap: this run's scratch goes with it, pass, fail or sig
     for d in "$PROJ/target/llvm-cov" "$PROJ/target/llvm-cov-external"; do
         [ -d "$d" ] || continue
         find "$d" -maxdepth 1 -type f -name '*.profraw' -delete 2>/dev/null || true
-        rm -rf "$d/cov-view"
+        rm -rf "$d/cov-view" "$d/t"   # t/: the suite's per-test profiles (tests/_prof_record.py)
     done
     [ -z "${COV_KEY:-}" ] || cov_cache_prune
 }

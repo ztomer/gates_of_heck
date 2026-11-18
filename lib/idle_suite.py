@@ -9,8 +9,10 @@ when it has nothing to land, so it is on disk before a ship asks for it:
 
     run(q, live)   after the queue drained: when the main checkout of LIVE (the lander's own
                    repository) declares GOH_SHIP_FULL_SUITE=on and main's tip has no full suite
-                   record, run `tools/pytest.sh` (GOH_LAND_VERDICTS_RECORD=/dev/null: the store's
-                   record alone, the hand run's form) in a detached worktree at that tip,
+                   record, run the suite INSTRUMENTED (`INSTRUMENTED`: the coverage gate's Rust
+                   mode, its external suite against the instrumented binary; GOH.COVCARRY) with
+                   GOH_LAND_VERDICTS_RECORD=/dev/null (the store's record alone) in a detached
+                   worktree at that tip,
                    `<q>/idle-suite/wt` (kept between runs: its build caches are warm).
 
 IT NEVER DELAYS A LAND. The run takes its own gate slot through admission (`tools/load.py 0`, class
@@ -40,8 +42,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gitrun
 import killtree
 import lock_order
-import reuse
 import selection_miss
+import ship_suite
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -99,9 +101,21 @@ def prepare(main: Path, wt: Path, sha: str) -> str:
     return ""
 
 
+# THE INSTRUMENTED RUN (GOH.COVCARRY, the owner's term 2): the idle full suite is the coverage
+# gate's Rust mode with its external suite, as the land gate runs it (gates/rust_gate.sh
+# rust_coverage_checks) -- the whole suite against the INSTRUMENTED binary, so its record is the
+# fresh instrumented full run every ship requires (lib/reuse.py full_suite) and the shadow the
+# coverage carry is compared with (lib/prof_carry.py). Read from the tip's own .gatesrc, in bash.
+INSTRUMENTED = (
+    ". ./.gatesrc >/dev/null 2>&1 </dev/null; "
+    'exec bash gates/coverage_gate.sh --lang rust --external "$GOH_COV_RUST_EXTERNAL" '
+    '--floor "$GOH_COV_FLOOR_RUST" .'
+)
+
+
 def default_argv() -> list[str]:
     return [sys.executable, str(ROOT / "tools" / "load.py"), "--background-ok", "idle full suite",
-            "--max", MAX, "0", "--", "bash", "tools/pytest.sh"]  # fmt: skip
+            "--max", MAX, "0", "--", "bash", "-c", INSTRUMENTED]  # fmt: skip
 
 
 def log_of(q: Path, sha: str) -> Path:
@@ -137,7 +151,7 @@ def run(
         last = {}
     if not sha or (last.get("sha") == sha and last.get("outcome") in ("green", "red")):
         return "nothing"
-    if reuse.full_suite(main, sha)[0] is not None:
+    if ship_suite.full_suite(main, sha)[0] is not None:
         return "nothing"
     state.mkdir(parents=True, exist_ok=True)
     fd = os.open(state / "lock", os.O_RDWR | os.O_CREAT, 0o644)

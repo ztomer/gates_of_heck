@@ -287,8 +287,11 @@ def test_the_pre_steps_passes_are_recorded_and_the_gates_suite_skips_them(
         LLVM_PROFILE_FILE=str(tmp_path / "p.profraw"),
     )  # fmt: skip
     assert "PASSED test_s.py::test_ran_the_binary" in cov.stdout, cov.stdout
-    assert "PASSED test_s.py::test_pass" not in cov.stdout, cov.stdout
-    assert "1 failed, 2 passed, 1 skipped" in cov.stdout, cov.stdout
+    # Unmarked is no proof it left no profile: only a pass an instrumented run MEASURED running no
+    # binary is skipped under coverage, and a plain pre-step measures nothing (GOH.COVCARRY).
+    assert "PASSED test_s.py::test_pass" in cov.stdout, cov.stdout
+    assert "1 same-tree passes rerun under coverage" in cov.stdout, cov.stdout
+    assert "1 failed, 3 passed, 1 skipped" in cov.stdout, cov.stdout
 
 
 @pytest.mark.parametrize("workers", [[], ["-n", "2"]], ids=["serial", "xdist"])

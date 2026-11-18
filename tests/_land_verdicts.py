@@ -56,12 +56,13 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
 import _land_audit  # tests/, beside this file: the audited `test` and `carry` uses
+import _prof_record  # tests/: each test's own profile under coverage (GOH.COVCARRY)
 import pytest
+from _land_trees import ANCESTORS, _git, diff, trees  # noqa: F401  (patched here by tests)
 
 RECORD = "GOH_LAND_VERDICTS_RECORD"
 REUSE = "GOH_LAND_VERDICTS_REUSE"
@@ -70,7 +71,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 CARRY = "carry"  # the audited reuse path (lib/reuse.py); a same-tree node's, `test`: _land_audit
 DROPPED_KEY = "goh_land_verdicts_dropped"  # worker -> controller: nodes it deselected
 WORKER_KEY = "goh_land_reuse"  # the controller's decision, handed to each xdist worker
-ANCESTORS = 20  # first-parent commits of HEAD searched for a recorded tree
 SOURCES = 2  # ... of which this many records are carried from (each costs one affected_tests run)
 SUITE_WIDE = ("pyproject.toml", "tools/pytest.sh", "gates/_pytest_root.sh")
 
@@ -157,37 +157,6 @@ def here(root: Path = REPO_ROOT) -> tuple[str, str] | None:
     return None if tree is None else (tree, gi.suite_tools())
 
 
-def _git(root: Path, *args: str) -> str:
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    env["GIT_OPTIONAL_LOCKS"] = "0"
-    r = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, env=env,
-                       stdin=subprocess.DEVNULL, check=False)  # fmt: skip
-    return r.stdout.strip() if r.returncode == 0 else ""
-
-
-def trees(root: Path, pre_sha: str) -> list[tuple[str, str]]:
-    """(commit, tree) to carry from, nearest first: the pre-step's commit, then HEAD's first-parent
-    ancestors (HEAD's own tree is the pre-step's when nothing rebased)."""
-    shas = [pre_sha] if pre_sha else []
-    shas += _git(root, "rev-list", "--first-parent", f"--max-count={ANCESTORS}", "HEAD~1").split()
-    out = []
-    for sha in shas:
-        tree = _git(root, "rev-parse", "--verify", "--quiet", f"{sha}^{{tree}}")
-        if tree:
-            out.append((sha, tree))
-    return out
-
-
-def diff(root: Path, sha: str) -> list[str] | None:
-    """The paths whose bytes differ between sha's tree and HEAD's; None when git cannot say."""
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    env["GIT_OPTIONAL_LOCKS"] = "0"
-    r = subprocess.run(["git", "-C", str(root), "diff", "--name-only", "--no-renames", sha, "HEAD"],
-                       capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL,
-                       check=False)  # fmt: skip
-    return [ln for ln in r.stdout.splitlines() if ln] if r.returncode == 0 else None
-
-
 def choose(root: Path, changed: list[str]) -> tuple[set[str] | None, str]:
     """(what tools/affected_tests.py runs for `changed` on root: files and node ids, why) -- None
     when the change is suite-wide, so nothing may be carried across it."""
@@ -210,19 +179,30 @@ def _builds(changed: list[str], root: Path = REPO_ROOT) -> bool:
     return _lib("binary_runners").build_input(root, changed) is not None
 
 
-def carried(passed: dict[str, bool], chosen: set[str], coverage: bool, binary: bool) -> set[str]:
+def carried(passed: dict[str, bool], chosen: set[str], coverage: bool, binary: bool,
+            measured: dict[str, bool] | None = None) -> set[str]:  # fmt: skip
     """The nodes of a record of another tree this run may skip: not in a file the diff chooses,
     not a node it chooses (a parametrized node by its function), not one that ran the native
-    binary under coverage or across a change to the binary's build (`binary`)."""
+    binary under coverage or across a change to the binary's build (`binary`). Under coverage
+    only a node an instrumented run MEASURED running no binary (`measured`, tests/_prof_record.py)
+    is carried: a mark is no proof a test left no profile (GOH.COVCARRY, term 1)."""
     files = {c for c in chosen if "::" not in c}
     out = set()
     for node, ran_bin in passed.items():
         if ran_bin and (coverage or binary):
             continue
+        if coverage and (measured or {}).get(node) is not False:
+            continue
         if node.split("::")[0] in files or node.split("[")[0] in chosen:
             continue
         out.add(node)
     return out
+
+
+def pytest_configure(config) -> None:
+    """The measurement this plugin's coverage rule reads, registered beside it (GOH.COVCARRY)."""
+    if not config.pluginmanager.has_plugin("goh-prof-record"):
+        config.pluginmanager.register(_prof_record, "goh-prof-record")
 
 
 def _controller(config) -> bool:
@@ -301,14 +281,21 @@ def _record_store(session) -> None:
     plan = _state.get("plan") or {}
     rootdir = Path(session.config.rootpath)
     passed = {n: n in _bin for n in _called - _failed}
+    # What an instrumented run saw each node do (tests/_prof_record.py), and what it carried as
+    # measured: the only nodes a later instrumented run may carry (`carried`, GOH.COVCARRY).
+    measured = dict(passed) if instrumented() else {}
     for n, ran_bin in plan.get("skipped", {}).items():  # passed here: same tree, or carried
         if (rootdir / n.split("::")[0]).is_file():
             passed.setdefault(n, ran_bin)
+            if n in plan.get("nobin", set()):
+                measured.setdefault(n, False)
     other = int(plan.get("other", 0))
     full = _whole(session.config) and session.exitstatus == 0 and not _failed and not other
     by = "land gate" if _on(REUSE) else "pre-land"
     with _in_store() as (reuse, _):
-        reuse.record_suite(REPO_ROOT, me[0], me[1], passed, set(_failed), full, by, other)
+        reuse.record_suite(
+            REPO_ROOT, me[0], me[1], passed, set(_failed), full, by, other, instrumented(), measured
+        )
 
 
 def _shadows() -> None:
@@ -366,6 +353,13 @@ def _plan(config) -> dict:
     plan["skipped"] = {n: b for n, b in _file_passed(path).items() if n in same}
     if path:
         _carry(plan, _file_sha(path), coverage, Path(config.rootpath))
+    if coverage:  # a same-tree pass is skipped only when it was measured running no binary
+        nobin = plan.get("nobin", set())
+        dropped = {n for n in same if n not in nobin}
+        plan["skipped"] = {n: b for n, b in plan["skipped"].items() if n not in dropped}
+        if dropped:
+            lines.append(f"land verdicts: {len(dropped)} same-tree passes rerun under coverage: "
+                         "no instrumented run measured them running no binary")  # fmt: skip
     plan["skip"] = set(plan["skipped"])
     _state["plan"] = plan
     return plan
@@ -408,8 +402,12 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
                 continue
             taken += 1
             passed = rec["passed"]
+            measured = rec.get("measured") if isinstance(rec.get("measured"), dict) else {}
             if src == tree:
-                nodes, how = {n for n, b in passed.items() if not (coverage and b)}, "the same tree"
+                nodes = {n for n, b in passed.items()
+                         if not coverage or (not b and measured.get(n) is False)}  # fmt: skip
+                plan.setdefault("nobin", set()).update(n for n, b in measured.items() if b is False)
+                how = "the same tree"
             else:
                 changed = diff(REPO_ROOT, sha)
                 chosen, why = (
@@ -418,7 +416,10 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
                 if chosen is None:
                     lines.append(f"land verdicts: nothing carried from {sha[:8]}: {why}")
                     continue
-                nodes = carried(passed, chosen, coverage, _builds(changed or []))
+                nodes = carried(passed, chosen, coverage, _builds(changed or []), measured)
+                plan.setdefault("nobin", set()).update(
+                    carried(measured, chosen, True, False, measured)
+                )
                 how = f"{len(changed or [])} paths differ, affected_tests chooses {len(chosen)}"
             nodes -= set(plan["skipped"])
             if not nodes:

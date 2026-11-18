@@ -1,0 +1,132 @@
+"""Each test's own profile in the coverage step's instrumented run (GOH.COVCARRY, term 1).
+
+WHY. Under coverage a test that ran the native binary is never carried from another tree: its run
+is coverage the floor counts (tests/_land_verdicts.py). Which tests those are was read from a MARK
+-- the `native_goh` fixture or `native_goh_path()` -- and a test that reaches the binary another way
+(a gate script resolving GOH_TEST_BIN, a helper) left no mark: its verdict was carried and its
+counts never reached the report, so the floor was judged on a profile missing its runs. Of the
+2026-11-17 full record's 6135 passes, 1812 were marked, and 1985 unmarked ones sit in the 303 test
+files lib/binary_runners.py reads as reaching the binary (154 of them with no marked node).
+
+THE MEASUREMENT. In an instrumented run (`_land_verdicts.instrumented()`), each test runs with its
+own LLVM_PROFILE_FILE, `<profile dir>/t/<worker pid>/<node hash>/goh-%4m.profraw` (os.environ: the
+suite's children inherit it, and conftest's Popen hook re-reads it for a scrubbed `env=`). A test
+that left a raw profile RAN THE BINARY, marked or not: it is marked (`mark_binary`) before its call
+report is made, so the land record's `ran_bin` is what happened, and the node joins the record's
+`measured` set (lib/reuse.py record_suite), the only nodes coverage may carry. Its raw files are
+merged into ONE sparse indexed profile, `<profile dir>/t-<node hash>-<pid>.profraw` (D-0011: 23 ms
+and 19 KB a test), the name the report's own merge globs: llvm-profdata reads an indexed profile
+in its input list as it reads a raw one (tests/test_cov_carry.py proves the report counts it). A
+merge that fails moves the raw files there instead, never drops them. Whatever a test's stray child
+writes after its teardown is merged once more at the worker's session end.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import os
+import shutil
+import subprocess
+from pathlib import Path
+
+import _land_verdicts as lv
+import pytest
+
+PROFILE = "LLVM_PROFILE_FILE"
+_state: dict[str, object] = {}
+
+
+def _profdata() -> str | None:
+    """rustc's own llvm-profdata (the llvm-tools component the instrumented build needs)."""
+    if "profdata" not in _state:
+        found = None
+        rustc = shutil.which("rustc")
+        if rustc:
+            r = subprocess.run([rustc, "--print", "target-libdir"], capture_output=True, text=True,
+                               stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+            cand = Path(r.stdout.strip()).parent / "bin" / "llvm-profdata"
+            found = str(cand) if r.returncode == 0 and cand.is_file() else None
+        _state["profdata"] = found
+    return _state["profdata"]  # type: ignore[return-value]
+
+
+def _base() -> Path | None:
+    """This worker's per-test root, under the run's own profile directory; None outside an
+    instrumented run."""
+    if "base" not in _state:
+        base = None
+        if lv.instrumented():
+            base = Path(os.environ[PROFILE]).parent / "t" / str(os.getpid())
+            shutil.rmtree(base, ignore_errors=True)  # a reused pid's dir is never this run's
+            base.mkdir(parents=True, exist_ok=True)
+            _state["outer"] = os.environ[PROFILE]
+        _state["base"] = base
+    return _state["base"]  # type: ignore[return-value]
+
+
+def node_hash(nodeid: str) -> str:
+    return hashlib.sha256(nodeid.encode()).hexdigest()[:20]
+
+
+def merge(raws: list[Path], dest: Path) -> bool:
+    """`raws` merged into one sparse indexed profile at `dest`, the raws removed; on any failure
+    the raws are moved beside `dest` (the report reads them as they are) and False."""
+    tool = _profdata()
+    tmp = dest.with_name(f".{dest.name}.tmp")
+    ok = False
+    if tool:
+        r = subprocess.run([tool, "merge", "--sparse", "-o", str(tmp), *map(str, raws)],
+                           capture_output=True, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+        ok = r.returncode == 0
+    if ok:
+        os.replace(tmp, dest)
+        for f in raws:
+            f.unlink(missing_ok=True)
+        return True
+    tmp.unlink(missing_ok=True)
+    for i, f in enumerate(raws):
+        shutil.move(str(f), str(dest.with_name(f"{dest.stem}-raw{i}.profraw")))
+    return False
+
+
+def _dir_of(item) -> Path | None:
+    base = _base()
+    return None if base is None else base / node_hash(item.nodeid)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_protocol(item, nextitem):
+    d = _dir_of(item)
+    if d is None:
+        yield
+        return
+    d.mkdir(parents=True, exist_ok=True)
+    os.environ[PROFILE] = str(d / "goh-%4m.profraw")
+    try:
+        yield
+    finally:
+        os.environ[PROFILE] = str(_state["outer"])
+        raws = sorted(d.glob("*.profraw"))
+        if raws:
+            out = Path(str(_state["outer"])).parent
+            merge(raws, out / f"t-{node_hash(item.nodeid)}-{os.getpid()}.profraw")
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_call(item):
+    """After the call: a raw profile in the test's dir means it ran the binary (setup or call)."""
+    yield
+    d = _dir_of(item)
+    if d is not None and any(d.glob("*.profraw")):
+        lv.mark_binary(item)
+
+
+def pytest_sessionfinish(session) -> None:
+    """What a test's stray child wrote after its teardown, merged so the report still reads it."""
+    base = _state.get("base")
+    if not isinstance(base, Path):
+        return
+    late = sorted(base.glob("*/*.profraw"))
+    if late:
+        merge(late, Path(str(_state["outer"])).parent / f"t-late-{os.getpid()}.profraw")
+    shutil.rmtree(base, ignore_errors=True)

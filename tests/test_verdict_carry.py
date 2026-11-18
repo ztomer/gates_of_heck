@@ -25,6 +25,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 import gate_identity
 import reuse
 import reuse_audit
+import ship_suite
 
 # -- what may be carried -----------------------------------------------------------------------
 
@@ -92,10 +93,12 @@ def test_only_a_run_that_carried_nothing_is_a_full_suite_verdict(store, repo) ->
     tree = git(repo, "rev-parse", "HEAD^{tree}").strip()
     tools = gate_identity.suite_tools()
     reuse.record_suite(repo, tree, tools, {"t.py::a": False}, set(), False, "gate", carried=7)
-    rec, why = reuse.full_suite(repo, sha)
+    rec, why = ship_suite.full_suite(repo, sha)
     assert rec is None and "7 tests carried from another tree" in why, why
-    reuse.record_suite(repo, tree, tools, {"t.py::a": False}, set(), True, "gate")
-    assert reuse.full_suite(repo, sha)[0] is not None
+    reuse.record_suite(
+        repo, tree, tools, {"t.py::a": False}, set(), True, "gate", instrumented=True
+    )  # a ship's full run drove the instrumented binary
+    assert ship_suite.full_suite(repo, sha)[0] is not None
 
 
 # -- a gate's suite, end to end (a fixture session with the plugin's seams) -------------------
