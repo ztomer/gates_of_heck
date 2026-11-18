@@ -233,9 +233,10 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
     allowed = {
         "crates/goh/build.rs": 1,  # the source stamp (C3); strips the hook's GIT_* itself
         "crates/goh-testkit/src/lib.rs": 2,  # local_env_vars() probe + git_command()
-        # listed_files / content_bytes / committed_bytes / is_tracked / root_commit / is_shallow
-        "crates/goh/src/gitutil.rs": 6,
-        "crates/goh/src/gitroot.rs": 1,  # the top-level lookup's fallback for a layout it does not model
+        # listed_files / content_bytes / committed_bytes / is_tracked / root_commit
+        "crates/goh/src/gitutil.rs": 5,
+        # the one fallback of every layout lookup (top level, git dirs, index path, shallow flag)
+        "crates/goh/src/gitroot/mod.rs": 1,
         "crates/goh/src/blobs.rs": 1,  # prefetch_staged's cat-file
         "crates/goh/src/changelog_tags.rs": 1,  # `git tag -l v*`, the whole-changelog check
         "crates/goh/src/index_view.rs": 2,  # staged + committed views: GIT_DIR/GIT_INDEX_FILE deliberate
@@ -253,9 +254,8 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
         # the proven cache's key: status / write-tree / cat-file of THIS repo, GIT_INDEX_FILE honoured
         # (in a pre-commit hook it names the index being committed -- the tree to key on)
         "crates/goh/src/proven.rs": 2,
-        # shape-diff: `diff --name-only REV...HEAD` of THIS repo and each estate repo's
-        # `rev-parse --git-common-dir` (one read per repository), GIT_OPTIONAL_LOCKS=0
-        "crates/goh/src/shapes/diff.rs": 2,
+        # shape-diff: `diff --name-only REV...HEAD` of THIS repo and each estate repo
+        "crates/goh/src/shapes/diff.rs": 1,
         # commit-class: `git log` of the repo being committed to / pushed, GIT_* honoured
         "crates/goh/src/commit_class.rs": 1,
         # crates-behind's base: rev-parse / merge-base / show / diff / log of the repo being

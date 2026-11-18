@@ -208,7 +208,7 @@
   "tests/test_goh_tui_version_line.py": 1,
   "tests/test_gpu_lock.py": 3,
   "tests/test_hold_scripts.py": 2,
-  "tests/test_hook_git_env.py": 6,
+  "tests/test_hook_git_env.py": 5,
   "tests/test_hook_seed_root.py": 1,
   "tests/test_house_python.py": 1,
   "tests/test_install.py": 3,
