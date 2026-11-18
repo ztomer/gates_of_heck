@@ -47,12 +47,11 @@ cd "$repo"
 . "$HERE/_py.sh"
 goh_py_runner
 
-STAGED=()
-if [ "$scope" = all ]; then
-    goh_init "python (every tracked .py)"
-    # GOH_EXCLUDE means what it means to every other check: `re.search` over a repo-relative path.
-    listing="$(git ls-files -- '*.py')" || die "--all: git ls-files failed in $repo"
-    kept="$(GOH_EXCLUDE="${GOH_EXCLUDE:-}" "$GOH_PY" -S -c '
+# GOH_EXCLUDE, applied the same way to BOTH scopes (GOH.PYSTAGEDEXCLUDE, 2026-11-18): `re.search`
+# over each repo-relative path on stdin, the kept ones on stdout. Until then only --all applied it, so
+# a vendored file staged in a commit was refused at the commit and exempt at the push.
+goh_py_unexcluded() {
+    GOH_EXCLUDE="${GOH_EXCLUDE:-}" "$GOH_PY" -S -c '
 import os, re, sys
 pattern = os.environ["GOH_EXCLUDE"]
 try:
@@ -62,7 +61,15 @@ except re.error as e:
 for line in sys.stdin.read().splitlines():
     if line and not (rx and rx.search(line)):
         print(line)
-' <<<"$listing")" || die "--all could not apply GOH_EXCLUDE (above)"
+'
+}
+
+STAGED=()
+if [ "$scope" = all ]; then
+    goh_init "python (every tracked .py)"
+    # GOH_EXCLUDE means what it means to every other check: `re.search` over a repo-relative path.
+    listing="$(git ls-files -- '*.py')" || die "--all: git ls-files failed in $repo"
+    kept="$(goh_py_unexcluded <<<"$listing")" || die "--all could not apply GOH_EXCLUDE (above)"
     while IFS= read -r f; do
         [ -n "$f" ] && STAGED+=("$f")
     done <<<"$kept"
@@ -75,13 +82,19 @@ else
     goh_init "python (staged)"
     # commit_gate.sh runs this twin itself unless the repo's gate already did, for THIS tree.
     [ -z "${GOH_STAGED_TWIN_MARK:-}" ] || printf 'py_staged\t%s\n' "$(pwd -P)" >>"$GOH_STAGED_TWIN_MARK"
+    staged_py="$( (goh_bind_hook_index  # the index being committed (gates/_git_env.sh); ruff gets none
+              git diff --cached --name-only --diff-filter=ACMR -- '*.py') 2>/dev/null || true)"
+    kept="$(goh_py_unexcluded <<<"$staged_py")" || die "could not apply GOH_EXCLUDE (above)"
     while IFS= read -r f; do
         [ -n "$f" ] && STAGED+=("$f")
-    done < <( (goh_bind_hook_index  # the index being committed (gates/_git_env.sh); ruff gets none
-              git diff --cached --name-only --diff-filter=ACMR -- '*.py') 2>/dev/null || true)
+    done <<<"$kept"
     # Nothing staged: nothing to judge, and saying so beats an empty run.
     if [ "${#STAGED[@]}" -eq 0 ]; then
-        info "no staged .py files"
+        if [ -n "$staged_py" ]; then
+            info "no staged .py files outside GOH_EXCLUDE='${GOH_EXCLUDE:-}'"
+        else
+            info "no staged .py files"
+        fi
         goh_done
         exit 0
     fi

@@ -171,6 +171,40 @@ def test_all_honours_goh_exclude(repo):
     assert r.returncode == 0, r.stdout + r.stderr
 
 
+def test_staged_honours_goh_exclude(repo):
+    """GOH.PYSTAGEDEXCLUDE: the commit half judges a path as the push half does. `--all` dropped
+    GOH_EXCLUDE's paths but the staged scope linted them, so a vendored file was refused at the
+    commit and exempt at the push (ZSUS_14_Portrait_Mount_v20, 2026-11-18: its v20_archive/)."""
+    write(repo, ".gatesrc", "GOH_EXCLUDE='^vendor/'\n")
+    write(repo, "vendor/bad.py", "import os\nx   =   1\n")  # F401 + format drift, not ours
+    write(repo, "ok.py", "x = 1\n")
+    stage(repo, "vendor/bad.py")
+    stage(repo, "ok.py")
+    r = run(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_staged_exclude_still_judges_first_party_files(repo):
+    write(repo, ".gatesrc", "GOH_EXCLUDE='^vendor/'\n")
+    write(repo, "vendor/bad.py", "import os\n")
+    write(repo, "mine.py", "import os\n")
+    stage(repo, "vendor/bad.py")
+    stage(repo, "mine.py")
+    r = run(repo)
+    out = r.stdout + r.stderr
+    assert r.returncode != 0, out
+    assert "mine.py" in out and "vendor/bad.py" not in out, out
+
+
+def test_staged_with_only_excluded_python_has_nothing_to_judge(repo):
+    write(repo, ".gatesrc", "GOH_EXCLUDE='^vendor/'\n")
+    write(repo, "vendor/bad.py", "import os\n")
+    stage(repo, "vendor/bad.py")
+    r = run(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "outside GOH_EXCLUDE" in r.stdout + r.stderr
+
+
 def test_all_over_no_tracked_python_is_red_not_clean(repo):
     write(repo, "notes.txt", "hi\n")
     stage(repo, "notes.txt")

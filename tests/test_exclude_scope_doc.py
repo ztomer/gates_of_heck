@@ -41,7 +41,7 @@ CONSUMERS: dict[str, tuple[str, ...]] = {
     "crates/goh/src/roadmap/mod.rs": ("roadmap",),
     "gates/rust_gate.sh": ("`#[allow]`/`#[expect]`", "emptiness asserts"),
     "gates/rust_each_crate.sh": ("`--each-crate`",),
-    "gates/py_staged.sh": ("`py_staged.sh --all`",),
+    "gates/py_staged.sh": ("`py_staged.sh`'s ruff, staged and `--all`",),
 }
 # Where the key is defined and parsed, not applied (the parser's tests moved beside it at the
 # line cap, and they read the key the way the parser does).
