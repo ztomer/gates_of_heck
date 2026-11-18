@@ -13,6 +13,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _fast_git import fast_init
 from conftest import REPO_ROOT, commit_all, git, hermetic_env
 from timing_bounds import patience
 
@@ -56,7 +57,7 @@ def test_an_uncovered_added_line_is_red_and_a_covered_one_green(tmp_path: Path) 
     subprocess.run(
         ["cargo", "generate-lockfile", "-q"], cwd=crate, check=True, stdin=subprocess.DEVNULL
     )
-    git(crate, "init", "-q", "-b", "main")
+    fast_init(crate, "main")
     commit_all(crate, "base")
     git(crate, "checkout", "-q", "-b", "lane")
 
