@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v0.139.3 -- SPD cycle 5: PRESTEPDUP (fast pre-step on moved trees under coverage), SPECONESLOT (1-slot bisect serial), ORPHANCANARYENV (suite pins PYTHONPATH)
+
+- **suite**: a test's children no longer depend on the caller's PYTHONPATH: the suite pins it to its own checkout (tests/suite_home.py), and the orphan canary's missing-runner test builds a fake goh root that carries goh's `tui`, so `env -u PYTHONPATH tools/pytest.sh` passes it (GOH.ORPHANCANARYENV).
+
+* A tree the lander moved -- rebased under the land lock, or stacked by a batch -- no longer re-runs the whole land pre-step when the gate will measure coverage (GOH.PRESTEPDUP): `tools/land.sh` runs `GOH_LAND_PRE_FAST` (goh's: `tools/affected_tests.py --run --fast-only`, the ~4 s fast judges) instead, because the instrumented suite re-runs every test the set would and the lock already took away the set's fail-fast. BASETEMPSLOT and SUITEONCE's batch ran 353 s of set and then 665 s of suite over the same tests. `lib/pre_fast.py` decides: a main..tip diff touching a coverage input (the paths `lib/gate_identity.py rust` keys, `.gatesrc`, `diffcov_allow.json`) measures. A gate that may reuse the set's verdict (GOH.SUITEONCE's plain path) still gets the whole set, as does a first pre-step. The land's ledger row says `pre_fast=1` when the fast set ran.
+
+- **land queue**: a red batch on a machine with one gate slot (GOH_GATE_SLOTS=1, or cores // 8 < 2: the 3-core CI runner, any Mac under 16 cores) bisects serially: the second half's speculative run is no longer started, where it took the only slot and the first half waited behind it; lander.log names the skip (`lib/landq_spec.py`, GOH.SPECONESLOT). With two or more slots, or slots off, nothing changes.
+
 ## v0.139.2 -- SPD cycle 4: SUITEONCE (one suite run per plain land), DURATIONSSTALE (durations table in goh state, longest-first), BASETEMPSLOT (per-run basetemp slots)
 
 * `test_a_run_has_a_private_temp_root_and_a_passing_run_removes_it` no longer goes red when a concurrent test's runner reuses the slot this run just removed (GOH.BASETEMPSLOT): its runner gets a TMPDIR of the test's own, so the lowest free `goh-pytest.slotNN` it claims is in no sibling's namespace. The runner was right (a passing run removes its root); under the suite's shared TMPDIR a sibling claimed the freed slot07 and the test read that live root as a leftover (main 3ad21d54). A new test pins the reuse contract under two concurrent runs on one TMPDIR: distinct slots while live, none left after both pass, and the freed slot00 is the next run's.
