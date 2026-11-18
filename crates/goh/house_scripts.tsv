@@ -7,6 +7,7 @@ ship	tools/ship.py	Land a green HEAD unwatched: push gate, release, install, ver
 lint	tools/lint.py	The commit gate's verdict on these paths before the commit (`tools/lint.py`)
 land|landq	tools/landq.py	Enqueue, wait on or drain the landing queue, or `--report` its wall time (`tools/landq.py`)
 budget	lib/budget.py	Every subject's time budget: ARMED, BREACHED or CLEARED, last and median runs (`lib/budget.py`)
+land-profile	lib/land_profile.py	Where a land's minutes and cpu-s go, stage by stage, by mode and load: `--normal-since ISO` (`lib/land_profile.py`)
 capacity	lib/capacity.py	The machine's room for another write lane: slots, load, memory, disk (`lib/capacity.py`)
 hooks	scripts/hooks_refresh.py	Name estate repos with stale stock hooks; `--refresh` fixes them (`hooks_refresh.py`)
 wf-pin	scripts/wf_pin.py	Name estate workflows pinning an older goh release; `--bump` moves them (`wf_pin.py`)
