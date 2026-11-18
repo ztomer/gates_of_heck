@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env
+from env_probe import print_safe
 from test_proven import STEP, env, goh, proven, repo, runs  # noqa: F401  (fixtures)
 from timing_bounds import patience
 
@@ -214,7 +215,7 @@ def test_the_real_rustup_keys_its_resolved_toolchain_not_the_spelling(tmp_path: 
 
 def test_proven_reuses_a_step_under_a_second_spelling(goh, repo, env, tmp_path) -> None:  # noqa: F811
     """gates/_proven.sh keys a step by gate_identity.py tools: the spelling is no new identity."""
-    proxied = dict(env, PATH=f"{_rustup(tmp_path)}:{env['PATH']}")
+    proxied = print_safe(dict(env, PATH=f"{_rustup(tmp_path)}:{env['PATH']}"))
     proxied.pop("RUSTUP_TOOLCHAIN", None)
     assert proven(goh, repo, proxied).returncode == 0 and runs(env) == 1
     spelled = proven(goh, repo, dict(proxied, RUSTUP_TOOLCHAIN="stable-host"))

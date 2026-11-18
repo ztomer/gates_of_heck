@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import ast
 import re
+from collections.abc import Iterable
 from pathlib import Path
 
 TESTS = Path(__file__).resolve().parent
@@ -50,23 +51,93 @@ def _is_environ(node: ast.AST) -> bool:
     )
 
 
-def _is_env_source(node: ast.AST) -> bool:
-    """An expression whose value is a whole environment: os.environ, a copy, hermetic_env()."""
+def _is_env_source(node: ast.AST, names: frozenset[str] = frozenset()) -> bool:
+    """An expression whose value is a whole environment: os.environ, a copy, hermetic_env(), a
+    comprehension over its items -- or over, or a copy of, an environment already named (`names`):
+    `dict(env, X="1")` of a fixture's environment is one, and a plain dict that prints whole."""
+
+    def whole(n: ast.AST) -> bool:
+        return _is_environ(n) or (isinstance(n, ast.Name) and n.id in names)
+
     if _is_environ(node):
         return True
     if isinstance(node, ast.Call):
         f = node.func
         if isinstance(f, ast.Name) and f.id == "hermetic_env":
             return True
-        if isinstance(f, ast.Attribute) and f.attr == "copy" and _is_environ(f.value):
+        if isinstance(f, ast.Attribute) and f.attr == "copy" and whole(f.value):
             return True
-        if isinstance(f, ast.Name) and f.id == "dict" and node.args and _is_environ(node.args[0]):
+        if isinstance(f, ast.Name) and f.id == "dict" and node.args and whole(node.args[0]):
             return True
+    if isinstance(node, ast.DictComp):
+        return any(
+            isinstance(g.iter, ast.Call)
+            and isinstance(g.iter.func, ast.Attribute)
+            and g.iter.func.attr == "items"
+            and whole(g.iter.func.value)
+            and not (g.ifs and all(_selects(c) for c in g.ifs))
+            for g in node.generators
+        )
     if isinstance(node, ast.Dict):
         return any(
-            k is None and _is_env_source(v) for k, v in zip(node.keys, node.values, strict=True)
+            k is None and (whole(v) or _is_env_source(v, names))
+            for k, v in zip(node.keys, node.values, strict=True)
         )
     return False
+
+
+def _selects(test: ast.AST) -> bool:
+    """A comprehension filter that KEEPS only the names it matches (`k.startswith("GOH_SHARE_")`,
+    `k in KEEP`): a chosen few, not the environment. A filter that drops some keeps the rest."""
+    if isinstance(test, ast.BoolOp):
+        return (
+            any(_selects(v) for v in test.values)
+            if isinstance(test.op, ast.And)
+            else all(_selects(v) for v in test.values)
+        )
+    if isinstance(test, ast.Call) and isinstance(test.func, ast.Attribute):
+        return test.func.attr == "startswith"
+    return isinstance(test, ast.Compare) and all(isinstance(o, ast.In) for o in test.ops)
+
+
+# What returns an environment that PRINTS redacted (tests/env_probe.py PrintSafeEnv): a fixture may
+# hand one out, and pytest printing it in a failure's header or an assertion carries no value.
+_SAFE = {"print_safe", "hermetic_env"}
+
+
+def _is_fixture(func: ast.AST) -> bool:
+    for dec in getattr(func, "decorator_list", ()):
+        d = dec.func if isinstance(dec, ast.Call) else dec
+        if (isinstance(d, ast.Attribute) and d.attr == "fixture") or (
+            isinstance(d, ast.Name) and d.id == "fixture"
+        ):
+            return True
+    return False
+
+
+def _returns(func: ast.AST) -> list[ast.Return]:
+    return [n for n in ast.walk(func) if isinstance(n, ast.Return) and n.value is not None]
+
+
+def _is_safe(node: ast.AST) -> bool:
+    f = node.func if isinstance(node, ast.Call) else None
+    return getattr(f, "id", getattr(f, "attr", None)) in _SAFE
+
+
+def fixtures(source: str) -> tuple[set[str], set[str]]:
+    """The module's fixtures that hand out a whole environment: (print-safe ones, plain ones)."""
+    safe, plain = set(), set()
+    for func in ast.walk(ast.parse(source)):
+        if isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)) and _is_fixture(func):
+            names = frozenset(_env_names(func))
+            for r in _returns(func):
+                if _is_safe(r.value):
+                    safe.add(func.name)
+                elif _is_env_source(r.value, names) or (
+                    isinstance(r.value, ast.Name) and r.value.id in names
+                ):
+                    plain.add(func.name)
+    return safe, plain
 
 
 _ONE_VALUE = {"getenv", "putenv", "unsetenv"}
@@ -86,12 +157,17 @@ def _parents(tree: ast.AST) -> dict[ast.AST, ast.AST]:
     return {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
 
 
-def _env_names(func: ast.AST) -> set[str]:
-    names = set()
-    for node in ast.walk(func):
-        if isinstance(node, ast.Assign) and _is_env_source(node.value):
-            names |= {t.id for t in node.targets if isinstance(t, ast.Name)}
-    return names
+def _env_names(func: ast.AST, seeds: frozenset[str] = frozenset()) -> set[str]:
+    """Names bound in `func` to a whole environment, from `seeds` (its environment parameters)."""
+    names = set(seeds)
+    while True:
+        grown = set(names)
+        for node in ast.walk(func):
+            if isinstance(node, ast.Assign) and _is_env_source(node.value, frozenset(names)):
+                grown |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+        if grown == names:
+            return names
+        names = grown
 
 
 def _whole(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
@@ -134,11 +210,18 @@ def _sinks(tree: ast.AST) -> list[ast.AST]:
             if name in _WRITES:
                 for arg in [*node.args, *(k.value for k in node.keywords if k.arg != "file")]:
                     out.extend(ast.walk(arg))
+        elif isinstance(node, ast.FormattedValue):  # an f-string formats its value whole
+            out.append(node.value)
     return out
 
 
-def dumps(source: str) -> list[int]:
-    """The line of every whole-environment dump in `source`."""
+def dumps(source: str, safe: Iterable[str] = (), plain: Iterable[str] = ()) -> list[int]:
+    """The line of every whole-environment dump in `source`. `safe` and `plain` name the suite's
+    fixtures that hand out an environment (`fixtures`): a test's parameter of a plain one prints
+    whole, and a copy of either is a plain dict. A fixture returning a plain environment is a dump
+    itself: pytest prints every argument of a failing test, values and all (GOH.PROVENENVDUMP: a
+    land log carried the session's account id from test_proven's `env`)."""
+    safe, plain = frozenset(safe), frozenset(plain)
     tree = ast.parse(source)
     found: set[int] = set()
     docstrings = {
@@ -159,7 +242,18 @@ def dumps(source: str) -> list[int]:
     parents = _parents(tree)
     scopes = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
     for scope in [tree, *scopes]:
-        env_names = _env_names(scope) if scope is not tree else set()
+        params = {a.arg for a in getattr(scope, "args", ast.arguments()).args}
+        seeds = frozenset(params & (safe | plain))
+        printable = params & (safe - plain)  # a print-safe fixture's own parameter prints redacted
+        env_names = _env_names(scope, seeds) - printable if scope is not tree else set()
+        if scope is not tree and _is_fixture(scope):
+            for r in _returns(scope):
+                v = r.value
+                if not _is_safe(v) and (
+                    _is_env_source(v, frozenset(env_names) | seeds)
+                    or (isinstance(v, ast.Name) and v.id in env_names)
+                ):
+                    found.add(r.lineno)
         for node in _sinks(scope):
             is_env = (
                 _is_environ(node)
@@ -175,14 +269,42 @@ def dumps(source: str) -> list[int]:
     return sorted(found)
 
 
-def census() -> dict[str, int]:
+def _resolved(sources: dict[str, str]) -> dict[str, tuple[set[str], set[str]]]:
+    """Per module, the environment fixtures its parameters can name: its own, the ones it imports
+    by name from another test module (`from test_proven import env`), and conftest's."""
+    own = {stem: fixtures(src) for stem, src in sources.items()}
     out = {}
-    for path in sorted(TESTS.rglob("*.py")):
-        if path.name == SELF:
-            continue
-        n = len(dumps(path.read_text(encoding="utf-8")))
+    for stem, src in sources.items():
+        safe, plain = set(own[stem][0]), set(own[stem][1])
+        for home in ("conftest", *_imported(src)):
+            names = _imported(src).get(home) if home != "conftest" else None
+            got = own.get(home, (set(), set()))
+            safe |= {n for n in got[0] if names is None or n in names}
+            plain |= {n for n in got[1] if names is None or n in names}
+        out[stem] = (safe, plain)
+    return out
+
+
+def _imported(source: str) -> dict[str, set[str]]:
+    out: dict[str, set[str]] = {}
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            out.setdefault(node.module, set()).update(a.name for a in node.names)
+    return out
+
+
+def census() -> dict[str, int]:
+    paths = {p.relative_to(TESTS).as_posix(): p for p in sorted(TESTS.rglob("*.py"))}
+    paths = {rel: p for rel, p in paths.items() if p.name != SELF}
+    sources = {rel: p.read_text(encoding="utf-8") for rel, p in paths.items()}
+    by_stem = {Path(rel).stem: src for rel, src in sources.items() if "/" not in rel}
+    resolved = _resolved(by_stem)
+    out = {}
+    for rel, src in sources.items():
+        safe, plain = resolved.get(Path(rel).stem, (set(), set())) if "/" not in rel else ((), ())
+        n = len(dumps(src, safe, plain))
         if n:
-            out[path.relative_to(TESTS).as_posix()] = n
+            out[rel] = n
     return out
 
 
@@ -221,14 +343,33 @@ assert run(_env(p)) == 0
 ok7 = os.getenv("HOME")
 assert os.getenv("HOME")
 assert _env(p).get("X") == "1"
+@pytest.fixture
+def envf(tmp_path):
+    e = {k: v for k, v in os.environ.items() if k != "X"}
+    return e
+@pytest.fixture
+def okf():
+    return print_safe({k: v for k, v in os.environ.items()})
+ok8 = {k: v for k, v in os.environ.items() if k.startswith("GOH_SHARE_")}
+def w(envf, okf):
+    assert run(okf) == 0, okf
+    assert run(envf) == 0
+    lenv = dict(okf, X="1")
+    assert run(lenv) == 0
+    raise SystemExit(f"no X in {os.environ}")
 """
 
 
 def test_the_detector_sees_every_spelling_and_nothing_else():
     """Calibration: each dump is one finding; every look-alike (lines 14-28) is none. Line 29: a
     call's arguments in an assert's test are printed whole; line 30: so is a membership test;
-    line 31: so is an environment a helper builds (`_env(...)`), but not `os.getenv` (32-34)."""
-    assert dumps(CASES) == [3, 4, 5, 6, 7, 8, 11, 12, 13, 29, 30, 31]
+    line 31: so is an environment a helper builds (`_env(...)`), but not `os.getenv` (32-34).
+    GOH.PROVENENVDUMP: a fixture returning a plain environment (38), which pytest prints with every
+    failing test that takes it, and a test's use of it (45); a copy of a print-safe one (47); an
+    f-string of one (48). A print-safe fixture (41) and a comprehension keeping chosen names (42)
+    are none."""
+    found = dumps(CASES, *fixtures(CASES))
+    assert found == [3, 4, 5, 6, 7, 8, 11, 12, 13, 29, 30, 31, 38, 45, 47, 48]
 
 
 def test_a_planted_dump_is_red(tmp_path):

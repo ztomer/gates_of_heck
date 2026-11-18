@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 import suite_home  # (FIRST: the suite's own HOME and TMPDIR, before anything reads them)
 from _tree_clone import clone_tree  # (no HOME/TMPDIR read: ctypes, os, shutil)
+from env_probe import print_safe  # (no HOME/TMPDIR read: re, shlex)
 
 # THE SUITE TESTS THE TREE IT IS IN. Consumers run the gates from an export of HEAD (C4,
 # gates/_from_head.sh); this suite exists to judge the change under test, so it asks for the working
@@ -142,22 +143,21 @@ def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
     definition: eleven files carried this filter inline, and two had grown their own copy.
     `GOH_ESTATE_STATE` is KEPT: it names a file, not a step (BACKLOG 6.14)."""
     drop = ("GOH_", "GIT_") if drop_git else ("GOH_",)
-    # suite_home.KEPT_GOH (GOH_LIVE, GOH_ESTATE_STATE, ...) and the machine locks'
-    # private copies (host_locks.py, PRIVATE_ROOTS): a location is not an opt-in, and dropping it
-    # sent every hermetic child to the REAL bench lock and gate slots.
+    # suite_home.KEPT_GOH (GOH_LIVE, GOH_ESTATE_STATE, ...) and the machine locks' private copies
+    # (host_locks.py, PRIVATE_ROOTS): a location is no opt-in; dropped, it sent every child to the
+    # REAL bench lock and gate slots.
     env = scrubbed(os.environ, drop, keep=suite_home.KEPT_GOH)
     # The rust coverage build dir is keyed on a project's path (gates/_coverage_rust.sh): a fixture
     # in a fresh tmp dir would leave one never-reused build per test in the user's cache.
     env["GOH_COV_CACHE"] = _SUITE_COV_CACHE
     # GOH_DIR is a LOCATION too, and it must be THIS checkout: without it the binary falls back to
-    # ~/Projects/gates_of_heck, so a worktree's suite judged MAIN's checkers, not the branch's -- a
-    # new delegated step went red before landing and an edit to an old one was never tested at all
-    # (D.GOH1, 2026-10-31).
+    # ~/Projects/gates_of_heck, so a worktree's suite judged MAIN's checkers -- a new step went red
+    # before landing and an edit to an old one was never tested at all (D.GOH1, 2026-10-31).
     env["GOH_DIR"] = str(REPO_ROOT)
     # The owner's private seed store is never a test's (GOH.SEEDPRIVATE): a child reads none.
     env["GOH_SEED_DIR"] = str(Path(tempfile.gettempdir()) / "goh-suite-no-seed-store")
     env.update(overrides)
-    return env
+    return print_safe(env, ("GOH_DIR", *overrides))  # it prints redacted (GOH.PROVENENVDUMP)
 
 
 # A retired checker's path -> the native check that replaced it (Phase N3, `checks/_retired.py::

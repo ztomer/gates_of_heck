@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT
+from env_probe import print_safe
 from test_proven import (  # noqa: F401  (fixtures)
     _git,
     env,
@@ -55,7 +56,7 @@ def planted(goh: Path, env: dict, tmp_path: Path) -> dict:  # noqa: F811
     log = tmp_path / "loopctl.jsonl"
     fake = tmp_path / "loopctl.py"
     fake.write_text(f"import json, sys\nopen({str(log)!r}, 'a').write(json.dumps(sys.argv[1:]))\n")
-    return dict(env, GOH_PROVEN_CLOSURE="on", GOH_LOOPCTL=str(fake), FILED=str(log))
+    return print_safe(dict(env, GOH_PROVEN_CLOSURE="on", GOH_LOOPCTL=str(fake), FILED=str(log)))
 
 
 def _advance(n: int, backstop: bool = False) -> None:

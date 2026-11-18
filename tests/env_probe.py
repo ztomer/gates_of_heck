@@ -64,3 +64,26 @@ def redacted(env: Mapping[str, str], keep: Iterable[str] = ()) -> dict[str, str]
     """`env` with every value but those of `keep` replaced by REDACTED."""
     kept = set(_names(keep))
     return {k: (v if k in kept else REDACTED) for k, v in env.items()}
+
+
+class PrintSafeEnv(dict):
+    """An environment for a child process that PRINTS redacted: pytest shows every argument of a
+    failing test and every sub-expression of a failed assert, so a fixture's environment reached
+    land logs whole, the session's account id included (GOH.PROVENENVDUMP). Only the names in
+    `keep` show, with their values; the rest is a count. A copy (`dict(env, X="1")`) is a plain
+    dict again."""
+
+    keep: frozenset[str] = frozenset()
+
+    def __repr__(self) -> str:
+        shown = {k: self[k] for k in sorted(self.keep & self.keys())}
+        return f"PrintSafeEnv({shown!r}, +{len(self) - len(shown)} more)"
+
+    __str__ = __repr__
+
+
+def print_safe(env: Mapping[str, str], keep: Iterable[str] = ()) -> PrintSafeEnv:
+    """`env` as a PrintSafeEnv showing the values of `keep` only."""
+    out = PrintSafeEnv(env)
+    out.keep = frozenset(_names(keep))
+    return out

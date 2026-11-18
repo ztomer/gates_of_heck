@@ -21,6 +21,7 @@ from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
 from _tree_clone import from_template
 from conftest import REPO_ROOT
+from env_probe import print_safe
 
 GIT_VARS = (
     "GIT_DIR",
@@ -101,7 +102,7 @@ def env(tmp_path: Path, goh: Path, native_goh: Path) -> dict:
     e["GOH_BIN"] = str(native_goh)  # the copy has no bin/goh: named, as a consumer's CI names one
     e["COUNT"] = str(tmp_path / "count")  # each real run of a step appends a line here
     e["NO_COLOR"] = "1"
-    return e
+    return print_safe(e, ("GOH_DIR", "PYTHONPATH", "GOH_BIN", "COUNT"))  # (GOH.PROVENENVDUMP)
 
 
 STEP = 'echo ran >> "$COUNT"'
