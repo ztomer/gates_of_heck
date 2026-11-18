@@ -66,7 +66,7 @@ def _summary(tmp_path: Path, crates: dict[str, list[int]], name: str = "s.json")
 
 def test_a_fresh_run_that_agrees_with_the_claim_keeps_the_carry_on(tmp_path: Path) -> None:
     prof_carry.claim(REPO_ROOT, _summary(tmp_path, {"goh": [9000, 9400]}), "land gate")
-    fresh = _summary(tmp_path, {"goh": [9001, 9400]}, "fresh.json")  # inside the noise band
+    fresh = _summary(tmp_path, {"goh": [9000, 9400]}, "fresh.json")  # the measured band: 0
     said = prof_carry.compare(REPO_ROOT, fresh)
     assert "agree" in said, said
     st = reuse_audit.state("profcarry")
@@ -85,8 +85,22 @@ def test_a_fresh_run_that_disagrees_turns_the_carry_and_rustcov_reuse_off(tmp_pa
     assert not prof_carry.on()
 
 
+# Two full instrumented runs of one set of Rust inputs (GOH.COVCARRY3, 2026-11-18): the coverage
+# step's claim on 5bce690b's tree in a land (unremapped build) and a full run of 6d066d8c's in a
+# lane worktree (remapped, path-independent), at load ~48 -- the same covered lines in every crate.
+MEASURED = {"goh": [26844, 27517], "goh-golden": [392, 397], "goh-sys": [158, 163],
+            "goh-testkit": [119, 121], "goh-tui": [80, 106]}  # fmt: skip
+
+
+def test_the_noise_band_is_the_measured_one() -> None:
+    """The band was a guess (3 lines, or 1 in 2000: 13 of goh's 27517); measured, it is 0."""
+    assert prof_carry.agree(MEASURED, {k: list(v) for k, v in MEASURED.items()})
+    for moved in (26845, 26843):
+        assert not prof_carry.agree(MEASURED, {**MEASURED, "goh": [moved, 27517]}), moved
+
+
 def test_the_noise_band_never_forgives_another_binary_or_another_crate() -> None:
-    assert prof_carry.agree({"goh": [9000, 9400]}, {"goh": [9002, 9400]})
+    assert prof_carry.agree({"goh": [9000, 9400]}, {"goh": [9000, 9400]})
     assert not prof_carry.agree({"goh": [9000, 9400]}, {"goh": [9000, 9401]})  # coverable moved
     assert not prof_carry.agree({"goh": [9000, 9400]}, {"goh": [9000, 9400], "x": [1, 1]})
     assert not prof_carry.agree({"goh": [9000, 9400]}, {"goh": [8990, 9400]})

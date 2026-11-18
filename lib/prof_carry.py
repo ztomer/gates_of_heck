@@ -19,13 +19,18 @@ lines per `crates/<name>/`, the floor's own count), recorded under the `profcarr
 rustcov reuse, from the summary kept beside the measurement it reuses (gates/_rust_proven.sh).
 
 THE COMPARE (`reuse_audit.compare("profcarry", ...)`). The coverable lines of every crate must be
-EQUAL (another count is another binary), and the covered lines within NOISE: a few lines move with
-timing-dependent paths (a retry, a deadline) from one full run to the next. A claim outside that
-band is a carried node whose run was coverage after all, or a reused measurement of other inputs:
+EQUAL (another count is another binary), and the covered lines within NOISE_LINES. The band was a
+guess (3 lines, or 1 in 2000: 13 of goh's 27517), on the theory that timing-dependent paths (a
+retry, a deadline) move a few lines from one full run to the next. MEASURED (GOH.COVCARRY3,
+2026-11-18), two full instrumented runs of one set of Rust inputs -- a land's claim on 5bce690b's
+tree and a lane's run of 6d066d8c's, at load ~48 -- covered the SAME lines in every crate (goh
+26844/27517, goh-golden 392/397, goh-sys 158/163, goh-testkit 119/121, goh-tui 80/106): the band is
+0, and a measured disagreement re-opens it (tests/test_prof_carry.py). A claim outside it
+is a carried node whose run was coverage after all, or a reused measurement of other inputs:
 the path goes off, a fault is filed, and every reuse it gates stops -- `on()` is false, so the
 coverage run carries nothing (tests/_land_verdicts.py) and rustcov measures. The fresh side is a
 whole instrumented suite, so its re-run for the audit's "again" is the store and the report read
-again: a disagreement repeats, and one is enough (the band is where the forgiveness lives).
+again: a disagreement repeats, and one is enough.
 
 A missing claim (a tree no land judged, a claim past its TTL) compares nothing and says so.
 Pinned by tests/test_prof_carry.py.
@@ -54,8 +59,7 @@ import reuse
 import reuse_audit
 
 PATH = "profcarry"
-NOISE_LINES = 3  # covered lines a crate may move between two full runs of one binary
-NOISE_PER = 2000  # ... or one line in this many coverable ones, whichever is more
+NOISE_LINES = 0  # covered lines a crate may move between two full runs: measured 0 (above)
 
 
 def fields(repo: Path) -> dict[str, str] | None:
@@ -92,7 +96,7 @@ def agree(claimed: dict[str, list[int]], fresh: dict[str, list[int]]) -> bool:
         return False
     for name, (cov, tot) in claimed.items():
         f_cov, f_tot = fresh[name]
-        if tot != f_tot or abs(cov - f_cov) > max(NOISE_LINES, tot // NOISE_PER):
+        if tot != f_tot or abs(cov - f_cov) > NOISE_LINES:
             return False
     return True
 
