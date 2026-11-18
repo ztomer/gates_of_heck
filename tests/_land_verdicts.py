@@ -128,8 +128,7 @@ def _in_store():
             os.environ["GOH_REUSE_DIR"] = was
 
 
-def _store_or_none():
-    """`_in_store`, when a store is named to count in; else None."""
+def _store_or_none():  # `_in_store`, when a store is named to count in; else None
     return _in_store if _store() else None
 
 
@@ -148,20 +147,20 @@ def here(root: Path = REPO_ROOT) -> tuple[str, str] | None:
     return None if tree is None else (tree, gi.suite_tools())
 
 
-def choose(root: Path, changed: list[str]) -> tuple[set[str] | None, str]:
-    """(what tools/affected_tests.py runs for `changed` on root: files and node ids, why) -- None
-    when the change is suite-wide, so nothing may be carried across it."""
-    sys.path.insert(0, str(root / "tools"))
-    try:
-        import affected_tests
-    finally:
-        sys.path.pop(0)
+def choose(root: Path, changed: list[str], table=None) -> tuple[set[str] | None, str]:
+    """(what tools/affected_tests.py -- or `table`, one loaded apart -- runs for `changed` on root:
+    files and node ids, why); None when the change is suite-wide, so nothing carries across it."""
+    if table is None:
+        sys.path.insert(0, str(root / "tools"))
+        try:
+            import affected_tests as table
+        finally:
+            sys.path.pop(0)
     wide = [p for p in changed if p in SUITE_WIDE or Path(p).name == "conftest.py"]
-    base = affected_tests.Closure(root).base()
-    wide += [p for p in changed if p in base]
+    wide += sorted(set(changed) & table.Closure(root).base())
     if wide:
         return None, f"{wide[0]} is loaded before every test"
-    return set(affected_tests.affected(root, changed)), ""
+    return set(table.affected(root, changed)), ""
 
 
 def _builds(changed: list[str], root: Path = REPO_ROOT) -> bool:
@@ -257,8 +256,10 @@ def pytest_sessionfinish(session) -> None:
     path = _on(RECORD)
     if path and path != os.devnull:  # /dev/null: the store's record alone (a full run by hand)
         passed = {n: n in _bin for n in sorted(_called - _failed)}
-        tmp = Path(f"{path}.{os.getpid()}.tmp")
-        rec = {"identity": _state.get("identity"), "sha": _state.get("sha"), "passed": passed}
+        tmp, was = Path(f"{path}.{os.getpid()}.tmp"), _state.get("identity")
+        # Its identity is the tree the run STARTED and ENDED on (GOH.SUITEONCE, GOH.LANDSNAPSHOT).
+        rec = {"identity": was if was == identity() else None, "sha": _state.get("sha"),
+               "passed": passed}  # fmt: skip
         tmp.write_text(json.dumps(rec))
         tmp.replace(path)  # atomic: a reader sees a whole record or the old one
     if path or _on(REUSE):
@@ -386,8 +387,7 @@ def _file_sha(path: str) -> str:
         rec = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return ""
-    sha = rec.get("sha") if isinstance(rec, dict) else ""
-    return sha if isinstance(sha, str) else ""
+    return rec["sha"] if isinstance(rec, dict) and isinstance(rec.get("sha"), str) else ""
 
 
 def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:

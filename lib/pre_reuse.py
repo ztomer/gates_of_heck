@@ -1,6 +1,7 @@
 """Whether a land pre-step verdict on a commit holds for the tip it rebased to (GOH.PRELANDTWICE).
 
     pre_reuse.py --root WT --judged SHA --tip SHA --base SHA
+    pre_reuse.py --root WT --suite RECORD --base SHA   # the gate's suite (GOH.SUITEONCE, `suite`)
 
 WHY. GOH.SPANFORGIVE's enqueue pre-step went green in 443 s at f31e3492; the lander then ran the
 whole pre-land again, twice (387 s, then 478 s after main moved under it once more), and the last
@@ -21,6 +22,11 @@ carry (tests/_land_verdicts.py) use. The answer, one line of why first, then a n
 The tree readers are not re-run here: each file the tip holds is J's (judged by its set) or main's
 (judged by main's gate), the full gate runs them on the tip after, and the record kept for it
 carries only what the diff J..tip does not choose. Pinned by tests/test_pre_reuse.py.
+
+THE GATE'S SUITE (GOH.SUITEONCE): `--suite` answers 0 (the reused verdict's id on line 2) when the
+gate's checkout is the very commit tree the record judged, against the gate's base, and main's
+recorded tree carries every other test; tools/pytest.sh then runs no pytest. Pinned by
+tests/test_suite_once.py.
 """
 
 from __future__ import annotations
@@ -37,6 +43,7 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 
 import argparse
 import importlib
+import json
 import os
 import subprocess
 import sys
@@ -115,12 +122,103 @@ def decide(root: Path, judged: str, tip: str, base: str) -> tuple[int, str, list
     return REUSE, f"{n}, none read by a test: {shown}", []
 
 
+def _kit(name: str, sub: str):
+    """A module of this kit's own (lib/, tests/), imported once."""
+    if name in sys.modules:
+        return sys.modules[name]
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / sub))
+    try:
+        return importlib.import_module(name)
+    finally:
+        del sys.path[0]
+
+
+def _git(root: Path, *args: str) -> str:
+    r = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True,
+                       check=False, stdin=subprocess.DEVNULL,
+                       env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})  # fmt: skip
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def suite(root: Path, record: Path, base: str) -> tuple[bool, str, str]:
+    """(the gate's suite may take the pre-step's verdict instead of a run, why, the verdict's id)
+    (GOH.SUITEONCE). It may when the record is the pre-step's WHOLE selection (tools/
+    affected_tests.py stamps `selection` and the `base` it chose against) on exactly this checkout's
+    commit tree and tools (lib/gate_identity.py `suite`, which a dirty checkout has none of), that
+    base is the gate's, and the store holds a green suite record of the base's tree whose every
+    test is either judged by the record or carried across the diff (tests/_land_verdicts.py
+    `carried`: affected_tests does not choose it). Never under the coverage step's instrumented run,
+    whose profiles a skipped test would not leave. Each reuse is one use of the audited `carry`
+    path; on a reuse the tree's own suite record is written, so the next land carries from it."""
+    if all(os.environ.get(k) for k in ("GOH_COVERAGE_BIN_DIR", "LLVM_PROFILE_FILE")):
+        return False, "the instrumented coverage run needs its own profiles", ""
+    try:
+        rec = json.loads(record.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        return False, f"no pre-step record ({e.__class__.__name__})", ""
+    if not isinstance(rec, dict) or not isinstance(rec.get("passed"), dict):
+        return False, "a malformed pre-step record", ""
+    if rec.get("selection") != "affected" or not isinstance(rec.get("base"), str):
+        return False, "the record is not the pre-step's whole selection", ""
+    gi, reuse = _kit("gate_identity", "lib"), _kit("reuse", "lib")
+    here = gi.suite(root)
+    if here is None:
+        return False, "the checkout is not its commit's tree (a change, an untracked file)", ""
+    if rec.get("identity") != here:
+        return False, "the pre-step judged another tree or toolchain", ""
+    if rec["base"] != base:
+        return (
+            False,
+            f"the pre-step chose against {rec['base'][:8]}, the gate's base is {base[:8]}",
+            "",
+        )
+    if _git(root, "merge-base", base, "HEAD") != base:
+        return False, f"{base[:8]} is not below HEAD", ""
+    tree, tools = _git(root, "rev-parse", "HEAD^{tree}"), gi.suite_tools()
+    main_tree = _git(root, "rev-parse", f"{base}^{{tree}}")
+    got, why = reuse.lookup_suite(root, main_tree, tools) if main_tree else (None, "no tree")
+    if got is None or got.get("verdict") != "green":
+        return False, f"no suite record of main {base[:8]}'s tree to stand on ({why})", ""
+    changed = _diff(root, base, "HEAD")
+    table = _table(root)
+    if changed is None or table is None:
+        return False, "no diff from main, or no selection table in the tree", ""
+    lv = _kit("_land_verdicts", "tests")
+    chosen, why = lv.choose(root, changed, table)
+    if chosen is None:
+        return False, f"nothing carries across the diff: {why}", ""
+    mains = {n: bool(b) for n, b in got["passed"].items()}
+    carried = lv.carried(mains, chosen, False, lv._builds(changed, root))
+    union = {**{n: mains[n] for n in carried}, **{n: bool(b) for n, b in rec["passed"].items()}}
+    if left := sorted(n for n in mains if n not in union and (root / n.split("::")[0]).is_file()):
+        more = f" (+{len(left) - 1} more)" if len(left) > 1 else ""
+        return False, f"{left[0]}{more} passed on main is neither judged here nor carried", ""
+    fields = reuse.carry_fields(root, main_tree, tools)
+    if (use := _kit("reuse_audit", "lib").use("carry", fields)) != "reuse":
+        return False, f"the audited `carry` path says {use!r}: the suite runs", ""
+    reuse.record_suite(root, tree, tools, union, set(), False, "land gate (suite reused)",
+                       len(carried))  # fmt: skip
+    vid = f"{str(rec.get('sha') or '')[:12]}:{here[:12]}"
+    return True, (f"the pre-step judged this tree ({len(rec['passed'])} tests), main "
+                  f"{base[:8]}'s record carries {len(carried)}"), vid  # fmt: skip
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    for flag in ("--judged", "--tip", "--base"):
-        ap.add_argument(flag, required=True)
+    ap.add_argument("--suite", metavar="RECORD", help="the gate's suite: may it take RECORD?")
+    for flag in ("--judged", "--tip"):
+        ap.add_argument(flag)
+    ap.add_argument("--base", required=True)
     ap.add_argument("--root", default=".")
     args = ap.parse_args(argv)
+    if args.suite:
+        ok, why, vid = suite(Path(args.root).resolve(), Path(args.suite), args.base)
+        print(why)
+        if ok:
+            print(vid)
+        return REUSE if ok else RERUN
+    if not (args.judged and args.tip):
+        ap.error("--judged and --tip are required without --suite")
     code, why, nodes = decide(Path(args.root).resolve(), args.judged, args.tip, args.base)
     print(why)
     for n in nodes:

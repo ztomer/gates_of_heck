@@ -64,18 +64,19 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # the wait for the lock is its own field, not gate time). A land that never took the lock (a
 # refusal before it, a failed pre-step) measured no gate and writes no row. The ledger never fails
 # a land: the script's exit status is what it was.
-verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall="" pre_run="" pre_workers="" pre_reused=""
+verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall="" pre_run="" pre_workers="" pre_reused="" suite_reused=""
 # shellcheck disable=SC2329  # invoked by the EXIT trap below
 land_exit() {
     local rc=$?
     rm -f "$verdicts" "$pre_start"
+    [ -z "$verdicts" ] || rm -f "$verdicts.base" "$verdicts.reused"
     [ -z "${GOH_LAND_PRE_ONLY:-}${GOH_LAND_STACK_ONTO:-}" ] || return "$rc"   # the enqueue's pre-step run, a stacking rebase: no land, no ledger row
     [ ! -s "${land_timings:-}" ] && rm -f "${land_timings:-}" "${land_timings:-}.log" "${land_timings:-}.controls.log"
     goh_span_record land "$(goh_repo_id "${main:-.}")" "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" \
         ${land_timings:+--timings "${GOH_TIMINGS:-$land_timings}"} --field "wait_lock_s=$lock_wait" \
         --field "exit=$rc" ${pre_wall:+--field "pre_s=$pre_wall"} \
         ${pre_run:+--field "pre_run_s=$pre_run" --field "pre_workers=$pre_workers"} \
-        ${pre_reused:+--field "pre_reused=$pre_reused"} --field "sha=$(printf %.12s "${tip:-}")" || true
+        ${pre_reused:+--field "pre_reused=$pre_reused"} ${suite_reused:+--field "suite_reused=$suite_reused"} --field "sha=$(printf %.12s "${tip:-}")" || true
 }
 trap land_exit EXIT
 # SPECULATIVE (GOH.LANDBISECTPAR, lib/landq_spec.py): the batch gates a red stack's second half on
@@ -369,8 +370,13 @@ land_gate() {
         exit 1
     fi
 }
+# ONE RUN PER LAND (GOH.SUITEONCE): the gate's suite takes the pre-step's verdict when it judged
+# this very tree against this base (tools/pytest.sh, lib/pre_reuse.py `suite`); it reads the base
+# here and leaves the verdict's id in `.reused`, which the land's record names (`suite_reused`).
+[ ! -s "$verdicts" ] || printf '%s\n' "$base" >"$verdicts.base"
 [ -z "$judge_root" ] || land_gate "$judge_root" "main ${base:0:8}" "$judge_gate"
 land_gate "$tip_root" "$tip_who" "$gate"
+[ -z "$verdicts" ] || [ ! -s "$verdicts.reused" ] || IFS= read -r suite_reused <"$verdicts.reused" || true
 if [ "$tip_root" != "$GOH" ]; then   # the tip's gates key the goh-landed line (GOH.VERDICTKEYDRIFT)
     GOH="$tip_root"; export GOH_DIR="$GOH"; goh_path_front PYTHONPATH "$GOH"
 fi

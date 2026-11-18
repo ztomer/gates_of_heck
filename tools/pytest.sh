@@ -28,6 +28,24 @@ cd "$GOH"
 if [ -n "${GATES_OF_HECK_SUITE_RUNNER:-}" ] && [ -z "${GATES_OF_HECK_SUITE_NESTED_OK:-}" ]; then
     die "tools/pytest.sh started inside a running goh suite (runner pid $GATES_OF_HECK_SUITE_RUNNER) -- a nested suite recurses; a test that means it sets GATES_OF_HECK_SUITE_NESTED_OK=1 and a stub GOH_PY" 2
 fi
+# ONE RUN PER LAND (GOH.SUITEONCE, lib/pre_reuse.py `suite`): a land's gate (GOH_LAND_VERDICTS_REUSE,
+# and the base main it gates on beside it, `.base`, from tools/land.sh) whose checkout IS the
+# commit tree its pre-step judged green, against that base, takes the pre-step's verdict for the
+# whole run -- the diff's tests passed on these bytes, the rest on main's recorded tree -- and runs
+# no pytest; the verdict's id goes to `.reused`, which the land's record names. A narrowed run, the
+# instrumented coverage run, or any doubt runs the suite.
+if [ "$#" -eq 0 ] && [ -s "${GOH_LAND_VERDICTS_REUSE:-}" ] && [ -s "$GOH_LAND_VERDICTS_REUSE.base" ]; then
+    suite_base="" suite_why="" suite_rc=0
+    IFS= read -r suite_base <"$GOH_LAND_VERDICTS_REUSE.base" || true
+    suite_why="$("$GOH_PY" "$GOH/lib/pre_reuse.py" --root "$GOH" --suite "$GOH_LAND_VERDICTS_REUSE" \
+        --base "$suite_base" </dev/null)" || suite_rc=$?
+    if [ "$suite_rc" -eq 0 ] && [ -n "${suite_why#*$'\n'}" ] && [ "${suite_why#*$'\n'}" != "$suite_why" ]; then
+        printf '%s\n' "${suite_why#*$'\n'}" >"$GOH_LAND_VERDICTS_REUSE.reused"
+        ok "suite: the pre-step's verdict ${suite_why#*$'\n'} holds for this tree -- not run again: ${suite_why%%$'\n'*}"
+        exit 0
+    fi
+    info "suite: the pre-step's verdict is not this run's (${suite_why%%$'\n'*}) -- the suite runs"
+fi
 # ONE SUITE PER CHECKOUT (G2e, 2026-10-25). Two suites of one tree at once share its bin/, its
 # target/ and its proven cache, and each runs at half speed beside the other -- the full gate ran
 # exactly that (a test step beside the coverage group's run) until G2e. A second top-level run is

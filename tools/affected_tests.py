@@ -340,7 +340,8 @@ def main(argv: list[str]) -> int:
     if args.run:
         if args.structural and (rc := structural(root)):
             return rc
-        return run(root, changed, chosen)
+        whole = args.changed is None and not args.readers_only
+        return run(root, changed, chosen, _base_sha(root, args.base) if whole else None)
     for rel, why in chosen.items():
         print(f"{rel}  # {why}" if args.why else rel)
     return 0
@@ -368,7 +369,28 @@ def phases(root: Path, chosen: dict[str, str]) -> tuple[list[str], list[str]]:
     return judges, [n for n in chosen if n not in judges]
 
 
-def run(root: Path, changed: list[str], chosen: dict[str, str]) -> int:
+def _base_sha(root: Path, base: str) -> str | None:
+    out = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"],
+        capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
+    )  # fmt: skip
+    return out.stdout.strip() or None
+
+
+def _stamp(record: str, base: str | None) -> None:
+    """The record says it is the WHOLE selection the diff from BASE chose (GOH.SUITEONCE): the gate
+    of the tree it judged takes it for the suite only then (lib/pre_reuse.py `suite`)."""
+    if not base or not record or record == os.devnull:
+        return
+    try:
+        rec = json.loads(Path(record).read_text())
+    except (OSError, ValueError):
+        return
+    if isinstance(rec, dict):
+        Path(record).write_text(json.dumps({**rec, "base": base, "selection": "affected"}))
+
+
+def run(root: Path, changed: list[str], chosen: dict[str, str], base: str | None = None) -> int:
     """tools/pytest.sh over the set: the JUDGES first, in a run of their own, then the rest
     (GOH.PREPARITY: one run of both reached the 600 s deadline at load 175 with no verdict, and
     two judges it held went red in the land 444 s later; ADAPTLANES). A red judge is a red
@@ -412,6 +434,7 @@ def run(root: Path, changed: list[str], chosen: dict[str, str]) -> int:
             Path(record).replace(first)  # the rest's run writes its own; _merge joins them
     if first and first.is_file():
         _merge(Path(record), first)
+    _stamp(record, base)
     return 0
 
 
