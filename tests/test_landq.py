@@ -321,6 +321,7 @@ def test_a_land_that_changes_the_lander_is_honoured_by_the_next_request(tmp_path
     named = ("lib/bounded_run.py", "lib/gitrun.py", "lib/lock_order.py", "lib/lock_order.tsv")
     named += ("lib/land_prestep.py", "lib/killtree.py", "lib/landq_batch.py", "lib/land_lock.py")
     named += ("lib/landq_request.py", "lib/landq_look.py", "lib/land_attempts.py")
+    named += ("lib/idle_suite.py",)
     named += ("checks/_gitutil.py",)
     sc.copy_closure(
         code,

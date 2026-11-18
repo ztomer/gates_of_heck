@@ -10,6 +10,7 @@
 # repository): a fixture repo's land lock inside another repo's gate is not that gate's lock
 # (GOH.LOCKNEST, lib/lock_order.py's "SCOPE").
 lander	5	no	repo	tools/landq.py	the lands queue's one drainer, <landq>/lander.lock (never waits: a second drainer exits)
+idle_suite	6	no	machine	lib/idle_suite.py	the idle lander's full suite on main's tip, <landq>/idle-suite/lock (never waits: a second idle run is skipped; the lander's own lock is released first)
 ship	10	no	repo	tools/ship.py	one goh ship per repository, <ship state>/.ship.lock (never waits: a second ship is refused)
 land	20	yes	repo	tools/land.sh,lib/land_lock.py,tools/ship.py,lib/consumer_pins.py	the repository's land queue, goh-land.lock in the common git dir; the ship's own release land is its holder's (GOH_LAND_LOCK_OWNER)
 load	30	yes	machine	lib/load_slot.py	the load slot: an experiment (spinners) takes it alone; a 0-spinner run is a gate (gate_slot), and one inside a holder is that holder's

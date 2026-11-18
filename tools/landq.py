@@ -44,7 +44,10 @@ coordinator's tick re-dispatches when red. A land request takes up to GOH_LANDQ_
 repo with it: stacked, ONE land gate on the tip, a red bisected (GOH.LANDBATCH, lib/landq_batch.py).
 Between requests it re-reads its code's digest (tools/landq.py and lib/ on the live checkout's
 HEAD) and, changed by a land, releases the lock and execs a fresh copy (GOH.LANDERSTALECODE). After
-the last request it releases the lock and looks once more for one enqueued meanwhile.
+the last request it releases the lock and looks once more for one enqueued meanwhile. Then, idle,
+it runs the full suite on main's tip when the repo's release needs one and none is recorded
+(lib/idle_suite.py, GOH.GATEBUDGET2): in its own gate slot, holding no lock, stopped the moment a
+request is pending, after which the lander drains again.
 
 WHERE IT RUNS, AND A REBOOT (D-0006, docs/decisions/). No launchd agent: `--enqueue` starts a
 detached lander when none holds the lock, and the coordinator's tick may run `--drain`. A request
@@ -79,6 +82,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / "lib")]
 bounded_run = importlib.import_module("bounded_run")
 gitrun = importlib.import_module("gitrun")
+idle_suite = importlib.import_module("idle_suite")
 land_attempts = importlib.import_module("land_attempts")
 lock_order = importlib.import_module("lock_order")
 land_prestep = importlib.import_module("land_prestep")
@@ -355,7 +359,10 @@ def drain() -> int:
             os.execve(sys.executable, [sys.executable, str(fresh), "--drain"], env)
         if not any((q / "pending").glob("*.json")):  # enqueued after the last look: ours to run
             audit_drain()
-            return 0
+            # Idle: main's full suite record, so no ship waits on a hand run (lib/idle_suite.py).
+            # It holds no lock and yields to the first request that arrives: then drain again.
+            if idle_suite.run(q, live_root(), info) != "yielded":
+                return 0
 
 
 def audit_drain() -> None:
