@@ -157,7 +157,7 @@ def choose(root: Path, changed: list[str], table=None) -> tuple[set[str] | None,
         finally:
             sys.path.pop(0)
     wide = [p for p in changed if p in SUITE_WIDE or Path(p).name == "conftest.py"]
-    wide += sorted(set(changed) & table.Closure(root).base())
+    wide += [p for base in [table.Closure(root).base()] for p in changed if p in base]
     if wide:
         return None, f"{wide[0]} is loaded before every test"
     return set(table.affected(root, changed)), ""
