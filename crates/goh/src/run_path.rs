@@ -90,19 +90,16 @@ pub fn index_tree(repo: Option<&Path>) -> Option<String> {
     };
     let own = std::env::var_os("GIT_INDEX_FILE").filter(|i| !i.is_empty());
     let carried = || {
-        let here = git(&["rev-parse", "--absolute-git-dir"], None)?;
+        let here = crate::gitroot::absolute_git_dir(&std::env::current_dir().ok()?)?;
         carried_index(
             std::env::var_os("GOH_HOOK_INDEX_FILE").as_deref(),
             std::env::var_os("GOH_HOOK_GIT_DIR").as_deref(),
-            Path::new(&here),
+            &here,
         )
     };
     let index = match own.map(PathBuf::from).or_else(carried) {
         Some(i) => repo.map_or_else(|| i.clone(), |r| r.join(&i)),
-        None => PathBuf::from(git(
-            &["rev-parse", "--path-format=absolute", "--git-path", "index"],
-            None,
-        )?),
+        None => crate::gitroot::index_path(&std::env::current_dir().ok()?)?,
     };
     let where_ = root()?.join("index");
     std::fs::create_dir_all(&where_).ok()?;

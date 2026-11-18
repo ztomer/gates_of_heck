@@ -243,17 +243,7 @@ pub fn estate() -> Option<Vec<PathBuf>> {
 
 /// The repository's common git directory: one per repository, whichever worktree `root` is.
 fn common_dir(root: &Path) -> Option<PathBuf> {
-    let out = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .stdin(std::process::Stdio::null())
-        .output()
-        .ok()?;
-    out.status
-        .success()
-        .then(|| PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()))
+    crate::gitroot::common_git_dir(root)
 }
 
 /// Keep the first root of each repository: a worktree named as a ROOT and its main checkout in

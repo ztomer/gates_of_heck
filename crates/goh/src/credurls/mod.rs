@@ -348,17 +348,11 @@ fn run(root: Option<&str>, json: bool) -> (i32, Lines) {
     if json {
         return (0, vec![(false, "[]".to_owned())]);
     }
-    let common_out = git(
-        &repo,
-        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
-    )
-    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
-    .unwrap_or_default();
-    let common = realpath(&if common_out.is_empty() {
-        repo.join(".git")
-    } else {
-        PathBuf::from(common_out)
-    });
+    let common = realpath(
+        &crate::gitroot::common_git_dir(&repo)
+            .filter(|c| !c.as_os_str().is_empty())
+            .unwrap_or_else(|| repo.join(".git")),
+    );
     let prefix = format!("{}/", common.display());
     if urls.is_empty() && !values.iter().any(|(o, _, _)| o.starts_with(&prefix)) {
         return (0, vec![(false, format!("{OK} [no_credential_urls] not applicable — no remote URL here ({} global {n_value} clean)", values.len(), n_value = goh_tui::noun(values.len(), "value")))]);

@@ -118,3 +118,15 @@ def test_rust_scope_lists_the_workspaces_sources_once(goh: Path, tmp_path: Path)
     assert r.returncode == 0 and "a" in r.stdout.split(), r.stdout + r.stderr
     listings = [ln for ln in log.read_text().splitlines() if ln.startswith("ls-files")]
     assert len(listings) == 1, listings
+
+
+@pytest.mark.parametrize("mode", ["--staged", "--full"])
+def test_the_binary_never_asks_git_for_its_directories(
+    goh: Path, tmp_path: Path, mode: str
+) -> None:
+    """The git dir, the common dir, the index path and the shallow flag are read from the layout
+    (`gitroot`, GOH.RUSTREVPARSE); `rev-parse` of these forms was one spawn per question."""
+    calls = _calls(goh, tmp_path, mode)
+    forms = ("--git-common-dir", "--absolute-git-dir", "--git-dir", "--git-path", "--is-shallow")
+    asked = {c: n for c, n in calls.items() if "rev-parse" in c and any(f in c for f in forms)}
+    assert not asked, asked

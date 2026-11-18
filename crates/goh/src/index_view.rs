@@ -203,13 +203,10 @@ fn pin_git_env() -> Result<(), String> {
 
 /// The repo's absolute git dir, for the view's `.git` file.
 fn git_dir(top: &Path) -> Result<String, String> {
-    let out = git_out(top, &["rev-parse", "--absolute-git-dir"], None)
-        .map_err(|e| format!("cannot resolve the git dir of {}: {e}", top.display()))?;
-    let dir = String::from_utf8_lossy(&out).trim().to_owned();
-    if dir.is_empty() {
-        return Err(format!("cannot resolve the git dir of {}", top.display()));
-    }
-    Ok(dir)
+    crate::gitroot::absolute_git_dir(top)
+        .map(|d| d.to_string_lossy().into_owned())
+        .filter(|d| !d.is_empty())
+        .ok_or_else(|| format!("cannot resolve the git dir of {}", top.display()))
 }
 
 /// `git -C top <args>`'s stdout, against `index` when given (`GIT_INDEX_FILE`).
