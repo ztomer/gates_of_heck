@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 import timing_bounds
+from _hook_inproc import run_hook
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -138,14 +139,7 @@ def test_no_spinners_starve_nothing(tmp_path: Path) -> None:
 
 def _guard(command: str, cwd: Path) -> str | None:
     event = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(cwd)}
-    result = subprocess.run(
-        [sys.executable, str(GUARD)],
-        input=json.dumps(event),
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )  # fmt: skip
+    result = run_hook(GUARD, json.dumps(event))
     assert result.returncode == 0, result.stderr
     if not result.stdout.strip():
         return None

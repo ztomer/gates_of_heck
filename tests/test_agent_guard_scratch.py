@@ -10,11 +10,11 @@ transcript and names every write it made straight into the root. Transcripts her
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from _hook_inproc import run_hook
 from conftest import REPO_ROOT, hermetic_env
 
 GUARD = REPO_ROOT / "hooks" / "claude" / "agent_guard.py"
@@ -81,10 +81,7 @@ def test_the_subagent_stop_hook_flags_a_planted_write(tmp_path: Path) -> None:
              "agent_type": "repo-worker", "last_assistant_message": report,
              "agent_transcript_path": str(t)}  # fmt: skip
     cache = tmp_path / "cache"
-    r = subprocess.run(
-        [sys.executable, str(GUARD)], input=json.dumps(event), capture_output=True, text=True,
-        env=hermetic_env(XDG_CACHE_HOME=str(cache)), timeout=30, check=False,
-    )  # fmt: skip
+    r = run_hook(GUARD, json.dumps(event), hermetic_env(XDG_CACHE_HOME=str(cache)))
     assert r.returncode == 0, r.stderr
     out = json.loads(r.stdout)
     assert f"{PAD}/release.log" in out["systemMessage"] and "loopctl" in out["systemMessage"]

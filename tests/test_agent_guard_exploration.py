@@ -17,11 +17,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
+from _hook_inproc import run_hook
 from conftest import REPO_ROOT, hermetic_env
 
 GUARD = REPO_ROOT / "hooks" / "claude" / "agent_guard.py"
@@ -32,10 +31,9 @@ POOL = "Pool: unfit because the fix needs this repo's files and its test run"
 def _run(tool_input: dict[str, Any], cache: Path, rules: Path = RULES_FILE) -> dict[str, Any]:
     event = {"session_id": "s", "hook_event_name": "PreToolUse", "tool_name": "Agent",
              "tool_use_id": "t", "tool_input": tool_input}  # fmt: skip
-    r = subprocess.run(
-        [sys.executable, str(GUARD)], input=json.dumps(event), capture_output=True, text=True,
-        env=hermetic_env(XDG_CACHE_HOME=str(cache), GOH_MODEL_CHOICE=str(rules)), timeout=30,
-        check=False,
+    r = run_hook(
+        GUARD, json.dumps(event),
+        hermetic_env(XDG_CACHE_HOME=str(cache), GOH_MODEL_CHOICE=str(rules)),
     )  # fmt: skip
     assert r.returncode == 0, r.stderr
     out = json.loads(r.stdout)

@@ -28,11 +28,10 @@ escape. A file that is not a shell script is not judged at all: the shape is a s
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
+from _hook_inproc import run_hook
 from conftest import REPO_ROOT
 
 GUARD = REPO_ROOT / "hooks" / "claude" / "discard_guard.py"
@@ -48,14 +47,7 @@ def _decide(command: str, cwd: Path) -> str | None:
 
 def _decide_event(event: dict) -> str | None:
     """The guard's verdict on any tool event: its refusal reason, or None when it lets it run."""
-    result = subprocess.run(
-        [sys.executable, str(GUARD)],
-        input=json.dumps(event),
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )  # fmt: skip
+    result = run_hook(GUARD, json.dumps(event))
     assert result.returncode == 0, result.stderr
     if not result.stdout.strip():
         return None

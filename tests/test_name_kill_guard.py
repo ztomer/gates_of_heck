@@ -14,6 +14,7 @@ import subprocess
 import sys
 
 import pytest
+from _hook_inproc import run_hook
 from conftest import REPO_ROOT, hermetic_env
 
 GUARD = REPO_ROOT / "hooks" / "claude" / "discard_guard.py"
@@ -22,10 +23,10 @@ PK, KA, PG = "p" + "kill", "kill" + "all", "p" + "grep"
 
 
 def _decide(command: str) -> str | None:
-    r = subprocess.run(
-        [sys.executable, str(GUARD)],
-        input=json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": "/"}),
-        capture_output=True, text=True, env=hermetic_env(drop_git=True), timeout=30, check=False,
+    r = run_hook(
+        GUARD,
+        json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": "/"}),
+        hermetic_env(drop_git=True),
     )  # fmt: skip
     assert r.returncode == 0, r.stderr
     if not r.stdout.strip():

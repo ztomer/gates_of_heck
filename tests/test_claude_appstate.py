@@ -14,12 +14,12 @@ refuses its real defaults outright (the last test proves it).
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
+from _hook_inproc import run_hook
 from conftest import REPO_ROOT, hermetic_env
 
 HOOKS = REPO_ROOT / "hooks" / "claude"
@@ -77,9 +77,7 @@ class World:
                             **{**seams, **extra})  # fmt: skip
 
     def hook(self, event: dict[str, Any], **extra: str) -> dict[str, Any] | None:
-        r = subprocess.run([sys.executable, str(GUARD)], input=json.dumps(event),
-                           capture_output=True, text=True, env=self.env(**extra), timeout=60,
-                           check=False)  # fmt: skip
+        r = run_hook(GUARD, json.dumps(event), self.env(**extra))
         assert r.returncode == 0, r.stderr
         return json.loads(r.stdout) if r.stdout.strip() else None
 

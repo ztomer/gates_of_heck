@@ -14,14 +14,13 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
+from _hook_inproc import run_hook
 from conftest import REPO_ROOT, hermetic_env
-from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "hooks" / "claude"))
 import model_choice
@@ -78,11 +77,10 @@ def guard(tmp: Path, model: str, effort: str, because: str, *, pool: bool = Fals
              "tool_use_id": "t", "tool_input": {"description": "d", "prompt": prompt,
                                                 "model": model, "effort": effort,
                                                 "subagent_type": "repo-worker"}}  # fmt: skip
-    r = subprocess.run(
-        [sys.executable, str(GUARD)], input=json.dumps(event), capture_output=True, text=True,
-        env=hermetic_env(XDG_CACHE_HOME=str(tmp / "cache"), POOL_STATE_DIR=str(pool_dir),
-                         GOH_MODEL_CHOICE=str(rules_file(tmp, declared))),
-        timeout=patience(30), check=False,
+    r = run_hook(
+        GUARD, json.dumps(event),
+        hermetic_env(XDG_CACHE_HOME=str(tmp / "cache"), POOL_STATE_DIR=str(pool_dir),
+                     GOH_MODEL_CHOICE=str(rules_file(tmp, declared))),
     )  # fmt: skip
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout) if r.stdout.strip() else None

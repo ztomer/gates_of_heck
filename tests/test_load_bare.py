@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 import timing_bounds
+from _hook_inproc import run_hook
 from conftest import REPO_ROOT, hermetic_env
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -31,9 +32,7 @@ SWIFT = "cd tui/menubar && swift test --package-path . --filter PreferencesLeakT
 
 def _guard(command: str, load_dir: Path) -> str | None:
     event = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(load_dir)}
-    ran = subprocess.run([sys.executable, str(GUARD)], input=json.dumps(event), capture_output=True,
-                         text=True, timeout=30, check=False,
-                         env=hermetic_env(GOH_LOAD_DIR=str(load_dir)))  # fmt: skip
+    ran = run_hook(GUARD, json.dumps(event), hermetic_env(GOH_LOAD_DIR=str(load_dir)))
     assert ran.returncode == 0, ran.stderr
     if not ran.stdout.strip():
         return None

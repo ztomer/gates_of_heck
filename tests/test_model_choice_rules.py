@@ -14,11 +14,11 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
+from _hook_inproc import run_hook
 from conftest import REPO_ROOT, hermetic_env
 
 sys.path.insert(0, str(REPO_ROOT / "hooks" / "claude"))
@@ -79,10 +79,9 @@ def test_opus_to_cheap_exploration_is_off_until_the_owner_turns_it_on() -> None:
 
 
 def _guard(event: dict[str, Any], cache: Path, rules: Path) -> dict[str, Any] | None:
-    r = subprocess.run(
-        [sys.executable, str(GUARD)], input=json.dumps(event), capture_output=True, text=True,
-        env=hermetic_env(XDG_CACHE_HOME=str(cache), GOH_MODEL_CHOICE=str(rules)), timeout=30,
-        check=False,
+    r = run_hook(
+        GUARD, json.dumps(event),
+        hermetic_env(XDG_CACHE_HOME=str(cache), GOH_MODEL_CHOICE=str(rules)),
     )  # fmt: skip
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout) if r.stdout.strip() else None

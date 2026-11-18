@@ -18,12 +18,12 @@ The input shapes are the ones Claude Code 2.1.292 sent, captured live: PreToolUs
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
+from _hook_inproc import run_hook, start_hook
 from conftest import REPO_ROOT, hermetic_env
 
 GUARD = REPO_ROOT / "hooks" / "claude" / "agent_guard.py"
@@ -38,11 +38,9 @@ CONTRACT = agent_guard.CONTRACT
 
 def _run(event: Any, cache: Path, raw: str | None = None) -> dict[str, Any] | None:
     """The hook's JSON output for `event` (None when it prints nothing). It always exits 0."""
-    r = subprocess.run(
-        [sys.executable, str(GUARD)],
-        input=raw if raw is not None else json.dumps(event),
-        capture_output=True, text=True, env=hermetic_env(XDG_CACHE_HOME=str(cache)), timeout=30,
-        check=False,
+    r = run_hook(
+        GUARD, raw if raw is not None else json.dumps(event),
+        hermetic_env(XDG_CACHE_HOME=str(cache)),
     )  # fmt: skip
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout) if r.stdout.strip() else None
@@ -85,6 +83,19 @@ def _allowed(out: dict[str, Any] | None) -> dict[str, Any]:
     hso = out["hookSpecificOutput"]
     assert "permissionDecision" not in hso, hso.get("permissionDecisionReason")
     return hso["updatedInput"]
+
+
+def test_the_real_entry_point_judges_a_spawn_on_stdin_and_exits_zero(tmp_path: Path) -> None:
+    """The ONE subprocess start (GOH.HOOKINPROC): every other test here calls `main()` in process,
+    so the shebang line, `__main__`, the import path and a real exit code are pinned only here."""
+    env = hermetic_env(XDG_CACHE_HOME=str(tmp_path))
+    ti = {k: v for k, v in GOOD.items() if k != "model"}
+    r = start_hook(GUARD, json.dumps(_spawn(ti)), env)
+    assert r.returncode == 0, r.stderr
+    assert "names no model" in _reason(json.loads(r.stdout))
+    ok = start_hook(GUARD, json.dumps(_spawn(dict(GOOD))), env)
+    assert ok.returncode == 0, ok.stderr
+    assert _allowed(json.loads(ok.stdout))["model"] == "sonnet"
 
 
 @pytest.mark.parametrize(

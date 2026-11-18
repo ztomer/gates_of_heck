@@ -12,25 +12,21 @@ spawn and, with a warning, any spawn whose reading fails, and records every judg
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
+from _hook_inproc import run_hook
 from conftest import hermetic_env
 from test_capacity import Planted
 from test_claude_agent_guard import GOOD, GUARD, _allowed, _reason, _spawn
-from timing_bounds import patience
 
 READ_ONLY = {"description": "look", "subagent_type": "Explore", "prompt": "Where is foo defined?"}
 
 
 def _run(event: Any, tmp: Path, env: dict[str, str]) -> dict[str, Any] | None:
-    r = subprocess.run(
-        [sys.executable, str(GUARD)], input=json.dumps(event), capture_output=True, text=True,
-        env=hermetic_env(XDG_CACHE_HOME=str(tmp / "cache"), XDG_STATE_HOME=str(tmp / "state"),
-                         **env),
-        timeout=patience(60), check=False,
+    r = run_hook(
+        GUARD, json.dumps(event),
+        hermetic_env(XDG_CACHE_HOME=str(tmp / "cache"), XDG_STATE_HOME=str(tmp / "state"), **env),
     )  # fmt: skip
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout) if r.stdout.strip() else None

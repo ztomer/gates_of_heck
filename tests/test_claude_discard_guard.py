@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _hook_inproc import run_hook, start_hook
 from _tree_clone import from_template
 from conftest import REPO_ROOT, hermetic_env
 
@@ -48,10 +48,10 @@ def _build_repo(r: Path) -> None:
 
 def _decide(command: str, cwd: Path) -> str | None:
     """The guard's verdict: its refusal reason, or None when it lets the command run."""
-    r = subprocess.run(
-        [sys.executable, str(GUARD)],
-        input=json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(cwd)}),
-        capture_output=True, text=True, env=hermetic_env(drop_git=True), timeout=30, check=False,
+    r = run_hook(
+        GUARD,
+        json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(cwd)}),
+        hermetic_env(drop_git=True),
     )  # fmt: skip
     assert r.returncode == 0, r.stderr
     if not r.stdout.strip():
@@ -59,6 +59,21 @@ def _decide(command: str, cwd: Path) -> str | None:
     out = json.loads(r.stdout)["hookSpecificOutput"]
     assert out["permissionDecision"] == "deny", out
     return out["permissionDecisionReason"]
+
+
+def test_the_real_entry_point_refuses_on_stdin_and_exits_zero(repo: Path) -> None:
+    """The ONE subprocess start (GOH.HOOKINPROC): every other test here calls `main()` in process,
+    so the shebang line, `__main__`, the import path and a real exit code are pinned only here."""
+    (repo / "a.txt").write_text("one\nwork in progress\n")
+    env = hermetic_env(drop_git=True)
+    event = {"tool_name": "Bash", "tool_input": {"command": "git checkout -- a.txt"}}
+    r = start_hook(GUARD, json.dumps({**event, "cwd": str(repo)}), env)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)["hookSpecificOutput"]
+    assert out["permissionDecision"] == "deny" and "a.txt" in out["permissionDecisionReason"], out
+    ls = {"tool_name": "Bash", "tool_input": {"command": "ls"}, "cwd": str(repo)}
+    quiet = start_hook(GUARD, json.dumps(ls), env)
+    assert quiet.returncode == 0 and not quiet.stdout.strip(), (quiet.stdout, quiet.stderr)
 
 
 def test_restoring_a_file_with_uncommitted_work_is_refused_and_names_it(repo: Path) -> None:
