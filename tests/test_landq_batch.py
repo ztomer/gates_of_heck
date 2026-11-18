@@ -14,6 +14,7 @@ tip subject (so a test counts gate runs and reads what each judged) and fails on
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -134,8 +135,31 @@ def test_three_pending_lands_land_in_one_gate_run_each_naming_its_own_sha(repo, 
     assert (tot["landed"], tot["gates"], tot["gates_per_landed"]) == (3, 1, 0.33), tot
 
 
+# GATE, but the first half's run alone on main (one.txt, nothing stacked on it) waits (bounded) on a
+# fifo for the speculative second half's run on main (bad.txt, no one.txt) to have gated. Else a
+# slow runner's speculative land.sh was still before its gate when the first half landed, so it was
+# stopped unlogged: the batch counts every run it started, the log one fewer (CI, v0.136.0).
+MEET = (
+    'git log -1 --format=%s >>"$GATE_LOG"; '
+    'if [ -e bad.txt ] && [ ! -e one.txt ]; then echo spec >"$BARRIER"; fi; '
+    "if [ -e one.txt ] && [ ! -e two.txt ] && [ ! -e three.txt ]; then "
+    'read -r -t "$WAIT" _ <"$BARRIER"; fi; '
+    "if [ -e bad.txt ]; then echo planted-red-in-$(git log -1 --format=%s); exit 1; fi"
+)
+
+
+@pytest.fixture
+def meet(env: dict[str, str], tmp_path: Path):
+    barrier = tmp_path / "barrier"
+    os.mkfifo(barrier)
+    held = os.open(barrier, os.O_RDWR)  # a reader and a writer: no open blocks, no line lost
+    yield {**env, "GOH_LAND_GATE": MEET, "BARRIER": str(barrier), "WAIT": str(int(patience(60)))}
+    os.close(held)
+
+
 @pytest.mark.load_sensitive  # --wait is bounded
-def test_a_red_middle_item_bisects_out_and_the_others_land(repo, tmp_path, env):
+def test_a_red_middle_item_bisects_out_and_the_others_land(repo, tmp_path, meet):
+    env = meet
     wts = three(repo, tmp_path, {"two.txt": "2\n", "bad.txt": "planted\n"})
     enqueue_all(env, wts)
     assert landq(env, "--drain").returncode == 0

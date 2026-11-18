@@ -49,6 +49,13 @@ READ = ("Projects", ".claude/skills", ".cargo")
 # dropped it sent each hermetic land (tools/load.py 0, admitted by lib/gate_slot.py) to the host's
 # memory reading, a wait of up to 600 s on a swapping machine (GOH.ONEADMISSION).
 KEPT_GOH = ("GOH_LIVE", "GOH_ESTATE_STATE", "GOH_GRACE", "GOH_MEM_ADMIT")
+# THE MACHINE'S SHAPE, one value on every box (GOH.CIRED0136): a fixture gate sized its gate
+# slots (lib/gate_slot.py default_slots: cores // 8) and its worker share (lib/worker_share.py
+# cores) from the box it ran on. The owner's 16 cores gave 2 slots and a share of 16; the 3-core
+# GitHub runner 1 and 3, so v0.136.0's CI went red where the local gate was green: a 4-binary
+# coverage run went "3 at a time", and with one slot a batch's speculative second half took the
+# slot before the first (tests/test_landq_bisect_par.py). A test that means another shape says so.
+MACHINE_SHAPE = {"GOH_GATE_CORES": "16", "GOH_GATE_SLOTS": "2"}
 # Where each kept variable's tool looks under HOME when the variable is unset.
 HOME_DEFAULTS = {
     "CARGO_HOME": ".cargo",

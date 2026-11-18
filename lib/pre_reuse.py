@@ -61,15 +61,24 @@ def _table(root: Path):
     """The tip's own tools/affected_tests.py, or None when it has no `readers`."""
     if not (root / "tools" / "affected_tests.py").is_file():
         return None
+
+    def ours(m: str) -> bool:
+        return m in ("affected_tests", "lib") or m[:4] == "lib."
+
+    # The tip's table, never one an earlier root loaded -- and given back after: left in place, the
+    # tip's `affected_tests` and `lib.*` were the CALLER's from then on (a suite worker's later
+    # `import affected_tests` got a fixture's table with no `affected`, CI on v0.138.0).
+    kept = {m: sys.modules.pop(m) for m in [m for m in sys.modules if ours(m)]}
     sys.path.insert(0, str(root / "tools"))
     try:
-        for name in [m for m in sys.modules if m in ("affected_tests", "lib") or m[:4] == "lib."]:
-            del sys.modules[name]  # the tip's table, never one an earlier root loaded
         mod = importlib.import_module("affected_tests")
     except Exception:  # noqa: BLE001 -- a table that does not load is no table: re-run
         return None
     finally:
         del sys.path[0]
+        for name in [m for m in sys.modules if ours(m)]:
+            del sys.modules[name]
+        sys.modules.update(kept)
     return mod if hasattr(mod, "readers") else None
 
 

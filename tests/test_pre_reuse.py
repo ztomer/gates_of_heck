@@ -182,3 +182,20 @@ def test_the_real_table_reads_no_release_commits_version_or_fragments():
                          capture_output=True, text=True, check=False,
                          stdin=subprocess.DEVNULL)  # fmt: skip
     assert out.returncode == 0 and "the tree judged at HEAD" in out.stdout, out.stdout + out.stderr
+
+
+def test_reading_a_tips_table_leaves_the_callers_modules_its_own(repo, tmp_path):
+    """GOH.CIRED0136: `_table` left the tip's `affected_tests` (and its `lib`) in sys.modules, so a
+    suite worker that ran this file judged later tests with the stand-in: tests/_land_verdicts.py's
+    `affected_tests.affected` was an AttributeError on CI at v0.138.0."""
+    _with_table(repo, tmp_path)
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    try:
+        import affected_tests
+    finally:
+        sys.path.pop(0)
+    before = {m: sys.modules[m] for m in ("affected_tests", "lib") if m in sys.modules}
+    table = pre_reuse._table(repo)
+    assert table is not None and table is not affected_tests and hasattr(table, "READ")
+    assert {m: sys.modules.get(m) for m in before} == before
+    assert hasattr(sys.modules["affected_tests"], "affected")
