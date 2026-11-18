@@ -48,6 +48,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gitrun
+from tmp_root import goh_tmp
 
 LEDGER = "selection_misses.jsonl"
 FAILED = re.compile(r"^(?:\d+:)?[ \t]*FAILED (tests/[^\s@]+)", re.MULTILINE)
@@ -90,7 +91,7 @@ def changed(repo: Path, base: str, sha: str) -> list[str]:
 def selection(repo: Path, sha: str, paths: list[str]) -> list[str] | None:
     """What SHA's own selector chooses for PATHS, run over `git archive SHA`; None when SHA has no
     selector (a repo whose pre-step is not tools/affected_tests.py)."""
-    with tempfile.TemporaryDirectory(prefix="goh-selection.") as tmp:
+    with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-selection.") as tmp:
         tar = Path(tmp) / "tree.tar"
         _git(repo, "archive", "-o", str(tar), sha)
         env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
