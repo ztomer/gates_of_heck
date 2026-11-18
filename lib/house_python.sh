@@ -38,41 +38,43 @@ _goh_house_py_version() {
     "$1" -I -S -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null </dev/null
 }
 
-# _goh_house_py_ids <path>...: fill _goh_py_id[path]=dev:inode:mtime:size, one stat for all.
+# Bash 3.2 sources this file (/bin/bash on macOS), so no associative arrays: the stat answers and
+# the cache are newline-separated "path<TAB>..." strings, looked up with a case pattern.
+
+# _goh_house_py_ids <path>...: set _goh_py_ids to "path<TAB>dev:inode:mtime:size" lines, one stat.
 _goh_house_py_ids() {
-    local line
-    _goh_py_id=()
+    _goh_py_ids=""
     [ "$#" -gt 0 ] || return 0
     if [[ "${OSTYPE:-}" == darwin* ]]; then
-        line="$(/usr/bin/stat -L -f '%d:%i:%m:%z	%N' -- "$@" 2>/dev/null)"
+        _goh_py_ids="$(/usr/bin/stat -L -f '%N	%d:%i:%m:%z' -- "$@" 2>/dev/null)"
     else
-        line="$(stat -L -c '%d:%i:%Y:%s	%n' -- "$@" 2>/dev/null)"
+        _goh_py_ids="$(stat -L -c '%n	%d:%i:%Y:%s' -- "$@" 2>/dev/null)"
     fi
-    while IFS=$'\t' read -r id path; do
-        [ -n "$path" ] && _goh_py_id["$path"]="$id"
-    done <<<"$line"
 }
 
-# _goh_house_py_cache_load: fill _goh_py_seen[path<TAB>id]=version from the cache file.
+# _goh_house_py_cache_load: set _goh_py_cache (the file) and _goh_py_seen (its lines).
 _goh_house_py_cache_load() {
-    local p i v
-    _goh_py_seen=()
-    _goh_py_cache=""
+    _goh_py_seen="" _goh_py_cache=""
     local root="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
     [ -n "$root" ] || return 0
     _goh_py_cache="$root/goh/house_python.tsv"
-    [ -r "$_goh_py_cache" ] || return 0
-    while IFS=$'\t' read -r p i v; do
-        [ -n "$v" ] && _goh_py_seen["$p"$'\t'"$i"]="$v"
-    done <"$_goh_py_cache"
+    [ -r "$_goh_py_cache" ] && _goh_py_seen="$(cat -- "$_goh_py_cache" 2>/dev/null)"
+    return 0
 }
 
 # _goh_house_py_cached_version <python>: its version from the cache, or a probe recorded in it.
 _goh_house_py_cached_version() {
-    local id="${_goh_py_id[$1]:-}" ver
-    if [ -n "$id" ] && [ -n "${_goh_py_seen["$1"$'\t'"$id"]:-}" ]; then
-        printf '%s\n' "${_goh_py_seen["$1"$'\t'"$id"]}"
-        return 0
+    local nl=$'\n' tab=$'\t' id="" ver rest
+    case "$nl$_goh_py_ids$nl" in
+        *"$nl$1$tab"*) rest="$nl$_goh_py_ids$nl"; rest="${rest#*"$nl$1$tab"}"; id="${rest%%"$nl"*}" ;;
+    esac
+    if [ -n "$id" ]; then
+        case "$nl$_goh_py_seen$nl" in
+            *"$nl$1$tab$id$tab"*)
+                rest="$nl$_goh_py_seen$nl"; rest="${rest#*"$nl$1$tab$id$tab"}"
+                printf '%s\n' "${rest%%"$nl"*}"
+                return 0 ;;
+        esac
     fi
     ver="$(_goh_house_py_version "$1")" || return 1
     [ -n "$ver" ] || return 1
@@ -112,7 +114,6 @@ goh_house_python() {
     fi
     local floor dirs dir cand v best="" best_v="" seen=":"
     local -a cands=()
-    declare -gA _goh_py_id=() _goh_py_seen=()
     _goh_house_py_cache_load
     floor="$(goh_house_python_floor)"
     if [ -n "${GOH_PY:-}" ]; then
@@ -140,8 +141,8 @@ goh_house_python() {
             done
         done
         unset IFS
-        _goh_house_py_ids "${cands[@]}"
-        for cand in "${cands[@]}"; do
+        _goh_house_py_ids ${cands[@]+"${cands[@]}"}
+        for cand in ${cands[@]+"${cands[@]}"}; do
             v="$(_goh_house_py_cached_version "$cand")" || continue
             if [ -z "$best_v" ] || ! _goh_house_py_ge "$best_v" "$v"; then   # strictly newer
                 best="$cand" best_v="$v"
