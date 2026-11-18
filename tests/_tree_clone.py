@@ -114,7 +114,7 @@ def process_template(key: str, build) -> Path:
     """`template` for a helper called with only a path (no `tmp_path_factory`): built once per
     process in a temp dir of its own, removed when the process exits."""
     if key not in _PROCESS_TEMPLATES:
-        home = Path(tempfile.mkdtemp(prefix=f"goh-template-{key}."))
+        home = Path(tempfile.mkdtemp(prefix="goh-template-" + key + "."))
         atexit.register(shutil.rmtree, home, True)
         tree = home / key
         build(tree)

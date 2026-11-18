@@ -20,73 +20,16 @@ import time
 from pathlib import Path
 
 import pytest
-from _fast_git import fast_init
-from _tree_clone import clone_tree, template
-from conftest import REPO_ROOT, commit_all, git, hermetic_env, run_goh, write
+from _shipped_kit import FAKE_LOOPCTL, make_shipped, shipped_clone  # noqa: F401  (re-exported)
+from conftest import REPO_ROOT, git, hermetic_env, run_goh
 from timing_bounds import GiveUp, assert_sooner
 
 SHIP = REPO_ROOT / "tools" / "ship.py"
-# The fake loopctl: every call appended to $FAKE_LOOPCTL_LOG; `verify` exits $FAKE_VERIFY_RC.
-FAKE_LOOPCTL = """\
-import json, os, sys
-with open(os.environ["FAKE_LOOPCTL_LOG"], "a") as f:
-    f.write(json.dumps(sys.argv[1:]) + "\\n")
-if sys.argv[1] == "verify":  # $FAKE_CARD_ERR: failing lines, `|`-separated
-    print("fake card line 1")
-    sys.path.insert(0, os.environ["FAKE_GOH_ROOT"])  # the card's own marks: tui.lib, as loopctl's
-    from tui.lib import err
-    for line in filter(None, os.environ.get("FAKE_CARD_ERR", "").split("|")):
-        err(line)
-    sys.exit(int(os.environ.get("FAKE_VERIFY_RC", "0")))
-if sys.argv[1] == "ci":  # $FAKE_CI: the verdicts in order (the last repeats), counted in $FAKE_CI_N
-    states = os.environ["FAKE_CI"].split(",")
-    n_file = os.environ["FAKE_CI_N"]
-    n = int(open(n_file).read()) if os.path.exists(n_file) else 0
-    open(n_file, "w").write(str(n + 1))
-    state = states[min(n, len(states) - 1)]
-    print(f"CI {state}: fake verdict {n + 1}")
-    sys.exit({"green": 0, "red": 1, "pending": 3, "none": 4, "throttled": 75}[state])
-"""
 
 
 @pytest.fixture
 def shipped(tmp_path: Path, tmp_path_factory) -> Path:
     return shipped_clone(tmp_path, tmp_path_factory)
-
-
-def shipped_clone(tmp_path: Path, factory) -> Path:
-    """`make_shipped` over conftest's `repo`, built once per worker and cloned per test; only the
-    origin's URL (an absolute path) is written per test (GOH.FIXTURECOST)."""
-    built = template(factory, "shipped", _build_shipped)
-    for part in ("proj", "remote.git", "loopctl.py"):
-        clone_tree(built / part, tmp_path / part)
-    git(tmp_path / "proj", "remote", "set-url", "origin", str(tmp_path / "remote.git"))
-    return tmp_path / "proj"
-
-
-def _build_shipped(root: Path) -> None:
-    proj = root / "proj"
-    fast_init(proj, "main")
-    git(proj, "config", "maintenance.auto", "false")
-    write(proj, "README.md", "# fixture\n")
-    commit_all(proj)
-    make_shipped(proj, root)
-    git(root / "remote.git", "remote", "remove", "origin")  # it named the template's proj
-    git(proj, "remote", "set-url", "origin", "set-per-clone")
-
-
-def make_shipped(repo: Path, tmp_path: Path) -> Path:
-    """`repo` with a bare `origin` it tracks, tagged v1.0.0 and pushed, then one commit on top."""
-    remote = tmp_path / "remote.git"
-    git(repo, "clone", "-q", "--bare", str(repo), str(remote))
-    git(repo, "remote", "add", "origin", str(remote))
-    git(repo, "tag", "v1.0.0")
-    git(repo, "push", "-q", "-u", "origin", "main", "v1.0.0")
-    (repo / "f.txt").write_text("change\n")
-    git(repo, "add", "f.txt")
-    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "feat: change")
-    (tmp_path / "loopctl.py").write_text(FAKE_LOOPCTL)
-    return repo
 
 
 def _env(tmp_path: Path, **over: str) -> dict[str, str]:
