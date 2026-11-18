@@ -29,10 +29,9 @@ from prune_kept import backstop
 NOINDEX = "goh.noindex"
 
 
-def test_a_pytest_run_root_lives_under_the_noindex_parent(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("TMPDIR", str(tmp_path / "t"))
-    (tmp_path / "t").mkdir()
-    done, base = _run(tmp_path, 3)
+@pytest.mark.load_sensitive
+def test_a_pytest_run_root_lives_under_the_noindex_parent(tmp_path) -> None:
+    done, base = _run(tmp_path, 3, tmpdir=tmp_path / "t")
     assert done.returncode == 3, done.stdout + done.stderr
     assert base.parent == tmp_path / "t" / NOINDEX, base
     (base / ".goh-owner").unlink()

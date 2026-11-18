@@ -12,16 +12,22 @@ import os
 import re
 import stat
 import subprocess
+import time
 from pathlib import Path
 
+import pytest
+import timing_bounds
 from conftest import REPO_ROOT
 
 
-def _run(tmp_path: Path, exit_code: int):
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    argv = tmp_path / "argv"
+def _start(work: Path, exit_code: int, tmpdir: Path, hold: Path | None = None):
+    """tools/pytest.sh with a stub interpreter in `work`; it records the root it was handed in
+    `work/argv`, and with `hold` waits (bounded) for that file before it exits."""
+    bin_dir = work / "bin"
+    bin_dir.mkdir(parents=True)
+    argv = work / "argv"
     stub = bin_dir / "python3"
+    wait = f'for _ in $(seq 300); do [ -e "{hold}" ] && break; sleep 0.1; done\n' if hold else ""
     stub.write_text(
         "#!/bin/bash\n"
         # -c: the xdist probe; `-m pytest --version`: the runner's pytest refusal (CI.PUBLIC2);
@@ -30,8 +36,8 @@ def _run(tmp_path: Path, exit_code: int):
         # GOH.GATEBUDGET2, would overwrite it): `-c`, `--version` and every script exit 0.
         'if [ "$1 $2" != "-m pytest" ] || [ "$3" = --version ]; then\n'
         "  exit 0\nfi\n"
-        f'printf "%s\\n" "$PYTEST_DEBUG_TEMPROOT" > "{argv}"\n'
-        f"exit {exit_code}\n"
+        f'printf "%s\\n" "$PYTEST_DEBUG_TEMPROOT" > "{argv}.part" && mv "{argv}.part" "{argv}"\n'
+        f"{wait}exit {exit_code}\n"
     )
     stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
     # The stub is the house interpreter through ITS seam (lib/house_python.sh, G2d): first on PATH
@@ -40,30 +46,77 @@ def _run(tmp_path: Path, exit_code: int):
     env = {**os.environ, "GOH_PY": str(stub), "GOH_PY_OK": str(stub),
            "GATES_OF_HECK_SUITE_NESTED_OK": "1"}  # fmt: skip
     env["GOH_SUITE_CORES"] = "2"  # the count's seam: the stub answers no share (GOH.POOLSHARE)
-    done = subprocess.run(
+    # A TMPDIR OF THE TEST'S OWN (GOH.BASETEMPSLOT, 2026-11-18): the runner's root is the lowest
+    # free `goh-pytest.slotNN` under TMPDIR (GOH.FSCHURN). Under the suite's shared TMPDIR a
+    # concurrent test's runner claimed the slot this run had just removed, and "the root is gone"
+    # read a sibling's live root as this run's leftover (slot07, main 3ad21d54).
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    env["TMPDIR"] = str(tmpdir)
+    # the caller reaps it: communicate() in _run and in the concurrent test's finally
+    return subprocess.Popen(
         ["bash", str(REPO_ROOT / "tools" / "pytest.sh")],
         env=env,
         stdin=subprocess.DEVNULL,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
-        check=False,
+    ), argv
+
+
+def _run(tmp_path: Path, exit_code: int, tmpdir: Path | None = None):
+    proc, argv = _start(tmp_path, exit_code, tmpdir or tmp_path / "tmp")
+    out, _ = proc.communicate(timeout=timing_bounds.patience(120))
+    return subprocess.CompletedProcess(proc.args, proc.returncode, out, ""), Path(
+        argv.read_text().strip()
     )
-    return done, Path(argv.read_text().strip())
 
 
+@pytest.mark.load_sensitive
 def test_a_run_has_a_private_temp_root_and_a_passing_run_removes_it(tmp_path):
     done, base = _run(tmp_path, 0)
     assert done.returncode == 0, done.stdout + done.stderr
-    assert "pytest-of-" not in str(base), base
+    # the runner's own slot, not pytest's shared `pytest-of-<user>` root
+    assert base.parent == tmp_path / "tmp" / "goh.noindex", base
+    assert base.name.startswith("goh-pytest."), base
     assert not base.exists(), f"{base} outlived a passing run"
 
 
+@pytest.mark.load_sensitive
 def test_a_failing_run_keeps_its_temp_root_and_its_exit(tmp_path):
     done, base = _run(tmp_path, 3)
     assert done.returncode == 3, done.stdout + done.stderr
     assert base.is_dir() and str(base) in done.stdout + done.stderr
     (base / ".goh-owner").unlink()  # the runner's pid: what keeps a live root from being cut
     base.rmdir()
+
+
+@pytest.mark.load_sensitive
+def test_concurrent_runs_take_distinct_slots_and_each_passing_run_removes_its_own(tmp_path):
+    """The reuse contract (GOH.FSCHURN) under concurrent runs on ONE TMPDIR: each live run holds a
+    slot of its own, each passing run removes its own, and a freed slot is the next run's."""
+    shared, go = tmp_path / "tmp", tmp_path / "go"
+    runs = [_start(tmp_path / name, 0, shared, hold=go) for name in ("a", "b")]
+    try:
+        give_up = timing_bounds.GiveUp(60)
+        while not all(argv.exists() for _, argv in runs):
+            assert not give_up.passed(), "the concurrent runs never reached pytest"
+            assert all(p.poll() is None for p, _ in runs), [p.poll() for p, _ in runs]
+            time.sleep(0.05)
+        roots = [Path(argv.read_text().strip()) for _, argv in runs]
+        assert sorted(r.name for r in roots) == ["goh-pytest.slot00", "goh-pytest.slot01"], roots
+        assert all(r.is_dir() for r in roots), roots  # held while live
+    finally:
+        go.touch()
+        outs = [p.communicate(timeout=timing_bounds.patience(120))[0] for p, _ in runs]
+    assert [p.returncode for p, _ in runs] == [0, 0], outs
+    left = sorted(p.name for p in (shared / "goh.noindex").iterdir() if p.name.startswith("goh-"))
+    assert left == [], f"{left} outlived passing runs"
+    # ...and a freed slot is the next run's, not a fresh name
+    third, argv = _start(tmp_path / "c", 0, shared)
+    out, _ = third.communicate(timeout=timing_bounds.patience(120))
+    assert third.returncode == 0, out
+    again = Path(argv.read_text().strip())
+    assert again.name == "goh-pytest.slot00" and not again.exists(), again
 
 
 PYTEST_RUN = re.compile(r"(^|[\s\"])(-m pytest|pytest -q|pytest tests)")
