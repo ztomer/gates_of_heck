@@ -434,6 +434,12 @@ Every structural checker is native since Phase N3; the Python checkers they port
   and the processes that burned CPU beside them, with the share inside CMD's own tree (exact tree CPU
   by wait4 beside it) and each `--path`'s size change. No sudo: per-file attribution stays with
   `sudo fs_usage`. It measures; it is not a gate (EST.FSEVENTSCHURN). Pinned by `test_daemon_cpu.py`.
+* `tools/spawn_profile.py run --out D [--sample S] -- CMD | report D [--costs CAL] | calibrate --out D` —
+  every process CMD starts through PATH or `GOH_PY`/`sys.executable` (a compiled C shim per kind:
+  python3, bash, sh, git, goh, cargo; one ledger row each with caller pid, wall, rusage), ranked by
+  calling script x calibrated start cost; `--sample` names what absolute paths hid (the blind share).
+  No sudo; `tools/spawn_ledger.py` reads the ledger. It measures; it is not a gate (GOH.SPAWNPROFILE).
+  Pinned by `test_spawn_profile.py`.
 * `tools/profiling/` — the generic trace ranker only (app harnesses live in their repo; pinned
   by `test_profiling_generic.py`). `analyze_trace.sh` + `xctrace_profile.py` rank any Time Profiler trace (the `time-profile` export, id/ref resolved,
   streamed); pinned by `test_xctrace_profile.py`.
