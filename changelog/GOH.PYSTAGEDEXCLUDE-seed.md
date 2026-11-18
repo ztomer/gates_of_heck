@@ -1,1 +1,0 @@
-* `py_lint_ceiling.py --seed` leaves out the paths the repo's `.gatesrc` `GOH_EXCLUDE` names: no Python gate judges them, so their findings are no debt the repo carries (ZSUS_14_Portrait_Mount_v20 seeded 81 findings of ceiling for its `v20_archive/`). `tests/test_exclude_scope_doc.py` now finds readers of the key in `gates/*.py` too, which is how this one had gone unlisted.
