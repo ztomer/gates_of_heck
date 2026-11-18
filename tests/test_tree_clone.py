@@ -201,6 +201,28 @@ def test_every_git_a_template_build_spawns_has_background_work_off(
     assert _git_sees(tmp_path, "maintenance.auto") != "false/false/false"
 
 
+def test_every_repository_in_a_clone_keeps_background_work_off(
+    tmp_path_factory, tmp_path: Path
+) -> None:
+    """The copies inherit the template's config, so no commit a TEST makes in a clone starts a
+    `git maintenance run` that a later copy of that clone races (shutil.Error on
+    .git/objects/maintenance.lock in test_seed_scope and test_shell_lint_cache_path, which the
+    hand-set config of `_repo_template` had kept off): a work tree and a bare origin alike."""
+
+    def build(tree: Path) -> None:
+        tree.mkdir()
+        fast_init(tree, "main")
+        write(tree, "README.md", "# fixture\n")
+        commit_all(tree)
+        git(tree, "clone", "-q", "--bare", str(tree), str(tree / "remote.git"))
+        git(tree / "remote.git", "remote", "remove", "origin")  # it named the template's own dir
+
+    clone = from_template(tmp_path_factory, f"inherit-{tmp_path.name}", build, tmp_path / "c")
+    for repo in (clone, clone / "remote.git"):
+        assert git(repo, "config", "--local", "--get", "maintenance.auto").strip() == "false"
+        assert git(repo, "config", "--local", "--get", "gc.auto").strip() == "0"
+
+
 @pytest.mark.load_sensitive
 def test_a_template_is_quiescent_before_it_is_scanned_or_cloned(
     tmp_path_factory, tmp_path: Path

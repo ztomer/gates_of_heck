@@ -142,12 +142,24 @@ def _wait_quiescent(tree: Path) -> None:
     )  # fmt: skip
 
 
+def _keep_quiet(tree: Path) -> None:
+    """Write the quiet config into every repository in `tree` (a work tree's .git, a bare origin):
+    the clones inherit it, so a commit a TEST makes in one detaches no maintenance either."""
+    for objects in Path(tree).rglob("objects"):
+        git_dir = objects.parent
+        config = git_dir / "config"
+        if (git_dir / "refs").is_dir() and (git_dir / "HEAD").is_file() and config.is_file():
+            with config.open("a", encoding="utf-8") as fh:
+                fh.write(_QUIET_GIT_CONFIG)
+
+
 def _build_quietly(build, tree: Path) -> None:
-    """Build the template `tree` with background git off, make it quiescent, then refuse it if it
-    points at its own directory."""
+    """Build the template `tree` with background git off, make it quiescent and keep it so in every
+    repository it holds, then refuse it if it points at its own directory."""
     with quiet_git():
         build(tree)
     _wait_quiescent(tree)
+    _keep_quiet(tree)
     _refuse_self_reference(tree)
 
 
