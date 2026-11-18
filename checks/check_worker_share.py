@@ -219,7 +219,7 @@ def probe() -> int:
     """Each planted file alone in a fresh repo: the verdict it must reach."""
     wrong = 0
     for rel, body, want in PROBE:
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory(prefix="goh-worker-share-") as d:
             repo = Path(d)
             subprocess.run(
                 ["git", "init", "-q", d],

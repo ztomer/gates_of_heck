@@ -252,8 +252,10 @@ MACHINE_SIZED_SITES = {
     # Not a pool: THE count the share divides (GOH_GATE_CORES its seam), and MACHINE_SIZED's own
     # spelling of coreutils' count.
     "lib/worker_share.py": 2,
-    # Not a run: the consumer check's planted probe files and the doc naming the fix.
+    # Not a run: the consumer check's planted probe files and the doc naming the fix, and its
+    # canary case's violating tree.
     "checks/check_worker_share.py": 6,
+    "checks/_canary_cases_busy.py": 1,
     # Not a run: a flag a scanned command may carry, named so the scan reads past it.
     "lib/secret_render.py": 1,
 }

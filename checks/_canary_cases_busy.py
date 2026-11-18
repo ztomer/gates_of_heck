@@ -28,4 +28,13 @@ CASES = [
         {"wait.sh": "#!/bin/sh\nuntil [ -f /tmp/ready ]; do :; done\n"},
         {"wait.sh": "#!/bin/sh\nuntil [ -f /tmp/ready ]; do sleep 1; done\n"},
     ),
+    # The same load, one level up (GOH.POOLSHARE2): a gate script that sizes its pool to the
+    # machine rather than its admitted share.
+    (
+        "a gate script that sizes a pool to the machine is refused",
+        "check_worker_share.py",
+        [],
+        {"tools/gate.sh": "#!/bin/sh\npython3 -m pytest -n auto -q\n"},
+        {"tools/gate.sh": '#!/bin/sh\npython3 -m pytest -n "$(goh_workers)" -q\n'},
+    ),
 ]
