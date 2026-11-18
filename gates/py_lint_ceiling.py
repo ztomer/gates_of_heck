@@ -224,12 +224,11 @@ def _repo_exclude() -> re.Pattern[str] | None:
     root = _git("rev-parse", "--show-toplevel").stdout.strip()
     if not root or not (Path(root) / ".gatesrc").is_file():
         return None
-    read = (
-        'unset GOH_EXCLUDE; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_EXCLUDE:-}"'
-    )
+    # By path, not `cwd=`: the child only reads one file, and starts in no other directory.
+    read = 'unset GOH_EXCLUDE; . "$1" >/dev/null 2>&1 </dev/null; printf %s "${GOH_EXCLUDE:-}"'
     got = subprocess.run(
-        ["bash", "-c", read], cwd=root, capture_output=True, text=True, check=False,
-        stdin=subprocess.DEVNULL,
+        ["bash", "-c", read, "bash", str(Path(root) / ".gatesrc")], capture_output=True,
+        text=True, check=False, stdin=subprocess.DEVNULL,
     ).stdout  # fmt: skip
     try:
         return re.compile(got) if got else None
