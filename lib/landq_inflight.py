@@ -36,14 +36,16 @@ def slug(item: str) -> str:
     return item.replace("/", "_")
 
 
-def mark(q: Path, item: str, pid: int | None = None) -> Path:
-    """Record that PID (this process) is enqueuing ITEM; removed when this process exits."""
+def mark(q: Path, item: str, pid: int | None = None, repo: str = "") -> Path:
+    """Record that PID (this process) is enqueuing ITEM of REPO; removed when this process exits
+    (REPO: the lander's batch window waits only for lands it could batch, lib/landq_window.py)."""
     pid = pid or os.getpid()
     bound = int(os.environ.get("GOH_ENQUEUE_PRE_TIMEOUT") or PRE_TIMEOUT_S) + MARGIN_S
     (q / DIR).mkdir(parents=True, exist_ok=True)
     path = q / DIR / f"{pid}-{slug(item)}.json"
     tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(json.dumps({"pid": pid, "item": item, "until": time.time() + bound}) + "\n")
+    marker = {"pid": pid, "item": item, "repo": repo, "until": time.time() + bound}
+    tmp.write_text(json.dumps(marker) + "\n")
     tmp.replace(path)
     atexit.register(clear, path)
     return path

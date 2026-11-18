@@ -36,18 +36,17 @@ THE WAIT. `goh land --wait ID` (an item, or a request's path or name) blocks unt
 newest request reached done/, prints its outcome (and a red log's tail), and exits 0 landed, 1
 red, 3 past --timeout; a pending request with no lander starts one: no wait sits on an idle queue.
 
-THE LANDER is one process holding an flock on `<dir>/lander.lock` (a second exits at once). It
-moves a request to `running/`, runs it under lib/bounded_run.py (GOH_LAND_TIMEOUT, default 3600 s,
-its process group swept on expiry), writes `done/<name>.json` and `logs/<name>.log`, and records
+THE LANDER is one process holding an flock on `<dir>/lander.lock` (a second exits at once). It moves
+a request to `running/`, runs it under lib/bounded_run.py (GOH_LAND_TIMEOUT, default 3600 s, its
+process group swept on expiry), writes `done/<name>.json` and `logs/<name>.log`, and records
 `loopctl set ID landing {"state": "landed"|"red", "sha", "log", "at"} --json` on the item, which the
-coordinator's tick re-dispatches when red. A land request takes up to GOH_LANDQ_BATCH-1 more of its
-repo with it: stacked, ONE land gate on the tip, a red bisected (GOH.LANDBATCH, lib/landq_batch.py).
-Between requests it re-reads its code's digest (tools/landq.py and lib/ on the live checkout's
-HEAD) and, changed by a land, releases the lock and execs a fresh copy (GOH.LANDERSTALECODE). After
-the last request it releases the lock and looks once more for one enqueued meanwhile. Then, idle,
-it runs the full suite on main's tip when the repo's release needs one and none is recorded
-(lib/idle_suite.py, GOH.GATEBUDGET2): in its own gate slot, holding no lock, stopped the moment a
-request is pending, after which the lander drains again.
+coordinator's tick re-dispatches when red. A land takes up to GOH_LANDQ_BATCH-1 more of its repo,
+stacked, ONE land gate on the tip, a red bisected (GOH.LANDBATCH, lib/landq_batch.py), after lands
+in their pre-step had GOH_LANDQ_WINDOW s to join (lib/landq_window.py). Between requests it reads
+its code's digest (landq.py, land.sh, lib/ at the live checkout's HEAD); changed by a land, it execs
+a fresh copy (GOH.LANDERSTALECODE). Out of requests, it frees the lock and looks once more for one
+enqueued meanwhile; then, idle, runs the full suite on main's tip when the release needs one and
+none is recorded (lib/idle_suite.py, GOH.GATEBUDGET2), holding no lock, stopped by a request.
 
 WHERE IT RUNS, AND A REBOOT (D-0006, docs/decisions/). No launchd agent: `--enqueue` starts a
 detached lander when none holds the lock, and the coordinator's tick may run `--drain`. A request
@@ -89,6 +88,7 @@ lock_order = importlib.import_module("lock_order")
 land_prestep = importlib.import_module("land_prestep")
 landq_batch = importlib.import_module("landq_batch")
 landq_early = importlib.import_module("landq_early")
+landq_window = importlib.import_module("landq_window")
 landq_report = importlib.import_module("landq_report")
 landq_request = importlib.import_module("landq_request")
 landq_look = importlib.import_module("landq_look")
@@ -133,7 +133,7 @@ def land_script(_wt: Path) -> Path:
 def prestep(req: dict) -> None:
     """GOH.ENQUEUEPRE (lib/land_prestep.py): the pre-step first, then the queue."""
     wt = Path(req["worktree"])
-    landq_inflight.mark(qdir(), req["item"] or Path(req["repo"]).name)  # until this enqueue exits
+    landq_inflight.mark(qdir(), req["item"] or Path(req["repo"]).name, repo=req["repo"])
     try:  # its seconds: the e2e's pre-step share (lib/land_e2e.py)
         req["pre_s"] = land_prestep.run_kept(req, qdir(), land_script(wt), git_bindings())
     except land_prestep.Red as e:
@@ -301,7 +301,7 @@ def drain_held(q: Path, digest: str = "") -> bool:
         stale.replace(q / "pending" / stale.name)
         warn(f"{stale.name}: its lander died mid-request -- running it again")
     fails: dict[str, int] = {}  # passes each request has been left pending by a git failure
-    while pending := sorted((q / "pending").glob("*.json")):
+    while pending := landq_window.pending(q, info):  # after the batch window (GOH.BATCHWINDOW)
         paths = [q / "running" / p.name for p in landq_batch.pick(pending)]  # GOH.LANDBATCH
         for path in paths:
             (q / "pending" / path.name).replace(path)
