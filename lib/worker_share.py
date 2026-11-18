@@ -141,12 +141,12 @@ def share(directory: str | None = None, environ: dict[str, str] | None = None) -
 
 
 OWN_ENV = "GOH_SHARE_OWN"  # 1: this gate holds no slot and is one more beside them; 0: it holds one
-STEPS_ENV = "GOH_SHARE_STEPS"  # ':'-joined files, each a gates/local_ci.sh's count of running steps
+STEPS_ENV = "GOH_SHARE_STEPS"  # ':'-joined files: each CI scheduler's running steps
 POOL_ENV = "GOH_SHARE_POOL"  # the token directory of the run whose workers take tokens
 CEIL_ENV = "GOH_SHARE_CEIL"  # that run's worker count: the most tokens it can use
 SLOTS_ENV = "GOH_SHARE_SLOTS"  # the slot directory, resolved where the run started
 SHARE_CORES_ENV = "GOH_SHARE_CORES"  # the cores, read where the run started
-PACKED_ENV = "GATES_OF_HECK_SUITE_SHARE"  # the goh suite's pack of them (tests/suite_home.py)
+PACKED_ENV = "GATES_OF_HECK_SUITE_SHARE"  # the goh suite's pack of them (suite_home)
 PERIOD_ENV = "GOH_SHARE_PERIOD"  # seconds between a worker's re-counts (default 2)
 PIN_ENV = "GOH_SHARE_RUST_PINNED"  # 1: RUST_TEST_THREADS is the repo's own, never re-sized
 TOKEN_LOCK = "share_token"  # lib/lock_order.tsv: try-locks only, never a wait
@@ -219,7 +219,7 @@ class Pool:
                 fd = os.open(os.path.join(self.directory, f"tok-{(worker + k) % cap}"),
                              os.O_RDWR | os.O_CREAT, 0o644)  # fmt: skip
                 try:
-                    lock_order.flock(fd, TOKEN_LOCK, wait=False)
+                    lock_order.flock(fd, "share_token", wait=False)
                 except OSError:
                     os.close(fd)
                     continue
@@ -230,8 +230,8 @@ class Pool:
 
 
 class Tokens:
-    """One xdist worker's side (tests/conftest.py's hookwrappers, in a worker of tools/pytest.sh's
-    run): collection and each test's setup, call and teardown run holding one token."""
+    """One xdist worker's side (the suite's conftest hookwrappers, in a worker of the goh suite's
+    pooled run): collection and each test's setup, call and teardown run holding one token."""
 
     def __init__(self, pool: Pool, worker: int) -> None:
         self.pool, self.worker = pool, worker
@@ -264,7 +264,7 @@ def tokens_from_env(environ: dict[str, str] | None = None) -> Tokens | None:
     directory, ceil, period = src.get(POOL_ENV, ""), src.get(CEIL_ENV, ""), src.get(PERIOD_ENV, "")
     if not directory:
         return None
-    count = {  # what live() reads, as tools/pytest.sh resolved it under the caller's HOME
+    count = {  # what live() reads, as the suite runner resolved it under the caller's HOME
         "GOH_GATE_SLOT_DIR": src.get(SLOTS_ENV, "") or slot_dir(dict(env)),
         CORES_ENV: src.get(SHARE_CORES_ENV, ""),
         OWN_ENV: src.get(OWN_ENV, "1"),
@@ -292,8 +292,8 @@ def cargo_runner_var() -> str | None:
 def repo_runner(cwd: str, environ: dict[str, str]) -> str | None:
     """Where a runner of the repo's (or the user's) own is configured, else None: any runner
     variable already set, or a `runner` in any target table of cargo's config files from `cwd`
-    (gates/_cargo_config.py, the one reading of them). A file that cannot be parsed counts as one:
-    a runner is never overridden on a guess."""
+    (the coverage gate's cargo-config reader, the one reading of them). A file that cannot be
+    parsed counts as one: a runner is never overridden on a guess."""
     named = sorted(k for k in environ if k.startswith("CARGO_TARGET_") and k.endswith("_RUNNER"))
     if named:
         return named[0]
@@ -315,8 +315,8 @@ def repo_runner(cwd: str, environ: dict[str, str]) -> str | None:
 
 def run(argv: list[str], environ: dict[str, str] | None = None) -> int:
     """cargo's runner: exec the binary, a libtest one (cargo keeps those in deps/) on the live
-    share -- divided by GOH_SHARE_DIV when that many binaries run at once (gates/_cov_run_tests.py
-    split_share). A RUST_TEST_THREADS that is neither the share nor its split (a repo's own,
+    share -- divided by GOH_SHARE_DIV when that many binaries run at once (the coverage
+    gate's split_share). A RUST_TEST_THREADS that is neither the share nor its split (a repo's own,
     GOH_SHARE_RUST_PINNED) is never touched."""
     env = dict(os.environ if environ is None else environ)
     if not argv:
@@ -331,8 +331,30 @@ def run(argv: list[str], environ: dict[str, str] | None = None) -> int:
             now = 0
         if now:
             env["RUST_TEST_THREADS"] = str(divide(now, int(div) if div.isdigit() else 1))
+    argv = [*_repo_runner_argv(env), *argv]
     os.execvpe(argv[0], argv, env)
     return 127  # not reached
+
+
+def _repo_runner_argv(env: dict[str, str]) -> list[str]:
+    """The runner a repo here names of its own, which this one hands the binary on to: cargo's
+    runner VARIABLE (this one, set at admission) beats every config file, so a nested repo's own
+    runner (ztools' HOME sandbox) would otherwise never run. [] when there is none."""
+    mine = {k for k, v in env.items() if k.endswith("_RUNNER") and v.strip().endswith(" run")}
+    rest = {k: v for k, v in env.items() if k not in mine or "worker_share.py" not in v}
+    if not repo_runner(os.getcwd(), rest):
+        return []
+    import _cargo_config  # repo_runner put gates/ on the path
+
+    home = Path(rest.get("CARGO_HOME") or os.path.expanduser("~/.cargo"))
+    cwd = Path.cwd()
+    their = _cargo_config._cargo_runner(
+        cwd,
+        rest,
+        home,
+        lambda: _cargo_config._rustc_target(_cargo_config._build_target(cwd, rest, home), rest),
+    )
+    return list(their or [])
 
 
 def slot_dir(environ: dict[str, str]) -> str:

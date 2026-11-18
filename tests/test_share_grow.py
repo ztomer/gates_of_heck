@@ -292,3 +292,38 @@ def test_the_coverage_gate_runs_its_binaries_through_the_live_runner_without_ask
 
     got = _cargo_config._cargo_runner(tmp_path, live, tmp_path / "home", no_rustc)
     assert got == ["/py", "-S", f"{REPO_ROOT}/lib/worker_share.py", "run"], got
+
+
+def test_the_live_runner_hands_the_binary_on_to_a_runner_the_repo_names_itself(tmp_path):
+    """cargo's runner VARIABLE beats every config file, so the admission's live runner, inherited
+    by a nested repo (a fixture inside the land's pre-step, a metarepo's child) that names its own
+    runner, ran the binary without it: the pre-step's test_cov_run_tests_runner went red."""
+    import shutil
+
+    if shutil.which("rustc") is None:
+        pytest.skip("no rustc to name the target")
+    repo = tmp_path / "repo"
+    (repo / ".cargo").mkdir(parents=True)
+    wrap = repo / "wrap.sh"
+    wrap.write_text('#!/bin/sh\necho "wrapped"\nexec "$@"\n')
+    wrap.chmod(wrap.stat().st_mode | stat.S_IXUSR)
+    (repo / ".cargo" / "config.toml").write_text("[target.'cfg(unix)']\nrunner = './wrap.sh'\n")
+    prog = _deps_binary(tmp_path)
+    var = worker_share.cargo_runner_var()
+    env = {**_env(tmp_path), "PATH": os.environ["PATH"], "GOH_LIVE": "1",
+           "HOME": str(tmp_path), "CARGO_HOME": str(tmp_path / "cargo-home"),
+           "RUST_TEST_THREADS": "8", "GOH_GATE_WORKERS": "8",
+           var: f"{sys.executable} -S {REPO_ROOT / 'lib' / 'worker_share.py'} run"}  # fmt: skip
+    rustup = Path(os.environ.get("RUSTUP_HOME") or Path.home() / ".rustup")
+    env["RUSTUP_HOME"] = str(rustup)
+    me = _hold(tmp_path, "slot-1")
+    try:
+        r = subprocess.run(
+            [sys.executable, "-S", str(REPO_ROOT / "lib" / "worker_share.py"), "run", str(prog)],
+            cwd=repo, env=env, capture_output=True, text=True,
+            timeout=patience(60), check=False, stdin=subprocess.DEVNULL,
+        )  # fmt: skip
+    finally:
+        me.close()
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.split() == ["wrapped", "16/8"], r.stdout + r.stderr
