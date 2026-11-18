@@ -1,3 +1,5 @@
+//! Unit tests for `changelog_tags` (split out for the line cap).
+
 use super::*;
 
 fn tags(t: &[&str]) -> Vec<String> {
@@ -166,4 +168,24 @@ fn headings_without_a_v_and_non_release_tags_are_read() {
         ),
         Vec::<String>::new()
     );
+}
+
+#[test]
+fn a_repo_with_no_commit_has_no_reachable_tag_and_a_failed_listing_is_an_error() {
+    use std::os::unix::process::ExitStatusExt;
+    // GOH.TAGSREACH: an unborn HEAD has no history to carry a tag.
+    let r = goh_testkit::repo_with(&[("CHANGELOG.md", GOOD)]).expect("fixture");
+    assert_eq!(super::tags(r.path()).expect("tags"), Vec::<String>::new());
+    let failed = std::process::Output {
+        status: std::process::ExitStatus::from_raw(256),
+        stdout: Vec::new(),
+        stderr: Vec::new(),
+    };
+    assert!(listed(&failed).is_err());
+    let ok = std::process::Output {
+        status: std::process::ExitStatus::from_raw(0),
+        stdout: b"v1.0.0\nv1.1.0\n".to_vec(),
+        stderr: Vec::new(),
+    };
+    assert_eq!(listed(&ok).expect("ok"), tags(&["v1.0.0", "v1.1.0"]));
 }

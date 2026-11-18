@@ -159,7 +159,7 @@ fn changelog_of(files: &[String]) -> Option<&'static str> {
 /// staged child, so the tags of its own history are the ones its changelog can answer for. A tag on
 /// a later main commit names a heading a branch cut before that release cannot have yet. A repo
 /// with no commit has no tag.
-fn tags(root: &Path) -> Result<Vec<String>, String> {
+fn tags(root: &Path) -> std::io::Result<Vec<String>> {
     let git = |args: &[&str]| {
         std::process::Command::new("git")
             .arg("-C")
@@ -168,7 +168,6 @@ fn tags(root: &Path) -> Result<Vec<String>, String> {
             .stdin(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .output()
-            .map_err(|e| format!("git {}: {e}", args[0]))
     };
     if !git(&["rev-parse", "--verify", "-q", "HEAD"])?
         .status
@@ -176,9 +175,13 @@ fn tags(root: &Path) -> Result<Vec<String>, String> {
     {
         return Ok(Vec::new());
     }
-    let out = git(&["tag", "-l", "--merged", "HEAD", "v*"])?;
+    listed(&git(&["tag", "-l", "--merged", "HEAD", "v*"])?)
+}
+
+/// The tag names `git tag -l` printed, or why it printed none.
+fn listed(out: &std::process::Output) -> std::io::Result<Vec<String>> {
     if !out.status.success() {
-        return Err("git tag -l --merged HEAD v* failed".to_string());
+        return Err(std::io::Error::other("git tag -l --merged HEAD v* failed"));
     }
     Ok(String::from_utf8_lossy(&out.stdout)
         .split_whitespace()
