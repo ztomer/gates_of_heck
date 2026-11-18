@@ -355,4 +355,18 @@ mod tests {
         assert!(IndexView::of(repo.path(), &gone).is_err());
         assert!(IndexView::of(&gone, repo.path()).is_err());
     }
+
+    #[test]
+    fn the_git_dir_is_the_repos_own_and_a_dir_outside_any_repo_has_none() {
+        let td = tempfile::tempdir().unwrap();
+        let r = td.path().canonicalize().unwrap();
+        assert!(goh_testkit::git_in(&r, &["init", "-q"]).is_ok());
+        assert_eq!(
+            git_dir(&r),
+            Ok(r.join(".git").to_string_lossy().into_owned())
+        );
+        let none = tempfile::tempdir().unwrap();
+        let err = git_dir(&none.path().join("missing")).unwrap_err();
+        assert!(err.starts_with("cannot resolve the git dir of "), "{err}");
+    }
 }

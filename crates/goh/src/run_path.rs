@@ -88,19 +88,14 @@ pub fn index_tree(repo: Option<&Path>) -> Option<String> {
             .success()
             .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
     };
-    let own = std::env::var_os("GIT_INDEX_FILE").filter(|i| !i.is_empty());
-    let carried = || {
-        let here = crate::gitroot::absolute_git_dir(&std::env::current_dir().ok()?)?;
-        carried_index(
-            std::env::var_os("GOH_HOOK_INDEX_FILE").as_deref(),
-            std::env::var_os("GOH_HOOK_GIT_DIR").as_deref(),
-            &here,
-        )
-    };
-    let index = match own.map(PathBuf::from).or_else(carried) {
-        Some(i) => repo.map_or_else(|| i.clone(), |r| r.join(&i)),
-        None => crate::gitroot::index_path(&std::env::current_dir().ok()?)?,
-    };
+    let here = repo.map_or_else(|| std::env::current_dir().ok(), |r| Some(r.to_path_buf()))?;
+    let index = index_file(
+        &here,
+        repo,
+        std::env::var_os("GIT_INDEX_FILE").as_deref(),
+        std::env::var_os("GOH_HOOK_INDEX_FILE").as_deref(),
+        std::env::var_os("GOH_HOOK_GIT_DIR").as_deref(),
+    )?;
     let where_ = root()?.join("index");
     std::fs::create_dir_all(&where_).ok()?;
     let copy = where_.join(format!("tree.{}.{}", std::process::id(), nanos()));
@@ -110,6 +105,26 @@ pub fn index_tree(repo: Option<&Path>) -> Option<String> {
     let tree = git(&["write-tree"], Some(&copy));
     let _ = std::fs::remove_file(&copy);
     tree.filter(|t| !t.is_empty())
+}
+
+/// The index file git would commit in `here`: the one `GIT_INDEX_FILE` names (`own`, joined to
+/// `repo` when it is relative to one), else the one an outer hook carried, else the work tree's own.
+fn index_file(
+    here: &Path,
+    repo: Option<&Path>,
+    own: Option<&std::ffi::OsStr>,
+    hook_index: Option<&std::ffi::OsStr>,
+    hook_git_dir: Option<&std::ffi::OsStr>,
+) -> Option<PathBuf> {
+    let own = own.filter(|i| !i.is_empty()).map(PathBuf::from);
+    let carried = || {
+        let git_dir = crate::gitroot::absolute_git_dir(here)?;
+        carried_index(hook_index, hook_git_dir, &git_dir)
+    };
+    own.or_else(carried).map_or_else(
+        || crate::gitroot::index_path(here),
+        |i| Some(repo.map_or_else(|| i.clone(), |r| r.join(&i))),
+    )
 }
 
 /// The index an outer commit hook carried (`gates/_git_env.sh` `goh_hook_unbind`), when the
@@ -138,7 +153,7 @@ fn nanos() -> u128 {
 
 #[cfg(test)]
 mod tests {
-    use super::{carried_index, key, root_from};
+    use super::{carried_index, index_file, index_tree, key, root_from};
     use std::ffi::OsStr;
     use std::path::{Path, PathBuf};
 
@@ -184,5 +199,69 @@ mod tests {
         assert_eq!(carried_index(None, gd, &dir), None);
         assert_eq!(carried_index(Some(OsStr::new("")), gd, &dir), None);
         assert_eq!(carried_index(idx, None, &dir), None);
+    }
+
+    fn fixture() -> (tempfile::TempDir, PathBuf) {
+        let td = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let r = td.path().canonicalize().unwrap_or_else(|e| panic!("{e}"));
+        assert!(goh_testkit::git_in(&r, &["init", "-q"]).is_ok());
+        (td, r)
+    }
+
+    #[test]
+    fn the_index_file_is_the_work_trees_own_unless_one_is_named_or_carried() {
+        let (_td, r) = fixture();
+        let own_index = r.join(".git").join("index");
+        assert_eq!(index_file(&r, None, None, None, None), Some(own_index));
+        // `GIT_INDEX_FILE` wins, joined to the repo when it names one
+        let named = Some(OsStr::new("idx.tmp"));
+        assert_eq!(
+            index_file(&r, Some(&r), named, None, None),
+            Some(r.join("idx.tmp"))
+        );
+        assert_eq!(
+            index_file(&r, None, named, None, None),
+            Some(PathBuf::from("idx.tmp"))
+        );
+        // an empty one is no name; a hook's index is taken for the repo it belongs to only
+        let hook = (Some(OsStr::new("/h/index.lock")), Some(r.join(".git")));
+        let empty = Some(OsStr::new(""));
+        assert_eq!(
+            index_file(
+                &r,
+                None,
+                empty,
+                hook.0,
+                hook.1.as_deref().map(Path::as_os_str)
+            ),
+            Some(PathBuf::from("/h/index.lock"))
+        );
+        assert_eq!(
+            index_file(&r, None, None, hook.0, Some(OsStr::new("/elsewhere"))),
+            Some(r.join(".git").join("index"))
+        );
+    }
+
+    #[test]
+    fn a_dir_in_no_repository_has_no_index_file() {
+        let td = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let outside = td.path().join("none");
+        assert!(std::fs::create_dir_all(&outside).is_ok());
+        assert_eq!(index_file(&outside, None, None, None, None), None);
+    }
+
+    #[test]
+    fn the_index_tree_of_a_repo_is_what_git_would_write_from_its_index() {
+        let (_td, r) = fixture();
+        assert!(std::fs::write(r.join("f.txt"), "x\n").is_ok());
+        assert!(goh_testkit::git_in(&r, &["add", "f.txt"]).is_ok());
+        let out = goh_testkit::git_command()
+            .arg("write-tree")
+            .current_dir(&r)
+            .output()
+            .unwrap();
+        let want = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+        assert_eq!(want.len(), 40, "git wrote a tree");
+        assert_eq!(index_tree(Some(&r)), Some(want));
     }
 }

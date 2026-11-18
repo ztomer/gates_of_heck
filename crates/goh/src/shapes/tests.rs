@@ -378,3 +378,19 @@ fn the_registry_json_is_the_registry_with_each_rows_state() {
     );
     assert_eq!(state("shell lint"), Some("unreviewed".into()));
 }
+
+#[test]
+fn a_worktree_and_its_main_checkout_are_one_repository_to_dedup() {
+    let main = goh_testkit::repo_with(&[("a.txt", "x\n")]).unwrap_or_else(|e| panic!("{e}"));
+    let other = goh_testkit::repo_with(&[("b.txt", "y\n")]).unwrap_or_else(|e| panic!("{e}"));
+    let wt = main.path().join("wt");
+    let args = ["worktree", "add", "-q", "-b", "o", &wt.to_string_lossy()];
+    assert!(goh_testkit::git_in(main.path(), &args).is_ok());
+    let mut roots = vec![
+        wt.clone(),
+        main.path().to_path_buf(),
+        other.path().to_path_buf(),
+    ];
+    diff::dedup_repos(&mut roots);
+    assert_eq!(roots, vec![wt, other.path().to_path_buf()]);
+}

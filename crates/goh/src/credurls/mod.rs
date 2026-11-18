@@ -83,6 +83,15 @@ fn git(root: &Path, args: &[&str]) -> Result<std::process::Output, String> {
         .map_err(|e| format!("git: {e}"))
 }
 
+/// The repository's real common git dir, or `<repo>/.git` where none can be read.
+fn common_dir_of(repo: &Path) -> PathBuf {
+    realpath(
+        &crate::gitroot::common_git_dir(repo)
+            .filter(|c| !c.as_os_str().is_empty())
+            .unwrap_or_else(|| repo.join(".git")),
+    )
+}
+
 fn get_regexp(root: &Path, keys: &str, origin: bool) -> Result<String, String> {
     let mut args = vec!["config"];
     if origin {
@@ -348,11 +357,7 @@ fn run(root: Option<&str>, json: bool) -> (i32, Lines) {
     if json {
         return (0, vec![(false, "[]".to_owned())]);
     }
-    let common = realpath(
-        &crate::gitroot::common_git_dir(&repo)
-            .filter(|c| !c.as_os_str().is_empty())
-            .unwrap_or_else(|| repo.join(".git")),
-    );
+    let common = common_dir_of(&repo);
     let prefix = format!("{}/", common.display());
     if urls.is_empty() && !values.iter().any(|(o, _, _)| o.starts_with(&prefix)) {
         return (0, vec![(false, format!("{OK} [no_credential_urls] not applicable — no remote URL here ({} global {n_value} clean)", values.len(), n_value = goh_tui::noun(values.len(), "value")))]);
@@ -429,5 +434,17 @@ mod root_tests {
         let inner = repo.path().join("a");
         let got = root_for(inner.to_str());
         assert_eq!(got, Ok(realpath(repo.path())));
+    }
+
+    #[test]
+    fn the_common_dir_is_the_real_one_or_dot_git_where_none_is_readable() {
+        let repo = goh_testkit::repo_with(&[("a.txt", "x\n")]).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            common_dir_of(repo.path()),
+            realpath(&repo.path().join(".git"))
+        );
+        let none = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let missing = none.path().join("missing");
+        assert_eq!(common_dir_of(&missing), realpath(&missing.join(".git")));
     }
 }
