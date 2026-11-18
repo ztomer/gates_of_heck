@@ -10,6 +10,7 @@ there is refused in seconds, naming the test.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -87,9 +88,8 @@ def test_goh_s_cheap_structural_judges_are_candidates_on_its_own_tree(tmp_path, 
 def test_a_red_cheap_judge_is_refused_before_a_slow_judge_finishes(repo, tmp_path, env) -> None:
     """The map judge is measured at 5 ms, the slow judge at 60 s: both are judges, so before
     GOH.PRESTEPFAILFAST one run held both and its verdict came after the sleep."""
-    cache = tmp_path / "xdg"
-    (cache / "goh").mkdir(parents=True)
-    (cache / "goh" / "test-durations.json").write_text(json.dumps({
+    table = tmp_path / "test-durations.json"
+    table.write_text(json.dumps({
         "tests/test_wiring.py::test_every_script_has_a_row_in_the_map": 0.005,
         "tests/test_slow_judge.py::test_every_thing_slowly": 60.0,
     }))  # fmt: skip
@@ -98,7 +98,7 @@ def test_a_red_cheap_judge_is_refused_before_a_slow_judge_finishes(repo, tmp_pat
              "tests/test_slow_judge.py": SLOW_JUDGE}  # fmt: skip
     wt = _branch(repo, tmp_path, files)
     t0 = time.monotonic()
-    done = _enqueue(env, wt, XDG_CACHE_HOME=str(cache))
+    done = _enqueue(env, wt, GOH_TEST_DURATIONS=str(table))
     took = time.monotonic() - t0
     out = done.stdout + done.stderr
     assert done.returncode == 2 and "nothing enqueued" in out, out
@@ -108,13 +108,20 @@ def test_a_red_cheap_judge_is_refused_before_a_slow_judge_finishes(repo, tmp_pat
     assert _pending(tmp_path) == []
 
 
-def test_the_set_reads_the_cache_the_suite_writes(tmp_path, monkeypatch) -> None:
-    """tests/_schedule.py writes it (and stays importable alone, without lib/ on the path)."""
+def test_the_set_reads_the_table_the_suite_writes(tmp_path, monkeypatch) -> None:
+    """goh's state holds it (GOH.DURATIONSSTALE: a cache path was the suite home's, gone at exit);
+    tests/_schedule.py reads the path it is handed, so it stays importable without lib/."""
     import _schedule
 
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
-    assert ft.cache() == _schedule._cache()
-    ft.cache().parent.mkdir(parents=True)
+    monkeypatch.delenv("GOH_TEST_DURATIONS", raising=False)
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    assert ft.cache() == tmp_path / "goh" / "test-durations.json"
+    named = tmp_path / "named.json"
+    monkeypatch.setenv("GOH_TEST_DURATIONS", str(named))
+    assert ft.cache() == named
+    monkeypatch.setattr(_schedule, "_table", [])
+    assert _schedule.take() == named and os.environ.get("GOH_TEST_DURATIONS") is None  # popped
+    monkeypatch.setenv("GOH_TEST_DURATIONS", str(named))
     ft.cache().write_text(json.dumps({"t.py::test_a": 0.25, "bad": "x"}))
     assert ft.load() == _schedule._load() == {"t.py::test_a": 0.25}
     ft.cache().write_text("[1]")

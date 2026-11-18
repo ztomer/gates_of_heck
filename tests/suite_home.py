@@ -40,6 +40,8 @@ import site
 import tempfile
 from pathlib import Path
 
+import _schedule  # (no HOME/TMPDIR read at import)
+
 REAL_HOME = os.path.realpath(os.path.expanduser("~"))
 MARKER = "GATES_OF_HECK_SUITE_REAL_HOME"  # not GOH_-prefixed: no env scrub drops it
 
@@ -215,6 +217,10 @@ def claim_home(parent: Path) -> Path:
 
 
 def _enter() -> None:
+    # The duration table tools/pytest.sh names for its top-level run (GOH.DURATIONSSTALE), POPPED
+    # before anything here starts a child: the run it was named for owns it, and no xdist worker or
+    # fixture run under it inherits it to write it.
+    _schedule.take()
     _drop_ship_inputs()
     # token-pool's state dir holds the Claude meter agent_guard's budget guard reads
     # (GOH.ULTRARULES): a caller's would decide every guard test's profile. The suite reads none.

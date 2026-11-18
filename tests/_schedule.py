@@ -6,8 +6,18 @@ the others are nearly done and the run waits for it alone. Ordering the longest 
 classic LPT schedule -- the long ones start at once and the short ones fill in around them.
 
 The order comes from the last run's own measurement, never from a list someone keeps: the
-controller records every test's call+setup+teardown at session end to a cache OUTSIDE the tree
-(the tree guard forbids writing in it). The CONTROLLER reads it once and hands that read to every
+controller records every test's call+setup+teardown at session end to goh's own state OUTSIDE the
+tree (the tree guard forbids writing in it), MERGED into what is there.
+
+ONLY THE TOP-LEVEL RUN WRITES IT, AND READS IT (GOH.DURATIONSSTALE). tools/pytest.sh names the table
+in GOH_TEST_DURATIONS (lib/fast_tests.py `cache()`, the one spelling of the path: the land
+pre-step's fast set reads the same file), and `take()`, the first thing conftest does, pops it
+from the environment: no xdist worker and no fixture's nested run under it ever sees it, so none
+writes it. The table was a path this module spelled from XDG_CACHE_HOME until 2026-11-18; the suite
+had run in a throwaway home since 2026-10-26 (tests/suite_home.py), so every run read an empty
+table and wrote its timings into a home deleted at exit -- collection order, and a fast set that
+never met a test added since. A run nobody named a table for (a bare `pytest`, a fixture's run)
+keeps collection order and writes nothing. The CONTROLLER reads it once and hands that read to every
 worker (`pytest_configure_node`), so every worker sorts the same table and collects the same order,
 which xdist requires: the file is shared by every suite on the box, and workers that each read it
 collected in different orders whenever another session's suite rewrote it between their starts
@@ -30,12 +40,16 @@ import pytest
 
 UNKNOWN_S = 1.0
 _KEY = "goh_test_durations"
+ENV = "GOH_TEST_DURATIONS"
 _read: dict[str, dict[str, float]] = {}  # this process's one read: the controller's, on a worker
+_table: list[Path] = []  # the table this run owns, set by `take()` on the top-level run only
 
 
-def _cache() -> Path:
-    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-    return Path(base) / "goh" / "test-durations.json"
+def take(environ=os.environ) -> Path | None:
+    """The top-level run's table, POPPED from `environ` so nothing this run starts inherits it."""
+    path = environ.pop(ENV, "")
+    _table[:] = [Path(path)] if path else []
+    return _table[0] if _table else None
 
 
 _seen: dict[str, float] = defaultdict(float)
@@ -47,8 +61,10 @@ def _scope(nodeid: str) -> str:
 
 
 def _load() -> dict[str, float]:
+    if not _table:
+        return {}
     try:
-        data = json.loads(_cache().read_text(encoding="utf-8"))
+        data = json.loads(_table[0].read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return {k: float(v) for k, v in data.items() if isinstance(v, (int, float))}
@@ -84,16 +100,16 @@ def pytest_runtest_logreport(report) -> None:
 def pytest_sessionfinish(session) -> None:
     """Controller only. A partial run (`-k`, one file) MERGES what it measured; an entry whose test
     file is gone is pruned."""
-    if hasattr(session.config, "workerinput") or not _seen:
+    if hasattr(session.config, "workerinput") or not _seen or not _table:
         return
     root = Path(str(session.config.rootpath))
     merged = {**_load(), **{k: round(v, 3) for k, v in _seen.items()}}
     merged = {k: v for k, v in merged.items() if (root / k.split("::")[0]).is_file()}
     try:
-        cache = _cache()
+        cache = _table[0]
         cache.parent.mkdir(parents=True, exist_ok=True)
         tmp = cache.with_suffix(f".{os.getpid()}.tmp")
         tmp.write_text(json.dumps(merged, sort_keys=True), encoding="utf-8")
         tmp.replace(cache)
     except OSError:
-        pass  # an unwritable cache costs the next run its order, never its verdict
+        pass  # an unwritable table costs the next run its order, never its verdict

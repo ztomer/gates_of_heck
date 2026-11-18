@@ -8,12 +8,13 @@ docs/map.md row; CRATEFLOOR and PRELANDTWICE went red late the same day on cause
 
 THE SET is the judges of an empty diff (`affected_tests.affected(root, [])`, the tree readers'
 reading tests -- what runs on every land whatever it changes), cut to test functions, each
-costed by the suite's own measurement: the duration cache tests/_schedule.py writes at every
-session end (`cache()`, outside the tree), summed over a function's parametrized ids. Taken
-cheapest first while each costs at most EACH_S and the sum stays within BUDGET_S. Never a hand
-list: a judge that grows slow leaves the set by its own measurement, a new one joins once a suite
-has timed it. An unmeasured test, or a cached id whose function the file no longer defines (the
-cache prunes by FILE only), is not chosen: a nodeid pytest cannot find is a usage error, not a red.
+costed by the suite's own measurement: the duration table tests/_schedule.py merges at the end
+of every top-level run (`cache()`, goh's state, outside the tree), summed over a function's
+parametrized ids. Taken cheapest first while each costs at most EACH_S and the sum stays within
+BUDGET_S. Never a hand list: a judge that grows slow leaves the set by its own measurement, a new
+one joins once a top-level suite has timed it. An unmeasured test, or a cached id whose function
+the file no longer defines (the table prunes by FILE only), is not chosen: a nodeid pytest cannot
+find is a usage error, not a red.
 """
 
 from __future__ import annotations
@@ -34,8 +35,14 @@ EACH_S = 0.5
 
 
 def cache() -> Path:
-    """The suite's duration cache: tests/_schedule.py writes it, keyed by pytest node id."""
-    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    """The suite's duration table, keyed by pytest node id: GOH_TEST_DURATIONS when a caller names
+    one, else goh's own state, `$XDG_STATE_HOME/goh/test-durations.json` (~/.local/state when
+    unset). The ONE spelling of the path: tools/pytest.sh asks it here and hands it to its
+    top-level run, the only writer (tests/_schedule.py `take`, GOH.DURATIONSSTALE)."""
+    named = os.environ.get("GOH_TEST_DURATIONS")
+    if named:
+        return Path(named)
+    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
     return Path(base) / "goh" / "test-durations.json"
 
 
