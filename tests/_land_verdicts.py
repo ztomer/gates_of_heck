@@ -13,13 +13,9 @@ passed and the gate's suite DESELECTS it:
     and the tools, a dirty checkout having none). A land rebased under its lock gates another tree,
     so it reuses nothing, and says so.
 
-COVERAGE. goh's suite runs in the gate inside the coverage step, against the INSTRUMENTED binary
-(GOH_COV_RUST_EXTERNAL; GOH_COVERAGE_BIN_DIR and LLVM_PROFILE_FILE set): there a test's run is
-also coverage the crate's floor counts, so a test that ran the native binary (asked for
-`native_goh`, or reached it through `native_goh_path()`, which marks the test) is never deselected
--- only the ones whose verdict is all they give. Outside the coverage step every passed test is
-reusable, the plain run of a reused Rust measurement included (GOH.RUSTCOVSKIP: its binary
-directory is named, no profile is).
+COVERAGE. Inside the coverage step goh's suite drives the INSTRUMENTED binary (GOH_COVERAGE_BIN_DIR
+and LLVM_PROFILE_FILE set), so a test that ran it is coverage the floor counts: it is skipped only
+when its stored profile of THIS binary is put where the report reads it (`carried`, GOH.COVCARRY3).
 
 CARRIED ACROSS TREES (GOH.VERDICTCARRY). With three lanes landing, main moved under 5 of 8 green
 pre-steps (2026-11-16), so a land's gate re-ran the whole suite (551-731 s at load). A verdict is
@@ -41,14 +37,10 @@ re-run once in a child pytest before it turns the path off (lib/reuse_audit.py).
 decides once and hands its workers the node list (xdist `workerinput`), so every worker deselects
 alike and the audit counts one use per source.
 
-Both keys are set by tools/land.sh for one land and are verdict-free (gates/verdict_free_keys.txt):
-a path to one land's record is bookkeeping, and the proof a gate records is the same with or
-without it, because a reused verdict is a verdict on the same tree. A hermetic child (a fixture
-suite) drops every GOH_ key, so no nested suite reuses anything; and the plugin takes the keys OUT
-of the environment as it loads (`_take`), so neither does a session a test starts with the suite's
-own environment: such sessions wrote 1-pass records for the real tree into the real store
-(GOH.VERDICTCARRY3, tests/test_verdict_carry_hermetic.py). An xdist worker reads the controller's
-decision from its workerinput.
+Both keys are set by tools/land.sh for one land and are verdict-free (gates/verdict_free_keys.txt:
+a reused verdict is a verdict on the same tree). A hermetic child drops every GOH_ key, and the
+plugin takes the keys OUT of the environment as it loads (`_take`), so no session a test starts
+reuses or records (GOH.VERDICTCARRY3, tests/test_verdict_carry_hermetic.py).
 """
 
 from __future__ import annotations
@@ -117,8 +109,7 @@ def _on(name: str) -> str:
 
 
 def _store() -> str:
-    """The store this run records into and carries from; "" (no store: nothing recorded or
-    carried) in a fixture session that names none."""
+    """The store this run records into and carries from; "" in a fixture session naming none."""
     return _on(STORE)
 
 
@@ -180,18 +171,20 @@ def _builds(changed: list[str], root: Path = REPO_ROOT) -> bool:
 
 
 def carried(passed: dict[str, bool], chosen: set[str], coverage: bool, binary: bool,
-            measured: dict[str, bool] | None = None) -> set[str]:  # fmt: skip
+            measured: dict[str, bool] | None = None,
+            profiled: set[str] | None = None) -> set[str]:  # fmt: skip
     """The nodes of a record of another tree this run may skip: not in a file the diff chooses,
     not a node it chooses (a parametrized node by its function), not one that ran the native
-    binary under coverage or across a change to the binary's build (`binary`). Under coverage
-    only a node an instrumented run MEASURED running no binary (`measured`, tests/_prof_record.py)
-    is carried: a mark is no proof a test left no profile (GOH.COVCARRY, term 1)."""
+    binary across a change to the binary's build (`binary`), nor under coverage unless the store
+    holds its profile of THIS binary (`profiled`, lib/prof_store.py, GOH.COVCARRY3). Under
+    coverage a node that ran none is carried only when an instrumented run MEASURED it running
+    none (`measured`, tests/_prof_record.py): a mark is no proof (GOH.COVCARRY)."""
     files = {c for c in chosen if "::" not in c}
     out = set()
     for node, ran_bin in passed.items():
-        if ran_bin and (coverage or binary):
+        if ran_bin and (binary or (coverage and node not in (profiled or set()))):
             continue
-        if coverage and (measured or {}).get(node) is not False:
+        if coverage and not ran_bin and (measured or {}).get(node) is not False:
             continue
         if node.split("::")[0] in files or node.split("[")[0] in chosen:
             continue
@@ -289,6 +282,8 @@ def _record_store(session) -> None:
             passed.setdefault(n, ran_bin)
             if n in plan.get("nobin", set()):
                 measured.setdefault(n, False)
+            elif n in plan.get("binprof", set()):
+                measured.setdefault(n, True)
     other = int(plan.get("other", 0))
     full = _whole(session.config) and session.exitstatus == 0 and not _failed and not other
     by = "land gate" if _on(REUSE) else "pre-land"
@@ -415,9 +410,10 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
             taken += 1
             passed = rec["passed"]
             measured = rec.get("measured") if isinstance(rec.get("measured"), dict) else {}
+            held = _prof_record.held(src, tools, {n for n, b in passed.items() if b})
             if src == tree:
-                nodes = {n for n, b in passed.items()
-                         if not coverage or (not b and measured.get(n) is False)}  # fmt: skip
+                nodes = {n for n, b in passed.items() if not coverage or n in held
+                         or (not b and measured.get(n) is False)}  # fmt: skip
                 plan.setdefault("nobin", set()).update(n for n, b in measured.items() if b is False)
                 how = "the same tree"
             else:
@@ -428,7 +424,7 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
                 if chosen is None:
                     lines.append(f"land verdicts: nothing carried from {sha[:8]}: {why}")
                     continue
-                nodes = carried(passed, chosen, coverage, _builds(changed or []), measured)
+                nodes = carried(passed, chosen, coverage, _builds(changed or []), measured, held)
                 plan.setdefault("nobin", set()).update(
                     carried(measured, chosen, True, False, measured)
                 )
@@ -449,6 +445,10 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
                              f"audit's shadow ({how})")  # fmt: skip
                 continue
             plan["skipped"].update((n, bool(passed[n])) for n in nodes)
+            if coverage and nodes & held:  # their profiles, where the report reads them
+                _prof_record.take(src, tools, nodes & held)
+                plan.setdefault("binprof", set()).update(nodes & held)
+                how += f", {len(nodes & held)} by their stored profiles"
             if src != tree:
                 plan["other"] += len(nodes)
             lines.append(f"land verdicts: {len(nodes)} deselected, carried from {sha[:8]} ({how})")

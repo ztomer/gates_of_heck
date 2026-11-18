@@ -23,7 +23,6 @@ writes after its teardown is merged once more at the worker's session end.
 
 from __future__ import annotations
 
-import hashlib
 import os
 import shutil
 import subprocess
@@ -65,7 +64,56 @@ def _base() -> Path | None:
 
 
 def node_hash(nodeid: str) -> str:
-    return hashlib.sha256(nodeid.encode()).hexdigest()[:20]
+    return _ps().node_hash(nodeid)
+
+
+def _ps():
+    return lv._lib("prof_store")  # lib/prof_store.py: each test's profile kept (GOH.COVCARRY3)
+
+
+def key(tree: str, tools: str) -> str | None:
+    """The profile store's key for `tree` and THIS run's instrumented binary; None when nothing is
+    stored or carried (not an instrumented run, no store, the kill switch, no binary)."""
+    if not (lv.instrumented() and lv._store() and _ps().enabled()):
+        return None
+    with lv._in_store() as (reuse, _):
+        if "repo" not in _state:
+            _state["repo"] = reuse.repo_id(lv.REPO_ROOT)
+        binary = _ps().bin_id(os.environ["GOH_COVERAGE_BIN_DIR"])
+        return _ps().key(str(_state["repo"]), tree, tools, binary) if binary else None
+
+
+def _keep(nodeid: str, merged: Path) -> None:
+    """A test's merged profile, kept under this tree's key for the next one."""
+    me = lv._here()
+    k = key(*me) if me else None
+    if k:
+        with lv._in_store():
+            _ps().put(k, nodeid, merged)
+
+
+def held(tree: str, tools: str, nodes) -> set[str]:
+    """The nodes of `nodes` whose profile `tree`'s run of THIS binary left in the store."""
+    k = key(tree, tools)
+    if not k:
+        return set()
+    with lv._in_store():
+        return _ps().held(k, nodes)
+
+
+def take(tree: str, tools: str, nodes) -> None:
+    """Each node's stored profile (from `tree`'s run) where this run's report reads it, and kept
+    under this run's own tree, so the next land carries it on."""
+    src, me = key(tree, tools), lv._here()
+    dest = key(*me) if me else None
+    out = Path(os.environ[PROFILE]).parent
+    with lv._in_store():
+        for n in nodes if src else ():
+            got = _ps().get(src, n)
+            if got is not None:
+                _ps().place(got, out / f"t-carried-{node_hash(n)}.profraw")
+                if dest and dest != src:
+                    _ps().put(dest, n, got)
 
 
 def merge(raws: list[Path], dest: Path) -> bool:
@@ -108,8 +156,12 @@ def pytest_runtest_protocol(item, nextitem):
         os.environ[PROFILE] = str(_state["outer"])
         raws = sorted(d.glob("*.profraw"))
         if raws:
-            out = Path(str(_state["outer"])).parent
-            merge(raws, out / f"t-{node_hash(item.nodeid)}-{os.getpid()}.profraw")
+            dest = (
+                Path(str(_state["outer"])).parent
+                / f"t-{node_hash(item.nodeid)}-{os.getpid()}.profraw"
+            )
+            if merge(raws, dest):
+                _keep(item.nodeid, dest)
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -122,7 +174,11 @@ def pytest_runtest_call(item):
 
 
 def pytest_sessionfinish(session) -> None:
-    """What a test's stray child wrote after its teardown, merged so the report still reads it."""
+    """What a test's stray child wrote after its teardown, merged so the report still reads it;
+    the controller bounds the profile store."""
+    if not hasattr(session.config, "workerinput") and key("", ""):
+        with lv._in_store():
+            _ps().prune()
     base = _state.get("base")
     if not isinstance(base, Path):
         return
