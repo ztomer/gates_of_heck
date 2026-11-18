@@ -90,6 +90,7 @@ landq_batch = importlib.import_module("landq_batch")
 landq_report = importlib.import_module("landq_report")
 landq_request = importlib.import_module("landq_request")
 landq_look = importlib.import_module("landq_look")
+landq_inflight = importlib.import_module("landq_inflight")
 selection_miss = importlib.import_module("selection_miss")
 Refused, request, land_request = (
     landq_request.Refused,
@@ -133,6 +134,7 @@ def land_script(_wt: Path) -> Path:
 def prestep(req: dict) -> None:
     """GOH.ENQUEUEPRE (lib/land_prestep.py): the pre-step first, then the queue."""
     wt = Path(req["worktree"])
+    landq_inflight.mark(qdir(), req["item"] or Path(req["repo"]).name)  # until this enqueue exits
     try:
         land_prestep.run(wt, req["sha"], land_script(wt), git_bindings())
     except land_prestep.Red as e:

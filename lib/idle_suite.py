@@ -18,7 +18,10 @@ when it has nothing to land, so it is on disk before a ship asks for it:
 IT NEVER DELAYS A LAND. The run takes its own gate slot through admission (`tools/load.py 0`, class
 `work`: behind every land and ship), holds no lock a land takes (the lander's lock is released
 before it starts, so an enqueue starts a lander at once), and is stopped -- its whole process group,
-TERM then KILL -- the moment a request is pending: it yields, and the lander drains. One idle run at
+TERM then KILL -- the moment a request is pending: it yields, and the lander drains. An enqueue
+still in its pre-step (lib/landq_inflight.py, GOH.IDLEYIELDPRE: at 22:59 on 2026-11-17 the suite ran
+beside three lanes' 8-10 min pre-steps at load 49-57) stops it the same way, `deferred`: the lander
+exits, and the enqueue starts a fresh one when it files. One idle run at
 a time (`<q>/idle-suite/lock`); a tip already judged here (green or red, `last.json`) is not run
 again until main moves. Off with GOH_LANDQ_IDLE_SUITE=off, and inside a goh suite (IN_SUITE). The
 run's own `goh suite` row is the timing ledger's (tools/pytest.sh); its log is
@@ -41,6 +44,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gitrun
 import killtree
+import landq_inflight
 import lock_order
 import selection_miss
 import ship_suite
@@ -128,6 +132,11 @@ def pending(q: Path) -> bool:
     return any(any((q / d).glob("*.json")) for d in ("pending", "running"))
 
 
+def enqueuing(q: Path) -> bool:
+    """An enqueue is in its pre-step: a land on its way that has filed nothing yet."""
+    return bool(landq_inflight.live(q))
+
+
 def run(
     q: Path,
     live: Path,
@@ -135,8 +144,8 @@ def run(
     argv: list[str] | None = None,
     poll: float = POLL_S,
 ) -> str:
-    """One idle run, if one is owed; its outcome: off, nothing, busy, yielded, green, red, or
-    failed (the worktree could not be made)."""
+    """One idle run, if one is owed; its outcome: off, nothing, busy, yielded (a request is
+    pending), deferred (an enqueue is in its pre-step), green, red, or failed (no worktree)."""
     if os.environ.get(OFF_ENV) == "off" or any(os.environ.get(k) for k in IN_SUITE):
         return "off"
     main = main_checkout(live)
@@ -179,6 +188,8 @@ def _run_locked(q: Path, main: Path, state: Path, sha: str, say: Callable[[str],
                 argv: list[str], poll: float) -> str:  # fmt: skip
     if pending(q):
         return "yielded"
+    if enqueuing(q):
+        return "deferred"
     wt = state / "wt"
     why = prepare(main, wt, sha)
     if why:
@@ -196,10 +207,12 @@ def _run_locked(q: Path, main: Path, state: Path, sha: str, say: Callable[[str],
                 rc = proc.wait(timeout=poll)
                 break
             except subprocess.TimeoutExpired:
-                if pending(q):  # a land arrived: it goes first, always
+                why = "yielded" if pending(q) else "deferred" if enqueuing(q) else ""
+                if why:  # a land arrived, or is in its pre-step: it goes first, always
                     killtree.stop_group(killtree.session_pgid(proc), proc=proc)
                     proc.wait()
-                    say(f"idle full suite on {sha[:8]}: stopped, a land is pending")
-                    return "yielded"
+                    what = "a land is pending" if why == "yielded" else "an enqueue's pre-step runs"
+                    say(f"idle full suite on {sha[:8]}: stopped, {what}")
+                    return why
     say(f"idle full suite on {sha[:8]}: {'green' if rc == 0 else f'red (exit {rc})'}")
     return "green" if rc == 0 else "red"

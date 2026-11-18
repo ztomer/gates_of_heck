@@ -1,6 +1,7 @@
 """Reading the landing queue (split from tools/landq.py, GOH.CAPHEADROOM): `goh land --status`,
-and `--wait`, which finds a request wherever it is now and blocks until it
-is done. Pinned by tests/test_landq.py."""
+and `--wait`, which finds a request wherever it is now and blocks until it is done. An enqueue of
+the item still in its pre-step (lib/landq_inflight.py) is waited for until it files; with neither,
+the wait exits 2 (GOH.WAITUNFILED). Pinned by tests/test_landq.py, tests/test_landq_inflight.py."""
 
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+landq_inflight = importlib.import_module("landq_inflight")
 _tui = importlib.import_module("tui.lib")
 err, info, ok = _tui.err, _tui.info, _tui.ok
 poll = 2.0
@@ -43,13 +45,34 @@ def find_request(q: Path, what: str) -> Path | None:
     return newest[1] if newest else None
 
 
+def unfiled(q: Path, what: str, start_by: float) -> Path | int | None:
+    """WHAT's request; while there is none, wait out an enqueue of it still in its pre-step
+    (GOH.WAITUNFILED): None when neither exists, 3 past START_BY."""
+    said = False
+    while (found := find_request(q, what)) is None:
+        if not landq_inflight.live(q, what):
+            return find_request(q, what)  # it filed, then exited, between the two looks
+        if time.monotonic() > start_by:
+            return 3
+        if not said:
+            info(f"goh land --wait: {what}'s enqueue is in its pre-step; waiting for its request")
+            said = True
+        time.sleep(poll)
+    return found
+
+
 def wait(q: Path, what: str, timeout: float, nudge: Callable[[], None]) -> int:
     """Block until WHAT's newest request is done; exit by its outcome (module doc, THE WAIT)."""
-    found = find_request(q, what)
+    start_by = time.monotonic() + timeout
+    found = unfiled(q, what, start_by)
+    if found == 3:
+        err(f"goh land --wait: {what}'s enqueue filed nothing after {timeout:.0f}s")
+        return 3
     if found is None:
-        err(f"goh land --wait: no request for {what} under {q}")
+        err(f"goh land --wait: no request for {what} under {q}, and no enqueue of it running")
         return 2
-    name, start_by = found.name, time.monotonic() + timeout
+    assert isinstance(found, Path)
+    name = found.name
     nudged = 0.0
     while not (q / "done" / name).is_file():
         if time.monotonic() > start_by:
