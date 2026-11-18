@@ -131,7 +131,12 @@ def test_the_suite_starts_when_the_gate_ends_and_holds_the_slot_against_the_next
         stack.callback(block.unlink, missing_ok=True)  # never a stub left blocking
         gate = stack.enter_context(_push_gate(tmp_path, env))
         suite = stack.enter_context(_suite(env))
-        time.sleep(patience(1.0))  # the suite is at its slot wait by now
+        # The suite is at its slot wait once its ticket is in the long lane's queue (gate_lanes).
+        waiting, give_up = tmp_path / "slots" / "waiting", GiveUp(30)
+        while not (waiting.is_dir() and any(p.name.startswith("long-") for p in waiting.iterdir())):
+            assert suite.poll() is None, suite.communicate()
+            assert not give_up.passed(), "the suite never queued for the push gate's slot"
+            time.sleep(0.05)
         assert not seen.exists(), "the suite did not wait for the push gate's slot"
         _end(gate)  # the push gate ends: the suite takes its slot
         give_up = GiveUp(30)
