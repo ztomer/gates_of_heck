@@ -18,6 +18,10 @@
 //! The suite does not privatise the directory as it does the gate slots: the memory is the
 //! machine's, and the incident's children were mostly the suite's. Pinned by
 //! `tests/test_shellcheck_slots.py`.
+//!
+//! NOT A GATE SLOT (`docs/decisions/D-0010`, GOH.ADMITSUITE): a gate slot admits a gate, and a lint
+//! inside a gate is nested in its slot and would take none; a token admits one child, wherever it
+//! runs. Measured 76 MB median, 2006 MB max per child (dataflow on), so a pool sized by memory.
 
 use std::fs::{File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};

@@ -64,13 +64,13 @@ def _env(tmp: Path, bin_: Path, slots: str) -> dict[str, str]:
     return env
 
 
-def _lint_side_by_side(repo: Path, tmp: Path, slots: str) -> int:
+def _lint_side_by_side(repo: Path, tmp: Path, slots: str, **extra: str) -> int:
     """RUNS concurrent `goh shell-lint` runs; the most shellcheck calls seen alive at once."""
     for i in range(FILES):
         write(repo, f"s{i}.sh", "#!/usr/bin/env bash\necho hi\n")
     commit_all(repo)
     bin_, log, _ = _counting_shellcheck(tmp)
-    env = _env(tmp, bin_, slots)
+    env = {**_env(tmp, bin_, slots), **extra}
     procs = [
         subprocess.Popen(
             [str(native_goh_path()), "shell-lint"],
@@ -95,6 +95,22 @@ def _lint_side_by_side(repo: Path, tmp: Path, slots: str) -> int:
 def test_concurrent_lint_runs_never_exceed_the_machine_bound(repo, tmp_path):
     seen = _lint_side_by_side(repo, tmp_path, str(BOUND))
     assert seen <= BOUND, f"{seen} shellcheck calls alive at once under a bound of {BOUND}"
+
+
+@pytest.mark.load_sensitive
+def test_lint_runs_inside_a_gate_slot_are_still_bounded_per_child(repo, tmp_path):
+    """The tokens are NOT folded into the gate slots (docs/decisions/D-0010, GOH.ADMITSUITE): a
+    lint inside a gate is nested in that gate's slot and would take none, so the incident's
+    children -- nearly all inside gates and the suite -- would be bounded by nothing. Runs that
+    each say they are inside a held gate slot still share the machine's tokens."""
+    slot = tmp_path / "slots" / "slot-0"
+    slot.parent.mkdir()
+    slot.write_text(f"{os.getpid()}\tgate\t0\t\n")
+    seen = _lint_side_by_side(
+        repo, tmp_path, str(BOUND), GOH_GATE_SLOT=f"{slot} {os.getpid()}", GOH_GATE_SLOTS="1",
+        GOH_GATE_SLOT_DIR=str(slot.parent),
+    )  # fmt: skip
+    assert seen <= BOUND, f"{seen} shellcheck calls alive at once inside a gate, bound {BOUND}"
 
 
 @pytest.mark.load_sensitive
