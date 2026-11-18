@@ -13,12 +13,16 @@ verdict here: a green one records the parent, a red one records nothing.
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, git, hermetic_env
 from test_reuse import recorded_hows
 from timing_bounds import patience
+
+sys.path.insert(0, str(REPO_ROOT / "lib"))
+import reuse_audit  # lib/, after its path
 
 PUSH_GATE = REPO_ROOT / "gates" / "push_gate.sh"
 LAND = REPO_ROOT / "tools" / "land.sh"
@@ -171,3 +175,27 @@ def test_a_parent_landed_under_a_hand_set_gate_takes_the_full_gate(repo, tmp_pat
     rc, ran, out = _push(wt, tmp_path)
     assert rc == 0, out
     _full(ran, out, f"its parent {parent[:8]}'s land verdict is not the full gate's")
+
+
+def test_the_land_verdicts_reuse_is_the_full_gate_while_audited_off_and_reduced_once_enabled(
+    repo, tmp_path, monkeypatch
+) -> None:
+    """GOH.REUSEOFFLANDED2: with `landed` off every ship's release step ran the full push gate
+    (v0.139.3: 933 s, "the audit turned the land verdict's reuse off"). Off is the full gate and
+    says so; `enable` with its fix and test gives the release step the land verdict back."""
+    monkeypatch.setenv("GOH_REUSE_DIR", str(tmp_path / "reuse"))
+    monkeypatch.setenv("GOH_LOOPCTL", str(tmp_path / "no-loopctl.py"))  # nothing filed anywhere
+    wt = _fixture(repo, tmp_path)
+    parent = git(wt, "rev-parse", "HEAD").strip()
+    assert _land(wt, None).returncode == 0
+    _release(wt)
+    fields = {"repo": "/r/.git", "sha": "a" * 40, "identity": "i" * 64}
+    reuse_audit.compare("landed", fields, "green", "red", lambda: ("green", "red"))
+    assert reuse_audit.state("landed")["state"] == "off"
+    rc, ran, out = _push(wt, tmp_path)
+    assert rc == 0, out
+    _full(ran, out, "the audit turned the land verdict's reuse off")
+    reuse_audit.enable("landed", root=wt, fix="HEAD", test="tests/test_reads.py::test_reads")
+    rc, ran, out = _push(wt, tmp_path)
+    assert rc == 0 and ran == ["structural", "pytest"], (ran, out)
+    assert f"release files only since {parent[:8]}" in out, out

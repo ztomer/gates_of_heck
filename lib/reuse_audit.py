@@ -32,9 +32,11 @@ OFF IS ONE RECORDED STATE: `<store>/audit/<path>.json`, never an environment var
 the cause, both verdicts and the key, and a fault item is filed (`loopctl file`; GOH_LOOPCTL and
 GOH_LOOP_QUEUE are the seams; it names its class as rules.class_first asks, `class_of: none`; one
 that cannot be filed is named in the record and at every SessionStart, hooks/claude/
-estate_advisories.py). A CI run that judged nothing (cancelled, timed out, no CI) is no fresh side:
-its shadow is dropped uncompared, never read as red (GOH.REUSEOFFLANDED). It stays off until
-`enable` names the fix commit and the calibrated-miss test it added, both found in the tree.
+estate_advisories.py; an id the queue already holds is an earlier off's, so the next free id is
+filed, GOH.REUSEOFFLANDED2). A CI run that judged nothing (cancelled, timed out, no CI) is no
+fresh side: its shadow is dropped uncompared, never read as red (GOH.REUSEOFFLANDED). It stays
+off until `enable` names the fix commit and the calibrated-miss test it added, both found in the
+tree.
 
 A STARVED SAMPLER IS NEVER CLEAN. Each path's counters run in a window (WINDOW_S). When a window
 closes with fewer compared samples than min(min_samples, the samples it drew), the shadows never
@@ -66,6 +68,11 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lock_order  # lib/: the one acquire path (GOH.LOCKORDER)
 import reuse  # lib/, beside this file: the one store and its path registry
+import reuse_fault  # lib/: the fault item an off files
+
+# The audit's own names: _off files through this module's global (a test's seam), and
+# hooks/claude/estate_advisories.py reads `reuse_audit.unfiled`.
+file_fault, unfiled = reuse_fault.file_fault, reuse_fault.unfiled
 
 WINDOW_S = 7 * reuse.DAY_S
 COUNTS = ("uses", "sampled", "compared", "agreed", "disagreed", "flakes")
@@ -172,13 +179,18 @@ def use(path: str, fields: dict[str, str], backstop: bool = True) -> str:
 
 
 def compare(path: str, fields: dict[str, str], reused: str, fresh: str,
-            again: Callable[[], tuple[str, str]] | None = None) -> bool:  # fmt: skip
+            again: Callable[[], tuple[str, str]] | None = None,
+            fresh_from: str = "") -> bool:  # fmt: skip
     """A sampled reuse against its fresh run; True when they agree. A disagreement re-runs both
     sides (`again` returns the store's verdict read again and the work's done again): only a
-    repeated one turns the path off and files the fault; one `again` cannot repeat is a flake."""
+    repeated one turns the path off and files the fault; one `again` cannot repeat is a flake.
+    `fresh_from` names what produced the fresh side when the key does not (a CI shadow's
+    `slug@pushed-sha`: the key's sha is the reused verdict's, the run is the pushed commit's)."""
     p = reuse._path(path)
     line = {"path": p.name, "key": reuse.key(p, fields), "fields": fields, "reused": reused,
             "fresh": fresh, "epoch": reuse.now()}  # fmt: skip
+    if fresh_from:
+        line["fresh_from"] = fresh_from
     if reused != fresh:
         again_reused, again_fresh = again() if again else ("", "")
         line["again"] = {"reused": again_reused, "fresh": again_fresh}
@@ -196,51 +208,6 @@ def compare(path: str, fields: dict[str, str], reused: str, fresh: str,
         with (_dir() / "shadow.jsonl").open("a", encoding="utf-8") as fh:
             fh.write(json.dumps({**line, "outcome": kind}, sort_keys=True) + "\n")
     return reused == fresh
-
-
-def file_fault(p: reuse.ReusePath, cause: str, why: str, line: dict) -> str:
-    """File the fault item (loopctl file); the outcome, as the state record names it."""
-    loopctl = os.environ.get("GOH_LOOPCTL") or str(Path.home() / "Projects/.loop/tools/loopctl.py")
-    queue = os.environ.get("GOH_LOOP_QUEUE", "")
-    if not os.path.isfile(loopctl):
-        return f"not filed: no loopctl at {loopctl}"
-    iid = "GOH.REUSEOFF" + "".join(c for c in p.name.upper() if c.isalnum())
-    item = {"id": iid, "repo": "gates_of_heck", "status": "todo", "phase": "SPD", "depends": [],
-            "source": "goh reuse audit (lib/reuse_audit.py)",
-            "item": f"The reuse path {p.name!r} ({p.doc}) is OFF: {cause}: {why}. Both verdicts "
-            f"and the key: {json.dumps(line, sort_keys=True)}",
-            "done_state": f"the missing key input found and keyed, a test that misses on it, and "
-            f"`reuse_audit.py enable {p.name} --fix SHA --test NODE`",
-            # rules.class_first (loopctl): each path's off is its own instance, no open closure's
-            "class_of": "none",
-            "class_why": f"the reuse path {p.name!r} turned off on its own evidence ({cause}); its "
-            "cause is that path's key or reader, found from this record"}  # fmt: skip
-    argv = [sys.executable, loopctl, *(["--queue", queue] if queue else []), "file", "--json",
-            json.dumps(item)]  # fmt: skip
-    try:
-        r = subprocess.run(argv, capture_output=True, text=True, check=False, timeout=120,
-                           stdin=subprocess.DEVNULL)  # fmt: skip
-    except (OSError, subprocess.TimeoutExpired) as e:
-        return f"not filed: {e}"
-    said = (r.stdout + r.stderr).strip()
-    if r.returncode == 0 or "already exists" in said:
-        return f"filed {iid}"
-    return f"not filed: {said[-200:]}"
-
-
-def unfiled() -> list[str]:
-    """One line per path that is off with its fault NOT filed: read-only (no roll, no lock), for
-    SessionStart (hooks/claude/estate_advisories.py), so a refused filing alerts someone."""
-    out = []
-    for name in reuse.PATHS:
-        try:
-            rec = json.loads((_dir() / f"{name}.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        fault = str(rec.get("fault") or "") if isinstance(rec, dict) else ""
-        if rec.get("state") == "off" and not fault.startswith("filed "):
-            out.append(f"{name} off ({rec.get('cause')}), fault {fault or 'not filed'}")
-    return out
 
 
 def enable(path: str, *, root: Path, fix: str = "", test: str = "", why: str = "") -> str:
@@ -337,7 +304,14 @@ def drain() -> list[str]:
             )
             continue
         first = e["reads"][0]
-        compare(e["path"], e["fields"], e["reused"], first, lambda e=e, f2=fresh: (e["reused"], f2))
+        compare(
+            e["path"],
+            e["fields"],
+            e["reused"],
+            first,
+            lambda e=e, f2=fresh: (e["reused"], f2),
+            fresh_from=f"{e['slug']}@{e['sha']}",
+        )
         f.unlink(missing_ok=True)
         said.append(f"{e['path']} {e['sha'][:12]}: CI {fresh}, reused {e['reused']}")
     return said

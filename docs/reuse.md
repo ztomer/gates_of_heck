@@ -48,7 +48,9 @@ the push log text instead of calling `goh ship verdict`; until it does, it misse
   "off". A disagreement re-runs both sides (the store read again, the work done again) and only a
   repeated one turns the path off: one recorded state, `<root>/audit/<path>.json`, with both
   verdicts, the key and the fault item it filed (`loopctl file`, as `class_of: none`; one loopctl
-  refused is named at every SessionStart). It stays off until `reuse_audit.py
+  refused is named at every SessionStart; an id the queue already holds is an earlier off's item,
+  so the next free one, `GOH.REUSEOFF<PATH>2` and on, is filed naming it; a CI shadow's record
+  names the run's `slug@pushed-sha` as `fresh_from`). It stays off until `reuse_audit.py
   enable PATH --fix SHA --test FILE::TEST` names the fix and the test that misses on the lacking
   input. A window (7 days) that compared fewer samples than min(min_samples, the samples it drew)
   is STARVED and turns the path off too; fewer drawn than min_samples reads "thin", never clean.

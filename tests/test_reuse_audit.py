@@ -46,7 +46,8 @@ def fake_loopctl(tmp_path, monkeypatch) -> Path:
     """A loopctl that logs each call. `ci` answers as FAKE_CI names it: its first line the exit
     (default 0, green), the rest what loopctl prints. `file` refuses as rules.class_first does
     (the loop queue's tools/loopq.py class_refusal): an item names its class, or `class_of: none`
-    with a `class_why`, or it is not filed."""
+    with a `class_why`, or it is not filed; and an id already in the queue (FAKE_ITEMS, one per
+    line) is refused as tools/loopq.py file_item refuses it, done or open."""
     log = tmp_path / "loopctl.jsonl"
     script = tmp_path / "loopctl.py"
     script.write_text(
@@ -63,6 +64,12 @@ def fake_loopctl(tmp_path, monkeypatch) -> Path:
         "    if not named:\n"
         "        print(f\"\\u2717 {new['id']}: name its class (rules.class_first)\")\n"
         "        sys.exit(1)\n"
+        "    items = os.environ.get('FAKE_ITEMS')\n"
+        "    if items and new['id'] in open(items).read().split():\n"
+        "        print(f\"\\u2717 {new['id']} already exists; `set` edits an item\")\n"
+        "        sys.exit(1)\n"
+        "    if items:\n"
+        "        open(items, 'a').write(new['id'] + '\\n')\n"
     )
     ci = tmp_path / "ci_exit"
     ci.write_text("0")
@@ -266,6 +273,48 @@ def test_a_path_turned_off_files_its_fault_under_class_first(fake_loopctl, tmp_p
     assert rec["state"] == "off" and rec["fault"] == "filed GOH.REUSEOFFLANDED", rec
     [fault] = filed(fake_loopctl)
     assert fault["class_of"] == "none" and "'landed'" in fault["class_why"], fault
+
+
+def test_a_second_off_after_its_item_is_done_files_a_new_item_naming_the_ci_run(
+    fake_loopctl, tmp_path, monkeypatch
+) -> None:
+    """GOH.REUSEOFFLANDED2: `landed` turned off again on v0.136.0's CI red while GOH.REUSEOFFLANDED,
+    the first off's item, was done. loopctl refused the id ("already exists") and the audit read
+    that refusal as filed: the record said "filed GOH.REUSEOFFLANDED" and nothing tracked the second
+    disagreement. Each off follows an enable, so it is a new instance: it files the next free id,
+    names the item before it, and the CI run it read (the pushed sha, not the key's parent)."""
+    items = tmp_path / "queue_ids"
+    items.write_text("GOH.REUSEOFFLANDED\n")
+    monkeypatch.setenv("FAKE_ITEMS", str(items))
+    fix = tmp_path / "fix"
+    (fix / "tests").mkdir(parents=True)
+    (fix / "tests" / "test_k.py").write_text("def test_k():\n    pass\n")
+    fast_init(fix)
+    for args in (
+        ["add", "-A"],
+        ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "f"],
+    ):
+        subprocess.run(["git", "-C", str(fix), *args], check=True, capture_output=True,
+                       stdin=subprocess.DEVNULL)  # fmt: skip
+    ci = tmp_path / "ci_exit"
+    for n, pushed in ((2, "f" * 40), (3, "e" * 40)):
+        reuse_audit.enqueue("landed", FIELDS, "green", slug="o/n", sha=pushed)
+        ci.write_text(RED)
+        reuse_audit.drain()
+        reuse_audit.drain()
+        rec = reuse_audit.state("landed")
+        assert rec["state"] == "off" and rec["fault"] == f"filed GOH.REUSEOFFLANDED{n}", rec
+        assert rec["evidence"]["fresh_from"] == f"o/n@{pushed}", rec
+        fault = filed(fake_loopctl)[-1]
+        assert fault["id"] == f"GOH.REUSEOFFLANDED{n}" and f"o/n@{pushed}" in fault["item"], fault
+        before = "GOH.REUSEOFFLANDED" + (str(n - 1) if n > 2 else "")
+        assert before in fault["item"], fault
+        reuse_audit.enable("landed", root=fix, fix="HEAD", test="tests/test_k.py::test_k")
+    assert items.read_text().split() == [
+        "GOH.REUSEOFFLANDED",
+        "GOH.REUSEOFFLANDED2",
+        "GOH.REUSEOFFLANDED3",
+    ]
 
 
 HOOK = REPO_ROOT / "hooks" / "claude" / "estate_advisories.py"
