@@ -22,6 +22,7 @@ real cargo: they are the end-to-end proof that the cache trusts the compiler's o
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -31,8 +32,12 @@ REAL_CARGO = shutil.which("cargo") or "cargo"
 RECORDED = ("clippy", "check", "build", "test", "fmt", "machete", "audit")
 
 
-def install(where: Path) -> tuple[Path, Path]:
-    """Write the fake into `where/bin/cargo`; return (its bin dir, its call log)."""
+def install(where: Path, recorded: tuple[str, ...] = RECORDED) -> tuple[Path, Path]:
+    """Write the fake into `where/bin/cargo`; return (its bin dir, its call log).
+
+    `recorded` narrows which subcommands are faked; the rest run the real cargo. `("audit",)` is
+    the one fake a real-cargo test needs to stay off the network (GOH.AUDITNETTEST)."""
+    assert recorded and set(recorded) <= set(RECORDED), recorded
     bin_dir = where / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     log = where / "cargo.calls"
@@ -40,7 +45,7 @@ def install(where: Path) -> tuple[Path, Path]:
     fake = bin_dir / "cargo"
     fake.write_text(
         "#!/bin/bash\n"
-        f'case "$1" in {"|".join(RECORDED)})\n'
+        f'case "$1" in {"|".join(recorded)})\n'
         f'    printf \'%s\\t%s\\n\' "$PWD" "$*" >> "{log}"\n'
         f'    if [ -f "{red}/$1.code" ]; then\n'
         f'        [ -f "{red}/$1.stdout" ] && cat "{red}/$1.stdout"\n'
@@ -53,6 +58,24 @@ def install(where: Path) -> tuple[Path, Path]:
     )
     fake.chmod(0o755)
     return bin_dir, log
+
+
+def offline(where: Path) -> dict[str, str]:
+    """The environment that runs rust_gate.sh with no network, every other step on real cargo.
+
+    GOH_DEPS_OFFLINE=1 is the gate's own offline mode: the audit asks no index lookup (the
+    GOH.AUDITSPIN guard) and the currency and crates-behind arms fetch nothing. `cargo audit` is the
+    recorded fake and GOH_ADVISORY_DB an empty private copy, so no cached database is read and none
+    is fetched. A crates.io name that did not resolve for a minute (2026-11-18 12:19) turned the
+    guard's refusal into a red batch gate on a test about temp files (GOH.AUDITNETTEST)."""
+    bin_dir, _ = install(where, recorded=("audit",))
+    db = where / "advisory-db"
+    db.mkdir(exist_ok=True)
+    return {
+        "GOH_DEPS_OFFLINE": "1",
+        "GOH_ADVISORY_DB": str(db),
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+    }
 
 
 def plant_red(where: Path, sub: str, output: str, code: int = 1, stream: str = "stderr") -> None:

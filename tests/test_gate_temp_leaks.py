@@ -13,6 +13,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import _fake_cargo
 import pytest
 from conftest import REPO_ROOT, stage, write
 from test_rust_gate import CURRENT, clone, warm_crate  # noqa: F401  # warm_crate is a fixture
@@ -41,8 +42,10 @@ def test_the_rust_gate_removes_its_scope_file(tmp_path, warm_crate) -> None:  # 
     tmpdir = tmp_path / "t"
     tmpdir.mkdir()
     c = clone(warm_crate, tmp_path / "crate")
+    # Off the network (_fake_cargo.offline): the subject is temp-file cleanup, not the advisories.
+    env = {**os.environ, "TMPDIR": str(tmpdir), **_fake_cargo.offline(tmp_path / "fake-cargo")}
     r = subprocess.run(["/bin/bash", str(CURRENT), str(c)], cwd=c, capture_output=True,
-                       text=True, env={**os.environ, "TMPDIR": str(tmpdir)}, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+                       text=True, env=env, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
     assert [n for n in _left(tmpdir) if n.startswith("goh")] == []
 

@@ -186,7 +186,7 @@
   "tests/test_gate_slot.py": 6,
   "tests/test_gate_slot_consumer.py": 1,
   "tests/test_gate_slot_linux.py": 1,
-  "tests/test_gate_temp_leaks.py": 3,
+  "tests/test_gate_temp_leaks.py": 2,
   "tests/test_gates_from_head.py": 3,
   "tests/test_git_deadline_class.py": 4,
   "tests/test_git_local_vars.py": 1,

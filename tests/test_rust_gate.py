@@ -141,6 +141,14 @@ def clone(warm: Path, dest: Path) -> Path:
     return c
 
 
+@pytest.fixture(autouse=True)
+def off_the_network(tmp_path, monkeypatch) -> None:
+    """No test here is about the advisories or the currency arm, so none may need the network
+    (GOH.AUDITNETTEST): every gate run below is offline, with a recorded `cargo audit`."""
+    for name, value in _fake_cargo.offline(tmp_path / "offline-cargo").items():
+        monkeypatch.setenv(name, value)
+
+
 @pytest.fixture
 def fake(tmp_path, monkeypatch) -> Path:
     """The recorded fake cargo first on PATH; returns the directory `_fake_cargo.plant_red` takes."""

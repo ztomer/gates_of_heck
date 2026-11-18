@@ -46,3 +46,16 @@ def test_a_subcommand_that_is_not_recorded_is_the_real_cargo_and_cannot_be_plant
     except AssertionError:
         return
     raise AssertionError("a metadata answer is the real cargo's; planting one must be refused")
+
+
+def test_the_offline_fake_records_only_the_audit_and_turns_the_gate_offline(tmp_path):
+    """GOH.AUDITNETTEST: `offline` fakes `cargo audit` alone (clippy stays the real cargo, which
+    rejects an unknown flag), and hands the gate its offline mode and an empty private database."""
+    env = _fake_cargo.offline(tmp_path)
+    bin_dir = Path(env["PATH"].split(":", 1)[0])
+    assert _cargo(bin_dir, "audit", "--deny", "yanked").returncode == 0
+    assert _fake_cargo.calls(tmp_path / "cargo.calls", "audit") != []
+    assert _cargo(bin_dir, "clippy", "--no-such-flag").returncode != 0
+    assert _fake_cargo.calls(tmp_path / "cargo.calls", "clippy") == []
+    assert env["GOH_DEPS_OFFLINE"] == "1"
+    assert Path(env["GOH_ADVISORY_DB"]).is_dir() and not any(Path(env["GOH_ADVISORY_DB"]).iterdir())
