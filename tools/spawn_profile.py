@@ -77,6 +77,9 @@ SHIM_C = r"""
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <libproc.h>
+#endif
 
 static volatile pid_t child = -1;
 static void fwd(int s) { if (child > 0) kill(child, s); }
@@ -84,6 +87,16 @@ static void fwd(int s) { if (child > 0) kill(child, s); }
 int main(int argc, char **argv) {
     struct timeval t0, t1;
     gettimeofday(&t0, 0);
+    char pc[1024] = "?";
+    pid_t pp = getppid();
+#ifdef __APPLE__
+    if (proc_pidpath(pp, pc, sizeof pc) <= 0) strcpy(pc, "?");
+#else
+    char lp[64]; snprintf(lp, sizeof lp, "/proc/%d/exe", (int)pp);
+    ssize_t k = readlink(lp, pc, sizeof pc - 1);
+    if (k > 0) pc[k] = 0; else strcpy(pc, "?");
+#endif
+    const char *pb = strrchr(pc, '/'); pb = pb ? pb + 1 : pc;
     pid_t c = fork();
     if (c < 0) { argv[0] = REAL; execv(REAL, argv); return 127; }
     if (c == 0) { argv[0] = REAL; execv(REAL, argv); _exit(127); }
@@ -96,10 +109,10 @@ int main(int argc, char **argv) {
     gettimeofday(&t1, 0);
     char line[1400]; int n;
     double wall = (t1.tv_sec - t0.tv_sec) + (t1.tv_usec - t0.tv_usec) / 1e6;
-    n = snprintf(line, 600, "%s\t%d\t%d\t%d\t%ld.%06d\t%.6f\t%.6f\t%.6f\t%d\t", KIND, (int)getpid(),
-                 (int)c, (int)getppid(), (long)t0.tv_sec, (int)t0.tv_usec, wall,
+    n = snprintf(line, 700, "%s\t%d\t%d\t%d\t%ld.%06d\t%.6f\t%.6f\t%.6f\t%d\t%.100s\t", KIND,
+                 (int)getpid(), (int)c, (int)pp, (long)t0.tv_sec, (int)t0.tv_usec, wall,
                  ru.ru_utime.tv_sec + ru.ru_utime.tv_usec / 1e6,
-                 ru.ru_stime.tv_sec + ru.ru_stime.tv_usec / 1e6, st);
+                 ru.ru_stime.tv_sec + ru.ru_stime.tv_usec / 1e6, st, pb);
     for (int i = 1; i < argc && n < 1300; i++) {
         for (const char *p = argv[i]; *p && n < 1300; p++)
             line[n++] = (*p == '\t' || *p == '\n' || *p == '\r') ? ' ' : *p;

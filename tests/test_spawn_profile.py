@@ -49,7 +49,7 @@ def test_a_run_records_each_process_under_the_script_that_started_it(tmp_path: P
         "import subprocess, sys\n"
         "subprocess.run([sys.executable, '-c', 'pass'], check=True)\n"
         "subprocess.run(['git', '--version'], check=True, stdout=subprocess.DEVNULL)\n"
-        "subprocess.run(['/bin/bash', '-c', 'sleep 0.6; :'], check=True)\n",
+        "subprocess.run(['/bin/bash', '-c', 'sleep 0.6; git --version >/dev/null'], check=True)\n",
         encoding="utf-8",
     )
     out = tmp_path / "prof"
@@ -74,14 +74,15 @@ def test_a_run_records_each_process_under_the_script_that_started_it(tmp_path: P
     )
     assert done.returncode == 3, done.stderr  # the command's own exit, through the shims
     rows = spawn_profile.read_ledger(out / "ledger.tsv")
-    assert sorted(r["kind"] for r in rows) == ["bash", "git", "python3", "python3"]
+    assert sorted(r["kind"] for r in rows) == ["bash", "git", "git", "python3", "python3"]
     cal = {"python": (0.03, 0.02), "bash": (0.015, 0.01), "git": (0.015, 0.007)}
     summary = spawn_profile.summarize(out, cal)
     pairs = {(g["caller"], g["callee"]): g for g in summary["top"]}
     assert pairs[(outer.parent.name + "/outer.py", "python3 -c")]["n"] == 1
     assert (outer.parent.name + "/outer.py", "git") in pairs
     assert ("(root)", "bash -c") in pairs
-    assert summary["start_cpu_s"] == pytest.approx(2 * 0.02 + 0.01 + 0.007)
+    assert ("(unseen bash)", "git") in pairs  # its caller ran by absolute path: named, not lost
+    assert summary["start_cpu_s"] == pytest.approx(2 * 0.02 + 0.01 + 2 * 0.007)
     assert summary["run"]["rc"] == 3
     blind = summary["blind"]
     assert blind["by_kind"]["bash"]["blind_pids"] >= 1, blind  # /bin/bash by absolute path

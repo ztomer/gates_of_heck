@@ -12,7 +12,8 @@ import re
 from collections import Counter
 from pathlib import Path
 
-FIELDS = ("kind", "shim_pid", "pid", "ppid", "t0", "wall", "user", "sys", "status", "argv")
+FIELDS = ("kind", "shim_pid", "pid", "ppid", "t0", "wall", "user", "sys", "status", "pcomm", "argv")
+OLD_FIELDS = tuple(f for f in FIELDS if f != "pcomm")  # ledgers written before pcomm
 
 
 def classify(comm: str) -> str:
@@ -42,9 +43,13 @@ def read_ledger(path: Path) -> list[dict]:
         return rows
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         parts = line.split("\t", len(FIELDS) - 1)
-        if len(parts) != len(FIELDS):
-            continue
-        row = dict(zip(FIELDS, parts, strict=True))
+        if len(parts) == len(FIELDS):  # argv has no tab (the shim maps them to spaces)
+            row = dict(zip(FIELDS, parts, strict=True))
+        else:
+            parts = line.split("\t", len(OLD_FIELDS) - 1)
+            if len(parts) != len(OLD_FIELDS):
+                continue
+            row = dict(zip(OLD_FIELDS, parts, strict=True), pcomm="")
         for key in ("shim_pid", "pid", "ppid", "status"):
             row[key] = int(row[key])
         for key in ("t0", "wall", "user", "sys"):
@@ -86,8 +91,27 @@ def script_of(row: dict) -> str:
     return kind
 
 
-def caller_of(row: dict, by_pid: dict[int, dict]) -> str:
-    """The nearest ancestor in the ledger that runs a named script: the script that started this."""
+def sampled_comms(samples: Path) -> dict[int, str]:
+    """pid -> command name, from the sampler's file (empty without one)."""
+    comms: dict[int, str] = {}
+    if samples.exists():
+        for line in samples.read_text(encoding="utf-8", errors="replace").splitlines():
+            parts = line.split("\t", 2)
+            if len(parts) == 3 and parts[1].isdigit():
+                comms[int(parts[1])] = parts[2]
+    return comms
+
+
+def caller_of(
+    row: dict, by_pid: dict[int, dict], comm_of: dict[int, str] | None = None, root: int = 0
+) -> str:
+    """The nearest ancestor in the ledger that runs a named script: the script that started this.
+    A parent no shim saw (an absolute path, the goh binary) is named by its executable: the shim's
+    own `pcomm`, else what the sampler saw at that pid."""
+    if row["ppid"] not in by_pid and root not in (row["ppid"], row["shim_pid"]):
+        name = row.get("pcomm") or (comm_of or {}).get(row["ppid"], "")
+        if name:
+            return f"(unseen {os.path.basename(name)})"
     hops = 0
     parent = by_pid.get(row["ppid"])
     first = script_of(parent) if parent is not None else ""
@@ -113,6 +137,7 @@ def summarize(
         else {}
     )
     by_pid = {r["pid"]: r for r in rows}
+    comm_of = sampled_comms(out / "samples.tsv")
     child_cpu: Counter = Counter()
     for r in rows:
         if r["ppid"] in by_pid:
@@ -125,7 +150,7 @@ def summarize(
     start_cost = {k: costs.get(k, (0.0, 0.0)) for k in kinds}
     groups: dict[tuple[str, str], dict] = {}
     for r in rows:
-        key = (caller_of(r, by_pid), script_of(r))
+        key = (caller_of(r, by_pid, comm_of, meta.get("root_pid", 0)), script_of(r))
         g = groups.setdefault(
             key,
             {
