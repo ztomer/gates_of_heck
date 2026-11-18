@@ -211,7 +211,7 @@
   "tests/test_hook_git_env.py": 5,
   "tests/test_hook_seed_root.py": 1,
   "tests/test_house_python.py": 1,
-  "tests/test_install.py": 3,
+  "tests/test_install.py": 1,
   "tests/test_install_foreign_hooks.py": 2,
   "tests/test_installed_version_line.py": 2,
   "tests/test_installs_key.py": 4,

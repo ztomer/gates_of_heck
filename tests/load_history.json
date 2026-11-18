@@ -3,7 +3,7 @@
   {"id": "GOH.TIMEOUTFLAKE", "test": "tests/test_local_ci.py::test_step_timeout_kills_hung_step", "seen": "failed once inside the land gate on a loaded box, passed alone (237425d6)"},
   {"id": "GOH.LOADFLAKE", "test": "tests/test_git_deadline_class.py::test_run_writer_stops_the_whole_group_a_hook_included", "seen": "read the hook pid file before it was written, under load in tools/land.sh; 17/17 alone (80bff6c4)"},
   {"id": "GOH.CI107", "test": "tests/test_gate_slot.py::test_a_push_waits_for_a_slot_and_its_step_limit_counts_from_the_slot", "seen": "the 'taken after Ns waiting' line missing on a slow hosted runner, 3/3 locally (run 43303342787)"},
-  {"id": "GOH.COVDEDUPE2", "test": "tests/test_install.py::test_self_hosted_repo_satisfies_its_own_hook", "seen": "exceeded the drift guard's 60 s ceiling at load 8"},
+  {"id": "GOH.COVDEDUPE2", "test": "tests/test_self_hosted_hook.py::test_self_hosted_repo_satisfies_its_own_hook", "seen": "exceeded the drift guard's 60 s ceiling at load 8"},
   {"id": "GOH.BENCHLOCKFLAKE", "test": "tests/test_bench_lock.py::test_a_measurement_waits_for_a_running_gate_and_drops_a_dead_ones_entry", "seen": "a 3 s wait for a gate expired under load (15ce61fa)"},
   {"id": "GOH.LOADFLAKES", "test": "tests/test_coverage_phases.py::test_a_step_killed_on_its_ceiling_names_the_phase_it_was_in", "seen": "TIMED OUT after 3s at load 110-180, passed on re-run (516f8c51)"},
   {"id": "GOH.LOADFLAKES", "test": "tests/test_tree_lock.py::test_second_gate_waits_for_the_first", "seen": "LOCKED at load 110-180, passed on re-run (516f8c51)"},

@@ -33,7 +33,7 @@ GIT_INIT_SITES = {
     "test_required_tools_manifest.py": 2,
     "test_release_kit.py": 2,
     "test_release_hardening.py": 2,
-    "test_install.py": 2,
+    "test_install.py": 1,
     "test_goh_git_spawns.py": 2,
     "test_estate_corpus.py": 2,
     "test_binary_currency.py": 1,

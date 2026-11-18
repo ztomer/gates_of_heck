@@ -11,11 +11,8 @@ refused BY NAME unless --force. Red proof: every refusal test below returned
 
 import os
 import shutil
-import site
 import subprocess
-import sys
 
-import pytest
 from conftest import EMOJI_SMILE, REPO_ROOT, git, hermetic_env, write
 
 
@@ -161,106 +158,6 @@ def test_hook_passes_clean_commit(repo):
     r = _commit(repo, "-m", "clean")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "all structural gates passed" in (r.stdout + r.stderr)
-
-
-def _hook_toolchain_env() -> dict[str, str]:
-    """What the self-hosted hook needs of THIS machine beyond its reduced PATH: the toolchains the
-    suite names (tests/suite_home.py), and the house interpreter the suite runs on. Run 42950563400:
-    under `/usr/bin:/bin:/opt/homebrew/bin` the hook resolved Homebrew's python3, which held no ruff
-    (the runner installs the suite's tools into its setup-python interpreter), and the python gate
-    died "ruff is not available through '/opt/homebrew/bin/python3 -m'"."""
-    env = {k: os.environ[k] for k in ("RUSTUP_HOME", "CARGO_HOME") if k in os.environ}
-    env["GOH_PY"] = sys.executable
-    # Its packages too: the commit runs goh's declared source guard under pytest
-    # (gates/staged_guards.sh), and a user-site pytest is found through HOME (tmp_path here).
-    env["PYTHONUSERBASE"] = site.getuserbase()
-    return env
-
-
-def test_the_self_hosted_hook_runs_on_the_suites_interpreter():
-    assert _hook_toolchain_env()["GOH_PY"] == sys.executable
-
-
-@pytest.mark.load_sensitive(
-    reason="a whole-tree hook run near the drift guard's stretched 60 s ceiling (GOH.COVDEDUPE2)"
-)
-def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
-    """gates_of_heck itself must pass its own pre-commit: clone-like check by
-    installing into a fresh copy of THIS repo's tree and committing. The copy holds
-    no `bin/goh` (untracked) and its PATH no cargo, so the binary is named: the
-    Python tier that used to answer here is retired (Phase N3)."""
-    import shutil
-
-    copy = tmp_path / "goh-copy"
-    # TRACKED files only — what a clone holds. `copytree(REPO_ROOT)` also walked target/ (178 MB),
-    # which the session's `cargo build` re-links (remove + hardlink) on another xdist worker: the
-    # same FileNotFoundError window the goh fixture had, and untracked files from anything else
-    # working in the checkout came along too.
-    tracked = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "ls-files", "-z"],
-        capture_output=True,
-        check=True,
-        stdin=subprocess.DEVNULL,
-    ).stdout.split(b"\0")
-    for rel in filter(None, (t.decode() for t in tracked)):
-        src = REPO_ROOT / rel
-        if not src.exists() and not src.is_symlink():
-            continue  # deleted in the working tree, not yet committed
-        (copy / rel).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, copy / rel, follow_symlinks=False)
-    subprocess.run(
-        # not `main`: this tree's .gatesrc says GOH_LANDED_ONLY=main, and a commit on main in a primary
-        # checkout is refused outside land.sh (GOH.LANDONLY, tests/test_landed_only_commit.py)
-        ["git", "-C", str(copy), "init", "-q", "-b", "work"],
-        check=True,
-        stdin=subprocess.DEVNULL,
-    )
-    subprocess.run(
-        ["/bin/bash", str(copy / "install.sh"), str(copy)],
-        capture_output=True,
-        text=True,
-        stdin=subprocess.DEVNULL,
-        check=False,
-    )
-    git(copy, "add", "-A")
-    # The hook's formatters and linters, from wherever THIS machine keeps them, without the rest of
-    # that directory: a hosted runner's rustfmt is a rustup proxy in ~/.cargo/bin (beside cargo,
-    # which this PATH must not hold), and the hook said "rustfmt is not installed" (run
-    # 42930175911). The proxy finds its toolchains through RUSTUP_HOME, which HOME (the test's tmp_path) no longer gives.
-    tools = tmp_path / "hook-tools"
-    tools.mkdir()
-    for name in ("rustfmt", "shellcheck", "ruff"):
-        found = shutil.which(name)
-        if found:
-            (tools / name).symlink_to(found)
-    toolchain_env = _hook_toolchain_env()
-    # GOH_DIR points the delegation at the copy itself → true self-host.
-    r = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(copy),
-            "-c",
-            "user.name=t",
-            "-c",
-            "user.email=t",
-            "commit",
-            "-m",
-            "self-host",
-        ],
-        capture_output=True,
-        text=True,
-        env={
-            "GOH_DIR": str(copy),
-            "GOH_BIN": str(goh),
-            "HOME": str(tmp_path),
-            "PATH": f"/usr/bin:/bin:/opt/homebrew/bin:{tools}",
-            **toolchain_env,
-        },
-        stdin=subprocess.DEVNULL,
-        check=False,
-    )
-    assert r.returncode == 0, r.stdout + r.stderr
 
 
 # ── hook protection ──────────────────────────────────────────────────────────

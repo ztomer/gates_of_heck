@@ -396,7 +396,7 @@ def test_brew_is_printed_only_for_macos(tmp_path, os_name):
 
 # The staged gates goh's own pre-commit runs on its own tree (gates/commit_gate.sh: structural with
 # its shell lint, the python and swift twins, the rustfmt check) -- what
-# tests/test_install.py::test_self_hosted_repo_satisfies_its_own_hook commits through.
+# tests/test_self_hosted_hook.py::test_self_hosted_repo_satisfies_its_own_hook commits through.
 SELF_HOSTED_HOOK_SITES = (
     "gates/py_staged.sh",
     "gates/swift_staged.sh",

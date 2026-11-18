@@ -14,7 +14,7 @@
   "test_goh_prefetch.py": 3,
   "test_goh_screen_parity.py": 1,
   "test_hold_gates.py": 1,
-  "test_install.py": 7,
+  "test_install.py": 6,
   "test_install_atomic.py": 3,
   "test_landed_only_commit.py": 1,
   "test_place_staging.py": 1,
