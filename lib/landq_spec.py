@@ -26,6 +26,9 @@ WHAT IS USED. After A settles, main is re-read under the land lock the lander ho
     stopped if it is still gating -- and B settles on the new main as before. A speculative land.sh
     never rebases (exit 3), so the tree it judged is always the one stacked here.
 A run stacking B on main that conflicts is not started (that conflict is no verdict on B over A).
+Nor is one on a machine with ONE gate slot (GOH_GATE_SLOTS=1, or cores // 8 < 2: the 3-core CI
+runner, any Mac under 16 cores; GOH.SPECONESLOT): B's run took the only slot first and A waited
+behind it, so the bisect is serial there and lander.log names why.
 Every run started counts in the batch's `gates`, discarded ones too: `goh land --report` reads
 gates per landed item and the wall from them.
 """
@@ -39,6 +42,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import admission
 import killtree
 
 if TYPE_CHECKING:
@@ -124,8 +128,13 @@ class Spec:
 
 def start(b: Batch, second: list[Item]) -> Spec | None:
     """SECOND stacked on main and its tip's land.sh started, holding; None when it is not worth a
-    slot (another run in flight, a land.sh without the hold, a conflict, or a tree known red)."""
+    slot (another run in flight, a land.sh without the hold, one gate slot, a conflict, or a tree
+    known red)."""
     if b.spec is not None or not able(b.kit.land_script(Path(second[-1].req["worktree"]))):
+        return None
+    if (slots := admission.configured()[1]) == 1:  # 0 is slots off: every gate runs at once
+        b.kit.say(f"batch {b.id}: {slots} gate slot on this machine (GOH_GATE_SLOTS) -- the halves "
+                  "gate serially, no speculative run beside the first")  # fmt: skip
         return None
     base = b.git(b.main, "rev-parse", "HEAD")
     stacked = b.stack(second, trial=True)

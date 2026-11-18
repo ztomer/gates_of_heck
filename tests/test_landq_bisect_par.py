@@ -105,3 +105,21 @@ def test_a_speculative_green_on_a_base_main_left_is_never_landed(repo, tmp_path,
     assert got["T.ONE"]["state"] == "landed" and got["T.TWO"]["state"] == "red", got
     assert (repo / "one.txt").exists() and not (repo / "two.txt").exists()  # held, then dropped
     assert got["T.TWO"]["batch"]["gates"] == 3, got  # Y on X is the stack's tree: red, no 4th
+
+
+@pytest.mark.load_sensitive(reason="a serial first half waits out a bounded read -t")
+def test_one_gate_slot_bisects_serially_and_names_the_skip(repo, tmp_path, par):
+    """GOH.SPECONESLOT: on a machine with ONE gate slot (cores // 8 < 2: the 3-core CI runner, any
+    Mac under 16 cores) the speculative run took the only slot first and the first half waited
+    behind it. One slot is one gate at a time: no speculative run, the skip named in the log."""
+    env = {**par, "CASE": "xred", "GOH_GATE_SLOTS": "1", "WAIT": "2"}
+    enqueue_all(env, two(repo, tmp_path, {"one.txt": "1\n", "bad.txt": "x\n"}, {"two.txt": "2\n"}))
+    done = landq(env, "--drain")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "(speculative)" not in done.stdout, done.stdout
+    assert "1 gate slot" in done.stdout and "serial" in done.stdout, done.stdout
+    assert met(env) == [], (met(env), gate_runs(env))  # the halves never overlapped
+    got = recorded(env)
+    assert got["T.ONE"]["state"] == "red" and got["T.TWO"]["state"] == "landed", got
+    assert sorted(gate_runs(env)) == ["one", "two", "two"], gate_runs(env)  # one gate per half
+    assert got["T.TWO"]["batch"]["gates"] == 3, got
