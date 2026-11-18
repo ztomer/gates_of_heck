@@ -82,7 +82,7 @@ import time
 from collections.abc import Callable
 
 import lock_order
-from gate_lanes import CLASSES, DEFAULT_CLASS, LANES, Ticket  # who goes next (GOH.SLOTFAIR)
+from gate_lanes import CLASSES, DEFAULT_CLASS, LANES, Ticket, lane_of  # who goes next
 
 if __name__ == "__main__":
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -394,9 +394,17 @@ def hold(args: argparse.Namespace) -> int:
 
     taken = admission.admit(
         args.dir, slots, args.owner, args.repo, poll=args.poll, watch=watch,
-        gate_class=args.gate_class,
+        gate_class=args.gate_class, max_wait=args.max_wait,
     )  # fmt: skip
     if taken is None:
+        if args.max_wait is not None and (watch.alive() if watch else _alive(args.owner)):
+            # THE BOUND PASSED (GOH.ADMITSUITE): the shell is told so, with the holders, and says
+            # it -- a holder that just exited would read as a crash, not as a wait that ran out.
+            now = time.time()
+            lane, _ = lane_of(args.gate_class)
+            held = "; ".join(describe(slot_path(args.dir, i, lane), now) for i in range(slots))
+            os.write(shake, f"expired {' '.join(held.split())}\n".encode())
+            os.close(shake)
         return 3
     idx, _held_fd, waited, path = taken  # open until this process exits: the slot
     # The mechanism goes in the handshake, so the shell can say WHICH watch took the slot: the
@@ -434,6 +442,7 @@ def main(argv: list[str]) -> int:
     h.add_argument("--poll", type=float, default=0.5)
     h.add_argument("--for-caller", action="store_true")
     h.add_argument("--class", dest="gate_class", choices=sorted(CLASSES), default=DEFAULT_CLASS)
+    h.add_argument("--max-wait", type=float, default=None)  # s; none: while the owner runs
     args = ap.parse_args(argv)
     if args.cmd == "default":
         print(default_slots())

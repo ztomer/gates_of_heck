@@ -10,8 +10,9 @@ THE INCIDENT (GOH.MEMADMIT, 2026-11-16). The machine thrashed from ~00:45 to a f
 the gate slots (lib/gate_slot.py), the load places (lib/load_slot.py) -- counted CPU work; nothing
 asked whether the memory was there, so each new gate started into a machine already swapping.
 
-THE RULE. A new gate (the gate slot's holder calls `wait` before it takes a slot: every full gate
-and every land's gate), and a new suite (tools/pytest.sh, outside a gate) wait while
+THE RULE. A new gate (the gate slot's holder calls `wait` before it takes a slot: every full gate,
+every land's gate and, since GOH.ADMITSUITE, a suite run by hand), and a suite with the gate slots
+off (tools/pytest.sh, GOH_GATE_SLOTS=0) wait while
   * the memory available is under GOH_MEM_MIN_PCT percent (default 20): macOS's
     `kern.memorystatus_level`, Linux's MemAvailable over MemTotal; or
   * swap in use is at or over GOH_SWAP_MAX_PCT percent of physical memory (default 50): macOS's

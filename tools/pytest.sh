@@ -46,9 +46,35 @@ if [ -z "${GATES_OF_HECK_SUITE_RUNNER:-}" ] && [ -z "${GATES_OF_HECK_SUITE_NESTE
         fi
         rm -f "$SUITE_LOCK"   # its holder is gone: a killed run's lock
     done
-    trap '[ "$(readlink "$SUITE_LOCK" 2>/dev/null)" = "$$" ] && rm -f "$SUITE_LOCK"' EXIT
-    # MEMORY ADMISSION (GOH.MEMADMIT): a suite started outside a gate waits, bounded, while the
-    # machine is short of memory (lib/mem_admit.py says why); inside a gate, its slot was admitted.
+    # THE ONE ADMISSION (GOH.ADMITSUITE, after GOH.ONEADMISSION): a suite started outside a gate
+    # comes in where every gate does (lib/admission.py `admit` through lib/gate_slot.sh: memory, then
+    # a gate slot), after this checkout's lock, so a second suite here is still refused at once. It
+    # asked only memory until 2026-11-17: a hand-run suite of up to 12 workers started beside the
+    # two push gates holding both slots. A WHOLE run is `work` (the long lane, behind every push and
+    # land); a narrowed one (a path argument) is `short`, the commit gate's lane, so a red/green loop
+    # on one file waits behind commit gates only; GOH_GATE_CLASS overrides both. THE ADDED WAIT IS
+    # BOUNDED: GOH_SUITE_WAIT_MAX seconds (default 900, load.py's --wait-max default; the memory
+    # wait counted inside it), then exit 75 naming the holders -- never a run beside them, never a
+    # wait that looks like a hang. Inside a gate (GOH_GATE_SLOT, or a holder among the ancestors)
+    # the suite is that gate's and takes nothing. Pinned by tests/test_suite_admission.py.
+    suite_class="${GOH_GATE_CLASS:-work}"
+    for a in "$@"; do
+        [ -n "${GOH_GATE_CLASS:-}" ] || [ ! -e "${a%%::*}" ] || { suite_class=short; break; }
+    done
+    suite_wait="${GOH_SUITE_WAIT_MAX:-900}"
+    case "$suite_wait" in
+        '' | *[!0-9]*) die "GOH_SUITE_WAIT_MAX must be whole seconds (got '$suite_wait')" 2 ;;
+    esac
+    # shellcheck source=lib/gate_slot.sh
+    . "$GOH/lib/gate_slot.sh"
+    trap '[ "$(readlink "$SUITE_LOCK" 2>/dev/null)" = "$$" ] && rm -f "$SUITE_LOCK"; gate_slot_release' EXIT
+    if [ -z "${GOH_GATE_SLOT:-}" ]; then
+        gate_slot_acquire "goh suite ($PWD)" "$suite_class" "$suite_wait" \
+            || die "the goh suite was not admitted within GOH_SUITE_WAIT_MAX=${suite_wait}s (holders above) -- nothing ran; rerun later, or raise GOH_SUITE_WAIT_MAX" 75
+    fi
+    # MEMORY ADMISSION (GOH.MEMADMIT): with the gate slots off (GOH_GATE_SLOTS=0) or inside a gate
+    # found by ancestry, the suite still waits, bounded, while the machine is short of memory; a slot
+    # taken above asked memory first.
     [ -n "${GOH_GATE_SLOT:-}" ] || "$GOH_PY" "$GOH/lib/mem_admit.py" wait --what "the goh suite"
 fi
 . "$GOH/gates/_pytest_root.sh"

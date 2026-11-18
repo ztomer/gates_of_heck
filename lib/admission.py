@@ -7,8 +7,9 @@
 Memory first (lib/mem_admit.py), then a gate slot (lib/gate_slot.py's semaphore), then the holder's
 record. Until 2026-11-16 a land's gate took a load place (tools/load.py 0, three of them) and a
 gate slot inside it -- two counters for one CPU -- and waited 900 s on the place while gate slots
-sat free. The map of every controller goh has, and which are still apart (the suite's memory wait,
-the shellcheck tokens, the bench lock's registry), is GOH.ONEADMISSION's note.
+sat free. A suite run by hand (tools/pytest.sh outside a gate) comes in here too, through
+lib/gate_slot.sh with a bound (GOH.ADMITSUITE). Still apart: the shellcheck tokens, which count
+CHILDREN, not gates (docs/decisions/D-0010), and the bench lock's registry (GOH.ADMITREGISTRY).
 """
 
 from __future__ import annotations
