@@ -33,7 +33,7 @@ pytestmark = [
 @pytest.fixture
 def estate(tmp_path: Path, tmp_path_factory) -> Path:
     """Three crates, locked and staged: built once per worker (three `cargo generate-lockfile`s and
-    a git init), cloned per test (GOH.FIXTURECOST)."""
+    a repository made), cloned per test (GOH.FIXTURECOST)."""
     return from_template(tmp_path_factory, "each-crate", _build_estate, tmp_path / "repo")
 
 

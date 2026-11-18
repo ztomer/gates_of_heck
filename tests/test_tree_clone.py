@@ -15,6 +15,7 @@ from pathlib import Path
 
 import _tree_clone
 import pytest
+from _fast_git import fast_init
 from _tree_clone import clone_tree, copytree_clone, from_template, template_of
 from conftest import commit_all, git, write
 
@@ -102,7 +103,7 @@ def test_from_template_builds_once_and_each_caller_gets_its_own_tree(
     def build(tree: Path) -> None:
         builds.append(tree)
         tree.mkdir()
-        git(tree, "init", "-q", "-b", "main")
+        fast_init(tree, "main")
         write(tree, "README.md", "# fixture\n")
         commit_all(tree)
 
@@ -126,7 +127,7 @@ def test_a_template_that_names_its_own_directory_is_refused(
 
     def build(tree: Path) -> None:
         tree.mkdir()
-        git(tree, "init", "-q")
+        fast_init(tree)
         origin = tree / "origin.git" if where == "inside" else tree.parent / "origin.git"
         git(tree, "remote", "add", "origin", str(origin))
 
