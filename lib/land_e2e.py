@@ -137,6 +137,12 @@ def _row(q: Path, item: str, chain: list[tuple[Path, dict]], gates: list[dict]) 
     )
 
 
+def asked(req: dict) -> dict:
+    """The done record's share of its request REQ: `requested` (its enqueued_at) and `pre_s`."""
+    named = {"requested": req.get("enqueued_at"), "pre_s": req.get("pre_s")}
+    return {k: v for k, v in named.items() if v is not None}
+
+
 def backfill(q: Path) -> int:
     """Append the e2e rows the ledger lacks; how many were added."""
     ledger = timing_ledger.read()

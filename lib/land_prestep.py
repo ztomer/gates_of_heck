@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 killtree = importlib.import_module("killtree")
@@ -28,11 +29,12 @@ class Red(Exception):
     pass
 
 
-def run(wt: Path, sha: str, script: Path, bindings: tuple[str, ...]) -> None:
-    """Run SCRIPT's pre-step in WT; raise Red unless it is green or past its deadline."""
+def run(wt: Path, sha: str, script: Path, bindings: tuple[str, ...]) -> float:
+    """Run SCRIPT's pre-step in WT; its seconds, or raise Red unless green or past its deadline."""
     argv = ["env", *(f"-u{k}" for k in bindings), "GOH_LAND_PRE_ONLY=1", "bash", "-c",
             'cd -- "$1" && exec bash "$2"', "land", str(wt), str(script)]  # fmt: skip
     timeout = int(os.environ.get("GOH_ENQUEUE_PRE_TIMEOUT") or TIMEOUT)
+    t0 = time.monotonic()
     info(f"pre-step before queueing {sha[:8]} (the lander's own, in {wt})")
     lines: list[str] = []
     proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -50,7 +52,7 @@ def run(wt: Path, sha: str, script: Path, bindings: tuple[str, ...]) -> None:
     if code == 0:
         if any("no verdict" in line for line in lines):
             warn("the pre-step reached its deadline -- no verdict; queued, the lander decides")
-        return
+        return round(time.monotonic() - t0, 1)
     named = [ln.split()[1] for ln in lines if ln.startswith("FAILED ") and len(ln.split()) > 1]
     what = f"failing: {', '.join(named)}" if named else f"exit {code}, see the output above"
     raise Red(
