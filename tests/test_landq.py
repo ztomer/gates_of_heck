@@ -248,17 +248,21 @@ def test_a_red_land_gate_lands_nothing_and_records_the_log(repo, tmp_path, env):
     assert git(repo, "rev-parse", "HEAD").strip() == before
 
 
-def test_a_land_whose_tip_moved_after_enqueue_is_refused_unrun(repo, tmp_path, env):
-    wt, _ = _land_wt(repo, tmp_path)
-    before = git(repo, "rev-parse", "HEAD").strip()
+def test_a_lane_that_moved_after_enqueue_lands_the_enqueued_tip_not_the_new_one(
+    repo, tmp_path, env
+):
+    """GOH.LANDSNAPSHOT: the land runs in goh's checkout of the enqueued sha (lib/land_slot.py),
+    so the lane moving on is no refusal ("tip moved after enqueue" was): what lands is the commit
+    enqueued, never the lane's newer one."""
+    wt, tip = _land_wt(repo, tmp_path)
     env = {**env, "GOH_LAND_GATE": "true"}
     assert landq(env, "--enqueue", "--land", str(wt), "--item", "T.M", "--no-start").returncode == 0
     write(wt, "f.txt", "moved\n")
     git(wt, "commit", "-qam", "moved", "--no-verify")
     landq(env, "--drain")
     got = recorded(env)["T.M"]
-    assert got["state"] == "red" and "moved" in got["why"], got
-    assert git(repo, "rev-parse", "HEAD").strip() == before  # not the enqueued tip, nor the new one
+    assert got["state"] == "landed" and got["sha"] == tip, got
+    assert git(repo, "rev-parse", "HEAD").strip() == tip  # the enqueued tip, not the new one
 
 
 def test_enqueue_land_refuses_the_main_checkout_and_a_dirty_tree(repo, tmp_path, env):
@@ -337,7 +341,7 @@ def test_a_land_that_changes_the_lander_is_honoured_by_the_next_request(tmp_path
     named = ("lib/bounded_run.py", "lib/gitrun.py", "lib/lock_order.py", "lib/lock_order.tsv")
     named += ("lib/land_prestep.py", "lib/killtree.py", "lib/landq_batch.py", "lib/land_lock.py")
     named += ("lib/landq_request.py", "lib/landq_look.py", "lib/land_attempts.py")
-    named += ("lib/land_e2e.py",)
+    named += ("lib/land_e2e.py", "lib/land_slot.py", "lib/full_run.py")
     named += ("lib/idle_suite.py", "lib/landq_inflight.py")
     named += ("checks/_gitutil.py", "tools/land.sh")
     sc.copy_closure(

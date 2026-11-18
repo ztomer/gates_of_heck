@@ -28,8 +28,9 @@ Every record carries `batch`: {id, items, gates}, the gate runs the batch spent,
 
 A GIT READ THAT FAILS (GOH.BATCHGITFAIL). Every git read the batch makes is strict: a failure or a
 timeout is a GitFailed, never an empty string standing for a tree, a commit or main's sha. The
-batch step stops loudly (the error in the lander log and each stopped item's own log), the worktrees
-it stacked go back to their enqueued commits, and what it had not yet judged comes back `pending`:
+batch step stops loudly (the error in the lander log and each stopped item's own log), the slots
+it stacked (lib/land_slot.py: goh's checkouts, never a lane's tree) go back to their enqueued
+commits, and what it had not yet judged comes back `pending`:
 `hold` puts it back in pending/ for the lander's next pass, and after RETRIES passes records it red
 with the git error. Items an earlier half already landed keep their records. A git failure AFTER the
 gate landed the stack cannot take the land back: those items are recorded red, saying so (`landed,
@@ -52,6 +53,7 @@ from pathlib import Path
 import bounded_run
 import gitrun
 import land_lock
+import land_slot
 import landq_report
 import landq_spec
 
@@ -301,6 +303,10 @@ class Batch:
 
     def run(self) -> list[dict]:
         for it in self.items:
+            if why := land_slot.ready(self.q, it.req):  # GOH.LANDSNAPSHOT: at its sha again
+                it.log.write_text(f"{why} -- nothing landed; enqueue again\n")
+                self.outcome(it, "red", it.log, why=f"slot: {why}")
+                continue
             it.tip = self.peek(Path(it.req["worktree"]), "rev-parse", "HEAD")
             if it.tip != it.req["sha"]:
                 at, want = it.tip or "(unreadable)", it.req["sha"]

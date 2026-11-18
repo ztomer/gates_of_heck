@@ -16,17 +16,20 @@ SHA, the remote and branch the checkout tracks, the item, and the mode:
           pre-push gate (which takes the machine-wide gate slot itself, lib/gate_slot.sh)
     ship  `tools/ship.py --wait --repo REPO --item ID` (push, release, install, verify, done); the
           checkout's HEAD must still BE the sha, or the ship would release a different commit
-    land  `bash tools/land.sh`, bare, in the WORKTREE (GOH.LANDQLAND): the land lock, the land
-          gate, the fast-forward of main, as a lane ran it by hand -- the KIT's land.sh, never
-          the lane's own, which judged its own edits (GOH.PRESTEPHEAD, docs/decisions/D-0012).
-          The sha is the worktree's HEAD at enqueue; a tip that moved since is refused unrun,
-          and the enqueue refuses the main checkout and a tree with uncommitted tracked changes.
+    land  `bash tools/land.sh`, bare (GOH.LANDQLAND): the land lock, the land gate, the
+          fast-forward of main, as a lane ran it by hand -- the KIT's land.sh, never the lane's
+          own, which judged its own edits (GOH.PRESTEPHEAD, docs/decisions/D-0012). The sha is
+          the WORKTREE's HEAD at enqueue, and every run of the request -- pre-step, stack,
+          rebase, gate -- is in a SLOT, goh's detached checkout of that sha (GOH.LANDSNAPSHOT,
+          lib/land_slot.py): the request's `worktree`, the lane's kept as `lane`. The lane may
+          edit, commit or enqueue again meanwhile; no land reads or moves its tree. The enqueue
+          refuses the main checkout and a tree with uncommitted tracked changes.
           The outcome's `sha` (and `landed`) is the commit main holds for it (land.sh may have
           rebased it); the enqueued tip is kept as `enqueued`.
 A red gate pushes nothing (git refuses the push when its pre-push hook fails), nor lands.
 
 THE ENQUEUE PRE-STEP (GOH.ENQUEUEPRE). `--enqueue --land` first runs land.sh's pre-step
-(GOH_LAND_PRE; GOH_LAND_PRE_ONLY=1 stops it before the lock) in the caller's worktree and refuses
+(GOH_LAND_PRE; GOH_LAND_PRE_ONLY=1 stops it before the lock) in the request's slot and refuses
 a red tip naming the failing tests: a tree reader the lane never ran met its first run inside THIS
 serial queue (GOH.REUSEAUDIT's land: 537 s, red on three). Past its deadline is no verdict and the
 tip queues (GOH.PRESTEPDEADLINE). A green verdict is kept on the request (`pre`) for the lander's
@@ -86,6 +89,7 @@ land_attempts = importlib.import_module("land_attempts")
 land_e2e = importlib.import_module("land_e2e")
 lock_order = importlib.import_module("lock_order")
 land_prestep = importlib.import_module("land_prestep")
+land_slot = importlib.import_module("land_slot")
 landq_batch = importlib.import_module("landq_batch")
 landq_early = importlib.import_module("landq_early")
 landq_window = importlib.import_module("landq_window")
@@ -138,6 +142,17 @@ def prestep(req: dict) -> None:
         req["pre_s"] = land_prestep.run_kept(req, qdir(), land_script(wt), git_bindings())
     except land_prestep.Red as e:
         raise Refused(str(e)) from None
+
+
+def in_slot(req: dict) -> None:
+    """GOH.LANDSNAPSHOT (lib/land_slot.py): the request runs in a slot of goh's, a detached
+    checkout of its sha, never in the lane's worktree, which it keeps as `lane`."""
+    try:
+        slot = land_slot.claim(qdir(), Path(req["repo"]), req["sha"])
+    except land_slot.Unavailable as e:
+        raise Refused(f"no checkout of {req['sha'][:8]} for the land: {e}") from None
+    req.update(lane=req["worktree"], worktree=slot["path"], slot=slot["token"], slot_s=slot["s"])
+    info(f"land checkout {slot['path']} at {req['sha'][:8]} in {slot['s']} s")
 
 
 def write_json(path: Path, data: dict) -> None:
@@ -202,6 +217,9 @@ def run_one(q: Path, path: Path) -> dict:
     log = q / "logs" / f"{path.stem}.log"
     outcome = {"sha": req["sha"], "repo": req["repo"], "mode": req["mode"], "log": str(log)}
     land = req["mode"] == "land"
+    if land and (why := land_slot.ready(q, req)):  # GOH.LANDSNAPSHOT: the slot at the sha again
+        log.write_text(f"{why} -- nothing landed; enqueue again\n")
+        return {**outcome, "state": "red", "why": f"slot: {why}"}
     head = git(Path(req["worktree"] if land else req["repo"]), "rev-parse", "HEAD")
     if req["mode"] == "ship" and head != req["sha"]:
         log.write_text(
@@ -242,7 +260,10 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
     done_dir = req_path.parent.parent / "done"
     named = land_attempts.item_of(req_path, {"item": item})
     outcome = {**outcome, "at": now()}
-    outcome.update(land_e2e.asked(landq_batch.read(req_path)))  # the e2e's start (GOH.LANDTARGET)
+    req = landq_batch.read(req_path)
+    outcome.update(land_e2e.asked(req))  # the e2e's start (GOH.LANDTARGET)
+    if isinstance(req.get("slot_s"), float):  # the checkout's seconds (GOH.LANDSNAPSHOT)
+        outcome["slot_s"] = req["slot_s"]
     outcome.update(item=named, attempt=land_attempts.attempt_of(done_dir, named))
     if item:
         tool = loopctl()
@@ -257,6 +278,7 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
             outcome["recorded"] = False
             warn(f"no loopctl at {tool} (GOH_LOOPCTL): {item}'s outcome is only in done/")
     write_json(done_dir / req_path.name, outcome)
+    land_slot.release_req(done_dir.parent, req)  # GOH.LANDSNAPSHOT: free for the next land
     try:
         land_attempts.record(outcome, req_path.stem)
         land_e2e.backfill(done_dir.parent)  # GOH.LANDTARGET: the item end to end, once it landed
@@ -417,11 +439,13 @@ def main(argv: list[str] | None = None) -> int:
         return landq_look.status(qdir())
     if args.wait is not None:
         return landq_look.wait(qdir(), args.wait, args.timeout, nudge)
+    req: dict = {}
     try:
         if args.land is not None:
             if args.enqueue or args.ship:
                 raise Refused("--land takes the worktree only: no REPO SHA, no --ship")
             req = land_request(args.land, args.item)
+            in_slot(req)
             if args.no_pre is None:
                 prestep(req)
             elif not args.no_pre.strip():
@@ -433,12 +457,17 @@ def main(argv: list[str] | None = None) -> int:
         else:
             req = request(*args.enqueue, args.item, args.ship, args.summary)
     except Refused as e:
+        land_slot.release_req(qdir(), req)
         err(f"goh land: {e} -- nothing enqueued")
         return 2
-    if req["mode"] == "land" and (red := landq_early.at_enqueue(qdir(), req, enqueue, record)):
-        err(f"goh land: {red.splitlines()[0]} -- recorded red at enqueue, nothing queued")
-        return 1
-    path = enqueue(req)
+    try:
+        if req["mode"] == "land" and (red := landq_early.at_enqueue(qdir(), req, enqueue, record)):
+            err(f"goh land: {red.splitlines()[0]} -- recorded red at enqueue, nothing queued")
+            return 1
+        path = enqueue(req)
+    except BaseException:
+        land_slot.release_req(qdir(), req)
+        raise
     if not args.no_start:
         start_lander()
     who = req["item"] or Path(req["repo"]).name
