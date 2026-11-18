@@ -65,4 +65,4 @@
 - **Re-open when:** that test goes red (option 1 becomes honest), an IR-level per-function key is
   measured at under 30 s a land (option 3), or option 4 lands and its shadow disagrees.
 - **Lives in:** `tests/test_cov_function_hash_blind.py`, `tests/_land_verdicts.py`,
-  `gates/_coverage_rust.sh`
+  `gates/_coverage_rust.sh`; the non-binary carry (GOH.COVNONBIN) in `tests/test_cov_nonbin.py`

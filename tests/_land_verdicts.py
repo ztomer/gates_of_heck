@@ -51,6 +51,7 @@ import os
 import sys
 from pathlib import Path
 
+import _cov_claims  # tests/: the non-binary carry and its gate (GOH.COVNONBIN)
 import _land_audit  # tests/, beside this file: the audited `test` and `carry` uses
 import _prof_record  # tests/: each test's own profile under coverage (GOH.COVCARRY)
 import pytest
@@ -275,20 +276,19 @@ def _record_store(session) -> None:
     plan = _state.get("plan") or {}
     rootdir = Path(session.config.rootpath)
     passed = {n: n in _bin for n in _called - _failed}
-    # What an instrumented run saw each node do (tests/_prof_record.py), and what it carried as
-    # measured: the only nodes a later instrumented run may carry (`carried`, GOH.COVCARRY).
+    # What an instrumented run saw each node do (tests/_prof_record.py): what coverage may carry.
     measured = dict(passed) if instrumented() else {}
     for n, ran_bin in plan.get("skipped", {}).items():  # passed here: same tree, or carried
         if (rootdir / n.split("::")[0]).is_file():
             passed.setdefault(n, ran_bin)
-            if n in plan.get("nobin", set()):
-                measured.setdefault(n, False)
-            elif n in plan.get("binprof", set()):
+            if n in plan.get("binprof", set()):
                 measured.setdefault(n, True)
     other = int(plan.get("other", 0))
-    full = _whole(session.config) and session.exitstatus == 0 and not _failed and not other
     by = "land gate" if _on(REUSE) else "pre-land"
-    with _in_store() as (reuse, _):
+    with _in_store() as (reuse, _):  # the measurement carried, its claims checked (GOH.COVNONBIN)
+        _cov_claims.record(session, plan, reuse.lookup_suite(REPO_ROOT, *me)[0], passed, measured,
+                           _bin, instrumented())  # fmt: skip
+        full = _whole(session.config) and session.exitstatus == 0 and not _failed and not other
         reuse.record_suite(
             REPO_ROOT, me[0], me[1], passed, set(_failed), full, by, other, instrumented(), measured
         )
