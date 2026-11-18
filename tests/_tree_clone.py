@@ -72,14 +72,20 @@ def from_template(factory, key: str, build, dst: Path) -> Path:
     """`dst` as a clone of the tree `build(path)` makes, built ONCE per session (per worker) under
     `factory` (the session's `tmp_path_factory`). `build` must make the same tree every time: it is
     what each test would have built for itself, and nothing the test then writes reaches it."""
+    clone_tree(template(factory, key, build), dst)
+    return dst
+
+
+def template(factory, key: str, build) -> Path:
+    """The tree `build(path)` makes, built ONCE per session (per worker) and never handed out to
+    write in: a caller clones it, or parts of it, with `clone_tree`."""
     built = _TEMPLATES.setdefault(id(factory), (factory, {}))[1]
     if key not in built:
         tree = factory.mktemp(f"template-{key}") / key
         build(tree)
         _refuse_self_reference(tree)
         built[key] = tree
-    clone_tree(built[key], dst)
-    return dst
+    return built[key]
 
 
 def _refuse_self_reference(tree: Path) -> None:

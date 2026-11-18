@@ -21,6 +21,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _tree_clone import clone_tree, template
 
 # Same xdist group as test_release_hardening.py: its mid-run-edit test corrupts release.sh on purpose.
 from conftest import FAKE_GH, REPO_ROOT, hermetic_env
@@ -65,11 +66,13 @@ exec /usr/bin/git "$@"
 """
 
 
-@pytest.fixture
-def kit(tmp_path: Path) -> dict:
-    """A real project repo with a bare origin, stanza'd CHANGELOG, fake gh."""
-    proj = tmp_path / "proj"
-    proj.mkdir()
+KIT_PARTS = ("proj", "origin.git", "bin", "gh-state")
+
+
+def _build_kit(root: Path) -> None:
+    """The kit's parts, all but the origin's `insteadOf` (an absolute path, set per clone)."""
+    proj = root / "proj"
+    proj.mkdir(parents=True)
     sh(proj, "init", "-q", "-b", "main")
     (proj / "CHANGELOG.md").write_text(
         f"# CHANGELOG\n\n## {TAG}\n\n{STANZA_BODY}\n\n## v1.1.0\n\n- older\n",
@@ -78,29 +81,36 @@ def kit(tmp_path: Path) -> dict:
     # The commit being tagged declares its version, as the tag check requires (GOH.REL2).
     (proj / "VERSION").write_text(f"{VERSION}\n", encoding="utf-8")
     commit_all(proj)
-
-    origin = tmp_path / "origin.git"
     subprocess.run(
-        ["git", "clone", "-q", "--bare", str(proj), str(origin)],
+        ["git", "clone", "-q", "--bare", str(proj), str(root / "origin.git")],
         check=True,
         stdin=subprocess.DEVNULL,
     )
-    add_github_origin(proj, origin)
-
-    bin_dir = tmp_path / "bin"
+    sh(root / "origin.git", "remote", "remove", "origin")  # it named the template's proj
+    sh(proj, "remote", "add", "origin", GITHUB_ORIGIN)
+    bin_dir = root / "bin"
     bin_dir.mkdir()
-    gh_state = tmp_path / "gh-state"
-    gh_state.mkdir()
+    (root / "gh-state").mkdir()
     (bin_dir / "gh").write_text(FAKE_GH)
     (bin_dir / "gh").chmod(0o755)
     (bin_dir / "git").write_text(GIT_WRAPPER)
     (bin_dir / "git").chmod(0o755)
 
+
+@pytest.fixture
+def kit(tmp_path: Path, tmp_path_factory) -> dict:
+    """A real project repo with a bare origin, stanza'd CHANGELOG, fake gh: built once per worker,
+    each part cloned per test (GOH.FIXTURECOST)."""
+    built = template(tmp_path_factory, "release-kit", _build_kit)
+    for part in KIT_PARTS:
+        clone_tree(built / part, tmp_path / part)
+    proj, origin = tmp_path / "proj", tmp_path / "origin.git"
+    sh(proj, "config", f"url.{origin}.insteadOf", GITHUB_ORIGIN)
     return {
         "proj": proj,
         "origin": origin,
-        "bin": bin_dir,
-        "gh_state": gh_state,
+        "bin": tmp_path / "bin",
+        "gh_state": tmp_path / "gh-state",
         "gh_log": tmp_path / "gh.log",
         "git_log": tmp_path / "git.log",
     }
