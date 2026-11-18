@@ -17,8 +17,8 @@ SHA, the remote and branch the checkout tracks, the item, and the mode:
     ship  `tools/ship.py --wait --repo REPO --item ID` (push, release, install, verify, done); the
           checkout's HEAD must still BE the sha, or the ship would release a different commit
     land  `bash tools/land.sh`, bare, in the WORKTREE (GOH.LANDQLAND): the land lock, the land
-          gate, the fast-forward of main, as a lane ran it by hand -- the worktree's own
-          tools/land.sh when it has one (a goh lane gates with its tip's gates), else the kit's.
+          gate, the fast-forward of main, as a lane ran it by hand -- the KIT's land.sh, never
+          the lane's own, which judged its own edits (GOH.PRESTEPHEAD, docs/decisions/D-0012).
           The sha is the worktree's HEAD at enqueue; a tip that moved since is refused unrun,
           and the enqueue refuses the main checkout and a tree with uncommitted tracked changes.
           The outcome's `sha` (and `landed`) is the commit main holds for it (land.sh may have
@@ -125,10 +125,9 @@ def git_bindings() -> tuple[str, ...]:
     return local_env_vars()
 
 
-def land_script(wt: Path) -> Path:
-    """The land.sh a lane runs by hand from WT: the worktree's own, else the kit's."""
-    own = wt / "tools" / "land.sh"
-    return own if own.is_file() else ROOT / "tools" / "land.sh"
+def land_script(_wt: Path) -> Path:
+    """The land.sh that drives a land in a worktree: main's, never the lane's own (D-0012)."""
+    return ROOT / "tools" / "land.sh"
 
 
 def prestep(req: dict) -> None:
@@ -272,11 +271,11 @@ def live_root() -> Path:
 
 
 def code_digest() -> str:
-    """The lander's code on the live checkout's HEAD: tools/landq.py and lib/ (GOH.LANDERSTALECODE).
+    """The lander's code on the live checkout's HEAD: landq.py, land.sh, lib/ (GOH.LANDERSTALECODE).
 
     A checkout is read through git, so a land that moves main changes it; a copy outside any
     checkout hashes nothing and never re-execs."""
-    return git(live_root(), "rev-parse", "HEAD:tools/landq.py", "HEAD:lib")
+    return git(live_root(), "rev-parse", "HEAD:tools/landq.py", "HEAD:tools/land.sh", "HEAD:lib")
 
 
 def live_pythonpath(value: str) -> str:

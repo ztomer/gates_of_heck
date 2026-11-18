@@ -141,7 +141,7 @@ class Kit:
 
     unset: list[str]  # `env -u...`: git's repository bindings, never inherited
     stacker: Path  # the lander's own land.sh: it knows the stacking mode whatever a lane's copy is
-    land_script: Callable[[Path], Path]  # the land.sh a lane runs by hand from its worktree
+    land_script: Callable[[Path], Path]  # the land.sh that drives a lane's land: main's (D-0012)
     timeout: int
     grace: float
     say: Callable[[str], None]

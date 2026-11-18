@@ -105,8 +105,7 @@ if [ -z "$gate" ] && [ -f "$here/.gatesrc" ]; then
 fi
 # The verdict's MODE (GOH.VERDICTKEY): `full` for the kit's own push gate, else the gate string --
 # a hand-set GOH_LAND_GATE=true lands, but its goh-landed line is no full gate's (lib/gate_identity.py).
-mode="${gate:-full}"
-[ -n "$gate" ] || gate="$GOH/tools/gate_profile.sh ."
+mode="${gate:-full}"   # an empty gate is the kit's push gate under the gates that judge (land_gate)
 
 section "land $branch @ ${tip:0:8} -> $main"
 if [ -n "$(GIT_OPTIONAL_LOCKS=0 git status --porcelain --untracked-files=no)" ]; then
@@ -169,21 +168,7 @@ land_rebase() {
     now="$(git rev-parse HEAD)"
     info "rebased $branch onto main ${base:0:8}: ${tip:0:8} -> ${now:0:8}"
     tip="$now"
-    # The gates that judge the tip are the TIP's (GOH.VERDICTKEYDRIFT). Run from this checkout,
-    # this script is the head export of the tip BEFORE the rebase (goh_from_head, above), and the
-    # gate, the goh-landed identity and the loaded run's record key all came from that export:
-    # b54b9d62 landed rebased from 380f48d0, its loaded verdict was recorded under 380f48d0's gates
-    # (aa4f97f2) and the ship, reading under b54b9d62's, found none. Only when the rebased checkout
-    # IS the gates checkout: a consumer's rebase moves no gates, and a caller's pinned export stays.
-    if [ -f "$GOH/.goh-head" ] && [ -n "${GOH_LIVE_ROOT:-}" ] \
-            && [ "$(cd "$GOH_LIVE_ROOT" 2>/dev/null && pwd -P)" = "$(cd "$here" && pwd -P)" ] \
-            && goh_export_rev "$here" "$tip" "$tip"; then
-        GOH="$_goh_export"
-        export GOH_DIR="$GOH"
-        goh_path_front PYTHONPATH "$GOH"
-        info "the gates are ${tip:0:8}'s now: $GOH"
-    fi
-    rebased=1
+    rebased=1   # the gates that judge the new tip are chosen before the gate (land_roots, below)
 }
 # land_pre -- the pre-step on the tip as it is now; exits 1 on a red set (THE PRE-STEP, above).
 land_pre() {
@@ -310,7 +295,40 @@ if [ "$rebased" = 1 ] && [ -n "$pre" ]; then
     info "pre-land: main moved during the pre-step -- again on ${tip:0:8}"
     land_pre
 fi
-info "gate: $gate"
+# THE GATES THAT JUDGE A GOH LAND (GOH.PRESTEPHEAD, docs/decisions/D-0012). The queue drives every
+# land with main's land.sh (tools/landq.py land_script), but the gate code is the tree's own when the
+# tree IS the gates' repo, so a lane that weakened a gate was judged by its own weakened copy. When
+# this tree shares the driver's root commit and its diff from main changes the gate code (the gate
+# identity's content, lib/gate_identity.py) or .gatesrc, the gate runs twice: under MAIN tip's
+# gates (the judge, its land gate read from main's .gatesrc), then under the tip's own, so a gate
+# change still proves itself before main moves. A diff that changes neither has one gate code: one
+# run, under the tip's. Either way the tip's gates key the verdicts and the goh-landed line
+# (GOH.VERDICTKEYDRIFT: b54b9d62 landed rebased from 380f48d0 with its loaded verdict recorded under
+# 380f48d0's gates, and the ship, reading under b54b9d62's, found none). A consumer's land runs the
+# kit's gates as they are. Pinned by tests/test_land_driver.py and tests/test_land_identity.py.
+goh_root_of() { if [ -s "$1/.goh-root" ]; then cat "$1/.goh-root"; elif [ -e "$1/.git" ]; then git -C "$1" rev-list --max-parents=0 HEAD; fi; }
+land_roots() {
+    tip_root="$GOH" tip_who="the kit" judge_root="" judge_gate=""
+    [ "$(git rev-list --max-parents=0 "$tip" 2>/dev/null)" = "$(goh_root_of "$GOH" 2>/dev/null)" ] || return 0
+    local k_tip k_main
+    if ! { goh_export_rev "$here" "$tip" "$tip" && tip_root="$_goh_export" && goh_export_rev "$here" "$base" "$base" \
+            && k_tip="$("$GOH_PY" "$GOH/lib/gate_identity.py" key --mode land --root "$tip_root" </dev/null 7>&-)" \
+            && k_main="$("$GOH_PY" "$GOH/lib/gate_identity.py" key --mode land --root "$_goh_export" </dev/null 7>&-)"; }; then
+        err "land.sh: cannot export or key the gates of ${tip:0:8} and main ${base:0:8} -- nothing landed"
+        exit 1
+    fi
+    tip_who="${tip:0:8}"
+    if [ "$k_tip" != "$k_main" ] || ! git diff --quiet "$base" "$tip" -- .gatesrc 7>&-; then
+        judge_root="$_goh_export"
+        judge_gate="${GOH_LAND_GATE:-}"
+        if [ -z "${GOH_LAND_GATE:-}" ] && [ -f "$main/.gatesrc" ]; then
+            judge_gate="$(cd "$main" && bash -c 'unset GOH_LAND_GATE; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_GATE-}"')" \
+                || { err "land.sh: cannot read $main/.gatesrc -- nothing landed"; exit 1; }
+        fi
+        info "the lane changes the gate code: main ${base:0:8}'s gates judge ${tip:0:8} first, then its own"
+    fi
+}
+land_roots
 # In the gate's environment only, never exported: an exported GOH_ key is gate bookkeeping and must be
 # verdict-free (tests/test_verdict_free_keys.py), and this one is one process's setting.
 # The gate runs under tools/load.py with 0 spinners, which admits it by a gate slot -- the one
@@ -321,12 +339,23 @@ info "gate: $gate"
 # (GOH_GATE_CLASS, consumed by lib/admission.py): ahead of every `work` waiter (GOH.SLOTFAIR).
 # GOH_TIMING_VIA: the push gate this runs is this land's, so it leaves the ledger row to land.sh.
 land_timings="$(mktemp "$(goh_tmp)/goh-land-timings.XXXXXX")" || land_timings=""
-if ! GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" GOH_LAND_VERDICTS_REUSE="$verdicts" GOH_GATE_CLASS=ship \
-        GOH_TIMING_VIA=land GOH_TIMINGS="${GOH_TIMINGS:-$land_timings}" \
-        "$GOH_PY" "$GOH/tools/load.py" --background-ok "land gate" \
-        --max 90m 0 -- bash -c "$gate" 7>&- 8<&- </dev/null; then
-    err "land.sh: the gate failed on ${tip:0:8} -- nothing landed"
-    exit 1
+# land_gate ROOT WHOSE GATE -- the gate (empty: ROOT's push gate) under ROOT's gates; red exits 1.
+land_gate() {
+    local cmd="${3:-$1/tools/gate_profile.sh .}"
+    info "gate: $cmd (under $2's gates)"
+    local path; path="$(goh_path_front PYTHONPATH "$1"; printf %s "$PYTHONPATH")"
+    if ! GOH_DIR="$1" PYTHONPATH="$path" GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" GOH_LAND_VERDICTS_REUSE="$verdicts" \
+            GOH_GATE_CLASS=ship GOH_TIMING_VIA=land GOH_TIMINGS="${GOH_TIMINGS:-$land_timings}" \
+            "$GOH_PY" "$1/tools/load.py" --background-ok "land gate" \
+            --max 90m 0 -- bash -c "$cmd" 7>&- 8<&- </dev/null; then
+        err "land.sh: the gate failed on ${tip:0:8} under $2's gates -- nothing landed"
+        exit 1
+    fi
+}
+[ -z "$judge_root" ] || land_gate "$judge_root" "main ${base:0:8}" "$judge_gate"
+land_gate "$tip_root" "$tip_who" "$gate"
+if [ "$tip_root" != "$GOH" ]; then   # the tip's gates key the goh-landed line (GOH.VERDICTKEYDRIFT)
+    GOH="$tip_root"; export GOH_DIR="$GOH"; goh_path_front PYTHONPATH "$GOH"
 fi
 if [ -n "$hold" ]; then
     info "speculative gate green on ${tip:0:8} -- waiting for the batch's word"
