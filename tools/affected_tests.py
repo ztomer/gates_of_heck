@@ -249,11 +249,11 @@ def tree_readers(root: Path, tests: dict[str, str] | None = None) -> dict[str, s
     return found
 
 
-def affected(root: Path, changed: list[str]) -> dict[str, str]:
-    """{test file or node id: why it runs before the land} for a change to `changed` (paths from
-    `root`). A file the diff chooses runs whole; a tree reader the diff does not choose runs only
-    its reading tests (`reader_nodes`), whole when they cannot be told apart."""
-    tests = _tests(root)
+def readers(root: Path, changed: list[str], tests: dict[str, str] | None = None) -> dict[str, str]:
+    """{test file: why} for the tests that READ a path in `changed` -- every rule of THE SET but
+    the tree readers' standing run: the one notion of "a test reads this path", which the land's
+    verdict reuse asks too (lib/pre_reuse.py, GOH.PRELANDTWICE)."""
+    tests = _tests(root) if tests is None else tests
     chosen: dict[str, str] = {}
     for path in changed:
         if path.startswith("tests/test_") and path.endswith(".py") and path in tests:
@@ -278,6 +278,15 @@ def affected(root: Path, changed: list[str]) -> dict[str, str]:
                 chosen[rel] = why
         binary_runners.choose(graph, tests, changed, chosen)
         declared_reads.choose(root, tests, changed, chosen)
+    return chosen
+
+
+def affected(root: Path, changed: list[str]) -> dict[str, str]:
+    """{test file or node id: why it runs before the land} for a change to `changed` (paths from
+    `root`). A file the diff chooses runs whole; a tree reader the diff does not choose runs only
+    its reading tests (`reader_nodes`), whole when they cannot be told apart."""
+    tests = _tests(root)
+    chosen = readers(root, changed, tests)
     walking = _walking(root)
     for rel, why in tree_readers(root, tests).items():
         if rel in chosen:
@@ -310,6 +319,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--changed", nargs="*", help="the changed paths, instead of the diff")
     ap.add_argument("--why", action="store_true", help="say why each file is chosen")
     ap.add_argument(
+        "--readers-only", action="store_true", help="only the tests reading a changed path"
+    )
+    ap.add_argument(
         "--run", action="store_true", help="run the set with the root's tools/pytest.sh"
     )
     ap.add_argument(
@@ -318,7 +330,11 @@ def main(argv: list[str]) -> int:
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     changed = args.changed if args.changed is not None else changed_paths(root, args.base)
-    chosen = affected(root, changed)
+    chosen = (
+        dict(sorted(readers(root, changed).items()))
+        if args.readers_only
+        else affected(root, changed)
+    )
     if args.run:
         if args.structural and (rc := structural(root)):
             return rc

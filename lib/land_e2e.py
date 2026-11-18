@@ -75,16 +75,21 @@ def _start(path: Path, rec: dict) -> tuple[dt.datetime | None, str]:
     return (asked, "requested") if asked else (filed(path), "filed")
 
 
-def gate_cpu(gates: list[dict], repo: str, rec: dict) -> float | None:
-    """The cpu-s of the `land` row land.sh wrote inside the landing's run (a batch's items share
-    it): what the relative guard judges, never the wall (budget.trend)."""
+def gate_row(gates: list[dict], repo: str, rec: dict) -> dict:
+    """The `land` row land.sh wrote inside the landing's run (a batch's items share it), or {}."""
     start, end = _when(rec.get("started")), _when(rec.get("finished"))
     if start is None or end is None:
-        return None
+        return {}
     lo, hi = start.timestamp() - 1, end.timestamp() + 30
-    cpu = [g["cpu_s"] for g in gates
-           if g.get("repo") == repo and "cpu_s" in g and lo <= g.get("epoch", 0) <= hi]  # fmt: skip
-    return cpu[-1] if cpu else None
+    found = [g for g in gates if g.get("repo") == repo and "cpu_s" in g
+             and lo <= g.get("epoch", 0) <= hi]  # fmt: skip
+    return found[-1] if found else {}
+
+
+def gate_cpu(gates: list[dict], repo: str, rec: dict) -> float | None:
+    """The cpu-s of the landing's `land` row: what the relative guard judges, never the wall
+    (budget.trend)."""
+    return gate_row(gates, repo, rec).get("cpu_s")
 
 
 def rows(q: Path, gates: list[dict] | None = None) -> list[dict]:
@@ -132,6 +137,9 @@ def _row(q: Path, item: str, chain: list[tuple[Path, dict]], gates: list[dict]) 
         item=item,
         tries=len(chain),  # not `attempts`: that is a retries chain (budget.judge)
         pre_s=head.get("pre_s"),
+        # GOH.PRELANDTWICE: the lander reused a kept verdict (`<sha> whole|readers`), so its wall
+        # holds no second pre-step; the land row says so and the e2e row carries it.
+        pre_reused=gate_row(gates, repo, rec).get("pre_reused"),
         sha=str(rec.get("sha") or "")[:12] or None,
         **{"from": origin},
     )

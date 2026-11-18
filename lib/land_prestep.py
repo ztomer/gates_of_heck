@@ -8,6 +8,7 @@ tip queues and a line says so. Pinned by tests/test_landq.py.
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import os
 import subprocess
@@ -29,9 +30,42 @@ class Red(Exception):
     pass
 
 
-def run(wt: Path, sha: str, script: Path, bindings: tuple[str, ...]) -> float:
-    """Run SCRIPT's pre-step in WT; its seconds, or raise Red unless green or past its deadline."""
-    argv = ["env", *(f"-u{k}" for k in bindings), "GOH_LAND_PRE_ONLY=1", "bash", "-c",
+def keep_path(q: Path, sha: str) -> Path:
+    """Where one enqueue keeps its verdict (GOH.PRELANDTWICE): under the queue's `pre/`."""
+    (q / "pre").mkdir(parents=True, exist_ok=True)
+    return q / "pre" / f"{sha}-{time.time_ns()}"
+
+
+def adopt(req: dict, keep: Path) -> None:
+    """Put a kept green verdict on the request: `keep` names the very sha enqueued, or nothing."""
+    with contextlib.suppress(OSError):
+        if keep.read_text().split() == [req["sha"]]:
+            req["pre"] = {"judged": req["sha"], "keep": str(keep)}
+
+
+def lander_env(req: dict) -> list[str]:
+    """The lander's tools/land.sh reads the kept verdict from GOH_LAND_PRE_FROM."""
+    return [f"GOH_LAND_PRE_FROM={req['pre']['keep']}"] if req.get("pre") else []
+
+
+def run_kept(req: dict, q: Path, script: Path, bindings: tuple[str, ...]) -> float:
+    """`run` on REQ's worktree and sha, its green verdict kept under Q and named on REQ (`pre`);
+    the lander's land.sh removes the keep once read (lib/land_pre_reuse.sh)."""
+    keep = keep_path(q, req["sha"])
+    took = run(Path(req["worktree"]), req["sha"], script, bindings, keep)
+    adopt(req, keep)
+    return took
+
+
+def run(
+    wt: Path, sha: str, script: Path, bindings: tuple[str, ...], keep: Path | None = None
+) -> float:
+    """Run SCRIPT's pre-step in WT; its seconds, or raise Red unless green or past its deadline. A
+    green verdict is KEPT at `keep` (the judged sha; its record at `keep`.record) for the lander's
+    tools/land.sh, which reuses it where the tip moved only in paths no test reads
+    (GOH.PRELANDTWICE)."""
+    kept = [f"GOH_LAND_PRE_KEEP={keep}"] if keep else []
+    argv = ["env", *(f"-u{k}" for k in bindings), "GOH_LAND_PRE_ONLY=1", *kept, "bash", "-c",
             'cd -- "$1" && exec bash "$2"', "land", str(wt), str(script)]  # fmt: skip
     timeout = int(os.environ.get("GOH_ENQUEUE_PRE_TIMEOUT") or TIMEOUT)
     t0 = time.monotonic()

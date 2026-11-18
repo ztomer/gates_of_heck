@@ -29,8 +29,8 @@ THE ENQUEUE PRE-STEP (GOH.ENQUEUEPRE). `--enqueue --land` first runs land.sh's p
 (GOH_LAND_PRE; GOH_LAND_PRE_ONLY=1 stops it before the lock) in the caller's worktree and refuses
 a red tip naming the failing tests: a tree reader the lane never ran met its first run inside THIS
 serial queue (GOH.REUSEAUDIT's land: 537 s, red on three). Past its deadline is no verdict and the
-tip queues (GOH.PRESTEPDEADLINE). The lander's own pre-step is still the authority after a
-rebase. `--no-pre REASON` skips the run, printing the reason.
+tip queues (GOH.PRESTEPDEADLINE). A green verdict is kept on the request (`pre`) for the lander's
+pre-step (GOH.PRELANDTWICE, lib/land_prestep.py). `--no-pre REASON` skips the run, saying why.
 
 THE WAIT. `goh land --wait ID` (an item, or a request's path or name) blocks until that item's
 newest request reached done/, prints its outcome (and a red log's tail), and exits 0 landed, 1
@@ -137,7 +137,7 @@ def prestep(req: dict) -> None:
     wt = Path(req["worktree"])
     landq_inflight.mark(qdir(), req["item"] or Path(req["repo"]).name)  # until this enqueue exits
     try:  # its seconds: the e2e's pre-step share (lib/land_e2e.py)
-        req["pre_s"] = land_prestep.run(wt, req["sha"], land_script(wt), git_bindings())
+        req["pre_s"] = land_prestep.run_kept(req, qdir(), land_script(wt), git_bindings())
     except land_prestep.Red as e:
         raise Refused(str(e)) from None
 
@@ -186,8 +186,8 @@ def argv_for(req: dict) -> list[str]:
         return [*env, *ship, *(["--summary", req["summary"]] if req.get("summary") else [])]
     if req["mode"] == "land":
         wt = Path(req["worktree"])
-        return [*env, "bash", "-c", 'cd -- "$1" && exec bash "$2"', "land", str(wt),
-                str(land_script(wt))]  # fmt: skip
+        return [*env, *land_prestep.lander_env(req), "bash", "-c", 'cd -- "$1" && exec bash "$2"',
+                "land", str(wt), str(land_script(wt))]  # fmt: skip
     ref = f"{req['sha']}:refs/heads/{req['branch']}"
     return [*env, "git", "-C", req["repo"], "push", req["remote"], ref]
 

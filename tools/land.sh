@@ -64,7 +64,7 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # the wait for the lock is its own field, not gate time). A land that never took the lock (a
 # refusal before it, a failed pre-step) measured no gate and writes no row. The ledger never fails
 # a land: the script's exit status is what it was.
-verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall="" pre_run="" pre_workers=""
+verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall="" pre_run="" pre_workers="" pre_reused=""
 # shellcheck disable=SC2329  # invoked by the EXIT trap below
 land_exit() {
     local rc=$?
@@ -74,7 +74,8 @@ land_exit() {
     goh_span_record land "$(goh_repo_id "${main:-.}")" "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" \
         ${land_timings:+--timings "${GOH_TIMINGS:-$land_timings}"} --field "wait_lock_s=$lock_wait" \
         --field "exit=$rc" ${pre_wall:+--field "pre_s=$pre_wall"} \
-        ${pre_run:+--field "pre_run_s=$pre_run" --field "pre_workers=$pre_workers"} --field "sha=$(printf %.12s "${tip:-}")" || true
+        ${pre_run:+--field "pre_run_s=$pre_run" --field "pre_workers=$pre_workers"} \
+        ${pre_reused:+--field "pre_reused=$pre_reused"} --field "sha=$(printf %.12s "${tip:-}")" || true
 }
 trap land_exit EXIT
 # SPECULATIVE (GOH.LANDBISECTPAR, lib/landq_spec.py): the batch gates a red stack's second half on
@@ -170,12 +171,16 @@ land_rebase() {
     tip="$now"
     rebased=1   # the gates that judge the new tip are chosen before the gate (land_roots, below)
 }
-# land_pre -- the pre-step on the tip as it is now; exits 1 on a red set (THE PRE-STEP, above).
+# land_pre [CMD RECORD] -- the pre-step (or CMD, recording into RECORD) on the tip as it is now;
+# exits 1 on a red set (THE PRE-STEP, above). A green full run leaves its tip in pre_judged.
 land_pre() {
+    local cmd="${1:-$pre}" record
     [ -n "$verdicts" ] || verdicts="$(mktemp "$(goh_tmp)/goh-land-verdicts.XXXXXX")" || exit 2
-    rm -f "$verdicts"   # the pre-step's suite writes it whole, or there is no record
+    record="${2:-$verdicts}"
+    rm -f "$record"   # the pre-step's suite writes it whole, or there is no record
+    [ -n "${1:-}" ] || pre_judged=""
     pre_base="$(git -C "$main" rev-parse HEAD)"
-    info "pre-land: $pre"
+    info "pre-land: $cmd"
     # The SHORT lane (GOH.PRESTEPADMIT): the commit gate's slots, which no long gate takes, so the
     # pre-step starts while long gates hold every long slot -- a land queues for a long slot ONCE,
     # for its gate. As a `ship` gate it queued twice, and a lane that would go red waited up to
@@ -189,10 +194,10 @@ land_pre() {
     pre_back="$("$GOH_PY" "$GOH/lib/pre_deadline.py" show --workers 1 --floor "$pre_max" --ceiling "$pre_ceil")" || exit 2
     pre_t0=$(date +%s)
     pre_rc=0
-    (cd "$here" && GOH_LAND_VERDICTS_RECORD="$verdicts" GOH_GATE_CLASS=short "$GOH_PY" "$GOH/tools/load.py" \
+    (cd "$here" && GOH_LAND_VERDICTS_RECORD="$record" GOH_GATE_CLASS=short "$GOH_PY" "$GOH/tools/load.py" \
         --background-ok "pre-land" --max "$((pre_back + 60))" 0 -- \
         "$GOH_PY" "$GOH/lib/pre_deadline.py" run --mark "$pre_start" --floor "$pre_max" --ceiling "$pre_ceil" \
-        -- bash -c "$pre" pre-land "$pre_base" </dev/null 7>&- 8<&-) || pre_rc=$?
+        -- bash -c "$cmd" pre-land "$pre_base" </dev/null 7>&- 8<&-) || pre_rc=$?
     pre_t1=$(date +%s)
     pre_s="" pre_workers="" pre_limit="" pre_run=""
     read -r pre_s pre_workers pre_limit <"$pre_start" 2>/dev/null || true
@@ -213,15 +218,16 @@ land_pre() {
     elif [ "$pre_rc" -ne 0 ]; then
         err "land.sh: the pre-land tests failed on ${tip:0:8} $pre_took, before the land lock and the gate -- nothing landed"
         exit 1
-    elif [ -f "$here/tests/_land_verdicts.py" ] && [ ! -s "$verdicts" ]; then
+    elif [ -f "$here/tests/_land_verdicts.py" ] && [ ! -s "$record" ]; then
         # A tree whose suite records (tests/_land_verdicts.py) owes a record from a green pre-step:
         # for days tests/suite_home.py dropped GOH_LAND_VERDICTS_RECORD, every land went green with
         # none, and reuse and carry were inert with nothing said (GOH.VERDICTCARRY2). A pre-step
         # that ran no test says so in the record (tools/affected_tests.py); none, or empty, is a fault.
-        err "land.sh: the pre-land tests were green on ${tip:0:8} $pre_took but wrote no verdict record ($verdicts) although tests/_land_verdicts.py records one -- GOH_LAND_VERDICTS_RECORD did not reach the suite (tests/suite_home.py CALLER_INPUTS?) -- nothing landed"
+        err "land.sh: the pre-land tests were green on ${tip:0:8} $pre_took but wrote no verdict record ($record) although tests/_land_verdicts.py records one -- GOH_LAND_VERDICTS_RECORD did not reach the suite (tests/suite_home.py CALLER_INPUTS?) -- nothing landed"
         exit 1
     else
         ok "pre-land green $pre_took"
+        [ -n "${1:-}" ] || pre_judged="$tip"
     fi
 }
 # THE TIP MAIN WILL HOLD (GOH.PREPARITY class 3): a branch behind main is rebased BEFORE its pre-step,
@@ -240,11 +246,17 @@ if [ -n "${GOH_LAND_STACK_ONTO:-}" ]; then
     exit 0
 fi
 [ -n "${GOH_LAND_PRE_ONLY:-}" ] || land_rebase
-[ -z "$pre" ] || land_pre
+# THE ENQUEUE'S VERDICT (GOH.PRELANDTWICE, lib/land_pre_reuse.sh): a kept green verdict is reused
+# where the tip moved only in paths no test reads.
+# shellcheck source=lib/land_pre_reuse.sh
+. "$GOH/lib/land_pre_reuse.sh" || exit 2
+land_pre_from
+[ -z "$pre" ] || land_pre_again "the enqueue"
 # GOH_LAND_PRE_ONLY (GOH.ENQUEUEPRE): `goh land --enqueue` runs the pre-step in the caller's worktree
 # before it queues the tip -- this script, so the set, the lane and the deadline are the lander's own
 # -- and stops here: no lock, no gate, no fast-forward. 0 is green or no verdict, 1 is a red set.
 if [ -n "${GOH_LAND_PRE_ONLY:-}" ]; then
+    land_pre_keep
     exit 0
 fi
 # The land lock (GOH.LANDSERIAL, header): fd 7, held until this script exits.
@@ -293,7 +305,7 @@ fi
 land_rebase
 if [ "$rebased" = 1 ] && [ -n "$pre" ]; then
     info "pre-land: main moved during the pre-step -- again on ${tip:0:8}"
-    land_pre
+    land_pre_again "this land's"
 fi
 # THE GATES THAT JUDGE A GOH LAND (GOH.PRESTEPHEAD, docs/decisions/D-0012). The queue drives every
 # land with main's land.sh (tools/landq.py land_script), but the gate code is the tree's own when the

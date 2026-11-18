@@ -185,6 +185,18 @@ def test_the_e2e_carries_its_gates_cpu_for_the_relative_guard(ledger: Path) -> N
     assert row["cpu_s"] == 900.0
 
 
+def test_the_e2e_says_when_its_land_reused_the_enqueues_pre_step_verdict(ledger: Path) -> None:
+    """GOH.PRELANDTWICE: a land that ran no second pre-step is a shorter wall for a reason."""
+    put(ledger, 0.0, "GOH.A", "landed", 1.0, 4.0)
+    inside = (T0 + dt.timedelta(minutes=4)).timestamp()
+    gates = [{"kind": "land", "repo": "goh", "epoch": inside, "cpu_s": 9.0,
+              "pre_reused": "0123456789ab whole"}]  # fmt: skip
+    (row,) = land_e2e.rows(ledger, gates)
+    assert row["pre_reused"] == "0123456789ab whole"
+    (plain,) = land_e2e.rows(ledger, [{**gates[0], "pre_reused": None}])
+    assert plain.get("pre_reused") is None
+
+
 def test_an_e2e_without_cpu_seconds_is_never_judged_on_the_wall() -> None:
     k = budget.KINDS[land_e2e.PLAIN]
     runs = [{"wall_s": w, "ok": True} for w in (100, 100, 100, 100, 400)]
