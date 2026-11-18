@@ -55,7 +55,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from lib import binary_runners, declared_reads, source_closure, test_closure
+from lib import binary_runners, declared_reads, fast_tests, source_closure, test_closure
 from tui.lib import counted, info, ok
 
 # Tree readers that neither a test name nor a tree-walking call in their own source gives away.
@@ -329,6 +329,8 @@ def main(argv: list[str]) -> int:
     )
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    if args.run and (rc := fast_tests.run(root, affected(root, []))):
+        return rc  # the cheap judges, before the diff is even read (GOH.PRESTEPFAILFAST)
     changed = args.changed if args.changed is not None else changed_paths(root, args.base)
     chosen = (
         dict(sorted(readers(root, changed).items()))
