@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v0.139.1 -- Rust gate tests that need no network, a self-hosted hook test that commits a sample instead of the whole tree, and a land pre-step that runs the cheap tests first
+
+* The suite's rust gate runs no longer need the network: `tests/_fake_cargo.offline()` runs `rust_gate.sh` in its own offline mode (`GOH_DEPS_OFFLINE=1`) with a recorded fake `cargo audit` and an empty private advisory database, used by `test_gate_temp_leaks.py::test_the_rust_gate_removes_its_scope_file` and, through an autouse fixture, every test in `test_rust_gate.py`. A crates.io name that did not resolve for a minute (2026-11-18 12:19) had turned the GOH.AUDITSPIN refusal into a red batch gate; with every proxy pointed at an unresolvable host, the 14 tests that went red now pass.
+
+* The land pre-step (`tools/affected_tests.py --run`, at `goh land --enqueue` and in the lander) runs the cheap judges FIRST: the tree readers' tests the suite's duration cache measures cheapest (`lib/fast_tests.py`: at most 0.5 s each, 4 s summed, about 85 tests), serially, before the structural gates and the ~500 s judges phase. A red one is refused naming the test: a missing docs/map.md row on goh's tree was refused by the lander's pre-step in 10.7 s and 15.6 s at load ~25, where BATCHWINDOW's enqueue took 473 s (GOH.PRESTEPFAILFAST). A green land pays the set's run, 8-17 s at that load.
+
+* `test_self_hosted_repo_satisfies_its_own_hook` (now `tests/test_self_hosted_hook.py`, split from `tests/test_install.py` past its 450-line headroom) no longer runs a second whole gate (GOH.SELFHOSTTEST): it commits a derived sample (the hook config, `.githooks/`, and one tracked file of every kind) over a base holding the rest of the tree, in a shared clone of goh rather than a fresh `git init`, so a seed keyed by goh's root commit finds it. 60.4 s at load 30 before (247.2 s in BATCHWINDOW's bisect gate), 13.9 s at load 34 after; the whole tree under every step stays the push gate's (`structural.sh --full`, `py_staged.sh --all`).
+
 ## v0.139.0 -- A lander that waits for lands still in their pre-step and batches them, goh land-profile, and tests that pin the machine shape so CI and the laptop agree
 
 * `goh land`: a land waits briefly for the lands still in their enqueue pre-step, so a batched cycle goes through ONE gate. When the queue's head is a land and `enqueuing/` holds a live marker of another land of its repo (not its own, never a dead pid's), the lander holds the batch until that land files, the batch is full, or `GOH_LANDQ_WINDOW` seconds (default 120, 0 off) past the head's filing; each wait is two lines in lander.log. Cycle 1 (2026-11-18) ran two gates where one would do: GOH.EARLYCONFLICT filed 32 s before GOH.E2EARMED and went alone. Enqueue markers now name their repo. GOH.BATCHWINDOW.
