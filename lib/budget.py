@@ -9,7 +9,9 @@ OWNER, 2026-11-15: "once we reach the 10m mark, going above 15m will trigger a s
 cycle until we are back below 10m". Per SUBJECT (a push gate, a land, a ship, a ship's release step,
 per repo) a hysteresis state over its runs in the ledger, thresholds from ONE table (KINDS):
 
-    UNARMED   no run has finished within ARM yet: nothing to defend, so nothing can breach
+    UNARMED   no run has finished within ARM yet: nothing to defend, so nothing can breach,
+              unless the kind's target was set before its first run (`target_set`, the land e2e:
+              GOH.E2EARMED), where a figure over BREACH is BREACHED even before ARM was met
     ARMED     a run finished in <= ARM (10 min)
     BREACHED  an ARMED (or CLEARED) subject ran > BREACH (15 min)
     CLEARED   a BREACHED subject ran <= ARM again; its next run <= ARM makes it ARMED
@@ -95,6 +97,9 @@ class Kind:
     span: str  # where the subject starts and ends
     writer: str  # who appends it; "" when no writer feeds it yet (listed UNMEASURED)
     wall_trend: bool = True  # False: the relative guard judges cpu-s only, never the wall
+    # True: the owner set the target before any run, so an UNARMED subject over BREACH is
+    # BREACHED (GOH.E2EARMED); False: nothing to defend until a run has been <= ARM once
+    target_set: bool = False
 
 
 # THE ONE TABLE (owner 2026-11-15): every threshold lives here, none in code. tests/test_budget.py
@@ -159,6 +164,7 @@ KINDS: dict[str, Kind] = {
         "retries in it; no coverage step",
         "lib/land_e2e.py from landq done/ and logs/",
         wall_trend=False,
+        target_set=True,
     ),
     land_e2e.INSTRUMENTED: Kind(
         LAND_E2E_INSTRUMENTED_ARM_S,
@@ -168,6 +174,7 @@ KINDS: dict[str, Kind] = {
         "retries in it; the land ran the coverage step",
         "lib/land_e2e.py from landq done/ and logs/",
         wall_trend=False,
+        target_set=True,
     ),
     "suite": Kind(
         10 * MIN,
@@ -202,7 +209,10 @@ def state_of(runs: list[dict], kind: Kind) -> str:
     for i in range(len(runs)):
         v = figure(runs, i, kind)
         if state == UNARMED:
-            state = ARMED if v <= kind.arm_s else UNARMED
+            if v <= kind.arm_s:
+                state = ARMED
+            elif kind.target_set and v > kind.breach_s:
+                state = BREACHED
         elif state in (ARMED, CLEARED):
             if v > kind.breach_s:
                 state = BREACHED

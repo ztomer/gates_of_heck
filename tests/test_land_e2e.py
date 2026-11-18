@@ -75,6 +75,34 @@ def test_one_slow_land_among_four_fast_ones_does_not_breach(name: str) -> None:
     assert budget.state_of([*fast, slow, slow, slow], k) == budget.BREACHED  # the median moved
 
 
+@pytest.mark.parametrize("name", [land_e2e.PLAIN, land_e2e.INSTRUMENTED])
+def test_an_e2e_never_under_target_but_over_breach_is_breached(name: str) -> None:
+    """GOH.E2EARMED: the owner set the target before any run, so an e2e that starts over its
+    breach line is BREACHED on its first median, not UNARMED forever (52.8 min read UNARMED)."""
+    k = budget.KINDS[name]
+    over = [{"wall_s": k.breach_s + 1, "ok": True} for _ in range(5)]
+    assert budget.state_of(over, k) == budget.BREACHED
+    assert budget.state_of(over[:1], k) == budget.BREACHED
+
+
+@pytest.mark.parametrize("name", [land_e2e.PLAIN, land_e2e.INSTRUMENTED])
+def test_an_e2e_never_under_target_and_under_breach_is_not_breached(name: str) -> None:
+    k = budget.KINDS[name]
+    band = [{"wall_s": k.breach_s, "ok": True} for _ in range(5)]
+    assert budget.state_of(band, k) == budget.UNARMED  # in the band, target never met: no breach
+    assert budget.state_of([*band, *[{"wall_s": k.arm_s, "ok": True}] * 3], k) == budget.ARMED
+
+
+def test_a_breached_from_the_start_e2e_reaches_the_breach_lines(ledger: Path) -> None:
+    for i in range(3):
+        put(ledger, 30.0 * i, f"GOH.S{i}", "landed", 30.0 * i + 1, 30.0 * i + 25)
+    land_e2e.backfill(ledger)
+    snap = budget.snapshot()
+    (b,) = [b for b in snap["breaches"] if b["subject"] == "goh land e2e plain"]
+    assert b["figure_s"] == 25 * MIN
+    assert "✗ goh land e2e plain BREACHED: file a self-improvement item" in budget.render(snap)
+
+
 def test_a_plain_land_spans_its_request_to_landed(ledger: Path) -> None:
     put(ledger, 1.0, "GOH.A", "landed", 2.0, 4.5, requested=iso(0.0), pre_s=55.0)
     (row,) = land_e2e.rows(ledger)
