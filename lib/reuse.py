@@ -194,9 +194,15 @@ register(
     "rustcov", ("repo", "rust_identity"), DAY_S,
     "the Rust coverage measurement and its sccache/llvm-cov build, reused by identity",
     store="goh-proven (gates/_rust_proven.sh)", sites=("gates/_rust_proven.sh",),
-    unsampled="a shadow is a whole instrumented build and measurement, minutes a sample, under "
-    "rust_gate's set -e (a red one ends the gate uncompared); hosted CI's uncached build is its "
-    "fresh side for a public repo",
+    unsampled="sampled through `profcarry` (GOH.COVCARRY2): a reuse claims its kept summary for "
+    "the tree, and the idle lander's fresh instrumented run of that tree compares; a shadow here "
+    "would be a whole instrumented build and measurement under rust_gate's set -e",
+)  # fmt: skip
+PROFCARRY = register(
+    "profcarry", ("repo", "tree", "tools"), DAY_S,
+    "a land's per-crate coverage claim on a tree, built on reuse (carried suite verdicts, "
+    "rustcov's reused measurement), compared by the fresh full instrumented run (prof_carry.py)",
+    sites=("lib/prof_carry.py",), shadow="inline",
 )  # fmt: skip
 register(
     "file", ("checker", "key"), 30 * DAY_S,

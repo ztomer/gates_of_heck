@@ -345,6 +345,10 @@ def _plan(config) -> dict:
         return _state["plan"]  # type: ignore[return-value]
     path = _on(REUSE)
     coverage = instrumented()
+    if path and coverage and not _carry_audited_on():  # GOH.COVCARRY2: the kill switch
+        lines = ["land verdicts: nothing reused under coverage: the audit turned `profcarry` off"]
+        _state["plan"] = {"lines": lines, "skipped": {}, "other": 0, "shadows": [], "skip": set()}
+        return _state["plan"]  # type: ignore[return-value]
     same, why = reusable(path, identity(), coverage) if path else (set(), "")
     lines = [f"land verdicts: {len(same)} tests passed by the pre-land run are reused ({why})"]
     plan = {"lines": lines, "skipped": {}, "other": 0, "shadows": []}
@@ -363,6 +367,14 @@ def _plan(config) -> dict:
     plan["skip"] = set(plan["skipped"])
     _state["plan"] = plan
     return plan
+
+
+def _carry_audited_on() -> bool:
+    """Off once a fresh full instrumented run disagreed with a land's claim (lib/prof_carry.py)."""
+    if not _store():
+        return True
+    with _in_store():
+        return _lib("prof_carry").on()
 
 
 def _file_passed(path: str) -> dict[str, bool]:

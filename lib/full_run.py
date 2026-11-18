@@ -64,9 +64,12 @@ def prepare(main: Path, wt: Path, sha: str) -> str:
 # gate's Rust mode with its external suite, as the land gate runs it (gates/rust_gate.sh
 # rust_coverage_checks) -- the whole suite against the INSTRUMENTED binary, so its record is the
 # fresh instrumented full run every ship requires (lib/reuse.py full_suite) and the shadow the
-# coverage carry is compared with (lib/prof_carry.py). Read from the tip's own .gatesrc, in bash.
+# coverage carry is compared with (lib/prof_carry.py: GOH_PROFCARRY_AUDIT=fresh makes the step
+# compare its summary with the land's claim instead of claiming, GOH.COVCARRY2). Read from the
+# tip's own .gatesrc, in bash.
 INSTRUMENTED = (
     ". ./.gatesrc >/dev/null 2>&1 </dev/null; "
-    'exec bash gates/coverage_gate.sh --lang rust --external "$GOH_COV_RUST_EXTERNAL" '
+    "GOH_PROFCARRY_AUDIT=fresh exec bash gates/coverage_gate.sh --lang rust "
+    '--external "$GOH_COV_RUST_EXTERNAL" '
     '--floor "$GOH_COV_FLOOR_RUST" .'
 )

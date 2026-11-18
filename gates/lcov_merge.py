@@ -38,6 +38,7 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 
 import argparse
 import glob
+import json
 import os
 import re
 import sys
@@ -144,8 +145,24 @@ def _load_floors(path):
     }
 
 
-def merge(parts, floor, include_re="", floors_json=None, marker_ceiling=None):
-    """The union + floor decision. Returns process exit code."""
+def crate_of(path: str) -> str:
+    """The crate a source file is of: the directory after `crates/`; "-" outside one."""
+    m = re.search(r"(?:^|/)crates/([^/]+)/", path)
+    return m.group(1) if m else "-"
+
+
+def write_summary(dest, per_crate) -> None:
+    """Each crate's [covered, coverable] lines, the floor's own count (GOH.COVCARRY2): the claim a
+    land records and the idle full run compares (lib/prof_carry.py). Written whole (a rename)."""
+    tmp = f"{dest}.{os.getpid()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump({"crates": {k: list(v) for k, v in sorted(per_crate.items())}}, fh)
+    os.replace(tmp, dest)
+
+
+def merge(parts, floor, include_re="", floors_json=None, marker_ceiling=None, summary=None):
+    """The union + floor decision. Returns process exit code; `summary`, a path for the per-crate
+    counts (write_summary)."""
     inc_pat = None
     if include_re:
         try:
@@ -199,16 +216,22 @@ def merge(parts, floor, include_re="", floors_json=None, marker_ceiling=None):
     missed = defaultdict(list)
     total = len(line_best)
     covered = 0
+    per_crate = defaultdict(lambda: [0, 0])
     for (f, ln), cnt in line_best.items():
+        per_crate[crate_of(f)][1] += 1
         if cnt > 0:
             covered += 1
+            per_crate[crate_of(f)][0] += 1
             continue
         for st, end, executed in spans.get(f, []):
             if st <= ln <= end and executed:
                 covered += 1
+                per_crate[crate_of(f)][0] += 1
                 break
         else:
             missed[f].append(ln)
+    if summary and total:
+        write_summary(summary, per_crate)
 
     if total == 0:
         print("✗ [coverage] no coverable lines found in any lcov part")
@@ -305,6 +328,7 @@ def main(argv=None) -> int:
     ap.add_argument(
         "--marker-ceiling", dest="marker_ceiling", default="", help="forgiveness ceiling JSON"
     )
+    ap.add_argument("--summary", default="", help="write each crate's covered/coverable lines")
     args = ap.parse_args(argv)
     if not args.include and os.environ.get("GOH_COV_INCLUDE_RE"):
         args.include = os.environ["GOH_COV_INCLUDE_RE"]
@@ -316,7 +340,12 @@ def main(argv=None) -> int:
         ap.error("need --floor N or --floors-json PATH")
     parts = sorted(glob.glob(os.path.join(args.parts_dir, "part-*.info")))
     return merge(
-        parts, args.floor, args.include, args.floors_json or None, args.marker_ceiling or None
+        parts,
+        args.floor,
+        args.include,
+        args.floors_json or None,
+        args.marker_ceiling or None,
+        args.summary or None,
     )
 
 

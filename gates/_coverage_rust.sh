@@ -361,7 +361,20 @@ PYEOF
     if [ -n "$MARKER_CEILING" ]; then _MERGE_ARGS+=(--marker-ceiling "$MARKER_CEILING"); fi
     cov_phase "merge + floor" ""
     local merge_rc=0 diff_rc=0
-    "$GOH_PY" "$GOH_ROOT/gates/lcov_merge.py" "${_MERGE_ARGS[@]}" "$PARTS" || merge_rc=$?
+    "$GOH_PY" "$GOH_ROOT/gates/lcov_merge.py" "${_MERGE_ARGS[@]}" --summary "$PARTS/summary.json" \
+        "$PARTS" || merge_rc=$?
+    # THE CLAIM AND ITS AUDIT (GOH.COVCARRY2, the owner's term 3; lib/prof_carry.py). A suite run
+    # outside cargo test stands on carried verdicts: a green merge claims its per-crate summary for
+    # this tree, and the fresh full instrumented run (lib/full_run.py INSTRUMENTED, which says so in
+    # GOH_PROFCARRY_AUDIT=fresh) compares its own with that claim instead -- a disagreement turns
+    # the carry off. Neither ever changes this step's verdict.
+    if [ "$merge_rc" = 0 ] && [ -n "${EXTERNAL:-}" ] && [ -s "$PARTS/summary.json" ]; then
+        local verb=claim said
+        [ "${GOH_PROFCARRY_AUDIT:-}" != fresh ] || verb=compare
+        said="$("$GOH_PY" "$GOH_ROOT/lib/prof_carry.py" "$verb" --repo "$PROJ" \
+            --summary "$PARTS/summary.json" --by "coverage step" </dev/null 2>&1)" || true
+        info "${said:-coverage audit: $verb said nothing}"
+    fi
     # THE CHANGE'S LINES (GOH.DIFFCOV): a second, separate reader of the same parts -- every
     # executable Rust line the change adds or edits is covered, named file:line when not
     # (gates/diff_cov.py; GOH_COV_DIFF on|warn|off). It reads the report, never makes it.

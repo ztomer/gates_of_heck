@@ -70,15 +70,17 @@ def test_the_idle_full_run_is_the_instrumented_coverage_run(tmp_path) -> None:
     """The idle lander's default command runs the tip's coverage gate in Rust mode with the
     external suite and the floor its .gatesrc declares -- a stand-in gate says what it was asked."""
     (tmp_path / "gates").mkdir()
-    (tmp_path / "gates" / "coverage_gate.sh").write_text('printf "%s\\n" "$@"\n')
+    (tmp_path / "gates" / "coverage_gate.sh").write_text(
+        'printf "%s\\n" "$GOH_PROFCARRY_AUDIT" "$@"\n'  # fresh: it compares, never claims
+    )
     (tmp_path / ".gatesrc").write_text("GOH_COV_FLOOR_RUST=93\nGOH_COV_RUST_EXTERNAL='suite x'\n")
     argv = idle_suite.default_argv()
     assert argv[-3:-1] == ["bash", "-c"], argv
     r = subprocess.run(argv[-3:], cwd=tmp_path, capture_output=True, text=True, check=False,
                        stdin=subprocess.DEVNULL, env=hermetic_env())  # fmt: skip
     assert r.returncode == 0, r.stderr
-    assert r.stdout.split("\n")[:-1] == [
-        "--lang", "rust", "--external", "suite x", "--floor", "93", "."], r.stdout  # fmt: skip
+    want = ["fresh", "--lang", "rust", "--external", "suite x", "--floor", "93", "."]
+    assert r.stdout.split("\n")[:-1] == want, r.stdout
 
 
 # -- term 1: the floor is judged on every run's profile; only a MEASURED node is carried ----------

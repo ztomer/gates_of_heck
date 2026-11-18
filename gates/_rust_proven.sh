@@ -423,13 +423,17 @@ rust_coverage_reuse() {
     else
         key="$(printf '%s\n' "$cov_in" | hash_hex /dev/stdin)"
         if hit="$(proven_lookup "$key" "$step" </dev/null)"; then
-            if bins="$(rust_cov_plain_bins)"; then
+            if ! bins="$(rust_cov_plain_bins)"; then
+                why="a measurement is recorded, but no plain build of these inputs to run the tests against: $bins"
+            elif [ "$(_rust_cov_audit ask)" = off ]; then
+                why="a measurement is recorded, but the coverage audit turned reuse off (profcarry: lib/reuse_audit.py report)"
+            else
                 read -r age by <<<"$hit"
                 measure "[rust] coverage: reused -- measured on these Rust inputs $age ago by $by; the tests run plain"
+                _rust_cov_claim "$key"
                 RUST_COV_PLAIN_BINS="$bins" "$plain"
                 return
             fi
-            why="a measurement is recorded, but no plain build of these inputs to run the tests against: $bins"
         else
             why="$(_rust_cov_miss "$step" "$cov_in")"
         fi
@@ -445,14 +449,36 @@ rust_coverage_reuse() {
         warn "[rust] could not write the proven record for the coverage measurement"
         return 0
     fi
-    # The inputs, kept by key so the next miss names what moved; one per live record.
+    # The inputs, kept by key so the next miss names what moved; one per live record. Beside them,
+    # the measurement's per-crate summary: what a reuse of it claims (_rust_cov_claim).
     if ! { kept="$(_rust_cov_inputs_dir)" && mkdir -p "$kept" && printf '%s\n' "$cov_in" >"$kept/$key"; }; then
         warn "[rust] could not keep the coverage measurement's inputs beside its record"
         return 0
     fi
+    cp "$cargo_dir/target/llvm-cov/lcov-parts/summary.json" "$kept/$key.summary.json" 2>/dev/null \
+        || rm -f "$kept/$key.summary.json"
     local f
     for f in "$kept"/*; do
-        if [ -f "$f" ] && [ ! -f "${kept%/*}/${f##*/}" ]; then rm -f "$f"; fi
+        if [ -f "$f" ] && [ ! -f "${kept%/*}/$(basename "$f" .summary.json)" ]; then rm -f "$f"; fi
     done
     return 0
+}
+
+# _rust_cov_audit <verb> [args] -- lib/prof_carry.py on this workspace's repository (GOH.COVCARRY2):
+# `ask` prints reuse|shadow|off, one audited use of `profcarry`; `claim` records a summary.
+_rust_cov_audit() {
+    local top
+    top="$(cd "$cargo_dir" && git rev-parse --show-toplevel 2>/dev/null)" || { echo off; return 0; }
+    "$GOH_PY" "$PROVEN_GOH_ROOT/lib/prof_carry.py" "$@" --repo "$top" </dev/null 2>/dev/null || echo off
+}
+
+# _rust_cov_claim <key> -- a reuse of the measurement at <key> claims its kept summary for this tree,
+# which the idle lander's fresh instrumented run of the tree compares (the owner's term 3).
+_rust_cov_claim() {
+    local kept
+    kept="$(_rust_cov_inputs_dir)" && [ -s "$kept/$1.summary.json" ] || {
+        info "[rust] coverage audit: no summary kept with this measurement -- nothing claimed"
+        return 0
+    }
+    info "[rust] $(_rust_cov_audit claim --summary "$kept/$1.summary.json" --by "rustcov reuse" | tail -n 1)"
 }
