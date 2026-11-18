@@ -140,6 +140,27 @@ def _git(root: Path, *args: str) -> str:
     return r.stdout.strip() if r.returncode == 0 else ""
 
 
+def base_sha(root: Path, base: str) -> str | None:
+    out = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"],
+        capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
+    )  # fmt: skip
+    return out.stdout.strip() or None
+
+
+def stamp(record: str, base: str | None) -> None:
+    """The record says it is the WHOLE selection the diff from BASE chose (GOH.SUITEONCE): the gate
+    of the tree it judged takes it for the suite only then (lib/pre_reuse.py `suite`)."""
+    if not base or not record or record == os.devnull:
+        return
+    try:
+        rec = json.loads(Path(record).read_text())
+    except (OSError, ValueError):
+        return
+    if isinstance(rec, dict):
+        Path(record).write_text(json.dumps({**rec, "base": base, "selection": "affected"}))
+
+
 def suite(root: Path, record: Path, base: str) -> tuple[bool, str, str]:
     """(the gate's suite may take the pre-step's verdict instead of a run, why, the verdict's id)
     (GOH.SUITEONCE). It may when the record is the pre-step's WHOLE selection (tools/

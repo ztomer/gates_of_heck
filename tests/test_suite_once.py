@@ -182,19 +182,15 @@ def test_the_gates_runner_runs_pytest_when_the_verdict_does_not_hold(tmp_path):
 
 
 def test_the_pre_step_stamps_its_whole_selection_and_its_base(repo: Path, tmp_path: Path):
-    sys.path.insert(0, str(REPO_ROOT / "tools"))
-    try:
-        import affected_tests
-    finally:
-        sys.path.pop(0)
+    affected_tests = pre_reuse  # tools/affected_tests.py's stamp, kept beside its reader
     head = git(repo, "rev-parse", "HEAD").strip()
-    assert affected_tests._base_sha(repo, "HEAD") == head
-    assert affected_tests._base_sha(repo, "no-such-rev") is None
+    assert affected_tests.base_sha(repo, "HEAD") == head
+    assert affected_tests.base_sha(repo, "no-such-rev") is None
     rec = tmp_path / "rec.json"
     rec.write_text(json.dumps({"identity": "ID", "passed": {}}))
-    affected_tests._stamp(str(rec), None)  # a narrowed run (--changed, --readers-only): unstamped
+    affected_tests.stamp(str(rec), None)  # a narrowed run (--changed, --readers-only): unstamped
     assert "selection" not in json.loads(rec.read_text())
-    affected_tests._stamp(str(rec), head)
+    affected_tests.stamp(str(rec), head)
     got = json.loads(rec.read_text())
     assert (got["base"], got["selection"]) == (head, "affected"), got
 

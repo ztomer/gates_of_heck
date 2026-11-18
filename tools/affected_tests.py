@@ -55,7 +55,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from lib import binary_runners, declared_reads, fast_tests, source_closure, test_closure
+from lib import binary_runners, declared_reads, fast_tests, pre_reuse, source_closure, test_closure
 from tui.lib import counted, info, ok
 
 # Tree readers that neither a test name nor a tree-walking call in their own source gives away.
@@ -341,7 +341,7 @@ def main(argv: list[str]) -> int:
         if args.structural and (rc := structural(root)):
             return rc
         whole = args.changed is None and not args.readers_only
-        return run(root, changed, chosen, _base_sha(root, args.base) if whole else None)
+        return run(root, changed, chosen, pre_reuse.base_sha(root, args.base) if whole else None)
     for rel, why in chosen.items():
         print(f"{rel}  # {why}" if args.why else rel)
     return 0
@@ -367,27 +367,6 @@ def phases(root: Path, chosen: dict[str, str]) -> tuple[list[str], list[str]]:
     readers = tree_readers(root)
     judges = [n for n in chosen if n.split("::")[0] in readers]
     return judges, [n for n in chosen if n not in judges]
-
-
-def _base_sha(root: Path, base: str) -> str | None:
-    out = subprocess.run(
-        ["git", "-C", str(root), "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"],
-        capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
-    )  # fmt: skip
-    return out.stdout.strip() or None
-
-
-def _stamp(record: str, base: str | None) -> None:
-    """The record says it is the WHOLE selection the diff from BASE chose (GOH.SUITEONCE): the gate
-    of the tree it judged takes it for the suite only then (lib/pre_reuse.py `suite`)."""
-    if not base or not record or record == os.devnull:
-        return
-    try:
-        rec = json.loads(Path(record).read_text())
-    except (OSError, ValueError):
-        return
-    if isinstance(rec, dict):
-        Path(record).write_text(json.dumps({**rec, "base": base, "selection": "affected"}))
 
 
 def run(root: Path, changed: list[str], chosen: dict[str, str], base: str | None = None) -> int:
@@ -434,7 +413,7 @@ def run(root: Path, changed: list[str], chosen: dict[str, str], base: str | None
             Path(record).replace(first)  # the rest's run writes its own; _merge joins them
     if first and first.is_file():
         _merge(Path(record), first)
-    _stamp(record, base)
+    pre_reuse.stamp(record, base)
     return 0
 
 
