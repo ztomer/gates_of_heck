@@ -11,11 +11,13 @@ and reads the other and the template unchanged.
 
 from __future__ import annotations
 
+import atexit
 import ctypes
 import errno
 import os
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 # clonefile(2) cannot serve these: another volume, a filesystem without clones. Any other error is
@@ -103,3 +105,19 @@ def _refuse_self_reference(tree: Path) -> None:
                 raise ValueError(
                     f"template {tree} names its own directory in {path}: not cloneable"
                 )
+
+
+_PROCESS_TEMPLATES: dict[str, Path] = {}
+
+
+def process_template(key: str, build) -> Path:
+    """`template` for a helper called with only a path (no `tmp_path_factory`): built once per
+    process in a temp dir of its own, removed when the process exits."""
+    if key not in _PROCESS_TEMPLATES:
+        home = Path(tempfile.mkdtemp(prefix=f"goh-template-{key}."))
+        atexit.register(shutil.rmtree, home, True)
+        tree = home / key
+        build(tree)
+        _refuse_self_reference(tree)
+        _PROCESS_TEMPLATES[key] = tree
+    return _PROCESS_TEMPLATES[key]

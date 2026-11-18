@@ -13,6 +13,7 @@ import textwrap
 
 import pytest
 from _fast_git import fast_init
+from _tree_clone import from_template
 from conftest import REPO_ROOT
 
 STAMP = REPO_ROOT / "lib" / "tree_stamp.py"
@@ -25,15 +26,18 @@ def git(repo, *args):
 
 
 @pytest.fixture
-def repo(tmp_path):
-    r = tmp_path / "repo"
+def repo(tmp_path, tmp_path_factory):
+    """One committed file: built once per worker, cloned per test (GOH.FIXTURECOST)."""
+    return from_template(tmp_path_factory, "tree-stamp", _build_repo, tmp_path / "repo")
+
+
+def _build_repo(r):
     r.mkdir()
     fast_init(r)
     (r / ".gitignore").write_text("build/\n")
     (r / "a.swift").write_text("let a = 1\n")
     git(r, "add", ".")
     git(r, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init")
-    return r
 
 
 def stamp(repo, tmp_path, action):

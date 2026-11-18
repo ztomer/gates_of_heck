@@ -20,7 +20,9 @@ import time
 from pathlib import Path
 
 import pytest
-from conftest import REPO_ROOT, git, hermetic_env, run_goh
+from _fast_git import fast_init
+from _tree_clone import clone_tree, template
+from conftest import REPO_ROOT, commit_all, git, hermetic_env, run_goh, write
 from timing_bounds import GiveUp, assert_sooner
 
 SHIP = REPO_ROOT / "tools" / "ship.py"
@@ -48,8 +50,29 @@ if sys.argv[1] == "ci":  # $FAKE_CI: the verdicts in order (the last repeats), c
 
 
 @pytest.fixture
-def shipped(repo: Path, tmp_path: Path) -> Path:
-    return make_shipped(repo, tmp_path)
+def shipped(tmp_path: Path, tmp_path_factory) -> Path:
+    return shipped_clone(tmp_path, tmp_path_factory)
+
+
+def shipped_clone(tmp_path: Path, factory) -> Path:
+    """`make_shipped` over conftest's `repo`, built once per worker and cloned per test; only the
+    origin's URL (an absolute path) is written per test (GOH.FIXTURECOST)."""
+    built = template(factory, "shipped", _build_shipped)
+    for part in ("proj", "remote.git", "loopctl.py"):
+        clone_tree(built / part, tmp_path / part)
+    git(tmp_path / "proj", "remote", "set-url", "origin", str(tmp_path / "remote.git"))
+    return tmp_path / "proj"
+
+
+def _build_shipped(root: Path) -> None:
+    proj = root / "proj"
+    fast_init(proj, "main")
+    git(proj, "config", "maintenance.auto", "false")
+    write(proj, "README.md", "# fixture\n")
+    commit_all(proj)
+    make_shipped(proj, root)
+    git(root / "remote.git", "remote", "remove", "origin")  # it named the template's proj
+    git(proj, "remote", "set-url", "origin", "set-per-clone")
 
 
 def make_shipped(repo: Path, tmp_path: Path) -> Path:

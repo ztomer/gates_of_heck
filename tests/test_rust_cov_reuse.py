@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _tree_clone import from_template
 from conftest import REPO_ROOT, hermetic_env
 from source_closure import copy_closure
 from timing_bounds import patience
@@ -57,9 +58,13 @@ def _write(repo: Path, rel: str, text: str, commit: bool = True) -> None:
 
 
 @pytest.fixture
-def repo(tmp_path: Path) -> Path:
-    """A goh-shaped repo: a workspace over crates/, a lockfile, Python beside it."""
-    r = tmp_path / "repo"
+def repo(tmp_path: Path, tmp_path_factory) -> Path:
+    """A goh-shaped repo: a workspace over crates/, a lockfile, Python beside it. Built once per
+    worker, cloned per test (GOH.FIXTURECOST)."""
+    return from_template(tmp_path_factory, "cov-reuse", _build_repo, tmp_path / "repo")
+
+
+def _build_repo(r: Path) -> None:
     r.mkdir()
     (r / "Cargo.toml").write_text('[workspace]\nmembers = ["crates/a"]\nresolver = "2"\n')
     (r / "crates/a/src").mkdir(parents=True)
@@ -75,7 +80,6 @@ def repo(tmp_path: Path) -> Path:
     fast_init(r)
     _git(r, "add", "-A")
     _git(r, "commit", "-qm", "first")
-    return r
 
 
 def _run_out(repo: Path, **env: str) -> tuple[str, str]:

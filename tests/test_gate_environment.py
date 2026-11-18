@@ -32,6 +32,7 @@ from pathlib import Path
 
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _tree_clone import clone_tree, process_template
 from conftest import hermetic_env, native_goh_path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -248,8 +249,17 @@ def _clean_checkout_of_todays_gates(tmp_path: Path) -> Path:
 
     `--shared` borrows ROOT's objects (alternates) instead of copying them: `--no-hardlinks`
     copied the whole object store, 80 MiB of the ~100 MiB each of 35 tests left in a kept temp
-    root (GOH.PYTESTTMP). The clone's own commits and the test's writes stay in its own store."""
+    root (GOH.PYTESTTMP). The clone's own commits and the test's writes stay in its own store.
+
+    Built ONCE per worker and clonefile'd per caller (GOH.FIXTURECOST): ~30 callers each cloned,
+    diffed, applied and committed the same tree."""
     checkout = tmp_path / "gates_of_heck"
+    checkout.parent.mkdir(parents=True, exist_ok=True)
+    clone_tree(process_template("todays-gates", _build_clean_checkout), checkout)
+    return checkout
+
+
+def _build_clean_checkout(checkout: Path) -> None:
     subprocess.run(
         ["git", "clone", "-q", "--shared", str(ROOT), str(checkout)],
         check=True,
@@ -285,7 +295,6 @@ def _clean_checkout_of_todays_gates(tmp_path: Path) -> Path:
         _git(checkout, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "today")
     clean = _porcelain(checkout)
     assert not clean, f"the fixture checkout is not clean: {clean}"
-    return checkout
 
 
 def test_uncommitted_gate_source_is_named_by_every_gate_that_runs_one(tmp_path: Path) -> None:

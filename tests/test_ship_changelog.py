@@ -11,12 +11,12 @@ from pathlib import Path
 
 import pytest
 from conftest import git
-from test_ship import _calls, _changelog, _ship, make_shipped
+from test_ship import _calls, _changelog, _ship, shipped_clone
 
 
 @pytest.fixture
-def shipped(repo: Path, tmp_path: Path) -> Path:
-    return make_shipped(repo, tmp_path)
+def shipped(tmp_path: Path, tmp_path_factory) -> Path:
+    return shipped_clone(tmp_path, tmp_path_factory)
 
 
 NO_UNRELEASED = "# Changelog\n\n## v1.0.0 (2026-11-11)\n\n- the first\n"

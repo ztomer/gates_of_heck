@@ -16,7 +16,7 @@ from pathlib import Path
 import _tree_clone
 import pytest
 from _fast_git import fast_init
-from _tree_clone import clone_tree, copytree_clone, from_template, template_of
+from _tree_clone import clone_tree, copytree_clone, from_template, process_template, template_of
 from conftest import commit_all, git, write
 
 
@@ -133,3 +133,24 @@ def test_a_template_that_names_its_own_directory_is_refused(
 
     with pytest.raises(ValueError, match="names its own directory"):
         from_template(tmp_path_factory, f"self-ref-{where}-{tmp_path.name}", build, tmp_path / "r")
+
+
+def test_process_template_builds_once_and_clones_stay_apart(tmp_path: Path) -> None:
+    """The factory-free template (`_clean_checkout_of_todays_gates`'s): one build per process, and
+    a clone of it is as private as any other."""
+    builds: list[Path] = []
+
+    def build(tree: Path) -> None:
+        builds.append(tree)
+        fast_init(tree, "main")
+        write(tree, "README.md", "# fixture\n")
+        commit_all(tree)
+
+    key = f"proc-{tmp_path.name}"
+    one, two = process_template(key, build), process_template(key, build)
+    assert one == two and len(builds) == 1
+    clone_tree(one, tmp_path / "a")
+    clone_tree(one, tmp_path / "b")
+    before = _state(tmp_path / "b")
+    _write_everything(tmp_path / "a")
+    assert _state(tmp_path / "b") == before == _state(one)
