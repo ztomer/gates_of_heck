@@ -19,8 +19,8 @@ when its repo has none (a holder's repo is its record's repository key among the
 a lane worktree's label says `wt`). `gate_weight` is that weight; GOH.CPUADMIT replayed admitting
 by it and kept the count (docs/decisions/D-0009).
 
-THE RULE (`room`): another write lane has room while no long-lane gate waits for a slot
-(GOH_LANE_MAX_WAITING), the 5-minute load per core is at or under GOH_LANE_LOAD_PER_CORE (the 5-min,
+THE RULE (`room`): another write lane has room while at most GOH_LANE_MAX_WAITING long-lane gates
+wait for a slot, the 5-minute load per core is at or under GOH_LANE_LOAD_PER_CORE (the 5-min,
 not the 1-min: a test burst swings the 1-min, and a lane starts its gates minutes after it starts),
 free disk is at or over GOH_LANE_MIN_FREE_GIB, and memory is not low by mem_admit's own rule.
 A part that could not be read is listed in `unread`, and a reading with any unread part is judged
@@ -69,10 +69,11 @@ from tui.lib import counted, err, info, ok, warn
 
 GIB = 1024**3
 WEIGHT_RUNS = 10  # a repo's newest runs its weight is the median of
-# name: (default, parse). Documented in docs/config.md; read at every reading.
+# name: (default, parse). Calibrated from the lane ledger joined with each lane's land
+# (GOH.ADAPTLANES2; the join and the numbers are in docs/config.md); read at every reading.
 SETTINGS: dict[str, tuple[float, type]] = {
-    "GOH_LANE_MAX_WAITING": (0, int),
-    "GOH_LANE_LOAD_PER_CORE": (2.0, float),
+    "GOH_LANE_MAX_WAITING": (1, int),
+    "GOH_LANE_LOAD_PER_CORE": (2.5, float),
     "GOH_LANE_MIN_FREE_GIB": (30.0, float),
 }
 

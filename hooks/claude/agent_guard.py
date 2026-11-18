@@ -34,8 +34,9 @@ by hand; this hook keeps them structurally (tests/test_claude_agent_guard.py):
   `updatedInput` with the new model and effort, and `explored: true` on the ledger line. A spawn
   without the `checkable` tag is never routed down (tests/test_agent_guard_exploration.py).
 * Adaptive lanes (GOH.ADAPTLANES, `lane_room.py`): a write spawn asks lib/capacity.py's reading
-  (`goh capacity`) whether the machine has room for another lane; GOH_LANE_ADMIT `warn` (default)
-  says so, `refuse` refuses naming the reading, a failed reading admits; `lane-starts.jsonl`.
+  (`goh capacity`) whether the machine has room for another lane; GOH_LANE_ADMIT `refuse`
+  (default) defers it naming what the reading lacked, `warn` says so and admits, an `Owner-asked:`
+  line or a failed reading admits; `lane-starts.jsonl`.
 * Every allowed spawn is one line in `$XDG_CACHE_HOME/goh/agent-spawns.jsonl`; SubagentStop adds
   the outcome line -- tokens summed from the agent's transcript, the report's `Status:` and the
   report itself (the audit checks its shas) -- so a wrong choice either way is visible as data.

@@ -6,19 +6,27 @@ count becomes adaptive: a WRITE spawn (any judged spawn whose tier is not one of
 the one `goh capacity --json` prints -- and its rule.
 
 GOH_LANE_ADMIT picks what no room does:
-  warn    (the default) admit, and tell the session why there was no room
-  refuse  refuse the spawn, naming the reading
+  refuse  (the default) refuse the spawn as DEFERRED, naming what the reading lacked
+  warn    admit, and tell the session why there was no room
   off     ask nothing, record nothing
-WARN IS THE DEFAULT because the ceilings (GOH_LANE_*, docs/config.md) were set by judgment from
-one day's numbers (2026-11-17: load 40-150 on 16 cores, a land waiting 11+ min for a slot), not
-calibrated: a wrong ceiling in refuse mode would stop the owner's lanes. The ledger below gives the
-weekly usage review the numbers; once a ceiling's warned spawns are seen to be the ones that
-idled behind slots, the mode flips to refuse. Any other word is warn, said as such.
+REFUSE IS THE DEFAULT since GOH.ADAPTLANES2 (owner 2026-11-17, "Yes, make it enforce"): the
+ceilings (GOH_LANE_*, docs/config.md "Adaptive lanes") were calibrated from this ledger joined with
+what each admitted lane then did (landq done records, the timing ledger, `goh land --report`). A
+refusal starts nothing and loses nothing: its text says what the reading lacked and that the
+coordinator re-dispatches the spawn when `goh capacity` exits 0. Any other mode word is warn, said
+as such.
+
+AN OWNER-ASKED SPAWN STILL STARTS: a prompt line opening `Owner-asked: <the owner's words>` admits
+with no room, in refuse and warn mode alike, and is recorded as `owner` with the words. The marker
+must open its own line, so a brief that merely quotes it is a plain spawn. The hard ceilings (the
+coordinator's caps on agents and lanes) are not this rule's: it only ever adds a refusal.
 
 A reading that cannot be taken, or has an unread part, ADMITS with a warning in every mode
 (probe-first: the instrument is never the reason work stops). Each judged spawn is one line of
 `$XDG_STATE_HOME/goh/lane-starts.jsonl` (default `~/.local/state/goh/`): the verdict (`room`,
-`warned`, `refused`, `unread`), the reasons, the mode and the whole reading.
+`warned`, `refused`, `owner`, `unread`), the reasons, the mode, the queue item the prompt names
+(`Queue item <ID>`, so the weekly review joins a spawn to its land without the transcript) and
+the whole reading.
 Pinned by tests/test_agent_guard_lanes.py.
 """
 
@@ -27,6 +35,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,8 +44,11 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
 
 MODES = ("warn", "refuse", "off")
-DEFAULT_MODE = "warn"
+DEFAULT_MODE = "refuse"
+WARN = "warn"  # what an unknown mode word reads as
 MAX_LINE = 4000  # under PIPE_BUF: one O_APPEND write stays whole
+OWNER = re.compile(r"^Owner-asked:[ \t]*(\S.*?)[ \t]*$", re.MULTILINE)
+ITEM = re.compile(r"\bQueue item ([A-Z][A-Z0-9]*(?:\.[A-Z0-9]+)+)\b")
 
 
 @dataclass(frozen=True)
@@ -73,6 +85,12 @@ def is_write(tier: str | None, read_only_tiers: list[str]) -> bool:
     return tier is not None and tier not in read_only_tiers
 
 
+def owner_words(prompt: str) -> str | None:
+    """The owner's words on a line opening `Owner-asked:`, else None (an empty marker is none)."""
+    m = OWNER.search(prompt)
+    return m.group(1) if m else None
+
+
 def judge(event: dict[str, Any], agent_type: str, declared: str) -> Verdict:
     """The lane verdict for a write spawn; never raises (a failure admits, said)."""
     raw = os.environ.get("GOH_LANE_ADMIT", "").strip()
@@ -80,9 +98,12 @@ def judge(event: dict[str, Any], agent_type: str, declared: str) -> Verdict:
     notes = []
     if mode not in MODES:
         notes.append(f"GOH_LANE_ADMIT={raw!r} is not one of {', '.join(MODES)}: read as warn")
-        mode = DEFAULT_MODE
+        mode = WARN
     if mode == "off":
         return Verdict()
+    prompt = str((event.get("tool_input") or {}).get("prompt") or "")
+    owner = owner_words(prompt)
+    item = m.group(1) if (m := ITEM.search(prompt)) else None
     try:
         import capacity
 
@@ -97,12 +118,15 @@ def judge(event: dict[str, Any], agent_type: str, declared: str) -> Verdict:
                      f"this spawn was admitted unjudged")  # fmt: skip
     elif room["ok"]:
         verdict = "room"
+    elif owner:
+        verdict = "owner"
     else:
         verdict = "refused" if mode == "refuse" else "warned"
     record = {
         "v": 1, "at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         "session_id": event.get("session_id"), "tool_use_id": event.get("tool_use_id"),
         "subagent_type": agent_type, "declared": declared, "mode": mode, "verdict": verdict,
+        "item": item, "owner": owner,
         "why": room.get("why", []), "reading": reading,
     }  # fmt: skip
     if failed := _append(record):
@@ -113,11 +137,15 @@ def judge(event: dict[str, Any], agent_type: str, declared: str) -> Verdict:
     )
     if verdict == "refused":
         return Verdict(
-            deny=f"Refused: {no_room}. Start this lane when a slot frees or the load drops, or "
-            f"finish a running lane first.",
+            deny=f"Refused, deferred: {no_room}. Nothing was started; re-dispatch this spawn "
+            f"unchanged once `goh capacity` exits 0 (a slot frees, a waiter clears or the load "
+            f"drops). A spawn the owner asked for starts anyway: a prompt line "
+            f"`Owner-asked: <the owner's own words>`.",
             message=" ".join(notes) or None,
             record={"verdict": verdict},
         )
     if verdict == "warned":
         notes.insert(0, f"agent_guard: {no_room}; admitted (warn mode).")
+    if verdict == "owner":
+        notes.insert(0, f"agent_guard: {no_room}; admitted as owner-asked ({owner}).")
     return Verdict(message=" ".join(notes) or None, record={"verdict": verdict})

@@ -31,16 +31,17 @@ CORES = os.cpu_count() or 1
 
 class Planted:
     """A slot dir with slot-0 held (this process's flock, its record naming `goh`), one live long
-    ticket, one dead one; a timing ledger saying a goh gate burns 7 cores; plenty of memory."""
+    ticket per `waiting` (two by default: over GOH_LANE_MAX_WAITING's 1), one dead one; a timing
+    ledger saying a goh gate burns 7 cores; plenty of memory."""
 
-    def __init__(self, tmp: Path, *, waiting: bool = True, holder: str = "goh") -> None:
+    def __init__(self, tmp: Path, *, waiting: int = 2, holder: str = "goh") -> None:
         self.dir = tmp / "slots"
         self.dir.mkdir()
         self.fd = os.open(self.dir / "slot-0", os.O_RDWR | os.O_CREAT, 0o644)
         fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         os.write(self.fd, f"{os.getpid()}\t{holder}\t{time.time() - 60:.0f}\tkey".encode())
         (self.dir / "slot-1").touch()  # free: nobody holds its lock
-        self.ticket = gate_lanes.Ticket(str(self.dir), "long", 1) if waiting else None
+        self.tickets = [gate_lanes.Ticket(str(self.dir), "long", 1) for _ in range(waiting)]
         dead = self.dir / "waiting" / "long-1-00000000000000000001-1"
         dead.parent.mkdir(exist_ok=True)
         dead.touch()  # nobody holds it: a dead waiter's, never counted
@@ -61,8 +62,8 @@ class Planted:
         }  # fmt: skip
 
     def close(self) -> None:
-        if self.ticket is not None:
-            self.ticket.leave()
+        for ticket in self.tickets:
+            ticket.leave()
         os.close(self.fd)
 
 
@@ -80,7 +81,7 @@ def test_the_reading_names_slots_tickets_load_memory_disk_and_the_cpu_weight(tmp
         r = _cli(p.env, "--json")
     finally:
         p.close()
-    assert r.returncode == 1, r.stderr  # no room: a waiting ticket and the load
+    assert r.returncode == 1, r.stderr  # no room: two waiting tickets and the load
     got = json.loads(r.stdout)
     assert got["unread"] == [], got["unread"]
     assert (got["slots"]["total"], got["slots"]["held"], got["slots"]["free"]) == (2, 1, 1)
@@ -88,18 +89,18 @@ def test_the_reading_names_slots_tickets_load_memory_disk_and_the_cpu_weight(tmp
     assert (holder["slot"], holder["repo"], holder["pid"]) == ("slot-0", "goh", os.getpid())
     assert (holder["weight"], holder["weight_from"]) == (7.0, "goh")  # the median of its rows
     assert got["cpu_weight"]["in_flight"] == 7.0
-    assert got["waiting"] == {"long": 1, "short": 0}  # the dead ticket is not a waiter
+    assert got["waiting"] == {"long": 2, "short": 0}  # the dead ticket is not a waiter
     assert got["load"]["avg"] == [CORES * 4, CORES * 3, CORES * 2]
     assert (got["load"]["cores"], got["load"]["per_core"]) == (CORES, 3.0)  # the 5-min average
     assert got["memory"]["avail_pct"] == 80 and got["disk"]["free_gib"] > 0
     why = " ".join(got["room"]["why"])
     assert got["room"]["ok"] is False
-    assert "1 gate waiting for a slot" in why and "GOH_LANE_MAX_WAITING=0" in why, why
-    assert "3.00 per core" in why and "GOH_LANE_LOAD_PER_CORE=2" in why, why
+    assert "2 gates waiting for a slot" in why and "GOH_LANE_MAX_WAITING=1" in why, why
+    assert "3.00 per core" in why and "GOH_LANE_LOAD_PER_CORE=2.5" in why, why
 
 
 def test_an_idle_reading_has_room_and_an_unknown_holder_weighs_the_machine_median(tmp_path):
-    p = Planted(tmp_path, waiting=False, holder="wt: cargo test")
+    p = Planted(tmp_path, waiting=0, holder="wt: cargo test")
     p.env["GOH_LOADAVG_READING"] = "0.5 0.5 0.5"
     try:
         r = _cli(p.env, "--json")
@@ -134,7 +135,7 @@ def test_a_holder_in_a_lane_worktree_is_weighed_as_its_repository(tmp_path) -> N
     state = tmp_path / "estate" / "estate_audit.json"
     state.parent.mkdir()
     (state.parent / "installed_repos").write_text(f"{main}\n")
-    p = Planted(tmp_path, waiting=False, holder="wt: cargo test")
+    p = Planted(tmp_path, waiting=0, holder="wt: cargo test")
     os.ftruncate(p.fd, 0)
     os.pwrite(p.fd, f"{os.getpid()}\twt: cargo test\t1794900000\t{key}".encode(), 0)
     p.env["GOH_ESTATE_STATE"] = str(state)
@@ -160,7 +161,7 @@ def test_a_reading_that_fails_is_named_unread_and_never_judged_no_room(tmp_path)
 
 
 def test_a_disk_under_the_floor_is_no_room(tmp_path) -> None:
-    p = Planted(tmp_path, waiting=False)
+    p = Planted(tmp_path, waiting=0)
     p.env.update(GOH_LOADAVG_READING="0 0 0", GOH_LANE_MIN_FREE_GIB="100000")
     try:
         r = _cli(p.env, "--json")
@@ -186,7 +187,7 @@ def test_goh_capacity_is_the_same_entry(tmp_path) -> None:
     finally:
         p.close()
     got = json.loads(r.stdout)
-    assert r.returncode == 1 and got["slots"]["held"] == 1 and got["waiting"]["long"] == 1, r
+    assert r.returncode == 1 and got["slots"]["held"] == 1 and got["waiting"]["long"] == 2, r
 
 
 def test_the_weight_is_one_function_cpuadmit_can_call() -> None:
@@ -197,7 +198,7 @@ def test_the_weight_is_one_function_cpuadmit_can_call() -> None:
 
 
 def test_an_empty_load_seam_reads_the_os(tmp_path) -> None:
-    p = Planted(tmp_path, waiting=False)
+    p = Planted(tmp_path, waiting=0)
     p.env["GOH_LOADAVG_READING"] = ""
     try:
         got = json.loads(_cli(p.env, "--json").stdout)

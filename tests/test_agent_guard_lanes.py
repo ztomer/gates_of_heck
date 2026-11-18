@@ -3,9 +3,10 @@
 Lane counts were hand-set constants and every session decided alone, so lanes started into a box
 whose two gate slots were already held, at a load of 40-130 on 16 cores. agent_guard asks
 lib/capacity.py's reading -- the one `goh capacity --json` prints -- on every write spawn of every
-session (GOH_LANE_ADMIT: `warn` says so and admits, `refuse` refuses naming the reading, `off`
-asks nothing), never on a read-only one, admits with a warning when the reading fails, and records
-every judged spawn in `$XDG_STATE_HOME/goh/lane-starts.jsonl` for the weekly review.
+session (GOH_LANE_ADMIT: `refuse`, the default since GOH.ADAPTLANES2, defers it naming the reading,
+`warn` says so and admits, `off` asks nothing), never on a read-only one, admits an `Owner-asked:`
+spawn and, with a warning, any spawn whose reading fails, and records every judged spawn in
+`$XDG_STATE_HOME/goh/lane-starts.jsonl` for the weekly review.
 """
 
 from __future__ import annotations
@@ -41,7 +42,7 @@ def _lanes(tmp: Path) -> list[dict[str, Any]]:
 
 
 def _judge(tmp: Path, mode: str, *, room: bool, ti: dict[str, Any] = GOOD, **extra: str):
-    p = Planted(tmp, waiting=not room)
+    p = Planted(tmp, waiting=0 if room else 2)
     if room:
         p.env["GOH_LOADAVG_READING"] = "0 0 0"
     try:
@@ -52,13 +53,13 @@ def _judge(tmp: Path, mode: str, *, room: bool, ti: dict[str, Any] = GOOD, **ext
 
 def test_refuse_mode_refuses_a_write_spawn_with_no_room_naming_the_reading(tmp_path) -> None:
     reason = _reason(_judge(tmp_path, "refuse", room=False))
-    for needle in ("no room for another write lane", "1 gate waiting for a slot",
+    for needle in ("no room for another write lane", "2 gates waiting for a slot",
                    "per core", "goh capacity", "GOH_LANE_ADMIT"):  # fmt: skip
         assert needle in reason, (needle, reason)
     (line,) = _lanes(tmp_path)
     assert (line["verdict"], line["mode"], line["subagent_type"]) == ("refused", "refuse",
                                                                       "repo-worker")  # fmt: skip
-    assert line["reading"]["waiting"]["long"] == 1 and line["why"], line
+    assert line["reading"]["waiting"]["long"] == 2 and line["why"], line
 
 
 def test_refuse_mode_admits_a_write_spawn_when_there_is_room(tmp_path) -> None:
@@ -99,3 +100,35 @@ def test_an_unknown_mode_is_warn_and_says_so(tmp_path) -> None:
     _allowed(out)
     assert "GOH_LANE_ADMIT='refuze'" in out["systemMessage"], out
     assert _lanes(tmp_path)[0]["verdict"] == "warned"
+
+
+OWNER = dict(GOOD, prompt=f'{GOOD["prompt"]}\nOwner-asked: "Yes, make it enforce" (2026-11-17)')
+
+
+def test_the_default_refuses_a_plain_write_spawn_with_no_room_as_deferred(tmp_path) -> None:
+    reason = _reason(_judge(tmp_path, "", room=False))  # GOH_LANE_ADMIT unset: the default
+    for needle in ("no room for another write lane", "2 gates waiting for a slot", "per core",
+                   "deferred", "re-dispatch", "Owner-asked:"):  # fmt: skip
+        assert needle in reason, (needle, reason)
+    (line,) = _lanes(tmp_path)
+    assert (line["verdict"], line["mode"]) == ("refused", "refuse"), line
+
+
+def test_an_owner_asked_spawn_starts_with_no_room_and_is_logged_owner(tmp_path) -> None:
+    out = _judge(tmp_path, "", room=False, ti=OWNER)
+    _allowed(out)
+    assert "owner-asked" in out["systemMessage"] and "no room" in out["systemMessage"], out
+    (line,) = _lanes(tmp_path)
+    assert line["verdict"] == "owner" and line["why"], line
+    assert line["owner"] == '"Yes, make it enforce" (2026-11-17)', line
+    # the words must open a line of their own: a brief that merely quotes the marker is plain
+    quoted = dict(GOOD, prompt=f"{GOOD['prompt']}\nThe marker is `Owner-asked: <words>`.")
+    (tmp_path / "q").mkdir()
+    _reason(_judge(tmp_path / "q", "", room=False, ti=quoted))
+
+
+def test_an_unreadable_reading_admits_under_the_default(tmp_path) -> None:
+    out = _judge(tmp_path, "", room=False, GOH_LOADAVG_READING="garbage")
+    _allowed(out)
+    assert "could not be read" in out["systemMessage"], out
+    assert _lanes(tmp_path)[0]["verdict"] == "unread"

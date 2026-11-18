@@ -154,9 +154,9 @@ def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
     # ~/Projects/gates_of_heck, so a worktree's suite judged MAIN's checkers -- a new step went red
     # before landing and an edit to an old one was never tested at all (D.GOH1, 2026-10-31).
     env["GOH_DIR"] = str(REPO_ROOT)
-    # The owner's private seed store is never a test's (GOH.SEEDPRIVATE): a child reads none.
-    env["GOH_SEED_DIR"] = str(Path(tempfile.gettempdir()) / "goh-suite-no-seed-store")
-    env.update(overrides)
+    # No child reads the owner's seed store (GOH.SEEDPRIVATE) nor lanes the REAL load (ADAPTLANES2).
+    env.update({"GOH_SEED_DIR": str(Path(tempfile.gettempdir()) / "goh-suite-no-seed-store"),
+                "GOH_LANE_ADMIT": "off", **overrides})  # fmt: skip
     return print_safe(env, ("GOH_DIR", *overrides))  # it prints redacted (GOH.PROVENENVDUMP)
 
 
