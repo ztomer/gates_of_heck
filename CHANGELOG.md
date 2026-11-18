@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+## v0.135.0 -- the land pre-step's deadline follows its worker share (PRESTEPSHARE); goh temp roots live under a Spotlight-free .noindex dir (TMPNOINDEX); a selection-miss ledger and declared tree reads (SELECTAUDIT); a hand-run suite is admitted by a gate slot, shellcheck keeps its token pool (ADMITSUITE); the reuse audit reads a cancelled CI run as no verdict and files its faults (REUSEOFFLANDED, REUSEAUDITFILE)
+
+* A land's pre-step deadline follows the worker share it was admitted with (GOH.PRESTEPSHARE):
+  `min(GOH_LAND_PRE_CEIL 25m, max(GOH_LAND_PRE_MAX 10m, 1.5 x WORK / workers))`, WORK the
+  worker-seconds of the costliest of the newest 30 verdict-reaching pre-steps in the timing ledger
+  (land rows now carry `pre_run_s` and `pre_workers`), seeded at 347 s x 12. The 368-file set that
+  took 650 s at a 5-worker share gets 1250 s there and 600 s at 12; lib/pre_deadline.py reads the
+  share after admission and kills the set whole at its deadline (no verdict, exit 124).
+
+* The reuse audit no longer reads a CI run that judged nothing as red: `loopctl ci` exits 1 for red, for unread and for a cancelled or timed-out run ("no verdict"), and the audit took every exit 1 as red, so v0.133.0's run 44203722455, cancelled at GitHub's limit, turned the `landed` reuse path off. The reader now takes loopctl's printed state line: a cancelled, timed-out or CI-less run drops its shadow uncompared, an unread answer stays queued, and a real failure still disagrees (GOH.REUSEOFFLANDED). A path turned off now files its fault item as `class_of: none` with a `class_why` naming the path, which `rules.class_first` accepts, and one whose fault is still unfiled is named at every SessionStart (`hooks/claude/estate_advisories.py`) (GOH.REUSEAUDITFILE).
+
+* The pre-step's selection is audited (GOH.SELECTAUDIT): every red land attempt is read against
+  the selection its tip's own selector makes for its diff, and each failed test it did not choose
+  is a row of `<landq>/selection_misses.jsonl`; the idle full run on main is shadowed the same way
+  for the diff since the previous run, a measure and never a skip. `goh land --report` prints the
+  misses per day. 2026-11-17 replayed from the landq logs: 2 of 19 reds were misses (11 tests:
+  GOH.BUILDINCLUDES' 10 in test_rust_gate.py, GOH.GRACESHAPES' 1), both closed since; the
+  ADAPTLANES, PREPARITY and CAPHEADROOM reds were in tests the selection chose.
+* A test that reads a directory at run time is chosen by a change inside it (lib/declared_reads.py):
+  a spelled directory globbed or copied whole (a change under tests/fixtures/swift_baseline_project
+  chose nothing before), or a declared `TREE_READS = (...)`; gates/undeclared_reads.txt ratchets the 70
+  tests whose joined paths no spelling shows.
+
+* Every temp root goh makes for gates and tests lives under ONE parent Spotlight never indexes, `$TMPDIR/goh.noindex`, through one helper (`goh_tmp`: `lib/tmp_root.sh`, `lib/tmp_root.py`): the pytest run roots (`gates/_pytest_root.sh`, 94% of the paths mds resolved during gates on 2026-11-17, EST.MDSCRAWL), the suite's own root, and every gate, land and release `mktemp`. The sweepers follow: `prune_kept.py --backstop` reaps a killed run's root under the parent as well as a legacy one beside it, and the Bash guard refuses `rm -r` of the parent itself. `tests/tmp_root_lint.py` refuses a new `mktemp` (or a Python `mkdtemp`/`mkstemp`/`TemporaryDirectory`/`NamedTemporaryFile` with no `dir=`) in gates/, lib/ or tools/ outside the helper (GOH.TMPNOINDEX).
+  Measured across one full-suite run each, mds+mds_stores CPU from `ps` (2026-11-17, a shared box): before 221.1 cpu-s over 557 s (0.40 cores; `goh load --report` spotlight 218.3 cpu-s, 2.8% of busy), after 167.5 cpu-s over 1282 s at a 1-minute load of 114 (0.13 cores, 3.0x lower; spotlight 178.9 cpu-s, 0.9% of busy). Spotlight is machine-wide, so both windows carry other sessions' writes too.
+
 ## v0.134.0 -- the release canary reuses a consumer's last verdict while nothing that decides it changed, 171 s to 3 s (CANARYMEMO); goh budget shows land attempts, the suite cpu-s and the CIP history, and the idle lander runs the full suite on main's tip (GATEBUDGET2); every gated repo refuses a machine-sized worker pool (POOLSHARE2)
 
 * The release canary reuses a consumer's verdict while nothing that decides it moved (GOH.CANARYMEMO):
