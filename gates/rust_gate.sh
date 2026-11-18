@@ -364,6 +364,7 @@ rust_coverage_checks() {
         goh_step "coverage (floor ${GOH_COV_FLOOR_RUST}%)" \
             ${_change_base[@]+"${_change_base[@]}"} bash "$HERE/coverage_gate.sh" --lang rust \
             ${GOH_COV_RUST_EXTERNAL:+--external "$GOH_COV_RUST_EXTERNAL"} \
+            ${GOH_COV_FLOORS_JSON:+--floors-json "$GOH_COV_FLOORS_JSON"} \
             --floor "$GOH_COV_FLOOR_RUST" "$cargo_dir"
     else
         goh_step "coverage (per-target floors)" \

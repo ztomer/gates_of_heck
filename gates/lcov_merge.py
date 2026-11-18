@@ -52,6 +52,9 @@ from collections import defaultdict
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _lcov_floor_maps as floor_maps  # GOH.CRATEFLOOR: crate_floors / file_floors
+
 
 class LcovError(Exception):
     """Malformed lcov input; carries file:line."""
@@ -101,7 +104,10 @@ def _load_floors(path):
     if not isinstance(raw, dict):
         print(f"✗ [coverage] floors file {path} is not a JSON object", file=sys.stderr)
         return {"refused": True}
-    wrapped = any(k in raw for k in ("targets", "file_floor", "tolerance", "exempt"))
+    wrapped = any(
+        k in raw
+        for k in ("targets", "file_floor", "tolerance", "exempt", "crate_floors", "file_floors")
+    )
     targets = (
         dict(raw.get("targets") or {})
         if wrapped
@@ -120,10 +126,17 @@ def _load_floors(path):
             file=sys.stderr,
         )
         return {"refused": True}
+    # GOH.CRATEFLOOR: the two maps that lower ONE crate or file below the uniform floor.
+    crate_floors = floor_maps.load_entries(raw.get("crate_floors"), "crate_floors", path)
+    file_floors = floor_maps.load_entries(raw.get("file_floors"), "file_floors", path)
+    if crate_floors is None or file_floors is None:
+        return {"refused": True}
     return {
         "file_floor": float(raw["file_floor"]) if "file_floor" in raw else None,
         "tolerance": float(raw.get("tolerance", 0.0)),
         "exempt": dict(raw.get("exempt", {})),
+        "crate_floors": crate_floors,
+        "file_floors": file_floors,
     }
 
 
@@ -181,13 +194,36 @@ def merge(parts, floor, include_re="", floors_json=None, marker_ceiling=None, su
         print("✗ [coverage] no coverable lines found in any lcov part")
         return 1
 
-    pct = round(100.0 * covered / total, 2)
     floors = _load_floors(floors_json) if floors_json else None
     if floors and floors.get("refused"):
         return 2
+    lines_of = defaultdict(int)
+    for f, _ln in line_best:
+        lines_of[f] += 1
+    per_file = {f: (n - len(missed.get(f, ())), n) for f, n in lines_of.items()}
+    map_fails: list[str] = []
+    rest = None
+    if floors:
+        map_fails, rest = floor_maps.judge_crates(
+            floors.get("crate_floors"),
+            floor,
+            per_file,
+            missed,
+            floor_maps.crates_of(per_file),
+            os.getcwd(),
+        )
+    if rest is not None:  # the uniform floor judges the crates no entry lowers
+        covered = sum(per_file[f][0] for f in rest)
+        total = sum(per_file[f][1] for f in rest)
+        missed = {f: v for f, v in missed.items() if f in set(rest)}
+    pct = round(100.0 * covered / total, 2) if total else 100.0
     per_file_fail = False
+    if floors and (floors.get("file_floors") or {}) and floors.get("file_floor") is None:
+        map_fails.append("file_floors lowers `file_floor`, and none is set")
     if floors and floors.get("file_floor") is not None:
         ff = floors["file_floor"]
+        file_floors = floors.get("file_floors") or {}
+        map_fails += floor_maps.not_lowering(file_floors, ff, "file_floors")
 
         # An exempt key names its file absolutely or RELATIVE TO THE PROJECT (the merger runs in
         # it): lcov's SF is absolute, so an absolute-only key held at one checkout path and was
@@ -198,18 +234,17 @@ def merge(parts, floor, include_re="", floors_json=None, marker_ceiling=None, su
             )
 
         exempt_by_path = {_norm(k): k for k in floors.get("exempt", {})}
-        per_tot = defaultdict(int)
-        per_cov = defaultdict(int)
-        for (f, _ln), cnt in line_best.items():
-            per_tot[f] += 1
-            per_cov[f] += 1 if cnt > 0 else 0
+        own_by_path = {_norm(k): v[0] for k, v in file_floors.items()}
+        gone = sorted(k for k in file_floors if not os.path.exists(_norm(k)))
+        map_fails += [f"file_floors[{k!r}] names no file (stale: delete it)" for k in gone]
         below = []
-        for f, tot in per_tot.items():
+        for f, (cov_f, tot) in per_file.items():
             if _norm(f) in exempt_by_path:
                 continue
-            cur = 100.0 * per_cov[f] / tot if tot else 100.0
-            if cur + 1e-9 < ff - floors.get("tolerance", 0.0):
-                below.append((f, per_cov[f], tot, cur))
+            cur = 100.0 * cov_f / tot if tot else 100.0
+            own = own_by_path.get(_norm(f), ff)
+            if cur + 1e-9 < own - floors.get("tolerance", 0.0):
+                below.append((f, cov_f, tot, cur))
         if below:
             print(
                 f"✗ [coverage] {counted(len(below), 'file')} below per-file floor {ff:g}%",
@@ -218,13 +253,17 @@ def merge(parts, floor, include_re="", floors_json=None, marker_ceiling=None, su
             for f, cov, tot, cur in sorted(below, key=lambda r: r[3]):
                 print(f"    {cur:5.1f}%  {tot - cov:4d} uncovered  {f}", file=sys.stderr)
             per_file_fail = True
-        measured = {_norm(f) for f in per_tot}
+        measured = {_norm(f) for f in per_file}
         stale = sorted(k for n, k in exempt_by_path.items() if n not in measured)
         if stale:
             print(f"✗ {counted(len(stale), 'exemption')} stale (file gone).", file=sys.stderr)
-            for s in stale:
-                print(f"    {s}", file=sys.stderr)
+            for name in stale:
+                print(f"    {name}", file=sys.stderr)
             return 1
+    for msg in map_fails:
+        print(f"✗ [coverage] {msg}", file=sys.stderr)
+    if map_fails:
+        per_file_fail = True
     if marker_ceiling and os.path.exists(marker_ceiling):
         try:
             import json as _jm

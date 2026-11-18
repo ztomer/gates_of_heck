@@ -309,6 +309,22 @@ def test_floor_set_fails_when_uncovered(tmp_path, warm_crate):
     assert "uncovered lines" in combined, r.stdout + r.stderr
 
 
+def test_a_floors_file_lowers_one_crate_while_the_floor_stays(tmp_path, warm_crate):
+    """GOH.CRATEFLOOR: GOH_COV_FLOOR_RUST and GOH_COV_FLOORS_JSON together -- the crate the file
+    names answers to its own floor, with the floors file REACHING the merger (it was passed only
+    when no uniform floor was set)."""
+    c = clone(warm_crate, tmp_path / "covcrate")
+    write_lib(c, LIB_UNTESTED)  # 0%: red at the uniform 80, as test_floor_set_fails_when_uncovered
+    floors = tmp_path / "floors.json"
+    floors.write_text(
+        '{"crate_floors": {"parity": {"floor": 0, "reason": "nothing here is tested yet"}}}'
+    )
+    write_gatesrc(c, f"GOH_COV_FLOOR_RUST=80\nGOH_COV_FLOORS_JSON={floors}\n")
+    r = run_script(CURRENT, c, {"GOH_COV_DIFF": "off"})  # the floor is the subject, not the diff
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "crate parity: 0.0%" in r.stdout + r.stderr, r.stdout + r.stderr
+
+
 # ── coverage deferred (GOH_RUST_COVERAGE=defer) ──────────────────────────────
 # A commit hook gating every crate a release touches ran one cold instrumented
 # build per crate (a private server workspace, 2026-09-22: 27 crates, most of a 13-minute

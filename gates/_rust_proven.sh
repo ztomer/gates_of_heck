@@ -270,6 +270,10 @@ _rust_cov_inputs() {
     allow="${GOH_COV_DIFF_ALLOW:-diffcov_allow.json}"
     case "$allow" in /*) ;; *) allow="$top/$allow" ;; esac
     if [ -f "$allow" ]; then printf 'diffcov-allow %s\n' "$(hash_hex "$allow")"; fi
+    # The floors file (per-crate / per-file floors, GOH.CRATEFLOOR) decides the verdict by content.
+    if [ -n "${GOH_COV_FLOORS_JSON:-}" ] && [ -f "$GOH_COV_FLOORS_JSON" ]; then
+        printf 'cov-floors-file %s\n' "$(hash_hex "$GOH_COV_FLOORS_JSON")"
+    fi
     for v in $(compgen -v GOH_COV_); do
         case "$v" in GOH_COV_CACHE|GOH_COV_CACHE_*|GOH_COV_RUST_JOBS) continue ;; esac   # where, how big, how wide: no verdict
         printf 'cov %s=%s\n' "$v" "${!v}"
@@ -328,6 +332,7 @@ _rust_cov_moved() {
             rust-coverage|rust-identity) label="the key's formula" ;;
             "tool "*) label="the tool ${label#tool }" ;;
             "cov "*|"env "*) label="${label#* }" ;;
+            cov-floors-file) label="the floors file (GOH_COV_FLOORS_JSON)" ;;
             "keep "*) label="the kept file ${label#keep }" ;;
         esac
         out="${out:+$out; }$label${names:+ ($names)}"

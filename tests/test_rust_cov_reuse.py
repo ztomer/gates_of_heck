@@ -188,7 +188,7 @@ def test_the_coverage_scripts_come_from_their_sources() -> None:
     scripts = set(gate_identity.rust_gate_scripts(REPO_ROOT))
     assert {"gates/rust_gate.sh", "gates/_rust_proven.sh", "gates/coverage_gate.sh",
             "gates/_coverage_rust.sh", "gates/lcov_merge.py", "gates/_cov_prune.py",
-            "lib/bash5.sh"} <= scripts  # fmt: skip
+            "gates/_lcov_floor_maps.py", "lib/bash5.sh"} <= scripts  # fmt: skip
     assert "lib/xexit.py" not in scripts and "tools/land.sh" not in scripts
 
 
@@ -287,6 +287,18 @@ def test_a_miss_finds_the_record_beside_the_stores_directories(repo: Path) -> No
     assert moved in _decision(out)
     _, out = _run_out(repo, FLOOR="99")
     assert "was on other inputs: GOH_COV_FLOOR_RUST moved" in _decision(out)
+
+
+def test_a_floors_file_edit_re_measures(repo: Path, tmp_path: Path) -> None:
+    """GOH.CRATEFLOOR: crate_floors / file_floors move the verdict, so a reuse that kept a green
+    from before an edit would pass a floor the file no longer states -- keyed by content."""
+    floors = tmp_path / "floors.json"
+    floors.write_text('{"file_floor": 70}')
+    assert _run(repo, GOH_COV_FLOORS_JSON=str(floors)) == "MEASURED"
+    assert _run(repo, GOH_COV_FLOORS_JSON=str(floors)) == "PLAIN"
+    floors.write_text('{"file_floor": 71}')
+    _, out = _run_out(repo, GOH_COV_FLOORS_JSON=str(floors))
+    assert "the floors file (GOH_COV_FLOORS_JSON) moved" in _decision(out), out
 
 
 def _gates_copy(dest: Path) -> Path:
