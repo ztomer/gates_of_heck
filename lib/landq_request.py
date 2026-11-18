@@ -9,6 +9,7 @@ import importlib
 from pathlib import Path
 
 gitrun = importlib.import_module("gitrun")
+land_slot = importlib.import_module("land_slot")
 
 
 class Refused(Exception):
@@ -50,8 +51,10 @@ def request(repo_arg: str, sha_arg: str, item: str, ship: bool, summary: str) ->
             "enqueued_at": now()}  # fmt: skip
 
 
-def land_request(wt_arg: str, item: str) -> dict:
-    """The request to land WORKTREE's tip by tools/land.sh, refused where land.sh refuses."""
+def land_request(wt_arg: str, item: str, q: Path | None = None) -> dict:
+    """The request to land WORKTREE's tip by tools/land.sh, refused where land.sh refuses. Under
+    a queue Q it runs in a slot (GOH.LANDSNAPSHOT, lib/land_slot.py): its `worktree` is goh's
+    detached checkout of the sha, never the lane's, which it keeps as `lane`."""
     top = git(Path(wt_arg), "rev-parse", "--show-toplevel")
     if not top:
         raise Refused(f"{wt_arg} is not a git checkout")
@@ -67,6 +70,12 @@ def land_request(wt_arg: str, item: str) -> dict:
         raise Refused(f"{wt}: uncommitted changes to tracked files -- commit them, then enqueue")
     sha = git(wt, "rev-parse", "HEAD")
     branch = git(wt, "rev-parse", "--abbrev-ref", "HEAD")
-    return {"repo": main, "worktree": str(wt), "sha": sha, "remote": "", "branch": branch,
-            "item": item, "mode": "land", "summary": "",
-            "enqueued_at": now()}  # fmt: skip
+    req = {"repo": main, "worktree": str(wt), "sha": sha, "remote": "", "branch": branch,
+           "item": item, "mode": "land", "summary": "", "enqueued_at": now()}  # fmt: skip
+    if q is not None:
+        try:
+            slot = land_slot.claim(q, Path(main), sha)
+        except land_slot.Unavailable as e:
+            raise Refused(f"no checkout of {sha[:8]} for the land: {e}") from None
+        req.update(lane=str(wt), worktree=slot["path"], slot=slot["token"], slot_s=slot["s"])
+    return req

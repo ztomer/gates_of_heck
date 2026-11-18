@@ -305,7 +305,7 @@ class Batch:
         for it in self.items:
             if why := land_slot.ready(self.q, it.req):  # GOH.LANDSNAPSHOT: at its sha again
                 it.log.write_text(f"{why} -- nothing landed; enqueue again\n")
-                self.outcome(it, "red", it.log, why=f"slot: {why}")
+                self.outcome(it, "red", it.log, why=why.split(":")[0])
                 continue
             it.tip = self.peek(Path(it.req["worktree"]), "rev-parse", "HEAD")
             if it.tip != it.req["sha"]:

@@ -16,14 +16,10 @@ SHA, the remote and branch the checkout tracks, the item, and the mode:
           pre-push gate (which takes the machine-wide gate slot itself, lib/gate_slot.sh)
     ship  `tools/ship.py --wait --repo REPO --item ID` (push, release, install, verify, done); the
           checkout's HEAD must still BE the sha, or the ship would release a different commit
-    land  `bash tools/land.sh`, bare (GOH.LANDQLAND): the land lock, the land gate, the
-          fast-forward of main, as a lane ran it by hand -- the KIT's land.sh, never the lane's
-          own, which judged its own edits (GOH.PRESTEPHEAD, docs/decisions/D-0012). The sha is
-          the WORKTREE's HEAD at enqueue, and every run of the request -- pre-step, stack,
-          rebase, gate -- is in a SLOT, goh's detached checkout of that sha (GOH.LANDSNAPSHOT,
-          lib/land_slot.py): the request's `worktree`, the lane's kept as `lane`. The lane may
-          edit, commit or enqueue again meanwhile; no land reads or moves its tree. The enqueue
-          refuses the main checkout and a tree with uncommitted tracked changes.
+    land  `bash tools/land.sh`, bare (GOH.LANDQLAND), the KIT's, never the lane's own
+          (D-0012), on the WORKTREE's HEAD at enqueue, in goh's own checkout of it -- every
+          pre-step, stack, rebase and gate (GOH.LANDSNAPSHOT, lib/land_slot.py): the lane's tree
+          is never read or moved. Refused: the main checkout, uncommitted tracked changes.
           The outcome's `sha` (and `landed`) is the commit main holds for it (land.sh may have
           rebased it); the enqueued tip is kept as `enqueued`.
 A red gate pushes nothing (git refuses the push when its pre-push hook fails), nor lands.
@@ -144,17 +140,6 @@ def prestep(req: dict) -> None:
         raise Refused(str(e)) from None
 
 
-def in_slot(req: dict) -> None:
-    """GOH.LANDSNAPSHOT (lib/land_slot.py): the request runs in a slot of goh's, a detached
-    checkout of its sha, never in the lane's worktree, which it keeps as `lane`."""
-    try:
-        slot = land_slot.claim(qdir(), Path(req["repo"]), req["sha"])
-    except land_slot.Unavailable as e:
-        raise Refused(f"no checkout of {req['sha'][:8]} for the land: {e}") from None
-    req.update(lane=req["worktree"], worktree=slot["path"], slot=slot["token"], slot_s=slot["s"])
-    info(f"land checkout {slot['path']} at {req['sha'][:8]} in {slot['s']} s")
-
-
 def write_json(path: Path, data: dict) -> None:
     """One rename, so a reader never sees half a request."""
     tmp = path.with_name(f".{path.name}.tmp")
@@ -219,21 +204,14 @@ def run_one(q: Path, path: Path) -> dict:
     land = req["mode"] == "land"
     if land and (why := land_slot.ready(q, req)):  # GOH.LANDSNAPSHOT: the slot at the sha again
         log.write_text(f"{why} -- nothing landed; enqueue again\n")
-        return {**outcome, "state": "red", "why": f"slot: {why}"}
-    head = git(Path(req["worktree"] if land else req["repo"]), "rev-parse", "HEAD")
+        return {**outcome, "state": "red", "why": why.split(":")[0]}
+    head = git(Path(req["repo"]), "rev-parse", "HEAD")
     if req["mode"] == "ship" and head != req["sha"]:
         log.write_text(
             f"HEAD is {head or '(unreadable)'}, not the enqueued {req['sha']}: a ship releases "
             "HEAD, so it would land a different commit -- enqueue again\n"
         )
         return {**outcome, "state": "red", "why": "HEAD moved"}
-    if land and head != req["sha"]:
-        log.write_text(
-            f"{req['worktree']} is at {head or '(unreadable)'}, not the enqueued {req['sha']}: "
-            "the tip moved after enqueue, so land.sh would gate a commit nobody enqueued -- "
-            "nothing landed; enqueue again\n"
-        )
-        return {**outcome, "state": "red", "why": "tip moved after enqueue"}
     timeout = int(os.environ.get("GOH_LAND_TIMEOUT") or (LAND_TIMEOUT if land else DEFAULT_TIMEOUT))
     info(f"land {Path(req['repo']).name} @ {req['sha'][:8]} ({req['mode']}) -> {log}")
     res = bounded_run.run_step(argv_for(req), timeout, GRACE, f"land {req['mode']}", str(log))
@@ -262,8 +240,7 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
     outcome = {**outcome, "at": now()}
     req = landq_batch.read(req_path)
     outcome.update(land_e2e.asked(req))  # the e2e's start (GOH.LANDTARGET)
-    if isinstance(req.get("slot_s"), float):  # the checkout's seconds (GOH.LANDSNAPSHOT)
-        outcome["slot_s"] = req["slot_s"]
+    outcome.update(land_slot.done(done_dir.parent, req))  # GOH.LANDSNAPSHOT: slot_s, released
     outcome.update(item=named, attempt=land_attempts.attempt_of(done_dir, named))
     if item:
         tool = loopctl()
@@ -278,7 +255,6 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
             outcome["recorded"] = False
             warn(f"no loopctl at {tool} (GOH_LOOPCTL): {item}'s outcome is only in done/")
     write_json(done_dir / req_path.name, outcome)
-    land_slot.release_req(done_dir.parent, req)  # GOH.LANDSNAPSHOT: free for the next land
     try:
         land_attempts.record(outcome, req_path.stem)
         land_e2e.backfill(done_dir.parent)  # GOH.LANDTARGET: the item end to end, once it landed
@@ -444,8 +420,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.land is not None:
             if args.enqueue or args.ship:
                 raise Refused("--land takes the worktree only: no REPO SHA, no --ship")
-            req = land_request(args.land, args.item)
-            in_slot(req)
+            req = land_request(args.land, args.item, qdir())  # in a slot (GOH.LANDSNAPSHOT)
             if args.no_pre is None:
                 prestep(req)
             elif not args.no_pre.strip():
@@ -460,14 +435,10 @@ def main(argv: list[str] | None = None) -> int:
         land_slot.release_req(qdir(), req)
         err(f"goh land: {e} -- nothing enqueued")
         return 2
-    try:
-        if req["mode"] == "land" and (red := landq_early.at_enqueue(qdir(), req, enqueue, record)):
-            err(f"goh land: {red.splitlines()[0]} -- recorded red at enqueue, nothing queued")
-            return 1
-        path = enqueue(req)
-    except BaseException:
-        land_slot.release_req(qdir(), req)
-        raise
+    if req["mode"] == "land" and (red := landq_early.at_enqueue(qdir(), req, enqueue, record)):
+        err(f"goh land: {red.splitlines()[0]} -- recorded red at enqueue, nothing queued")
+        return 1
+    path = enqueue(req)  # a slot a crash strands is reclaimed: its pid is gone (lib/land_slot.py)
     if not args.no_start:
         start_lander()
     who = req["item"] or Path(req["repo"]).name

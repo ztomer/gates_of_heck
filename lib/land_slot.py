@@ -157,14 +157,20 @@ def prepare(main: Path, wt: Path, sha: str) -> str:
 
 def ready(q: Path, req: dict) -> str:
     """The lander's check before it runs REQ: its slot still its own and at its sha. "" or why
-    not; a request with no slot (enqueued before slots) runs where it names, as it did."""
+    not; a request with no slot (enqueued before slots) runs in its worktree, refused when that
+    moved (it would gate a commit nobody enqueued)."""
     token, wt = req.get("slot"), req.get("worktree")
     if not token or not wt:
-        return ""
+        head = full_run._git(Path(wt or "."), "rev-parse", "HEAD").stdout.strip()
+        if head == req["sha"]:
+            return ""
+        return (f"tip moved after enqueue: {wt} is at {head or '(unreadable)'}, not the enqueued "
+                f"{req['sha']}, so land.sh would gate a commit nobody enqueued")  # fmt: skip
     owner = root(q, Path(req["repo"])) / f"{Path(wt).name}.owner"
     if _owner(owner).get("token") != token and not _take(q, owner, token):
-        return f"its slot {wt} is another request's now"
-    return prepare(Path(req["repo"]), Path(wt), req["sha"])
+        return f"slot unavailable: {wt} is another request's now"
+    why = prepare(Path(req["repo"]), Path(wt), req["sha"])
+    return f"slot unavailable: {why}" if why else ""
 
 
 def release(q: Path, main: Path, wt: str, token: str) -> None:
@@ -176,6 +182,12 @@ def release(q: Path, main: Path, wt: str, token: str) -> None:
         if int(Path(wt).name) >= KEEP:
             _drop(main, Path(wt))
     owner.unlink(missing_ok=True)
+
+
+def done(q: Path, req: dict) -> dict:
+    """REQ recorded: its slot released; what the record keeps of it (the checkout's seconds)."""
+    release_req(q, req)
+    return {"slot_s": req["slot_s"]} if isinstance(req.get("slot_s"), float) else {}
 
 
 def release_req(q: Path, req: dict) -> None:
