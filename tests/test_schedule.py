@@ -13,6 +13,9 @@ def _items(*ids):
     return [SimpleNamespace(nodeid=i) for i in ids]
 
 
+CONFIG = SimpleNamespace(rootpath=Path("/checkout"))
+
+
 def _fresh(monkeypatch) -> None:
     """This suite's own run already holds its read; the cases below are a process that has none."""
     monkeypatch.setattr(_schedule, "_read", {})
@@ -28,7 +31,7 @@ def _table(tmp_path, monkeypatch, durations):
 def test_the_longest_runs_first_and_a_group_moves_as_one(tmp_path, monkeypatch) -> None:
     _table(tmp_path, monkeypatch, {"t.py::a": 1, "t.py::b": 9, "t.py::g1@G": 4, "t.py::g2@G": 4})
     items = _items("t.py::a", "t.py::g1@G", "t.py::b", "t.py::g2@G", "t.py::new")
-    _schedule.pytest_collection_modifyitems(items)
+    _schedule.pytest_collection_modifyitems(CONFIG, items)
     assert [i.nodeid for i in items] == [
         "t.py::b",
         "t.py::g1@G",
@@ -42,7 +45,7 @@ def test_no_table_leaves_collection_order_alone(tmp_path, monkeypatch) -> None:
     _fresh(monkeypatch)
     monkeypatch.setattr(_schedule, "_table", [tmp_path / "none.json"])
     items = _items("t.py::z", "t.py::a")
-    _schedule.pytest_collection_modifyitems(items)
+    _schedule.pytest_collection_modifyitems(CONFIG, items)
     assert [i.nodeid for i in items] == ["t.py::z", "t.py::a"]
 
 
@@ -162,3 +165,17 @@ def test_take_pops_the_table_and_a_run_named_none_owns_none(monkeypatch) -> None
     environ = {_schedule.ENV: "/x/t.json", "KEEP": "1"}
     assert _schedule.take(environ) == Path("/x/t.json") and environ == {"KEEP": "1"}
     assert _schedule.take(environ) is None and _schedule._load() == {}
+
+
+def test_a_node_id_naming_the_checkout_is_refused(monkeypatch) -> None:
+    """Such a node exists only in the checkout that collected it: carried in a tree's record, no
+    full run elsewhere ever judged it, so the tree was never full (GOH.SHIPTREEFULL)."""
+    import pytest
+
+    _fresh(monkeypatch)
+    items = _items("t.py::a[None]", "t.py::a[/checkout/lib]")
+    with pytest.raises(
+        pytest.UsageError, match=r"names the checkout /checkout .*a\[/checkout/lib\]"
+    ):
+        _schedule.pytest_collection_modifyitems(CONFIG, items)
+    _schedule.pytest_collection_modifyitems(CONFIG, _items("t.py::a[/elsewhere]"))

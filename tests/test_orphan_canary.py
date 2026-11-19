@@ -336,7 +336,9 @@ def test_usage_errors_are_exit_two(repo: Path, argv: list[str]) -> None:
     assert proc.returncode == 2, (argv, proc.returncode, proc.stdout, proc.stderr)
 
 
-@pytest.mark.parametrize("pythonpath", [None, str(Path(CANARY).resolve().parent.parent)])
+# Ids name no checkout: one naming it was a node only that checkout collects (GOH.SHIPTREEFULL).
+@pytest.mark.parametrize("pythonpath", [None, str(Path(CANARY).resolve().parent.parent)],
+                         ids=["unset", "goh-root"])  # fmt: skip
 def test_a_missing_runner_is_refused_not_silently_unbounded(
     tmp_path: Path, pythonpath: str | None
 ) -> None:

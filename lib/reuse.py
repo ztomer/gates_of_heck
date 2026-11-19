@@ -417,19 +417,19 @@ def record_suite(repo: Path, tree: str, tools: str, passed: dict[str, bool], fai
                  full: bool, by: str, carried: int = 0, instrumented: bool = False,
                  measured: dict[str, bool] | None = None,
                  judged: set[str] | None = None) -> Path:  # fmt: skip
-    """Merge one suite run's verdicts on `tree` into its record: `passed` ({node: it ran the
-    native binary}) joins the record's passes, a node in `failed` leaves them. `full` says this
-    run judged every test of the tree itself (none carried from another tree, nothing failed); a
-    record stays full only while no later run on the tree fails and every pass in it is `judged`
-    (GOH.CARRYASFULL). `instrumented`: the run drove the coverage step's INSTRUMENTED binary
-    (tests/_land_verdicts.py `instrumented`), so a full one is the fresh instrumented run a ship
-    needs (GOH.COVCARRY, the owner's term 2); `measured` ({node: it left a profile}) joins the
-    nodes such a run SAW, the only ones coverage may carry (tests/_prof_record.py); `judged` (all
-    of `passed` when unnamed) joins the passes made ON this tree, never carried (SHIPBREACH0137)."""
+    """Merge one run's verdicts on `tree` into its record: `passed` ({node: it ran the binary})
+    joins the passes, a node in `failed` leaves them. `full`: this run judged every test of the
+    tree itself (none carried, nothing failed), so an old pass it neither made nor found judged
+    leaves (an id it never collected, as one naming another checkout: GOH.SHIPTREEFULL). A record
+    stays full while no later run fails and every pass in it is `judged` (GOH.CARRYASFULL).
+    `instrumented`: the run drove the INSTRUMENTED binary (GOH.COVCARRY); `measured` ({node: it
+    left a profile}): what such a run SAW, all coverage may carry; `judged` (all of `passed` when
+    unnamed): the passes made ON this tree (SHIPBREACH0137)."""
     old = lookup(CARRY, fields := carry_fields(repo, tree, tools))[0] or {}
-    merged = {n: bool(b) for n, b in old.get("passed", {}).items() if n not in failed}
-    merged.update(passed)
     mine = (set(old.get("judged") or ()) | (set(passed) if judged is None else judged)) - failed
+    merged = {n: bool(b) for n, b in old.get("passed", {}).items()
+              if n not in failed and (n in mine or not full)}  # fmt: skip
+    merged.update(passed)
     whole = (full or bool(old.get("full"))) and not failed and set(merged) <= mine
     inst = ((full and instrumented) or bool(old.get("instrumented"))) and whole
     seen = {n: bool(b) for n, b in old.get("measured", {}).items() if n not in failed}

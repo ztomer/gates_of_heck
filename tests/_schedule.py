@@ -82,8 +82,14 @@ def pytest_configure_node(node) -> None:
     node.workerinput[_KEY] = _read.get(_KEY, {})
 
 
-def pytest_collection_modifyitems(items) -> None:
-    """Sort `items` in place: the longest unit of work first, ties by nodeid."""
+def pytest_collection_modifyitems(config, items) -> None:
+    """Sort `items` in place: the longest unit of work first, ties by nodeid. A node id naming the
+    checkout is refused: every per-node store (this table, the verdict records) is keyed by it, and
+    such a node exists only in the checkout that collected it (GOH.SHIPTREEFULL: one carried pass
+    with the land's checkout in its id kept every later full run of the tree from being full)."""
+    root = str(config.rootpath)
+    if named := [i.nodeid for i in items if root in i.nodeid]:
+        raise pytest.UsageError(f"a node id names the checkout {root} (give it ids=): {named[0]}")
     known = _read[_KEY] if _KEY in _read else _load()
     if not known:
         return
