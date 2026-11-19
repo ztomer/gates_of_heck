@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 import timing_bounds
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 from load_kit import TOOL, WHY
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -133,7 +133,7 @@ def test_agent_stalls_and_the_session_start_line_name_a_live_run(
     argv = [sys.executable, str(script)]
     if script == STALLS:
         argv += ["--procs", os.devnull, "--subagents", str(tmp_path / "none")]
-    env = {**os.environ, "GOH_LOAD_DIR": str(load), "HOME": str(tmp_path)}
+    env = hermetic_env(GOH_LOAD_DIR=str(load), HOME=str(tmp_path))
     done = subprocess.run(
         argv, capture_output=True, text=True, stdin=subprocess.DEVNULL, env=env,
         timeout=timing_bounds.patience(60.0), check=False,
