@@ -416,6 +416,8 @@ def test_fixed_work_step_passes_idle_and_under_load(tmp_path: Path) -> None:
         str(root / "tools" / "load.py"),
         "--dir",
         str(tmp_path / "load"),
+        "--why",
+        "a test of the load tool itself, not a timing defect",
         "--despite-gate",
         "--oversubscribe",
         "--max",

@@ -51,6 +51,8 @@ sys.path.insert(0, str(ROOT / "lib"))
 import load_registry as reg
 
 TOOL = ROOT / "tools" / "load.py"
+# What every test run of the tool says for its spinners (GOH.LOADWHY): the tool refuses N>0 without.
+WHY = ("--why", "a test of the load tool itself, not a timing defect")
 GRACE_S = 5.0
 
 # What the tool says when its spinners are up: "load: 3 spinners started: 101 102 103".
@@ -332,6 +334,7 @@ class Tool(Owned):
                 str(TOOL),
                 "--dir",
                 str(directory),
+                *WHY,
                 *options,
                 str(count),
                 "--",

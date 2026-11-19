@@ -92,6 +92,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from agent_stop import INTERRUPTED, stop_marker  # THE stopped-agent rule (LOOP.LINGERSTOP)
+from load_runs import lines as load_run_lines  # live spinner runs and their why (GOH.LOADWHY)
 from loop_stale import loop_stale_lines, start_loop_stale  # .loop's own rule (GOH.STALEHOOK)
 from stdin_hangs import lines as stdin_hang_lines  # a shell blocked on stdin (GOH.STDINHANG)
 
@@ -488,6 +489,8 @@ def main(argv: list[str] | None = None) -> int:
         print(report(found, minutes))
     else:
         print(f"✓ no subagent idle {int(minutes)}m+ across {counted(len(dirs), 'session')}")
+    if not args.json and (live := load_run_lines()):  # information: the exit stays the stalls'
+        print("\n".join(live))
     if hung and not args.json:  # --json stays the stall list loopctl reads
         print("\n".join([HUNG_HEAD, *(f"  ⚠ {ln}" for ln in hung)]))
     return 1 if found or (hung and not args.json) else 0

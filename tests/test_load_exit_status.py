@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 import timing_bounds
 from conftest import REPO_ROOT
+from load_kit import WHY
 
 TOOL = REPO_ROOT / "tools" / "load.py"
 
@@ -28,7 +29,7 @@ pytestmark = pytest.mark.xdist_group("load_orphans")
 
 def _run(directory: Path, spinners: str, *command: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, str(TOOL), "--dir", str(directory), spinners, "--", *command],
+        [sys.executable, str(TOOL), *WHY, "--dir", str(directory), spinners, "--", *command],
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,

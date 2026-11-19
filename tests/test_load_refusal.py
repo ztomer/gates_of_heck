@@ -40,7 +40,7 @@ def _run(args: list[str], timeout: float = 60.0) -> subprocess.CompletedProcess[
 
 @pytest.mark.load_sensitive
 def test_a_busy_slot_refusal_names_the_holder_and_the_exact_rerun_line(tmp_path: Path) -> None:
-    args = ["--dir", str(tmp_path), "1", "--", "/bin/sh", "-c", "exit 0"]
+    args = [*load_kit.WHY, "--dir", str(tmp_path), "1", "--", "/bin/sh", "-c", "exit 0"]
     with load_kit.owned(tmp_path, 1, ["/bin/sh", "-c", "sleep 30 # the-holder"]) as tool:
         tool.wait_for_spinners()
         second = _run(args)
@@ -55,7 +55,9 @@ def test_wait_takes_the_slot_once_the_holder_is_done(tmp_path: Path) -> None:
     with load_kit.owned(tmp_path, 1, ["/bin/sh", "-c", "sleep 2"]) as tool:
         tool.wait_for_spinners()
         t0 = time.monotonic()
-        second = _run(["--dir", str(tmp_path), "--wait", "1", "--", "/bin/sh", "-c", "exit 5"])
+        second = _run(
+            [*load_kit.WHY, "--dir", str(tmp_path), "--wait", "1", "--", "/bin/sh", "-c", "exit 5"]
+        )
     assert second.returncode == 5, (second.returncode, second.stderr)
     assert time.monotonic() - t0 < timing_bounds.patience(30)
 
@@ -67,7 +69,7 @@ def test_a_wait_that_ends_without_running_the_command_is_not_a_pass(tmp_path: Pa
     ran = tmp_path / "ran"
     with load_kit.owned(tmp_path, 1, ["/bin/sh", "-c", "sleep 30 # the-holder"]) as tool:
         tool.wait_for_spinners()
-        late = _run(["--dir", str(tmp_path), "--wait", "--wait-max", "1", "1", "--",
+        late = _run([*load_kit.WHY, "--dir", str(tmp_path), "--wait", "--wait-max", "1", "1", "--",
                      "/bin/sh", "-c", f"touch {shlex.quote(str(ran))}"])  # fmt: skip
     assert late.returncode != 0, (late.returncode, late.stdout, late.stderr)
     assert not ran.exists(), "the wrapped command ran while the slot was held"

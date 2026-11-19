@@ -40,7 +40,7 @@ def _env(tmp_path: Path, **extra: str) -> dict[str, str]:
 
 def _load(tmp_path: Path, args: list[str], **extra: str) -> subprocess.Popen[str]:
     return subprocess.Popen(
-        [sys.executable, str(LOAD), "--background-ok", "test", *args],
+        [sys.executable, str(LOAD), "--background-ok", "test", *load_kit.WHY, *args],
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
         env=_env(tmp_path, **extra),
     )  # fmt: skip

@@ -43,7 +43,8 @@ with land_lock.held(lock, "goh ship test", print):
         time.sleep(0.05)
     else:
         sys.exit(142)
-    rc = subprocess.run([sys.executable, {str(LOAD)!r}, "--background-ok", "test", "--wait",
+    rc = subprocess.run([sys.executable, {str(LOAD)!r}, "--background-ok", "test", "--why",
+                         "a test of the load tool itself", "--wait",
                          "--wait-max", "5s", "--max", "60s", "1", "--", "true"],
                         stdin=subprocess.DEVNULL).returncode
     print(f"SHIP LOAD RC {{rc}}", flush=True)

@@ -27,6 +27,7 @@ import pytest
 import timing_bounds
 from _hook_inproc import run_hook
 from conftest import REPO_ROOT
+from load_kit import WHY
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
@@ -83,7 +84,7 @@ def test_a_normal_priority_command_is_not(argv: list[str]) -> None:
 
 def _tool(args: list[str], tmp_path: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, str(TOOL), "--dir", str(tmp_path), *args],
+        [sys.executable, str(TOOL), *WHY, "--dir", str(tmp_path), *args],
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,

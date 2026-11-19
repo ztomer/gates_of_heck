@@ -34,7 +34,8 @@
 //! changed there changes the guard, this check and the backstop together
 //! (`tests/test_check_busy_loop.py::test_the_shape_has_one_definition`).
 //!
-//! THE WAY. `python3 "$GOH_DIR/tools/load.py" N -- <command>` -- the one way to make load, which
+//! THE WAY. `python3 "$GOH_DIR/tools/load.py" --why <the defect> N -- <command>` (the `--why` is
+//! required for N>0, GOH.LOADWHY; a test run is N=0) -- the one way to make load, which
 //! registers the pids it starts, kills exactly those on the way out, refuses a second experiment
 //! while one holds the slot, and leaves a registry a launchd backstop reads when even that cannot
 //! run. A deliberate background busy loop says so on the line (or on the comment lines directly
@@ -65,7 +66,7 @@ const SHAPES: &str = include_str!("../../../lib/busyloop_shapes.json");
 pub const MARKER: &str = "load-ok:";
 
 /// The house's way to make load, named in every refusal.
-pub const THE_WAY: &str = r#"python3 "$GOH_DIR/tools/load.py" 8 -- <command>"#;
+pub const THE_WAY: &str = r#"python3 "$GOH_DIR/tools/load.py" --why "<the timing defect this load reproduces>" 8 -- <command>"#;
 
 /// Why a backgrounded spinner is a finding.
 const WHY_SPINNER: &str = "a backgrounded busy loop has nothing to reap it";

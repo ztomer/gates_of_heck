@@ -56,8 +56,12 @@ def rerun_line(argv: Sequence[str]) -> str:
     return f"python3 {shlex.quote(str(TOOL))} --wait {shlex.join(rest)}"
 
 
-def record(command: Sequence[str], max_s: float) -> dict:
-    """A run's registry record, its deadline counted from now (after any wait for the slot)."""
+def record(command: Sequence[str], max_s: float, why: str = "") -> dict:
+    """A run's registry record, its deadline counted from now (after any wait for the slot).
+
+    `why` is the timing defect this load reproduces (GOH.LOADWHY), and `cwd` the directory its
+    owner ran in: the two facts a reader of the registry needs to say whose load it is and why
+    (lib/load_live.py)."""
     now = time.time()
     return {
         "version": reg.VERSION,
@@ -67,6 +71,8 @@ def record(command: Sequence[str], max_s: float) -> dict:
         "max_s": max_s,
         "deadline_at": now + max_s,
         "command": list(command),
+        "why": why,
+        "cwd": str(Path.cwd()),
         "pids": [],
     }
 

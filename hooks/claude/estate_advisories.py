@@ -13,7 +13,8 @@ named here, by repo and the seed it needs, until a run clears it (tests/test_rel
 And it names a reuse path the reuse audit turned off whose fault item was never filed
 (GOH.REUSEAUDITFILE, tests/test_reuse_audit.py). And it names every directory under goh's state
 root written per run with no bound (GOH.LANDLOGPRUNE, lib/state_bounds.py,
-tests/test_state_bounds.py).
+tests/test_state_bounds.py). And it names every live load run (spinners burning now) with its why
+and its owner's directory (GOH.LOADWHY, lib/load_live.py, tests/test_load_why.py).
 
 It also names every registered estate repo with commits AHEAD of its upstream (GOH.AHEADREPORT):
 a commit landed in a repo other than the item's own -- a learning written into ~/.claude/skills from
@@ -46,6 +47,7 @@ from tui.lib import counted
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
 import estate_registry  # the registry, beside the audit's state file
 import gitrun  # git under a deadline that never strands an index.lock
+from load_runs import lines as load_run_lines  # live spinner runs and their why (GOH.LOADWHY)
 
 STALE_AFTER_H = 36  # a daily job, plus a missed run's grace
 NEW_WITHIN_H = 48
@@ -207,7 +209,13 @@ def state_lines(state: Path) -> list[str]:
 
 def report(state: Path, now: dt.datetime) -> list[str]:
     reg = estate_registry.registry_path(state)
-    return _audit(state, now) + ahead_lines(reg) + reuse_lines() + state_lines(state)
+    return (
+        _audit(state, now)
+        + ahead_lines(reg)
+        + reuse_lines()
+        + state_lines(state)
+        + load_run_lines()
+    )
 
 
 def _audit(state: Path, now: dt.datetime) -> list[str]:

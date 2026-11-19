@@ -25,6 +25,7 @@ import load_kit
 import pytest
 import timing_bounds
 from conftest import REPO_ROOT
+from load_kit import WHY
 from test_commit_gate_structural import _commit, _consumer
 
 from tui.lib import ICON_ERR
@@ -52,7 +53,8 @@ def _register(
 
 def _run(tmp_path: Path, *options: str, timeout: float = 60.0) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, str(TOOL), "--dir", str(tmp_path / "load"), *options, "1", "--", *QUICK],
+        [sys.executable, str(TOOL), *WHY, "--dir", str(tmp_path / "load"), *options, "1", "--",
+         *QUICK],
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,

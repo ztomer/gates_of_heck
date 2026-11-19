@@ -14,6 +14,7 @@ import sys
 
 import pytest
 from conftest import REPO_ROOT, hermetic_env
+from load_kit import WHY
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import lock_order
@@ -114,7 +115,8 @@ def test_load_py_refuses_to_wait_for_the_slot_under_a_later_lock(tmp_path) -> No
     # an EXPERIMENT that waits: a 0-spinner run takes a gate slot, not the load slot, since
     # GOH.ONEADMISSION (and gate_slot is re-entrant under its own holder)
     done = subprocess.run([sys.executable, str(REPO_ROOT / "tools" / "load.py"), "--background-ok",
-                           "test", "--wait", "1", "--", "true"], capture_output=True, text=True,
+                           "test", *WHY, "--wait", "1", "--", "true"],
+                          capture_output=True, text=True,
                           env=env, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert done.returncode == 2, done  # load.py's "cannot take the slot"
     assert "refusing to wait on 'load'" in done.stderr and "'gate_slot'" in done.stderr, done.stderr

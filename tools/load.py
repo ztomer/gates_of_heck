@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """The ONE way to make load on this machine -- and it reaps itself.
 
-    tools/load.py 8 -- ./my_test.sh        # eight spinners, the command, then no spinner
-    tools/load.py --max 2h 8 -- ./long.sh  # the same, with a longer deadline than the default
+    tools/load.py 0 -- ./my_test.sh        # a test run: admission only, NO spinner (no --why)
+    tools/load.py --why "the race needs a busy box" 8 -- ./my_test.sh   # eight spinners
+    tools/load.py --max 2h --why "..." 8 -- ./long.sh   # the same, with a longer deadline
     tools/load.py --status                 # who holds the slot
     tools/load.py --reap                   # clear a slot whose owner is gone
 
@@ -46,6 +47,12 @@ WHAT THIS TOOL DOES, IN THE ORDER THAT MATTERS.
      nine other agents. Build first (`cargo test --no-run`), put only the binary under load;
      `--shared-lock-ok <reason>` is the escape.
 
+11. It REFUSES spinners without a reason (GOH.LOADWHY, 2026-11-19): N>0 needs `--why <the timing
+    defect this load reproduces>`, kept in the registry and the baseline line and named while the
+    run is live (lib/load_live.py). Twelve spinners ran beside a plain `affected_tests.py --run`
+    (load ~110 on 16 cores) because "load only via load.py" read as "run tests under load.py N".
+    A test run is N=0: no load, no why.
+
 The command runs in a process group of its own, so the group can be killed whole; a command that
 reads from the terminal is therefore not supported (a background group that reads a tty stops).
 
@@ -70,6 +77,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
 
 import gates_in_flight
+import load_live
 import load_locks
 import load_priority
 import load_reap
@@ -99,6 +107,11 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--status", action="store_true", help="print who holds the slot")
     parser.add_argument("--reap", action="store_true", help="kill the orphans a dead owner left")
     parser.add_argument("--max", help=f"deadline: 45, 90m, 2h (default {DEFAULT_MAX_S:g}s)")
+    parser.add_argument(
+        "--why",
+        metavar="TEXT",
+        help="the timing defect this load reproduces: REQUIRED for N>0, recorded and named live",
+    )
     parser.add_argument("--oversubscribe", action="store_true", help="allow N > cores")
     parser.add_argument(
         "--wait", action="store_true", help="wait for the gates in flight and the slot"
@@ -115,7 +128,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
 
 
 def parse_duration(text: str, flag: str = "--max") -> float:
-    """A deadline in seconds from `45`, `30s`, `90m` or `2h`; anything that bounds nothing raises."""
+    """A deadline in seconds from `45`, `30s`, `90m` or `2h`; one that bounds nothing raises."""
     raw = text.strip().lower()
     scale = 1.0
     if raw and raw[-1] in UNITS:
@@ -143,35 +156,6 @@ def _directory(opts: argparse.Namespace) -> Path:  # refused in a work tree (GOH
         return reg.checked(Path(opts.dir).expanduser()) if opts.dir else reg.load_dir()
     except reg.InWorkTree as why:
         raise SystemExit(err(f"load: {why}") or 2) from None
-
-
-def _describe(data: dict) -> str:
-    pids = data.get("pids")
-    count = len(pids) if isinstance(pids, list) else 0
-    command = data.get("command")
-    shown = " ".join(str(part) for part in command) if isinstance(command, list) else ""
-    owner = f"owner pid {data.get('owner_pid')} (started {data.get('owner_start')})"
-    return f"{owner}, {counted(count, 'spinner')}, command: {shown}"
-
-
-def _status(directory: Path) -> int:
-    path = reg.registry_path(directory)
-    _status_gates()
-    if not path.exists():
-        print(f"load: no experiment holds {path}")
-        return 0
-    data = reg.read(path)
-    if data is None:
-        print(f"load: {path} is unreadable; remove it by hand if no experiment is running")
-        return 1
-    print(f"load: {path} holds an experiment: {_describe(data)}")
-    return 0
-
-
-def _status_gates() -> None:
-    """The gates admitted now: the held gate slots (a run with no spinners holds one)."""
-    for gate in gates_in_flight.slot_holders(exclude=set()):
-        print(f"load: a gate holds a slot: {gate.describe()}")
 
 
 def _reap(directory: Path) -> int:
@@ -213,6 +197,7 @@ class Experiment:
     def __init__(
         self, directory: Path, count: int, command: list[str], max_s: float = DEFAULT_MAX_S
     ) -> None:
+        self.why = ""  # the timing defect this load reproduces (set by main, GOH.LOADWHY)
         self.directory = directory
         self.count = count
         self.command = command
@@ -228,7 +213,7 @@ class Experiment:
     def claim(self) -> None:
         """Take the slot alone (an experiment with spinners), refusing one another experiment
         holds. A run with no spinners never comes here: it is a gate (`_admit_gate`)."""
-        self.data = load_slot.record(self.command, self.max_s)
+        self.data = load_slot.record(self.command, self.max_s, self.why)
         load_slot.take_alone(self.directory, self.registry, self.data)
 
     def _release(self, fifo: Path) -> None:
@@ -335,7 +320,7 @@ def _install_handlers(experiment: Experiment) -> None:
 
 
 def _admit_gate(
-    experiment: Experiment, command: list[str], max_s: float, wait_s: float
+    experiment: Experiment, command: list[str], max_s: float, wait_s: float, why: str
 ) -> int | None:
     """A run with no spinners is a GATE, admitted where every gate is (lib/admission.py: memory,
     then a gate slot), bounded by --wait-max (GOH.ONEADMISSION, D-0008); inside an experiment's
@@ -354,7 +339,7 @@ def _admit_gate(
         except (OSError, ValueError) as error:
             print(f"load: cannot take a gate slot: {error}", file=sys.stderr)
             return 2
-    experiment.data = load_slot.record(command, max_s)  # the deadline counts from admission
+    experiment.data = load_slot.record(command, max_s, why)  # the deadline counts from admission
     return None
 
 
@@ -363,7 +348,7 @@ def main(argv: list[str]) -> int:
     given = list(argv)
     directory = _directory(opts)
     if opts.status:
-        return _status(directory)
+        return load_live.status(directory)
     if opts.reap:
         return _reap(directory)
     rest = list(opts.rest)
@@ -386,6 +371,10 @@ def main(argv: list[str]) -> int:
     if count < 0:
         print("load: N must not be negative", file=sys.stderr)
         return 2
+    if refused_why := load_live.why_refusal(count, opts.why):
+        print(f"load: {refused_why}", file=sys.stderr)
+        return 2
+    why = " ".join((opts.why or "").split())
     try:
         max_s = DEFAULT_MAX_S if opts.max is None else parse_duration(opts.max)
         wait_s = (
@@ -424,12 +413,13 @@ def main(argv: list[str]) -> int:
                 f"during the wait run beside the load: {gates_in_flight.names(hold.joined)}"
             )
     baseline = gates_in_flight.load_reading(ncpu)
-    info(f"load: baseline before the spinners: {baseline}")
+    info(f"load: baseline before the spinners: {baseline}" + (f"; why: {why}" if why else ""))
     experiment = Experiment(directory, count, command, max_s)
+    experiment.why = why
     slot_wait = load_slot.waits(count, wait)
     holder = None
     if count == 0:
-        if (rc := _admit_gate(experiment, command, max_s, wait_s)) is not None:
+        if (rc := _admit_gate(experiment, command, max_s, wait_s, why)) is not None:
             return rc
     else:
         try:
@@ -438,7 +428,7 @@ def main(argv: list[str]) -> int:
             print(f"load: cannot take the slot: {error}", file=sys.stderr)
             return 2
     if holder is not None:
-        described = _describe(reg.read(holder) or {})
+        described = load_live.describe(reg.read(holder) or {})
         print(load_slot.refusal(holder, described, given, slot_wait, wait_s), file=sys.stderr)
         return EXIT_BUSY
 

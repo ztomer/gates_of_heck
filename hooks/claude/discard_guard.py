@@ -166,6 +166,12 @@ ESCAPE = re.compile(r"#\s*discard-ok:\s*\S")
 LOAD_ESCAPE = re.compile(r"#\s*load-ok:\s*\S")
 SEPARATORS = {"&&", "||", ";", "|", "&"}
 
+# The house way to make load: `--why` is required for N>0 (GOH.LOADWHY).
+LOAD_WAY = (
+    '`python3 "$GOH_DIR/tools/load.py" --why "<the timing defect this load reproduces>" '
+    "8 -- <your command>`"
+)
+
 # The refusal a command earns: the way forward, and the one escape.
 LOAD_REASON = (
     "This command spawns a busy loop with nothing to reap it (`while :; do :; done &`). "
@@ -173,7 +179,8 @@ LOAD_REASON = (
     "burning a core for hours: 24 of them for 3h12m at a load average of 206, then 12 for "
     "26m, then 8 for 28m inside the gates themselves, three times in one day, each blamed on "
     '"other agents". Make the load the house way, which reaps itself: '
-    '`python3 "$GOH_DIR/tools/load.py" 8 -- <your command>` -- it registers the pids it '
+    + LOAD_WAY
+    + " -- it registers the pids it "
     "starts, kills exactly those on the way out, refuses a second experiment while one holds "
     "the slot, refuses to starve another session's gate in flight (it names it; `--wait` starts "
     "once it is clear, `--despite-gate` overrides), and a launchd backstop kills any orphan that "
@@ -188,7 +195,8 @@ WAIT_REASON = (
     "does -- and hangs the shell meanwhile. Wait the house way: a loop that sleeps "
     "(`until <cond>; do sleep 2; done`), run through the Monitor tool (or with the Bash tool's "
     "run_in_background) so the wait does not block you. For deliberate load, use "
-    '`python3 "$GOH_DIR/tools/load.py" 8 -- <your command>`, which reaps itself. To busy-wait '
+    + LOAD_WAY
+    + ", which reaps itself. To busy-wait "
     "on purpose, add `# load-ok: <reason>` to the line (or to the comment lines directly above it)."
 )
 
@@ -441,7 +449,7 @@ def judge_file(path: str, content: str) -> str | None:
         "load average of 206, then 12 for 26m, then 8 for 28m inside the gates themselves, three "
         'times in one day, each blamed on "other agents" -- and on 2026-10-21 twenty-four of them '
         "were found that way, four cores each, four and a half hours old. Make the load the house "
-        'way, which reaps itself: `python3 "$GOH_DIR/tools/load.py" 8 -- <your command>` -- it '
+        "way, which reaps itself: " + LOAD_WAY + " -- it "
         "registers the pids it starts, kills exactly those on the way out, refuses a second "
         "experiment while one holds the slot, refuses to starve another session's gate in flight "
         "(`--wait` / `--despite-gate`), and a launchd backstop kills any orphan that "

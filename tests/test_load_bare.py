@@ -20,6 +20,7 @@ import pytest
 import timing_bounds
 from _hook_inproc import run_hook
 from conftest import REPO_ROOT, hermetic_env
+from load_kit import WHY
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
@@ -101,7 +102,8 @@ def test_a_slot_whose_owner_is_gone_lets_it_run(held):
 def test_the_build_lock_refusal_names_the_wait_line(tmp_path):
     """The agents' first refusal (exit 2) named only `--shared-lock-ok`; it names the rerun now."""
     ran = subprocess.run(
-        [sys.executable, str(TOOL), "--dir", str(tmp_path), "--wait", "--wait-max", "2700", "1",
+        [sys.executable, str(TOOL), *WHY, "--dir", str(tmp_path), "--wait", "--wait-max", "2700",
+         "1",
          "--", "swift", "test", "--package-path", "."],
         capture_output=True, text=True, stdin=subprocess.DEVNULL,
         timeout=timing_bounds.patience(60), check=False,

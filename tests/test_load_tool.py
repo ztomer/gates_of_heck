@@ -63,7 +63,7 @@ def _run(args: list[str], timeout: float = 60.0) -> subprocess.CompletedProcess[
     defect, not a slow pass.
     """
     return subprocess.run(
-        [sys.executable, str(TOOL), *args],
+        [sys.executable, str(TOOL), *load_kit.WHY, *args],
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
@@ -124,7 +124,10 @@ def test_a_killed_owner_leaves_no_spinner_alive(tmp_path: Path) -> None:
     argv = [
         "/bin/sh",
         "-c",
-        f'{sys.executable} "{TOOL}" --dir "{tmp_path}" 3 -- /bin/sh -c "sleep 30"; exit 0',
+        (
+            f'{sys.executable} "{TOOL}" --why "{load_kit.WHY[1]}" --dir "{tmp_path}" 3 -- '
+            '/bin/sh -c "sleep 30"; exit 0'
+        ),
     ]
     with load_kit.owning(argv, log=spoken) as owner:
         pids = owner.wait_for_spinners()
@@ -309,7 +312,8 @@ def test_more_spinners_than_cores_is_refused(tmp_path: Path) -> None:
     """32 spinners on 16 cores starves the very thing under test; it is refused unless asked
     for by name. (`GOH_LOAD_NCPU` is the seam: both directions are testable on one machine.)"""
     result = subprocess.run(
-        [sys.executable, str(TOOL), "--dir", str(tmp_path), "3", "--", "/bin/sh", "-c", "true"],
+        [sys.executable, str(TOOL), *load_kit.WHY, "--dir", str(tmp_path), "3", "--", "/bin/sh",
+         "-c", "true"],
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
@@ -328,7 +332,7 @@ def test_spinners_within_the_cores_or_named_oversubscription_run(
 ) -> None:
     """The accept direction: N up to the cores runs, and N above them runs when it is named."""
     result = subprocess.run(
-        [sys.executable, str(TOOL), "--dir", str(tmp_path), *flags, str(count), "--",
+        [sys.executable, str(TOOL), *load_kit.WHY, "--dir", str(tmp_path), *flags, str(count), "--",
          "/bin/sh", "-c", "true"],
         capture_output=True,
         text=True,
