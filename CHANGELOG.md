@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.139.9 -- SPD cycle 10: LANDLOGPRUNE (every per-run goh state dir has a bound: landq logs/done and ship records 14 days, run/ 3 days, swept per land, checked at SessionStart)
+
+* **land**: goh's per-run state is bounded (GOH.LANDLOGPRUNE). `lib/state_bounds.py` registers every directory under `~/.local/state/goh`; `landq/logs` (198 files and growing, unpruned), `landq/done`, each `ship/<repo>` and `run/` are pruned by age (14 days, `run/` 3) and count once per recorded land, a land's log and its timings together, never a live run or a held lock, and SessionStart names any directory written per run with no bound.
+
 ## v0.139.8 -- SPD cycle 10: PYTESTPIN (one release of every pip tool on the box and in hosted CI: pytest 9.2.0, xdist 3.8.0, coverage 7.17.3), ENABLEROOT (reuse_audit enable reads the fix from the checkout)
 
 * `reuse_audit.py enable` reads the fix from the checkout, not from the from-head export it runs in: with no `--root` it takes its own parent when that is a repository, else the checkout the export was cut from (`GOH_LIVE_ROOT`), else the caller's (cwd toplevel, then `GOH_DIR`). It refused every valid `--fix` from `~/.cache/goh/head/<sha>` with "is not a test"; a root that is no git repository now says so.
