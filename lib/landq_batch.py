@@ -13,7 +13,9 @@ row merge driver and conflict message a land has; only the item's own commits mo
 dropped from below is never carried). An item whose rebase conflicts is red (`conflict`, its log
 the rebase's) and the rest stack without it. Then the TIP's land.sh runs as any land does -- its
 pre-step, gate and fast-forward, under the lander's hold (GOH_LAND_LOCK_OWNER) -- and verdict carry
-and reuse apply to the tip's tree as to any tree.
+and reuse apply to the tip's tree as to any tree. The enqueue's kept pre-step verdict
+(GOH_LAND_PRE_FROM) goes with a tip whose tree IS its enqueued commit's -- a lone item after a
+bisect -- never with a stacked one, whose tree no enqueue judged (GOH.BATCHPREFROM).
 
 THE VERDICT. Green lands every item: each done record names the item's OWN commit (an ancestor of
 main, so `loopctl done` and a ship's ancestry check read it), and `goh land --wait ID` returns per
@@ -53,6 +55,7 @@ from pathlib import Path
 import bounded_run
 import gitrun
 import land_lock
+import land_prestep
 import land_slot
 import landq_report
 import landq_spec
@@ -228,13 +231,26 @@ class Batch:
         log = self.q / "logs" / f"{self.id}.gate{self.gates}.log"
         wt = Path(top.req["worktree"])
         self.kit.say(f"batch {self.id}: gate {self.gates} on {top.tip[:8]}, {size} stacked")
-        argv = ["env", *self.kit.unset, *land_slot.label(top.req), "bash", "-c",
+        argv = ["env", *self.kit.unset, *self.pre_from(top), "bash", "-c",
                 'cd -- "$1" && exec bash "$2"', "land",
                 str(wt), str(self.kit.land_script(wt))]  # fmt: skip
         res = bounded_run.run_step(argv, self.kit.timeout, self.kit.grace, "land batch", str(log))
         if res.timed_out:
             return "timeout", log, f"timed out after {self.kit.timeout}s"
         return ("landed" if res.code == 0 else "red"), log, f"exit {res.code}"
+
+    def pre_from(self, top: Item) -> list[str]:
+        """The `env` words naming TOP to land.sh: with the enqueue's kept verdict
+        (GOH.BATCHPREFROM) only when the gated tree IS the enqueued commit's -- a stack moved it,
+        and that tree is judged again."""
+        req = top.req
+        if not req.get("pre"):
+            return land_slot.label(req)
+        wt = Path(req["worktree"])
+        gated, judged = (
+            self.git(wt, "rev-parse", f"{sha}^{{tree}}") for sha in (top.tip, req["sha"])
+        )
+        return land_prestep.lander_env(req) if gated == judged else land_slot.label(req)
 
     def settle(self, items: list[Item]) -> None:
         """Gate ITEMS stacked; green lands them all, red splits them in two (module doc)."""

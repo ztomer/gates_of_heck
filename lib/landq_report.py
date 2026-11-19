@@ -42,7 +42,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from tui.lib import counted
+from tui.lib import counted, err, info, ok
 
 try:
     from lib import land_cause, selection_miss
@@ -53,6 +53,9 @@ except ImportError:  # run with lib/ itself on the path (tools/landq.py)
 TAKEN = re.compile(r"gate slot \d+/\d+ taken after (\d+)s")
 WAITED = re.compile(r"waited (?:(\d+)m )?(\d+)s for a gate slot")
 SKEW_S = 2.0  # a clock/filename rounding slack when a log "predates" its request
+# The Rust coverage step's decision (gates/_rust_proven.sh rust_coverage_reuse), as
+# lib/log_follow.py carries it into a land's log: `measuring -- WHY` or `reused -- ...`.
+COVERAGE = re.compile(r"\[rust\] coverage: (measuring -- .*|reused -- .*)$", re.MULTILINE)
 
 
 def slot_wait_s(log_text: str) -> float | None:
@@ -66,6 +69,28 @@ def slot_wait_s(log_text: str) -> float | None:
         return float(sum(taken))
     waited = [int(m or 0) * 60 + int(s) for m, s in WAITED.findall(log_text)]
     return float(max(waited)) if waited else None
+
+
+def coverage_said(log_text: str) -> list[str]:
+    """Each distinct coverage decision a land's log records, in order (GOH.BATCHPREFROM): the
+    lander's line names why a gate measured, which lib/pre_fast.py predicts from paths alone."""
+    return list(dict.fromkeys(m.strip() for m in COVERAGE.findall(log_text)))
+
+
+def announce(outcome: dict, who: str) -> None:
+    """The lander's lines for a recorded OUTCOME: its state and sha, then (a land) each coverage
+    decision its gate's log records, so a gate that measured says why (GOH.BATCHPREFROM)."""
+    (ok if outcome["state"] == "landed" else err)(
+        f"{who}: {outcome['state']} @ {outcome['sha'][:8]}"
+    )
+    if outcome.get("mode") != "land":
+        return
+    try:
+        text = Path(outcome["log"]).read_text(errors="replace")
+    except (OSError, KeyError):
+        return
+    for said in coverage_said(text):
+        info(f"{who}: the gate's coverage: {said}")
 
 
 def birth(path: Path) -> float | None:

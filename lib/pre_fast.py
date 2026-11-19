@@ -16,7 +16,8 @@ the suite plain, and that suite takes the pre-step's whole verdict on the same t
 It measures when the tree's measurement inputs differ from main's, whose gate left a measurement
 of them (gates/_rust_proven.sh rust_coverage_reuse): the paths lib/gate_identity.py `rust` keys
 (the Rust build inputs, the coverage scripts, the external suite's runner), the diff coverage
-allowlist, and .gatesrc (the GOH_COV_* settings). A diff main..tip that touches one answers 0,
+allowlist, and .gatesrc's GOH_COV_* settings (a line that sets one, or exports a GOH_ key; any other
+.gatesrc change keys nothing the measurement reads). A diff main..tip that touches one answers 0,
 MEASURES: the fast set suffices. Anything else answers 1, MAY REUSE: the whole set runs, as before.
 No external suite (GOH_COV_RUST_EXTERNAL) answers 1; a Rust identity that cannot be made (a
 workspace member outside the keyed inputs: the gate always measures) answers 0.
@@ -41,6 +42,7 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -48,6 +50,7 @@ from pathlib import Path
 MEASURES, MAY_REUSE = 0, 1
 KEYED = ("inputs", "scripts", "runner")  # gate_identity.rust lines that list the files they key
 ALSO = (".gatesrc", "diffcov_allow.json")
+COV_LINE = re.compile(r"\bGOH_COV_|^\s*export\s+GOH_")  # a .gatesrc line the coverage key reads
 
 
 def _changed(root: Path, base: str) -> list[str] | None:
@@ -57,6 +60,24 @@ def _changed(root: Path, base: str) -> list[str] | None:
         env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
     )  # fmt: skip
     return None if r.returncode else [p for p in r.stdout.splitlines() if p]
+
+
+def _gatesrc_moves_coverage(root: Path, base: str) -> bool:
+    """Whether main..HEAD changes a .gatesrc line the coverage key reads: a GOH_COV_* setting
+    (_rust_cov_inputs keys each by value) or an exported GOH_ key (the step's env hash). Comments
+    and the other settings key nothing the measurement reads (GOH.BATCHPREFROM: 7e0fdeae added
+    GOH_LAND_PRE_FAST, was predicted to measure, and its gate reused). Unreadable is a move."""
+    r = subprocess.run(
+        ["git", "-C", str(root), "diff", "-U0", "--no-renames", base, "HEAD", "--", ".gatesrc"],
+        capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
+        env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+    )  # fmt: skip
+    if r.returncode:
+        return True
+    changed = [
+        ln[1:] for ln in r.stdout.splitlines() if ln[:1] in "+-" and ln[:3] not in ("+++", "---")
+    ]
+    return any(COV_LINE.search(ln) for ln in changed if not ln.lstrip().startswith("#"))
 
 
 def keyed(lines: list[str]) -> set[str]:
@@ -90,7 +111,10 @@ def decide(root: Path, base: str, external: str | None) -> tuple[int, str]:
         lines = gate_identity.rust(root, gates, external)
     except LookupError as e:
         return MEASURES, f"the coverage always measures here ({e})"
-    if moved := sorted(p for p in changed if _hit(p, keyed(lines))):
+    moved = sorted(p for p in changed if _hit(p, keyed(lines)))
+    if ".gatesrc" in moved and not _gatesrc_moves_coverage(root, base):
+        moved.remove(".gatesrc")
+    if moved:
         more = f" (+{len(moved) - 1} more)" if len(moved) > 1 else ""
         return MEASURES, f"{moved[0]}{more} moved since main {base[:8]}: the gate measures coverage"
     return MAY_REUSE, f"no coverage input moved since main {base[:8]}: the gate may reuse the set"

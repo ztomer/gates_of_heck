@@ -6,9 +6,10 @@
 GOH.LANDPROGRESS (2026-11-14). `tools/gate_profile.sh` -- land.sh's gate -- writes the push gate's
 whole output to a log and prints only the end, so a 40 min land under load read as silence. The log
 stays the record; this prints the lines that say where the gate is: local CI's `[i/n]` step lines
-and the section titles above them. It is bounded by its owner, never by hope: it exits when PID
-(the profile) is gone or when it is TERMed, draining what is already written first, so a killed
-profile leaves no follower behind (tests/test_gate_profile.py).
+and the section titles above them, and the Rust coverage step's decision (GOH.BATCHPREFROM). It
+is bounded by its owner, never by hope: it exits when PID (the profile) is gone or when it is
+TERMed, draining what is already written first, so a killed profile leaves no follower behind
+(tests/test_gate_profile.py).
 """
 
 from __future__ import annotations
@@ -33,6 +34,10 @@ import time
 
 # local CI's `→ [1/7] cmd`, `✓ [1/7] cmd`, `✗ [7/7] FAILED: cmd`, `⚠ [3/7] ...`; section titles.
 STEP = re.compile(r"^\s*(?:[→✓✗⚠] \[\d+/\d+\]|\s*(?:pre-push: gating|local CI —))")
+# The Rust coverage step's decision, `↔ [rust] coverage: measuring -- WHY` (or `reused`), after
+# any colour escapes: the lander names it per land (lib/landq_report.py coverage_said).
+ESC = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+COVERAGE = re.compile(r"^\s*↔ \[rust\] coverage: (?:measuring|reused) -- ")
 POLL_S = 0.5
 
 
@@ -57,6 +62,8 @@ def _show(chunk: str, carry: str) -> str:
     for line in whole:
         if STEP.match(line):
             print(line.strip(), flush=True)
+        elif COVERAGE.match(plain := ESC.sub("", line)):
+            print(plain.strip(), flush=True)
     return tail
 
 

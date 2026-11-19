@@ -44,6 +44,15 @@ def adopt(req: dict, keep: Path) -> None:
             req["pre"] = {"judged": req["sha"], "keep": str(keep)}
 
 
+def discard(req: dict) -> None:
+    """REQ's kept verdict and its record removed once REQ is recorded: land.sh removes what it
+    reads, but a batch item whose gate judged another tree, or a land refused before its pre-step,
+    never read its own, and no later land is that enqueue's (GOH.BATCHPREFROM)."""
+    if keep := (req.get("pre") or {}).get("keep"):
+        for path in (Path(keep), Path(f"{keep}.record")):
+            path.unlink(missing_ok=True)
+
+
 def lander_env(req: dict) -> list[str]:
     """The lander's tools/land.sh reads the kept verdict from GOH_LAND_PRE_FROM."""
     kept = [f"GOH_LAND_PRE_FROM={req['pre']['keep']}"] if req.get("pre") else []

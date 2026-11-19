@@ -241,6 +241,7 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
     req = landq_batch.read(req_path)
     outcome.update(land_e2e.asked(req))  # the e2e's start (GOH.LANDTARGET)
     outcome.update(land_slot.done(done_dir.parent, req))  # GOH.LANDSNAPSHOT: slot_s, released
+    land_prestep.discard(req)  # GOH.BATCHPREFROM: a verdict no gate read serves no later land
     outcome.update(item=named, attempt=land_attempts.attempt_of(done_dir, named))
     if item:
         tool = loopctl()
@@ -262,8 +263,7 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
         warn(f"{named}: its timing ledger rows were not written: {e}")
     if why := selection_miss.record_land(done_dir.parent, outcome, named):  # GOH.SELECTAUDIT
         warn(why)
-    mark = ok if outcome["state"] == "landed" else err
-    mark(f"{item or Path(outcome['repo']).name}: {outcome['state']} @ {outcome['sha'][:8]}")
+    landq_report.announce(outcome, item or Path(outcome["repo"]).name)
 
 
 def live_root() -> Path:
