@@ -2,7 +2,8 @@
 split from lib/reuse_audit.py for GOH.REUSEOFFLANDED2; docs/reuse.md).
 
 `file_fault` runs `loopctl file` (GOH_LOOPCTL and GOH_LOOP_QUEUE are the seams) with the item
-naming its class as rules.class_first asks (`class_of: none`). A path turns off only while on, so
+naming its class as rules.class_first asks (`class_of: none`) and the fields its phase's
+`requires` names (rules.phase_contracts: `metric`, `predicted`). A path turns off only while on, so
 each off is a new instance: an id the queue already holds is an EARLIER off's item, done or open,
 and the next free id is filed, naming it. `unfiled` lists the paths off with no filed item, for
 SessionStart (hooks/claude/estate_advisories.py). Pinned by tests/test_reuse_audit.py.
@@ -52,12 +53,25 @@ def _fault_item(p: reuse.ReusePath, iid: str, before: str, cause: str, why: str,
             "source": "goh reuse audit (lib/reuse_audit.py)",
             "item": f"The reuse path {p.name!r} ({p.doc}) is OFF: {cause}: {why}.{again}{ran} "
             f"Both verdicts and the key: {json.dumps(line, sort_keys=True)}",
+            # rules.phase_contracts (loopctl): the phase's `requires`, from what the audit knows --
+            # the skip the path makes, and that it stays off until enabled (GOH.REUSEOFFLANDED3)
+            **contract_fields(p),
             "done_state": f"the missing key input found and keyed, a test that misses on it, and "
             f"`reuse_audit.py enable {p.name} --fix SHA --test NODE`",
             # rules.class_first (loopctl): each path's off is its own instance, no open closure's
             "class_of": "none",
             "class_why": f"the reuse path {p.name!r} turned off on its own evidence ({cause}); its "
             "cause is that path's key or reader, found from this record"}  # fmt: skip
+
+
+def contract_fields(p: reuse.ReusePath) -> dict:
+    """The fields a phase's `requires` names (SPD and EC: `metric`, `predicted`), for any filer
+    of a reuse path's item: the metric is the path's skip, the prediction its state after a fix."""
+    at = ", ".join(p.sites) or p.store
+    return {"metric": f"reuse path {p.name!r} ({at}): on or off; off re-runs, on every use, the "
+            f"work it skips ({p.doc})",
+            "predicted": f"off -> on after `reuse_audit.py enable {p.name} --fix SHA --test NODE`"
+            ": the skip reused again, its window clean"}  # fmt: skip
 
 
 def _file(loopctl: str, item: dict) -> tuple[int, str]:
