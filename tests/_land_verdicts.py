@@ -264,12 +264,12 @@ def _record_store(session) -> None:
             if n in plan.get("binprof", set()):
                 measured.setdefault(n, True)
     other = int(plan.get("other", 0))
-    by = {"": "pre-land", _same_tree.SAME: "full run"}.get(_on(REUSE), "land gate")
     judged = (_called - _failed) | (set(plan.get("judged", ())) - _failed)
     with _in_store() as (reuse, _):  # the measurement carried, its claims checked (GOH.COVNONBIN)
         _cov_claims.record(session, plan, reuse.lookup_suite(REPO_ROOT, *me)[0], passed, measured,
                            _bin, instrumented())  # fmt: skip
         full = _whole(session.config) and session.exitstatus == 0 and not _failed and not other
+        by = _same_tree.by(_on(REUSE), _on(RECORD), _whole(session.config))  # what ran
         reuse.record_suite(REPO_ROOT, me[0], me[1], passed, set(_failed), full, by, other,
                            instrumented(), measured, judged)  # fmt: skip
 

@@ -96,6 +96,8 @@ def test_an_idle_full_run_then_the_ships_run_on_one_tree_leave_it_full(
     assert here in _t1()["passed"] and _t1()["judged"] == [S], _t1()
     first = _full(idle, store, tmp_path)
     assert first.returncode == 0, first.stdout + first.stderr
+    # GOH.TIMINGSBLEED: the idle lander's whole instrumented run is no pre-land run, and says so
+    assert _t1()["by"] == "full run", _t1()
     then = _full(ship, store, tmp_path, GOH_LAND_VERDICTS_REUSE=ship_full_run.REUSE)
     assert then.returncode == 0, then.stdout + then.stderr
     rec = _t1()

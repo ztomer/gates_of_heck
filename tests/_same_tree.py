@@ -24,7 +24,19 @@ audited `test` path, as a land's same-tree reuse is (tests/_land_audit.py).
 
 from __future__ import annotations
 
+import os
+
 SAME = "@tree"  # GOH_LAND_VERDICTS_REUSE's value for this mode; no file is named so
+
+
+def by(reuse: str, record: str, whole: bool) -> str:
+    """A suite record's `by:`, from what RAN (GOH.TIMINGSBLEED). An unset REUSE read as "pre-land"
+    labelled the idle lander's whole instrumented run (RECORD=/dev/null, lib/idle_suite.py) one."""
+    if reuse:
+        return "full run" if reuse == SAME else "land gate"
+    if record and record != os.devnull:
+        return "pre-land"
+    return "full run" if whole else "run by hand"
 
 
 def nodes(rec: dict | None) -> set[str]:
