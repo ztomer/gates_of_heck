@@ -54,8 +54,9 @@ from pathlib import Path
 import _cov_claims  # tests/: the non-binary carry and its gate (GOH.COVNONBIN)
 import _land_audit  # tests/, beside this file: the audited `test` and `carry` uses
 import _prof_record  # tests/: each test's own profile under coverage (GOH.COVCARRY)
+import _same_tree  # tests/: the fresh instrumented run's own-tree reuse (@tree)
 import pytest
-from _land_trees import ANCESTORS, _git, diff, trees  # noqa: F401  (patched here by tests)
+from _land_trees import ANCESTORS, _git, carried, diff, trees  # noqa: F401  (patched here)
 
 RECORD = "GOH_LAND_VERDICTS_RECORD"
 REUSE = "GOH_LAND_VERDICTS_REUSE"
@@ -170,28 +171,6 @@ def _builds(changed: list[str], root: Path = REPO_ROOT) -> bool:
     return _lib("binary_runners").build_input(root, changed) is not None
 
 
-def carried(passed: dict[str, bool], chosen: set[str], coverage: bool, binary: bool,
-            measured: dict[str, bool] | None = None,
-            profiled: set[str] | None = None) -> set[str]:  # fmt: skip
-    """The nodes of a record of another tree this run may skip: not in a file the diff chooses,
-    not a node it chooses (a parametrized node by its function), not one that ran the native
-    binary across a change to the binary's build (`binary`), nor under coverage unless the store
-    holds its profile of THIS binary (`profiled`, lib/prof_store.py, GOH.COVCARRY3). Under
-    coverage a node that ran none is carried only when an instrumented run MEASURED it running
-    none (`measured`, tests/_prof_record.py): a mark is no proof (GOH.COVCARRY)."""
-    files = {c for c in chosen if "::" not in c}
-    out = set()
-    for node, ran_bin in passed.items():
-        if ran_bin and (binary or (coverage and node not in (profiled or set()))):
-            continue
-        if coverage and not ran_bin and (measured or {}).get(node) is not False:
-            continue
-        if node.split("::")[0] in files or node.split("[")[0] in chosen:
-            continue
-        out.add(node)
-    return out
-
-
 def pytest_configure(config) -> None:
     """The measurement this plugin's coverage rule reads, registered beside it (GOH.COVCARRY)."""
     if not config.pluginmanager.has_plugin("goh-prof-record"):
@@ -284,14 +263,14 @@ def _record_store(session) -> None:
             if n in plan.get("binprof", set()):
                 measured.setdefault(n, True)
     other = int(plan.get("other", 0))
-    by = "land gate" if _on(REUSE) else "pre-land"
+    by = {"": "pre-land", _same_tree.SAME: "full run"}.get(_on(REUSE), "land gate")
+    judged = (_called - _failed) | (set(plan.get("judged", ())) - _failed)
     with _in_store() as (reuse, _):  # the measurement carried, its claims checked (GOH.COVNONBIN)
         _cov_claims.record(session, plan, reuse.lookup_suite(REPO_ROOT, *me)[0], passed, measured,
                            _bin, instrumented())  # fmt: skip
         full = _whole(session.config) and session.exitstatus == 0 and not _failed and not other
-        reuse.record_suite(
-            REPO_ROOT, me[0], me[1], passed, set(_failed), full, by, other, instrumented(), measured
-        )
+        reuse.record_suite(REPO_ROOT, me[0], me[1], passed, set(_failed), full, by, other,
+                           instrumented(), measured, judged)  # fmt: skip
 
 
 def _shadows() -> None:
@@ -310,6 +289,8 @@ def _shadows() -> None:
 def reusable(path: str, here: str | None, coverage: bool) -> tuple[set[str], str]:
     """(the node ids a record at `path` lets this run skip, why). `here` is this checkout's
     identity; under `coverage` a test that ran the native binary is never skipped."""
+    if path == _same_tree.SAME:  # this tree's store record, read again (the audit's re-read)
+        return _same_tree.nodes(_own_record()), "@tree"
     try:
         rec = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
@@ -345,12 +326,17 @@ def _plan(config) -> dict:
         lines = ["land verdicts: nothing reused under coverage: the audit turned `profcarry` off"]
         _state["plan"] = {"lines": lines, "skipped": {}, "other": 0, "shadows": [], "skip": set()}
         return _state["plan"]  # type: ignore[return-value]
+    if path == _same_tree.SAME:  # the ship's fresh run: no file, no carry, no stored profile
+        _state["plan"] = _same_tree.plan(_own_record(), coverage, lambda p, n: _land_audit.audited(
+            p, n, identity(), str(config.rootpath), _store_or_none()))  # fmt: skip
+        return _state["plan"]  # type: ignore[return-value]
     same, why = reusable(path, identity(), coverage) if path else (set(), "")
     lines = [f"land verdicts: {len(same)} tests passed by the pre-land run are reused ({why})"]
     plan = {"lines": lines, "skipped": {}, "other": 0, "shadows": []}
     if same:  # each node one use of the audited `test` path, decided here for every worker
         same = _land_audit.audited(plan, same, identity(), str(config.rootpath), _store_or_none())
     plan["skipped"] = {n: b for n, b in _file_passed(path).items() if n in same}
+    plan["judged"] = set(plan["skipped"])  # the pre-step's passes of THIS tree (its identity)
     if path:
         _carry(plan, _file_sha(path), coverage, Path(config.rootpath))
     if coverage:  # a same-tree pass is skipped only when it was measured running no binary
@@ -363,6 +349,14 @@ def _plan(config) -> dict:
     plan["skip"] = set(plan["skipped"])
     _state["plan"] = plan
     return plan
+
+
+def _own_record() -> dict | None:
+    """This tree's suite record in the store, or None (no identity, no store)."""
+    if (me := _here()) is None or not _store():
+        return None
+    with _in_store() as (reuse, _):
+        return reuse.lookup_suite(REPO_ROOT, *me)[0]
 
 
 def _carry_audited_on() -> bool:
@@ -416,6 +410,7 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
                          or (not b and measured.get(n) is False)}  # fmt: skip
                 plan.setdefault("nobin", set()).update(n for n, b in measured.items() if b is False)
                 how = "the same tree"
+                plan.setdefault("judged", set()).update(nodes & set(rec.get("judged") or ()))
             else:
                 changed = diff(REPO_ROOT, sha)
                 chosen, why = (

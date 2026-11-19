@@ -1,4 +1,5 @@
-"""The trees a land's suite carries verdicts from, and their diffs (tests/_land_verdicts.py).
+"""The trees a land's suite carries verdicts from, their diffs, and what may carry
+(tests/_land_verdicts.py).
 
 Split from the plugin for its line cap (GOH.COVCARRY); the plugin imports these names, so a fixture
 session patches them there (`lv.trees`, `lv.diff`).
@@ -42,3 +43,25 @@ def diff(root: Path, sha: str) -> list[str] | None:
                        capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL,
                        check=False)  # fmt: skip
     return [ln for ln in r.stdout.splitlines() if ln] if r.returncode == 0 else None
+
+
+def carried(passed: dict[str, bool], chosen: set[str], coverage: bool, binary: bool,
+            measured: dict[str, bool] | None = None,
+            profiled: set[str] | None = None) -> set[str]:  # fmt: skip
+    """The nodes of a record of another tree this run may skip: not in a file the diff chooses,
+    not a node it chooses (a parametrized node by its function), not one that ran the native
+    binary across a change to the binary's build (`binary`), nor under coverage unless the store
+    holds its profile of THIS binary (`profiled`, lib/prof_store.py, GOH.COVCARRY3). Under
+    coverage a node that ran none is carried only when an instrumented run MEASURED it running
+    none (`measured`, tests/_prof_record.py): a mark is no proof (GOH.COVCARRY)."""
+    files = {c for c in chosen if "::" not in c}
+    out = set()
+    for node, ran_bin in passed.items():
+        if ran_bin and (binary or (coverage and node not in (profiled or set()))):
+            continue
+        if coverage and not ran_bin and (measured or {}).get(node) is not False:
+            continue
+        if node.split("::")[0] in files or node.split("[")[0] in chosen:
+            continue
+        out.add(node)
+    return out

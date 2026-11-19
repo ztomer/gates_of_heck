@@ -222,7 +222,7 @@ def suite(root: Path, record: Path, base: str) -> tuple[bool, str, str]:
     seen = got.get("measured") if isinstance(got.get("measured"), dict) else {}
     measured = dict.fromkeys((n for n in carried if seen.get(n) is False), False)
     reuse.record_suite(root, tree, tools, union, set(), False, "land gate (suite reused)",
-                       len(carried), measured=measured)  # fmt: skip
+                       len(carried), measured=measured, judged=set(rec["passed"]))  # fmt: skip
     vid = f"{str(rec.get('sha') or '')[:12]}:{here[:12]}"
     return True, (f"the pre-step judged this tree ({len(rec['passed'])} tests), main "
                   f"{base[:8]}'s record carries {len(carried)}"), vid  # fmt: skip

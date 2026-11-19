@@ -13,11 +13,13 @@ under it, so the run judges exactly the tip the release kit then checks (lib/shi
 releases. A tip that already has its instrumented full run (the idle lander's, or an earlier ship's)
 is not run again: the step is skipped, saying whose run it stands on. The run is the idle lander's
 own command (full_run.INSTRUMENTED, the coverage gate's Rust mode with its external suite) with
-GOH_LAND_VERDICTS_RECORD=/dev/null, in a detached worktree kept between ships beside the ship
-results (`<ship dir>/suite-wt`: its build caches stay warm), admitted as class `ship` (ahead of
-every `work` waiter). It never yields: a land waits on the lock the ship holds, as for any ship
-step. Its seconds are the step's, so the ship record keeps the lock wait (`land_wait_s`) apart from
-the ship's own run (`own_s`) and `goh budget` judges the ship, not the queue (lib/budget.py).
+GOH_LAND_VERDICTS_RECORD=/dev/null and GOH_LAND_VERDICTS_REUSE=@tree (a pass JUDGED on this
+very tree by a test measured running no binary is not run again, tests/_same_tree.py), in a
+detached worktree kept between ships beside the ship results (`<ship dir>/suite-wt`: its build
+caches stay warm), admitted as class `ship` (ahead of every `work` waiter). It never yields: a
+land waits on the lock the ship holds, as for any ship step. Its seconds are the step's, so the
+ship record keeps the lock wait (`land_wait_s`) apart from the ship's own run (`own_s`) and `goh
+budget` judges the ship, not the queue (lib/budget.py).
 
     ship_full_run.py --repo MAIN --wt DIR    exit 0 green (or owed none), 1 red or no worktree
 
@@ -48,6 +50,9 @@ import ship_suite  # lib/: the check the release kit makes
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX = full_run.MAX
+# The tree's own passes of tests measured running no binary are not run again (tests/_same_tree.py):
+# every binary-running, carried or unmeasured test still runs instrumented (GOH.SHIPBREACH0137).
+REUSE = "@tree"
 
 
 def skip_reason(repo: Path, sha: str) -> str:
@@ -78,7 +83,8 @@ def run(repo: Path, wt: Path, argv: list[str] | None = None) -> int:
         print(f"ship full suite: no worktree at {sha[:8]}: {why}", flush=True)
         return 1
     print(f"ship full suite on {sha[:8]} in {wt}", flush=True)
-    env = dict(os.environ, GOH_LAND_VERDICTS_RECORD=os.devnull, GOH_GATE_CLASS="ship")
+    env = dict(os.environ, GOH_LAND_VERDICTS_RECORD=os.devnull, GOH_GATE_CLASS="ship",
+               GOH_LAND_VERDICTS_REUSE=REUSE)  # fmt: skip
     rc = subprocess.run(argv or default_argv(), cwd=wt, env=env, stdin=subprocess.DEVNULL,
                         check=False).returncode  # fmt: skip
     if rc == 0 and (why := ship_suite.full_suite(repo, sha)[1]):  # green, yet no record: say so
