@@ -52,7 +52,7 @@ the push log text instead of calling `goh ship verdict`; until it does, it misse
   so the next free one, `GOH.REUSEOFF<PATH>2` and on, is filed naming it; a CI shadow's record
   names the run's `slug@pushed-sha` as `fresh_from`). It stays off until `reuse_audit.py
   enable PATH --fix SHA --test FILE::TEST` names the fix and the test that misses on the lacking
-  input. A window (7 days) that compared fewer samples than min(min_samples, the samples it drew)
+  input (the fix is read from the checkout: its own parent, else the one a from-head export was cut from, else the caller's cwd or GOH_DIR; a root that is no git repository is named, never "not a test"). A window (7 days) that compared fewer samples than min(min_samples, the samples it drew)
   is STARVED and turns the path off too; fewer drawn than min_samples reads "thin", never clean.
   goh's own shadow is hosted CI's full gate of every push (a "ci" shadow, queued, read once by the
   idle lander through `loopctl ci`; a run that judged nothing, cancelled or timed out, is no fresh

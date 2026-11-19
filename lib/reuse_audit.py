@@ -66,6 +66,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import goh_root  # lib/: GOH_LIVE_ROOT, honoured for an export only
 import lock_order  # lib/: the one acquire path (GOH.LOCKORDER)
 import reuse  # lib/, beside this file: the one store and its path registry
 import reuse_fault  # lib/: the fault item an off files
@@ -210,6 +211,35 @@ def compare(path: str, fields: dict[str, str], reused: str, fresh: str,
     return reused == fresh
 
 
+def _is_repo(root: Path) -> bool:
+    got = subprocess.run(["git", "-C", str(root), "rev-parse", "--git-dir"], capture_output=True,
+                         check=False, stdin=subprocess.DEVNULL)  # fmt: skip
+    return got.returncode == 0
+
+
+def default_root(here: Path | None = None) -> Path:
+    """The checkout `enable` reads the fix from (GOH.ENABLEROOT). This file's own parent when that
+    is a repository; but gates/_from_head.py re-runs it from an export (~/.cache/goh/head/<sha>), a
+    `git archive` with no history, where `git show FIX:FILE` fails for every fix. There the root is
+    the checkout the export was cut from (GOH_LIVE_ROOT, honoured for an export only), else
+    the caller's own (its cwd's toplevel, then GOH_DIR). With none, the parent: `enable` then names
+    it as no repository."""
+    own = (here or Path(__file__).resolve().parent.parent).resolve()
+    if (own / ".git").exists():
+        return own
+    live = goh_root.live_root_for(str(own))
+    top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True,
+                         check=False, stdin=subprocess.DEVNULL)  # fmt: skip
+    for cand in (
+        live,
+        top.stdout.strip() if top.returncode == 0 else "",
+        os.environ.get("GOH_DIR"),
+    ):
+        if cand and _is_repo(Path(cand)):
+            return Path(cand)
+    return own
+
+
 def enable(path: str, *, root: Path, fix: str = "", test: str = "", why: str = "") -> str:
     """Turn the path back on; refused (ValueError) without the proof its cause needs."""
     p = reuse._path(path)
@@ -220,6 +250,8 @@ def enable(path: str, *, root: Path, fix: str = "", test: str = "", why: str = "
         file, _, name = test.partition("::")
         if not fix or not name:
             raise ValueError("a disagreement needs --fix SHA and --test FILE::TEST, its missed key")
+        if not _is_repo(root):
+            raise ValueError(f"{root} is not a git repository: --fix {fix} cannot be read from it")
         shown = subprocess.run(["git", "-C", str(root), "show", f"{fix}:{file}"],
                                capture_output=True, text=True, check=False,
                                stdin=subprocess.DEVNULL)  # fmt: skip
@@ -360,7 +392,7 @@ def main(argv: list[str] | None = None) -> int:
     en.add_argument("--fix", default="")
     en.add_argument("--test", default="")
     en.add_argument("--why", default="")
-    en.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent)
+    en.add_argument("--root", type=Path, default=None)
     us = sub.add_parser("use")
     us.add_argument("path")
     us.add_argument("--unbacked", action="store_true")
@@ -379,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if a.verb == "enable":
         try:
-            print(enable(a.path, root=a.root, fix=a.fix, test=a.test, why=a.why))
+            print(enable(a.path, root=a.root or default_root(), fix=a.fix, test=a.test, why=a.why))
         except (KeyError, ValueError) as e:
             print(f"reuse audit: not enabled: {e}", file=sys.stderr)
             return 1
