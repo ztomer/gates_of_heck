@@ -1,7 +1,9 @@
 """Reading the landing queue (split from tools/landq.py, GOH.CAPHEADROOM): `goh land --status`,
 and `--wait`, which finds a request wherever it is now and blocks until it is done. An enqueue of
 the item still in its pre-step (lib/landq_inflight.py) is waited for until it files; with neither,
-the wait exits 2 (GOH.WAITUNFILED). Pinned by tests/test_landq.py, tests/test_landq_inflight.py."""
+the wait exits 2 (GOH.WAITUNFILED). Each tick re-reads where the request is and says so once per
+change: queued behind whom, running (a batch's gate N), done (GOH.LANDWAITSTALE). Pinned by
+tests/test_landq.py, tests/test_landq_inflight.py, tests/test_landq_look.py."""
 
 from __future__ import annotations
 
@@ -61,6 +63,41 @@ def unfiled(q: Path, what: str, start_by: float) -> Path | int | None:
     return found
 
 
+def _items(d: Path) -> list[str]:
+    out = []
+    for f in sorted(d.glob("*.json")) if d.is_dir() else []:
+        try:
+            out.append(json.loads(f.read_text()).get("item") or f.stem)
+        except (OSError, ValueError):
+            continue  # moved or being written: the next tick reads it again
+    return out
+
+
+def where(q: Path, name: str) -> str:
+    """Where request NAME is now: queued behind whom, or running (a batch's gate N); "" else."""
+    pend = (
+        sorted(f.name for f in (q / "pending").glob("*.json")) if (q / "pending").is_dir() else []
+    )
+    if name in pend:
+        ahead = _items(q / "running") + _items(q / "pending")[: pend.index(name)]
+        return f"queued behind {', '.join(ahead)}" if ahead else "queued, next"
+    run = sorted((q / "running").glob("*.json")) if (q / "running").is_dir() else []
+    if not any(f.name == name for f in run):
+        return ""
+    gates = (
+        [
+            g.name.rpartition(".gate")[2].removesuffix(".log")
+            for g in (q / "logs").glob(f"{run[0].stem}.gate*.log")
+        ]
+        if (q / "logs").is_dir()
+        else []
+    )
+    n = max((int(g) for g in gates if g.isdigit()), default=0)
+    if len(run) == 1:
+        return "running" + (f", gate {n}" if n else "")
+    return f"running, {f'gate {n}' if n else 'stacking'} of a batch of {len(run)}"
+
+
 def wait(q: Path, what: str, timeout: float, nudge: Callable[[], None]) -> int:
     """Block until WHAT's newest request is done; exit by its outcome (module doc, THE WAIT)."""
     start_by = time.monotonic() + timeout
@@ -73,8 +110,11 @@ def wait(q: Path, what: str, timeout: float, nudge: Callable[[], None]) -> int:
         return 2
     assert isinstance(found, Path)
     name = found.name
-    nudged = 0.0
+    nudged, was = 0.0, ""
     while not (q / "done" / name).is_file():
+        if (now := where(q, name)) and now != was:
+            info(f"goh land --wait: {what} is {now}")  # GOH.LANDWAITSTALE: each change, once
+            was = now
         if time.monotonic() > start_by:
             err(f"goh land --wait: {what} ({name}) has not finished after {timeout:.0f}s")
             return 3
