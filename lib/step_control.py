@@ -154,12 +154,12 @@ CONTROLS = {
 def run(kind: str) -> int:
     """Run `kind`'s control and record its row. The control's own exit code is recorded, not
     returned: shellcheck's findings in a pinned file are part of the fixed work."""
-    import fcntl
+    import lock_order  # beside this file
 
     cache = cache_root()
     cache.mkdir(parents=True, exist_ok=True)
     with open(cache / LOCK, "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)  # the wait is not the control's: it is timed after
+        lock_order.flock(lock, "step_control")  # the wait is not the control's: timed after it
         plan = CONTROLS[kind](cache)
         t0, cpu0, load1 = time.monotonic(), step_timings.children_cpu_ms(), step_timings.load_now()
         rc = _run_all(plan)
