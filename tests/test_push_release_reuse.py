@@ -29,6 +29,9 @@ LAND = REPO_ROOT / "tools" / "land.sh"
 ZERO = "0" * 40
 REPORT = 'printf "%s\\n" {word} >>"$GATE_REPORT"\n'
 RELEASE = "# CHANGELOG\n\n## v0.2.0\n\n* **X.** x\n"
+# A fixture test that reads ITS repo's changelog, spelled apart so goh's own reader table
+# (tools/affected_tests.py readers) does not take this file for a reader of goh's.
+READS_CHANGELOG = 'TEXT = (REPO_ROOT / "CHANGELOG' + '.md").read_text()\n'
 
 
 def _fixture(repo: Path, tmp_path: Path, *, opt_in: bool = True) -> Path:
@@ -42,7 +45,10 @@ def _fixture(repo: Path, tmp_path: Path, *, opt_in: bool = True) -> Path:
     (repo / "gates" / "structural.sh").chmod(0o755)
     (repo / "tests").mkdir()
     (repo / "tests" / "test_reads.py").write_text(
-        "import os\n\n# reads CHANGELOG.md\n\n\ndef test_reads():\n"
+        "import os\nfrom pathlib import Path\n\nREPO_ROOT = Path(__file__).parent.parent\n"
+        + READS_CHANGELOG
+        + "\n\n"
+        "def test_reads():\n"
         '    with open(os.environ["GATE_REPORT"], "a") as f:\n        f.write("pytest\\n")\n'
     )
     (repo / "tests" / "test_other.py").write_text("def test_other():\n    raise SystemExit(9)\n")

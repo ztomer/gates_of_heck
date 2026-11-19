@@ -22,6 +22,10 @@ import release_gate  # noqa: E402
 import step_attribution  # noqa: E402
 import step_timings  # noqa: E402
 
+# A fixture test that reads ITS repo's changelog, spelled apart so goh's own reader table
+# (tools/affected_tests.py readers) does not take this file for a reader of goh's.
+READS_CHANGELOG = 'TEXT = (REPO_ROOT / "CHANGELOG' + '.md").read_text()\n'
+
 
 def _commit(repo: Path, msg: str = "x") -> str:
     git(repo, "add", "-A")
@@ -31,9 +35,7 @@ def _commit(repo: Path, msg: str = "x") -> str:
 
 def _fixture(repo: Path) -> str:
     (repo / "tests").mkdir()
-    (repo / "tests" / "test_reads.py").write_text(
-        'TEXT = (REPO_ROOT / "CHANGELOG.md").read_text()\n'
-    )
+    (repo / "tests" / "test_reads.py").write_text(READS_CHANGELOG)
     (repo / "tests" / "test_other.py").write_text("def test_x():\n    assert True\n")
     (repo / "tests" / "test_writes_its_own.py").write_text(  # a fixture's changelog, not the tree's
         'def test_y(tmp_path):\n    (tmp_path / "CHANGELOG.md").write_text("x")\n'
@@ -114,8 +116,10 @@ def test_the_set_is_the_readers_of_goh_s_own_changelog_not_every_test_that_says_
     """The one rule of a read (tools/affected_tests.py `readers`). The text probe this replaced took
     26 files, 384 tests, 133 s at load 50: 25 of them write a fixture's CHANGELOG.md (the kit's
     tests), and their verdict on the tip holds, since nothing they read changed."""
-    found = release_gate.names(REPO_ROOT, ["CHANGELOG.md", "changelog/GOH.X.md"])
-    assert "tests/test_changelog_fragments.py" in found, found  # reads REPO_ROOT / "CHANGELOG.md"
+    found = release_gate.names(
+        REPO_ROOT, ["CHANGELOG" + ".md", "changelog/GOH.X.md"]
+    )  # spelled apart
+    assert "tests/test_changelog_fragments.py" in found, found  # reads the tree's changelog
     for writer in (
         "test_changelog_cut.py",
         "test_release_goh.py",
