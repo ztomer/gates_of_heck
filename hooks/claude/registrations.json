@@ -30,6 +30,11 @@
         "matcher": "Write|Edit|MultiEdit|Bash|Monitor",
         "command": "bash \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/skill_edit.sh\"",
         "timeout": 30
+      },
+      {
+        "matcher": "Agent|Task",
+        "command": "python3 \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/spawn_register.py\" || exit 1",
+        "timeout": 30
       }
     ],
     "Stop": [

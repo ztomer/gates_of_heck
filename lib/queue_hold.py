@@ -33,6 +33,7 @@ import os
 from dataclasses import dataclass
 
 ESTATE = "estate"
+PENDING_SPAWN = "pending-spawn"  # an item the coordinator started before its Agent call returned
 
 
 def queue_path() -> str:
@@ -89,6 +90,15 @@ class QueueHold:
 
     def describe(self, action: str) -> str:
         """The refusal, one paragraph: what, where, who holds it, and what to do instead."""
+        if self.agent == PENDING_SPAWN:
+            return (
+                f"registration pending: retry in a few seconds. {self.root} is held by in-progress "
+                f"item {self.item}, whose agent is not recorded yet (`{PENDING_SPAWN}`), so "
+                f"{action} by agent {self.caller} is refused for now. If {self.item} is your "
+                "item, the coordinator's spawn hook (hooks/claude/spawn_register.py, "
+                "GOH.SPAWNREGISTER) records you as its Agent call returns: retry the same call. "
+                "If it still refuses, end your turn saying so, and the coordinator registers you."
+            )
         items = "item" if len(self.mine) == 1 else "items"
         own = (
             f"Your {items}: {', '.join(self.mine)}; write only inside the repos they hold."

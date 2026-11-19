@@ -590,6 +590,10 @@ Every structural checker is native since Phase N3; the Python checkers they port
   reason and lift. Read-only commands run. Pinned by `test_repo_hold.py`.
   For a SUBAGENT it also keeps the loop queue's holds (`lib/queue_hold.py`, LOOP.FOREIGNEDIT) and refuses a direct
   gh CI poll naming `loopctl ci` (`ci_door.calls_in`, LOOP.GHDOOR). Pinned by `test_foreign_edit.py`.
+* `hooks/claude/spawn_register.py` — a Claude Code PostToolUse hook (matcher `Agent|Task`, GOH.SPAWNREGISTER): as a
+  spawn returns, the brief's `Item <ID>` still `pending-spawn` in the loop queue is registered to the response's `agentId`
+  through `.loop`'s `loopctl start` (one writer). A write racing it is told `registration pending: retry in a few
+  seconds` (`lib/queue_hold.py`). Pinned by `test_spawn_register.py`.
 * `scripts/hold_repo.sh`, `scripts/release_hold.sh` — put a repo on hold (`goh.hold` = `<date>: <why> -- lift: <cmd>`,
   `--read-only` adds `chmod -R a-w`) and lift it. `scripts/archive_repo.sh` / `scripts/unarchive_repo.sh` — the archive
   use: refuse unless nothing exists only in the clone, archive the OWNER's GitHub repo (`scripts/_github_repo.sh`,
