@@ -37,7 +37,7 @@ import source_closure  # lib/, beside this file
 
 RUST_GATE = ("gates/rust_gate.sh",)  # the entry: _rust_proven.sh and coverage_gate.sh are its edges
 RUST_MEASURE = "gates/coverage_gate.sh"
-CODE_PARTS = ("gates", "checks", "lib", "tools", "tui", "scripts")
+CODE_PARTS = run_rule.CODE_PARTS
 # A run of a bare variable: the command it names is decided at run time.
 DYNAMIC_RUN = re.compile(
     r'(?:(?<![\w/-])(?:bash|sh|exec|python3?)|"\$\{?GOH_PY\}?")\s+(?:-[A-Za-z-]+\s+)*'
@@ -47,7 +47,7 @@ DYNAMIC_RUN = re.compile(
 _GATESRC = (
     "the gated repo's own .gatesrc: its GOH_COV_* are the `cov` lines (gates/_rust_proven.sh)"
 )
-_TUI = "tui/lib.sh: the gated repo's own or goh's, which the closure holds (tui/lib.sh)"
+_TUI = run_rule.TUI
 _GOH_BIN = "the goh binary: the build of the gates root's crates/, never run by the measurement"
 _HELPER = "a helper the same file assigns by a rooted path, an edge of the closure already"
 # `<file>: <the form>` -> why what it reaches is keyed, or is no input of the measurement.
@@ -76,22 +76,14 @@ DECLARED = {
     'gates/_proven_why.sh: "$GOH_PY" -S "$_PROVEN_IDENTITY_PY"': _HELPER,
     'lib/gate_slot.sh: "$GOH_PY" -S "$helper"': _HELPER,
     'lib/worker_share.sh: "$GOH_PY" -S "$WORKER_SHARE_HELPER"': _HELPER,
-    # A script path through no declared root (lib/run_rule.py): keyed by its tail's goh file.
-    "gates/_common.sh: $GOH_GIT_ROOT/tui/lib.sh": _TUI,
-    "gates/coverage_gate.sh: $GOH_GIT_ROOT/tui/lib.sh": _TUI,
-    "gates/local_ci.sh: $GOH_GIT_ROOT/tui/lib.sh": _TUI,
-    "gates/_goh_bin.sh: $here/../scripts/build-goh.sh": "the live root's or this root's builder",
-    "gates/_rust_proven.sh: $d/lib/gate_identity.py": "GOH_DIR's checkout: its own `--root` line",
+    # A script path through no declared root: lib/run_rule.py's table, the step closure's too.
+    **run_rule.DECLARED,
 }
 # A Python file of the closure that runs another by path: `rel` -> the files, kept as edges.
 RUNS_BY_NAME = {
     "gates/required_judge.py": ("gates/python.sh",),  # `bash HERE/python.sh -V`
     "lib/source_closure.py": ("checks/_prose_mask.py",),  # spec_from_file_location
 }
-
-
-def _code_file(rel: str) -> bool:
-    return "/" in rel and rel.split("/", 1)[0] in CODE_PARTS
 
 
 def runs(rel: str, root: Path, goh: Path) -> tuple[list[Path], list[str]]:
@@ -124,13 +116,7 @@ def runs(rel: str, root: Path, goh: Path) -> tuple[list[Path], list[str]]:
     return edges, holes
 
 
-def _guess(tail: str, here: Path, root: Path) -> list[Path]:
-    """The goh code file a rooted path's tail names, from the script's directory or the root."""
-    tail = tail.lstrip("/")
-    for cand in (os.path.normpath(here / tail), os.path.normpath(tail)):
-        if _code_file(cand) and (root / cand).is_file():
-            return [root / cand]
-    return []
+_guess = run_rule.guess  # the goh code file a rooted path's tail names
 
 
 def _placed(word: str, here: Path, root: Path) -> bool:

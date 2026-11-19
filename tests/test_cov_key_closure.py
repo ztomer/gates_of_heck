@@ -36,7 +36,16 @@ _RUNS = re.compile(
     r'(?:(?<![\w/-])(?:bash|sh|exec|python3?)|"\$\{?GOH_PY\}?")\s+(?:-[A-Za-z-]+\s+)*'
 )
 # Scripts a closure Python file names in code without running them: why each is no input.
+# lib/run_rule.py DECLARED names the file of each hole it declares, a key, no run.
+_HOLE = "a declared hole's file, named as its DECLARED key (the step closure's)"
 MENTIONS = {
+    "lib/run_rule.py -> gates/_self_gate.sh": _HOLE,
+    "lib/run_rule.py -> gates/commit_gate.sh": _HOLE,
+    "lib/run_rule.py -> gates/commit_msg.sh": _HOLE,
+    "lib/run_rule.py -> gates/doctor.sh": _HOLE,
+    "lib/run_rule.py -> gates/hook.sh": _HOLE,
+    "lib/run_rule.py -> gates/push_gate.sh": _HOLE,
+    "lib/run_rule.py -> tools/gate.sh": _HOLE,
     "gates/required_judge.py -> gates/commit_gate.sh": "a marker it tests for in the gated repo",
     "gates/required_tools.py -> gates/py_gate.sh": "a layer's entry, named in the tool table",
     "gates/required_tools.py -> gates/py_staged.sh": "a layer's entry, named in the tool table",
@@ -140,7 +149,9 @@ def test_every_declared_entry_is_still_met() -> None:
     has fails, so the lists only describe what is there."""
     mod = _scripts()
     files, holes = mod.closure(set(mod.RUST_GATE), REPO_ROOT, REPO_ROOT)
-    assert not sorted(set(mod.DECLARED) - set(holes)), "DECLARED entries no closure script has"
+    # lib/run_rule.py's shared table is the step closure's too: tests/test_step_closure_refuse.py.
+    shared = set(mod.run_rule.DECLARED)
+    assert not sorted(set(mod.DECLARED) - set(holes) - shared), "DECLARED entries no script has"
     for rel, reached in mod.RUNS_BY_NAME.items():
         assert rel in files, rel
         text = sc.code_only(rel, (REPO_ROOT / rel).read_text())

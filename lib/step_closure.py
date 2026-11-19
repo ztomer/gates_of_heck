@@ -25,7 +25,9 @@ import functools
 import hashlib
 import os
 import re
+import secrets
 import shlex
+import sys
 from pathlib import Path
 
 import source_closure  # lib/, beside this file
@@ -61,6 +63,9 @@ _RUNS_GOH = re.compile(r"(?:^|[\s;&|(`])goh(?=[ \t]+-?[a-z])|[\"']goh[\"']\s*,")
 _PY_GOH = re.compile(r"\bGOH_DIR\b|\bGOH_ROOT\b|gates_of_heck")
 _STEP_VAR = re.compile(r"\$\{?(GOH_DIR|GOH_ROOT|GOH|PWD)\}?(?=/|$)")
 ROOT_PY_DIRS = ("", "lib", "checks", "gates", "tools")
+# A step's keyed parts: the gates' (PARTS) and scripts/, whose builder the runner may run
+# (gates/_goh_bin.sh `bash "$here/../scripts/build-goh.sh"`, GOH.STEPCLOSUREREFUSE).
+STEP_PARTS = (*PARTS, "scripts")
 
 
 @functools.cache
@@ -190,15 +195,16 @@ def runner_closure(goh: Path) -> frozenset[str]:
 
 def step_closure(step: str, repo: Path, goh: Path) -> tuple[list[str], str]:
     """(the goh files that can decide `step`, root-relative; why the step keys on everything, or
-    ""). The runner's closure is in every step's."""
+    ""). The runner's closure is in every step's. Raises LookupError when a closure runs a script
+    no reading places (lib/run_rule.py, GOH.STEPCLOSUREREFUSE): the step has no key."""
     gohs, mine, why = _step_seeds(step, repo, goh)
     if not why:
         more, why = _consumer_reach(mine, repo, goh)
         gohs |= more
     if not why:
         gohs, why = _goh_reach(gohs, goh, judge=True)
-    # The keyed parts only, as `content` keys them: docs/ and tests/ never decided a step.
-    keyed = {r for r in gohs | runner_closure(goh) if r.split("/")[0] in PARTS}
+    # The keyed parts only: docs/ and tests/ never decided a step.
+    keyed = {r for r in gohs | runner_closure(goh) if r.split("/")[0] in STEP_PARTS}
     return sorted(keyed), why
 
 
@@ -234,7 +240,12 @@ def closures(roots: list[Path], steps: list[str], path: str | None = None,
             if memo.is_file():
                 out.append(f"{memo.read_text(encoding='utf-8').strip()}\t{step}")
                 continue
-        line = _closure_line(step, every, where, full)
+        try:
+            line = _closure_line(step, every, where, full)
+        except LookupError as e:  # no key: a line no record holds, never cached
+            print(f"step_closure: {step}: {e}", file=sys.stderr)
+            out.append(f"closure refused {secrets.token_hex(16)}\t{step}")
+            continue
         if memo is not None:
             with contextlib.suppress(OSError):
                 memo.parent.mkdir(parents=True, exist_ok=True)
@@ -262,8 +273,10 @@ def _closure_line(step: str, every: list[Path], where: Path, full: str) -> str:
 def _hashed(root: Path) -> dict[str, str]:
     """`<kind> <sha256>` per keyed file under root, read once per run: every step's line is a
     selection of these (32 steps of divoom-control re-listed the tree each: 22 s)."""
+    skip = test_only(root)  # PARTS from its one cached listing, then scripts/
     return {rel: f"{kind.decode()} {hashlib.sha256(data).hexdigest()}"
-            for rel, kind, data in _entries(root, PARTS, test_only(root))}  # fmt: skip
+            for parts in (PARTS, STEP_PARTS[len(PARTS):])
+            for rel, kind, data in _entries(root, parts, skip)}  # fmt: skip
 
 
 def _part_hash(root: Path, files: tuple[str, ...]) -> str:
@@ -294,6 +307,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(main())
