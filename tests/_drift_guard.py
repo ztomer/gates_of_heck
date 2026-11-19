@@ -39,6 +39,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -57,12 +58,55 @@ SLOW: dict[str, float] = {  # nodeid -> its own ceiling, each with its reason
 }
 
 
+# THE BOX'S SPEED (GOH.CIWALL). Every bound here was set on the owner's machine (an M4 Max) and
+# stretched by its load alone, so a slower core read as a slow test: the 3-core hosted runner ran
+# test_gate_temp_leaks' gate in 299.9 s against its 60 s ceiling x4.3 for the load (v0.139.2 and
+# v0.139.3 went red). The per-core speed is MEASURED, once per suite, as the CPU time -- not the
+# wall, which the load already stretches -- of a fixed loop, against what the same loop took on
+# the owner's box under a gate's load (REFERENCE_CPU_S, 0.0143-0.0170 s best of 5, 2026-11-19).
+# The controller measures it at import, before a worker starts, and every process under it reads
+# that one figure (SPEED_ENV), so no worker re-measures it under the suite's own load. Never below
+# 1 (the owner's box is the reference), never above SPEED_CAP (a probe that misread a pathological
+# box must not switch the ceilings off).
+SPEED_ENV = "GATES_OF_HECK_SUITE_SPEED"  # not GOH_-prefixed: no env scrub drops it
+REFERENCE_CPU_S = 0.016
+SPEED_CAP = 4.0
+
+
+def _probe_cpu_s() -> float:
+    """The best of 5 CPU times of one fixed loop (process time: blind to the run queue)."""
+    best = float("inf")
+    for _ in range(5):
+        t0 = time.process_time()
+        x = 0
+        for i in range(400_000):
+            x += i * i % 7
+        best = min(best, time.process_time() - t0)
+    return best
+
+
+def speed_factor() -> float:
+    """How much slower than the owner's box this box's cores run: measured once, then read."""
+    got = os.environ.get(SPEED_ENV, "")
+    try:
+        return min(SPEED_CAP, max(1.0, float(got)))
+    except ValueError:
+        pass
+    factor = min(SPEED_CAP, max(1.0, _probe_cpu_s() / REFERENCE_CPU_S))
+    os.environ[SPEED_ENV] = f"{factor:.3f}"
+    return factor
+
+
 def load_factor() -> float:
-    """How much slower than quiet this box runs a test: the run queue per core, never below 1.
-    Read when the test ends, as the larger of the 1- and 5-minute averages: a 197 s test that ran
-    at load 180 ended at 13 and was judged by the 1-minute figure alone (2026-10-08)."""
+    """How much slower than quiet this box runs a test: the run queue per core, never below 1,
+    times its cores' speed against the owner's (`speed_factor`). Read when the test ends, as the
+    larger of the 1- and 5-minute averages: a 197 s test that ran at load 180 ended at 13 and was
+    judged by the 1-minute figure alone (2026-10-08)."""
     one, five, _ = os.getloadavg()
-    return max(1.0, max(one, five) / (os.cpu_count() or 1))
+    return max(1.0, max(one, five) / (os.cpu_count() or 1)) * speed_factor()
+
+
+speed_factor()  # the controller's measurement, before any worker or child inherits the variable
 
 
 sys.path.insert(0, str(_ROOT / "lib"))
@@ -131,7 +175,7 @@ def pytest_runtest_makereport(item, call):
     ceiling = SLOW.get(item.nodeid, CEILING_S)
     factor = load_factor()
     if call.duration > ceiling * factor:
-        stretch = f" x{factor:.2g} for the box's load" if factor > 1 else ""
+        stretch = f" x{factor:.2g} for the box's load and speed" if factor > 1 else ""
         rep.outcome = "failed"
         rep.longrepr = (
             f"{item.nodeid} took {call.duration:.1f} s, over its {ceiling:g} s ceiling{stretch} "

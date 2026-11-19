@@ -165,10 +165,11 @@ def test_the_ceiling_stretches_with_the_boxs_load(tmp_path: Path) -> None:
 def test_a_stretched_ceiling_still_fails_and_says_by_how_much(tmp_path: Path) -> None:
     r = _planted(tmp_path, SLEEPER, ceiling=0.3, load=1.5)
     assert r.returncode == 1, r.stdout + r.stderr
-    assert "over its 0.3 s ceiling x1.5 for the box's load" in r.stdout, r.stdout
+    assert "over its 0.3 s ceiling x1.5 for the box's load and speed" in r.stdout, r.stdout
 
 
 def test_the_load_factor_is_run_queue_per_core_never_below_one(monkeypatch) -> None:
+    monkeypatch.setenv(_drift_guard.SPEED_ENV, "1")  # the owner's box: the load alone
     monkeypatch.setattr(os, "cpu_count", lambda: 16)
     monkeypatch.setattr(os, "getloadavg", lambda: (38.0, 30.0, 20.0))
     assert _drift_guard.load_factor() == 38.0 / 16
@@ -176,6 +177,25 @@ def test_the_load_factor_is_run_queue_per_core_never_below_one(monkeypatch) -> N
     assert _drift_guard.load_factor() == 1.0
     monkeypatch.setattr(os, "getloadavg", lambda: (13.0, 64.0, 70.0))  # a load that fell mid-test
     assert _drift_guard.load_factor() == 64.0 / 16
+
+
+def test_a_slower_box_stretches_every_bound_by_its_measured_speed(monkeypatch) -> None:
+    """GOH.CIWALL: the hosted runner's cores are slower than the owner's; its bounds stretch by
+    the measured ratio, never below 1 nor above the cap, measured once and then read."""
+    # the instrument itself, first: the real probe reads a CPU time, well under a second
+    assert 0 < _drift_guard._probe_cpu_s() < 1.0
+    monkeypatch.setattr(os, "cpu_count", lambda: 16)
+    monkeypatch.setattr(os, "getloadavg", lambda: (32.0, 30.0, 20.0))
+    monkeypatch.delenv(_drift_guard.SPEED_ENV, raising=False)
+    calls = []
+    slow = _drift_guard.REFERENCE_CPU_S * 2.5
+    monkeypatch.setattr(_drift_guard, "_probe_cpu_s", lambda: calls.append(1) or slow)
+    assert _drift_guard.load_factor() == pytest.approx(2.0 * 2.5)
+    assert _drift_guard.load_factor() == pytest.approx(2.0 * 2.5) and calls == [1]  # read, once
+    for probe, want in ((_drift_guard.REFERENCE_CPU_S / 3, 1.0), (1e9, _drift_guard.SPEED_CAP)):
+        monkeypatch.delenv(_drift_guard.SPEED_ENV)
+        monkeypatch.setattr(_drift_guard, "_probe_cpu_s", lambda p=probe: p)
+        assert _drift_guard.speed_factor() == want
 
 
 def test_a_test_that_builds_goh_fails_and_other_cargo_passes(tmp_path: Path) -> None:
