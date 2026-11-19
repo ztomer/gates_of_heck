@@ -9,6 +9,7 @@
 #   goh_timings_hold      -- un-export the profile; its values kept in goh_timings_held (VAR=value ...)
 #   env "${goh_timings_held[@]}" <cmd>   -- one of the gate's OWN rows, under the step it belongs to
 #   goh_timings_unbind <array>           -- append `-u VAR` for each profile variable, for `env`
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 goh_timings_vars=(GOH_TIMINGS GOH_TIMINGS_PARENT GOH_TIMINGS_KIND GOH_TIMINGS_CWD)
 goh_timings_hold() {
     local v
