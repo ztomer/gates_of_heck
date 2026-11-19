@@ -252,16 +252,21 @@ def _children(d: Path, every: bool = False) -> list[str]:
 
 
 if __name__ == "__main__":
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from tui.lib import err, info, ok
+
     args = sys.argv[1:]
     where = Path(args[1]) if len(args) > 1 else None
     if args[:1] == ["sweep"]:
         for p in sweep(where):
-            print(f"removed {p}")
+            info(f"removed {p}")
         sys.exit(0)
     if args[:1] == ["check"]:
         lines = unbounded(where)
         for line in lines:
-            print(f"✗ {line}")
+            err(line)
+        if not lines:
+            ok("every per-run state directory is bounded")
         sys.exit(1 if lines else 0)
     print("usage: state_bounds.py sweep|check [ROOT]", file=sys.stderr)
     sys.exit(2)
