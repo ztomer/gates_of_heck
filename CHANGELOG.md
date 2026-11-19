@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## v0.139.15 -- reconcile: RUNRULEROOTS (Make the run rule refuse an unplaced root variable instead of), ONEVERDICTTREE4 (D the ship's suite step reuses the land gate's verdict on an exact)
+
+* The ship's suite step skipped on a tip tree's full instrumented record (a land gate's that judged every test itself, the idle lander's, an earlier ship's) asked no audit: no skip was ever re-run. It is the sampled `fullrun` path now (lib/ship_full_run.py `decide`, keyed on the record's own repo, tree and suite tools): one skip in 10 runs the suite anyway, fresh, and compares; a repeated red turns the path off and every ship runs its suite. tests/test_reuse_audit.py now sees a read of the suite record (`reuse.lookup_suite`, `ship_suite.full_suite`) as a reuse, which also registered lib/pre_reuse.py as a `carry` site.
+
+* A script a gate runs by `$PROVEN_GOH_ROOT/...`, or by a variable it assigns from its own
+  directory, is an edge of the proven step closure (GOH.RUNRULEROOTS, lib/run_rule.py): the run
+  rule followed only $HERE, $_goh_d, $GOH_ROOT, $GOH_DIR and $GOH, so lib/gate_identity.py,
+  lib/step_closure.py, lib/kept_rewrite.py and lib/reuse_audit.py (run by gates/_proven.sh and its
+  siblings) were outside every proven step's key. The Rust coverage key places a script path only
+  through a declared root: one through any other variable is declared with its reason or refuses
+  the key (LookupError, the measurement runs), as is a declared root naming no file. A consumer's
+  GOH_COV_RUST_EXTERNAL runner that sources or runs goh files by `$GOH_DIR` keys them on a
+  `runner-goh` line.
+
 ## v0.139.14 -- reconcile: COVKEYGAP (Derive rust_gate_scripts' closure from what the scripts actually), ONEVERDICTTREE3 (Remaining steps of GOH.ONEVERDICTTREE split out because a partial), FLAKYGITDIR (Reproduce under the land gate's shape tests/suite_home.py, xdist,), CIRED013913 (v0.139.13 e0d2103c hosted CI run 44584030150 is red 3 red)
 
 * A test that calls the scheduler's ordering function on fake items no longer meets a shard (GOH.CIRED013913): the part was a branch inside `_schedule.pytest_collection_modifyitems` reading module state, so when hosted CI ran the suite as a shard, three tests in tests/test_schedule.py went red with `SimpleNamespace` has no `get_closest_marker` (v0.139.13, shards 2, 3 and 4 of 4). The part is now its own hook (`_shard.Plugin`), registered only for a run handed a shard, and tests/test_suite_shard.py runs every test file that imports the scheduler under `1/1`, `1/2` and `2/2` and refuses a verdict that differs.
