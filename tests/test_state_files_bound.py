@@ -13,6 +13,7 @@ from conftest import REPO_ROOT
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import state_append
 import state_bounds as sb
+import state_files as sf
 
 DAY = 86400.0
 NOW = 1_795_000_000.0
@@ -26,8 +27,8 @@ def _rows(path: Path, ages_days: list[float], field: str = "epoch") -> None:
 
 def test_the_timing_ledger_keeps_its_readers_window_and_drops_the_rest(tmp_path) -> None:
     ledger = tmp_path / "timing" / "ledger.jsonl"
-    rule = sb.FILES["timing/ledger.jsonl"]
-    assert isinstance(rule, sb.FileBound)
+    rule = sf.FILES["timing/ledger.jsonl"]
+    assert isinstance(rule, sf.FileBound)
     _rows(ledger, [rule.days + 5, rule.days + 1, rule.days - 1, 1])
     sb.sweep(tmp_path, NOW)
     kept = [json.loads(x)["i"] for x in ledger.read_text().splitlines()]
@@ -35,12 +36,12 @@ def test_the_timing_ledger_keeps_its_readers_window_and_drops_the_rest(tmp_path)
 
 
 def test_the_count_bound_keeps_the_newest_lines(tmp_path) -> None:
-    rule = sb.FileBound(days=None, lines=3, stamp="", lock="", why="t")
+    rule = sf.FileBound(days=None, lines=3, stamp="", lock="", why="t")
     log = tmp_path / "x.log"
     log.write_text("".join(f"line {i}\n" for i in range(10)))
     fd = os.open(log, os.O_WRONLY | os.O_APPEND)  # a holder's stdout: trimmed in place, still live
     try:
-        assert sb.trim(rule, log, NOW) == 7
+        assert sf.trim(rule, log, NOW) == 7
         os.write(fd, b"after\n")
     finally:
         os.close(fd)
@@ -52,8 +53,8 @@ def test_a_writer_holding_the_lock_is_never_trimmed_under(tmp_path) -> None:
     _rows(ledger, [400, 1])
     with open(state_append.lock_path(ledger), "a") as lk:
         fcntl.flock(lk, fcntl.LOCK_SH)  # a writer mid-append
-        assert sb.trim(sb.FILES["timing/ledger.jsonl"], ledger, NOW) == 0
-    assert sb.trim(sb.FILES["timing/ledger.jsonl"], ledger, NOW) == 1
+        assert sf.trim(sf.FILES["timing/ledger.jsonl"], ledger, NOW) == 0
+    assert sf.trim(sf.FILES["timing/ledger.jsonl"], ledger, NOW) == 1
     state_append.append(
         ledger, b'{"epoch": 1, "i": 9}\n'
     )  # the writer's next row lands in the new file
@@ -102,8 +103,9 @@ def test_each_bound_keeps_what_its_readers_need() -> None:
     # land_attempts/budget_ships/cip_history/land_e2e backfill from landq/done and ship/*,
     # deduping on the ledger's refs: a row must outlive its source, or the backfill writes it again.
     for rel in ("timing/ledger.jsonl", "landq/selection_misses.jsonl"):
-        rule = sb.FILES[rel]
-        assert isinstance(rule, sb.FileBound) and rule.days > sb.HISTORY_DAYS + 1, rel
-    assert sb.FILES["timing/ledger.jsonl"].days >= 28  # the weekly usage review's month
-    for rel, rule in sb.FILES.items():
+        rule = sf.FILES[rel]
+        assert isinstance(rule, sf.FileBound) and rule.days > sb.HISTORY_DAYS + 1, rel
+    assert sf.HISTORY_DAYS == sb.HISTORY_DAYS
+    assert sf.FILES["timing/ledger.jsonl"].days >= 28  # the weekly usage review's month
+    for rel, rule in sf.FILES.items():
         assert rule.why, rel

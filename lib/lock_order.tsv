@@ -27,6 +27,6 @@ head_cache	93	no	machine	gates/_head_cache.py	the HEAD-export cache
 eval_transport	94	no	machine	lib/eval_transport.py	an eval transport's state file
 estate_settle	95	no	machine	crates/goh/src/estate_seed/settle.rs,crates/goh/src/estate_seed/add.rs	the estate seed store directory
 shellcheck	96	no	machine	crates/goh/src/shellcheck_slots.rs	the machine-wide shellcheck tokens, a counting semaphore held around one shellcheck child (GOH.MEMADMIT)
-reuse_audit	97	no	machine	lib/reuse_audit.py,lib/state_bounds.py	the reuse audit's per-path state and counters, <reuse store>/audit/.lock (GOH.REUSEAUDIT)
+reuse_audit	97	no	machine	lib/reuse_audit.py,lib/state_files.py	the reuse audit's per-path state and counters, <reuse store>/audit/.lock (GOH.REUSEAUDIT)
 share_token	98	no	machine	lib/worker_share.py	one live-share token of a run, <pool>/tok-<i> (GOH.SHAREGROW): a worker holds one per test; try-locks only, a worker without one polls
 state_file	99	no	machine	lib/state_append.py	one bounded state ledger's sidecar lock, `.<name>.lock` beside it (GOH.LEDGERBOUND): every writer appends holding it shared, lib/state_bounds.py trims holding it alone (a try-lock)
