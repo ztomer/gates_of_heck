@@ -2,6 +2,7 @@
 """lib/step_control.py -- the controls a step's CPU is divided by (BACKLOG 5.3).
 
     GOH_TIMINGS=/tmp/t.jsonl python3 lib/step_control.py run rust   # one control row
+    python3 lib/step_control.py watch --pid PID [--every S] rust     # one every S s while PID lives
     python3 lib/step_control.py kinds REPO    # the controls REPO's gate needs, one per line
 
 WHY. This box is never quiet. Across a 2x load clippy's raw CPU moved +17%: under load more of the
@@ -15,7 +16,16 @@ THE CONTROL. Fixed work, pinned so two runs months apart divide by the same thin
   rust  -- `cargo clippy` of RUST_CRATE, RUST_COPIES copies AT ONCE (CPU summed), each warm after a
            touch of its root. The crate is fetched once into the cache, the first run warms it.
 
-A control's row carries `"control": true` and its kind; `lib/step_timings.py report` divides.
+A control's row carries `"control": true`, its kind and the 1-min load it ran under;
+`lib/step_timings.py report` divides.
+
+SAMPLED (GOH.RUSTCONTROLVOID). A land's gate runs 7-25 min on a box whose load moved 10 -> 90 inside
+one land: across 115 lands the drift between a control before the gate and one after followed
+ln(load_end / load_start) (r 0.57) and voided 27% of them. Two ends cannot stand for the load
+under a step in the middle, so `tools/gate_profile.sh` also runs `watch`: a control every SAMPLE_S
+while the gate runs, and each step is divided by the controls around it (`step_timings._sampled`).
+One control at a time on the box (LOCK): every land's controls build the same four copies in the
+cache, and two at once would each find the other's build fresh.
 """
 
 from __future__ import annotations
@@ -46,6 +56,8 @@ ROOT = Path(__file__).resolve().parent.parent
 CACHE_ENV = "GOH_STEP_CONTROL_CACHE"
 RUST_CRATE = ("regex-syntax", "0.8.11")
 RUST_COPIES = 4
+SAMPLE_S = 30.0  # measured 2026-11-19: 30 s apart, six moves at load 20 -> 134 all held within 15%
+LOCK = ".control.lock"
 
 
 @dataclass(frozen=True)
@@ -113,18 +125,25 @@ def _run_all(plan: list[Run]) -> int:
         lib = r.cwd / "src" / "lib.rs"
         if lib.is_file():
             os.utime(lib)
-    procs = [
-        subprocess.Popen(
-            r.argv,
-            cwd=r.cwd,
-            env=dict(os.environ, CARGO_TARGET_DIR=str(r.target)),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-        )
-        for r in plan
-    ]
-    return max(p.wait() for p in procs)
+    procs: list[subprocess.Popen] = []
+    try:
+        for r in plan:
+            procs.append(
+                subprocess.Popen(
+                    r.argv,
+                    cwd=r.cwd,
+                    env=dict(os.environ, CARGO_TARGET_DIR=str(r.target)),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    stdin=subprocess.DEVNULL,
+                )
+            )
+        return max(p.wait() for p in procs)
+    finally:  # a sampler stopped mid-control (SIGTERM -> SystemExit) leaves no clippy behind
+        for p in procs:
+            if p.poll() is None:
+                p.kill()
+                p.wait()
 
 
 CONTROLS = {
@@ -135,14 +154,48 @@ CONTROLS = {
 def run(kind: str) -> int:
     """Run `kind`'s control and record its row. The control's own exit code is recorded, not
     returned: shellcheck's findings in a pinned file are part of the fixed work."""
-    plan = CONTROLS[kind](cache_root())
-    t0, cpu0 = time.monotonic(), step_timings.children_cpu_ms()
-    rc = _run_all(plan)
-    step_timings.record(
-        f"control:{kind}", (time.monotonic() - t0) * 1000, rc, "control",
-        cpu_ms=step_timings.children_cpu_ms() - cpu0, kind=kind, control=True,
-    )  # fmt: skip
+    import fcntl
+
+    cache = cache_root()
+    cache.mkdir(parents=True, exist_ok=True)
+    with open(cache / LOCK, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)  # the wait is not the control's: it is timed after
+        plan = CONTROLS[kind](cache)
+        t0, cpu0, load1 = time.monotonic(), step_timings.children_cpu_ms(), step_timings.load_now()
+        rc = _run_all(plan)
+        step_timings.record(
+            f"control:{kind}", (time.monotonic() - t0) * 1000, rc, "control",
+            cpu_ms=step_timings.children_cpu_ms() - cpu0, kind=kind, control=True, load1=load1,
+        )  # fmt: skip
     return 0
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def watch(pid: int, every: float, kinds: list[str]) -> int:
+    """A control of each kind every EVERY seconds while PID lives; never one after it is gone. A
+    SIGTERM (gate_profile.sh reaping it) unwinds through `_run_all`, which kills its clippies."""
+    import signal
+
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    while True:
+        deadline = time.monotonic() + every
+        while time.monotonic() < deadline:
+            if not _alive(pid):
+                return 0
+            time.sleep(min(1.0, every))
+        if not _alive(pid):
+            return 0
+        for kind in kinds:
+            run(kind)
 
 
 def kinds_for(repo: Path) -> list[str]:
@@ -160,14 +213,20 @@ def main(argv: list[str]) -> int:
     if len(argv) == 2 and argv[0] == "kinds":
         print("\n".join(kinds_for(Path(argv[1]))))
         return 0
+    if len(argv) >= 4 and argv[0] == "watch" and argv[1] == "--pid" and argv[2].isdigit():
+        rest, every = argv[3:], SAMPLE_S
+        if len(rest) >= 2 and rest[0] == "--every":
+            every, rest = float(rest[1]), rest[2:]
+        if rest and all(k in CONTROLS for k in rest):
+            return watch(int(argv[2]), every, rest)
     if len(argv) >= 2 and argv[0] == "run" and all(k in CONTROLS for k in argv[1:]):
         for kind in argv[1:]:
             run(kind)
         return 0
     unknown = [k for k in argv[1:] if k not in CONTROLS]
     print(
-        f"usage: step_control.py run KIND... | kinds REPO (kinds: {' '.join(CONTROLS)})"
-        + (f"; unknown: {' '.join(unknown)}" if unknown else ""),
+        "usage: step_control.py run KIND... | watch --pid PID [--every S] KIND... | kinds REPO"
+        f" (kinds: {' '.join(CONTROLS)})" + (f"; unknown: {' '.join(unknown)}" if unknown else ""),
         file=sys.stderr,
     )
     return 2

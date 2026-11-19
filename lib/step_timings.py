@@ -22,7 +22,11 @@ a 2x load on this box (three A-B-B-A profiles of this repo's push gate, 2026-10-
   rust   -- CPU over the rust control (`lib/step_control.py`, run by `tools/gate_profile.sh` before
             the gate and after it): clippy's ratio moved +1% and +2% where its raw CPU moved +17%.
             A kind without a control on both sides is uncalibrated, and a control that drifted more
-            than CONTROL_DRIFT between the two voids its kind: the load moved under the run.
+            than CONTROL_DRIFT between the two voids its kind: the load moved under the run. Rows
+            that carry their end time (`t`) are matched instead: the gate is also sampled while it
+            runs, and each step is divided by the median of the controls around it, void only when
+            fewer than MEDIAN_OF of them spread more than CONTROL_DRIFT (GOH.RUSTCONTROLVOID: the
+            two ends voided 27% of 115 lands, following the box's load move, r 0.57).
   native -- raw CPU (RAW_KINDS): the native tier's in-process steps moved +4% and -1%, and every
             control tried moved more than the step did (a serial shellcheck -15%, four at once -17%),
             so a ratio would carry the control's drift, not remove the step's.
@@ -47,6 +51,7 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
@@ -58,6 +63,7 @@ ENV = "GOH_TIMINGS"
 PARENT_ENV = "GOH_TIMINGS_PARENT"
 KIND_ENV = "GOH_TIMINGS_KIND"
 CONTROL_DRIFT = 0.15  # BACKLOG 5.3's exit: a figure holds within 15%
+MEDIAN_OF = 5  # the owner's rule for a cpu-s figure: the median of five holds whatever their spread
 # Kinds whose raw CPU is the figure: no control is run or divided by.
 RAW_KINDS = {"native": "raw CPU holds across loads for in-process work (BACKLOG 5.3)"}
 _MAX_LINE = 4000  # under PIPE_BUF (4096 on macOS and Linux), so an append is atomic
@@ -100,6 +106,9 @@ def record(
         # GOH_TIMINGS_CWD: where the step REALLY ran. `goh_step_in` changes directory inside the
         # child, so without it all 29 crates of a repo record the repo root.
         "cwd": (os.environ.get("GOH_TIMINGS_CWD") or os.getcwd())[:300],
+        # The step's END on the wall clock: a sampled control is matched to the steps it ran
+        # beside by time (`calibrated`, GOH.RUSTCONTROLVOID).
+        "t": round(time.time(), 3),
     }
     if cache:
         row["cache"] = cache
@@ -240,43 +249,105 @@ def worst_control_drift(rows: list[dict]) -> float | None:
     return max(drifts, key=abs) if drifts else None
 
 
+def _timed(rows: list[dict]) -> bool:
+    return all("t" in r for r in rows)
+
+
+def _bracket(step: dict, ctl: list[dict]) -> tuple[list[dict], str]:
+    """The controls around STEP, oldest first: the last one that ended before it started, every one
+    that ended while it ran, and the first that ended after it; or why there is no bracket."""
+    end = step["t"]
+    start = end - step["ms"] / 1000
+    before = [c for c in ctl if c["t"] <= start]
+    inside = [c for c in ctl if start < c["t"] < end]
+    after = [c for c in ctl if c["t"] >= end]
+    if not before:
+        return [], "no control before it"
+    if not after:
+        return [], "no control after it"
+    return [before[-1], *inside, after[0]], ""
+
+
+def _sampled(kind: str, steps: list[dict], ctl: list[dict], drift: float | None) -> list[str]:
+    """A kind whose rows carry their time: each step over the median of the controls around it. A
+    step with MEDIAN_OF or more takes their median; one with fewer is void when they spread more
+    than CONTROL_DRIFT -- the load moved under it faster than the control was sampled."""
+    import statistics
+
+    ctl = sorted(ctl, key=lambda c: c["t"])
+    median = statistics.median(c["cpu_ms"] for c in ctl)
+    ends = f", control drift {drift:+.1%} end to end" if drift is not None else ""
+    lines, held = [], 0
+    for r in sorted(steps, key=lambda r: -r["cpu_ms"]):
+        around, why = _bracket(r, ctl)
+        if why:
+            lines.append(f"    {r['label']}: unbracketed, {why}")
+            continue
+        vals = [c["cpu_ms"] for c in around]
+        spread = (max(vals) - min(vals)) / min(vals) if min(vals) else float("inf")
+        if len(vals) < MEDIAN_OF and spread > CONTROL_DRIFT:
+            loads = [c.get("load1") for c in (around[0], around[-1])]
+            load = f" (load {loads[0]:.0f} -> {loads[1]:.0f})" if None not in loads else ""
+            lines.append(
+                f"    {r['label']}: void, its {counted(len(vals), 'control')}"
+                f" spread {spread:.1%}{load}"
+            )
+            continue
+        lines.append(f"{r['cpu_ms'] / statistics.median(vals):8.2f}  {r['label']}")
+        held += 1
+    head = (
+        f"{kind}: {counted(len(ctl), 'control')}, median {median / 1000:.2f} s cpu{ends};"
+        " each step over the controls around it"
+    )
+    if steps and not held:
+        head = f"{kind}: void, no step's controls held within {CONTROL_DRIFT:.0%}{ends}"
+    return [head, *lines]
+
+
 def calibrated(rows: list[dict]) -> str:
     """Each kinded step's figure: its CPU over the mean of its kind's controls, or why a kind has no
     ratio (fewer than two controls, one before the gate and one after, or a control that drifted);
-    a RAW_KINDS kind's raw CPU."""
+    a RAW_KINDS kind's raw CPU. Rows that carry their time (`t`) are matched to the controls around
+    each step instead (`_sampled`)."""
     kinds: dict[str, list[dict]] = {}
-    controls: dict[str, list[float]] = {}
+    controls: dict[str, list[dict]] = {}
     gate_kind = _gate_kinds(rows)
     for r in rows:
         kind = r.get("kind") or gate_kind.get(r.get("label", ""))
         if not kind or "cpu_ms" not in r:
             continue
         if r.get("control"):
-            controls.setdefault(kind, []).append(r["cpu_ms"])
+            controls.setdefault(kind, []).append(r)
         else:
             kinds.setdefault(kind, []).append(r)
     if not kinds and not controls:
         return ""
     out = ["-- CPU over a same-kind control (BACKLOG 5.3) --"]
+    drifts = control_drifts(rows)
     for kind in sorted(set(kinds) | set(controls)):
         if kind in RAW_KINDS:
             out.append(f"{kind}: {RAW_KINDS[kind]}")
             for r in sorted(kinds.get(kind, []), key=lambda r: -r["cpu_ms"]):
                 out.append(f"{r['cpu_ms'] / 1000:8.2f} s  {r['label']}")
             continue
-        ctl = controls.get(kind, [])
+        ctl_rows = controls.get(kind, [])
+        ctl = [c["cpu_ms"] for c in ctl_rows]
         if len(ctl) < 2:
             out.append(
                 f"{kind}: uncalibrated, {counted(len(ctl), 'control')} -- one before and one after are needed"
             )
             continue
-        drift = control_drifts(rows)[kind]
+        steps = kinds.get(kind, [])
+        if _timed(ctl_rows) and _timed(steps):
+            out.extend(_sampled(kind, steps, ctl_rows, drifts.get(kind)))
+            continue
+        drift = drifts[kind]
         if abs(drift) > CONTROL_DRIFT:
             out.append(f"{kind}: void, the control drifted {drift:+.1%} between the run's two ends")
             continue
         mean = sum(ctl) / len(ctl)
         out.append(f"{kind}: control {mean / 1000:.2f} s cpu, control drift {drift:+.1%}")
-        for r in sorted(kinds.get(kind, []), key=lambda r: -r["cpu_ms"]):
+        for r in sorted(steps, key=lambda r: -r["cpu_ms"]):
             out.append(f"{r['cpu_ms'] / mean:8.2f}  {r['label']}")
     return "\n".join(out)
 

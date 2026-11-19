@@ -10,11 +10,14 @@ a control that drifted between the run's two ends voids that kind's ratios.
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from conftest import git, hermetic_env, write
+from timing_bounds import patience
 
 ROOT = Path(__file__).resolve().parent.parent
 LIB = ROOT / "lib"
@@ -167,3 +170,135 @@ def test_a_step_that_runs_a_gate_takes_the_gates_kind() -> None:
     text = step_timings.calibrated(rows)
     assert "5.00 s  ./gates/structural.sh --full" in text, text
     assert "mixed" not in text, "a step over two kinds took one of them"
+
+
+# GOH.RUSTCONTROLVOID. A land's gate runs 7-25 min on a box whose load moved 10 -> 90 inside one
+# land: across 115 lands (2026-11-17..19) the end-to-end drift followed ln(load_end / load_start)
+# (r 0.57) and voided 31 (27%), most where the load moved more than 2x (20 of 57). Two controls at
+# the gate's ends cannot stand for the load under a step in the middle, so the gate is SAMPLED
+# (a control every SAMPLE_S during it) and each step is divided by the controls around it.
+
+
+def _trow(label: str, cpu_ms: float, t: float, ms: float, kind: str = "rust", control: bool = False,
+          load1: float | None = None) -> dict:  # fmt: skip
+    row = dict(_row(label, cpu_ms, kind, control=control), ms=ms, t=t)
+    if load1 is not None:
+        row["load1"] = load1
+    return row
+
+
+def _ctl(cpu_ms: float, t: float, load1: float | None = None) -> dict:
+    return _trow("control:rust", cpu_ms, t, 700.0, control=True, load1=load1)
+
+
+def test_a_step_record_carries_its_end_time(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "t.jsonl"
+    monkeypatch.setenv("GOH_TIMINGS", str(out))
+    step_timings.record("clippy", 10.0, 0, "step", cpu_ms=8.0)
+    (row,) = step_timings.load(str(out))
+    assert isinstance(row.get("t"), float) and row["t"] > 1.7e9, row
+
+
+def test_a_step_is_divided_by_the_controls_around_it_not_the_runs_ends() -> None:
+    """The run's ends drifted +20% (the old rule voided every ratio); each step's bracket held."""
+    rows = [
+        _ctl(3000, 100.0),
+        _trow("fmt", 400, 110.0, 5000),
+        _ctl(3030, 160.0),
+        _ctl(3540, 220.0),
+        _trow("clippy", 7140, 240.0, 10000),
+        _ctl(3600, 280.0),
+    ]
+    text = step_timings.calibrated(rows)
+    assert "void" not in text, text
+    assert "control drift +20.0% end to end" in text, text  # the ledger's number, still printed
+    assert "2.00  clippy" in text, text  # 7140 / median(3540, 3600) = 7140 / 3570
+    assert "0.13  fmt" in text, text  # 400 / median(3000, 3030)
+
+
+def test_a_step_whose_few_controls_disagree_is_void_and_says_why() -> None:
+    rows = [
+        _ctl(3000, 100.0, load1=12.0),
+        _trow("clippy", 7000, 150.0, 40000),
+        _ctl(3600, 200.0, load1=88.0),
+    ]
+    text = step_timings.calibrated(rows)
+    assert "clippy: void, its 2 controls spread 20.0% (load 12 -> 88)" in text, text
+    assert "rust: void, no step's controls held within 15%" in text, text
+
+
+def test_a_long_step_takes_the_median_of_five_or_more_controls() -> None:
+    """The owner's rule for a cpu-s figure: the median of five, whatever their spread."""
+    ctl = [_ctl(c, 100.0 + 60 * i) for i, c in enumerate((3000, 3100, 3200, 3900, 3300))]
+    rows = [ctl[0], _trow("coverage", 64000, 340.0, 230000), *ctl[1:]]
+    text = step_timings.calibrated(rows)
+    assert "20.00  coverage" in text, text  # 64000 / median(3000..3900) = 64000 / 3200
+    assert "void" not in text, text
+
+
+def test_a_step_with_no_control_after_it_is_unbracketed() -> None:
+    rows = [_ctl(3000, 100.0), _trow("clippy", 7000, 150.0, 4000), _ctl(3010, 120.0)]
+    rows[2]["t"] = 140.0
+    text = step_timings.calibrated(rows)
+    assert "clippy: unbracketed, no control after it" in text, text
+
+
+def test_a_control_row_carries_the_load_it_ran_under(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "t.jsonl"
+    monkeypatch.setenv("GOH_TIMINGS", str(out))
+    monkeypatch.setitem(step_control.CONTROLS, "rust", lambda cache: [])
+    monkeypatch.setattr(step_control, "_run_all", lambda plan: 0)
+    monkeypatch.setenv("GOH_STEP_CONTROL_CACHE", str(tmp_path / "c"))
+    step_control.run("rust")
+    (row,) = step_timings.load(str(out))
+    assert row["control"] and isinstance(row.get("load1"), float) and "t" in row, row
+
+
+@pytest.mark.load_sensitive  # a child spawned and waited on
+def test_the_watch_ends_when_its_gate_is_gone(tmp_path: Path) -> None:
+    """A sampler that outlived its gate would burn four cores for nobody (failure-path-no-op)."""
+    dead = subprocess.Popen(["true"], stdin=subprocess.DEVNULL)
+    dead.wait()
+    env = hermetic_env()
+    env.update(GOH_TIMINGS=str(tmp_path / "t.jsonl"), GOH_STEP_CONTROL_CACHE=str(tmp_path / "c"))
+    r = subprocess.run(
+        [sys.executable, str(LIB / "step_control.py"), "watch", "--pid", str(dead.pid),
+         "--every", "1", "rust"],
+        env=env, capture_output=True, text=True, timeout=patience(30), stdin=subprocess.DEVNULL,
+        check=False,
+    )  # fmt: skip
+    assert r.returncode == 0, r.stderr
+    assert not (tmp_path / "t.jsonl").exists(), "a control ran for a gate that was gone"
+
+
+def test_gate_profile_samples_the_control_during_the_gate() -> None:
+    text = (ROOT / "tools" / "gate_profile.sh").read_text()
+    lines = [line.strip() for line in text.splitlines()]
+    gate = next(
+        i for i, line in enumerate(lines) if line.startswith("bash") and "push_gate.sh" in line
+    )
+    watch = next(i for i, line in enumerate(lines) if 'step_control.py" watch --pid $$' in line)
+    reap = next(i for i, line in enumerate(lines) if 'kill -TERM "$sampler"' in line)
+    assert watch < gate < reap, "the sampler starts before the gate and is reaped after it"
+    assert 'wait "$sampler"' in text, "the sampler is reaped, not left to the shell"
+
+
+@pytest.mark.load_sensitive  # real children killed and reaped
+def test_a_control_stopped_mid_run_leaves_no_process_behind(tmp_path: Path, monkeypatch) -> None:
+    """gate_profile.sh reaps the sampler with SIGTERM, often while its four clippies run."""
+    plan = [step_control.Run(tmp_path, tmp_path / "t", ["sleep", "30"]) for _ in range(2)]
+    started: list[subprocess.Popen] = []
+    real = subprocess.Popen
+
+    def spy(*a, **k):
+        started.append(real(*a, **k))
+        if len(started) == len(plan):
+            raise SystemExit(0)  # the SIGTERM handler's exit, arriving once all are running
+        return started[-1]
+
+    monkeypatch.setattr(subprocess, "Popen", spy)
+    with contextlib.suppress(SystemExit):
+        step_control._run_all(plan)
+    assert all(p.poll() is not None for p in started[:-1]), "a clippy outlived its control"
+    started[-1].kill()
+    started[-1].wait()

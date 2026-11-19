@@ -11,7 +11,9 @@
 #
 # A repo that builds Rust has its gate bracketed by the rust control (lib/step_control.py), one
 # before and one after, so the report can divide each rust step's CPU by fixed work run under the
-# same load (BACKLOG 5.3); the native tier's steps read raw. A control that fails is noted and
+# same load (BACKLOG 5.3), and SAMPLED by one every 30 s while the gate runs, so each rust step is
+# divided by the controls around it, not by two ends a 20 min land apart (GOH.RUSTCONTROLVOID); the
+# native tier's steps read raw. A control that fails is noted and
 # skipped -- the instrument is never the reason a profile goes red.
 #
 # The proven cache is OFF by default because the question is what the work COSTS; a profile of
@@ -51,6 +53,12 @@ while [ -e "$log" ]; do n=$((n + 1)); log="$out.$n.log"; done
 printf '%s @ %s: push gate running (log: %s)\n' "$(basename "$repo")" "${sha:0:12}" "$log"
 "$GOH_PY" "$GOH/lib/log_follow.py" --pid $$ "$log" </dev/null &
 follower=$!
+sampler=""
+if [ -n "$kinds" ]; then   # bounded by this shell like the follower; reaped right after the gate
+    # shellcheck disable=SC2086 # one word per kind
+    GOH_TIMINGS="$out" "$GOH_PY" "$GOH/lib/step_control.py" watch --pid $$ $kinds </dev/null >>"$out.controls.log" 2>&1 &
+    sampler=$!
+fi
 # The local ref is the SHA itself (the pinned form): push_gate.sh refuses a named ref that no longer
 # names the gated commit, and a made-up branch name names nothing at all.
 printf '%s %s refs/heads/goh-profile %s\n' "$sha" "$sha" "$zero" \
@@ -59,6 +67,10 @@ printf '%s %s refs/heads/goh-profile %s\n' "$sha" "$sha" "$zero" \
 rc=$?
 kill -TERM "$follower" 2>/dev/null
 wait "$follower" 2>/dev/null
+if [ -n "$sampler" ]; then
+    kill -TERM "$sampler" 2>/dev/null
+    wait "$sampler" 2>/dev/null
+fi
 controls
 printf '%s @ %s: push gate exit %s in %ss (log: %s)\n' \
     "$(basename "$repo")" "${sha:0:12}" "$rc" "$(( $(date +%s) - t0 ))" "$log"
