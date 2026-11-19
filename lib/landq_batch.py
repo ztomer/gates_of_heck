@@ -160,6 +160,7 @@ class Item:
     tip: str = ""
     upstream: str = ""  # the commit below the item's own commits
     outcome: dict | None = None
+    red_logs: list[str] = field(default_factory=list)  # every red gate run its tree was in
 
 
 @dataclass
@@ -193,6 +194,16 @@ class Batch:
     def outcome(self, it: Item, state: str, log: Path, **extra: str) -> None:
         it.outcome = {"sha": extra.pop("sha", it.req["sha"]), "repo": it.req["repo"],
                       "mode": "land", "log": str(log), "state": state, **extra}  # fmt: skip
+        if it.red_logs and state != "landed":
+            it.outcome["red_logs"] = list(it.red_logs)
+
+    def judged_red(self, items: list[Item], log: Path) -> None:
+        """LOG, a red gate run, judged ITEMS' stack: each red item's record names it, so the
+        selection-miss ledger reads the stack's failed tests, which the bisect's lone run that
+        ends in the item's own log may never reach (GOH.SELECTLOCKORDER)."""
+        for it in items:
+            if str(log) not in it.red_logs:
+                it.red_logs.append(str(log))
 
     def own_log(self, it: Item, run_log: Path, verdict: str) -> Path:
         """The item's log: a header naming the batch, then the run that judged its tree."""
@@ -268,6 +279,7 @@ class Batch:
         if state == "landed":
             self.landed(stacked, log)
             return
+        self.judged_red(stacked, log)
         if state == "timeout" or len(stacked) == 1:
             for it in stacked:
                 self.outcome(it, "red", self.own_log(it, log, why), why=why)

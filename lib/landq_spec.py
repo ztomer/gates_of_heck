@@ -194,9 +194,11 @@ def use(b: Batch, spec: Spec) -> bool:
         b.landed(spec.stacked, spec.log)
         return True
     if spec.state == "timeout":
+        b.judged_red(spec.stacked, spec.log)
         for it in spec.stacked:
             b.outcome(it, "red", b.own_log(it, spec.log, why), why=why)
         return True
     if spec.code != DROPPED and spec.code >= 0:  # a signal is no verdict: B is gated again
         b.red_trees[spec.tree] = (spec.log, why)
+        b.judged_red(spec.stacked, spec.log)
     return False

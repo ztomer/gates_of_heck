@@ -151,3 +151,23 @@ def test_goh_land_report_shows_the_selection_misses_per_day(tmp_path, capsys):
     ) in capsys.readouterr().out
     assert landq_report.run(tmp_path, "", True) == 0
     assert json.loads(capsys.readouterr().out)["selection"][DAY]["missed"] == 2
+
+
+def test_a_batch_red_judges_the_stack_runs_its_item_was_in_not_only_its_own_log(tmp_path):
+    """GOH.LANDLOGPRUNE (2026-11-19): its batch's gate 1 failed tests/test_check_lock_order.py,
+    the bisect's lone gate 3 failed only a gate step, and the item's own log is gate 3's copy -- so
+    the ledger read no failed test and recorded no miss. The record names its red runs."""
+    repo, _, tip = _repo(tmp_path)
+    q = tmp_path / "q"
+    q.mkdir()
+    own, stack = tmp_path / "own.log", tmp_path / "batch.gate1.log"
+    own.write_text("✗ [8/9] FAILED (exit status 1): ./checks/check_lock_order.py .\n")
+    stack.write_text(LOG)
+    outcome = {"state": "red", "mode": "land", "repo": str(repo), "sha": tip, "log": str(own),
+               "red_logs": [str(stack), str(own)]}  # fmt: skip
+    assert sm.attempt_logs(outcome) == [own, stack]
+    assert sm.record_land(q, outcome, "GOH.X") == ""
+    assert [(r["kind"], r.get("test")) for r in sm.read(q)] == [
+        ("judged", None),
+        ("miss", "tests/test_b.py::test_y"),
+    ]

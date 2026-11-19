@@ -8,7 +8,8 @@ safe was a feeling. Here every judged red is read against the selection its diff
                       gate's failure-lines copy included) against the selection: one `judged` row
                       (source, item, sha, day, changed, selected, failed, missed) and one `miss`
                       row per failed test the selection did not choose
-    record_land(...)  tools/landq.py, on every red land attempt: the selection is recomputed by
+    record_land(...)  tools/landq.py, on every red land attempt (its own log and each red batch
+                      gate run its stack was in, attempt_logs): the selection is recomputed by
                       the tip's OWN selector over `git archive <sha>` for the diff from main's
                       merge base -- the set the item's pre-step ran
     shadow(...)       lib/idle_suite.py, after each idle full run on main: the selection for the
@@ -138,9 +139,9 @@ def read(q: Path) -> list[dict]:
     return out
 
 
-def _measure(q: Path, source: str, item: str, repo: Path, base: str, sha: str, log: Path,
-             day: str) -> list[dict]:  # fmt: skip
-    failed = failed_tests(log.read_text(errors="replace")) if log.is_file() else []
+def _measure(q: Path, source: str, item: str, repo: Path, base: str, sha: str,
+             log: Path | list[Path], day: str) -> list[dict]:  # fmt: skip
+    failed = _failed(log if isinstance(log, list) else [log])
     paths = changed(repo, _git(repo, "merge-base", base, sha).strip(), sha)
     chosen = selection(repo, sha, paths)
     if chosen is None:
@@ -150,6 +151,20 @@ def _measure(q: Path, source: str, item: str, repo: Path, base: str, sha: str, l
     return rows
 
 
+def attempt_logs(outcome: dict) -> list[Path]:
+    """The logs that judged a land attempt: its own, and every red gate run of a batch whose stack
+    held it (`red_logs`, lib/landq_batch.py). A bisect's lone run of the item may fail no test --
+    a gate step, a carried verdict -- where the stack's run failed them: GOH.LANDLOGPRUNE's batch
+    went red on tests/test_check_lock_order.py in gate 1 only, and its own log held gate 3's
+    step failure, so the ledger read no failed test and wrote nothing (GOH.SELECTLOCKORDER)."""
+    named = [outcome.get("log") or "", *(outcome.get("red_logs") or [])]
+    return [p for p in dict.fromkeys(Path(n) for n in named if n) if p.is_file()]
+
+
+def _failed(logs: list[Path]) -> list[str]:
+    return sorted({t for p in logs for t in failed_tests(p.read_text(errors="replace"))})
+
+
 def _today() -> str:
     return dt.datetime.now(dt.UTC).strftime("%Y-%m-%d")
 
@@ -157,14 +172,14 @@ def _today() -> str:
 def record_land(q: Path, outcome: dict, item: str) -> str:
     """A red land attempt's rows; never raises (the instrument never fails a land): why it could
     not judge, or ""."""
-    log = Path(outcome.get("log") or "")
-    if outcome.get("state") == "landed" or outcome.get("mode") != "land" or not log.is_file():
+    logs = attempt_logs(outcome)
+    if outcome.get("state") == "landed" or outcome.get("mode") != "land" or not logs:
         return ""
     try:
-        if not failed_tests(log.read_text(errors="replace")):
+        if not _failed(logs):
             return ""
         repo, sha = Path(outcome["repo"]), str(outcome["sha"])
-        _measure(q, "land", item, repo, "HEAD", sha, log, _today())
+        _measure(q, "land", item, repo, "HEAD", sha, logs, _today())
     except Exception as e:  # noqa: BLE001 -- a broken instrument says so, and the land goes on
         return f"{item}: the selection-miss ledger could not judge it: {e}"
     return ""
@@ -192,14 +207,14 @@ def replay(q: Path, since: str = "") -> list[dict]:
             continue
         ns, _, item = path.stem.partition("-")
         day = dt.datetime.fromtimestamp(int(ns) / 1e9, dt.UTC).strftime("%Y-%m-%d")
-        log = Path(rec.get("log") or "")
+        logs = attempt_logs(rec)
         if rec.get("state") == "landed" or rec.get("mode") != "land" or day < since:
             continue
-        if not log.is_file() or not failed_tests(log.read_text(errors="replace")):
+        if not _failed(logs):
             continue
         base = f"main@{{{int(ns) // 10**9}}}"
         try:
-            out += _measure(q, "land", item, Path(rec["repo"]), base, rec["sha"], log, day)
+            out += _measure(q, "land", item, Path(rec["repo"]), base, rec["sha"], logs, day)
         except (OSError, subprocess.SubprocessError) as e:
             print(f"{path.stem}: not judged: {e}", file=sys.stderr)
     return out

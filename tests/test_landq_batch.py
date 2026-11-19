@@ -171,6 +171,11 @@ def test_a_red_middle_item_bisects_out_and_the_others_land(repo, tmp_path, meet)
     own = Path(got["T.TWO"]["log"])  # its own log, saying why it is red
     assert own.name.endswith("T.TWO.log") and "planted-red-in-two" in own.read_text(), own
     assert str(own) not in (got["T.ONE"]["log"], got["T.THREE"]["log"])
+    # every red run its stack was in, the first (all three stacked) included: the selection-miss
+    # ledger reads their failed tests (GOH.SELECTLOCKORDER); a landed record names none
+    reds = got["T.TWO"]["red_logs"]
+    assert reds[0].endswith(".gate1.log") and len(reds) >= 2, reds
+    assert "red_logs" not in got["T.ONE"] and "red_logs" not in got["T.THREE"], got
     runs = gate_runs(env)
     # The stack, then the bisection: serial it was <= 4 runs in 4 rounds; with each red split's
     # second half gated on main beside the first (GOH.LANDBISECTPAR) it is <= 5 runs in 3 rounds.
