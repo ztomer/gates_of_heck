@@ -306,9 +306,19 @@ def test_an_unfiled_fault_is_named_at_session_start(tmp_path, store, monkeypatch
 
 # --- the structural check: no reuse but a registered path's ------------------------------------
 
-API = {"lib/reuse.py", "lib/reuse_audit.py"}
-# A call that reads a recorded verdict (lib/reuse.py's readers) or asks the audit, as code names it.
-READS = re.compile(r"\breuse\.(?:lookup|lookup_gate|landed_identity|pushed)\(|lookup-gate")
+# lib/ship_suite.py is the suite record's reader, split from lib/reuse.py for its line cap.
+API = {"lib/reuse.py", "lib/reuse_audit.py", "lib/ship_suite.py"}
+# A call that reads a recorded verdict (lib/reuse.py's readers, the suite record's too: the ship's
+# skip on it asked no audit, GOH.ONEVERDICTTREE4) or asks the audit, as code names it.
+READS = re.compile(
+    r"\breuse\.(?:lookup|lookup_gate|lookup_suite|landed_identity|pushed)\(|"
+    r"\bship_suite\.full_suite\(|lookup-gate"
+)
+# A reader that skips no judgement on what it reads: the record it would MAKE is on disk.
+PRODUCERS = {
+    "lib/idle_suite.py": "the idle run exists to make main's full record; with one on "
+    "disk there is nothing to make, and the ship's step (`fullrun`) is what reuses it"
+}
 ASKS = re.compile(r"\b(?:use|use_many|enqueue|compare)\(\s*\"([\w-]+)\"")
 
 
@@ -332,7 +342,7 @@ def refusals(rel: str, text: str) -> list[str]:
     sites = {s for p in reuse.PATHS.values() for s in p.sites}
     out = [f"{rel}: asks the audit about {name!r}, which no path registers"
            for name in ASKS.findall(code) if name not in reuse.PATHS]  # fmt: skip
-    if READS.search(code) and rel not in sites and rel not in API:
+    if READS.search(code) and rel not in sites and rel not in API and rel not in PRODUCERS:
         out.append(f"{rel}: reads a recorded verdict but is no registered path's site")
     if re.search(r"\b(?:reuse\.)?register\(\s*\"", code) and rel != "lib/reuse.py":
         out.append(f"{rel}: registers a reuse path outside lib/reuse.py")
@@ -364,11 +374,10 @@ def test_every_registered_site_exists_and_every_sampled_one_asks_the_audit():
                 assert asks, (p.name, site)
     sampled = sorted(p.name for p in reuse.PATHS.values() if p.shadow)
     # slice 1, GOH.VERDICTCARRY's `carry`, GOH.REUSEAUDIT2's, GOH.COVCARRY2's `profcarry`,
-    # GOH.ONEVERDICTTREE3's `affected`; the rest
-    # say why (`unsampled`)
-    assert sampled == ["affected", "carry", "estate", "landed", "profcarry", "step", "test"], (
-        sampled
-    )
+    # GOH.ONEVERDICTTREE3's `affected`, GOH.ONEVERDICTTREE4's `fullrun`; the rest say why
+    # (`unsampled`)
+    want = ["affected", "carry", "estate", "fullrun", "landed", "profcarry", "step", "test"]
+    assert sampled == want, sampled
 
 
 def test_the_check_refuses_an_unregistered_reuse():
@@ -376,6 +385,8 @@ def test_the_check_refuses_an_unregistered_reuse():
     assert refusals("lib/x.py", 'reuse_audit.use("nope", f)\n')
     assert refusals("tools/x.py", 'reuse.register("mine", ("k",), 1, "d")\n')
     assert refusals("gates/x.sh", 'python3 "$GOH/lib/reuse.py" lookup-gate --sha "$s"\n')
+    assert refusals("lib/x.py", "rec, _ = reuse.lookup_suite(repo, tree, tools)\n")
+    assert refusals("tools/x.py", "rec, why = ship_suite.full_suite(repo, sha)\n")
     assert not refusals("lib/x.py", '"""reuse.lookup( in prose"""\nx = 1  # reuse.lookup(\n')
     assert not refusals("lib/ship_verdict.py", "found, why = reuse.lookup_gate(repo, sha)\n")
     assert not refusals("lib/x.py", 'reuse_audit.use("estate", f)\n')

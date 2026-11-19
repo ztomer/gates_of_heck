@@ -4,7 +4,7 @@ Found by GOH.SHIPBREACH0137: a gate on tree T1 that carried passes from T0 recor
 own record (`passed`, outside `judged`). A second gate on T1 (a land re-enqueued on the same tree)
 took that record as "the same tree" (tests/_land_verdicts.py `_carry`), counted nothing as carried
 and recorded T1 FULL, so the release kit (`reuse.py full-suite`) and the ship's skip
-(lib/ship_full_run.py `skip_reason`) stood on passes judged on another tree. Pinned here: such a
+(lib/ship_full_run.py `decide`) stood on passes judged on another tree. Pinned here: such a
 run is no full verdict and names what it carried, and the store refuses `full` for any record
 with a pass no run judged on its tree (lib/reuse.py record_suite).
 """

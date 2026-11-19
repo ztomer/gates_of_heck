@@ -222,12 +222,13 @@ def command(res: dict, name: str) -> tuple[str | None, str]:
         import ship_full_run  # here, not at the top: tools/ship.py's import ceiling (E402) is spent
 
         repo = Path(res["repo"])
-        if why := ship_full_run.skip_reason(repo, git(repo, "rev-parse", "HEAD")):
+        kind, why = ship_full_run.decide(repo, git(repo, "rev-parse", "HEAD"))  # one audited use
+        if kind == "skip":
             return None, why
         me, wt = ROOT / "lib" / "ship_full_run.py", Path(res["result"]).parent / "suite-wt"
         return f"{py} {shlex.quote(str(me))} --repo {shlex.quote(str(repo))} --wt " + shlex.quote(
             str(wt)
-        ), ""
+        ) + (" --shadow" if kind == "shadow" else ""), ""
     if name == "push":
         if res.get("release_pushes") and command(res, "release")[0] is not None:
             return (

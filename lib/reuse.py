@@ -133,7 +133,6 @@ GATE = register(
     "idle lander (tools/landq.py) schedules; hosted CI's gate of a public repo reads via `landed`",
 )
 
-
 PUSHED = register(
     "pushed",
     ("repo", "tree"),
@@ -173,7 +172,12 @@ CARRY = register(
     "carry", ("repo", "tree", "tools"), DAY_S,
     "goh's suite passes on a tree, carried to a tree whose diff from it does not choose them "
     "(tools/affected_tests.py) -- the land gate's suite deselects them (tests/_land_verdicts.py)",
-    sites=("tests/_land_verdicts.py",), shadow="inline",
+    sites=("tests/_land_verdicts.py", "lib/pre_reuse.py"), shadow="inline",
+)  # fmt: skip
+register(
+    "fullrun", CARRY.fields, DAY_S, "the ship's suite step skipped on the tip tree's FULL "
+    "instrumented record, whoever made it (lib/ship_suite.py full_suite, GOH.ONEVERDICTTREE4)",
+    store="the `carry` record", sites=("lib/ship_full_run.py",), shadow="inline",
 )  # fmt: skip
 register(
     "affected", ("repo", "sha", "selection", "identity", "env"), DAY_S,
@@ -264,8 +268,7 @@ def record(path: str | ReusePath, fields: dict[str, str], verdict: str, by: str 
            extra: dict[str, str] | None = None) -> Path:  # fmt: skip
     """Write the verdict for these fields whole (a temp file renamed into place)."""
     p = _path(path)
-    k = key(p, fields)
-    dest = _file(p, k)
+    dest = _file(p, k := key(p, fields))
     dest.parent.mkdir(parents=True, exist_ok=True)
     rec = {"format": FORMAT, "path": p.name, "key": k, "fields": fields, "verdict": verdict,
            "by": by, "epoch": now(), **(extra or {})}  # fmt: skip
@@ -279,8 +282,7 @@ def record(path: str | ReusePath, fields: dict[str, str], verdict: str, by: str 
 def lookup(path: str | ReusePath, fields: dict[str, str]) -> tuple[dict | None, str]:
     """(record, "") for a live record of these fields, else (None, why it missed)."""
     p = _path(path)
-    k = key(p, fields)
-    f = _file(p, k)
+    f = _file(p, k := key(p, fields))
     try:
         rec = json.loads(f.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -331,11 +333,8 @@ def repo_id(repo: Path) -> str:
 
 
 def gate_fields(repo: Path, sha: str, how: str = "full") -> dict[str, str] | None:
-    tree = _git(repo, "rev-parse", "--verify", "--quiet", f"{sha}^{{tree}}")
-    rid = repo_id(repo)
-    if not tree or not rid:
-        return None
-    return {"repo": rid, "tree": tree, "identity": gate_identity.key(how)}
+    tree, rid = _git(repo, "rev-parse", "--verify", "--quiet", f"{sha}^{{tree}}"), repo_id(repo)
+    return {"repo": rid, "tree": tree, "identity": gate_identity.key(how)} if tree and rid else None
 
 
 def record_gate(repo: Path, shas: list[str], by: str) -> list[Path]:

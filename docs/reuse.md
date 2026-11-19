@@ -42,7 +42,7 @@ records `~/.local/state/goh/ship/gates_of_heck/*.release.timings.jsonl` and `*.s
 | 1 | lane's affected run (`tools/affected_tests.py --run`) | tests the diff selects | the `affected` path (repo, sha, selection, suite identity, suite inputs), since GOH.ONEVERDICTTREE3; it runs in the land's shape | as 2 |
 | 2 | enqueue pre-step (`GOH_LAND_PRE_ONLY`) | the same selection, on the enqueued sha | takes 1's verdict on the exact key (lib/affected_verdict.py); kept per sha for the lander (`GOH_LAND_PRE_KEEP`), which reuses it where the tip moved only in paths no test reads | `pre_s` median 477 s before; the structural gates and cheap judges alone after a take |
 | 3 | land gate (push gate in the land's export) | the whole gate; the Rust coverage step dominates | proven records per group; the coverage MEASUREMENT by `gate_identity.py rust` plus, until this item, every GOH_* in the environment | lock-to-landed median 848 s; coverage step median 504 s (13 kept timings, 375-867) |
-| 4 | idle full suite (`lib/idle_suite.py`) | main's tip | the `full-suite` path (tree, instrumented) | 11 runs in lander.log |
+| 4 | idle full suite (`lib/idle_suite.py`) | main's tip | the `full-suite` path (tree, instrumented); none owed where a land gate judged the whole tree | 11 runs in lander.log |
 | 5 | release push (`tools/release_goh.sh`) | the push gate again, coverage included | as 3 | coverage median 457 s over 10 releases (380-980); 9 of the last 9 measured, "under another GOH_* configuration" |
 | 6 | hosted CI (`.github/workflows/gate.yml`) | the pushed commit | none (independent runner) | not read by lanes |
 | 7 | pin sweep | 12 consumer repos' pins | none | 713 s (v0.139.11) |
@@ -58,10 +58,29 @@ THE FIRST STEP, landed here: the measurement keys the GOH_* it can READ, by valu
 lib/cov_env.py), instead of the whole configuration, so stage 5 reuses stage 3's measurement when
 the inputs match exactly and the miss names the variable when one moved. GOH.ONEVERDICTTREE3 made 1
 and 2 one run (stage 2 takes stage 1's green verdict on an exact key) and the batch window adaptive
-and bounded (lib/landq_window.py). What is left: stage 4 reusing stage
-3's tree verdict; stage 7 reusing the release's verdict; retiring stage 8's shadows once the keys
-are proven; the batch cap chosen from the red rate; and the coverage scripts' closure, which holds
-lib/reuse*.py (every reuse edit re-measures).
+and bounded (lib/landq_window.py). What is left: stage 7 reusing the release's verdict; retiring
+stage 8's shadows once the keys are proven; the batch cap chosen from the red rate; and the
+coverage scripts' closure, which holds lib/reuse*.py (every reuse edit re-measures).
+
+GOH.ONEVERDICTTREE4 (measured on the ship records, `~/.local/state/goh/ship/gates_of_heck/`):
+
+* The ship's suite step and stage 4 ALREADY reuse stage 3 on an exact key wherever stage 3 judged
+  the whole tree: v0.139.11, .12 and .14 skipped it, "already has its instrumented full run (by
+  land gate)"; v0.139.13 ran it (779.2 s) because its land (GOH.CIWALL, 65 s) carried verdicts
+  from another tree, which is no full run, so the owner's term 2 (a fresh full instrumented run
+  before every ship) owes one. The key is the `carry` record's (repo, tree, suite tools) with
+  `full` and `full_instrumented`; nothing else reaches a test (tests/suite_home.py drops every
+  other GOH_* first, and every writer of the record runs in the land's `ci` shape, which a land
+  key forces). What it lacked was the audit: the skip is the sampled `fullrun` path now.
+* The release step (581.4 s in v0.139.14, 866.2 s in v0.139.13) is NOT the pin sweep, which runs
+  detached after the ship (`*.sweep.json`, its own `created`): it is the release push's full gate,
+  478.1 s and 731.0 s of `gates/rust_gate.sh` (the plain external suite 427.9 s), run because the
+  audit turned `landed` off ("the audit turned the land verdict's reuse off", GOH.REUSEOFFLANDED4).
+  `landed`'s fresh side is hosted CI, so a CI-only red turns a local reuse off.
+* Stage 7 cannot reuse on (tree, goh content): a pin commit changes the consumer's tree and the
+  goh it gates under (every goh release changes gates/, lib/ or tools/, all in the gate identity),
+  so such a key never holds for a pin push. Its reuse is a rule like the release's (pin files only,
+  on a parent gated green, under steps whose closure the release left alone), GOH.PINPUSHREUSE.
 
 ## The one store
 
@@ -139,4 +158,5 @@ moves; one on the live checkout keeps it only while goh's main does not move.
 | `test` | inline, 1 in 10 same-tree nodes a land's gate would skip: decided once by the controller and handed to every xdist worker, the node runs anyway; a failure is re-run in a child pytest and the pre-land record read again, and a repeat turns `test` off, so the next gate reuses nothing (GOH.REUSEAUDIT2) | `tests/_land_audit.py` (`audited`, `shadows`), asked by `tests/_land_verdicts.py` |
 | `gate`, `origin`, `rustcov`, `file` | none: each registration says why (`reuse_audit.py report`, `goh budget`). `gate` waits on an idle-slot full gate only the idle lander can schedule; `origin` reuses no verdict (a scope rule); `rustcov` is minutes a sample under set -e; `file` needs the counter in Rust | |
 | `affected` | inline, 1 in 10 takes: the set runs anyway and its verdict is compared with the kept one; a repeat turns `affected` off, so every set runs | `lib/affected_verdict.py` (`judged`), asked by `tools/affected_tests.py --run` |
+| `fullrun` | inline, 1 in 10 skips of the ship's suite step: the instrumented full run is made anyway, fresh (no same-tree reuse), and compared with the record's green; a repeated red turns `fullrun` off, so every ship runs its suite | `lib/ship_full_run.py` (`decide`, `run`), asked by `tools/ship.py`'s `suite` step |
 | `pushed` | none by design: identity-free | |
