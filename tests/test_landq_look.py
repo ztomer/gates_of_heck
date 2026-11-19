@@ -3,8 +3,12 @@
 GOH.REUSEOFFLANDED3, 2026-11-19: a wait started during the enqueue's pre-step said "is in its
 pre-step" and nothing more while the request was queued and then gated. Each tick re-reads the
 request's state dir; a line is printed only when that state changes. The test moves one request
-through enqueuing -> pending -> running (a batch's gate) -> done under a live wait, each move
-gated on the wait having reported the previous state: events, not clocks.
+through enqueuing -> pending -> running (stacking, then a batch's gate 1, gate 2) -> done under a
+live wait, each move ONE rename or write, gated on the wait having reported the state before it:
+events, not clocks. GOH.FLAKY2, 2026-11-19: the mover waited for "running" after writing gate 1,
+and "running, stacking of a batch of 2" -- the state between T.S's move and the gate-1 log --
+matched it, so a wait that read that gap (load ~79 on 16 cores) was handed gate 2 before it saw
+gate 1. So each state is its own exact line to wait for, stacking included.
 """
 
 from __future__ import annotations
@@ -66,13 +70,15 @@ def test_wait_follows_the_request_through_every_state_once(tmp_path, monkeypatch
         mine = _req(q, "pending", "01-T.S", "T.S")
         landq_inflight.clear(marker)
         after("queued behind T.AHEAD")
-        (q / "pending" / "00-T.AHEAD.json").replace(_req(q, "running", "00-T.AHEAD", "T.AHEAD"))
+        (q / "running").mkdir()  # one rename moves T.AHEAD: never in both dirs at once
+        (q / "pending" / "00-T.AHEAD.json").replace(q / "running" / "00-T.AHEAD.json")
         mine.replace(q / "running" / mine.name)
+        after("stacking of a batch of 2")  # both running, no gate log yet: a state of its own
         (q / "logs").mkdir()
         (q / "logs" / "00-T.AHEAD.gate1.log").write_text("")
-        after("running")
+        after("gate 1 of a batch of 2")
         (q / "logs" / "00-T.AHEAD.gate2.log").write_text("")
-        after("gate 2")
+        after("gate 2 of a batch of 2")
         (q / "running" / mine.name).unlink()
         (q / "done").mkdir()  # ONE record, its outcome in it, as tools/landq.py record() files it
         outcome = {"item": "T.S", "mode": "land", "state": "landed", "sha": "b" * 40}
@@ -85,6 +91,28 @@ def test_wait_follows_the_request_through_every_state_once(tmp_path, monkeypatch
     states = [s for s in said if "T.S" in s]
     assert len(states) == len(set(states)), states  # no line twice: it does not flood
     assert any("queued behind T.AHEAD" in s for s in states), states
+    assert any("stacking of a batch of 2" in s for s in states), states
     assert any("gate 1 of a batch of 2" in s for s in states), states
     assert any("gate 2 of a batch of 2" in s for s in states), states
     assert "landed" in states[-1] and "cccccccc" in states[-1], states
+
+
+def test_where_reads_a_request_moving_on_mid_look_once_and_never_as_its_own(tmp_path, monkeypatch):
+    """GOH.FLAKY2: where() listed pending's names, then re-read pending for the items ahead; the
+    lander's rename of T.AHEAD to running between the two shifted the slice onto T.S itself, and
+    the wait said "queued behind T.AHEAD, T.S", then "queued behind T.AHEAD" a second time. The
+    rename lands while where() reads T.AHEAD's pending record: one listing decides the order."""
+    q = tmp_path / "landq"
+    ahead = _req(q, "pending", "00-T.AHEAD", "T.AHEAD")
+    _req(q, "pending", "01-T.S", "T.S")
+    (q / "running").mkdir()
+    real_read = landq_state.read
+
+    def lander_moves_it_now(path: Path) -> dict | None:
+        if path == ahead and ahead.exists():
+            ahead.replace(q / "running" / ahead.name)  # the lander takes it, mid-look
+        return real_read(path)
+
+    monkeypatch.setattr(landq_state, "read", lander_moves_it_now)
+    assert landq_look.where(q, "01-T.S.json") == "queued behind T.AHEAD"
+    assert landq_look.where(q, "01-T.S.json") == "queued behind T.AHEAD"

@@ -67,21 +67,29 @@ def unfiled(q: Path, what: str, start_by: float) -> Path | int | None:
     return found
 
 
-def _items(d: Path) -> list[str]:
-    out = []
-    for f in sorted(d.glob("*.json")) if d.is_dir() else []:
-        if (r := landq_state.read(f)) is not None:  # else moved or not whole: read next tick
-            out.append(r.get("item") or f.stem)
+def _names(d: Path) -> list[str]:
+    return sorted(f.name for f in d.glob("*.json")) if d.is_dir() else []
+
+
+def _items(d: Path, names: list[str]) -> dict[str, str]:
+    """Each of NAMES in D that is still there and whole, by name: its item."""
+    out = {}
+    for n in names:
+        if (r := landq_state.read(d / n)) is not None:  # else moved or not whole: read next tick
+            out[n] = r.get("item") or n.removesuffix(".json")
     return out
 
 
 def where(q: Path, name: str) -> str:
-    """Where request NAME is now: queued behind whom, or running (a batch's gate N); "" else."""
-    pend = (
-        sorted(f.name for f in (q / "pending").glob("*.json")) if (q / "pending").is_dir() else []
-    )
+    """Where request NAME is now: queued behind whom, or running (a batch's gate N); "" else.
+    Who is ahead comes from ONE listing of pending, read before running's: a request the lander
+    moves on meanwhile is read in running, by name once, and NAME is never ahead of itself
+    (GOH.FLAKY2: a second listing shifted the slice, "queued behind T.AHEAD, T.S")."""
+    pend = _names(q / "pending")
     if name in pend:
-        ahead = _items(q / "running") + _items(q / "pending")[: pend.index(name)]
+        queued = _items(q / "pending", pend[: pend.index(name)])
+        running = _items(q / "running", [n for n in _names(q / "running") if n != name])
+        ahead = list({**running, **queued}.values())
         return f"queued behind {', '.join(ahead)}" if ahead else "queued, next"
     run = sorted((q / "running").glob("*.json")) if (q / "running").is_dir() else []
     if not any(f.name == name for f in run):
