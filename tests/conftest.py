@@ -19,6 +19,7 @@ import pytest
 import suite_home  # (FIRST: the suite's own HOME and TMPDIR, before anything reads them)
 from _tree_clone import clone_tree, reused_mkdtemp, template  # (no HOME/TMPDIR read at import)
 from env_probe import print_safe  # (no HOME/TMPDIR read: re, shlex)
+from suite_tmp import nested_root  # noqa: F401  (autouse: a nested pytest's own root, GOH.FLAKY2)
 
 # THE SUITE TESTS THE TREE IT IS IN. Consumers run the gates from an export of HEAD (C4,
 # gates/_from_head.sh); this suite exists to judge the change under test, so it asks for the working
@@ -40,8 +41,7 @@ sys.path.insert(0, str(REPO_ROOT / "checks"))
 from _gitutil import local_env_vars
 from host_locks import no_test_reaches_a_host_lock, scrubbed  # noqa: F401  (an autouse fixture)
 
-# The suite's leak check (an autouse session fixture): the OWNER of a process is responsible for
-# it, so the session proves that nothing it started outlived it.
+# The leak check (autouse): an OWNER answers for its processes; none the session started outlive it.
 from load_kit import load_reap_scope, suite_leak_check  # noqa: F401  (autouse fixtures)
 from real_state_guard import no_test_writes_the_real_goh_state  # noqa: F401  (an autouse fixture)
 

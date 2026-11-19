@@ -31,6 +31,14 @@ it starts the server a user would have started, with the user's sccache config. 
 a process the suite may start but does not own -- a server, a daemon, an agent -- gets the user's
 environment, never the suite's disposable one. Pinned by tests/test_suite_sccache.py.
 
+A PYTEST A TEST STARTS GETS A ROOT OF ITS OWN (GOH.FLAKY2). pytest numbers a session's dirs in
+`<root>/pytest-of-<user>` and, at each session's exit, deletes the old ones and unlinks a dead
+`pytest-current`. Inherited, the suite's root made every nested session of every xdist worker
+rotate that one directory at once: two unlinked the same dead symlink and the second died
+`FileNotFoundError` (test_temp_claimable.py, 2026-11-19). `nested_root` points each worker's
+children at a root under its own basetemp; one worker runs one test at a time, so they never
+overlap. Pinned by tests/test_nested_pytest_root.py.
+
 THE ROOT NEVER OUTLIVES ITS RUN (GOH.ENVDUMP). `atexit` is skipped by SIGKILL, SIGTERM and SIGHUP,
 so a killed bare-pytest run left its `goh-suite-tmp.*` root behind (2026-11-12 17:10, holding a
 test's dump of the whole environment). A reaper process waiting on a pipe only this process holds
@@ -48,6 +56,8 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+import pytest
 
 MARKER = "GATES_OF_HECK_SUITE_TMP"  # not GOH_-prefixed: no env scrub drops it
 REAL_TMP_MARKER = "GATES_OF_HECK_SUITE_REAL_TMP"
@@ -156,6 +166,15 @@ def _enter() -> None:
     os.environ[MARKER] = str(tmp)
     os.environ["TMPDIR"] = str(tmp)
     tempfile.tempdir = None  # gettempdir() caches; the next call reads TMPDIR again
+
+
+@pytest.fixture(scope="session", autouse=True)
+def nested_root(tmp_path_factory) -> None:
+    """Every pytest this worker's tests start numbers its dirs under this worker's own basetemp,
+    never in the suite's root beside the other workers' (module doc, GOH.FLAKY2)."""
+    root = tmp_path_factory.getbasetemp() / "nested-pytest"
+    root.mkdir(exist_ok=True)
+    os.environ["PYTEST_DEBUG_TEMPROOT"] = str(root)
 
 
 _enter()
