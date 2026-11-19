@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 from test_cov_carry import PROG, RUNS_IT, _llvm_bin
 from test_verdict_carry import SESSION_CONFTEST, _gate
 
@@ -108,3 +108,51 @@ def test_a_changed_binary_or_the_kill_switch_runs_the_test(
     moved = _run(d, store, bins, tmp_path / "p2", "T2")
     assert f"PASSED {RUNS}" in moved.stdout, moved.stdout
     assert "stored profiles" not in moved.stdout, moved.stdout
+
+
+def _land(d: Path, store: Path, bins: Path, prof: Path, tree: str) -> subprocess.CompletedProcess:
+    """A land's instrumented run as tools/land.sh makes it: xdist workers, and the store named by
+    GOH_LAND_VERDICTS_STORE (tests/suite_home.py `_land_store`), never GOH_REUSE_DIR."""
+    prof.mkdir()
+    env = hermetic_env(drop_git=True, GOH_LOOPCTL=str(d / "no-loopctl"),
+                       GOH_LAND_VERDICTS_REUSE=str(d / "no-pre-record.json"),
+                       GOH_LAND_VERDICTS_STORE=str(store), TREE=tree, CHOSEN="",
+                       GOH_COVERAGE_BIN_DIR=str(bins),
+                       LLVM_PROFILE_FILE=str(prof / "goh-%p.profraw"))  # fmt: skip
+    env.pop("GOH_REUSE_DIR", None)
+    return subprocess.run([sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-rA",
+                           "-n", "2"], cwd=d, capture_output=True, text=True, env=env,
+                          stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+
+
+def test_a_land_under_xdist_keeps_each_profile_keyed_by_the_binary_and_the_next_carries_it(
+    tmp_path: Path, suite, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GOH.PROFSTOREEMPTY: the store's name left the environment as the controller loaded
+    (`_land_verdicts._take`), so no xdist worker -- where every test runs -- had a store to keep
+    a profile in: after a full instrumented land the real store held no profstore/ at all."""
+    d, bins, _ = suite
+    store = tmp_path / "store"
+    monkeypatch.setenv("GOH_REUSE_DIR", str(store))
+    first = _land(d, store, bins, tmp_path / "p0", "T0")
+    assert first.returncode == 0 and f"PASSED {RUNS}" in first.stdout, first.stdout
+    assert "profile store: 1 of 1 binary-running tests' profiles kept under tree T0" in first.stdout
+    k0 = prof_store.key(reuse.repo_id(REPO_ROOT), "T0", "TOOLS", prof_store.bin_id(bins))
+    assert prof_store.held(k0, {RUNS, "test_r.py::test_pure"}) == {RUNS}, sorted(
+        p.relative_to(store) for p in store.rglob("*")
+    )
+    second = _land(d, store, bins, tmp_path / "p1", "T1")
+    assert second.returncode == 0, second.stdout + second.stderr
+    assert "1 by their stored profiles" in second.stdout, second.stdout
+
+
+def test_an_enabled_carry_whose_run_left_its_store_empty_is_red(tmp_path: Path, suite) -> None:
+    """The class: a reuse path that is on and stays empty after a run that should fill it is a
+    fault the run reports, never a silent full re-run on every land (GOH.PROFSTOREEMPTY)."""
+    d, bins, _ = suite
+    with (d / "conftest.py").open("a") as f:  # every worker loads it: no test's profile is kept
+        f.write("import _prof_record\n_prof_record._keep = lambda node, merged: None\n")
+    r = _land(d, tmp_path / "store", bins, tmp_path / "p0", "T0")
+    assert f"PASSED {RUNS}" in r.stdout and r.returncode == 1, r.stdout
+    said = "0 of 1 binary-running tests' profiles kept under tree T0: the enabled carry left its"
+    assert f"{said} store EMPTY" in r.stdout, r.stdout

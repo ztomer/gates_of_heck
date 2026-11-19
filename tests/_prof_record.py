@@ -32,6 +32,7 @@ import _land_verdicts as lv
 import pytest
 
 PROFILE = "LLVM_PROFILE_FILE"
+STORE_KEY = "goh_land_store"  # the controller's store, handed to each xdist worker
 _state: dict[str, object] = {}
 
 
@@ -99,6 +100,52 @@ def held(tree: str, tools: str, nodes) -> set[str]:
         return set()
     with lv._in_store():
         return _ps().held(k, nodes)
+
+
+def kept(ran: set[str]) -> tuple[str, bool]:
+    """(what the store kept of this run's profiles, whether that is a FAULT). An enabled carry
+    whose run drove the binary (`ran`: the nodes that passed running it) and left the store empty
+    under its own key is a reuse path that can never carry (GOH.PROFSTOREEMPTY: every xdist
+    worker lost the store's name, so 1691 binary tests re-ran on every land while the audit,
+    which samples only the per-crate claim, read uses 8, agreed 8)."""
+    me = lv._here()
+    k = key(*me) if me and ran else None
+    if not k:
+        return "", False
+    with lv._in_store():
+        got = len(_ps().held(k, ran))
+    said = f"profile store: {got} of {len(ran)} binary-running tests' profiles kept under tree "
+    said += me[0][:12]
+    if got:
+        return said, False
+    return f"{said}: the enabled carry left its store EMPTY (tests/_prof_record.py `_keep`)", True
+
+
+def check(session, ran: set[str]) -> None:
+    """A reuse path that is on must have filled its store: an instrumented run whose binary tests
+    passed and kept none of their profiles is red, never a silent full re-run next land."""
+    said, fault = kept(ran)
+    if said:
+        term = session.config.pluginmanager.get_plugin("terminalreporter")
+        (term.write_line if term else print)(f"land verdicts: {said}")
+    if fault and session.exitstatus == pytest.ExitCode.OK:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+def pytest_configure(config) -> None:
+    """An xdist worker takes the store from its controller: the name left the environment as the
+    controller loaded (`_land_verdicts._take`), before any worker started, so no worker -- where
+    every test runs -- kept a profile (GOH.PROFSTOREEMPTY: no profstore/ after a full land)."""
+    got = getattr(config, "workerinput", {}).get(STORE_KEY)
+    if got and not lv._store():
+        lv._KEYS[lv.STORE] = got
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_configure_node(node) -> None:
+    """xdist, in the controller: hand each worker the store it keeps profiles in."""
+    if lv._store():
+        node.workerinput[STORE_KEY] = lv._store()
 
 
 def take(tree: str, tools: str, nodes) -> None:
@@ -175,8 +222,10 @@ def pytest_runtest_call(item):
 
 def pytest_sessionfinish(session) -> None:
     """What a test's stray child wrote after its teardown, merged so the report still reads it;
-    the controller bounds the profile store."""
+    the controller checks the run filled the profile store (`check`), then bounds it."""
     if not hasattr(session.config, "workerinput") and key("", ""):
+        if lv._on(lv.RECORD) or lv._on(lv.REUSE):  # a run that records: it fills the store
+            check(session, {n for n in lv._bin if n in lv._called and n not in lv._failed})
         with lv._in_store():
             _ps().prune()
     base = _state.get("base")
