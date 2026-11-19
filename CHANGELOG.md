@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## v0.139.12 -- reconcile: CIPARITY (2 of the last 5 goh releases were green on the box and red in hosted C), LOADWHY (2026-11-19 08), HOLDERORPHAN (2026-11-19 13)
+
+* A land's suite runs as hosted CI runs it (GOH.CIPARITY): a suite carrying a land key
+  (GOH_LAND_VERDICTS_RECORD, the pre-step's; GOH_LAND_VERDICTS_REUSE, the gate's) enters in the CI
+  shape -- a home linking none of the owner's state (no ~/Projects, so no live loop queue; no
+  ~/.claude/skills), every XDG directory inside it, and the variables `.github/workflows/gate.yml`
+  gives its gate step, read from the workflow by tests/ci_shape.py (workflow, job and gate-step
+  `env`, `GITHUB_ENV` writes, GitHub's `CI` and `GITHUB_ACTIONS`), failing closed on a form it
+  cannot evaluate. The suite still runs once per land. `GATES_OF_HECK_SUITE_SHAPE=ci` asks for it
+  by hand; tests/test_ci_shape.py is red when gate.yml sets a variable the leg omits.
+
+* No test fake can outlive its pytest (GOH.HOLDERORPHAN): a fake gate, holder or peer that waits on a release file now leaves when the test process that started it is gone and after a 900 s deadline (`tests/orphan_kit.py` `wait_for_file` / `wait_for_file_py`, which replace every hand-written `until [ -e f ]` loop under tests/), the suite adopts each session leader so the test's end, the session's end and a SIGTERM of pytest kill its whole process group (`load_kit.adopt`), and `tests/test_fakes_cannot_orphan.py` refuses a new unbounded file-wait loop or an unowned `start_new_session=True` file. The leak (a 74-minute-old PPID 1 `push-holder` and its slot holder, left by an interrupted run) is reproduced by killing a child python that started a Gate. `goh unreaped-spawn` did not see it by design: a Popen stored on `self` is a handoff to an owner, and the owner's `kill()` was never called.
+
+* `tools/load.py` refuses spinners without a reason (GOH.LOADWHY, 2026-11-19): N>0 needs `--why <the timing defect this load reproduces>` (at least three words), exit 2 before any spinner or registry exists; N=0 (admission, a test run) makes no load and needs none. 2026-11-19: lanes ran `load.py --wait --max 1h 12 -- tools/affected_tests.py --run` (twelve busy loops beside a test run that needed none, load ~110 on 16 cores with three lands and four lanes on the box) because the lane protocol's "load only via load.py" read as "run tests under load.py N". The why is recorded in the registry (with the owner's directory) and in the baseline line; `goh agent-stalls` and the SessionStart advisories name every live spinner run with its why and owner directory (`lib/load_live.py`). The Bash guard's and `goh busy-loop`'s refusals teach the new line.
+
 ## v0.139.11 -- SPD cycle 12: CIRED01310 (v0.139.10 CI reds: torn landq record read, suite reaching the live estate), PLUGINPARITY (manifest-only pytest plugins), RUSTCONTROLVOID (sampled rust control), PREWAITVERDICT, COVPHASESTALL
 
 * The suite home no longer reaches the owner's live loop, and a landq record is never read half-written (GOH.CIRED01310). v0.139.10's hosted CI was red on two tests the box passed. (1) `tests/suite_home.py` linked the real `~/Projects` whole, so `lib/reuse_fault.py`'s `current_phase` read the phase table of the owner's live queue (`.loop/queue.json` under the real `Projects`) on the box and "no such file" on the runner, and a default loopctl a test reached would have filed into the live queue: `Projects` is now a directory of links with none for `.loop` (`suite_home.HIDDEN`), `tests/test_proven_audit.py` plants its own queue, and the real-loopctl test names the real home. (2) `goh land --wait` read a done record mid-write ("Expecting value: line 1 column 1"): the lander renamed, the test's copy of the writer truncated. `lib/landq_state.py` is the one writer (one rename) and the one reader (None for a record moved on or not whole); `--wait` re-reads a torn record and names it at its timeout, `--status` skips it, and a scan refuses a landq JSON written or read another way. `tests/test_landq_state.py`, red first. Red tests in release CI: 2 to 0.
