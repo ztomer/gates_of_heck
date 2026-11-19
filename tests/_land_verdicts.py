@@ -424,6 +424,8 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
                     carried(measured, chosen, True, False, measured)
                 )
                 how = f"{len(changed or [])} paths differ, affected_tests chooses {len(chosen)}"
+            if coverage and (src == tree or not _builds(changed or [])):  # GOH.PROFKEYMISS
+                plan.setdefault("profowed", []).append((src, len(held)))  # owed a match, matched
             nodes -= set(plan["skipped"])
             if not nodes:
                 continue

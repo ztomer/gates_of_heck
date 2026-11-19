@@ -26,6 +26,19 @@ THE KILL SWITCH, GOH_PROFCARRY_TESTS=off: nothing stored, nothing carried; and t
 audit turned off (a fresh run disagreed with a land's claim) stops every coverage reuse already.
 Bounded: the newest KEEP keys are kept, older ones removed at each store. Pinned by
 tests/test_prof_store.py.
+
+A STORE THAT NEVER MATCHES IS RED (GOH.PROFKEYMISS). An empty store is red (tests/_prof_record.py
+`kept`), but a full one whose keys no later land matches read the same as a working one: the
+instrumented goh built other bytes from the same inputs (4 sha256s in 5 builds, GOH.PROFSTOREEMPTY),
+so every land stored ~1700 profiles and carried none. Each instrumented recording run adds one
+LEDGER row: its tree, binary and key, how many profiles it kept, and -- when a carry source of its
+own is a tree a ledger row kept profiles for, still in the store, and its diff from that source
+leaves every build input alone -- that it was OWED a match, and how many of the source's profiles
+it matched. MISSES owed lands in a row that matched none are red, naming both binaries. MISSES = 3
+from the cadence (2026-11-18/19): 48 instrumented lands in 23 h, a median 25 min apart (p90 67
+min), so drift is red within about 75 min of lands; 9% of 150 main commits touched a build input
+and are never owed, so a row owed and unmatched is drift or a pruned source -- one or two of those
+in a row is noise, three is the path not working.
 """
 
 from __future__ import annotations
@@ -42,6 +55,8 @@ import reuse  # lib/, beside this file
 
 KILL = "GOH_PROFCARRY_TESTS"
 KEEP = 8  # trees kept: at most ~1800 nodes x 19 KB each (D-0011), carried ones hard links
+MISSES = 3  # owed lands in a row that matched nothing: red (the cadence, above)
+LEDGER, ROWS = "ledger.jsonl", 64
 _ids: dict[str, str] = {}
 
 
@@ -114,6 +129,55 @@ def put(k: str, node: str, src: Path) -> None:
 def place(src: Path, dest: Path) -> None:
     """A stored profile where a run's report reads it."""
     _link(src, dest)
+
+
+def _ledger() -> Path:
+    return reuse.root() / "profstore" / LEDGER  # a file: prune() removes key directories only
+
+
+def ledger() -> list[dict]:
+    """Every row the ledger holds, oldest first."""
+    try:
+        lines = _ledger().read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    rows = []
+    for ln in lines:
+        try:
+            row = json.loads(ln)
+        except ValueError:
+            continue  # a torn append from a run killed mid-write: that row only
+        if isinstance(row, dict):
+            rows.append(row)
+    return rows
+
+
+def owed(rows: list[dict], sources: list[str]) -> bool:
+    """A run whose carry sources (each leaving the build inputs alone) include a tree a ledger row
+    kept profiles for, its key still in the store, was owed a match."""
+    return any(r.get("tree") in sources and r.get("kept") and _dir(str(r.get("key"))).is_dir()
+               for r in rows)  # fmt: skip
+
+
+def note(row: dict) -> list[dict]:
+    """`row` appended to the ledger; every row it holds after, the newest ROWS kept."""
+    f = _ledger()
+    f.parent.mkdir(parents=True, exist_ok=True)
+    with f.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, sort_keys=True) + "\n")
+    rows = ledger()
+    if len(rows) > ROWS:
+        rows = rows[-ROWS:]
+        tmp = f.with_name(f".{LEDGER}.{os.getpid()}.tmp")
+        tmp.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in rows))
+        os.replace(tmp, f)
+    return rows
+
+
+def misses(rows: list[dict], n: int = MISSES) -> list[dict]:
+    """The last `n` owed rows when none of them matched a stored profile; else []."""
+    due = [r for r in rows if r.get("owed")][-n:]
+    return due if len(due) == n and not any(r.get("matched") for r in due) else []
 
 
 def prune(keep: int = KEEP) -> int:

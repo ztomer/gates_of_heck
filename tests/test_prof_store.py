@@ -156,3 +156,54 @@ def test_an_enabled_carry_whose_run_left_its_store_empty_is_red(tmp_path: Path, 
     assert f"PASSED {RUNS}" in r.stdout and r.returncode == 1, r.stdout
     said = "0 of 1 binary-running tests' profiles kept under tree T0: the enabled carry left its"
     assert f"{said} store EMPTY" in r.stdout, r.stdout
+
+
+def test_a_store_that_fills_and_never_matches_is_red_after_misses_lands(
+    tmp_path: Path, suite, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GOH.PROFKEYMISS: a store that fills under keys no later land matches looks like a working
+    one -- the instrumented goh built other bytes from the same inputs (4 sha256s in 5 builds), so
+    every land stored ~1700 profiles and carried none, and only an EMPTY store was red. Here each
+    land after T0 builds other bytes while its diff leaves every build input alone: the MISSES-th
+    such land is red, naming both binaries; a land that matches again is green."""
+    d, bins, exe = suite
+    store = tmp_path / "store"
+    monkeypatch.setenv("GOH_REUSE_DIR", str(store))
+    same = tmp_path / "t0-bytes"
+    shutil.copy(exe, same)
+    assert _run(d, store, bins, tmp_path / "p0", "T0").returncode == 0
+    r = None
+    for i in range(1, prof_store.MISSES + 1):
+        other = tmp_path / f"drift{i}"
+        _build(other, PROG.replace("no test takes this branch", f"drift {i}"))
+        shutil.copy(other / "prog", exe)  # the same inputs by the diff's account, other bytes
+        r = _run(d, store, bins, tmp_path / f"p{i}", f"T{i}")
+        assert f"PASSED {RUNS}" in r.stdout, r.stdout
+        assert r.returncode == (1 if i == prof_store.MISSES else 0), (i, r.stdout)
+    assert r is not None
+    said = f"the last {prof_store.MISSES} instrumented lands that could carry matched none"
+    assert said in r.stdout and "not reproducible" in r.stdout, r.stdout
+    shutil.copy(same, exe)  # T0's own bytes: its stored profiles match again
+    back = _run(d, store, bins, tmp_path / "p9", "T9")
+    assert back.returncode == 0 and "1 by their stored profiles" in back.stdout, back.stdout
+
+
+def test_a_land_is_owed_a_match_only_of_a_kept_source_still_stored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The ledger's arithmetic: a source with no kept profiles, or whose key prune() removed, owes
+    nothing; MISSES owed rows that matched none are due, one match among them clears it."""
+    monkeypatch.setenv("GOH_REUSE_DIR", str(tmp_path / "store"))
+    (reuse.root() / "profstore" / "k0").mkdir(parents=True)
+    rows = [{"tree": "T0", "key": "k0", "kept": 5}, {"tree": "TE", "key": "kE", "kept": 0},
+            {"tree": "TP", "key": "pruned", "kept": 5}]  # fmt: skip
+    assert prof_store.owed(rows, ["T0"]) and not prof_store.owed(rows, ["TE", "TP", "TX"])
+    miss = {"owed": True, "matched": 0}
+    due = [miss] * prof_store.MISSES
+    assert prof_store.misses(due) == due and not prof_store.misses(due[1:])
+    assert not prof_store.misses([*due[:-1], {"owed": True, "matched": 3}])
+    assert prof_store.misses([*due[:-1], {"owed": False}, miss]) == due  # an unowed row is no break
+    for i in range(prof_store.ROWS + 5):
+        got = prof_store.note({"tree": f"T{i}"})
+    assert len(got) == prof_store.ROWS and got[-1]["tree"] == f"T{prof_store.ROWS + 4}"
+    assert prof_store.ledger() == got

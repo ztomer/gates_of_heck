@@ -102,33 +102,69 @@ def held(tree: str, tools: str, nodes) -> set[str]:
         return _ps().held(k, nodes)
 
 
-def kept(ran: set[str]) -> tuple[str, bool]:
+def kept(ran: set[str]) -> tuple[str, bool, int]:
     """(what the store kept of this run's profiles, whether that is a FAULT). An enabled carry
     whose run drove the binary (`ran`: the nodes that passed running it) and left the store empty
     under its own key is a reuse path that can never carry (GOH.PROFSTOREEMPTY: every xdist
     worker lost the store's name, so 1691 binary tests re-ran on every land while the audit,
-    which samples only the per-crate claim, read uses 8, agreed 8)."""
+    which samples only the per-crate claim, read uses 8, agreed 8). The third: how many."""
     me = lv._here()
     k = key(*me) if me and ran else None
     if not k:
-        return "", False
+        return "", False, 0
     with lv._in_store():
         got = len(_ps().held(k, ran))
     said = f"profile store: {got} of {len(ran)} binary-running tests' profiles kept under tree "
     said += me[0][:12]
     if got:
+        return said, False, got
+    said += ": the enabled carry left its store EMPTY (tests/_prof_record.py `_keep`)"
+    return said, True, 0
+
+
+def matched(got: int) -> tuple[str, bool]:
+    """This run's ledger row (lib/prof_store.py), and whether the store has stopped matching: the
+    last MISSES lands owed a match of their sources' stored profiles matched none of them
+    (GOH.PROFKEYMISS: a store that fills under keys no land matches carries nothing, unseen)."""
+    me = lv._here()
+    k = key(*me) if me else None
+    if not k:
+        return "", False
+    pairs = (lv._state.get("plan") or {}).get("profowed") or []  # (source tree, matched)
+    sources = sorted({src for src, _ in pairs})
+    with lv._in_store():
+        ps, rows = _ps(), _ps().ledger()
+        row = {"tree": me[0], "key": k, "bin": ps.bin_id(os.environ["GOH_COVERAGE_BIN_DIR"]),
+               "kept": got, "owed": ps.owed(rows, sources), "sources": sources,
+               "matched": sum(m for _, m in pairs)}  # fmt: skip
+        due = ps.misses(rows := ps.note(row))
+    if not row["owed"]:
+        return "", False
+    said = f"profile store: {row['matched']} profiles of source tree {sources[0][:12]} matched"
+    if not due:
         return said, False
-    return f"{said}: the enabled carry left its store EMPTY (tests/_prof_record.py `_keep`)", True
+    srcs = {s for r in due for s in r.get("sources", ())}
+    stored = {str(r.get("bin"))[:12] for r in rows if r.get("tree") in srcs and r.get("kept")}
+    stored = sorted(stored)
+    built = sorted({str(r.get("bin"))[:12] for r in due})
+    return (f"profile store: the last {len(due)} instrumented lands that could carry matched none "
+            f"of the profiles their sources stored: built {', '.join(built)}, stored under "
+            f"{', '.join(stored)} from inputs no build-input change separates -- is the "
+            "instrumented build not reproducible (tests/test_coverage_bin_identity.py), or does "
+            f"the key read an input it should not? {_ps().KILL}=off stops it"), True  # fmt: skip
 
 
 def check(session, ran: set[str]) -> None:
-    """A reuse path that is on must have filled its store: an instrumented run whose binary tests
-    passed and kept none of their profiles is red, never a silent full re-run next land."""
-    said, fault = kept(ran)
-    if said:
-        term = session.config.pluginmanager.get_plugin("terminalreporter")
-        (term.write_line if term else print)(f"land verdicts: {said}")
-    if fault and session.exitstatus == pytest.ExitCode.OK:
+    """A reuse path that is on must have filled its store, and must match it: an instrumented run
+    whose binary tests passed and kept none of their profiles is red, never a silent full re-run
+    next land; so is the MISSES-th owed land in a row that matched none (`matched`)."""
+    said, fault, got = kept(ran)
+    more, drift = matched(got)
+    term = session.config.pluginmanager.get_plugin("terminalreporter")
+    for line in (said, more):
+        if line:
+            (term.write_line if term else print)(f"land verdicts: {line}")
+    if (fault or drift) and session.exitstatus == pytest.ExitCode.OK:
         session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
