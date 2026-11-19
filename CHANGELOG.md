@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+## v0.139.14 -- reconcile: COVKEYGAP (Derive rust_gate_scripts' closure from what the scripts actually), ONEVERDICTTREE3 (Remaining steps of GOH.ONEVERDICTTREE split out because a partial), FLAKYGITDIR (Reproduce under the land gate's shape tests/suite_home.py, xdist,), CIRED013913 (v0.139.13 e0d2103c hosted CI run 44584030150 is red 3 red)
+
+* A test that calls the scheduler's ordering function on fake items no longer meets a shard (GOH.CIRED013913): the part was a branch inside `_schedule.pytest_collection_modifyitems` reading module state, so when hosted CI ran the suite as a shard, three tests in tests/test_schedule.py went red with `SimpleNamespace` has no `get_closest_marker` (v0.139.13, shards 2, 3 and 4 of 4). The part is now its own hook (`_shard.Plugin`), registered only for a run handed a shard, and tests/test_suite_shard.py runs every test file that imports the scheduler under `1/1`, `1/2` and `2/2` and refuses a verdict that differs.
+
+* The Rust coverage measurement's key holds every file gates/rust_gate.sh sources or runs, derived
+  from the sources (GOH.COVKEYGAP, lib/rust_cov_scripts.py): its `scripts` line hashed two seeds
+  and gates/coverage_gate.sh's closure, so 13 files the gate SOURCES (gates/_proven.sh,
+  gates/_hash.sh, gates/_common.sh, whose goh_step judges the coverage step through lib/xexit.py)
+  and 36 with what they run were outside it, and an edit to one reused a measurement another
+  program made. A `source` or run the reading cannot place is declared with its reason or the
+  measurement has no key and runs; tests/test_cov_key_closure.py reads every run, source and
+  script name of the closure on its own and fails on a miss or a stale entry. Over the last 300
+  goh commits, 122 move the key where 113 did.
+
+* `checks/_gitutil.py local_env_vars` raises on a `git rev-parse --local-env-vars` answer that
+  names no GIT_DIR, as it already refused such an inherited GOH_GIT_LOCAL_VARS (GOH.FLAKYGITDIR):
+  lib/gitrun.py caches the list for the process, so a test's git shim first on PATH (the compact,
+  discard-guard and ship lock tests) answered with nothing, the empty list was cached for its xdist
+  worker, and every later `repo=` call there kept an inherited GIT_DIR --
+  test_repo_drops_a_leaked_git_dir went red whenever a shim test ran before it on one worker. The
+  shims hand that one question to the real git.
+* tests/test_landq_look.py's mover files the done record once, its outcome in it, as the lander
+  does: it wrote a record with no state and then the outcome, and a wait that read the gap exited 1
+  ("T.S: None @ aaaaaaaa"). Each done record is now held 0.3 s in a second case, which turned the
+  old two-write mover red every run.
+* hooks/claude/estate_advisories.py puts its own directory on sys.path before importing its sibling
+  `load_runs`, as agent_stalls.py does: loaded by path in-process (tests/test_state_bounds.py), it
+  found the sibling only when an earlier test on the worker had put hooks/claude on the path, so
+  the test was red alone and in any selection without such a test.
+
+* One run of a change's test set before the batch gate (GOH.ONEVERDICTTREE3, lib/affected_verdict.py): the lane's `tools/affected_tests.py --run` and the enqueue pre-step judged the same sha twice (586 s and 350 s of pre-step in the two ONEVERDICTTREE lands). A green whole-set run is kept in the one store (`affected`: repo, sha, the chosen nodes, the suite identity -- the clean commit tree and every tool's bytes -- and the suite's declared GOH_* inputs by value, GOH_PY resolved, its shape), and the next run of that set on that commit takes it, handing its verdict record to the caller stamped with the caller's base; the structural gates and the cheap judges still run. A lane's run is given a land record, so it runs in the land's shape (`ci`). A checkout with any change or untracked file, a red run, a deselecting run and a tree that moved during the run keep nothing. Audited inline, one take in ten.
+* The batch window is adaptive and bounded (lib/landq_window.py): 8 of the last 11 waits closed on the fixed 120 s with the other land still in its pre-step. An enqueue marker now says when its pre-step started, the queue's done records how long its repo's take (median `pre_s`), and the wait lasts to the latest marker due, never past `GOH_LANDQ_WINDOW_MAX` (300 s) past the head's filing; a lone land still waits not at all.
+* Three Claude hooks found a sibling module only when something else had put hooks/claude on sys.path: hooks/claude/estate_advisories.py (`load_runs`), agent_guard.py (`appstate`) and ci_door.py (`hold_guard`). Imported from a test they were order-dependent, green in one run of the land set and red in the next (tests/test_state_bounds.py, "No module named 'load_runs'"). Each now puts its own directory on the path, as agent_stalls.py does; tests/test_hook_sibling_imports.py imports every hook that imports a sibling in a fresh `-I` interpreter from another directory.
+
 ## v0.139.13 -- reconcile: ONEVERDICTTREE (Holistic review 2026-11-19 read-only reviewer, verified by the), CIWALL (Measured by the coordinator 2026-11-19 from 8 runs data in)
 
 * Test time bounds stretch by the box's measured core speed as well as its load (GOH.CIWALL). `tests/_drift_guard.py` `load_factor()`, which the per-test ceiling, `timing_bounds.bound`, `patience` and `GiveUp` all read, now multiplies the run queue per core by `speed_factor()`: the CPU time of a fixed loop against the owner's box (0.016 s), measured once by the controller and handed to every worker, never below 1 and capped at 4. The 3-core hosted runner turned v0.139.2 and v0.139.3 red on a 60 s ceiling stretched by its load alone (299.9 s against 258 s).
