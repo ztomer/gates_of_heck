@@ -79,3 +79,21 @@ def select(config, items, spec: str) -> None:
     if drop:
         config.hook.pytest_deselected(items=drop)
     items[:] = [item for item, u in keyed if shard[u] == k]
+
+
+class Plugin:
+    """The part, as a hook of its own (GOH.CIRED013913), registered by `_schedule.pytest_configure`
+    only when this run was handed a shard. It was a branch inside
+    `_schedule.pytest_collection_modifyitems` reading module state `take()` sets, so a test calling
+    that function on fake items was SHARDED when the suite ran as a part (`SimpleNamespace` has no
+    `get_closest_marker`: three red shards of v0.139.13): a verdict that depended on which machine
+    ran it. Now the ordering function has no shard to read, and a test calling it cannot meet one.
+    It runs last, after the order and the checkout-id refusal have seen every collected test, so
+    each shard refuses the same ids."""
+
+    def __init__(self, spec: str) -> None:
+        self.spec = spec
+
+    @pytest.hookimpl(trylast=True)
+    def pytest_collection_modifyitems(self, config, items) -> None:
+        select(config, items, self.spec)

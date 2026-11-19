@@ -81,6 +81,8 @@ def pytest_configure(config) -> None:
     _read[_KEY] = worker.get(_KEY, {}) if worker is not None else _load()
     if worker is not None:
         _shard_spec[:] = [worker[_SHARD_KEY]] if worker.get(_SHARD_KEY) else []
+    if _shard_spec:  # the part is its OWN hook (GOH.CIRED013913), never this module's
+        config.pluginmanager.register(_shard.Plugin(_shard_spec[0]), "goh-suite-shard")
 
 
 @pytest.hookimpl(optionalhook=True)
@@ -98,8 +100,6 @@ def pytest_collection_modifyitems(config, items) -> None:
     root = str(config.rootpath)
     if named := [i.nodeid for i in items if root in i.nodeid]:
         raise pytest.UsageError(f"a node id names the checkout {root} (give it ids=): {named[0]}")
-    if _shard_spec:
-        _shard.select(config, items, _shard_spec[0])
     known = _read[_KEY] if _KEY in _read else _load()
     if not known:
         return
