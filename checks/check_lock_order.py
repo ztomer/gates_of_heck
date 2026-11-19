@@ -54,7 +54,11 @@ import lock_order  # noqa: E402 -- lib/ is on the path from the line above
 
 from tui.lib import counted, err, ok  # noqa: E402 -- and the root
 
-SCANNED = ("bin/", "crates/", "gates/", "hooks/", "lib/", "scripts/", "tools/", "checks/")
+# What `load` reads of the tree it is pointed at: a test running this check over goh's root is
+# chosen by a change under any of them (lib/declared_reads.py, GOH.SELECTLOCKORDER).
+# (bin/ was listed too, and goh tracks nothing there: the installed binary is no source.)
+TREE_READS = (".gatesrc", "crates/", "gates/", "hooks/", "lib/", "scripts/", "tools/", "checks/")
+SCANNED = TREE_READS[1:]
 HELPERS = ("lib/lock_order.py", "lib/lock_order.sh", "checks/check_lock_order.py")
 SITE = re.compile(
     r"""(?:lock_order\.(?:flock|check|refusal|holding|with_held)\(\s*(?:[^"']*?,\s*)?["']"""

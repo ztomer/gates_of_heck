@@ -39,7 +39,9 @@ THE SET is the union of
     tests/test_rust_gate.py and the land gate went red on 14 of its tests).
   * the BINARY'S RUNNERS (GOH.AFFECTEDBINARY): a build-input change chooses every test running it.
   * the READERS of a changed path (GOH.SELECTAUDIT, lib/declared_reads.py): a test globbing or
-    copying a spelled directory, or declaring `TREE_READS = (...)`, for a path under what it reads.
+    copying a spelled directory, or declaring `TREE_READS = (...)`, for a path under what it reads
+    -- itself, through a tests/ helper it runs, or through a scanner it points at the root that
+    declares what it scans (GOH.SELECTLOCKORDER: checks/check_lock_order.py reads every lib/*.py).
 A deleted file is a changed path too: a test still naming it is the one that will go red.
 """
 
@@ -278,7 +280,7 @@ def readers(root: Path, changed: list[str], tests: dict[str, str] | None = None)
             if rel not in chosen and (why := _transitive(graph, rel, changed)):
                 chosen[rel] = why
         binary_runners.choose(graph, tests, changed, chosen)
-        declared_reads.choose(root, tests, changed, chosen)
+        declared_reads.choose(root, tests, changed, chosen, graph)
     return chosen
 
 

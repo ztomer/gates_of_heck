@@ -1,0 +1,12 @@
+# tests/test_declared_reads.py's ratchet (GOH.SELECTLOCKORDER): a test pointing a tree-listing
+# checks/ scanner at the root, where the scanner declares no TREE_READS. Each pair below was traced
+# on 2026-11-19 (every file the test opened, against the selector): none reads a file the selector
+# misses -- a self-test, a location (`--goh str(REPO_ROOT)`), or a helper driving the root in tests
+# the importer never runs. It only shrinks: a new pair declares, and a listed one gone is stale.
+tests/test_calibration_snapshot.py checks/_calibration.py
+tests/test_calibration_snapshot.py checks/check_git_env.py
+tests/test_calibration_snapshot.py checks/check_probes_pass.py
+tests/test_check_swift_warnings.py checks/check_swift_warnings.py
+tests/test_not_applicable.py checks/check_empty_scope.py
+tests/test_not_applicable.py checks/check_estate_corpus.py
+tests/test_reuse_audit_root.py checks/check_estate_corpus.py

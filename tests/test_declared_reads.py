@@ -18,6 +18,7 @@ import affected_tests
 from lib import declared_reads as dr, source_closure
 
 PENDING = REPO_ROOT / "gates" / "undeclared_reads.txt"
+SCANNERS = REPO_ROOT / "gates" / "undeclared_scanners.txt"
 
 
 # The day's two selection misses are pinned where they were closed: lib/gate_identity.py ->
@@ -31,6 +32,19 @@ CASES = [
     ("tests/fixtures/prose_mask/call_code.py", "tests/test_prose_mask_parity.py"),
     # a registry read at run time (GOH.ADAPTLANES' red was in a test chosen for it)
     ("gates/verdict_free_keys.txt", "tests/test_verdict_free_keys.py"),
+    # GOH.SELECTLOCKORDER, each found by tracing what the test opened (2026-11-19). A scanner
+    # pointed at the root, declaring what it scans: GOH.LANDLOGPRUNE's new lib file with a raw
+    # flock chose no lock-order test, and the batch gate went red
+    ("lib/state_bounds.py", "tests/test_check_lock_order.py"),
+    # a tests/ helper's copy of the gates (tests/test_proven.py's fixture), read by its importers
+    ("checks/_canary.py", "tests/test_proven_made.py"),
+    ("lib/budget.py", "tests/test_kept_rewrite.py"),
+    # a file under a spelled directory, joined with a non-literal part (`FIXTURE / f"{stem}.log"`)
+    ("tests/fixtures/selection_misses/attempts.json", "tests/test_selection_miss.py"),
+    (
+        "tests/fixtures/test_registration/cmake_ok/tests/helpers.h",
+        "tests/test_test_registration.py",
+    ),
 ]
 
 
@@ -74,6 +88,32 @@ def test_the_reads_a_spelling_gives_away_and_the_declared_ones(tmp_path):
     assert chosen == {}
 
 
+def test_a_scanner_pointed_at_the_root_lends_its_reads_and_a_helper_its_own(tmp_path):
+    """Through a chain of tests/ files: a helper's reads are the test's; a scanner's TREE_READS
+    are the test's only when the file reaching it points it at the root (argv, positional
+    argument, cwd=), never at a fixture, and never through a location (`GOH_DIR=str(ROOT)`)."""
+    for rel, text in {
+        "checks/scan.py": 'TREE_READS = ("lib/",)\n',
+        "tests/_copy.py": 'TREE_READS = ("gates/",)\n',
+        "tests/test_root.py": "import scan\ndef test_a():\n    scan.check(REPO_ROOT)\n",
+        "tests/test_argv.py": 'CHECK = "checks/scan.py"\nARGV = [CHECK, str(REPO_ROOT)]\n',
+        "tests/test_fixture.py": "import scan\ndef test_b(tmp_path):\n    scan.check(tmp_path)\n",
+        "tests/test_env.py": "import scan\nENV = hermetic_env(GOH_DIR=str(REPO_ROOT))\n",
+        "tests/test_helper.py": "import _copy\ndef test_c():\n    pass\n",
+    }.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text)
+    graph = affected_tests.Closure(tmp_path)
+    tests = {r: graph.texts[r] for r in graph.texts if r.startswith("tests/test_")}
+    chosen: dict[str, str] = {}
+    dr.choose(tmp_path, tests, ["lib/x.py", "gates/y.sh"], chosen, graph)
+    assert chosen == {
+        "tests/test_root.py": "reads lib/ (lib/x.py) through checks/scan.py",
+        "tests/test_argv.py": "reads lib/ (lib/x.py) through checks/scan.py",
+        "tests/test_helper.py": "reads gates/ (gates/y.sh) through tests/_copy.py",
+    }
+
+
 def _tests() -> dict[str, str]:
     return {
         f"tests/{p.name}": p.read_text(encoding="utf-8")
@@ -91,8 +131,32 @@ def test_every_test_joining_a_path_it_does_not_spell_declares_its_reads():
     assert not pending - found, f"stale on {PENDING.name}, delete: {sorted(pending - found)}"
 
 
+def test_every_scanner_a_test_points_at_the_root_declares_what_it_scans():
+    """A checks/ scanner listing the tracked tree, pointed at the root by a test that is not a
+    standing tree reader, declares TREE_READS -- what it scans is the test's reads -- or the pair
+    is on gates/undeclared_scanners.txt, today's traced exceptions, which only shrinks."""
+    graph = affected_tests.Closure(REPO_ROOT)
+    tests = _tests()
+    standing = affected_tests.tree_readers(REPO_ROOT, tests)
+    found = {
+        f"{rel} {node}"
+        for rel in tests
+        if rel not in standing
+        for node in dr.driven(graph, rel)
+        if node.startswith("checks/")
+        and dr.lists_tree(graph, node)
+        and not dr.declared(graph.texts[node])
+    }
+    listed = {ln for ln in SCANNERS.read_text().splitlines() if ln and not ln.startswith("#")}
+    assert not found - listed, (
+        f"declare TREE_READS = (...) in the scanner: {sorted(found - listed)}"
+    )
+    assert not listed - found, f"stale on {SCANNERS.name}, delete: {sorted(listed - found)}"
+
+
 def test_every_declared_read_matches_a_file_of_the_tree():
     tracked = source_closure.tree_files(REPO_ROOT)
-    for rel, text in _tests().items():
+    scanners = {f"checks/{p.name}": p.read_text() for p in (REPO_ROOT / "checks").glob("*.py")}
+    for rel, text in {**_tests(), **scanners}.items():
         for pattern in dr.declared(text):
             assert any(dr.matches(pattern, t) for t in tracked), f"{rel}: {pattern} reads nothing"

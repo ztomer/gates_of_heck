@@ -161,7 +161,7 @@ def test_a_batch_red_judges_the_stack_runs_its_item_was_in_not_only_its_own_log(
     q = tmp_path / "q"
     q.mkdir()
     own, stack = tmp_path / "own.log", tmp_path / "batch.gate1.log"
-    own.write_text("✗ [8/9] FAILED (exit status 1): ./checks/check_lock_order.py .\n")
+    own.write_text("✗ [8/9] FAILED (exit status 1): ./checks/check_x.py .\n")
     stack.write_text(LOG)
     outcome = {"state": "red", "mode": "land", "repo": str(repo), "sha": tip, "log": str(own),
                "red_logs": [str(stack), str(own)]}  # fmt: skip

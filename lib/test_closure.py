@@ -63,6 +63,7 @@ class Closure:
         self._names: dict[tuple[str, str], bool] = {}
         self._base: set[str] | None = None
         self._code: dict[str, str] = {}
+        self._reach: dict[str, tuple[dict[str, tuple[str, ...]], set[str]]] = {}
 
     def code(self, rel: str) -> str:
         """`rel`'s code with its prose blanked (checks/_prose_mask.py): a docstring or comment
@@ -150,6 +151,9 @@ class Closure:
         variable-rooted uses are edges too (Closure.uses), a base file among them included: pytest
         loading it is no run of its command line, which the script's process is (GOH.PREPARITY:
         lib/gate_identity.py, imported by tests/_land_verdicts.py, run by gates/_rust_proven.sh)."""
+        if skip is None and runs and test in self._reach:  # a test's own closure, asked twice
+            return self._reach[test]  # a land: by the closure rule, then by declared_reads
+        memo = skip is None and runs
         skip = self.base() if skip is None else skip
         chains: dict[str, tuple[str, ...]] = {}
         read: set[str] = set()  # reached by imports alone: their own code is read, so it counts
@@ -180,6 +184,8 @@ class Closure:
             if by_import:
                 for dep in self.named(rel):
                     visit(dep, False, used)
+        if memo:
+            self._reach[test] = (chains, read)
         return chains, read
 
 

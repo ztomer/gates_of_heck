@@ -23,14 +23,12 @@ from _tree_clone import from_template
 from conftest import REPO_ROOT
 from env_probe import print_safe
 
-GIT_VARS = (
-    "GIT_DIR",
-    "GIT_INDEX_FILE",
-    "GIT_WORK_TREE",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_COMMON_DIR",
-    "GIT_PREFIX",
-)
+# What _build_goh_copy copies (`REPO_ROOT / part` for gates/ and checks/), and the fragment rule's
+# closure: every test running this fixture reads them (lib/declared_reads.py, GOH.SELECTLOCKORDER).
+TREE_READS = ("gates/", "checks/", "tools/gate_profile.sh", "tools/release-kit/")
+
+GIT_VARS = ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR",
+            "GIT_PREFIX")  # fmt: skip
 
 
 def _git(repo: Path, *args: str) -> str:

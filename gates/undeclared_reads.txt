@@ -42,7 +42,6 @@ tests/test_parse_guard.py
 tests/test_place_staging.py
 tests/test_plists_strict.py
 tests/test_ported_paths.py
-tests/test_proven.py
 tests/test_proven_pythonpath.py
 tests/test_push_config_reuse.py
 tests/test_python_from_head.py

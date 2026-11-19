@@ -9,11 +9,27 @@ the reads are found two ways, and a change to a path one of them covers chooses 
     INFERRED   a directory spelled as REPO_ROOT (or ROOT, GOH_DIR) and literal parts, directly or
                through a module-level name bound to that spelling, that is the receiver of
                .glob/.rglob/.iterdir (`SRC.glob("*.rs")` -> `crates/goh/src/*.rs`) or the first
-               argument of copytree/listdir/walk/scandir (the whole directory)
+               argument of copytree/listdir/walk/scandir (the whole directory), or the left of
+               a join with a non-literal part (`FIXTURES / f"{stem}.log"`: some file under it)
     DECLARED   a module-level `TREE_READS = ("pattern", ...)`: what no spelling gives away -- a path
                joined from a variable (`REPO_ROOT / rel`), a read made by a helper. A pattern is
                fnmatch-style from the root (`*` crosses `/`); one with no wildcard is that file,
                or every file under it when it ends in `/`.
+
+THROUGH WHAT A TEST REACHES (GOH.SELECTLOCKORDER). The reads above are a test's own; a test also
+reads what the code it drives reads. Along a chain of tests/ files (lib/test_closure.py's reach):
+
+    a tests/ HELPER's reads, spelled or declared, are the test's: tests/test_proven_made.py runs
+               tests/test_proven.py's fixture, which copies gates/ checks/ lib/ tui/ whole
+    a SCANNER's declared TREE_READS (a checks/ or other non-test module: what it reads of the tree
+               it is pointed at) are the test's when the file reaching it points it at the root
+               -- passes REPO_ROOT (or str(REPO_ROOT)) to a call, or runs with cwd=REPO_ROOT.
+               tests/test_check_lock_order.py runs checks/check_lock_order.py over REPO_ROOT, which
+               reads every lib/*.py; keyed on lib/lock_order.tsv alone it missed GOH.LANDLOGPRUNE's
+               raw flock in a new lib/state_bounds.py and the batch gate went red (2026-11-19)
+
+A scanner pointed only at a fixture reads the fixture, so it inherits nothing; a module reached
+deeper (lib/ code a tool imports) declares for no test: its reads are the test's own business.
 
 A repo-wide judge (test_every_/test_no_, a tree walker, test_self_walk.py) is chosen for every
 diff already (affected_tests.tree_readers). tests/test_declared_reads.py is the ratchet: a test
@@ -34,7 +50,9 @@ GLOBS = frozenset({"glob", "rglob", "iterdir"})
 WHOLE = frozenset({"copytree", "listdir", "walk", "scandir"})
 DYNAMIC = "?"  # a chain with a non-literal part
 # A file with none of these reads nothing either way: it is never parsed (the pre-step's cost).
-MAY_READ = re.compile(r"\.(?:r?glob|iterdir)\(|copytree|listdir|walk\(|scandir|TREE_READS")
+MAY_READ = re.compile(
+    r"\.(?:r?glob|iterdir)\(|copytree|listdir|walk\(|scandir|TREE_READS|[A-Z]\w* / (?![\"'])"
+)
 
 
 def _chain(node: ast.AST) -> str | None:
@@ -101,6 +119,12 @@ def inferred(text: str, root: Path) -> set[str]:
             out.add(f"{d}/{pat}" if pat and name != "iterdir" else f"{d}/")
         elif name in WHOLE and node.args and (d := where(node.args[0])):
             out.add(f"{d}/")
+    for node in ast.walk(tree):  # `FIXTURES / name`: some file under a spelled directory
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            right = node.right
+            literal = isinstance(right, ast.Constant) and isinstance(right.value, str)
+            if not literal and (d := where(node.left)):
+                out.add(f"{d}/")
     return out
 
 
@@ -125,12 +149,90 @@ def reads(text: str, root: Path) -> tuple[str, ...]:
     return tuple(sorted({*declared(text), *inferred(text, root)}))
 
 
-def choose(root: Path, tests: dict[str, str], changed: list[str], chosen: dict[str, str]) -> None:
-    """Add to CHOSEN (whole) each test whose reads cover a changed path, with why."""
+def _root_arg(node: ast.AST) -> bool:
+    if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "str" and node.args:
+        node = node.args[0]
+    return isinstance(node, ast.Name) and node.id in ROOTS
+
+
+# Calls that take the root as a LOCATION -- an import path, an env value, a parent -- not as the
+# tree to judge: `sys.path.insert(0, str(REPO_ROOT))` points nothing at it.
+LOCATING = frozenset({"insert", "append", "setenv", "setitem", "chdir", "relative_to", "Path",
+                      "hermetic_env", "print_safe", "join", "relpath", "is_relative_to",
+                      "str"})  # fmt: skip
+
+
+@functools.lru_cache(maxsize=4096)
+def drives_root(text: str) -> bool:
+    """Whether the file points something at the root: REPO_ROOT (or str(REPO_ROOT)) as a call's
+    positional argument (a LOCATING call's excepted), an argv word, or cwd= -- never a path joined
+    under it (`REPO_ROOT / "x"`) nor an env value (`GOH_DIR=str(REPO_ROOT)`)."""
+    tree = _parse(text) if re.search(r"\b(?:REPO_ROOT|ROOT|GOH_DIR|GOH_ROOT)\b", text) else None
+    for node in ast.walk(tree) if tree else ():
+        if isinstance(node, (ast.List, ast.Tuple)) and any(_root_arg(e) for e in node.elts):
+            return True
+        if isinstance(node, ast.Call):
+            fn = node.func
+            name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
+            if name not in LOCATING and any(_root_arg(a) for a in node.args):
+                return True
+            if any(k.arg == "cwd" and _root_arg(k.value) for k in node.keywords):
+                return True
+    return False
+
+
+def _chains(graph, test: str):
+    """(file, the file reaching it) for each file TEST reaches along a chain of tests/ files."""
+    for node, chain in graph.reach(test)[0].items():
+        parents = (test, *chain[:-1])
+        if node in graph.texts and all(p.startswith("tests/") for p in parents):
+            yield node, parents[-1]
+
+
+def driven(graph, test: str) -> list[str]:
+    """The non-test files TEST's chains point at the root (module doc): the scanners whose
+    declared TREE_READS are its reads."""
+    return [
+        node
+        for node, by in _chains(graph, test)
+        if not node.startswith("tests/") and drives_root(graph.texts.get(by, ""))
+    ]
+
+
+# A scanner that lists the tracked tree (itself or through a checks/ helper): what it reads of the
+# root no spelling shows, so a test pointing it there needs its TREE_READS (tests/
+# test_declared_reads.py's ratchet, gates/undeclared_scanners.txt).
+LISTS = re.compile(r"ls-files|ls_files|tree_files\(|os\.walk\(|\.rglob\(")
+
+
+def lists_tree(graph, rel: str) -> bool:
+    return any(
+        LISTS.search(graph.code(f))
+        for f in (rel, *(d for d in graph.imports(rel) if d.startswith("checks/_")))
+    )
+
+
+def through(graph, test: str, root: Path) -> list[tuple[str, str]]:
+    """(pattern, the file it is read through) for what TEST reads by what it drives (module doc):
+    the reads of each tests/ helper on a chain of tests/ files, and the declared TREE_READS of
+    each scanner such a chain's last file points at the root."""
+    out = [(p, n) for n, _ in _chains(graph, test) if n.startswith("tests/")
+           for p in reads(graph.texts[n], root)]  # fmt: skip
+    for node in driven(graph, test):
+        if "TREE_READS" in graph.texts[node]:
+            out += [(p, node) for p in declared(graph.texts[node])]
+    return out
+
+
+def choose(root: Path, tests: dict[str, str], changed: list[str], chosen: dict[str, str],
+           graph=None) -> None:  # fmt: skip
+    """Add to CHOSEN (whole) each test whose reads cover a changed path, with why: its own reads,
+    and with GRAPH (lib/test_closure.py's Closure) the reads through what it drives."""
     for rel, text in tests.items():
         if rel in chosen:
             continue
-        for pattern in reads(text, root):
+        own = [(p, "") for p in reads(text, root)]
+        for pattern, via in own + (through(graph, rel, root) if graph is not None else []):
             if hit := next((p for p in changed if matches(pattern, p)), None):
-                chosen[rel] = f"reads {pattern} ({hit})"
+                chosen[rel] = f"reads {pattern} ({hit})" + (f" through {via}" if via else "")
                 break
