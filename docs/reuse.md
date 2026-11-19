@@ -82,6 +82,64 @@ GOH.ONEVERDICTTREE4 (measured on the ship records, `~/.local/state/goh/ship/gate
   so such a key never holds for a pin push. Its reuse is a rule like the release's (pin files only,
   on a parent gated green, under steps whose closure the release left alone), GOH.PINPUSHREUSE.
 
+## The land gate, phase by phase (GOH.LANDGATE15, measured 2026-11-19)
+
+The 13 land gate runs from GOH.COVKEYGAP to GOH.FLAKY2, read from their kept
+`~/.local/state/goh/landq/logs/*.timings.jsonl` (first gate pass; the second, under the lane's own
+gates, took 8-33 s, all proven). Seconds; "suite" is the external pytest suite, under the
+instrumented binary when coverage measured, else plain; the rest of `rust_gate.sh` is its lint,
+audit, plain `cargo test` and proven-key steps; "other" is steps 2-8.
+
+| Land | Gate | Coverage | Instr. build | Suite | Report | Workspace part | Rest of rust_gate | release_canary | Other |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| COVKEYGAP | 678 | measured | 11 | 446 | 0 | 21 | 25 | 141 | 35 |
+| CIRED013913 | 681 | reused | 0 | 549 | 0 | 0 | 56 | 6 | 71 |
+| FLAKYGITDIR | 639 | measured | 18 | 429 | 0 | 23 | 36 | 91 | 42 |
+| ONEVERDICTTREE3 | 708 | measured | 16 | 478 | 0 | 21 | 29 | 107 | 57 |
+| RUNRULEROOTS | 1003 | measured | 20 | 741 | 1 | 24 | 28 | 157 | 32 |
+| ONEVERDICTTREE4 gate 1 (red batch) | 659 | measured, red | 16 | ~502 | - | 23 | - | 87 | 31 |
+| ONEVERDICTTREE4 gate 2 | 1032 | measured | 35 | 781 | 0 | 30 | 26 | 121 | 38 |
+| ONEVERDICTTREE4 gate 3 | 1031 | measured | 36 | 775 | 0 | 33 | 27 | 121 | 38 |
+| CIWALL2 (3 reds) | 610, 96, 68 | measured, red | 10-14 | ~40-434 | - | 18-24 | - | 0-107 | 0-36 |
+| CIWALL3 | 885 | measured | 16 | 705 | 0 | 24 | 27 | 82 | 31 |
+| FLAKY2 | 324 | reused | 0 | 179 | 0 | 0 | 22 | 89 | 34 |
+
+Green gates: median 708 s (324-1032). Coverage measured on 7 of the 9 green lands.
+
+THE TOP COST is the measured suite: 429-781 s, median 705 s, 69-76% of its gate. Not the
+instrument: a `goh --version` costs 3.4-4.2 ms released and 4.2-5.0 ms instrumented, and `goh
+structural --full` 9.2 s against 9.1 s (opt-level 2 instrumented against release, interleaved). Not
+serialisation either: xdist runs it at the land's worker share (8 or 16), as the plain suite. It is
+the WHOLE suite every time: every instrumented land record in the `carry` store says `carried 0`,
+6593-6654 nodes judged, and its time matches the idle lander's full instrumented runs (361-657 s).
+Under coverage a node is skipped only with an instrumented measurement that it runs no binary
+(`measured`, tests/_prof_record.py, GOH.COVCARRY), and nothing supplies one:
+
+* the pre-step's same-tree passes come from a PLAIN run, which measures nothing: a probe giving the
+  coverage run a pre-step record of all 6669 nodes on main's tree reran every one ("6002 same-tree
+  passes rerun under coverage" plus the 667 the audit samples), where the plain run deselected
+  6668;
+* carry from another tree needs a diff no test loads before every test, and 22 of the last 39 goh
+  commits touch that closure (`affected_tests.Closure.base()`, 101 files: lib/reuse.py,
+  lib/gate_identity.py, tests/conftest.py ...); a land's diff spans every commit since the last
+  recorded tree, so both sources of the probe on main bff531fd were "loaded before every test".
+
+So a measured land reruns the 4800-odd nodes that run no binary (2668 of the suite's 3750 plain
+test-seconds, `~/.local/state/goh/test-durations.json` against the record's `measured` map) though
+the lane's run passed them on this very tree. THE SECOND COST is `release_canary.py`, 82-157 s
+(227-532 CPU-seconds) on every land whose gates changed, memoised exactly already (GOH.CANARYMEMO).
+
+THE CUT, the next item (GOH.PLAINBINMARK): give the plain run the same measurement. The plain
+`goh` leaves a mark where LLVM_PROFILE_FILE points (the variable the instrumented binary writes
+through, so the mark reaches every child the profile reaches, conftest's Popen hook included);
+tests/_prof_record.py runs its per-test directories in plain runs too, calibrated once per session
+(the resolved binary must leave the mark, else the run measures nothing), and records `measured`;
+the coverage run's same-tree path then skips them, as it already does for an instrumented record.
+A mark is written at start and a profile at exit, so the two disagree only toward re-running. Its
+audit: a sampled same-tree node that leaves a profile under coverage after a plain run measured it
+running none is a disagreement. Expected: the measured suite drops to the binary-running nodes and
+whatever the lane did not run, about 150-300 s against 705 s.
+
 ## The one store
 
 `lib/reuse.py`. Root `GOH_REUSE_DIR`, else `$XDG_STATE_HOME/goh/reuse`, else
