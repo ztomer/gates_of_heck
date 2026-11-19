@@ -8,6 +8,7 @@ gate now registers what it creates with ONE helper (`goh_cleanup_add`), read bac
 Each test runs a real gate under a private TMPDIR and asserts it ends EMPTY.
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -68,4 +69,6 @@ def test_structural_full_leaves_nothing_in_tmpdir(tmp_path, tree_lint) -> None:
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
     assert _left(tmpdir) == []
     ran = records(own) - before
-    assert not ran, f"the gate shellchecked {len(ran)} files inside the test's call"
+    assert not ran, f"the gate shellchecked {len(ran)} files inside the test's call:\n" + "\n".join(
+        json.loads(p.read_text())["key"] for p in own.rglob("*.json") if p.name in ran
+    )
