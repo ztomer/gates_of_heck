@@ -227,7 +227,7 @@ def run_one(q: Path, path: Path) -> dict:
             return {**outcome, "state": "red", "why": why}
         main_tip = {"sha": on_main, "enqueued": req["sha"], "landed": on_main} if land else {}
         return {**outcome, "state": "landed", **main_tip}
-    why = f"timed out after {timeout}s" if res.timed_out else f"exit {res.code}"
+    why = f"timed out after {timeout}s" if res.timed_out else landq_batch.exit_why(res.code)
     return {**outcome, "state": "red", "why": why}
 
 

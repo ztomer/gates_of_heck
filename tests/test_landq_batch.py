@@ -212,3 +212,29 @@ def test_batch_of_one_is_the_one_by_one_queue(repo, tmp_path, env):
     assert gate_runs(env) == ["one", "two", "three"], gate_runs(env)  # each alone, in queue order
     got = recorded(env)
     assert all(got[i]["state"] == "landed" and "batch" not in got[i] for _, i in wts), got
+
+
+def test_a_stack_whose_gate_never_got_a_slot_is_not_bisected(repo, tmp_path, env):
+    """GOH.PREWAITVERDICT: land.sh exits 75 when its gate's slot wait expired. Nothing was judged,
+    so a red verdict that bisects (a slot wait per half) would be a lie: one gate run, no split."""
+    from test_gate_slot import Gate
+    from test_one_admission import _end, _env, _until
+
+    wts = three(repo, tmp_path, {"two.txt": "2\n"})
+    enqueue_all(env, wts)
+    holder = Gate(tmp_path, "push-holder", _env(tmp_path, GOH_GATE_SLOTS="1"))
+    _until(lambda: "TAKEN" in holder.out() or holder.proc.poll() is not None)
+    slots = _env(tmp_path, GOH_GATE_SLOTS="1", GOH_LAND_GATE_WAIT="1s")
+    try:
+        done = landq({**env, **{k: v for k, v in slots.items() if k.startswith("GOH_G")},
+                      "GOH_LOAD_DIR": slots["GOH_LOAD_DIR"], "GOH_MEM_ADMIT": "0",
+                      "GOH_LAND_GATE_WAIT": "1s"}, "--drain")  # fmt: skip
+    finally:
+        _end(holder)
+    assert done.returncode == 0, done.stdout + done.stderr
+    got = recorded(env)
+    assert gate_runs(env) == [], "the gate ran"
+    for _, item in wts:
+        assert got[item]["state"] == "red" and "gate never ran" in got[item]["why"], got
+        assert got[item]["batch"]["gates"] == 1, got  # the stack's one run; no bisection
+        assert "the gate never ran" in Path(got[item]["log"]).read_text()

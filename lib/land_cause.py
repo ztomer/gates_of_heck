@@ -9,6 +9,8 @@ made with, so `goh land --report`'s `cause` column (lib/landq_report.py) is the 
     canary      the release canary refused: a CONSUMER went red, not this tree
     deadline    the pre-land tests reached their deadline and nothing failed (before
                 GOH.PRESTEPDEADLINE a deadline was red)
+    no-verdict  the gate never ran: its slot wait expired (GOH.PREWAITVERDICT, land.sh exit 75);
+                nothing was judged, so nothing failed
     structural  a structural gate step: the file-length cap, the map row, ruff ...
     ratchet     only repo-wide judges failed (a test_every_/test_no_ test, tests/test_self_walk.py,
                 tests/test_gate_temp_leaks.py): each reads every file or key, so any diff can
@@ -38,6 +40,7 @@ CAUSES = (
     "conflict",
     "canary",
     "deadline",
+    "no-verdict",
     "structural",
     "ratchet",
     "pre-test",
@@ -69,6 +72,8 @@ def classify(rec: dict, log: str) -> str:
         return "conflict"
     if "release canary" in log and "REFUSED" in log:
         return "canary"
+    if "the gate never ran" in log:
+        return "no-verdict"
     pre_red = "the pre-land tests failed" in log
     tests = failed_tests(log)
     if pre_red and not tests and "deadline of" in log:

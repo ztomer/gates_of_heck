@@ -26,6 +26,7 @@ CASES = [
     ({}, "✗ land.sh: GOH.X conflicts with main 93496d92 -- the rebase was aborted", "conflict"),
     ({}, "✗ release canary: REFUSED -- fix or seed each consumer above", "canary"),
     ({}, "..load: deadline of 600s expired: the command\n" + PRE_RED, "deadline"),
+    ({}, "✗ land.sh: the gate never ran on 9f3815f6: waited 900 s for a gate slot", "no-verdict"),
     (
         {},
         GATE_RED + f"✗ [2/9] FAILED (exit status 1): {STRUCT} --full\n"

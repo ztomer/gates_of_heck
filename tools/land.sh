@@ -207,15 +207,29 @@ land_pre() {
     pre_back="$("$GOH_PY" "$GOH/lib/pre_deadline.py" show --workers 1 --floor "$pre_max" --ceiling "$pre_ceil")" || exit 2
     pre_t0=$(date +%s) pre_r0="${EPOCHREALTIME/,/.}"
     pre_rc=0
+    # The slot wait's own bound: load.py's default (15 min) unless a seam names one (GOH.PREWAITVERDICT).
+    local waitmax=()
+    [ -z "${GOH_LAND_PRE_WAIT:-}" ] || waitmax=(--wait-max "$GOH_LAND_PRE_WAIT")
     (cd "$here" && { [ -z "$ship_timings" ] || export GOH_TIMINGS_PARENT="land: pre-step"; } && GOH_LAND_VERDICTS_RECORD="$record" GOH_GATE_CLASS=short "$GOH_PY" "$GOH/tools/load.py" \
-        --background-ok "pre-land" --max "$((pre_back + 60))" 0 -- \
+        ${waitmax[@]+"${waitmax[@]}"} --background-ok "pre-land" --max "$((pre_back + 60))" 0 -- \
         "$GOH_PY" "$GOH/lib/pre_deadline.py" run --mark "$pre_start" --floor "$pre_max" --ceiling "$pre_ceil" \
         -- bash -c "$cmd" pre-land "$pre_base" </dev/null 7>&- 8<&-) || pre_rc=$?
     pre_t1=$(date +%s)
     land_row "land: pre-step" "$pre_r0" "$pre_rc"
     pre_s="" pre_workers="" pre_limit="" pre_run=""
     read -r pre_s pre_workers pre_limit <"$pre_start" 2>/dev/null || true
-    [[ "$pre_s" =~ ^[0-9]+$ ]] || pre_s=$pre_t1   # never started: all of it was the wait
+    # NEVER STARTED (the step stamps its start): all of it was the wait. A wait that expired --
+    # load.py's EXIT_BUSY (3), no mark -- is no verdict: the set never ran, so it cannot have failed
+    # (GOH.PREWAITVERDICT: PRESTEPHEAD's enqueue waited 900 s for a slot and was told its tests failed).
+    # It is the deadline's own no-verdict code (124, below), with its own words.
+    pre_slot=""
+    if ! [[ "$pre_s" =~ ^[0-9]+$ ]]; then
+        pre_s=$pre_t1
+        if [ "$pre_rc" -eq 3 ]; then
+            pre_rc=124
+            pre_slot="waited $((pre_t1 - pre_t0)) s for a gate slot and ran nothing"
+        fi
+    fi
     pre_wall=$((${pre_wall:-0} + pre_t1 - pre_t0))
     pre_took="in $((pre_t1 - pre_t0)) s: waited $((pre_s - pre_t0)) s, ran $((pre_t1 - pre_s)) s of ${pre_limit:-?} s at ${pre_workers:-?} workers"
     # A run that reached a verdict is the ledger's measure of what the set costs (lib/pre_deadline.py WORK).
@@ -225,7 +239,9 @@ land_pre() {
     # A pre-step that reached its deadline (load.py's EXIT_DEADLINE, 124) found nothing: it exists
     # to fail FAST, and the gate runs the whole suite anyway -- no verdict, never red
     # (GOH.PRESTEPDEADLINE: GOH.REUSEAUDIT's land, killed at 82% of a green-so-far run).
-    if [ "$pre_rc" -eq 124 ]; then
+    if [ "$pre_rc" -eq 124 ] && [ -n "$pre_slot" ]; then
+        info "pre-land: no verdict: $pre_slot -- the gate decides ($pre_took)"
+    elif [ "$pre_rc" -eq 124 ]; then
         load1="$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')"
         [ -n "$load1" ] || load1="$(cut -d' ' -f1 /proc/loadavg 2>/dev/null)"
         info "pre-land: no verdict after $((pre_t1 - pre_s)) s at load ${load1:-?} -- the gate decides ($pre_took)"
@@ -361,36 +377,9 @@ land_roots() {
 land_roots
 # In the gate's environment only, never exported: an exported GOH_ key is gate bookkeeping and must be
 # verdict-free (tests/test_verdict_free_keys.py), and this one is one process's setting.
-# The gate runs under tools/load.py with 0 spinners, which admits it by a gate slot -- the one
-# admission every gate takes, so a land and a push gate wait for the same slots (GOH.ONEADMISSION,
-# docs/decisions/D-0008) -- taken HERE, under the land lock, never around this script: a land queued
-# on the lock then holds nothing a ship holding the lock can be waiting on (GOH.LOCKORDER: land 20
-# before gate_slot 50). 90 minutes bounds the gate as the coordinator's wrapper did. Class `ship`
-# (GOH_GATE_CLASS, consumed by lib/admission.py): ahead of every `work` waiter (GOH.SLOTFAIR).
-# GOH_TIMING_VIA: the push gate this runs is this land's, so it leaves the ledger row to land.sh.
 land_timings="$(mktemp "$(goh_tmp)/goh-land-timings.XXXXXX")" || land_timings=""
-# land_gate ROOT WHOSE GATE -- the gate (empty: ROOT's push gate) under ROOT's gates; red exits 1.
-land_gate() {
-    local cmd="${3:-$1/tools/gate_profile.sh .}"
-    info "gate: $cmd (under $2's gates)"
-    # An export's gates are put first; a consumer's land (ROOT is the kit) keeps the caller's GOH_DIR
-    # and PYTHONPATH, the ones the push after it runs under: forced to the kit, the proof keyed roots
-    # the push's key did not, and the push re-ran what the land had proven (GOH.PRESTEPHEAD's
-    # 8150234a; tests/test_proven.py::test_land_leaves_a_proof_the_push_that_follows_reuses).
-    local over=()
-    [ "$1" = "$GOH" ] || over=(GOH_DIR="$1" PYTHONPATH="$(goh_path_front PYTHONPATH "$1"; printf %s "$PYTHONPATH")")
-    [ -z "$ship_timings" ] || over+=(GOH_TIMINGS_PARENT="land: gate")
-    local g0="${EPOCHREALTIME/,/.}" grc=0
-    env ${over[@]+"${over[@]}"} GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" GOH_LAND_VERDICTS_REUSE="$verdicts" \
-            GOH_GATE_CLASS=ship GOH_TIMING_VIA=land GOH_TIMINGS="${GOH_TIMINGS:-$land_timings}" \
-            "$GOH_PY" "$1/tools/load.py" --background-ok "land gate" \
-            --max 90m 0 -- bash -c "$cmd" 7>&- 8<&- </dev/null || grc=$?
-    land_row "land: gate" "$g0" "$grc"
-    if [ "$grc" -ne 0 ]; then
-        err "land.sh: the gate failed on ${tip:0:8} under $2's gates -- nothing landed"
-        exit 1
-    fi
-}
+# shellcheck source=lib/land_gate.sh
+. "$GOH/lib/land_gate.sh" || exit 2   # land_gate ROOT WHOSE GATE: the gate run, its slot wait read honestly (GOH.PREWAITVERDICT)
 # ONE RUN PER LAND (GOH.SUITEONCE): the gate's suite takes the pre-step's verdict when it judged
 # this very tree against this base (tools/pytest.sh, lib/pre_reuse.py `suite`); it reads the base
 # here and leaves the verdict's id in `.reused`, which the land's record names (`suite_reused`).

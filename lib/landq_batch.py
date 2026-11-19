@@ -64,6 +64,17 @@ DEFAULT = 3
 RETRIES = 3  # passes a git failure may keep a request pending before it is recorded red
 PAUSE = 30.0  # seconds the lander waits before it tries again after one
 READ_PAUSE = 1.0  # seconds between those reads
+# tools/land.sh's exit when its gate waited for a slot and never ran (load.py's EXIT_GATE, the
+# EX_TEMPFAIL): no verdict, so a stack is not bisected for it (each half would wait a slot again).
+NO_GATE_SLOT = 75
+NO_GATE_WHY = "no verdict: the gate never ran, its slot wait expired"
+
+
+def exit_why(code: int) -> str:
+    """A land.sh exit, in words (a gate that never ran says so: GOH.PREWAITVERDICT)."""
+    return f"exit {code}" + (f": {NO_GATE_WHY}" if code == NO_GATE_SLOT else "")
+
+
 READ_TRIES = 3  # reads of main's HEAD after the gate landed the stack: it is too late to give up
 
 
@@ -249,6 +260,9 @@ class Batch:
         res = bounded_run.run_step(argv, self.kit.timeout, self.kit.grace, "land batch", str(log))
         if res.timed_out:
             return "timeout", log, f"timed out after {self.kit.timeout}s"
+        # land.sh's gate never ran: nothing to bisect (GOH.PREWAITVERDICT)
+        if res.code == NO_GATE_SLOT:
+            return "noverdict", log, exit_why(res.code)
         return ("landed" if res.code == 0 else "red"), log, f"exit {res.code}"
 
     def pre_from(self, top: Item) -> list[str]:
@@ -279,8 +293,9 @@ class Batch:
         if state == "landed":
             self.landed(stacked, log)
             return
-        self.judged_red(stacked, log)
-        if state == "timeout" or len(stacked) == 1:
+        if state != "noverdict":  # a gate that never ran judged no stack
+            self.judged_red(stacked, log)
+        if state in ("timeout", "noverdict") or len(stacked) == 1:
             for it in stacked:
                 self.outcome(it, "red", self.own_log(it, log, why), why=why)
             return

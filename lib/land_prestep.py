@@ -12,6 +12,7 @@ import contextlib
 import importlib
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -32,6 +33,24 @@ TIMEOUT = 30 * 60
 
 class Red(Exception):
     pass
+
+
+# tools/land.sh's one line for a pre-step that found nothing: a deadline ("no verdict after N s at
+# load L") or a slot wait that expired ("no verdict: waited N s for a gate slot and ran nothing").
+NO_VERDICT = re.compile(r"pre-land: no verdict[: ] ?(.*?) -- the gate decides")
+
+
+def no_verdict(lines: list[str]) -> dict | None:
+    """The pre-step's no-verdict record from its output (GOH.PREWAITVERDICT): `kind` (`slot-wait`
+    or `deadline`) and `why`, in words; None when it reached a verdict. Put on the land request as
+    `pre_verdict`, for the selection-miss ledger to tell a set that never ran from one that was
+    skipped (`--no-pre`) or chose too little."""
+    for line in lines:
+        if found := NO_VERDICT.search(line):
+            why = found.group(1).strip()
+            return {"state": "none", "kind": "slot-wait" if "gate slot" in why else "deadline",
+                    "why": why}  # fmt: skip
+    return None
 
 
 def keep_path(q: Path, sha: str) -> Path:
@@ -108,7 +127,11 @@ def run_kept(req: dict, q: Path, script: Path, bindings: tuple[str, ...]) -> flo
     """`run` on REQ's worktree and sha, its green verdict kept under Q and named on REQ (`pre`);
     the lander's land.sh removes the keep once read (lib/land_pre_reuse.sh)."""
     keep = keep_path(q, req["sha"])
-    took = run(Path(req["worktree"]), req["sha"], script, bindings, keep, land_slot.label(req))
+    noted: dict = {}
+    took = run(Path(req["worktree"]), req["sha"], script, bindings, keep, land_slot.label(req),
+               noted)  # fmt: skip
+    if noted:
+        req["pre_verdict"] = noted
     adopt(req, keep)
     return took
 
@@ -120,11 +143,12 @@ def run(
     bindings: tuple[str, ...],
     keep: Path | None = None,
     label: list[str] | None = None,
+    noted: dict | None = None,
 ) -> float:
     """Run SCRIPT's pre-step in WT; its seconds, or raise Red unless green or past its deadline. A
     green verdict is KEPT at `keep` (the judged sha; its record at `keep`.record) for the lander's
     tools/land.sh, which reuses it where the tip moved only in paths no test reads
-    (GOH.PRELANDTWICE)."""
+    (GOH.PRELANDTWICE). A pre-step with no verdict fills NOTED (`no_verdict`)."""
     kept = [f"GOH_LAND_PRE_KEEP={keep}"] if keep else []
     kept += label or []
     argv = ["env", *(f"-u{k}" for k in bindings), "GOH_LAND_PRE_ONLY=1", *kept, "bash", "-c",
@@ -146,8 +170,10 @@ def run(
     finally:
         timer.cancel()
     if code == 0:
-        if any("no verdict" in line for line in lines):
-            warn("the pre-step reached its deadline -- no verdict; queued, the lander decides")
+        if none := no_verdict(lines):
+            if noted is not None:
+                noted.update(none)
+            warn(f"the pre-step had no verdict ({none['why']}); queued, the lander decides")
         return round(time.monotonic() - t0, 1)
     named = [ln.split()[1] for ln in lines if ln.startswith("FAILED ") and len(ln.split()) > 1]
     what = f"failing: {', '.join(named)}" if named else f"exit {code}, see the output above"
