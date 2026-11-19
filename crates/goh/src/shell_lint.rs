@@ -228,7 +228,7 @@ fn check_misses(
     // Each call holds one of the MACHINE's shellcheck tokens (`crate::shellcheck_slots`,
     // GOH.MEMADMIT): one thread per core per run, eight runs at once, was 128 shellchecks and
     // 63.7 GiB on 2026-11-16. No more threads than tokens: a thread past them only waits.
-    let slots = crate::shellcheck_slots::Slots::from_env()?;
+    let slots = crate::shellcheck_slots::Slots::from_env(!dataflow_off(severity))?;
     let cores = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
     let jobs = slots
         .bound()

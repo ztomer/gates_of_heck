@@ -13,8 +13,8 @@
 //! and a lint killed by `SIGKILL` frees its tokens with its last fd. A token is held only around ONE
 //! shellcheck child, and nothing is taken under it: it is the lock order's last rank.
 //!
-//! `GOH_SHELLCHECK_SLOTS=N` (default: one per 8 GiB of memory, between 1 and the core count; `0`
-//! turns the bound off), in `GOH_SHELLCHECK_SLOT_DIR` (default `~/.cache/goh/slots/shellcheck`).
+//! `GOH_SHELLCHECK_SLOTS=N` (default: one per `mib_per_token` of memory, between 1 and the core
+//! count; `0` turns the bound off), in `GOH_SHELLCHECK_SLOT_DIR` (default `~/.cache/goh/slots/shellcheck`).
 //! The suite does not privatise the directory as it does the gate slots: the memory is the
 //! machine's, and the incident's children were mostly the suite's. Pinned by
 //! `tests/test_shellcheck_slots.py`.
@@ -27,8 +27,22 @@ use std::fs::{File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Memory budgeted per token: a shellcheck that follows its sources measured up to 1.55 GB.
-const GIB_PER_TOKEN: u64 = 8;
+/// Memory budgeted per token, FOUR times the largest child measured in the call's mode.
+///
+/// Dataflow ON (`style`/`info`): a shellcheck that follows its sources measured up to 2006 MB, so
+/// 8 GiB. Dataflow OFF (`warning`/`error`, the default severity, `--extended-analysis=false`):
+/// `/usr/bin/time -l` over every one of goh's 108 shell files measured a 34 MB median and a 255 MB
+/// max (`gates/rust_gate.sh`; GOH.CIRED01392, 2026-11-18), so 1 GiB. Sized at 8 GiB for both, the
+/// hosted runner's 7 GiB gave ONE token, and a cold lint of goh's tree ran one file at a time:
+/// 224 s and 300 s of one test on release CI (v0.139.2, v0.139.3) against its 60 s ceiling.
+#[must_use]
+pub const fn mib_per_token(dataflow: bool) -> u64 {
+    if dataflow {
+        8 << 10
+    } else {
+        1 << 10
+    }
+}
 
 /// The machine's token pool; `n == 0` is the bound turned off.
 pub struct Slots {
@@ -58,14 +72,14 @@ fn physical_memory() -> Option<u64> {
     String::from_utf8_lossy(&ran.stdout).trim().parse().ok()
 }
 
-/// The default bound: one token per `GIB_PER_TOKEN` GiB, at least one, at most one per core.
+/// The default bound: one token per `mib_per_token(dataflow)`, at least one, at most one per core.
 #[must_use]
-pub fn default_slots(memory: Option<u64>, cores: usize) -> usize {
+pub fn default_slots(memory: Option<u64>, cores: usize, dataflow: bool) -> usize {
     let cores = cores.max(1);
     memory.map_or_else(
         || cores.div_ceil(2),
         |m| {
-            let tokens = m / (GIB_PER_TOKEN << 30);
+            let tokens = m / (mib_per_token(dataflow) << 20);
             usize::try_from(tokens)
                 .unwrap_or(usize::MAX)
                 .clamp(1, cores)
@@ -74,11 +88,12 @@ pub fn default_slots(memory: Option<u64>, cores: usize) -> usize {
 }
 
 impl Slots {
-    /// The pool the environment names; an unreadable `GOH_SHELLCHECK_SLOTS` is an error naming it.
+    /// The pool the environment names, sized for a call with `dataflow` on or off; an unreadable
+    /// `GOH_SHELLCHECK_SLOTS` is an error naming it.
     ///
     /// # Errors
     /// `GOH_SHELLCHECK_SLOTS` is not a non-negative integer, or the directory cannot be made.
-    pub fn from_env() -> Result<Self, String> {
+    pub fn from_env(dataflow: bool) -> Result<Self, String> {
         let n = match std::env::var("GOH_SHELLCHECK_SLOTS") {
             Ok(v) if !v.is_empty() => v.parse::<usize>().map_err(|_| {
                 format!(
@@ -89,6 +104,7 @@ impl Slots {
             _ => default_slots(
                 physical_memory(),
                 std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get),
+                dataflow,
             ),
         };
         let dir = match std::env::var_os("GOH_SHELLCHECK_SLOT_DIR") {
@@ -154,12 +170,22 @@ mod tests {
     use super::default_slots;
 
     #[test]
-    fn one_token_per_eight_gib_between_one_and_the_cores() {
-        assert_eq!(default_slots(Some(64 << 30), 16), 8);
-        assert_eq!(default_slots(Some(16 << 30), 16), 2);
-        assert_eq!(default_slots(Some(4 << 30), 16), 1);
-        assert_eq!(default_slots(Some(512 << 30), 16), 16);
-        assert_eq!(default_slots(None, 16), 8);
-        assert_eq!(default_slots(None, 0), 1);
+    fn one_token_per_eight_gib_with_dataflow_between_one_and_the_cores() {
+        assert_eq!(default_slots(Some(64 << 30), 16, true), 8);
+        assert_eq!(default_slots(Some(16 << 30), 16, true), 2);
+        assert_eq!(default_slots(Some(4 << 30), 16, true), 1);
+        assert_eq!(default_slots(Some(512 << 30), 16, true), 16);
+        assert_eq!(default_slots(None, 16, true), 8);
+        assert_eq!(default_slots(None, 0, true), 1);
+    }
+
+    #[test]
+    fn one_token_per_gib_without_dataflow_so_the_hosted_runner_runs_one_per_core() {
+        // The macos-26 runner: 7 GiB, 3 cores. At 8 GiB a token it got one (GOH.CIRED01392).
+        assert_eq!(default_slots(Some(7 << 30), 3, false), 3);
+        assert_eq!(default_slots(Some(7 << 30), 3, true), 1);
+        assert_eq!(default_slots(Some(4 << 30), 16, false), 4);
+        assert_eq!(default_slots(Some(64 << 30), 16, false), 16);
+        assert_eq!(default_slots(Some(512 << 20), 16, false), 1);
     }
 }
