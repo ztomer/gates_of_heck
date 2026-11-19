@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.139.8 -- SPD cycle 10: PYTESTPIN (one release of every pip tool on the box and in hosted CI: pytest 9.2.0, xdist 3.8.0, coverage 7.17.3), ENABLEROOT (reuse_audit enable reads the fix from the checkout)
+
+* `reuse_audit.py enable` reads the fix from the checkout, not from the from-head export it runs in: with no `--root` it takes its own parent when that is a repository, else the checkout the export was cut from (`GOH_LIVE_ROOT`), else the caller's (cwd toplevel, then `GOH_DIR`). It refused every valid `--fix` from `~/.cache/goh/head/<sha>` with "is not a test"; a root that is no git repository now says so.
+
+* Hosted CI and the box install one release of every pip tool (GOH.PYTESTPIN): every pip row of `gates/required_tools.tsv` is now a pin -- pytest 9.2.0, pytest-xdist 3.8.0 (a new goh-suite row; `gate.yml`'s unpinned `pip install pytest-xdist` is gone), coverage 7.17.3, numpy 2.5.5, pillow 13.0.0 -- and `required_tools.py --install` writes each as `tool==X.Y.Z`. CI had installed the newest pytest (9.2.0) while the box ran 9.1.1, and v0.139.6's release CI was red on a test id the local gate never saw. `required_tools.py --layer L --pins-held` reds a pinned module whose release in this interpreter is not its pin, and `tools/pytest.sh` refuses to run on one, so the local suite is CI's; it also refuses a missing pytest-xdist (no serial fallback to drift into). `tests/test_ci_install_pins.py` reds an unpinned or off-pin `pip install` anywhere under `.github/`, a pin variable not read from `required_tools.py --pin`, a `brew`/`cargo install` of a tool no manifest row names, and an unpinned manifest pip row.
+
 ## v0.139.7 -- SPD cycle 9: CIRED01396 (v0.139.6's CI red: pytest 9.2 renamed a long path param; the fixture names it), MIDNIGHTDATE (the changelog cutter takes GOH_TODAY; no test builds an expected date from the clock), PROFKEYMISS (a profile store that never matches goes red; the instrumented build is proven reproducible), LANDLEAKS (a finished land leaves only its log and kept timings)
 
 - **tests**: `test_ship_tree_full.py`'s fixture gives its path-bearing node an explicit id. pytest 9.2 auto-ids a str value over 100 characters as `argname+index` (`parametrize_long_str_id_strategy = "short"`), so on the runner's long tmp path the node was `test_here[where0]`, named no checkout, and v0.139.6 release CI went red; CI installs the newest pytest while the house box ran 9.1.1 (GOH.CIRED01396).
