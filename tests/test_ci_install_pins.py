@@ -224,3 +224,43 @@ def test_the_box_is_held_to_the_same_pins(capsys):
     assert required_pins.held([{**row, "pin": pytest.__version__}]) == 0
     assert required_pins.held([{**row, "tool": "no-such-dist-goh"}]) == 1
     assert "not installed" in capsys.readouterr().err
+
+
+def _gates():
+    import sys
+
+    sys.path.insert(0, str(REPO_ROOT / "gates"))
+    try:
+        import required_pins
+        import required_tools
+    finally:
+        sys.path.remove(str(REPO_ROOT / "gates"))
+    return required_pins, [r for r in required_tools.rows() if r["layer"] == "goh-suite"]
+
+
+def test_the_suite_loads_exactly_the_manifests_pytest_plugins(request):
+    """GOH.PLUGINPARITY: pytest auto-loaded the box's pytest-asyncio, pytest-cov, anyio and
+    platformdirs, none of which hosted CI installs, so the box ran another harness. THIS run's
+    plugins are the manifest's goh-suite pins' and no others, and each pin's plugin is loaded."""
+    required_pins, rows = _gates()
+    assert (
+        required_pins.plugins_off_manifest(request.config.pluginmanager.list_name_plugin(), rows)
+        == []
+    )
+
+
+def test_a_plugin_off_the_manifest_is_red_and_a_pins_unloaded_plugin_is_red():
+    """Calibration: iniconfig (pytest's own dependency, so on every runner, and no manifest row)
+    registered as a plugin is red by name; an empty list misses every pin's plugin (xdist's)."""
+    import iniconfig
+    import pytest_cov.plugin
+    import xdist.plugin
+
+    required_pins, rows = _gates()
+    found = required_pins.plugins_off_manifest(
+        [("ini", iniconfig), ("x", xdist.plugin), ("c", pytest_cov.plugin)], rows
+    )
+    assert len(found) == 1 and "pytest plugin ini (iniconfig) is loaded" in found[0], found
+    found = required_pins.plugins_off_manifest([], rows)
+    assert found and all("is not loaded" in f for f in found), found
+    assert any("xdist.plugin (pytest-xdist)" in f for f in found), found

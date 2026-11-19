@@ -126,11 +126,26 @@ export GATES_OF_HECK_SUITE_RUNNER=$$
 # fallback to drift into.
 "$GOH_PY" -c 'import xdist' 2>/dev/null \
     || die "pytest-xdist is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install pytest-xdist"
+# pytest's plugin manager and xdist's transport (GOH.PLUGINPARITY): pinned like the rest, so a
+# release of either is not the runner's choice.
+# py_gate's coverage step (`pytest --cov`), which tests/test_cwd_and_py_gate.py drives for real.
+"$GOH_PY" -c 'import pytest_cov' 2>/dev/null \
+    || die "pytest-cov is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install pytest-cov"
+"$GOH_PY" -c 'import pluggy' 2>/dev/null \
+    || die "pluggy is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install pluggy"
+"$GOH_PY" -c 'import execnet' 2>/dev/null \
+    || die "execnet is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install execnet"
 # THE BOX IS CI (GOH.PYTESTPIN): every goh-suite module at exactly the release the manifest pins,
 # the one hosted CI installs. pytest 9.2.0 renamed a long string parameter's id; CI, unpinned, got
 # it while this box ran 9.1.1, and v0.139.6's CI was red on a tree the local gate passed.
 "$GOH_PY" "$GOH/gates/required_tools.py" --layer goh-suite --pins-held \
     || die "this interpreter's goh-suite modules are not the manifest's pins (above) -- install them with the pip line $GOH_PY $GOH/gates/required_tools.py --layer goh-suite --install prints"
+# ONE PLUGIN SET (GOH.PLUGINPARITY): this run loads only the plugins pyproject.toml names with -p, and
+# a pytest a test starts in a FIXTURE repo loads only the manifest's pins' (PYTEST_PLUGINS), never
+# the box's other site-packages -- the set hosted CI, which installs exactly the pins, auto-loads.
+PYTEST_PLUGINS="$("$GOH_PY" "$GOH/gates/required_tools.py" --layer goh-suite --pytest-plugins)" \
+    || die "cannot read the goh-suite pins' pytest plugins (gates/required_tools.py --pytest-plugins)" 2
+export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTEST_PLUGINS
 # The tools the suite's FIXTURE repos are gated and shipped with (run 42944992082: ~45 Python-gate
 # tests died on "ruff is not available through <python> -m", and 23 test_ship tests on a missing
 # git-cliff): goh's own gates declare no python or ship layer, so the goh-suite layer installs them.

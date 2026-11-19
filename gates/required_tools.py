@@ -10,6 +10,7 @@
     gates/required_tools.py --check --tool zig    # one tool (what goh_require asks)
     gates/required_tools.py --floors              # tool<TAB>floor, for a consumer's own record
     gates/required_tools.py --layer goh-suite --pins-held   # red: a pinned pip module off pin
+    gates/required_tools.py --layer goh-suite --pytest-plugins   # the pins' pytest11 modules, a,b
 
 A PINNED tool (`=X.Y.Z`) is judged by `--check` as at least its pin in a consumer and exactly its pin
 in a goh checkout (GOH.PINCHECKFLOOR); `--pins-held` is the exact judgement over this interpreter.
@@ -308,6 +309,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--found", default=None, help="the version text the caller read (--check)")
     ap.add_argument("--floors", action="store_true", help="tool<TAB>floor for every floor")
     ap.add_argument("--pins-held", action="store_true", help="red: a pinned pip module off pin")
+    ap.add_argument("--pytest-plugins", action="store_true", help="the pins' pytest plugins, a,b")
     ap.add_argument("--pin", metavar="TOOL", help="the release TOOL is pinned to; 1 when none")
     ap.add_argument("--unnamed", action="store_true", help="a step's tool no table names (--repo)")
     args = ap.parse_args(argv)
@@ -360,7 +362,9 @@ def main(argv: list[str] | None = None) -> int:
             have.add(r["tool"])
     if args.check or args.pins_held:  # --pins-held: the box holds the pip pins (GOH.PYTESTPIN)
         return required_pins.held(selected) if args.pins_held else required_judge.check(selected)
-    if args.names:
+    if args.pytest_plugins:  # tools/pytest.sh's PYTEST_PLUGINS (GOH.PLUGINPARITY)
+        print(",".join(mod for mod, _dist in required_pins.manifest_plugins(selected)))
+    elif args.names:
         print("\n".join(dict.fromkeys(r["tool"] for r in selected)))
     elif args.install:
         print("\n".join(install_lines(selected)))

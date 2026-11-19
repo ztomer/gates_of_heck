@@ -50,6 +50,11 @@
 #                        unpinned, got it while the box ran 9.1.1, and v0.139.6's CI was red on it.
 #   pytest-xdist =3.8.0  PIN: goh's suite runs under it (tools/pytest.sh); its scheduler is the run.
 #   coverage =7.17.3     PIN: a coverage release moves the measured number a floor judges.
+#   pytest-cov =7.1.0    PIN (GOH.PLUGINPARITY): gates/py_gate.sh's coverage step runs `pytest --cov`, and
+#                        four tests/test_cwd_and_py_gate.py tests drive it for real; they skipped on
+#                        hosted CI, which lacked it, and ran on the box, which had it.
+#   pluggy =1.7.0, execnet =2.1.2   PIN (GOH.PLUGINPARITY): pytest's plugin manager and xdist's
+#                        transport, the two helper libraries under the run; unpinned, the runner chose.
 #   pillow =13.0.0, numpy =2.5.5   PIN: the goh suite's own imports (golden_core, the parity tier).
 # `--check` JUDGES A PIN (GOH.PINCHECKFLOOR): in a consumer a pinned tool must be AT LEAST its pin (the
 # floor `--floors` publishes); in a goh checkout EXACTLY its pin, as tools/pytest.sh's --pins-held holds it.
@@ -67,6 +72,9 @@ python	pytest	pip	python3 -m pip install pytest	gates/py_gate.sh	=9.2.0
 python	pytest	pip	python3 -m pip install pytest	gates/staged_guards.sh	=9.2.0
 goh-suite	pytest	pip	python3 -m pip install pytest	tools/pytest.sh	=9.2.0
 goh-suite	pytest-xdist	pip	python3 -m pip install pytest-xdist	tools/pytest.sh	=3.8.0
+goh-suite	pytest-cov	pip	python3 -m pip install pytest-cov	tools/pytest.sh	=7.1.0
+goh-suite	pluggy	pip	python3 -m pip install pluggy	tools/pytest.sh	=1.7.0
+goh-suite	execnet	pip	python3 -m pip install execnet	tools/pytest.sh	=2.1.2
 goh-suite	pillow	pip	python3 -m pip install pillow	tools/pytest.sh	=13.0.0
 goh-suite	numpy	pip	python3 -m pip install numpy	tools/pytest.sh	=2.5.5
 goh-suite	coverage	pip	python3 -m pip install coverage	tools/pytest.sh	=7.17.3

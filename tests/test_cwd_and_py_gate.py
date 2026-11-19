@@ -196,16 +196,6 @@ def test_py_gate_failing_test_blocks_with_output(tmp_path):
     assert "assert 1 == 2" in r.stderr  # failing output printed, not buried
 
 
-def pytest_cov_available() -> bool:
-    try:
-        import pytest_cov  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
-
-
-@pytest.mark.skipif(not pytest_cov_available(), reason="pytest-cov not installed")
 def test_py_gate_cov_floor_names_never_imported_modules(tmp_path):
     """The floor must see UNTESTED modules. Bare `--cov` (no source scope)
     only measures what got imported: a 0%-covered never-imported module is
@@ -290,7 +280,6 @@ def _gate(pkg: Path, floor: str) -> subprocess.CompletedProcess:
     )
 
 
-@pytest.mark.skipif(not pytest_cov_available(), reason="pytest-cov not installed")
 def test_py_gate_counts_a_script_no_test_imports_outside_a_package(tmp_path):
     """coverage discovers unexecuted files only inside PACKAGES, so a script in a plain directory
     did not exist until a test first imported it -- and that test then LOWERED the total: ZeroThunder
@@ -305,7 +294,6 @@ def test_py_gate_counts_a_script_no_test_imports_outside_a_package(tmp_path):
     assert "dep.py" not in out, f"an ignored virtualenv joined the total:\n{out}"
 
 
-@pytest.mark.skipif(not pytest_cov_available(), reason="pytest-cov not installed")
 def test_py_gate_honours_the_repos_omit_for_never_imported_scripts(tmp_path):
     """A repo states what cannot run on the host (Blender scripts, say) in its own omit list; the
     gate must not count those back in."""
@@ -314,7 +302,6 @@ def test_py_gate_honours_the_repos_omit_for_never_imported_scripts(tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
 
 
-@pytest.mark.skipif(not pytest_cov_available(), reason="pytest-cov not installed")
 def test_py_gate_honours_the_repos_include_for_never_imported_scripts(tmp_path):
     """A repo that measures only `include` patterns is judged over those patterns alone."""
     include = '[tool.coverage.run]\ninclude = ["tools/used.py", "tests/*"]\n'
