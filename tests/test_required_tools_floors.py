@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pytest
 from _tool_versions import floor as floor_of, pin as pin_of
+from timing_bounds import patience
 
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "gates" / "required_tools.py"
@@ -207,3 +208,98 @@ def test_goh_require_passes_a_newer_tool(tmp_path: Path) -> None:
         cwd=tmp_path,
     )  # fmt: skip
     assert out.returncode == 0 and "REACHED" in out.stdout, (out.stdout, out.stderr)
+
+
+# A PINNED tool's --check (GOH.PINCHECKFLOOR). GOH.PYTESTPIN made every pip row a pin and left
+# `--check` judging a pinned tool's PRESENCE alone: a consumer whose box had pytest below the old
+# 9.1.1 floor passed. The pin is the oldest release a consumer accepts (it is what `--floors`
+# publishes), a newer one is green; in a goh checkout the pin is EXACT, the release CI installs
+# (gates/required_pins.py, the same judgement tools/pytest.sh's `--pins-held` makes). The version
+# seam is `--found`, the text the gate read through its own runner; versions come from the manifest.
+PYTEST_PIN = pin_of("pytest")
+_PMAJ, _PMIN, *_ = (int(x) for x in PYTEST_PIN.split("."))
+PYTEST_OLD = f"{_PMAJ}.{_PMIN - 1}.0"  # below the pin: the old floor's release line
+PYTEST_NEWER = f"{_PMAJ}.{_PMIN + 1}.0"
+
+
+def _tree(root: Path, goh: bool) -> Path:
+    """A consumer-shaped tree, or one shaped like a goh checkout (the toplevel marker
+    gates/_self_gate.sh names: commit_gate.sh, _from_head.sh and crates/goh)."""
+    root.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q", str(root)], check=True, stdin=subprocess.DEVNULL)
+    if goh:
+        (root / "gates").mkdir()
+        (root / "gates" / "commit_gate.sh").write_text("", encoding="utf-8")
+        (root / "gates" / "_from_head.sh").write_text("", encoding="utf-8")
+        (root / "crates" / "goh").mkdir(parents=True)
+    return root
+
+
+def _check(cwd: Path, found: str, tool: str = "pytest") -> subprocess.CompletedProcess[str]:
+    out = subprocess.run(
+        [sys.executable, str(CLI), "--check", "--tool", tool, "--found", found],
+        capture_output=True,
+        text=True,
+        timeout=patience(60),
+        stdin=subprocess.DEVNULL,
+        cwd=cwd,
+        check=False,
+    )  # fmt: skip
+    return out
+
+
+@pytest.mark.parametrize(
+    ("found", "ok"),
+    [(PYTEST_OLD, False), (PYTEST_PIN, True), (PYTEST_NEWER, True)],
+)
+def test_a_consumer_needs_at_least_a_pinned_tools_pin(tmp_path: Path, found: str, ok: bool) -> None:
+    """The red-then-green of the item: an old pytest was green (the pin read as 'no floor')."""
+    out = _check(_tree(tmp_path / "consumer", goh=False), f"pytest {found}")
+    assert (out.returncode == 0) == ok, (out.stdout, out.stderr)
+    if not ok:
+        assert PYTEST_OLD in out.stderr and PYTEST_PIN in out.stderr, out.stderr
+
+
+@pytest.mark.parametrize(
+    ("found", "ok"),
+    [(PYTEST_OLD, False), (PYTEST_PIN, True), (PYTEST_NEWER, False)],
+)
+def test_in_goh_a_pinned_tool_needs_exactly_its_pin(tmp_path: Path, found: str, ok: bool) -> None:
+    out = _check(_tree(tmp_path / "goh", goh=True), f"pytest {found}")
+    assert (out.returncode == 0) == ok, (out.stdout, out.stderr)
+    if not ok:
+        assert found in out.stderr and PYTEST_PIN in out.stderr, out.stderr
+
+
+def test_the_real_checkout_is_a_goh_tree() -> None:
+    """The marker is true of this very repo, so goh's own gates judge the exact pin."""
+    assert _check(ROOT, f"pytest {PYTEST_NEWER}").returncode == 1
+    assert _check(ROOT, f"pytest {PYTEST_PIN}").returncode == 0
+
+
+def test_goh_require_floor_refuses_an_old_pinned_pytest_in_a_consumer(tmp_path: Path) -> None:
+    """The gates' own entry (`goh_py_require pytest` -> goh_require_floor), not only the CLI."""
+    root = _tree(tmp_path / "consumer", goh=False)
+    script = (
+        f'. "{COMMON}"; GOH_NAME=t; goh_require_floor pytest "pytest {PYTEST_OLD}"; echo REACHED'
+    )
+    out = subprocess.run(
+        ["bash", "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=patience(60),
+        stdin=subprocess.DEVNULL,
+        check=False,
+        cwd=root,
+    )  # fmt: skip
+    assert out.returncode != 0 and "REACHED" not in out.stdout, (out.stdout, out.stderr)
+    assert PYTEST_OLD in out.stderr and PYTEST_PIN in out.stderr, out.stderr
+
+
+@pytest.mark.parametrize("tool", ["pytest-xdist", "numpy", "pillow", "coverage"])
+def test_a_pinned_pip_tool_is_read_from_its_distribution_metadata(tool: str) -> None:
+    """`python -m numpy --version` is no command: a pinned module with no CLI is read the way
+    required_pins.py reads it, from the distribution's metadata in the gates' interpreter. The
+    interpreter the suite runs holds the pins (tools/pytest.sh), so each is green on this box."""
+    out = _cli(["--check", "--tool", tool])
+    assert out.returncode == 0, (tool, out.stdout, out.stderr)

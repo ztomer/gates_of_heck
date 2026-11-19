@@ -121,8 +121,9 @@ goh_py_require() {
     local version
     version="$("${RUN_ARR[@]}" "$1" --version 2>&1 </dev/null)" \
         || die "$GOH_NAME: $1 is not available through '$RUN', and this gate does not pass without the step it runs -- python3 -m pip install $1 (into the interpreter '$RUN' names)"
-    goh_require_floor "$1" "$version"
-    [ "$1" != ruff ] || goh_py_ruff_pinned "$version"
+    # ruff's pin is judged by goh_py_ruff_pinned alone: exact, and runner-aware (a `uv run` repo's
+    # lock is its own pin). A floor at the pin would refuse that lock's older ruff (GOH.PINCHECKFLOOR).
+    if [ "$1" = ruff ]; then goh_py_ruff_pinned "$version"; else goh_require_floor "$1" "$version"; fi
 }
 
 # goh_py_ruff_pinned <version text>: refuse a ruff that is not goh's pin (gates/ruff_house.py RUFF,

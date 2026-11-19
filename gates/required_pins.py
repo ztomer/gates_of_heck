@@ -13,6 +13,19 @@ import sys
 from importlib import metadata
 
 
+def off_pin(row: dict, found: str) -> str | None:
+    """Why `found` (a release, "" when the distribution is missing) is not `row`'s pin, naming both;
+    None when it is the pin. The ONE judgement: `held` asks it of this interpreter's distribution,
+    `required_tools.py --check` of a version the gate read through its own runner
+    (GOH.PINCHECKFLOOR)."""
+    if found == row["pin"]:
+        return None
+    return (
+        f"{row['tool']} is {found or 'not installed'} in {sys.executable} and the manifest "
+        f"pins {row['pin']}, the release hosted CI installs -- {row['install']}"
+    )
+
+
 def held(selected: list[dict]) -> int:
     """Red (1), naming both releases, for each pinned pip row of `selected` whose distribution in
     this interpreter is missing or is not exactly its pin; else 0."""
@@ -22,11 +35,9 @@ def held(selected: list[dict]) -> int:
             found = metadata.version(row["tool"])
         except metadata.PackageNotFoundError:
             found = ""
-        if found != row["pin"]:
-            failures.append(
-                f"{row['tool']} is {found or 'not installed'} in {sys.executable} and the manifest "
-                f"pins {row['pin']}, the release hosted CI installs -- {row['install']}"
-            )
+        reason = off_pin(row, found)
+        if reason:
+            failures.append(reason)
     for reason in failures:
         print(f"required_tools: {reason}", file=sys.stderr)
     return 1 if failures else 0

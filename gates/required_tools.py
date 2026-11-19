@@ -11,6 +11,9 @@
     gates/required_tools.py --floors              # tool<TAB>floor, for a consumer's own record
     gates/required_tools.py --layer goh-suite --pins-held   # red: a pinned pip module off pin
 
+A PINNED tool (`=X.Y.Z`) is judged by `--check` as at least its pin in a consumer and exactly its pin
+in a goh checkout (GOH.PINCHECKFLOOR); `--pins-held` is the exact judgement over this interpreter.
+
 FLOORS (G2b). The manifest's `floor` column is the OLDEST version a gate accepts -- a floor, never
 a pin: a newer tool is green, always. `--check` is red, by name and with both versions, for a tool
 that is missing, below its floor, or present with a floor but no readable version. `--found TEXT`
@@ -83,9 +86,10 @@ def rows() -> list[dict]:
             if line.strip() and not line.startswith("#"):
                 layer, tool, kind, install, site, floor = line.rstrip("\n").split("\t")
                 # `=X.Y.Z` is a PIN (the manifest's header): exactly that release. The version is
-                # written once, in the floor column; a pinned pip row installs `tool==X.Y.Z`, and
-                # the pin is enforced where the runner is known (gates/_py.sh goh_py_ruff_pinned),
-                # so `--check` judges a pinned tool's presence, as it did before.
+                # written once, in the floor column; a pinned pip row installs `tool==X.Y.Z`.
+                # `--check` judges it by `judge`: AT LEAST the pin in a consumer, EXACTLY the pin
+                # in a goh checkout (GOH.PINCHECKFLOOR; ruff's runner-aware exact pin is
+                # gates/_py.sh goh_py_ruff_pinned).
                 pin = floor[1:] if floor.startswith("=") else ""
                 if pin and kind == "pip":
                     install = f"{install}=={pin}"
@@ -302,12 +306,43 @@ def floors() -> dict[str, str]:
     return {r["tool"]: r["pin"] or r["floor"] for r in rows() if r["pin"] or r["floor"] != "-"}
 
 
+# A pip row is read from its distribution's metadata through the gates' interpreter seam, the way
+# required_pins.py reads it: `-m numpy --version` is no command, and `-m pytest-xdist` is no module.
+# A distribution that is not there exits 1 and prints nothing.
+_DIST_VERSION = (
+    "import sys; from importlib import metadata as m\n"
+    "try: print(m.version(sys.argv[1]))\n"
+    "except m.PackageNotFoundError: sys.exit(1)"
+)
+
+
 def _probe(row: dict) -> list[str]:
     if row["tool"] in PROBES:
         return PROBES[row["tool"]]
     if row["kind"] == "pip":
-        return ["bash", os.path.join(HERE, "python.sh"), "-m", row["tool"], "--version"]
+        return ["bash", os.path.join(HERE, "python.sh"), "-c", _DIST_VERSION, row["tool"]]
     return [row["tool"], "--version"]
+
+
+def is_goh_tree(cwd: str | None = None) -> bool:
+    """Is `cwd` (default: the working directory) inside a gates_of_heck checkout? The toplevel
+    marker gates/_self_gate.sh uses: gates/commit_gate.sh, gates/_from_head.sh and crates/goh/."""
+    try:
+        top = subprocess.run(
+            ["git", "-C", cwd or ".", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            check=False,
+        ).stdout.strip()
+    except OSError:  # no git on PATH: the directory itself is the toplevel to look at
+        top = ""
+    top = top or os.path.abspath(cwd or ".")
+    return (
+        os.path.isfile(os.path.join(top, "gates", "commit_gate.sh"))
+        and os.path.isfile(os.path.join(top, "gates", "_from_head.sh"))
+        and os.path.isdir(os.path.join(top, "crates", "goh"))
+    )
 
 
 def version_in(text: str) -> str | None:
@@ -326,9 +361,14 @@ def at_least(found: str, floor: str) -> bool:
     return a + [0] * (width - len(a)) >= b + [0] * (width - len(b))
 
 
-def judge(row: dict, found_text: str | None = None) -> str | None:
-    """Why `row`'s tool fails its requirement, or None when it is present and at its floor."""
-    tool, floor = row["tool"], row["floor"]
+def judge(row: dict, found_text: str | None = None, exact: bool = False) -> str | None:
+    """Why `row`'s tool fails its requirement, or None when it is present and at its floor.
+
+    A PINNED tool's floor is its pin (GOH.PINCHECKFLOOR: GOH.PYTESTPIN left `--check` judging its
+    presence alone, and a box below the old floor passed), the oldest release a consumer accepts,
+    the one `--floors` publishes. `exact` (a goh checkout) is stricter: exactly the pin, the
+    release hosted CI installs, judged by required_pins.off_pin (the one `--pins-held` makes)."""
+    tool, floor = row["tool"], row["pin"] or row["floor"]
     if found_text is None:
         probe = _probe(row)
         if probe[0] != "bash" and not shutil.which(probe[0]):
@@ -346,24 +386,31 @@ def judge(row: dict, found_text: str | None = None) -> str | None:
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             return f"{tool}: its version cannot be read ({error}); the floor is {floor}"
+        if done.returncode != 0 and row["kind"] == "pip" and not version_in(done.stdout):
+            return f"{tool} is not installed -- {row['install']}"
         found_text = done.stdout + "\n" + done.stderr
     if floor == "-":
         return None
     found = version_in(found_text)
     if found is None:
         return f"{tool}: present, but reports no version the floor ({floor}) can be read against"
+    if exact and row["pin"]:
+        return required_pins.off_pin(row, found)
     if not at_least(found, floor):
         return (
-            f"{tool}: this machine has {found}, the floor is {floor} -- update it ({row['install']}; "
-            "the floor's reason is in gates/required_tools.tsv)"
+            f"{tool}: this machine has {found}, the floor is {floor} -- update it "
+            f"({row['install']}; the floor's reason is in gates/required_tools.tsv)"
         )
     return None
 
 
 def check(selected: list[dict], found_text: str | None = None) -> int:
     failures: list[str] = []
+    exact = (
+        any(r["pin"] for r in selected) and is_goh_tree()
+    )  # goh: a pin is exact; a consumer: the floor
     for row in {r["tool"]: r for r in selected}.values():
-        reason = judge(row, found_text)
+        reason = judge(row, found_text, exact)
         if reason:
             failures.append(reason)
     for reason in failures:

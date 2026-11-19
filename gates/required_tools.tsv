@@ -51,6 +51,8 @@
 #   pytest-xdist =3.8.0  PIN: goh's suite runs under it (tools/pytest.sh); its scheduler is the run.
 #   coverage =7.17.3     PIN: a coverage release moves the measured number a floor judges.
 #   pillow =13.0.0, numpy =2.5.5   PIN: the goh suite's own imports (golden_core, the parity tier).
+# `--check` JUDGES A PIN (GOH.PINCHECKFLOOR): in a consumer a pinned tool must be AT LEAST its pin (the
+# floor `--floors` publishes); in a goh checkout EXACTLY its pin, as tools/pytest.sh's --pins-held holds it.
 # EVERY pip row is a pin (tests/test_ci_install_pins.py): CI installs from this table, so an unpinned
 # pip row is a release the runner picks and the box does not have. tools/pytest.sh refuses a goh-suite
 # module whose installed release is not its pin (required_tools.py --pins-held), so the box is CI's.
