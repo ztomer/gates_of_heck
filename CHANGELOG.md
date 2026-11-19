@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## v0.139.16 -- reconcile: CIWALL3 (Continue on branch lane/ciwall2 worktree), FLAKY2 (For each)
+
+* The suite's hosted shards are dealt by measured seconds, not by test count (GOH.CIWALL2): v0.139.13's four held 1641-1646 tests each and ran 527 to 1104 s of pytest. tests/shard_weights.json, committed and so identical on every shard, holds each test file's seconds and each test of 3 s or more by its node id, written by `python3 tests/_shard.py --refresh` from a full suite's duration table; dealt by this box's table, the four parts read 1311/1262/1292/1346 s where the count split read 945/1368/1207/1692 s.
+
+* gate.yml's three jobs set up through ONE composite action, `.github/actions/goh-setup` (GOH_DIR, the floors, the toolchain, the manifest's tools, the build caches), never a copy per job; the manifest's cargo tools (`required_tools.py --names --kind cargo`) arrive as taiki-e/install-action release binaries instead of 387 s of `cargo install` per cold job (59 + 255 + 73 s in each shard of run 44584030150). tests/ci_shape.py follows a local composite action for the suite's environment and refuses one it cannot read; lib/test_closure.py's entry reads hold every file it reads.
+* gate.yml has no job after the first wave (GOH.CIWALL2): the coverage merge was a third job, `needs: [gate, suite]`, and v0.139.14's run 44606206460 waited 7.9 min for a sixth macOS runner (five run at once per account) before 6.3 min of setup for the merge. The gate job, which finishes first, now keeps its runner, waits on this run's suite jobs through the API (`actions: read`; a red shard is named, never merged), downloads their parts and merges in place.
+
+* The land's profile-store check counts the tests that LEFT a profile, not the ones marked as running the binary: 127 of 1833 marked tests ran none, were never kept, and a same-tree re-land re-ran only them, so every re-land after a flake read the store as EMPTY and went red (GOH.CIWALL3).
+
+* `goh land --wait` no longer reports a request queued behind itself: `where()` (lib/landq_look.py) listed pending, then re-read it for the items ahead, so the lander renaming the request ahead into running between the two shifted the slice onto the waiter ("queued behind T.AHEAD, T.S", then the earlier line again). Who is ahead now comes from one listing, read before running's, by name once. tests/test_landq_look.py's mover waits for each state's own line, the batch's "stacking" included: it waited for "running", which the stacking line matched, and under load it wrote gate 2 before the wait saw gate 1 (GOH.FLAKY2).
+
+* A pytest a test starts numbers its dirs under its own worker's basetemp (`tests/suite_tmp.py` `nested_root`), never in the suite's root: inherited, that root had every nested session of every xdist worker rotating one `pytest-of-<user>` at once, and two unlinking the same dead `pytest-current` killed the second at exit `FileNotFoundError` (main 2026-11-19, `test_temp_claimable.py::test_the_session_start_runs_the_sweep`; 1 in 40 shared-root sessions at load 55). Pinned by `tests/test_nested_pytest_root.py` (GOH.FLAKY2).
+
 ## v0.139.15 -- reconcile: RUNRULEROOTS (Make the run rule refuse an unplaced root variable instead of), ONEVERDICTTREE4 (D the ship's suite step reuses the land gate's verdict on an exact)
 
 * The ship's suite step skipped on a tip tree's full instrumented record (a land gate's that judged every test itself, the idle lander's, an earlier ship's) asked no audit: no skip was ever re-run. It is the sampled `fullrun` path now (lib/ship_full_run.py `decide`, keyed on the record's own repo, tree and suite tools): one skip in 10 runs the suite anyway, fresh, and compares; a repeated red turns the path off and every ship runs its suite. tests/test_reuse_audit.py now sees a read of the suite record (`reuse.lookup_suite`, `ship_suite.full_suite`) as a reuse, which also registered lib/pre_reuse.py as a `carry` site.
