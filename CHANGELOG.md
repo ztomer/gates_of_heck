@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v0.139.4 -- SPD cycle 6: LANDSNAPSHOT (each land runs in a goh-owned slot, never the lane's worktree), COVNONBIN (non-binary tests carry through the coverage step, -34% wall), REUSEOFFLANDED2 (a second reuse off files a new item)
+
+- **coverage**: an instrumented land's coverage step carries every test an instrumented run measured running no binary that its diff does not choose, as it carries any verdict: the measurement now survives a plain land's gate (its shadow included) and a reused pre-step verdict (`lib/pre_reuse.py`), where it was dropped and the next instrumented land ran the whole suite again. Every instrumented run (the land's coverage step, the idle full run) turns red, naming the test, when one claimed as running no binary leaves a profile (`tests/_land_verdicts.py` `misplaced`, GOH.COVNONBIN).
+
+- **land**: a land judges the commit, never the lane's working tree: `goh land --enqueue --land` checks the enqueued sha out in a slot of goh's own (`lib/land_slot.py`, a reused detached worktree under the queue's state, 0.05-0.4 s per land), and every pre-step, stack, rebase and gate of the request runs there; a lane edit during a land no longer reaches its verdict, the lander never rebases or resets a lane, and two items enqueued from one worktree both land instead of the second being refused "tip moved after enqueue" (GOH.LANDSNAPSHOT).
+
+* The reuse audit files a NEW fault item when a path turns off again: loopctl refuses an id the queue already holds, and the audit read that refusal as filed, so `landed`'s second off (v0.136.0's CI red, the CI-only machine-shape failures GOH.CIRED0136 fixed in 8fcdf657) said "filed GOH.REUSEOFFLANDED" against a done item and nothing tracked it. Each off follows an enable, so the next free id (`GOH.REUSEOFFLANDED2`, `3`, ...) is filed naming the item before it, and a CI shadow's record names the run it read (`fresh_from`, the pushed sha; the key's sha is the reused verdict's parent). A release push with `landed` off takes the full gate and says so; enabled, it reuses the land verdict again (tests/test_push_release_reuse.py). GOH.REUSEOFFLANDED2.
+
 ## v0.139.3 -- SPD cycle 5: PRESTEPDUP (fast pre-step on moved trees under coverage), SPECONESLOT (1-slot bisect serial), ORPHANCANARYENV (suite pins PYTHONPATH)
 
 - **suite**: a test's children no longer depend on the caller's PYTHONPATH: the suite pins it to its own checkout (tests/suite_home.py), and the orphan canary's missing-runner test builds a fake goh root that carries goh's `tui`, so `env -u PYTHONPATH tools/pytest.sh` passes it (GOH.ORPHANCANARYENV).
