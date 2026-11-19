@@ -1,9 +1,19 @@
 name: gate
 
-# ONE job, ONE command: `tools/gate.sh --full`, the command the pre-push hook runs (it execs
+# ONE command: `tools/gate.sh --full`, the command the pre-push hook runs (it execs
 # gates/local_ci.sh over .gatesrc's GOH_CI_STEPS), so the hosted run and the local gate cannot
 # disagree about what green means (CI.PUBLIC2, owner ruling 2026-11-08: "Yes, public repos").
 # This repo IS the gates, so the gate is its own tree: no second checkout of gates_of_heck.
+#
+# ITS SUITE IN SHARDS (GOH.CIWALL, 2026-11-19). The one job's wall was its coverage group: the
+# instrumented pytest suite, 2080-2526 s of a 49.6 min median on 3 cores. So the gate step makes the
+# workspace's coverage part only (GOH_COV_PART=workspace), the `suite` matrix runs the suite as N
+# disjoint shards under the instrumented binary (GOH_COV_PART=K/N, tests/_shard.py), and `coverage`
+# merges every part and judges the floor and the change's lines exactly as one run does
+# (GOH_COV_PARTS_IN, gates/_coverage_parts.sh): red unless every part arrived. N is 4: one gate job
+# and four shards are the five macOS jobs an account runs at once, and a fifth shard would queue
+# behind them. tests/ci_shape.py reads the suite's environment from the `suite` step;
+# tests/test_suite_shard.py proves the shards cover every test once.
 #
 # macOS on Apple silicon, the platform the house ships for (house rule 3). Every action is pinned
 # to a released tag's commit, the tag beside it, never a moving tag; raise one in its own commit.
@@ -14,29 +24,36 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A RUN ON MAIN IS NEVER SUPERSEDED (GOH.CIWALL): every push to main is a release, and
+# cancel-in-progress cancelled the previous release's run when the next one landed (2 of 13, v0.139.8
+# among them), so that release was never judged. On main each run is its own group (its commit), so
+# neither a running nor a pending one is cancelled; a branch or PR still cancels its stale run.
+# timeout-minutes stays the alarm: a run near it is a defect, not the ceiling.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
+
+env:
+  CARGO_TERM_COLOR: never
+  # A failed step's output, whole: local_ci prints a 30-line tail and keeps the full log on the
+  # machine, which a hosted runner deletes when the job ends. Run 42930175911 named 12 of its
+  # 90 red tests and the rest were lost. Like the ceiling, a property of THIS machine.
+  GOH_TAIL: "100000"
 
 jobs:
   gate:
     runs-on: macos-26
     timeout-minutes: 75
     env:
-      CARGO_TERM_COLOR: never
       # The step ceiling is this MACHINE's budget, set here like GOH_GATE_SLOTS, never in
       # .gatesrc (where it would loosen the owner's 16-core hang detector too). Measured
       # 2026-11-10: ./gates/rust_gate.sh is 255 s wall and 1585 s CPU on the owner's machine; the
       # 3-core runner ran it out of the 900 s default (run 42916888942), so 2700 s is the CPU
       # time over 3 cores at under half the owner's per-core speed, rounded up.
       GOH_LCI_TIMEOUT: "2700"
-      # A failed step's output, whole: local_ci prints a 30-line tail and keeps the full log on the
-      # machine, which a hosted runner deletes when the job ends. Run 42930175911 named 12 of its
-      # 90 red tests and the rest were lost. Like the ceiling, a property of THIS machine.
-      GOH_TAIL: "100000"
     steps:
       # persist-credentials: false: the structural gate refuses a job token left in git config,
       # and nothing after the clone needs it. fetch-depth 0: the gate reads history (tags, the
@@ -78,5 +95,168 @@ jobs:
           # Every pip install is a manifest pin (GOH.PYTESTPIN): the manifest's own lines above
           # carry `==X.Y.Z` (pytest-xdist is a goh-suite row), and tools/pytest.sh refuses a box on
           # another release. tests/test_ci_install_pins.py reds an install here that is not one.
+      # bin/goh FROM HEAD, KEPT: the resolver's shared store (gates/_goh_bin.sh) is keyed by the
+      # build's stamp, the content of its inputs, so a store restored for the same inputs is HEAD's
+      # build and the 2-minute rebuild is skipped; any other inputs miss and build as before.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/goh/by-stamp
+          key: goh-bin-${{ hashFiles('crates/**', 'Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'scripts/build-goh.sh', 'lib/goh_version.sh') }}
+      # THE INSTRUMENTED BUILD, KEPT (GOH.CIWALL): the coverage build dir (gates/_coverage_rust.sh
+      # COV_CACHE) by its Rust inputs, falling back to the same lock's last build so only goh's own
+      # crates compile. One key per part kind: the gate's workspace build, the shards' external one.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/goh/llvm-cov
+          key: goh-llvm-cov-workspace-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-${{ hashFiles('crates/**') }}
+          restore-keys: goh-llvm-cov-workspace-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
+      # The whole gate but the suite: its coverage group makes the workspace's part (cargo's own
+      # targets), and the floor is the merge's, below.
       - name: The gate
         run: ./tools/gate.sh --full
+        env:
+          GOH_COV_PART: workspace
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cov-part-workspace
+          path: |
+            target/llvm-cov/lcov-parts/part-*.info
+            target/llvm-cov/lcov-parts/part-*.info.ok
+          if-no-files-found: error
+          retention-days: 3
+
+  suite:
+    runs-on: macos-26
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ["1/4", "2/4", "3/4", "4/4"]
+    steps:
+      # persist-credentials: false: the structural gate refuses a job token left in git config,
+      # and nothing after the clone needs it. fetch-depth 0: the gate reads history (tags, the
+      # changelog's versions, crates-behind's "since HEAD's parent").
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: GOH_DIR is this checkout
+        run: echo "GOH_DIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      # The tool floors (python3, shellcheck), from this tree's own gates/required_tools.tsv.
+      - name: Meet goh's tool floors
+        uses: ./.github/actions/goh-floors
+      - name: Rust toolchain from rust-toolchain.toml
+        run: |
+          rustup toolchain install
+          rustc -V
+          cargo clippy -V
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The gate's own manifest, never a copy of it: captured under pipefail, then each install
+      # line run under `bash -eux`, so a failed install fails the step.
+      - name: Install the tools the gate requires
+        run: |
+          set -euo pipefail
+          cmds="$(python3 gates/required_tools.py --repo . --install)"
+          printf '%s\n' "$cmds"
+          # Every row but ruff's: ruff is the one pinned release below, into the house interpreter.
+          grep -v '^#' <<<"$cmds" | sed -E 's/ ruff(==[0-9.]+)?( |$)/\2/g' | bash -eux
+          py="$(bash lib/house_python.sh)"
+          # The ONE ruff this runner has (GOH.CIRUFF): run 43139901867 failed the rust coverage
+          # step on "ruff: 3 invocations, 2 versions" -- the manifest's `brew install ruff` and its
+          # unpinned `pip install ruff` gave the runner two. The release is READ from the manifest
+          # (gates/required_tools.tsv, the one place a tool version is written, GOH.CLASS.PARITY).
+          GOH_CI_RUFF="$("$py" gates/required_tools.py --pin ruff)"
+          if brew list --formula ruff >/dev/null 2>&1; then brew uninstall --ignore-dependencies ruff; fi
+          "$py" -m pip install "ruff==$GOH_CI_RUFF"
+          # A runner that still carries another ruff fails HERE, naming it, not in a gate step.
+          GOH_PY="$py" "$py" gates/ruff_agree.py --pin "$GOH_CI_RUFF"
+          # Every pip install is a manifest pin (GOH.PYTESTPIN): the manifest's own lines above
+          # carry `==X.Y.Z` (pytest-xdist is a goh-suite row), and tools/pytest.sh refuses a box on
+          # another release. tests/test_ci_install_pins.py reds an install here that is not one.
+      # bin/goh FROM HEAD, KEPT: the resolver's shared store (gates/_goh_bin.sh) is keyed by the
+      # build's stamp, the content of its inputs, so a store restored for the same inputs is HEAD's
+      # build and the 2-minute rebuild is skipped; any other inputs miss and build as before.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/goh/by-stamp
+          key: goh-bin-${{ hashFiles('crates/**', 'Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'scripts/build-goh.sh', 'lib/goh_version.sh') }}
+      # THE INSTRUMENTED BUILD, KEPT (GOH.CIWALL): the coverage build dir (gates/_coverage_rust.sh
+      # COV_CACHE) by its Rust inputs, falling back to the same lock's last build so only goh's own
+      # crates compile. One key per part kind: the gate's workspace build, the shards' external one.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/goh/llvm-cov
+          key: goh-llvm-cov-external-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-${{ hashFiles('crates/**') }}
+          restore-keys: goh-llvm-cov-external-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
+      # One shard of the suite under the instrumented binary, as the coverage group runs it whole.
+      - name: A shard of the suite
+        run: ./gates/rust_gate.sh
+        env:
+          GOH_RUST_GROUPS: coverage
+          GOH_COV_PART: ${{ matrix.part }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cov-part-shard-${{ strategy.job-index }}
+          path: |
+            target/llvm-cov/lcov-parts/part-*.info
+            target/llvm-cov/lcov-parts/part-*.info.ok
+          if-no-files-found: error
+          retention-days: 3
+
+  coverage:
+    needs: [gate, suite]
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      # persist-credentials: false: the structural gate refuses a job token left in git config,
+      # and nothing after the clone needs it. fetch-depth 0: the gate reads history (tags, the
+      # changelog's versions, crates-behind's "since HEAD's parent").
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: GOH_DIR is this checkout
+        run: echo "GOH_DIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      # The tool floors (python3, shellcheck), from this tree's own gates/required_tools.tsv.
+      - name: Meet goh's tool floors
+        uses: ./.github/actions/goh-floors
+      - name: Rust toolchain from rust-toolchain.toml
+        run: |
+          rustup toolchain install
+          rustc -V
+          cargo clippy -V
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The gate's own manifest, never a copy of it: captured under pipefail, then each install
+      # line run under `bash -eux`, so a failed install fails the step.
+      - name: Install the tools the gate requires
+        run: |
+          set -euo pipefail
+          cmds="$(python3 gates/required_tools.py --repo . --install)"
+          printf '%s\n' "$cmds"
+          # Every row but ruff's: ruff is the one pinned release below, into the house interpreter.
+          grep -v '^#' <<<"$cmds" | sed -E 's/ ruff(==[0-9.]+)?( |$)/\2/g' | bash -eux
+          py="$(bash lib/house_python.sh)"
+          # The ONE ruff this runner has (GOH.CIRUFF): run 43139901867 failed the rust coverage
+          # step on "ruff: 3 invocations, 2 versions" -- the manifest's `brew install ruff` and its
+          # unpinned `pip install ruff` gave the runner two. The release is READ from the manifest
+          # (gates/required_tools.tsv, the one place a tool version is written, GOH.CLASS.PARITY).
+          GOH_CI_RUFF="$("$py" gates/required_tools.py --pin ruff)"
+          if brew list --formula ruff >/dev/null 2>&1; then brew uninstall --ignore-dependencies ruff; fi
+          "$py" -m pip install "ruff==$GOH_CI_RUFF"
+          # A runner that still carries another ruff fails HERE, naming it, not in a gate step.
+          GOH_PY="$py" "$py" gates/ruff_agree.py --pin "$GOH_CI_RUFF"
+          # Every pip install is a manifest pin (GOH.PYTESTPIN): the manifest's own lines above
+          # carry `==X.Y.Z` (pytest-xdist is a goh-suite row), and tools/pytest.sh refuses a box on
+          # another release. tests/test_ci_install_pins.py reds an install here that is not one.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: cov-part-*
+          merge-multiple: true
+          path: target/cov-merge
+      # Every part merged and judged as one run judges it: the floor, the per-crate summary, the
+      # change's lines; red when a part is missing.
+      - name: The coverage floor over every part
+        run: ./gates/rust_gate.sh
+        env:
+          GOH_RUST_GROUPS: coverage
+          GOH_COV_PARTS_IN: target/cov-merge

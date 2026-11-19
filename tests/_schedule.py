@@ -36,6 +36,7 @@ import os
 from collections import defaultdict
 from pathlib import Path
 
+import _shard
 import pytest
 
 UNKNOWN_S = 1.0
@@ -43,12 +44,16 @@ _KEY = "goh_test_durations"
 ENV = "GOH_TEST_DURATIONS"
 _read: dict[str, dict[str, float]] = {}  # this process's one read: the controller's, on a worker
 _table: list[Path] = []  # the table this run owns, set by `take()` on the top-level run only
+_SHARD_KEY = "goh_suite_shard"
+_shard_spec: list[str] = []  # this run's shard (tests/_shard.py), set by `take()` likewise
 
 
 def take(environ=os.environ) -> Path | None:
     """The top-level run's table, POPPED from `environ` so nothing this run starts inherits it."""
     path = environ.pop(ENV, "")
     _table[:] = [Path(path)] if path else []
+    spec = environ.pop(_shard.ENV, "")  # one shard of hosted CI's suite (GOH.CIWALL)
+    _shard_spec[:] = [spec] if spec else []
     return _table[0] if _table else None
 
 
@@ -74,12 +79,15 @@ def pytest_configure(config) -> None:
     """A worker takes the controller's read; the controller (or a run without xdist) reads now."""
     worker = getattr(config, "workerinput", None)
     _read[_KEY] = worker.get(_KEY, {}) if worker is not None else _load()
+    if worker is not None:
+        _shard_spec[:] = [worker[_SHARD_KEY]] if worker.get(_SHARD_KEY) else []
 
 
 @pytest.hookimpl(optionalhook=True)
 def pytest_configure_node(node) -> None:
     """xdist, on the controller: every worker it starts sorts by the controller's one read."""
     node.workerinput[_KEY] = _read.get(_KEY, {})
+    node.workerinput[_SHARD_KEY] = _shard_spec[0] if _shard_spec else ""
 
 
 def pytest_collection_modifyitems(config, items) -> None:
@@ -90,6 +98,8 @@ def pytest_collection_modifyitems(config, items) -> None:
     root = str(config.rootpath)
     if named := [i.nodeid for i in items if root in i.nodeid]:
         raise pytest.UsageError(f"a node id names the checkout {root} (give it ids=): {named[0]}")
+    if _shard_spec:
+        _shard.select(config, items, _shard_spec[0])
     known = _read[_KEY] if _KEY in _read else _load()
     if not known:
         return

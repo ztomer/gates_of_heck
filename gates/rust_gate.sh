@@ -82,6 +82,12 @@ while [ -n "${_g%,}" ]; do
     _g="${_g#*,}"
 done
 _group_on() { case "$_groups" in *",$1,"*) return 0 ;; esac; return 1; }
+# Coverage PARTS and their merge (GOH.CIWALL, gates/_coverage_parts.sh). A shard of the suite is a
+# part's to ask for (GOH_COV_PART=K/N), never a caller's: that gate would call part of it the suite.
+[ -z "${GOH_SUITE_SHARD:-}" ] || die "GOH_SUITE_SHARD='${GOH_SUITE_SHARD}' reached the gate -- a shard is a coverage part's (GOH_COV_PART=K/N)"
+_cov_parts="${GOH_COV_PART:-}${GOH_COV_PARTS_IN:-}"
+[ -z "${GOH_COV_PARTS_IN:-}" ] || [ "$_groups" = ",coverage," ] || die "GOH_COV_PARTS_IN merges parts: GOH_RUST_GROUPS=coverage alone, got '${GOH_RUST_GROUPS:-crate,repo,coverage}'"
+[ -z "$_cov_parts" ] || [ "${GOH_RUST_COVERAGE:-}" != defer ] || die "GOH_RUST_COVERAGE=defer and a coverage part (GOH_COV_PART / GOH_COV_PARTS_IN) contradict"
 
 repo="${1:-$PWD}"
 cargo_dir="${2:-$repo}"
@@ -395,7 +401,7 @@ rust_coverage_measured_or_plain() { rust_coverage_reuse rust_coverage_checks rus
 . "$HERE/_rust_proven.sh"
 # Resolved ONCE for every goh.sh step below (and the proven cache's rust-scope): the answer is
 # exported, so each step's goh.sh takes it instead of ~12 spawns of its own (gates/_goh_bin.sh).
-goh_resolve_native
+[ -n "${GOH_COV_PARTS_IN:-}" ] || goh_resolve_native   # a merge runs no goh: none to build
 # The native steps exec the resolved binary itself: `bash goh.sh` was ~30 ms of dispatcher start-up
 # per step, four per crate (tests/test_goh_bin_once.py). goh.sh stays the path when nothing resolved,
 # and its refusals (an unknown check, a retired --probe) do not apply to these fixed calls.
@@ -416,6 +422,8 @@ esac
 
 if ! _group_on coverage; then
     :   # not this run's group: rust_each_crate.sh asked for the others (GOH_RUST_GROUPS)
+elif [ -n "$_cov_parts" ]; then
+    rust_coverage_checks   # never proven nor reused: a recorded part would skip its merge's export
 elif [ "${GOH_RUST_COVERAGE:-}" = defer ]; then
     info "coverage deferred to the push gate (GOH_RUST_COVERAGE=defer)"
 elif [ -n "${GOH_COV_FLOOR_RUST:-}" ] || [ -n "${GOH_COV_FLOORS_JSON:-}" ]; then

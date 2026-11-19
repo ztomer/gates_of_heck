@@ -64,7 +64,7 @@ EXPECTED_REFS = [
     ("gates/_goh_bin.sh", "scripts/build-goh.sh"),
     ("gates/push_gate.sh", "gates/goh.sh"),
     ("gates/doctor.sh", "gates/structural.sh"),
-    ("gates/_coverage_rust.sh", "gates/lcov_merge.py"),
+    ("gates/_coverage_parts.sh", "gates/lcov_merge.py"),
     # NOTE: the disk watch is not here at all any more. It moved out of CI in
     # v0.8.0 and out of this REPO on 2026-09-07, to
     # ~/Projects/scripts/{lib/disk_hygiene.py,bin/disk_hygiene.sh}. See

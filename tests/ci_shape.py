@@ -16,6 +16,15 @@ evaluate here (a `${{ }}` expression, a shell variable other than $GITHUB_WORKSP
 GITHUB_ENV write of another form raises ShapeError, so a variable gate.yml gains is carried or is a
 red suite, never silently dropped (tests/test_ci_shape.py plants each).
 
+THE SHARDED SHAPE (GOH.CIWALL). gate.yml runs the suite as a matrix of coverage parts, each
+`./gates/rust_gate.sh` with GOH_COV_PART=${{ matrix.part }} (a shard K/N, tests/_shard.py),
+while the gate step itself makes the workspace's part (GOH_COV_PART=workspace) and a last job merges
+them. So the SUITE's step is the one whose GOH_COV_PART is a matrix expression -- the overlay reads
+ITS job and step, and the partition variable is no environment property: a land runs the suite
+whole, every shard at once (`partition` names the shards, tests/test_suite_shard.py proves they
+cover every test once). A workflow with no such step is the one-job shape: the gate's step is the
+suite's.
+
 What it does not model, named: the runner's own image variables (ImageOS, RUNNER_*), the PATH the
 steps' actions prepend (setup-python, the floors action's shellcheck), and its 3 cores.
 """
@@ -26,8 +35,13 @@ import re
 from pathlib import Path
 
 WORKFLOW = Path(".github") / "workflows" / "gate.yml"
-# The command whose step is the gate (gate.yml's "The gate" step): its env is the suite's.
+# The command whose step is the gate (gate.yml's "The gate" step): its env is the suite's when the
+# workflow has no shards.
 GATE_RUN = "./tools/gate.sh --full"
+# The variable that makes a step one coverage part (gates/_coverage_parts.sh); a matrix expression
+# in it makes the step the suite's shards.
+PART_VAR = "GOH_COV_PART"
+_MATRIX = re.compile(r"\$\{\{\s*matrix\.([A-Za-z_][A-Za-z0-9_-]*)\s*\}\}")
 # What GitHub sets in every job's environment (docs: "Default environment variables").
 RUNNER_DEFAULTS = {"CI": "true", "GITHUB_ACTIONS": "true"}
 # The names the leg applied, as JSON, for every child to read (tests/test_ci_shape.py's drift test):
@@ -119,13 +133,20 @@ def parse(text: str):
     return got
 
 
-def _value(name: str, value: object, workspace: str) -> str:
+def _value(name: str, value: object, workspace: str, shell: bool = True) -> str:
+    """`value` as the runner gives it. Only a GITHUB_ENV write (`shell`) is expanded by a shell:
+    an `env:` block's `$GITHUB_WORKSPACE` stays those characters on the runner (GOH.CIWALL), so
+    there it is refused like any other variable, never read as the checkout."""
     text = "" if value is None else str(value)
     if "${{" in text:
         raise ShapeError(f"{name}={text}: a workflow expression the suite cannot evaluate")
-    text = text.replace("${GITHUB_WORKSPACE}", workspace).replace("$GITHUB_WORKSPACE", workspace)
+    if shell:
+        text = text.replace("${GITHUB_WORKSPACE}", workspace).replace(
+            "$GITHUB_WORKSPACE", workspace
+        )
     if "$" in text:
-        raise ShapeError(f"{name}={text}: a shell variable the suite cannot evaluate")
+        where = "the suite cannot evaluate" if shell else "an env: block never expands"
+        raise ShapeError(f"{name}={text}: a shell variable {where}")
     return text
 
 
@@ -138,7 +159,7 @@ def _env(block: object, where: str, workspace: str) -> dict[str, str]:
     for name, value in block.items():
         if not _NAME.fullmatch(name):
             raise ShapeError(f"{where}: {name!r} is not a variable name")
-        out[name] = _value(name, value, workspace)
+        out[name] = _value(name, value, workspace, shell=False)
     return out
 
 
@@ -156,24 +177,88 @@ def _writes(run: str, where: str, workspace: str) -> dict[str, str]:
     return out
 
 
-def overlay(workflow: Path, workspace: str) -> dict[str, str]:
-    """The variables the gate step of `workflow` runs with, `workspace` its checkout."""
+def _doc(workflow: Path) -> dict:
     doc = parse(workflow.read_text())
     if not isinstance(doc, dict) or not isinstance(doc.get("jobs"), dict):
         raise ShapeError(f"{workflow}: no jobs")
+    return doc
+
+
+def _steps(doc: dict, match) -> list[tuple[str, dict, list, int]]:
     found = []
     for job_name, job in doc["jobs"].items():
         steps = (job or {}).get("steps") or []
         for n, step in enumerate(steps):
-            if str(step.get("run", "")).strip() == GATE_RUN:
+            if match(step):
                 found.append((job_name, job, steps, n))
+    return found
+
+
+def _axis(step: dict) -> str | None:
+    """The matrix axis a step's GOH_COV_PART names, or None."""
+    env = step.get("env")
+    m = _MATRIX.fullmatch(str(env.get(PART_VAR, "")).strip()) if isinstance(env, dict) else None
+    return m.group(1) if m else None
+
+
+def _suite_step(workflow: Path, doc: dict) -> tuple[str, dict, list, int, str | None]:
+    """The step the suite runs in: the sharded one, else the gate's. Exactly one either way."""
+    sharded = _steps(doc, lambda s: _axis(s) is not None)
+    if len(sharded) > 1:
+        raise ShapeError(f"{workflow}: {len(sharded)} steps shard the suite ({PART_VAR}), not one")
+    if sharded:
+        job_name, job, steps, n = sharded[0]
+        return job_name, job, steps, n, _axis(steps[n])
+    found = _steps(doc, lambda s: str(s.get("run", "")).strip() == GATE_RUN)
     if len(found) != 1:
         raise ShapeError(f"{workflow}: {len(found)} steps run `{GATE_RUN}`, not one")
-    job_name, job, steps, gate = found[0]
+    return (*found[0], None)
+
+
+def _flow_list(text: object, where: str) -> list[str]:
+    raw = str(text or "").strip()
+    if not (raw.startswith("[") and raw.endswith("]")):
+        raise ShapeError(f"{where}: a matrix axis this reading cannot evaluate: {raw!r}")
+    return [_scalar(v) for v in raw[1:-1].split(",") if v.strip()]
+
+
+def partition(workflow: Path) -> list[str]:
+    """The suite's shards: the values of the matrix axis its step's GOH_COV_PART names, in order;
+    [] for the one-job shape."""
+    doc = _doc(workflow)
+    job_name, job, *_, axis = _suite_step(workflow, doc)
+    if axis is None:
+        return []
+    matrix = ((job.get("strategy") or {}).get("matrix")) or {}
+    if not isinstance(matrix, dict) or axis not in matrix:
+        raise ShapeError(
+            f"{workflow}: job {job_name} shards on matrix.{axis}, which it does not set"
+        )
+    return _flow_list(matrix[axis], f"job {job_name} matrix.{axis}")
+
+
+def gate_part(workflow: Path) -> str:
+    """The coverage part the gate step itself makes ("" when it measures whole)."""
+    found = _steps(_doc(workflow), lambda s: str(s.get("run", "")).strip() == GATE_RUN)
+    if len(found) != 1:
+        raise ShapeError(f"{workflow}: {len(found)} steps run `{GATE_RUN}`, not one")
+    _job, _j, steps, n = found[0]
+    env = steps[n].get("env")
+    return str(env.get(PART_VAR, "")) if isinstance(env, dict) else ""
+
+
+def overlay(workflow: Path, workspace: str) -> dict[str, str]:
+    """The variables the suite's step of `workflow` runs with, `workspace` its checkout: the
+    sharded step's (its partition variable left out: a land runs every shard), else the gate's."""
+    doc = _doc(workflow)
+    job_name, job, steps, at, axis = _suite_step(workflow, doc)
     out = dict(RUNNER_DEFAULTS)
     out.update(_env(doc.get("env"), "workflow", workspace))
     out.update(_env(job.get("env"), f"job {job_name}", workspace))
-    for n, step in enumerate(steps[:gate]):
+    for n, step in enumerate(steps[:at]):
         out.update(_writes(str(step.get("run") or ""), f"job {job_name} step {n}", workspace))
-    out.update(_env(steps[gate].get("env"), f"job {job_name} gate step", workspace))
+    env = steps[at].get("env")
+    if axis is not None:
+        env = {k: v for k, v in env.items() if k != PART_VAR}
+    out.update(_env(env, f"job {job_name} {'suite' if axis else 'gate'} step", workspace))
     return out

@@ -19,6 +19,8 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 # under the external part read as a second, coverage fault). Any other phase failing (the build, the
 # prune, the report) is still a missing export (tests/test_coverage_starved.py).
 COV_TESTS_FAILED=86
+# shellcheck source=gates/_coverage_parts.sh
+. "$_goh_d/_coverage_parts.sh"   # GOH_COV_PART / GOH_COV_PARTS_IN: the parts and their merge (GOH.CIWALL)
 COV_TIMINGS_PY="$(cd "$_goh_d/.." && pwd -P)/lib/step_timings.py"
 cov_phase() { # cov_phase <name> <log>: begin <name>, ending the phase in progress; "" ends only
     local now
@@ -86,6 +88,12 @@ cov_reap() { # the EXIT trap: this run's scratch goes with it, pass, fail or sig
 }
 run_rust() {
     cd "$PROJ" || exit 2
+    cov_part_mode || exit 2
+    if [ -n "$COV_MERGE_IN" ]; then   # the parts were made elsewhere: no build, no tests here
+        need python3 "the lcov merge post-processor"
+        cov_merge_only
+        return
+    fi
     need cargo "cargo llvm-cov drives the instrumented build"
     need cargo-llvm-cov "the instrumented build and the lcov export -- cargo install cargo-llvm-cov"
     need python3 "the lcov merge post-processor"
@@ -183,7 +191,7 @@ run_rust() {
     # build in the wrong place and a nested coverage gate fail. It gains only the profile
     # destination -- a pool of files, not one per process (`%p`: 326 files, 474 MB per suite run).
     external_part() {
-        local label="external: $EXTERNAL" part="$PARTS/part-external.info"
+        local label="external: $EXTERNAL${COV_SHARD:+ (shard $COV_SHARD)}" part="$PARTS/$COV_EXT_PART.info"
         info "exporting $label"
         if (
             goh_unbind_git   # the suite is a test run: it never sees git's repository variables (GOH.HOOKGITENV)
@@ -222,6 +230,9 @@ run_rust() {
                     unset "$v"
                 done
                 eval "$CALLER_CARGO_ENV"
+                # One shard of the suite when the part is one (tools/pytest.sh reads it); never
+                # the caller's: a gate that was not asked for a part measures the whole suite.
+                if [ -n "$COV_SHARD" ]; then export GOH_SUITE_SHARD="$COV_SHARD"; else unset GOH_SUITE_SHARD; fi
                 LLVM_PROFILE_FILE="$profile" GOH_COVERAGE_BIN_DIR="$bins" bash -c "$EXTERNAL" 3>&-
             ) >>"$part.log" 2>&1 || exit "$COV_TESTS_FAILED"
             cov_phase "external: report" "$part.log"
@@ -302,6 +313,7 @@ PYEOF
     grep -q '	bin	' "$METAF" && KINDS="$KINDS --bins"
     grep -q '	test	' "$METAF" && KINDS="$KINDS --tests"
     WORKSPACE_PART="$PARTS/part-workspace.info"
+    [ "$COV_PART_ONLY" != external ] || KINDS=""   # an external shard: the workspace is another part's
     if [ -n "$KINDS" ]; then
         info "exporting every target in one instrumented run: $(cut -f1,3 "$METAF" | tr '\t\n' ': ' | sed 's/: / /g')"
         # Completeness marker: written ONLY on cargo-llvm-cov exit 0. A failing run that leaves a
@@ -356,6 +368,7 @@ PYEOF
             export_failed "the workspace's targets" "$WORKSPACE_PART.log"
         fi
     fi
+    [ "$COV_PART_ONLY" != workspace ] || EXTERNAL=""   # the workspace's part: the suite is the shards'
     if [ -n "${EXTERNAL:-}" ]; then
         external_part
     fi
@@ -376,9 +389,9 @@ PYEOF
             warn "the workspace's targets exported a valid-but-EMPTY lcov part — nothing coverable was measured"
         fi
     fi
-    if [ -n "${EXTERNAL:-}" ] && [ -f "$PARTS/part-external.info.starved" ]; then
+    if [ -n "${EXTERNAL:-}" ] && [ -f "$PARTS/$COV_EXT_PART.info.starved" ]; then
         STARVED="${STARVED}${STARVED:+; }external: $EXTERNAL"
-    elif [ -n "${EXTERNAL:-}" ] && [ ! -f "$PARTS/part-external.info.ok" ]; then
+    elif [ -n "${EXTERNAL:-}" ] && [ ! -f "$PARTS/$COV_EXT_PART.info.ok" ]; then
         MISSING="${MISSING}${MISSING:+ }external: $EXTERNAL"
     fi
     if [ -n "$MISSING" ]; then
@@ -393,34 +406,9 @@ PYEOF
         exit 1
     fi
 
-    _MERGE_ARGS=()
-    if [ -n "$FLOOR" ]; then _MERGE_ARGS+=(--floor "$FLOOR"); fi
-    if [ -n "$FLOORS_JSON" ]; then _MERGE_ARGS+=(--floors-json "$FLOORS_JSON"); fi
-    if [ -n "$INCLUDE" ]; then _MERGE_ARGS+=(--include "$INCLUDE"); fi
-    if [ -n "$MARKER_CEILING" ]; then _MERGE_ARGS+=(--marker-ceiling "$MARKER_CEILING"); fi
-    cov_phase "merge + floor" ""
-    local merge_rc=0 diff_rc=0
-    "$GOH_PY" "$GOH_ROOT/gates/lcov_merge.py" "${_MERGE_ARGS[@]}" --summary "$PARTS/summary.json" \
-        "$PARTS" || merge_rc=$?
-    # THE CLAIM AND ITS AUDIT (GOH.COVCARRY2, the owner's term 3; lib/prof_carry.py). A suite run
-    # outside cargo test stands on carried verdicts: a green merge claims its per-crate summary for
-    # this tree, and the fresh full instrumented run (lib/full_run.py INSTRUMENTED, which says so in
-    # GOH_PROFCARRY_AUDIT=fresh) compares its own with that claim instead -- a disagreement turns
-    # the carry off. Neither ever changes this step's verdict.
-    if [ "$merge_rc" = 0 ] && [ -n "${EXTERNAL:-}" ] && [ -s "$PARTS/summary.json" ]; then
-        local verb=claim said
-        [ "${GOH_PROFCARRY_AUDIT:-}" != fresh ] || verb=compare
-        said="$("$GOH_PY" "$GOH_ROOT/lib/prof_carry.py" "$verb" --repo "$PROJ" \
-            --summary "$PARTS/summary.json" --by "coverage step" </dev/null 2>&1)" || true
-        info "${said:-coverage audit: $verb said nothing}"
+    if [ -n "$COV_PART_ONLY" ]; then
+        info "coverage part ${COV_SHARD:-workspace} exported to $PARTS -- the floor is the merge's (GOH_COV_PARTS_IN)"
+        return 0
     fi
-    # THE CHANGE'S LINES (GOH.DIFFCOV): a second, separate reader of the same parts -- every
-    # executable Rust line the change adds or edits is covered, named file:line when not
-    # (gates/diff_cov.py; GOH_COV_DIFF on|warn|off). It reads the report, never makes it.
-    cov_phase "diff coverage" ""
-    "$GOH_PY" "$GOH_ROOT/gates/diff_cov.py" ${INCLUDE:+--include "$INCLUDE"} --repo "$PROJ" "$PARTS" \
-        || diff_rc=$?
-    cov_phase ""
-    [ "$merge_rc" = 0 ] || return "$merge_rc"   # the EXIT trap (cov_reap) reaps the scratch
-    return "$diff_rc"
+    cov_judge_parts
 }

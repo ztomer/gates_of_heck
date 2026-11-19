@@ -21,9 +21,13 @@ from conftest import REPO_ROOT, hermetic_env
 
 TREE_READS = (".github/workflows/gate.yml",)
 GATE_YML = REPO_ROOT / ci_shape.WORKFLOW
-# A variable gate.yml sets in a step that is NOT the gate's (it never reaches the suite), each with
-# why. Empty: gate.yml sets none today.
-NOT_THE_GATES: dict[str, str] = {}
+# A variable gate.yml sets that never reaches the suite's step, each with why (GOH.CIWALL: the suite
+# runs in the `suite` matrix job, not the gate's).
+NOT_THE_GATES: dict[str, str] = {
+    "GOH_LCI_TIMEOUT": "the gate job's local_ci step ceiling; the suite's job runs no local_ci",
+    "GOH_COV_PART": "the partition: a land runs every part at once (tests/test_suite_shard.py)",
+    "GOH_COV_PARTS_IN": "the merge job's input; that job runs no test",
+}
 
 
 def _scanned(text: str) -> set[str]:
@@ -195,6 +199,7 @@ def test_each_way_gate_yml_sets_a_variable_is_carried(tmp_path, text, name, valu
     [
         (BASE.replace('KEPT: "1"', "KEPT: ${{ secrets.X }}"), "workflow expression"),
         (BASE.replace('KEPT: "1"', 'KEPT: "$RUNNER_TEMP/x"'), "shell variable"),
+        (BASE.replace('KEPT: "1"', 'KEPT: "$GITHUB_WORKSPACE/x"'), "env: block never expands"),
         (
             BASE.replace(
                 'echo "WHERE=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"', "printf 'W=1' >> $GITHUB_ENV"
@@ -204,7 +209,7 @@ def test_each_way_gate_yml_sets_a_variable_is_carried(tmp_path, text, name, valu
         (BASE.replace("./tools/gate.sh --full", "./tools/gate.sh"), "0 steps run"),
         (BASE + "      - run: ./tools/gate.sh --full\n", "2 steps run"),
     ],
-    ids=["expression", "shell-var", "write-form", "no-gate", "two-gates"],
+    ids=["expression", "shell-var", "env-workspace", "write-form", "no-gate", "two-gates"],
 )
 def test_what_the_reading_cannot_evaluate_is_refused_by_name(tmp_path, text, why):
     with pytest.raises(ci_shape.ShapeError, match=why):
@@ -214,3 +219,63 @@ def test_what_the_reading_cannot_evaluate_is_refused_by_name(tmp_path, text, why
 def test_a_variable_set_in_another_step_does_not_reach_the_gate(tmp_path):
     text = BASE.replace("        run: echo", "        env:\n          OTHER: o\n        run: echo")
     assert "OTHER" not in ci_shape.overlay(_plant(tmp_path, text), "/ws")
+
+
+SHARDED = (
+    BASE.replace(
+        "run: ./tools/gate.sh --full",
+        "run: ./tools/gate.sh --full\n        env:\n"
+        "          GOH_COV_PART: workspace\n          GATE_ONLY: g",
+    )
+    + """\
+  suite:
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ["1/3", "2/3", '3/3']
+    env:
+      SUITE_JOB: j
+    steps:
+      - run: echo "WHERE=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: A shard
+        run: ./gates/rust_gate.sh
+        env:
+          GOH_RUST_GROUPS: coverage
+          GOH_COV_PART: ${{ matrix.part }}
+"""
+)
+
+
+def test_a_sharded_workflow_gives_the_suite_its_shards_step(tmp_path):
+    """GOH.CIWALL: the suite runs in the matrix step; its partition variable is no environment."""
+    path = _plant(tmp_path, SHARDED)
+    got = ci_shape.overlay(path, "/ws")
+    assert (got["SUITE_JOB"], got["WHERE"], got["GOH_RUST_GROUPS"]) == ("j", "/ws", "coverage")
+    assert "GOH_COV_PART" not in got and "GATE_ONLY" not in got and "KEPT" not in got
+    assert ci_shape.partition(path) == ["1/3", "2/3", "3/3"]
+    assert ci_shape.gate_part(path) == "workspace"
+    assert ci_shape.partition(_plant(tmp_path, BASE)) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "why"),
+    [
+        (SHARDED.replace("        part: [", "        other: ["), "which it does not set"),
+        (SHARDED.replace('["1/3", "2/3", \'3/3\']', "${{ fromJSON(x) }}"), "matrix axis"),
+        (SHARDED + "      - run: x\n        env:\n          GOH_COV_PART: ${{ matrix.part }}\n",
+         "2 steps shard the suite"),
+    ],
+    ids=["no-axis", "axis-expression", "two-sharded"],
+)  # fmt: skip
+def test_a_shard_shape_the_reading_cannot_evaluate_is_refused(tmp_path, text, why):
+    with pytest.raises(ci_shape.ShapeError, match=why):
+        ci_shape.partition(_plant(tmp_path, text))
+
+
+def test_a_run_on_main_is_never_superseded():
+    """GOH.CIWALL: every push to main is a release; cancel-in-progress cancelled 2 of 13. On main
+    each run is its own concurrency group and nothing cancels it; a branch still cancels."""
+    conc = ci_shape.parse(GATE_YML.read_text())["concurrency"]
+    assert "github.ref == 'refs/heads/main' && github.sha" in conc["group"], conc
+    assert conc["cancel-in-progress"] == "${{ github.ref != 'refs/heads/main' }}", conc

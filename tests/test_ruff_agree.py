@@ -108,17 +108,24 @@ def test_the_pin_needs_the_house_interpreters_ruff(tmp_path):
 
 def _install_step() -> str:
     """The Install step's `run: |` block, read as text: the hosted runner has no PyYAML (v0.101.0's
-    run 43147543825 went red on `import yaml`), and a test of the runner must run on the runner."""
+    run 43147543825 went red on `import yaml`), and a test of the runner must run on the runner.
+    Every job carries one (GOH.CIWALL: the gate, the suite's shards, the coverage merge), and they
+    are one text: a job whose install drifted from the others is red here."""
     lines = (REPO_ROOT / ".github" / "workflows" / "gate.yml").read_text().splitlines()
-    [at] = [i for i, x in enumerate(lines) if x.strip().startswith("- name: Install")]
-    assert lines[at + 1].strip() == "run: |", lines[at + 1]
-    indent = len(lines[at + 1]) - len(lines[at + 1].lstrip()) + 2
-    body = []
-    for x in lines[at + 2 :]:
-        if x.strip() and len(x) - len(x.lstrip()) < indent:
-            break
-        body.append(x[indent:])
-    return "\n".join(body).rstrip() + "\n"
+    bodies = []
+    for at in [i for i, x in enumerate(lines) if x.strip().startswith("- name: Install")]:
+        assert lines[at + 1].strip() == "run: |", lines[at + 1]
+        indent = len(lines[at + 1]) - len(lines[at + 1].lstrip()) + 2
+        body = []
+        for x in lines[at + 2 :]:
+            if x.strip() and len(x) - len(x.lstrip()) < indent:
+                break
+            body.append(x[indent:])
+        bodies.append("\n".join(body).rstrip() + "\n")
+    assert bodies and len(set(bodies)) == 1, (
+        f"{len(bodies)} install steps, {len(set(bodies))} texts"
+    )
+    return bodies[0]
 
 
 def test_the_workflow_installs_one_pinned_ruff_and_asks_the_pin_before_the_gate():

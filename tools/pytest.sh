@@ -184,6 +184,14 @@ fi
 case "$cores" in '' | *[!0-9]* | 0) die "cannot read this machine's core count (got '$cores')" 2 ;; esac
 [ "$cores" -gt 12 ] && cores=12
 ARGS+=(-n "$cores" --dist loadgroup)
+# ONE SHARD OF THE SUITE (GOH.CIWALL): hosted CI's coverage parts each run the K-th of N disjoint
+# parts (tests/_shard.py); only the coverage gate's part mode sets it (gates/_coverage_rust.sh). A
+# shard is never a land's suite: its verdict record would claim tests it never ran.
+if [ -n "${GOH_SUITE_SHARD:-}" ]; then
+    [ -z "${GOH_LAND_VERDICTS_RECORD:-}${GOH_LAND_VERDICTS_REUSE:-}" ] \
+        || die "GOH_SUITE_SHARD=$GOH_SUITE_SHARD with a land's verdict record: a shard is part of the suite, never a land's" 2
+    info "suite shard $GOH_SUITE_SHARD: this run is one part of the suite (tests/_shard.py)"
+fi
 # The caller's arguments reach pytest (GOH.HOOKSEED): `tools/pytest.sh -k plural` selects, and
 # `tools/pytest.sh tests/test_ship.py` runs that file. They were dropped, and every narrowed run was
 # the whole suite. tests/ is the target unless an argument names a path of its own (`file::node`).
@@ -199,6 +207,7 @@ done
 . "$GOH/lib/timing_ledger.sh"
 suite_kind=suite
 [ ! -s "${GOH_LAND_VERDICTS_REUSE:-}" ] || suite_kind=suite:carried
+[ -z "${GOH_SUITE_SHARD:-}" ] || suite_kind=suite:shard
 [ "$#" -ne 0 ] || goh_span_start
 rc=0
 "$GOH_PY" -m pytest "${TARGET[@]}" "${ARGS[@]}" "$@" || rc=$?
