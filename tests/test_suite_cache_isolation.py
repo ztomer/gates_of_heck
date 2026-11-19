@@ -171,9 +171,10 @@ def test_rustup_under_a_scrubbed_environment_installs_nothing() -> None:
 
 def test_the_suite_home_reaches_the_estate_but_never_the_live_loop(tmp_path, monkeypatch) -> None:
     """GOH.CIRED01310 (v0.139.10, CI run 44519781826): the home linked the real ~/Projects whole, so
-    lib/reuse_fault.py's default queue was the owner's LIVE ~/Projects/.loop/queue.json -- a phase
-    table on this box, "no such file" on a hosted runner, and a test filing a fault went red only
-    there. `Projects` is a directory of links, one per entry, with none for the loop's checkout."""
+    lib/reuse_fault.py's default queue was the owner's LIVE queue (`.loop/queue.json` under the
+    real Projects) -- a phase table on this box, "no such file" on a hosted runner, and a test
+    filing a fault went red only there. `Projects` is a directory of links, one per entry, with
+    none for the loop's checkout."""
     import suite_home
 
     real = tmp_path / "real-home"

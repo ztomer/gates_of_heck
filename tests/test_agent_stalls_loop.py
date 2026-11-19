@@ -22,8 +22,8 @@ SCRIPT = REPO_ROOT / "hooks" / "claude" / "agent_stalls.py"
 
 # `loopctl stale` (LOOP.STALECLI) owns the rule; the hook asks it with the event's projects root and
 # prints its lines. The real-CLI test runs only where .loop is checked out (never in goh's CI).
-# The REAL home's: the suite home hides ~/Projects/.loop (suite_home.HIDDEN, GOH.CIRED01310), so a
-# test that means the loop's own CLI names the real home, and hands it a queue of its own.
+# The REAL home's: the suite home hides the loop's checkout (suite_home.HIDDEN, GOH.CIRED01310),
+# so a test that means the loop's own CLI names the real home, and hands it a queue of its own.
 REAL_HOME = Path(os.environ.get(suite_home.MARKER) or suite_home.REAL_HOME)
 LOOPCTL = REAL_HOME / "Projects" / ".loop" / "tools" / "loopctl.py"
 

@@ -47,11 +47,12 @@ MARKER = "GATES_OF_HECK_SUITE_REAL_HOME"  # not GOH_-prefixed: no env scrub drop
 
 READ = ("Projects", ".claude/skills", ".cargo")
 # What a READ link must NOT reach, by its entry's name (GOH.CIRED01310): the loop's checkout
-# (~/Projects/.loop) is the owner's LIVE queue and the loopctl that writes it. A hosted runner has
-# no copy, so a reader defaulting to it (lib/reuse_fault.py current_phase) passed on the box, on the
-# owner's phase table, and v0.139.10's CI read "no such file"; and a default loopctl a test reached
-# would have filed into the live queue. So `Projects` is a directory of links, one per entry, with
-# none for these. A test that means the real loop names it through MARKER, as the real home's.
+# (`.loop` in the real Projects) is the owner's LIVE queue and the loopctl that writes it. A
+# hosted runner has no copy, so a reader defaulting to it (lib/reuse_fault.py current_phase)
+# passed on the box, on the owner's phase table, and v0.139.10's CI read "no such file"; and a
+# default loopctl a test reached would have filed into the live queue. So `Projects` is a
+# directory of links, one per entry, with none for these. A test that means the real loop names
+# it through MARKER, as the real home's.
 HIDDEN = {"Projects": frozenset({".loop"})}
 # The GOH_* variables a hermetic child keeps: locations and test seams, never an opt-in.
 # GOH_MEM_ADMIT: host_locks.py turns memory admission off for every fixture gate, and a scrub that
