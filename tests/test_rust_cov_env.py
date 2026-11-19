@@ -17,6 +17,7 @@ from pathlib import Path
 import cov_env
 import gate_identity
 import pytest
+import rust_cov_scripts
 from conftest import REPO_ROOT
 from test_rust_cov_reuse import _decision, _run, _run_out, _write, repo  # noqa: F401  (the fixture)
 
@@ -111,7 +112,8 @@ def test_no_wholesale_goh_read_in_gohs_measurement_but_the_pinned_ones() -> None
     ext = subprocess.run(["bash", "-c", ask], cwd=REPO_ROOT, capture_output=True, text=True,
                          check=True, stdin=subprocess.DEVNULL).stdout  # fmt: skip
     inputs = gate_identity.build_inputs(REPO_ROOT)
-    parts = [(REPO_ROOT, inputs), (REPO_ROOT, gate_identity.rust_gate_scripts(REPO_ROOT)),
+    scripts = rust_cov_scripts.env_readers(REPO_ROOT, gate_identity.rust_gate_scripts(REPO_ROOT))
+    parts = [(REPO_ROOT, inputs), (REPO_ROOT, scripts),
              (REPO_ROOT, gate_identity.runner_files(REPO_ROOT, ext))]  # fmt: skip
     files = {rel: data for root, ps in parts for rel, _, data in gate_identity._entries(root, ps)}
     bare = {rel for rel, data in files.items() if b"GOH_" in cov_env._NAME.findall(data)}

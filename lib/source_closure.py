@@ -27,9 +27,10 @@ right until the next `. "$HERE/../lib/x.sh"` line, which nothing compares it aga
     a fixture copies what its gate sources, not every file the gate mentions.
 
 What it does NOT follow, so a fixture that needs one says so (`extra=`): a script a gate RUNS
-rather than sources (`"$GOH_PY" "$HERE/check_x.py"`; lib/gate_identity.py adds those edges for the
-keys it makes), a path built at runtime (`$PWD/...`, `. "$_goh_copy"`, `import_module(name)`), and
-the commands a script finds on PATH (`dirname`, test_doctor's shim PATH).
+rather than sources (`"$GOH_PY" "$HERE/check_x.py"`; lib/rust_cov_scripts.py adds those edges
+for the coverage key), a path built at runtime (`$PWD/...`, `. "$_goh_copy"`,
+`import_module(name)`), and the commands a script finds on PATH (`dirname`, test_doctor's shim
+PATH).
 `unresolved` names every source line it read and could not place, so a reader sees the hole.
 
     copy_closure(dest, "tools/release_goh.sh")   # the script and what it sources, at their paths
@@ -381,6 +382,39 @@ def closure(
         unresolved += missing
         todo.extend(d for d in deps if d not in seen)
     return sorted(p.relative_to(root).as_posix() for p in seen), unresolved
+
+
+# A script a gate RUNS by its own directory or the gates root (`bash "$HERE/x.sh"`,
+# `"$GOH_PY" "$GOH_ROOT/gates/x.py"`): lib/step_closure.py's run edge, through gate_identity. The
+# coverage key reads runs wider, by any variable-rooted path (lib/rust_cov_scripts.py).
+RUN = re.compile(
+    r"\$\{?(HERE|_goh_d|GOH_ROOT|GOH_DIR|GOH)\}?/((?:\.\./)?[A-Za-z0-9_./-]+\.(?:sh|py))"
+    r'|\$\(dirname "\$\{BASH_SOURCE\[0\]\}"\)/([A-Za-z0-9_./-]+\.(?:sh|py))'
+)
+
+
+def run_closure(seeds: set[str], root: Path, goh: Path, named_edges: bool = False) -> set[str]:
+    """seeds and every file under root they source, import (`closure`) or run; with
+    `named_edges`, every file their code names by path too (a data file, a script it runs)."""
+    files = set(seeds)
+    while True:
+        found, _ = closure(sorted(files), root, goh, named_edges)
+        grown = set(found)
+        for rel in found:
+            if not rel.endswith(".sh"):
+                continue
+            here = Path(rel).parent
+            text = (root / rel).read_text(encoding="utf-8", errors="replace")
+            for line in text.splitlines():
+                for m in RUN.finditer(_strip_comment(line)):
+                    var, path, own = m.groups()
+                    rel_to = here if own or var in ("HERE", "_goh_d") else Path()
+                    cand = os.path.normpath(rel_to / (path or own))
+                    if (root / cand).is_file():
+                        grown.add(cand)
+        if grown <= files:
+            return files
+        files |= grown
 
 
 def copy_closure(

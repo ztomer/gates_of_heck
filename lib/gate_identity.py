@@ -41,12 +41,12 @@ THE RUST COVERAGE VERDICT (GOH.RUSTCOVSKIP, `rust`). A goh land spent 600-900 s 
 coverage when its diff touched no Rust (GOH.XEXITDETAIL: 896.62 s of a 21:37 land, for Python and
 shell). The measurement's own inputs are narrower than the gates: the repo's Rust build inputs
 (lib/goh_version.sh's stamp formula, embedded files included: build_inputs) and the Rust gate's
-coverage scripts (rust_gate_scripts: gates/rust_gate.sh, gates/_rust_proven.sh, and every file
-gates/coverage_gate.sh sources, imports or runs, read from the sources by lib/source_closure.py,
-never a hand list), the files the external suite's command runs the binary THROUGH (runner_files:
-goh's tools/pytest.sh and its closure, tests/ never: the owner's rule), PYTHONPATH with each gates
-root on it by content (pythonpath: goh's land puts a new head export path on it every commit,
-GOH.RUSTCOVKEYSCOPE), plus the tools. gates/_rust_proven.sh keys the coverage record on these lines;
+coverage scripts (rust_gate_scripts: every file gates/rust_gate.sh sources, imports or runs,
+transitively, read from the sources by lib/rust_cov_scripts.py, never a hand list), the files
+the external suite's command runs the binary THROUGH (runner_files: goh's tools/pytest.sh and
+its closure, tests/ never: the owner's rule), PYTHONPATH with each gates root on it by content
+(pythonpath: goh's land puts a new head export path on it every commit, GOH.RUSTCOVKEYSCOPE),
+plus the tools. gates/_rust_proven.sh keys the coverage record on these lines;
 on a hit the instrumented build and report are skipped and the tests still run, plain. A workspace
 member or path dependency outside the keyed inputs has no such identity (exit 1): a change there
 could not move the key, so the coverage runs.
@@ -76,8 +76,6 @@ import argparse
 import hashlib
 import json
 import os
-import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -87,8 +85,12 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cov_env  # lib/, beside this file: what the coverage measurement reads
 import identity_cache  # lib/, beside this file: the cross-process memo (GOH.IDENTITYPORT)
+import rust_cov_scripts  # lib/, beside this file: the coverage scripts' closure (GOH.COVKEYGAP)
+import source_closure  # lib/, beside this file
 from tool_shim import fingerprint, past_shims  # lib/, beside this file
 
+# lib/step_closure.py's run edge and closure, from the module that reads sources (GOH.COVKEYGAP).
+_RUN, _closure = source_closure.RUN, source_closure.run_closure
 TOOLS = ("rustc", "cargo", "python3", "swift", "shellcheck", "ruff", "cargo-llvm-cov", "xcodebuild")
 # The binary's build ROOTS; its inputs add each file a crate embeds: ask build_inputs, never this.
 BUILD = ("crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml")
@@ -256,77 +258,20 @@ def keyed(roots: list[Path]) -> list[str]:
     return [str(root / part) for root in roots for part in PARTS if os.path.lexists(root / part)]
 
 
-# The Rust gate's coverage group: the scripts that decide it, and the measurement it runs.
-RUST_GATE = ("gates/rust_gate.sh", "gates/_rust_proven.sh")
-RUST_MEASURE = "gates/coverage_gate.sh"
-# A script a gate RUNS by its own directory or the gates root (`bash "$HERE/x.sh"`,
-# `"$GOH_PY" "$GOH_ROOT/gates/x.py"`); source_closure follows what it sources and imports.
-_RUN = re.compile(
-    r"\$\{?(HERE|_goh_d|GOH_ROOT|GOH_DIR|GOH)\}?/((?:\.\./)?[A-Za-z0-9_./-]+\.(?:sh|py))"
-    r'|\$\(dirname "\$\{BASH_SOURCE\[0\]\}"\)/([A-Za-z0-9_./-]+\.(?:sh|py))'
-)
-
-
-def _closure(seeds: set[str], root: Path, goh: Path, named_edges: bool = False) -> set[str]:
-    """seeds and every file under root they source, import (lib/source_closure.py) or run; with
-    `named_edges`, every file their code names by path too (a data file, a script it runs)."""
-    import source_closure  # lib/, beside this file
-
-    files = set(seeds)
-    while True:
-        found, _ = source_closure.closure(sorted(files), root, goh, named_edges)
-        grown = set(found)
-        for rel in found:
-            if not rel.endswith(".sh"):
-                continue
-            here = Path(rel).parent
-            text = (root / rel).read_text(encoding="utf-8", errors="replace")
-            for line in text.splitlines():
-                for m in _RUN.finditer(source_closure._strip_comment(line)):
-                    var, path, own = m.groups()
-                    rel_to = here if own or var in ("HERE", "_goh_d") else Path()
-                    cand = os.path.normpath(rel_to / (path or own))
-                    if (root / cand).is_file():
-                        grown.add(cand)
-        if grown <= files:
-            return files
-        files |= grown
-
-
 def rust_gate_scripts(root: Path = GOH_ROOT) -> list[str]:
-    """The Rust gate's coverage scripts under root, derived from their sources: RUST_GATE, and the
-    closure of RUST_MEASURE over what each file sources, imports (lib/source_closure.py) or runs."""
-    return sorted(_closure({RUST_MEASURE}, root, root) | set(RUST_GATE))
+    """The Rust coverage measurement's scripts under root: gates/rust_gate.sh's closure, derived
+    from the sources (lib/rust_cov_scripts.py, GOH.COVKEYGAP); LookupError on a hole."""
+    return rust_cov_scripts.rust_gate_scripts(root)
 
 
 def runner_files(repo: Path, external: str) -> list[str]:
-    """The files the external suite's command runs the binary THROUGH (GOH.RUSTCOVKEYSCOPE): each
-    word of GOH_COV_RUST_EXTERNAL that names a file of the repo (`./tools/pytest.sh`), and what it
-    sources, imports or runs. The suite itself is not one (the owner's rule, GOH.RUSTCOVSKIP):
-    anything under tests/ is left out, as is a word naming a directory (`pytest tests/`)."""
-    try:
-        words = shlex.split(external, comments=True)
-    except ValueError:
-        words = external.split()
-    seeds = set()
-    top = repo.resolve()
-    for w in words:
-        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", w):  # VAR=value: an assignment, not a file
-            continue
-        cand = Path(os.path.normpath(top / w))
-        try:
-            rel = cand.relative_to(top).as_posix()
-        except ValueError:
-            continue
-        if cand.is_file():
-            seeds.add(rel)
-    if not seeds:
-        return []
-    return sorted(r for r in _closure(seeds, top, GOH_ROOT) if r.split("/")[0] != "tests")
+    """The files the external suite's command runs the binary through (lib/rust_cov_scripts.py)."""
+    return rust_cov_scripts.runner_files(repo, external, GOH_ROOT)
 
 
 def _is_goh_root(d: Path) -> bool:
-    return (d / "lib" / "gate_identity.py").is_file() and (d / RUST_MEASURE).is_file()
+    measure = rust_cov_scripts.RUST_MEASURE
+    return (d / "lib" / "gate_identity.py").is_file() and (d / measure).is_file()
 
 
 def gate_files(root: Path) -> list[str]:
@@ -416,7 +361,8 @@ def rust(repo: Path, root: Path = GOH_ROOT, external: str | None = None,
     if external is not None:  # the GOH_* those files can read, by value (lib/cov_env.py)
         runner = runner_files(repo, external)
         lines.append(f"runner {content(repo, runner) if runner else 'none'} {' '.join(runner)}")
-        read = [(repo, inputs), (root, scripts), (repo, runner)]
+        code = rust_cov_scripts.env_readers(root, scripts)  # a data file reads no variable
+        read = [(repo, inputs), (root, code), (repo, runner)]
         lines += cov_env.lines((b for r, ps in read for *_, b in _entries(r, ps)), repo, root,
                                os.environ)  # fmt: skip
     if path is not None:

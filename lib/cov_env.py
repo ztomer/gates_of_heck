@@ -12,8 +12,9 @@ push's does not. (This file is in the closure it scans, so it spells no variable
 THE KEY NOW. The measurement is keyed on the GOH_* it can read, each by its value:
 
   * every GOH_ name the keyed files' BYTES spell -- the Rust build inputs (build.rs, `env!`, a Rust
-    test's `std::env::var`), the coverage scripts and the suite's runner (lib/gate_identity.py
-    `rust`, the same files its content hashes): code reads a variable by naming it, so a new read
+    test's `std::env::var`), the coverage scripts' CODE files (a data file reads none:
+    lib/rust_cov_scripts.py env_readers) and the suite's runner (lib/gate_identity.py `rust`,
+    the files its content hashes): code reads a variable by naming it, so a new read
     is in the key the moment its line is, with no list to keep. A name ending in `_` (GOH_SHARE_,
     `compgen -v GOH_COV_`) is a prefix: every variable under it is keyed;
   * the suite's DECLARED inputs (tests/suite_home.py CALLER_INPUTS): the suite drops every other
@@ -47,12 +48,16 @@ ELSEWHERE = ("GOH_COV_", "GOH_PROVEN")  # keyed by the `cov` lines; the reuse ca
 # The files of goh's measurement whose bytes spell a bare `GOH_`, and what it does there: none
 # reads a variable it does not name (tests/test_rust_cov_env.py, a ratchet both ways).
 WHOLESALE = {
+    "checks/check_raw_audit.py": "DROPS every GOH_* from the audit's foreign-repo environment",
     "crates/goh/src/gatesrc.rs": "prose",
     "crates/goh/src/step_report.rs": "a message naming docs/config.md's keys",
     "crates/goh/src/subject.rs": "prose: the floors' key shape, read from .gatesrc's text",
     "crates/goh/src/subject_tests.rs": "a check of those keys' spelling",
+    "gates/_common.sh": "prose",
+    "gates/_hash.sh": "goh_config_hash: the other groups' steps' key, never the measurement's",
     "gates/_rust_proven.sh": "prose, and goh_config_hash for the other groups' steps",
     "gates/rust_gate.sh": "prose",
+    "lib/bench_lock.sh": "prose",
     "lib/cov_env.py": "this scan's own pattern and prose",
     "lib/gate_identity.py": "prose",
     "lib/gate_slot.py": "prose",

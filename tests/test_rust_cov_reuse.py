@@ -181,24 +181,27 @@ def test_a_member_outside_the_rust_inputs_always_measures(repo: Path) -> None:
 
 
 def test_the_coverage_scripts_come_from_their_sources() -> None:
-    """The Rust gate's coverage scripts are read from what coverage_gate.sh sources, imports and
-    runs, never a hand list -- and the shared harness the XEXITDETAIL land touched is not one."""
+    """The Rust gate's coverage scripts are read from what rust_gate.sh sources, imports and runs,
+    never a hand list. lib/xexit.py is one (GOH.COVKEYGAP): gates/_common.sh's goh_step judges the
+    coverage step through it, so this once pinned it OUT and reused a verdict another judge made."""
     import gate_identity
 
     scripts = set(gate_identity.rust_gate_scripts(REPO_ROOT))
     assert {"gates/rust_gate.sh", "gates/_rust_proven.sh", "gates/coverage_gate.sh",
             "gates/_coverage_rust.sh", "gates/lcov_merge.py", "gates/_cov_prune.py",
-            "gates/_lcov_floor_maps.py", "lib/bash5.sh"} <= scripts  # fmt: skip
-    assert "lib/xexit.py" not in scripts and "tools/land.sh" not in scripts
+            "gates/_lcov_floor_maps.py", "lib/bash5.sh", "gates/_proven.sh", "gates/_hash.sh",
+            "gates/_common.sh", "lib/xexit.py"} <= scripts  # fmt: skip
+    assert "lib/self_match.py" not in scripts and "tools/land.sh" not in scripts
 
 
 def test_a_coverage_script_edit_moves_the_identity(repo: Path, tmp_path: Path) -> None:
     import gate_identity
 
     root = tmp_path / "goh"
-    copy_closure(root, *gate_identity.rust_gate_scripts(REPO_ROOT), "lib/xexit.py", root=REPO_ROOT)
+    copy_closure(root, *gate_identity.rust_gate_scripts(REPO_ROOT), "lib/self_match.py",
+                 root=REPO_ROOT)  # fmt: skip
     before = gate_identity.rust(repo, root)
-    (root / "lib/xexit.py").write_text("# not the Rust gate's\n")
+    (root / "lib/self_match.py").write_text("# not the Rust gate's\n")
     assert gate_identity.rust(repo, root) == before
     p = root / "gates/_coverage_rust.sh"
     p.write_text(p.read_text() + "\n# an edit\n")
@@ -426,7 +429,8 @@ def test_the_runner_is_an_input_and_the_suite_is_not(repo: Path) -> None:
 
 def test_goh_keys_its_runner_and_not_the_scripts_its_suite_exercises() -> None:
     """goh itself (.gatesrc GOH_COV_RUST_EXTERNAL): the runner is tools/pytest.sh and its closure;
-    the lib/ file GOH.PGREPSELF changed, and every test, are in no keyed line."""
+    the lib/ file GOH.PGREPSELF changed, and every test, are in no keyed line; lib/xexit.py, which
+    judges every step, is (GOH.COVKEYGAP)."""
     import gate_identity
 
     ext = 'GOH_TEST_BIN="$GOH_COVERAGE_BIN_DIR/goh" ./tools/pytest.sh'
@@ -435,4 +439,4 @@ def test_goh_keys_its_runner_and_not_the_scripts_its_suite_exercises() -> None:
     assert not [r for r in runner if r.startswith("tests/")]
     keyed = runner | set(gate_identity.rust_gate_scripts(REPO_ROOT))
     keyed |= set(gate_identity.build_inputs(REPO_ROOT))
-    assert "lib/self_match.py" not in keyed and "lib/xexit.py" not in keyed
+    assert "lib/self_match.py" not in keyed and "lib/xexit.py" in keyed

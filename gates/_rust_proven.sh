@@ -222,10 +222,10 @@ rust_proven_group() {
 #   * the BINARY: the repo's Rust build inputs, embedded files included (`inputs`: the stamp's
 #     formula, lib/goh_version.sh);
 #   * the INSTRUMENT: the coverage scripts under the gates root and GOH_DIR both (`scripts`:
-#     coverage_gate.sh's closure, rust_gate.sh, this file), the tools, the GOH_* those files and
-#     the suite's declaration can read (`goh-env`, lib/cov_env.py) and every GOH_COV_* .gatesrc
-#     sets, exported or not (`cov`: a floor
-#     raised there must be judged, and the plain run judges no floor; the external command too);
+#     everything rust_gate.sh sources or runs, lib/rust_cov_scripts.py), the tools, the GOH_*
+#     those files and the suite's declaration can read (`goh-env`, lib/cov_env.py) and every
+#     GOH_COV_* .gatesrc sets, exported or not (`cov`: a floor raised there must be judged, and
+#     the plain run judges no floor; the external command too);
 #   * the RUNNER: the repo's files the external command runs the binary THROUGH (`runner`: goh's
 #     ./tools/pytest.sh and what it sources, imports or runs -- which tests run, and how);
 #   * the environment the build and the runner read (`env`, _proven.sh's list), with PYTHONPATH

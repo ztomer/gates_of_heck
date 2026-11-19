@@ -34,7 +34,6 @@ hooks/claude/agent_guard.py
 hooks/claude/agent_stalls.py
 hooks/claude/discard_guard.py
 lib/bounded_run.py
-lib/gate_identity.py
 lib/gate_slot.py
 lib/golden_core.py
 lib/load_reap.py
