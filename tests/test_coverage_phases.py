@@ -171,7 +171,12 @@ def test_the_external_suite_drives_an_optimized_instrumented_build(tmp_path: Pat
     """The plain suite drives a RELEASE goh; under coverage it drove an unoptimized one, which
     measured 5-20x slower a call (an `emoji` scan 70 ms release, 1,439 ms debug-instrumented,
     271 ms instrumented at opt-level 2; 2026-11-12, GOH.COVPHASES). The external part's build is
-    optimized; the workspace's test binaries keep the debug profile it always measured."""
+    optimized; the workspace's test binaries keep the debug profile it always measured.
+
+    And REPRODUCIBLE: a test's stored profile is keyed on these bytes (lib/prof_store.py), and
+    with local ThinLTO across codegen units five builds of one tree gave four sha256s
+    (GOH.PROFSTOREEMPTY, 2026-11-18), so no land found the profiles the last one kept. Local
+    ThinLTO off: one sha256 from every build of those inputs, across a commit."""
     proj, env = _setup(tmp_path)
     calls = tmp_path / "calls"
     env["FAKE_CALLS"] = str(calls)
@@ -189,5 +194,6 @@ def test_the_external_suite_drives_an_optimized_instrumented_build(tmp_path: Pat
     lines = calls.read_text().splitlines()
     builds = [c for c in lines if c.startswith("build ")]
     assert len(builds) == 1 and "--config profile.dev.opt-level=2" in builds[0], lines
+    assert '--config profile.dev.lto="off"' in builds[0], builds
     tests = [c for c in lines if c.startswith("test ")]
     assert tests and not [c for c in tests if "opt-level" in c], tests

@@ -191,8 +191,11 @@ run_rust() {
             # (an `emoji` scan: 70 ms release, 1,439 ms debug-instrumented, 271 ms instrumented at
             # opt-level 2). Counters are placed before LLVM optimizes, so what they count is the
             # same; the debug profile, its assertions and its target dir are kept. `--config`, not
-            # an exported variable: CMD's own builds never see it.
+            # an exported variable: CMD's own builds never see it. REPRODUCIBLE (GOH.PROFSTOREEMPTY):
+            # local ThinLTO across codegen units built other bytes from the same inputs (4 sha256s
+            # in 5 builds), and a test's stored profile is keyed on these bytes (lib/prof_store.py).
             cargo build --locked --bins --config profile.dev.opt-level=2 --config profile.dev.debug=false \
+                --config 'profile.dev.lto="off"' \
                 --message-format=json-render-diagnostics \
                 >"$part.json" 2>"$part.log" 3>&- || exit 1
             "$GOH_PY" "$GOH_ROOT/gates/_cov_prune.py" "$part.json" >>"$part.log" 2>&1 3>&- || exit 1
