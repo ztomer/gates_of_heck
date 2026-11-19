@@ -331,8 +331,9 @@ def test_goh_suite_installs_the_modules_its_tests_import():
     got = _cli("--layer", "goh-suite", "--install")
     assert got.returncode == 0, got.stderr
     line = next(ln for ln in got.stdout.splitlines() if "pip install" in ln)
-    for pkg in ("pytest", "pillow", "numpy", "coverage"):
-        assert pkg in line.split(), line
+    names = {w.split("==")[0] for w in line.split()}
+    for pkg in ("pytest", "pytest-xdist", "pillow", "numpy", "coverage"):
+        assert pkg in names, line
 
 
 def test_goh_suite_installs_the_tools_its_fixture_gates_run():

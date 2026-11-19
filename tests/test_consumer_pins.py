@@ -46,14 +46,14 @@ PYPROJECT = """[project]
 name = "ruffy"
 [dependency-groups]
 dev = [
-    "pytest==9.2.0",
+    "pytest==9.0.3",
     "ruff==0.0.1",  # ruff==0.0.2 in a comment is prose
 ]
 """
 LOCK = """version = 1
 [[package]]
 name = "pytest"
-version = "9.2.0"
+version = "9.0.3"
 
 [[package]]
 name = "ruff"

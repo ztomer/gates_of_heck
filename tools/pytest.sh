@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The gates_of_heck test suite: parallel under pytest-xdist when installed. Arguments go to pytest
+# The gates_of_heck test suite, parallel under pytest-xdist. Arguments go to pytest
 # (`tools/pytest.sh -k ship`, `tools/pytest.sh tests/test_ship.py`); none runs all of tests/.
 # --dist loadgroup: unmarked tests spread by load; files sharing an
 # xdist_group marker stay on ONE worker -- for SHARED state only. The release
@@ -121,6 +121,16 @@ export GATES_OF_HECK_SUITE_RUNNER=$$
 # test_gate_tests_unbound died on "'coverage' not installed").
 "$GOH_PY" -c 'import coverage' 2>/dev/null \
     || die "coverage is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install coverage"
+# The suite's parallel runner (GOH.PYTESTPIN): a manifest row, installed by the goh-suite layer like
+# the rest. A serial run outruns local_ci's step ceiling on a hosted runner, so there is no serial
+# fallback to drift into.
+"$GOH_PY" -c 'import xdist' 2>/dev/null \
+    || die "pytest-xdist is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install pytest-xdist"
+# THE BOX IS CI (GOH.PYTESTPIN): every goh-suite module at exactly the release the manifest pins,
+# the one hosted CI installs. pytest 9.2.0 renamed a long string parameter's id; CI, unpinned, got
+# it while this box ran 9.1.1, and v0.139.6's CI was red on a tree the local gate passed.
+"$GOH_PY" "$GOH/gates/required_tools.py" --layer goh-suite --pins-held \
+    || die "this interpreter's goh-suite modules are not the manifest's pins (above) -- install them with the pip line $GOH_PY $GOH/gates/required_tools.py --layer goh-suite --install prints"
 # The tools the suite's FIXTURE repos are gated and shipped with (run 42944992082: ~45 Python-gate
 # tests died on "ruff is not available through <python> -m", and 23 test_ship tests on a missing
 # git-cliff): goh's own gates declare no python or ship layer, so the goh-suite layer installs them.
@@ -138,31 +148,27 @@ command -v shellcheck >/dev/null 2>&1 || die "shellcheck is not on PATH (goh's o
 command -v swiftlint >/dev/null 2>&1 || die "swiftlint is not on PATH (goh's own hook: the swift twin) -- brew install swiftlint"
 command -v rustfmt >/dev/null 2>&1 || die "rustfmt is not on PATH (goh's own hook: the rustfmt check) -- rustup component add rustfmt"
 ARGS=(-q)
-if "$GOH_PY" -c "import xdist" 2>/dev/null; then
-    # THIS GATE'S SHARE of the cores, capped at 12 (run 42950563400: `-n 12` on a 3-core hosted
-    # runner starved a cold goh build and a structural --full past their 600 s timeouts). Never the
-    # machine (GOH.POOLSHARE, 2026-11-17: a suite sized to all 16 cores beside four other gates each
-    # sized the same put ~220 threads on 16 cores): inside a gate, its admission's GOH_GATE_WORKERS;
-    # outside one (a land's pre-step), cores / (the gates admitted now + this run).
-    # THE SHARE IS LIVE (GOH.SHAREGROW, lib/worker_share.py): xdist starts at the ceiling (12, or the
-    # machine's cores when fewer) and each worker takes a token from the pool below before each
-    # test, so the run is as wide as cores / the gates admitted NOW -- it grows the moment another
-    # gate leaves (the SELECTAUDIT land ran at -n 4 for 11+ minutes on a box at load 7.9 of 16,
-    # 2026-11-17) and shrinks when one is admitted. GOH_SUITE_CORES pins a fixed count, no pool.
-    # shellcheck source=lib/worker_share.sh
-    . "$GOH/lib/worker_share.sh"
-    if [ -n "${GOH_SUITE_CORES:-}" ]; then
-        cores="$GOH_SUITE_CORES"
-    else
-        goh_share_pool "$PYTEST_DEBUG_TEMPROOT/share-pool" 12 || die "cannot start the suite's live share (lib/worker_share.py pool)" 2
-        cores="$GOH_SHARE_CEIL"
-    fi
-    case "$cores" in '' | *[!0-9]* | 0) die "cannot read this machine's core count (got '$cores')" 2 ;; esac
-    [ "$cores" -gt 12 ] && cores=12
-    ARGS+=(-n "$cores" --dist loadgroup)
+# THIS GATE'S SHARE of the cores, capped at 12 (run 42950563400: `-n 12` on a 3-core hosted
+# runner starved a cold goh build and a structural --full past their 600 s timeouts). Never the
+# machine (GOH.POOLSHARE, 2026-11-17: a suite sized to all 16 cores beside four other gates each
+# sized the same put ~220 threads on 16 cores): inside a gate, its admission's GOH_GATE_WORKERS;
+# outside one (a land's pre-step), cores / (the gates admitted now + this run).
+# THE SHARE IS LIVE (GOH.SHAREGROW, lib/worker_share.py): xdist starts at the ceiling (12, or the
+# machine's cores when fewer) and each worker takes a token from the pool below before each
+# test, so the run is as wide as cores / the gates admitted NOW -- it grows the moment another
+# gate leaves (the SELECTAUDIT land ran at -n 4 for 11+ minutes on a box at load 7.9 of 16,
+# 2026-11-17) and shrinks when one is admitted. GOH_SUITE_CORES pins a fixed count, no pool.
+# shellcheck source=lib/worker_share.sh
+. "$GOH/lib/worker_share.sh"
+if [ -n "${GOH_SUITE_CORES:-}" ]; then
+    cores="$GOH_SUITE_CORES"
 else
-    warn "pytest-xdist not installed — serial suite (pip3 install pytest-xdist)"
+    goh_share_pool "$PYTEST_DEBUG_TEMPROOT/share-pool" 12 || die "cannot start the suite's live share (lib/worker_share.py pool)" 2
+    cores="$GOH_SHARE_CEIL"
 fi
+case "$cores" in '' | *[!0-9]* | 0) die "cannot read this machine's core count (got '$cores')" 2 ;; esac
+[ "$cores" -gt 12 ] && cores=12
+ARGS+=(-n "$cores" --dist loadgroup)
 # The caller's arguments reach pytest (GOH.HOOKSEED): `tools/pytest.sh -k plural` selects, and
 # `tools/pytest.sh tests/test_ship.py` runs that file. They were dropped, and every narrowed run was
 # the whole suite. tests/ is the target unless an argument names a path of its own (`file::node`).

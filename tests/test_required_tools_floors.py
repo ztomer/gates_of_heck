@@ -59,9 +59,9 @@ def _cli(args: list[str], env: dict[str, str] | None = None) -> subprocess.Compl
 
 # The tools seeded from sys_updater (R3.29). Their VERSIONS live in the manifest only
 # (GOH.CLASS.PARITY: tests/test_tool_version_manifest.py is red on a copy written here).
+# pytest left the floors for a PIN (GOH.PYTESTPIN: a pytest release moves test ids).
 SEED = (
     "python3",
-    "pytest",
     "zig",
     "shellcheck",
     "cargo-machete",
@@ -150,8 +150,10 @@ def test_a_missing_tool_is_red_named_as_missing(tmp_path: Path) -> None:
 def test_a_version_the_caller_read_is_judged_too() -> None:
     """`--found` hands the check a version the CALLER read -- the module through the gate's own
     runner -- so the interpreter judged is the one the gate runs."""
-    assert _cli(["--check", "--tool", "pytest", "--found", "pytest 8.4.0"]).returncode == 1
-    assert _cli(["--check", "--tool", "pytest", "--found", "pytest 9.2.0"]).returncode == 0
+    assert _cli(["--check", "--tool", "zig", "--found", f"zig {AROUND['below']}"]).returncode == 1
+    assert (
+        _cli(["--check", "--tool", "zig", "--found", f"zig {AROUND['minor-up']}"]).returncode == 0
+    )
 
 
 def test_a_tool_with_no_floor_is_judged_on_presence_alone(tmp_path: Path) -> None:

@@ -9,6 +9,7 @@
     gates/required_tools.py --repo . --check      # red for a tool missing or below its FLOOR
     gates/required_tools.py --check --tool zig    # one tool (what goh_require asks)
     gates/required_tools.py --floors              # tool<TAB>floor, for a consumer's own record
+    gates/required_tools.py --layer goh-suite --pins-held   # red: a pinned pip module off pin
 
 FLOORS (G2b). The manifest's `floor` column is the OLDEST version a gate accepts -- a floor, never
 a pin: a newer tool is green, always. `--check` is red, by name and with both versions, for a tool
@@ -68,6 +69,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import noun  # the count meets its noun (GOH.HEDGEOWN)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import required_pins  # the box holds the manifest's pip pins (GOH.PYTESTPIN)
 import step_tools  # a step's tool is in a table (GOH.REQTOOLS)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -381,6 +383,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--tool", action="append", default=[], help="judge this tool (any layer)")
     ap.add_argument("--found", default=None, help="the version text the caller read (--check)")
     ap.add_argument("--floors", action="store_true", help="tool<TAB>floor for every floor")
+    ap.add_argument("--pins-held", action="store_true", help="red: a pinned pip module off pin")
     ap.add_argument("--pin", metavar="TOOL", help="the release TOOL is pinned to; 1 when none")
     ap.add_argument("--unnamed", action="store_true", help="a step's tool no table names (--repo)")
     args = ap.parse_args(argv)
@@ -431,8 +434,8 @@ def main(argv: list[str] | None = None) -> int:
         if r["tool"] in structural and r["tool"] not in have:
             selected.append(r)
             have.add(r["tool"])
-    if args.check:
-        return check(selected)
+    if args.check or args.pins_held:  # --pins-held: the box holds the pip pins (GOH.PYTESTPIN)
+        return required_pins.held(selected) if args.pins_held else check(selected)
     if args.names:
         print("\n".join(dict.fromkeys(r["tool"] for r in selected)))
     elif args.install:

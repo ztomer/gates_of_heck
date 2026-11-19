@@ -22,7 +22,6 @@
 #                        newest python3 on PATH or in a release's install dirs, whatever the PATH order),
 #                        and a machine whose newest is below this floor is refused, naming it. A repo's
 #                        OWN pin (.python-version / GOH_PYTHON_VERSION) is judged against it too.
-#   pytest 9.1.1         PROVEN: run green under 3.14 and 3.15.
 #   zig 0.17.0           PROVEN: the C compiler cargo-zigbuild gives the musl lint configs.
 #   shellcheck 0.11.0    PROVEN, and what goh shell_lint is calibrated against (two defects it
 #                        exits 0 on are handled by goh, not by it).
@@ -45,6 +44,16 @@
 # release: divoom_control SIM102 red on GitHub, green locally, GOH.RUFFVERSION). The install
 # column never carries the version; gates/required_tools.py appends `==X.Y.Z` to a pinned pip row.
 #   ruff =0.17.5         PIN: the release the house Python gates judge with (newest, named).
+#   pytest =9.2.0        PIN (GOH.PYTESTPIN): a pytest release moves test ids, and an id is a verdict
+#                        here (a land's record, affected_tests, a narrowed run name tests by id).
+#                        9.2.0 ids a string parameter over 100 characters as argname+index; hosted CI,
+#                        unpinned, got it while the box ran 9.1.1, and v0.139.6's CI was red on it.
+#   pytest-xdist =3.8.0  PIN: goh's suite runs under it (tools/pytest.sh); its scheduler is the run.
+#   coverage =7.17.3     PIN: a coverage release moves the measured number a floor judges.
+#   pillow =13.0.0, numpy =2.5.5   PIN: the goh suite's own imports (golden_core, the parity tier).
+# EVERY pip row is a pin (tests/test_ci_install_pins.py): CI installs from this table, so an unpinned
+# pip row is a release the runner picks and the box does not have. tools/pytest.sh refuses a goh-suite
+# module whose installed release is not its pin (required_tools.py --pins-held), so the box is CI's.
 structural	cargo	system	rustup (https://rustup.rs)	scripts/build-goh.sh	-
 structural	shellcheck	brew	brew install shellcheck	crates/goh/src/shell_lint.rs	0.11.0
 python-format	ruff	pip	python3 -m pip install ruff	crates/goh/src/pyformat.rs	=0.17.5
@@ -52,12 +61,13 @@ python-format	uv	brew	brew install uv	crates/goh/src/pyformat.rs	-
 python-format	ruff	pip	python3 -m pip install ruff	gates/round.sh	=0.17.5
 python	python3	system	the house interpreter (lib/house_python.sh): brew install python	lib/house_python.sh	3.15
 python	ruff	pip	python3 -m pip install ruff	gates/py_gate.sh	=0.17.5
-python	pytest	pip	python3 -m pip install pytest	gates/py_gate.sh	9.1.1
-python	pytest	pip	python3 -m pip install pytest	gates/staged_guards.sh	9.1.1
-goh-suite	pytest	pip	python3 -m pip install pytest	tools/pytest.sh	9.1.1
-goh-suite	pillow	pip	python3 -m pip install pillow	tools/pytest.sh	-
-goh-suite	numpy	pip	python3 -m pip install numpy	tools/pytest.sh	-
-goh-suite	coverage	pip	python3 -m pip install coverage	tools/pytest.sh	-
+python	pytest	pip	python3 -m pip install pytest	gates/py_gate.sh	=9.2.0
+python	pytest	pip	python3 -m pip install pytest	gates/staged_guards.sh	=9.2.0
+goh-suite	pytest	pip	python3 -m pip install pytest	tools/pytest.sh	=9.2.0
+goh-suite	pytest-xdist	pip	python3 -m pip install pytest-xdist	tools/pytest.sh	=3.8.0
+goh-suite	pillow	pip	python3 -m pip install pillow	tools/pytest.sh	=13.0.0
+goh-suite	numpy	pip	python3 -m pip install numpy	tools/pytest.sh	=2.5.5
+goh-suite	coverage	pip	python3 -m pip install coverage	tools/pytest.sh	=7.17.3
 goh-suite	ruff	pip	python3 -m pip install ruff	tools/pytest.sh	=0.17.5
 goh-suite	git-cliff	brew	brew install git-cliff	tools/pytest.sh	-
 goh-suite	shellcheck	brew	brew install shellcheck	tools/pytest.sh	0.11.0
@@ -80,7 +90,7 @@ coverage-cpp	ctest	brew	brew install cmake	gates/coverage_gate.sh	-
 coverage-cpp	xcrun	system	xcode-select --install	gates/coverage_gate.sh	-
 coverage-cpp	python3	system	the house interpreter (lib/house_python.sh): brew install python	gates/coverage_gate.sh	3.15
 coverage-py	python3	system	the house interpreter (lib/house_python.sh): brew install python	gates/coverage_gate.sh	3.15
-coverage-py	coverage	pip	python3 -m pip install coverage	gates/coverage_gate.sh	-
-coverage-py	pytest	pip	python3 -m pip install pytest	gates/coverage_gate.sh	9.1.1
+coverage-py	coverage	pip	python3 -m pip install coverage	gates/coverage_gate.sh	=7.17.3
+coverage-py	pytest	pip	python3 -m pip install pytest	gates/coverage_gate.sh	=9.2.0
 screen-linkage	nm	system	xcode-select --install	checks/check_no_screen_linkage.sh	-
 ship	git-cliff	brew	brew install git-cliff	lib/ship_version.py	-
