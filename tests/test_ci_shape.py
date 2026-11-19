@@ -26,7 +26,8 @@ GATE_YML = REPO_ROOT / ci_shape.WORKFLOW
 NOT_THE_GATES: dict[str, str] = {
     "GOH_LCI_TIMEOUT": "the gate job's local_ci step ceiling; the suite's job runs no local_ci",
     "GOH_COV_PART": "the partition: a land runs every part at once (tests/test_suite_shard.py)",
-    "GOH_COV_PARTS_IN": "the merge job's input; that job runs no test",
+    "GOH_COV_PARTS_IN": "the gate job's merge step's input; that step runs no test",
+    "GH_TOKEN": "the gate job's wait on the suite's jobs (the API); no test reads it",
 }
 
 

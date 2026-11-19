@@ -172,5 +172,5 @@ def test_the_workflow_installs_one_pinned_ruff_and_asks_the_pin_before_the_gate(
     assert 'gates/ruff_agree.py --pin "$GOH_CI_RUFF"' in run, run
     # The pin is asked before any gate runs, in every job: each sets up first (GOH.CIWALL2).
     jobs = _jobs_setup_before(wf)
-    assert set(jobs) == {"gate", "suite", "coverage"}, jobs
+    assert set(jobs) == {"gate", "suite"}, jobs
     assert all(0 <= setup < gate for setup, gate in jobs.values()), jobs

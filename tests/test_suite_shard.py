@@ -93,6 +93,34 @@ def _shards() -> list[str]:
     return parts
 
 
+def test_no_job_asks_for_a_runner_after_the_first_wave():
+    """GOH.CIWALL2: the merge was a third job, `needs: [gate, suite]`, and v0.139.14's run
+    44606206460 waited 7.9 min for a sixth macOS runner (the account runs five at once) before
+    6.3 min of setup for a merge of seconds. The gate job finishes first, so it waits on this
+    run's suite jobs and merges in place: no job needs another, and the merge reads every shard
+    after the wait."""
+    doc = ci_shape.parse(GATE_YML.read_text())
+    jobs = doc["jobs"]
+    assert set(jobs) == {"gate", "suite"}, sorted(jobs)
+    assert not [j for j, body in jobs.items() if (body or {}).get("needs")], "a job waits on a job"
+    gate = jobs["gate"]
+    assert (gate.get("permissions") or {}).get("actions") == "read", gate.get("permissions")
+    steps = gate["steps"]
+
+    def at(pred) -> int:
+        [n] = [n for n, st in enumerate(steps) if pred(st)]
+        return n
+
+    ran = at(lambda st: str(st.get("run", "")).strip() == ci_shape.GATE_RUN)
+    wait = at(lambda st: "actions/runs/$GITHUB_RUN_ID/attempts" in str(st.get("run", "")))
+    fetch = at(lambda st: str(st.get("uses", "")).startswith("actions/download-artifact@"))
+    merge = at(lambda st: "GOH_COV_PARTS_IN" in (st.get("env") or {}))
+    assert ran < wait < fetch < merge, (ran, wait, fetch, merge)
+    waits = steps[wait]["run"]
+    assert 'startswith("suite")' in waits and "completed/success" in waits, waits
+    assert steps[fetch]["with"]["pattern"] == "cov-part-shard-*", steps[fetch]
+
+
 def test_gate_ymls_shards_cover_every_test_exactly_once(tmp_path):
     root = _tree(tmp_path)
     whole = _ran(root)

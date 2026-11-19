@@ -8,9 +8,18 @@ name: gate
 # ITS SUITE IN SHARDS (GOH.CIWALL, 2026-11-19). The one job's wall was its coverage group: the
 # instrumented pytest suite, 2080-2526 s of a 49.6 min median on 3 cores. So the gate step makes the
 # workspace's coverage part only (GOH_COV_PART=workspace), the `suite` matrix runs the suite as N
-# disjoint shards under the instrumented binary (GOH_COV_PART=K/N, tests/_shard.py), and `coverage`
-# merges every part and judges the floor and the change's lines exactly as one run does
-# (GOH_COV_PARTS_IN, gates/_coverage_parts.sh): red unless every part arrived. N is 4: one gate job
+# disjoint shards under the instrumented binary (GOH_COV_PART=K/N, tests/_shard.py), and the gate
+# job, its own part made, waits for the shards and merges every part, judging the floor and the
+# change's lines exactly as one run does (GOH_COV_PARTS_IN, gates/_coverage_parts.sh): red unless
+# every part arrived.
+#
+# NO JOB AFTER THE FIRST WAVE (GOH.CIWALL2). The merge was a third job, `needs: [gate, suite]`, and
+# a job that starts after the first wave asks for a sixth macOS runner when the account runs five
+# at once: v0.139.14's run 44606206460 waited 7.9 min (20:33:08 to 20:41:00) for one, behind the
+# jobs other runs had queued meanwhile, then spent 6.3 min setting up again to merge for seconds.
+# The gate job finishes first (5.8 min there), so it keeps its runner and its setup, waits on
+# this run's suite jobs (the API: `actions: read`), and merges; tests/test_suite_shard.py holds
+# the shape. N is 4: one gate job
 # and four shards are the five macOS jobs an account runs at once, and a fifth shard would queue
 # behind them. tests/ci_shape.py reads the suite's environment from the `suite` step;
 # tests/test_suite_shard.py proves the shards cover every test once.
@@ -52,6 +61,9 @@ jobs:
   gate:
     runs-on: macos-26
     timeout-minutes: 75
+    permissions:
+      contents: read
+      actions: read  # the merge waits on this run's suite jobs
     env:
       # The step ceiling is this MACHINE's budget, set here like GOH_GATE_SLOTS, never in
       # .gatesrc (where it would loosen the owner's 16-core hang detector too). Measured
@@ -76,14 +88,45 @@ jobs:
         run: ./tools/gate.sh --full
         env:
           GOH_COV_PART: workspace
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - name: The workspace's part, kept for the merge
+        run: |
+          set -euo pipefail
+          mkdir -p target/cov-merge
+          cp target/llvm-cov/lcov-parts/part-workspace.info target/llvm-cov/lcov-parts/part-workspace.info.ok target/cov-merge/
+      # Every suite job of THIS attempt completed, each green: a red shard is named here, never
+      # merged into a smaller report. 240 polls of 15 s: the job's own ceiling is the alarm.
+      - name: Wait for the suite's shards
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          api="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs"
+          for ((poll = 0; poll < 240; poll++)); do
+            states="$(gh api --paginate "$api" --jq '.jobs[] | select(.name | startswith("suite")) | "\(.status)/\(.conclusion)"')"
+            all="$(grep -c . <<<"$states" || true)"
+            done_n="$(grep -c '^completed/' <<<"$states" || true)"
+            echo "suite shards: $done_n of $all done"
+            if [ "$all" -gt 0 ] && [ "$done_n" = "$all" ]; then
+              red="$(grep -vc '^completed/success$' <<<"$states" || true)"
+              [ "$red" = 0 ] || { echo "::error::$red of $all suite shards are not green: no merge of a partial suite"; exit 1; }
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::the suite's shards did not finish in 60 min"
+          exit 1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: cov-part-workspace
-          path: |
-            target/llvm-cov/lcov-parts/part-*.info
-            target/llvm-cov/lcov-parts/part-*.info.ok
-          if-no-files-found: error
-          retention-days: 3
+          pattern: cov-part-shard-*
+          merge-multiple: true
+          path: target/cov-merge
+      # Every part merged and judged as one run judges it: the floor, the per-crate summary, the
+      # change's lines; red when a part is missing.
+      - name: The coverage floor over every part
+        run: ./gates/rust_gate.sh
+        env:
+          GOH_RUST_GROUPS: coverage
+          GOH_COV_PARTS_IN: target/cov-merge
 
   suite:
     runs-on: macos-26
@@ -118,28 +161,3 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-  coverage:
-    needs: [gate, suite]
-    runs-on: macos-26
-    timeout-minutes: 30
-    steps:
-      # persist-credentials: false: the structural gate refuses a job token left in git config,
-      # and nothing after the clone needs it. fetch-depth 0: the gate reads history (tags, the
-      # changelog's versions, crates-behind's "since HEAD's parent").
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - uses: ./.github/actions/goh-setup
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: cov-part-*
-          merge-multiple: true
-          path: target/cov-merge
-      # Every part merged and judged as one run judges it: the floor, the per-crate summary, the
-      # change's lines; red when a part is missing.
-      - name: The coverage floor over every part
-        run: ./gates/rust_gate.sh
-        env:
-          GOH_RUST_GROUPS: coverage
-          GOH_COV_PARTS_IN: target/cov-merge
