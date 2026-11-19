@@ -21,6 +21,11 @@ with `main` (a land's export is a detached worktree with no upstream: its change
 since main); with origin's default branch; HEAD's parent. No base (a root commit, no HEAD) and no
 git checkout are each said and pass: there is no change to judge, the floor still runs.
 
+ZERO INPUTS ARE NO PASS (GOH.DIFFCOVEMPTY): a change with a changed Rust line judged against a
+missing or empty parts directory, or parts with no line record, is refused (exit 2) naming the
+directory and the unmeasured files; it used to read "no changed executable Rust line" and pass, and
+lanes cited that green. A change with no changed Rust line passes without parts, saying so.
+
 THE ALLOWLIST (GOH_COV_DIFF_ALLOW, default `diffcov_allow.json` at the repository's top), never a
 code-level suppression: `{"entries": [{"file": REL, "text": STRIPPED_LINE, "reason": WHY}]}`
 exempts a changed line of that file whose text is that. A ratchet: an entry is STALE, and red,
@@ -177,14 +182,31 @@ def load_allow(top: str) -> tuple[str, list[dict]]:
     return path, entries
 
 
-def report(parts: list[str], top: str, include: str) -> dict[tuple[str, int], int]:
-    """(repo-relative path, line) -> the best count across the parts, for files under `top`."""
+def report(
+    parts: list[str], parts_dir: str, changed: dict[str, set[int]], top: str, include: str
+) -> dict[tuple[str, int], int]:
+    """(repo-relative path, line) -> the best count across the parts, for files under `top`.
+    Refused when the parts hold no line record at all: zero inputs measured nothing."""
     line_best: dict = defaultdict(int)
     try:
         for pf in parts:
             parse_part(pf, line_best)
     except LcovError as exc:
         raise Refused(str(exc)) from exc
+    if not line_best:  # GOH.DIFFCOVEMPTY: a report of nothing judges no changed line, so no pass
+        touched = sorted(rel for rel, lns in changed.items() if lns)
+        files = ", ".join(touched[:3]) + (", ..." if len(touched) > 3 else "")
+        lines = sum(len(v) for v in changed.values())
+        what = (
+            f"no part-*.info in {parts_dir}"
+            + ("" if os.path.isdir(parts_dir) else " (no such directory)")
+            if not parts
+            else f"{counted(len(parts), 'part')} in {parts_dir} hold no line record"
+        )
+        raise Refused(
+            f"{what}: the change's {counted(lines, 'changed Rust line')} ({files}) were never "
+            "measured -- run the coverage step that writes the parts first"
+        )
     inc = None
     if include:
         try:
@@ -244,8 +266,13 @@ def judge(args: argparse.Namespace) -> int:
         return 0
     base, where = based
     changed = changed_lines(top, base)
+    said = f"base {base[:12]}, {where}"
+    if not any(changed.values()):
+        # Nothing to judge, so nothing had to be measured: the one pass that needs no parts.
+        measure(f"{TAG} no changed Rust line ({said})")
+        return 0
     parts = sorted(glob.glob(os.path.join(args.parts_dir, "part-*.info")))
-    counts = report(parts, top, args.include)
+    counts = report(parts, args.parts_dir, changed, top, args.include)
 
     executable = uncovered = allowed = 0
     misses = []
@@ -267,7 +294,6 @@ def judge(args: argparse.Namespace) -> int:
             misses.append(f"    {rel}:{ln}  {text}")
     stale = stale_entries(top, entries, counts)
 
-    said = f"base {base[:12]}, {where}"
     say = err if mode == "on" else warn  # both on stderr, with their details under them
     if misses:
         say(

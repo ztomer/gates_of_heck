@@ -81,6 +81,13 @@ def test_a_clean_tree_with_no_counts_passes(tree, capsys):
     assert "clean" in capsys.readouterr().out
 
 
+def test_a_tree_with_no_python_file_is_no_pass(tree, capsys):
+    """GOH.DIFFCOVEMPTY's class: ruff over no file reports no finding, and read as "clean"."""
+    table(tree, {})
+    assert rr.main([]) == 2
+    assert "no Python file" in capsys.readouterr().err
+
+
 def test_lower_records_a_shrink(tree):
     (tree / "a.py").write_text("import os\n", encoding="utf-8")
     table(tree, {"F401": 2, "F841": 1})

@@ -260,3 +260,35 @@ def test_outside_git_nothing_is_a_change(tmp_path: Path):
     _part(tmp_path / "p", {lib: {1: 0}})
     r = _run(crate, tmp_path / "p")
     assert r.returncode == 0 and "not a git checkout" in r.stdout, r.stdout + r.stderr
+
+
+def test_no_parts_with_a_changed_rust_line_is_refused_naming_what_is_missing(
+    repo: Path, tmp_path: Path
+):
+    """GOH.DIFFCOVEMPTY: an empty or missing parts dir measured nothing, so a change with Rust lines
+    in it was never judged; it said "no changed executable Rust line" and passed."""
+    _crate(repo)
+    commit_all(repo, "base")
+    _branch(repo)
+    _crate(repo, ADDED)
+    commit_all(repo, "add b")
+    (tmp_path / "empty").mkdir()
+    for parts in (tmp_path / "empty", tmp_path / "missing"):
+        r = _run(repo, parts)
+        out = r.stdout + r.stderr
+        assert r.returncode == 2, out
+        assert str(parts) in out and "part-*.info" in out and "src/lib.rs" in out, out
+    _part(tmp_path / "blank", {})  # a part file with no record measured nothing either
+    r = _run(repo, tmp_path / "blank")
+    assert r.returncode == 2 and "no line record" in r.stdout + r.stderr, r.stdout + r.stderr
+
+
+def test_no_parts_and_no_changed_rust_line_passes_saying_so(repo: Path, tmp_path: Path):
+    _crate(repo)
+    commit_all(repo, "base")
+    _branch(repo)
+    (repo / "notes.txt").write_text("not rust\n", encoding="utf-8")
+    commit_all(repo, "notes")
+    r = _run(repo, tmp_path / "missing")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "no changed Rust line" in r.stdout, r.stdout

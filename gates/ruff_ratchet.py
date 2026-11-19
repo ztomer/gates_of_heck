@@ -27,7 +27,8 @@ left under how many rules.
     ruff_ratchet.py --lower              # record a shrink (refused while anything rose)
     ruff_ratchet.py --seed               # first adoption only: refused if the table exists
 
-Exit 0 pass, 1 a finding, 2 a precondition (ruff did not run, the table is missing or malformed).
+Exit 0 pass, 1 a finding, 2 a precondition (ruff did not run, the table is missing or malformed,
+or ruff read no Python file: zero findings over zero files is no "clean", GOH.DIFFCOVEMPTY).
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)
@@ -87,7 +88,25 @@ def findings(ruff: str, paths: list[str]) -> list[dict]:
         raise Precondition(f"ruff's JSON report does not parse: {exc}") from exc
     if not isinstance(report, list):
         raise Precondition("ruff's JSON report is not a list of findings")
+    if not report and not _read_any([*shlex.split(ruff), "check"], paths):
+        # Zero inputs report zero findings, which read as "clean" (GOH.DIFFCOVEMPTY).
+        raise Precondition(
+            f"ruff read no Python file under {' '.join(paths or ['.'])}: no count to judge"
+        )
     return report
+
+
+PY_SUFFIXES = (".py", ".pyi", ".ipynb")
+
+
+def _read_any(ruff: list[str], paths: list[str]) -> bool:
+    """Whether ruff's file set under `paths` holds a Python file (`--show-files` also lists the
+    config files it lints, so those are not counted)."""
+    r = subprocess.run(
+        [*ruff, "--no-cache", "--show-files", *(paths or ["."])],
+        capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
+    )  # fmt: skip
+    return any(ln.strip().endswith(PY_SUFFIXES) for ln in r.stdout.splitlines())
 
 
 def rule_of(finding: dict) -> str:
