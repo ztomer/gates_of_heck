@@ -68,6 +68,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # under a consumer gate.sh whose slot structural.sh took for it -- counted from the slots.
 # shellcheck source=lib/worker_share.sh
 . "$HERE/../lib/worker_share.sh" && goh_workers_ensure || exit 1
+# shellcheck source=lib/timings_hold.sh
+. "$HERE/../lib/timings_hold.sh"  # goh_timings_unbind (GOH.TIMINGSBLEED)
 
 # GOH_RUST_GROUPS (env, read BEFORE .gatesrc so a repo file cannot narrow its own gate): which of
 # the three groups below this run proves. rust_each_crate.sh runs `repo` once and `crate,coverage`
@@ -380,8 +382,9 @@ rust_coverage_checks() {
 rust_coverage_plain() {
     local v unbind=(-u LLVM_PROFILE_FILE)
     for v in $(git rev-parse --local-env-vars 2>/dev/null); do unbind+=(-u "$v"); done
+    goh_timings_unbind unbind  # the tests write no row into this gate's profile (GOH.TIMINGSBLEED)
     goh_step_in "$cargo_dir" "cargo test (plain: the coverage measurement stands)" \
-        cargo test --locked --workspace --tests --all-features
+        env "${unbind[@]}" cargo test --locked --workspace --tests --all-features
     # shellcheck disable=SC2154  # RUST_COV_PLAIN_BINS is set by rust_coverage_reuse for this call
     goh_step_in "$cargo_dir" "external (plain): $GOH_COV_RUST_EXTERNAL" \
         env "${unbind[@]}" GOH_COVERAGE_BIN_DIR="$RUST_COV_PLAIN_BINS" bash -c "$GOH_COV_RUST_EXTERNAL"

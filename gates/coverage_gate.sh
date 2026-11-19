@@ -81,6 +81,10 @@ for _tui in "${GOH_GIT_ROOT:-}/tui/lib.sh" tui/lib.sh "$GOH_ROOT/tui/lib.sh"; do
 done
 unset _tui
 . "$GOH_ROOT/tui/plural.sh"  # plural_noun: a vendored lib.sh predates it
+# The tests this gate runs never write into the step profile it was handed (GOH.TIMINGSBLEED);
+# its own phase rows do, through goh_timings_held.
+# shellcheck source=lib/timings_hold.sh
+. "$GOH_ROOT/lib/timings_hold.sh" && goh_timings_hold
 # THIS GATE'S SHARE of the cores in every runner it starts (GOH.POOLSHARE): the admission's, or --
 # under a consumer gate.sh whose slot structural.sh took for it -- counted from the slots.
 # shellcheck source=lib/worker_share.sh

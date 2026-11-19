@@ -28,8 +28,9 @@ cov_phase() { # cov_phase <name> <log>: begin <name>, ending the phase in progre
         IFS=$'\t' read -r t0 name _ <"$COV_PHASE_FILE"
         printf '%s\n' "  ✓ phase '$name': $((now - t0)) s" >&3
         # A row per phase (GOH.RELEASELANDGATE): the step's rows named 4 of its 388 s on v0.139.4.
-        [ -z "${GOH_TIMINGS:-}" ] || "${GOH_PY:-python3}" "$COV_TIMINGS_PY" record "coverage phase: $name" \
-            "$(((now - t0) * 1000))" 0 phase </dev/null >/dev/null 2>&1 || true
+        # shellcheck disable=SC2154  # goh_timings_held is set by coverage_gate.sh (lib/timings_hold.sh)
+        [ "${#goh_timings_held[@]}" = 0 ] || env "${goh_timings_held[@]}" "${GOH_PY:-python3}" "$COV_TIMINGS_PY" \
+            record "coverage phase: $name" "$(((now - t0) * 1000))" 0 phase </dev/null >/dev/null 2>&1 || true
     fi
     if [ -n "$1" ]; then
         printf '%s\t%s\t%s\n' "$now" "$1" "${2:-}" >"$COV_PHASE_FILE"
