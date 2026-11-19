@@ -114,8 +114,11 @@ def append(q: Path, rows: list[dict]) -> int:
     have = {_key(r) for r in read(q)}
     new = [r for r in rows if _key(r) not in have]
     if new:
-        with path.open("a") as out:
-            out.writelines(json.dumps(r, sort_keys=True) + "\n" for r in new)
+        import state_append  # the lock lib/state_bounds.py trims under (GOH.LEDGERBOUND)
+
+        state_append.append(
+            path, "".join(json.dumps(r, sort_keys=True) + "\n" for r in new).encode()
+        )
     return len(new)
 
 

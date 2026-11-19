@@ -70,13 +70,10 @@ def _append(line: dict[str, Any]) -> str | None:
         data = json.dumps(line, sort_keys=True, separators=(",", ":"))
     try:
         path = ledger_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
-        try:
-            os.write(fd, (data + "\n").encode())
-        finally:
-            os.close(fd)
-    except OSError as e:
+        import state_append  # lib/: the lock lib/state_bounds.py trims under (GOH.LEDGERBOUND)
+
+        state_append.append(path, (data + "\n").encode())
+    except (OSError, RuntimeError) as e:  # RuntimeError: lib/lock_order.py's refusal
         return f"agent_guard: the lane ledger was not written ({e})."
     return None
 

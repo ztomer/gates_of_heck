@@ -159,13 +159,11 @@ def append(row: dict, path: Path | None = None) -> bool:
             :MAX_LINE
         ]
     try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(target, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
-        try:
-            os.write(fd, line)
-        finally:
-            os.close(fd)
-    except OSError:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import state_append  # the lock lib/state_bounds.py trims under (GOH.LEDGERBOUND)
+
+        state_append.append(target, line)
+    except (OSError, RuntimeError):  # RuntimeError: lib/lock_order.py's refusal
         return False
     return True
 
