@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## v0.139.13 -- reconcile: ONEVERDICTTREE (Holistic review 2026-11-19 read-only reviewer, verified by the), CIWALL (Measured by the coordinator 2026-11-19 from 8 runs data in)
+
+* Test time bounds stretch by the box's measured core speed as well as its load (GOH.CIWALL). `tests/_drift_guard.py` `load_factor()`, which the per-test ceiling, `timing_bounds.bound`, `patience` and `GiveUp` all read, now multiplies the run queue per core by `speed_factor()`: the CPU time of a fixed loop against the owner's box (0.016 s), measured once by the controller and handed to every worker, never below 1 and capped at 4. The 3-core hosted runner turned v0.139.2 and v0.139.3 red on a 60 s ceiling stretched by its load alone (299.9 s against 258 s).
+
+* Hosted CI runs the instrumented suite in shards (GOH.CIWALL). `.github/workflows/gate.yml` is three jobs: the gate (`tools/gate.sh --full`, its coverage group making only the workspace's part, `GOH_COV_PART=workspace`), a `suite` matrix of 4 shards each running the suite's K-th part under the instrumented binary (`GOH_COV_PART=K/N`, `GOH_SUITE_SHARD`, tests/_shard.py), and `coverage`, which merges every part and judges the floor and the change's lines as one run does (`GOH_COV_PARTS_IN`, gates/_coverage_parts.sh), red when a part is missing. The shards are a function of the collection alone and keep each xdist group whole (tests/test_suite_shard.py); the merged parts give the unsharded run's verdict and summary (tests/test_coverage_parts.py). tests/ci_shape.py reads the suite's environment from the shard step. The one job's wall was 49.6 min (median of 8), 2080-2526 s of it the suite.
+* A run on main is never superseded: each is its own concurrency group, so a release's run is no longer cancelled by the next release (2 of 13 were); branches still cancel. The coverage build dir and the resolver's goh store are cached by content.
+
+* The Rust coverage measurement keys the GOH_* it can read, by value, never the whole
+  configuration (GOH.ONEVERDICTTREE, lib/cov_env.py): the names the keyed files' bytes spell (the
+  Rust build inputs, the coverage scripts, the suite's runner; a name ending in `_` is a prefix)
+  and the suite's declared inputs (tests/suite_home.py CALLER_INPUTS, the only GOH_* the suite
+  keeps). The land's own bookkeeping no longer voids the release push's reuse (9 of the last 9
+  releases re-measured, 380-980 s each), and a miss names the variable that moved. A repo whose
+  suite declares nothing keys every GOH_* as before. docs/reuse.md maps the eight stages a goh
+  change is verified in, with their keys and measured seconds.
+* The proven cache's own settings (GOH_PROVEN*) are no input of the coverage measurement's key
+  (GOH.ONEVERDICTTREE): the first land under the new key recorded `goh-env GOH_PROVEN=1`, which
+  tools/gate_profile.sh sets for the land and the release push leaves unset; GOH_PROVEN=0 still
+  makes no key at all.
+
 ## v0.139.12 -- reconcile: CIPARITY (2 of the last 5 goh releases were green on the box and red in hosted C), LOADWHY (2026-11-19 08), HOLDERORPHAN (2026-11-19 13)
 
 * A land's suite runs as hosted CI runs it (GOH.CIPARITY): a suite carrying a land key
