@@ -422,20 +422,20 @@ def record_suite(repo: Path, tree: str, tools: str, passed: dict[str, bool], fai
     tree itself (none carried, nothing failed), so an old pass it neither made nor found judged
     leaves (an id it never collected, as one naming another checkout: GOH.SHIPTREEFULL). A record
     stays full while no later run fails and every pass in it is `judged` (GOH.CARRYASFULL).
-    `instrumented`: the run drove the INSTRUMENTED binary (GOH.COVCARRY); `measured` ({node: it
-    left a profile}): what such a run SAW, all coverage may carry; `judged` (all of `passed` when
-    unnamed): the passes made ON this tree (SHIPBREACH0137)."""
+    `instrumented`: a run drove the INSTRUMENTED binary (GOH.COVCARRY), a carrying land too; its
+    WHOLE judgement did: `full_instrumented`, a ship's need (GOH.PROFKEYMISS). `measured` ({node:
+    it left a profile}): what such a run SAW, all coverage may carry; `judged`: passes made HERE."""
     old = lookup(CARRY, fields := carry_fields(repo, tree, tools))[0] or {}
     mine = (set(old.get("judged") or ()) | (set(passed) if judged is None else judged)) - failed
     merged = {n: bool(b) for n, b in old.get("passed", {}).items()
               if n not in failed and (n in mine or not full)}  # fmt: skip
     merged.update(passed)
     whole = (full or bool(old.get("full"))) and not failed and set(merged) <= mine
-    inst = ((full and instrumented) or bool(old.get("instrumented"))) and whole
+    inst = ((full and instrumented) or bool(old.get("full_instrumented"))) and whole
     seen = {n: bool(b) for n, b in old.get("measured", {}).items() if n not in failed}
-    seen.update(measured or {})
-    extra = {"passed": merged, "full": whole, "carried": carried, "instrumented": inst,
-             "measured": seen, "judged": sorted(mine & set(merged))}  # fmt: skip
+    extra = {"passed": merged, "full": whole, "carried": carried, "full_instrumented": inst,
+             "instrumented": instrumented or bool(old.get("instrumented")),
+             "measured": seen | (measured or {}), "judged": sorted(mine & set(merged))}  # fmt: skip
     out = record(CARRY, fields, "red" if failed else "green", by, extra)
     prune(CARRY)
     return out

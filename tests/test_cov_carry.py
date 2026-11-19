@@ -51,6 +51,33 @@ def test_a_plain_full_run_is_no_full_suite_verdict_for_a_ship(store, repo) -> No
     assert ship_suite.full_suite(repo, sha)[0] is None
 
 
+def test_an_instrumented_land_that_carried_records_it_drove_the_instrumented_binary(
+    store, repo
+) -> None:
+    """GOH.PROFKEYMISS: `instrumented` was true only for a FULL instrumented run, so a land-gate
+    run that measured every test it ran against the instrumented goh, carrying the rest, read
+    `instrumented: False` (seen in a carry record: 2641 carried, 6399 measured). The ship's own
+    question -- was the FULL judgement instrumented -- is `full_instrumented`, and a partial
+    instrumented run on a tree a plain run judged whole never answers it."""
+    sha = git(repo, "rev-parse", "HEAD").strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").strip()
+    tools = gate_identity.suite_tools()
+    reuse.record_suite(repo, tree, tools, {"t.py::a": True}, set(), False, "land gate", carried=5,
+                       instrumented=True, measured={"t.py::a": True})  # fmt: skip
+    rec = reuse.lookup_suite(repo, tree, tools)[0]
+    assert rec["instrumented"] and not rec["full_instrumented"], rec
+    reuse.record_suite(repo, tree, tools, {"t.py::a": True}, set(), True, "gate")  # plain, whole
+    rec = reuse.lookup_suite(repo, tree, tools)[0]
+    assert rec["full"] and rec["instrumented"] and not rec["full_instrumented"], rec
+    rec, why = ship_suite.full_suite(repo, sha)
+    assert rec is None and "fresh INSTRUMENTED full run" in why, why
+    reuse.record_suite(repo, tree, tools, {"t.py::a": True}, set(), True, "idle", instrumented=True)
+    assert ship_suite.full_suite(repo, sha)[0] is not None
+    old = {"passed": {"t.py::a": True}, "full": True, "instrumented": True}  # before the split
+    reuse.record(reuse.CARRY, reuse.carry_fields(repo, tree, tools), "green", "idle", old)
+    assert ship_suite.full_suite(repo, sha)[0] is not None
+
+
 def test_the_suite_records_whether_it_drove_the_instrumented_binary(tmp_path, store) -> None:
     d = tmp_path / "s"
     d.mkdir()
@@ -63,7 +90,7 @@ def test_the_suite_records_whether_it_drove_the_instrumented_binary(tmp_path, st
     assert inst.returncode == 0, inst.stdout
     assert not reuse.lookup_suite(REPO_ROOT, "TP", "TOOLS")[0]["instrumented"]
     rec, _ = reuse.lookup_suite(REPO_ROOT, "TI", "TOOLS")
-    assert rec["full"] and rec["instrumented"], rec
+    assert rec["full"] and rec["instrumented"] and rec["full_instrumented"], rec
 
 
 def test_the_idle_full_run_is_the_instrumented_coverage_run(tmp_path) -> None:

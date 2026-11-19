@@ -3,10 +3,11 @@
 Owner, 2026-11-17, the terms for carrying coverage profiles across trees (D-0011 option 4): "a
 fresh full instrumented run happens on main's tip before every ship". The idle lander makes it
 (lib/full_run.py INSTRUMENTED: the coverage gate's Rust mode, its external suite against the
-instrumented binary); the suite's record says its run was instrumented (lib/reuse.py
-record_suite); and `reuse.py full-suite` -- the release kit's check (tools/release_goh.sh) -- asks
-`full_suite` here, which refuses a tip whose full record drove the plain binary. Split from
-lib/reuse.py for its line cap; it reads the `carry` path's record through that module only.
+instrumented binary); the suite's record says its whole judgement was instrumented (lib/reuse.py
+record_suite, `full_instrumented`); and `reuse.py full-suite` -- the release kit's check
+(tools/release_goh.sh) -- asks `full_suite` here, which refuses a tip whose full record drove the
+plain binary. Split from lib/reuse.py for its line cap; it reads the `carry` path's record through
+that module only.
 """
 
 from __future__ import annotations
@@ -37,7 +38,9 @@ def full_suite(repo: Path, sha: str) -> tuple[dict | None, str]:
         carried = rec.get("carried") or 0
         how = f"{carried} tests carried from another tree" if carried else "a partial or red run"
         return None, f"the suite record of tree {tree[:12]} is no full run ({how})"
-    if not rec.get("instrumented"):
+    # `instrumented` alone says some run was (GOH.PROFKEYMISS); a record older than the split said
+    # it of the full run only.
+    if not rec.get("full_instrumented", rec.get("instrumented")):
         return None, (f"the full run of tree {tree[:12]} drove the plain binary: a ship needs a "
                       "fresh INSTRUMENTED full run (lib/ship_full_run.py, "
                       "or the idle lander)")  # fmt: skip
