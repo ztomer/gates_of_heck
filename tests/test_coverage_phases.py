@@ -9,19 +9,20 @@ took, on the gate's stdout as it runs, and a stop signal names the phase it land
 
 from __future__ import annotations
 
+import os
 import re
+import signal
 import stat
 import subprocess
-import sys
+import time
 from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT, hermetic_env, llvm_cov_shim
 from cov_fakes import SHOW_ENV_FLOW
-from timing_bounds import patience
+from timing_bounds import GiveUp, patience
 
 COV_GATE = REPO_ROOT / "gates" / "coverage_gate.sh"
-BOUNDED = REPO_ROOT / "lib" / "bounded_run.py"
 
 FAKE_CARGO = (
     """\
@@ -38,10 +39,6 @@ esac
     + """\
 case "$1" in
   build)
-    # A starved prefix, by CPU spent rather than wall time (GOH.LOADFLAKES): FAKE_BURN_S seconds.
-    [ -z "${FAKE_BURN_S:-}" ] || "$FAKE_PY" -c "import time
-t = time.process_time() + $FAKE_BURN_S
-while time.process_time() < t: pass"
     exe="$CARGO_LLVM_COV_TARGET_DIR/debug/ph"
     mkdir -p "${exe%/*}"; : >"$exe"; chmod +x "$exe"
     printf '{"reason":"compiler-artifact","filenames":["%s"],"executable":"%s"}\\n' "$exe" "$exe"
@@ -118,52 +115,48 @@ def test_every_phase_streams_its_start_and_its_elapsed(tmp_path: Path) -> None:
 
 @pytest.mark.load_sensitive
 def test_a_step_killed_on_its_ceiling_names_the_phase_it_was_in(tmp_path: Path) -> None:
-    """A fake external suite stalling past its ceiling: the kill leaves that phase named.
+    """A fake external suite stalled in its phase: the stop signal leaves that phase named.
 
-    The ceiling is `--stall 3`, not `--timeout 3` (GOH.LOADFLAKES): a 3 s WALL ceiling expired at
-    load 110-180 before the gate had even reached the stalled phase ("TIMED OUT after 3s"), so the
-    test measured the box. A stall counts only seconds in which the step's group spends no CPU and
-    has nothing runnable, so a starved prefix is progress and only the idle `sleep` expires it."""
+    The signal is the TEST's, sent when the stalled phase says it is running (GOH.COVPHASESTALL).
+    Twice the ceiling that sent it was a wall-clock one (`--timeout 3`, then `--stall 3`), and at
+    load 110-180 it expired in a prefix the box starved before the phase began: the test judged the
+    machine, not the naming. Whether a ceiling expires an idle group is bounded_run's own clock,
+    driven by a fake one in tests/test_stall_clock.py; here the stalled phase says "I am running"
+    by touching a file, and only then does the test stop the step: no clock decides when."""
     proj, env = _setup(tmp_path)
-    # The instrumented build spends 4 s of CPU before the stall: a prefix longer than the ceiling,
-    # as load 110-180 made it. A wall ceiling of 3 s expires in it; the stall ceiling must not.
-    env.update(FAKE_BURN_S="4", FAKE_PY=sys.executable)
     marker = "suite-output-before-the-stall"
-    cmd = [
-        sys.executable,
-        "-S",
-        str(BOUNDED),
-        "--timeout",
-        "150",
-        "--stall",
-        "3",
-        "--grace",
-        "5",
-        "--label",
-        "coverage",
-        "--",
-        *_gate(proj, f"echo {marker}; sleep 60"),
-    ]
-    r = subprocess.run(
-        cmd,
-        cwd=proj,
-        capture_output=True,
-        text=True,
-        env=env,
-        timeout=200,
-        stdin=subprocess.DEVNULL,
-        check=False,
-    )
-    out = r.stdout + r.stderr
-    assert r.returncode == 124, out
-    assert "(stalled)" in out, out  # the stall ceiling expired it, not the wall backstop
-    # the phases before the stall ended; the stalled one started and is named by the kill
+    ready = tmp_path / "stalled-phase-is-running"
+    phase = f"echo {marker}; touch {ready}; sleep 60"
+    log = tmp_path / "gate.out"
+    with log.open("wb") as sink:
+        gate = subprocess.Popen(
+            _gate(proj, phase),
+            cwd=proj,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=sink,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,  # its own group, as bounded_run gives a step
+        )
+        try:
+            until = GiveUp(60)
+            while not ready.exists():
+                assert gate.poll() is None, log.read_text()
+                assert not until.passed(), "the stalled phase never started: " + log.read_text()
+                time.sleep(0.05)
+            os.killpg(gate.pid, signal.SIGTERM)  # what bounded_run's sweep sends on its ceiling
+            code = gate.wait(timeout=patience(60))
+        finally:
+            if gate.poll() is None:
+                os.killpg(gate.pid, signal.SIGKILL)
+                gate.wait()
+    out = log.read_text()
+    assert code == 143, out
+    # the phases before the stall ended; the stalled one started and is named by the stop
     assert "✓ phase 'external: instrumented build'" in out, out
-    assert f"phase 'external: echo {marker}; sleep 60' started" in out, out
+    assert f"phase 'external: {phase}' started" in out, out
     assert re.search(
-        rf"stopped by SIGTERM in phase 'external: echo {marker}; sleep 60' "
-        r"after \d+ s",
-        out,
+        rf"stopped by SIGTERM in phase 'external: {re.escape(phase)}' after \d+ s", out
     ), out
     assert marker in out, out  # the tail of the stalled phase's own log
 

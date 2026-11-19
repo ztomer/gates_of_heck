@@ -17,6 +17,7 @@ import time
 
 import pytest
 from conftest import REPO_ROOT, hermetic_env, write
+from timing_bounds import patience
 
 CHECK = REPO_ROOT / "checks" / "check_mcp_wire.py"
 SERVER = REPO_ROOT / "tests" / "fixtures" / "mcp_wire" / "server.py"
@@ -389,12 +390,15 @@ def calls(tmp_path):
     return p.read_text(encoding="utf-8").splitlines() if p.exists() else []
 
 
-@pytest.mark.load_sensitive
 def test_a_slow_build_and_a_fast_server_is_green_the_build_is_not_timed_as_the_answer(
     repo, tmp_path
 ):
-    """The build (10 s) is longer than the whole wire bound (6 s); the server answers at once."""
-    r = cargo_gate(repo, tmp_path, server_line(tmp_path, "built"), timeout=6, build_s=10)
+    """The build is longer than the whole wire bound; the server answers at once.
+
+    The bound is 6 s on a quiet box and stretched by the load (GOH.COVPHASESTALL): a fixed 6 s was
+    the box's answer time at load ~114, not the server's. The build stays 4 s past it."""
+    wire = int(patience(6))
+    r = cargo_gate(repo, tmp_path, server_line(tmp_path, "built"), timeout=wire, build_s=wire + 4)
     green(r)
     assert calls(tmp_path)[0] == "build --release --locked --quiet", calls(tmp_path)
 

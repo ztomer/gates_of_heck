@@ -6,6 +6,7 @@
   {"id": "GOH.COVDEDUPE2", "test": "tests/test_self_hosted_hook.py::test_self_hosted_repo_satisfies_its_own_hook", "seen": "exceeded the drift guard's 60 s ceiling at load 8"},
   {"id": "GOH.BENCHLOCKFLAKE", "test": "tests/test_bench_lock.py::test_a_measurement_waits_for_a_running_gate_and_drops_a_dead_ones_entry", "seen": "a 3 s wait for a gate expired under load (15ce61fa)"},
   {"id": "GOH.LOADFLAKES", "test": "tests/test_coverage_phases.py::test_a_step_killed_on_its_ceiling_names_the_phase_it_was_in", "seen": "TIMED OUT after 3s at load 110-180, passed on re-run (516f8c51)"},
+  {"id": "GOH.COVPHASESTALL", "test": "tests/test_coverage_phases.py::test_a_step_killed_on_its_ceiling_names_the_phase_it_was_in", "seen": "its --stall 3 ceiling expired in a prefix the box starved, at load ~114, and turned an enqueue pre-step red"},
   {"id": "GOH.LOADFLAKES", "test": "tests/test_tree_lock.py::test_second_gate_waits_for_the_first", "seen": "LOCKED at load 110-180, passed on re-run (516f8c51)"},
   {"id": "GOH.BOUNDEDRUNFLAKE", "test": "tests/test_bounded_run_interrupt.py::test_a_signal_to_the_wrapper_reaps_the_step", "seen": "a 10 s wait starved at load ~200 and failed a land (2026-11-14)"},
   {"id": "GOH.SELFGATEPS", "test": "tests/test_self_gate.py::test_a_goh_commit_is_judged_by_its_staged_tree_and_that_trees_binary", "seen": "a whole-table ps under a 30 s cap expired at load 50-110 in two lands (2026-11-15)"},

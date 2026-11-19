@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT
+from timing_bounds import GiveUp, patience
 
 LIB = REPO_ROOT / "lib" / "container_runtime.sh"
 
@@ -106,8 +107,8 @@ def _spawn(tmp_path: Path, script: str, **extra: str) -> subprocess.Popen[str]:
 
 
 def _wait_for(path: Path, timeout: float = 5.0) -> None:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
+    until = GiveUp(timeout)  # re-reads the load at every check (GOH.COVPHASESTALL)
+    while not until.passed():
         if path.exists():
             return
         time.sleep(0.05)
@@ -206,10 +207,10 @@ goh_container_runtime_down || exit 2
             assert "colima stop" in log
         finally:
             proc_b.terminate()
-            proc_b.wait(timeout=5)
+            proc_b.wait(timeout=patience(5))
     finally:
         proc_a.terminate()
-        proc_a.wait(timeout=5)
+        proc_a.wait(timeout=patience(5))
 
     assert proc_a.returncode == 0
     assert proc_b.returncode == 0
@@ -295,8 +296,12 @@ def test_a_lock_held_by_a_killed_process_does_not_wedge_the_next(tmp_path: Path)
     )
     _wait_for(tmp_path / "held")
     holder.kill()
-    holder.wait(timeout=5)
-    res = _run(tmp_path, 'goh_container_runtime_up "next"\ngoh_container_runtime_down', timeout=10)
+    holder.wait(timeout=patience(5))
+    res = _run(
+        tmp_path,
+        'goh_container_runtime_up "next"\ngoh_container_runtime_down',
+        timeout=patience(10),
+    )
     assert res.returncode == 0, res.stderr
 
 
