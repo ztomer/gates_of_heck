@@ -52,8 +52,11 @@ from gate_identity import (
 # that runs `goh` or builds a goh path in Python.
 RUNNER = ("gates/local_ci.sh", "gates/proven.sh")
 _DISPATCH = re.compile(r"\bgoh_native\b|\bGOH_RESOLVED_BIN\b|\$\{?GOH_BIN\b")
-_ROOT_VAR = re.compile(r"\$\{?(?:GOH_DIR|GOH_ROOT|GOH|PROVEN_GOH_ROOT)\b")
-_DYNAMIC = re.compile(r"\$\{?(?:HERE|_goh_d|GOH_ROOT|GOH_DIR|GOH)\}?/[^\s\"';|&)]*[*$]")
+_ROOTS = "|".join(source_closure.ROOT_VARS)  # the goh checkout's names (lib/run_rule.py)
+_ROOT_VAR = re.compile(rf"\$\{{?(?:{_ROOTS})\b")
+_DYNAMIC = re.compile(
+    rf"\$\{{?(?:{'|'.join(source_closure.SELF_VARS)}|{_ROOTS})\}}?/[^\s\"';|&)]*[*$]"
+)
 _RUNS_GOH = re.compile(r"(?:^|[\s;&|(`])goh(?=[ \t]+-?[a-z])|[\"']goh[\"']\s*,")
 _PY_GOH = re.compile(r"\bGOH_DIR\b|\bGOH_ROOT\b|gates_of_heck")
 _STEP_VAR = re.compile(r"\$\{?(GOH_DIR|GOH_ROOT|GOH|PWD)\}?(?=/|$)")
@@ -132,9 +135,7 @@ def _consumer_reach(seeds: set[str], repo: Path, goh: Path) -> tuple[set[str], s
                 found += [goh / c for c in hits if source_closure.names_path(code, c)]
         elif source_closure._is_shell(path):
             for line in code.splitlines():
-                runs = [
-                    m for m in _RUN.finditer(line) if m.group(1) in ("GOH_ROOT", "GOH_DIR", "GOH")
-                ]
+                runs = [m for m in _RUN.finditer(line) if m.group(1) in source_closure.ROOT_VARS]
                 for m in runs:
                     found.append(goh / os.path.normpath(m.group(2)))
                 if _ROOT_VAR.search(line) and not runs and not source_closure._SOURCE.search(line):

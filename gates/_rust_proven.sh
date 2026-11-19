@@ -266,7 +266,8 @@ _rust_cov_inputs() {
     d="$(cd "${GOH_DIR:-$PROVEN_GOH_ROOT}" 2>/dev/null && /bin/pwd -P)" || d=""
     if [ -n "$d" ] && [ "$d" != "$PROVEN_GOH_ROOT" ] && [ -f "$d/lib/gate_identity.py" ]; then
         extra="$(cd "$top" && "$GOH_PY" -S "$PROVEN_GOH_ROOT/lib/gate_identity.py" rust --repo "$top" \
-            --root "$d" </dev/null 2>&1 | grep '^scripts ')" || { echo "no identity for GOH_DIR's scripts"; return 1; }
+            --root "$d" "${args[@]}" </dev/null 2>&1 | grep -E '^(scripts|runner-goh) ')" \
+            || { echo "no identity for GOH_DIR's scripts"; return 1; }
     fi
     printf 'rust-coverage v3\nstep %s\n%s\n' "$1" "$ident"
     if [ -n "$extra" ]; then printf 'GOH_DIR %s\n' "$extra"; fi

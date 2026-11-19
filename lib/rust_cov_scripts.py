@@ -8,16 +8,18 @@ through lib/xexit.py -- and the rest), and 36 with what they run. An edit to any
 coverage verdict another program had measured.
 
 THE CLOSURE NOW. Every file gates/rust_gate.sh reaches, transitively: what it sources and imports
-(lib/source_closure.py), and what a shell script's code names by a variable-rooted or
-script-relative path (`"$GOH_PY" "$PROVEN_GOH_ROOT/lib/gate_identity.py"`, `bash "$HERE/x.sh"`,
-`"$(dirname "${BASH_SOURCE[0]}")/y.sh"`): the path after the variable, read from the script's
-directory or the gates root, is an edge when it names a file under a code part of goh (gates/
-checks/ lib/ tools/ tui/ scripts/). A name at the root (`$cargo_dir/Cargo.toml`, `$ROOT/.gatesrc`)
-is the gated repo's own file, never goh's. The variable's value is not read: following a name is
-the over-approximation a key wants (a wrong reuse is worse than a slow gate).
+(lib/source_closure.py), and each script a shell script's code names by a rooted path
+(`"$GOH_PY" "$PROVEN_GOH_ROOT/lib/gate_identity.py"`, `bash "$HERE/x.sh"`), placed through a
+DECLARED root (lib/run_rule.py, GOH.RUNRULEROOTS): a script through any other variable is a hole,
+and so is one through a declared root to no file. A data path (`$HERE/../lib/x.json`) is an edge
+when its tail, read from the script's directory or the gates root, names a file under a code part
+of goh (gates/ checks/ lib/ tools/ tui/ scripts/); a name at the root (`$cargo_dir/Cargo.toml`,
+`$ROOT/.gatesrc`) is the gated repo's own. Following a name is the over-approximation a key wants
+(a wrong reuse is worse than a slow gate).
 
-A HOLE fails loudly. A `source`/`.` whose word the reading cannot place (`. "$_goh_tui"`), and a run
-of a bare variable (`exec "$goh_native"`, `bash -c "$EXTERNAL"`), could reach any file. Each one in
+A HOLE fails loudly. A `source`/`.` whose word the reading cannot place (`. "$_goh_tui"`), a run
+of a bare variable (`exec "$goh_native"`, `bash -c "$EXTERNAL"`) and a script through an undeclared
+root (`$GOH_GIT_ROOT/tui/lib.sh`) could reach any file. Each one in
 the closure is DECLARED below with what it reaches and why that is keyed or no input; an undeclared
 one raises LookupError, so the measurement has no identity and runs (gate_identity.py `rust` exits
 1), and tests/test_cov_key_closure.py fails on it. A Python file of the closure that runs a script
@@ -30,17 +32,12 @@ import os
 import re
 from pathlib import Path
 
+import run_rule  # lib/, beside this file: a script path's declared root (GOH.RUNRULEROOTS)
 import source_closure  # lib/, beside this file
 
 RUST_GATE = ("gates/rust_gate.sh",)  # the entry: _rust_proven.sh and coverage_gate.sh are its edges
 RUST_MEASURE = "gates/coverage_gate.sh"
 CODE_PARTS = ("gates", "checks", "lib", "tools", "tui", "scripts")
-# A path rooted at a variable or at the script's own directory, in a shell script's code.
-ROOTED = re.compile(
-    r"(?:\$\{?[A-Za-z_][A-Za-z0-9_]*\}?"
-    r'|\$\(\s*dirname\s+"?\$\{?BASH_SOURCE(?:\[0\])?\}?"?\s*\)'
-    r"|\$\{BASH_SOURCE(?:\[0\])?%/\*\})((?:/[A-Za-z0-9_.+-]+)+)"
-)
 # A run of a bare variable: the command it names is decided at run time.
 DYNAMIC_RUN = re.compile(
     r'(?:(?<![\w/-])(?:bash|sh|exec|python3?)|"\$\{?GOH_PY\}?")\s+(?:-[A-Za-z-]+\s+)*'
@@ -79,6 +76,12 @@ DECLARED = {
     'gates/_proven_why.sh: "$GOH_PY" -S "$_PROVEN_IDENTITY_PY"': _HELPER,
     'lib/gate_slot.sh: "$GOH_PY" -S "$helper"': _HELPER,
     'lib/worker_share.sh: "$GOH_PY" -S "$WORKER_SHARE_HELPER"': _HELPER,
+    # A script path through no declared root (lib/run_rule.py): keyed by its tail's goh file.
+    "gates/_common.sh: $GOH_GIT_ROOT/tui/lib.sh": _TUI,
+    "gates/coverage_gate.sh: $GOH_GIT_ROOT/tui/lib.sh": _TUI,
+    "gates/local_ci.sh: $GOH_GIT_ROOT/tui/lib.sh": _TUI,
+    "gates/_goh_bin.sh: $here/../scripts/build-goh.sh": "the live root's or this root's builder",
+    "gates/_rust_proven.sh: $d/lib/gate_identity.py": "GOH_DIR's checkout: its own `--root` line",
 }
 # A Python file of the closure that runs another by path: `rel` -> the files, kept as edges.
 RUNS_BY_NAME = {
@@ -91,20 +94,28 @@ def _code_file(rel: str) -> bool:
     return "/" in rel and rel.split("/", 1)[0] in CODE_PARTS
 
 
-def runs(rel: str, root: Path) -> tuple[list[str], list[str]]:
-    """The goh code files a shell script's code names by a rooted path, and its holes: each source
-    word nothing places and each run of a bare variable, as `<rel>: <form>`."""
+def runs(rel: str, root: Path, goh: Path) -> tuple[list[Path], list[str]]:
+    """The files a shell script's code names by a rooted path, and its holes, as `<rel>: <form>`:
+    each script path (lib/run_rule.py) through no declared root, or through one to no file; each
+    source word nothing places; each run of a bare variable. A DECLARED script form, and a data
+    path, is read as a goh code file from the script's directory or the gates root: following a
+    name over-approximates, which a key wants."""
     here = Path(rel).parent
-    edges: list[str] = []
+    edges: list[Path] = []
     holes: list[str] = []
+    for form, target in run_rule.script_paths(root / rel, goh):
+        if target is not None and target.is_file():
+            edges.append(target)
+        elif target is not None:
+            holes.append(f"{rel}: {form} names no file")
+        else:  # a hole, met declared or not; a declared one is followed by its tail too
+            holes.append(f"{rel}: {form}")
+            edges += _guess(form[form.index("/") :], here, root)
     for raw in (root / rel).read_text(encoding="utf-8", errors="replace").splitlines():
         line = source_closure._strip_comment(raw)
-        for m in ROOTED.finditer(line):
-            tail = m.group(1).lstrip("/")
-            for cand in (os.path.normpath(here / tail), os.path.normpath(tail)):
-                if _code_file(cand) and (root / cand).is_file():
-                    edges.append(cand)
-                    break
+        for m in run_rule.ROOTED.finditer(line):
+            if not m.group(2).endswith(run_rule.SCRIPT):  # a script path is read above
+                edges += _guess(m.group(2), here, root)
         for m in source_closure._SOURCE.finditer(line):
             word = source_closure._word(line, m.end())
             if not _placed(word, here, root):
@@ -113,23 +124,33 @@ def runs(rel: str, root: Path) -> tuple[list[str], list[str]]:
     return edges, holes
 
 
+def _guess(tail: str, here: Path, root: Path) -> list[Path]:
+    """The goh code file a rooted path's tail names, from the script's directory or the root."""
+    tail = tail.lstrip("/")
+    for cand in (os.path.normpath(here / tail), os.path.normpath(tail)):
+        if _code_file(cand) and (root / cand).is_file():
+            return [root / cand]
+    return []
+
+
 def _placed(word: str, here: Path, root: Path) -> bool:
-    """Whether a source word names a file this reading keys: one source_closure places, or a rooted
-    path whose tail is a goh code file."""
+    """Whether a source word names a file this reading keys or judges: one source_closure places, a
+    script path (judged by `runs` through run_rule), or a rooted path to a goh code file."""
     if source_closure._resolve(word, root / here, root, {}) is not None:
         return True
-    m = ROOTED.match(word)
-    if m is None:
+    m = run_rule.ROOTED.match(word)
+    if m is None or m.end() != len(word):
         return False
-    tail = m.group(1).lstrip("/")
-    return any(_code_file(c) and (root / c).is_file()
-               for c in (os.path.normpath(here / tail), os.path.normpath(tail)))  # fmt: skip
+    return m.group(2).endswith(run_rule.SCRIPT) or bool(_guess(m.group(2), here, root))
 
 
-def closure(seeds, root: Path, goh: Path) -> tuple[set[str], list[str]]:
+def closure(
+    seeds, root: Path, goh: Path, outside: set[str] | None = None
+) -> tuple[set[str], list[str]]:
     """seeds and every file under root they source, import or run (RUNS_BY_NAME too), and every
-    hole met (`<rel>: <form>`), declared or not. One read of each file."""
-    root = Path(os.path.normpath(root))
+    hole met (`<rel>: <form>`), declared or not. One read of each file. A file of goh when goh is
+    not root (a consumer's runner sourcing `$GOH_DIR/lib/x`) lands in `outside`, goh-relative."""
+    root, goh = Path(os.path.normpath(root)), Path(os.path.normpath(goh))
     files: set[str] = set()
     holes: set[str] = set()
     todo = sorted(seeds)
@@ -140,14 +161,18 @@ def closure(seeds, root: Path, goh: Path) -> tuple[set[str], list[str]]:
             continue
         files.add(rel)
         found = list(RUNS_BY_NAME.get(rel, ()))
-        for raw in source_closure.direct(path, root, goh)[0]:
-            dep = Path(os.path.normpath(raw))
-            if dep.is_relative_to(root):  # outside the tree: a consumer's, or a system file
-                found.append(dep.relative_to(root).as_posix())
+        deps = source_closure.direct(path, root, goh)[0]
         if source_closure._is_shell(path):
-            edges, met = runs(rel, root)
-            found += edges
+            edges, met = runs(rel, root, goh)
+            deps += edges
             holes.update(met)
+        for raw in deps:
+            dep = Path(os.path.normpath(raw))
+            if dep.is_relative_to(root):
+                found.append(dep.relative_to(root).as_posix())
+            elif outside is not None and dep.is_relative_to(goh):
+                outside.add(dep.relative_to(goh).as_posix())
+            # else outside both trees: a system file
         todo += [f for f in found if f not in files]
     return files, sorted(holes)
 
@@ -174,12 +199,8 @@ def rust_gate_scripts(root: Path) -> list[str]:
     return sorted(files)
 
 
-def runner_files(repo: Path, external: str, goh: Path) -> list[str]:
-    """The files the external suite's command runs the binary THROUGH (GOH.RUSTCOVKEYSCOPE): each
-    word of GOH_COV_RUST_EXTERNAL that names a file of the repo (`./tools/pytest.sh`), and what it
-    sources, imports or runs. The suite itself is not one (the owner's rule, GOH.RUSTCOVSKIP):
-    anything under tests/ is left out, as is a word naming a directory (`pytest tests/`). A hole
-    raises LookupError, as in rust_gate_scripts."""
+def _runner_seeds(repo: Path, external: str) -> set[str]:
+    """Each word of GOH_COV_RUST_EXTERNAL that names a file of the repo (`./tools/pytest.sh`)."""
     import shlex
 
     try:
@@ -198,11 +219,37 @@ def runner_files(repo: Path, external: str, goh: Path) -> list[str]:
             continue
         if cand.is_file():
             seeds.add(rel)
-    if not seeds:
+    return seeds
+
+
+def runner_files(repo: Path, external: str, goh: Path) -> list[str]:
+    """The files the external suite's command runs the binary THROUGH (GOH.RUSTCOVKEYSCOPE): each
+    word of GOH_COV_RUST_EXTERNAL that names a file of the repo (`./tools/pytest.sh`), and what it
+    sources, imports or runs. The suite itself is not one (the owner's rule, GOH.RUSTCOVSKIP):
+    anything under tests/ is left out, as is a word naming a directory (`pytest tests/`). A hole
+    raises LookupError, as in rust_gate_scripts."""
+    if not (seeds := _runner_seeds(repo, external)):
         return []
-    files, holes = closure(seeds, top, goh)
+    files, holes = closure(seeds, repo.resolve(), goh)
     if missing := undeclared(holes):
         raise LookupError(
             "the suite's runner reaches what no reading places: " + "; ".join(missing)
         )
     return sorted(r for r in files if r.split("/")[0] != "tests")
+
+
+def runner_goh_files(repo: Path, external: str, goh: Path) -> list[str]:
+    """The goh files a consumer's runner reaches through goh's root (`. "$GOH_DIR/lib/x.sh"`,
+    `bash "$GOH_DIR/gates/y.sh"`) and their closure in goh, goh-relative (GOH.RUNRULEROOTS): they
+    decide the run as much as the runner does. Empty for goh's own runner, whose files are the
+    repo's. A hole raises LookupError."""
+    reach: set[str] = set()
+    if seeds := _runner_seeds(repo, external):
+        closure(seeds, repo.resolve(), goh, reach)  # its holes are runner_files'
+    if not reach:
+        return []
+    files, holes = closure(reach, goh, goh)
+    if missing := undeclared(holes):
+        raise LookupError("the suite's runner reaches, in goh, what no reading places: "
+                          + "; ".join(missing))  # fmt: skip
+    return sorted(files)

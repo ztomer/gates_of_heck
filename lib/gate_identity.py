@@ -85,12 +85,11 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cov_env  # lib/, beside this file: what the coverage measurement reads
 import identity_cache  # lib/, beside this file: the cross-process memo (GOH.IDENTITYPORT)
+import run_rule  # lib/, beside this file: the run edge through a declared root (GOH.RUNRULEROOTS)
 import rust_cov_scripts  # lib/, beside this file: the coverage scripts' closure (GOH.COVKEYGAP)
-import source_closure  # lib/, beside this file
 from tool_shim import fingerprint, past_shims  # lib/, beside this file
 
-# lib/step_closure.py's run edge and closure, from the module that reads sources (GOH.COVKEYGAP).
-_RUN, _closure = source_closure.RUN, source_closure.run_closure
+_RUN, _closure = run_rule.RUN, run_rule.run_closure  # lib/step_closure.py's run edge, closure
 TOOLS = ("rustc", "cargo", "python3", "swift", "shellcheck", "ruff", "cargo-llvm-cov", "xcodebuild")
 # The binary's build ROOTS; its inputs add each file a crate embeds: ask build_inputs, never this.
 BUILD = ("crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml")
@@ -264,9 +263,9 @@ def rust_gate_scripts(root: Path = GOH_ROOT) -> list[str]:
     return rust_cov_scripts.rust_gate_scripts(root)
 
 
-def runner_files(repo: Path, external: str) -> list[str]:
+def runner_files(repo: Path, external: str, goh: Path = GOH_ROOT) -> list[str]:
     """The files the external suite's command runs the binary through (lib/rust_cov_scripts.py)."""
-    return rust_cov_scripts.runner_files(repo, external, GOH_ROOT)
+    return rust_cov_scripts.runner_files(repo, external, goh)
 
 
 def _is_goh_root(d: Path) -> bool:
@@ -347,10 +346,10 @@ def rust(repo: Path, root: Path = GOH_ROOT, external: str | None = None,
          path: str | None = None) -> list[str]:  # fmt: skip
     """The Rust coverage verdict's identity lines (GOH.RUSTCOVSKIP, GOH.RUSTCOVKEYSCOPE): the
     repo's Rust build inputs by content, the Rust gate's coverage scripts by content, the files
-    the external suite runs the binary through (runner_files), PYTHONPATH as the measurement reads
-    it (pythonpath), the tools. Each line that keys files lists them after its hash, so a miss can
-    name the file that moved. Raises LookupError when a workspace member or path dependency lies
-    outside the keyed inputs."""
+    the external suite runs the binary through (runner_files; runner_goh_files, what it reaches in
+    goh by $GOH_DIR), PYTHONPATH as the measurement reads it (pythonpath), the tools. Each line
+    that keys files lists them after its hash, so a miss can name the file that moved. Raises
+    LookupError when a workspace member or path dependency lies outside the keyed inputs."""
     inputs = build_inputs(repo)
     if missing := _uncovered(repo, inputs):
         raise LookupError("outside the Rust inputs: " + " ".join(missing))
@@ -359,10 +358,12 @@ def rust(repo: Path, root: Path = GOH_ROOT, external: str | None = None,
              f"inputs {content(repo, inputs)} {' '.join(inputs)}",
              f"scripts {content(root, scripts)} {' '.join(scripts)}"]  # fmt: skip
     if external is not None:  # the GOH_* those files can read, by value (lib/cov_env.py)
-        runner = runner_files(repo, external)
+        runner = runner_files(repo, external, root)  # its $GOH_DIR is the gates root's
         lines.append(f"runner {content(repo, runner) if runner else 'none'} {' '.join(runner)}")
-        code = rust_cov_scripts.env_readers(root, scripts)  # a data file reads no variable
-        read = [(repo, inputs), (root, code), (repo, runner)]
+        if gohs := rust_cov_scripts.runner_goh_files(repo, external, root):
+            lines.append(f"runner-goh {content(root, gohs)} {' '.join(gohs)}")
+        readers = rust_cov_scripts.env_readers  # a data file reads no variable
+        read = [(repo, inputs), (root, readers(root, [*scripts, *gohs])), (repo, runner)]
         lines += cov_env.lines((b for r, ps in read for *_, b in _entries(r, ps)), repo, root,
                                os.environ)  # fmt: skip
     if path is not None:

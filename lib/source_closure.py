@@ -11,9 +11,10 @@ right until the next `. "$HERE/../lib/x.sh"` line, which nothing compares it aga
   * a shell `source X` / `. X` statement, X resolved against the script's own directory when it is
     spelled `$(dirname "${BASH_SOURCE[0]}")/...` or `${BASH_SOURCE[0]%/*}/...`; against a variable
     the script assigns from its own directory (`HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." &&
-    pwd)"`), or chains from one (`ROOT="$(cd "$HERE/.." && pwd)"`); and `$GOH_DIR`, `$GOH_ROOT`,
-    `$GOH` (when the script does not assign them) against the root. Any other variable is a
-    consumer's tree or a runtime path, named unresolved, never guessed; so is a bare path (`.
+    pwd)"`), or chains from one (`ROOT="$(cd "$HERE/.." && pwd)"`, `ROOT="$HERE/.."`); and
+    ROOT_VARS (`$GOH_DIR`, `$GOH_ROOT`, `$GOH`, `$PROVEN_GOH_ROOT`, unless assigned) against the
+    root. Any other variable is a consumer's tree or a runtime path, named unresolved, never
+    guessed; so is a bare path (`.
     ./.gatesrc` reads the caller's working directory). An unassigned `$HERE` in a sourced sibling
     is its caller's directory, which in goh is the sibling's own;
   * a Python `import`/`from ... import`, a module found beside the file, at the root (`tui.lib`),
@@ -27,8 +28,8 @@ right until the next `. "$HERE/../lib/x.sh"` line, which nothing compares it aga
     a fixture copies what its gate sources, not every file the gate mentions.
 
 What it does NOT follow, so a fixture that needs one says so (`extra=`): a script a gate RUNS
-rather than sources (`"$GOH_PY" "$HERE/check_x.py"`; lib/rust_cov_scripts.py adds those edges
-for the coverage key), a path built at runtime (`$PWD/...`, `. "$_goh_copy"`,
+rather than sources (`"$GOH_PY" "$HERE/check_x.py"`; lib/run_rule.py adds those edges, through
+the same declared roots), a path built at runtime (`$PWD/...`, `. "$_goh_copy"`,
 `import_module(name)`), and the commands a script finds on PATH (`dirname`, test_doctor's shim
 PATH).
 `unresolved` names every source line it read and could not place, so a reader sees the hole.
@@ -61,9 +62,12 @@ _ASSIGN = re.compile(
     r"^(?:export\s+|readonly\s+|local\s+)?([A-Za-z_][A-Za-z0-9_]*)="
     r"\$\(\s*cd\s+(\$\(\s*dirname\s+\$\{?BASH_SOURCE(?:\[0\])?(?::-\$0)?\}?\s*\)|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?)"
     r"(/[^&;)]*)?\s*&&\s*pwd"
+    r"|^(?:export\s+|readonly\s+|local\s+)?([A-Za-z_][A-Za-z0-9_]*)="
+    r"(\$\{?[A-Za-z_][A-Za-z0-9_]*\}?)(/[^\s;&|]*)?$"  # `ROOT="$HERE/.."`: no subshell
 )
-# The names goh's scripts give the goh checkout itself (GOH_DIR by the house contract).
-ROOT_VARS = ("GOH_DIR", "GOH_ROOT", "GOH")
+# The names goh's scripts give the goh checkout itself (GOH_DIR by the house contract;
+# gates/_proven.sh names its own PROVEN_GOH_ROOT for each script sourced after it).
+ROOT_VARS = ("GOH_DIR", "GOH_ROOT", "GOH", "PROVEN_GOH_ROOT")
 # A sourced sibling that reads its caller's HERE (gates/_rust_proven.sh): goh's callers set it to
 # their own directory, which is the sibling's.
 # `_goh_d` is the bash 5 guard's own directory, found with builtins (`${BASH_SOURCE[0]%/*}`).
@@ -124,21 +128,27 @@ def _is_shell(path: Path) -> bool:
     return head.startswith(b"#!") and (b"sh" in head.split(b"/")[-1])
 
 
-def _shell_deps(path: Path, root: Path, goh: Path) -> tuple[list[Path], list[str]]:
-    here = path.parent
-    text = path.read_text(encoding="utf-8", errors="replace")
+def assigned(text: str, here: Path, goh: Path) -> dict[str, Path]:
+    """The variables a script assigns from its own directory (`$(cd "$(dirname ...)/.." && pwd)`),
+    or from one already placed, a SELF_VARS or a ROOT_VARS name (`ROOT="$HERE/.."`)."""
     vars_: dict[str, Path] = {}
     for line in text.splitlines():
         m = _ASSIGN.match(line.strip().replace('"', ""))
         if not m:
             continue
-        name, base, rel = m.group(1), m.group(2), (m.group(3) or "").strip()
-        if base.startswith("$("):
-            start: Path | None = here
-        else:
-            start = vars_.get(base.strip("${}"))
+        name, base, rel = (m.group(1), m.group(2), m.group(3)) if m.group(1) else m.group(4, 5, 6)
+        var = base.strip("${}")
+        start = here if base.startswith("$(") or var in SELF_VARS else vars_.get(var)
+        start = goh if start is None and var in ROOT_VARS else start
         if start is not None:
-            vars_[name] = Path(os.path.normpath(start / ("." + rel)))
+            vars_[name] = Path(os.path.normpath(start / ("." + (rel or "").strip())))
+    return vars_
+
+
+def _shell_deps(path: Path, root: Path, goh: Path) -> tuple[list[Path], list[str]]:
+    here = path.parent
+    text = path.read_text(encoding="utf-8", errors="replace")
+    vars_ = assigned(text, here, goh)
     deps, unresolved = [], []
     for raw in text.splitlines():
         line = _strip_comment(raw)
@@ -382,39 +392,6 @@ def closure(
         unresolved += missing
         todo.extend(d for d in deps if d not in seen)
     return sorted(p.relative_to(root).as_posix() for p in seen), unresolved
-
-
-# A script a gate RUNS by its own directory or the gates root (`bash "$HERE/x.sh"`,
-# `"$GOH_PY" "$GOH_ROOT/gates/x.py"`): lib/step_closure.py's run edge, through gate_identity. The
-# coverage key reads runs wider, by any variable-rooted path (lib/rust_cov_scripts.py).
-RUN = re.compile(
-    r"\$\{?(HERE|_goh_d|GOH_ROOT|GOH_DIR|GOH)\}?/((?:\.\./)?[A-Za-z0-9_./-]+\.(?:sh|py))"
-    r'|\$\(dirname "\$\{BASH_SOURCE\[0\]\}"\)/([A-Za-z0-9_./-]+\.(?:sh|py))'
-)
-
-
-def run_closure(seeds: set[str], root: Path, goh: Path, named_edges: bool = False) -> set[str]:
-    """seeds and every file under root they source, import (`closure`) or run; with
-    `named_edges`, every file their code names by path too (a data file, a script it runs)."""
-    files = set(seeds)
-    while True:
-        found, _ = closure(sorted(files), root, goh, named_edges)
-        grown = set(found)
-        for rel in found:
-            if not rel.endswith(".sh"):
-                continue
-            here = Path(rel).parent
-            text = (root / rel).read_text(encoding="utf-8", errors="replace")
-            for line in text.splitlines():
-                for m in RUN.finditer(_strip_comment(line)):
-                    var, path, own = m.groups()
-                    rel_to = here if own or var in ("HERE", "_goh_d") else Path()
-                    cand = os.path.normpath(rel_to / (path or own))
-                    if (root / cand).is_file():
-                        grown.add(cand)
-        if grown <= files:
-            return files
-        files |= grown
 
 
 def copy_closure(
