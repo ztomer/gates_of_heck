@@ -11,7 +11,9 @@ aside for having no `.gatesrc`. And it says what the last RELEASE CANARY found (
 scripts/release_canary.py): a goh change that turns a consumer red at push, refused at land and
 named here, by repo and the seed it needs, until a run clears it (tests/test_release_canary.py).
 And it names a reuse path the reuse audit turned off whose fault item was never filed
-(GOH.REUSEAUDITFILE, tests/test_reuse_audit.py).
+(GOH.REUSEAUDITFILE, tests/test_reuse_audit.py). And it names every directory under goh's state
+root written per run with no bound (GOH.LANDLOGPRUNE, lib/state_bounds.py,
+tests/test_state_bounds.py).
 
 It also names every registered estate repo with commits AHEAD of its upstream (GOH.AHEADREPORT):
 a commit landed in a repo other than the item's own -- a learning written into ~/.claude/skills from
@@ -192,8 +194,20 @@ def reuse_lines() -> list[str]:
             for line in off]  # fmt: skip
 
 
+def state_lines(state: Path) -> list[str]:
+    """Each directory under goh's state root (the one STATE lives in) written per run with no bound:
+    a pile nobody prunes grows until the disk says so (GOH.LANDLOGPRUNE, lib/state_bounds.py)."""
+    try:
+        import state_bounds  # lib/, on the path above
+    except ImportError:
+        return []
+    return [f"✗ goh state: {line} -- bound it in lib/state_bounds.py REGISTRY, or excuse it there"
+            for line in state_bounds.unbounded(state.parent)]  # fmt: skip
+
+
 def report(state: Path, now: dt.datetime) -> list[str]:
-    return _audit(state, now) + ahead_lines(estate_registry.registry_path(state)) + reuse_lines()
+    reg = estate_registry.registry_path(state)
+    return _audit(state, now) + ahead_lines(reg) + reuse_lines() + state_lines(state)
 
 
 def _audit(state: Path, now: dt.datetime) -> list[str]:

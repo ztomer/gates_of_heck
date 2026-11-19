@@ -21,6 +21,7 @@ from pathlib import Path
 killtree = importlib.import_module("killtree")
 land_slot = importlib.import_module("land_slot")
 landq_inflight = importlib.import_module("landq_inflight")
+state_bounds = importlib.import_module("state_bounds")
 _tui = importlib.import_module("tui.lib")
 info, warn = _tui.info, _tui.warn
 
@@ -50,12 +51,15 @@ def discard(req: dict, q: Path | None = None) -> None:
     """REQ's kept verdict and its record removed once REQ is recorded: land.sh removes what it
     reads, but a batch item whose gate judged another tree, or a land refused before its pre-step,
     never read its own, and no later land is that enqueue's (GOH.BATCHPREFROM). Given its queue Q,
-    every other verdict whose request is gone goes too (`reap`, GOH.LANDLEAKS)."""
+    every other verdict whose request is gone goes too (`reap`, GOH.LANDLEAKS), and the state root
+    Q lives in is bounded: its logs, done records, ship results and run directories
+    (lib/state_bounds.py sweep, GOH.LANDLOGPRUNE), once per recorded land."""
     if keep := (req.get("pre") or {}).get("keep"):
         for path in (Path(keep), Path(f"{keep}.record")):
             path.unlink(missing_ok=True)
     if q is not None:
         reap(q)
+        state_bounds.sweep(q.parent)
 
 
 def reap(q: Path, now_ns: int | None = None) -> list[Path]:
@@ -88,8 +92,9 @@ def reap(q: Path, now_ns: int | None = None) -> list[Path]:
 
 def timings_keep(log: Path | str) -> list[str]:
     """The `env` word that keeps a land's gate timings beside its log in the queue's `logs/`
-    (GOH.LANDLEAKS): `<log stem>.timings.jsonl`, pruned with the log, read by `goh land-profile`
-    (lib/land_profile.py) and its step attribution. tools/land.sh moves its own there at exit."""
+    (GOH.LANDLEAKS): `<log stem>.timings.jsonl`, pruned with the log (lib/state_bounds.py), read
+    by `goh land-profile` (lib/land_profile.py) and its step attribution. tools/land.sh moves its
+    own there at exit."""
     return [f"GOH_LAND_TIMINGS_KEEP={str(log).removesuffix('.log')}.timings.jsonl"]
 
 
