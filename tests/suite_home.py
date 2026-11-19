@@ -41,6 +41,7 @@ import tempfile
 from pathlib import Path
 
 import _schedule  # (no HOME/TMPDIR read at import)
+import ci_shape  # (no HOME/TMPDIR read at import)
 
 REAL_HOME = os.path.realpath(os.path.expanduser("~"))
 MARKER = "GATES_OF_HECK_SUITE_REAL_HOME"  # not GOH_-prefixed: no env scrub drops it
@@ -246,6 +247,37 @@ def claim_home(parent: Path) -> Path:
     return Path(tempfile.mkdtemp(prefix="home.", dir=parent)).resolve()
 
 
+# THE CI SHAPE (GOH.CIPARITY, tests/ci_shape.py): a LAND's suite runs as hosted CI runs it, so a
+# test green only on this box is red before it lands, not after its release. A land's suite is the
+# one that carries a land key (tools/land.sh hands GOH_LAND_VERDICTS_RECORD to its pre-step and
+# GOH_LAND_VERDICTS_REUSE to its gate, and refuses a green pre-step whose record never came back),
+# so no land runs another shape; SHAPE=ci asks for it by hand. In it the home links NOTHING of the
+# owner's (no ~/Projects, no ~/.claude/skills: a runner has neither), every XDG directory is inside
+# it, and gate.yml's variables are set before the caller's GOH_* drop, so what reaches a test is
+# what reaches it on the runner. Not GOH_-prefixed: no env scrub drops it.
+SHAPE = "GATES_OF_HECK_SUITE_SHAPE"
+SHAPES = ("box", "ci")
+LAND_KEYS = ("GOH_LAND_VERDICTS_RECORD", "GOH_LAND_VERDICTS_REUSE")
+
+
+def shape(env: dict[str, str] | None = None) -> str:
+    """`ci` for a land's suite or one that names it, `box` otherwise; another name is refused."""
+    env = os.environ if env is None else env
+    named = env.get(SHAPE, "")
+    if named and named not in SHAPES:
+        raise SystemExit(f"tests/suite_home.py: {SHAPE}={named!r} is none of {', '.join(SHAPES)}")
+    return "ci" if named == "ci" or any(env.get(k) for k in LAND_KEYS) else "box"
+
+
+def _shape_ci() -> None:
+    """gate.yml's gate-step variables (tests/ci_shape.py overlay), and the shape named for every
+    child, so a fixture's nested entry and this run agree."""
+    applied = ci_shape.overlay(Path(SUITE_ROOT) / ci_shape.WORKFLOW, SUITE_ROOT)
+    os.environ.update(applied)
+    os.environ[ci_shape.APPLIED] = json.dumps(sorted(applied))
+    os.environ[SHAPE] = "ci"
+
+
 def _enter() -> None:
     # The duration table tools/pytest.sh names for its top-level run (GOH.DURATIONSSTALE), POPPED
     # before anything here starts a child: the run it was named for owns it, and no xdist worker or
@@ -260,6 +292,9 @@ def _enter() -> None:
     ):  # a nested run (an xdist worker, a suite a test starts) keeps its own
         return
     _land_store()
+    ci = shape() == "ci"
+    if ci:
+        _shape_ci()
     _drop_caller_goh()
     real = Path(REAL_HOME)
     keep = {
@@ -276,7 +311,7 @@ def _enter() -> None:
     parent.mkdir(parents=True, exist_ok=True)
     home = claim_home(parent)
     atexit.register(shutil.rmtree, home, True)
-    furnish(home, READ)
+    furnish(home, () if ci else READ)
     os.environ[MARKER] = REAL_HOME
     # The user's XDG_STATE_HOME, kept by name so real_state_guard.py can watch it; the suite's own
     # state (goh's estate registry, the compact-nudge state) lives in the suite home instead.
@@ -285,6 +320,9 @@ def _enter() -> None:
     os.environ["HOME"] = str(home)
     os.environ["XDG_CACHE_HOME"] = str(home / ".cache")
     os.environ["XDG_STATE_HOME"] = str(home / ".local" / "state")
+    if ci:  # a runner's XDG directories are its home's too; the caller's never reach a test
+        os.environ["XDG_CONFIG_HOME"] = str(home / ".config")
+        os.environ["XDG_DATA_HOME"] = str(home / ".local" / "share")
     # Keyless fixtures: new shapes and undeclared floors are advisory here (GOH.FLOORREQ).
     os.environ["GOH_GRACE"] = "within"
 

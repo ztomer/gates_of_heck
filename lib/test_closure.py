@@ -32,6 +32,7 @@ ROOTED = re.compile(r"\$\{?[A-Za-z_][A-Za-z0-9_]*\}?((?:/[A-Za-z0-9_.-]+)+)")
 # Where a test's runner finds a module: beside the file, the root, and these (tools/ is on the
 # sys.path of the tests that import a tool).
 PY_DIRS = (*source_closure.PY_DIRS, "tools")
+ENTRY_READS = (".github/workflows/gate.yml",)  # read by the suite's entry, every test (base)
 SKIP_DIRS = {".git", "target", "node_modules", "__pycache__", ".venv", "venv", "dist", "build"}
 
 
@@ -138,6 +139,9 @@ class Closure:
             if "tests/conftest.py" in self.texts:
                 reached = self.reach("tests/conftest.py", (), runs=False)[0]
                 self._base = {"tests/conftest.py", *reached}
+            # ... and what it READS at entry: a land's suite takes its environment from the
+            # workflow (tests/ci_shape.py, GOH.CIPARITY), which no import or spelling reaches.
+            self._base |= {p for p in ENTRY_READS if (self.root / p).is_file()}
         return self._base
 
     def reach(
