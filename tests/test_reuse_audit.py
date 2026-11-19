@@ -43,8 +43,7 @@ def store(tmp_path, monkeypatch) -> Path:
 
 @pytest.fixture
 def fake_loopctl(tmp_path, monkeypatch) -> Path:
-    """A loopctl that logs each call. `ci` answers as FAKE_CI names it: its first line the exit
-    (default 0, green), the rest what loopctl prints. `file` refuses as rules.class_first does
+    """A loopctl that logs each call. `file` refuses as rules.class_first does
     (the loop queue's tools/loopq.py class_refusal): an item names its class, or `class_of: none`
     with a `class_why`, or it is not filed; and an id already in the queue (FAKE_ITEMS, one per
     line) is refused as tools/loopq.py file_item refuses it, done or open. A `--queue` file's phase
@@ -55,10 +54,6 @@ def fake_loopctl(tmp_path, monkeypatch) -> Path:
     script.write_text(
         "import json, os, sys\n"
         f"open({str(log)!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
-        "if 'ci' in sys.argv[1:2]:\n"
-        "    code, _, said = open(os.environ['FAKE_CI']).read().partition('\\n')\n"
-        "    print(said, end='')\n"
-        "    sys.exit(int(code))\n"
         "if 'file' in sys.argv:\n"
         "    new = json.loads(sys.argv[sys.argv.index('--json') + 1])\n"
         "    named = new.get('class_closure') or (new.get('class_of') == 'none'\n"
@@ -83,9 +78,6 @@ def fake_loopctl(tmp_path, monkeypatch) -> Path:
         "    if items:\n"
         "        open(items, 'a').write(new['id'] + '\\n')\n"
     )
-    ci = tmp_path / "ci_exit"
-    ci.write_text("0")
-    monkeypatch.setenv("FAKE_CI", str(ci))
     monkeypatch.setenv("GOH_LOOPCTL", str(script))
     queue = tmp_path / "loop_queue.json"  # never the live queue: an open SPD, as on 2026-11-19
     queue.write_text(json.dumps({"phases": [{"id": "SPD", "requires": ["metric", "predicted"]}]}))
@@ -160,7 +152,8 @@ def test_a_window_whose_samples_were_never_compared_turns_the_path_off(
     fake_loopctl, monkeypatch
 ) -> None:
     monkeypatch.setenv("GOH_REUSE_NOW", "1000")
-    assert reuse_audit.use("landed", FIELDS) == "shadow"  # every=1: a ship's reuse is sampled
+    every(monkeypatch, "landed", 1)
+    assert reuse_audit.use("landed", FIELDS) == "shadow"
     assert reuse_audit.state("landed")["state"] == "on"
     monkeypatch.setenv("GOH_REUSE_NOW", str(1000 + reuse_audit.WINDOW_S))
     rec = reuse_audit.state("landed")
@@ -170,7 +163,7 @@ def test_a_window_whose_samples_were_never_compared_turns_the_path_off(
     assert row["verdict"].startswith("OFF (starved)")
     with pytest.raises(ValueError, match="--why"):
         reuse_audit.enable("landed", root=REPO_ROOT)
-    assert reuse_audit.enable("landed", root=REPO_ROOT, why="the lander drains")
+    assert reuse_audit.enable("landed", root=REPO_ROOT, why="the release push runs its sample")
     assert reuse_audit.state("landed")["state"] == "on"
 
 
@@ -178,6 +171,7 @@ def test_a_window_with_its_samples_compared_stays_on_and_a_thin_one_is_never_cle
     monkeypatch,
 ) -> None:
     monkeypatch.setenv("GOH_REUSE_NOW", "1000")
+    every(monkeypatch, "landed", 1)
     for _ in range(3):
         assert reuse_audit.use("landed", FIELDS) == "shadow"
         reuse_audit.compare("landed", FIELDS, "green", "green")
@@ -212,68 +206,6 @@ def test_a_disagreement_is_enabled_only_by_a_fix_with_its_calibrated_miss(
                        test="tests/test_k.py::test_the_new_input_misses")  # fmt: skip
     rec = reuse_audit.state("landed")
     assert rec["state"] == "on" and rec["enabled"]["was"]["cause"] == "disagree"
-
-
-def test_a_ci_shadow_is_compared_on_its_read_and_a_red_one_only_on_a_second(
-    fake_loopctl, tmp_path
-) -> None:
-    ci = tmp_path / "ci_exit"
-    reuse_audit.enqueue("landed", FIELDS, "green", slug="o/n", sha="b" * 40)
-    ci.write_text("3")  # pending: kept, never compared
-    assert "kept" in reuse_audit.drain()[0]
-    ci.write_text("0")
-    reuse_audit.drain()
-    assert reuse_audit.state("landed")["window"]["agreed"] == 1
-    reuse_audit.enqueue("landed", FIELDS, "green", slug="o/n", sha="c" * 40)
-    ci.write_text("1\n\u2717 CI red: gate failure (run 8)\n")
-    assert "read again" in reuse_audit.drain()[0]
-    assert reuse_audit.state("landed")["state"] == "on"
-    reuse_audit.drain()
-    rec = reuse_audit.state("landed")
-    assert rec["state"] == "off" and rec["evidence"]["fresh"] == "red"
-    assert not list((reuse.root() / "audit" / "pending").glob("*.json"))
-
-
-RED = "1\n\u2717 CI red: gate failure (run 8)\n"
-
-
-@pytest.mark.parametrize("said", [
-    "1\n\u2717 CI red: gate cancelled (run 44203722455): no verdict for cccccccc\n",
-    "1\n\u2717 CI red: gate timed_out (run 44203722455)\n",
-    "1\n\u2717 CI red: job gate cancelled (run 44203722455)\n",
-    "4\n\u00b7 CI none: Actions off (no CI verdict exists; the local gate is the record)\n",
-])  # fmt: skip
-def test_a_cancelled_or_timed_out_ci_run_is_no_verdict_and_a_real_red_still_disagrees(
-    fake_loopctl, tmp_path, said
-) -> None:
-    """GOH.REUSEOFFLANDED: v0.133.0's CI run 44203722455 was cancelled at GitHub's limit, `loopctl
-    ci` exits 1 for it ("no verdict"), and the audit read that exit as red: the landed path turned
-    off on a run that judged nothing. A run that ends without judging is no fresh side, so the
-    shadow is dropped uncompared; a real failure read twice still turns the path off."""
-    ci = tmp_path / "ci_exit"
-    reuse_audit.enqueue("landed", FIELDS, "green", slug="o/n", sha="c" * 40)
-    ci.write_text(said)
-    assert "no verdict" in reuse_audit.drain()[0]
-    reuse_audit.drain()
-    rec = reuse_audit.state("landed")
-    assert rec["state"] == "on" and rec["window"]["compared"] == 0, rec
-    assert not list((reuse.root() / "audit" / "pending").glob("*.json"))
-    reuse_audit.enqueue("landed", FIELDS, "green", slug="o/n", sha="d" * 40)
-    ci.write_text(RED)
-    reuse_audit.drain()
-    reuse_audit.drain()
-    rec = reuse_audit.state("landed")
-    assert rec["state"] == "off" and rec["evidence"]["fresh"] == "red", rec
-
-
-def test_an_unread_ci_answer_is_kept_never_red(fake_loopctl, tmp_path) -> None:
-    """`loopctl ci` exits 1 for an unread answer too: it is kept for the next drain, never red."""
-    ci = tmp_path / "ci_exit"
-    reuse_audit.enqueue("landed", FIELDS, "green", slug="o/n", sha="e" * 40)
-    ci.write_text("1\n\u2717 CI unread: the runs read failed; tried o/n\n")
-    assert "kept" in reuse_audit.drain()[0]
-    assert "kept" in reuse_audit.drain()[0]
-    assert reuse_audit.state("landed")["window"]["compared"] == 0
 
 
 HOOK = REPO_ROOT / "hooks" / "claude" / "estate_advisories.py"
@@ -319,7 +251,7 @@ PRODUCERS = {
     "lib/idle_suite.py": "the idle run exists to make main's full record; with one on "
     "disk there is nothing to make, and the ship's step (`fullrun`) is what reuses it"
 }
-ASKS = re.compile(r"\b(?:use|use_many|enqueue|compare)\(\s*\"([\w-]+)\"")
+ASKS = re.compile(r"\b(?:use|use_many|compare)\(\s*\"([\w-]+)\"")
 
 
 def _code(rel: str, text: str) -> str:

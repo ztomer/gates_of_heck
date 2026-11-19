@@ -76,7 +76,8 @@ GOH.ONEVERDICTTREE4 (measured on the ship records, `~/.local/state/goh/ship/gate
   detached after the ship (`*.sweep.json`, its own `created`): it is the release push's full gate,
   478.1 s and 731.0 s of `gates/rust_gate.sh` (the plain external suite 427.9 s), run because the
   audit turned `landed` off ("the audit turned the land verdict's reuse off", GOH.REUSEOFFLANDED4).
-  `landed`'s fresh side is hosted CI, so a CI-only red turns a local reuse off.
+  `landed`'s fresh side was hosted CI, so a CI-only red turned a local reuse off; it is the
+  release push's own full gate in the land's shape now, 1 in 10 (GOH.LANDEDREUSEON).
 * Stage 7 cannot reuse on (tree, goh content): a pin commit changes the consumer's tree and the
   goh it gates under (every goh release changes gates/, lib/ or tools/, all in the gate identity),
   so such a key never holds for a pin push. Its reuse is a rule like the release's (pin files only,
@@ -159,14 +160,17 @@ whatever the lane did not run, about 150-300 s against 705 s.
   repeated one turns the path off: one recorded state, `<root>/audit/<path>.json`, with both
   verdicts, the key and the fault item it filed (`loopctl file`, as `class_of: none`; one loopctl
   refused is named at every SessionStart; an id the queue already holds is an earlier off's item,
-  so the next free one, `GOH.REUSEOFF<PATH>2` and on, is filed naming it; a CI shadow's record
-  names the run's `slug@pushed-sha` as `fresh_from`). It stays off until `reuse_audit.py
+  so the next free one, `GOH.REUSEOFF<PATH>2` and on, is filed naming it; a record whose fresh
+  side is not its key's names it as `fresh_from`, `landed`'s the pushed commit's local full gate). It stays off until `reuse_audit.py
   enable PATH --fix SHA --test FILE::TEST` names the fix and the test that misses on the lacking
   input (the fix is read from the checkout: its own parent, else the one a from-head export was cut from, else the caller's cwd or GOH_DIR; a root that is no git repository is named, never "not a test"). A window (7 days) that compared fewer samples than min(min_samples, the samples it drew)
   is STARVED and turns the path off too; fewer drawn than min_samples reads "thin", never clean.
-  goh's own shadow is hosted CI's full gate of every push (a "ci" shadow, queued, read once by the
-  idle lander through `loopctl ci`; a run that judged nothing, cancelled or timed out, is no fresh
-  side and is dropped uncompared, never red). A repo no hosted CI gates has nothing behind its skips: a
+  Every shadow is LOCAL, made at its site in the shape the reused verdict was made in: never hosted
+  CI, which is another machine's shape and advisory (the owner's ruling: items close on the local
+  gate). `landed`'s fresh side was CI's gate of every release push, so a red only CI saw switched
+  a local reuse off twice (v0.139.6's pytest ids, REUSEOFFLANDED4) and every ship's release step ran
+  the full gate (GOH.LANDEDREUSEON). A CI red is the loop's fault item (`loopctl reconcile` files
+  it), never an audit's switch. A repo no hosted CI gates has nothing behind its skips: a
   path with `every_unbacked` counts such uses apart and samples them at that higher rate.
   `reuse_audit.py report [--json]` is the per-path count of uses, samples, disagreements and flakes.
   `tests/test_reuse_audit.py` refuses a reuse site no path names, an ask of an unregistered path
@@ -210,7 +214,7 @@ moves; one on the live checkout keeps it only while goh's main does not move.
 | Path | Shadow | Site |
 |---|---|---|
 | `estate` | inline, 1 in 10: the entry judged afresh | `checks/_estate_cache.py` (`reusable`, `shadowed`) |
-| `landed` | ci, every release push: hosted CI's full gate of the pushed commit | `lib/release_gate.py` (`audited`) |
+| `landed` | inline, 1 in 10 release pushes: the push runs the full gate anyway, in the land's suite shape (`GATES_OF_HECK_SUITE_SHAPE=ci`, tests/suite_home.py), and `shadow-judge` compares it with the parent's land green; a red is run again and the land record read again, and a repeat turns `landed` off, so every release push runs the full gate (GOH.LANDEDREUSEON) | `lib/release_gate.py` (`audited`, `shadow_judge`), asked by `gates/push_gate.sh` (`push_release_shadow`, lib/push_runs.sh) |
 | `carry` | inline, 1 in 10: the carried nodes of a source run anyway; a failure among them is re-run in a child pytest, and a repeat turns `carry` off | `tests/_land_verdicts.py` (`_carry`, `_shadows`) |
 | `step` | inline, 1 in 16 hits, 1 in 4 where the repo tracks no GitHub workflow (no hosted CI behind the skip): the step runs anyway; a red one runs again and its record is looked up again, and a repeat turns `step` off, so every later hit runs (GOH.REUSEAUDIT2; the closure keying's kill switch, GOH.PROVENCLOSURE2) | `gates/_proven_audit.sh` (`proven_audit_use`, `proven_audit_judge`), asked by `gates/proven.sh` and `gates/local_ci.sh` before a skip. rust_gate's group hits (`rust_proven_group`) do not ask yet: they key on `closure full`, and their checks run under set -e |
 | `test` | inline, 1 in 10 same-tree nodes a land's gate would skip: decided once by the controller and handed to every xdist worker, the node runs anyway; a failure is re-run in a child pytest and the pre-land record read again, and a repeat turns `test` off, so the next gate reuses nothing (GOH.REUSEAUDIT2) | `tests/_land_audit.py` (`audited`, `shadows`), asked by `tests/_land_verdicts.py` |

@@ -358,28 +358,12 @@ def drain() -> int:
             env = dict(os.environ, PYTHONPATH=live_pythonpath(os.environ.get("PYTHONPATH", "")))
             os.chdir(q)  # the fresh lander inherits the state dir, whatever happened to it since
             os.execve(sys.executable, [sys.executable, str(fresh), "--drain"], env)
-        if not any((q / "pending").glob("*.json")):  # enqueued after the last look: ours to run
-            audit_drain()
-            # Idle: main's full suite record, so no ship waits on a hand run (lib/idle_suite.py).
-            # It holds no lock and yields to the first request that arrives: then drain again.
-            if idle_suite.run(q, live_root(), info) != "yielded":
-                return 0
-
-
-def audit_drain() -> None:
-    """The idle lander reads the reuse audit's queued CI shadows (lib/reuse_audit.py drain,
-    GOH.REUSEAUDIT): no gate is waiting, and a read is one `loopctl ci` per shadow, never a poll."""
-    sys.path.insert(0, str(live_root() / "lib"))
-    try:
-        import reuse  # the store's root, as the audit names it
-    except ImportError:
-        return
-    finally:
-        sys.path.pop(0)
-    script = live_root() / "lib" / "reuse_audit.py"
-    if any((reuse.root() / "audit" / "pending").glob("*.json")) and script.is_file():
-        subprocess.run([sys.executable, str(script), "drain"], check=False, timeout=600,
-                       stdin=subprocess.DEVNULL)  # fmt: skip
+        # Idle (none enqueued after the last look): main's full suite record, so no ship waits on a
+        # hand run (lib/idle_suite.py). It holds no lock and yields to the first request that
+        # arrives: then drain again.
+        idle = not any((q / "pending").glob("*.json"))
+        if idle and idle_suite.run(q, live_root(), info) != "yielded":
+            return 0
 
 
 def nudge() -> None:

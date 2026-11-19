@@ -2,7 +2,6 @@
 disagree (GOH.REUSEAUDIT; docs/reuse.md).
 
     reuse_audit.py report [--json]          # per path: state, uses, samples, disagreements, flakes
-    reuse_audit.py drain                    # read the queued CI shadows (exit 0; one line each)
     reuse_audit.py enable PATH --fix SHA --test NODE   # back on after a disagreement: the fix, and
                                             # the test that misses on the input it lacked
     reuse_audit.py enable PATH --why TEXT   # back on after a starved window
@@ -20,9 +19,10 @@ THE PATHS are lib/reuse.py's registry, one table: each names its key fields, its
 and its shadow. A site asks `use(path, fields)` before it reuses: "reuse" (skip the work), "shadow"
 (do the work anyway; the caller then hands both verdicts to `compare`) or "off" (the path is off:
 do the work). One use in the path's `every` is a shadow, counted, never drawn by chance: the share
-is exact and a test can name the sampled use. An inline shadow re-runs the work at the site; a
-"ci" shadow is hosted CI's full gate of the pushed commit -- goh's own release push -- queued by
-`enqueue` and read by `drain` (`loopctl ci`, never polled).
+is exact and a test can name the sampled use. A shadow re-runs the work at the site, on this box,
+in the shape the reused verdict was made in. Never hosted CI (GOH.LANDEDREUSEON): it is another
+machine's shape and advisory, so its red switched a LOCAL reuse off (`landed`, v0.139.6 and
+REUSEOFFLANDED4); a CI red is the loop's fault item (`loopctl reconcile` files it), not an audit's.
 
 A DISAGREEMENT IS RE-RUN FIRST. Known load flakes exist, so a reused verdict that differs from the
 fresh one re-runs both sides (`again`: the store read again, the work done again); only a
@@ -33,10 +33,8 @@ the cause, both verdicts and the key, and a fault item is filed (`loopctl file`;
 GOH_LOOP_QUEUE are the seams; it names its class as rules.class_first asks, `class_of: none`; one
 that cannot be filed is named in the record and at every SessionStart, hooks/claude/
 estate_advisories.py; an id the queue already holds is an earlier off's, so the next free id is
-filed, GOH.REUSEOFFLANDED2). A CI run that judged nothing (cancelled, timed out, no CI) is no
-fresh side: its shadow is dropped uncompared, never read as red (GOH.REUSEOFFLANDED). It stays
-off until `enable` names the fix commit and the calibrated-miss test it added, both found in the
-tree.
+filed, GOH.REUSEOFFLANDED2). It stays off until `enable` names the fix commit and the
+calibrated-miss test it added, both found in the tree.
 
 A STARVED SAMPLER IS NEVER CLEAN. Each path's counters run in a window (WINDOW_S). When a window
 closes with fewer compared samples than min(min_samples, the samples it drew), the shadows never
@@ -59,7 +57,6 @@ import argparse
 import contextlib
 import json
 import os
-import re
 import subprocess
 import sys
 from collections.abc import Callable, Iterator
@@ -77,14 +74,6 @@ file_fault, unfiled = reuse_fault.file_fault, reuse_fault.unfiled
 
 WINDOW_S = 7 * reuse.DAY_S
 COUNTS = ("uses", "sampled", "compared", "agreed", "disagreed", "flakes")
-CI_GREEN, CI_RED, CI_NONE = 0, 1, 4  # `loopctl ci`'s exits; 3 pending, 75 throttled stay queued
-# `loopctl ci` exits 1 for red AND for unread, and for a run that ended without judging (cancelled
-# at GitHub's limit or superseded, timed out), which it prints as "red" with "no verdict". Its
-# printed state line decides: v0.133.0's cancelled run 44203722455 read as red and turned `landed`
-# off (GOH.REUSEOFFLANDED). NO_VERDICT, a run that judged nothing: the shadow is dropped uncompared.
-NO_VERDICT = "none"
-_CI_LINE = re.compile(r"\bCI (green|red|unread|pending|none|throttled): (.*)")
-_UNJUDGED = re.compile(r"\b(?:cancelled|timed_out)\b|\bno verdict\b")
 
 
 def _dir() -> Path:
@@ -185,8 +174,8 @@ def compare(path: str, fields: dict[str, str], reused: str, fresh: str,
     """A sampled reuse against its fresh run; True when they agree. A disagreement re-runs both
     sides (`again` returns the store's verdict read again and the work's done again): only a
     repeated one turns the path off and files the fault; one `again` cannot repeat is a flake.
-    `fresh_from` names what produced the fresh side when the key does not (a CI shadow's
-    `slug@pushed-sha`: the key's sha is the reused verdict's, the run is the pushed commit's)."""
+    `fresh_from` names what produced the fresh side when the key does not (`landed`'s: the key's
+    sha is the land-judged parent, the run is the pushed release commit's)."""
     p = reuse._path(path)
     line = {"path": p.name, "key": reuse.key(p, fields), "fields": fields, "reused": reused,
             "fresh": fresh, "epoch": reuse.now()}  # fmt: skip
@@ -271,84 +260,6 @@ def enable(path: str, *, root: Path, fix: str = "", test: str = "", why: str = "
     return f"{p.name} is on again"
 
 
-def enqueue(path: str, fields: dict[str, str], reused: str, *, slug: str, sha: str) -> Path:
-    """Queue a "ci" shadow: hosted CI's full gate of SHA on SLUG is the fresh side."""
-    p = reuse._path(path)
-    k = reuse.key(p, fields)
-    dest = _dir() / "pending" / f"{p.name}-{k[:16]}.json"
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    entry = {"path": p.name, "fields": fields, "reused": reused, "slug": slug, "sha": sha,
-             "epoch": reuse.now(), "reads": []}  # fmt: skip
-    dest.write_text(json.dumps(entry, sort_keys=True), encoding="utf-8")
-    return dest
-
-
-def ci_verdict(code: int, said: str) -> str:
-    """`loopctl ci`'s answer as the audit's fresh side: "green", "red", NO_VERDICT (a run that
-    judged nothing: it never will) or "" (unread for now: kept). A red needs its printed line."""
-    m = _CI_LINE.search(said)
-    state, text = (m.group(1), m.group(2)) if m else ("", "")
-    if code == CI_GREEN:
-        return "green"
-    if code == CI_NONE:
-        return NO_VERDICT
-    if code != CI_RED or state != "red":
-        return ""
-    return NO_VERDICT if _UNJUDGED.search(text) else "red"
-
-
-def _ci(slug: str, sha: str) -> str:
-    loopctl = os.environ.get("GOH_LOOPCTL") or str(Path.home() / "Projects/.loop/tools/loopctl.py")
-    try:
-        r = subprocess.run([sys.executable, loopctl, "ci", sha, "--repo", slug], timeout=120,
-                           capture_output=True, text=True, check=False,
-                           stdin=subprocess.DEVNULL)  # fmt: skip
-    except (OSError, subprocess.TimeoutExpired):
-        return ""
-    return ci_verdict(r.returncode, r.stdout + r.stderr)
-
-
-def drain() -> list[str]:
-    """Read each queued CI shadow once. A verdict that agrees is compared; one that disagrees is
-    read again at the next drain (CI's own re-runs settle between), and compared then, both sides
-    again; an unread one (pending, throttled) stays queued."""
-    said = []
-    for f in sorted((_dir() / "pending").glob("*.json")):
-        try:
-            e = json.loads(f.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            f.unlink(missing_ok=True)
-            continue
-        fresh = _ci(e["slug"], e["sha"])
-        if not fresh:
-            said.append(f"{e['path']} {e['sha'][:12]}: CI unread, kept")
-            continue
-        if fresh == NO_VERDICT:  # cancelled, timed out, no CI: nothing to compare, ever
-            f.unlink(missing_ok=True)
-            said.append(f"{e['path']} {e['sha'][:12]}: CI no verdict (cancelled, timed out or "
-                        "none), dropped uncompared")  # fmt: skip
-            continue
-        e["reads"].append(fresh)
-        if fresh != e["reused"] and len(e["reads"]) < 2:
-            f.write_text(json.dumps(e, sort_keys=True), encoding="utf-8")
-            said.append(
-                f"{e['path']} {e['sha'][:12]}: CI {fresh}, reused {e['reused']}: read again"
-            )
-            continue
-        first = e["reads"][0]
-        compare(
-            e["path"],
-            e["fields"],
-            e["reused"],
-            first,
-            lambda e=e, f2=fresh: (e["reused"], f2),
-            fresh_from=f"{e['slug']}@{e['sha']}",
-        )
-        f.unlink(missing_ok=True)
-        said.append(f"{e['path']} {e['sha'][:12]}: CI {fresh}, reused {e['reused']}")
-    return said
-
-
 def report() -> list[dict]:
     rows = []
     for p in reuse.PATHS.values():
@@ -386,7 +297,6 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="verb", required=True)
     sub.add_parser("report").add_argument("--json", action="store_true")
-    sub.add_parser("drain")
     en = sub.add_parser("enable")
     en.add_argument("path")
     en.add_argument("--fix", default="")
@@ -406,9 +316,6 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     if a.verb in ("use", "compare"):
         return _shell_site(a)
-    if a.verb == "drain":
-        print("\n".join(drain()) or "reuse audit: no CI shadow queued")
-        return 0
     if a.verb == "enable":
         try:
             print(enable(a.path, root=a.root or default_root(), fix=a.fix, test=a.test, why=a.why))

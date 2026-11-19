@@ -204,6 +204,8 @@ push_prune_logs() {
 # declare GOH_PUSH_RELEASE_REUSE=on (read by name, in a child), and `release_gate.py push-decide`
 # must find the commit release files only on a land-green parent. Any other answer is the full gate,
 # its reason said on stderr; a decision that cannot run is the full gate too, never a reduced one.
+# The audit's sampled reuse prints `shadow PARENT`: the full gate, in the land's shape, and its
+# verdict judged against the land's (push_release_shadow; GOH.LANDEDREUSEON).
 push_release_base() {
     local on="" out=""
     [ -f "$1/.gatesrc" ] && on="$(bash -c 'set -a; . "$1"; printf %s "${GOH_PUSH_RELEASE_REUSE-}"' _ \
@@ -213,6 +215,8 @@ push_release_base() {
         || out="full the release rule could not decide (above)"
     case "$out" in
         "release "?*) printf '%s\n' "${out#release }" ;;
+        "shadow "?*) printf '%s\n' "$out"
+            info "pre-push: the \`landed\` sample: the full gate in the land's shape, judged against ${out:7:8}" >&2 ;;
         *) info "pre-push: the full gate: ${out#full }" >&2 ;;
     esac
 }
@@ -223,4 +227,22 @@ push_release_base() {
 push_release_run() {
     "$GOH_PY" "$GOH/lib/release_gate.py" run --root . --base "$1" \
         --full 'echo "pre-push: the release rule decided twice and disagreed -- nothing pushed" >&2; exit 1'
+}
+
+# push_release_shadow PARENT STATUS RERUN... -- the `landed` sample's verdict (lib/release_gate.py
+# shadow-judge): the full gate's STATUS against PARENT's land green; a red runs RERUN (the same
+# full gate) once more first, and only a red both runs repeat turns the reuse off. Returns STATUS:
+# the push is the first run's verdict, as a ship's sampled suite is (lib/ship_full_run.py).
+push_release_shadow() {
+    local parent="$1" status="$2" fresh=green again="" rc=0
+    shift 2
+    if [ "$status" -ne 0 ]; then
+        fresh=red
+        "$@" || rc=$?
+        again="$([ "$rc" -eq 0 ] && echo green || echo red)"
+    fi
+    "$GOH_PY" "$GOH/lib/release_gate.py" shadow-judge --root "$worktree" --parent "$parent" \
+        --fresh "$fresh" ${again:+--again "$again"} </dev/null \
+        || warn "pre-push: the \`landed\` sample disagreed with ${parent:0:8}'s land (reuse_audit.py report)"
+    return "$status"
 }

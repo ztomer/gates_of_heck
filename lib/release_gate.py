@@ -10,6 +10,7 @@ its gate, with the tip it was cut from:
     release_gate.py decide --base TIP           # prints `release` or `full`
     release_gate.py names --base TIP            # the tests that read what TIP..HEAD changed
     release_gate.py push-decide [--root DIR]    # the push gate's rule for HEAD (below)
+    release_gate.py shadow-judge --parent P --fresh V [--again V2]   # the `landed` sample's verdict
 
 `run` diffs TIP against HEAD. Every path CHANGELOG.md or under changelog/ (and at least one): it
 runs the structural gate (`gates/structural.sh --full`: every check over every tracked file, the
@@ -34,6 +35,15 @@ lib/gate_identity.py's for the full gate now (a hand-set GOH_LAND_GATE, other ga
 miss); and the diff parent..HEAD is release files only, by release_only() above, the one
 definition the land uses. It prints `release PARENT` or `full REASON`, and push_gate.sh says
 the reason. Pinned by tests/test_push_release_reuse.py, each calibration by the reason it names.
+
+THE REUSE IS AUDITED (`landed`, lib/reuse_audit.py; GOH.LANDEDREUSEON). One release push in the
+path's `every` prints `shadow PARENT`: the push runs the FULL gate anyway, in the land's suite shape
+(GATES_OF_HECK_SUITE_SHAPE=ci, tests/suite_home.py: the land's gate runs its suite so), and hands
+its verdict to `shadow-judge`, which compares it with the land's green; a red is run again and the
+land record read again, and only a repeated red turns `landed` off. The fresh side was hosted CI's
+gate of the pushed commit: another machine's shape, which the owner ruled advisory, so a red only
+CI saw (v0.139.6's pytest ids; REUSEOFFLANDED4) switched this local reuse off and every ship's
+release step ran the full gate (v0.139.14: 581.4 s, 478.1 s of it gates/rust_gate.sh).
 """
 
 from __future__ import annotations
@@ -61,8 +71,6 @@ import gate_identity  # lib/, beside this file: the one identity (GOH.VERDICTKEY
 import reuse  # lib/, beside this file: the one verdict store (GOH.ONEVERDICT)
 import reuse_audit  # ... and its auditor (GOH.REUSEAUDIT)
 import step_timings  # ... a timed row per part of the gate (GOH.RELEASELANDGATE)
-
-GITHUB = re.compile(r"github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?/?$")
 
 RELEASE_FILE = "CHANGELOG.md"
 RELEASE_DIR = "changelog/"
@@ -140,22 +148,38 @@ def decide_push(root: Path, head: str = "HEAD") -> tuple[str, str]:
     other = next((p for p in paths if not release_only([p])), None)
     if other is not None:
         return "full", f"{other} is not a release file (the diff since {parent[:8]})"
-    return audited(root, parent, recorded, sha)
+    return audited(root, parent, recorded)
 
 
-def audited(root: Path, parent: str, recorded: str, sha: str) -> tuple[str, str]:
+def _fields(root: Path, parent: str, recorded: str) -> dict[str, str]:
+    return {"repo": reuse.repo_id(root), "sha": parent, "identity": recorded}
+
+
+def audited(root: Path, parent: str, recorded: str) -> tuple[str, str]:
     """The land verdict's reuse, through the audit (lib/reuse_audit.py path `landed`): a path the
-    audit turned off is the full gate; every reuse queues its shadow, hosted CI's full gate of the
-    pushed commit (goh's own lands and releases: CI runs it on every push), read by the lander."""
-    fields = {"repo": reuse.repo_id(root), "sha": parent, "identity": recorded}
-    if reuse_audit.use("landed", fields) == "off":
+    audit turned off is the full gate; its sampled use is ("shadow", PARENT), the full gate in the
+    land's shape, judged by `shadow_judge`."""
+    use = reuse_audit.use("landed", _fields(root, parent, recorded))
+    if use == "off":
         return "full", "the audit turned the land verdict's reuse off (reuse_audit.py report)"
-    url = subprocess.run(["git", "-C", str(root), "remote", "get-url", "origin"], text=True,
-                         capture_output=True, check=False, stdin=subprocess.DEVNULL)  # fmt: skip
-    url = url.stdout
-    if m := GITHUB.search(url.strip()):
-        reuse_audit.enqueue("landed", fields, "green", slug=m.group(1), sha=sha)
-    return "release", parent
+    return ("shadow" if use == "shadow" else "release"), parent
+
+
+def _land_verdict(root: Path, parent: str, identity: str) -> str:
+    """The land record of parent read now: "green" under the identity the shadow was drawn for."""
+    return "green" if land_identity(root, parent) == identity else "absent"
+
+
+def shadow_judge(root: Path, parent: str, fresh: str, again: str = "") -> bool:
+    """The `landed` sample: the land's green on PARENT against the pushed commit's fresh full gate
+    (FRESH), and on a red the store read again against AGAIN, the full gate run again."""
+    identity = gate_identity.key("full")
+    sha = _git_out(root, "rev-parse", "HEAD")
+    rerun = (lambda: (_land_verdict(root, parent, identity), again)) if again else None
+    ran = f"the local full gate of {sha} in the land's shape"
+    reused = _land_verdict(root, parent, identity)
+    fields = _fields(root, parent, identity)
+    return reuse_audit.compare("landed", fields, reused, fresh, rerun, fresh_from=ran)
 
 
 def _sh(cmd: str, root: Path, label: str) -> int:
@@ -191,7 +215,7 @@ def run(root: Path, base: str, full: str, structural: str, runner: str) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="verb", required=True)
-    for verb in ("run", "decide", "names", "push-decide"):
+    for verb in ("run", "decide", "names", "push-decide", "shadow-judge"):
         p = sub.add_parser(verb)
         p.add_argument("--root", type=Path, default=Path.cwd())
         if verb in ("run", "decide", "names"):
@@ -200,6 +224,10 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--full", required=True)
             p.add_argument("--structural", default=STRUCTURAL)
             p.add_argument("--runner", default="")
+        if verb == "shadow-judge":
+            p.add_argument("--parent", required=True)
+            p.add_argument("--fresh", choices=("green", "red"), required=True)
+            p.add_argument("--again", choices=("green", "red"), default="")
     a = ap.parse_args(argv)
     root = a.root.resolve()
     if a.verb == "names":
@@ -211,6 +239,8 @@ def main(argv: list[str] | None = None) -> int:
     if a.verb == "push-decide":
         print(" ".join(decide_push(root)))
         return 0
+    if a.verb == "shadow-judge":
+        return 0 if shadow_judge(root, a.parent, a.fresh, a.again) else 1
     return run(root, a.base, a.full, a.structural, a.runner or runner())
 
 

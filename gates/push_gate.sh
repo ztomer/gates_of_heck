@@ -213,6 +213,30 @@ push_refusals   # the tag, disk, commit-message and landed-only refusals (gates/
 gated=0
 # <"$refs_file", NOT stdin: `cat` above drained it, and a while-read on a spent
 # stream is a loop that never runs — a gate that silently gates nothing.
+# The full gate, in the export (cwd): tools/gate.sh --full, then the structural layer and the steps
+# .gatesrc declares where it ran neither. The `landed` sample runs it in the land's suite shape
+# (tests/suite_home.py SHAPE), once more on a red (push_release_shadow, lib/push_runs.sh).
+push_full_gate() {
+    [ -z "${shadow_base:-}" ] || export GATES_OF_HECK_SUITE_SHAPE=ci
+    # shellcheck source=/dev/null # the .gatesrc below is the gated repo's, unknown at lint (GOH.SHX2)
+    GOH_CROSS_REPO_ROOT="$root" GOH_CHANGE_BASE="$change_base" GOH_STRUCTURAL_MARK="$structural_mark" \
+        GOH_CI_STEPS_MARK="$steps_mark" bash "$worktree/tools/gate.sh" --full \
+    && { grep -qFx -- "--full	$(git rev-parse --show-toplevel)" "$structural_mark" || {
+            warn "pre-push: tools/gate.sh --full passed without running the house structural layer -- running it now"
+            bash "$GOH/gates/structural.sh" --full
+        }; } \
+    && { [ -z "$( (unset GOH_CI_STEPS; [ ! -f .gatesrc ] || . ./.gatesrc >/dev/null 2>&1 </dev/null
+                       printf '%s' "${GOH_CI_STEPS:-}") )" ] \
+        || grep -qFx -- "$(git rev-parse --show-toplevel)" "$steps_mark" || {
+            warn "pre-push: tools/gate.sh --full passed without running the steps .gatesrc declares (GOH_CI_STEPS) -- running them now"
+            GOH_DIR="$GOH" bash "$GOH/gates/local_ci.sh" "$worktree"
+        }; }
+}
+push_full_gate_again() {
+    (cd "$worktree" && push_full_gate) 2>&1 | tee -a "$log"
+    return "${PIPESTATUS[0]}"
+}
+
 while read -r local_ref local_sha _remote_ref remote_sha; do
     [ -n "${local_sha:-}" ] || continue
     [ "$local_sha" = "$zero" ] && continue          # a delete: nothing to test
@@ -311,24 +335,14 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
     config_base="$([ -n "$release_base" ] || push_config_base "$worktree" "${remote_sha:-$zero}")"   # floors only
     structural_mark="$(mktemp "$(goh_tmp)/goh-structural-mark.XXXXXX")"
     steps_mark="$(mktemp "$(goh_tmp)/goh-ci-steps-mark.XXXXXX")"
-    # shellcheck source=/dev/null # the .gatesrc below is the gated repo's, unknown at lint (GOH.SHX2)
+    shadow_base=""   # the audit's `landed` sample: the full gate in the land's shape (lib/push_runs.sh)
+    case "$release_base" in "shadow "*) shadow_base="${release_base#shadow }" release_base="" ;; esac
     (cd "$worktree" && if [ -n "$release_base" ]; then
             GOH_CROSS_REPO_ROOT="$root" GOH_CHANGE_BASE="$change_base" push_release_run "$release_base"
         elif [ -n "$config_base" ]; then GOH_CROSS_REPO_ROOT="$root" GOH_CHANGE_BASE="$change_base" push_config_run "$config_base"
-        else
-        GOH_CROSS_REPO_ROOT="$root" GOH_CHANGE_BASE="$change_base" GOH_STRUCTURAL_MARK="$structural_mark" \
-            GOH_CI_STEPS_MARK="$steps_mark" bash "$worktree/tools/gate.sh" --full \
-        && { grep -qFx -- "--full	$(git rev-parse --show-toplevel)" "$structural_mark" || {
-                warn "pre-push: tools/gate.sh --full passed without running the house structural layer -- running it now"
-                bash "$GOH/gates/structural.sh" --full
-            }; } \
-        && { [ -z "$( (unset GOH_CI_STEPS; [ ! -f .gatesrc ] || . ./.gatesrc >/dev/null 2>&1 </dev/null
-                           printf '%s' "${GOH_CI_STEPS:-}") )" ] \
-            || grep -qFx -- "$(git rev-parse --show-toplevel)" "$steps_mark" || {
-                warn "pre-push: tools/gate.sh --full passed without running the steps .gatesrc declares (GOH_CI_STEPS) -- running them now"
-                GOH_DIR="$GOH" bash "$GOH/gates/local_ci.sh" "$worktree"
-            }; }; fi) 2>&1 | tee "$log"
+        else push_full_gate; fi) 2>&1 | tee "$log"
     status="${PIPESTATUS[0]}"
+    [ -z "$shadow_base" ] || push_release_shadow "$shadow_base" "$status" push_full_gate_again || true
     # The full gate's END: one ledger row (GOH.GATEBUDGET); none for a release-only or floor push, none under a land
     [ -n "$release_base$config_base${GOH_TIMING_VIA:-}" ] || goh_push_row "$root" "$status" "$commit"
     rm -f "$structural_mark" "$steps_mark"

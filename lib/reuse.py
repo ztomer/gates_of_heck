@@ -84,10 +84,10 @@ DAY_S = 86400
 LEGACY = ("goh-landed", "goh-pushed")
 
 
-# How a path's sampled reuse is re-run (lib/reuse_audit.py): at the site, right then ("inline");
-# by hosted CI's full gate of the pushed commit, read later ("ci"); or not yet ("": `unsampled`
-# says why, and the audit's report names the path UNSAMPLED -- never clean).
-SHADOWS = ("inline", "ci", "")
+# How a path's sampled reuse is re-run (lib/reuse_audit.py): at the site, right then, on this box
+# ("inline"; hosted CI is another shape and advisory, GOH.LANDEDREUSEON); or not yet ("":
+# `unsampled` says why, and the audit's report names the path UNSAMPLED -- never clean).
+SHADOWS = ("inline", "")
 
 
 @dataclass(frozen=True)
@@ -130,7 +130,7 @@ GATE = register(
     "a green gate over a commit's tree: the push gate writes; ship verdict, the release rule read",
     sites=("lib/ship_verdict.py",),
     unsampled="its fresh side is a full gate of the tree in an idle local slot, which only the "
-    "idle lander (tools/landq.py) schedules; hosted CI's gate of a public repo reads via `landed`",
+    "idle lander (tools/landq.py) schedules; `landed`'s shadow is the release push's own",
 )
 
 PUSHED = register(
@@ -148,7 +148,7 @@ PUSHED = register(
 LANDED = register(
     "landed", ("repo", "sha", "identity"), 365 * DAY_S,
     "the release push rule: release files only on a parent whose land was green (release_gate.py)",
-    store="goh-landed", sites=("lib/release_gate.py",), shadow="ci", every=1, min_samples=1,
+    store="goh-landed", sites=("lib/release_gate.py",), shadow="inline",
 )  # fmt: skip
 register(
     "origin", ("repo", "sha", "remote"), 0,

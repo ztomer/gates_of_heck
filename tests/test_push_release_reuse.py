@@ -32,12 +32,19 @@ RELEASE = "# CHANGELOG\n\n## v0.2.0\n\n* **X.** x\n"
 # A fixture test that reads ITS repo's changelog, spelled apart so goh's own reader table
 # (tools/affected_tests.py readers) does not take this file for a reader of goh's.
 READS_CHANGELOG = 'TEXT = (REPO_ROOT / "CHANGELOG' + '.md").read_text()\n'
+# The full gate says the suite shape it ran in (tests/suite_home.py SHAPE): a land's is `ci`, so the
+# `landed` shadow's fresh full gate must be too (GOH.LANDEDREUSEON); a plain push's is the box's.
+SHAPE = "GATES_OF_HECK_SUITE_SHAPE"
+SHAPE_WORD = '"shape-${' + SHAPE + ':-box}"'
 
 
 def _fixture(repo: Path, tmp_path: Path, *, opt_in: bool = True) -> Path:
     """The main checkout `repo` with a lane worktree whose tip P carries the gates the push runs."""
     (repo / "tools").mkdir()
-    (repo / "tools" / "gate.sh").write_text("#!/usr/bin/env bash\n" + REPORT.format(word="full"))
+    (repo / "tools" / "gate.sh").write_text(
+        "#!/usr/bin/env bash\n" + REPORT.format(word="full") + REPORT.format(word=SHAPE_WORD)
+        + '[ ! -e "${GATE_REPORT%/*}/fail" ] || exit 1\n'
+    )  # fmt: skip
     (repo / "gates").mkdir()
     (repo / "gates" / "structural.sh").write_text(
         "#!/usr/bin/env bash\n" + REPORT.format(word="structural")
@@ -95,6 +102,7 @@ def _push(wt: Path, tmp_path: Path) -> tuple[int, list[str], str]:
         drop_git=True, GATE_REPORT=str(report), GOH_REUSE_DIR=str(tmp_path / "reuse"),
         GOH_PUSH_LOGS=str(tmp_path / "push-logs"), GOH_PUSH_WORKTREES=str(tmp_path / "exports"),
     )  # fmt: skip
+    env.pop(SHAPE, None)  # this suite's own shape is no push's: the push gate names the shadow's
     p = subprocess.run(
         ["bash", str(PUSH_GATE)], cwd=wt, env=env, text=True, capture_output=True,
         input=f"{sha} {sha} refs/heads/main {ZERO}\n", timeout=patience(300), check=False,
@@ -205,3 +213,73 @@ def test_the_land_verdicts_reuse_is_the_full_gate_while_audited_off_and_reduced_
     rc, ran, out = _push(wt, tmp_path)
     assert rc == 0 and ran == ["structural", "pytest"], (ran, out)
     assert f"release files only since {parent[:8]}" in out, out
+
+
+def _due(monkeypatch, tmp_path: Path, fields: dict[str, str]) -> None:
+    """The next `landed` use is its window's sampled one: every-1 uses of the path counted first."""
+    monkeypatch.setenv("GOH_REUSE_DIR", str(tmp_path / "reuse"))
+    monkeypatch.setenv("GOH_LOOPCTL", str(tmp_path / "no-loopctl.py"))  # nothing filed anywhere
+    every = reuse_audit.reuse.PATHS["landed"].every
+    assert every > 1, "a release push's every reuse sampled is a full gate on every ship"
+    assert set(reuse_audit.use_many("landed", [fields] * (every - 1))) == {"reuse"}
+
+
+def test_the_sampled_release_push_runs_the_full_gate_in_the_lands_shape_and_compares(
+    repo, tmp_path, monkeypatch
+) -> None:
+    """GOH.LANDEDREUSEON: `landed`'s fresh side was hosted CI, another machine's shape, so a
+    CI-only red switched a local reuse off. It is a LOCAL full gate in the land's `ci` shape, made
+    at the push on one release in `every`, and compared with the land's green."""
+    wt = _fixture(repo, tmp_path)
+    parent = git(wt, "rev-parse", "HEAD").strip()
+    assert _land(wt, None).returncode == 0
+    _release(wt)
+    _due(monkeypatch, tmp_path, {"repo": "/x/.git", "sha": "b" * 40, "identity": "j" * 64})
+    rc, ran, out = _push(wt, tmp_path)
+    assert rc == 0 and ran == ["full", "shape-ci"], (ran, out)
+    assert f"the `landed` sample: the full gate in the land's shape, judged against {parent[:8]}" \
+        in out, out  # fmt: skip
+    rec = reuse_audit.state("landed")
+    assert rec["state"] == "on" and rec["window"]["agreed"] == 1, rec
+    rc, ran, out = _push(wt, tmp_path)  # the next release reuses again
+    assert rc == 0 and ran == ["structural", "pytest"], (ran, out)
+
+
+def test_a_repeated_local_shadow_red_turns_landed_off(repo, tmp_path, monkeypatch) -> None:
+    """The sampled full gate red, and red again on its re-run: the land verdict's reuse is off, the
+    push refused, and the next release push takes the full gate (in the box's shape) and says so."""
+    wt = _fixture(repo, tmp_path)
+    parent = git(wt, "rev-parse", "HEAD").strip()
+    assert _land(wt, None).returncode == 0
+    _release(wt)
+    _due(monkeypatch, tmp_path, {"repo": "/x/.git", "sha": "b" * 40, "identity": "j" * 64})
+    (tmp_path / "fail").write_text("")
+    rc, ran, out = _push(wt, tmp_path)
+    assert rc != 0 and ran == ["full", "shape-ci"] * 2, (ran, out)
+    rec = reuse_audit.state("landed")
+    assert rec["state"] == "off" and rec["cause"] == "disagree", rec
+    ev = rec["evidence"]
+    assert (ev["reused"], ev["fresh"]) == ("green", "red"), ev
+    assert ev["again"] == {"reused": "green", "fresh": "red"}, ev
+    assert ev["fields"]["sha"] == parent and "local full gate" in ev["fresh_from"], ev
+    (tmp_path / "fail").unlink()
+    rc, ran, out = _push(wt, tmp_path)
+    assert rc == 0 and ran == ["full", "shape-box"], (ran, out)
+    _full(ran, out, "the audit turned the land verdict's reuse off")
+
+
+def test_a_ci_only_red_never_reaches_the_landed_path(repo, tmp_path, monkeypatch) -> None:
+    """v0.139.6 and REUSEOFFLANDED4: a red only hosted CI saw turned `landed` off, though CI is
+    advisory and the box's land judged the parent. No release push queues a CI shadow and the audit
+    reads no CI: a CI red is the loop's fault item (`loopctl reconcile`), never a local switch."""
+    monkeypatch.setenv("GOH_REUSE_DIR", str(tmp_path / "reuse"))
+    wt = _fixture(repo, tmp_path)
+    git(repo, "remote", "add", "origin", "https://github.com/o/n.git")
+    assert _land(wt, None).returncode == 0
+    _release(wt)
+    rc, ran, out = _push(wt, tmp_path)
+    assert rc == 0 and ran == ["structural", "pytest"], (ran, out)
+    assert not list((tmp_path / "reuse" / "audit").glob("pending/*.json")), "a CI shadow queued"
+    assert not hasattr(reuse_audit, "drain"), "the audit still reads hosted CI"
+    assert reuse_audit.reuse.PATHS["landed"].shadow == "inline"
+    assert reuse_audit.state("landed")["state"] == "on"

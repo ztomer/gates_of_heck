@@ -125,7 +125,6 @@ def test_the_lander_runs_it_when_idle_and_drains_again_after_it_yields(tmp_path,
         return next(answers)
 
     monkeypatch.setattr(landq.idle_suite, "run", fake)
-    monkeypatch.setattr(landq, "audit_drain", lambda: None)
     assert landq.drain() == 0
     assert len(calls) == 2, calls  # yielded: the lander looked for the land, then idled again
 
