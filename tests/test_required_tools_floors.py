@@ -27,6 +27,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _fast_git import fast_init
 from _tool_versions import floor as floor_of, pin as pin_of
 from timing_bounds import patience
 
@@ -226,7 +227,7 @@ def _tree(root: Path, goh: bool) -> Path:
     """A consumer-shaped tree, or one shaped like a goh checkout (the toplevel marker
     gates/_self_gate.sh names: commit_gate.sh, _from_head.sh and crates/goh)."""
     root.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "init", "-q", str(root)], check=True, stdin=subprocess.DEVNULL)
+    fast_init(root)
     if goh:
         (root / "gates").mkdir()
         (root / "gates" / "commit_gate.sh").write_text("", encoding="utf-8")
