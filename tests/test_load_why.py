@@ -150,7 +150,7 @@ def test_the_hooks_door_says_nothing_for_a_load_directory_it_may_not_read(
     tmp_path: Path, monkeypatch
 ) -> None:
     """A load directory inside a work tree is refused (GOH.STRAYLOCK); a hook never fails for it."""
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, stdin=subprocess.DEVNULL)
+    (tmp_path / ".git").mkdir()  # what makes a directory a work tree to reg.checked
     monkeypatch.setenv("GOH_LOAD_DIR", str(tmp_path / "load"))
     sys.path.insert(0, str(REPO_ROOT / "hooks" / "claude"))
     import load_runs
