@@ -15,7 +15,7 @@ from pathlib import Path
 
 import _fake_cargo
 import pytest
-from _tree_lint import records, tree_lint  # noqa: F401  # tree_lint is a fixture
+from _tree_lint import private_copy, records, tree_lint  # noqa: F401  # tree_lint is a fixture
 from conftest import REPO_ROOT, stage, write
 from test_rust_gate import CURRENT, clone, warm_crate  # noqa: F401  # warm_crate is a fixture
 
@@ -59,12 +59,13 @@ def test_structural_full_leaves_nothing_in_tmpdir(tmp_path, tree_lint) -> None:
     """
     tmpdir = tmp_path / "t"
     tmpdir.mkdir()
-    before = records()
-    env = {**os.environ, "TMPDIR": str(tmpdir) + "/"}
+    own = private_copy(tree_lint, tmp_path / "verdicts")  # no other test writes this one
+    before = records(own)
+    env = {**os.environ, "TMPDIR": str(tmpdir) + "/", "GOH_VERDICT_DIR": str(own.parent)}
     r = subprocess.run(["bash", str(REPO_ROOT / "gates" / "structural.sh"), "--full"],
                        cwd=REPO_ROOT, capture_output=True, text=True, timeout=600,
                        env=env, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
     assert _left(tmpdir) == []
-    ran = records() - before
+    ran = records(own) - before
     assert not ran, f"the gate shellchecked {len(ran)} files inside the test's call"

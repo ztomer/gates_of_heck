@@ -9,13 +9,17 @@ GOH.CIRED01392) `test_structural_full_leaves_nothing_in_tmpdir` took 224 s and 3
 
 `tree_lint` records the tree's verdicts in the session's verdict store (the home's
 `.cache/goh/verdicts`, every worker's) under an flock, so one worker pays and the rest find them;
-a test that lints the tree in place requests it and its gate reads them.
+a test that lints the tree in place requests it and its gate reads them. A test that asserts its
+gate recorded nothing copies the store first (`private_copy`): every worker writes the session's,
+so a verdict another test records during the call would read as this one's (the first land of
+GOH.CIRED01392 went red on "shellchecked 2 files" that way).
 """
 
 from __future__ import annotations
 
 import fcntl
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -28,8 +32,9 @@ def shell_verdicts() -> Path:
     return Path(os.environ["HOME"]) / ".cache" / "goh" / "verdicts" / "shell-lint"
 
 
-def records() -> set[str]:
-    return {p.name for p in shell_verdicts().rglob("*.json")}
+def records(store: Path | None = None) -> set[str]:
+    """The verdict records in `store` (default: the session's)."""
+    return {p.name for p in (store or shell_verdicts()).rglob("*.json")}
 
 
 @pytest.fixture(scope="session")
@@ -43,3 +48,9 @@ def tree_lint(goh) -> Path:
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
     assert records(), "goh shell-lint recorded no verdict in the session's store"
     return store
+
+
+def private_copy(store: Path, dest: Path) -> Path:
+    """`store` copied under `dest` as a GOH_VERDICT_DIR of its own; the copy's shell-lint dir."""
+    shutil.copytree(store, dest / "shell-lint")
+    return dest / "shell-lint"
