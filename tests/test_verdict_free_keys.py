@@ -54,6 +54,7 @@ PASSED_AND_KEYED = {
     "GOH_COVERAGE_BIN_DIR": "the coverage measurement's external command: it IS the step",
     "GOH_CROSS_REPO_ROOT": "the gated repo's checkout: one value per repo (the venv refusal)",
     "GOH_LAND_CALLER": "set on the one `git merge` land.sh makes; no gate runs under it",
+    "GOH_LAND_PRE": "the release land's empty pre-step, read by land.sh before any gate runs",
     "GOH_LAND_GATE": "the land's gate command, one value per land mode (lib/gate_identity.py)",
     "GOH_LCI_TIMEOUT": "a setting (docs/config.md): a different ceiling can judge differently",
     "GOH_PROVEN": "a setting: gate_profile.sh turns the proven cache off for its measurement",
