@@ -71,13 +71,13 @@ land_exit() {
     rm -f "$verdicts" "$pre_start"
     [ -z "$verdicts" ] || rm -f "$verdicts.base" "$verdicts.reused"
     [ -z "${GOH_LAND_PRE_ONLY:-}${GOH_LAND_STACK_ONTO:-}" ] || return "$rc"   # the enqueue's pre-step run, a stacking rebase: no land, no ledger row
-    [ ! -s "${land_timings:-}" ] && rm -f "${land_timings:-}" "${land_timings:-}.log" "${land_timings:-}.controls.log"
     goh_span_record land "$(goh_repo_id "${main:-.}")" "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" \
         ${land_timings:+--timings "${GOH_TIMINGS:-$land_timings}"} --field "wait_lock_s=$lock_wait" \
         --field "exit=$rc" ${pre_wall:+--field "pre_s=$pre_wall"} \
         ${pre_run:+--field "pre_run_s=$pre_run" --field "pre_workers=$pre_workers"} \
         ${pre_reused:+--field "pre_reused=$pre_reused"} ${suite_reused:+--field "suite_reused=$suite_reused"} \
         ${pre_fast_ran:+--field "pre_fast=1"} --field "sha=$(printf %.12s "${tip:-}")" || true
+    [ -z "$land_timings" ] || rm -f "$land_timings" "$land_timings".*   # read into the row; its gate logs too (GOH.LANDLEAKS)
 }
 trap land_exit EXIT
 # SPECULATIVE (GOH.LANDBISECTPAR, lib/landq_spec.py): the batch gates a red stack's second half on

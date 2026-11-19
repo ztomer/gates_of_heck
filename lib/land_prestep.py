@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import importlib
+import json
 import os
 import subprocess
 import sys
@@ -19,6 +20,7 @@ from pathlib import Path
 
 killtree = importlib.import_module("killtree")
 land_slot = importlib.import_module("land_slot")
+landq_inflight = importlib.import_module("landq_inflight")
 _tui = importlib.import_module("tui.lib")
 info, warn = _tui.info, _tui.warn
 
@@ -51,6 +53,34 @@ def discard(req: dict) -> None:
     if keep := (req.get("pre") or {}).get("keep"):
         for path in (Path(keep), Path(f"{keep}.record")):
             path.unlink(missing_ok=True)
+
+
+def reap(q: Path, now_ns: int | None = None) -> list[Path]:
+    """Every kept verdict under Q's `pre/` whose request is gone, removed with its record; the
+    paths removed (GOH.LANDLEAKS: 14 files kept before `discard` existed outlived their lands).
+
+    A verdict is a request's while a request in `pending/` or `running/` names it, and an
+    enqueue's while it is younger than the enqueue's own bound (its name carries its birth in ns,
+    lib/landq_inflight.py's pre-step bound plus margin): the pre-step keeps it BEFORE the request
+    is filed. A record outlives no verdict of its own."""
+    named: set[str] = set()
+    for d in ("pending", "running"):
+        for path in (q / d).glob("*.json") if (q / d).is_dir() else []:
+            with contextlib.suppress(OSError, ValueError, AttributeError, TypeError):
+                if keep := (json.loads(path.read_text()).get("pre") or {}).get("keep"):
+                    named.add(Path(keep).name)
+    bound = int(os.environ.get("GOH_ENQUEUE_PRE_TIMEOUT") or landq_inflight.PRE_TIMEOUT_S)
+    oldest = (now_ns or time.time_ns()) - (bound + landq_inflight.MARGIN_S) * 10**9
+    gone: list[Path] = []
+    for path in sorted((q / "pre").iterdir()) if (q / "pre").is_dir() else []:
+        keep = path.with_name(path.name.removesuffix(".record"))
+        born = keep.name.rpartition("-")[2]
+        if keep.name in named or (born.isdigit() and int(born) > oldest):
+            continue
+        with contextlib.suppress(OSError):
+            path.unlink()
+            gone.append(path)
+    return gone
 
 
 def lander_env(req: dict) -> list[str]:

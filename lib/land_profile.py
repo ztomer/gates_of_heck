@@ -150,7 +150,8 @@ def gate_steps(found: list[str]) -> list[dict]:
 
 
 def phases(found: list[str]) -> dict[str, float]:
-    """The coverage step's phases, from the land's logs and its gate's own `<timings>.log`."""
+    """The coverage step's phases, from the land's logs (lib/log_follow.py carries them there) and
+    its gate's own `<timings>.log` where an older land left one."""
     out: dict[str, float] = {}
     seen = list(found)
     for text in found:

@@ -42,27 +42,31 @@ controls
 t0=$(date +%s)
 # The log's path FIRST, then each step line as it lands (GOH.LANDPROGRESS): a 40 min land under
 # load printed nothing until the end. The follower is bounded by this shell (it exits when $$ is
-# gone) and is stopped, drained and reaped right after the gate.
-: >"$out.log"
-printf '%s @ %s: push gate running (log: %s)\n' "$(basename "$repo")" "${sha:0:12}" "$out.log"
-"$GOH_PY" "$GOH/lib/log_follow.py" --pid $$ "$out.log" </dev/null &
+# gone) and is stopped, drained and reaped right after the gate. A log of its own per run: land.sh
+# gates main's tree, then the tip's, on ONE timings file, and the second truncated the first's log
+# (GOH.LANDLEAKS) -- so `$out.log`, else `$out.2.log`, `$out.3.log`, ...
+log="$out.log" n=1
+while [ -e "$log" ]; do n=$((n + 1)); log="$out.$n.log"; done
+: >"$log"
+printf '%s @ %s: push gate running (log: %s)\n' "$(basename "$repo")" "${sha:0:12}" "$log"
+"$GOH_PY" "$GOH/lib/log_follow.py" --pid $$ "$log" </dev/null &
 follower=$!
 # The local ref is the SHA itself (the pinned form): push_gate.sh refuses a named ref that no longer
 # names the gated commit, and a made-up branch name names nothing at all.
 printf '%s %s refs/heads/goh-profile %s\n' "$sha" "$sha" "$zero" \
     | (cd "$repo" && GOH_TIMINGS="$out" GOH_PROVEN="$proven" \
-        bash "$GOH/gates/push_gate.sh" goh-profile "$repo") >"$out.log" 2>&1
+        bash "$GOH/gates/push_gate.sh" goh-profile "$repo") >"$log" 2>&1
 rc=$?
 kill -TERM "$follower" 2>/dev/null
 wait "$follower" 2>/dev/null
 controls
 printf '%s @ %s: push gate exit %s in %ss (log: %s)\n' \
-    "$(basename "$repo")" "${sha:0:12}" "$rc" "$(( $(date +%s) - t0 ))" "$out.log"
+    "$(basename "$repo")" "${sha:0:12}" "$rc" "$(( $(date +%s) - t0 ))" "$log"
 "$GOH_PY" "$GOH/lib/step_timings.py" report "$out" "$top"
 printf 'timings: %s\n' "$out"
 # A red gate names its reason, not only its log: land.sh runs this as its gate, and a refusal that
 # printed timings and a path left the failing tests three files away (2026-10-11).
-[ "$rc" -eq 0 ] || "$GOH_PY" "$GOH/lib/fail_lines.py" "$out.log" >&2 || true
+[ "$rc" -eq 0 ] || "$GOH_PY" "$GOH/lib/fail_lines.py" "$log" >&2 || true
 (exit "$rc")
 exit
 } # parse-guard
