@@ -12,11 +12,11 @@ worker runs one test at a time, so the sessions in it never overlap.
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
 
+from conftest import hermetic_env
 from timing_bounds import patience
 
 
@@ -39,7 +39,7 @@ def test_a_pytest_a_test_starts_numbers_its_dirs_outside_this_sessions_root(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "no:randomly",
          "-p", "no:xdist", "test_child.py"],
         cwd=tmp_path, capture_output=True, text=True, timeout=patience(120), check=False,
-        env={**os.environ, "GOH_FLAKY2_SEEN": str(seen)}, stdin=subprocess.DEVNULL,
+        env=hermetic_env(GOH_FLAKY2_SEEN=str(seen)), stdin=subprocess.DEVNULL,
     )  # fmt: skip
     assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
     child = Path(seen.read_text())
