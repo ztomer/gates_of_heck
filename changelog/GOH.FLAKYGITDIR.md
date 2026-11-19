@@ -9,3 +9,7 @@
   does: it wrote a record with no state and then the outcome, and a wait that read the gap exited 1
   ("T.S: None @ aaaaaaaa"). Each done record is now held 0.3 s in a second case, which turned the
   old two-write mover red every run.
+* hooks/claude/estate_advisories.py puts its own directory on sys.path before importing its sibling
+  `load_runs`, as agent_stalls.py does: loaded by path in-process (tests/test_state_bounds.py), it
+  found the sibling only when an earlier test on the worker had put hooks/claude on the path, so
+  the test was red alone and in any selection without such a test.
