@@ -298,8 +298,8 @@ VERSION = re.compile(r"\d+(?:\.\d+)+")
 
 
 def floors() -> dict[str, str]:
-    """tool -> floor, for every tool that has one."""
-    return {r["tool"]: r["floor"] for r in rows() if r["floor"] != "-"}
+    """tool -> floor, for every tool that has one; a pin is its tool's floor (GOH.PYTESTPIN)."""
+    return {r["tool"]: r["pin"] or r["floor"] for r in rows() if r["pin"] or r["floor"] != "-"}
 
 
 def _probe(row: dict) -> list[str]:

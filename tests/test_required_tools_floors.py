@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from _tool_versions import floor as floor_of
+from _tool_versions import floor as floor_of, pin as pin_of
 
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "gates" / "required_tools.py"
@@ -82,6 +82,18 @@ def test_the_floors_are_published_and_seeded_from_sys_updater() -> None:
             raw.setdefault(cols[1], cols[5])
     for tool in SEED:
         assert table.get(tool) and table[tool] == raw.get(tool), (tool, table, raw)
+
+
+def test_a_pinned_tool_is_published_at_its_pin() -> None:
+    """`--floors` is a consumer contract: sys_updater's check_gate_floors.sh reads pytest's floor
+    from it and refuses when the harness publishes none. pytest moving from a floor to a pin
+    (GOH.PYTESTPIN) dropped it from `--floors`, and the release canary saw sys_updater turn red. A
+    pin is the oldest release the house accepts, so it is published as the floor."""
+    out = _cli(["--floors"])
+    assert out.returncode == 0, out.stderr
+    table = dict(line.split("\t") for line in out.stdout.splitlines() if line.strip())
+    for tool in ("pytest", "ruff", "coverage"):
+        assert table.get(tool) == pin_of(tool), (tool, table)
 
 
 def test_one_tool_has_one_floor() -> None:
