@@ -31,12 +31,15 @@ def file_fault(p: reuse.ReusePath, cause: str, why: str, line: dict) -> str:
     loopctl = os.environ.get("GOH_LOOPCTL") or str(Path.home() / "Projects/.loop/tools/loopctl.py")
     if not os.path.isfile(loopctl):
         return f"not filed: no loopctl at {loopctl}"
+    phase = current_phase(set(_fault_item(p, "", "", cause, why, line, "")))
+    if not phase.startswith("phase "):
+        return f"not filed: {phase}"
     base = "GOH.REUSEOFF" + "".join(c for c in p.name.upper() if c.isalnum())
     said = ""
     for n in range(1, FILE_TRIES + 1):
         iid = base + (str(n) if n > 1 else "")
         before = (base + (str(n - 1) if n > 2 else "")) if n > 1 else ""
-        code, said = _file(loopctl, _fault_item(p, iid, before, cause, why, line))
+        code, said = _file(loopctl, _fault_item(p, iid, before, cause, why, line, phase[6:]))
         if code == 0:
             return f"filed {iid}"
         if f"{iid} already exists" not in said:
@@ -45,11 +48,11 @@ def file_fault(p: reuse.ReusePath, cause: str, why: str, line: dict) -> str:
 
 
 def _fault_item(p: reuse.ReusePath, iid: str, before: str, cause: str, why: str,
-                line: dict) -> dict:  # fmt: skip
+                line: dict, phase: str) -> dict:  # fmt: skip
     again = (f" It is off again: {before} was filed for an earlier off, and the path was enabled "
              "after it; that fix did not hold.") if before else ""  # fmt: skip
     ran = f" The fresh side was {line['fresh_from']}." if line.get("fresh_from") else ""
-    return {"id": iid, "repo": "gates_of_heck", "status": "todo", "phase": "SPD", "depends": [],
+    return {"id": iid, "repo": "gates_of_heck", "status": "todo", "phase": phase, "depends": [],
             "source": "goh reuse audit (lib/reuse_audit.py)",
             "item": f"The reuse path {p.name!r} ({p.doc}) is OFF: {cause}: {why}.{again}{ran} "
             f"Both verdicts and the key: {json.dumps(line, sort_keys=True)}",
@@ -72,6 +75,22 @@ def contract_fields(p: reuse.ReusePath) -> dict:
             f"work it skips ({p.doc})",
             "predicted": f"off -> on after `reuse_audit.py enable {p.name} --fix SHA --test NODE`"
             ": the skip reused again, its window clean"}  # fmt: skip
+
+
+def current_phase(fields: set[str]) -> str:
+    """`phase ID`, the queue's current phase for an item carrying FIELDS: phase order is execution
+    order (the loop's queue_rules.py), so the first phase not closed, not H or OW, whose `requires`
+    FIELDS meets (GOH.REUSEOFFLANDED3: a fixed SPD filed nothing once SPD closed); else why not."""
+    path = os.environ.get("GOH_LOOP_QUEUE") or str(Path.home() / "Projects/.loop/queue.json")
+    try:
+        phases = json.loads(Path(path).read_text(encoding="utf-8")).get("phases") or []
+    except (OSError, ValueError, AttributeError) as e:
+        return f"the queue {path} names no phase: {e}"
+    for ph in phases:
+        if isinstance(ph, dict) and ph.get("id") not in (None, "H", "OW") \
+                and not ph.get("closed") and set(ph.get("requires") or ()) <= fields:  # fmt: skip
+            return f"phase {ph['id']}"
+    return f"no open phase in {path} takes an item with {sorted(fields)}"
 
 
 def _file(loopctl: str, item: dict) -> tuple[int, str]:

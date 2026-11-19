@@ -48,7 +48,8 @@ def fake_loopctl(tmp_path, monkeypatch) -> Path:
     (the loop queue's tools/loopq.py class_refusal): an item names its class, or `class_of: none`
     with a `class_why`, or it is not filed; and an id already in the queue (FAKE_ITEMS, one per
     line) is refused as tools/loopq.py file_item refuses it, done or open. A `--queue` file's phase
-    `requires` (rules.phase_contracts, the loop's queue_rules.py) refuses an item missing one."""
+    `requires` (rules.phase_contracts, the loop's queue_rules.py) refuses an item missing one, and
+    a closed phase any open item."""
     log = tmp_path / "loopctl.jsonl"
     script = tmp_path / "loopctl.py"
     script.write_text(
@@ -68,6 +69,9 @@ def fake_loopctl(tmp_path, monkeypatch) -> Path:
         "    if '--queue' in sys.argv:\n"
         "        q = json.load(open(sys.argv[sys.argv.index('--queue') + 1]))\n"
         "        for p in q.get('phases', []):\n"
+        "            if p['id'] == new.get('phase') and p.get('closed'):\n"
+        "                print(f\"\\u2717 phase {p['id']} is closed but holds an open item\")\n"
+        "                sys.exit(1)\n"
         "            for key in p.get('requires', []) if p['id'] == new.get('phase') else []:\n"
         "                if not new.get(key):\n"
         "                    print(f\"\\u2717 {new['id']}: phase {p['id']} requires `{key}`\")\n"
@@ -83,6 +87,9 @@ def fake_loopctl(tmp_path, monkeypatch) -> Path:
     ci.write_text("0")
     monkeypatch.setenv("FAKE_CI", str(ci))
     monkeypatch.setenv("GOH_LOOPCTL", str(script))
+    queue = tmp_path / "loop_queue.json"  # never the live queue: an open SPD, as on 2026-11-19
+    queue.write_text(json.dumps({"phases": [{"id": "SPD", "requires": ["metric", "predicted"]}]}))
+    monkeypatch.setenv("GOH_LOOP_QUEUE", str(queue))
     monkeypatch.delenv("GOH_REUSE_NOW", raising=False)
     return log
 
@@ -299,6 +306,25 @@ def test_a_fault_files_under_a_phase_that_requires_metric_and_predicted(
     assert reuse_audit.state("landed")["fault"] == "filed GOH.REUSEOFFLANDED"
     [fault] = filed(fake_loopctl)
     assert "lib/release_gate.py" in fault["metric"] and "enable landed" in fault["predicted"], fault
+
+
+def test_a_fault_files_into_the_current_open_phase_once_spd_is_closed(
+    fake_loopctl, tmp_path, monkeypatch
+) -> None:
+    """GOH.REUSEOFFLANDED3: the item named phase SPD whatever the queue said, so it worked only
+    while SPD was open. The phase is the queue's current one: the first open phase whose contract
+    the item meets (DF wants the owner's words, which no audit has), past a closed SPD."""
+    queue = tmp_path / "queue.json"
+    phases = [{"id": "SPD", "closed": True}, {"id": "DF", "requires": ["owner_words"]},
+              {"id": "HR"}, {"id": "OW"}]  # fmt: skip
+    queue.write_text(json.dumps({"phases": phases}))
+    monkeypatch.setenv("GOH_LOOP_QUEUE", str(queue))
+    reuse_audit.enqueue("landed", FIELDS, "green", slug="o/n", sha="f" * 40)
+    (tmp_path / "ci_exit").write_text(RED)
+    reuse_audit.drain()
+    reuse_audit.drain()
+    assert reuse_audit.state("landed")["fault"] == "filed GOH.REUSEOFFLANDED"
+    assert [f["phase"] for f in filed(fake_loopctl)] == ["HR"]
 
 
 def test_a_second_off_after_its_item_is_done_files_a_new_item_naming_the_ci_run(
