@@ -4,6 +4,8 @@
 //! A relative link must resolve to a file AND to an anchor that file has.
 //! Both halves fail silently: a link to a missing heading renders and 404s
 //! only on click, and the anchor is not the heading (`mdtext::slugify`).
+//! Read: markdown links and reference definitions, and the `src`, `srcset` and
+//! `href` paths of HTML tags (`Fences::html_refs_in`, GOH.MDHTMLREFS).
 //! Out of scope: links with a scheme, protocol-relative and site-absolute
 //! ones; fenced blocks and inline code spans are not scanned.
 
@@ -127,7 +129,9 @@ fn check(
             continue;
         };
         let text = tree.text(rel).unwrap_or_default();
-        for (number, target) in fences.links_in(&text) {
+        let mut refs = fences.links_in(&text);
+        refs.extend(fences.html_refs_in(&text));
+        for (number, target) in refs {
             out.links += 1;
             if fences.skipped(&target) {
                 out.skipped += 1;

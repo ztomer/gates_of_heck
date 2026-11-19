@@ -61,6 +61,9 @@ pub struct Fences {
     scheme: Regex,
     html_tag: Regex,
     emphasis: Regex,
+    html_open: Regex,
+    html_attr: Regex,
+    html_comment: Regex,
 }
 
 impl Fences {
@@ -81,6 +84,9 @@ impl Fences {
             scheme: rx(r"^[A-Za-z][A-Za-z0-9+.-]*:")?,
             html_tag: rx(r"<[^>]+>")?,
             emphasis: rx(r"[`*_~]")?,
+            html_open: rx(r"(?i)<[a-z][a-z0-9-]*\s[^>]*>")?,
+            html_attr: rx(r#"(?i)\s(src|srcset|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))"#)?,
+            html_comment: rx(r"(?s)<!--.*?-->")?,
         })
     }
 
@@ -251,6 +257,52 @@ impl Fences {
             }
             if let Some(m) = self.reference.captures(raw).and_then(|c| c.get(1)) {
                 out.push((n + 1, m.as_str().to_owned()));
+            }
+        }
+        out
+    }
+
+    /// `[(line, target)]` for every path an HTML tag in one markdown file names (GOH.MDHTMLREFS):
+    /// `src`, `href` and each `srcset` candidate (its width or density descriptor dropped), at the
+    /// line the value starts on. Markdown has no syntax for a `<picture>` or a sized image, so a
+    /// README writes HTML and its paths are links like any other. Fenced blocks, inline code spans
+    /// and HTML comments are not read; INDENTED lines are, because inside an HTML block (the
+    /// centred-logo `<p align="center">` README) an indented line is HTML, not code.
+    #[must_use]
+    pub fn html_refs_in(&self, text: &str) -> Vec<(usize, String)> {
+        let fenced = self.strip(text, false);
+        let uncommented = self
+            .html_comment
+            .replace_all(&fenced, |c: &regex::Captures<'_>| {
+                c[0].chars()
+                    .map(|ch| if ch == '\n' { '\n' } else { ' ' })
+                    .collect::<String>()
+            });
+        let cleaned = splitlines(&uncommented)
+            .into_iter()
+            .map(blank_code_spans)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut out = Vec::new();
+        for tag in self.html_open.find_iter(&cleaned) {
+            for a in self.html_attr.captures_iter(tag.as_str()) {
+                // Group 1 is the name; 2, 3 or 4 the value (double-, single- or unquoted).
+                let name = &a[1];
+                let value = a.iter().skip(2).flatten().next().map_or("", |m| m.as_str());
+                let at = tag.start() + a.get(1).map_or(0, |m| m.start());
+                let line = 1 + cleaned[..at].matches('\n').count();
+                let urls: Vec<&str> = if name.eq_ignore_ascii_case("srcset") {
+                    value
+                        .split(',')
+                        .filter_map(|c| c.split_whitespace().next())
+                        .collect()
+                } else {
+                    Some(value.trim())
+                        .filter(|v| !v.is_empty())
+                        .into_iter()
+                        .collect()
+                };
+                out.extend(urls.into_iter().map(|u| (line, u.to_owned())));
             }
         }
         out
