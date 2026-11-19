@@ -85,6 +85,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cov_env  # lib/, beside this file: what the coverage measurement reads
 import identity_cache  # lib/, beside this file: the cross-process memo (GOH.IDENTITYPORT)
 from tool_shim import fingerprint, past_shims  # lib/, beside this file
 
@@ -412,9 +413,12 @@ def rust(repo: Path, root: Path = GOH_ROOT, external: str | None = None,
     lines = ["rust-identity v2",
              f"inputs {content(repo, inputs)} {' '.join(inputs)}",
              f"scripts {content(root, scripts)} {' '.join(scripts)}"]  # fmt: skip
-    if external is not None:
+    if external is not None:  # the GOH_* those files can read, by value (lib/cov_env.py)
         runner = runner_files(repo, external)
         lines.append(f"runner {content(repo, runner) if runner else 'none'} {' '.join(runner)}")
+        read = [(repo, inputs), (root, scripts), (repo, runner)]
+        lines += cov_env.lines((b for r, ps in read for *_, b in _entries(r, ps)), repo, root,
+                               os.environ)  # fmt: skip
     if path is not None:
         lines.append(f"pythonpath {pythonpath(path, repo, rust_gate_scripts)}")
     return [*lines, *tools()]

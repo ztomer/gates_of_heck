@@ -30,6 +30,38 @@ bump is release files only on a gated parent, the rule `lib/release_gate.py` alr
 goh's own release), the store's next consumer. koffee_big's `tools/ship_verdict.py` still parses
 the push log text instead of calling `goh ship verdict`; until it does, it misses either way.
 
+## One goh change, verified up to eight times (GOH.ONEVERDICTTREE, measured 2026-11-19)
+
+Where a goh change is judged on its way from a lane to the estate, what each stage reads, what
+its verdict is keyed by, and what it costs. Sources: `~/.local/state/goh/landq/lander.log` and
+`done/*.json` (the last 48 goh lands), the land gates' kept `logs/*.timings.jsonl`, and the ship
+records `~/.local/state/goh/ship/gates_of_heck/*.release.timings.jsonl` and `*.sweep.json`.
+
+| # | Stage | Reads | Key today | Measured |
+| --- | --- | --- | --- | --- |
+| 1 | lane's affected run (`tools/affected_tests.py --run`) | tests the diff selects | none: no record | not recorded centrally |
+| 2 | enqueue pre-step (`GOH_LAND_PRE_ONLY`) | the same selection, on the enqueued sha | kept verdict per sha (`GOH_LAND_PRE_KEEP`); the land reuses it where the tip moved only in paths no test reads | `pre_s` median 477 s |
+| 3 | land gate (push gate in the land's export) | the whole gate; the Rust coverage step dominates | proven records per group; the coverage MEASUREMENT by `gate_identity.py rust` plus, until this item, every GOH_* in the environment | lock-to-landed median 848 s; coverage step median 504 s (13 kept timings, 375-867) |
+| 4 | idle full suite (`lib/idle_suite.py`) | main's tip | the `full-suite` path (tree, instrumented) | 11 runs in lander.log |
+| 5 | release push (`tools/release_goh.sh`) | the push gate again, coverage included | as 3 | coverage median 457 s over 10 releases (380-980); 9 of the last 9 measured, "under another GOH_* configuration" |
+| 6 | hosted CI (`.github/workflows/gate.yml`) | the pushed commit | none (independent runner) | not read by lanes |
+| 7 | pin sweep | 12 consumer repos' pins | none | 713 s (v0.139.11) |
+| 8 | reuse audit shadows (`lib/reuse_audit.py`) | one sampled reuse in `every` | re-runs the work | per path |
+
+Land end to end (requested to landed) median 25.8 min over the 48 lands, 17 of them batched; the
+SPD goal is 15 min. Rust coverage in lander.log: measured 26 times, reused 7. Of the 19 misses
+named, 14 were "under another GOH_* configuration" and the rest "on other inputs", mostly goh's own
+lands changing the coverage scripts (lib/reuse.py, gates/required_*.py); a batch prints its one
+gate's decision once per item.
+
+THE FIRST STEP, landed here: the measurement keys the GOH_* it can READ, by value (`goh-env` lines,
+lib/cov_env.py), instead of the whole configuration, so stage 5 reuses stage 3's measurement when
+the inputs match exactly and the miss names the variable when one moved. What is left: one cheap
+per-change filter (1 or 2, not both) and an adaptive, bounded batch window; stage 4 reusing stage
+3's tree verdict; stage 7 reusing the release's verdict; retiring stage 8's shadows once the keys
+are proven; the batch cap chosen from the red rate; and the coverage scripts' closure, which holds
+lib/reuse*.py (every reuse edit re-measures).
+
 ## The one store
 
 `lib/reuse.py`. Root `GOH_REUSE_DIR`, else `$XDG_STATE_HOME/goh/reuse`, else

@@ -103,6 +103,8 @@ _rust_learn() {
 # that judges is keyed by its CONTENT (every key's identity names each goh root, gates/_proven.sh
 # _proven_goh_roots; the measurement's names its scripts under both, rust_cov_key), and goh's own land
 # runs the tip's head export, ~/.cache/goh/head/<sha>, a new path for every commit (GOH.RUSTCOVREUSE).
+# The MEASUREMENT's step names none: its key holds the GOH_* it reads, by value (`goh-env` lines,
+# lib/cov_env.py), and the whole configuration voided every release push's reuse (GOH.ONEVERDICTTREE).
 _rust_step() {
     local env_hash
     env_hash="$(goh_config_hash GOH_DIR)"  # GOH_* minus gates/verdict_free_keys.txt (gates/_hash.sh)
@@ -111,6 +113,7 @@ _rust_step() {
     local where
     where="$(_rust_where)"
     [ "$1" = repo ] && where="(repo)"
+    [ "$1" != coverage-measure ] || { printf 'rust_gate v2 group=%s cargo_dir=%s\n' "$1" "$where"; return; }
     printf 'rust_gate v1 group=%s cargo_dir=%s env=%s\n' "$1" "$where" "$env_hash"
 }
 
@@ -219,8 +222,9 @@ rust_proven_group() {
 #   * the BINARY: the repo's Rust build inputs, embedded files included (`inputs`: the stamp's
 #     formula, lib/goh_version.sh);
 #   * the INSTRUMENT: the coverage scripts under the gates root and GOH_DIR both (`scripts`:
-#     coverage_gate.sh's closure, rust_gate.sh, this file), the tools, the GOH_* configuration in
-#     the environment (the step) and every GOH_COV_* .gatesrc sets, exported or not (`cov`: a floor
+#     coverage_gate.sh's closure, rust_gate.sh, this file), the tools, the GOH_* those files and
+#     the suite's declaration can read (`goh-env`, lib/cov_env.py) and every GOH_COV_* .gatesrc
+#     sets, exported or not (`cov`: a floor
 #     raised there must be judged, and the plain run judges no floor; the external command too);
 #   * the RUNNER: the repo's files the external command runs the binary THROUGH (`runner`: goh's
 #     ./tools/pytest.sh and what it sources, imports or runs -- which tests run, and how);
@@ -331,7 +335,8 @@ _rust_cov_moved() {
             xcode) label="the selected Xcode" ;;
             rust-coverage|rust-identity) label="the key's formula" ;;
             "tool "*) label="the tool ${label#tool }" ;;
-            "cov "*|"env "*) label="${label#* }" ;;
+            "cov "*|"env "*|"goh-env "*) label="${label#* }" ;;
+            goh-env-scope) label="which GOH_* the measurement reads" ;;
             cov-floors-file) label="the floors file (GOH_COV_FLOORS_JSON)" ;;
             "keep "*) label="the kept file ${label#keep }" ;;
         esac
@@ -340,7 +345,7 @@ _rust_cov_moved() {
         function label(line,   w, n) {
             n = split(line, w, " ")
             if (w[1] == "tool" || w[1] == "keep") return w[1] " " w[2]
-            if (w[1] == "cov" || w[1] == "env") { sub(/=.*/, "", w[2]); return w[1] " " w[2] }
+            if (w[1] == "cov" || w[1] == "env" || w[1] == "goh-env") { sub(/=.*/, "", w[2]); return w[1] " " w[2] }
             return w[1]
         }
         function files(line,   w, n, i, s) {   # a line that keys files: <kind> <hash> <path>...
@@ -368,10 +373,10 @@ _rust_cov_moved() {
 }
 
 # _rust_cov_miss <step> <inputs now> -- why a keyed lookup missed, from this workspace's newest
-# measurement record: one under this very step (so the inputs differ: which ones, from the inputs
-# kept with it), else one under another configuration, else none.
+# measurement record under this very step (so the inputs differ: which ones, from the inputs kept
+# with it), else none. The step names no configuration (_rust_step): a GOH_* that moved is named.
 _rust_cov_miss() {
-    local dir f line epoch step best="" best_epoch=-1 near="" near_epoch=-1 now tree kept moved
+    local dir f line epoch step best="" best_epoch=-1 now tree kept moved
     dir="$(proven_dir)" || { echo "no record store"; return 0; }
     # Every record, read here rather than by a `grep "$dir"/* | xargs ls -t` pipeline: the store
     # holds directories too (made/, scope-extra/, cov-inputs/), grep exits 2 on them, and under
@@ -388,11 +393,7 @@ _rust_cov_miss() {
             esac
         done <"$f"
         case "$epoch" in ""|*[!0-9]*) continue ;; esac
-        if [ "$step" = "$1" ]; then
-            if [ "$epoch" -gt "$best_epoch" ]; then best="$f"; best_epoch="$epoch"; fi
-        elif [ "${step%% env=*}" = "${1%% env=*}" ]; then
-            if [ "$epoch" -gt "$near_epoch" ]; then near="$f"; near_epoch="$epoch"; fi
-        fi
+        if [ "$step" = "$1" ] && [ "$epoch" -gt "$best_epoch" ]; then best="$f"; best_epoch="$epoch"; fi
     done
     now="$(proven_now)"
     if [ -n "$best" ]; then
@@ -408,10 +409,6 @@ _rust_cov_miss() {
         else
             echo "the last measurement ($(proven_age $((now - best_epoch))) ago) was on other inputs: $moved moved"
         fi
-        return 0
-    fi
-    if [ -n "$near" ]; then
-        echo "the last measurement ($(proven_age $((now - near_epoch))) ago) was under another GOH_* configuration"
         return 0
     fi
     echo "no measurement of this workspace is recorded yet"
