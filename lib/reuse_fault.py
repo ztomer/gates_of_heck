@@ -6,7 +6,7 @@ naming its class as rules.class_first asks (`class_of: none`) and the fields its
 `requires` names (rules.phase_contracts: `metric`, `predicted`). A path turns off only while on, so
 each off is a new instance: an id the queue already holds is an EARLIER off's item, done or open,
 and the next free id is filed, naming it. `unfiled` lists the paths off with no filed item, for
-SessionStart (hooks/claude/estate_advisories.py). Pinned by tests/test_reuse_audit.py.
+SessionStart (hooks/claude/estate_advisories.py). Pinned by tests/test_reuse_fault.py.
 """
 
 from __future__ import annotations
