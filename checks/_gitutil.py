@@ -26,7 +26,12 @@ def local_env_vars() -> tuple:
     it ships. Works outside any repo and with a GIT_DIR that names nothing.
 
     A gate exports git's answer once per process tree (GOH_GIT_LOCAL_VARS, gates/_from_head.sh);
-    it is taken only when it names GIT_DIR -- the variable this list exists to drop."""
+    it is taken only when it names GIT_DIR -- the variable this list exists to drop.
+
+    git's own answer is held to the same rule, and a list without GIT_DIR RAISES rather than being
+    returned: callers cache it for the life of the process (lib/gitrun.py too), so a `git` that
+    answered with nothing -- a test's shim first on PATH -- left every later `repo=` call in that
+    process binding to an inherited GIT_DIR (GOH.FLAKYGITDIR). A raise is never cached."""
     inherited = os.environ.get("GOH_GIT_LOCAL_VARS", "").split()
     if "GIT_DIR" in inherited:
         return tuple(inherited)
@@ -37,7 +42,13 @@ def local_env_vars() -> tuple:
         check=True,
         stdin=subprocess.DEVNULL,
     )
-    return tuple(out.stdout.split())
+    names = tuple(out.stdout.split())
+    if "GIT_DIR" not in names:
+        raise RuntimeError(
+            f"`git rev-parse --local-env-vars` named no GIT_DIR ({out.stdout.strip()!r}): "
+            "that is not git's answer, and a list without it drops nothing that matters"
+        )
+    return names
 
 
 def foreign_repo_env(base=None) -> dict:

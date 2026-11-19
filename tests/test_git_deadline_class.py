@@ -113,6 +113,30 @@ def test_repo_drops_a_leaked_git_dir(
     assert Path(named.stdout.strip()) == (repo / ".git").resolve()
 
 
+def test_a_git_that_names_no_git_dir_is_never_the_cached_drop_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GOH.FLAKYGITDIR: a test's git shim first on PATH answered `--local-env-vars` with nothing,
+    gitrun cached that empty list for the worker, and every later `repo=` call in it kept an
+    inherited GIT_DIR -- the leaked-GIT_DIR test above went red whenever a shim test ran first on
+    its xdist worker. An answer without GIT_DIR raises, and a raise is not cached."""
+    import gitrun
+
+    monkeypatch.delenv("GOH_GIT_LOCAL_VARS", raising=False)  # git is asked, not the gate's export
+    monkeypatch.setenv("GIT_DIR", str(tmp_path / "elsewhere.git"))
+    gitrun._local_env_vars.cache_clear()
+    shim = tmp_path / "liar"
+    shim.mkdir()
+    (shim / "git").write_text("#!/bin/bash\nexit 0\n")
+    (shim / "git").chmod(0o755)
+    with monkeypatch.context() as lying:
+        _with_path(shim, lying)
+        with pytest.raises(RuntimeError, match="named no GIT_DIR"):
+            gitrun.repo_env()
+    kept = "GIT_DIR" in gitrun.repo_env()  # a name, not the environment, reaches the assert
+    assert not kept, "the real git, asked again, still kept GIT_DIR: the lie was cached"
+
+
 def test_a_group_kill_is_term_first_everywhere() -> None:
     """No os.killpg(.., SIGKILL) outside the named probe: lib/killtree.py stop_group TERMs first."""
     seen = set()
@@ -155,9 +179,16 @@ def test_the_rust_git_readers_take_no_optional_lock() -> None:
 
 
 def _shim(tmp_path: Path, body: str) -> Path:
+    """A `git` running BODY, but for `rev-parse --local-env-vars`, which the real git answers: a
+    `repo=` call under the shim asks it, and a shim's answer is no list of git's
+    (GOH.FLAKYGITDIR)."""
+    import shutil
+
     shim = tmp_path / "shim"
     shim.mkdir(exist_ok=True)
-    (shim / "git").write_text(f"#!/bin/bash\n{body}\n")
+    real = shutil.which("git")
+    ask = f'[ "$*" = "rev-parse --local-env-vars" ] && exec "{real}" "$@"'
+    (shim / "git").write_text(f"#!/bin/bash\n{ask}\n{body}\n")
     (shim / "git").chmod(0o755)
     return shim
 

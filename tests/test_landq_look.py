@@ -26,6 +26,7 @@ import landq_state  # the lander's one writer: a copy that truncated tore a read
 
 
 def _req(q: Path, d: str, name: str, item: str) -> Path:
+    assert d != "done", "a done record carries its outcome: the lander files it whole, once"
     (q / d).mkdir(parents=True, exist_ok=True)
     path = q / d / f"{name}.json"
     landq_state.write(path, {"item": item, "repo": "/r", "sha": "a" * 40, "mode": "land"})
@@ -33,9 +34,21 @@ def _req(q: Path, d: str, name: str, item: str) -> Path:
 
 
 @pytest.mark.load_sensitive
-def test_wait_follows_the_request_through_every_state_once(tmp_path, monkeypatch):
+@pytest.mark.parametrize("dwell_s", [0.0, 0.3])
+def test_wait_follows_the_request_through_every_state_once(tmp_path, monkeypatch, dwell_s):
+    """`dwell_s` holds every done record the mover files for that long, so the wait reads each one:
+    a done record the real lander never files (one with no outcome) turns the wait red every time,
+    where unheld it did so only when a loaded box read it in a microsecond gap (GOH.FLAKYGITDIR)."""
     q = tmp_path / "landq"
     said: list[str] = []
+    real_write = landq_state.write
+
+    def dwelling_write(path: Path, data: dict, indent: int | None = 1) -> None:
+        real_write(path, data, indent)
+        if path.parent.name == "done":
+            time.sleep(dwell_s)
+
+    monkeypatch.setattr(landq_state, "write", dwelling_write)
     monkeypatch.setattr(landq_look, "info", said.append)
     monkeypatch.setattr(landq_look, "ok", said.append)
     monkeypatch.setattr(landq_look, "poll", 0.01)
@@ -60,9 +73,10 @@ def test_wait_follows_the_request_through_every_state_once(tmp_path, monkeypatch
         after("running")
         (q / "logs" / "00-T.AHEAD.gate2.log").write_text("")
         after("gate 2")
-        done = _req(q, "done", "01-T.S", "T.S")
         (q / "running" / mine.name).unlink()
-        landq_state.write(done, {"state": "landed", "sha": "b" * 40, "landed": "c" * 40})
+        (q / "done").mkdir()  # ONE record, its outcome in it, as tools/landq.py record() files it
+        outcome = {"item": "T.S", "mode": "land", "state": "landed", "sha": "b" * 40}
+        landq_state.write(q / "done" / mine.name, {**outcome, "landed": "c" * 40})
 
     t = threading.Thread(target=mover)
     t.start()
