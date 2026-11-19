@@ -31,6 +31,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # its siblings, whoever imports it
 import hold_guard  # the shell line's code, heredocs removed, and its wrapper stripping
 import scratch_guard  # the transcript's tool calls, one reader
 from shell_tools import COMMAND_FIELD, SHELL_TOOLS  # the ONE list of shell-running tools

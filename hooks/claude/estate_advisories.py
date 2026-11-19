@@ -48,6 +48,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # siblings, run or loaded by path
 import estate_registry  # the registry, beside the audit's state file
 import gitrun  # git under a deadline that never strands an index.lock
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # its siblings, whoever imports it
 from load_runs import lines as load_run_lines  # live spinner runs and their why (GOH.LOADWHY)
 
 STALE_AFTER_H = 36  # a daily job, plus a missed run's grace

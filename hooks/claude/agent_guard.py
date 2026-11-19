@@ -72,6 +72,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # its siblings, whoever imports it
 import appstate  # the owner's login-item apps, put back after an agent (GOH.APPSTATE)
 import ci_door  # a direct gh CI read past loopctl's door (GOH.GHDOOR)
 import lane_room  # a write spawn starts only while the machine has room (GOH.ADAPTLANES)
