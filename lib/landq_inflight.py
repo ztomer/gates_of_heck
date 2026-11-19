@@ -46,7 +46,13 @@ def mark(q: Path, item: str, pid: int | None = None, repo: str = "") -> Path:
     bound = int(os.environ.get("GOH_ENQUEUE_PRE_TIMEOUT") or PRE_TIMEOUT_S) + MARGIN_S
     (q / DIR).mkdir(parents=True, exist_ok=True)
     path = q / DIR / f"{pid}-{slug(item)}.json"
-    marker = {"pid": pid, "item": item, "repo": repo, "until": time.time() + bound}
+    marker = {
+        "pid": pid,
+        "item": item,
+        "repo": repo,
+        "at": time.time(),
+        "until": time.time() + bound,
+    }
     landq_state.write(path, marker, indent=None)
     atexit.register(clear, path)
     return path

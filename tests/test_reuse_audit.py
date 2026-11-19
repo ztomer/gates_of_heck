@@ -363,9 +363,12 @@ def test_every_registered_site_exists_and_every_sampled_one_asks_the_audit():
                 asks = asks or f'reuse_audit.py" use {p.name} ' in text
                 assert asks, (p.name, site)
     sampled = sorted(p.name for p in reuse.PATHS.values() if p.shadow)
-    # slice 1, GOH.VERDICTCARRY's `carry`, GOH.REUSEAUDIT2's, GOH.COVCARRY2's `profcarry`; the rest
+    # slice 1, GOH.VERDICTCARRY's `carry`, GOH.REUSEAUDIT2's, GOH.COVCARRY2's `profcarry`,
+    # GOH.ONEVERDICTTREE3's `affected`; the rest
     # say why (`unsampled`)
-    assert sampled == ["carry", "estate", "landed", "profcarry", "step", "test"], sampled
+    assert sampled == ["affected", "carry", "estate", "landed", "profcarry", "step", "test"], (
+        sampled
+    )
 
 
 def test_the_check_refuses_an_unregistered_reuse():

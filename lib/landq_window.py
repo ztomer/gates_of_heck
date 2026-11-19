@@ -18,6 +18,16 @@ filed longer ago than that -- it waited behind a running gate -- does not wait a
 
     GOH_LANDQ_WINDOW  the bound in seconds (default 120); 0 turns the wait off
 
+ADAPTIVE, BOUNDED (GOH.ONEVERDICTTREE3). The fixed 120 s rarely caught a pre-step: 8 of the last 11
+waits in lander.log closed on the bound with the other land still in its pre-step (~480 s).
+A marker says when its pre-step STARTED (`at`, lib/landq_inflight.py mark), and the queue's own
+done records say how long its repo's pre-steps take (`pre_s`, the median of the newest 20; 480 s
+with none), so the lander knows when each is DUE (start + that + 30 s). The wait stretches to the
+latest due marker, never past GOH_LANDQ_WINDOW_MAX (default 300 s) past the head's filing: a land
+gate is ~850 s (lock to landed, docs/reuse.md), so a hold of at most 300 s that saves another
+land a whole gate pays for itself whenever it catches one in three. A marker due later than that
+is waited for only the base bound; one with no `at` likewise; a lone land, none at all.
+
 Each wait is one line in lander.log as it starts and one as it ends, naming the markers it waited
 on and the seconds it took. Pinned by tests/test_landq_window.py, on a fake clock.
 """
@@ -25,6 +35,7 @@ on and the seconds it took. Pinned by tests/test_landq_window.py, on a fake cloc
 from __future__ import annotations
 
 import os
+import statistics
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -36,6 +47,11 @@ from tui.lib import counted
 
 ENV = "GOH_LANDQ_WINDOW"
 DEFAULT_S = 120.0
+MAX_ENV = "GOH_LANDQ_WINDOW_MAX"
+MAX_S = 300.0
+PRE_S = 480.0  # a repo's pre-step with no done record to measure it by (docs/reuse.md median)
+SLACK_S = 30.0
+NEWEST = 20
 POLL_S = 2.0
 
 
@@ -45,6 +61,35 @@ def window() -> float:
         return max(0.0, float(os.environ.get(ENV) or DEFAULT_S))
     except ValueError:
         return DEFAULT_S
+
+
+def most() -> float:
+    """GOH_LANDQ_WINDOW_MAX: the stretched window's bound past the head's filing (module doc)."""
+    try:
+        return max(0.0, float(os.environ.get(MAX_ENV) or MAX_S))
+    except ValueError:
+        return MAX_S
+
+
+def expected(q: Path, repo: object) -> float:
+    """How long REPO's enqueue pre-steps take: the median `pre_s` of its newest done records."""
+    took = []
+    for path in sorted((q / "done").glob("*.json"), reverse=True) if (q / "done").is_dir() else []:
+        rec = landq_batch.read(path)
+        if rec.get("repo") == repo and isinstance(rec.get("pre_s"), (int, float)):
+            took.append(float(rec["pre_s"]))
+            if len(took) == NEWEST:
+                break
+    return statistics.median(took) if took else PRE_S
+
+
+def deadline(head_filed: float, waiting: list[dict], took: float) -> float:
+    """The window's end: the base bound, stretched to the latest marker due within the most."""
+    base, cap = head_filed + window(), head_filed + max(window(), most())
+    due = [
+        float(m["at"]) + took + SLACK_S for m in waiting if isinstance(m.get("at"), (int, float))
+    ]
+    return max([base, *(d for d in due if d <= cap)])
 
 
 def filed(path: Path) -> float:
@@ -89,13 +134,15 @@ def hold(
     head, bound, cap = landq_batch.read(pending[0]), window(), landq_batch.cap()
     if head.get("mode") != "land" or cap == 1 or bound == 0:
         return pending
-    name, deadline, start, waited = pending[0].stem, filed(pending[0]) + bound, clock(), False
+    name, at, start, waited = pending[0].stem, filed(pending[0]), clock(), False
+    took = expected(q, head.get("repo"))
     while True:
         waiting = others(q, pending)
-        size, left = len(_batchable(pending, head.get("repo"))), deadline - clock()
+        end = deadline(at, waiting, took)
+        size, left = len(_batchable(pending, head.get("repo"))), end - clock()
         why = ("no enqueue is left in its pre-step" if not waiting else
                "the batch is full" if size >= cap else
-               f"the bound ({bound:g}s past its filing) is reached with {_names(waiting)} "
+               f"the bound ({end - at:.0f}s past its filing) is reached with {_names(waiting)} "
                "still in the pre-step" if left <= 0 else "")  # fmt: skip
         if why:
             if waited:
@@ -104,7 +151,8 @@ def hold(
             return pending
         if not waited:
             say(f"{name}: holding the batch up to {left:.0f}s for {_names(waiting)} in the "
-                f"enqueue pre-step (GOH.BATCHWINDOW, {ENV}={bound:g})")  # fmt: skip
+                f"enqueue pre-step (GOH.BATCHWINDOW, {ENV}={bound:g}, {MAX_ENV}={most():g}, "
+                f"its pre-steps take {took:.0f}s)")  # fmt: skip
         waited = True
         sleep(min(POLL_S, left))
         if not (pending := sorted((q / "pending").glob("*.json"))):

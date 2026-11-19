@@ -47,6 +47,7 @@ MENTIONS = {
     "lib/gate_coverage.py -> tools/gate.sh": "the gated repo's entry, read as text",
     "lib/reuse.py -> checks/_estate_cache.py": "a reuse site's name, registry metadata",
     "lib/reuse.py -> gates/push_gate.sh": "a reuse site's name, registry metadata",
+    "lib/reuse.py -> lib/affected_verdict.py": "a reuse site's name, registry metadata",
     "lib/reuse.py -> lib/config_push.py": "a reuse site's name, registry metadata",
     "lib/reuse.py -> lib/release_gate.py": "a reuse site's name, registry metadata",
     "lib/reuse.py -> lib/ship_verdict.py": "a reuse site's name, registry metadata",

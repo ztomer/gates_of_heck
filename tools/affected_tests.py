@@ -55,6 +55,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import lib.affected_verdict as av
 from lib import binary_runners, declared_reads, fast_tests, pre_reuse, source_closure, test_closure
 from lib.step_timings import timed
 from tui.lib import counted, info, ok
@@ -302,14 +303,11 @@ def affected(root: Path, changed: list[str]) -> dict[str, str]:
 
 def changed_paths(root: Path, base: str) -> list[str]:
     """What HEAD changes against its merge base with `base` (renames as add + delete)."""
-    out = subprocess.run(
+    out = subprocess.run(  # GIT_OPTIONAL_LOCKS: a reader never takes index.lock
         ["git", "-C", str(root), "diff", "--name-only", "--no-renames", f"{base}...HEAD"],
-        capture_output=True,
-        text=True,
-        check=True,
-        stdin=subprocess.DEVNULL,
-        env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},  # a reader never takes index.lock
-    ).stdout
+        capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
+        env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+    ).stdout  # fmt: skip
     return [line for line in out.splitlines() if line]
 
 
@@ -346,7 +344,8 @@ def main(argv: list[str]) -> int:
         if args.structural and (rc := structural(root)):
             return rc
         whole = args.changed is None and not args.readers_only
-        return run(root, changed, chosen, pre_reuse.base_sha(root, args.base) if whole else None)
+        base = pre_reuse.base_sha(root, args.base) if whole else None  # ONE run per change: av
+        return av.whole(root, list(chosen), base, whole, lambda: run(root, changed, chosen, base))
     for rel, why in chosen.items():
         print(f"{rel}  # {why}" if args.why else rel)
     return 0

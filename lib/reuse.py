@@ -176,10 +176,10 @@ CARRY = register(
     sites=("tests/_land_verdicts.py",), shadow="inline",
 )  # fmt: skip
 register(
-    "affected", ("repo", "base", "head"), 0,
-    "the pre-land test set chosen from the diff (tools/affected_tests.py)",
-    store="none: the diff", sites=("tools/affected_tests.py",),
-    unsampled="a selection the full gate re-runs whole: it skips nothing but through `test`",
+    "affected", ("repo", "sha", "selection", "identity", "env"), DAY_S,
+    "the pre-land set's green run, taken by the next run of that set on that commit under those "
+    "suite inputs: the lane's run is the enqueue's pre-step (lib/affected_verdict.py)",
+    sites=("lib/affected_verdict.py",), shadow="inline",
 )  # fmt: skip
 register(
     "step", ("repo", "tree", "step", "closure", "identity", "env"), DAY_S,

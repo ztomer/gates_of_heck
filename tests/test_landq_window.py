@@ -119,6 +119,7 @@ def window():
 @pytest.fixture
 def q(tmp_path, monkeypatch) -> Path:
     monkeypatch.delenv("GOH_LANDQ_WINDOW", raising=False)
+    monkeypatch.delenv("GOH_LANDQ_WINDOW_MAX", raising=False)
     monkeypatch.delenv("GOH_LANDQ_BATCH", raising=False)
     return _dirs(tmp_path)
 
@@ -226,3 +227,54 @@ def test_a_name_that_is_no_filing_time_is_read_by_its_mtime(window, tmp_path):
     assert window.filed(odd) == T0
     assert window.filed(tmp_path / "gone.json") == 0.0
     assert window.filed(tmp_path / f"{int(T0 * 1e9):020d}-T.ONE.json") == pytest.approx(T0)
+
+
+# ADAPTIVE, BOUNDED (GOH.ONEVERDICTTREE3): a marker says when its pre-step started, the queue's
+# done records how long its repo's pre-steps take; the window stretches to the latest one due.
+def _done(q: Path, pre_s: list[float], repo: str = REPO) -> None:
+    for n, s in enumerate(pre_s):
+        landq_state.write(q / "done" / f"{n:020d}-T.D{n}.json", {"repo": repo, "pre_s": s})
+
+
+def _started(q: Path, item: str, at: float) -> Path:
+    path = _mark(q, item, os.getpid(), at + 3600)
+    landq_state.write(path, {**json.loads(path.read_text()), "at": at}, indent=None)
+    return path
+
+
+def test_a_pre_step_due_soon_after_the_base_bound_is_waited_for(window, q):
+    """The 8-in-11 shape: the other land files 5 s after the fixed 120 s would have closed."""
+    clock, said = Clock(T0), []
+    _done(q, [300.0, 290.0, 310.0, 5000.0, 1.0])  # median 300: the bound is no average
+    _file(q, clock.t, "T.ONE")
+    marker = _started(q, "T.TWO", clock.t - 200)  # due at +130 (200 s in, 300 s typical, 30 slack)
+    clock.at[clock.t + 125] = lambda: (_file(q, T0 + 125, "T.TWO"), marker.unlink())
+    assert _hold(window, q, clock, said) == ["T.ONE", "T.TWO"]
+    assert 125 <= clock.slept < 127.5, clock.slept
+    assert "its pre-steps take 300s" in said[0], said
+
+
+def test_the_stretch_is_bounded_and_a_marker_due_past_it_gets_the_base_bound(window, q):
+    clock, said = Clock(T0), []
+    _done(q, [300.0])
+    _file(q, clock.t, "T.ONE")
+    _started(q, "T.TWO", clock.t - 200)  # due at +130, never files
+    assert _hold(window, q, clock, said) == ["T.ONE"]
+    assert clock.slept == pytest.approx(130)  # its due, not a minute more
+    clock, said = Clock(T0 + 1000), []
+    for p in (q / "pending").glob("*.json"):
+        p.unlink()
+    (q / "enqueuing" / f"{os.getpid()}-T.TWO.json").unlink()
+    _file(q, clock.t, "T.ONE")
+    _started(q, "T.THREE", clock.t)  # just started: due at +330, past the 300 s most
+    assert _hold(window, q, clock, said) == ["T.ONE"]
+    assert clock.slept == pytest.approx(window.DEFAULT_S)
+
+
+def test_the_most_is_the_named_setting_and_never_below_the_base(window, q, monkeypatch):
+    assert (window.most(), window.expected(q, REPO)) == (window.MAX_S, window.PRE_S)
+    monkeypatch.setenv(window.MAX_ENV, "60")
+    marker = [{"at": T0 - 50}]
+    assert window.deadline(T0, marker, 100) == T0 + window.DEFAULT_S  # due +80, base 120 wins
+    monkeypatch.setenv(window.MAX_ENV, "soon")
+    assert window.most() == window.MAX_S

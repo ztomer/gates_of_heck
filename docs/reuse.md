@@ -39,8 +39,8 @@ records `~/.local/state/goh/ship/gates_of_heck/*.release.timings.jsonl` and `*.s
 
 | # | Stage | Reads | Key today | Measured |
 | --- | --- | --- | --- | --- |
-| 1 | lane's affected run (`tools/affected_tests.py --run`) | tests the diff selects | none: no record | not recorded centrally |
-| 2 | enqueue pre-step (`GOH_LAND_PRE_ONLY`) | the same selection, on the enqueued sha | kept verdict per sha (`GOH_LAND_PRE_KEEP`); the land reuses it where the tip moved only in paths no test reads | `pre_s` median 477 s |
+| 1 | lane's affected run (`tools/affected_tests.py --run`) | tests the diff selects | the `affected` path (repo, sha, selection, suite identity, suite inputs), since GOH.ONEVERDICTTREE3; it runs in the land's shape | as 2 |
+| 2 | enqueue pre-step (`GOH_LAND_PRE_ONLY`) | the same selection, on the enqueued sha | takes 1's verdict on the exact key (lib/affected_verdict.py); kept per sha for the lander (`GOH_LAND_PRE_KEEP`), which reuses it where the tip moved only in paths no test reads | `pre_s` median 477 s before; the structural gates and cheap judges alone after a take |
 | 3 | land gate (push gate in the land's export) | the whole gate; the Rust coverage step dominates | proven records per group; the coverage MEASUREMENT by `gate_identity.py rust` plus, until this item, every GOH_* in the environment | lock-to-landed median 848 s; coverage step median 504 s (13 kept timings, 375-867) |
 | 4 | idle full suite (`lib/idle_suite.py`) | main's tip | the `full-suite` path (tree, instrumented) | 11 runs in lander.log |
 | 5 | release push (`tools/release_goh.sh`) | the push gate again, coverage included | as 3 | coverage median 457 s over 10 releases (380-980); 9 of the last 9 measured, "under another GOH_* configuration" |
@@ -56,8 +56,9 @@ gate's decision once per item.
 
 THE FIRST STEP, landed here: the measurement keys the GOH_* it can READ, by value (`goh-env` lines,
 lib/cov_env.py), instead of the whole configuration, so stage 5 reuses stage 3's measurement when
-the inputs match exactly and the miss names the variable when one moved. What is left: one cheap
-per-change filter (1 or 2, not both) and an adaptive, bounded batch window; stage 4 reusing stage
+the inputs match exactly and the miss names the variable when one moved. GOH.ONEVERDICTTREE3 made 1
+and 2 one run (stage 2 takes stage 1's green verdict on an exact key) and the batch window adaptive
+and bounded (lib/landq_window.py). What is left: stage 4 reusing stage
 3's tree verdict; stage 7 reusing the release's verdict; retiring stage 8's shadows once the keys
 are proven; the batch cap chosen from the red rate; and the coverage scripts' closure, which holds
 lib/reuse*.py (every reuse edit re-measures).
@@ -137,4 +138,5 @@ moves; one on the live checkout keeps it only while goh's main does not move.
 | `step` | inline, 1 in 16 hits, 1 in 4 where the repo tracks no GitHub workflow (no hosted CI behind the skip): the step runs anyway; a red one runs again and its record is looked up again, and a repeat turns `step` off, so every later hit runs (GOH.REUSEAUDIT2; the closure keying's kill switch, GOH.PROVENCLOSURE2) | `gates/_proven_audit.sh` (`proven_audit_use`, `proven_audit_judge`), asked by `gates/proven.sh` and `gates/local_ci.sh` before a skip. rust_gate's group hits (`rust_proven_group`) do not ask yet: they key on `closure full`, and their checks run under set -e |
 | `test` | inline, 1 in 10 same-tree nodes a land's gate would skip: decided once by the controller and handed to every xdist worker, the node runs anyway; a failure is re-run in a child pytest and the pre-land record read again, and a repeat turns `test` off, so the next gate reuses nothing (GOH.REUSEAUDIT2) | `tests/_land_audit.py` (`audited`, `shadows`), asked by `tests/_land_verdicts.py` |
 | `gate`, `origin`, `rustcov`, `file` | none: each registration says why (`reuse_audit.py report`, `goh budget`). `gate` waits on an idle-slot full gate only the idle lander can schedule; `origin` reuses no verdict (a scope rule); `rustcov` is minutes a sample under set -e; `file` needs the counter in Rust | |
-| `pushed`, `affected` | none by design: `pushed` is identity-free; `affected` skips nothing but through `test` | |
+| `affected` | inline, 1 in 10 takes: the set runs anyway and its verdict is compared with the kept one; a repeat turns `affected` off, so every set runs | `lib/affected_verdict.py` (`judged`), asked by `tools/affected_tests.py --run` |
+| `pushed` | none by design: identity-free | |
