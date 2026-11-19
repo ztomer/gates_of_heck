@@ -420,20 +420,20 @@ def record_suite(repo: Path, tree: str, tools: str, passed: dict[str, bool], fai
     """Merge one suite run's verdicts on `tree` into its record: `passed` ({node: it ran the
     native binary}) joins the record's passes, a node in `failed` leaves them. `full` says this
     run judged every test of the tree itself (none carried from another tree, nothing failed); a
-    record stays full only while no later run on the tree fails. `instrumented`: the run drove
-    the coverage step's INSTRUMENTED binary (tests/_land_verdicts.py `instrumented`), so a full
-    one is the fresh instrumented run a ship needs (GOH.COVCARRY, the owner's term 2);
-    `measured` ({node: it left a profile}) joins the nodes such a run SAW, the only ones coverage
-    may carry (tests/_prof_record.py); `judged` joins the passes some run made ON this tree, never
-    carried to it (GOH.SHIPBREACH0137: what a ship's fresh run may take, tests/_same_tree.py)."""
+    record stays full only while no later run on the tree fails and every pass in it is `judged`
+    (GOH.CARRYASFULL). `instrumented`: the run drove the coverage step's INSTRUMENTED binary
+    (tests/_land_verdicts.py `instrumented`), so a full one is the fresh instrumented run a ship
+    needs (GOH.COVCARRY, the owner's term 2); `measured` ({node: it left a profile}) joins the
+    nodes such a run SAW, the only ones coverage may carry (tests/_prof_record.py); `judged` (all
+    of `passed` when unnamed) joins the passes made ON this tree, never carried (SHIPBREACH0137)."""
     old = lookup(CARRY, fields := carry_fields(repo, tree, tools))[0] or {}
     merged = {n: bool(b) for n, b in old.get("passed", {}).items() if n not in failed}
     merged.update(passed)
-    whole = (full or bool(old.get("full"))) and not failed
+    mine = (set(old.get("judged") or ()) | (set(passed) if judged is None else judged)) - failed
+    whole = (full or bool(old.get("full"))) and not failed and set(merged) <= mine
     inst = ((full and instrumented) or bool(old.get("instrumented"))) and whole
     seen = {n: bool(b) for n, b in old.get("measured", {}).items() if n not in failed}
     seen.update(measured or {})
-    mine = (set(old.get("judged") or ()) | (judged or set())) - failed
     extra = {"passed": merged, "full": whole, "carried": carried, "instrumented": inst,
              "measured": seen, "judged": sorted(mine & set(merged))}  # fmt: skip
     out = record(CARRY, fields, "red" if failed else "green", by, extra)

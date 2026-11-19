@@ -29,8 +29,9 @@ records on HEAD's first-parent chain (main's tip, which the last land's gate rec
 nothing from a tree whose diff touches what pytest loads before every test (affected_tests'
 Closure.base, pyproject.toml, tools/pytest.sh), and no node that ran the native binary across a
 change to its build inputs (binary_runners.build_input). A carried node is recorded as passed on
-the new tree, so the next land carries it on; only a run that carried nothing from another tree
-and failed nothing is FULL, and the release kit refuses a tip without a full record
+the new tree, so the next land carries it on, and stays CARRIED there: a later run taking it
+from that tree's own record counts it carried, not judged (GOH.CARRYASFULL); only a run that
+carried nothing and failed nothing is FULL, and the release kit refuses a tip without a full record
 (GOH_SHIP_FULL_SUITE, `reuse.py full-suite`). Each source is one use of the audited path: one use
 in ten is a SHADOW -- its carried nodes run anyway, and a failure among them is a disagreement,
 re-run once in a child pytest before it turns the path off (lib/reuse_audit.py). The controller
@@ -410,7 +411,6 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
                          or (not b and measured.get(n) is False)}  # fmt: skip
                 plan.setdefault("nobin", set()).update(n for n, b in measured.items() if b is False)
                 how = "the same tree"
-                plan.setdefault("judged", set()).update(nodes & set(rec.get("judged") or ()))
             else:
                 changed = diff(REPO_ROOT, sha)
                 chosen, why = (
@@ -444,8 +444,11 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
                 _prof_record.take(src, tools, nodes & held)
                 plan.setdefault("binprof", set()).update(nodes & held)
                 how += f", {len(nodes & held)} by their stored profiles"
-            if src != tree:
-                plan["other"] += len(nodes)
+            # A pass is judged here only when the record says a run made it ON this tree: one an
+            # earlier run carried onto it is carried still (GOH.CARRYASFULL).
+            mine = nodes & set(rec.get("judged") or ()) if src == tree else set()
+            plan.setdefault("judged", set()).update(mine)
+            plan["other"] += len(nodes - mine)
             lines.append(f"land verdicts: {len(nodes)} deselected, carried from {sha[:8]} ({how})")
     for sh in plan["shadows"]:  # a node another source skips does not run: not this shadow's
         sh["nodes"] = [n for n in sh["nodes"] if n not in plan["skipped"]]

@@ -103,7 +103,7 @@ def test_a_tree_with_no_judged_passes_runs_its_whole_suite(
 ) -> None:
     """A record from before `judged` (or one wholly carried): nothing is skipped."""
     reuse.record_suite(REPO_ROOT, "T1", "TOOLS", {S: False, OK: False, BIN: True}, set(), False,
-                       "land gate", 3, measured={S: False, OK: False})  # fmt: skip
+                       "land gate", 3, measured={S: False, OK: False}, judged=set())  # fmt: skip
     r = _fresh(session, store, tmp_path)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "no pass judged on this tree measured running no binary" in r.stdout, r.stdout
