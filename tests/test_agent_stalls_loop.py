@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import suite_home
 from conftest import REPO_ROOT, hermetic_env
 from test_agent_stalls import _agent, _assistant
 
@@ -21,7 +22,10 @@ SCRIPT = REPO_ROOT / "hooks" / "claude" / "agent_stalls.py"
 
 # `loopctl stale` (LOOP.STALECLI) owns the rule; the hook asks it with the event's projects root and
 # prints its lines. The real-CLI test runs only where .loop is checked out (never in goh's CI).
-LOOPCTL = Path.home() / "Projects" / ".loop" / "tools" / "loopctl.py"
+# The REAL home's: the suite home hides ~/Projects/.loop (suite_home.HIDDEN, GOH.CIRED01310), so a
+# test that means the loop's own CLI names the real home, and hands it a queue of its own.
+REAL_HOME = Path(os.environ.get(suite_home.MARKER) or suite_home.REAL_HOME)
+LOOPCTL = REAL_HOME / "Projects" / ".loop" / "tools" / "loopctl.py"
 
 
 def _hook_event(projects: Path) -> str:

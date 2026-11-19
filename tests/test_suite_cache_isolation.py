@@ -167,3 +167,22 @@ def test_rustup_under_a_scrubbed_environment_installs_nothing() -> None:
     said = subprocess.run(["rustup", "show", "home"], capture_output=True, text=True, env=env,
                           check=True, stdin=subprocess.DEVNULL).stdout.strip()  # fmt: skip
     assert os.path.realpath(said) == os.path.realpath(os.environ["RUSTUP_HOME"]), said
+
+
+def test_the_suite_home_reaches_the_estate_but_never_the_live_loop(tmp_path, monkeypatch) -> None:
+    """GOH.CIRED01310 (v0.139.10, CI run 44519781826): the home linked the real ~/Projects whole, so
+    lib/reuse_fault.py's default queue was the owner's LIVE ~/Projects/.loop/queue.json -- a phase
+    table on this box, "no such file" on a hosted runner, and a test filing a fault went red only
+    there. `Projects` is a directory of links, one per entry, with none for the loop's checkout."""
+    import suite_home
+
+    real = tmp_path / "real-home"
+    for rel in ("Projects/.loop/tools", "Projects/repo", "Projects/games/g"):
+        (real / rel).mkdir(parents=True)
+    (real / "Projects/.loop/queue.json").write_text('{"phases": [{"id": "SPD"}]}')
+    monkeypatch.setenv(suite_home.MARKER, str(real))
+    home = suite_home.furnish(tmp_path / "home", suite_home.READ)
+    assert (home / "Projects/repo").resolve() == (real / "Projects/repo").resolve()
+    assert (home / "Projects/games/g").is_dir()
+    assert not os.path.lexists(home / "Projects/.loop")
+    assert not (Path.home() / "Projects" / ".loop").exists(), "this suite's own home reaches it"

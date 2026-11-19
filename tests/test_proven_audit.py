@@ -50,13 +50,18 @@ def _flag(gates: Path, value: str) -> None:
 
 @pytest.fixture
 def planted(goh: Path, env: dict, tmp_path: Path) -> dict:  # noqa: F811
-    """The closure keying on, its reader planted, the flag ok, a loopctl that logs what it files."""
+    """The closure keying on, its reader planted, the flag ok, a loopctl that logs what it files,
+    and the queue it files into: an open SPD (GOH.CIRED01310: the fault's phase was read from the
+    owner's live queue through the suite home's ~/Projects, and a hosted runner has none)."""
     (goh / "lib" / "step_closure.py").write_text(PLANT)
     _flag(goh, "ok")
     log = tmp_path / "loopctl.jsonl"
     fake = tmp_path / "loopctl.py"
     fake.write_text(f"import json, sys\nopen({str(log)!r}, 'a').write(json.dumps(sys.argv[1:]))\n")
-    return print_safe(dict(env, GOH_PROVEN_CLOSURE="on", GOH_LOOPCTL=str(fake), FILED=str(log)))
+    queue = tmp_path / "loop_queue.json"
+    queue.write_text(json.dumps({"phases": [{"id": "SPD", "requires": ["metric", "predicted"]}]}))
+    return print_safe(dict(env, GOH_PROVEN_CLOSURE="on", GOH_LOOPCTL=str(fake), FILED=str(log),
+                           GOH_LOOP_QUEUE=str(queue)))  # fmt: skip
 
 
 def _advance(n: int, backstop: bool = False) -> None:

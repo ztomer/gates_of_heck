@@ -46,6 +46,13 @@ REAL_HOME = os.path.realpath(os.path.expanduser("~"))
 MARKER = "GATES_OF_HECK_SUITE_REAL_HOME"  # not GOH_-prefixed: no env scrub drops it
 
 READ = ("Projects", ".claude/skills", ".cargo")
+# What a READ link must NOT reach, by its entry's name (GOH.CIRED01310): the loop's checkout
+# (~/Projects/.loop) is the owner's LIVE queue and the loopctl that writes it. A hosted runner has
+# no copy, so a reader defaulting to it (lib/reuse_fault.py current_phase) passed on the box, on the
+# owner's phase table, and v0.139.10's CI read "no such file"; and a default loopctl a test reached
+# would have filed into the live queue. So `Projects` is a directory of links, one per entry, with
+# none for these. A test that means the real loop names it through MARKER, as the real home's.
+HIDDEN = {"Projects": frozenset({".loop"})}
 # The GOH_* variables a hermetic child keeps: locations and test seams, never an opt-in.
 # GOH_MEM_ADMIT: host_locks.py turns memory admission off for every fixture gate, and a scrub that
 # dropped it sent each hermetic land (tools/load.py 0, admitted by lib/gate_slot.py) to the host's
@@ -166,7 +173,7 @@ def furnish(home: Path, reads: tuple[str, ...]) -> Path:
     for rel in reads:
         if (real / rel).exists():
             (home / rel).parent.mkdir(parents=True, exist_ok=True)
-            (home / rel).symlink_to(real / rel)
+            _link(real / rel, home / rel, HIDDEN.get(rel, frozenset()))
     # A kept place not made yet is made, then linked: a fresh hosted runner has no sccache cache
     # though the gate pins SCCACHE_DIR to it, and an unlinked default was a second, empty cache
     # (GOH.CIRUSTGATE, advisory CI run 43624157558). The tool would make the same directory.
@@ -177,6 +184,18 @@ def furnish(home: Path, reads: tuple[str, ...]) -> Path:
             (home / rel).parent.mkdir(parents=True, exist_ok=True)
             (home / rel).symlink_to(kept)
     return home
+
+
+def _link(src: Path, dst: Path, hidden: frozenset[str]) -> None:
+    """`dst` reaching `src`: one link, or, when some entries are `hidden`, a directory of links to
+    every other entry, so no path below `dst` reaches a hidden one."""
+    if not hidden or not src.is_dir():
+        dst.symlink_to(src)
+        return
+    dst.mkdir(exist_ok=True)
+    for entry in src.iterdir():
+        if entry.name not in hidden:
+            (dst / entry.name).symlink_to(entry)
 
 
 # The slot locks this process holds for its whole life (GOH.FSCHURN): released by the kernel when
