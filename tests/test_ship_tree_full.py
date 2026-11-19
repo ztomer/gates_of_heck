@@ -26,14 +26,19 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 import reuse
 import ship_full_run
 
-# One node's id names the checkout that collected it, as test_orphan_canary's did.
+# One node's id names the checkout that collected it, as test_orphan_canary's did. The id is
+# explicit: pytest 9.2 auto-ids a str value over 100 characters as argname+index (its
+# parametrize_long_str_id_strategy "short"), so on a runner whose tmp path is long the auto id was
+# `test_here[where0]` and named no checkout (GOH.CIRED01396).
 TEST_T = """import pytest
 from pathlib import Path
+
+WHERE = str(Path(__file__).resolve().parent)
 
 def test_ok():
     pass
 
-@pytest.mark.parametrize("where", [str(Path(__file__).resolve().parent)])
+@pytest.mark.parametrize("where", [WHERE], ids=[WHERE])
 def test_here(where):
     pass
 """
