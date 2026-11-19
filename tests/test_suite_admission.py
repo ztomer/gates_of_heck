@@ -40,7 +40,7 @@ def _stub(tmp_path: Path) -> tuple[Path, Path, Path]:
         f'case "$1" in -S | -c) exec "{sys.executable}" "$@" ;; esac\n'
         'if [ "$1 $2" != "-m pytest" ] || [ "$3" = --version ]; then exit 0; fi\n'
         f'echo ran >> "{seen}"\n'
-        f'while [ -e "{block}" ]; do sleep 0.05; done\n'
+        f'while [ -e "{block}" ] && kill -0 {os.getpid()} 2>/dev/null; do sleep 0.05; done\n'
     )
     stub.chmod(0o755)
     return stub, seen, block

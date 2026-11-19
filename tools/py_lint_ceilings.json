@@ -126,7 +126,7 @@
   "tests/test_agent_guard_scratch.py": 1,
   "tests/test_agent_stalls.py": 9,
   "tests/test_apply_claude_hooks.py": 6,
-  "tests/test_bench_hold.py": 2,
+  "tests/test_bench_hold.py": 1,
   "tests/test_bench_lock.py": 10,
   "tests/test_binary_currency.py": 3,
   "tests/test_binary_source_identity.py": 3,

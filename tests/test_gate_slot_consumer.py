@@ -27,6 +27,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from orphan_kit import adopt, wait_for_file
 from test_gate_slot import LOCAL_CI, Gate, _env
 from test_push_gate import _git
 from timing_bounds import patience
@@ -44,7 +45,7 @@ case "${{1:-}}" in
     ;;
 esac
 """
-WAIT_RELEASE = 'while [ ! -f "{release}" ]; do sleep 0.05; done'
+WAIT_RELEASE = "{wait}"  # orphan_kit.wait_for_file: ends with the test process, and on a deadline
 
 
 def _consumer(tmp_path: Path, name: str, layer: str) -> Path:
@@ -78,7 +79,9 @@ class Consumer(Gate):
         self.name = name
         self.release = tmp_path / f"release-{name}"
         self.log = tmp_path / f"{name}.out"
-        repo = _consumer(tmp_path, name, layer or WAIT_RELEASE.format(release=self.release))
+        repo = _consumer(
+            tmp_path, name, layer or WAIT_RELEASE.format(wait=wait_for_file(self.release))
+        )
         with open(self.log, "w") as out:
             self.proc = subprocess.Popen(
                 ["bash", "tools/gate.sh", scope],
@@ -89,6 +92,7 @@ class Consumer(Gate):
                 start_new_session=True,
                 stdin=subprocess.DEVNULL,
             )
+        adopt(self.proc)
 
 
 def _cenv(tmp_path: Path, goh: Path, slots: int = 1) -> dict[str, str]:

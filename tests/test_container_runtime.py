@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT
+from orphan_kit import wait_for_file
 from timing_bounds import GiveUp, patience
 
 LIB = REPO_ROOT / "lib" / "container_runtime.sh"
@@ -168,14 +169,14 @@ def test_two_leases_stop_only_on_last_down(tmp_path: Path) -> None:
     script_a = f"""
 goh_container_runtime_up "proc_a" || exit 1
 : > "{ready_a}"
-while [ ! -f "{release_a}" ]; do sleep 0.05; done
+{wait_for_file(release_a)}
 goh_container_runtime_down || exit 2
 : > "{done_a}"
 """
     script_b = f"""
 goh_container_runtime_up "proc_b" || exit 1
 : > "{ready_b}"
-while [ ! -f "{release_b}" ]; do sleep 0.05; done
+{wait_for_file(release_b)}
 goh_container_runtime_down || exit 2
 : > "{done_b}"
 """

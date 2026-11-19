@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT
+from orphan_kit import wait_for_file
 from timing_bounds import GiveUp
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -54,7 +55,7 @@ def test_a_gate_started_during_the_block_waits_for_it_and_names_it(
 ) -> None:
     ran, go = tmp_path / "ran", tmp_path / "go"  # the gate starts once the block holds the host
     with subprocess.Popen(
-        ["bash", "-c", f'. "{LIB}"; until [ -e "{go}" ]; do sleep 0.05; done; bench_lock_join "py gate"; : > "{ran}"'],
+        ["bash", "-c", f'. "{LIB}"; {wait_for_file(go)}; bench_lock_join "py gate"; : > "{ran}"'],
         stderr=subprocess.PIPE, text=True, stdin=subprocess.DEVNULL,
     ) as gate:  # fmt: skip
         with bench_hold.held("census: theme", hold_s=60):

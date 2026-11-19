@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT, commit_all, hermetic_env, write
+from orphan_kit import wait_for_file, wait_for_file_py
 from test_landq import FAKE_LOOPCTL, LANDQ, _land_wt, landq, recorded
 from timing_bounds import GiveUp, assert_sooner, patience
 
@@ -38,7 +39,7 @@ def env(tmp_path: Path) -> dict[str, str]:
 def _blocking_pre(tmp_path: Path) -> tuple[str, Path, Path]:
     """A pre-step that says it started, then waits for GO."""
     started, go = tmp_path / "pre-started", tmp_path / "pre-go"
-    return f"touch {started}; while [ ! -f {go} ]; do sleep 0.05; done", started, go
+    return f"touch {started}; {wait_for_file(go)}", started, go
 
 
 def _until(cond, what: str, seconds: float = 60) -> None:
@@ -69,8 +70,7 @@ def test_an_enqueue_pre_step_stops_the_idle_suite_within_its_poll(repo, tmp_path
     (q / "pending").mkdir(parents=True)
     suite_up, release = tmp_path / "suite-up", tmp_path / "suite-release"
     slow = [sys.executable, "-c",
-            (f"import os, time; open({str(suite_up)!r}, 'w').close()\n"
-             f"while not os.path.exists({str(release)!r}): time.sleep(0.05)")]  # fmt: skip
+            (f"open({str(suite_up)!r}, 'w').close()\n" + wait_for_file_py(release))]  # fmt: skip
     over, procs = threading.Event(), []
     stamps: dict[str, float] = {}
 

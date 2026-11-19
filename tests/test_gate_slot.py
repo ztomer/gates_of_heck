@@ -24,6 +24,7 @@ import time
 from pathlib import Path
 
 import pytest
+from orphan_kit import adopt, wait_for_file
 from stamp_age import STAMP_AT, assert_stamped_just_now
 from test_push_gate import PUSH_GATE, _git, _repo
 from timing_bounds import GiveUp, assert_sooner, patience
@@ -43,7 +44,7 @@ echo "TAKEN pid=$$ slot=${{GOH_GATE_SLOT:-none}}"
 {body}
 echo DONE
 """
-HOLD_UNTIL = 'while [ ! -f "{release}" ]; do sleep 0.05; done'
+HOLD_UNTIL = "{wait}"  # orphan_kit.wait_for_file: ends with the test process or on a deadline
 
 
 def _env(tmp_path: Path, slots: int | str | None, **extra: str) -> dict[str, str]:
@@ -65,7 +66,9 @@ class Gate:
         self.release = tmp_path / f"release-{name}"
         self.log = tmp_path / f"{name}.out"
         script = GATE.format(
-            goh=REPO_ROOT, name=name, body=body or HOLD_UNTIL.format(release=self.release)
+            goh=REPO_ROOT,
+            name=name,
+            body=body or HOLD_UNTIL.format(wait=wait_for_file(self.release)),
         )
         with open(self.log, "w") as out:
             self.proc = subprocess.Popen(
@@ -76,6 +79,7 @@ class Gate:
                 start_new_session=True,
                 stdin=subprocess.DEVNULL,
             )
+        adopt(self.proc)
 
     def out(self) -> str:
         return self.log.read_text()
@@ -286,7 +290,7 @@ def _push_proc(repo: Path, tmp_path: Path, env: dict[str, str], log: Path) -> su
     ref = f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n"
     (tmp_path / f"{log.stem}.refs").write_text(ref)
     with open(log, "w") as out, open(tmp_path / f"{log.stem}.refs") as refs:
-        return subprocess.Popen(
+        return adopt(subprocess.Popen(
             ["bash", str(PUSH_GATE)],
             cwd=repo,
             env=dict(
@@ -299,7 +303,7 @@ def _push_proc(repo: Path, tmp_path: Path, env: dict[str, str], log: Path) -> su
             stdout=out,
             stderr=subprocess.STDOUT,
             start_new_session=True,
-        )
+        ))  # fmt: skip
 
 
 @pytest.mark.load_sensitive
@@ -408,6 +412,7 @@ def _local_ci(tmp_path: Path, name: str, env: dict[str, str], step: str) -> Gate
             start_new_session=True,
             stdin=subprocess.DEVNULL,
         )
+    adopt(g.proc)
     return g
 
 
@@ -418,7 +423,7 @@ def test_n_plus_one_direct_full_gates_on_n_slots_one_waits(tmp_path):
         tmp_path,
         "first",
         env,
-        f'echo RAN-first; while [ ! -f "{tmp_path}/release-first" ]; do sleep 0.05; done',
+        f"echo RAN-first; {wait_for_file(tmp_path / 'release-first')}",
     )
     try:
         first.wait_for("gate slot 1/1 taken")

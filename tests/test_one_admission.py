@@ -23,6 +23,7 @@ import load_kit
 import pytest
 import timing_bounds
 from conftest import REPO_ROOT, hermetic_env
+from orphan_kit import wait_for_file
 from test_gate_slot import Gate
 
 LOAD = REPO_ROOT / "tools" / "load.py"
@@ -118,7 +119,7 @@ def test_a_load_gates_wait_is_bounded_and_names_the_holder(tmp_path: Path) -> No
 def test_an_experiment_holds_off_beside_a_load_gate(tmp_path: Path) -> None:
     """A run with no spinners joins no bench lock; its held slot is what the experiment sees."""
     release, started = tmp_path / "release", tmp_path / "started"
-    hold = f"touch '{started}'; until [ -e '{release}' ]; do sleep 0.05; done"
+    hold = f"touch '{started}'; {wait_for_file(release)}"
     holder = _load(tmp_path, ["0", "--", "/bin/sh", "-c", hold])
     try:
         _until(started.exists)  # its command runs: it was admitted

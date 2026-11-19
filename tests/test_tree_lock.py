@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 from conftest import hermetic_env
+from orphan_kit import wait_for_file
 from timing_bounds import assert_sooner
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -37,7 +38,7 @@ echo LOCKED; sleep {secs}; echo released
 HOLD_UNTIL = """
 . "{tui}"; . "{lib}"
 tree_lock_acquire "{repo}" "holder"
-echo LOCKED; while [ ! -e "{release}" ]; do sleep 0.05; done; echo released
+echo LOCKED; {wait}; echo released
 """
 
 
@@ -45,7 +46,7 @@ def _spawn(repo: Path, secs: float, release: Path | None = None) -> subprocess.P
     if release is None:
         script = HOLD.format(tui=TUI, lib=LIB, repo=repo, secs=secs)
     else:
-        script = HOLD_UNTIL.format(tui=TUI, lib=LIB, repo=repo, release=release)
+        script = HOLD_UNTIL.format(tui=TUI, lib=LIB, repo=repo, wait=wait_for_file(release))
     # Its own process group, so a test can kill the gate AND its children the
     # way an operator would (`kill -9 -<pgid>`); see the orphan test for why
     # killing the shell alone is not a release.

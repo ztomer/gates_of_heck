@@ -16,6 +16,7 @@ import pytest
 from bench_load_fakes import busy_for, fake_load
 from conftest import REPO_ROOT
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
+from orphan_kit import wait_for_file
 from timing_bounds import GiveUp, assert_sooner
 
 LIB = REPO_ROOT / "lib" / "bench_lock.sh"
@@ -139,7 +140,7 @@ def test_a_measurement_waits_for_a_running_gate_and_drops_a_dead_ones_entry(tmp_
     lock, said, release = tmp_path / "lock", tmp_path / "said", tmp_path / "release"
     (lock / "gates").mkdir(parents=True)
     (lock / "gates" / "999999").write_text("long gone\n")  # a gate SIGKILLed mid-run
-    hold = f'i=0; until [ -e "{release}" ] || [ $i -ge 1200 ]; do sleep 0.05; i=$((i+1)); done'
+    hold = wait_for_file(release, seconds=60)
     gate = _bash(lock, f'bench_lock_join "rust gate"; : > "{tmp_path}/joined"; {hold}')
     request.addfinalizer(release.touch)  # a red run ends both processes too
     _wait_for(tmp_path / "joined")
@@ -252,7 +253,7 @@ def _gate_stream(lock: Path, running: Path) -> subprocess.Popen[str]:
     """Other sessions: a new 0.6 s gate every 0.2 s, so some gate is always running."""
     gate = (f'. "{LIB}"; bench_lock_join stream; : > "{running}/$$"; sleep 0.6; '
             f'rm -f "{running}/$$" "$BENCH_LOCK_ENTRY"')  # fmt: skip
-    loop = f"while :; do bash -c {gate!r} & sleep 0.2; done"
+    loop = f"while kill -0 {os.getpid()} 2>/dev/null; do bash -c {gate!r} & sleep 0.2; done"
     return subprocess.Popen(["bash", "-c", loop], env=_env(lock), start_new_session=True,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True, stdin=subprocess.DEVNULL)  # fmt: skip
 
@@ -396,7 +397,7 @@ def test_a_new_measurement_lets_the_gates_already_waiting_in_first(tmp_path: Pat
     2026-10-08). The gates already waiting when the host comes free go first (phase-fair)."""
     lock = tmp_path / "lock"
     series = _bash(lock, f'bench_lock_exclusive run1 && : > "{tmp_path}/ready" && '
-                   f'while [ ! -e "{tmp_path}/go" ]; do sleep 0.1; done; bench_lock_release; '
+                   f'{wait_for_file(tmp_path / "go")}; bench_lock_release; '
                    f'bench_lock_exclusive run2 && : > "{tmp_path}/second"', GOH_BENCH_WAIT="30")  # fmt: skip
     _wait_for(tmp_path / "ready")
     gate = _bash(lock, f'bench_lock_join gate; : > "{tmp_path}/ran"; sleep 3')

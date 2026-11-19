@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env
+from orphan_kit import adopt
 from timing_bounds import GiveUp, patience
 
 PLACE = REPO_ROOT / "lib" / "place.sh"
@@ -67,7 +68,7 @@ def _place(src: Path, dest: Path, path: str | None = None, *, other_device: bool
         if other_device
         else ""
     )
-    return subprocess.Popen(
+    return adopt(subprocess.Popen(
         [
             "bash",
             "-c",
@@ -82,7 +83,7 @@ def _place(src: Path, dest: Path, path: str | None = None, *, other_device: bool
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         start_new_session=True,
-    )
+    ))  # fmt: skip
 
 
 def _run(dest: Path) -> Path:

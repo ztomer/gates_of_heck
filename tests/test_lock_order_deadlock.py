@@ -26,7 +26,7 @@ LAND = REPO_ROOT / "tools" / "land.sh"
 LOAD = REPO_ROOT / "tools" / "load.py"
 # The ship's half: the land lock held through lib/land_lock.py, then the loaded suite's slot claim.
 SHIP = f"""
-import subprocess, sys, time
+import os, subprocess, sys, time
 from pathlib import Path
 sys.path.insert(0, {str(REPO_ROOT / "lib")!r})
 import land_lock
@@ -34,8 +34,15 @@ lock = land_lock.path(Path(sys.argv[1]))
 with land_lock.held(lock, "goh ship test", print):
     print("SHIP HOLDS LAND", flush=True)
     Path(sys.argv[2]).write_text("held")
-    while not Path(sys.argv[3]).exists():
+    parent = os.getppid()  # a killed test, or 15 minutes, ends the wait
+    for _ in range(18000):
+        if Path(sys.argv[3]).exists():
+            break
+        if os.getppid() != parent:
+            sys.exit(143)
         time.sleep(0.05)
+    else:
+        sys.exit(142)
     rc = subprocess.run([sys.executable, {str(LOAD)!r}, "--background-ok", "test", "--wait",
                          "--wait-max", "5s", "--max", "60s", "1", "--", "true"],
                         stdin=subprocess.DEVNULL).returncode

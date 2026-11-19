@@ -29,6 +29,7 @@ import load_kit
 import pytest
 import timing_bounds
 from conftest import REPO_ROOT, hermetic_env
+from orphan_kit import adopt, wait_for_file_py
 from test_commit_gate_structural import _consumer, _git
 from test_gate_slot import Gate, _env
 
@@ -44,9 +45,7 @@ import admission
 kw = {{}} if not {klass!r} else {{"gate_class": {klass!r}}}
 admission.admit({slots_dir!r}, {slots}, os.getpid(), {name!r}, poll={poll}, **kw)
 print("TAKEN", flush=True)
-while not os.path.exists({release!r}):
-    time.sleep(0.05)
-"""
+{wait}"""
 
 
 class Waiter:
@@ -59,7 +58,7 @@ class Waiter:
         (tmp_path / "slots").mkdir(exist_ok=True)  # lib/gate_slot.py hold makes it before admit
         code = WAITER.format(
             lib=str(LIB), klass=klass, slots_dir=str(tmp_path / "slots"), slots=slots,
-            name=name, poll=poll, release=str(self.release),
+            name=name, poll=poll, wait=wait_for_file_py(self.release),
         )  # fmt: skip
         with open(self.log, "w") as out:
             self.proc = subprocess.Popen(
@@ -67,6 +66,7 @@ class Waiter:
                 env=hermetic_env(NO_COLOR="1", GOH_MEM_ADMIT="0"), stdin=subprocess.DEVNULL,
                 start_new_session=True,
             )  # fmt: skip
+        adopt(self.proc)
 
     def out(self) -> str:
         return self.log.read_text()

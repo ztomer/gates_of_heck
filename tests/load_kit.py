@@ -151,7 +151,7 @@ def own_pid(pid: int) -> int:
     house's own registry records it for the same reason, and the reaper drops a pid whose start
     time changed rather than killing it.
     """
-    if pid > 0 and not any(owned == pid for owned, _start in _OWNED_PIDS):
+    if pid > 0 and not any(known == pid for known, _start in _OWNED_PIDS):
         _OWNED_PIDS.append((pid, reg.pid_start(pid) or ""))
     return pid
 
@@ -310,6 +310,11 @@ class Owned:
             self.proc.wait(timeout=GRACE_S)
 
 
+def own(child: Owned) -> None:
+    """Make a child the suite's to reap (`orphan_kit.Adopted` is one)."""
+    _OWNED.append(child)
+
+
 class Tool(Owned):
     """The load tool, and the spinners it starts: both of them are the suite's to reap."""
 
@@ -416,6 +421,16 @@ def _clean(leaked: list[tuple[int, str]]) -> None:
         kill_pid(pid)
 
 
+def _reap_then_die(signum, _frame) -> None:
+    """SIGTERM of pytest (a closed terminal, a timeout, `kill`) skips every finalizer, so the
+    owner reaps what it started, adopted groups included, and THEN lets the default action end
+    the run (GOH.HOLDERORPHAN)."""
+    with contextlib.suppress(Exception):
+        reap()
+    signal.signal(signum, signal.SIG_DFL)
+    os.kill(os.getpid(), signum)
+
+
 @pytest.fixture(autouse=True)
 def load_children(tmp_path_factory):
     """Every load child this test started is reaped when the test ends -- PASS OR FAIL.
@@ -449,7 +464,9 @@ def suite_leak_check(tmp_path_factory):
     under either one outlived the suite, and the suite is what has to answer for it.
     """
     roots = [str(tmp_path_factory.getbasetemp())]
+    previous = signal.signal(signal.SIGTERM, _reap_then_die)
     yield
+    signal.signal(signal.SIGTERM, previous)
     survivors = reap()
     leaked = leaked_spinners(roots)
     leaked += [found for found in leaked_under(roots) if found not in leaked]
