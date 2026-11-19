@@ -43,7 +43,6 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
     del _sys.path[0]
 
 import contextlib
-import fcntl
 import math
 import os
 import re
@@ -53,6 +52,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import lock_order  # the one acquire path: a try-lock on a run directory's tree lock
 import prune_kept  # its live-entry probe and its remover, one spelling
 
 LANDS_PER_DAY = 48  # measured: 49 on 2026-11-17 and on 11-18
@@ -133,7 +133,8 @@ def state_root() -> Path:
 
 def _held(path: Path) -> bool:
     """Whether someone holds a `*.lock` file in directory PATH (a lock's mtime does not move while
-    it is held, so only asking the lock tells)."""
+    it is held, so only asking the lock tells). A run directory's lock is its tree's
+    (lib/tree_lock.sh), asked by a try-lock through lib/lock_order.py: it never waits."""
     with contextlib.suppress(OSError):
         for lock in path.glob("*.lock"):
             try:
@@ -141,8 +142,8 @@ def _held(path: Path) -> bool:
             except OSError:
                 continue
             try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                fcntl.flock(fd, fcntl.LOCK_UN)
+                lock_order.flock(fd, "tree", wait=False)
+                lock_order.unlock(fd)
             except OSError:
                 return True
             finally:

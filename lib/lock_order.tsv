@@ -16,7 +16,7 @@ land	20	yes	repo	tools/land.sh,lib/land_lock.py,tools/ship.py,lib/consumer_pins.
 load	30	yes	machine	lib/load_slot.py	the load slot: an experiment (spinners) takes it alone; a 0-spinner run is a gate (gate_slot), and one inside a holder is that holder's
 bench	40	yes	machine	lib/bench_lock.sh	the quiet-machine reader-writer lock: every gate joins, a measurement takes it alone
 gate_slot	50	yes	machine	lib/gate_slot.py,lib/gate_lanes.py,lib/gate_slot.sh,lib/admission.py	the machine-wide gate slots, a counting semaphore every gate is admitted by (lib/admission.py admit: push gates, land gates through load.py 0); a gate nested in a holder takes none
-tree	60	no	repo	lib/tree_lock.sh	one checkout's build tree (gates that wipe .build)
+tree	60	no	repo	lib/tree_lock.sh,lib/state_bounds.py	one checkout's build tree (gates that wipe .build); lib/state_bounds.py only try-locks it, to keep a held run directory
 container	70	no	machine	lib/container_runtime.sh	the container runtime's lease table
 desktop	80	no	machine	lib/desktop_lock/desktop_lock.py,lib/desktop_lock/desktop_lock.sh	the one screen
 gpu	85	no	machine	lib/gpu_lock/gpu_lock.py,lib/gpu_lock/gpu_lock.sh	the GPU
