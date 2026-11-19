@@ -15,27 +15,27 @@ Four defects met cutting ztools v3.13.1/v3.13.2 and a private Rust app:
 
 from __future__ import annotations
 
-import datetime
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 import test_release_kit as rk
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
+from suite_home import PINNED_TODAY
 from test_release_kit import TAG, VERSION, commit_all, run_release, sh
 
 kit = rk.kit  # the release fixtures, by assignment (an import would be shadowed by each test's arg)
 
 CUT = REPO_ROOT / "tools" / "release-kit" / "changelog_cut.py"
-TODAY = datetime.date.today().isoformat()
+TODAY = PINNED_TODAY
 
 DATED_TAIL = "## v1.1.0 — older _(2026-01-01)_\n\n- older\n"
 
 
 def _cut(path: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, str(CUT), *args, "--file", str(path)],
-                          capture_output=True, text=True, check=False,
+                          capture_output=True, text=True, check=False, env=hermetic_env(),
                           stdin=subprocess.DEVNULL)  # fmt: skip
 
 
@@ -232,3 +232,37 @@ def test_a_bold_lead_holding_an_asterisk_is_still_the_title(tmp_path):
     assert r.returncode == 0, r.stderr
     assert _cut(log, "cut", "--version", "1.2.0").returncode == 0
     assert f"\n## v1.2.0 — the roadmap list is gone _({TODAY})_\n" in log.read_text()
+
+
+# --- the clock seam (GOH.MIDNIGHTDATE) ---------------------------------------------------------
+
+
+def _stamped(tmp_path: Path, today: str | None) -> subprocess.CompletedProcess:
+    log = _log(tmp_path, f"# C\n\n## Unreleased\n\n- a thing\n\n{DATED_TAIL}")
+    env = hermetic_env()
+    env.pop("GOH_TODAY")
+    if today is not None:
+        env["GOH_TODAY"] = today
+    return subprocess.run([sys.executable, str(CUT), "cut", "--version", "1.2.0", "--title", "t",
+                           "--file", str(log)], capture_output=True, text=True, check=False,
+                          env=env, stdin=subprocess.DEVNULL)  # fmt: skip
+
+
+def test_goh_today_is_the_day_the_cut_is_stamped(tmp_path):
+    assert _stamped(tmp_path, "1999-12-31").returncode == 0
+    assert "## v1.2.0 — t _(1999-12-31)_" in (tmp_path / "CHANGELOG.md").read_text()
+
+
+def test_unset_the_cut_is_stamped_with_the_wall_clock_day(tmp_path):
+    import datetime
+
+    before = datetime.date.today()
+    assert _stamped(tmp_path, None).returncode == 0
+    after = datetime.date.today()
+    text = (tmp_path / "CHANGELOG.md").read_text()
+    assert any(f"_({d.isoformat()})_" in text for d in (before, after)), text
+
+
+def test_a_malformed_goh_today_is_refused_not_ignored(tmp_path):
+    r = _stamped(tmp_path, "yesterday")
+    assert r.returncode != 0 and "yesterday" in r.stderr, r.stdout + r.stderr

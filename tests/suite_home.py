@@ -58,6 +58,12 @@ KEPT_GOH = ("GOH_LIVE", "GOH_ESTATE_STATE", "GOH_GRACE", "GOH_MEM_ADMIT")
 # coverage run went "3 at a time", and with one slot a batch's speculative second half took the
 # slot before the first (tests/test_landq_bisect_par.py). A test that means another shape says so.
 MACHINE_SHAPE = {"GOH_GATE_CORES": "16", "GOH_GATE_SLOTS": "2"}
+# THE CLOCK, one day in every child (GOH.MIDNIGHTDATE): a test expects PINNED_TODAY, never a date it
+# reads from the clock. A gate crossing midnight split the day a test expected from the day the code
+# (tools/release-kit/changelog_cut.py, via GOH_TODAY) wrote: four reds on 2026-11-19.
+PINNED_TODAY = "2026-03-04"
+CLOCK = {"GOH_TODAY": PINNED_TODAY}
+HERMETIC_PINS = {**MACHINE_SHAPE, **CLOCK}  # what every hermetic child is told, beside its scrub
 # Where each kept variable's tool looks under HOME when the variable is unset.
 HOME_DEFAULTS = {
     "CARGO_HOME": ".cargo",

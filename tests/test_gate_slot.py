@@ -17,12 +17,14 @@ steps that wait on files, never on the clock:
 from __future__ import annotations
 
 import os
+import re
 import signal
 import subprocess
 import time
 from pathlib import Path
 
 import pytest
+from stamp_age import STAMP_AT, assert_stamped_just_now
 from test_push_gate import PUSH_GATE, _git, _repo
 from timing_bounds import GiveUp, assert_sooner, patience
 
@@ -78,13 +80,13 @@ class Gate:
     def out(self) -> str:
         return self.log.read_text()
 
-    def wait_for(self, needle: str, seconds: float = 20) -> str:
+    def wait_for(self, needle: str | re.Pattern[str], seconds: float = 20) -> str:
         give_up = GiveUp(seconds)
         while not give_up.passed():
             text = self.out()
-            if needle in text:
+            if _seen(needle, text):
                 return text
-            if self.proc.poll() is not None and needle not in self.out():
+            if self.proc.poll() is not None and not _seen(needle, self.out()):
                 raise AssertionError(f"{self.name} exited {self.proc.returncode}: {self.out()!r}")
             time.sleep(0.05)
         raise AssertionError(f"{self.name}: {needle!r} not seen; got {self.out()!r}")
@@ -122,7 +124,11 @@ def test_n_plus_one_gates_on_n_slots_one_waits_until_a_holder_ends(tmp_path):
             g.kill()
 
 
-def holder_line(waiter: Gate, repo: str, pid: int, today: str) -> str:
+def _seen(needle: str | re.Pattern[str], text: str) -> bool:
+    return bool(needle.search(text)) if isinstance(needle, re.Pattern) else needle in text
+
+
+def holder_line(waiter: Gate, repo: str, pid: int) -> str:
     """The line of the wait report that names the holder -- WAITED FOR, not searched for.
 
     The report is TWO writes (the header, then the holder's line: `tui/lib.py`'s `info()` and
@@ -132,9 +138,9 @@ def holder_line(waiter: Gate, repo: str, pid: int, today: str) -> str:
     returns is the text the assertions read -- the reader cannot see a state it then treats as
     final, because the state it sees already carries what it needs.
     """
-    needle = f"slot-0: {repo} (pid {pid}, since {today}"
+    needle = re.compile(rf"slot-0: {re.escape(repo)} \(pid {pid}, since {STAMP_AT}")
     text = waiter.wait_for(needle)
-    return next(ln for ln in text.splitlines() if needle in ln)
+    return next(ln for ln in text.splitlines() if needle.search(ln))
 
 
 @pytest.mark.load_sensitive
@@ -144,13 +150,10 @@ def test_the_wait_names_each_holder_and_its_end_says_how_long(tmp_path):
     try:
         holder.wait_for("TAKEN")
         waiter = Gate(tmp_path, "games-like", env, body="true")
-        # The date the holder stamped when it took the slot, read as close to the stamp as
-        # the test can: the needle carries it, so the wait cannot miss it.
-        today = time.strftime("%Y-%m-%d")
-        line = holder_line(waiter, "consumer-like", holder.proc.pid, today)
+        line = holder_line(waiter, "consumer-like", holder.proc.pid)
         assert "consumer-like" in line, line  # the repo
         assert f"pid {holder.proc.pid}" in line, line  # the holder's shell
-        assert "since " + today in line, line  # since when
+        assert_stamped_just_now(line)  # since when
         time.sleep(1.2)
         holder.finish()
         done = waiter.wait_for("DONE")

@@ -39,6 +39,7 @@ still catch it. An instrument that cannot fail proves nothing: that arm is the c
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -338,12 +339,13 @@ class Trial:
         text = self.read(self.holder_log)
         return int(text.split("TAKEN pid=", 1)[1].split()[0])
 
-    def wait_for(self, needle: str, seconds: float = 20) -> str:
-        """The text that carries `needle` -- the suite's helper's shape, on the kit's writer."""
+    def wait_for(self, needle: str | re.Pattern[str], seconds: float = 20) -> str:
+        """The text that carries `needle` (a string or a pattern) -- the suite's helper's shape,
+        on the kit's writer."""
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
             text = self.read(self.waiter_log)
-            if needle in text:
+            if needle.search(text) if isinstance(needle, re.Pattern) else needle in text:
                 return text
             time.sleep(self.poll)
         raise AssertionError(f"{needle!r} not seen; got {self.read(self.waiter_log)!r}")

@@ -156,7 +156,7 @@ def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
     env["GOH_DIR"] = str(REPO_ROOT)
     # No child reads the owner's seed store (GOH.SEEDPRIVATE) nor lanes the REAL load (ADAPTLANES2).
     env.update({"GOH_SEED_DIR": str(Path(tempfile.gettempdir()) / "goh-suite-no-seed-store"),
-                "GOH_LANE_ADMIT": "off", **suite_home.MACHINE_SHAPE, **overrides})  # fmt: skip
+                "GOH_LANE_ADMIT": "off", **suite_home.HERMETIC_PINS, **overrides})  # fmt: skip
     return print_safe(env, ("GOH_DIR", *overrides))  # it prints redacted (GOH.PROVENENVDUMP)
 
 

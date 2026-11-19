@@ -39,7 +39,6 @@ with whitespace collapsed. Headings: `## Unreleased` / `## [Unreleased]`, `## vX
 from __future__ import annotations
 
 import argparse
-import datetime
 import re
 import sys
 from pathlib import Path
@@ -47,6 +46,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import changelog_fragments  # one file per change, folded at release (GOH.CLASS.CHECKOUT)
+from changelog_day import today  # the cut's day, pinnable by GOH_TODAY (GOH.MIDNIGHTDATE)
 
 from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
 
@@ -397,7 +397,7 @@ def cut(lines: list[str], version: str, title: str | None) -> tuple[list[str] | 
         clipped = None
         if title is None and titled:
             title, clipped = derive((entries(moved) or [""])[0])
-        stamp = f" _({datetime.date.today().isoformat()})_" if dated else ""
+        stamp = f" _({today()})_" if dated else ""
         why = title_findings(title or "") + ([clipped] if clipped else [])
         if why:
             return None, [_fragment(title or "", why)]

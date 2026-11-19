@@ -428,7 +428,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
   read once: red refuses, pending is advisory over goh's push gate, GOH.CIWAIT),
   `tap_bump.sh` (the house tap bump: clone, edit, the TAP's own `tools/gate.sh --full`, a pinned
   push read back; `release.sh` calls it, and so may a product's own release script),
-  `version_step.sh` (step 0a and the backfill floor, sourced), `changelog_cut.py` (`cut` makes the new stanza FROM Unreleased in the file's heading style, or merges into a hand-written one; `check` is release.sh's), `gen_app_icons.py`,
+  `version_step.sh` (step 0a and the backfill floor, sourced), `changelog_day.py` (the cut's day: `GOH_TODAY`, else today; the clock seam a test pins, GOH.MIDNIGHTDATE), `changelog_cut.py` (`cut` makes the new stanza FROM Unreleased in the file's heading style, or merges into a hand-written one; `check` is release.sh's), `gen_app_icons.py`,
   `update_dev.sh`. Pinned by `test_release_kit.py` (+ `test_release_kit_version.py`, `test_release_kit_ci.py`,
   `test_release_kit_tap.py`, `test_release_hardening.py`, `test_changelog_cut.py`).
 * `tools/ship.py` — `goh ship`: the detached, time-bounded local landing pipeline an agent hands off to (GOH.SHIP): push through the pre-push gate, the repo's release kit (`GOH_SHIP_RELEASE`), install (`GOH_SHIP_INSTALL`), the `loopctl verify` card, then `loopctl done ID --shipped RESULT`; one result JSON, a ✓/✗ mark per step, a failed step named with its last 40 log lines, each step bounded by `lib/bounded_run.py` (whole process group killed). Pinned by `test_ship.py`.

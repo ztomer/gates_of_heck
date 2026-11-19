@@ -8,6 +8,7 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # GOH_SHIP_RELEASE='tools/release.sh {version}'   # goh ship's release step (required when the repo tags releases)
 # GOH_SHIP_INSTALL='scripts/install.sh'            # goh ship's install step (unset: skipped, the release installs)
 # GOH_SHIP_CHANGELOG=cut                           # CHANGELOG.md's contract the kit holds, asked at ship start: cut (changelog_cut) | unreleased (the kit renames its one ## Unreleased) | kit (it cuts its own); required with a CHANGELOG.md
+# GOH_TODAY=2026-03-04                           # the day changelog_cut stamps a cut with (YYYY-MM-DD); unset = the wall-clock day. A test seam: the suite pins it
 # GOH_CHANGELOG_FRAGMENTS=on                     # each change's entry is its own changelog/<ID>.md, folded at release; the commit gate keeps Unreleased empty
 # GOH_SHIP_RELEASE_PUSHES=1                         # the release kit pushes the hand-off with its release commit: goh ship skips its own push
 # GOH_SHIP_TIMEOUT=3600                             # seconds per goh ship step before its process group is killed

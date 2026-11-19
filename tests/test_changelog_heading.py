@@ -9,16 +9,16 @@ no phrase, and `cut` and `check` refuse a heading that is a fragment.
 
 from __future__ import annotations
 
-import datetime
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
+from suite_home import PINNED_TODAY
 
 CUT = REPO_ROOT / "tools" / "release-kit" / "changelog_cut.py"
-TODAY = datetime.date.today().isoformat()
+TODAY = PINNED_TODAY
 DATED_TAIL = "## v1.1.0 — older _(2026-01-01)_\n\n- older\n"
 
 # The exact first entry of app_updates v1.59.1.
@@ -31,7 +31,7 @@ ENTRY_1591 = (
 
 def _cut(path: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, str(CUT), *args, "--file", str(path)],
-                          capture_output=True, text=True, check=False,
+                          capture_output=True, text=True, check=False, env=hermetic_env(),
                           stdin=subprocess.DEVNULL)  # fmt: skip
 
 

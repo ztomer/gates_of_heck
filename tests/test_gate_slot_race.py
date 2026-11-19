@@ -28,10 +28,10 @@ that was simply blind.
 
 from __future__ import annotations
 
-import time
-
+import pytest
 from _gate_slot_probe import Trial, instrumented_copy, one_write
 from conftest import REPO_ROOT
+from stamp_age import assert_stamped_just_now
 from test_gate_slot import holder_line
 
 # How wide the instrumented writer's window is. Long enough that a reader polling every
@@ -42,6 +42,7 @@ PAUSE_S = 0.05
 TRIALS = 3
 
 
+@pytest.mark.load_sensitive
 def test_the_report_is_one_write_and_the_reader_cannot_see_it_in_pieces(tmp_path):
     instrumented = instrumented_copy(REPO_ROOT, tmp_path / "instrumented", PAUSE_S)
     sightings = failures = fixed_failures = 0
@@ -61,11 +62,10 @@ def test_the_report_is_one_write_and_the_reader_cannot_see_it_in_pieces(tmp_path
         if n == 0:
             # E39's reading still works: the wait is for the line, and the text it returns
             # carries every substring the assertions read.
-            today = time.strftime("%Y-%m-%d")
-            line = holder_line(trial, "consumer-like", trial.holder_pid(), today)
+            line = holder_line(trial, "consumer-like", trial.holder_pid())
             assert "consumer-like" in line, line
             assert f"pid {trial.holder_pid()}" in line, line
-            assert "since " + today in line, line
+            assert_stamped_just_now(line)
     assert sightings == 0, (
         f"the reader saw the header without the holder's line {sightings} times: the report is"
         " still written in pieces"

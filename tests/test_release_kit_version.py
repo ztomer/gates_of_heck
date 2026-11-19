@@ -18,7 +18,8 @@ from pathlib import Path
 
 import test_release_kit as rk
 from _gatesrc_kit import write_gatesrc
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
+from suite_home import PINNED_TODAY
 from test_release_kit import STANZA_BODY, TAG, VERSION, commit_all, gh_creates, run_release, sh
 
 kit = rk.kit  # the release fixtures, by assignment (an import would be shadowed by each test's arg)
@@ -107,7 +108,7 @@ def test_a_stanza_repeating_an_earlier_entry_is_refused(kit):
 
 def _cut(path: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, str(CUT), *args, "--file", str(path)],
-                          capture_output=True, text=True, check=False,
+                          capture_output=True, text=True, check=False, env=hermetic_env(),
                           stdin=subprocess.DEVNULL)  # fmt: skip
 
 
@@ -227,14 +228,11 @@ def test_a_cut_that_would_repeat_an_earlier_entry_is_refused(kit):
 def test_cut_follows_the_repos_dated_em_dash_heading_style(tmp_path):
     """A private Rust app and ztools head stanzas `## vX — title _(YYYY-MM-DD)_`; a cut in `--`
     style broke the shape every earlier stanza holds (ztools' heading gate reads it)."""
-    import datetime
-
     log = tmp_path / "CHANGELOG.md"
     log.write_text("# C\n\n## Unreleased\n\n* new\n\n## v1.1.0 — old _(2026-01-01)_\n\n* old\n")
     r = _cut(log, "cut", "--version", "1.2.0", "--title", "the new thing")
     assert r.returncode == 0, r.stderr
-    today = datetime.date.today().isoformat()
-    assert f"\n## v1.2.0 — the new thing _({today})_\n" in log.read_text(), log.read_text()
+    assert f"\n## v1.2.0 — the new thing _({PINNED_TODAY})_\n" in log.read_text(), log.read_text()
 
 
 def test_cut_follows_the_repos_double_hyphen_style(tmp_path):
