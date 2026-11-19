@@ -9,7 +9,6 @@ gated on the wait having reported the previous state: events, not clocks.
 
 from __future__ import annotations
 
-import json
 import sys
 import threading
 import time
@@ -23,12 +22,13 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 sys.path.insert(0, str(REPO_ROOT))
 import landq_inflight
 import landq_look
+import landq_state  # the lander's one writer: a copy that truncated tore a read (GOH.CIRED01310)
 
 
 def _req(q: Path, d: str, name: str, item: str) -> Path:
     (q / d).mkdir(parents=True, exist_ok=True)
     path = q / d / f"{name}.json"
-    path.write_text(json.dumps({"item": item, "repo": "/r", "sha": "a" * 40, "mode": "land"}))
+    landq_state.write(path, {"item": item, "repo": "/r", "sha": "a" * 40, "mode": "land"})
     return path
 
 
@@ -62,7 +62,7 @@ def test_wait_follows_the_request_through_every_state_once(tmp_path, monkeypatch
         after("gate 2")
         done = _req(q, "done", "01-T.S", "T.S")
         (q / "running" / mine.name).unlink()
-        done.write_text(json.dumps({"state": "landed", "sha": "b" * 40, "landed": "c" * 40}))
+        landq_state.write(done, {"state": "landed", "sha": "b" * 40, "landed": "c" * 40})
 
     t = threading.Thread(target=mover)
     t.start()

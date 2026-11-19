@@ -19,6 +19,8 @@ import pytest
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import landq_state  # lib/, after its path
+
 LANDQ = REPO_ROOT / "tools" / "landq.py"
 REPO = "/nowhere/repo"
 T0 = 2_000_000_000.0  # the fake clock's start: after now, so a marker's `until` past it is live
@@ -51,15 +53,15 @@ def _dirs(tmp_path: Path) -> Path:
 def _file(q: Path, at: float, item: str, mode: str = "land", repo: str = REPO) -> Path:
     """A request as tools/landq.py enqueue files it: named by its filing time."""
     path = q / "pending" / f"{int(at * 1e9):020d}-{item}.json"
-    path.write_text(json.dumps({"mode": mode, "repo": repo, "sha": "a" * 40, "item": item,
-                                "worktree": f"/nowhere/wt-{item}"}))  # fmt: skip
+    landq_state.write(path, {"mode": mode, "repo": repo, "sha": "a" * 40, "item": item,
+                             "worktree": f"/nowhere/wt-{item}"})  # fmt: skip
     return path
 
 
 def _mark(q: Path, item: str, pid: int, until: float, repo: str = REPO) -> Path:
     """An enqueue's pre-step marker, as lib/landq_inflight.py mark writes it."""
     path = q / "enqueuing" / f"{pid}-{item}.json"
-    path.write_text(json.dumps({"pid": pid, "item": item, "repo": repo, "until": until}))
+    landq_state.write(path, {"pid": pid, "item": item, "repo": repo, "until": until}, indent=None)
     return path
 
 

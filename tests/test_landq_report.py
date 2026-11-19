@@ -21,6 +21,7 @@ from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import landq_report as lr
+import landq_state
 
 T0 = dt.datetime(2026, 11, 17, 10, 0, tzinfo=dt.UTC).timestamp()
 
@@ -39,7 +40,7 @@ def put(q: Path, enq: float, item: str, repo: str, state: str, fin: float, **ext
     rec.update(extra)
     (q / "done").mkdir(parents=True, exist_ok=True)
     out = q / "done" / f"{stem}.json"
-    out.write_text(json.dumps(rec))
+    landq_state.write(out, rec)
     return log
 
 
@@ -110,8 +111,8 @@ def test_no_run_time_is_ever_negative_and_a_reused_log_is_unknown(tmp_path):
 def test_two_records_sharing_one_log_are_both_unknown(tmp_path):
     first = put(tmp_path, 0, "G", "alpha", "red", 400)
     second = tmp_path / "done" / f"{int((T0 + 500) * 1e9):020d}-G.json"
-    second.write_text(json.dumps({"repo": "/x/alpha", "state": "landed", "log": str(first),
-                                  "at": iso(900)[:19] + "Z"}))  # fmt: skip
+    landq_state.write(second, {"repo": "/x/alpha", "state": "landed", "log": str(first),
+                               "at": iso(900)[:19] + "Z"})  # fmt: skip
     atts = lr.read_attempts(tmp_path, birth_of=lambda p: T0 + 50)
     assert all(a.gate_s is None for a in atts), atts
 
@@ -190,7 +191,7 @@ def test_a_refused_request_still_carries_started_and_finished(tmp_path, qenv):
     pending = tmp_path / "landq" / "pending"
     pending.mkdir(parents=True)
     req = {"mode": "land", "repo": str(repo), "worktree": str(repo), "sha": "0" * 40, "item": ""}
-    (pending / f"{int(T0 * 1e9):020d}-T.S.json").write_text(json.dumps(req))
+    landq_state.write(pending / f"{int(T0 * 1e9):020d}-T.S.json", req)
     landq(qenv, "--drain")
     (rec_path,) = (tmp_path / "landq" / "done").glob("*-T.S.json")
     rec = json.loads(rec_path.read_text())

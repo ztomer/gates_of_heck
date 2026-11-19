@@ -21,10 +21,13 @@ from __future__ import annotations
 
 import atexit
 import contextlib
-import json
 import os
+import sys
 import time
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import landq_state  # lib/, beside this file: one writer and one reader of every state record
 
 DIR = "enqueuing"
 MARGIN_S = 600  # past the pre-step's own bound: the enqueue files or refuses well within it
@@ -43,10 +46,8 @@ def mark(q: Path, item: str, pid: int | None = None, repo: str = "") -> Path:
     bound = int(os.environ.get("GOH_ENQUEUE_PRE_TIMEOUT") or PRE_TIMEOUT_S) + MARGIN_S
     (q / DIR).mkdir(parents=True, exist_ok=True)
     path = q / DIR / f"{pid}-{slug(item)}.json"
-    tmp = path.with_name(f".{path.name}.tmp")
     marker = {"pid": pid, "item": item, "repo": repo, "until": time.time() + bound}
-    tmp.write_text(json.dumps(marker) + "\n")
-    tmp.replace(path)
+    landq_state.write(path, marker, indent=None)
     atexit.register(clear, path)
     return path
 
@@ -71,10 +72,10 @@ def live(q: Path, item: str | None = None) -> list[dict]:
     out: list[dict] = []
     d = q / DIR
     for path in sorted(d.glob("*.json")) if d.is_dir() else []:
+        m = landq_state.read(path) or {}
         try:
-            m = json.loads(path.read_text())
             pid, until = int(m["pid"]), float(m["until"])
-        except (OSError, ValueError, KeyError, TypeError):
+        except (ValueError, KeyError, TypeError):
             continue  # being written, or not ours: never a reason to wait, never deleted here
         if not alive(pid) or time.time() > until:
             clear(path)

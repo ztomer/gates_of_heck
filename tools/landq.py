@@ -93,6 +93,7 @@ landq_report = importlib.import_module("landq_report")
 landq_request = importlib.import_module("landq_request")
 landq_look = importlib.import_module("landq_look")
 landq_inflight = importlib.import_module("landq_inflight")
+landq_state = importlib.import_module("landq_state")
 selection_miss = importlib.import_module("selection_miss")
 Refused, request = landq_request.Refused, landq_request.request
 land_request = landq_request.land_request
@@ -141,10 +142,8 @@ def prestep(req: dict) -> None:
 
 
 def write_json(path: Path, data: dict) -> None:
-    """One rename, so a reader never sees half a request."""
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(json.dumps(data, indent=1) + "\n")
-    tmp.replace(path)
+    """One rename, so a reader never sees half a request (lib/landq_state.py, its one writer)."""
+    landq_state.write(path, data)
 
 
 def enqueue(req: dict, into: str = "pending") -> Path:

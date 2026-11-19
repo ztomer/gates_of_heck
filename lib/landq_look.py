@@ -2,19 +2,21 @@
 and `--wait`, which finds a request wherever it is now and blocks until it is done. An enqueue of
 the item still in its pre-step (lib/landq_inflight.py) is waited for until it files; with neither,
 the wait exits 2 (GOH.WAITUNFILED). Each tick re-reads where the request is and says so once per
-change: queued behind whom, running (a batch's gate N), done (GOH.LANDWAITSTALE). Pinned by
-tests/test_landq.py, tests/test_landq_inflight.py, tests/test_landq_look.py."""
+change: queued behind whom, running (a batch's gate N), done (GOH.LANDWAITSTALE). Every record
+is read through lib/landq_state.py: one moved or not whole is read again next tick, never a crash
+(GOH.CIRED01310). Pinned by tests/test_landq.py, tests/test_landq_inflight.py,
+tests/test_landq_look.py, tests/test_landq_state.py."""
 
 from __future__ import annotations
 
 import importlib
-import json
 import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
 
 landq_inflight = importlib.import_module("landq_inflight")
+landq_state = importlib.import_module("landq_state")
 _tui = importlib.import_module("tui.lib")
 err, info, ok = _tui.err, _tui.info, _tui.ok
 poll = 2.0
@@ -23,13 +25,15 @@ poll = 2.0
 def status(q: Path) -> int:
     for d in ("pending", "running"):
         for f in sorted((q / d).glob("*.json")) if (q / d).is_dir() else []:
-            r = json.loads(f.read_text())
-            info(
-                f"{d}: {r.get('item') or '-'} {Path(r['repo']).name} @ {r['sha'][:8]} ({r['mode']})"
-            )
+            if (r := landq_state.read(f)) is None:
+                continue  # moved on, or not whole yet: the next look shows it
+            repo, sha = Path(str(r.get("repo") or "-")).name, str(r.get("sha") or "-")[:8]
+            info(f"{d}: {r.get('item') or '-'} {repo} @ {sha} ({r.get('mode', '?')})")
     for f in sorted((q / "done").glob("*.json"))[-10:] if (q / "done").is_dir() else []:
-        r = json.loads(f.read_text())
-        info(f"done: {f.stem} {r['state']} @ {r['sha'][:8]} {r.get('log', '')}")
+        if (r := landq_state.read(f)) is None:
+            continue
+        info(f"done: {f.stem} {r.get('state', '?')} @ {str(r.get('sha') or '-')[:8]} "
+             f"{r.get('log', '')}")  # fmt: skip
     return 0
 
 
@@ -66,10 +70,8 @@ def unfiled(q: Path, what: str, start_by: float) -> Path | int | None:
 def _items(d: Path) -> list[str]:
     out = []
     for f in sorted(d.glob("*.json")) if d.is_dir() else []:
-        try:
-            out.append(json.loads(f.read_text()).get("item") or f.stem)
-        except (OSError, ValueError):
-            continue  # moved or being written: the next tick reads it again
+        if (r := landq_state.read(f)) is not None:  # else moved or not whole: read next tick
+            out.append(r.get("item") or f.stem)
     return out
 
 
@@ -111,21 +113,23 @@ def wait(q: Path, what: str, timeout: float, nudge: Callable[[], None]) -> int:
     assert isinstance(found, Path)
     name = found.name
     nudged, was = 0.0, ""
-    while not (q / "done" / name).is_file():
-        if (now := where(q, name)) and now != was:
+    while (r := landq_state.read(q / "done" / name)) is None:
+        torn = (q / "done" / name).is_file()  # there, not whole: a torn write, read again
+        now = "done, its record not whole yet" if torn else where(q, name)
+        if now and now != was:
             info(f"goh land --wait: {what} is {now}")  # GOH.LANDWAITSTALE: each change, once
             was = now
         if time.monotonic() > start_by:
-            err(f"goh land --wait: {what} ({name}) has not finished after {timeout:.0f}s")
+            whole = "; its done record is not a whole record" if torn else ""
+            err(f"goh land --wait: {what} ({name}) has not finished after {timeout:.0f}s{whole}")
             return 3
         if (q / "pending" / name).is_file() and time.monotonic() - nudged > 30:
             nudge()  # nobody drains: start the lander
             nudged = time.monotonic()
         time.sleep(poll)
-    r = json.loads((q / "done" / name).read_text())
-    sha = r.get("landed") or r.get("sha", "")
-    line = f"{what}: {r['state']} @ {sha[:8]} ({r.get('mode', '?')}) log {r.get('log', '')}"
-    if r["state"] == "landed":
+    sha = str(r.get("landed") or r.get("sha", ""))
+    line = f"{what}: {r.get('state')} @ {sha[:8]} ({r.get('mode', '?')}) log {r.get('log', '')}"
+    if r.get("state") == "landed":
         ok(line)
         return 0
     err(f"{line}: {r.get('why', '')}")
