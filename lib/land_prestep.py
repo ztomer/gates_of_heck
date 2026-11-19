@@ -46,13 +46,16 @@ def adopt(req: dict, keep: Path) -> None:
             req["pre"] = {"judged": req["sha"], "keep": str(keep)}
 
 
-def discard(req: dict) -> None:
+def discard(req: dict, q: Path | None = None) -> None:
     """REQ's kept verdict and its record removed once REQ is recorded: land.sh removes what it
     reads, but a batch item whose gate judged another tree, or a land refused before its pre-step,
-    never read its own, and no later land is that enqueue's (GOH.BATCHPREFROM)."""
+    never read its own, and no later land is that enqueue's (GOH.BATCHPREFROM). Given its queue Q,
+    every other verdict whose request is gone goes too (`reap`, GOH.LANDLEAKS)."""
     if keep := (req.get("pre") or {}).get("keep"):
         for path in (Path(keep), Path(f"{keep}.record")):
             path.unlink(missing_ok=True)
+    if q is not None:
+        reap(q)
 
 
 def reap(q: Path, now_ns: int | None = None) -> list[Path]:
