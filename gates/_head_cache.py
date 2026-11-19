@@ -180,12 +180,14 @@ def prune(
     remove=_rmtree,
     grace: float = IN_USE_S,
     marker: str | None = None,
+    size=None,
 ) -> list[str]:
     """Remove what the policy above says; return what went.
 
     `stamps` and `remove` let another cache share the POLICY: lib/head_export.py's sibling exports
     are read-only trees, which `rmtree(ignore_errors=True)` would leave in place while reporting
-    them gone, so it passes a remover that makes the tree writable first."""
+    them gone, so it passes a remover that makes the tree writable first. `size` (an entry's
+    bytes; `tree_bytes` by default) lets gates/_cov_cache.py walk each entry once."""
     now = time.time() if now is None else now
     exports, leftovers = [], []
     for entry in os.scandir(cache):
@@ -216,6 +218,7 @@ def prune(
             remove,
             grace,
             marker,
+            size or tree_bytes,
         )
     return gone
 
@@ -229,12 +232,13 @@ def _over_budget(
     remove=_rmtree,
     grace: float = IN_USE_S,
     marker: str | None = None,
+    size=tree_bytes,
 ) -> list[str]:
     """Least recently used first, until the cache fits `max_bytes`; never one in use (a live
     `marker` pid, or its marker lock held) and, without a marker, never one stamped within
     `grace`."""
-    sizes = {path: tree_bytes(path) for _used, path in exports}
-    total = sum(sizes.values()) + tree_bytes(os.path.join(cache, current))
+    sizes = {path: size(path) for _used, path in exports}
+    total = sum(sizes.values()) + size(os.path.join(cache, current))
     gone = []
     for used, path in reversed(exports):  # least recently used first
         if total <= max_bytes:

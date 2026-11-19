@@ -179,6 +179,6 @@ def test_the_build_cache_keeps_to_its_byte_budget(tmp_path: Path) -> None:
         env=hermetic_env(GOH_COV_CACHE=str(cache), GOH_COV_CACHE_MAX_GIB="0.001"), check=False,
     )  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
-    left = {p.name for p in cache.iterdir()}
+    left = {p.name for p in cache.iterdir() if p.is_dir()}  # not the run log (.runs.jsonl)
     assert stale.name not in left, f"the idle build past the budget stayed: {left}"
     assert len(left) == 1, f"the run's own build went: {left}"

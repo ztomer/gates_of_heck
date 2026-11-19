@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -139,9 +140,14 @@ def test_the_coverage_gate_marks_its_build_as_running_and_prunes_the_idle(tmp_pa
     )  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
     assert not idle.exists(), "an idle build inside the hour stayed past the budget"
-    (own,) = list(cache.iterdir())
+    (own,) = [p for p in cache.iterdir() if p.is_dir()]
     pid = int((own / ".goh-running").read_text().split()[0])
     assert pid > 0, "the run did not record who is using its build"
+    assert (own / ".goh-root").read_text().strip() == str(crate.resolve()), (
+        "the entry names no root"
+    )
+    (row,) = [json.loads(line) for line in (cache / ".runs.jsonl").read_text().splitlines()]
+    assert row["key"] == own.name and row["hit"] is False and row["bytes"] > 0, row
 
 
 # ── sccache: a test sandbox's HOME never moves the compile cache ──────────────────────────────

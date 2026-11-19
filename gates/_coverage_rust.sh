@@ -58,8 +58,13 @@ cov_phase_stopped() { # the stop-signal trap: name the phase the signal landed i
     case "$1" in INT) exit 130 ;; HUP) exit 129 ;; *) exit 143 ;; esac
 }
 cov_cache_prune() { # the cache bounded by bytes: at the start, after each build, and at exit
-    "$GOH_PY" -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; gib = float(sys.argv[4]); _head_cache.prune(sys.argv[2], sys.argv[3], keep=200, max_bytes=int(gib * 2**30) if gib > 0 else None, grace=600, marker=".goh-running")' \
-        "$(dirname "${BASH_SOURCE[0]}")" "$COV_CACHE" "$COV_KEY" "${GOH_COV_CACHE_MAX_GIB:-8}" 2>/dev/null || true
+    # The budget is the estate's measured working set, under the lanes' disk floor; orphans first
+    # (gates/_cov_cache.py, GOH.COVCACHECHURN). $1=record: this run's row in .runs.jsonl first.
+    "$GOH_PY" -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _cov_cache as c; a = sys.argv
+if a[7] == "record": c.record(a[2], a[3], a[8], a[9] == "1")
+c.prune(a[2], a[3], gib=float(a[4] or c.DEFAULT_GIB), min_free_gib=float(a[5] or c.MIN_FREE_GIB))' \
+        "$(dirname "${BASH_SOURCE[0]}")" "$COV_CACHE" "$COV_KEY" "${GOH_COV_CACHE_MAX_GIB:-}" \
+        "${GOH_LANE_MIN_FREE_GIB:-}" - "${1:-}" "${COV_ROOT:-}" "${COV_HIT:-0}" 2>/dev/null || true
 }
 cov_reap() { # the EXIT trap: this run's scratch goes with it, pass, fail or signal (EST.FSEVENTSCHURN)
     # Every test process's profile (a goh push worktree: 109 MiB, cleared only by the NEXT run) and
@@ -72,7 +77,7 @@ cov_reap() { # the EXIT trap: this run's scratch goes with it, pass, fail or sig
         find "$d" -maxdepth 1 -type f -name '*.profraw' -delete 2>/dev/null || true
         rm -rf "$d/cov-view" "$d/t"   # t/: the suite's per-test profiles (tests/_prof_record.py)
     done
-    [ -z "${COV_KEY:-}" ] || cov_cache_prune
+    [ -z "${COV_KEY:-}" ] || cov_cache_prune record
 }
 run_rust() {
     cd "$PROJ" || exit 2
@@ -106,8 +111,9 @@ run_rust() {
     # workspace's find their repo by walking up from their own path (`env_mini::exe_root`); out of
     # the tree, two of mediaops' CLI tests failed. Per-REPO isolation (above) holds -- the key is
     # the repo's physical path. Pruned like the HEAD exports (gates/_head_cache.py): a week unused,
-    # past the newest 200, or past GOH_COV_CACHE_MAX_GIB (default 8; 0 = no byte budget) -- each
-    # only once idle (no live `.goh-running` pid, none stamped in the last 10 minutes).
+    # past the newest 200, or past GOH_COV_CACHE_MAX_GIB (default 40, the measured working set,
+    # gates/_cov_cache.py; 0 = no byte budget), an orphan at once -- each only once idle (no live
+    # `.goh-running` pid, none stamped in the last 10 minutes).
     COV_CACHE="${GOH_COV_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/goh/llvm-cov}"
     # ONE BUILD DIR PER REPO, not per crate (GOH.COVSHAREDBUILD). The key was this crate's own path,
     # so a repo of many cargo workspaces made one build dir PER CRATE and compiled every shared
@@ -123,6 +129,9 @@ run_rust() {
     COV_ROOT="$( (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
         root="$(git -C "$PROJ" rev-parse --show-toplevel 2>/dev/null)" && cd "$root" && pwd -P) || pwd -P)"
     COV_KEY="$(printf '%s\n' "$COV_ROOT" | shasum -a 256 | cut -c1-16)"
+    # THE METRIC (GOH.COVCACHECHURN): a run hits when its repo's build is still here; cov_reap
+    # records it, and `gates/_cov_cache.py report` reads the hit rate.
+    COV_HIT=0; [ -d "$COV_CACHE/$COV_KEY/build" ] && COV_HIT=1
     trap cov_reap EXIT
     # WHO IS USING IT, not when (GOH.CACHEBOUND). The byte budget spared every entry stamped within
     # the hour, and a sweep of ~40 projects is one hour: 21 GiB held against a budget of 8. Each run
@@ -136,6 +145,7 @@ run_rust() {
     # The stamp AFTER the mark: a pruner judges an entry by its marker under the marker's lock
     # (_head_cache._evict), so an entry is never stamped fresh while its marker still reads idle.
     : >"$COV_CACHE/$COV_KEY/.goh-used"
+    printf '%s\n' "$COV_ROOT" >"$COV_CACHE/$COV_KEY/.goh-root"   # whose: an entry whose root is gone goes first
     cov_cache_prune
     export CARGO_TARGET_DIR="$PROJ/target/llvm-cov"
     export CARGO_BUILD_BUILD_DIR="$COV_CACHE/$COV_KEY/build"
