@@ -1,5 +1,6 @@
 # shellcheck shell=bash disable=SC2034  # ship_timings: read by tools/land.sh, which sources this
 # lib/land_row.sh -- sourced by tools/land.sh (GOH_PY, GOH); pinned by tests/test_ship_profile.py.
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # THE LAND'S OWN ROWS (GOH.RELEASELANDGATE): under a caller's profile (goh ship's GOH_TIMINGS, the
 # release kit's "release: land" row) the pre-step and the gate are rows of their own, and what they
 # run nests under them, so lib/step_attribution.py can name the seconds: v0.139.4's land row was
