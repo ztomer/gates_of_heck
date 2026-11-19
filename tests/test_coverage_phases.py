@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 from conftest import REPO_ROOT, hermetic_env, llvm_cov_shim
 from cov_fakes import SHOW_ENV_FLOW
+from timing_bounds import patience
 
 COV_GATE = REPO_ROOT / "gates" / "coverage_gate.sh"
 BOUNDED = REPO_ROOT / "lib" / "bounded_run.py"
@@ -197,3 +198,22 @@ def test_the_external_suite_drives_an_optimized_instrumented_build(tmp_path: Pat
     assert '--config profile.dev.lto="off"' in builds[0], builds
     tests = [c for c in lines if c.startswith("test ")]
     assert tests and not [c for c in tests if "opt-level" in c], tests
+
+
+def test_every_phase_is_a_timings_row_so_the_step_s_seconds_are_named(tmp_path: Path) -> None:
+    """GOH.RELEASELANDGATE: v0.139.4's coverage step was 388 s and the rows under it named 4 s of
+    it (lib/step_attribution.py); each phase it prints is a row of the step's profile too."""
+    import json
+
+    proj, env = _setup(tmp_path)
+    timings = tmp_path / "t.jsonl"
+    env |= {"GOH_TIMINGS": str(timings), "GOH_TIMINGS_PARENT": "coverage (floor 0%)"}
+    r = subprocess.run(_gate(proj, "true"), cwd=proj, capture_output=True, text=True, env=env,
+                       timeout=patience(120), stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+    assert r.returncode == 0, r.stdout + r.stderr
+    rows = [json.loads(x) for x in timings.read_text().splitlines() if x.strip()]
+    got = [x["label"] for x in rows if x["label"].startswith("coverage phase: ")]
+    assert got[:2] == ["coverage phase: workspace: instrumented build",
+                       "coverage phase: workspace: test binaries"], rows  # fmt: skip
+    assert "coverage phase: diff coverage" in got, rows
+    assert {x["parent"] for x in rows if x["label"] in got} == {"coverage (floor 0%)"}, rows

@@ -122,3 +122,26 @@ def test_the_install_pushes_its_consumers_concurrently_each_profiled(tmp_path):
         row = pushes[f"push {n}"]
         assert row["tier"] == "consumer" and isinstance(row["load1"], float), pushes
         assert row["ms"] >= 1400, row  # the push through its gate, in the sweep
+
+
+def test_status_names_the_seconds_no_row_recorded(tmp_path):
+    """GOH.RELEASELANDGATE: v0.139.4's table showed its land at 160 s and nothing said that its rows
+    named 6 s of it; the status says so under the table (lib/step_attribution.py)."""
+    sys.path.insert(0, str(REPO_ROOT / "lib"))
+    import ship_profile
+
+    def res(rows: list[tuple[str, float, str]]) -> dict:
+        f = tmp_path / f"t{len(rows)}.jsonl"
+        f.write_text("".join(json.dumps({"label": a, "ms": s * 1000, "rc": 0, "tier": "phase",
+                                         "parent": p}) + "\n" for a, s, p in rows))  # fmt: skip
+        return {"steps": [{"name": "release", "timings": str(f)}]}
+
+    land = "release: land (its release gate)"
+    gap = ship_profile.unattributed(res([("ship release", 650, ""), (land, 160, "ship release"),
+                                         ("release: push main", 485, "ship release"),
+                                         ("a check", 6, land)]))  # fmt: skip
+    assert len(gap) == 1 and "in release" in gap[0] and land in gap[0], gap
+    assert "154.0 s is unattributed" in gap[0], gap
+    named = res([("ship release", 50, ""), (land, 20, "ship release"), ("land: gate", 19, land),
+                 ("release: push main", 29, "ship release")])  # fmt: skip
+    assert ship_profile.unattributed(named) == []

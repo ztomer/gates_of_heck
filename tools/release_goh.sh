@@ -142,7 +142,12 @@ info "release: building goh as $TAG beside the land (pid $prebuild)"
     full="$(bash -c 'unset GOH_LAND_GATE; [ -f .gatesrc ] && . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_GATE-}"')"
     [ -n "$full" ] || full="$GOH/tools/gate_profile.sh ."
     release_gate="$(printf '%q ' "$GOH_PY" "$GOH/lib/release_gate.py" run --base "$tip" --full "$full")"
-    GOH_LAND_GATE="${release_gate% }" timed "release: land (its release gate)" tools/land.sh
+    # NO PRE-STEP (GOH.RELEASELANDGATE): .gatesrc's GOH_LAND_PRE is a lane's fail-fast before its
+    # full gate; here the gate IS the short one, and the pre-step ran 925 tree-reader tests over the
+    # tree the tip's land had judged, 139-261 s of every release's 160-280 s land (v0.139.4: 139 of
+    # 160 s), for a release gate that then reused them. Set empty, land.sh runs none (gatesrc_var);
+    # a land that rebased gets release_gate.py's full gate, which needs no fail-fast before it.
+    GOH_LAND_PRE="" GOH_LAND_GATE="${release_gate% }" timed "release: land (its release gate)" tools/land.sh
 )
 
 # Its push gate takes the same reduced set: release files only on a parent whose land was green

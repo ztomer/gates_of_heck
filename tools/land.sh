@@ -182,6 +182,19 @@ land_rebase() {
     tip="$now"
     rebased=1   # the gates that judge the new tip are chosen before the gate (land_roots, below)
 }
+# THE LAND'S OWN ROWS (GOH.RELEASELANDGATE): under a caller's profile (goh ship's GOH_TIMINGS, the
+# release kit's "release: land" row) the pre-step and the gate are rows of their own, and what they
+# run nests under them, so lib/step_attribution.py can name the seconds: v0.139.4's land row was
+# 160 s, its rows 6 s, the rest a pre-step pytest that wrote none. A land with no caller profile
+# (the queue's, whose gate rows lib/land_profile.py reads flat) is profiled as before.
+ship_timings="${GOH_TIMINGS:-}"
+# land_row LABEL T0 RC -- one row for a part of this land since T0 (EPOCHREALTIME), caller's profile only.
+land_row() {
+    [ -n "$ship_timings" ] || return 0
+    local ms
+    ms="$(awk -v a="$2" -v b="${EPOCHREALTIME/,/.}" 'BEGIN { printf "%.1f", (b - a) * 1000 }')"
+    GOH_TIMINGS="$ship_timings" "$GOH_PY" "$GOH/lib/step_timings.py" record "$1" "$ms" "$3" phase 7>&- 8<&- </dev/null || true
+}
 # land_pre [CMD RECORD] -- the pre-step (or CMD, recording into RECORD) on the tip as it is now;
 # exits 1 on a red set (THE PRE-STEP, above). A green full run leaves its tip in pre_judged.
 land_pre() {
@@ -203,13 +216,14 @@ land_pre() {
     # is its floor (a wide share), GOH_LAND_PRE_CEIL its ceiling, load.py's --max the backstop.
     pre_max="${GOH_LAND_PRE_MAX:-10m}" pre_ceil="${GOH_LAND_PRE_CEIL:-25m}"   # seams a test can reach
     pre_back="$("$GOH_PY" "$GOH/lib/pre_deadline.py" show --workers 1 --floor "$pre_max" --ceiling "$pre_ceil")" || exit 2
-    pre_t0=$(date +%s)
+    pre_t0=$(date +%s) pre_r0="${EPOCHREALTIME/,/.}"
     pre_rc=0
-    (cd "$here" && GOH_LAND_VERDICTS_RECORD="$record" GOH_GATE_CLASS=short "$GOH_PY" "$GOH/tools/load.py" \
+    (cd "$here" && { [ -z "$ship_timings" ] || export GOH_TIMINGS_PARENT="land: pre-step"; } && GOH_LAND_VERDICTS_RECORD="$record" GOH_GATE_CLASS=short "$GOH_PY" "$GOH/tools/load.py" \
         --background-ok "pre-land" --max "$((pre_back + 60))" 0 -- \
         "$GOH_PY" "$GOH/lib/pre_deadline.py" run --mark "$pre_start" --floor "$pre_max" --ceiling "$pre_ceil" \
         -- bash -c "$cmd" pre-land "$pre_base" </dev/null 7>&- 8<&-) || pre_rc=$?
     pre_t1=$(date +%s)
+    land_row "land: pre-step" "$pre_r0" "$pre_rc"
     pre_s="" pre_workers="" pre_limit="" pre_run=""
     read -r pre_s pre_workers pre_limit <"$pre_start" 2>/dev/null || true
     [[ "$pre_s" =~ ^[0-9]+$ ]] || pre_s=$pre_t1   # never started: all of it was the wait
@@ -376,10 +390,14 @@ land_gate() {
     # 8150234a; tests/test_proven.py::test_land_leaves_a_proof_the_push_that_follows_reuses).
     local over=()
     [ "$1" = "$GOH" ] || over=(GOH_DIR="$1" PYTHONPATH="$(goh_path_front PYTHONPATH "$1"; printf %s "$PYTHONPATH")")
-    if ! env ${over[@]+"${over[@]}"} GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" GOH_LAND_VERDICTS_REUSE="$verdicts" \
+    [ -z "$ship_timings" ] || over+=(GOH_TIMINGS_PARENT="land: gate")
+    local g0="${EPOCHREALTIME/,/.}" grc=0
+    env ${over[@]+"${over[@]}"} GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" GOH_LAND_VERDICTS_REUSE="$verdicts" \
             GOH_GATE_CLASS=ship GOH_TIMING_VIA=land GOH_TIMINGS="${GOH_TIMINGS:-$land_timings}" \
             "$GOH_PY" "$1/tools/load.py" --background-ok "land gate" \
-            --max 90m 0 -- bash -c "$cmd" 7>&- 8<&- </dev/null; then
+            --max 90m 0 -- bash -c "$cmd" 7>&- 8<&- </dev/null || grc=$?
+    land_row "land: gate" "$g0" "$grc"
+    if [ "$grc" -ne 0 ]; then
         err "land.sh: the gate failed on ${tip:0:8} under $2's gates -- nothing landed"
         exit 1
     fi

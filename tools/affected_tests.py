@@ -55,7 +55,15 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from lib import binary_runners, declared_reads, fast_tests, pre_reuse, source_closure, test_closure
+from lib import (
+    binary_runners,
+    declared_reads,
+    fast_tests,
+    pre_reuse,
+    source_closure,
+    step_timings,
+    test_closure,
+)
 from tui.lib import counted, info, ok
 
 # Tree readers that neither a test name nor a tree-walking call in their own source gives away.
@@ -406,11 +414,12 @@ def run(root: Path, changed: list[str], chosen: dict[str, str], base: str | None
     for n, nodes in enumerate((judges, rest)):
         if not nodes:
             continue
-        rc = subprocess.run(
+        # A row of its own (GOH.RELEASELANDGATE): the land's profile names the run's seconds.
+        what = "judging the whole tree" if n == 0 else "the diff chose"
+        rc = step_timings.timed(  # no cwd: pytest.sh runs in its own checkout, the root
+            f"pre-land: {len(nodes)} tests {what}",
             ["bash", str(root / "tools" / "pytest.sh"), "-q", *nodes],
-            check=False,  # no cwd: pytest.sh runs in its own checkout, the root
-            stdin=subprocess.DEVNULL,
-        ).returncode
+        )
         if rc:
             return rc
         if first and n == 0 and rest and Path(record).is_file():

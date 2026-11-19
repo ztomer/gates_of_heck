@@ -8,16 +8,21 @@ its gate, with the tip it was cut from:
 
     release_gate.py run --base TIP --full CMD   # the land's gate (GOH_LAND_GATE), in the worktree
     release_gate.py decide --base TIP           # prints `release` or `full`
-    release_gate.py names                       # the tests that read the release files
+    release_gate.py names --base TIP            # the tests that read what TIP..HEAD changed
     release_gate.py push-decide [--root DIR]    # the push gate's rule for HEAD (below)
 
 `run` diffs TIP against HEAD. Every path CHANGELOG.md or under changelog/ (and at least one): it
 runs the structural gate (`gates/structural.sh --full`: every check over every tracked file, the
 changelog's included) and then the tests `names` finds. Anything else -- one source file, an empty
 diff, a TIP that is no ancestor because main moved and land.sh rebased -- runs CMD, the full gate,
-unchanged. The named set is a probe, never a list: a test file in tests/ whose text names
-CHANGELOG.md, the changelog/ directory or a "changelog" path part, so a new reader joins it by
-being written. Pinned by tests/test_release_gate.py.
+unchanged. The named set is the tests that READ a changed path by the one rule the land's pre-step
+and its verdict carry use (tools/affected_tests.py `readers`: a test naming `REPO_ROOT /
+"CHANGELOG.md"`, importing or reaching a reader of it), so a new reader joins it by being written.
+It was a text probe (any test whose text said CHANGELOG.md or changelog/): 26 files and 384 tests,
+133 s at load 50, of which one file reads goh's own changelog -- the other 25 write a fixture's,
+and their verdict on the tip holds (GOH.RELEASELANDGATE). Each part is a timed row
+(lib/step_timings.py), so the land's profile names where its seconds went. Pinned by
+tests/test_release_gate.py.
 
 THE PUSH GETS THE SAME RULE (coordinator ruling 2026-11-15). The land above only moved the cost:
 `git push origin main` ran the whole push gate over the release commit again. A repo declaring
@@ -48,12 +53,14 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gate_identity  # lib/, beside this file: the one identity (GOH.VERDICTKEY)
 import reuse  # lib/, beside this file: the one verdict store (GOH.ONEVERDICT)
 import reuse_audit  # ... and its auditor (GOH.REUSEAUDIT)
+import step_timings  # ... a timed row per part of the gate (GOH.RELEASELANDGATE)
 
 GITHUB = re.compile(r"github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?/?$")
 
@@ -72,13 +79,12 @@ def runner() -> str:
     return f"{python} -m pytest -q -p no:cacheprovider -n {worker_share.share()} --dist loadgroup"
 
 
-def names(root: Path) -> list[str]:
-    """The tests that read a release file, relative to root: the probe, re-run at every release."""
-    return [
-        f"tests/{p.name}"
-        for p in sorted((root / "tests").glob("test_*.py"))
-        if READS_RELEASE_FILES.search(p.read_text(encoding="utf-8"))
-    ]
+def names(root: Path, paths: list[str]) -> list[str]:
+    """The tests that read a path of PATHS, relative to root: tools/affected_tests.py's readers."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from tools import affected_tests  # the kit's: the one rule of "a test reads this path"
+
+    return sorted(affected_tests.readers(root, paths))
 
 
 def release_only(paths: list[str]) -> bool:
@@ -152,29 +158,34 @@ def audited(root: Path, parent: str, recorded: str, sha: str) -> tuple[str, str]
     return "release", parent
 
 
-def _sh(cmd: str, root: Path) -> int:
-    """CMD in root, without GOH_LAND_GATE: the key that chose this gate is no configuration of the
-    gates it runs, and every GOH_* is in a proven step's cache identity (gates/_rust_proven.sh)."""
-    env = {k: v for k, v in os.environ.items() if k != "GOH_LAND_GATE"}
-    return subprocess.run(
-        ["bash", "-c", cmd], cwd=root, env=env, stdin=subprocess.DEVNULL, check=False
-    ).returncode
+def _sh(cmd: str, root: Path, label: str) -> int:
+    """CMD in root as the timed row LABEL, without GOH_LAND_GATE: the key that chose this gate is no
+    configuration of the gates it runs, and every GOH_* is in a proven step's cache identity
+    (gates/_rust_proven.sh)."""
+    os.environ.pop("GOH_LAND_GATE", None)
+    return step_timings.timed(label, ["bash", "-c", cmd], cwd=root)
 
 
 def run(root: Path, base: str, full: str, structural: str, runner: str) -> int:
-    if decide(root, base) == "full":
+    paths = changed(root, base)
+    if paths is None or not release_only(paths):
         print(f"release gate: the diff since {base[:8]} is not release files only -- the full gate")
         sys.stdout.flush()
-        return _sh(full, root)
-    tests = names(root)
+        return _sh(full, root, "release gate: the full gate")
+    t0 = time.monotonic()  # the readers' graph is seconds of its own (8.7 s at load 125)
+    tests = names(root, paths)
+    step_timings.record(
+        "release gate: choose the readers", (time.monotonic() - t0) * 1000, 0, "phase"
+    )
     print(f"release gate: release files only since {base[:8]} -- structural + {len(tests)} tests")
     sys.stdout.flush()
-    rc = _sh(structural, root)
+    rc = _sh(structural, root, "release gate: structural")
     if rc != 0:
         return rc
     if not tests:
         return 0
-    return _sh(f"{runner} {' '.join(shlex.quote(t) for t in tests)}", root)
+    cmd = f"{runner} {' '.join(shlex.quote(t) for t in tests)}"
+    return _sh(cmd, root, f"release gate: {len(tests)} test files")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -183,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
     for verb in ("run", "decide", "names", "push-decide"):
         p = sub.add_parser(verb)
         p.add_argument("--root", type=Path, default=Path.cwd())
-        if verb in ("run", "decide"):
+        if verb in ("run", "decide", "names"):
             p.add_argument("--base", required=True)
         if verb == "run":
             p.add_argument("--full", required=True)
@@ -192,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     root = a.root.resolve()
     if a.verb == "names":
-        print("\n".join(names(root)))
+        print("\n".join(names(root, changed(root, a.base) or [])))
         return 0
     if a.verb == "decide":
         print(decide(root, a.base))

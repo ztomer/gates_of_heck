@@ -19,6 +19,7 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 # under the external part read as a second, coverage fault). Any other phase failing (the build, the
 # prune, the report) is still a missing export (tests/test_coverage_starved.py).
 COV_TESTS_FAILED=86
+COV_TIMINGS_PY="$(cd "$_goh_d/.." && pwd -P)/lib/step_timings.py"
 cov_phase() { # cov_phase <name> <log>: begin <name>, ending the phase in progress; "" ends only
     local now
     now="$(date +%s)"
@@ -26,6 +27,9 @@ cov_phase() { # cov_phase <name> <log>: begin <name>, ending the phase in progre
         local t0 name
         IFS=$'\t' read -r t0 name _ <"$COV_PHASE_FILE"
         printf '%s\n' "  ✓ phase '$name': $((now - t0)) s" >&3
+        # A row per phase (GOH.RELEASELANDGATE): the step's rows named 4 of its 388 s on v0.139.4.
+        [ -z "${GOH_TIMINGS:-}" ] || "${GOH_PY:-python3}" "$COV_TIMINGS_PY" record "coverage phase: $name" \
+            "$(((now - t0) * 1000))" 0 phase </dev/null >/dev/null 2>&1 || true
     fi
     if [ -n "$1" ]; then
         printf '%s\t%s\t%s\n' "$now" "$1" "${2:-}" >"$COV_PHASE_FILE"

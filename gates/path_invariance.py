@@ -36,11 +36,13 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "checks"))
 from _gitutil import foreign_repo_env
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+import step_timings  # a row per clone and per spelling (GOH.RELEASELANDGATE)
 from tmp_root import goh_tmp  # never Spotlight-indexed (GOH.TMPNOINDEX)
 
 NAME = "path_invariance"
@@ -72,11 +74,13 @@ def clone_head(root: str, dest: str) -> str:
         stdin=subprocess.DEVNULL,
     ).stdout.strip()
     env = foreign_repo_env()
+    t0 = time.monotonic()
     for argv in (
         ["git", "clone", "-q", "--shared", "--no-checkout", root, dest],
         ["git", "-C", dest, "checkout", "-q", "--detach", head],
     ):
         subprocess.run(argv, capture_output=True, check=True, env=env, stdin=subprocess.DEVNULL)
+    step_timings.record(f"{NAME}: clone HEAD", (time.monotonic() - t0) * 1000, 0, "phase")
     return head
 
 
@@ -84,7 +88,12 @@ def verdict(command: list[str], spelled: str) -> subprocess.CompletedProcess:
     argv = [part.replace("{root}", spelled) for part in command]
     env = foreign_repo_env()
     env["PWD"] = spelled
-    return subprocess.run(
+    # Each run is a row its own rows nest under: the step's profile names where its seconds went.
+    label = f"{NAME}: under {spelled}"
+    if env.get(step_timings.ENV):
+        env[step_timings.PARENT_ENV] = label
+    t0 = time.monotonic()
+    r = subprocess.run(
         argv,
         cwd=spelled,
         env=env,
@@ -94,6 +103,8 @@ def verdict(command: list[str], spelled: str) -> subprocess.CompletedProcess:
         check=False,
         stdin=subprocess.DEVNULL,
     )
+    step_timings.record(label, (time.monotonic() - t0) * 1000, r.returncode, "phase")
+    return r
 
 
 USAGE = "usage: path_invariance.py -- <gate command> ({root} is the tree)"

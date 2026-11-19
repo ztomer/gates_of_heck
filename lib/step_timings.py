@@ -135,16 +135,17 @@ def load_now() -> float | None:
         return None
 
 
-def timed(label: str, argv: list[str], tier: str = "phase") -> int:
-    """Run ARGV (stdout, stderr inherited) as one recorded row LABEL whose children name it their
-    parent: a phase that is no bounded step (a release's land, its push) still shows."""
+def timed(label: str, argv: list[str], tier: str = "phase", cwd: object = None) -> int:
+    """Run ARGV (stdout, stderr inherited; in CWD, else here) as one recorded row LABEL whose
+    children name it their parent: a phase that is no bounded step (a release's land, its push)
+    still shows."""
     import subprocess
     import time
 
     t0, cpu0, load1 = time.monotonic(), children_cpu_ms(), load_now()
     try:
         rc = subprocess.run(
-            argv, env=child_env(label), check=False, stdin=subprocess.DEVNULL
+            argv, env=child_env(label), check=False, stdin=subprocess.DEVNULL, cwd=cwd
         ).returncode
     except OSError as e:
         print(f"step_timings: {label}: {e}", file=sys.stderr)

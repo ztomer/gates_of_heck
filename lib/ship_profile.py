@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 
 import pin_sweep  # lib/: its one importer (lib/ship_status.py) has lib/ on sys.path
+import step_attribution
 import step_timings
 
 TOP = 20
@@ -58,4 +59,14 @@ def table(res: dict, top: int = TOP) -> list[str]:
         load = f"{r['load1']:6.1f}" if isinstance(r.get("load1"), (int, float)) else "     -"
         under = f"  (in {r['parent']})" if r.get("parent") else ""
         out.append(f"  {r['ms'] / 1000:8.1f} s  load {load}  {name:<8} {r['label']}{under}")
-    return out
+    return out + unattributed(res)
+
+
+def unattributed(res: dict) -> list[str]:
+    """Each step's rows that leave over 10% of a parent's seconds unnamed (lib/step_attribution.py,
+    GOH.RELEASELANDGATE): the table above cannot show what no row recorded."""
+    by_step: dict[str, list[dict]] = {}
+    for name, r in rows(res):
+        by_step.setdefault(name, []).append(r)
+    return [f"  unattributed in {name}: {step_attribution.describe(g)}"
+            for name, found in by_step.items() for g in step_attribution.gaps(found)]  # fmt: skip
