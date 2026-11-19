@@ -244,6 +244,20 @@ def test_ruff_is_only_for_repos_that_opted_into_the_format_check():
     assert out.stdout.split() == ["cargo", "shellcheck"], out.stdout  # cargo builds bin/goh (N3)
 
 
+def test_kind_keeps_one_install_route_and_names_its_packages():
+    """GOH.CIWALL2: the setup action hands the cargo rows to taiki-e/install-action, which installs
+    each tool's release binary by its crate name, so `--kind cargo --names` is exactly the cargo
+    packages the manifest's own install line would build, in its order; another kind is refused."""
+    got = _cli("--repo", str(ROOT), "--names", "--kind", "cargo")
+    assert got.returncode == 0, got.stderr
+    [line] = [x for x in _cli("--repo", str(ROOT), "--install").stdout.splitlines()
+              if "cargo install" in x]  # fmt: skip
+    want = line.split("for t in ", 1)[1].split(";", 1)[0].split()
+    assert got.stdout.split() == want and want, (got.stdout, line)
+    bad = _cli("--repo", str(ROOT), "--names", "--kind", "npm")
+    assert bad.returncode == 2 and "npm" in bad.stderr, bad.stderr
+
+
 def test_an_unknown_layer_is_refused_not_ignored():
     out = subprocess.run(
         [sys.executable, str(CLI), "--layer", "rsut"],

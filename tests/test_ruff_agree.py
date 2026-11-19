@@ -8,6 +8,7 @@ types). gates/ruff_agree.py refuses the split, naming each invocation and the up
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -106,32 +107,51 @@ def test_the_pin_needs_the_house_interpreters_ruff(tmp_path):
     assert r.returncode == 1 and "-m ruff" in r.stderr, r.stderr
 
 
+SETUP = REPO_ROOT / ".github" / "actions" / "goh-setup" / "action.yml"
+GATE_YML = REPO_ROOT / ".github" / "workflows" / "gate.yml"
+
+
 def _install_step() -> str:
     """The Install step's `run: |` block, read as text: the hosted runner has no PyYAML (v0.101.0's
     run 43147543825 went red on `import yaml`), and a test of the runner must run on the runner.
-    Every job carries one (GOH.CIWALL: the gate, the suite's shards, the coverage merge), and they
-    are one text: a job whose install drifted from the others is red here."""
-    lines = (REPO_ROOT / ".github" / "workflows" / "gate.yml").read_text().splitlines()
+    It lives in ONE place, the setup action every job uses (GOH.CIWALL2: it was copied into the
+    gate, the suite's shards and the coverage merge): a second install step anywhere is red here."""
     bodies = []
-    for at in [i for i, x in enumerate(lines) if x.strip().startswith("- name: Install")]:
-        assert lines[at + 1].strip() == "run: |", lines[at + 1]
-        indent = len(lines[at + 1]) - len(lines[at + 1].lstrip()) + 2
-        body = []
-        for x in lines[at + 2 :]:
-            if x.strip() and len(x) - len(x.lstrip()) < indent:
-                break
-            body.append(x[indent:])
-        bodies.append("\n".join(body).rstrip() + "\n")
-    assert bodies and len(set(bodies)) == 1, (
-        f"{len(bodies)} install steps, {len(set(bodies))} texts"
-    )
-    return bodies[0]
+    for path in (SETUP, GATE_YML):
+        lines = path.read_text().splitlines()
+        for at in [i for i, x in enumerate(lines) if x.strip().startswith("- name: Install")]:
+            run = next(i for i in range(at + 1, len(lines)) if lines[i].strip() == "run: |")
+            indent = len(lines[run]) - len(lines[run].lstrip()) + 2
+            body = []
+            for x in lines[run + 1 :]:
+                if x.strip() and len(x) - len(x.lstrip()) < indent:
+                    break
+                body.append(x[indent:])
+            bodies.append((path.name, "\n".join(body).rstrip() + "\n"))
+    assert [name for name, _ in bodies] == ["action.yml"], f"install steps in {bodies}"
+    return bodies[0][1]
+
+
+def _jobs_setup_before(wf: str) -> dict[str, tuple[int, int]]:
+    """{job: (line of its goh-setup use, line of its first gate run)}: every job sets up first."""
+    out: dict[str, tuple[int, int]] = {}
+    job = None
+    for n, line in enumerate(wf.splitlines()):
+        if m := re.fullmatch(r"  ([A-Za-z_][A-Za-z0-9_-]*):\s*", line):
+            job = m.group(1)
+        elif job and "uses: ./.github/actions/goh-setup" in line and job not in out:
+            out[job] = (n, -1)
+        elif (
+            job in out
+            and out[job][1] < 0
+            and re.search(r"run: \./(tools/gate|gates/rust_gate)", line)
+        ):
+            out[job] = (out[job][0], n)
+    return out
 
 
 def test_the_workflow_installs_one_pinned_ruff_and_asks_the_pin_before_the_gate():
-    import re
-
-    wf = (REPO_ROOT / ".github" / "workflows" / "gate.yml").read_text()
+    wf = GATE_YML.read_text()
     run = _install_step()
     # The release is READ from the one manifest, never written in the workflow (GOH.CLASS.PARITY).
     assert 'GOH_CI_RUFF="$("$py" gates/required_tools.py --pin ruff)"' in run, run
@@ -150,4 +170,7 @@ def test_the_workflow_installs_one_pinned_ruff_and_asks_the_pin_before_the_gate(
     assert not re.search(r"\bruff\b", left), left
     assert "shellcheck" in left and "pytest" in left, "every other tool is still installed: " + left
     assert 'gates/ruff_agree.py --pin "$GOH_CI_RUFF"' in run, run
-    assert wf.index("ruff_agree.py") < wf.index("./tools/gate.sh --full")
+    # The pin is asked before any gate runs, in every job: each sets up first (GOH.CIWALL2).
+    jobs = _jobs_setup_before(wf)
+    assert set(jobs) == {"gate", "suite", "coverage"}, jobs
+    assert all(0 <= setup < gate for setup, gate in jobs.values()), jobs

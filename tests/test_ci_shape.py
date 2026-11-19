@@ -19,7 +19,7 @@ import pytest
 import suite_home
 from conftest import REPO_ROOT, hermetic_env
 
-TREE_READS = (".github/workflows/gate.yml",)
+TREE_READS = (".github/workflows/gate.yml", ".github/actions/*")
 GATE_YML = REPO_ROOT / ci_shape.WORKFLOW
 # A variable gate.yml sets that never reaches the suite's step, each with why (GOH.CIWALL: the suite
 # runs in the `suite` matrix job, not the gate's).
@@ -80,9 +80,22 @@ def _enter(tmp_path: Path, drop_shape: bool = True, **extra: str) -> dict:
     return json.loads(got.stdout)
 
 
+def _scanned_actions() -> set[str]:
+    """Every name a local action of this tree writes to GITHUB_ENV (GOH.CIWALL2: the jobs' setup is
+    one composite action). Its steps' own `env:` blocks are step-local and reach no other step."""
+    names: set[str] = set()
+    for action in sorted((REPO_ROOT / ".github" / "actions").glob("*/action.yml")):
+        for line in action.read_text().splitlines():
+            if not line.lstrip().startswith("#"):
+                names.update(
+                    re.findall(r"([A-Za-z_][A-Za-z0-9_]*)=[^\s]*\"?\s*>>\s*\"?\$GITHUB_ENV", line)
+                )
+    return names
+
+
 def test_every_variable_gate_yml_sets_is_one_the_leg_applies(tmp_path):
     """THE drift: a variable gate.yml's gate step gets and a land's suite does not is red."""
-    scanned = _scanned(GATE_YML.read_text()) - set(NOT_THE_GATES)
+    scanned = (_scanned(GATE_YML.read_text()) | _scanned_actions()) - set(NOT_THE_GATES)
     assert scanned, "the scan found no variable in gate.yml: it would prove nothing"
     applied = json.loads(
         _enter(tmp_path, GOH_LAND_VERDICTS_REUSE=str(tmp_path / "rec"))["env"][ci_shape.APPLIED]
@@ -126,6 +139,17 @@ def test_a_change_to_the_workflow_carries_no_verdict_across_it():
     assert str(ci_shape.WORKFLOW) in test_closure.ENTRY_READS
     chosen, why = _land_verdicts.choose(REPO_ROOT, [str(ci_shape.WORKFLOW)])
     assert chosen is None and "gate.yml" in why
+
+
+def test_every_file_the_overlay_reads_is_an_entry_read():
+    """GOH.CIWALL2: the suite's environment is read from gate.yml AND the local actions its steps
+    use, so each is an entry read: a change to the setup action carries no verdict across it."""
+    from lib import test_closure
+
+    got = ci_shape.reads(GATE_YML)
+    assert got[0] == str(ci_shape.WORKFLOW) and ".github/actions/goh-setup/action.yml" in got, got
+    missing = sorted(set(got) - set(test_closure.ENTRY_READS))
+    assert not missing, f"the overlay reads {missing}, which lib/test_closure.py ENTRY_READS omits"
 
 
 def test_a_shape_of_no_known_name_is_refused():
@@ -214,6 +238,64 @@ def test_each_way_gate_yml_sets_a_variable_is_carried(tmp_path, text, name, valu
 def test_what_the_reading_cannot_evaluate_is_refused_by_name(tmp_path, text, why):
     with pytest.raises(ci_shape.ShapeError, match=why):
         ci_shape.overlay(_plant(tmp_path, text), "/ws")
+
+
+ACTION = """\
+name: setup
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        LOCAL_ONLY: l
+      run: echo "FROM_ACTION=$GITHUB_WORKSPACE/a" >> "$GITHUB_ENV"
+    - uses: ./inner
+"""
+INNER = """\
+name: inner
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        echo "NESTED=n" >> "$GITHUB_ENV"
+        echo "out=1" >> "$GITHUB_OUTPUT"
+"""
+WITH_ACTION = BASE.replace(
+    "      - name: The gate", "      - uses: ./setup\n      - name: The gate"
+)
+
+
+def _plant_actions(tmp_path: Path, action: str = ACTION, inner: str = INNER) -> Path:
+    for name, text in (("setup", action), ("inner", inner)):
+        (tmp_path / name).mkdir(exist_ok=True)
+        (tmp_path / name / "action.yml").write_text(text)
+    return _plant(tmp_path, WITH_ACTION)
+
+
+def test_a_write_in_a_local_action_the_gate_job_uses_is_carried(tmp_path):
+    """GOH.CIWALL2: the jobs' setup is one composite action, so its GITHUB_ENV writes, and those of
+    an action it uses in turn, reach the suite's step; its steps' own env does not."""
+    path = _plant_actions(tmp_path)
+    got = ci_shape.overlay(path, "/ws")
+    assert (got["FROM_ACTION"], got["NESTED"], got["WHERE"]) == ("/ws/a", "n", "/ws")
+    assert "LOCAL_ONLY" not in got and "out" not in got
+    assert ci_shape.reads(path) == ["gate.yml", "setup/action.yml", "inner/action.yml"]
+
+
+@pytest.mark.parametrize(
+    ("action", "inner", "why"),
+    [
+        (ACTION.replace("./inner", "./absent"), INNER, "no action.yml"),
+        (ACTION, INNER.replace("using: composite", "using: node24"), "not a composite action"),
+        (ACTION, INNER.replace('"NESTED=n" >> "$GITHUB_ENV"', '"NESTED=$HOME" >> "$GITHUB_ENV"'),
+         "shell variable"),
+    ],
+    ids=["missing", "not-composite", "write-unevaluable"],
+)  # fmt: skip
+def test_a_local_action_the_reading_cannot_follow_is_refused(tmp_path, action, inner, why):
+    with pytest.raises(ci_shape.ShapeError, match=why):
+        ci_shape.overlay(_plant_actions(tmp_path, action, inner), "/ws")
 
 
 def test_a_variable_set_in_another_step_does_not_reach_the_gate(tmp_path):

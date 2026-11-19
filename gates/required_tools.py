@@ -6,6 +6,7 @@
     gates/required_tools.py --layer rust --layer swift --install
 
     gates/required_tools.py --repo . --names      # bare tool names, for any package manager
+    gates/required_tools.py --repo . --names --kind cargo   # one install route's rows
     gates/required_tools.py --repo . --check      # red for a tool missing or below its FLOOR
     gates/required_tools.py --check --tool zig    # one tool (what goh_require asks)
     gates/required_tools.py --floors              # tool<TAB>floor, for a consumer's own record
@@ -304,6 +305,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--repo", default=None)
     ap.add_argument("--install", action="store_true")
     ap.add_argument("--names", action="store_true", help="bare tool names, one per line")
+    ap.add_argument("--kind", help="only the rows installed this way (brew, cargo, pip, system)")
     ap.add_argument("--check", action="store_true", help="red for a tool missing or below floor")
     ap.add_argument("--tool", action="append", default=[], help="judge this tool (any layer)")
     ap.add_argument("--found", default=None, help="the version text the caller read (--check)")
@@ -360,6 +362,14 @@ def main(argv: list[str] | None = None) -> int:
         if r["tool"] in structural and r["tool"] not in have:
             selected.append(r)
             have.add(r["tool"])
+    if args.kind:  # one install route: the setup action's cargo binaries (GOH.CIWALL2)
+        kinds = {r["kind"] for r in table}
+        if args.kind not in kinds:
+            known_kinds = ", ".join(sorted(kinds))
+            print(f"required_tools: no row installs by {args.kind!r}; kinds: {known_kinds}",
+                  file=sys.stderr)  # fmt: skip
+            return 2
+        selected = [r for r in selected if r["kind"] == args.kind]
     if args.check or args.pins_held:  # --pins-held: the box holds the pip pins (GOH.PYTESTPIN)
         return required_pins.held(selected) if args.pins_held else required_judge.check(selected)
     if args.pytest_plugins:  # tools/pytest.sh's PYTEST_PLUGINS (GOH.PLUGINPARITY)

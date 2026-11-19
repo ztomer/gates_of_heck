@@ -1,0 +1,101 @@
+# goh-setup -- the ONE setup every job of gate.yml runs (GOH.CIWALL2, 2026-11-19).
+#
+# gate.yml's three jobs (the gate, the suite's shards, the coverage merge) each carried a copy of
+# the same six steps, and one drifted copy is a job that judges another tree. So they are this
+# action, used right after the checkout:
+#
+#   - uses: ./.github/actions/goh-setup
+#     with: { coverage-build: external }   # the instrumented build this job keeps, if any
+#
+# THE CARGO TOOLS ARE RELEASE BINARIES. Each job compiled cargo-machete, cargo-audit and
+# cargo-llvm-cov from source on a cold cache: 59 + 255 + 73 s of a 416 s install step, in every
+# shard of the first sharded run (44584030150), and a red job never saved the cache that would have
+# skipped them. taiki-e/install-action installs each tool's newest release binary, checksum
+# verified, in seconds; the tool list is READ from the manifest's cargo rows
+# (gates/required_tools.py), never written here, and the manifest's own install line then finds
+# each on PATH and builds nothing (its presence check, required_tools.py `install_lines`).
+# rust-cache keeps no ~/.cargo/bin (`cache-bin: false`): one owner for those binaries.
+#
+# tests/ci_shape.py follows this action from gate.yml (its GITHUB_ENV writes are the suite's
+# environment); tests/test_ruff_agree.py reads its install step.
+name: goh-setup
+description: GOH_DIR, goh's tool floors, the Rust toolchain and every tool the gate requires.
+inputs:
+  coverage-build:
+    description: >-
+      The instrumented build this job keeps (gates/_coverage_rust.sh COV_CACHE): workspace (the
+      gate's part), external (the suite's shards), or empty for none.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: GOH_DIR is this checkout
+      shell: bash
+      run: echo "GOH_DIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+    # The tool floors (python3, shellcheck), from this tree's own gates/required_tools.tsv.
+    - name: Meet goh's tool floors
+      uses: ./.github/actions/goh-floors
+    - name: Rust toolchain from rust-toolchain.toml
+      shell: bash
+      run: |
+        rustup toolchain install
+        rustc -V
+        cargo clippy -V
+    - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      with:
+        cache-bin: "false"
+    # The manifest's cargo tools, in its order: the list its own install line would build.
+    - name: The cargo tools the manifest names
+      id: cargo-tools
+      shell: bash
+      run: |
+        set -euo pipefail
+        names="$(python3 gates/required_tools.py --repo . --names --kind cargo)"
+        tools="$(paste -sd, - <<<"$names")"
+        echo "cargo tools: ${tools:-none}"
+        echo "tools=$tools" >> "$GITHUB_OUTPUT"
+    - if: steps.cargo-tools.outputs.tools != ''
+      uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+      with:
+        tool: ${{ steps.cargo-tools.outputs.tools }}
+    # The gate's own manifest, never a copy of it: captured under pipefail, then each install
+    # line run under `bash -eux`, so a failed install fails the step.
+    - name: Install the tools the gate requires
+      shell: bash
+      run: |
+        set -euo pipefail
+        cmds="$(python3 gates/required_tools.py --repo . --install)"
+        printf '%s\n' "$cmds"
+        # Every row but ruff's: ruff is the one pinned release below, into the house interpreter.
+        grep -v '^#' <<<"$cmds" | sed -E 's/ ruff(==[0-9.]+)?( |$)/\2/g' | bash -eux
+        py="$(bash lib/house_python.sh)"
+        # The ONE ruff this runner has (GOH.CIRUFF): run 43139901867 failed the rust coverage
+        # step on "ruff: 3 invocations, 2 versions" -- the manifest's `brew install ruff` and its
+        # unpinned `pip install ruff` gave the runner two. The release is READ from the manifest
+        # (gates/required_tools.tsv, the one place a tool version is written, GOH.CLASS.PARITY).
+        GOH_CI_RUFF="$("$py" gates/required_tools.py --pin ruff)"
+        if brew list --formula ruff >/dev/null 2>&1; then brew uninstall --ignore-dependencies ruff; fi
+        "$py" -m pip install "ruff==$GOH_CI_RUFF"
+        # A runner that still carries another ruff fails HERE, naming it, not in a gate step.
+        GOH_PY="$py" "$py" gates/ruff_agree.py --pin "$GOH_CI_RUFF"
+        # Every pip install is a manifest pin (GOH.PYTESTPIN): the manifest's own lines above
+        # carry `==X.Y.Z` (pytest-xdist is a goh-suite row), and tools/pytest.sh refuses a box on
+        # another release. tests/test_ci_install_pins.py reds an install here that is not one.
+    # bin/goh FROM HEAD, KEPT: the resolver's shared store (gates/_goh_bin.sh) is keyed by the
+    # build's stamp, the content of its inputs, so a store restored for the same inputs is HEAD's
+    # build and the 2-minute rebuild is skipped; any other inputs miss and build as before.
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/goh/by-stamp
+        key: goh-bin-${{ hashFiles('crates/**', 'Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'scripts/build-goh.sh', 'lib/goh_version.sh') }}
+    # THE INSTRUMENTED BUILD, KEPT (GOH.CIWALL): the coverage build dir (gates/_coverage_rust.sh
+    # COV_CACHE) by its Rust inputs, falling back to the same lock's last build so only goh's own
+    # crates compile (they embed the release, so every release compiles them). One key per part
+    # kind: the gate's workspace build, the shards' external one.
+    - if: inputs.coverage-build != ''
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/goh/llvm-cov
+        key: goh-llvm-cov-${{ inputs.coverage-build }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-${{ hashFiles('crates/**') }}
+        restore-keys: goh-llvm-cov-${{ inputs.coverage-build }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-

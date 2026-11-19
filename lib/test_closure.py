@@ -32,7 +32,13 @@ ROOTED = re.compile(r"\$\{?[A-Za-z_][A-Za-z0-9_]*\}?((?:/[A-Za-z0-9_.-]+)+)")
 # Where a test's runner finds a module: beside the file, the root, and these (tools/ is on the
 # sys.path of the tests that import a tool).
 PY_DIRS = (*source_closure.PY_DIRS, "tools")
-ENTRY_READS = (".github/workflows/gate.yml",)  # read by the suite's entry, every test (base)
+# Read by the suite's entry, every test (base): gate.yml and the local actions its steps use, whose
+# GITHUB_ENV writes are the suite's environment too (tests/ci_shape.py `reads`, GOH.CIWALL2).
+ENTRY_READS = (
+    ".github/workflows/gate.yml",
+    ".github/actions/goh-setup/action.yml",
+    ".github/actions/goh-floors/action.yml",
+)
 SKIP_DIRS = {".git", "target", "node_modules", "__pycache__", ".venv", "venv", "dist", "build"}
 
 

@@ -25,6 +25,13 @@ whole, every shard at once (`partition` names the shards, tests/test_suite_shard
 cover every test once). A workflow with no such step is the one-job shape: the gate's step is the
 suite's.
 
+THE SETUP IS ONE ACTION (GOH.CIWALL2). Every job's setup -- GOH_DIR, the floors, the toolchain, the
+tools -- is the composite action `.github/actions/goh-setup`, so a step `uses: ./.github/...` is
+followed into its `action.yml` and ITS steps' GITHUB_ENV writes are carried as the workflow's own
+(nested local actions too). It fails closed the same way: a local action this reading cannot open,
+or one that is not composite (whose writes no reading of YAML can see), raises ShapeError. `reads`
+names every file the overlay reads, which lib/test_closure.py's ENTRY_READS must hold.
+
 What it does not model, named: the runner's own image variables (ImageOS, RUNNER_*), the PATH the
 steps' actions prepend (setup-python, the floors action's shellcheck), and its 3 cores.
 """
@@ -177,6 +184,38 @@ def _writes(run: str, where: str, workspace: str) -> dict[str, str]:
     return out
 
 
+def _root(workflow: Path) -> Path:
+    """The checkout a workflow is in: three levels above `.github/workflows/X.yml`; a planted
+    workflow elsewhere (a test's) reads its local actions from its own directory."""
+    here = workflow.resolve().parent
+    if here.name == "workflows" and here.parent.name == ".github":
+        return here.parent.parent
+    return here
+
+
+def _local_steps(uses: str, root: Path, where: str, seen: list[Path]) -> list[dict]:
+    """The steps of the local composite action `uses` (`./path`), its file appended to `seen`."""
+    path = root / uses[2:].rstrip("/") / "action.yml"
+    if not path.is_file():
+        raise ShapeError(f"{where}: uses {uses}, which has no action.yml this reading can open")
+    doc = parse(path.read_text())
+    runs = doc.get("runs") if isinstance(doc, dict) else None
+    if not isinstance(runs, dict) or runs.get("using") != "composite":
+        raise ShapeError(f"{where}: uses {uses}, not a composite action: its writes are unseen")
+    seen.append(path)
+    return runs.get("steps") or []
+
+
+def _step_writes(step: dict, root: Path, where: str, workspace: str, seen: list[Path]):
+    """What one step leaves in GITHUB_ENV: its own `run`'s writes, or a local action's steps'."""
+    out = _writes(str(step.get("run") or ""), where, workspace)
+    uses = str(step.get("uses") or "")
+    if uses.startswith("./"):
+        for n, inner in enumerate(_local_steps(uses, root, where, seen)):
+            out.update(_step_writes(inner, root, f"{uses} step {n}", workspace, seen))
+    return out
+
+
 def _doc(workflow: Path) -> dict:
     doc = parse(workflow.read_text())
     if not isinstance(doc, dict) or not isinstance(doc.get("jobs"), dict):
@@ -247,18 +286,33 @@ def gate_part(workflow: Path) -> str:
     return str(env.get(PART_VAR, "")) if isinstance(env, dict) else ""
 
 
-def overlay(workflow: Path, workspace: str) -> dict[str, str]:
-    """The variables the suite's step of `workflow` runs with, `workspace` its checkout: the
-    sharded step's (its partition variable left out: a land runs every shard), else the gate's."""
+def _overlay(workflow: Path, workspace: str, seen: list[Path]) -> dict[str, str]:
     doc = _doc(workflow)
     job_name, job, steps, at, axis = _suite_step(workflow, doc)
     out = dict(RUNNER_DEFAULTS)
     out.update(_env(doc.get("env"), "workflow", workspace))
     out.update(_env(job.get("env"), f"job {job_name}", workspace))
+    root = _root(workflow)
     for n, step in enumerate(steps[:at]):
-        out.update(_writes(str(step.get("run") or ""), f"job {job_name} step {n}", workspace))
+        out.update(_step_writes(step, root, f"job {job_name} step {n}", workspace, seen))
     env = steps[at].get("env")
     if axis is not None:
         env = {k: v for k, v in env.items() if k != PART_VAR}
     out.update(_env(env, f"job {job_name} {'suite' if axis else 'gate'} step", workspace))
     return out
+
+
+def overlay(workflow: Path, workspace: str) -> dict[str, str]:
+    """The variables the suite's step of `workflow` runs with, `workspace` its checkout: the
+    sharded step's (its partition variable left out: a land runs every shard), else the gate's."""
+    return _overlay(workflow, workspace, [])
+
+
+def reads(workflow: Path) -> list[str]:
+    """Every file `overlay` reads, relative to the checkout: the workflow, then each local action
+    it follows, once each."""
+    seen: list[Path] = []
+    _overlay(workflow, "/ws", seen)
+    root = _root(workflow)
+    files = [workflow.resolve(), *(p.resolve() for p in seen)]
+    return list(dict.fromkeys(p.relative_to(root).as_posix() for p in files))
