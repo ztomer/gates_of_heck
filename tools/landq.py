@@ -176,7 +176,7 @@ def take_lock(q: Path):
     return fd
 
 
-def argv_for(req: dict) -> list[str]:
+def argv_for(req: dict, log: Path | str = "") -> list[str]:
     env = ["env", *(f"-u{k}" for k in git_bindings())]
     if req["mode"] == "ship":
         ship = [sys.executable, str(ROOT / "tools" / "ship.py"), "--wait", "--repo", req["repo"],
@@ -184,8 +184,8 @@ def argv_for(req: dict) -> list[str]:
         return [*env, *ship, *(["--summary", req["summary"]] if req.get("summary") else [])]
     if req["mode"] == "land":
         wt = Path(req["worktree"])
-        return [*env, *land_prestep.lander_env(req), "bash", "-c", 'cd -- "$1" && exec bash "$2"',
-                "land", str(wt), str(land_script(wt))]  # fmt: skip
+        return [*env, *land_prestep.lander_env(req), *land_prestep.timings_keep(log), "bash", "-c",
+                'cd -- "$1" && exec bash "$2"', "land", str(wt), str(land_script(wt))]  # fmt: skip
     ref = f"{req['sha']}:refs/heads/{req['branch']}"
     return [*env, "git", "-C", req["repo"], "push", req["remote"], ref]
 
@@ -214,7 +214,7 @@ def run_one(q: Path, path: Path) -> dict:
         return {**outcome, "state": "red", "why": "HEAD moved"}
     timeout = int(os.environ.get("GOH_LAND_TIMEOUT") or (LAND_TIMEOUT if land else DEFAULT_TIMEOUT))
     info(f"land {Path(req['repo']).name} @ {req['sha'][:8]} ({req['mode']}) -> {log}")
-    res = bounded_run.run_step(argv_for(req), timeout, GRACE, f"land {req['mode']}", str(log))
+    res = bounded_run.run_step(argv_for(req, log), timeout, GRACE, f"land {req['mode']}", str(log))
     if res.code == 0 and not res.timed_out:
         # GOH.LANDQSHA: land.sh may rebase the tip, and `loopctl done` reads landing.sha, so the
         # sha recorded is the one main now holds; the enqueued tip keeps its own name.

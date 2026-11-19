@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING
 
 import admission
 import killtree
+import land_prestep
 import land_slot
 
 if TYPE_CHECKING:
@@ -151,7 +152,8 @@ def start(b: Batch, second: list[Item]) -> Spec | None:
     b.kit.say(f"batch {b.id}: gate {b.gates} on {top.tip[:8]}, {len(stacked)} stacked on main "
               f"{base[:8]} beside the first half (speculative)")  # fmt: skip
     read, write = os.pipe()
-    argv = ["env", *b.kit.unset, *land_slot.label(top.req), f"{MARK}={read}", "bash", "-c",
+    argv = ["env", *b.kit.unset, *land_slot.label(top.req), f"{MARK}={read}",
+            *land_prestep.timings_keep(log), "bash", "-c",
             'cd -- "$1" && exec bash "$2"', "land", str(wt),
             str(b.kit.land_script(wt))]  # fmt: skip
     spec = Spec(stacked, base, tree, log, write, b.kit.timeout, b.kit.grace)

@@ -15,8 +15,9 @@ landing to the one that landed). Its stages, each a wall in seconds, cpu-s where
       pre-land        the lander's pre-land (its log's "pre-land green in N s"; 0 when reused)
       gate            the land gate (`land` ledger row inside the run: wall_s, cpu_s), made of:
         slot wait     the record's `slot_wait_s`
-        step <label>  each gate step, summed over the gate's passes (its timings file, else the
-                      log's last "top 20 steps" table); nested ones (`> <label>`) under their parent
+        step <label>  each gate step, summed over the gate's passes (its timings kept beside its
+                      log as `<log stem>.timings.jsonl`, else the log's last "top 20 steps"
+                      table); nested ones (`> <label>`) under their parent
         phase <name>  the coverage step's phases ("✓ phase 'NAME': N s" in any of the land's logs)
       lander other    run - pre-land - gate (the rebase, the fast-forward, the bookkeeping)
 
@@ -41,6 +42,7 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
     del _sys.path[0]
 
 import argparse
+import contextlib
 import datetime as dt
 import json
 import os
@@ -55,6 +57,7 @@ import timing_ledger
 
 PRE_LAND = re.compile(r"✓ pre-land green in (\d+(?:\.\d+)?) s")
 PRE_REUSED = re.compile(r"✓ pre-land: the verdict .* not run again")
+RUN_LOG = re.compile(r"^batch \S+: \w+ by the gate run (\S+\.log)$", re.MULTILINE)
 TIMINGS = re.compile(r"^timings: (\S+)\s*$", re.MULTILINE)
 TOP_STEP = re.compile(r"^→ \[\d+/\d+\] \(\.gatesrc\) (.+?)\s*$", re.MULTILINE)
 NUM = r"(\d+(?:\.\d+)?)"
@@ -76,13 +79,30 @@ def _secs(a: dt.datetime | None, b: dt.datetime | None) -> float | None:
     return (b - a).total_seconds() if a and b else None
 
 
-def texts(q: Path, path: Path, rec: dict) -> list[str]:
-    """The land's logs: its record's, its own, its batch gate's."""
+def logs_of(q: Path, path: Path, rec: dict) -> list[Path]:
+    """The land's log files: its record's, its own, its batch gate's -- the gate run its own log
+    names (`... by the gate run NAME`, lib/landq_batch.py own_log) when another item's batch
+    landed it, so the second item of a batch reads the gate that landed it too."""
     logs = q / "logs"
     found = [Path(rec["log"])] if rec.get("log") else []
     found += [logs / f"{path.stem}.log", *sorted(logs.glob(f"{path.stem}.gate*.log"))]
+    for log in list(found):
+        with contextlib.suppress(OSError):
+            found += [logs / n for n in RUN_LOG.findall(log.read_text(errors="replace"))]
+    return list(dict.fromkeys(found))
+
+
+def kept_timings(q: Path, path: Path, rec: dict) -> list[Path]:
+    """The gate timings the lander kept beside each of the land's logs (`<stem>.timings.jsonl`,
+    lib/land_prestep.py timings_keep, GOH.LANDLEAKS), the record's log's first."""
+    return [log.with_name(log.name.removesuffix(".log") + ".timings.jsonl")
+            for log in logs_of(q, path, rec)]  # fmt: skip
+
+
+def texts(q: Path, path: Path, rec: dict) -> list[str]:
+    """The land's logs' text (`logs_of`)."""
     out = []
-    for log in dict.fromkeys(found):
+    for log in logs_of(q, path, rec):
         try:
             out.append(log.read_text(errors="replace"))
         except OSError:
@@ -135,8 +155,13 @@ def steps_from_log(text: str) -> list[dict]:
     return list(acc.values())
 
 
-def gate_steps(found: list[str]) -> list[dict]:
-    """The gate's steps: from its timings file when one is left, else from its log's table."""
+def gate_steps(found: list[str], kept: list[Path] | tuple = ()) -> list[dict]:
+    """The gate's steps: from its timings kept in the queue's logs, else the one a log names when
+    it is left (lands before GOH.LANDLEAKS), else from its log's table."""
+    for p in kept:
+        got = steps_from_timings(p)
+        if got is not None:
+            return got
     for text in found:
         for p in dict.fromkeys(TIMINGS.findall(text)):
             got = steps_from_timings(Path(p))
@@ -215,7 +240,7 @@ def land(q: Path, item: str, chain: list[tuple[Path, dict]], gates: list[dict]) 
     if rec.get("slot_wait_s") is not None:
         st["    slot wait"] = [float(rec["slot_wait_s"]), None]
     parents: dict[str, str] = {}
-    for s in gate_steps(found):
+    for s in gate_steps(found, kept_timings(q, last, rec)):
         if not s["parent"]:
             st[STEP + s["label"]] = [s["wall"], s["cpu"]]
             continue

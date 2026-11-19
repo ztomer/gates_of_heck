@@ -15,16 +15,21 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT, git, hermetic_env
 from test_gate_profile import _goh_copy  # its copy of the profile's closure
 from test_landq_batch import env, landq, lane, recorded  # noqa: F401  (env: a fixture)
 from timing_bounds import patience
 
-from lib import land_prestep, log_follow
+from lib import land_prestep, land_profile, log_follow
 
-# A gate that profiles as tools/gate_profile.sh does: timing rows, then its log and a second one.
-PROFILING_GATE = ('printf \'{"tier":"step","label":"x","ms":1}\\n\' >>"$GOH_TIMINGS"; '
+# A gate that profiles as tools/gate_profile.sh does: timing rows (25 steps: more than the log's
+# top-20 table holds), then its log and a second one.
+STEPS = 25
+ROW = '{"tier":"step","label":"s%s","ms":1}'
+PROFILING_GATE = (f"for i in $(seq 1 {STEPS}); do printf '{ROW}\\n' \"$i\" >>\"$GOH_TIMINGS\"; "
+                  "done; "
                   'echo log >"$GOH_TIMINGS.log"; echo two >"$GOH_TIMINGS.2.log"; '
                   ': >"$GOH_TIMINGS.controls.log"')  # fmt: skip
 
@@ -77,25 +82,42 @@ def test_land_removes_its_timings_and_every_gate_log(repo: Path, tmp_path: Path)
             gate, r.stdout + r.stderr)  # fmt: skip
 
 
-def test_a_finished_land_leaves_no_files_of_its_own(
+@pytest.mark.parametrize("names", [("one",), ("one", "two")], ids=["lone", "batch"])
+def test_a_finished_land_leaves_no_files_of_its_own_and_keeps_its_timings(
     repo: Path,
     tmp_path: Path,
     env: dict[str, str],  # noqa: F811
+    names: tuple[str, ...],
 ) -> None:
+    """The temp copy goes, the timings stay beside the land's log, and `goh land-profile` reads
+    the FULL step list from them -- not the log's top-20 table (RELEASELANDGATE's 154 s was
+    found in such a list)."""
     tmpdir = tmp_path / "t"
     tmpdir.mkdir()
-    env = {**env, "GOH_LANDQ_BATCH": "1", "GOH_LAND_GATE": PROFILING_GATE, "TMPDIR": str(tmpdir)}
+    env = {**env, "GOH_LANDQ_BATCH": str(len(names)), "GOH_LAND_GATE": PROFILING_GATE,
+           "TMPDIR": str(tmpdir)}  # fmt: skip
     q = Path(env["GOH_LANDQ_DIR"])
     _keep(q, "e" * 40, 1000)  # an enqueue's verdict from before discard existed
-    wt = lane(repo, tmp_path, "one", {"one.txt": "1\n"})
-    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.ONE", "--no-start",
-                 "--no-pre", "fixture")  # fmt: skip
-    assert done.returncode == 0, done.stdout + done.stderr
+    for name in names:
+        wt = lane(repo, tmp_path, name, {f"{name}.txt": "1\n"})
+        done = landq(env, "--enqueue", "--land", str(wt), "--item", f"T.{name.upper()}",
+                     "--no-start", "--no-pre", "fixture")  # fmt: skip
+        assert done.returncode == 0, done.stdout + done.stderr
     drained = landq(env, "--drain")
     assert drained.returncode == 0, drained.stdout + drained.stderr
-    assert recorded(env)["T.ONE"]["state"] == "landed", recorded(env)
+    got = recorded(env)
+    assert all(got[f"T.{n.upper()}"]["state"] == "landed" for n in names), got
     assert list((q / "pre").iterdir()) == []
     assert [n for n in _goh_left(tmpdir) if n.startswith("goh-land")] == []
+    for path in sorted((q / "done").glob("*.json")):
+        rec = json.loads(path.read_text())
+        kept = land_profile.kept_timings(q, path, rec)
+        assert any(p.is_file() for p in kept), (
+            kept,
+            sorted(p.name for p in (q / "logs").iterdir()),
+        )
+        steps = land_profile.gate_steps(land_profile.texts(q, path, rec), kept)
+        assert sorted(s["label"] for s in steps) == sorted(f"s{i}" for i in range(1, STEPS + 1))
 
 
 def _profile_twice(tmp_path: Path) -> tuple[Path, list[str]]:

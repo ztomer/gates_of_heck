@@ -77,7 +77,8 @@ land_exit() {
         ${pre_run:+--field "pre_run_s=$pre_run" --field "pre_workers=$pre_workers"} \
         ${pre_reused:+--field "pre_reused=$pre_reused"} ${suite_reused:+--field "suite_reused=$suite_reused"} \
         ${pre_fast_ran:+--field "pre_fast=1"} --field "sha=$(printf %.12s "${tip:-}")" || true
-    [ -z "$land_timings" ] || rm -f "$land_timings" "$land_timings".*   # read into the row; its gate logs too (GOH.LANDLEAKS)
+    [ -z "$land_timings" ] || { [ ! -s "$land_timings" ] || [ -z "${GOH_LAND_TIMINGS_KEEP:-}" ] || mv -f "$land_timings" "$GOH_LAND_TIMINGS_KEEP"   # kept beside the land's log (GOH.LANDLEAKS)
+        rm -f "$land_timings" "$land_timings".*; }
 }
 trap land_exit EXIT
 # SPECULATIVE (GOH.LANDBISECTPAR, lib/landq_spec.py): the batch gates a red stack's second half on

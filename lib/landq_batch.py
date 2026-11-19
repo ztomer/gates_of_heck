@@ -231,7 +231,8 @@ class Batch:
         log = self.q / "logs" / f"{self.id}.gate{self.gates}.log"
         wt = Path(top.req["worktree"])
         self.kit.say(f"batch {self.id}: gate {self.gates} on {top.tip[:8]}, {size} stacked")
-        argv = ["env", *self.kit.unset, *self.pre_from(top), "bash", "-c",
+        argv = ["env", *self.kit.unset, *self.pre_from(top), *land_prestep.timings_keep(log),
+                "bash", "-c",
                 'cd -- "$1" && exec bash "$2"', "land",
                 str(wt), str(self.kit.land_script(wt))]  # fmt: skip
         res = bounded_run.run_step(argv, self.kit.timeout, self.kit.grace, "land batch", str(log))

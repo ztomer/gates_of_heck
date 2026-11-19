@@ -86,6 +86,13 @@ def reap(q: Path, now_ns: int | None = None) -> list[Path]:
     return gone
 
 
+def timings_keep(log: Path | str) -> list[str]:
+    """The `env` word that keeps a land's gate timings beside its log in the queue's `logs/`
+    (GOH.LANDLEAKS): `<log stem>.timings.jsonl`, pruned with the log, read by `goh land-profile`
+    (lib/land_profile.py) and its step attribution. tools/land.sh moves its own there at exit."""
+    return [f"GOH_LAND_TIMINGS_KEEP={str(log).removesuffix('.log')}.timings.jsonl"]
+
+
 def lander_env(req: dict) -> list[str]:
     """The lander's tools/land.sh reads the kept verdict from GOH_LAND_PRE_FROM."""
     kept = [f"GOH_LAND_PRE_FROM={req['pre']['keep']}"] if req.get("pre") else []
