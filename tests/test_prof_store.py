@@ -158,6 +158,33 @@ def test_an_enabled_carry_whose_run_left_its_store_empty_is_red(tmp_path: Path, 
     assert f"{said} store EMPTY" in r.stdout, r.stdout
 
 
+MARKED = """import _land_verdicts
+def test_asks_for_it(request):
+    _land_verdicts.mark_binary(request.node)  # as asking for `native_goh` marks it: nothing runs
+"""
+
+
+def test_a_same_tree_rerun_of_tests_marked_but_never_profiled_is_not_an_empty_store(
+    tmp_path: Path, suite, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GOH.CIWALL3: a test that asks for the binary is MARKED as running it (tests/_goh_request.py)
+    though it may never run it, so it leaves no profile to keep. Of the 1833 binary passes of the
+    2026-11-19 full land, 127 were such tests: never kept, so the same tree's next land carried
+    every profiled one and re-ran just those 127, and `kept` read the store as EMPTY -- red on
+    every re-land after a flake, the carry working. A profile the run made is what it must keep."""
+    d, bins, _ = suite
+    (d / "test_m.py").write_text(MARKED)
+    store = tmp_path / "store"
+    monkeypatch.setenv("GOH_REUSE_DIR", str(store))
+    first = _land(d, store, bins, tmp_path / "p0", "T0")
+    assert first.returncode == 0, first.stdout
+    assert "profile store: 1 of 1 binary-running tests' profiles kept" in first.stdout, first.stdout
+    again = _land(d, store, bins, tmp_path / "p1", "T0")  # the same tree, landed again
+    assert "PASSED test_m.py::test_asks_for_it" in again.stdout, again.stdout
+    assert f"PASSED {RUNS}" not in again.stdout, again.stdout  # carried by its stored profile
+    assert again.returncode == 0 and "EMPTY" not in again.stdout, again.stdout
+
+
 def test_a_store_that_fills_and_never_matches_is_red_after_misses_lands(
     tmp_path: Path, suite, monkeypatch: pytest.MonkeyPatch
 ) -> None:

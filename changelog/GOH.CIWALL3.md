@@ -1,0 +1,1 @@
+* The land's profile-store check counts the tests that LEFT a profile, not the ones marked as running the binary: 127 of 1833 marked tests ran none, were never kept, and a same-tree re-land re-ran only them, so every re-land after a flake read the store as EMPTY and went red (GOH.CIWALL3).

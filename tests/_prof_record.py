@@ -33,7 +33,9 @@ import pytest
 
 PROFILE = "LLVM_PROFILE_FILE"
 STORE_KEY = "goh_land_store"  # the controller's store, handed to each xdist worker
+PROF_MARK = "goh_prof"  # a user property: the test LEFT a profile (a mark alone may run nothing)
 _state: dict[str, object] = {}
+_profiled: set[str] = set()  # the controller's: the nodes whose call left a raw profile
 
 
 def _profdata() -> str | None:
@@ -104,10 +106,13 @@ def held(tree: str, tools: str, nodes) -> set[str]:
 
 def kept(ran: set[str]) -> tuple[str, bool, int]:
     """(what the store kept of this run's profiles, whether that is a FAULT). An enabled carry
-    whose run drove the binary (`ran`: the nodes that passed running it) and left the store empty
-    under its own key is a reuse path that can never carry (GOH.PROFSTOREEMPTY: every xdist
-    worker lost the store's name, so 1691 binary tests re-ran on every land while the audit,
-    which samples only the per-crate claim, read uses 8, agreed 8). The third: how many."""
+    whose run drove the binary (`ran`: the nodes that passed and LEFT a profile, `_profiled`) and
+    left the store empty under its own key is a reuse path that can never carry (GOH.PROFSTOREEMPTY:
+    every xdist worker lost the store's name, so 1691 binary tests re-ran on every land while the
+    audit, which samples only the per-crate claim, read uses 8, agreed 8). The third: how many.
+    Never the MARKED nodes: a test asking for the binary is marked whether or not it runs it, has
+    no profile to keep, and a same-tree re-land re-runs only those (GOH.CIWALL3: 127 of 1833, read
+    as an EMPTY store on every re-land of one tree)."""
     me = lv._here()
     k = key(*me) if me and ran else None
     if not k:
@@ -254,6 +259,14 @@ def pytest_runtest_call(item):
     d = _dir_of(item)
     if d is not None and any(d.glob("*.profraw")):
         lv.mark_binary(item)
+        if (PROF_MARK, True) not in item.user_properties:
+            item.user_properties.append((PROF_MARK, True))
+
+
+def pytest_runtest_logreport(report) -> None:
+    """The controller's account of which nodes left a profile (xdist replays each report there)."""
+    if (PROF_MARK, True) in report.user_properties:
+        _profiled.add(report.nodeid)
 
 
 def pytest_sessionfinish(session) -> None:
@@ -261,7 +274,7 @@ def pytest_sessionfinish(session) -> None:
     the controller checks the run filled the profile store (`check`), then bounds it."""
     if not hasattr(session.config, "workerinput") and key("", ""):
         if lv._on(lv.RECORD) or lv._on(lv.REUSE):  # a run that records: it fills the store
-            check(session, {n for n in lv._bin if n in lv._called and n not in lv._failed})
+            check(session, {n for n in _profiled if n in lv._called and n not in lv._failed})
         with lv._in_store():
             _ps().prune()
     base = _state.get("base")
