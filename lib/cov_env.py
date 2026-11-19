@@ -22,7 +22,10 @@ THE KEY NOW. The measurement is keyed on the GOH_* it can read, each by its valu
     keys every GOH_* it holds, as before (`goh-env-scope all`).
 
 Left out: GOH_DIR (its gates are keyed by content), GOH_COV_* (the `cov` lines key them,
-gates/_rust_proven.sh), and the verdict-free keys (gates/verdict_free_keys.txt). The bare `GOH_`
+gates/_rust_proven.sh), the proven cache's own settings (GOH_PROVEN*: whether a key exists and how
+long it lives, never what is measured -- GOH_PROVEN=0 makes no key, and only the cache's code, not
+the measurement's, spells them; tools/gate_profile.sh sets GOH_PROVEN=1 for the land and the push
+leaves it unset) and the verdict-free keys (gates/verdict_free_keys.txt). The bare `GOH_`
 (`startswith("GOH_")`, prose "GOH_*") is no read: in these files it only DROPS or hashes the
 configuration (WHOLESALE, pinned by tests/test_rust_cov_env.py, so a new wholesale read is seen).
 The suite's shape (tests/suite_home.py `shape`) is not keyed, by the owner's rule that the suite
@@ -40,6 +43,7 @@ from pathlib import Path
 FORMAT = "goh-env"
 _NAME = re.compile(rb"GOH_[A-Z0-9_]*")
 SUITE_DECL = ("tests/suite_home.py", "CALLER_INPUTS")
+ELSEWHERE = ("GOH_COV_", "GOH_PROVEN")  # keyed by the `cov` lines; the reuse cache's own switches
 # The files of goh's measurement whose bytes spell a bare `GOH_`, and what it does there: none
 # reads a variable it does not name (tests/test_rust_cov_env.py, a ratchet both ways).
 WHOLESALE = {
@@ -95,7 +99,7 @@ def keyed(names: set[str] | None, env: Mapping[str, str], free: frozenset[str]) 
     keyed elsewhere or never a verdict's."""
     out = set()
     for k in env:
-        if not k.startswith("GOH_") or k in free or k == "GOH_DIR" or k.startswith("GOH_COV_"):
+        if not k.startswith("GOH_") or k in free or k == "GOH_DIR" or k.startswith(ELSEWHERE):
             continue
         if names is None or k in names or any(n.endswith("_") and k.startswith(n) for n in names):
             out.add(k)

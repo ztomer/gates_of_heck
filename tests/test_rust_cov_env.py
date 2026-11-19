@@ -33,7 +33,11 @@ def declared(repo: Path) -> Path:  # noqa: F811  (the imported fixture, extended
 
 
 def test_the_land_gates_bookkeeping_does_not_void_the_release_pushs_reuse(declared: Path) -> None:
-    land = {"GOH_PROFILE_PROVEN": "1", "GOH_LAND_PRE_FROM": "/q/pre/1.keep", "GOH_MAX_LINES": "400"}
+    """tools/gate_profile.sh runs the land's gate under GOH_PROVEN=1, the push its default: the
+    proven cache's own settings decide whether a key exists (0: none), never what is measured.
+    The first land under the new key recorded `goh-env GOH_PROVEN=1` (709d43aa)."""
+    land = {"GOH_PROFILE_PROVEN": "1", "GOH_LAND_PRE_FROM": "/q/pre/1.keep", "GOH_MAX_LINES": "400",
+            "GOH_PROVEN": "1", "GOH_PROVEN_TTL_S": "86400"}  # fmt: skip
     assert _run(declared, **land) == "MEASURED"
     _, out = _run_out(declared)
     assert "PLAIN" in out, _decision(out)  # the release push: none of them
@@ -85,10 +89,10 @@ def test_without_a_suite_declaration_every_goh_variable_is_keyed(repo: Path) -> 
 
 def test_what_is_keyed_elsewhere_or_never_a_verdict_is_left_out() -> None:
     env = {"GOH_DIR": "/a", "GOH_COV_FLOOR_RUST": "90", "GOH_TIMINGS": "/t", "GOH_X": "1",
-           "GOH_FAM_A": "1", "PATH": "/bin"}  # fmt: skip
+           "GOH_FAM_A": "1", "PATH": "/bin", "GOH_PROVEN": "1", "GOH_PROVEN_NOW": "9"}  # fmt: skip
     free = cov_env.free_keys(REPO_ROOT)
-    assert cov_env.keyed({"GOH_X", "GOH_DIR", "GOH_TIMINGS", "GOH_FAM_"}, env, free) == [
-        "GOH_FAM_A", "GOH_X"]  # fmt: skip
+    names = {"GOH_X", "GOH_DIR", "GOH_TIMINGS", "GOH_FAM_", "GOH_PROVEN"}
+    assert cov_env.keyed(names, env, free) == ["GOH_FAM_A", "GOH_X"]
     assert cov_env.keyed(None, env, free) == ["GOH_FAM_A", "GOH_X"]
     assert cov_env.spelled([b'"GOH_" GOH_A $GOH_B_']) == {"GOH_A", "GOH_B_"}
 

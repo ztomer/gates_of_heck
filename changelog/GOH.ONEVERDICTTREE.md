@@ -6,3 +6,7 @@
   releases re-measured, 380-980 s each), and a miss names the variable that moved. A repo whose
   suite declares nothing keys every GOH_* as before. docs/reuse.md maps the eight stages a goh
   change is verified in, with their keys and measured seconds.
+* The proven cache's own settings (GOH_PROVEN*) are no input of the coverage measurement's key
+  (GOH.ONEVERDICTTREE): the first land under the new key recorded `goh-env GOH_PROVEN=1`, which
+  tools/gate_profile.sh sets for the land and the release push leaves unset; GOH_PROVEN=0 still
+  makes no key at all.
