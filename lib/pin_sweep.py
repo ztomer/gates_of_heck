@@ -79,6 +79,7 @@ GOH = Path(__file__).resolve().parent.parent
 SHIP_WAIT = 3600  # how long the sweep waits for its ship to return (goh ship's step bound)
 BOUND = consumer_pins.BUDGET + 300  # the sweep's deadline: the pushes' budget, then their grace
 POLL = 1.0
+START_GRACE = 60  # seconds a registered sweep may go without its supervisor's pid (_active)
 _lock = threading.Lock()
 
 
@@ -135,14 +136,18 @@ def registry_path() -> Path:
 
 
 def _active(rec: dict) -> bool:
-    """A sweep record still to run or running, with its supervisor alive (or not yet named)."""
+    """A sweep record still to run or running, with its supervisor alive -- or not yet named, for
+    START_GRACE seconds after it was made: start() registers before its supervisor starts, and a
+    supervisor that never started must not hold every newer sweep back for its whole bound."""
     if rec.get("status") not in ("pending", "running"):
         return False
     try:
         pid = int(rec.get("pid") or 0)
-        if pid > 0:
-            os.kill(pid, 0)
-    except (OSError, ValueError):
+        if pid <= 0:
+            made = dt.datetime.fromisoformat(str(rec.get("created")))
+            return (dt.datetime.now(dt.UTC) - made).total_seconds() < START_GRACE
+        os.kill(pid, 0)
+    except (OSError, ValueError, TypeError):
         return False
     return True
 

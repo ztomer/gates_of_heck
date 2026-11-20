@@ -269,3 +269,23 @@ def _two_sweeps(tmp_path: Path, repos: dict[str, Path], ship: Path) -> None:
 
 def pin_sweep_unpushed(tmp_path: Path) -> dict:
     return _read(tmp_path / "state" / "pin_push.json").get("repos") or {}
+
+
+def test_a_sweep_that_never_got_its_supervisor_holds_no_newer_sweep_back(tmp_path, monkeypatch):
+    # GOH.LOADSOURCE: start() registers a sweep before it starts the supervisor, so a record with
+    # no pid yet counts as running -- but only while it is young. A start whose supervisor never
+    # started (its fork refused) leaves a pending record with no pid for good, and every newer
+    # sweep would wait out its whole bound behind it.
+    monkeypatch.setenv("GOH_ESTATE_STATE", str(tmp_path / "state" / "estate.json"))
+    sys.path.insert(0, str(REPO_ROOT / "lib"))
+    import pin_sweep
+
+    old, new = tmp_path / "a.sweep.json", tmp_path / "b.sweep.json"
+    for rec in (old, new):
+        rec.write_text(json.dumps({"status": "pending", "created": pin_sweep.now(), "repos": {}}))
+        pin_sweep.register(rec, ["/r"])
+    assert pin_sweep.older(new) == str(old)  # still starting: the newer one waits for it
+    stale = pin_sweep.dt.datetime.now(pin_sweep.dt.UTC) - pin_sweep.dt.timedelta(minutes=5)
+    old.write_text(json.dumps({"status": "pending", "created": stale.isoformat(), "repos": {}}))
+    assert pin_sweep.older(new) is None
+    assert pin_sweep.newer(old, "/r") == str(new)  # the newer one is young and pid-less: live
