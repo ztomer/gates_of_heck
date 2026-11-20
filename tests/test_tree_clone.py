@@ -27,7 +27,10 @@ def _state(r: Path) -> tuple:
         (r / "README.md").read_text(),
         sorted(p.name for p in r.iterdir()),
         git(r, "rev-parse", "HEAD").strip(),
-        git(r, "status", "--porcelain"),
+        # --no-optional-locks: a plain `git status` refreshes the index under .git/index.lock, and
+        # the `repo` template is the whole RUN's since GOH.FSCHURN2, so a worker cloning it then
+        # copied the lock and its first `git add` died 128 (GOH.LANDQWINFLAKE's pre-lands, twice).
+        git(r, "--no-optional-locks", "status", "--porcelain"),
         git(r, "config", "--local", "--list"),
         sorted(p.name for p in (r / ".git" / "hooks").iterdir()),
     )
