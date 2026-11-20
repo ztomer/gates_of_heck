@@ -13,6 +13,7 @@ GOH_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 source "${GOH_DIR:-$GOH_ROOT}/tui/lib.sh"
 cd "$(dirname "$0")"
 source desktop_lock.sh
+source ../pid_owner.sh  # goh_pid_stamp/goh_pid_kill: a helper is killed only while it is still itself
 source ../tmp_root.sh   # goh_tmp: every temp root under $TMPDIR/goh.noindex, never Spotlight-indexed (GOH.TMPNOINDEX)
 
 PASS=0
@@ -56,10 +57,11 @@ rm -rf "$DESKTOP_LOCK_DIR"
 # directory it cannot clear would hang the suite instead of going red. Returns 124 when it fired.
 run_bounded() {  # run_bounded <seconds> <command...>
     local secs="$1"; shift
-    "$@" & local p=$! i=0
+    "$@" & local p=$! i=0 stamp
+    stamp="$(goh_pid_stamp "$p" || true)"
     while kill -0 "$p" 2>/dev/null && (( i < secs * 10 )); do sleep 0.1; i=$((i + 1)); done
     if kill -0 "$p" 2>/dev/null; then
-        kill -9 "$p" 2>/dev/null; wait "$p" 2>/dev/null
+        goh_pid_kill 9 "$stamp"; wait "$p" 2>/dev/null
         return 124
     fi
     wait "$p"
@@ -81,7 +83,7 @@ section "desktop lock"
 check "the lock lives at the house-wide path" "$DESKTOP_LOCK_DIR" "/tmp/mac-desktop-ui.lock"
 
 # 1. MUTUAL EXCLUSION. The lock must actually be held against a second taker.
-PID="$(holder 30)"; sleep 1; assert_held_by "$PID"
+PID="$(holder 30)"; PST="$(goh_pid_stamp "$PID" || true)"; sleep 1; assert_held_by "$PID"
 bash -c "
     source '${GOH_DIR:-$GOH_ROOT}/tui/lib.sh'; source '$PWD/desktop_lock.sh'
     DESKTOP_LOCK_TIMEOUT=2 desktop_lock_acquire 'intruder'
@@ -100,11 +102,11 @@ check "the wait bound comes from the environment, not the default" \
 #     defence fires and takes the lock from a perfectly live holder.
 OUT="$(DESKTOP_LOCK_TIMEOUT=2 DESKTOP_LOCK_MAX_HOLD=0 run_bounded 20 take 'age ceiling from env')"
 check "the age ceiling comes from the environment too" "$(grep -c GOT <<<"$OUT")" "1"
-kill -9 "$PID" 2>/dev/null; wait "$PID" 2>/dev/null
+goh_pid_kill 9 "$PST"; wait "$PID" 2>/dev/null
 rm -rf "$DESKTOP_LOCK_DIR"
 
 # 2. SIGKILL -- the case a trap cannot cover. Must reclaim, not wait.
-kill -9 "$PID" 2>/dev/null; wait "$PID" 2>/dev/null
+goh_pid_kill 9 "$PST"; wait "$PID" 2>/dev/null
 OUT="$(DESKTOP_LOCK_TIMEOUT=5 bash -c "
     source '${GOH_DIR:-$GOH_ROOT}/tui/lib.sh'; source '$PWD/desktop_lock.sh'
     DESKTOP_LOCK_TIMEOUT=5 desktop_lock_acquire 'after sigkill' && echo GOT
@@ -138,26 +140,26 @@ rm -rf "$DESKTOP_LOCK_DIR"
 # 4. WEDGED BUT ALIVE. Liveness says "busy" forever; only the age ceiling frees
 #    it. Backdate the lock's mtime so the owner is genuinely running and genuinely
 #    past the ceiling.
-PID="$(holder 30)"; sleep 1; assert_held_by "$PID"
+PID="$(holder 30)"; PST="$(goh_pid_stamp "$PID" || true)"; sleep 1; assert_held_by "$PID"
 touch -t 200001010000 "$DESKTOP_LOCK_DIR"
 OUT="$(bash -c "
     source '${GOH_DIR:-$GOH_ROOT}/tui/lib.sh'; source '$PWD/desktop_lock.sh'
     DESKTOP_LOCK_MAX_HOLD=900 DESKTOP_LOCK_TIMEOUT=5 desktop_lock_acquire 'after wedge' && echo GOT
 " 2>&1)"
 check "a live but wedged owner is reclaimed on the age ceiling" "$(grep -c GOT <<<"$OUT")" "1"
-kill -9 "$PID" 2>/dev/null; wait "$PID" 2>/dev/null
+goh_pid_kill 9 "$PST"; wait "$PID" 2>/dev/null
 rm -rf "$DESKTOP_LOCK_DIR"
 
 # 5. RELEASE IS OWNER-ONLY. A process that never acquired must not be able to
 #    free the lock out from under the peer it was waiting for.
-PID="$(holder 10)"; sleep 1; assert_held_by "$PID"
+PID="$(holder 10)"; PST="$(goh_pid_stamp "$PID" || true)"; sleep 1; assert_held_by "$PID"
 bash -c "
     source '${GOH_DIR:-$GOH_ROOT}/tui/lib.sh'; source '$PWD/desktop_lock.sh'
     desktop_lock_release
 " >/dev/null 2>&1
 check "a non-holder's release does not free the lock" \
     "$([[ -d "$DESKTOP_LOCK_DIR" ]] && echo held || echo freed)" "held"
-kill -9 "$PID" 2>/dev/null; wait "$PID" 2>/dev/null
+goh_pid_kill 9 "$PST"; wait "$PID" 2>/dev/null
 rm -rf "$DESKTOP_LOCK_DIR"
 
 # 5b. RELEASE AFTER LOSING THE LOCK. Section 5 covers a process that NEVER held
@@ -165,7 +167,7 @@ rm -rf "$DESKTOP_LOCK_DIR"
 #     running, and then exits through its trap — the ordinary sequence, and the
 #     one that was live in every repo sourcing this file: bash deleted the
 #     PEER's lock while the python half left it alone.
-PID="$(holder 10)"; sleep 1; assert_held_by "$PID"
+PID="$(holder 10)"; PST="$(goh_pid_stamp "$PID" || true)"; sleep 1; assert_held_by "$PID"
 bash -c "
     source '${GOH_DIR:-$GOH_ROOT}/tui/lib.sh'; source '$PWD/desktop_lock.sh'
     DESKTOP_LOCK_HELD=1
@@ -173,7 +175,7 @@ bash -c "
 " >/dev/null 2>&1
 check "a release by a process that LOST the lock does not free the peer's" \
     "$([[ -d "$DESKTOP_LOCK_DIR" ]] && echo held || echo freed)" "held"
-kill -9 "$PID" 2>/dev/null; wait "$PID" 2>/dev/null
+goh_pid_kill 9 "$PST"; wait "$PID" 2>/dev/null
 rm -rf "$DESKTOP_LOCK_DIR"
 
 # 5c. RELEASE ON AN UNREADABLE OWNER RECORD. Removing on doubt is the corrupting

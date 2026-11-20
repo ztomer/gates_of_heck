@@ -13,7 +13,6 @@ holder it spawned must both be gone within a bound.
 
 from __future__ import annotations
 
-import contextlib
 import os
 import signal
 import subprocess
@@ -23,6 +22,7 @@ from pathlib import Path
 
 import load_kit
 import orphan_kit
+import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
 from timing_bounds import GiveUp, patience
 
@@ -64,12 +64,13 @@ def test_a_gate_whose_pytest_was_killed_is_gone_soon(tmp_path):
         text=True,
         start_new_session=True,
     )
-    gate_pid = 0
+    gate_pid, gate = 0, None
     try:
         line = parent.stdout.readline()
         assert line.strip().isdigit(), f"the stand-in pytest said {line!r}"
         gate_pid = int(line)
         assert _alive(gate_pid), "the gate was not running before the kill"
+        gate = pid_owner.stamp(gate_pid)  # alive: the cleanup signals only this process's group
         os.kill(parent.pid, signal.SIGKILL)  # no finalizer, no atexit: an interrupted pytest
         parent.wait(timeout=patience(30))
         give_up = GiveUp(20)
@@ -77,9 +78,8 @@ def test_a_gate_whose_pytest_was_killed_is_gone_soon(tmp_path):
             time.sleep(0.1)
         assert not _alive(gate_pid), "the fake gate (or its slot holder) outlived its pytest"
     finally:
-        if gate_pid:
-            with contextlib.suppress(ProcessLookupError, PermissionError):
-                os.killpg(gate_pid, signal.SIGKILL)
+        if not pid_owner.signal_group(gate, signal.SIGKILL):
+            pid_owner.signal(gate, signal.SIGKILL)
         parent.stdout.close()
         parent.wait(timeout=patience(30))
 

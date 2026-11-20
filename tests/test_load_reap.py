@@ -409,6 +409,7 @@ def test_a_killed_test_run_leaves_no_spinner_of_the_fixture_behind(tmp_path: Pat
             "the runner never started its spinner"
         )
         spinner = int(out.read_text().strip())
+        load_kit.own_pid(spinner)  # stamped while it runs: the cleanup kills only this process
         _release(fifo)
         assert load_kit.alive(spinner)
         owner.kill()  # SIGKILL: owner cannot clean up
@@ -418,8 +419,7 @@ def test_a_killed_test_run_leaves_no_spinner_of_the_fixture_behind(tmp_path: Pat
         )
     finally:
         if out.exists() and out.read_text().strip():
-            load_kit.own_pid(int(out.read_text().strip()))
-            load_kit.kill_pid(int(out.read_text().strip()))
+            load_kit.kill_pid(int(out.read_text().strip()))  # only if own_pid stamped it
         owner.kill()
         owner.wait()
 

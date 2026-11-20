@@ -16,10 +16,12 @@ verdict depends on the directory it was launched from is not a gate.
 
 import os
 import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path
 
+import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
 from _tool_versions import pin
 from conftest import REPO_ROOT, commit_all, stage, write
@@ -204,7 +206,9 @@ def test_a_hung_ruff_is_timed_out_and_its_group_killed(repo, tmp_path, goh):
     marker = tmp_path / "ruff-child.pid"
     fake = tmp_path / "bin"
     fake.mkdir()
-    (fake / "ruff").write_text(f"#!/bin/sh\nsleep 300 &\necho $! > {marker}\nwait\n")
+    (fake / "ruff").write_text(
+        f'#!/bin/sh\nsleep 300 &\necho "$! $(ps -o lstart= -p $!)" > {marker}\nwait\n'
+    )
     (fake / "ruff").chmod(0o755)
     write(repo, "tools/good.py", GOOD)
     env = dict(os.environ, PATH=f"{fake}:{os.environ['PATH']}", GOH_STEP_TIMEOUT="2")
@@ -220,15 +224,10 @@ def test_a_hung_ruff_is_timed_out_and_its_group_killed(repo, tmp_path, goh):
     )
     assert_sooner(time.monotonic() - t0, 3, 300, "a 2 s step ceiling over a 300 s ruff")
     assert r.returncode == 1 and "TIMED OUT after 2s" in r.stderr, r.stdout + r.stderr
-    pid = int(marker.read_text())
     time.sleep(0.2)
-    try:
-        os.kill(pid, 0)
-        alive = True
-    except ProcessLookupError:
-        alive = False
-    if alive:
-        os.kill(pid, 9)
+    survivor = pid_owner.read_stamp(marker)  # by the start time ruff's fake wrote beside the pid
+    alive = survivor is not None
+    pid_owner.signal(survivor, signal.SIGKILL)
     assert not alive, "ruff's own child survived: the group was not killed"
 
 

@@ -6,12 +6,17 @@ Spec keys (all optional): `mode` "modern" (answers server/discover with `version
 (refuses server/discover, answers initialize with `version`); `tools`, split over `pages` pages;
 `hang` (read everything, answer nothing); `ask` (send the client a request before listing, and
 list only once it is answered); `child` (start a long `sleep` in this process group) and
-`detached` (start one in a session of its own), each writing its pid to the file named.
+`detached` (start one in a session of its own), each writing its pid and start time to the file
+named (lib/pid_owner.py `stamp_line`), so the test kills it only while it is still that process.
 """
 
 import json
 import os
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+import pid_owner  # noqa: E402 -- lib/ is on the path from the line above
 
 with open(sys.argv[1], encoding="utf-8") as _f:
     spec = json.load(_f)
@@ -35,7 +40,7 @@ def sleeper(pidfile, detached):
             os.setsid()
         os.execv("/bin/sleep", ["sleep", "60"])
     with open(pidfile, "w", encoding="utf-8") as f:
-        f.write(str(pid))
+        f.write(pid_owner.stamp_line(pid) or str(pid))
 
 
 for key, detached in (("child", False), ("detached", True)):

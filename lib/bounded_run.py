@@ -116,8 +116,12 @@ def _descendants(pid: int, table: list[tuple[int, int, int]] | None = None) -> l
     return found
 
 
-def _sweep(pgid: int | None, pid: int, grace: float) -> list[int]:
+def _sweep(pgid: int | None, proc: subprocess.Popen, grace: float) -> list[int]:
     """TERM the whole group, then KILL it. Returns the pids that were running under it.
+
+    Signalled through the step's HANDLE, never a saved number (GOH.STRAYSIGNAL): a reaped step's
+    pid may be somebody else's by now, so the group goes through `pid_owner.signal_child_group` and
+    the direct signal through `Popen.send_signal`, both of which know whether it was reaped.
 
     `os.killpg` FIRST and the direct pid only as a fallback: on a platform without a process group
     (or with the group already gone) the direct kill still stops the step, which is the half that
@@ -125,18 +129,17 @@ def _sweep(pgid: int | None, pid: int, grace: float) -> list[int]:
     with three processes named is a step whose leak just became visible, and that is the whole
     reason the ceiling is not a silent kill.
     """
+    pid = proc.pid
     before = set(_descendants(pid)) | {pid}
 
     def signal_group(sig: int) -> None:
-        if pgid is not None and hasattr(os, "killpg"):
-            try:
-                os.killpg(pgid, sig)
-                return
-            except (OSError, ProcessLookupError):
-                pass
+        import pid_owner  # beside this file; only a sweep pays for it
+
+        if pgid is not None and hasattr(os, "killpg") and pid_owner.signal_child_group(proc, sig):
+            return
         try:
-            os.kill(pid, sig)
-        except (OSError, ProcessLookupError):
+            proc.send_signal(sig)  # a no-op once the handle has reaped it
+        except OSError:
             pass
 
     signal_group(signal.SIGTERM)
@@ -386,7 +389,7 @@ def _run_step(
             except subprocess.TimeoutExpired:
                 expired = f"TIMED OUT after {timeout}s: {label or ' '.join(argv)}"
         if expired is not None:
-            _sweep(pgid, proc.pid, grace)
+            _sweep(pgid, proc, grace)
             try:
                 proc.wait(timeout=grace)
             except subprocess.TimeoutExpired:
@@ -419,7 +422,7 @@ def _run_step(
     except _Stopped as stop:
         stops.holding = True  # a second stop must not abandon this sweep
         if proc is not None:
-            _sweep(pgid, proc.pid, grace)
+            _sweep(pgid, proc, grace)
             try:
                 proc.wait(timeout=grace)
             except subprocess.TimeoutExpired:

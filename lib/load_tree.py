@@ -6,12 +6,12 @@ behaviour is G1c's (2026-10-25: a 10h14m run nobody ended) and is pinned by test
 
 from __future__ import annotations
 
-import os
+import contextlib
 import signal
 import subprocess
 import time
 
-import load_registry as reg
+import pid_owner
 
 GRACE_S = 2.0  # how long a SIGTERMed process is given before SIGKILL
 
@@ -45,34 +45,30 @@ def _descendants(root: int) -> list[int]:
     return found
 
 
-def _signal_tree(group: int, pids: list[int], number: int) -> None:
-    try:
-        os.killpg(group, number)
-    except (ProcessLookupError, PermissionError, OSError):
-        pass
-    for pid in pids:
-        try:
-            os.kill(pid, number)
-        except (ProcessLookupError, PermissionError, OSError):
-            pass
+def _signal_tree(proc: subprocess.Popen, tree: list[pid_owner.Stamp], number: int) -> None:
+    """The command's group through its handle, then every stamped descendant still that process."""
+    pid_owner.signal_child_group(proc, number)
+    with contextlib.suppress(OSError):
+        proc.send_signal(number)
+    for held in tree:
+        pid_owner.signal(held, number)
 
 
 def kill_tree(proc: subprocess.Popen) -> None:
     """Kill the command's whole tree: its process group, and every descendant -- one that left
     the group with a session of its own too -- snapshotted BEFORE anything dies, because a child
-    whose parent is killed is re-parented to launchd and is no longer anyone's descendant."""
-    tree = [(pid, reg.pid_start(pid) or "") for pid in _descendants(proc.pid)]
-    pids = [pid for pid, _start in tree]
-    _signal_tree(proc.pid, [proc.pid, *pids], signal.SIGTERM)
+    whose parent is killed is re-parented to launchd and is no longer anyone's descendant.
+
+    Each descendant is STAMPED when seen (lib/pid_owner.py): a number the kernel handed to
+    somebody else between the sighting and the kill is not ours to kill (GOH.STRAYSIGNAL)."""
+    tree = [s for s in map(pid_owner.stamp, _descendants(proc.pid)) if s is not None]
+    _signal_tree(proc, tree, signal.SIGTERM)
     give_up = time.monotonic() + GRACE_S
     while time.monotonic() < give_up:
-        if proc.poll() is not None and not any(reg.pid_alive(pid) for pid in pids):
+        if proc.poll() is not None and not any(pid_owner.same(s) for s in tree):
             break
         time.sleep(0.05)
-    # The pid is checked against the start time it had: a number the kernel handed to somebody
-    # else in the meantime is not ours to kill.
-    same = [pid for pid, start in tree if not start or reg.pid_start(pid) == start]
-    _signal_tree(proc.pid, same, signal.SIGKILL)
+    _signal_tree(proc, tree, signal.SIGKILL)
     try:
         proc.wait(timeout=GRACE_S)
     except subprocess.TimeoutExpired:

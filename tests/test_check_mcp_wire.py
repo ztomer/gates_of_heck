@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 
+import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
 from conftest import REPO_ROOT, write
 
@@ -181,9 +182,12 @@ def _reap_after(*pidfiles):
     try:
         yield
     finally:
-        for f in pidfiles:
-            if f.exists() and not _gone(int(f.read_text()), wait=0):
-                os.kill(int(f.read_text()), signal.SIGKILL)
+        for f in pidfiles:  # each carries its start time: a pid reused since is not signalled
+            pid_owner.signal(pid_owner.read_stamp(f), signal.SIGKILL)
+
+
+def _pid(pidfile):
+    return int(pidfile.read_text().split()[0])
 
 
 def _gone(pid, wait=5.0):
@@ -213,7 +217,7 @@ def test_a_silent_server_is_red_within_its_timeout_and_is_reaped(repo, tmp_path)
             timeout=60,
         )
         red(r, "wire: no answer to server/discover within 2s")
-        assert _gone(int(pidfile.read_text())), "the hung server's child outlived the gate"
+        assert _gone(_pid(pidfile)), "the hung server's child outlived the gate"
 
 
 @pytest.mark.load_sensitive
@@ -222,8 +226,8 @@ def test_a_green_server_is_reaped_too_even_what_left_its_group(repo, tmp_path):
     line = server_line(tmp_path, "kids", child=str(child), detached=str(detached))
     with _reap_after(child, detached):
         green(gate(repo, line))
-        assert _gone(int(child.read_text())), "a child in the server's group outlived the gate"
-        assert _gone(int(detached.read_text())), "a detached child outlived the gate"
+        assert _gone(_pid(child)), "a child in the server's group outlived the gate"
+        assert _gone(_pid(detached)), "a detached child outlived the gate"
 
 
 def test_a_server_that_does_not_start_is_red_with_its_stderr(repo):

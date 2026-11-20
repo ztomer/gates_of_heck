@@ -278,7 +278,7 @@ def test_gate_profile_samples_the_control_during_the_gate() -> None:
         i for i, line in enumerate(lines) if line.startswith("bash") and "push_gate.sh" in line
     )
     watch = next(i for i, line in enumerate(lines) if 'step_control.py" watch --pid $$' in line)
-    reap = next(i for i, line in enumerate(lines) if 'kill -TERM "$sampler"' in line)
+    reap = next(i for i, line in enumerate(lines) if 'goh_pid_kill TERM "$sampler_stamp"' in line)
     assert watch < gate < reap, "the sampler starts before the gate and is reaped after it"
     assert 'wait "$sampler"' in text, "the sampler is reaped, not left to the shell"
 

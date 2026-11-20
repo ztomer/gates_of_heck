@@ -22,7 +22,6 @@ next killed run, so each one stops on its own CPU budget.
 
 from __future__ import annotations
 
-import os
 import re
 import signal
 import subprocess
@@ -181,9 +180,9 @@ def test_a_starved_spinner_still_reaches_the_floor(tmp_path: Path) -> None:
         pid = child.proc.pid
         # Stopped once it SPINS: its loop, and any timer started before it, are running.
         assert load_kit.wait_until(lambda: _cpu_of(pid) > 0), "the fixture never started spinning"
-        os.kill(pid, signal.SIGSTOP)
+        child.proc.send_signal(signal.SIGSTOP)  # through the handle: never a reaped pid
         time.sleep(STARVED_S)
-        os.kill(pid, signal.SIGCONT)
+        child.proc.send_signal(signal.SIGCONT)
         assert load_kit.wait_until(lambda: _burning(pid)), "a starved spinner never burned a core"
         assert SPINNER_CPU_S > FLOOR_S * 10, "the budget must leave the floor far behind"
 

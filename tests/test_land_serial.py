@@ -10,13 +10,13 @@ it will fast-forward to. GOH_LAND_GATE stands in for the gate; `LAND_LOG` record
 
 from __future__ import annotations
 
-import contextlib
 import os
 import signal
 import subprocess
 import time
 from pathlib import Path
 
+import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
 from conftest import REPO_ROOT, git, hermetic_env
 from timing_bounds import GiveUp, assert_sooner, patience
@@ -160,6 +160,7 @@ def test_a_process_the_gate_leaves_running_does_not_hold_the_lock(
     marker = tmp_path / "daemon-pid"  # the daemon writes its pid, so the test kills exactly it
     code = "import os, sys, time; open(sys.argv[1], 'w').write(str(os.getpid())); time.sleep(60)"
     daemon = f'python3 -c "{code}" {marker} >/dev/null 2>&1 &'
+    held = None
     try:
         rc, out = _land(a, tmp_path, daemon)
         assert rc == 0, out
@@ -167,9 +168,9 @@ def test_a_process_the_gate_leaves_running_does_not_hold_the_lock(
         rc, out = _land(b, tmp_path, "true")
         assert rc == 0, out
         assert marker.exists(), "the daemon must still be alive for this test to mean anything"
+        held = pid_owner.read_stamp(marker)  # alive here: the cleanup kills only this process
         assert_sooner(
             time.monotonic() - t0, 3, 60, f"the second land, behind the gate's daemon: {out}"
         )
     finally:
-        with contextlib.suppress(OSError, ValueError):
-            os.kill(int(marker.read_text()), signal.SIGKILL)
+        pid_owner.signal(held, signal.SIGKILL)

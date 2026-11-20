@@ -46,4 +46,13 @@ CASES = [
         {"changelog/X.md": "# X\n\n* an entry\n"},
         {"changelog/X.md": "* an entry\n", "changelog/README.md": "# Fragments\n"},
     ),
+    # Here for the same cap (GOH.STRAYSIGNAL): a signal to a pid read from a file, with no proof
+    # it is still the process the file was written for.
+    (
+        "a kill of a saved pid is refused",
+        "check_saved_pid_kill.py",
+        ["."],
+        {"lib/stop.py": "import os\nos.kill(int(open('p').read()), 9)\n"},
+        {"lib/stop.py": "import os\nos.kill(int(open('p').read()), 0)\n"},
+    ),
 ]

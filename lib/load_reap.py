@@ -62,6 +62,7 @@ from pathlib import Path
 
 import busyloop
 import load_registry as reg
+import pid_owner
 from load_reap_report import (
     RULE_HAND,
     RULE_HOUSE,
@@ -151,22 +152,24 @@ def _ask(argv: list[str], timeout: float) -> str:
 
 
 def kill(pid: int, grace: float = GRACE_S) -> bool:
-    """SIGTERM, then SIGKILL, and report whether the pid is gone."""
+    """SIGTERM, then SIGKILL, and report whether the process is gone.
+
+    The process is STAMPED before the first signal (lib/pid_owner.py), and each signal goes only
+    to that process: the grace between TERM and KILL is long enough, on the loaded box this runs
+    for, for the pid to end and be handed to somebody else (GOH.STRAYSIGNAL). A pid that cannot be
+    stamped is gone, a zombie, or another user's: only the last is not gone."""
+    held = pid_owner.stamp(pid)
+    if held is None:
+        return reg.pid_gone(pid)
     for number in (signal.SIGTERM, signal.SIGKILL):
-        try:
-            os.kill(pid, number)
-        except ProcessLookupError:
-            return True
-        except PermissionError:
-            return False
+        if not pid_owner.signal(held, number):
+            return not pid_owner.same(held) or reg.pid_gone(pid)
         deadline = time.monotonic() + grace
         while time.monotonic() < deadline:
-            if reg.pid_gone(pid):
+            if not pid_owner.same(held):
                 return True
             time.sleep(POLL_S)
-        if reg.pid_gone(pid):
-            return True
-    return reg.pid_gone(pid)
+    return not pid_owner.same(held)
 
 
 def pgrep(pattern: str) -> list[int]:

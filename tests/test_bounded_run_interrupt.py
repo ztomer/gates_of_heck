@@ -14,6 +14,7 @@ import sys
 import time
 from pathlib import Path
 
+import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
 from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT
@@ -62,8 +63,10 @@ def test_a_signal_to_the_wrapper_reaps_the_step(tmp_path, sig):
         preexec_fn=lambda: signal.signal(sig, signal.SIG_DFL),  # noqa: PLW1509 - Popen has no argument for one signal disposition; the test forks while single-threaded
         stdin=subprocess.DEVNULL,
     )
+    held = None
     try:
         step = int(_wait_for(pidfile))
+        held = pid_owner.stamp(step)  # stamped while it is ours: the cleanup kills only it
         wrapper.send_signal(sig)
         wrapper.wait(timeout=patience(10))  # 10 s starved at load ~200 (GOH.BOUNDEDRUNFLAKE)
         give_up = GiveUp(5)
@@ -78,10 +81,7 @@ def test_a_signal_to_the_wrapper_reaps_the_step(tmp_path, sig):
     finally:
         wrapper.kill()
         wrapper.wait()
-        try:
-            os.kill(int(pidfile.read_text()), signal.SIGKILL)
-        except (OSError, ValueError):
-            pass
+        pid_owner.signal(held, signal.SIGKILL)
 
 
 @pytest.mark.load_sensitive
@@ -104,18 +104,17 @@ def test_a_signal_ignored_at_entry_stays_ignored(tmp_path):
         preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_IGN),  # noqa: PLW1509 - Popen has no argument for one signal disposition; the test forks while single-threaded
         stdin=subprocess.DEVNULL,
     )
+    held = None
     try:
         step = int(_wait_for(pidfile))
+        held = pid_owner.stamp(step)
         wrapper.send_signal(signal.SIGHUP)
         time.sleep(patience(0.5))  # a negative: the longer the box is starved, the longer it looks
         assert wrapper.poll() is None and _alive(step), "an ignored SIGHUP stopped the run"
     finally:
         wrapper.terminate()
         wrapper.wait(timeout=patience(10))
-        try:
-            os.kill(int(pidfile.read_text()), signal.SIGKILL)
-        except (OSError, ValueError):
-            pass
+        pid_owner.signal(held, signal.SIGKILL)
 
 
 @pytest.mark.load_sensitive
@@ -134,8 +133,10 @@ def test_a_term_to_a_concurrent_local_ci_reaps_every_running_step(tmp_path):
         stderr=subprocess.DEVNULL,
         stdin=subprocess.DEVNULL,
     )
+    held: list[pid_owner.Stamp | None] = []
     try:
         steps_running = [int(_wait_for(p)) for p in pids]
+        held.extend(pid_owner.stamp(pid) for pid in steps_running)
         ci.send_signal(signal.SIGTERM)
         ci.wait(timeout=patience(15))
         give_up = GiveUp(8)
@@ -146,11 +147,8 @@ def test_a_term_to_a_concurrent_local_ci_reaps_every_running_step(tmp_path):
     finally:
         ci.kill()
         ci.wait()
-        for p in pids:
-            try:
-                os.kill(int(p.read_text()), signal.SIGKILL)
-            except (OSError, ValueError):
-                pass
+        for s in held:
+            pid_owner.signal(s, signal.SIGKILL)
 
 
 @pytest.mark.load_sensitive

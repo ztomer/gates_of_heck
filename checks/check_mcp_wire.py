@@ -92,7 +92,8 @@ from _gitutil import foreign_repo_env
 from _mcp_build import DEFAULT_BUILD_TIMEOUT, build, build_command, server_env
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from lib.bounded_run import _alive, _descendants, group_members
+from lib import pid_owner
+from lib.bounded_run import _descendants, group_members
 from tui.lib import counted, err, info, noun, ok, step
 
 NEWEST_PROTOCOL = "2026-07-28"
@@ -258,8 +259,16 @@ class Session:
 
     def close(self) -> list[int]:
         """Stop the server, pass or fail: EOF first (a clean exit), then TERM and KILL the whole
-        group and every descendant seen. Returns the pids still alive after all of it."""
-        tree = set(_descendants(self.proc.pid)) | set(group_members(self.pgid))
+        group and every descendant seen. Returns the pids still alive after all of it.
+
+        Each descendant is STAMPED when it is seen (lib/pid_owner.py) and signalled only while
+        it is still that process: the close waits seconds between the sighting and the kill, and
+        on a loaded box a pid that ended in between names somebody else's process (GOH.STRAYSIGNAL).
+        """
+        held = {
+            p: pid_owner.stamp(p)
+            for p in set(_descendants(self.proc.pid)) | set(group_members(self.pgid))
+        }
         try:
             if self.proc.stdin:
                 self.proc.stdin.close()
@@ -269,25 +278,22 @@ class Session:
             self.proc.wait(timeout=GRACE)
         except subprocess.TimeoutExpired:
             pass
-        tree |= set(group_members(self.pgid))
+        for p in set(group_members(self.pgid)) - held.keys():
+            held[p] = pid_owner.stamp(p)
+        stamps = [s for s in held.values() if s is not None]
         for sig in (signal.SIGTERM, signal.SIGKILL):
-            try:
-                os.killpg(self.pgid, sig)
-            except OSError:
-                pass
-            for pid in tree:
-                try:
-                    os.kill(pid, sig)
-                except OSError:
-                    pass
+            pid_owner.signal_child_group(self.proc, sig)  # self.pgid is the leader's pid
+            for s in stamps:
+                pid_owner.signal(s, sig)
             end = time.monotonic() + (GRACE if sig == signal.SIGTERM else 1.0)
-            while time.monotonic() < end and any(_alive(p) for p in tree | {self.proc.pid}):
-                self.proc.poll()
+            while time.monotonic() < end and (
+                self.proc.poll() is None or any(pid_owner.same(s) for s in stamps)
+            ):
                 time.sleep(0.05)
         self.proc.wait()
         self.stderr.close()
         shutil.rmtree(self.scratch, ignore_errors=True)
-        return sorted(p for p in tree if _alive(p))
+        return sorted(s.number for s in stamps if pid_owner.same(s))
 
 
 def _meta() -> dict:

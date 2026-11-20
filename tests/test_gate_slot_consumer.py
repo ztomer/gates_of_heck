@@ -18,12 +18,12 @@ The class pinned here: a full gate whose copy predates the slot still waits its 
 
 from __future__ import annotations
 
-import os
 import signal
 import subprocess
 import time
 from pathlib import Path
 
+import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
@@ -137,7 +137,7 @@ def test_a_staged_consumer_gate_takes_no_slot(tmp_path, goh):
 def test_the_slot_ends_with_the_gate_not_with_a_daemon_it_left(tmp_path, goh):
     env = _cenv(tmp_path, goh)
     daemon = tmp_path / "daemon.pid"
-    layer = f'nohup sleep 120 >/dev/null 2>&1 & echo $! > "{daemon}"'
+    layer = f'nohup sleep 120 >/dev/null 2>&1 & echo "$! $(ps -o lstart= -p $!)" > "{daemon}"'
     gate = Consumer(tmp_path, "daemon", env, layer=layer)
     try:
         assert gate.proc.wait(timeout=patience(60)) == 0, gate.out()
@@ -149,10 +149,7 @@ def test_the_slot_ends_with_the_gate_not_with_a_daemon_it_left(tmp_path, goh):
         finally:
             after.kill()
     finally:
-        try:
-            os.kill(int(daemon.read_text()), signal.SIGKILL)
-        except (OSError, ValueError):
-            pass
+        pid_owner.signal(pid_owner.read_stamp(daemon), signal.SIGKILL)  # by its recorded start
         gate.kill()
 
 

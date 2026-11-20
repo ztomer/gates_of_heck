@@ -49,6 +49,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
 
 import load_registry as reg
+import pid_owner  # noqa: E402 -- lib/ is on the path from the insert above, like load_registry
 
 TOOL = ROOT / "tools" / "load.py"
 # What every test run of the tool says for its spinners (GOH.LOADWHY): the tool refuses N>0 without.
@@ -62,7 +63,7 @@ SPINNERS = re.compile(r"spinners? started: ((?:\d+[ ]?)+)")
 # is not an identity), and every directory it ran one in: the suite owns them all, and the
 # session's last act is to prove that none of them outlived the suite.
 _OWNED: list[Owned] = []
-_OWNED_PIDS: list[tuple[int, str]] = []
+_OWNED_PIDS: list[pid_owner.Stamp] = []
 _DIRECTORIES: list[Path] = []
 
 
@@ -153,12 +154,14 @@ def own_pid(pid: int) -> int:
     house's own registry records it for the same reason, and the reaper drops a pid whose start
     time changed rather than killing it.
     """
-    if pid > 0 and not any(known == pid for known, _start in _OWNED_PIDS):
-        _OWNED_PIDS.append((pid, reg.pid_start(pid) or ""))
+    if pid > 0 and not any(known.number == pid for known in _OWNED_PIDS):
+        held = pid_owner.stamp(pid)  # lib/pid_owner.py: a pid it cannot stamp is not owned
+        if held is not None:
+            _OWNED_PIDS.append(held)
     return pid
 
 
-def kill_pid(pid: int, start: str = "") -> bool:
+def kill_pid(target: int | pid_owner.Stamp) -> bool:
     """Stop a pid the suite owns, and say whether it is gone.
 
     The start time is the guard: a pid whose process is not the one the suite started is NOT
@@ -168,18 +171,21 @@ def kill_pid(pid: int, start: str = "") -> bool:
     that reads the table once would call a killed process a survivor. The wait is bounded by a
     give-up deadline, so a process that will not die is named rather than waited on forever.
     """
-    if not alive(pid):
-        return True
-    if start and reg.pid_start(pid) != start:
-        return True  # the number was reused: that process is not ours
-    with contextlib.suppress(ProcessLookupError, OSError):
-        os.kill(pid, signal.SIGKILL)
+    held = target if isinstance(target, pid_owner.Stamp) else _stamp_of(target)
+    if not pid_owner.same(held):
+        return True  # gone, or the number was reused (or never owned): that process is not ours
+    pid_owner.signal(held, signal.SIGKILL)
     give_up = timing_bounds.GiveUp(5)
     while not give_up.passed():
-        if not alive(pid):
+        if not pid_owner.same(held):
             return True
         time.sleep(0.02)
-    return not alive(pid)
+    return not pid_owner.same(held)
+
+
+def _stamp_of(pid: int) -> pid_owner.Stamp | None:
+    """The stamp `own_pid` took of `pid` when the suite took it on, or None."""
+    return next((held for held in _OWNED_PIDS if held.number == pid), None)
 
 
 def orphan(command: list[str] | None = None) -> int:
@@ -387,11 +393,11 @@ def reap() -> list[int]:
                 own_pid(pid)
         for pid in child.spinner_pids():
             own_pid(pid)
-    for pid, start in _OWNED_PIDS:
-        if not alive(pid):
+    for held in _OWNED_PIDS:
+        if not pid_owner.same(held):
             continue
-        if not kill_pid(pid, start):
-            survivors.append(pid)
+        if not kill_pid(held):
+            survivors.append(held.number)
     for child in _OWNED:
         if child.directory is not None:
             reg.remove(reg.registry_path(child.directory))
@@ -419,9 +425,10 @@ def _clean(leaked: list[tuple[int, str]]) -> None:
     is the one that was found, or it is somebody else's now.
     """
     for pid, command in leaked:
-        if command_of(pid) != command:
+        held = pid_owner.stamp(pid)  # before the command is read, so the command is its
+        if held is None or command_of(pid) != command:
             continue
-        kill_pid(pid)
+        kill_pid(held)
 
 
 def _reap_then_die(signum, _frame) -> None:

@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 
+import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
 from conftest import hermetic_env, write
 from test_check_mcp_wire import CHECK, _gone, green, mw, red, server_line
@@ -144,6 +145,7 @@ def _signal_the_build_sleep(tmp_path, sig, deadline_s):
     while time.monotonic() < end:
         if pidfile.exists() and pidfile.read_text().strip():
             for kid in _descendants(int(pidfile.read_text())):
+                held = pid_owner.stamp(kid)  # before the name is read, so the name is its
                 comm = subprocess.run(
                     ["ps", "-o", "comm=", "-p", str(kid)],
                     capture_output=True,
@@ -151,8 +153,7 @@ def _signal_the_build_sleep(tmp_path, sig, deadline_s):
                     check=False,
                     stdin=subprocess.DEVNULL,
                 ).stdout.strip()
-                if os.path.basename(comm) == "sleep":
-                    os.kill(kid, sig)
+                if os.path.basename(comm) == "sleep" and pid_owner.signal(held, sig):
                     return True
         time.sleep(0.05)
     return False

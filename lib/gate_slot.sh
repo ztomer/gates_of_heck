@@ -38,9 +38,12 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 . "${BASH_SOURCE[0]%/*}/lock_order.sh" || exit 1
 . "${BASH_SOURCE[0]%/*}/tmp_root.sh"   # goh_tmp: every temp root under $TMPDIR/goh.noindex, never Spotlight-indexed (GOH.TMPNOINDEX)   # the one lock order (GOH.LOCKORDER)
 # shellcheck source=lib/worker_share.sh
-. "${BASH_SOURCE[0]%/*}/worker_share.sh" || exit 1   # how wide an admitted gate runs (GOH.POOLSHARE)
+. "${BASH_SOURCE[0]%/*}/worker_share.sh" || exit 1
+# shellcheck source=lib/pid_owner.sh
+. "${BASH_SOURCE[0]%/*}/pid_owner.sh" || exit 1   # the holder is signalled by its stamp (GOH.STRAYSIGNAL)   # how wide an admitted gate runs (GOH.POOLSHARE)
 GATE_SLOT_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gate_slot.py" # beside this file
 GATE_SLOT_PID="" # the holder process (lib/gate_slot.py hold); gate_slot_release ends it
+GATE_SLOT_STAMP="" # its goh_pid_stamp: the release signals only that process, never a reused pid
 
 gate_slot_acquire() {
     _gate_slot_take "${1:-gate}" "$$" "" "${2:-}" "${3:-}"
@@ -93,6 +96,8 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller> <class | ""> <max w
     "$GOH_PY" -S "$helper" hold --dir "$dir" ${n:+--slots "$n"} --owner "$owner" --repo "$repo" \
         --handshake "$fifo" --class "$class" ${max:+--max-wait "$max"} ${mode:+"$mode"} </dev/null &
     pid=$!
+    local stamp
+    stamp="$(goh_pid_stamp "$pid" || true)"   # an empty stamp (the holder already gone) kills nothing
     # Read-write, so the open never blocks and a holder that died before writing cannot hang this
     # shell: the read times out, and the holder's liveness is asked between reads.
     # A CHARACTER AT A TIME (GOH.CI107): a `read -t` that times out part way through a line has
@@ -126,7 +131,7 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller> <class | ""> <max w
         *[!0-9:]* | :* | *::* | *:) path="" ;;
     esac
     if [ -z "$path" ]; then
-        kill "$pid" 2>/dev/null || true
+        goh_pid_kill TERM "$stamp" || true
         line="gate slot: the slot holder's handshake is not"
         err "$line '<slot> <slots> <seconds waited> <path> <watch>': '$hs'"
         exit 1
@@ -146,6 +151,7 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller> <class | ""> <max w
         whose="for tools/gate.sh (pid $owner), held until it ends"
     else
         GATE_SLOT_PID="$pid"
+        GATE_SLOT_STAMP="$stamp"
     fi
     local word="gate slot"
     case "${path##*/}" in short-*) word="short-lane gate slot" ;; esac
@@ -161,9 +167,10 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller> <class | ""> <max w
 
 gate_slot_release() {
     if [ -n "$GATE_SLOT_PID" ]; then
-        kill "$GATE_SLOT_PID" 2>/dev/null || true
+        goh_pid_kill TERM "$GATE_SLOT_STAMP" || true
         wait "$GATE_SLOT_PID" 2>/dev/null || true
         goh_lock_drop gate_slot
     fi
     GATE_SLOT_PID=""
+    GATE_SLOT_STAMP=""
 }

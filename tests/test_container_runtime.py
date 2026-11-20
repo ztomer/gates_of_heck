@@ -8,10 +8,12 @@ it on last release only if started by goh.
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import time
 from pathlib import Path
 
+import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
 from conftest import REPO_ROOT
 from orphan_kit import wait_for_file
@@ -350,6 +352,7 @@ if [ "$1" = "start" ]; then
     ( for fd in 8 9; do [ -e /dev/fd/$fd ] && echo "$fd"; done > "{tmp_path}/daemon_fds"
       exec sleep 60 ) </dev/null >/dev/null 2>&1 &
     echo $! > "{pid_file}"
+    echo "$! $(ps -o lstart= -p $!)" > "{pid_file}.stamp"
 elif [ "$1" = "stop" ]; then
     echo "down" > "{status_file}"
     kill "$(cat "{pid_file}")" 2>/dev/null
@@ -360,11 +363,9 @@ exit 0
 
 
 def _reap(pid_file: Path) -> None:
-    if pid_file.exists():
-        try:
-            os.kill(int(pid_file.read_text().strip()), 9)
-        except (ProcessLookupError, ValueError):
-            pass
+    """Kill the fake's daemon if it still runs: by the start time its writer recorded beside the
+    pid, so a daemon `colima stop` already ended leaves its reused number alone."""
+    pid_owner.signal(pid_owner.read_stamp(f"{pid_file}.stamp"), signal.SIGKILL)
 
 
 @pytest.mark.load_sensitive

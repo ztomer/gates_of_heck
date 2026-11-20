@@ -18,7 +18,6 @@ measuring a process that never existed. Every helper here therefore works from P
 created.
 """
 
-import contextlib
 import os
 import re
 import signal
@@ -31,6 +30,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import bounded_run
+import pid_owner
 from timing_bounds import assert_sooner
 
 
@@ -57,22 +57,21 @@ def spawn_sleeper(seconds: int = 600) -> subprocess.Popen:
 
 # Every sleeper this module starts, so a FAILING test cannot leave the very orphans it is testing
 # for. The same rule the module enforces on other code, applied to itself.
-_SLEEPERS: list[int] = []
+# Kept as HANDLES: a pid kept past its process's end names a stranger by the teardown.
+_SLEEPERS: list[subprocess.Popen] = []
 
 
 def note(proc: subprocess.Popen) -> int:
-    _SLEEPERS.append(proc.pid)
+    _SLEEPERS.append(proc)
     return proc.pid
 
 
 @pytest.fixture(autouse=True)
 def _no_strays():
     yield
-    for pid in _SLEEPERS:
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except (OSError, ProcessLookupError):
-            pass
+    for proc in _SLEEPERS:
+        proc.kill()  # a no-op once the handle has reaped it
+        proc.wait()
     _SLEEPERS.clear()
 
 
@@ -151,6 +150,7 @@ def test_the_group_outlives_reparenting_so_a_leak_is_still_visible() -> None:
         "leaky step",
         output=bounded_run.DEVNULL_SENTINEL,
     )
+    held = [pid_owner.stamp(pid) for pid in outcome.survivors]  # alive now: stamped while ours
     try:
         assert outcome.code == 0, outcome
         assert outcome.survivors, (
@@ -159,14 +159,11 @@ def test_the_group_outlives_reparenting_so_a_leak_is_still_visible() -> None:
         for pid in outcome.survivors:
             assert alive(pid)
     finally:
-        for pid in outcome.survivors:
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except (OSError, ProcessLookupError):
-                pass
+        for s in held:
+            pid_owner.signal(s, signal.SIGKILL)
 
 
-@pytest.mark.load_sensitive
+@pytest.mark.load_sensitive(reason="its step leaks a sleeper that the test signals by stamp")
 def test_a_step_that_exits_before_its_group_is_asked_for_still_shows_its_leak(monkeypatch) -> None:
     """The group is KNOWN, never asked for. On macOS `getpgid` of a zombie is ESRCH (measured
     2026-10-05), so a step that exited before the wrapper asked -- a fast step on a loaded box --
@@ -184,14 +181,12 @@ def test_a_step_that_exits_before_its_group_is_asked_for_still_shows_its_leak(mo
         "fast leaky step",
         output=bounded_run.DEVNULL_SENTINEL,
     )
+    held = [pid_owner.stamp(pid) for pid in outcome.survivors]
     try:
         assert outcome.survivors, "a step that exited before getpgid hid its leak"
     finally:
-        for pid in outcome.survivors:
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except (OSError, ProcessLookupError):
-                pass
+        for s in held:
+            pid_owner.signal(s, signal.SIGKILL)
 
 
 def test_a_step_that_leaves_nothing_reports_no_survivors() -> None:
@@ -259,13 +254,12 @@ def test_a_step_that_leaves_nothing_never_reads_the_process_table(monkeypatch) -
     assert _ps_calls(monkeypatch, "exit 0") == (0, [])
 
 
-@pytest.mark.load_sensitive
+@pytest.mark.load_sensitive(reason="its step leaks a sleeper that the test signals by stamp")
 def test_a_step_that_leaves_something_reads_the_table_once(monkeypatch) -> None:
     """Group membership and ancestry come from ONE `ps`, not two: each spawn is per step, per gate."""
     reads, left = _ps_calls(monkeypatch, "/bin/sleep 3 & exit 0")
-    for pid in left:  # the leak this test made, by the pids the sample named
-        with contextlib.suppress(ProcessLookupError):
-            os.kill(pid, signal.SIGKILL)
+    for pid in left:  # the leak this test made, by the pids the sample named, while it lives
+        pid_owner.signal(pid_owner.stamp(pid), signal.SIGKILL)
     assert reads == 1 and left, (reads, left)
 
 

@@ -16,6 +16,7 @@ every existing caller's except-clause keeps working.
 import os
 import signal
 import subprocess
+import sys
 import time
 
 TERM_GRACE_S = 5.0  # how long a SIGTERMed group is given to clean up (git removes its .lock files)
@@ -47,12 +48,18 @@ def stop_group(
     keeps its group alive, and a group that has only exited looks like one that is ignoring TERM.
     """
     for sig, wait in ((signal.SIGTERM, grace), (signal.SIGKILL, 2.0)):
-        try:
-            os.killpg(pgid, sig)
-        except ProcessLookupError:
-            return True
-        except OSError:
-            return False
+        if proc is not None and pgid == proc.pid:
+            # Through the leader's handle (GOH.STRAYSIGNAL): once `proc` is reaped, a process
+            # holding its number is a stranger handed it after the group emptied -- gone, for us.
+            if not _pid_owner().signal_child_group(proc, sig):
+                return _gone_or_unsignallable(pgid, reaped=proc.returncode is not None)
+        else:
+            try:
+                os.killpg(pgid, sig)
+            except ProcessLookupError:
+                return True
+            except OSError:
+                return False
         end = time.monotonic() + wait
         while time.monotonic() < end:
             if proc is not None:
@@ -65,6 +72,34 @@ def stop_group(
                 return False
             time.sleep(0.02)
     return False
+
+
+def _pid_owner():
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)  # killtree is imported as `lib.killtree` too
+    import pid_owner
+
+    return pid_owner
+
+
+def _gone_or_unsignallable(pgid: int, reaped: bool) -> bool:
+    """After a refused group signal: True when the group is gone (or, its leader reaped, its
+    number is a stranger's now, which means it emptied), False when members are there that
+    cannot be signalled."""
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return False
+    if not reaped:
+        return False
+    try:
+        os.kill(pgid, 0)
+    except OSError:
+        return False  # members, no leader: ours, and the signal did not reach them
+    return True  # a process holds the number although the leader was reaped: a stranger's
 
 
 def _kill_process_group(proc: subprocess.Popen) -> None:

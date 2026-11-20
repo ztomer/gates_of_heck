@@ -1,0 +1,58 @@
+{
+  "entries": [
+    {
+      "path": "crates/goh-sys/src/lib.rs",
+      "call": "libc::killpg(pgid, signal)",
+      "status": "legitimate",
+      "reason": "the libc boundary's killpg wrapper itself; every caller of goh_sys::killpg is judged at its own site"
+    },
+    {
+      "path": "crates/goh-sys/src/lib.rs",
+      "call": "super::killpg(pgid, libc::SIGKILL)",
+      "status": "legitimate",
+      "reason": "a unit test signalling the group of the child it spawned with process_group(0), before its child.wait(): the leader is unreaped, so the group id cannot have been handed out again"
+    },
+    {
+      "path": "crates/goh/src/stepcmd.rs",
+      "call": "goh_sys::killpg(pgid, signal_hook::consts::SIGTERM)",
+      "status": "legitimate",
+      "reason": "the group of the step it spawned with process_group(0) (pgid is child.id()); a group id is not reused while the group has members, so only an EMPTIED group whose number became a new group leader's inside the grace could be missed, and an empty group is the sweep's goal"
+    },
+    {
+      "path": "crates/goh/src/stepcmd.rs",
+      "call": "goh_sys::killpg(pgid, signal_hook::consts::SIGKILL)",
+      "status": "legitimate",
+      "reason": "the same sweep's KILL half, the same group of its own step"
+    },
+    {
+      "path": "lib/killtree.py",
+      "call": "os.killpg(pgid, sig)",
+      "status": "legitimate",
+      "reason": "stop_group's branch for a caller that hands no leader handle (every caller today passes proc, which goes through pid_owner.signal_child_group): a group the caller created with start_new_session, its id protected while it has members"
+    },
+    {
+      "path": "tests/test_pid_owner.py",
+      "call": "os.kill(int(pidfile.read_text()), signal.SIGTERM)",
+      "status": "legitimate",
+      "reason": "the hazard demonstrated: the bare shape this item removed, aimed at a stand-in sleeper the test itself started, to show it signals whatever holds the number"
+    },
+    {
+      "path": "gates/local_ci.sh",
+      "call": "kill -TERM \"${WRAP[i]:-}\" 2>/dev/null",
+      "status": "bare",
+      "reason": "GOH.STRAYSIGNAL debt: _stop TERMs each running step's subshell by its $! with no stamp, and bash reaps a finished subshell before STATE says so; to move to goh_pid_stamp at the launch without opening a window where a TERM between the spawn and the stamp leaves the step running (tests/test_bounded_run_interrupt.py)"
+    },
+    {
+      "path": "gates/local_ci.sh",
+      "call": "kill -TERM \"$wrap\" 2>/dev/null",
+      "status": "bare",
+      "reason": "GOH.STRAYSIGNAL debt: the step subshell's TERM trap hands the TERM to its run_step child by $!; the same spawn-to-stamp window as the entry above"
+    },
+    {
+      "path": "tests/test_orphan_canary.py",
+      "call": "os.kill(pid, signal.SIGKILL)",
+      "status": "bare",
+      "reason": "GOH.STRAYSIGNAL debt: kills the pids the canary's --snapshot names as survivors (and a live tree walk below a canary); the snapshot carries no start time, so lib/orphan_canary.py and the native canary must write one (pid_owner.stamp_line) before this can prove the pid is still the survivor"
+    }
+  ]
+}

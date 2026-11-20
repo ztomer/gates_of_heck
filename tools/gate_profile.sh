@@ -26,6 +26,7 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GOH="$(cd "$HERE/.." && pwd)"
+. "$GOH/lib/pid_owner.sh"   # the follower and sampler are signalled by their stamps (GOH.STRAYSIGNAL)
 . "$GOH/lib/tmp_root.sh"   # goh_tmp: every temp root under $TMPDIR/goh.noindex, never Spotlight-indexed (GOH.TMPNOINDEX)
 [ $# -ge 1 ] && [ -d "$1" ] || { echo "usage: gate_profile.sh <repo> [top]" >&2; exit 2; }
 repo="$(cd "$1" && pwd -P)"
@@ -55,11 +56,13 @@ while [ -e "$log" ]; do n=$((n + 1)); log="$out.$n.log"; done
 printf '%s @ %s: push gate running (log: %s)\n' "$(basename "$repo")" "${sha:0:12}" "$log"
 "$GOH_PY" "$GOH/lib/log_follow.py" --pid $$ "$log" </dev/null &
 follower=$!
-sampler=""
+follower_stamp="$(goh_pid_stamp "$follower" || true)"
+sampler="" sampler_stamp=""
 if [ -n "$kinds" ]; then   # bounded by this shell like the follower; reaped right after the gate
     # shellcheck disable=SC2086 # one word per kind
     GOH_TIMINGS="$out" "$GOH_PY" "$GOH/lib/step_control.py" watch --pid $$ $kinds </dev/null >>"$out.controls.log" 2>&1 &
     sampler=$!
+    sampler_stamp="$(goh_pid_stamp "$sampler" || true)"
 fi
 # The local ref is the SHA itself (the pinned form): push_gate.sh refuses a named ref that no longer
 # names the gated commit, and a made-up branch name names nothing at all.
@@ -67,10 +70,10 @@ printf '%s %s refs/heads/goh-profile %s\n' "$sha" "$sha" "$zero" \
     | (cd "$repo" && GOH_TIMINGS="$out" GOH_PROVEN="$proven" \
         bash "$GOH/gates/push_gate.sh" goh-profile "$repo") >"$log" 2>&1
 rc=$?
-kill -TERM "$follower" 2>/dev/null
+goh_pid_kill TERM "$follower_stamp"
 wait "$follower" 2>/dev/null
 if [ -n "$sampler" ]; then
-    kill -TERM "$sampler" 2>/dev/null
+    goh_pid_kill TERM "$sampler_stamp"
     wait "$sampler" 2>/dev/null
 fi
 controls

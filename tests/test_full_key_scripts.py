@@ -174,6 +174,7 @@ REFUSED = {
     # A test script that cds to its own directory first; no gate step runs it.
     "lib/desktop_lock/test_desktop_lock.sh: . desktop_lock.sh",
     "lib/desktop_lock/test_desktop_lock.sh: . ../tmp_root.sh",
+    "lib/desktop_lock/test_desktop_lock.sh: . ../pid_owner.sh",
 }
 
 

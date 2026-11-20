@@ -18,6 +18,7 @@ import sys
 import time
 from pathlib import Path
 
+import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
 from timing_bounds import GiveUp, assert_sooner
@@ -81,17 +82,17 @@ def test_a_ceiling_times_out_with_124_and_says_so(wrapper) -> None:
 def test_the_ceiling_sweep_reaches_a_grandchild(wrapper, tmp_path: Path) -> None:
     pid = tmp_path / "pid"
     r = _run(wrapper, "--timeout", "1", "--grace", "1", "--", "/bin/bash", "-c",
-             f"sleep 300 & echo $! > {pid}; wait")  # fmt: skip
+             f"sleep 300 & echo $! $(ps -o lstart= -p $!) > {pid}; wait")  # fmt: skip
     assert r.returncode == 124
-    grandchild = int(_wait_for(pid))
+    held = pid_owner.read_stamp(pid)  # its start time is beside its pid
+    grandchild = int(_wait_for(pid).split()[0])
     give_up = GiveUp(5)
     while _alive(grandchild) and not give_up.passed():
         time.sleep(0.05)
     try:
         assert not _alive(grandchild), "the sweep left the step's grandchild running"
     finally:
-        if _alive(grandchild):
-            os.kill(grandchild, signal.SIGKILL)
+        pid_owner.signal(held, signal.SIGKILL)
 
 
 @pytest.mark.load_sensitive
@@ -100,14 +101,14 @@ def test_a_step_that_leaves_a_process_is_named(wrapper, tmp_path: Path) -> None:
     # The leak's own output goes nowhere: holding the captured pipe, it made this run wait out its
     # whole sleep (30 s) -- the trap lib/bounded_run.py's docs name.
     r = _run(wrapper, "--timeout", "30", "--", "/bin/sh", "-c",
-             f"sleep 30 >/dev/null 2>&1 & echo $! > {pid}")  # fmt: skip
-    leaked = int(_wait_for(pid))
+             f"sleep 30 >/dev/null 2>&1 & echo $! $(ps -o lstart= -p $!) > {pid}")  # fmt: skip
+    leaked = int(_wait_for(pid).split()[0])
+    held = pid_owner.read_stamp(pid)
     try:
         assert r.returncode == 0, r.stderr
         assert "left 1 process running under it" in r.stderr and str(leaked) in r.stderr, r.stderr
     finally:
-        if _alive(leaked):
-            os.kill(leaked, signal.SIGKILL)
+        pid_owner.signal(held, signal.SIGKILL)
 
 
 @pytest.mark.load_sensitive
@@ -168,13 +169,14 @@ def test_a_signal_to_the_wrapper_sweeps_the_step(wrapper, tmp_path: Path, sig) -
     pid = tmp_path / "pid"
     proc = subprocess.Popen(
         [*wrapper, "--timeout", "60", "--grace", "1", "--", "/bin/bash", "-c",
-         f"sleep 300 & echo $! > {pid}; wait"],
+         f"sleep 300 & echo $! $(ps -o lstart= -p $!) > {pid}; wait"],
         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
         preexec_fn=lambda: signal.signal(sig, signal.SIG_DFL), stdin=subprocess.DEVNULL,  # noqa: PLW1509 - Popen has no argument for one signal disposition; the test forks while single-threaded
     )  # fmt: skip
-    grandchild = None
+    grandchild = held = None
     try:
-        grandchild = int(_wait_for(pid))
+        grandchild = int(_wait_for(pid).split()[0])
+        held = pid_owner.read_stamp(pid)
         proc.send_signal(sig)
         proc.wait(timeout=10)
         give_up = GiveUp(5)
@@ -185,29 +187,28 @@ def test_a_signal_to_the_wrapper_sweeps_the_step(wrapper, tmp_path: Path, sig) -
     finally:
         proc.kill()
         proc.wait()
-        if grandchild and _alive(grandchild):
-            os.kill(grandchild, signal.SIGKILL)
+        pid_owner.signal(held, signal.SIGKILL)
 
 
 @pytest.mark.load_sensitive
 def test_a_signal_ignored_at_entry_stays_ignored(wrapper, tmp_path: Path) -> None:
     pid = tmp_path / "pid"
     proc = subprocess.Popen(
-        [*wrapper, "--timeout", "60", "--", "/bin/bash", "-c", f"sleep 300 & echo $! > {pid}; wait"],
+        [*wrapper, "--timeout", "60", "--", "/bin/bash", "-c", f"sleep 300 & echo $! $(ps -o lstart= -p $!) > {pid}; wait"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_IGN), stdin=subprocess.DEVNULL,  # noqa: PLW1509 - Popen has no argument for one signal disposition; the test forks while single-threaded
     )  # fmt: skip
-    grandchild = None
+    grandchild = held = None
     try:
-        grandchild = int(_wait_for(pid))
+        grandchild = int(_wait_for(pid).split()[0])
+        held = pid_owner.read_stamp(pid)
         proc.send_signal(signal.SIGHUP)
         time.sleep(0.5)
         assert proc.poll() is None and _alive(grandchild), "an ignored SIGHUP stopped the run"
     finally:
         proc.terminate()
         proc.wait(timeout=10)
-        if grandchild and _alive(grandchild):
-            os.kill(grandchild, signal.SIGKILL)
+        pid_owner.signal(held, signal.SIGKILL)
 
 
 @pytest.mark.load_sensitive
