@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+## v0.139.19 -- reconcile: PLAINBINMARK (A plain goh run leaves a mark where LLVM_PROFILE_FILE points or an), FULLKEYSCRIPTS (Wrong-reuse hole left open by GOH.STEPCLOSUREREFUSE 1989b594), STEPDATAKEY (Left open by GOH.FULLKEYSCRIPTS a7a55026)
+
+* **The CAD layer** (`gates/cad_gate.sh`, opt-in): a repo of FDM parts made by code is judged as the slicer and the
+  printer see it, from one layout file (`GOH_CAD_LAYOUT`). Every STL is read as admesh reads it (holes, pinched and
+  miswound edges, inside-out bodies, zero-area triangles, zero stored normals, which Bambu Studio refuses to load, and
+  each object's body count); every snap the layout names is held to its bending strain; and the Bambu Studio project is
+  built and every plate sliced, failing on any slicing warning (read from result.json and the log, where the warnings
+  the GUI shows over a plate live), a support request the G-code does not honour, support missing under a named region
+  or far from all of them, the wrong nozzle or bed, and open-air travel over its cap. Standard library only. Moved here
+  from ZSUS's builder and the `3d-print-cad` skill, which each carried a copy and both missed ZSUS v21.2.0's floating
+  cantilever.
+
+* An edit to scripts/build-goh.sh, the builder every gate's runner may run, now moves every proven step's key in every mode: GOH.STEPCLOSUREREFUSE keyed scripts/ in the closure key alone (a step-part list of its own), while the whole-content key that GOH_PROVEN_CLOSURE=off (the default) and `closure full` use read lib/gate_identity.py PARTS, which left it out, so the edit reused a step verdict there. There is one list of goh's code parts now (lib/run_rule.py CODE_PARTS), and gate_identity.PARTS, which every key mode reads, is it plus the binary's build inputs. The step closure also refuses an unplaced `source` word as the coverage key does (lib/run_rule.py `source_holes`, one table): the runner's four (`. "$ROOT/.gatesrc"`, `. "$top/.gatesrc"`, `. "$_tui"`, `. "$_goh_copy"`) and every other one goh's code holds are declared there with why each is safe (two in a test script nothing runs stay refused, pinned), and a keyword needs its blank before a source (`else. Build it` in a message was read as one). Code files goh's runner and two of its steps run outside the default key: 1 before (scripts/build-goh.sh), 0 after (GOH.FULLKEYSCRIPTS).
+* A land's Rust coverage is reused again instead of measured every time (about 700 s a land): since GOH.STEPCLOSUREREFUSE the coverage identity read gates/_goh_bin.sh's `$here` (lib/run_rule.py FILE_ROOTS) as a hole whenever GOH_DIR was another tree than the repo it read (a land's worktree beside its export), because `script_paths` knew a FILE_ROOTS file by its path under GOH_DIR only; it reads it by its path in the tree it is read from now, the one placement the step closure and the coverage key share, so the runner's `$here/../scripts/build-goh.sh` is keyed and the identity is computed (GOH.FULLKEYSCRIPTS).
+
+* **`gates/cad_gate.sh` is executable:** it landed 100644, so a consumer's `gate.sh`, which runs it as a command,
+  refused the push ("Permission denied") while every goh test, running gates through `bash`, passed.
+  `tests/test_gate_entry_executable.py` holds every gate the `install.sh` template runs to 100755 in git.
+
+* A plain recording suite run (the land's pre-step) now measures which tests ran the binary: a plain `goh` leaves a mark where the per-test LLVM_PROFILE_FILE directory asks for one, workers calibrate the resolved binary first, and the coverage run skips the same-tree passes measured running none instead of rerunning the whole suite; the store never lets a later `False` clear a run that saw the binary (GOH.PLAINBINMARK).
+
+* **ruff 0.17.6** is the house pin (`gates/required_tools.tsv`), the newest release: a uv-tool ruff on PATH had
+  already moved to it, and `goh python-formatted` refused every staged run against the 0.17.5 pin.
+
+* An edit to a stock hook (hooks/*), retired_hooks.sha256 or docs/config.md now moves the proven key of a step that reads it, in every mode: gates/doctor.sh reads all three from the goh checkout and gates/structural.sh's hook currency (lib/hook_currency.py) the first two, yet every key keyed goh's code parts alone, so a consumer's doctor or structural verdict was reused across a hook edit that changes it (one line appended to hooks/pre-commit turned doctor from healthy to "1 problem"). lib/run_rule.py DATA is the one declaration of the goh data goh's code reads outside its code parts; the whole-content key keys every file it names, a step's closure the data of the readers it holds, and a test finds every goh-rooted read in goh's code and holds DATA to it both ways. And `names_path` matches a whole path now: `.githooks/pre-push` (the gated repo's hook, lib/gate_coverage.py) no longer names goh's hooks/pre-push. Files goh's steps read that no key covered: 7 before, 0 after (GOH.STEPDATAKEY).
+
 ## v0.139.18 -- reconcile: PRESTEPVERDICTMISS (The enqueue pre-step of GOH.LANDEDREUSEON re-ran its tests for 865 s)
 
 * The enqueue's pre-step takes the lane's green set on the same TREE, not only the same sha (GOH.PRESTEPVERDICTMISS). STEPCLOSUREREFUSE ran its set green on 03023f7d, re-committed the very tree (2867b103) as 6de0a68d, and its enqueue ran the set again for 515.5 s: the `affected` key was the sha. It is the commit's tree now (with the selection, the suite identity and the suite inputs, as before), so a reworded recommit takes the verdict and a changed tree still misses; the handed record names the checkout's commit. GOH.LANDEDREUSEON's 864.9 s pre-step was another cause: its key matched, and the take was the audit's 1-in-10 shadow (830.9 s, agreed). Every pre-step miss now says why in one line: no key and what took it (the untracked or changed files named, a deselecting run, no declared inputs), the nearest kept verdict of the repo and the fields it differs in, the audit's shadow, or an off path. Pinned by `tests/test_affected_verdict.py`.
