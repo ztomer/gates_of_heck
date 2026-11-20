@@ -72,7 +72,8 @@ ROOT_VARS = ("GOH_DIR", "GOH_ROOT", "GOH", "PROVEN_GOH_ROOT")
 # their own directory, which is the sibling's.
 # `_goh_d` is the bash 5 guard's own directory, found with builtins (`${BASH_SOURCE[0]%/*}`).
 SELF_VARS = ("HERE", "_goh_d")
-_SOURCE = re.compile(r"(?:^|[;&|{(]|\bthen|\bdo|\belse)\s*(?:source|\.)\s+(?=\S)")
+# A keyword needs the blank before the command: `else. Build it` (a message) is no source.
+_SOURCE = re.compile(r"(?:(?:^|[;&|{(])\s*|\b(?:then|do|else)\s+)(?:source|\.)\s+(?=\S)")
 _VAR = re.compile(r"^\$\{?([A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}?/(.+)$")
 
 

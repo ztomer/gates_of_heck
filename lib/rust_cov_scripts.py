@@ -44,21 +44,10 @@ DYNAMIC_RUN = re.compile(
     r'"?\$\{?[A-Za-z_][A-Za-z0-9_]*\}?"?(?=[\s;|&)]|$)'
 )
 
-_GATESRC = (
-    "the gated repo's own .gatesrc: its GOH_COV_* are the `cov` lines (gates/_rust_proven.sh)"
-)
-_TUI = run_rule.TUI
 _GOH_BIN = "the goh binary: the build of the gates root's crates/, never run by the measurement"
 _HELPER = "a helper the same file assigns by a rooted path, an edge of the closure already"
 # `<file>: <the form>` -> why what it reaches is keyed, or is no input of the measurement.
 DECLARED = {
-    "gates/_common.sh: . $_goh_tui": _TUI,
-    "gates/coverage_gate.sh: . $_tui": _TUI,
-    "gates/local_ci.sh: . $_tui": _TUI,
-    "gates/_from_head.sh: . $_goh_copy": "HEAD's export of the very script running (C4): its bytes",
-    "gates/rust_gate.sh: . ./.gatesrc": _GATESRC,
-    "gates/rust_each_crate.sh: . ./.gatesrc": _GATESRC,
-    "gates/local_ci.sh: . $ROOT/.gatesrc": _GATESRC,
     'gates/rust_gate.sh: bash -c "$GOH_COV_RUST_EXTERNAL"': "the external suite: the `runner` line",
     'gates/_coverage_rust.sh: bash -c "$EXTERNAL"': "the external suite: the `runner` line",
     'gates/local_ci.sh: bash -c -- "$cmd"': "a step of the repo's local CI (gates/local_ci.sh)",
@@ -76,7 +65,7 @@ DECLARED = {
     'gates/_proven_why.sh: "$GOH_PY" -S "$_PROVEN_IDENTITY_PY"': _HELPER,
     'lib/gate_slot.sh: "$GOH_PY" -S "$helper"': _HELPER,
     'lib/worker_share.sh: "$GOH_PY" -S "$WORKER_SHARE_HELPER"': _HELPER,
-    # A script path through no declared root: lib/run_rule.py's table, the step closure's too.
+    # A script path or source word no reading places: lib/run_rule.py's table, the step closure's.
     **run_rule.DECLARED,
 }
 # A Python file of the closure that runs another by path: `rel` -> the files, kept as edges.
@@ -95,7 +84,7 @@ def runs(rel: str, root: Path, goh: Path) -> tuple[list[Path], list[str]]:
     here = Path(rel).parent
     edges: list[Path] = []
     holes: list[str] = []
-    for form, target in run_rule.script_paths(root / rel, goh):
+    for form, target in run_rule.script_paths(root / rel, goh, root):
         if target is not None and target.is_file():
             edges.append(target)
         elif target is not None:
@@ -108,26 +97,11 @@ def runs(rel: str, root: Path, goh: Path) -> tuple[list[Path], list[str]]:
         for m in run_rule.ROOTED.finditer(line):
             if not m.group(2).endswith(run_rule.SCRIPT):  # a script path is read above
                 edges += _guess(m.group(2), here, root)
-        for m in source_closure._SOURCE.finditer(line):
-            word = source_closure._word(line, m.end())
-            if not _placed(word, here, root):
-                holes.append(f"{rel}: . {word}")
         holes += [f"{rel}: {m.group(0).strip()}" for m in DYNAMIC_RUN.finditer(line)]
-    return edges, holes
+    return edges, holes + run_rule.source_holes(rel, root)
 
 
 _guess = run_rule.guess  # the goh code file a rooted path's tail names
-
-
-def _placed(word: str, here: Path, root: Path) -> bool:
-    """Whether a source word names a file this reading keys or judges: one source_closure places, a
-    script path (judged by `runs` through run_rule), or a rooted path to a goh code file."""
-    if source_closure._resolve(word, root / here, root, {}) is not None:
-        return True
-    m = run_rule.ROOTED.match(word)
-    if m is None or m.end() != len(word):
-        return False
-    return m.group(2).endswith(run_rule.SCRIPT) or bool(_guess(m.group(2), here, root))
 
 
 def closure(

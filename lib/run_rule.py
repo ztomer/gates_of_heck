@@ -29,6 +29,14 @@ THE STEP CLOSURE TOO (GOH.STEPCLOSUREREFUSE). `run_closure`, every proven gate s
 tree gates/_goh_bin.sh's `bash "$here/../scripts/build-goh.sh"`, the builder every step's runner
 may run, was in no step's key. `$here` is declared that file's own directory now (FILE_ROOTS), and
 the step closure refuses a hole the way the coverage key does, from this one table.
+
+EVERY KEY MODE, AND SOURCES TOO (GOH.FULLKEYSCRIPTS). scripts/ was a step part of the closure key
+alone: the whole-content key (GOH_PROVEN_CLOSURE=off, the default, and `closure full`) read
+gate_identity.PARTS, a list of its own, so an edit to scripts/build-goh.sh still reused a step
+verdict there. CODE_PARTS is the one list of goh's code now; gate_identity.PARTS is it plus the
+binary's build inputs, and every key mode reads that. And the step closure skipped a `source` word
+no reading places (`. "$_goh_copy"`, `. "$ROOT/.gatesrc"`) without a word: `source_holes` is the
+coverage key's reading of one, and run_closure refuses one DECLARED does not name.
 """
 
 from __future__ import annotations
@@ -50,10 +58,45 @@ FILE_ROOTS = {"gates/_goh_bin.sh": ("here",)}
 
 OWN = "the gated repo's own file (`git rev-parse --show-toplevel`): its tree keys it"
 TUI = "tui/lib.sh: the gated repo's own or goh's, which the closure holds (tui/lib.sh)"
-# A script path through no declared root that the readers know (`<file>: <form>` -> what it
-# reaches and why that is keyed): followed by its tail (`guess`), never refused. The coverage key
-# (lib/rust_cov_scripts.py DECLARED) and the step closure (run_closure) read this one table.
+GATESRC = (
+    "the gated repo's own .gatesrc: its tree keys a step, and its GOH_COV_* are the coverage key's"
+    " `cov` lines (gates/_rust_proven.sh)"
+)
+HEAD_COPY = "HEAD's export of the very script running (C4): its bytes, the closure's own file"
+GATESRC_ARG = "a `bash -c` sourcing $1, handed the gated repo's own .gatesrc: one key of it"
+# A script path or `source` word through no declared root that the readers know (`<file>: <form>`,
+# a source as `<file>: . <word>` -> what it reaches and why that is keyed): a script path is
+# followed by its tail (`guess`), never refused. The coverage key (lib/rust_cov_scripts.py
+# DECLARED) and the step closure (run_closure) read this one table.
 DECLARED = {
+    # A `source` word no reading places (source_holes).
+    "gates/_common.sh: . $_goh_tui": TUI,
+    "gates/coverage_gate.sh: . $_tui": TUI,
+    "gates/local_ci.sh: . $_tui": TUI,
+    "gates/_from_head.sh: . $_goh_copy": HEAD_COPY,
+    "gates/_push_refusals.sh: . $1": GATESRC_ARG,
+    "gates/commit_msg.sh: . $1": GATESRC_ARG,
+    "gates/push_gate.sh: . $1": GATESRC_ARG,
+    "lib/push_runs.sh: . $1": GATESRC_ARG,
+    "gates/_push_refusals.sh: . $root/.gatesrc": GATESRC,
+    "gates/local_ci.sh: . $ROOT/.gatesrc": GATESRC,
+    "gates/proven.sh: . $top/.gatesrc": GATESRC,
+    "gates/push_gate.sh: . ./.gatesrc": GATESRC,
+    "gates/py_gate.sh: . ./.gatesrc": GATESRC,
+    "gates/py_staged.sh: . ./.gatesrc": GATESRC,
+    "gates/round.sh: . ./.gatesrc": GATESRC,
+    "gates/rust_each_crate.sh: . ./.gatesrc": GATESRC,
+    "gates/rust_gate.sh: . ./.gatesrc": GATESRC,
+    "gates/staged_guards.sh: . ./.gatesrc": GATESRC,
+    "gates/structural.sh: . ./.gatesrc": GATESRC,
+    "gates/swift_gate.sh: . ./.gatesrc": GATESRC,
+    "gates/swift_staged.sh: . ./.gatesrc": GATESRC,
+    "lib/landed_only.sh: . ./.gatesrc": GATESRC,
+    "tools/land.sh: . ./.gatesrc": GATESRC,
+    "tools/release-kit/version_step.sh: . $_vtop/.gatesrc": GATESRC,
+    "tools/release-kit/version_step.sh: . ./.gatesrc": GATESRC,
+    "tools/release_goh.sh: . ./.gatesrc": GATESRC,
+    # A script path through no declared root.
     "gates/_common.sh: $GOH_GIT_ROOT/tui/lib.sh": TUI,
     "gates/coverage_gate.sh: $GOH_GIT_ROOT/tui/lib.sh": TUI,
     "gates/local_ci.sh: $GOH_GIT_ROOT/tui/lib.sh": TUI,
@@ -97,13 +140,17 @@ def place(var: str | None, tail: str, here: Path, goh: Path, vars_: dict[str, Pa
     return Path(os.path.normpath(base / tail.lstrip("/")))
 
 
-def script_paths(path: Path, goh: Path) -> list[tuple[str, Path | None]]:
+def script_paths(path: Path, goh: Path, root: Path | None = None) -> list[tuple[str, Path | None]]:
     """(the form as `$VAR/tail`, the file it names or None for a hole) for each distinct script
-    path in a shell file's code, comments left out."""
+    path in a shell file's code, comments left out. A FILE_ROOTS file is known by its path in the
+    tree it is read from (`root`, else goh): a land reads its worktree with GOH_DIR an export, and
+    keyed by goh's path alone gates/_goh_bin.sh's `$here` was a hole there, so the coverage
+    identity was refused and every land measured again (GOH.FULLKEYSCRIPTS)."""
     here = path.parent
     text = path.read_text(encoding="utf-8", errors="replace")
     vars_ = source_closure.assigned(text, here, goh)
-    rel = path.relative_to(goh).as_posix() if path.is_relative_to(goh) else ""
+    tree = root if root is not None else goh
+    rel = path.relative_to(tree).as_posix() if path.is_relative_to(tree) else ""
     vars_.update(dict.fromkeys(FILE_ROOTS.get(rel, ()), here))
     out: dict[str, Path | None] = {}
     for raw in text.splitlines():
@@ -126,12 +173,37 @@ def guess(tail: str, here: Path, root: Path) -> list[Path]:
     return []
 
 
+def _placed(word: str, here: Path, root: Path) -> bool:
+    """Whether a source word names a file a reading keys or judges: one source_closure places, a
+    script path (judged by script_paths), or a rooted path to a goh code file."""
+    if source_closure._resolve(word, root / here, root, {}) is not None:
+        return True
+    m = ROOTED.match(word)
+    if m is None or m.end() != len(word):
+        return False
+    return m.group(2).endswith(SCRIPT) or bool(guess(m.group(2), here, root))
+
+
+def source_holes(rel: str, root: Path) -> list[str]:
+    """`<rel>: . <word>` for each `source`/`.` word of the shell file root/rel that no reading
+    places, comments left out: a hole, declared (DECLARED) or not."""
+    here, out = Path(rel).parent, []
+    for raw in (root / rel).read_text(encoding="utf-8", errors="replace").splitlines():
+        line = source_closure._strip_comment(raw)
+        for m in source_closure._SOURCE.finditer(line):
+            word = source_closure._word(line, m.end())
+            if not _placed(word, here, root):
+                out.append(f"{rel}: . {word}")
+    return list(dict.fromkeys(out))
+
+
 def run_closure(seeds: set[str], root: Path, goh: Path, named_edges: bool = False) -> set[str]:
     """seeds and every file under root they source, import (source_closure.closure) or run through
     a declared root; with `named_edges`, every file their code names by path too. Raises
-    LookupError on a hole DECLARED does not name (GOH.STEPCLOSUREREFUSE): no key can follow it.
-    A declared root to no file is no edge here (the closure is read again from the next tree, so
-    the file is keyed once it exists); the coverage key refuses one (lib/rust_cov_scripts.py)."""
+    LookupError on a hole DECLARED does not name, a script path (GOH.STEPCLOSUREREFUSE) or a
+    `source` word (source_holes, GOH.FULLKEYSCRIPTS): no key can follow it. A declared root to
+    no file is no edge here (the closure is read again from the next tree, so the file is keyed
+    once it exists); the coverage key refuses one (lib/rust_cov_scripts.py)."""
     files = set(seeds)
     while True:
         found, _ = source_closure.closure(sorted(files), root, goh, named_edges)
@@ -139,7 +211,8 @@ def run_closure(seeds: set[str], root: Path, goh: Path, named_edges: bool = Fals
         for rel in found:
             if not source_closure._is_shell(root / rel):
                 continue
-            for form, target in script_paths(root / rel, goh):
+            holes += [h for h in source_holes(rel, root) if h not in DECLARED]
+            for form, target in script_paths(root / rel, goh, root):
                 if target is None and f"{rel}: {form}" in DECLARED:
                     targets = guess(form[form.index("/") :], Path(rel).parent, root)
                 elif target is None:

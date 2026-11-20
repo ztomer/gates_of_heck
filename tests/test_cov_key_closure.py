@@ -36,16 +36,9 @@ _RUNS = re.compile(
     r'(?:(?<![\w/-])(?:bash|sh|exec|python3?)|"\$\{?GOH_PY\}?")\s+(?:-[A-Za-z-]+\s+)*'
 )
 # Scripts a closure Python file names in code without running them: why each is no input.
-# lib/run_rule.py DECLARED names the file of each hole it declares, a key, no run.
-_HOLE = "a declared hole's file, named as its DECLARED key (the step closure's)"
+# lib/run_rule.py DECLARED names the file of each hole it declares, a key, no run: read from the
+# table itself (`_declares`), never listed here again.
 MENTIONS = {
-    "lib/run_rule.py -> gates/_self_gate.sh": _HOLE,
-    "lib/run_rule.py -> gates/commit_gate.sh": _HOLE,
-    "lib/run_rule.py -> gates/commit_msg.sh": _HOLE,
-    "lib/run_rule.py -> gates/doctor.sh": _HOLE,
-    "lib/run_rule.py -> gates/hook.sh": _HOLE,
-    "lib/run_rule.py -> gates/push_gate.sh": _HOLE,
-    "lib/run_rule.py -> tools/gate.sh": _HOLE,
     "gates/required_judge.py -> gates/commit_gate.sh": "a marker it tests for in the gated repo",
     "gates/required_tools.py -> gates/py_gate.sh": "a layer's entry, named in the tool table",
     "gates/required_tools.py -> gates/py_staged.sh": "a layer's entry, named in the tool table",
@@ -68,6 +61,15 @@ MENTIONS = {
     "lib/step_closure.py -> gates/proven.sh": "a proven step key's runner seed, read as source",
     "lib/step_closure.py -> tools/pytest.sh": "a step word's suffix test (`endswith`), no run",
 }
+
+
+def _declares(rel: str, other: str) -> bool:
+    """Whether `rel` names `other` only in a lib/run_rule.py DECLARED key: its file, or the tail
+    of its form (`$root/tools/gate.sh`, the gated repo's own)."""
+    import run_rule
+
+    keys = [k.split(": ", 1) for k in run_rule.DECLARED]
+    return rel == "lib/run_rule.py" and any(f == other or g.endswith("/" + other) for f, g in keys)
 
 
 def _scripts():
@@ -128,7 +130,8 @@ def reach_misses(root: Path) -> tuple[list[str], list[str]]:
             code = sc.code_only(rel, text)
             for other in scripts:
                 named = other not in files and Path(other).name in text
-                if named and sc.names_path(code, other) and f"{rel} -> {other}" not in MENTIONS:
+                mention = f"{rel} -> {other}" in MENTIONS or _declares(rel, other)
+                if named and sc.names_path(code, other) and not mention:
                     misses.append(f"{rel} -> {other}")
             if sc.dynamic_imports(ast.parse(text)):
                 misses.append(f"{rel}: an import by a name built at run time")

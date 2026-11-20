@@ -63,9 +63,6 @@ _RUNS_GOH = re.compile(r"(?:^|[\s;&|(`])goh(?=[ \t]+-?[a-z])|[\"']goh[\"']\s*,")
 _PY_GOH = re.compile(r"\bGOH_DIR\b|\bGOH_ROOT\b|gates_of_heck")
 _STEP_VAR = re.compile(r"\$\{?(GOH_DIR|GOH_ROOT|GOH|PWD)\}?(?=/|$)")
 ROOT_PY_DIRS = ("", "lib", "checks", "gates", "tools")
-# A step's keyed parts: the gates' (PARTS) and scripts/, whose builder the runner may run
-# (gates/_goh_bin.sh `bash "$here/../scripts/build-goh.sh"`, GOH.STEPCLOSUREREFUSE).
-STEP_PARTS = (*PARTS, "scripts")
 
 
 @functools.cache
@@ -203,8 +200,9 @@ def step_closure(step: str, repo: Path, goh: Path) -> tuple[list[str], str]:
         gohs |= more
     if not why:
         gohs, why = _goh_reach(gohs, goh, judge=True)
-    # The keyed parts only: docs/ and tests/ never decided a step.
-    keyed = {r for r in gohs | runner_closure(goh) if r.split("/")[0] in STEP_PARTS}
+    # The keyed parts only, the whole-content key's (PARTS, scripts/ among them: gates/_goh_bin.sh
+    # runs scripts/build-goh.sh, GOH.STEPCLOSUREREFUSE): docs/ and tests/ never decided a step.
+    keyed = {r for r in gohs | runner_closure(goh) if r.split("/")[0] in PARTS}
     return sorted(keyed), why
 
 
@@ -273,10 +271,9 @@ def _closure_line(step: str, every: list[Path], where: Path, full: str) -> str:
 def _hashed(root: Path) -> dict[str, str]:
     """`<kind> <sha256>` per keyed file under root, read once per run: every step's line is a
     selection of these (32 steps of divoom-control re-listed the tree each: 22 s)."""
-    skip = test_only(root)  # PARTS from its one cached listing, then scripts/
+    skip = test_only(root)  # PARTS from its one cached listing
     return {rel: f"{kind.decode()} {hashlib.sha256(data).hexdigest()}"
-            for parts in (PARTS, STEP_PARTS[len(PARTS):])
-            for rel, kind, data in _entries(root, parts, skip)}  # fmt: skip
+            for rel, kind, data in _entries(root, PARTS, skip)}  # fmt: skip
 
 
 def _part_hash(root: Path, files: tuple[str, ...]) -> str:

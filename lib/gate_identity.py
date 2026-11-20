@@ -19,17 +19,17 @@ under a hand-set GOH_LAND_GATE=true wrote exactly as a full gate's.
 The three parts:
   * MODE -- the command or gate mode the verdict is of (`full` for a land's own push gate, else
     the GOH_LAND_GATE string);
-  * the CONTENT of the gates that ran: every file under gates/ checks/ lib/ tools/ tui/ of the
-    gates root, and the goh binary's build inputs (crates/, Cargo.toml, Cargo.lock,
-    rust-toolchain.toml: the trees its source stamp names, gates/_goh_bin.sh), by path, kind and
-    bytes -- ONE formula, so a checkout and its commit's head export key alike
-    (GOH.VERDICTKEYDRIFT: two formulas put one tree's loaded verdict under two keys and the ship
-    missed it); bytecode skipped. The gates run bin/goh, the build of those inputs: without them
-    a change to goh's Rust alone left every key unchanged (GOH.PROVENIDENTITY). Where the binary
-    is NOT the content's build it is keyed apart: an explicit GOH_BIN by its bytes (a tool line),
-    and a checkout whose build inputs differ from HEAD without GOH_LIVE (it runs HEAD's build) by
-    HEAD's trees. The version string a build reports (`git describe`, the release tag) is not
-    keyed: the binary store already holds one build per source (gates/_goh_bin.sh), and a tag
+  * the CONTENT of the gates that ran: every file under gates/ checks/ lib/ tools/ tui/ scripts/ of
+    the gates root (lib/run_rule.py CODE_PARTS), and the goh binary's build inputs (crates/,
+    Cargo.toml, Cargo.lock, rust-toolchain.toml: the trees its source stamp names,
+    gates/_goh_bin.sh), by path, kind and bytes -- ONE formula, so a checkout and its commit's head
+    export key alike (GOH.VERDICTKEYDRIFT: two formulas put one tree's loaded verdict under two keys
+    and the ship missed it); bytecode skipped. The gates run bin/goh, the build of those inputs:
+    without them a change to goh's Rust alone left every key unchanged (GOH.PROVENIDENTITY). Where
+    the binary is NOT the content's build it is keyed apart: an explicit GOH_BIN by its bytes (a
+    tool line), and a checkout whose build inputs differ from HEAD without GOH_LIVE (it runs HEAD's
+    build) by HEAD's trees. The version string a build reports (`git describe`, the release tag) is
+    not keyed: the binary store already holds one build per source (gates/_goh_bin.sh), and a tag
     push reuses its commit's proofs;
   * the TOOLS: for each of rustc, cargo, python (the house interpreter), swift, shellcheck, ruff,
     cargo-llvm-cov and xcodebuild, the PATH hit, the binary it resolves to and that binary's size
@@ -93,7 +93,10 @@ _RUN, _closure = run_rule.RUN, run_rule.run_closure  # lib/step_closure.py's run
 TOOLS = ("rustc", "cargo", "python3", "swift", "shellcheck", "ruff", "cargo-llvm-cov", "xcodebuild")
 # The binary's build ROOTS; its inputs add each file a crate embeds: ask build_inputs, never this.
 BUILD = ("crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml")
-PARTS = ("gates", "checks", "lib", "tools", "tui", *BUILD)
+# goh's code (lib/run_rule.py CODE_PARTS: scripts/ too, whose builder every gate may run) and the
+# binary's build roots: the ONE list every key mode reads, the whole content and each step's
+# closure alike (GOH.FULLKEYSCRIPTS: the closure keyed scripts/ and this list did not).
+PARTS = (*run_rule.CODE_PARTS, *BUILD)
 GOH_ROOT = Path(__file__).resolve().parent.parent
 
 

@@ -125,7 +125,7 @@ def test_the_real_runner_closure_skips_no_run() -> None:
     _fresh()
     files = sc.runner_closure(REPO_ROOT)
     assert "scripts/build-goh.sh" in files
-    assert "scripts" in sc.STEP_PARTS
+    assert "scripts" in sc.PARTS
 
 
 def test_every_file_root_is_still_used() -> None:
@@ -141,6 +141,8 @@ def test_every_declared_hole_is_still_in_the_tree() -> None:
     gone = []
     for entry in run_rule.DECLARED:
         rel, form = entry.split(": ", 1)
+        if form.startswith(". "):  # a source word: tests/test_full_key_scripts.py's ratchet
+            continue
         holes = {f for f, t in run_rule.script_paths(REPO_ROOT / rel, REPO_ROOT) if t is None}
         gone += [entry] if form not in holes else []
     assert not gone, "DECLARED holes the tree no longer has: " + "; ".join(gone)
