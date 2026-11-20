@@ -49,10 +49,14 @@ def _run(script, mode, dest):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        # GOH_LIVE: the suite tests the tree it is in (conftest.py). Dropped with the rest, each
+        # call ran HEAD's installer from a fresh export of the whole goh tree under this HOME
+        # (~1,650 files a call, 3.5% of a whole run's file events; GOH.FSCHURN3).
         env={
             "PATH": "/usr/bin:/bin:/opt/homebrew/bin",
             "HOME": str(dest),
             "LAUNCHAGENTS_DIR": str(dest / "LA"),
+            "GOH_LIVE": "1",
         },
         check=False,
     )
@@ -155,10 +159,14 @@ def _run_arg(arg, mode, dest):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        # GOH_LIVE: the suite tests the tree it is in (conftest.py). Dropped with the rest, each
+        # call ran HEAD's installer from a fresh export of the whole goh tree under this HOME
+        # (~1,650 files a call, 3.5% of a whole run's file events; GOH.FSCHURN3).
         env={
             "PATH": "/usr/bin:/bin:/opt/homebrew/bin",
             "HOME": str(dest),
             "LAUNCHAGENTS_DIR": str(dest / "LA"),
+            "GOH_LIVE": "1",
         },
         check=False,
     )

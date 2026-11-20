@@ -418,7 +418,7 @@ def test_the_calibration_probe_goes_red_when_a_rule_is_dropped(tmp_path, label, 
     (work / "_calibration.py").write_text(
         source.replace(rule, f"if False and {rule[len('if ') :]}"), encoding="utf-8"
     )
-    for name in ("_calibration_probe.py", "_gitutil.py", "_retired.py"):
+    for name in ("_calibration_probe.py", "_gitutil.py", "_retired.py", "_goh_tmp.py"):
         (work / name).write_text((ROOT / "checks" / name).read_text(encoding="utf-8"), "utf-8")
     got = subprocess.run(
         [sys.executable, str(work / "_calibration_probe.py")],

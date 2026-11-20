@@ -193,8 +193,10 @@ def furnish(home: Path, reads: tuple[str, ...]) -> Path:
 
 def _link(src: Path, dst: Path, hidden: frozenset[str]) -> None:
     """`dst` reaching `src`: one link, or, when some entries are `hidden`, a directory of links to
-    every other entry, so no path below `dst` reaches a hidden one."""
-    if not hidden or not src.is_dir():
+    every other entry, so no path below `dst` reaches a hidden one. A `src` holding none of them
+    (a nested session's, whose real home is a suite home already furnished) is one link too: its
+    ~45 links per nested home were most of the suite home's file events (GOH.FSCHURN3)."""
+    if not hidden or not src.is_dir() or not any(os.path.lexists(src / h) for h in hidden):
         dst.symlink_to(src)
         return
     dst.mkdir(exist_ok=True)

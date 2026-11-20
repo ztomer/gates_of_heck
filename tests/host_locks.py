@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import atexit
+import itertools
 import os
 import shutil
 from pathlib import Path
@@ -44,6 +45,7 @@ _SUITE_HOME = Path(os.path.expanduser("~/.cache/goh/suite"))
 _SUITE_HOME.mkdir(parents=True, exist_ok=True)
 _WORKTREES = Path(reused_mkdtemp("push.", dir=_SUITE_HOME)).resolve()
 atexit.register(shutil.rmtree, _WORKTREES, True)
+_WORKTREE_N = itertools.count()
 
 # Every variable an env scrub must KEEP: each names a private location, not an opt-in.
 PRIVATE_ROOTS = HOST_LOCKS + CACHE_ROOTS
@@ -62,7 +64,10 @@ def no_test_reaches_a_host_lock(tmp_path_factory, monkeypatch):
     root = tmp_path_factory.mktemp("host-locks")
     for name in (*HOST_LOCKS, "GOH_PUSH_LOGS", "GOH_REUSE_DIR"):
         monkeypatch.setenv(name, str(root / name.lower()))
-    monkeypatch.setenv("GOH_PUSH_WORKTREES", reused_mkdtemp("t", dir=_WORKTREES))
+    # NAMED, not made (GOH.FSCHURN3): push_gate.sh makes its root (`mkdir -p`), and a directory
+    # made for each of ~7,000 tests, nearly all never pushing, was the suite home's largest
+    # creator of file events (a dir made per test, all removed at exit).
+    monkeypatch.setenv("GOH_PUSH_WORKTREES", str(_WORKTREES / f"t{next(_WORKTREE_N)}"))
     monkeypatch.delenv("ZTOOLS_GPU_LOCK_OWNER", raising=False)
     # A fixture gate runs inside a suite memory admission already let start (tools/pytest.sh, or
     # the gate around it): it never waits on the host's memory reading (lib/mem_admit.py).

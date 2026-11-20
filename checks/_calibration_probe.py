@@ -28,6 +28,8 @@ import subprocess
 import sys
 import tempfile
 
+from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import _calibration
@@ -290,7 +292,7 @@ def _external(td, estate):
 
 def probe():
     bad = 0
-    with tempfile.TemporaryDirectory(prefix="goh-calibration.") as td:
+    with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-calibration.") as td:
         estate = os.path.join(td, "estate")
         bad += _cases(estate)
         bad += _unregistered(estate)

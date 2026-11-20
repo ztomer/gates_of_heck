@@ -56,6 +56,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _empty_scope_run import TIMED_OUT, run_gate
 from _empty_scope_usage import first_error_line, is_usage_error
 from _gitutil import foreign_repo_env, repo_root
+from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import counted, err, info, ok, warn
@@ -428,7 +429,7 @@ def main(argv=None):
     # An excuse naming no gate is the same stale permission as one whose gate was fixed: it would
     # silently excuse the next file to take the name.
     orphaned = sorted(k for k in excused if k not in names)
-    with tempfile.TemporaryDirectory(prefix="goh-empty-scope.") as workdir:
+    with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-empty-scope.") as workdir:
         skeleton = build_skeleton(root, gates, os.path.join(workdir, "skeleton"))
         blind, unrunnable = sweep(skeleton, os.path.basename(gates), names)
 

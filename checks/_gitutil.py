@@ -81,8 +81,10 @@ def scratch_git(dest: str) -> None:
     import shutil
     import tempfile
 
+    from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
+
     if "git" not in _EMPTY_GIT:
-        seed = tempfile.mkdtemp(prefix="goh-empty-git.")
+        seed = tempfile.mkdtemp(dir=goh_tmp(), prefix="goh-empty-git.")
         atexit.register(shutil.rmtree, seed, True)
         subprocess.run(
             ["git", "-C", seed, "init", "-q", "--template="],

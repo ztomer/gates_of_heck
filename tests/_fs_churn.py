@@ -40,6 +40,8 @@ CEILING_ENV = "GATES_OF_HECK_FS_EVENTS_CEILING"
 CEILING_FILE = Path(__file__).resolve().parent / "fs_events_ceiling.json"
 
 _STATE: dict = {}
+# The report's per-test lists are this long: enough to rank the long tail by file (GOH.FSCHURN3).
+TOP = 200
 
 
 def _ceiling() -> dict:
@@ -100,7 +102,7 @@ def pytest_sessionfinish(session, exitstatus) -> None:
         return
     fs_events.time.sleep(0.5)  # the stream's latency: the last records in
     _STATE.pop("stream").__exit__(None, None, None)
-    rep = tally.report(fs_events.time.monotonic() - _STATE.pop("t0"))
+    rep = tally.report(fs_events.time.monotonic() - _STATE.pop("t0"), TOP)
     ran = _STATE.pop("ran")
     rep["tests_run"] = ran
     rep["teardown_entries"] = left_behind(tally.roots)

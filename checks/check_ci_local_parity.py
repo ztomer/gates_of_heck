@@ -53,6 +53,8 @@ import subprocess
 import sys
 import tempfile
 
+from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import foreign_repo_env, repo_root, tree_files
 
@@ -252,7 +254,7 @@ def probe() -> int:
     ]
     failed = 0
     for label, steps, extra, want in cases:
-        with tempfile.TemporaryDirectory(prefix="goh-ci-parity.") as tmp:
+        with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-ci-parity.") as tmp:
             root = pathlib.Path(tmp)
             (root / ".github" / "workflows").mkdir(parents=True)
             (root / ".github" / "workflows" / "ci.yml").write_text(workflow, encoding="utf-8")
@@ -261,7 +263,7 @@ def probe() -> int:
         if got != want:
             failed += 1
             err(f"[{NAME} probe] {label}: exit {got}, wanted {want}")
-    with tempfile.TemporaryDirectory(prefix="goh-ci-parity.") as tmp:
+    with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-ci-parity.") as tmp:
         (pathlib.Path(tmp) / ".gatesrc").write_text("GOH_CI_STEPS='x'\n", encoding="utf-8")
         try:
             judge(pathlib.Path(tmp))

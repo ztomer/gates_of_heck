@@ -50,6 +50,8 @@ import re
 import sys
 import tempfile
 
+from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from _gitcensus import census
@@ -181,13 +183,13 @@ def probe() -> int:
     }
     bad = 0
     for name, (text, extra, want) in cases.items():
-        with tempfile.TemporaryDirectory(prefix="goh-git-env-probe.") as td:
+        with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-git-env-probe.") as td:
             _write(td, "tools/a.py", text)
             got = len(judge(td, {**cfg, **extra}, CONFIG)[0])
         if got != want:
             err(f"probe: {name}: {counted(got, 'finding')}, wanted {want}")
             bad += 1
-    with tempfile.TemporaryDirectory(prefix="goh-git-env-probe.") as td:
+    with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-git-env-probe.") as td:
         os.makedirs(os.path.join(td, "tools"))
         if not any("read no Python" in f for f in judge(td, cfg, CONFIG)[0]):
             err("probe: a census that read nothing passed")

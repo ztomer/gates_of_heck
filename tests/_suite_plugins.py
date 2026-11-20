@@ -6,6 +6,17 @@ here, not there.
 
 * `_share_tokens`: the live worker share (GOH.SHAREGROW).
 * `_fs_churn`: the run's file events, counted and held under a ceiling (GOH.FSCHURN2).
+* here: a `process_template` is the RUN's inside a session (tests/_tree_clone.py, GOH.FSCHURN3).
 """
 
+import os
+from pathlib import Path
+
+from _tree_clone import run_wide
+
 pytest_plugins = ["_share_tokens", "_fs_churn"]
+
+
+def pytest_configure(config) -> None:
+    if os.environ.get("PYTEST_DEBUG_TEMPROOT"):  # the run's root (tests/suite_tmp.py)
+        run_wide(Path(os.environ["PYTEST_DEBUG_TEMPROOT"]))

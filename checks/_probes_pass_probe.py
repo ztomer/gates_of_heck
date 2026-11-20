@@ -23,9 +23,10 @@ def probe(gate_mod):
     import textwrap
 
     from _calibration_probe import probe as calibration_probe
+    from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
 
     bad = 0
-    with tempfile.TemporaryDirectory(prefix="goh-probes.") as td:
+    with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-probes.") as td:
         tools = os.path.join(td, "tools")
         os.makedirs(tools)
 

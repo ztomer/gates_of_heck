@@ -114,3 +114,19 @@ def test_the_recorded_ceiling_is_a_ratchet_with_both_bounds() -> None:
     ceiling = json.loads((REPO_ROOT / "tests" / "fs_events_ceiling.json").read_text())
     assert {"per_test", "per_test_run"} <= ceiling.keys(), ceiling
     assert all(isinstance(ceiling[k], int) and ceiling[k] > 0 for k in ("per_test", "per_test_run"))
+
+
+def test_a_head_export_a_test_made_is_counted_as_its_own() -> None:
+    """GOH.FSCHURN3: a child spawned without GOH_LIVE exports the whole goh tree under its HOME
+    (`.cache/goh/head/<sha>`); the report names each test's share of such exports."""
+    root = "/T/goh-pytest.slot03"
+    tally = fs_events.Tally([root])
+    test = f"{root}/pytest-of-u/pytest-0/popen-gw2/test_spawns_bare0"
+    made = fs_events.ITEM_CREATED | fs_events.ITEM_IS_FILE
+    for n in range(3):
+        tally.add(f"{test}/.cache/goh/head/0123abcd/lib/m{n}.py", made)
+    tally.add(f"{test}/own.txt", made)
+    rep = tally.report(1.0)
+    assert rep["per_test"] == {"test_spawns_bare": 4}
+    assert rep["head_export_per_test"] == {"test_spawns_bare": 3}
+    assert rep["head_export_events"] == 3

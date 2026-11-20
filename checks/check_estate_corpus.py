@@ -66,6 +66,8 @@ import sys
 import tempfile
 import time
 
+from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _estate_cache
 import _estate_corpus_io
@@ -149,7 +151,7 @@ def judge(entry, bad):
     if seen := _estate_cache.reusable(key, ident, entry):  # nothing it depends on moved
         ok(f"{seen['line']} -- verified {int(time.time() - seen['at'])}s ago, inputs unchanged")
         return "verified"
-    with tempfile.TemporaryDirectory(prefix="goh-estate.") as td:
+    with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-estate.") as td:
         real = os.path.join(td, "real")
         minimal = os.path.join(td, "minimal")
         materialise(source, files, real)
@@ -275,7 +277,7 @@ def probe():
     bad = 0
     try:
         # A checker that always passes: a sweep blind to it reports coverage it never measured.
-        blind_dir = tempfile.mkdtemp(prefix="goh-estate-blind.")
+        blind_dir = tempfile.mkdtemp(dir=goh_tmp(), prefix="goh-estate-blind.")
         blind = os.path.join(blind_dir, "check_cannot_fail.py")
         with open(blind, "w", encoding="utf-8") as handle:
             handle.write('"""Green whatever the tree says."""\nprint("clean")\n')
@@ -324,7 +326,7 @@ def probe():
 
 def _thin_refused(entry):
     """True when a one-file corpus under a real entry's shape is REFUSED, never used."""
-    with tempfile.TemporaryDirectory(prefix="goh-estate.") as td:
+    with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-estate.") as td:
         thin = os.path.join(td, "thin")
         os.makedirs(os.path.join(thin, "src"))
         with open(os.path.join(thin, "src", "lib.rs"), "w", encoding="utf-8") as handle:

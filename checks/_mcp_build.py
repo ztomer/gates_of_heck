@@ -16,6 +16,8 @@ import subprocess
 import sys
 import tempfile
 
+from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import foreign_repo_env
 
@@ -65,7 +67,7 @@ def server_env(scratch_home: str) -> dict[str, str]:
 def build(command: str, root: pathlib.Path, timeout: int) -> str | None:
     """Run one derived build under its own bound, in its own session and scratch; None when it
     built, else the `build:` finding (its status or its bound, and its output's tail)."""
-    scratch = tempfile.mkdtemp(prefix="goh-mcp-build.")
+    scratch = tempfile.mkdtemp(dir=goh_tmp(), prefix="goh-mcp-build.")
     try:
         os.mkdir(os.path.join(scratch, "home"))
         with open(os.path.join(scratch, ".out"), "w+b") as out:

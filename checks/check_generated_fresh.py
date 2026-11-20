@@ -53,6 +53,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
+
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 from killtree import run_captured
 
@@ -106,7 +108,7 @@ def main() -> int:
             print(f"    {m}", file=sys.stderr)
         return 2
 
-    sandbox = Path(tempfile.mkdtemp(prefix="goh-fresh-"))
+    sandbox = Path(tempfile.mkdtemp(dir=goh_tmp(), prefix="goh-fresh-"))
     # Pre-create each artifact's parent directories inside the sandbox: the
     # generator writes to <sandbox>/<artifact-path> and must not have to
     # guess what tree that is.

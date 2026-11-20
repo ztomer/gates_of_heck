@@ -49,6 +49,7 @@ def copytree_clone(src: Path | str, dst: Path | str) -> None:
     if os.path.lexists(dst):
         raise FileExistsError(errno.EEXIST, "clone target exists", str(dst))
     shutil.copytree(src, dst, symlinks=True)
+    _unseal_clone(src, dst)
 
 
 def clone_tree(src: Path | str, dst: Path | str) -> None:
@@ -57,11 +58,73 @@ def clone_tree(src: Path | str, dst: Path | str) -> None:
         raise FileExistsError(errno.EEXIST, "clone target exists", str(dst))
     if _CLONEFILE is not None:
         if _CLONEFILE(os.fsencode(src), os.fsencode(dst), 0) == 0:
+            _unseal_clone(src, dst)
             return
         err = ctypes.get_errno()
         if err not in _FALL_BACK:
             raise OSError(err, os.strerror(err), str(dst))
     copytree_clone(src, dst)
+
+
+# THE SHARED TEMPLATE IS SEALED (GOH.FSCHURN3). A run-wide template is every worker's, so a git
+# that WRITES in it -- even `git status`, which refreshes the index under .git/index.lock -- is
+# copied into whatever clone another worker takes meanwhile: GOH.LANDQWINFLAKE's clones carried the
+# lock and their first `git add` died 128 (a842f3b6 fixed the one test that did it). Each
+# repository's git dir, its objects/ and its refs/heads and refs/tags are made read-only once the
+# template is built (`_seal`), so git itself refuses the write (an index, HEAD, config, FETCH_HEAD,
+# a branch, a tag, an object: "Permission denied", exit 128) and an optional lock is simply not
+# taken; `clone_tree` gives a clone its write bits back on those few directories only. Absolute
+# template git dir -> the directories sealed in it, for `_unseal_clone`.
+_SEALED: dict[str, tuple[str, ...]] = {}
+_SEAL_PARTS = ("", "objects", "refs/heads", "refs/tags")
+
+
+def _sealable(git_dir: Path) -> list[Path]:
+    return [
+        git_dir / part if part else git_dir for part in _SEAL_PARTS if (git_dir / part).is_dir()
+    ]
+
+
+def _seal(tree: Path) -> None:
+    """Make every repository in `tree` refuse a write (see `_SEALED`), and remember where."""
+    for git_dir in _repositories(tree):
+        dirs = _sealable(git_dir)
+        for d in reversed(dirs):  # the innermost first: the git dir itself last
+            d.chmod(0o555)
+        _SEALED[os.path.abspath(git_dir)] = tuple(os.path.relpath(d, git_dir) for d in dirs)
+
+
+def _known_seals(tree: Path) -> None:
+    """Register the seals of a template another worker built (the directories it sealed)."""
+    for git_dir in _repositories(tree):
+        key = os.path.abspath(git_dir)
+        if key not in _SEALED:
+            dirs = [d for d in _sealable(git_dir) if not os.access(d, os.W_OK)]
+            if dirs:
+                _SEALED[key] = tuple(os.path.relpath(d, git_dir) for d in dirs)
+
+
+def _unseal_clone(src: Path | str, dst: Path | str) -> None:
+    """The clone `dst` of `src` (a template, or a part of one) writable where the template is
+    sealed: a chmod of each sealed directory the clone holds, never a walk of the clone."""
+    src = os.path.abspath(src)
+    for git_dir, parts in _SEALED.items():
+        if git_dir == src or git_dir.startswith(src.rstrip("/") + "/"):
+            for part in parts:
+                os.chmod(os.path.join(dst, os.path.relpath(git_dir, src), part), 0o755)
+
+
+def unsealed_rmtree(tree: Path | str) -> None:
+    """`shutil.rmtree` of a tree that may hold sealed repositories (this process's, or a killed
+    one's stage): every directory's write bit back first."""
+    tree = os.path.abspath(tree)
+    for git_dir in [g for g in _SEALED if g.startswith(tree.rstrip("/") + "/")]:
+        del _SEALED[git_dir]
+    for here, _dirs, _files in os.walk(tree):
+        if not os.access(here, os.W_OK):
+            with contextlib.suppress(OSError):
+                os.chmod(here, 0o755)
+    shutil.rmtree(tree, ignore_errors=True)
 
 
 # id(session factory) -> (that factory, {key: the built template}). A fixture defined in a test
@@ -91,6 +154,7 @@ def template(factory, key: str, build) -> Path:
     built = _TEMPLATES.setdefault(id(factory), (factory, {}))[1]
     if key not in built:
         built[key] = _run_template(_run_dir(factory) / "goh-templates", key, build)
+        _known_seals(built[key])
     return built[key]
 
 
@@ -101,7 +165,7 @@ def _run_dir(factory) -> Path:
     return base.parent if os.environ.get("PYTEST_XDIST_WORKER") else base
 
 
-def _run_template(parent: Path, key: str, build) -> Path:
+def _run_template(parent: Path, key: str, build, keep_quiet: bool = True) -> Path:
     """ONE BUILD PER RUN, NOT PER WORKER (GOH.FSCHURN2, 2026-11-20). Each of a run's 12 workers
     built every template it met (`template-goh0` under its own basetemp): ~350 copied files, a
     `git add` of as many loose objects, and their 256 fan-out dirs, twelve times -- the largest
@@ -118,9 +182,9 @@ def _run_template(parent: Path, key: str, build) -> Path:
             if not done.is_dir():
                 stage = parent / f"{key}.build-{os.getpid()}"
                 if stage.exists():
-                    shutil.rmtree(stage)
+                    unsealed_rmtree(stage)
                 stage.mkdir()
-                _build_quietly(build, stage / key)
+                _build_quietly(build, stage / key, keep_quiet)
                 os.rename(stage, done)
         finally:
             os.close(fd)
@@ -183,15 +247,17 @@ def _keep_quiet(tree: Path) -> None:
             fh.write(_QUIET_GIT_CONFIG)
 
 
-def _build_quietly(build, tree: Path) -> None:
+def _build_quietly(build, tree: Path, keep_quiet: bool = True) -> None:
     """Build the template `tree` with background git off, make it quiescent and keep it so in every
     repository it holds, then refuse it if it points at its own directory."""
     with quiet_git():
         build(tree)
     _wait_quiescent(tree)
-    _keep_quiet(tree)
+    if keep_quiet:
+        _keep_quiet(tree)
     _pack(tree)
     _refuse_self_reference(tree)
+    _seal(tree)
 
 
 def _repositories(tree: Path) -> Iterator[Path]:
@@ -249,15 +315,41 @@ def _refuse_self_reference(tree: Path) -> None:
 
 
 _PROCESS_TEMPLATES: dict[str, Path] = {}
+# The run's root inside a pytest session (conftest.py sets it from PYTEST_DEBUG_TEMPROOT): there a
+# `process_template` is the whole RUN's, like `template` (GOH.FSCHURN3). Per process, the
+# `todays-gates` checkout (~2,000 files) was built and removed by each of 12 workers: 2.3% of a
+# whole run's file events. Outside a session (a helper's own subprocess) it stays per process.
+_RUN_ROOT: list[Path] = []
 
 
-def process_template(key: str, build) -> Path:
+def run_wide(root: Path) -> None:
+    """Every later `process_template` in this process builds into `root`, once per run."""
+    _RUN_ROOT[:] = [Path(root)]
+
+
+def run_head_cache() -> Path:
+    """A HEAD-export cache (GOH_HEAD_CACHE) shared by the whole run, for a test that runs gates as a
+    consumer from a checkout it never commits to (GOH.FSCHURN3). An export is named for its commit,
+    renamed into place whole and never written again (gates/_from_head.sh), so the clones of one
+    run-wide template share ONE export instead of each writing ~1,650 files and removing them. A
+    test of the cache itself (its pruning, its build) keeps a private one."""
+    return Path(os.environ["PYTEST_DEBUG_TEMPROOT"]) / "goh-head-cache"
+
+
+def process_template(key: str, build, keep_quiet: bool = True) -> Path:
     """`template` for a helper called with only a path (no `tmp_path_factory`): built once per
-    process in a temp dir of its own, removed when the process exits."""
+    run under the session's root (`run_wide`), else once per process in a temp dir of its own,
+    removed when the process exits. `keep_quiet=False` leaves the repositories' config as `build`
+    wrote it (no maintenance-off keys), for a template that must be what git itself makes."""
+    if key not in _PROCESS_TEMPLATES and _RUN_ROOT:
+        _PROCESS_TEMPLATES[key] = _run_template(
+            _RUN_ROOT[0] / "goh-process-templates", key, build, keep_quiet
+        )
+        _known_seals(_PROCESS_TEMPLATES[key])
     if key not in _PROCESS_TEMPLATES:
         home = Path(reused_mkdtemp("goh-template-" + key + "."))
-        atexit.register(shutil.rmtree, home, True)
+        atexit.register(unsealed_rmtree, home)
         tree = home / key
-        _build_quietly(build, tree)
+        _build_quietly(build, tree, keep_quiet)
         _PROCESS_TEMPLATES[key] = tree
     return _PROCESS_TEMPLATES[key]

@@ -18,6 +18,8 @@ import os
 import sys
 import tempfile
 
+from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.environ.get("GOH_DIR", os.path.expanduser("~/Projects/gates_of_heck")))
 
@@ -42,7 +44,7 @@ from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
 def probe():
     """A blind gate, a guarded one, an excused one, and the stale excuse."""
     bad = 0
-    with tempfile.TemporaryDirectory(prefix="goh-empty-scope.") as td:
+    with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-empty-scope.") as td:
         root = os.path.join(td, "repo")
         tools = os.path.join(root, "tools")
         os.makedirs(os.path.join(root, "Sources", "Deep"))
@@ -103,7 +105,7 @@ def probe():
         )
 
         names = gate_names(tools)
-        with tempfile.TemporaryDirectory(prefix="goh-empty-scope.") as work:
+        with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-empty-scope.") as work:
             skeleton = build_skeleton(root, tools, os.path.join(work, "s"))
             blind, _unrunnable = sweep(skeleton, "tools", names)
 
@@ -235,7 +237,7 @@ def probe():
             "sys.exit(0)\n",
         )
         try:
-            with tempfile.TemporaryDirectory(prefix="goh-empty-scope.") as work:
+            with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-empty-scope.") as work:
                 demanding_skeleton = build_skeleton(root, tools, os.path.join(work, "s"))
                 d_blind, d_unrunnable = sweep(demanding_skeleton, "tools", ["check_demanding.py"])
             for label, want, got in [

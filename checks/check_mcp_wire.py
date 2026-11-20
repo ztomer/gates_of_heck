@@ -87,6 +87,8 @@ import tempfile
 import threading
 import time
 
+from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import foreign_repo_env
 from _mcp_build import DEFAULT_BUILD_TIMEOUT, build, build_command, server_env
@@ -164,7 +166,7 @@ class Session:
         self.command = command
         self.deadline = time.monotonic() + timeout
         self.timeout = timeout
-        self.scratch = tempfile.mkdtemp(prefix="goh-mcp-wire.")
+        self.scratch = tempfile.mkdtemp(dir=goh_tmp(), prefix="goh-mcp-wire.")
         self.stderr = open(os.path.join(self.scratch, ".stderr"), "w+b")  # noqa: SIM115
         env = server_env(os.path.join(self.scratch, "home"))
         os.mkdir(env["GOH_MCP_SCRATCH"])

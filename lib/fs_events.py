@@ -118,6 +118,9 @@ class Tally:
         self.by_creator: Counter[str] = Counter()
         self.dirs_by_creator: Counter[str] = Counter()
         self.per_test: Counter[str] = Counter()
+        # A test's events inside a HEAD export it made (`<its HOME>/.cache/goh/head/<sha>`,
+        # gates/_from_head.sh): a child spawned without GOH_LIVE copies the whole goh tree.
+        self.head_export: Counter[str] = Counter()
         self.lock = threading.Lock()
 
     def add(self, path: str, flags: int) -> None:
@@ -130,6 +133,8 @@ class Tally:
             self.by_creator[who] += 1
             if "/pytest-N/test_" in who:
                 self.per_test[who.rsplit("/", 1)[1]] += 1
+                if "/.cache/goh/head/" in path:
+                    self.head_export[who.rsplit("/", 1)[1]] += 1
             if flags & ITEM_CREATED and flags & ITEM_IS_DIR:
                 self.dirs_created += 1
                 self.dirs_by_creator[who] += 1
@@ -153,6 +158,8 @@ class Tally:
             "top_creators": shares(self.by_creator),
             "top_dir_creators": shares(self.dirs_by_creator),
             "per_test": dict(self.per_test.most_common(top)),
+            "head_export_events": sum(self.head_export.values()),
+            "head_export_per_test": dict(self.head_export.most_common(top)),
         }
 
 

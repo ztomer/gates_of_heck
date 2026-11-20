@@ -45,6 +45,48 @@ def _write_everything(r: Path) -> None:
     (r / ".git" / "hooks" / "pre-commit").write_text("#!/bin/sh\nexit 0\n")
 
 
+_ID = ("-c", "user.name=t", "-c", "user.email=t@t")
+
+
+@pytest.mark.parametrize("clone", [clone_tree, copytree_clone], ids=["clonefile", "copytree"])
+def test_a_shared_template_refuses_every_git_write_and_its_clone_takes_them(
+    _repo_template: Path, tmp_path: Path, clone
+) -> None:
+    """THE SEAL (GOH.FSCHURN3): a run-wide template is every worker's, so git may only READ it. A
+    plain `git status` there takes no index lock, and each write -- add, commit, config, a branch,
+    a tag, a fetch -- is refused by git itself; a clone of it takes every one of them."""
+    t = _repo_template
+    head = git(t, "rev-parse", "HEAD")
+    write(t.parent / "scratch", "x.txt", "x\n")  # beside the template, never in it
+    status = subprocess.run(
+        ["git", "-C", str(t), "status", "--porcelain"],
+        capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
+    )  # fmt: skip
+    assert status.returncode == 0, status.stderr
+    assert not (t / ".git" / "index.lock").exists()
+    writes = [
+        ("add", "README.md"),
+        (*_ID, "commit", "-q", "--allow-empty", "-m", "a write in the template"),
+        ("config", "goh.mark", "template"),
+        ("branch", "a-template-branch"),
+        ("tag", "a-template-tag"),
+        ("fetch", "-q", str(t), "main"),
+    ]
+    for args in writes:
+        got = subprocess.run(
+            ["git", "-C", str(t), *args],
+            capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
+        )  # fmt: skip
+        assert got.returncode != 0, f"git {' '.join(args)} wrote in the shared template"
+    assert git(t, "rev-parse", "HEAD") == head
+    assert git(t, "--no-optional-locks", "status", "--porcelain") == ""
+    mine = tmp_path / "mine"
+    clone(t, mine)
+    for args in writes:
+        git(mine, *args)
+    assert git(mine, "rev-parse", "HEAD") != head
+
+
 @pytest.mark.parametrize("clone", [clone_tree, copytree_clone], ids=["clonefile", "copytree"])
 def test_two_clones_of_one_template_never_see_each_others_writes(
     _repo_template: Path, tmp_path: Path, clone

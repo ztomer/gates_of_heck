@@ -109,7 +109,7 @@
   "tests/_eval_transport_kit.py": 2,
   "tests/_fake_gh.py": 2,
   "tests/_fake_gh_actions.py": 1,
-  "tests/_fast_git.py": 1,
+  "tests/_fast_git.py": 0,
   "tests/_mcp_scaffold_kit.py": 1,
   "tests/_tree_guard.py": 2,
   "tests/bench_load_fakes.py": 2,

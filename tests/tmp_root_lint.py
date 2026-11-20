@@ -4,7 +4,7 @@ Spotlight indexed goh's pytest temp trees: 94% (337/359) of the paths mds resolv
 (2026-11-17, EST.MDSCRAWL). It never indexes under a directory named `*.noindex`, so every root
 lives under ONE, through one helper: `goh_tmp` (lib/tmp_root.sh) or `goh_tmp()` (lib/tmp_root.py).
 
-What this READS, in every `*.sh` and `*.py` under gates/, lib/ and tools/:
+What this READS, in every `*.sh` and `*.py` under checks/, gates/, lib/ and tools/:
 
   * a shell `mktemp` whose template is in the temp directory -- no template at all, `-t`, or one
     naming `TMPDIR` or `/tmp` -- unless the template is `$(goh_tmp)/...`;
@@ -20,7 +20,7 @@ import ast
 import re
 from pathlib import Path
 
-SCOPE = ("gates", "lib", "tools")
+SCOPE = ("checks", "gates", "lib", "tools")
 HELPER = "$(goh_tmp)"
 MAKERS = {"mkdtemp", "mkstemp", "TemporaryDirectory", "NamedTemporaryFile"}
 CALL = re.compile(r"(?:^|[\s(`;|&])mktemp(?=[\s)`;]|$)(.*)")

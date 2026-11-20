@@ -22,7 +22,6 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 
 import contextlib
 import io
-import json
 import os
 import subprocess
 import sys
@@ -31,8 +30,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import check_display_seam
 from _display_frames import FRAMES_CASES
+from _display_seam_fixtures import case_tree, shared_cases, write_tree
 from _display_seam_tiers import TIER_CASES
 from _gitutil import foreign_repo_env, scratch_git
+from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
 
 SEAM = "func present() { w.orderFrontRegardless() }\n"
 # A file that is none of the gate's business, present in every fixture so that "clean" means
@@ -364,21 +365,12 @@ def _git(root, *args):
     ).returncode
 
 
+def _tree(files, policy):
+    return case_tree(files, policy, SEAM, BASE)
+
+
 def _build(root, files, policy, through_git):
-    # The seam file is present in every fixture unless a case says otherwise, because the policy
-    # names it and a policy naming a seam that does not exist is exit 2 — which would mask the
-    # rule the case is about.
-    files = {"Core/DisplayPolicy.swift": SEAM, **files}
-    for rel, body in files.items():
-        path = os.path.join(root, rel)
-        os.makedirs(os.path.dirname(path) or root, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(body)
-    merged = dict(BASE)
-    merged.update(policy)
-    with open(os.path.join(root, "policy.json"), "w", encoding="utf-8") as handle:
-        json.dump(merged, handle)
-    written = [*files, "policy.json"]
+    written = write_tree(root, _tree(files, policy))
     # A COPY of one freshly initialised `.git`, and nothing else. The probe drives FULL mode, which
     # lists the worktree (`ls-files --cached --others`), so an index is not what is under test, and
     # no case commits, so no identity is read. Measured 2026-10-05: the git spawns were the whole
@@ -432,13 +424,19 @@ def probe():
     from tui.lib import counted, err, ok
 
     bad = 0
-    with tempfile.TemporaryDirectory(prefix="goh-display-seam.") as td:
+    shared, listed = shared_cases(CASES, CONFIG_CASES, QUIET, SEAM, BASE)
+    with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-display-seam.") as td:
         for n, (label, files, policy, want) in enumerate(CASES):
-            # A fresh directory per case. Reusing one made a case see the PREVIOUS case's files,
-            # which is a fixture that cannot disagree with anything -- the exact shape R3 names.
-            root = os.path.join(td, f"case{n:02d}")
-            through_git = n == 0  # the one case that proves the real listing (_listed_directly)
-            written = _build(root, files, policy, through_git)
+            # A directory per case. Reusing one made a case see the PREVIOUS case's files, which
+            # is a fixture that cannot disagree with anything -- the exact shape R3 names. Only
+            # case 0, the one that proves the real listing through git (_listed_directly), is
+            # written fresh; the rest are the shared, read-only `shared_cases`.
+            through_git = n == 0
+            if through_git:
+                root = os.path.join(td, f"case{n:02d}")
+                written = _build(root, files, policy, through_git)
+            else:
+                root, written = os.path.join(shared, f"case{n:02d}"), listed[f"case{n:02d}"]
             with contextlib.nullcontext() if through_git else _listed_directly(written):
                 code = _drive(root, ["--policy", "policy.json"])
             if code == want:
@@ -446,14 +444,12 @@ def probe():
             else:
                 err(f"probe: {label} — wanted exit {want}, got {code}")
                 bad += 1
-        for n, (label, policy) in enumerate(CONFIG_CASES):
-            root = os.path.join(td, f"cfg{n:02d}")
-            # TWO clean files, so that with a config rule dropped the run still has something to
-            # examine. One file, when that file is the excluded one, made the zero-scan refusal
-            # produce the same exit 2 the case was asserting -- two rules, one verdict.
-            written = _build(
-                root, {"Core/quiet.swift": QUIET, "UI/win.swift": QUIET}, policy, False
-            )
+        for n, (label, _policy) in enumerate(CONFIG_CASES):
+            # TWO clean files (`shared_cases`), so that with a config rule dropped the run still has
+            # something to examine. One file, when that file is the excluded one, made the
+            # zero-scan refusal produce the same exit 2 the case was asserting -- two rules, one
+            # verdict.
+            root, written = os.path.join(shared, f"cfg{n:02d}"), listed[f"cfg{n:02d}"]
             with _listed_directly(written):
                 refused = _drive(root, ["--policy", "policy.json"]) == 2
             if refused:

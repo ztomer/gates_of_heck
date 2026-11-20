@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import as_fixture
+from _tree_clone import run_head_cache
 from conftest import EMOJI_SMILE, REPO_ROOT, hermetic_env, native_goh_path
 from test_gate_environment import _clean_checkout_of_todays_gates
 
@@ -116,7 +117,7 @@ def _export_env(tmp_path: Path, gates: Path) -> dict:
     env = hermetic_env(
         GOH_DIR=str(gates),
         GOH_BIN=str(native_goh_path()),
-        GOH_HEAD_CACHE=str(tmp_path / "head-cache"),
+        GOH_HEAD_CACHE=str(run_head_cache()),  # `gates` is never committed to: one export a run
     )
     for name in ("GOH_LIVE", "GATES_OF_HECK_SUITE", "PYTEST_CURRENT_TEST"):
         env.pop(name, None)

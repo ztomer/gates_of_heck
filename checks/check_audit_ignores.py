@@ -54,6 +54,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
+
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 import advisory_db
 import estate_registry
@@ -103,7 +105,10 @@ def firing(lockfile: str, fetch: bool) -> set[str]:
     """Every advisory id the lockfile triggers, nothing ignored: the audit runs from a scratch
     directory, where no `.cargo/audit.toml` is read."""
     lockfile = os.path.abspath(lockfile)
-    with tempfile.TemporaryDirectory(prefix="goh-audit.") as scratch, advisory_db.held(fetch) as db:
+    with (
+        tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-audit.") as scratch,
+        advisory_db.held(fetch) as db,
+    ):
         r = advisory_db.bounded(  # the audit's own ceilings (GOH.AUDITSPIN)
             ["cargo", "audit", "--json", *advisory_db.audit_args(db, fetch), "--file", lockfile],
             fetch,

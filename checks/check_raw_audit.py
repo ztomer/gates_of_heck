@@ -49,6 +49,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "lib"))
@@ -220,7 +222,7 @@ def estate(top: Path) -> int:
 
 def probe() -> int:
     """A planted raw audit step is red; the same step through the wrapper is green."""
-    with tempfile.TemporaryDirectory(prefix="goh-raw-audit-probe.") as tmp:
+    with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-raw-audit-probe.") as tmp:
         root = Path(tmp) / "probe"
         root.mkdir()
         subprocess.run(

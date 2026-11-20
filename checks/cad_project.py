@@ -27,6 +27,7 @@ import tempfile
 import zipfile
 
 from _gitutil import foreign_repo_env
+from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
 from cad_supports import add_enforcers
 
 BBS = "/Applications/BambuStudio.app/Contents/MacOS/BambuStudio"
@@ -126,7 +127,7 @@ def build(lay: dict, root: str, out_dir: str):
     expect = lay.get("expect", {})
     fil_over = lay.get("filament_overrides", {})
     profiles = profiles_path(lay)
-    tmp = tempfile.mkdtemp(prefix="goh-cad-")
+    tmp = tempfile.mkdtemp(dir=goh_tmp(), prefix="goh-cad-")
     mach = flatten(profiles, "machine", lay["machine"], os.path.join(tmp, "machine.json"))
     flatten(profiles, "process", lay["process"], os.path.join(tmp, "process.json"))
     flatten(profiles, "filament", lay["filament"], os.path.join(tmp, "filament.json"), fil_over)

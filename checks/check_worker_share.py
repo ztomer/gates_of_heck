@@ -55,6 +55,8 @@ import tempfile
 from collections import Counter
 from pathlib import Path
 
+from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "lib"))
@@ -219,7 +221,7 @@ def probe() -> int:
     """Each planted file alone in a fresh repo: the verdict it must reach."""
     wrong = 0
     for rel, body, want in PROBE:
-        with tempfile.TemporaryDirectory(prefix="goh-worker-share-") as d:
+        with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-worker-share-") as d:
             repo = Path(d)
             subprocess.run(
                 ["git", "init", "-q", d],

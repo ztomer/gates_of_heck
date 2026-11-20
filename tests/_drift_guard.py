@@ -213,7 +213,11 @@ if _REAL_CARGO:
             '  [ "$d" = / ] && return 1; d="$(dirname "$d")"; done; }\n'
             f'case "$(cd "$dir" 2>/dev/null && pwd -P)/" in "{_ROOT.resolve()}/"*) ;; *) '
             '[ -n "${CARGO_BUILD_BUILD_DIR:-}" ] || own_build_dir "$(cd "$dir" 2>/dev/null && pwd -P)" '
-            f"|| export CARGO_BUILD_BUILD_DIR='{BUILD_DIR}/{{workspace-path-hash}}' ;; esac\n"
+            # ...and builds it whole, never incrementally (GOH.FSCHURN3): a throwaway is built once,
+            # so an incremental session dir is only files to make and remove (and sccache caches
+            # no incremental build).
+            f"|| export CARGO_BUILD_BUILD_DIR='{BUILD_DIR}/{{workspace-path-hash}}' "
+            '"CARGO_INCREMENTAL=${CARGO_INCREMENTAL:-0}" ;; esac\n'
             'case " $* " in *" build "*|*" test "*|*" run "*|*" install "*) ;; '
             f'*) exec "{_REAL_CARGO}" "$@" ;; esac\n'
             f'[ -n "${{DRIFT_BUILD_OK:-}}" ] && exec "{_REAL_CARGO}" "$@"\n'

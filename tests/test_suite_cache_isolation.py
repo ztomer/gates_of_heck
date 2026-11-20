@@ -187,3 +187,18 @@ def test_the_suite_home_reaches_the_estate_but_never_the_live_loop(tmp_path, mon
     assert (home / "Projects/games/g").is_dir()
     assert not os.path.lexists(home / "Projects/.loop")
     assert not (Path.home() / "Projects" / ".loop").exists(), "this suite's own home reaches it"
+
+
+def test_a_nested_home_links_an_already_hidden_projects_whole(tmp_path, monkeypatch) -> None:
+    """GOH.FSCHURN3: a session entering afresh under the suite's home furnished its own `Projects`
+    as ~45 links again, though that home's `Projects` already hides the loop: one link reaches the
+    same entries and still never the loop."""
+    import suite_home
+
+    real = tmp_path / "suite-home"
+    (real / "Projects/repo").mkdir(parents=True)
+    monkeypatch.setenv(suite_home.MARKER, str(real))
+    home = suite_home.furnish(tmp_path / "nested", suite_home.READ)
+    assert (home / "Projects").is_symlink()
+    assert (home / "Projects/repo").resolve() == (real / "Projects/repo").resolve()
+    assert not os.path.lexists(home / "Projects/.loop")
