@@ -1,6 +1,6 @@
 """Whether a land pre-step verdict on a commit holds for the tip it rebased to (GOH.PRELANDTWICE).
 
-    pre_reuse.py --root WT --judged SHA --tip SHA --base SHA
+    pre_reuse.py --root WT --judged SHA --tip SHA --base SHA [--record JUDGED_RECORD]
     pre_reuse.py --root WT --suite RECORD --base SHA   # the gate's suite (GOH.SUITEONCE, `suite`)
 
 WHY. GOH.SPANFORGIVE's enqueue pre-step went green in 443 s at f31e3492; the lander then ran the
@@ -19,6 +19,14 @@ carry (tests/_land_verdicts.py) use. The answer, one line of why first, then a n
                chooses the set, the pytest entry, the structural gates and all they import,
                source or run, read from the tip's sources), a file pytest loads before every
                test, no reads table in the tree, or a diff git cannot give
+
+THE SELECTION'S OWN CODE (GOH.PRESTEPSELFMOVE): a move to what only the selection reaches
+(`selector_code`: tools/affected_tests.py and its imports that no other pre-step root reaches but
+through it) asks the TIP's selector for the tip's set, seconds, against the set the verdict judged
+(the record's `chosen`, `stamp`). Within it, the move is judged as any moved path is, by its
+readers; a test it adds, a set not recorded, or a selector that fails runs the whole set again,
+and the why names which. GOH.LANEPRESTEP's land ran its set again, 402 s, for lib/binary_runners.py
+(41f73575, a cache: the same set).
 
 A merged file -- one main moved and the branch changes too -- is judged as any moved path is, by
 the tests that read it (GOH.PRESTEPMOVED). The tree readers are not re-run here: each file the tip
@@ -61,6 +69,7 @@ REUSE, RERUN, NARROW = 0, 1, 3
 PRE_CODE = (".gatesrc", "pyproject.toml")
 PRE_ROOTS = ("tools/affected_tests.py", "tools/pytest.sh", "gates/structural.sh")
 PRE_CHECKS = "checks/check_"  # the structural binary runs these by name (crates/goh steps)
+SELECTOR = "tools/affected_tests.py"  # what chooses the set (GOH.PRESTEPSELFMOVE)
 
 
 def _diff(root: Path, a: str, b: str) -> list[str] | None:
@@ -97,8 +106,47 @@ def _table(root: Path):
     return mod if hasattr(mod, "readers") else None
 
 
-def decide(root: Path, judged: str, tip: str, base: str) -> tuple[int, str, list[str]]:
-    """(REUSE|NARROW|RERUN, why, the nodes NARROW runs)."""
+def judged_set(record: Path | None) -> list[str] | None:
+    """The set a kept verdict's record says it judged (`chosen`, `stamp`); None: not recorded."""
+    try:
+        got = json.loads(record.read_text(encoding="utf-8")).get("chosen") if record else None
+    except (OSError, ValueError, AttributeError):
+        return None
+    ok = isinstance(got, list) and all(isinstance(n, str) for n in got)
+    return got if ok else None
+
+
+def _plural(n: int, what: str) -> str:
+    return f"{n} {what}" + ("s" if n != 1 else "")
+
+
+def within(root: Path, table, tip: str, base: str, judged: list[str] | None) -> tuple[bool, str]:
+    """(the tip's selector chooses no test the verdict did not judge, why) (GOH.PRESTEPSELFMOVE):
+    the tip's `affected` over its diff from main, each node judged by itself or its whole file."""
+    if judged is None:
+        return False, "the set the verdict judged is not recorded (its record has no `chosen`)"
+    if not hasattr(table, "affected"):
+        return False, f"the tip's {SELECTOR} chooses no set (no `affected`)"
+    mb = _git(root, "merge-base", base, tip)
+    changed = _diff(root, mb, tip) if mb else None
+    if changed is None:
+        return False, f"git cannot diff main {base[:8]}...{tip[:8]}"
+    try:
+        chosen = list(table.affected(root, changed))
+    except Exception as e:  # noqa: BLE001 -- a selector that fails chose nothing to compare
+        return False, f"the tip's selector failed ({e.__class__.__name__}: {e})"
+    held = set(judged)
+    if added := [n for n in chosen if n not in held and n.split("::")[0] not in held]:
+        more = f" (+{len(added) - 5} more)" if len(added) > 5 else ""
+        return False, (f"the tip's set adds {_plural(len(added), 'test')} the verdict did not "
+                       f"judge: {' '.join(added[:5])}{more}")  # fmt: skip
+    return True, f"the tip's set ({_plural(len(chosen), 'test')}) is within the {len(held)} judged"
+
+
+def decide(
+    root: Path, judged: str, tip: str, base: str, record: Path | None = None
+) -> tuple[int, str, list[str]]:
+    """(REUSE|NARROW|RERUN, why, the nodes NARROW runs); RECORD is the verdict's (`judged_set`)."""
     moved = _diff(root, judged, tip)
     if moved is None:
         return RERUN, f"git cannot diff {judged[:8]}..{tip[:8]}", []
@@ -122,20 +170,27 @@ def decide(root: Path, judged: str, tip: str, base: str) -> tuple[int, str, list
     if table is None:
         return RERUN, "no reads table (tools/affected_tests.py readers) in the tree", []
     graph = table.Closure(root)  # built once: the pre-step's code and pytest's base both read it
+    lead, held = "", set()
     if code := pre_step_code(root, table, moved, graph):
-        return RERUN, f"{code[0]} moved: the pre-step's own code", []
+        sel = selector_code(root, table, code, graph)
+        if runner := [p for p in code if p not in sel]:
+            return RERUN, f"{runner[0]} moved: the pre-step's own code", []
+        same, why = within(root, table, tip, base, judged_set(record))
+        if not same:
+            return RERUN, f"{code[0]} moved: the pre-step's own code, and {why}", []
+        lead, held = f"{code[0]} moved: the selection's own code, and {why}; ", set(code)
     if wide := [p for p in moved if Path(p).name == "conftest.py"]:
         return RERUN, f"{wide[0]} moved: pytest loads it before every test", []
-    if wide := sorted(set(moved) & graph.base()):
+    if wide := sorted(set(moved) & (graph.base() - only_via_selector(graph, held))):
         return RERUN, f"{wide[0]} moved: pytest loads it before every test", []
     read = table.readers(root, moved)
     if read:
         return (
             NARROW,
-            f"{n}, read by {len(read)} test file{'s' if len(read) != 1 else ''}: {shown}",
+            f"{lead}{n}, read by {len(read)} test file{'s' if len(read) != 1 else ''}: {shown}",
             sorted(read),
         )
-    return REUSE, f"{n}, none read by a test: {shown}", []
+    return REUSE, f"{lead}{n}, none read by a test: {shown}", []
 
 
 def pre_step_code(root: Path, table, moved: list[str], graph=None) -> list[str]:
@@ -146,15 +201,52 @@ def pre_step_code(root: Path, table, moved: list[str], graph=None) -> list[str]:
     adds or drops is a change to a file the graph reaches, so the tip's graph alone misses none.
     A table whose graph cannot reach answers with the roots alone."""
     graph = table.Closure(root) if graph is None else graph
-    texts = getattr(graph, "texts", {})
-    roots = [r for r in PRE_ROOTS if r in texts]
-    roots += sorted(p for p in texts if p.startswith(PRE_CHECKS) and p.endswith(".py"))
+    roots = _roots(graph)
     own = {*PRE_CODE, *PRE_ROOTS, *roots}
     for rel in roots if hasattr(graph, "reach") else ():
         own.update(graph.reach(rel, skip=set())[0])
-    builds = getattr(getattr(table, "binary_runners", None), "build_inputs_in", None)
-    built = set(builds(root, moved)) if builds else set()
+    built = _built(root, table, moved)
     return [p for p in moved if p in own or p in built]
+
+
+def selector_code(root: Path, table, moved: list[str], graph=None) -> list[str]:
+    """Each of `moved` that only the selection reaches (GOH.PRESTEPSELFMOVE): SELECTOR and what it
+    imports, less what PRE_CODE, the other roots (each reached without passing through SELECTOR:
+    tools/pytest.sh runs lib/pre_reuse.py, whose table is the gate's suite's, judged on the tip)
+    and the binary's build inputs hold. A move there changes the set, if anything: `within` asks.
+    A table whose graph cannot reach has no selection's own code: every move to it reruns."""
+    graph = table.Closure(root) if graph is None else graph
+    if SELECTOR not in getattr(graph, "texts", {}) or not hasattr(graph, "reach"):
+        return []
+    sel = {SELECTOR, *graph.reach(SELECTOR, skip=set())[0]}
+    runner = {*PRE_CODE, *_built(root, table, moved)}
+    for rel in (r for r in _roots(graph) if r != SELECTOR):
+        runner |= {rel, *graph.reach(rel, skip={SELECTOR})[0]}
+    return [p for p in moved if p in sel and p not in runner]
+
+
+def only_via_selector(graph, held: set[str]) -> set[str]:
+    """Those of HELD (the selection's own code, its tip set within the judged one) that pytest's
+    base holds only through SELECTOR (GOH.PRESTEPSELFMOVE: lib/binary_runners.py's one chain from
+    tests/conftest.py is tests/_land_verdicts.py, which imports tools/affected_tests.py inside
+    `choose`, the gate's carry). Such a move is judged as the lane's own pre-step judges a change
+    there, by its readers; the gate's carry treats it as loaded before every test, so the full gate
+    on the tip carries nothing across it. What tests/conftest.py reaches another way stays wide."""
+    if not held or not hasattr(graph, "reach") or "tests/conftest.py" not in graph.texts:
+        return set()
+    direct = graph.reach("tests/conftest.py", {SELECTOR}, runs=False)[0]
+    return {p for p in held if p not in direct and p != "tests/conftest.py"}
+
+
+def _roots(graph) -> list[str]:
+    texts = getattr(graph, "texts", {})
+    roots = [r for r in PRE_ROOTS if r in texts]
+    return roots + sorted(p for p in texts if p.startswith(PRE_CHECKS) and p.endswith(".py"))
+
+
+def _built(root: Path, table, moved: list[str]) -> set[str]:
+    builds = getattr(getattr(table, "binary_runners", None), "build_inputs_in", None)
+    return set(builds(root, moved)) if builds else set()
 
 
 def _kit(name: str, sub: str):
@@ -183,9 +275,10 @@ def base_sha(root: Path, base: str) -> str | None:
     return out.stdout.strip() or None
 
 
-def stamp(record: str, base: str | None) -> None:
+def stamp(record: str, base: str | None, chosen: list[str] | None = None) -> None:
     """The record says it is the WHOLE selection the diff from BASE chose (GOH.SUITEONCE): the gate
-    of the tree it judged takes it for the suite only then (lib/pre_reuse.py `suite`)."""
+    of the tree it judged takes it for the suite only then (lib/pre_reuse.py `suite`). With CHOSEN,
+    it names that set (`chosen`), which a move to the selection's own code is held to (`within`)."""
     if not base or not record or record == os.devnull:
         return
     try:
@@ -193,7 +286,8 @@ def stamp(record: str, base: str | None) -> None:
     except (OSError, ValueError):
         return
     if isinstance(rec, dict):
-        Path(record).write_text(json.dumps({**rec, "base": base, "selection": "affected"}))
+        named = {"chosen": sorted(chosen)} if chosen is not None else {}
+        Path(record).write_text(json.dumps({**rec, "base": base, "selection": "affected", **named}))
 
 
 def suite(root: Path, record: Path, base: str) -> tuple[bool, str, str]:
@@ -270,6 +364,7 @@ def main(argv: list[str] | None = None) -> int:
         ap.add_argument(flag)
     ap.add_argument("--base", required=True)
     ap.add_argument("--root", default=".")
+    ap.add_argument("--record", help="the judged verdict's record: the set it judged (`chosen`)")
     args = ap.parse_args(argv)
     if args.suite:
         ok, why, vid = suite(Path(args.root).resolve(), Path(args.suite), args.base)
@@ -279,7 +374,8 @@ def main(argv: list[str] | None = None) -> int:
         return REUSE if ok else RERUN
     if not (args.judged and args.tip):
         ap.error("--judged and --tip are required without --suite")
-    code, why, nodes = decide(Path(args.root).resolve(), args.judged, args.tip, args.base)
+    record = Path(args.record) if args.record else None
+    code, why, nodes = decide(Path(args.root).resolve(), args.judged, args.tip, args.base, record)
     print(why)
     for n in nodes:
         print(n)

@@ -207,15 +207,16 @@ def whole(root: Path, chosen: list[str], base: str | None, is_whole: bool,
         return judged(root, chosen, base, work)
 
 
-def _hand(root: Path, rec: dict, base: str | None) -> None:
-    """The kept record, written where the caller's run would have written its own."""
+def _hand(root: Path, rec: dict, base: str | None, chosen: list[str]) -> None:
+    """The kept record, written where the caller's run would have written its own, naming the set
+    its key's `selection` is the digest of (lib/pre_reuse.py `stamp`)."""
     dest = os.environ.get(RECORD, "")
     if dest and dest != os.devnull:
         kept, head = rec["record"], _lib("reuse")._git(root, "rev-parse", "HEAD")
         if head and kept.get("sha") != head:  # a recommit of the tree it judged: the checkout's
             kept = {**kept, "sha": head, "judged_on": kept.get("sha")}
         Path(dest).write_text(json.dumps(kept))
-        _lib("pre_reuse").stamp(dest, base)
+        _lib("pre_reuse").stamp(dest, base, chosen)
 
 
 def keep(root: Path, key: dict, took: float) -> bool:
@@ -257,7 +258,7 @@ def judged(root: Path, chosen: list[str], base: str | None, work: Callable[[], i
         on = str(rec["record"].get("sha", ""))[:8]
         use = _lib("reuse_audit").use("affected", key)
         if use == "reuse":
-            _hand(root, rec, base)
+            _hand(root, rec, base, chosen)
             _say("ok", TOOK.format(on=on, by=rec.get("by"), took=rec.get("took_s"),
                                    tests=len(rec["record"]["passed"])))  # fmt: skip
             return 0

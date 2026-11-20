@@ -396,7 +396,7 @@ def run(root: Path, changed: list[str], chosen: dict[str, str], base: str | None
             Path(record).replace(first)  # the rest's run writes its own; _merge joins them
     if first and first.is_file():
         _merge(Path(record), first)
-    pre_reuse.stamp(record, base)
+    pre_reuse.stamp(record, base, list(chosen))
     return 0
 
 

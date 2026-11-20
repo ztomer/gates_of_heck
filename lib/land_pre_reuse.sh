@@ -44,8 +44,10 @@ land_pre_again() {
         land_pre
         return
     fi
+    # The judged verdict's record names the set it judged: a move to the selection's own code is
+    # held to it (GOH.PRESTEPSELFMOVE, lib/pre_reuse.py `within`).
     why="$("$GOH_PY" "$GOH/lib/pre_reuse.py" --root "$here" --judged "$pre_judged" --tip "$tip" \
-        --base "$(git -C "$main" rev-parse HEAD)" </dev/null 7>&- 8<&-)" || rc=$?
+        --base "$(git -C "$main" rev-parse HEAD)" ${verdicts:+--record "$verdicts"} </dev/null 7>&- 8<&-)" || rc=$?
     why="${why%%$'\n'*}"   # the first line says why; tools/affected_tests.py chooses the nodes
     case $rc in
         0)  pre_reused="${pre_judged:0:12} whole"

@@ -15,6 +15,7 @@ by anything; its graph is the kit's own (lib/test_closure.py), so what the fixtu
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -36,9 +37,16 @@ try:
 except ImportError:
     pass
 READ = {{"read.txt": "tests/test_r.py", "gates/push_gate.sh": "tests/test_push.py",
-        "checks/cad_bambu.py": "tests/test_cad.py"}}
+        "checks/cad_bambu.py": "tests/test_cad.py", "lib/sel_helper.py": "tests/test_sel.py"}}
 def readers(root, changed, tests=None):
     return {{READ[p]: "reads " + p for p in changed if p in READ}}
+def affected(root, changed):  # THE SET: a tree reader's node, the readers, what sel_helper names
+    import pathlib, re
+    got = {{"tests/test_walk.py::test_every_x": "a tree reader", **readers(root, changed)}}
+    sel = pathlib.Path(root, "lib", "sel_helper.py")
+    for name in re.findall(r"tests/test_[a-z_]+[.]py", sel.read_text() if sel.is_file() else ""):
+        got[name] = "lib/sel_helper.py chooses it"
+    return dict(sorted(got.items()))
 if __name__ == "__main__":
     with open({seen!r}, "a") as f:
         f.write("narrow " + " ".join(sys.argv[sys.argv.index("--changed") + 1 :]) + "\\n")
@@ -86,10 +94,15 @@ def _land(
     env: dict,  # noqa: F811
     moves: str | None,
     keep: bool = True,
+    kit: bool = False,
+    record: str = "",
 ):
-    seen = _with_table(repo, tmp_path)
+    seen = _with_table(repo, tmp_path, kit)
     wt, _ = _land_wt(repo, tmp_path)
-    env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": f"echo full >> {seen}"}
+    pre = f"echo full >> {seen}" + (
+        f' && cp {record} "$GOH_LAND_VERDICTS_RECORD"' if record else ""
+    )
+    env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": pre}
     done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.T", "--no-start")
     assert done.returncode == 0, done.stdout + done.stderr
     if moves:
@@ -145,7 +158,12 @@ def test_a_missing_enqueue_verdict_runs_the_whole_set_again(
 
 # The decision itself, on a two-commit history: what moved between the judged tip and the new one.
 def _history(
-    repo: Path, tmp_path: Path, judged_adds: str, main_moves: str, kit: bool = False
+    repo: Path,
+    tmp_path: Path,
+    judged_adds: str,
+    main_moves: str,
+    kit: bool = False,
+    main_text: str = "main's\n",
 ) -> tuple[str, ...]:
     _with_table(repo, tmp_path, kit)
     base0 = git(repo, "rev-parse", "HEAD").strip()
@@ -157,7 +175,7 @@ def _history(
     judged = git(repo, "rev-parse", "HEAD").strip()
     git(repo, "checkout", "-q", base0)
     (repo / main_moves).parent.mkdir(parents=True, exist_ok=True)
-    (repo / main_moves).write_text("main's\n")
+    (repo / main_moves).write_text(main_text)
     git(repo, "add", "-A")
     git(repo, "commit", "-q", "--no-verify", "-m", "main")
     base = git(repo, "rev-parse", "HEAD").strip()
@@ -278,3 +296,105 @@ def test_reading_a_tips_table_leaves_the_callers_modules_its_own(repo, tmp_path)
     assert table is not None and table is not affected_tests and hasattr(table, "READ")
     assert {m: sys.modules.get(m) for m in before} == before
     assert hasattr(sys.modules["affected_tests"], "affected")
+
+
+# THE SELECTION'S OWN CODE (GOH.PRESTEPSELFMOVE): GOH.LANEPRESTEP's land ran its whole set
+# again, 402 s, because main moved lib/binary_runners.py (41f73575, a cache: the same set). What
+# chooses the set is asked again on the tip, against the set the verdict judged (`chosen`).
+JUDGED_SET = ["tests/test_walk.py::test_every_x"]
+
+
+def _judged_set(tmp_path: Path, chosen: list[str] | None) -> Path:
+    record = tmp_path / "judged.json"
+    rec = {"identity": "i", "sha": "s", "passed": {}, "selection": "affected", "base": "b" * 40}
+    record.write_text(json.dumps({**rec, "chosen": chosen} if chosen is not None else rec))
+    return record
+
+
+def test_a_selector_move_whose_tip_set_the_verdict_judged_runs_only_its_readers(repo, tmp_path):
+    judged, tip, base = _history(repo, tmp_path, "lane.txt", "lib/sel_helper.py", kit=True)
+    record = _judged_set(tmp_path, [*JUDGED_SET, "tests/test_lane.py"])
+    code, why, nodes = pre_reuse.decide(repo, judged, tip, base, record)
+    assert (code, nodes) == (pre_reuse.NARROW, ["tests/test_sel.py"]), why
+    assert "lib/sel_helper.py moved: the selection's own code" in why, why
+    assert "the tip's set (1 test) is within the 2 judged" in why, why
+
+
+def test_a_selector_move_that_adds_a_test_runs_the_whole_set_and_names_it(repo, tmp_path):
+    judged, tip, base = _history(repo, tmp_path, "lane.txt", "lib/sel_helper.py", kit=True,
+                                 main_text='EXTRA = "tests/test_extra.py"\n')  # fmt: skip
+    code, why, _ = pre_reuse.decide(repo, judged, tip, base, _judged_set(tmp_path, JUDGED_SET))
+    assert code == pre_reuse.RERUN and "lib/sel_helper.py moved: the pre-step's own code" in why
+    assert "the tip's set adds 1 test the verdict did not judge: tests/test_extra.py" in why, why
+
+
+def test_a_whole_file_the_verdict_judged_only_some_tests_of_is_an_added_test(repo, tmp_path):
+    judged, tip, base = _history(repo, tmp_path, "lane.txt", "lib/sel_helper.py", kit=True,
+                                 main_text='EXTRA = "tests/test_walk.py"\n')  # fmt: skip
+    code, why, _ = pre_reuse.decide(repo, judged, tip, base, _judged_set(tmp_path, JUDGED_SET))
+    assert code == pre_reuse.RERUN and "adds 1 test" in why and "tests/test_walk.py" in why, why
+    record = _judged_set(tmp_path, ["tests/test_walk.py"])  # the whole file judged: its nodes too
+    assert pre_reuse.decide(repo, judged, tip, base, record)[0] == pre_reuse.NARROW
+
+
+@pytest.mark.parametrize("chosen", [None, "no record"])
+def test_a_selector_move_with_no_judged_set_recorded_runs_the_whole_set(repo, tmp_path, chosen):
+    judged, tip, base = _history(repo, tmp_path, "lane.txt", "lib/sel_helper.py", kit=True)
+    record = _judged_set(tmp_path, None) if chosen is None else tmp_path / "absent.json"
+    code, why, _ = pre_reuse.decide(repo, judged, tip, base, record)
+    assert code == pre_reuse.RERUN and "lib/sel_helper.py moved: the pre-step's own code" in why
+    assert "the set the verdict judged is not recorded" in why, why
+
+
+@pytest.mark.parametrize("direct", [False, True])
+def test_a_selector_module_pytest_loads_only_through_the_selector_is_not_wide(
+    repo, tmp_path, direct
+):
+    """LANEPRESTEP's lib/binary_runners.py is in pytest's base only through tests/_land_verdicts.py,
+    which imports tools/affected_tests.py: judged by its readers. One conftest imports is wide."""
+    (repo / "tests").mkdir(exist_ok=True)
+    (repo / "tests" / "conftest.py").write_text("import _lv\n" + ("import sel_helper\n" * direct))
+    (repo / "tests" / "_lv.py").write_text("def choose():\n    import affected_tests\n")
+    judged, tip, base = _history(repo, tmp_path, "lane.txt", "lib/sel_helper.py", kit=True)
+    code, why, nodes = pre_reuse.decide(repo, judged, tip, base, _judged_set(tmp_path, JUDGED_SET))
+    if direct:
+        assert code == pre_reuse.RERUN and "pytest loads it before every test" in why, why
+    else:
+        assert (code, nodes) == (pre_reuse.NARROW, ["tests/test_sel.py"]), why
+
+
+def test_a_runner_move_reruns_whatever_the_tip_set(repo, tmp_path):
+    """tools/pytest.sh runs the set: the same set under another runner is another verdict."""
+    judged, tip, base = _history(repo, tmp_path, "lane.txt", "tools/pytest.sh", kit=True)
+    code, why, _ = pre_reuse.decide(repo, judged, tip, base, _judged_set(tmp_path, JUDGED_SET))
+    assert code == pre_reuse.RERUN and "tools/pytest.sh moved: the pre-step's own code" in why, why
+
+
+def test_the_land_hands_the_judged_set_to_the_decision(
+    repo: Path,
+    tmp_path: Path,
+    env: dict,  # noqa: F811 -- the fixture imported above
+) -> None:
+    """tools/land.sh passes the kept record (lib/land_pre_reuse.sh `--record`): a selector move
+    whose tip set the enqueue judged runs the moved file's readers, not the set."""
+    record = _judged_set(tmp_path, JUDGED_SET)
+    seen, log = _land(repo, tmp_path, env, "lib/sel_helper.py", kit=True, record=str(record))
+    assert seen == ["full", "narrow lib/sel_helper.py"], log
+    assert "the selection's own code" in log, log
+
+
+def test_the_record_names_the_set_it_judged(tmp_path):
+    record = tmp_path / "rec.json"
+    record.write_text(json.dumps({"passed": {}}))
+    pre_reuse.stamp(str(record), "b" * 40, ["tests/test_b.py", "tests/test_a.py::t"])
+    got = json.loads(record.read_text())
+    assert got["chosen"] == ["tests/test_a.py::t", "tests/test_b.py"], got
+
+
+def test_the_real_selections_own_code_is_what_only_the_selection_reaches():
+    """goh's own tree: lib/binary_runners.py (LANEPRESTEP's move) is the selection's alone; the
+    pytest entry and lib/pre_reuse.py, which tools/pytest.sh runs, are not."""
+    table = pre_reuse._table(REPO_ROOT)
+    moved = ["lib/binary_runners.py", "tools/affected_tests.py", "lib/test_closure.py",
+             "tools/pytest.sh", "lib/pre_reuse.py", "gates/_common.sh"]  # fmt: skip
+    assert pre_reuse.selector_code(REPO_ROOT, table, moved) == moved[:3]
