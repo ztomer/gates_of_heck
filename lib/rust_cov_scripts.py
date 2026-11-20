@@ -73,6 +73,7 @@ DECLARED = {
 RUNS_BY_NAME = {
     "gates/required_judge.py": ("gates/python.sh",),  # `bash HERE/python.sh -V`
     "lib/source_closure.py": ("checks/_prose_mask.py",),  # spec_from_file_location
+    "checks/_goh_tmp.py": ("lib/tmp_root.py",),  # spec_from_file_location
 }
 
 

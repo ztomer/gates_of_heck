@@ -424,8 +424,8 @@ def probe():
     from tui.lib import counted, err, ok
 
     bad = 0
-    shared, listed = shared_cases(CASES, CONFIG_CASES, QUIET, SEAM, BASE)
     with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-display-seam.") as td:
+        shared, listed = shared_cases(CASES, CONFIG_CASES, QUIET, SEAM, BASE, td)
         for n, (label, files, policy, want) in enumerate(CASES):
             # A directory per case. Reusing one made a case see the PREVIOUS case's files, which
             # is a fixture that cannot disagree with anything -- the exact shape R3 names. Only
