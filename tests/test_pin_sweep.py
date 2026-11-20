@@ -204,3 +204,68 @@ def test_each_consumer_gate_holds_a_gate_slot_of_its_own_released_after_it(tmp_p
     holders = (tmp_path / "slots.log").read_text().splitlines()
     assert len(holders) == 3 and all(h.split()[-1].isdigit() for h in holders), holders
     assert len({h.split()[-1] for h in holders}) == 3, holders  # one holder per consumer gate
+
+
+def test_the_push_sweep_runs_one_consumer_gate_at_a_time_whatever_the_slots(tmp_path):
+    # GOH.LOADSOURCE (2026-11-19, ps sampled each second for 10 min at load 30-70 on 16 cores): a
+    # release's sweep is 5000-10300 CPU-s of consumer push gates (54823 s in the day's nine), and
+    # it ran as many at once as the machine has gate slots -- two full consumer gates (divoom-
+    # control's eight browser workers among them) beside the land and the lanes, background work
+    # holding every long slot. The sweep is the release's test against its consumers, never a
+    # race: one consumer gate at a time, so it holds at most ONE slot whatever GOH_GATE_SLOTS says.
+    spans = tmp_path / "spans.log"
+    name = '"$(basename "$PWD")"'
+    body = f'echo "start {name}" >>{spans}; sleep 2; echo "end {name}" >>{spans}'
+    _consumers(tmp_path, {"one": body, "two": body, "three": body})
+    r = _wf_pin(tmp_path, "--bump", "--sweep", "wait", GOH_SHIP_RESULT=str(tmp_path / "s.json"))
+    out = r.stdout + r.stderr
+    assert r.returncode == 0, out
+    rec = _read(tmp_path / "s.sweep.json")
+    assert {v["status"] for v in rec["repos"].values()} == {"pushed"}, rec
+    said = spans.read_text().splitlines()
+    assert len(said) == 6, said
+    for start, end in zip(said[::2], said[1::2], strict=True):  # each gate ends before the next
+        assert start.split()[0] == "start" and end == f"end {start.split()[1]}", said
+
+
+@pytest.mark.load_sensitive
+def test_a_newer_sweep_takes_over_an_older_ones_unstarted_pushes_and_waits_for_it(tmp_path):
+    # GOH.LOADSOURCE: releases come every five lands now (rules.ship_every_lands), and a sweep
+    # spans 20-58 min; two sweeps ran at once at 19:56 today and four consumer gates ran twice for
+    # one pin. A newer sweep's push carries every older pin commit of a repo it lists, so the older
+    # sweep leaves those repos to it (`superseded`, naming it) and the newer one starts its gates
+    # only once the older has ended: one sweep at a time, whatever the release rate.
+    repos = _consumers(tmp_path, {"one": "exit 0", "two": "exit 0"})
+    ship = tmp_path / "old.json"  # the older release's ship, still running: its sweep waits
+    ship.write_text(json.dumps({"status": "running", "pid": os.getpid()}))
+    try:
+        _two_sweeps(tmp_path, repos, ship)
+    finally:  # a red run never leaves the older supervisor waiting an hour on this test's pid
+        ship.write_text(json.dumps({"status": "ok", "pid": os.getpid()}))
+
+
+def _two_sweeps(tmp_path: Path, repos: dict[str, Path], ship: Path) -> None:
+    r = _wf_pin(tmp_path, "--bump", GOH_SHIP_RESULT=str(ship))
+    assert r.returncode == 0, r.stdout + r.stderr
+    older = tmp_path / "old.sweep.json"
+    assert _until(lambda: _read(older).get("pid"), 30), _read(older)
+    again = _wf_pin(tmp_path, "--bump", GOH_SHIP_RESULT=str(tmp_path / "new.json"))
+    assert again.returncode == 0, again.stdout + again.stderr
+    newer = tmp_path / "new.sweep.json"
+    said = newer.with_suffix(".log")
+    assert _until(lambda: said.exists() and "waiting for the older sweep" in said.read_text(), 60)
+    assert not (tmp_path / "gates.log").exists(), said.read_text()  # no gate while the older lives
+    ship.write_text(json.dumps({"status": "ok", "pid": os.getpid()}))  # the older ship returns
+    old = _until(lambda: (b := _read(older)).get("status") == "done" and b, 120)
+    assert {v["status"] for v in old["repos"].values()} == {"superseded"}, old
+    assert all(str(newer) in v["said"] for v in old["repos"].values()), old
+    new = _until(lambda: (b := _read(newer)).get("status") == "done" and b, 120)
+    assert {v["status"] for v in new["repos"].values()} == {"pushed"}, new
+    assert all(_ahead(x) == 0 for x in repos.values()), new
+    assert sorted((tmp_path / "gates.log").read_text().splitlines()) == ["one ran", "two ran"]
+    assert pin_sweep_unpushed(tmp_path) == {}, "a superseded repo is no unpushed pin"
+    assert _until(lambda: not _alive(old["pid"]) and not _alive(new["pid"]), 30), (old, new)
+
+
+def pin_sweep_unpushed(tmp_path: Path) -> dict:
+    return _read(tmp_path / "state" / "pin_push.json").get("repos") or {}

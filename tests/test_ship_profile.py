@@ -10,12 +10,15 @@ pin and push of the install) lands one row with the 1-min load average at its st
 And the consumers are pushed CONCURRENTLY (easy win A): GOH.PINPROPAGATE made the sweep push each
 consumer through its own push gate, one after another, and the install went from 86 s (v0.121.0) to
 1974-2037 s (v0.122.0-v0.124.0), the sum of 12 consumer gates where the slowest alone was 756 s.
-The sweep now runs as many consumers at once as the machine's gate slots allow -- after the ship,
-since GOH.PINPUSHGATE: the install commits, and its rows are the commits, the sweep's the pushes.
+The install's commits run as many consumers at once as the machine's gate slots allow; the pushes
+left the ship (GOH.PINPUSHGATE) and run one consumer gate at a time after it (GOH.LOADSOURCE: a
+release's sweep was 5000-10300 CPU-s of background gates holding every long slot); the install's
+rows are the commits, the sweep's the pushes.
 """
 
 from __future__ import annotations
 
+import itertools
 import json
 import subprocess
 import sys
@@ -81,7 +84,7 @@ echo "$n end $(python3 -c 'import time; print(time.time())')" >>"$d"
 """
 
 
-def test_the_install_pushes_its_consumers_concurrently_each_profiled(tmp_path):
+def test_the_sweep_pushes_its_consumers_one_after_another_each_profiled(tmp_path):
     log = tmp_path / "gates.log"
     names = ("one", "two", "three")
     for n in names:
@@ -112,8 +115,9 @@ def test_the_install_pushes_its_consumers_concurrently_each_profiled(tmp_path):
         n, what, when = ln.split()
         spans.setdefault(n, {})[what] = float(when)
     assert set(spans) == set(names), said
-    # every gate started before any other ended: they ran at once, not one after another
-    assert max(s["start"] for s in spans.values()) < min(s["end"] for s in spans.values()), spans
+    # one gate at a time, whatever the slots (GOH.LOADSOURCE): each ended before the next started
+    order = sorted(spans.values(), key=lambda s: s["start"])
+    assert all(a["end"] <= b["start"] for a, b in itertools.pairwise(order)), spans
     rows = {x["label"]: x for x in _rows(timings)}  # the install's: each consumer's commit
     pushes = {x["label"]: x for x in _rows(tmp_path / "ship.sweep.timings.jsonl")}
     for n in names:

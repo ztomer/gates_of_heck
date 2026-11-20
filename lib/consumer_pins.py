@@ -277,10 +277,10 @@ def push(repo: Path, said: str, log: Path | None = None) -> tuple[str, str]:
 
 
 def width(jobs: int) -> int:
-    """How many consumers the sweep moves at once: the machine's gate slots (GOH_GATE_SLOTS, else
-    one per eight cores; 0 = no limit), since each push runs a full gate that takes one. One after
-    another, v0.122.0-v0.124.0's install was the SUM of 12 consumer gates, 1974-2037 s where the
-    slowest alone was 756 s (GOH.SHIPPROFILE)."""
+    """How many consumers the install's commits move at once: the machine's gate slots
+    (GOH_GATE_SLOTS, else one per eight cores; 0 = no limit). One after another, v0.122.0-v0.124.0's
+    install was the SUM of 12 consumer gates, 1974-2037 s (GOH.SHIPPROFILE). The push sweep, out of
+    the ship since GOH.PINPUSHGATE, moves one at a time (lib/pin_sweep.py, GOH.LOADSOURCE)."""
     raw = os.environ.get("GOH_GATE_SLOTS", "")
     n = int(raw) if raw.isdigit() else gate_slot.default_slots()
     return max(1, min(jobs, n or jobs))
@@ -288,22 +288,25 @@ def width(jobs: int) -> int:
 
 def sweep(jobs: list[tuple[str, Callable[[], tuple[str, str]]]],
           said: Callable[[str, str, str], None], row: str = "consumer",
-          ok: str = "pushed") -> dict[str, dict[str, str]]:  # fmt: skip
-    """Run each (where, job) -- one consumer's commit, or its push -- `width` at a time; each is one
-    profile row `ROW WHERE` with the load at its start (failed unless its status is OK), and SAID
+          ok: str | tuple[str, ...] = "pushed",
+          at_once: int | None = None) -> dict[str, dict[str, str]]:  # fmt: skip
+    """Run each (where, job) -- one consumer's commit, or its push -- `width` at a time (AT_ONCE
+    when given: the push sweep's one, lib/pin_sweep.py); each is one profile row `ROW WHERE` with
+    the load at its start (failed unless its status is OK, one of them when a tuple), and SAID
     hears it as it ends."""
+    fine = (ok,) if isinstance(ok, str) else ok
 
     def one(where: str, job: Callable[[], tuple[str, str]]) -> tuple[str, str, str]:
         t0, load1 = time.monotonic(), step_timings.load_now()
         status, why = job()
         step_timings.record(f"{row} {where}", (time.monotonic() - t0) * 1000,
-                            int(status != ok), "consumer", load1=load1)  # fmt: skip
+                            int(status not in fine), "consumer", load1=load1)  # fmt: skip
         said(where, status, why)
         return where, status, why
 
     if not jobs:
         return {}
-    with ThreadPoolExecutor(max_workers=width(len(jobs))) as pool:
+    with ThreadPoolExecutor(max_workers=at_once or width(len(jobs))) as pool:
         done = list(pool.map(lambda j: one(*j), jobs))
     return {where: {"status": status, "said": why} for where, status, why in done}
 

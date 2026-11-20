@@ -18,11 +18,23 @@ ship that started it to return (its result leaves `running`, or its worker is go
 SHIP_WAIT), then runs the pushes, bounded (BOUND, after which their session is killed), each
 consumer's gate through tools/load.py -- the one way load is made: one gate slot per consumer gate,
 given back when it ends (GOH.SWEEPSLOTS), so a land interleaves after at most one consumer gate.
-Each consumer is pushed `consumer_pins.width` at a time (the gate slots, GOH.SHIPPROFILE), its
-gate's output kept (`<result>.sweep.pushes/NAME.log`), and its outcome written to the record as it
-ends: pushed, refused (with that log), or committed and not pushed with why (an owner's commit
-ahead, behind its upstream, the budget spent). What the sweep never reached -- killed at its bound,
-the slot refused -- the supervisor names the same way.
+Each consumer is pushed ONE at a time (GOH.LOADSOURCE, below), its gate's output kept
+(`<result>.sweep.pushes/NAME.log`), and its outcome written to the record as it ends: pushed,
+refused (with that log), superseded (left to a newer sweep), or committed and not pushed with why
+(an owner's commit ahead, behind its upstream, the budget spent). What the sweep never reached --
+killed at its bound, the slot refused -- the supervisor names the same way.
+
+ONE GATE, ONE SWEEP (GOH.LOADSOURCE, 2026-11-19). Sampled each second for 10 min at load 30-70 on
+16 cores, a release's sweep was 5000-10300 CPU-s of consumer push gates (54823 s across the day's
+nine), run as many at once as the machine had gate slots: two full consumer gates (divoom-control's
+eight browser workers among them) beside the land and the lanes, background work holding every
+long slot. Now the pushes run one at a time, so a sweep holds at most one slot whatever
+GOH_GATE_SLOTS says; its span grows, and a newer release no longer stacks a second sweep on it.
+Every sweep is registered (registry_path(), beside the ledger) from start() until it is done: an
+older sweep leaves each repo a newer one lists to it (`superseded`, naming the newer record: that
+push carries every older pin commit), and the newer one starts its gates only once every older
+sweep has ended (bounded by BOUND). The release rate sets how often a consumer's gate runs, never
+how many run at once.
 
 WHO READS IT. `goh ship --status RESULT` prints the sweep's rows apart from the install's (lines()),
 and its profile rows (`<result>.sweep.timings.jsonl`) in the table as step `sweep`. Every outcome
@@ -117,6 +129,59 @@ def update(path: Path, change: Callable[[dict], object]) -> dict:
         return body
 
 
+def registry_path() -> Path:
+    """Every sweep started and not yet done, in the order started (GOH.LOADSOURCE)."""
+    return estate_registry.state_file().with_name("pin_sweeps.json")
+
+
+def _active(rec: dict) -> bool:
+    """A sweep record still to run or running, with its supervisor alive (or not yet named)."""
+    if rec.get("status") not in ("pending", "running"):
+        return False
+    try:
+        pid = int(rec.get("pid") or 0)
+        if pid > 0:
+            os.kill(pid, 0)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def register(path: Path, repos: list[str]) -> None:
+    """Add the sweep at PATH (pushing REPOS) to the registry; sweeps that are done leave it."""
+
+    def change(old: dict) -> dict:
+        rows = [r for r in (old.get("sweeps") or [])
+                if isinstance(r, dict) and r.get("path") not in (None, str(path))
+                and _active(read(r["path"]))]  # fmt: skip
+        rows.append({"path": str(path), "repos": sorted(repos)})
+        return {"schema": 1, "sweeps": rows}
+
+    estate_registry.update_state(registry_path(), change)
+
+
+def _around(path: Path) -> tuple[list[dict], list[dict]]:
+    """(the registered sweeps before PATH, those after it); both empty when it is not registered."""
+    rows = [r for r in (read(registry_path()).get("sweeps") or []) if isinstance(r, dict)]
+    keys = [r.get("path") for r in rows]
+    if str(path) not in keys:
+        return [], []
+    i = keys.index(str(path))
+    return rows[:i], rows[i + 1 :]
+
+
+def newer(path: Path, repo: str) -> str | None:
+    """The newest sweep started after PATH that lists REPO and has not ended: its push carries this
+    sweep's pin commit for REPO, so this sweep leaves REPO to it."""
+    return next((r["path"] for r in reversed(_around(path)[1])
+                 if repo in (r.get("repos") or []) and _active(read(r["path"]))), None)  # fmt: skip
+
+
+def older(path: Path) -> str | None:
+    """A sweep started before PATH that has not ended (one sweep at a time)."""
+    return next((r["path"] for r in _around(path)[0] if _active(read(r["path"]))), None)
+
+
 def ledger(repo: str, where: str, entry: dict | None) -> None:
     """REPO's line in the ledger: ENTRY (an unpushed pin commit), or none (pushed)."""
 
@@ -153,6 +218,8 @@ def start(result: Path | str, repos: dict[str, Path], budget: float, wait: bool 
     })  # fmt: skip
     env = {k: v for k, v in os.environ.items()
            if not k.startswith(("GOH_TIMINGS", "GOH_SHIP_", "GOH_GATE_VERDICTS"))}  # fmt: skip
+    # Registered before its supervisor starts, so the supervisor always finds itself there.
+    register(path, [str(Path(r).resolve()) for r in repos.values()])
     argv = [sys.executable, str(Path(__file__).resolve()), "supervise", str(path)]
     with path.with_suffix(".log").open("ab") as out:
         child = subprocess.Popen(argv, env=env, stdout=out, stderr=out, stdin=subprocess.DEVNULL,
@@ -184,6 +251,13 @@ def supervise(path: Path) -> int:
     if _ship_running(rec):
         info(f"pin sweep: waiting for the ship to return ({rec['waits_on']})")
     while _ship_running(rec) and time.monotonic() < deadline:
+        time.sleep(POLL)
+    # ONE SWEEP AT A TIME (GOH.LOADSOURCE): an older sweep still running leaves this one's repos to
+    # it as it reaches them; this one waits for it to end, bounded, before starting any gate.
+    late = time.monotonic() + BOUND
+    if (first := older(path)) is not None:
+        info(f"pin sweep: waiting for the older sweep {first} to end (one sweep at a time)")
+    while older(path) is not None and time.monotonic() < late:
         time.sleep(POLL)
     update(path, lambda b: b.update(status="running", started=now()))
     # The sweep's own process holds NO gate slot (GOH.SWEEPSLOTS): each consumer gate takes one
@@ -217,7 +291,8 @@ def supervise(path: Path) -> int:
 
 
 def run(path: Path) -> int:
-    """The pushes: each repo of the record, `width` at a time, each outcome written as it ends."""
+    """The pushes: each repo of the record, one at a time (GOH.LOADSOURCE), each outcome written as
+    it ends; a repo a newer sweep lists is left to it."""
     rec = read(path)
     os.environ[step_timings.ENV] = str(timings_path(path))
     os.environ.pop(step_timings.PARENT_ENV, None)
@@ -230,6 +305,9 @@ def run(path: Path) -> int:
         return logs / f"{Path(repos[where]).name}.log"
 
     def job(where: str) -> tuple[str, str]:
+        later = newer(path, repos[where])
+        if later is not None:  # its push carries this pin commit: no gate here (GOH.LOADSOURCE)
+            return "superseded", f"left to the newer sweep {later}, whose push carries this pin"
         update(path, lambda b: b["repos"][where].update(status="pushing", at=now()))
         return consumer_pins.push(Path(repos[where]), "", log(where))
 
@@ -238,14 +316,19 @@ def run(path: Path) -> int:
         if status == "refused":
             entry["log"] = str(log(where))
         update(path, lambda b: b["repos"][where].update(entry))
+        if status == "superseded":  # the newer sweep's outcome is the ledger's, not this one's
+            info(f"{where}: {why}")
+            return
         ledger(repos[where], where, None if status == "pushed" else {**entry, "sweep": str(path)})
         (ok if status == "pushed" else err)(f"{where}: {why}")
 
     jobs = [(w, partial(job, w)) for w in sorted(repos)]
-    done = consumer_pins.sweep(jobs, said, row="push")
+    done = consumer_pins.sweep(jobs, said, row="push", ok=("pushed", "superseded"), at_once=1)
     n = sum(v["status"] == "pushed" for v in done.values())
-    info(f"pin sweep: {n} of {counted(len(done), 'consumer')} pushed")
-    return 0 if n == len(done) else 1
+    left = sum(v["status"] == "superseded" for v in done.values())
+    info(f"pin sweep: {n} of {counted(len(done), 'consumer')} pushed"
+         + (f", {left} left to a newer sweep" if left else ""))  # fmt: skip
+    return 0 if n + left == len(done) else 1
 
 
 def lines(res: dict) -> list[tuple[str, str]]:
@@ -266,7 +349,8 @@ def lines(res: dict) -> list[tuple[str, str]]:
         state += f" (pid {rec.get('pid')}; log {rec.get('log')})"
     out = [("step", f"push sweep: {state}: {n} of {counted(len(repos), 'consumer')} pushed")]
     for w, r in sorted(repos.items()):
-        mark = {"pushed": "ok", "pending": "step", "pushing": "step"}.get(r.get("status"), "err")
+        mark = {"pushed": "ok", "pending": "step", "pushing": "step",
+                "superseded": "step"}.get(r.get("status"), "err")  # fmt: skip
         said = r.get("said") or ""
         out.append((mark, f"  push {w}: {r.get('status')}" + (f" ({said})" if said else "")))
     return out
