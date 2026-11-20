@@ -44,6 +44,10 @@ THE SET is the union of
   * the BINARY'S RUNNERS (GOH.AFFECTEDBINARY): a build-input change chooses every test running it.
   * the READERS of a changed path (lib/declared_reads.py, GOH.SELECTAUDIT, SELECTLOCKORDER): what
     a test, its tests/ helpers, or a scanner it points at the root globs, copies or declares.
+  * the RELEASE CANARY, after the tests, when a consumer NAMES a changed path from its own files
+    (lib/consumer_reads.py, GOH.LANDMISS1119): no goh test runs a consumer's script, the canary
+    does (GOH.PYTESTPIN: sys_updater reads `required_tools.py --floors`; green here, red in the
+    land gate's canary at 502 s).
 A deleted file is a changed path too: a test still naming it is the one that will go red.
 """
 
@@ -62,6 +66,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import lib.affected_verdict as av
 from lib import (
     binary_runners,
+    consumer_reads,
     declared_reads,
     fast_tests,
     pre_reuse,
@@ -324,7 +329,8 @@ def main(argv: list[str]) -> int:
             return rc
         whole = args.changed is None and not args.readers_only
         base = pre_reuse.base_sha(root, args.base) if whole else None  # ONE run per change: av
-        return av.whole(root, list(chosen), base, whole, lambda: run(root, changed, chosen, base))
+        rc = av.whole(root, list(chosen), base, whole, lambda: run(root, changed, chosen, base))
+        return rc or canary(root, changed)
     for rel, why in chosen.items():
         print(f"{rel}  # {why}" if args.why else rel)
     return 0
@@ -342,6 +348,22 @@ def structural(root: Path) -> int:
     return subprocess.run(
         ["bash", str(script), "--full"], cwd=root, env=env, check=False, stdin=subprocess.DEVNULL
     ).returncode
+
+
+def canary(root: Path, changed: list[str], repos: list[Path] | None = None) -> int:
+    """The release canary when a consumer NAMES a changed path (lib/consumer_reads.py): no goh
+    test runs a consumer's own script, the canary does (GOH.PYTESTPIN: green here, red in the land
+    gate's canary at 502 s). Never inside a running goh suite (run's rule) or outside a goh tree."""
+    script = root / "scripts" / "release_canary.py"
+    if not script.is_file() or os.environ.get("GATES_OF_HECK_SUITE_RUNNER"):
+        return 0
+    found = consumer_reads.readers(root, changed, repos)
+    if not found:
+        return 0
+    paths = sorted({p for v in found.values() for p in v})
+    info(f"pre-land: {counted(len(found), 'consumer')} name {', '.join(paths)} -- the release "
+         "canary, as the land gate runs it")  # fmt: skip
+    return timed("pre-land: release canary", [sys.executable, str(script)])
 
 
 def phases(root: Path, chosen: dict[str, str]) -> tuple[list[str], list[str]]:
