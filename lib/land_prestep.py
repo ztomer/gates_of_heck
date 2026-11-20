@@ -19,6 +19,7 @@ import threading
 import time
 from pathlib import Path
 
+affected_verdict = importlib.import_module("affected_verdict")
 killtree = importlib.import_module("killtree")
 land_slot = importlib.import_module("land_slot")
 landq_inflight = importlib.import_module("landq_inflight")
@@ -128,10 +129,13 @@ def run_kept(req: dict, q: Path, script: Path, bindings: tuple[str, ...]) -> flo
     the lander's land.sh removes the keep once read (lib/land_pre_reuse.sh)."""
     keep = keep_path(q, req["sha"])
     noted: dict = {}
+    did: dict = {}
     took = run(Path(req["worktree"]), req["sha"], script, bindings, keep, land_slot.label(req),
-               noted)  # fmt: skip
+               noted, did)  # fmt: skip
     if noted:
         req["pre_verdict"] = noted
+    if did:  # took the lane's kept verdict, or ran the set and why (GOH.LANEPRESTEP)
+        req["pre_affected"] = did
     adopt(req, keep)
     return took
 
@@ -144,11 +148,13 @@ def run(
     keep: Path | None = None,
     label: list[str] | None = None,
     noted: dict | None = None,
+    did: dict | None = None,
 ) -> float:
     """Run SCRIPT's pre-step in WT; its seconds, or raise Red unless green or past its deadline. A
     green verdict is KEPT at `keep` (the judged sha; its record at `keep`.record) for the lander's
     tools/land.sh, which reuses it where the tip moved only in paths no test reads
-    (GOH.PRELANDTWICE). A pre-step with no verdict fills NOTED (`no_verdict`)."""
+    (GOH.PRELANDTWICE). A pre-step with no verdict fills NOTED (`no_verdict`); a green one's run
+    of the set fills DID (lib/affected_verdict.py `outcome`: a kept verdict taken, or why not)."""
     kept = [f"GOH_LAND_PRE_KEEP={keep}"] if keep else []
     kept += label or []
     argv = ["env", *(f"-u{k}" for k in bindings), "GOH_LAND_PRE_ONLY=1", *kept, "bash", "-c",
@@ -170,6 +176,8 @@ def run(
     finally:
         timer.cancel()
     if code == 0:
+        if did is not None:
+            did.update(affected_verdict.outcome(lines) or {})
         if none := no_verdict(lines):
             if noted is not None:
                 noted.update(none)

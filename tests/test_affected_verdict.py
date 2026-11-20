@@ -250,3 +250,55 @@ def test_every_miss_says_its_reason_in_one_line(lane, tmp_path, monkeypatch, mov
     why = [line for line in lines if "-- it runs" in line or "the set runs" in line]
     assert len(why) == 1 and "\n" not in why[0], lines
     assert reason in why[0], f"{move}: the miss line does not say why: {why[0]!r}"
+
+
+# WHAT THE ENQUEUE DID WITH THE LANE'S RUN (GOH.LANEPRESTEP): the land request and its done record
+# say whether the pre-step took a kept verdict (whose, and the seconds of the run it did not repeat)
+# or ran the set (and why), read from the pre-step's own lines by `outcome`, the parser of the
+# lines this module says. Without it a 35 s `pre_s` is a take or a small set, and the item's
+# metric (affected-test runs per tree before the land gate) was measured from lane transcripts.
+def test_a_take_of_the_lanes_verdict_is_said_as_taken_with_the_seconds_it_saved(
+    lane, tmp_path, monkeypatch
+) -> None:
+    work = Set(lane)
+    av.judged(lane, SET, None, work)
+    on = git(lane, "rev-parse", "HEAD").strip()[:8]
+    _enqueue(monkeypatch, tmp_path)
+    lines = _said(monkeypatch)
+    av.judged(lane, SET, "c" * 40, work)
+    assert work.runs == 1
+    got = av.outcome([f"✓ {line}\n" for line in lines])
+    assert got is not None and got.get("took") == on, (got, lines)
+    assert got["by"] == "tools/affected_tests.py --run" and got["tests"] == len(SET), got
+    assert isinstance(got["lane_s"], float) and got["lane_s"] >= 0, got
+
+
+@pytest.mark.parametrize(
+    ("move", "field"), [("another tree", "tree"), ("another set", "selection")]
+)
+def test_a_verdict_of_another_tree_or_set_is_refused_and_said_as_ran(
+    lane, tmp_path, monkeypatch, move, field
+) -> None:
+    work = Set(lane)
+    av.judged(lane, SET, None, work)
+    _enqueue(monkeypatch, tmp_path)
+    chosen = SET
+    if move == "another tree":
+        _commit(lane, "more", **{"x.txt": "x\n"})
+    else:
+        chosen = SET[:1]
+    lines = _said(monkeypatch)
+    av.judged(lane, chosen, "c" * 40, work)
+    assert work.runs == 2, f"{move}: the lane's verdict was taken"
+    got = av.outcome([f"→ {line}\n" for line in lines])
+    assert got is not None and "took" not in got, (got, lines)
+    assert f"differs in {field}" in got["ran"], got
+
+
+def test_a_run_with_no_key_is_said_as_ran_and_no_affected_line_is_none(lane, monkeypatch) -> None:
+    (lane / "forgotten.py").write_text("x = 1\n")
+    lines = _said(monkeypatch)
+    av.judged(lane, SET, None, Set(lane))
+    got = av.outcome(lines)
+    assert got is not None and "forgotten.py" in got["ran"], (got, lines)
+    assert av.outcome(["→ pre-land: the structural gates over the branch first\n"]) is None

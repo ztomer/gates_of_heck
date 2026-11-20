@@ -42,8 +42,17 @@ set). GOH.LANDEDREUSEON's enqueue was such a shadow (830.9 s, agreed).
 
 EVERY MISS SAYS WHY, in one line of the run's output (so of the enqueue's): no key and what took it
 (a named untracked or changed file, a deselecting run, no declared inputs), the nearest kept
-verdict of the repo and the fields it differs in, the audit's shadow, or an off path. Pinned by
-tests/test_affected_verdict.py.
+verdict of the repo and the fields it differs in, the audit's shadow, or an off path.
+
+WHAT THE ENQUEUE DID, ON ITS RECORD (GOH.LANEPRESTEP). `outcome` reads those lines back: a take
+(`took`, the sha judged, `by`, `lane_s` the seconds of the run not repeated, `tests`) or a run
+(`ran`, why). lib/land_prestep.py puts it on the land request and the done record carries it
+(`pre_affected`), so a 35 s `pre_s` says whether it was a take or a small set, and the runs of one
+tree's set before the land gate are counted from the records, not from lane transcripts (24 goh
+lands, 2026-11-19 22:22Z to 11-20 09:25Z: 5 took the lane's verdict, pre_s 26-35 s; 2 ran a set the
+lane had already run on that tree, the audit's shadow, 865 s, and a recommit, 550 s, keyed by tree
+since; the other 17 had the pre-step's run alone). The parser lives beside the lines it reads,
+pinned by tests/test_affected_verdict.py with the rest.
 """
 
 from __future__ import annotations
@@ -53,6 +62,7 @@ import hashlib
 import importlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -65,6 +75,20 @@ PATH = "affected"
 RECORD = "GOH_LAND_VERDICTS_RECORD"
 REUSE = "GOH_LAND_VERDICTS_REUSE"
 SHAPE = "GATES_OF_HECK_SUITE_SHAPE"
+# The lines a run of the set says (`judged`), and `outcome`'s patterns for them: one place each.
+TOOK = (
+    "pre-land: the set's verdict on {on} holds (same tree, set and suite inputs; {by}, {took} s, "
+    "{tests} tests) -- not run again"
+)
+RAN = "pre-land: no verdict taken ({why}) -- it runs"
+NO_KEY = "pre-land: no exact key ({why}) -- the set runs, nothing is kept"
+_TOOK = re.compile(
+    r"pre-land: the set's verdict on (?P<on>\S+) holds \(same tree, set and suite inputs; "
+    r"(?P<by>.+), (?P<took>[0-9.]+|None) s, (?P<tests>\d+) tests\) -- not run again"
+)
+_RAN = re.compile(
+    r"pre-land: no (?:verdict taken|exact key) \((?P<why>.*)\) -- (?:it runs|the set runs, nothing)"
+)
 
 
 def _lib(name: str):
@@ -219,7 +243,7 @@ def judged(root: Path, chosen: list[str], base: str | None, work: Callable[[], i
     """WORK (the set's run) unless a kept green verdict of this exact key stands; its exit."""
     key, why = keyed(root, chosen)
     if key is None:
-        _say("info", f"pre-land: no exact key ({why}) -- the set runs, nothing is kept")
+        _say("info", NO_KEY.format(why=why))
         return work()
     rec, why = _lib("reuse").lookup(PATH, key)
     use = "miss"
@@ -234,12 +258,8 @@ def judged(root: Path, chosen: list[str], base: str | None, work: Callable[[], i
         use = _lib("reuse_audit").use("affected", key)
         if use == "reuse":
             _hand(root, rec, base)
-            _say(
-                "ok",
-                f"pre-land: the set's verdict on {on} holds (same tree, set and suite inputs; "
-                f"{rec.get('by')}, {rec.get('took_s')} s, {len(rec['record']['passed'])} tests) "
-                "-- not run again",
-            )
+            _say("ok", TOOK.format(on=on, by=rec.get("by"), took=rec.get("took_s"),
+                                   tests=len(rec["record"]["passed"])))  # fmt: skip
             return 0
         every = _lib("reuse").PATHS[PATH].every
         why = (
@@ -248,7 +268,7 @@ def judged(root: Path, chosen: list[str], base: str | None, work: Callable[[], i
             if use == "shadow"
             else f"the audited `{PATH}` path is {use} (reuse_audit.py report names why)"
         )
-    _say("info", f"pre-land: no verdict taken ({why}) -- it runs")
+    _say("info", RAN.format(why=why))
     t0 = time.monotonic()
     rc = work()
     if use == "shadow":
@@ -271,3 +291,18 @@ def judged(root: Path, chosen: list[str], base: str | None, work: Callable[[], i
 def _again(key: dict) -> str:
     rec, _ = _lib("reuse").lookup(PATH, key)
     return str(rec.get("verdict")) if rec else "absent"
+
+
+def outcome(lines: list[str]) -> dict | None:
+    """What a pre-step's run of the set did, from its output LINES (module doc, WHAT THE ENQUEUE
+    DID): {"took", "by", "lane_s", "tests"} on a take, {"ran": why} on a run, None when no line of
+    this module's is there (no whole set ran: an empty set, a --no-pre, another pre-step)."""
+    for line in lines:
+        if found := _TOOK.search(line):
+            took = found["took"]
+            return {"took": found["on"], "by": found["by"],
+                    "lane_s": float(took) if took != "None" else None,
+                    "tests": int(found["tests"])}  # fmt: skip
+        if found := _RAN.search(line):
+            return {"ran": found["why"]}
+    return None
