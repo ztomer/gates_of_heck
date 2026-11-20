@@ -115,9 +115,8 @@ def _plant(store: Path, bins: Path, tmp_path: Path) -> None:
     assert llvm_bin is not None
     raw = tmp_path / "planted"
     raw.mkdir()
-    subprocess.run([str(bins / "prog")], env={**os.environ, "LLVM_PROFILE_FILE":
-                   str(raw / "p.profraw")}, check=True, capture_output=True,
-                   stdin=subprocess.DEVNULL)  # fmt: skip
+    subprocess.run([str(bins / "prog")], env=hermetic_env(LLVM_PROFILE_FILE=str(raw / "p.profraw")),
+                   check=True, capture_output=True, stdin=subprocess.DEVNULL)  # fmt: skip
     wrong = tmp_path / "wrong.profdata"
     subprocess.run([str(llvm_bin / "llvm-profdata"), "merge", "--sparse", "-o", str(wrong),
                     str(raw / "p.profraw")], check=True, capture_output=True,
@@ -179,3 +178,11 @@ def test_the_digest_moves_with_the_test_file_and_what_it_imports_only(tmp_path: 
     assert moved["tests/test_b.py"] == first["tests/test_b.py"]
     (root / "tests" / "test_b.py").write_text("def test_y():\n    assert True\n")
     assert _prof_reuse.digests(root, files)["tests/test_b.py"] != first["tests/test_b.py"]
+
+
+def test_the_suite_keeps_the_ships_counts_file() -> None:
+    """tests/suite_home.py drops every caller GOH_* key it does not name: the first measured ship
+    run of this change wrote no counts, the plugin never saw where (GOH_PROF_REUSE_OUT)."""
+    import suite_home
+
+    assert "GOH_PROF_REUSE_OUT" in suite_home.CALLER_INPUTS

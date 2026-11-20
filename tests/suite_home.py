@@ -115,6 +115,9 @@ CALLER_INPUTS = (
     "GOH_LAND_VERDICTS_REUSE",
     # ... and the CALLER's verdict store, resolved before this home replaces HOME (`_land_store`).
     "GOH_LAND_VERDICTS_STORE",
+    # The ship's file for its reused and fresh binary tests (tests/_prof_reuse.py): dropped here,
+    # no ship record named them (GOH.COVPROFILEREUSE's first measured run).
+    "GOH_PROF_REUSE_OUT",
 )
 # What the suite sets for itself, after the drop: GOH_DIR (below, its own checkout -- unset, the
 # binary judged the default checkout's checkers, D.GOH1), GOH_GRACE (below), GOH_LIVE

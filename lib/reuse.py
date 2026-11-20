@@ -201,7 +201,7 @@ PROFCARRY = register(
 register(
     "profreuse", ("repo", "bin", "tools", "config"), DAY_S, "a binary test's stored profile of the "
     "same instrumented bytes and inputs, taken for its run at the ship (tests/_prof_reuse.py)",
-    store="lib/prof_store.py", sites=("tests/_prof_reuse.py",), shadow="inline",
+    store="the profile store's ship-<key>", sites=("tests/_prof_reuse.py",), shadow="inline",
 )  # fmt: skip
 register(
     "file", ("checker", "key"), 30 * DAY_S,
