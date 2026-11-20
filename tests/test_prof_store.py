@@ -10,6 +10,7 @@ switch runs the test instead.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -36,6 +37,15 @@ def _build(bins: Path, src: str) -> Path:
                    cwd=bins, check=True, capture_output=True,
                    stdin=subprocess.DEVNULL)  # fmt: skip
     return bins / "prog"
+
+
+def _swap(src: Path, exe: Path) -> None:
+    """EXE becomes a copy of SRC as a NEW file (rename over it), never rewritten in place: macOS
+    kills a signed binary whose executed file was overwritten (SIGKILL, CIPARITY's first land:
+    `bins/prog` died with SIGKILL right after `shutil.copy` onto it; 4 of 4 in a probe)."""
+    tmp = exe.with_name(f".{exe.name}.new")
+    shutil.copy(src, tmp)
+    os.replace(tmp, exe)
 
 
 def _run(d: Path, store: Path, bins: Path, prof: Path, tree: str, **env: str):
@@ -103,7 +113,7 @@ def test_a_changed_binary_or_the_kill_switch_runs_the_test(
     assert f"PASSED {RUNS}" in off.stdout, off.stdout
     other = tmp_path / "other"
     _build(other, PROG.replace('"ran"', '"ran again"'))
-    shutil.copy(other / "prog", exe)  # the same path, other bytes: another binary
+    _swap(other / "prog", exe)  # the same path, other bytes: another binary
     prof_store._ids.clear()
     moved = _run(d, store, bins, tmp_path / "p2", "T2")
     assert f"PASSED {RUNS}" in moved.stdout, moved.stdout
@@ -203,14 +213,14 @@ def test_a_store_that_fills_and_never_matches_is_red_after_misses_lands(
     for i in range(1, prof_store.MISSES + 1):
         other = tmp_path / f"drift{i}"
         _build(other, PROG.replace("no test takes this branch", f"drift {i}"))
-        shutil.copy(other / "prog", exe)  # the same inputs by the diff's account, other bytes
+        _swap(other / "prog", exe)  # the same inputs by the diff's account, other bytes
         r = _run(d, store, bins, tmp_path / f"p{i}", f"T{i}")
         assert f"PASSED {RUNS}" in r.stdout, r.stdout
         assert r.returncode == (1 if i == prof_store.MISSES else 0), (i, r.stdout)
     assert r is not None
     said = f"the last {prof_store.MISSES} instrumented lands that could carry matched none"
     assert said in r.stdout and "not reproducible" in r.stdout, r.stdout
-    shutil.copy(same, exe)  # T0's own bytes: its stored profiles match again
+    _swap(same, exe)  # T0's own bytes: its stored profiles match again
     back = _run(d, store, bins, tmp_path / "p9", "T9")
     assert back.returncode == 0 and "1 by their stored profiles" in back.stdout, back.stdout
 
