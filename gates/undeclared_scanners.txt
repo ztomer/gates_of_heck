@@ -4,11 +4,9 @@
 # misses -- a self-test, a location (`--goh str(REPO_ROOT)`), or a helper driving the root in tests
 # the importer never runs. test_reuse_fault.py (split from test_reuse_audit.py, GOH.REUSEOFFLANDED3)
 # traced 2026-11-19 too: at run time it opens only itself; check_estate_corpus is imported, never
+# run over the root. GOH.SELECTTESTIMPORTS (2026-11-20) deleted the four pairs reached only
+# through a test module's own tests, which its importer never runs (lib/test_slice.py).
 # run over the root. It only shrinks: a new pair declares, and a listed one gone is stale.
-tests/test_calibration_snapshot.py checks/_calibration.py
-tests/test_calibration_snapshot.py checks/check_git_env.py
-tests/test_calibration_snapshot.py checks/check_probes_pass.py
 tests/test_check_swift_warnings.py checks/check_swift_warnings.py
 tests/test_not_applicable.py checks/check_empty_scope.py
 tests/test_not_applicable.py checks/check_estate_corpus.py
-tests/test_reuse_audit_root.py checks/check_estate_corpus.py

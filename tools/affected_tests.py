@@ -28,7 +28,11 @@ THE SET is the union of
     imports (tests/ helpers, checks/, lib/, tools/ modules: lib/source_closure.py reads the
     edges, the one dependency reader), and a script it names by path with what that script sources
     -- a test is chosen when a changed file is anywhere in that closure, or a file in it NAMES a
-    changed path. tests/test_gate_slot_race.py imports checks/_gate_slot_probe.py, which copies
+    changed path. A test MODULE another file imports names from is in the closure as the slice
+    those names reach (lib/test_slice.py, GOH.SELECTTESTIMPORTS): a `_repo` helper of
+    tests/test_push_gate.py brings what `_repo` reads, not what that file's own tests run; a
+    Python tool brings the shell scripts its code runs by path (tools/landq.py: tools/land.sh).
+    tests/test_gate_slot_race.py imports checks/_gate_slot_probe.py, which copies
     and patches lib/gate_slot.py by name: a change to the wait text there is the race test's,
     though the test says neither (SLOTFAIR land 1, 706 s). A naming edge (a file naming a script
     it runs) is followed from a test and the tests/ and checks/ helpers it reaches, never from a
@@ -56,7 +60,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import lib.affected_verdict as av
-from lib import binary_runners, declared_reads, fast_tests, pre_reuse, source_closure, test_closure
+from lib import (
+    binary_runners,
+    declared_reads,
+    fast_tests,
+    pre_reuse,
+    source_closure,
+    test_closure,
+    test_slice,
+)
 from lib.step_timings import timed
 from tui.lib import counted, info, ok
 
@@ -127,37 +139,8 @@ def _helpers(root: Path) -> dict[str, str]:
     }
 
 
-def _segment(lines: list[str], node: ast.AST) -> str:
-    """`node`'s source, its decorators included (a parametrize over `REPO_ROOT.rglob(...)`)."""
-    first = min([node.lineno, *(d.lineno for d in getattr(node, "decorator_list", []))])
-    return "\n".join(lines[first - 1 : node.end_lineno])
-
-
-def _refs(node: ast.AST) -> set[str]:
-    """Every name `node` mentions: bare names, attributes (`self.walk`) and argument names (the
-    fixtures a test asks for)."""
-    out: set[str] = set()
-    for n in ast.walk(node):
-        if isinstance(n, ast.Name):
-            out.add(n.id)
-        elif isinstance(n, ast.Attribute):
-            out.add(n.attr)
-        elif isinstance(n, ast.arg):
-            out.add(n.arg)
-    return out
-
-
-def _bound(node: ast.stmt) -> set[str]:
-    """The names a module- or class-level statement binds."""
-    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-        return {node.name}
-    out: set[str] = set()
-    for n in ast.walk(node):
-        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
-            out.add(n.id)
-        elif isinstance(n, ast.alias):
-            out.add((n.asname or n.name).split(".")[0])
-    return out
+# One reading of a module's units (lib/test_slice.py): what a statement binds, mentions, spans.
+_segment, _refs, _bound = test_slice.segment, test_slice.refs, test_slice.bound
 
 
 def reader_nodes(text: str, walking: set[str]) -> list[str] | None:

@@ -189,13 +189,20 @@ def _chains(graph, test: str):
             yield node, parents[-1]
 
 
+def _seen(graph, test: str, node: str) -> str:
+    """`node`'s source as TEST reaches it: the slice of a test module it imports names from
+    (lib/test_slice.py, GOH.SELECTTESTIMPORTS), else the whole file."""
+    seen = getattr(graph, "seen", None)
+    return seen(test, node) if seen else graph.texts.get(node, "")
+
+
 def driven(graph, test: str) -> list[str]:
     """The non-test files TEST's chains point at the root (module doc): the scanners whose
     declared TREE_READS are its reads."""
     return [
         node
         for node, by in _chains(graph, test)
-        if not node.startswith("tests/") and drives_root(graph.texts.get(by, ""))
+        if not node.startswith("tests/") and drives_root(_seen(graph, test, by))
     ]
 
 
@@ -217,7 +224,7 @@ def through(graph, test: str, root: Path) -> list[tuple[str, str]]:
     the reads of each tests/ helper on a chain of tests/ files, and the declared TREE_READS of
     each scanner such a chain's last file points at the root."""
     out = [(p, n) for n, _ in _chains(graph, test) if n.startswith("tests/")
-           for p in reads(graph.texts[n], root)]  # fmt: skip
+           for p in reads(_seen(graph, test, n), root)]  # fmt: skip
     for node in driven(graph, test):
         if "TREE_READS" in graph.texts[node]:
             out += [(p, node) for p in declared(graph.texts[node])]

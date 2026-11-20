@@ -4,6 +4,8 @@ Split out of tools/affected_tests.py (GOH.PREPARITY, at its 500-line cap) with n
 file -> what it imports or sources (lib/source_closure.py, the one dependency reader), the
 scripts a test or tests/ or checks/ helper names by path, and what a reached SHELL script runs by a
 variable-rooted path (`uses`). `Closure.base()` is what pytest loads before every test.
+A test module another file imports is reached as the SLICE the importer uses (lib/test_slice.py,
+GOH.SELECTTESTIMPORTS): its imports whole, but only the slice's code names or reads a path.
 Pinned by tests/test_affected_tests.py.
 """
 
@@ -15,9 +17,11 @@ from pathlib import Path
 
 try:
     from checks import _prose_mask
-    from lib import source_closure
+    from lib import declared_reads, source_closure, test_slice
 except ImportError:  # lib/ itself on the path
+    import declared_reads  # type: ignore[no-redef]
     import source_closure  # type: ignore[no-redef]
+    import test_slice  # type: ignore[no-redef]
 
     from checks import _prose_mask
 
@@ -39,6 +43,13 @@ ENTRY_READS = (
     ".github/actions/goh-setup/action.yml",
     ".github/actions/goh-floors/action.yml",
 )
+# Tests whose reads are not all known (lib/declared_reads.py's ratchet: a REPO_ROOT joined with a
+# non-literal). Such a test reaches every test module it imports whole, never as a slice, and
+# such a module is reached whole when the slice taken holds the unknown join: the wider closure
+# is the only cover their unknown reads have (GOH.SELECTTESTIMPORTS: the replay of CLS.CIPROFILE's
+# land broke gates/push_gate.sh, and tests/test_hold_gates.py, which copies
+# `REPO_ROOT / "hooks" / name`, went red; the slice alone dropped it).
+UNDECLARED = "gates/undeclared_reads.txt"
 SKIP_DIRS = {".git", "target", "node_modules", "__pycache__", ".venv", "venv", "dist", "build"}
 
 
@@ -56,6 +67,11 @@ def _files(root: Path) -> dict[str, str]:
     return out
 
 
+def _shell(rel: str) -> bool:
+    """Whether `rel` is a shell script or a bin/ command: what a Python tool runs by path."""
+    return rel.endswith((".sh", ".bash")) or Path(rel).parent.name == "bin"
+
+
 class Closure:
     """The dependency graph of a tree, built lazily: file -> what it imports or sources
     (lib/source_closure.py), and file -> the scripts its text names."""
@@ -71,6 +87,15 @@ class Closure:
         self._base: set[str] | None = None
         self._code: dict[str, str] = {}
         self._reach: dict[str, tuple[dict[str, tuple[str, ...]], set[str]]] = {}
+        self._cuts: dict[str, dict[str, tuple[str, frozenset[str]]]] = {}
+        self._sliced: dict[tuple[str, frozenset[str]], tuple[str, frozenset[str]] | None] = {}
+        self._cut_code: dict[tuple[str, frozenset[str]], str] = {}
+        listed = root / UNDECLARED
+        self.undeclared = (
+            {ln.strip() for ln in listed.read_text().splitlines() if ln.strip() and ln[0] != "#"}
+            if listed.is_file()
+            else set()
+        )
 
     def code(self, rel: str) -> str:
         """`rel`'s code with its prose blanked (checks/_prose_mask.py): a docstring or comment
@@ -110,10 +135,17 @@ class Closure:
 
     def uses(self, rel: str) -> list[str]:
         """The tree's scripts a SHELL file's code names by a variable-rooted path (ROOTED), resolved
-        from the root or from the file's own directory: what it runs, besides what it sources."""
+        from the root or from the file's own directory: what it runs, besides what it sources. A
+        Python file outside tests/ and checks/ (whose `named` edges are these) uses the shell
+        scripts its code names by path, when `reach` meets it RUN (reached by a name, never
+        imported): tools/landq.py runs `ROOT / "tools" / "land.sh"` (GOH.SELECTTESTIMPORTS:
+        tests/test_landq_batch.py, which runs tools/landq.py, went red on a broken
+        tools/land.sh, which it reached before only through a test module's own tests)."""
         if rel not in self._uses:
             found: list[str] = []
-            if rel.endswith((".sh", ".bash")) or Path(rel).parent.name == "bin":
+            if rel.endswith(".py") and not rel.startswith(("tests/", "checks/")):
+                found = [s for s in self.scripts if _shell(s) and s != rel and self.names(rel, s)]
+            elif rel.endswith((".sh", ".bash")) or Path(rel).parent.name == "bin":
                 here = Path(rel).parent
                 for m in ROOTED.finditer(self.code(rel)):
                     tail = m.group(1).lstrip("/")
@@ -133,6 +165,52 @@ class Closure:
                 s for s in (self.scripts if runs else []) if s != rel and self.names(rel, s)
             ]
         return self._named[rel]
+
+    def slice(self, rel: str, names: frozenset[str] | None) -> tuple[str, frozenset[str]] | None:
+        """(source, held names) of test module `rel` for the `names` an importer takes from it
+        (lib/test_slice.py), or None: the whole module."""
+        if names is None or not test_slice.is_test_module(rel):
+            return None
+        key = (rel, names)
+        if key not in self._sliced:
+            cut = test_slice.slice_of(self.texts.get(rel, ""), names)
+            if cut and rel in self.undeclared and declared_reads.dynamic(cut[0]):
+                cut = None  # UNDECLARED: the slice holds the unknown read
+            self._sliced[key] = cut
+        return self._sliced[key]
+
+    def _cut_named(self, rel: str, cut: tuple[str, frozenset[str]]) -> list[str]:
+        """`named` for the slice `cut` of `rel`: the scripts its code names."""
+        code = self._masked(rel, cut)
+        return [s for s in self.scripts if s != rel and self._names_in(code, s)]
+
+    def _masked(self, rel: str, cut: tuple[str, frozenset[str]]) -> str:
+        key = (rel, cut[1])
+        if key not in self._cut_code:
+            self._cut_code[key] = _prose_mask.python_code_only(cut[0])
+        return self._cut_code[key]
+
+    @staticmethod
+    def _names_in(code: str, path: str) -> bool:
+        return Path(path).name in code and _names_path(code, path)
+
+    def cut(self, test: str, node: str) -> tuple[str, frozenset[str]] | None:
+        """The slice of `node` that `test` reaches (its own closure, `reach(test)`), or None when
+        it reaches the whole file."""
+        self.reach(test)
+        return self._cuts.get(test, {}).get(node)
+
+    def seen(self, test: str, node: str) -> str:
+        """The source of `node` as `test` reaches it: the slice it uses, or the whole file."""
+        cut = self.cut(test, node)
+        return self.texts.get(node, "") if cut is None else cut[0]
+
+    def names_seen(self, test: str, node: str, path: str) -> bool:
+        """Whether the code of `node`, as `test` reaches it, names `path`."""
+        cut = self.cut(test, node)
+        return (
+            self.names(node, path) if cut is None else self._names_in(self._masked(node, cut), path)
+        )
 
     def base(self) -> set[str]:
         """tests/conftest.py and all it reaches: what pytest loads before EVERY test (the reference
@@ -160,42 +238,77 @@ class Closure:
         sources, not the scripts that script mentions in turn. With `runs`, a shell script's
         variable-rooted uses are edges too (Closure.uses), a base file among them included: pytest
         loading it is no run of its command line, which the script's process is (GOH.PREPARITY:
-        lib/gate_identity.py, imported by tests/_land_verdicts.py, run by gates/_rust_proven.sh)."""
+        lib/gate_identity.py, imported by tests/_land_verdicts.py, run by gates/_rust_proven.sh).
+        A test module reached by imports alone is reached as the slice its importers use
+        (lib/test_slice.py): the union of their names, the whole file when any takes all of it,
+        and always whole for a test with undeclared reads, or of one (UNDECLARED)."""
         if skip is None and runs and test in self._reach:  # a test's own closure, asked twice
             return self._reach[test]  # a land: by the closure rule, then by declared_reads
         memo = skip is None and runs
         skip = self.base() if skip is None else skip
         chains: dict[str, tuple[str, ...]] = {}
         read: set[str] = set()  # reached by imports alone: their own code is read, so it counts
+        names: dict[str, frozenset[str] | None] = {}  # a test module's names taken; None: whole
+        cuts: dict[str, tuple[str, frozenset[str]]] = {}
+        slicing = test not in self.undeclared  # UNDECLARED: its unknown reads keep it all
+        ran: set[str] = set()  # reached by a name: run as a process, not imported into one
         # (file, chain, reached by imports alone, a use edge on the chain already)
         todo: list[tuple[str, tuple[str, ...], bool, bool]] = [(test, (), True, False)]
         while todo:
             rel, chain, by_import, used = todo.pop(0)
+            cut = cuts.get(rel) if by_import else None
 
-            def visit(dep: str, by_import: bool, used: bool, chain=chain) -> None:
+            def visit(dep: str, by_import: bool, used: bool, chain=chain, took=None) -> None:
                 if dep == test or dep in skip:
                     return
-                if dep not in chains or (by_import and dep not in read):
+                widened = False
+                if by_import and test_slice.is_test_module(dep):
+                    old = names.get(dep, frozenset())
+                    new = None if old is None or took is None else old | took
+                    if dep not in names or new != old:
+                        names[dep] = new
+                        widened = dep in read
+                        if (sliced := self.slice(dep, new)) is None:
+                            cuts.pop(dep, None)
+                        else:
+                            cuts[dep] = sliced
+                elif not by_import:
+                    names[dep] = None
+                    cuts.pop(dep, None)
+                if dep not in chains or (by_import and dep not in read) or widened:
                     chains.setdefault(dep, (*chain, dep))
                     if by_import:
                         read.add(dep)
                     todo.append((dep, chains[dep], by_import, used))
 
+            text = self.texts.get(rel, "")
             for dep in self.imports(rel):
-                visit(dep, by_import, used)
+                took = (
+                    test_slice.taken(text, dep, cut[1] if cut else None)
+                    if slicing and test_slice.is_test_module(dep)
+                    else None
+                )
+                visit(dep, by_import, used, took=took)
             # A shell script's runs, never a mention -- ONE use per chain: a used script's sources
             # come with it, its own runs do not (followed, land.sh -> gate_profile.sh ->
             # push_gate.sh -> install.sh -> ... chose ~100 more files a land).
-            for dep in self.uses(rel) if runs and not used else ():
+            # ... and a Python tool RUN by path (named, never imported, nor imported by what is run)
+            # runs the scripts its code names; a module imported names them as data
+            # (lib/run_rule.py's table, imported by lib/gate_identity.py, names gates/push_gate.sh).
+            run_py = rel in ran or not rel.endswith(".py")
+            for dep in self.uses(rel) if runs and not used and run_py else ():
                 if dep in skip and dep != test:
                     chains.setdefault(dep, (*chain, dep))  # run, not loaded: counted, not followed
                 else:
                     visit(dep, False, True)
             if by_import:
-                for dep in self.named(rel):
+                for dep in self.named(rel) if cut is None else self._cut_named(rel, cut):
+                    if dep != test and dep not in skip:
+                        ran.add(dep)
                     visit(dep, False, used)
         if memo:
             self._reach[test] = (chains, read)
+            self._cuts[test] = {n: c for n, c in cuts.items() if n in read}
         return chains, read
 
 
@@ -210,7 +323,7 @@ def transitive(graph: Closure, test: str, changed: list[str]) -> str | None:
         if node not in read:
             continue  # a script the test runs: what it sources counts, what it mentions does not
         for path in changed:
-            if path != node and graph.names(node, path):
+            if path != node and graph.names_seen(test, node, path):
                 via = node + (f" through {' -> '.join(chain)}" if len(chain) > 1 else "")
                 return f"reaches {via}, which names {path}"
     return None
