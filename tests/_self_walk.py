@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -172,6 +173,26 @@ def parse_structural(text: str, labels: list[str]) -> dict[str, Result]:
         if UNJUDGED.search(line):
             cur.unjudged = True
         cur.sites.update(m.group(0) for m in SITE.finditer(line))
+    return out
+
+
+def lint(goh: Path, tree: Path, env: dict[str, str]) -> None:
+    """`goh shell-lint` over `tree`: its verdicts recorded in `env`'s store before another walk
+    reads them (the walk's red, if any, is its own run's to report)."""
+    _run([str(goh), "shell-lint"], tree, env)
+
+
+def shellchecked(log: Path, root: Path) -> dict[str, Counter[str]]:
+    """Each shell file a walk under `root` handed shellcheck, by its path in the tree: how many
+    times in each tree (`goh`, `planted`). A `--version` probe is no lint."""
+    out: dict[str, Counter[str]] = {}
+    lines = log.read_text().splitlines() if log.exists() else []
+    for line in lines:
+        rel = Path(line)
+        if not rel.is_absolute() or not rel.is_relative_to(root):
+            continue
+        tree, *rest = rel.relative_to(root).parts
+        out.setdefault("/".join(rest), Counter())[tree] += 1
     return out
 
 

@@ -9,6 +9,9 @@ command, an opt-in the walk turns on), each of which must read red.
 
 from __future__ import annotations
 
+import os
+import shutil
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -141,24 +144,49 @@ PLANTS = {
 }
 
 
+# A file the planted tree EDITS (a comment appended, no scanner's business): its bytes differ
+# between the trees, so its verdict is the planted tree's own and it is linted again there.
+EDITED = "checks/check_no_screen_linkage.sh"
+
+# Every shellcheck the walks spawn, logged by its last argument (the file), then run for real.
+SHIM = '#!/bin/sh\nfor a; do last=$a; done\nprintf "%s\\n" "$last" >> {log}\nexec {real} "$@"\n'
+
+
 @pytest.fixture(scope="module")
 def walks(native_goh: Path, tmp_path_factory) -> dict[str, dict[str, Result]]:
-    """goh as it stands, and goh with PLANTS, walked side by side."""
+    """goh as it stands, and goh with PLANTS, walked side by side.
+
+    ONE shellcheck per shell file per run (GOH.SELFWALKSC): two full walks paid two shellchecks
+    for every file both trees hold byte for byte (742 spawns, 745 CPU-s in one land, 2026-11-19).
+    The trees share ONE verdict store, the one shell-lint already keys by the file's bytes, its
+    sources, the tools and the flags, and the clean tree is linted before either walk starts, so
+    both walks read every verdict but the planted tree's plants' and edit's."""
     seed = w.load_seed()
     reg = w.registry(native_goh)
     root = tmp_path_factory.mktemp("self-walk")
     plants = dict(PLANTS.values())
+    plants[EDITED] = (w.REPO_ROOT / EDITED).read_text() + "# edited by the planted walk\n"
+    store, shim, log = root / "verdicts", root / "shim", root / "shellcheck.log"
+    shim.mkdir()
+    real = shutil.which("shellcheck")
+    assert real, "the walk needs shellcheck on PATH"
+    (shim / "shellcheck").write_text(SHIM.format(log=log, real=real))
+    (shim / "shellcheck").chmod(0o755)
+    path = f"{shim}{os.pathsep}{os.environ.get('PATH', '')}"
+    trees = {"goh": {}, "planted": plants}
 
-    def one(name: str, planted: dict[str, str]) -> dict[str, Result]:
-        tree = w.walked_tree(root / name, seed, planted)
-        return w.walk(native_goh, tree, w.walk_env(hermetic_env(), root / f"{name}-env"), reg)
+    def build(name: str) -> tuple[Path, dict[str, str]]:
+        env = hermetic_env(GOH_VERDICT_DIR=str(store), PATH=path)
+        return w.walked_tree(root / name, seed, trees[name]), w.walk_env(env, root / f"{name}-env")
 
     with ThreadPoolExecutor(2) as pool:
-        clean, planted = pool.submit(one, "goh", {}), pool.submit(one, "planted", plants)
+        clean, planted = pool.map(build, trees)
+        w.lint(native_goh, *clean)  # before either walk: the planted walk reads its verdicts
+        done = pool.map(lambda tree_env: w.walk(native_goh, *tree_env, reg), (clean, planted))
         return {
             "labels": [r["scanner"] for r in reg],
-            "goh": clean.result(),
-            "planted": planted.result(),
+            **dict(zip(trees, done, strict=True)),
+            "shellchecked": w.shellchecked(log, root),
         }
 
 
@@ -184,3 +212,14 @@ def test_a_planted_violation_turns_its_scanner_red(walks) -> None:
     reds = w.judge(walks["labels"], planted, w.load_seed())
     for name in PLANTS:
         assert any(r.startswith(f"`{name}` finds") for r in reds), name
+
+
+def test_a_run_shellchecks_each_shell_file_once_and_an_edited_one_again(walks) -> None:
+    """GOH.SELFWALKSC: a file both trees hold byte for byte is linted ONCE in the run; one whose
+    bytes differ (EDITED) or that only the planted tree holds is linted in the planted tree."""
+    by_file = walks["shellchecked"]
+    assert by_file, "the walks spawned no shellcheck: the shim is not on their PATH"
+    twice = {f for f, trees in by_file.items() if len(trees) > 1}
+    assert twice == {EDITED}, f"linted in both trees: {sorted(twice)[:8]} ({len(twice)})"
+    assert all(n == 1 for trees in by_file.values() for n in trees.values()), "a tree re-linted"
+    assert by_file[PLANTS["no code after exec"][0]] == Counter(planted=1)
