@@ -171,3 +171,82 @@ def test_a_lanes_run_gets_its_own_land_record_and_a_part_of_the_set_goes_straigh
     av.whole(lane, SET, None, False, run)  # --changed / --readers-only: no key, no record
     av.whole(lane, [], None, True, run)  # nothing chosen: nothing to keep
     assert seen[1:] == [None, None], seen
+
+
+# GOH.PRESTEPVERDICTMISS: STEPCLOSUREREFUSE's lane ran its set green on 03023f7d, re-committed the
+# same tree as 6de0a68d (tree 2867b103, parent c98b05c9 both), and the enqueue ran the set again
+# for 515 s: the key was the sha, so a reworded commit of the very bytes the run judged missed.
+
+
+def test_a_recommit_of_the_same_tree_takes_the_lanes_verdict(lane, tmp_path, monkeypatch) -> None:
+    work = Set(lane)
+    av.judged(lane, SET, None, work)
+    judged_on = git(lane, "rev-parse", "HEAD").strip()
+    git(lane, "commit", "-q", "--amend", "--no-verify", "-m", "lane, reworded")
+    head = git(lane, "rev-parse", "HEAD").strip()
+    assert head != judged_on
+    rec = _enqueue(monkeypatch, tmp_path)
+    assert av.judged(lane, SET, "c" * 40, work) == 0
+    assert work.runs == 1, "a recommit of the same tree ran the set the lane had just run green"
+    got = json.loads(rec.read_text())
+    assert got["sha"] == head, "the handed record names a commit that is not the checkout's"
+
+
+def test_a_recommit_that_changes_the_tree_still_misses(lane, tmp_path, monkeypatch) -> None:
+    work = Set(lane)
+    av.judged(lane, SET, None, work)
+    (lane / "x.txt").write_text("moved\n")
+    git(lane, "add", "-A")
+    git(lane, "commit", "-q", "--amend", "--no-verify", "-m", "lane")
+    _enqueue(monkeypatch, tmp_path)
+    av.judged(lane, SET, None, work)
+    assert work.runs == 2, "a verdict on another tree was taken"
+
+
+def _said(monkeypatch) -> list[str]:
+    lines: list[str] = []
+    monkeypatch.setattr(av, "_say", lambda kind, text: lines.append(text))
+    return lines
+
+
+@pytest.mark.parametrize(
+    ("move", "reason"),
+    [
+        ("another tree", "differs in tree"),
+        ("another set", "differs in selection"),
+        ("a suite input", "differs in env"),
+        ("nothing kept", "no kept verdict of this repo"),
+        ("an untracked file", "forgotten.py"),
+        ("a deselecting run", "GOH_LAND_VERDICTS_REUSE"),
+        ("the audit's shadow", "shadow"),
+        ("the path is off", "off"),
+    ],
+)
+def test_every_miss_says_its_reason_in_one_line(lane, tmp_path, monkeypatch, move, reason) -> None:
+    work = Set(lane)
+    if move != "nothing kept":
+        av.judged(lane, SET, None, work)
+    _enqueue(monkeypatch, tmp_path)
+    chosen = SET
+    if move == "another tree":
+        _commit(lane, "more", **{"x.txt": "x\n"})
+    elif move == "another set":
+        chosen = SET[:1]
+    elif move == "a suite input":
+        monkeypatch.setenv("GOH_TEST_BIN", "/elsewhere/goh")
+    elif move == "an untracked file":
+        (lane / "forgotten.py").write_text("x = 1\n")
+    elif move == "a deselecting run":
+        monkeypatch.setenv(av.REUSE, str(tmp_path / "gate.json"))
+    elif move == "the audit's shadow":
+        monkeypatch.setattr(reuse_audit, "use", lambda path, fields: "shadow")
+        monkeypatch.setattr(reuse_audit, "compare", lambda *a, **k: True)
+    elif move == "the path is off":
+        monkeypatch.setattr(reuse_audit, "use", lambda path, fields: "off")
+    lines = _said(monkeypatch)
+    runs = work.runs
+    av.judged(lane, chosen, None, work)
+    assert work.runs == runs + 1, f"{move}: the set did not run"
+    why = [line for line in lines if "-- it runs" in line or "the set runs" in line]
+    assert len(why) == 1 and "\n" not in why[0], lines
+    assert reason in why[0], f"{move}: the miss line does not say why: {why[0]!r}"

@@ -9,7 +9,11 @@ suite inputs takes it instead of running pytest again.
 
 THE KEY, and why it is exact:
   repo       the common git dir (every worktree and land slot of the repo shares it);
-  sha        the commit: its tree, so every byte a test reads, and its parents;
+  tree       the commit's tree, every byte a test reads, never the sha: a lane that re-commits
+             the tree it ran (a reworded message) is the same run (GOH.PRESTEPVERDICTMISS:
+             STEPCLOSUREREFUSE's enqueue re-ran 515 s on such a recommit), a changed tree misses;
+             the land gate keys a test verdict so (lib/gate_identity.py `suite`). The record handed
+             names the checkout's commit, the one it judged in `judged_on`;
   selection  sha256 of the chosen node ids, the set itself (the diff it was chosen from enters
              only through it: the same nodes on the same commit are the same run);
   identity   lib/gate_identity.py `suite` -- the commit's tree in a CLEAN checkout (no change, no
@@ -34,7 +38,12 @@ suite runs in the land's shape (`ci`) and its passes are the land's record. A ru
 
 THE AUDIT. Every take asks lib/reuse_audit.py; one in `every` is a SHADOW (the set runs anyway and
 the verdicts are compared; a repeated disagreement turns the path off, and an off path runs every
-set). Pinned by tests/test_affected_verdict.py.
+set). GOH.LANDEDREUSEON's enqueue was such a shadow (830.9 s, agreed).
+
+EVERY MISS SAYS WHY, in one line of the run's output (so of the enqueue's): no key and what took it
+(a named untracked or changed file, a deselecting run, no declared inputs), the nearest kept
+verdict of the repo and the fields it differs in, the audit's shadow, or an off path. Pinned by
+tests/test_affected_verdict.py.
 """
 
 from __future__ import annotations
@@ -95,21 +104,54 @@ def env_lines(root: Path, env: dict[str, str]) -> list[str] | None:
     return out
 
 
-def fields(root: Path, chosen: list[str], env: dict[str, str] | None = None) -> dict | None:
-    """The key of this set's run on root's commit (module doc); None: it has none and runs."""
+def keyed(
+    root: Path, chosen: list[str], env: dict[str, str] | None = None
+) -> tuple[dict | None, str]:
+    """(the key of this set's run on root's commit tree, "") or (None, why it has none: it runs)."""
     env = dict(os.environ) if env is None else env
     gi, reuse = _lib("gate_identity"), _lib("reuse")
-    identity = gi.suite(root)
-    lines = env_lines(root, env)
-    sha = reuse._git(root, "rev-parse", "HEAD")
-    if identity is None or lines is None or not sha or env.get(REUSE):
-        return None
+    if env.get(REUSE):
+        return None, f"a deselecting run ({REUSE} is set) is no whole set"
+    if not (tree := reuse._git(root, "rev-parse", "--verify", "--quiet", "HEAD^{tree}")):
+        return None, f"{root} has no commit"
+    if (identity := gi.suite(root)) is None:
+        moved = reuse._git(root, "status", "--porcelain", "--untracked-files=all").splitlines()
+        named = ", ".join(ln[3:] for ln in moved[:3]) + (
+            f" (+{len(moved) - 3} more)" if moved[3:] else ""
+        )
+        return None, f"the checkout is not its commit: {named or 'no clean tree'}"
+    if (lines := env_lines(root, env)) is None:
+        return None, "the tree declares no suite inputs (tests/suite_home.py CALLER_INPUTS)"
 
     def digest(parts: list[str]) -> str:
         return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
-    return {"repo": reuse.repo_id(root), "sha": sha, "selection": digest(sorted(chosen)),
-            "identity": identity, "env": digest(lines)}  # fmt: skip
+    return {"repo": reuse.repo_id(root), "tree": tree, "selection": digest(sorted(chosen)),
+            "identity": identity, "env": digest(lines)}, ""  # fmt: skip
+
+
+def fields(root: Path, chosen: list[str], env: dict[str, str] | None = None) -> dict | None:
+    """The key of this set's run on root's commit tree (module doc); None: it has none and runs."""
+    return keyed(root, chosen, env)[0]
+
+
+def nearest(key: dict) -> str:
+    """Why KEY missed, in words: the store's live `affected` record of this repo nearest it (fewest
+    fields apart, then the newest) and the fields it differs in."""
+    reuse = _lib("reuse")
+    p, best = reuse.PATHS[PATH], None
+    for _, rec, age in reuse.records(PATH):
+        got = rec.get("fields")
+        if not isinstance(got, dict) or set(got) != set(p.fields) or not 0 <= age < reuse.ttl(p):
+            continue
+        off = [k for k in p.fields if got.get(k) != key.get(k)]
+        if "repo" not in off and (best is None or (len(off), age) < (len(best[1]), best[2])):
+            best = (rec, off, age)
+    if best is None:
+        return f"no kept verdict of this repo in the last {reuse.ttl(p) // 3600} h"
+    rec, off, age = best
+    on = str((rec.get("record") or {}).get("sha", ""))[:8] or "?"
+    return f"the nearest kept verdict (on {on}, {age // 60} min old) differs in {', '.join(off)}"
 
 
 @contextlib.contextmanager
@@ -141,11 +183,14 @@ def whole(root: Path, chosen: list[str], base: str | None, is_whole: bool,
         return judged(root, chosen, base, work)
 
 
-def _hand(rec: dict, base: str | None) -> None:
+def _hand(root: Path, rec: dict, base: str | None) -> None:
     """The kept record, written where the caller's run would have written its own."""
     dest = os.environ.get(RECORD, "")
     if dest and dest != os.devnull:
-        Path(dest).write_text(json.dumps(rec["record"]))
+        kept, head = rec["record"], _lib("reuse")._git(root, "rev-parse", "HEAD")
+        if head and kept.get("sha") != head:  # a recommit of the tree it judged: the checkout's
+            kept = {**kept, "sha": head, "judged_on": kept.get("sha")}
+        Path(dest).write_text(json.dumps(kept))
         _lib("pre_reuse").stamp(dest, base)
 
 
@@ -156,12 +201,14 @@ def keep(root: Path, key: dict, took: float) -> bool:
         rec = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
-    gi = _lib("gate_identity")
+    gi, reuse = _lib("gate_identity"), _lib("reuse")
+    sha = rec.get("sha") if isinstance(rec, dict) else None  # the run judged this very commit
+    head = reuse._git(root, "rev-parse", "HEAD")
     if not isinstance(rec, dict) or not isinstance(rec.get("passed"), dict) \
-            or rec.get("identity") is None or rec.get("sha") != key["sha"] \
+            or rec.get("identity") is None or not sha or sha != head \
+            or reuse._git(root, "rev-parse", f"{sha}^{{tree}}") != key["tree"] \
             or gi.suite(root) != key["identity"]:  # fmt: skip
         return False
-    reuse = _lib("reuse")
     reuse.record(PATH, key, "green", by="tools/affected_tests.py --run",
                  extra={"record": rec, "took_s": round(took, 1)})  # fmt: skip
     reuse.prune(PATH)
@@ -170,29 +217,38 @@ def keep(root: Path, key: dict, took: float) -> bool:
 
 def judged(root: Path, chosen: list[str], base: str | None, work: Callable[[], int]) -> int:
     """WORK (the set's run) unless a kept green verdict of this exact key stands; its exit."""
-    key = fields(root, chosen)
+    key, why = keyed(root, chosen)
     if key is None:
-        _say(
-            "info",
-            "pre-land: this run has no exact key (a changed or untracked file, no "
-            "declared suite inputs, or a deselecting run) -- the set runs, nothing is kept",
-        )
+        _say("info", f"pre-land: no exact key ({why}) -- the set runs, nothing is kept")
         return work()
     rec, why = _lib("reuse").lookup(PATH, key)
     use = "miss"
-    if rec is not None and rec.get("verdict") == "green" and isinstance(rec.get("record"), dict):
+    if rec is None and why.startswith("no "):
+        why = nearest(key)
+    elif rec is not None and (
+        rec.get("verdict") != "green" or not isinstance(rec.get("record"), dict)
+    ):
+        why = f"the kept verdict of this key is {rec.get('verdict')!r}, no green record"
+    elif rec is not None:
+        on = str(rec["record"].get("sha", ""))[:8]
         use = _lib("reuse_audit").use("affected", key)
         if use == "reuse":
-            _hand(rec, base)
+            _hand(root, rec, base)
             _say(
                 "ok",
-                f"pre-land: the set's verdict on {key['sha'][:8]} holds (same commit, "
-                f"set and suite inputs; {rec.get('by')}, {rec.get('took_s')} s, "
-                f"{len(rec['record']['passed'])} tests) -- not run again",
+                f"pre-land: the set's verdict on {on} holds (same tree, set and suite inputs; "
+                f"{rec.get('by')}, {rec.get('took_s')} s, {len(rec['record']['passed'])} tests) "
+                "-- not run again",
             )
             return 0
-        why = f"the audited `{PATH}` path says {use!r}"
-    _say("info", f"pre-land: no kept verdict of this set ({why}) -- it runs")
+        every = _lib("reuse").PATHS[PATH].every
+        why = (
+            f"the verdict on {on} holds, but this take is the audit's shadow: one take in {every} "
+            "runs the set to check it, lib/reuse_audit.py"
+            if use == "shadow"
+            else f"the audited `{PATH}` path is {use} (reuse_audit.py report names why)"
+        )
+    _say("info", f"pre-land: no verdict taken ({why}) -- it runs")
     t0 = time.monotonic()
     rc = work()
     if use == "shadow":
@@ -206,7 +262,7 @@ def judged(root: Path, chosen: list[str], base: str | None, work: Callable[[], i
     if rc == 0 and keep(root, key, time.monotonic() - t0):
         _say(
             "info",
-            f"pre-land: the set's green verdict on {key['sha'][:8]} is kept "
+            f"pre-land: the set's green verdict on tree {key['tree'][:8]} is kept "
             f"(lib/reuse.py `{PATH}`): the enqueue's pre-step takes it",
         )
     return rc

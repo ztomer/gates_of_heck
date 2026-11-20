@@ -71,6 +71,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -124,24 +125,19 @@ def register(name: str, fields: tuple[str, ...], ttl_s: int, doc: str, **audit) 
 
 
 GATE = register(
-    "gate",
-    ("repo", "tree", "identity"),
-    DAY_S,
+    "gate", ("repo", "tree", "identity"), DAY_S,
     "a green gate over a commit's tree: the push gate writes; ship verdict, the release rule read",
-    sites=("lib/ship_verdict.py",),
-    unsampled="its fresh side is a full gate of the tree in an idle local slot, which only the "
-    "idle lander (tools/landq.py) schedules; `landed`'s shadow is the release push's own",
-)
+    sites=("lib/ship_verdict.py",), unsampled="its fresh side is a full gate of the tree in an "
+    "idle local slot, which only the idle lander (tools/landq.py) schedules; `landed`'s shadow is "
+    "the release push's own",
+)  # fmt: skip
 
 PUSHED = register(
-    "pushed",
-    ("repo", "tree"),
-    365 * DAY_S,
+    "pushed", ("repo", "tree"), 365 * DAY_S,
     "a tree some push gate judged green, under any gates: the floor rule's base (config_push.py)",
-    sites=("lib/config_push.py",),
-    unsampled="identity-free on purpose: its fresh side is a gate of the remote's tip under the "
-    "gates that pushed it, which no later run has (docs/reuse.md)",
-)
+    sites=("lib/config_push.py",), unsampled="identity-free on purpose: its fresh side is a gate "
+    "of the remote's tip under the gates that pushed it, which no later run has (docs/reuse.md)",
+)  # fmt: skip
 
 # The reuse paths whose records still live in their own stores (docs/reuse.md, the order): each
 # registered with its key fields and sites, so the audit counts, samples and switches it off.
@@ -180,9 +176,8 @@ register(
     store="the `carry` record", sites=("lib/ship_full_run.py",), shadow="inline",
 )  # fmt: skip
 register(
-    "affected", ("repo", "sha", "selection", "identity", "env"), DAY_S,
-    "the pre-land set's green run, taken by the next run of that set on that commit under those "
-    "suite inputs: the lane's run is the enqueue's pre-step (lib/affected_verdict.py)",
+    "affected", ("repo", "tree", "selection", "identity", "env"), DAY_S, "the pre-land set's green "
+    "run on a tree, the next run of that set on it under those inputs (lib/affected_verdict.py)",
     sites=("lib/affected_verdict.py",), shadow="inline",
 )  # fmt: skip
 register(
@@ -299,17 +294,23 @@ def lookup(path: str | ReusePath, fields: dict[str, str]) -> tuple[dict | None, 
     return rec, ""
 
 
+def records(path: str | ReusePath) -> Iterator[tuple[Path, dict, int]]:
+    """Each record file of PATH, its record ({}: unreadable) and its age in s (-1: no epoch)."""
+    for f in (root() / _path(path).name).glob("*/*.json"):
+        try:
+            rec = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            rec = {}
+        rec = rec if isinstance(rec, dict) else {}
+        yield f, rec, now() - rec["epoch"] if isinstance(rec.get("epoch"), int) else -1
+
+
 def prune(path: str | ReusePath) -> int:
     """Delete the path's records older than its TTL (and unreadable ones); the count removed. A
     writer calls it once per write batch, so the store stays the size of one TTL of verdicts."""
-    p = _path(path)
-    gone = 0
-    for f in (root() / p.name).glob("*/*.json"):
-        try:
-            epoch = json.loads(f.read_text(encoding="utf-8")).get("epoch")
-        except (OSError, ValueError, AttributeError):
-            epoch = None
-        if not isinstance(epoch, int) or not 0 <= now() - epoch < ttl(p):
+    p, gone = _path(path), 0
+    for f, _, age in records(p):
+        if not 0 <= age < ttl(p):
             f.unlink(missing_ok=True)
             gone += 1
     return gone
