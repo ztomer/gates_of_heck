@@ -15,13 +15,16 @@ carry (tests/_land_verdicts.py) use. The answer, one line of why first, then a n
 
     0  REUSE   no moved path is read: the verdict judged at J stands (an empty diff too)
     3  NARROW  the moved paths are read only by the nodes listed: run those, keep J's verdict
-    1  RERUN   anything else, with why -- a moved path the branch changes too (the merged file
-               is in neither judged tree), the pre-step's own code or a suite-wide input moved,
-               no reads table in the tree, or a diff git cannot give
+    1  RERUN   anything else, with why -- the pre-step's own code moved (`pre_step_code`: what
+               chooses the set, the pytest entry, the structural gates and all they import,
+               source or run, read from the tip's sources), a file pytest loads before every
+               test, no reads table in the tree, or a diff git cannot give
 
-The tree readers are not re-run here: each file the tip holds is J's (judged by its set) or main's
-(judged by main's gate), the full gate runs them on the tip after, and the record kept for it
-carries only what the diff J..tip does not choose. Pinned by tests/test_pre_reuse.py.
+A merged file -- one main moved and the branch changes too -- is judged as any moved path is, by
+the tests that read it (GOH.PRESTEPMOVED). The tree readers are not re-run here: each file the tip
+holds is J's (judged by its set), main's (judged by main's gate) or a merge of both, the full gate
+runs every tree reader on the tip after, and the record kept for it carries only what the diff
+J..tip does not choose. Pinned by tests/test_pre_reuse.py.
 
 THE GATE'S SUITE (GOH.SUITEONCE): `--suite` answers 0 (the reused verdict's id on line 2) when the
 gate's checkout is the very commit tree the record judged, against the gate's base, and main's
@@ -50,9 +53,14 @@ import sys
 from pathlib import Path
 
 REUSE, RERUN, NARROW = 0, 1, 3
-# The pre-step's own code: what chooses the set and the structural gates it runs first.
-PRE_CODE = (".gatesrc", "pyproject.toml", "tools/pytest.sh", "tools/affected_tests.py")
-PRE_DIRS = ("gates/", "checks/")
+# The pre-step's own code (`pre_step_code`): what chooses the set, the pytest entry and the
+# structural gates it runs first, with everything they import, source or run -- read from the tip's
+# own sources, never a directory prefix. `gates/` and `checks/` whole were 1 of 2 in-land reruns
+# of GOH.LOADSOURCE's land (checks/cad_bambu.py, 607 s) and COVOFFLAND's ~17 min (push_gate.sh),
+# and the prefix never saw the selection's own lib/ modules (GOH.PRESTEPMOVED).
+PRE_CODE = (".gatesrc", "pyproject.toml")
+PRE_ROOTS = ("tools/affected_tests.py", "tools/pytest.sh", "gates/structural.sh")
+PRE_CHECKS = "checks/check_"  # the structural binary runs these by name (crates/goh steps)
 
 
 def _diff(root: Path, a: str, b: str) -> list[str] | None:
@@ -101,16 +109,24 @@ def decide(root: Path, judged: str, tip: str, base: str) -> tuple[int, str, list
     own = _diff(root, base, tip)
     if own is None:
         return RERUN, f"git cannot diff main {base[:8]}..{tip[:8]}", []
-    if both := sorted(set(moved) & set(own)):
-        return RERUN, f"{both[0]} moved on main and is changed by the branch: a merged file", []
-    code = [p for p in moved if p in PRE_CODE or p.startswith(PRE_DIRS)]
-    code += [p for p in moved if Path(p).name == "conftest.py"]
-    if code:
-        return RERUN, f"{code[0]} moved: the pre-step's own code or a suite-wide input", []
+    # A merged file -- main moved it and the branch changes it -- is in neither judged tree: its
+    # readers judge its bytes like any moved path's (GOH.PRESTEPMOVED: docs/map.md, named by 10
+    # test files, ran GOH.LOADSOURCE's whole set again, 466 s). The tree readers' verdict on them
+    # is the full gate's, which runs every tree reader on every diff (tests/_land_verdicts.py).
+    merged = sorted(set(moved) & set(own))
+    if merged:
+        n += f" ({len(merged)} merged: {' '.join(merged[:3])}{' ...' if len(merged) > 3 else ''})"
+    if code := [p for p in moved if p in PRE_CODE]:
+        return RERUN, f"{code[0]} moved: the pre-step's own code", []
     table = _table(root)
     if table is None:
         return RERUN, "no reads table (tools/affected_tests.py readers) in the tree", []
-    if wide := sorted(set(moved) & table.Closure(root).base()):
+    graph = table.Closure(root)  # built once: the pre-step's code and pytest's base both read it
+    if code := pre_step_code(root, table, moved, graph):
+        return RERUN, f"{code[0]} moved: the pre-step's own code", []
+    if wide := [p for p in moved if Path(p).name == "conftest.py"]:
+        return RERUN, f"{wide[0]} moved: pytest loads it before every test", []
+    if wide := sorted(set(moved) & graph.base()):
         return RERUN, f"{wide[0]} moved: pytest loads it before every test", []
     read = table.readers(root, moved)
     if read:
@@ -120,6 +136,25 @@ def decide(root: Path, judged: str, tip: str, base: str) -> tuple[int, str, list
             sorted(read),
         )
     return REUSE, f"{n}, none read by a test: {shown}", []
+
+
+def pre_step_code(root: Path, table, moved: list[str], graph=None) -> list[str]:
+    """Each of `moved` that is the pre-step's own code at `root` (GOH.PRESTEPMOVED): PRE_CODE, the
+    PRE_ROOTS and the checks the structural binary runs (PRE_CHECKS), with all they import, source
+    or run as `table`'s graph reads it (lib/test_closure.py `reach`, the selection's one dependency
+    reader), and the native binary's build inputs, which the structural gates run. An edge a move
+    adds or drops is a change to a file the graph reaches, so the tip's graph alone misses none.
+    A table whose graph cannot reach answers with the roots alone."""
+    graph = table.Closure(root) if graph is None else graph
+    texts = getattr(graph, "texts", {})
+    roots = [r for r in PRE_ROOTS if r in texts]
+    roots += sorted(p for p in texts if p.startswith(PRE_CHECKS) and p.endswith(".py"))
+    own = {*PRE_CODE, *PRE_ROOTS, *roots}
+    for rel in roots if hasattr(graph, "reach") else ():
+        own.update(graph.reach(rel, skip=set())[0])
+    builds = getattr(getattr(table, "binary_runners", None), "build_inputs_in", None)
+    built = set(builds(root, moved)) if builds else set()
+    return [p for p in moved if p in own or p in built]
 
 
 def _kit(name: str, sub: str):
