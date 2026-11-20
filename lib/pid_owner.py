@@ -146,9 +146,17 @@ def read_stamp(path: str | os.PathLike[str]) -> Stamp | None:
     so the process is the one that was written down however long ago; a bare pid is stamped as it
     is NOW, which proves something only while the process is known to be alive."""
     try:
-        words = Path(path).read_text(encoding="utf-8", errors="replace").split()
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
+    return from_line(text)
+
+
+def from_line(text: str) -> Stamp | None:
+    """Stamp the process a `<pid> [<lstart>]` line names (a pidfile's text, a snapshot's entry), or
+    None: empty, not a pid, gone, or -- when the line carries a start time -- a pid whose start
+    time is another now, i.e. a reused number."""
+    words = text.split()
     if not words or not words[0].isdigit():
         return None
     pid = int(words[0])
@@ -163,6 +171,20 @@ def same(s: Stamp | None) -> bool:
         return False
     found = birth(s.number)
     return found is not None and found[0] == s.born
+
+
+def alive(s: Stamp | None) -> bool:
+    """The liveness probe for a SAVED pid (GOH.STRAYSIGNAL2): `os.kill(pid, 0)` answers yes for
+    whatever process holds the number now, so a lock or a wait on a pid whose process ended reads
+    a stranger as its holder. True only while the stamped process itself runs (a zombie is gone)."""
+    return same(s)
+
+
+def alive_line(text: str) -> bool:
+    """`alive` of the process a `<pid> <lstart>` line names (a record's `pid_stamp`). A record
+    written before it carried one hands its bare pid, which is judged as it stands NOW: the old
+    answer, kept only for a record an older goh wrote."""
+    return alive(from_line(text))
 
 
 def signal(s: Stamp | None, sig: int) -> bool:

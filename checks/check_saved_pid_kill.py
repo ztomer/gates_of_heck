@@ -15,13 +15,17 @@ it stamps the process's birth and refuses a pid whose birth changed.
 WHAT IS JUDGED. Every signal site in the tracked code of tests/ lib/ tools/ checks/ hooks/ crates/
 gates/ scripts/:
   * Python (`ast`): a call of `os.kill`/`os.killpg` (or `kill`/`killpg` imported from os) is OWNED
-    when its signal is the literal 0 (a probe, which signals nothing), or its target is a child
-    handle (`X.pid`, a Popen's; `os.getpgid(X.pid)`), this process or its group (`os.getpid()`,
-    `os.getpgrp()`, `os.getpgid(0)`, `0`); any other target is BARE.
+    when its target is a child handle (`X.pid`, a Popen's; `os.getpgid(X.pid)`), this process or
+    its group (`os.getpid()`, `os.getpgrp()`, `os.getpgid(0)`, `0`); any other target is BARE.
   * Shell (`*.sh`, `*.bash`, a `#!` sh/bash file): a `kill` command whose targets are not all `$$`,
-    `$BASHPID` or a `%job`, and whose signal is not `-0`/`-l`, is BARE.
+    `$BASHPID` or a `%job`, and that is not a listing (`-l`), is BARE.
   * Rust: a `libc::kill(`/`libc::killpg(`/`goh_sys::killpg(`/`nix ... signal::kill(` call is BARE
     (Rust's own `Child::kill()` is a handle).
+  A PROBE (signal 0: `os.kill(pid, 0)`, `kill -0 "$pid"`) is judged as a kill is (GOH.STRAYSIGNAL2):
+  it signals nothing, but it answers yes for whatever process holds a reused number, so a lock read
+  a dead holder's pid as its holder still running, and a test waiting for a process to end waited
+  on a stranger. A saved pid's liveness goes through `pid_owner.alive`/`alive_line` or
+  `goh_pid_alive`, which compare the start time.
   The helpers themselves (lib/pid_owner.py, lib/pid_owner.sh) are not judged.
 
 THE RATCHET: checks/saved_pid_kill_allow.json, one entry per (path, call) -- the call's text with
@@ -31,9 +35,17 @@ see (the group of a child it spawned, passed in by name), the reason saying how.
 debt, a saved pid signalled without proof; it may only shrink. A bare site not listed is red, and
 so is an entry no site matches (stale), an entry without a reason, and a status outside the two.
 
-NOT READ (stated): shell inside a Python string (a fake a test writes), a `kill` run through
-`subprocess` (`["kill", pid]`), and a pid passed through more than one name. Calibrated by
-tests/test_check_saved_pid_kill.py, which plants each shape and watches it go red.
+NOT READ (stated limits, GOH.STRAYSIGNAL2):
+  * shell inside a Python string -- a fake or a hook a test writes (`f"kill {pid}"`,
+    `f"kill -0 {pid}"`): it is data to the Python parser, and its pid is one the TEST formats in,
+    so such a string is judged by review, not here;
+  * a `kill` run through `subprocess` (`["kill", pid]`), and a pid passed through more than one
+    name;
+  * WHEN the stamp was taken. `pid_owner.signal(pid_owner.stamp(pid), sig)` passes, and proves
+    nothing: a stamp taken at the moment of the kill stamps whoever holds the number then. A stamp
+    is proof only when taken while the process is known to be ours (at the spawn, or as its
+    pidfile first appears); that is a property of the data flow, which a per-call scan cannot see.
+Calibrated by tests/test_check_saved_pid_kill.py, which plants each shape and watches it go red.
 """
 
 from __future__ import annotations
@@ -142,11 +154,9 @@ def python_sites(path: str, text: str) -> list[Site]:
         ) or (isinstance(f, ast.Name) and f.id in from_os)
         if not hit:
             continue
-        sig = node.args[1] if len(node.args) > 1 else None
-        if isinstance(sig, ast.Constant) and sig.value == 0:
-            owned = "a probe (signal 0)"
-        else:
-            owned = _py_target_owned(node.args[0])
+        # A probe (signal 0) is judged as a kill is (GOH.STRAYSIGNAL2): it answers yes for
+        # whatever holds a reused number, so a saved pid's liveness goes through pid_owner.alive.
+        owned = _py_target_owned(node.args[0])
         out.append(Site(path, node.lineno, squash(ast.unparse(node)), owned))
     return out
 
@@ -163,8 +173,8 @@ def _sh_owned(args: str) -> str:
     targets, i = [], 0
     while i < len(words):
         w = words[i].strip("\"'")
-        if w in {"-0", "-l", "-L"} or (w == "-s" and i + 1 < len(words) and words[i + 1] == "0"):
-            return "a probe or a listing, which signals nothing"
+        if w in {"-l", "-L"}:
+            return "a listing, which signals nothing"
         if w == "-s" or w == "-n":
             i += 2
             continue
@@ -208,9 +218,7 @@ def rust_sites(path: str, text: str) -> list[Site]:
                 if c == ")" and depth == 0:
                     end = i + 1
                     break
-            call = squash(rest[:end])
-            owned = "a probe (signal 0)" if re.search(r",\s*0\s*\)$", call) else ""
-            out.append(Site(path, n, call, owned))
+            out.append(Site(path, n, squash(rest[:end]), ""))
     return out
 
 
@@ -298,7 +306,8 @@ def check(
             findings.append(
                 f"{s}: a signal to a saved pid with no proof it is still the process it was saved "
                 "for -- stamp it while it is yours and signal through lib/pid_owner.py "
-                "(`stamp`/`signal`) or lib/pid_owner.sh (`goh_pid_stamp`/`goh_pid_kill`)"
+                "(`stamp`/`signal`, `alive` for a probe) or lib/pid_owner.sh "
+                "(`goh_pid_stamp`/`goh_pid_kill`, `goh_pid_alive`)"
             )
     for key, status in entries.items():
         if key not in keys:

@@ -82,6 +82,7 @@ import time
 from collections.abc import Callable
 
 import lock_order
+import pid_owner
 from gate_lanes import CLASSES, DEFAULT_CLASS, LANES, Ticket, lane_of  # who goes next
 
 if __name__ == "__main__":
@@ -282,26 +283,24 @@ def acquire(
                 details = [describe(slot_path(directory, i, lane), now) for i in range(slots)]
                 report(header, *details)
                 next_report += REPORT_EVERY_S
-            if not (watch.alive() if watch else _alive(owner)):
+            if not (watch.alive() if watch else alive(owner)):
                 sys.exit(3)
             time.sleep(poll)
     finally:
         ticket.leave()
 
 
+_OWNERS: dict[int, pid_owner.Stamp | None] = {}
+
+
 def alive(pid: int) -> bool:
-    """Whether `pid` runs (signal 0; a pid we may not signal runs)."""
-    return _alive(pid)
-
-
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+    """Whether the owner `pid` runs, by its STAMP (GOH.STRAYSIGNAL2): taken at the first ask -- in
+    the holder the owner has just started, so the owner is then the live caller -- and compared at
+    every ask after. A bare `kill(pid, 0)` read the owner's pid, handed to another process once the
+    gate died, as the gate still waiting, and the slot was held for a stranger."""
+    if pid not in _OWNERS:
+        _OWNERS[pid] = pid_owner.stamp(pid)
+    return pid_owner.alive(_OWNERS[pid])
 
 
 class OwnerWatch:
@@ -341,6 +340,8 @@ class OwnerWatch:
                 self._pidfd = -1
             else:
                 self.mechanism = "pidfd"
+        if self.mechanism == "poll":
+            alive(pid)  # stamped now, while the owner is the process being watched
 
     def _pidfd_readable(self, wait: float) -> bool:
         """Whether the pidfd says the owner exited, waiting up to `wait` seconds.
@@ -360,7 +361,7 @@ class OwnerWatch:
         if self._pidfd >= 0:
             return not self._pidfd_readable(wait)
         time.sleep(wait)  # no kernel watch on this platform: the pid poll, reuse and all
-        return _alive(self.pid)
+        return alive(self.pid)
 
 
 def watch_mechanism() -> str:
@@ -397,7 +398,7 @@ def hold(args: argparse.Namespace) -> int:
         gate_class=args.gate_class, max_wait=args.max_wait,
     )  # fmt: skip
     if taken is None:
-        if args.max_wait is not None and (watch.alive() if watch else _alive(args.owner)):
+        if args.max_wait is not None and (watch.alive() if watch else alive(args.owner)):
             # THE BOUND PASSED (GOH.ADMITSUITE): the shell is told so, with the holders, and says
             # it -- a holder that just exited would read as a crash, not as a wait that ran out.
             now = time.time()
@@ -422,7 +423,7 @@ def hold(args: argparse.Namespace) -> int:
         while watch.alive(wait=60.0):  # the parent (structural.sh) ending is expected here
             pass
         return 0
-    while os.getppid() == start_parent and _alive(args.owner):
+    while os.getppid() == start_parent and alive(args.owner):
         time.sleep(args.poll)
     return 0
 

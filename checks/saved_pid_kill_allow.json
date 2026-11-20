@@ -37,22 +37,118 @@
       "reason": "the hazard demonstrated: the bare shape this item removed, aimed at a stand-in sleeper the test itself started, to show it signals whatever holds the number"
     },
     {
-      "path": "gates/local_ci.sh",
-      "call": "kill -TERM \"${WRAP[i]:-}\" 2>/dev/null",
-      "status": "bare",
-      "reason": "GOH.STRAYSIGNAL debt: _stop TERMs each running step's subshell by its $! with no stamp, and bash reaps a finished subshell before STATE says so; to move to goh_pid_stamp at the launch without opening a window where a TERM between the spawn and the stamp leaves the step running (tests/test_bounded_run_interrupt.py)"
+      "path": "tests/test_pid_owner.py",
+      "call": "os.kill(recycled.number, 0)",
+      "status": "legitimate",
+      "reason": "the hazard demonstrated: the bare probe this item replaced, aimed at a stand-in sleeper the test started, to show it reads a reused pid as alive"
     },
     {
-      "path": "gates/local_ci.sh",
-      "call": "kill -TERM \"$wrap\" 2>/dev/null",
-      "status": "bare",
-      "reason": "GOH.STRAYSIGNAL debt: the step subshell's TERM trap hands the TERM to its run_step child by $!; the same spawn-to-stamp window as the entry above"
+      "path": "lib/bounded_run.py",
+      "call": "os.killpg(pgid, 0)",
+      "status": "legitimate",
+      "reason": "a probe of a process GROUP the caller created (start_new_session / its own child's): a group id is not reused while the group has members, and ESRCH is the empty group this asks about"
     },
     {
-      "path": "tests/test_orphan_canary.py",
-      "call": "os.kill(pid, signal.SIGKILL)",
+      "path": "lib/killtree.py",
+      "call": "os.killpg(pgid, 0)",
+      "status": "legitimate",
+      "reason": "a probe of a process GROUP the caller created (start_new_session / its own child's): a group id is not reused while the group has members, and ESRCH is the empty group this asks about"
+    },
+    {
+      "path": "lib/killtree.py",
+      "call": "os.killpg(session_pgid(proc), 0)",
+      "status": "legitimate",
+      "reason": "a probe of a process GROUP the caller created (start_new_session / its own child's): a group id is not reused while the group has members, and ESRCH is the empty group this asks about"
+    },
+    {
+      "path": "lib/killtree.py",
+      "call": "os.kill(pgid, 0)",
+      "status": "legitimate",
+      "reason": "after a refused group signal with the leader reaped: asks whether a STRANGER holds the leader's number, the very case it then refuses"
+    },
+    {
+      "path": "tests/test_fake_gate_orphan.py",
+      "call": "os.killpg(pgid, 0)",
+      "status": "legitimate",
+      "reason": "a probe of a process GROUP the caller created (start_new_session / its own child's): a group id is not reused while the group has members, and ESRCH is the empty group this asks about"
+    },
+    {
+      "path": "lib/desktop_lock/desktop_lock.py",
+      "call": "os.kill(int(pid), 0)",
+      "status": "legitimate",
+      "reason": "followed at once by the owner file's recorded start time compared with the pid's now: a recycled number reads as a dead owner"
+    },
+    {
+      "path": "lib/desktop_lock/desktop_lock.sh",
+      "call": "kill -0 \"$pid\" 2>/dev/null",
+      "status": "legitimate",
+      "reason": "followed at once by the owner file's recorded start time compared with the pid's now (_desktop_lock_start_time)"
+    },
+    {
+      "path": "lib/gpu_lock/gpu_lock.py",
+      "call": "os.kill(int(pid), 0)",
+      "status": "legitimate",
+      "reason": "followed at once by the owner file's recorded start time compared with the pid's now: a recycled number reads as a dead owner"
+    },
+    {
+      "path": "lib/gpu_lock/gpu_lock.sh",
+      "call": "kill -0 \"$pid\" 2>/dev/null",
+      "status": "legitimate",
+      "reason": "followed at once by the owner file's recorded start time compared with the pid's now (_gpu_lock_start_time)"
+    },
+    {
+      "path": "lib/push_runs.sh",
+      "call": "kill -0 \"$pid\" 2>/dev/null",
+      "status": "legitimate",
+      "reason": "after `owner_stamp \"$pid\"` matched the run's .owner file (pid and start time), in the same condition"
+    },
+    {
+      "path": "lib/gates_in_flight.py",
+      "call": "os.kill(pid, 0)",
+      "status": "legitimate",
+      "reason": "_running is followed by _started: a pid whose start is later than its entry's mtime is a recycled one and the entry is dropped"
+    },
+    {
+      "path": "lib/orphan_canary.py",
+      "call": "os.kill(pid, 0)",
+      "status": "legitimate",
+      "reason": "judge filters the pids bounded_run sampled from the step's group at its exit, milliseconds before: a reuse needs the member's exit and a wrap of the pid space between, the check-then-signal limit lib/pid_owner.py states"
+    },
+    {
+      "path": "lib/bounded_run.py",
+      "call": "os.kill(pid, 0)",
+      "status": "legitimate",
+      "reason": "Outcome.survivors filters the group members sampled at the step's exit (group_members), read moments later by the canary: the same window as the entry above"
+    },
+    {
+      "path": "lib/bench_lock.sh",
+      "call": "kill -0 \"$1\" 2>/dev/null",
       "status": "bare",
-      "reason": "GOH.STRAYSIGNAL debt: kills the pids the canary's --snapshot names as survivors (and a live tree walk below a canary); the snapshot carries no start time, so lib/orphan_canary.py and the native canary must write one (pid_owner.stamp_line) before this can prove the pid is still the survivor"
+      "reason": "GOH.STRAYSIGNAL2 debt: a liveness probe of a pid kept in a bench registry entry (pid only; it rules out a zombie, not a reuse): the entry must carry goh_pid_stamp"
+    },
+    {
+      "path": "lib/load_registry.py",
+      "call": "os.kill(pid, 0)",
+      "status": "bare",
+      "reason": "GOH.STRAYSIGNAL2 debt: a liveness probe of a pid kept in a load registry's owner pid (lib/load_reap.py): the registry carries spinner start times but not the owner's"
+    },
+    {
+      "path": "lib/lock_order.py",
+      "call": "os.kill(pid, 0)",
+      "status": "bare",
+      "reason": "GOH.STRAYSIGNAL2 debt: a liveness probe of a pid kept in a held-lock environment entry (name:pid): the entry must carry the holder's start time"
+    },
+    {
+      "path": "lib/place.sh",
+      "call": "kill -0 \"$pid\" 2>/dev/null",
+      "status": "bare",
+      "reason": "GOH.STRAYSIGNAL2 debt: a liveness probe of a pid kept in a staging file's name suffix: the staging name or file must carry the writer's start time"
+    },
+    {
+      "path": "tools/land.sh",
+      "call": "kill -0 \"$pid\" 2>/dev/null",
+      "status": "bare",
+      "reason": "GOH.STRAYSIGNAL2 debt: a liveness probe of a pid kept in a GOH_LAND_LOCK_OWNER's pid (lib/land_lock.py): the variable and the lock line must carry the holder's start time"
     }
   ]
 }

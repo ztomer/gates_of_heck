@@ -28,6 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import landq_state  # lib/, beside this file: one writer and one reader of every state record
+import pid_owner
 
 DIR = "enqueuing"
 MARGIN_S = 600  # past the pre-step's own bound: the enqueue files or refuses well within it
@@ -48,6 +49,7 @@ def mark(q: Path, item: str, pid: int | None = None, repo: str = "") -> Path:
     path = q / DIR / f"{pid}-{slug(item)}.json"
     marker = {
         "pid": pid,
+        "pid_stamp": pid_owner.stamp_line(pid),
         "item": item,
         "repo": repo,
         "at": time.time(),
@@ -63,14 +65,11 @@ def clear(path: Path) -> None:
         path.unlink()
 
 
-def alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:  # someone else's process: it exists
-        return True
-    return True
+def alive(pid: int, stamp: str | None = None) -> bool:
+    """The enqueuer runs: by the start time its marker carries beside the pid (GOH.STRAYSIGNAL2),
+    so a pid handed to another process once the enqueue died is no enqueue to wait for. A marker
+    without one (an older goh's) is judged by its pid as it stands now."""
+    return pid_owner.alive_line(stamp or str(pid))
 
 
 def live(q: Path, item: str | None = None) -> list[dict]:
@@ -83,7 +82,7 @@ def live(q: Path, item: str | None = None) -> list[dict]:
             pid, until = int(m["pid"]), float(m["until"])
         except (ValueError, KeyError, TypeError):
             continue  # being written, or not ours: never a reason to wait, never deleted here
-        if not alive(pid) or time.time() > until:
+        if not alive(pid, m.get("pid_stamp")) or time.time() > until:
             clear(path)
             continue
         if item is None or path.stem.partition("-")[2] == slug(item):

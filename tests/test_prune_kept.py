@@ -54,3 +54,18 @@ def test_a_kept_root_with_a_read_only_tree_is_reaped_not_leaked(tmp_path) -> Non
             subprocess.run(
                 ["chmod", "-R", "u+rwx", str(root)], stdin=subprocess.DEVNULL, check=False
             )
+
+
+def test_an_owner_whose_pid_is_another_process_now_keeps_nothing(tmp_path) -> None:
+    """GOH.STRAYSIGNAL2, red first: `.goh-owner` names a LIVE pid (this test's) with another start
+    time -- a killed run's pid handed to a stranger, faked -- and the entry reads as ownerless. The
+    bare `kill(pid, 0)` read it as the run still going and kept the root for the stranger."""
+    import pid_owner
+    import prune_kept
+
+    entry = tmp_path / "goh-pytest.x"
+    entry.mkdir()
+    (entry / prune_kept.OWNER).write_text(f"{os.getpid()} Thu Jan  1 00:00:00 1970\n")
+    assert not prune_kept._owner_alive(str(entry))
+    (entry / prune_kept.OWNER).write_text(f"{pid_owner.stamp_line(os.getpid())}\n")
+    assert prune_kept._owner_alive(str(entry))

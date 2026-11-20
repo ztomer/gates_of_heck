@@ -42,6 +42,7 @@ import uuid
 from pathlib import Path
 
 import full_run
+import pid_owner
 
 KEEP = 4  # slot numbers below this stay checked out between lands (warm build output)
 
@@ -55,16 +56,6 @@ def root(q: Path, main: Path) -> Path:
     resolved = str(Path(main).resolve())
     key = hashlib.sha1(resolved.encode()).hexdigest()[:10]
     return q / "slots" / f"{Path(resolved).name}-{key}"
-
-
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
 
 
 def _queued(q: Path, token: str) -> bool:
@@ -90,7 +81,9 @@ def _stale(q: Path, owner: Path) -> bool:
     if not got:  # unreadable: a claim is one link(2) of a whole file, so this is no live claim
         return True
     pid = got.get("pid")
-    if isinstance(pid, int) and _alive(pid):
+    # By the start time beside the pid (GOH.STRAYSIGNAL2): a claimer's pid handed to another
+    # process once it ended is no live claim. A claim of a bare pid (an older goh) is judged as is.
+    if isinstance(pid, int) and pid_owner.alive_line(str(got.get("pid_stamp") or pid)):
         return False
     return not _queued(q, str(got.get("token", "")))
 
@@ -98,7 +91,9 @@ def _stale(q: Path, owner: Path) -> bool:
 def _take(q: Path, owner: Path, token: str) -> bool:
     """Claim OWNER for TOKEN: one link(2) of a whole file; a stale owner is moved aside first."""
     tmp = owner.with_name(f".{owner.name}.{token}")
-    tmp.write_text(json.dumps({"pid": os.getpid(), "token": token}) + "\n")
+    me = os.getpid()
+    claim = {"pid": me, "pid_stamp": pid_owner.stamp_line(me), "token": token}
+    tmp.write_text(json.dumps(claim) + "\n")
     try:
         for _ in range(2):
             try:

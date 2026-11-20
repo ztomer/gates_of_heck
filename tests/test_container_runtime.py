@@ -244,6 +244,27 @@ goh_container_runtime_down || exit 3
 
 
 @pytest.mark.load_sensitive
+def test_a_lease_whose_pid_is_another_process_now_does_not_hold_colima_up(tmp_path: Path) -> None:
+    """GOH.STRAYSIGNAL2, red first: the lease names a LIVE pid (this test's) whose start time is
+    another -- a dead gate's pid handed to a stranger, faked. The bare `kill -0` counted it and
+    colima was never stopped; by the stamp it is a dead lease, removed."""
+    _setup_fakes(tmp_path, docker_up=False)
+    leases = tmp_path / "state" / "leases"
+    leases.mkdir(parents=True, exist_ok=True)
+    stranger = leases / str(os.getpid())
+    stranger.write_text(f"old_gate\n{os.getpid()} Thu Jan  1 00:00:00 1970\n")
+    script = """
+goh_container_runtime_up "live_proc" || exit 1
+sed -n 2p "$GOH_CONTAINER_STATE/leases/$$" | grep -q "^$$ " || exit 2
+goh_container_runtime_down || exit 3
+"""
+    res = _run(tmp_path, script)
+    assert res.returncode == 0, f"stdout: {res.stdout}, stderr: {res.stderr}"
+    assert "colima stop" in (tmp_path / "calls.log").read_text()
+    assert not stranger.exists()
+
+
+@pytest.mark.load_sensitive
 def test_colima_start_fails_returns_nonzero_with_log(tmp_path: Path) -> None:
     _setup_fakes(tmp_path, docker_up=False)
     state = tmp_path / "state"

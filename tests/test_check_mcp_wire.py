@@ -186,16 +186,12 @@ def _reap_after(*pidfiles):
             pid_owner.signal(pid_owner.read_stamp(f), signal.SIGKILL)
 
 
-def _pid(pidfile):
-    return int(pidfile.read_text().split()[0])
-
-
-def _gone(pid, wait=5.0):
+def _gone(pidfile, wait=5.0):
+    """The pidfile's process has ended: judged by its start time beside the pid, so a number
+    handed to another process since reads as gone, never as the child (GOH.STRAYSIGNAL2)."""
     end = time.monotonic() + wait
     while True:
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
+        if not pid_owner.alive(pid_owner.read_stamp(pidfile)):
             return True
         if time.monotonic() >= end:
             return False
@@ -217,7 +213,7 @@ def test_a_silent_server_is_red_within_its_timeout_and_is_reaped(repo, tmp_path)
             timeout=60,
         )
         red(r, "wire: no answer to server/discover within 2s")
-        assert _gone(_pid(pidfile)), "the hung server's child outlived the gate"
+        assert _gone(pidfile), "the hung server's child outlived the gate"
 
 
 @pytest.mark.load_sensitive
@@ -226,8 +222,8 @@ def test_a_green_server_is_reaped_too_even_what_left_its_group(repo, tmp_path):
     line = server_line(tmp_path, "kids", child=str(child), detached=str(detached))
     with _reap_after(child, detached):
         green(gate(repo, line))
-        assert _gone(_pid(child)), "a child in the server's group outlived the gate"
-        assert _gone(_pid(detached)), "a detached child outlived the gate"
+        assert _gone(child), "a child in the server's group outlived the gate"
+        assert _gone(detached), "a detached child outlived the gate"
 
 
 def test_a_server_that_does_not_start_is_red_with_its_stderr(repo):

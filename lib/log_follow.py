@@ -33,6 +33,9 @@ import signal
 import sys
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pid_owner
+
 # local CI's `→ [1/7] cmd`, `✓ [1/7] cmd`, `✗ [7/7] FAILED: cmd`, `⚠ [3/7] ...`; section titles.
 STEP = re.compile(r"^\s*(?:[→✓✗⚠] \[\d+/\d+\]|\s*(?:pre-push: gating|local CI —))")
 # The Rust coverage step's decision, `↔ [rust] coverage: measuring -- WHY` (or `reused`), after
@@ -49,16 +52,6 @@ POLL_S = 0.5
 
 class _Stop(Exception):
     pass
-
-
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
 
 
 def _show(chunk: str, carry: str) -> str:
@@ -78,9 +71,13 @@ def follow(log: str, pid: int) -> int:
         raise _Stop
 
     signal.signal(signal.SIGTERM, stop)
+    # The owner is stamped NOW, while it is the live process that started this follower, and
+    # watched by the stamp (GOH.STRAYSIGNAL2): its pid handed to another process once it ended
+    # would have kept the follow going for a stranger.
+    owner = pid_owner.stamp(pid)
     carry, pos = "", 0
     try:
-        while _alive(pid):
+        while pid_owner.alive(owner):
             try:
                 with open(log, encoding="utf-8", errors="replace") as fh:
                     fh.seek(pos)

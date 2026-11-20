@@ -61,7 +61,11 @@ from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
 # json loads where the snapshot is written, and Verdict is a plain class: `dataclasses` pulls in
 # `inspect`, ~4 ms on every local_ci step's path (2026-10-06, as lib/bounded_run.py).
 
-SNAPSHOT_VERSION = 1
+# v2 (GOH.STRAYSIGNAL2): `stamps` beside `survivors`, one `<pid> <lstart>` line each (the format of
+# lib/pid_owner.py's stamp_line), so a reader that signals a survivor later proves the pid is still
+# that process: a bare pid is somebody else's once its process ends and the number is handed out
+# again, and read as the same orphan it is a stranger killed.
+SNAPSHOT_VERSION = 2
 
 # "The step passed and left something running." Its own code, above bounded_run's 124, because a
 # caller has to tell this apart from a step that simply failed — the two have opposite fixes (write
@@ -117,6 +121,24 @@ def snapshot() -> dict[str, list[int]]:
         if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
             table[parts[0]] = [int(parts[1])]
     return table
+
+
+def stamps(pids: list[int]) -> list[str]:
+    """`<pid> <lstart>` for each pid still running, one `ps` for all of them; a pid that ended has
+    no line (it is no survivor to signal later)."""
+    if not pids:
+        return []
+    try:
+        out = subprocess.run(
+            ["ps", "-o", "pid=,lstart=", "-p", ",".join(str(p) for p in pids)],
+            capture_output=True,
+            text=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return [" ".join(line.split()) for line in out.splitlines() if line.split()]
 
 
 def describe(pids: list[str]) -> dict[str, str]:
@@ -247,7 +269,12 @@ def wrap(args, command: list[str]) -> int:
             os.makedirs(os.path.dirname(os.path.abspath(args.snapshot)), exist_ok=True)
             with open(args.snapshot, "w", encoding="utf-8") as handle:
                 __import__("json").dump(
-                    {"v": SNAPSHOT_VERSION, "step": command, "survivors": survivors},
+                    {
+                        "v": SNAPSHOT_VERSION,
+                        "step": command,
+                        "survivors": survivors,
+                        "stamps": stamps(survivors),
+                    },
                     handle,
                     indent=2,
                 )

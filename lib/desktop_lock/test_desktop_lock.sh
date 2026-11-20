@@ -46,7 +46,8 @@ holder() {  # holder <seconds> -> prints its pid
 # owner before any test that depends on contention.
 assert_held_by() {  # assert_held_by <pid>
     [[ -d "$DESKTOP_LOCK_DIR" ]] || die "setup: holder never took the lock"
-    kill -0 "$1" 2>/dev/null || die "setup: holder $1 is not running"
+    # The lock's own owner check: pid AND recorded start time, so a reused pid is no holder.
+    _desktop_lock_owner_alive || die "setup: holder $1 is not running"
     [[ "$(head -n 1 "$DESKTOP_LOCK_DIR/owner")" == "$1" ]] || \
         die "setup: lock owner is not the holder we started"
 }
@@ -59,8 +60,9 @@ run_bounded() {  # run_bounded <seconds> <command...>
     local secs="$1"; shift
     "$@" & local p=$! i=0 stamp
     stamp="$(goh_pid_stamp "$p" || true)"
-    while kill -0 "$p" 2>/dev/null && (( i < secs * 10 )); do sleep 0.1; i=$((i + 1)); done
-    if kill -0 "$p" 2>/dev/null; then
+    # By the stamp (GOH.STRAYSIGNAL2): a pid reused once the command ended is not the command.
+    while goh_pid_alive "$stamp" && (( i < secs * 10 )); do sleep 0.1; i=$((i + 1)); done
+    if goh_pid_alive "$stamp"; then
         goh_pid_kill 9 "$stamp"; wait "$p" 2>/dev/null
         return 124
     fi

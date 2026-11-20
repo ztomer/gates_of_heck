@@ -12,6 +12,7 @@ import os
 import subprocess
 from pathlib import Path
 
+import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
 from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT
@@ -216,15 +217,15 @@ def test_step_timeout_kills_hung_step(repo, monkeypatch):
     # average had set near 30 s. local_ci's start-up is not the property under test.
     monkeypatch.setenv("GOH_LCI_TIMEOUT", "2")
     pid, finished = repo / "step.pid", repo / "finished"
-    gatesrc(repo, f"echo $$ > {pid}; sleep 60; touch {finished}")
+    gatesrc(repo, f"echo $$ $(ps -o lstart= -p $$) > {pid}; sleep 60; touch {finished}")
     r = run_ci(repo)
     combined = r.stdout + r.stderr
     assert r.returncode == 1, combined  # accumulator exit, not 124
     assert "TIMED OUT" in combined and "GOH_LCI_TIMEOUT" in combined, combined
     assert not finished.exists(), "the step ran to its end: the ceiling never fired\n" + combined
     if pid.exists():  # a ceiling that fired before the shell started leaves no pid to ask about
-        with pytest.raises(ProcessLookupError):
-            os.kill(int(pid.read_text()), 0)
+        # by its start time (GOH.STRAYSIGNAL2): a pid reused since is not the step's shell
+        assert not pid_owner.alive(pid_owner.read_stamp(pid))
 
 
 @pytest.mark.load_sensitive

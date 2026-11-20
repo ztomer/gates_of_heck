@@ -21,14 +21,6 @@ from conftest import REPO_ROOT
 from timing_bounds import GiveUp, patience
 
 
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    return True
-
-
 def _wait_for(path: Path, seconds: float = 10) -> str:
     give_up = GiveUp(seconds)
     while not give_up.passed():
@@ -70,10 +62,10 @@ def test_a_signal_to_the_wrapper_reaps_the_step(tmp_path, sig):
         wrapper.send_signal(sig)
         wrapper.wait(timeout=patience(10))  # 10 s starved at load ~200 (GOH.BOUNDEDRUNFLAKE)
         give_up = GiveUp(5)
-        while _alive(step) and not give_up.passed():
+        while pid_owner.alive(held) and not give_up.passed():
             time.sleep(0.05)
         why = wrapper.stderr.read().decode(errors="replace") if wrapper.stderr else ""
-        assert not _alive(step), (
+        assert not pid_owner.alive(held), (
             f"{sig.name} stopped the wrapper (rc {wrapper.returncode}) and left its step running; "
             f"wrapper said: {why!r}"
         )
@@ -110,7 +102,7 @@ def test_a_signal_ignored_at_entry_stays_ignored(tmp_path):
         held = pid_owner.stamp(step)
         wrapper.send_signal(signal.SIGHUP)
         time.sleep(patience(0.5))  # a negative: the longer the box is starved, the longer it looks
-        assert wrapper.poll() is None and _alive(step), "an ignored SIGHUP stopped the run"
+        assert wrapper.poll() is None and pid_owner.alive(held), "an ignored SIGHUP stopped the run"
     finally:
         wrapper.terminate()
         wrapper.wait(timeout=patience(10))
@@ -140,9 +132,9 @@ def test_a_term_to_a_concurrent_local_ci_reaps_every_running_step(tmp_path):
         ci.send_signal(signal.SIGTERM)
         ci.wait(timeout=patience(15))
         give_up = GiveUp(8)
-        while any(map(_alive, steps_running)) and not give_up.passed():
+        while any(map(pid_owner.alive, held)) and not give_up.passed():
             time.sleep(0.05)
-        assert not any(map(_alive, steps_running)), "TERM to local_ci left its running steps alive"
+        assert not any(map(pid_owner.alive, held)), "TERM to local_ci left its running steps alive"
         assert ci.returncode != 0
     finally:
         ci.kill()

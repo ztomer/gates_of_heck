@@ -31,6 +31,7 @@ import sys
 import time
 from pathlib import Path
 
+import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
 from _own_files import own_source_files
 from conftest import REPO_ROOT
@@ -244,14 +245,16 @@ def test_run_writer_kills_a_git_that_ignores_term_after_the_grace(
     import gitrun
 
     pid_file = tmp_path / "pid"
-    body = f'echo $$ > "{pid_file}"; trap "" TERM; while :; do sleep 0.05; done'
+    stamp = "$$ $(ps -o lstart= -p $$)"  # the pid and its start time (GOH.STRAYSIGNAL2)
+    body = f'echo {stamp} > "{pid_file}"; trap "" TERM; while :; do sleep 0.05; done'
     _with_path(_shim(tmp_path, body), monkeypatch)
     done = gitrun.run_writer(["commit", "-q"], cwd=tmp_path, deadline_s=0.5, grace_s=1.0)
     assert done is None
-    time.sleep(0.2)
-    pid = int(pid_file.read_text())
-    with pytest.raises(ProcessLookupError):
-        os.kill(pid, 0)
+    # By its start time (GOH.STRAYSIGNAL2): the number reused since is somebody else's, not the git.
+    give_up = GiveUp(5)
+    while pid_owner.alive(pid_owner.read_stamp(pid_file)) and not give_up.passed():
+        time.sleep(0.05)
+    assert not pid_owner.alive(pid_owner.read_stamp(pid_file))
 
 
 def test_run_writer_returns_the_result_of_a_writer_that_finishes(
@@ -264,14 +267,14 @@ def test_run_writer_returns_the_result_of_a_writer_that_finishes(
     assert done is not None and done.returncode == 0 and done.stdout.strip() == "done commit -q"
 
 
-def _pid_written(path: Path, within_s: float) -> int:
-    """The pid in `path` once its CONTENT is there: a reader that opened it the instant it existed
-    read "" under load (GOH.LOADFLAKE, ValueError at int(''))."""
+def _pid_written(path: Path, within_s: float) -> str:
+    """The `<pid> <lstart>` line in `path` once its CONTENT is there: a reader that opened it the
+    instant it existed read "" under load (GOH.LOADFLAKE, ValueError at int(''))."""
     give_up = GiveUp(within_s)
     while not give_up.passed():
         text = path.read_text() if path.exists() else ""
-        if text.strip().isdigit():
-            return int(text)
+        if text.split() and text.split()[0].isdigit():
+            return text
         time.sleep(0.02)
     raise AssertionError(f"{path.name} held no pid after {within_s:.0f} s: the hook never wrote it")
 
@@ -288,16 +291,15 @@ def test_run_writer_stops_the_whole_group_a_hook_included(
 
     hook_pid = tmp_path / "hook.pid"
     tmp = tmp_path / "hook.pid.tmp"
-    hook = f'sleep {late_s}; echo $$ > "{tmp}"; mv "{tmp}" "{hook_pid}"; exec sleep 300'
+    stamp = "$$ $(ps -o lstart= -p $$)"  # the pid and its start time (GOH.STRAYSIGNAL2)
+    hook = f'sleep {late_s}; echo {stamp} > "{tmp}"; mv "{tmp}" "{hook_pid}"; exec sleep 300'
     body = f"sh -c '{hook}' & wait"
     _with_path(_shim(tmp_path, body), monkeypatch)
     assert gitrun.run_writer(["commit"], cwd=tmp_path, deadline_s=late_s + 2.0, grace_s=1.0) is None
     pid = _pid_written(hook_pid, within_s=10)
     give_up = GiveUp(5)
     while not give_up.passed():
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
+        if not pid_owner.alive(pid_owner.from_line(pid)):  # by start time (GOH.STRAYSIGNAL2)
             return
         time.sleep(0.05)
     pytest.fail(f"the hook {pid} outlived the stopped writer's group")

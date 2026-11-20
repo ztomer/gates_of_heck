@@ -33,3 +33,13 @@ goh_pid_kill() {
     [ "$now" = "$stamp" ] || return 1
     kill "-$sig" "${stamp%% *}" 2>/dev/null
 }
+
+# goh_pid_alive STAMP: the liveness probe for a saved pid (GOH.STRAYSIGNAL2). `kill -0 "$pid"`
+# answers yes for whatever holds the number now; this is status 0 only while the stamped process
+# itself runs, 1 when it is gone or the number is somebody else's.
+goh_pid_alive() {
+    local stamp="${1:-}" now
+    [ -n "$stamp" ] || return 1
+    now="$(goh_pid_stamp "${stamp%% *}")" || return 1
+    [ "$now" = "$stamp" ]
+}

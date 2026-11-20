@@ -2,9 +2,10 @@
 
 Two suites of one tree share its bin/, its target/ and its proven cache, and each ran at half speed
 beside the other: the full gate ran its suite twice side by side until G2e. The runner takes a
-lock (a symlink to its pid, in the checkout's own git dir) and a second top-level run is refused
-with the holder named; a holder that died is reaped. The stub interpreter (GOH_PY, as in
-tests/test_pytest_runner_basetemp.py) records what the runner would have run.
+lock (a symlink to its pid and start time, in the checkout's own git dir) and a second top-level run
+is refused with the holder named; a holder that died, or whose pid is another process's now, is
+reaped. The stub interpreter (GOH_PY, as in tests/test_pytest_runner_basetemp.py) records what the
+runner would have run.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import os
 import subprocess
 from pathlib import Path
 
+import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
 from conftest import REPO_ROOT
 
@@ -47,18 +49,32 @@ def test_a_running_suite_holds_the_lock_and_releases_it(tmp_path: Path) -> None:
     lock = tmp_path / "goh-suite.lock"
     done, seen = _run(tmp_path, lock)
     assert done.returncode == 0, done.stdout + done.stderr
-    assert seen.read_text().strip().isdigit(), "the suite ran without holding the lock"
+    held = seen.read_text().split()  # `<pid> <start time>`: the holder's stamp
+    assert len(held) > 1 and held[0].isdigit(), "the suite ran without holding the lock"
     assert not lock.is_symlink(), "a finished run left its lock behind"
 
 
 def test_a_second_suite_in_the_checkout_is_refused_naming_the_holder(tmp_path: Path) -> None:
     lock = tmp_path / "goh-suite.lock"
-    os.symlink(str(os.getpid()), lock)  # this test is alive: a live holder
+    me = pid_owner.stamp_line(os.getpid())
+    assert me is not None
+    os.symlink(me, lock)  # this test is alive: a live holder
     done, seen = _run(tmp_path, lock)
     assert done.returncode == 2, done.stdout + done.stderr
     assert f"another goh suite (pid {os.getpid()})" in done.stderr, done.stderr
     assert not seen.exists(), "the refused run reached pytest"
-    assert os.readlink(lock) == str(os.getpid()), "the refused run took the holder's lock"
+    assert os.readlink(lock) == me, "the refused run took the holder's lock"
+
+
+def test_a_holders_pid_reused_by_another_process_is_a_dead_holder(tmp_path: Path) -> None:
+    """GOH.STRAYSIGNAL2: the link's pid is held by a live process (this test) with another start
+    time -- the reuse, faked -- and the run takes the lock instead of refusing a stranger."""
+    lock = tmp_path / "goh-suite.lock"
+    os.symlink(f"{os.getpid()} Thu Jan  1 00:00:00 1970", lock)
+    done, seen = _run(tmp_path, lock)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert seen.read_text().split()[0] != str(os.getpid()), seen.read_text()
+    assert not lock.is_symlink()
 
 
 @pytest.mark.load_sensitive
@@ -69,5 +85,5 @@ def test_a_dead_holders_lock_is_reaped(tmp_path: Path) -> None:
     os.symlink(str(gone.pid), lock)
     done, seen = _run(tmp_path, lock)
     assert done.returncode == 0, done.stdout + done.stderr
-    assert seen.read_text().strip() not in ("", str(gone.pid)), seen.read_text()
+    assert seen.read_text().split()[:1] not in ([], [str(gone.pid)]), seen.read_text()
     assert not lock.is_symlink()

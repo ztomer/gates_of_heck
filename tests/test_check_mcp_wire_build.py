@@ -44,7 +44,7 @@ build)
   if [ -n "${FAKE_CARGO_FAIL:-}" ]; then
     echo "error[E0425]: planted build failure" >&2; exit 101
   fi
-  echo $$ > "$d/build.pid"
+  echo "$$ $(/bin/ps -o lstart= -p $$)" > "$d/build.pid"  # with its start time (GOH.STRAYSIGNAL2)
   nap "$FAKE_CARGO_BUILD_S"; : > "$d/built"; exit 0 ;;
 run)
   [ -f "$d/built" ] || { nap "$FAKE_CARGO_BUILD_S"; : > "$d/built"; }
@@ -133,7 +133,7 @@ def test_a_build_past_its_own_bound_says_build_and_is_reaped(repo, tmp_path):
         extra="GOH_MCP_BUILD_TIMEOUT=2\n",
     )
     red(r, "build: cargo build --release --locked --quiet did not finish within 2s")
-    assert _gone(int((tmp_path / "build.pid").read_text())), "the timed-out build outlived the gate"
+    assert _gone(tmp_path / "build.pid"), "the timed-out build outlived the gate"
     assert not any(c.startswith("run") for c in calls(tmp_path)), calls(tmp_path)
 
 
@@ -144,7 +144,7 @@ def _signal_the_build_sleep(tmp_path, sig, deadline_s):
     end = time.monotonic() + deadline_s
     while time.monotonic() < end:
         if pidfile.exists() and pidfile.read_text().strip():
-            for kid in _descendants(int(pidfile.read_text())):
+            for kid in _descendants(int(pidfile.read_text().split()[0])):
                 held = pid_owner.stamp(kid)  # before the name is read, so the name is its
                 comm = subprocess.run(
                     ["ps", "-o", "comm=", "-p", str(kid)],

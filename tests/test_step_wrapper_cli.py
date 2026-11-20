@@ -11,7 +11,6 @@ group, and a signal ignored at entry staying ignored (nohup's contract).
 from __future__ import annotations
 
 import json
-import os
 import signal
 import subprocess
 import sys
@@ -31,14 +30,10 @@ def wrapper(request) -> list[str]:
     return [str(native_goh_path()), "step"]
 
 
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+def _alive(line: str) -> bool:
+    """The step's grandchild still runs: the pidfile's `<pid> <lstart>` names it, so a pid handed
+    to another process once it ended reads as gone, never as the grandchild (GOH.STRAYSIGNAL2)."""
+    return pid_owner.alive(pid_owner.from_line(line))
 
 
 def _wait_for(path: Path, timeout: float = 15) -> str:
@@ -85,7 +80,7 @@ def test_the_ceiling_sweep_reaches_a_grandchild(wrapper, tmp_path: Path) -> None
              f"sleep 300 & echo $! $(ps -o lstart= -p $!) > {pid}; wait")  # fmt: skip
     assert r.returncode == 124
     held = pid_owner.read_stamp(pid)  # its start time is beside its pid
-    grandchild = int(_wait_for(pid).split()[0])
+    grandchild = _wait_for(pid)
     give_up = GiveUp(5)
     while _alive(grandchild) and not give_up.passed():
         time.sleep(0.05)
@@ -175,7 +170,7 @@ def test_a_signal_to_the_wrapper_sweeps_the_step(wrapper, tmp_path: Path, sig) -
     )  # fmt: skip
     grandchild = held = None
     try:
-        grandchild = int(_wait_for(pid).split()[0])
+        grandchild = _wait_for(pid)
         held = pid_owner.read_stamp(pid)
         proc.send_signal(sig)
         proc.wait(timeout=10)
@@ -200,7 +195,7 @@ def test_a_signal_ignored_at_entry_stays_ignored(wrapper, tmp_path: Path) -> Non
     )  # fmt: skip
     grandchild = held = None
     try:
-        grandchild = int(_wait_for(pid).split()[0])
+        grandchild = _wait_for(pid)
         held = pid_owner.read_stamp(pid)
         proc.send_signal(signal.SIGHUP)
         time.sleep(0.5)

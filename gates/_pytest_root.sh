@@ -39,7 +39,8 @@ goh_pytest_root() {
         n=$((n + 1))
     done
     [ -n "$PYTEST_DEBUG_TEMPROOT" ] || PYTEST_DEBUG_TEMPROOT="$(mktemp -d "$tmp/goh-pytest.XXXXXX")"
-    printf '%s\n' "$$" >"$PYTEST_DEBUG_TEMPROOT/.goh-owner"
+    # `<pid> <start time>` (GOH.STRAYSIGNAL2): lib/prune_kept.py keeps the root only while THIS run lives.
+    printf '%s %s\n' "$$" "$(ps -o lstart= -p "$$" 2>/dev/null)" >"$PYTEST_DEBUG_TEMPROOT/.goh-owner"
     PYTEST_ADDOPTS="-o tmp_path_retention_policy=failed${PYTEST_ADDOPTS:+ $PYTEST_ADDOPTS}"
     export PYTEST_DEBUG_TEMPROOT PYTEST_ADDOPTS
 }

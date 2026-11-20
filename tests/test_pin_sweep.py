@@ -18,6 +18,7 @@ import sys
 import time
 from pathlib import Path
 
+import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
 from conftest import REPO_ROOT, hermetic_env
 from test_consumer_pins import SCRIPT, TAG, WF, _ahead, _consumer
@@ -64,14 +65,10 @@ def _until(what, seconds: float):
     return got
 
 
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True,
-                          check=False, stdin=subprocess.DEVNULL).stdout.strip()[:1] not in (
-                              "Z", "")  # fmt: skip
+def _alive(rec: dict) -> bool:
+    """The record's supervisor still runs, by the start time beside its pid: a zombie and a pid
+    handed to another process since both read as gone (GOH.STRAYSIGNAL2)."""
+    return pid_owner.alive_line(rec["pid_stamp"])
 
 
 def _read(path: Path) -> dict:
@@ -103,7 +100,7 @@ def test_the_install_commits_and_returns_before_any_consumer_push_gate_runs(tmp_
     ship.write_text(json.dumps({"status": "ok", "pid": os.getpid()}))  # the ship returns
     rec = _until(lambda: (b := _read(sweep)).get("status") == "done" and b, 120)
     assert rec, _read(sweep)
-    assert _until(lambda: not _alive(rec["pid"]), 30), rec  # the supervisor ends with its sweep
+    assert _until(lambda: not _alive(rec), 30), rec  # the supervisor ends with its sweep
     assert {k: v["status"] for k, v in rec["repos"].items()} == {
         "one": "pushed",
         "two": "pushed",
@@ -264,7 +261,7 @@ def _two_sweeps(tmp_path: Path, repos: dict[str, Path], ship: Path) -> None:
     assert all(_ahead(x) == 0 for x in repos.values()), new
     assert sorted((tmp_path / "gates.log").read_text().splitlines()) == ["one ran", "two ran"]
     assert pin_sweep_unpushed(tmp_path) == {}, "a superseded repo is no unpushed pin"
-    assert _until(lambda: not _alive(old["pid"]) and not _alive(new["pid"]), 30), (old, new)
+    assert _until(lambda: not _alive(old) and not _alive(new), 30), (old, new)
 
 
 def pin_sweep_unpushed(tmp_path: Path) -> dict:

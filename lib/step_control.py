@@ -50,6 +50,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pid_owner  # beside this file
 import step_timings  # beside this file
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -170,29 +171,22 @@ def run(kind: str) -> int:
     return 0
 
 
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
 def watch(pid: int, every: float, kinds: list[str]) -> int:
     """A control of each kind every EVERY seconds while PID lives; never one after it is gone. A
     SIGTERM (gate_profile.sh reaping it) unwinds through `_run_all`, which kills its clippies."""
     import signal
 
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    # Stamped now, while it is the live owner that started this watch (GOH.STRAYSIGNAL2): its pid
+    # handed to another process once it ended would have kept the controls running for a stranger.
+    owner = pid_owner.stamp(pid)
     while True:
         deadline = time.monotonic() + every
         while time.monotonic() < deadline:
-            if not _alive(pid):
+            if not pid_owner.alive(owner):
                 return 0
             time.sleep(min(1.0, every))
-        if not _alive(pid):
+        if not pid_owner.alive(owner):
             return 0
         for kind in kinds:
             run(kind)

@@ -26,19 +26,10 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import orphan_canary as O
-from timing_bounds import GiveUp
+import pid_owner
+from timing_bounds import GiveUp, patience
 
 CANARY = str(Path(O.__file__))
-
-
-def alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
 
 
 @pytest.fixture
@@ -80,13 +71,6 @@ def wrap(request):
     return lambda repo, *args, snapshot=None: _wrap_with(prefix, repo, *args, snapshot=snapshot)
 
 
-def kill(pid: int) -> None:
-    try:
-        os.kill(pid, signal.SIGKILL)
-    except (OSError, ProcessLookupError):
-        pass
-
-
 def reap(snapshot: Path) -> None:
     """Kill the pids the canary NAMED, and nothing else.
 
@@ -101,11 +85,15 @@ def reap(snapshot: Path) -> None:
     the reap reads that instead of guessing from a name. `checks/check_no_kill_by_name.py` is the
     gate for this class, and it could not see these four lines -- its word boundary excluded a
     preceding `/`, so `/usr/bin/pkill` was invisible to it.
+
+    By STAMP (GOH.STRAYSIGNAL2): each survivor is killed only while its start time is still the one
+    the canary wrote down. A bare pid read from the file names whatever holds the number once the
+    survivor has ended -- a stranger read as the same orphan.
     """
     if not snapshot.exists():
         return
-    for pid in json.loads(snapshot.read_text())["survivors"]:
-        kill(pid)
+    for line in json.loads(snapshot.read_text()).get("stamps", []):
+        pid_owner.signal(pid_owner.from_line(line), signal.SIGKILL)
 
 
 def reap_tree(root: int) -> None:
@@ -113,6 +101,8 @@ def reap_tree(root: int) -> None:
 
     Walking down from a pid we own is owner-scoped and passes the gate; `pkill -P` is direct
     children only, which this tree is not (canary -> sh -> sleep), and `pkill -f` is the machine.
+    Each descendant is stamped as the walk finds it below the root -- ours at that instant -- and
+    signalled through the stamp, so one that ends before its turn is never a stranger killed.
     """
     children: dict[int, list[int]] = {}
     table = subprocess.run(
@@ -131,8 +121,9 @@ def reap_tree(root: int) -> None:
         for kid in children.get(stack.pop(), []):
             found.append(kid)
             stack.append(kid)
-    for pid in [root, *found]:
-        kill(pid)
+    held = [pid_owner.stamp(pid) for pid in [root, *found]]
+    for s in held:
+        pid_owner.signal(s, signal.SIGKILL)
 
 
 # ── the incident's shape: a step that PASSES and leaks a server ──────────────
@@ -155,9 +146,36 @@ def test_a_step_that_leaks_a_server_is_red(wrap, repo: Path) -> None:
         assert proc.returncode == O.LEAK_EXIT, out
         assert "outlived the run that started them" in out, out
         assert "sleep 1200" in out, out
-        assert json.loads(snap.read_text())["survivors"], "the leak was reported but not recorded"
+        doc = json.loads(snap.read_text())
+        assert doc["survivors"], "the leak was reported but not recorded"
+        stamped = [pid_owner.from_line(line) for line in doc["stamps"]]
+        assert [s.number for s in stamped if s] == doc["survivors"], (doc, "a stamp is not live")
     finally:
         reap(snap)
+
+
+@pytest.mark.load_sensitive(reason="spawns and signals its own sleepers")
+def test_the_reap_refuses_a_survivor_whose_pid_is_somebody_elses_now(tmp_path: Path) -> None:
+    """GOH.STRAYSIGNAL2, red first: the snapshot's pid now names a stand-in of the test's own (the
+    reuse, faked: the number is the stand-in's, the start time the survivor's), and the reap must
+    leave it running. The v1 snapshot carried the bare pid, and its reap SIGKILLed the stand-in."""
+    stand_in = subprocess.Popen(["/bin/sleep", "60"], stdin=subprocess.DEVNULL)
+    try:
+        snap = tmp_path / "leak.json"
+        snap.write_text(json.dumps({"v": O.SNAPSHOT_VERSION, "step": ["x"],
+                                    "survivors": [stand_in.pid],
+                                    "stamps": [f"{stand_in.pid} Thu Jan  1 00:00:00 1970"]}))  # fmt: skip
+        reap(snap)
+        with pytest.raises(subprocess.TimeoutExpired):  # alive: nothing was sent to it
+            stand_in.wait(timeout=patience(0.3))
+        snap.write_text(json.dumps({"v": O.SNAPSHOT_VERSION, "step": ["x"],
+                                    "survivors": [stand_in.pid],
+                                    "stamps": O.stamps([stand_in.pid])}))  # fmt: skip
+        reap(snap)  # its own start time: the survivor itself, killed
+        assert stand_in.wait(timeout=patience(30)) == -signal.SIGKILL
+    finally:
+        stand_in.kill()
+        stand_in.wait()
 
 
 @pytest.mark.load_sensitive
@@ -237,9 +255,9 @@ def test_the_canary_never_reports_a_concurrent_gate_run(wrap, repo: Path) -> Non
         # whole machine, so under the parallel suite it picked up the other workers' deliberately
         # leaked orphans and failed for a reason unrelated to what it measures.
         give_up = GiveUp(10)
-        while not give_up.passed() and not alive(other.pid):
+        while not give_up.passed() and other.poll() is not None:
             time.sleep(0.05)
-        assert alive(other.pid), "the concurrent canary never started"
+        assert other.poll() is None, "the concurrent canary never started"
         concurrent = O.judge([other.pid], O.roots_for(str(repo)))
         assert concurrent.code == 0, concurrent.ours
         assert not concurrent.ours, concurrent.ours

@@ -39,25 +39,26 @@ import time
 KEEP = 20
 IDLE_S = 3600
 BACKSTOP_IDLE_S = 12 * 3600
-OWNER = ".goh-owner"  # the pid of the run that owns an entry, while it runs (gates/_pytest_root.sh)
+OWNER = ".goh-owner"  # `<pid> <start time>` of the run that owns an entry (gates/_pytest_root.sh)
 ACTIVITY_DEPTH = 3
 
 
 def _owner_alive(path: str) -> bool:
+    """The entry's owning run still runs, judged by the start time beside its pid
+    (GOH.STRAYSIGNAL2): a killed run's pid handed to another process reads as gone, so its entry
+    is pruned rather than kept for a stranger. An owner file of a bare pid (an older writer) is
+    judged as the pid stands now."""
     try:
         with open(os.path.join(path, OWNER), encoding="ascii") as f:
-            pid = int(f.read().strip())
+            text = f.read()
     except (OSError, ValueError):
         return False
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except PermissionError:
-        return True  # someone else's process, but alive
-    except OSError:
-        return False
-    return True
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import pid_owner  # here: only an entry with an owner file pays for it
+
+    return pid_owner.alive_line(text)
 
 
 def _activity(path: str, mtime: float) -> float:

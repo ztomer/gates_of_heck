@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 import load_kit
+import pid_owner
 import ps_table
 import pytest
 
@@ -65,14 +66,14 @@ def test_a_ps_slow_in_wall_time_but_spending_cpu_is_waited_for(tmp_path, monkeyp
 @pytest.mark.load_sensitive
 def test_a_ps_that_spends_nothing_is_hung_and_is_stopped_and_named(tmp_path, monkeypatch):
     mark = tmp_path / "pid"
-    shim = _shim(tmp_path, f"echo $$ > {mark}\nexec sleep 600")
+    shim = _shim(tmp_path, f"echo $$ $({REAL_PS} -o lstart= -p $$) > {mark}\nexec sleep 600")
     monkeypatch.setenv("PATH", f"{shim}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setattr(ps_table, "PS_STALL", 1)
     with pytest.raises(RuntimeError, match=r"stalled"):
         load_kit.live_processes()
     monkeypatch.undo()  # the shim's `ps` answers nothing: ask the kernel, not it
-    with pytest.raises(ProcessLookupError):
-        os.kill(int(mark.read_text()), 0)  # the hung listing was stopped, not left
+    # stopped, not left: judged by its start time, so a reused pid is not read as it
+    assert not pid_owner.alive(pid_owner.read_stamp(mark))
 
 
 def _calls_with_timeout(tree: ast.AST):

@@ -40,12 +40,10 @@ def _ended(proc: subprocess.Popen) -> int | None:
         return None
 
 
-def _gone(pid: int) -> bool:
+def _gone(s: pid_owner.Stamp) -> bool:
     give_up = GiveUp(10)
     while not give_up.passed():
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
+        if not pid_owner.alive(s):
             return True
         time.sleep(0.02)
     return False
@@ -70,6 +68,32 @@ def test_a_bare_kill_of_a_recycled_pid_signals_the_stand_in(tmp_path: Path) -> N
         pidfile.write_text(f"{stand_in.pid}\n")  # the number, now somebody else's
         os.kill(int(pidfile.read_text()), signal.SIGTERM)  # the bare shape this item removed
         assert _ended(stand_in) == -signal.SIGTERM, "the bare kill missed the process at the pid"
+    finally:
+        stand_in.kill()
+        stand_in.wait()
+
+
+@pytest.mark.load_sensitive(reason="spawns and signals its own sleepers")
+def test_a_liveness_probe_reads_a_recycled_pid_as_gone() -> None:
+    """GOH.STRAYSIGNAL2: `os.kill(pid, 0)` answers yes for the stand-in at the number; `alive`
+    and the shell's `goh_pid_alive` answer no, and yes for the stamped process itself."""
+    first = _sleeper()
+    saved = pid_owner.stamp(first.pid)
+    assert saved is not None and pid_owner.alive(saved)
+    assert pid_owner.alive_line(pid_owner.stamp_line(first.pid) or "")
+    first.kill()
+    first.wait()
+    stand_in = _sleeper()
+    try:
+        recycled = _recycled(saved, stand_in)
+        os.kill(recycled.number, 0)  # the bare probe: no error, the stand-in reads as alive
+        assert not pid_owner.alive(recycled)
+        assert not pid_owner.alive_line(f"{stand_in.pid} Thu Jan  1 00:00:00 1970")
+        assert not pid_owner.alive(saved) and not pid_owner.alive(None)
+        done = _sh(f'goh_pid_alive "{stand_in.pid} Thu Jan  1 00:00:00 1970" && exit 3\n'
+                   f'goh_pid_alive "$(goh_pid_stamp {stand_in.pid})" || exit 4\n'
+                   'goh_pid_alive "" && exit 5\necho fine\n')  # fmt: skip
+        assert done.stdout.strip() == "fine", (done.returncode, done.stderr)
     finally:
         stand_in.kill()
         stand_in.wait()
@@ -160,7 +184,7 @@ def _signal_a_group(leader: subprocess.Popen, pidfile: Path) -> None:
         leader.kill()
         leader.wait()  # the leader is gone; its group lives on in the leak
         assert pid_owner.signal_group(s, signal.SIGTERM) is True
-        assert _gone(leak.number), "the group's surviving member was not signalled"
+        assert _gone(leak), "the group's surviving member was not signalled"
     finally:
         pid_owner.signal_group(s, signal.SIGKILL)  # whatever of the group is left
         leader.kill()

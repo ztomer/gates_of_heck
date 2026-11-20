@@ -59,32 +59,38 @@ def last_use(path: str, stamps: tuple[str, ...] = STAMPS) -> float:
     return os.stat(path).st_mtime
 
 
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except PermissionError:
-        return True  # alive, and not ours
-    except OSError:
-        return False
-    return True
+def _pid_owner():
+    """lib/pid_owner.py, from gates/ beside it."""
+    import sys
+
+    lib = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib")
+    if lib not in sys.path:
+        sys.path.insert(0, lib)
+    import pid_owner
+
+    return pid_owner
 
 
-def _pids(path: str, marker: str) -> list[int]:
+def _users(path: str, marker: str) -> list[str]:
+    """The marker's lines, one user each: `<pid> <start time>` (a bare pid from an older goh)."""
     try:
         with open(os.path.join(path, marker), encoding="ascii") as handle:
-            return [int(w) for w in handle.read().split() if w.isdigit() and int(w) > 0]
+            lines = handle.read().splitlines()
     except (OSError, ValueError):
         return []
+    return [ln.strip() for ln in lines if ln.split() and ln.split()[0].isdigit()]
 
 
 def running(path: str, marker: str | None) -> bool:
     """True when `path/<marker>` names a live process: the entry is in use, whatever its stamp says.
     The marker holds one pid per user: the crates of one repo share one coverage build, several at
     once (GOH.COVSHAREDBUILD), and any one alive keeps it. A reused pid keeps an entry one run too
-    long; it can never lose one that is in use."""
+    long; it can never lose one that is in use. Each user's start time is beside its pid
+    (GOH.STRAYSIGNAL2), so a reused pid no longer keeps one at all."""
     if not marker:
         return False
-    return any(_alive(pid) for pid in _pids(path, marker))
+    alive_line = _pid_owner().alive_line
+    return any(alive_line(user) for user in _users(path, marker))
 
 
 def _lock_order():
@@ -116,10 +122,12 @@ def mark(path: str, marker: str, pid: int) -> None:
                     continue  # evicted while we waited: the path is a new directory now
             except FileNotFoundError:
                 continue
-            live = [p for p in _pids(path, marker) if p != pid and _alive(p)]
+            po = _pid_owner()
+            others = [u for u in _users(path, marker) if u.split()[0] != str(pid)]
+            live = [u for u in others if po.alive_line(u)]
             tmp = os.path.join(path, f"{marker}.{os.getpid()}")
             with open(tmp, "w", encoding="ascii") as handle:
-                handle.write("".join(f"{p}\n" for p in [*live, pid]))
+                handle.write("".join(f"{u}\n" for u in [*live, po.stamp_line(pid) or str(pid)]))
             os.replace(tmp, os.path.join(path, marker))
             return
 

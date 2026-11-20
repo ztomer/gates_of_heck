@@ -55,7 +55,7 @@ die() { err "local_ci: $*"; exit "${2:-2}"; }
 # shellcheck source=lib/bench_lock.sh
 . "$GOH_ROOT/lib/bench_lock.sh"
 # shellcheck source=lib/gate_slot.sh
-. "$GOH_ROOT/lib/gate_slot.sh"
+. "$GOH_ROOT/lib/gate_slot.sh"; . "$GOH_ROOT/lib/pid_owner.sh"  # goh_pid_stamp/goh_pid_kill
 bench_lock_join "local ci" # a measurement (tools/quiet.sh) waits for this run to finish
 # Resolved ONCE, exported: every step runs under `goh canary` (below), and any gate a step runs
 # (rust_gate, structural) takes the same answer instead of resolving again.
@@ -264,13 +264,15 @@ EOF
 # A STOPPED run stops its steps. Each runs in the background under its own wrapper, so a TERM to
 # this script used to end the script alone and leave every running step going, unowned
 # (tests/test_bounded_run_interrupt.py). The wrapper sweeps its step's group on TERM; this hands
-# the TERM on. (A background job of a non-job-control shell ignores SIGINT from birth, and an
-# ignored-at-entry signal cannot be trapped -- so INT is turned into TERM here, not relied on there.)
+# the TERM on, by the STAMP taken at the launch (GOH.STRAYSIGNAL2): bash reaps a finished subshell
+# before STATE says so, and its pid is then anybody's; with none yet, the TERM came microseconds
+# after the spawn, so it is stamped here. (A background job of a non-job-control shell ignores
+# SIGINT from birth, and an ignored-at-entry signal cannot be trapped -- INT is made TERM here.)
 _stop() {
     local i
     trap - TERM INT HUP
     for ((i = 1; i <= n; i++)); do
-        [ "${STATE[i]:-}" = running ] && kill -TERM "${WRAP[i]:-}" 2>/dev/null
+        [ "${STATE[i]:-}" = running ] && goh_pid_kill TERM "${WSTAMP[i]:-$(goh_pid_stamp "${WRAP[i]:-}")}"
     done
     # The steps' wrappers by pid, never a bare `wait`: the gate slot's holder is a background job
     # of this shell too, and lives until gate_slot_release -- a bare wait waited on it forever.
@@ -356,12 +358,12 @@ _start() {
     # (pipelines, env prefixes); the source is repo-local config, the same trust level as every
     # ancestor orchestrator. </dev/null: a step that reads stdin gets EOF, never the step list.
     # The wrapper is the subshell's child; the subshell hands a TERM on to it (see _stop).
-    ( trap 'kill -TERM "$wrap" 2>/dev/null; wait "$wrap"; exit 143' TERM
+    ( trap 'goh_pid_kill TERM "${ws:-$(goh_pid_stamp "${wrap:-}")}"; wait "$wrap"; exit 143' TERM
       run_step "$LOGDIR/step-$i.log" "${RUN[i]}" "$i" &
-      wrap=$!
+      wrap=$!; ws="$(goh_pid_stamp "$wrap")" || ws=gone  # by its stamp, as _stop; gone: ended
       wait "$wrap"
       echo "$i $?" >&3 ) </dev/null &
-    WRAP[i]=$!
+    WRAP[i]=$!; WSTAMP[i]="$(goh_pid_stamp "${WRAP[i]}")" || WSTAMP[i]=gone  # gone: never stamped
 }
 
 _launch() { # start every pending step a slot and its tags allow, in declared order

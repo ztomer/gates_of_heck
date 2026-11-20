@@ -360,6 +360,9 @@ def worker(result: str, resume: bool = False) -> int:
         if resume and not ship_verify.reopen(res):
             return ship_verify.verify(result)  # resumed by a peer meanwhile: only read the card
         res["pid"] = os.getpid()
+        import pid_owner  # here, not at the top: the import ceiling (E402) is spent
+
+        res["pid_stamp"] = pid_owner.stamp_line(os.getpid())  # a reused pid is not this worker
         save(res)
         import land_lock  # here, not at the top: tools/ship.py's import ceiling (E402) is spent
 

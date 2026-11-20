@@ -53,6 +53,6 @@ CASES = [
         "check_saved_pid_kill.py",
         ["."],
         {"lib/stop.py": "import os\nos.kill(int(open('p').read()), 9)\n"},
-        {"lib/stop.py": "import os\nos.kill(int(open('p').read()), 0)\n"},
+        {"lib/stop.py": "import pid_owner\npid_owner.signal(pid_owner.read_stamp('p'), 9)\n"},
     ),
 ]

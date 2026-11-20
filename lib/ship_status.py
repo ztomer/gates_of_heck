@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import canary_grace  # tools/ship.py, the one importer, puts lib/ on sys.path
 import consumer_pins
+import pid_owner
 import pin_sweep
 import ship_profile
 
@@ -75,12 +76,10 @@ def status(result: str) -> int:
         print("\n".join(prof[1:]))
     if res["status"] == "running":
         pid = res.get("pid")
-        try:
-            if pid:
-                os.kill(pid, 0)
+        # By its start time (GOH.STRAYSIGNAL2): a worker's pid reused since reads as gone.
+        if not pid or pid_owner.alive_line(str(res.get("pid_stamp") or pid)):
             info(f"running: {result}")
             return 3
-        except OSError:
-            err(f"the worker (pid {pid}) is gone and the result says running: {result}")
-            return 4
+        err(f"the worker (pid {pid}) is gone and the result says running: {result}")
+        return 4
     return 0 if res["status"] == "ok" else 1

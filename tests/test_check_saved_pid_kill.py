@@ -50,9 +50,14 @@ BARE_PY = {
     "a saved group": "import os\nos.killpg(gate_pid, 9)\n",
     "kill imported from os": "from os import kill\nkill(pid, 15)\n",
     "a stop/continue": "import os, signal\nos.kill(pid, signal.SIGSTOP)\n",
+    "a probe of a saved pid": "import os\nos.kill(pid, 0)\n",
+    "a probe of a pidfile": "import os\nos.kill(int(mark.read_text()), 0)\n",
+    "a probe of a saved group": "import os\nos.killpg(pgid, 0)\n",
 }
 OWNED_PY = {
-    "a probe": "import os\nos.kill(pid, 0)\n",
+    "a probe of itself": "import os\nos.kill(os.getpid(), 0)\n",
+    "a probe of a child handle": "import os\nos.kill(proc.pid, 0)\n",
+    "the liveness helper": "import pid_owner\npid_owner.alive(s)\npid_owner.alive_line(t)\n",
     "a child handle": "import os\nos.killpg(proc.pid, 9)\nos.kill(self.proc.pid, 15)\n",
     "itself": "import os\nos.kill(os.getpid(), 15)\nos.killpg(os.getpgid(0), 1)\nos.killpg(0, 1)\n",
     "a child's group": "import os\nos.killpg(os.getpgid(proc.pid), 9)\n",
@@ -80,9 +85,13 @@ BARE_SH = {
     "after a test": '[ -n "$p" ] && kill -9 "$p"\n',
     "in a trap": "trap 'kill -TERM \"$wrap\"; exit 143' TERM\n",
     "by path": '/bin/kill "$pid"\n',
+    "a probe of a saved pid": 'kill -0 "$pid" 2>/dev/null\n',
+    "a probe in a wait loop": 'while kill -0 "$p" 2>/dev/null; do sleep 1; done\n',
+    "a probe spelled -s 0": 'kill -s 0 "$holder"\n',
 }
 OWNED_SH = {
-    "a probe": 'kill -0 "$pid" 2>/dev/null\n',
+    "a probe of itself": "kill -0 $$\n",
+    "the liveness helper": 'goh_pid_alive "$stamp" && echo up\n',
     "a listing": 'kill -l "$rc"\n',
     "itself": 'kill -TERM $$\nkill -KILL "$$"\n',
     "a job": "kill %1\n",
@@ -108,14 +117,15 @@ def test_a_shebang_script_without_an_extension_is_read() -> None:
     assert any(f.startswith("hooks/planted:2:") for f in findings), findings
 
 
-def test_a_rust_kill_is_red_and_its_probe_is_not() -> None:
+def test_a_rust_kill_and_its_probe_are_red() -> None:
     body = (
         "fn f(pid: i32) {\n    unsafe { libc::kill(pid, libc::SIGKILL) };\n"
         "    let _ = goh_sys::killpg(pid, 0);\n}\n"
     )
     findings = _findings({"crates/goh/src/planted.rs": body})
     assert [f.split(": a signal")[0] for f in findings] == [
-        "crates/goh/src/planted.rs:2: libc::kill(pid, libc::SIGKILL)"
+        "crates/goh/src/planted.rs:2: libc::kill(pid, libc::SIGKILL)",
+        "crates/goh/src/planted.rs:3: goh_sys::killpg(pid, 0)",
     ], findings
 
 

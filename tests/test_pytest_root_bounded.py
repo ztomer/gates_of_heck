@@ -90,7 +90,9 @@ def test_the_root_keeps_only_a_failed_tests_tmp_path_and_cuts_old_roots(tmp_path
     (proj / "test_mixed.py").write_text(PASSES_AND_FAILS)
     script = (
         '. "$1/gates/_pytest_root.sh" && goh_pytest_root && '
-        'test "$(cat "$PYTEST_DEBUG_TEMPROOT/.goh-owner")" = "$$" && '
+        # the owner line is `<pid> <start time>` (GOH.STRAYSIGNAL2)
+        'read -r owner started <"$PYTEST_DEBUG_TEMPROOT/.goh-owner" && '
+        'test "$owner" = "$$" && test -n "$started" && '
         '{ "$2" -m pytest -q -p no:cacheprovider -p no:xdist test_mixed.py >/dev/null; '
         'printf "%s\\n" "$PYTEST_DEBUG_TEMPROOT"; }'
     )

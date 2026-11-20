@@ -119,7 +119,10 @@ def _reap_on_exit(tmp: Path) -> None:
     tests wrote. The write end stays in this process only (os.pipe's fds are not inheritable, so
     no xdist worker or gate child keeps the reaper waiting); the reaper is in a session of its
     own, so a signal to the suite's process group does not take it down with the suite."""
-    (tmp / ".goh-owner").write_text(f"{os.getpid()}\n")  # the backstop sweep skips a live root
+    started = subprocess.run(["ps", "-o", "lstart=", "-p", str(os.getpid())], capture_output=True,
+                             text=True, check=False, stdin=subprocess.DEVNULL).stdout  # fmt: skip
+    # the backstop sweep skips a live root: `<pid> <start time>`, so a reused pid is not this run
+    (tmp / ".goh-owner").write_text(f"{os.getpid()} {' '.join(started.split())}\n")
     read_end, write_end = os.pipe()
     try:
         _REAPER.append(_spawn_reaper(read_end, tmp))

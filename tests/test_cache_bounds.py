@@ -92,11 +92,13 @@ def test_a_shared_build_is_spared_while_any_of_its_crates_runs(tmp_path) -> None
     _head_cache.mark(str(shared), ".goh-running", os.getpid())
     _head_cache.mark(str(shared), ".goh-running", dead)  # the last to start has finished
     _head_cache.mark(str(alone), ".goh-running", dead)
-    assert (shared / ".goh-running").read_text().split() == [str(os.getpid()), str(dead)]
+    users = [ln.split()[0] for ln in (shared / ".goh-running").read_text().splitlines()]
+    assert users == [str(os.getpid()), str(dead)]  # each beside its start time when it had one
     _head_cache.prune(str(cache), "cur", keep=200, max_bytes=1, grace=600, marker=".goh-running")
     assert {p.name for p in cache.iterdir()} == {"cur", "shared"}
     _head_cache.mark(str(shared), ".goh-running", os.getpid())  # a dead pid is dropped on the next
-    assert (shared / ".goh-running").read_text().split() == [str(os.getpid())]
+    users = [ln.split()[0] for ln in (shared / ".goh-running").read_text().splitlines()]
+    assert users == [str(os.getpid())]
 
 
 @pytest.mark.load_sensitive
@@ -310,3 +312,15 @@ def test_a_mark_on_an_evicted_entry_lands_in_the_live_directory(tmp_path) -> Non
         os.rename(entry, tomb)
     t.join(patience(10))
     assert (entry / ".goh-running").read_text().split() == ["4242"]
+
+
+def test_a_marker_user_whose_pid_is_another_process_now_is_not_running(tmp_path: Path) -> None:
+    """GOH.STRAYSIGNAL2, red first: the marker names a LIVE pid (this test's) with another start
+    time -- a finished build's pid handed to a stranger, faked -- and the entry is idle. The bare
+    `kill(pid, 0)` kept it in use for as long as the stranger lived."""
+    entry = tmp_path / "e"
+    entry.mkdir()
+    (entry / ".goh-running").write_text(f"{os.getpid()} Thu Jan  1 00:00:00 1970\n")
+    assert not _head_cache.running(str(entry), ".goh-running")
+    _head_cache.mark(str(entry), ".goh-running", os.getpid())
+    assert _head_cache.running(str(entry), ".goh-running")

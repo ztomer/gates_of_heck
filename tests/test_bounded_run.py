@@ -18,7 +18,6 @@ measuring a process that never existed. Every helper here therefore works from P
 created.
 """
 
-import os
 import re
 import signal
 import subprocess
@@ -32,17 +31,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import bounded_run
 import pid_owner
 from timing_bounds import assert_sooner
-
-
-def alive(pid: int) -> bool:
-    """Is this pid still running? `kill -0`, which is the same question the OS answers."""
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
 
 
 def spawn_sleeper(seconds: int = 600) -> subprocess.Popen:
@@ -90,13 +78,16 @@ def test_the_sweep_reaches_a_grandchild(tmp_path: Path) -> None:
     # A shell that backgrounds a long sleep and waits: the step's direct child is the shell, and
     # the sleep is a GRANDCHILD. `pkill -P` can only ever see the shell.
     code = run(
-        ["/bin/bash", "-c", f"/bin/sleep 900 & echo $! > {marker}; wait"], timeout=2, grace=2
+        ["/bin/bash", "-c", f"/bin/sleep 900 & echo $! $(ps -o lstart= -p $!) > {marker}; wait"],
+        timeout=2,
+        grace=2,
     )
     assert code == bounded_run.TIMEOUT_EXIT, code
     assert marker.exists(), "the fixture never recorded a grandchild, so it proved nothing"
-    grandchild = int(marker.read_text().strip())
+    grandchild = marker.read_text().split()[0]
     time.sleep(0.3)
-    assert not alive(grandchild), (
+    # By its start time (GOH.STRAYSIGNAL2): a reused pid is somebody else's, never the grandchild.
+    assert not pid_owner.alive(pid_owner.read_stamp(marker)), (
         f"pid {grandchild} survived the sweep — the bound stops the symptom and keeps the cause"
     )
 
@@ -134,7 +125,7 @@ def test_a_failing_step_reports_its_own_code_not_124() -> None:
     assert run(["/bin/sh", "-c", "exit 7"]) == 7
 
 
-@pytest.mark.load_sensitive
+@pytest.mark.load_sensitive(reason="its step leaks a sleeper the test signals by stamp")
 def test_the_group_outlives_reparenting_so_a_leak_is_still_visible() -> None:
     """The measurement that makes the canary exact. A leaked child is REPARENTED the instant its
     parent exits — `ps` shows `ppid 1` — so a descendant walk taken at exit finds nothing and a
@@ -156,8 +147,8 @@ def test_the_group_outlives_reparenting_so_a_leak_is_still_visible() -> None:
         assert outcome.survivors, (
             "the leak was invisible: a reparented child has to still be findable by its group"
         )
-        for pid in outcome.survivors:
-            assert alive(pid)
+        for s in held:
+            assert pid_owner.alive(s)
     finally:
         for s in held:
             pid_owner.signal(s, signal.SIGKILL)

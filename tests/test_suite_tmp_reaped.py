@@ -100,10 +100,12 @@ def test_a_killed_run_leaves_no_root(tmp_path: Path, sig: signal.Signals) -> Non
 
 @pytest.mark.load_sensitive
 def test_the_root_names_its_owner_for_the_backstop(tmp_path: Path) -> None:
-    """While it runs, the root carries `.goh-owner` (the live pid), so the session-start backstop
-    sweep (lib/prune_kept.py) never removes a long-running suite's root from under it."""
+    """While it runs, the root carries `.goh-owner` (the live pid and its start time), so the
+    session-start backstop sweep (lib/prune_kept.py) never removes a long-running suite's root from
+    under it, and never keeps one for a stranger that was handed the pid (GOH.STRAYSIGNAL2)."""
 
     def owner(proc: subprocess.Popen, root: Path) -> None:
-        assert (root / ".goh-owner").read_text().strip() == str(proc.pid)
+        line = (root / ".goh-owner").read_text().split()
+        assert line[0] == str(proc.pid) and len(line) > 1, line
 
     assert _gone(_run(tmp_path, "sleep", owner))

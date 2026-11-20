@@ -71,6 +71,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import consumer_pins
 import estate_registry
 import killtree
+import pid_owner
 import step_timings
 
 from tui.lib import counted, err, info, ok, step
@@ -146,10 +147,9 @@ def _active(rec: dict) -> bool:
         if pid <= 0:
             made = dt.datetime.fromisoformat(str(rec.get("created")))
             return (dt.datetime.now(dt.UTC) - made).total_seconds() < START_GRACE
-        os.kill(pid, 0)
-    except (OSError, ValueError, TypeError):
+    except (ValueError, TypeError):
         return False
-    return True
+    return pid_owner.alive_line(str(rec.get("pid_stamp") or pid))
 
 
 def register(path: Path, repos: list[str]) -> None:
@@ -217,6 +217,7 @@ def start(result: Path | str, repos: dict[str, Path], budget: float, wait: bool 
         "schema": 1, "status": "pending", "created": now(), "budget": budget,
         "waits_on": str(result) if running else None,
         "waits_on_pid": starter.get("pid") if running else None,
+        "waits_on_pid_stamp": starter.get("pid_stamp") if running else None,
         "log": str(path.with_suffix(".log")),
         "repos": {w: {"repo": str(Path(r).resolve()), "status": "pending"}
                   for w, r in sorted(repos.items())},
@@ -229,7 +230,10 @@ def start(result: Path | str, repos: dict[str, Path], budget: float, wait: bool 
     with path.with_suffix(".log").open("ab") as out:
         child = subprocess.Popen(argv, env=env, stdout=out, stderr=out, stdin=subprocess.DEVNULL,
                                  start_new_session=True, close_fds=True)  # fmt: skip
-    update(path, lambda b: b.update(pid=child.pid))
+    # With its start time (GOH.STRAYSIGNAL2): `_active` asks whether THIS supervisor runs, and a
+    # bare pid reused once it ended read a stranger as the sweep still going.
+    stamped = pid_owner.stamp_line(child.pid)
+    update(path, lambda b: b.update(pid=child.pid, pid_stamp=stamped))
     if wait:
         child.wait()
     return path
@@ -242,10 +246,9 @@ def _ship_running(rec: dict) -> bool:
         pid = int(rec.get("waits_on_pid") or 0)
         if pid <= 0:
             return True  # a running ship whose worker has not said its pid yet
-        os.kill(pid, 0)
-    except (OSError, ValueError):
+    except ValueError:
         return False
-    return True
+    return pid_owner.alive_line(str(rec.get("waits_on_pid_stamp") or pid))
 
 
 def supervise(path: Path) -> int:

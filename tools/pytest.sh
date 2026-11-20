@@ -57,10 +57,15 @@ if [ -z "${GATES_OF_HECK_SUITE_RUNNER:-}" ] && [ -z "${GATES_OF_HECK_SUITE_NESTE
     # The checkout's OWN git dir (a worktree has its own), never a calling hook's GIT_DIR.
     SUITE_LOCK="${GATES_OF_HECK_SUITE_LOCK:-$( (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR
         git -C "$GOH" rev-parse --absolute-git-dir 2>/dev/null) || printf %s "$GOH")/goh-suite.lock}"
-    until ln -s "$$" "$SUITE_LOCK" 2>/dev/null; do
+    # The link names the holder's STAMP, `<pid> <start time>` (GOH.STRAYSIGNAL2): a killed run's
+    # pid handed to another process since reads as gone, never as a suite holding the checkout.
+    # shellcheck source=lib/pid_owner.sh
+    . "$GOH/lib/pid_owner.sh"
+    SUITE_STAMP="$(goh_pid_stamp $$)" || die "cannot read this suite's own start time (ps)" 2
+    until ln -s "$SUITE_STAMP" "$SUITE_LOCK" 2>/dev/null; do
         holder="$(readlink "$SUITE_LOCK" 2>/dev/null || true)"
-        if [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; then
-            die "another goh suite (pid $holder) is running in this checkout -- one suite at a time ($SUITE_LOCK)" 2
+        if goh_pid_alive "$holder"; then
+            die "another goh suite (pid ${holder%% *}) is running in this checkout -- one suite at a time ($SUITE_LOCK)" 2
         fi
         rm -f "$SUITE_LOCK"   # its holder is gone: a killed run's lock
     done
@@ -85,7 +90,7 @@ if [ -z "${GATES_OF_HECK_SUITE_RUNNER:-}" ] && [ -z "${GATES_OF_HECK_SUITE_NESTE
     esac
     # shellcheck source=lib/gate_slot.sh
     . "$GOH/lib/gate_slot.sh"
-    trap '[ "$(readlink "$SUITE_LOCK" 2>/dev/null)" = "$$" ] && rm -f "$SUITE_LOCK"; gate_slot_release' EXIT
+    trap '[ "$(readlink "$SUITE_LOCK" 2>/dev/null)" = "$SUITE_STAMP" ] && rm -f "$SUITE_LOCK"; gate_slot_release' EXIT
     if [ -z "${GOH_GATE_SLOT:-}" ]; then
         gate_slot_acquire "goh suite ($PWD)" "$suite_class" "$suite_wait" \
             || die "the goh suite was not admitted within GOH_SUITE_WAIT_MAX=${suite_wait}s (holders above) -- nothing ran; rerun later, or raise GOH_SUITE_WAIT_MAX" 75

@@ -31,6 +31,8 @@ GOH_CONTAINER_STATE="${GOH_CONTAINER_STATE:-$HOME/.cache/goh/container_runtime}"
 . "${BASH_SOURCE[0]%/*}/house_python.sh" || return 1
 # shellcheck source=lib/lock_order.sh
 . "${BASH_SOURCE[0]%/*}/lock_order.sh" || return 1   # the one lock order (GOH.LOCKORDER)
+# shellcheck source=lib/pid_owner.sh
+. "${BASH_SOURCE[0]%/*}/pid_owner.sh" || return 1   # a lease's holder judged by its start time
 
 _goh_container_lock_acquire() {
     local state_dir="${GOH_CONTAINER_STATE:-$HOME/.cache/goh/container_runtime}"
@@ -49,14 +51,19 @@ _goh_container_live_leases() {
     local leases_dir="$state_dir/leases"
     local count=0
     if [ -d "$leases_dir" ]; then
-        local lease pid
+        local lease pid stamp
         for lease in "$leases_dir"/*; do
             [ -f "$lease" ] || continue
             pid="${lease##*/}"
             case "$pid" in
                 *[!0-9]*) rm -f "$lease" </dev/null 2>/dev/null || true; continue ;;
             esac
-            if kill -0 "$pid" </dev/null 2>/dev/null; then
+            # The lease's second line is its holder's stamp (GOH.STRAYSIGNAL2): a dead gate's pid
+            # handed to another process is no live lease. A lease without one (an older goh's) is
+            # judged by its pid as it stands now.
+            stamp="$(sed -n 2p "$lease" </dev/null 2>/dev/null)"
+            [ -n "$stamp" ] || stamp="$(goh_pid_stamp "$pid" </dev/null)" || stamp=""
+            if goh_pid_alive "$stamp"; then
                 count=$((count + 1))
             else
                 rm -f "$lease" </dev/null 2>/dev/null || true
@@ -113,7 +120,7 @@ goh_container_runtime_up() {
     fi
 
     mkdir -p "$leases_dir" </dev/null 2>/dev/null || true
-    printf '%s\n' "$label" > "$leases_dir/$$"
+    printf '%s\n%s\n' "$label" "$(goh_pid_stamp $$)" > "$leases_dir/$$"
 
     _goh_container_lock_release
     return 0

@@ -41,6 +41,7 @@ sys.path.insert(0, str(_HERE))
 sys.path.insert(1, str(_HERE.parent / "gates"))
 import idle_suite  # noqa: E402 -- lib/: main_checkout, pending, enqueuing, IN_SUITE
 import lock_order  # noqa: E402 -- lib/, beside this file
+import pid_owner  # noqa: E402 -- lib/, beside this file
 import ruff_currency  # noqa: E402 -- gates/: the pin, the box's newest ruff, the bump commit
 from full_run import _git  # noqa: E402 -- lib/, beside this file
 
@@ -55,12 +56,10 @@ def ship_dir() -> Path:
     return Path(os.environ.get("GOH_SHIP_DIR") or Path.home() / ".local/state/goh/ship")
 
 
-def _alive(pid: object) -> bool:
-    try:
-        os.kill(int(pid), 0)  # type: ignore[arg-type]
-    except (OSError, TypeError, ValueError):
-        return False
-    return True
+def _alive(rec: dict) -> bool:
+    """The ship's worker still runs, by the start time beside its pid (GOH.STRAYSIGNAL2): a pid
+    handed to another process once the worker ended reads as gone."""
+    return pid_owner.alive_line(str(rec.get("pid_stamp") or rec.get("pid")))
 
 
 def ships_in_flight(repo: str) -> list[str]:
@@ -74,7 +73,7 @@ def ships_in_flight(repo: str) -> list[str]:
             rec = json.loads(p.read_text())
         except (OSError, json.JSONDecodeError):
             continue
-        if rec.get("status") == "running" and (not rec.get("pid") or _alive(rec["pid"])):
+        if rec.get("status") == "running" and (not rec.get("pid") or _alive(rec)):
             out.append(p.name)
     return out
 

@@ -12,11 +12,11 @@ tests/test_empty_scope_starved.py.
 from __future__ import annotations
 
 import importlib.util
-import os
 import stat
 from pathlib import Path
 
 import pgid_cpu
+import pid_owner
 import pytest
 from conftest import REPO_ROOT
 
@@ -60,12 +60,12 @@ def test_a_run_that_spends_nothing_and_has_nothing_runnable_is_stopped_and_named
     monkeypatch.setattr(mod, "RUN_TIMEOUT_S", 1)
     monkeypatch.setattr(pgid_cpu, "pgid_cpu_and_runnable", lambda _pgid: (0.0, 0))
     mark = tmp_path / "pid"
-    side, tree = _side(mod, tmp_path, f"echo $$ > {mark}\nexec sleep 600")
+    side, tree = _side(mod, tmp_path, f"echo $$ $(ps -o lstart= -p $$) > {mark}\nexec sleep 600")
     got = mod.structural(side, tree)
     assert got.error and "stalled" in got.error, got
     monkeypatch.undo()
-    with pytest.raises(ProcessLookupError):
-        os.kill(int(mark.read_text()), 0)  # stopped with everything it started, not left
+    # stopped with everything it started, not left: by its start time, never a reused pid
+    assert not pid_owner.alive(pid_owner.read_stamp(mark))
 
 
 def test_a_run_that_finishes_is_parsed_as_it_always_was(tmp_path):

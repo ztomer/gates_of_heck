@@ -5,7 +5,8 @@
 //! code wins; a GREEN step that left processes in its group is 125 (a leak is a different finding
 //! from a failure); every leaked pid is named with its command line and, when its path is under the
 //! repo or `CARGO_TARGET_DIR`, `[under <root>]`; a concurrent gate's wrapper is never a leak;
-//! `--snapshot` records the survivors as JSON for a red push; `--log` takes the step's output.
+//! `--snapshot` records the survivors and their start-time stamps as JSON for a red push; `--log`
+//! takes the step's output.
 
 use goh_tui::ERR;
 use std::collections::BTreeMap;
@@ -138,11 +139,32 @@ fn emit(ours: &[String], repo: &Path) {
     println!("  pattern).");
 }
 
+/// `<pid> <lstart>` for each survivor still running (one `ps`): the stamp a later reader proves
+/// the pid against before it signals it, as `lib/pid_owner.py`'s `stamp_line` (GOH.STRAYSIGNAL2).
+fn stamps(survivors: &[i32]) -> Vec<String> {
+    if survivors.is_empty() {
+        return Vec::new();
+    }
+    let list: Vec<String> = survivors.iter().map(ToString::to_string).collect();
+    Command::new("ps")
+        .args(["-o", "pid=,lstart=", "-p", &list.join(",")])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
+        .lines()
+        .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|l| !l.is_empty())
+        .collect()
+}
+
 fn snapshot(path: &Path, step: &[String], survivors: &[i32]) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    let doc = serde_json::json!({ "v": 1, "step": step, "survivors": survivors });
+    let doc = serde_json::json!({
+        "v": 2, "step": step, "survivors": survivors, "stamps": stamps(survivors),
+    });
     let text = serde_json::to_string_pretty(&doc).unwrap_or_default();
     if let Err(e) = std::fs::write(path, text) {
         eprintln!("orphan_canary: cannot write {}: {e}", path.display());
