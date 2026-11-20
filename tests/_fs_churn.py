@@ -12,7 +12,9 @@ controller, for the whole session, and at its end
     tools/pytest.sh names for a whole run and records in the suite's timing-ledger row);
   * turns a green session RED when one test's own tmp_path took more than CEILING["per_test"]
     events, or the run as a whole more than CEILING["per_test_run"] per test it ran (the mean, so
-    a land's partial suite and a full one are held alike).
+    a land's partial suite and a full one are held alike) -- the run's count including the entries
+    it leaves under its roots, which the runner's removal of them turns into events after the
+    stream stops (`left_behind`).
 
 The ceilings live in tests/fs_events_ceiling.json; GATES_OF_HECK_FS_EVENTS_CEILING (JSON) replaces
 them for a test of this plugin. Off where FSEvents is not (Linux): the file says `unavailable`.
@@ -54,13 +56,20 @@ def verdict(rep: dict, tests_run: int, ceiling: dict) -> list[str]:
             f"{worst[0]} made {worst[1]} file events,"
             f" over the per-test ceiling {ceiling['per_test']}"
         )
-    if tests_run and rep["events"] / tests_run > ceiling["per_test_run"]:
+    total = rep["events"] + rep["teardown_entries"]
+    if tests_run and total / tests_run > ceiling["per_test_run"]:
         faults.append(
-            f"{rep['events']} file events for {tests_run} tests"
-            f" ({rep['events'] / tests_run:.1f} each),"
-            f" over the ceiling {ceiling['per_test_run']} each"
+            f"{total} file events (with what the run left to remove) for {tests_run} tests"
+            f" ({total / tests_run:.1f} each), over the ceiling {ceiling['per_test_run']} each"
         )
     return faults
+
+
+def left_behind(roots: list[str]) -> int:
+    """The entries still under `roots` when the session ends: each one is a file event when the
+    runner removes the root, after this stream has stopped. Counted, so a cut that only moves the
+    removal from a test's teardown to the run's (a template kept for the whole run) is not free."""
+    return sum(len(dirs) + len(files) for root in roots for _, dirs, files in os.walk(root))
 
 
 def pytest_sessionstart(session) -> None:
@@ -94,6 +103,7 @@ def pytest_sessionfinish(session, exitstatus) -> None:
     rep = tally.report(fs_events.time.monotonic() - _STATE.pop("t0"))
     ran = _STATE.pop("ran")
     rep["tests_run"] = ran
+    rep["teardown_entries"] = left_behind(tally.roots)
     ceiling = _ceiling()
     faults = verdict(rep, ran, ceiling)
     rep["ceiling"], rep["faults"] = ceiling, faults

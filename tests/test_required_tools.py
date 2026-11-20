@@ -7,6 +7,7 @@ the same shape as a gate that reports compliance having inspected nothing. Each 
 exactly ONE tool from PATH, so the failure is that tool's and nothing else's.
 """
 
+import hashlib
 import os
 import shutil
 import subprocess
@@ -14,24 +15,33 @@ import sys
 from pathlib import Path
 
 import pytest
+from _tree_clone import template
 from conftest import REPO_ROOT, hermetic_env
 
 
-def path_without(tool: str, into: Path) -> str:
-    """A PATH holding every executable the real PATH does, except `tool`. Symlinks, so rustup's
-    proxies still dispatch on their own names."""
-    into.mkdir()
-    for d in os.environ["PATH"].split(os.pathsep):
-        if not os.path.isdir(d):
-            continue
-        for name in os.listdir(d):
-            src = os.path.join(d, name)
-            if name == tool or (into / name).exists() or not os.access(src, os.X_OK):
-                continue
-            if os.path.isfile(src):
-                (into / name).symlink_to(src)
-    assert shutil.which(tool, path=str(into)) is None
-    return str(into)
+def path_without(tool: str, factory) -> str:
+    """A PATH that finds every executable the real PATH does, except `tool`: each PATH directory
+    holding `tool` is replaced by a shadow of its other entries, symlinks, so rustup's proxies still
+    dispatch on their own names; the rest are the real directories, in order. The shadows are a
+    template, built once per run (GOH.FSCHURN2): a mirror of EVERY executable on PATH per test,
+    ~2960 symlinks made and removed, was ~6000 file events a test."""
+    dirs = [d for d in os.environ["PATH"].split(os.pathsep) if os.path.isdir(d)]
+    holding = [d for d in dirs if os.path.lexists(os.path.join(d, tool))]
+    shadow = {d: hashlib.sha256(d.encode()).hexdigest()[:12] for d in holding}
+
+    def build(tree: Path) -> None:
+        tree.mkdir()
+        for d, name in shadow.items():
+            (tree / name).mkdir()
+            for entry in os.listdir(d):
+                if entry != tool:
+                    (tree / name / entry).symlink_to(os.path.join(d, entry))
+
+    key = hashlib.sha256("\0".join(holding).encode()).hexdigest()[:12]
+    tree = template(factory, f"path-without-{tool}-{key}", build)
+    path = os.pathsep.join(str(tree / shadow[d]) if d in shadow else d for d in dirs)
+    assert shutil.which(tool, path=path) is None
+    return path
 
 
 def run(script: str, cwd: Path, path: str) -> subprocess.CompletedProcess:
@@ -50,30 +60,30 @@ def run(script: str, cwd: Path, path: str) -> subprocess.CompletedProcess:
 
 
 @pytest.mark.skipif(shutil.which("cargo") is None, reason="cargo not installed")
-def test_rust_gate_fails_without_cargo_machete(tmp_path):
+def test_rust_gate_fails_without_cargo_machete(tmp_path, tmp_path_factory):
     crate = tmp_path / "c"
     (crate / "src").mkdir(parents=True)
     (crate / "Cargo.toml").write_text(
         '[package]\nname = "c"\nversion = "0.1.0"\nedition = "2021"\n'
     )
     (crate / "src" / "lib.rs").write_text("")
-    got = run("rust_gate.sh", crate, path_without("cargo-machete", tmp_path / "bin"))
+    got = run("rust_gate.sh", crate, path_without("cargo-machete", tmp_path_factory))
     assert got.returncode != 0, got.stdout + got.stderr
     assert "cargo-machete is not installed" in got.stdout + got.stderr, got.stdout + got.stderr
 
 
-def test_swift_gate_fails_without_swiftlint(tmp_path):
+def test_swift_gate_fails_without_swiftlint(tmp_path, tmp_path_factory):
     proj = tmp_path / "p"
     proj.mkdir()
     (proj / "Package.swift").write_text(
         '// swift-tools-version:5.9\nimport PackageDescription\nlet package = Package(name: "x", targets: [])\n'
     )
-    got = run("swift_gate.sh", proj, path_without("swiftlint", tmp_path / "bin"))
+    got = run("swift_gate.sh", proj, path_without("swiftlint", tmp_path_factory))
     assert got.returncode != 0, got.stdout + got.stderr
     assert "swiftlint is not installed" in got.stdout + got.stderr, got.stdout + got.stderr
 
 
-def test_shell_lint_fails_without_shellcheck(tmp_path, goh):
+def test_shell_lint_fails_without_shellcheck(tmp_path, tmp_path_factory, goh):
     """It degraded to `bash -n` and printed OK: syntax-only under a green "shell lint" line."""
     repo = tmp_path / "r"
     repo.mkdir()
@@ -81,7 +91,7 @@ def test_shell_lint_fails_without_shellcheck(tmp_path, goh):
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True, stdin=subprocess.DEVNULL)
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True, stdin=subprocess.DEVNULL)
     env = hermetic_env()
-    env["PATH"] = path_without("shellcheck", tmp_path / "bin")
+    env["PATH"] = path_without("shellcheck", tmp_path_factory)
     got = subprocess.run(
         [str(goh), "shell-lint"],
         cwd=repo,

@@ -77,6 +77,7 @@ def test_a_quiet_session_is_green_and_its_count_is_written(tmp_path: Path) -> No
     r, rep = _session(tmp_path, QUIET, {"per_test": 300, "per_test_run": 200})
     assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
     assert rep["tests_run"] == 1 and rep["faults"] == [] and rep["dropped"] == 0, rep
+    assert rep["teardown_entries"] >= 1, rep  # the passed test's tmp_path went; its root did not
     assert 1 <= rep["events"] < 50, rep  # the stream saw the test's own write, and little else
 
 
@@ -101,10 +102,12 @@ def test_creator_names_the_test_the_prefix_or_the_reused_dir() -> None:
 
 
 def test_the_verdict_names_each_broken_ceiling() -> None:
-    rep = {"events": 9000, "per_test": {"test_a": 50, "test_b": 7000}}
+    rep = {"events": 8000, "teardown_entries": 1000, "per_test": {"test_a": 50, "test_b": 7000}}
     assert verdict(rep, 10, {"per_test": 8000, "per_test_run": 1000}) == []
     faults = verdict(rep, 10, {"per_test": 5000, "per_test_run": 500})
     assert len(faults) == 2 and "test_b made 7000" in faults[0] and "900.0 each" in faults[1]
+    # what the run leaves under its roots counts: its removal is events the stream never sees
+    assert verdict(rep, 10, {"per_test": 8000, "per_test_run": 850}) != []
 
 
 def test_the_recorded_ceiling_is_a_ratchet_with_both_bounds() -> None:
