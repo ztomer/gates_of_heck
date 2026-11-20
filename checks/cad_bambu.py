@@ -14,7 +14,9 @@ on:
      `support_reach` mm (default 15) from all of them;
   4. a G-code header naming another nozzle or bed type than `expect`;
   5. more open-air travel hops than `air_travel.max_spans` on a plate holding one of
-     `air_travel.objects` (checks/cad_travel.py: where PLA strings).
+     `air_travel.objects` (checks/cad_travel.py: where PLA strings);
+  6. a `filament_overrides` value the G-code header does not carry: the slicer did not use it
+     (GOH.CADOVERRIDE; a dropped `filament_shrink` prints a long part 0.6 % short).
 
 The report (plates: hours, grams, objects, warnings, open-air travel; the header keys) is written to
 `report` under --out-dir. Layout keys:
@@ -68,6 +70,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tui.lib import counted, err, info, ok
 
 HEADER = ("printer_settings_id", "nozzle_diameter", "curr_bed_type", "enable_support")
+
+
+def override_mismatches(gcode: str, overrides: dict) -> list[str]:
+    """Each filament override the G-code header does not carry with the value the layout set."""
+    fails = []
+    for key, val in sorted(overrides.items()):
+        want = ",".join(val) if isinstance(val, list) else str(val)
+        m = re.search(rf"^; {re.escape(key)} = (.*)$", gcode, re.MULTILINE)
+        if not m:
+            fails.append(f"filament override {key} = {want} is not in the G-code header")
+        elif (used := m.group(1).strip()) != want:
+            fails.append(f"filament override {key} = {want} but the G-code used {used}")
+    return fails
 
 
 def _slice(lay: dict, out_3mf: str, tmp: str) -> tuple[zipfile.ZipFile, str, str]:
@@ -167,6 +182,7 @@ def verify(
         if any(o in gated.get("objects", []) for o in row["objects"]) and hops > gated["max_spans"]:
             fails.append(f"plate {row['plate']}: {hops} open-air hops > {gated['max_spans']}")
     first = gcode[min(gcode)] if gcode else ""
+    fails += override_mismatches(first, lay.get("filament_overrides", {}))
     for key in (*HEADER, *lay.get("report_keys", [])):
         m = re.search(rf"^; {key} = (.*)$", first, re.MULTILINE)
         rep[key] = m.group(1) if m else None
