@@ -241,6 +241,28 @@ def test_a_load_that_fell_before_the_test_ended_still_stretches_its_ceiling(tmp_
     assert r.returncode == 0, r.stdout + r.stderr
 
 
+def _took_over_ceiling(out: str, name: str, ceiling: float) -> float | None:
+    """The seconds the guard reports for `name` ("<name> took <n> s, over its <ceiling> s
+    ceiling"), or None when it does not report it. The measured <n> depends on the machine
+    (v0.139.22's hosted CI, tracing under coverage, printed 0.7 for a 0.6 s sleep), so a test
+    asserts the verdict and a bound on <n>, never the exact digits (GOH.CIRED013922)."""
+    m = re.search(rf"{re.escape(name)} took (\d+(?:\.\d+)?) s, over its {ceiling:g} s ceiling", out)
+    return float(m.group(1)) if m else None
+
+
+def test_the_reported_duration_is_parsed_not_pinned() -> None:
+    line = "test_b_slow_on_a_quiet_box took {} s, over its 0.3 s ceiling"
+    for shown in ("0.6", "0.7", "12.4"):  # a quiet box, a traced box, a starved one
+        assert _took_over_ceiling(line.format(shown), "test_b_slow_on_a_quiet_box", 0.3) == float(
+            shown
+        )
+    assert (
+        _took_over_ceiling("test_b_slow_on_a_quiet_box passed", "test_b_slow_on_a_quiet_box", 0.3)
+        is None
+    )
+    assert _took_over_ceiling(line.format("0.6"), "test_other", 0.3) is None
+
+
 def test_a_2x_slowdown_at_low_load_still_fails_after_a_loaded_test(tmp_path) -> None:
     """The other half: a call twice its ceiling on a quiet box fails, however loaded the box was
     BEFORE it started -- the test before it ran at load 64 (and passed, x4), and its samples must
@@ -254,7 +276,9 @@ def test_a_2x_slowdown_at_low_load_still_fails_after_a_loaded_test(tmp_path) -> 
     r = _planted_load(tmp_path, body)
     assert r.returncode == 1, r.stdout + r.stderr
     assert "1 failed, 1 passed" in r.stdout, r.stdout
-    assert "test_b_slow_on_a_quiet_box took 0.6 s, over its 0.3 s" in r.stdout, r.stdout
+    took = _took_over_ceiling(r.stdout, "test_b_slow_on_a_quiet_box", 0.3)
+    assert took is not None, r.stdout
+    assert took >= 0.6, r.stdout  # the call slept 0.6 s; coverage tracing only adds to it
 
 
 def test_a_test_that_builds_goh_fails_and_other_cargo_passes(tmp_path: Path) -> None:
