@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+## v0.139.21 -- reconcile: COVNONDET (monitor's ratchet agent 2026-11-18 measured the same tree several), STASHANYWHERE (The owner's rule is never git stash, but), RUFFCURRENCY (Class behind GOH.RUFF0176), COVREALON (Prove the ship coverage path for real right after GOH.COVOFFLAND), LOADSOURCE (The Mac sits at load 38 to 50 on 16 cores 2.4 to 3.1 per core through)
+
+- **CAD layer: a filament override the slice did not use fails the build** (GOH.CADOVERRIDE). `checks/cad_bambu.py`
+  reads every `filament_overrides` key back from the G-code header and names the value the slicer used instead. ZSUS
+  compensates PLA shrinkage with `filament_shrink` 99.4 %; dropped, its 356 mm bezel prints 2 mm short.
+
+- **land.sh: the pre-step is the one the rebased tree declares** (GOH.LANDPREREREAD). `GOH_LAND_PRE` and
+  `GOH_SHIP_FULL_SUITE` were read from `.gatesrc` once, before the rebase onto main, so a main that changed the
+  declaration had its new tools run with the lane's old command: GOH.CADOVERRIDE's land (2026-11-19) ran
+  `affected_tests.py --fast-only` after GOH.COVOFFLAND removed the flag, and landed nothing. Both are read again after
+  every rebase (`tests/test_land_prestep_rebase.py`).
+
+* **The consumers' pin sweep runs one gate at a time, and one sweep at a time:** sampled each second for 10 min
+  at load 30-70 on 16 cores, a release's sweep was 5000-10300 CPU-s of consumer push gates (54823 s across the
+  day's nine sweeps) run as many at once as the machine had gate slots, so background propagation held every long
+  slot beside the land and the lanes. `lib/pin_sweep.py` now pushes one consumer at a time, registers every sweep
+  (`pin_sweeps.json` beside the pin ledger) until it is done, leaves each repo a newer sweep lists to that sweep
+  (`superseded`, naming it: its push carries the older pin commit), and starts a newer sweep's gates only once the
+  older has ended. The release rate now sets how often a consumer gate runs, never how many run at once.
+
+* A ruff on the box newer than goh's pin is a bump the land carries, never a red (GOH.RUFFCURRENCY): `tools/land.sh` runs `gates/ruff_currency.py --bump-tree` before its pre-step, which brings the house interpreter's ruff to the box's newest through the manifest's pip line and commits the manifest's pin and a changelog fragment as their own commit on the tip. On 2026-11-19 a uv tool upgrade to ruff 0.17.6 refused every land until a hand bump (e7bf6d43).
+
 ## v0.139.20 -- reconcile: COVOFFLAND (Take instrumented coverage off the LAND path. Measured 2026-11-19)
 
 * **Coverage is the ship's, not every land's** (GOH.COVOFFLAND): the instrumented coverage run was 69-76% of a goh land's
