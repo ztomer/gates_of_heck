@@ -7,8 +7,10 @@ time the lane was often writing, and the queue guard (`lib/queue_hold.py`) refus
 (LOOP.STARTID, 7 recurrences by 2026-11-19). This PostToolUse hook on Agent|Task closes the gap:
 it fires as the tool returns, before the coordinator's next turn.
 
-* the item: the first `Item <ID>` / `item <ID>` in `tool_input.prompt` (the brief) that names an
-  in-progress item whose agent is still `pending-spawn`; anything else is left alone;
+* the item (GOH.SPAWNREGISTER2): any queue id the brief (`tool_input.prompt`) names, however it
+  phrases it (`item X.Y`, `lane for X.Y`, `i['id']=='X.Y'`), that is an in-progress item whose agent
+  is still `pending-spawn`. Exactly one such item is registered; several are ambiguous, so none is
+  and stderr says why (exit 1); none is a no-op;
 * the agent id, as probed on this machine (Claude Code transcripts, 2026-11-18): an async spawn's
   response is `{"isAsync": true, "status": "async_launched", "agentId": "<id>", ...}`; its text
   form says `agentId: <id> (internal ID ...)`, read too in case the hook sees only the content;
@@ -32,7 +34,6 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 sys.path.insert(0, os.path.join(_ROOT, "lib"))
 import queue_hold  # noqa: E402  (the queue path seam and the pending-spawn marker)
 
-ITEM = re.compile(r"\b[Ii]tem\s+([A-Z][A-Z0-9_]*(?:\.[A-Za-z0-9_]+)+)")
 AGENT_TEXT = re.compile(r"\bagentId:\s*([A-Za-z0-9_-]+)")
 
 
@@ -51,19 +52,22 @@ def agent_id(response: object) -> str | None:
     return None
 
 
-def pending_item(prompt: str, queue: str) -> dict | None:
-    """The first item the brief names that is in progress with its agent still pending."""
+def pending_items(prompt: str, queue: str) -> list[dict]:
+    """Every in-progress item still pending its spawn whose id the brief names, in queue order."""
     try:
         with open(queue, encoding="utf-8") as fh:
             items = json.load(fh).get("items") or []
     except (OSError, ValueError, AttributeError):
-        return None
-    by_id = {i.get("id"): i for i in items if isinstance(i, dict)}
-    for item_id in ITEM.findall(prompt):
-        i = by_id.get(item_id.rstrip("."))
-        if i and i.get("status") == "in_progress" and i.get("agent") == queue_hold.PENDING_SPAWN:
-            return i
-    return None
+        return []
+    named = []
+    for i in items:
+        if not isinstance(i, dict) or i.get("status") != "in_progress":
+            continue
+        if i.get("agent") != queue_hold.PENDING_SPAWN or not isinstance(i.get("id"), str):
+            continue
+        if re.search(rf"(?<![A-Za-z0-9_.]){re.escape(i['id'])}(?![A-Za-z0-9_])", prompt):
+            named.append(i)
+    return named
 
 
 def start_argv(queue: str, item: dict, agent: str) -> list[str]:
@@ -90,9 +94,16 @@ def main() -> int:
     if not prompt or not agent:
         return 0
     queue = queue_hold.queue_path()
-    item = pending_item(prompt, queue)
-    if item is None:
+    named = pending_items(prompt, queue)
+    if not named:
         return 0
+    if len(named) > 1:
+        ids = ", ".join(str(i["id"]) for i in named)
+        print(f"spawn_register: ambiguous brief names {len(named)} pending-spawn items ({ids}); "
+              f"registered none -- run `loopctl start ID {agent}` for the lane's own",
+              file=sys.stderr)  # fmt: skip
+        return 1
+    item = named[0]
     loop = os.path.dirname(os.path.abspath(queue))
     env = {**os.environ, "PYTHONPATH": os.pathsep.join([_ROOT, "."])}
     try:

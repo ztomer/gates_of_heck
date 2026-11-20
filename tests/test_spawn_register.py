@@ -140,6 +140,35 @@ def test_anything_but_a_pending_spawn_item_is_left_alone(
     assert _calls(loop) == []
 
 
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "You are the lane for GOH.LANE in gates_of_heck.",
+        "next(i for i in items if i['id']=='GOH.LANE')",
+        "the lane for GOH.LANE.",
+    ],
+    ids=["lane-for", "queue-lookup", "trailing-period"],
+)
+def test_a_brief_naming_its_id_any_way_registers_it(loop: Path, prompt: str) -> None:
+    r = _fire(loop, prompt=prompt)
+    assert r.returncode == 0, r.stderr
+    assert _agent(loop) == AGENT
+
+
+def test_an_id_that_only_prefixes_another_token_is_not_named(loop: Path) -> None:
+    assert _fire(loop, prompt="lane for GOH.LANE2 and XGOH.LANE").returncode == 0
+    assert _calls(loop) == []
+
+
+def test_two_pending_spawn_ids_in_one_brief_register_neither_and_say_why(loop: Path) -> None:
+    _items(loop, [{"id": i, "repo": "gates_of_heck", "status": "in_progress",
+                   "agent": "pending-spawn"} for i in ("GOH.LANE", "GOH.TWO")])  # fmt: skip
+    r = _fire(loop, prompt="lane for GOH.LANE, and later GOH.TWO")
+    assert r.returncode == 1
+    assert "GOH.LANE" in r.stderr and "GOH.TWO" in r.stderr and "ambiguous" in r.stderr
+    assert _calls(loop) == []
+
+
 def test_no_agent_id_in_the_response_registers_nothing(loop: Path) -> None:
     assert _fire(loop, response={"status": "completed", "content": []}).returncode == 0
     assert _calls(loop) == []
