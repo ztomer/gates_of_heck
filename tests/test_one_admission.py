@@ -38,10 +38,12 @@ def _env(tmp_path: Path, **extra: str) -> dict[str, str]:
     )  # fmt: skip
 
 
-def _load(tmp_path: Path, args: list[str], **extra: str) -> subprocess.Popen[str]:
+def _load(
+    tmp_path: Path, args: list[str], log=subprocess.PIPE, **extra: str
+) -> subprocess.Popen[str]:
     return subprocess.Popen(
         [sys.executable, str(LOAD), "--background-ok", "test", *load_kit.WHY, *args],
-        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, text=True,
         env=_env(tmp_path, **extra),
     )  # fmt: skip
 
@@ -75,20 +77,31 @@ def test_a_hermetic_child_keeps_the_suites_memory_admission_off() -> None:
 
 @pytest.mark.load_sensitive
 def test_a_load_gate_waits_for_the_slot_a_push_gate_holds(tmp_path: Path) -> None:
-    """One slot, held by a push gate: `load.py 0` does not run its command until it is freed."""
-    ran = tmp_path / "ran"
+    """One slot, held by a push gate: `load.py 0` does not run its command until it is freed.
+
+    The run is seen WAITING by its own words, not by an absence over an interval: an absence
+    watched with `wait_until` is a give-up deadline stretched by the box's load (x12.7 at load 38
+    on 3 cores, x4 for slow cores: 2 s became ~100 s), and the run's literal --wait-max of 60 s
+    expired inside it (v0.140.1's hosted CI, GOH.CIRED01401). Its --wait-max is a "never" here,
+    so it is stretched by the same load.
+    """
+    ran, said = tmp_path / "ran", tmp_path / "said"
     gate = _push_gate(tmp_path, "push-a")
     run = None
     try:
-        run = _load(
-            tmp_path, ["--wait-max", "60s", "0", "--", "touch", str(ran)], GOH_GATE_SLOTS="1"
-        )
-        _until((tmp_path / "slots").is_dir, 10)
-        assert not load_kit.wait_until(ran.exists, 2.0), "ran beside the push gate's slot"
-        assert run.poll() is None, run.communicate()[0]
+        wait_max = f"{timing_bounds.patience(60):.0f}s"
+        with said.open("w", encoding="utf-8") as log:
+            run = _load(
+                tmp_path, ["--wait-max", wait_max, "0", "--", "touch", str(ran)], log=log,
+                GOH_GATE_SLOTS="1",
+            )  # fmt: skip
+        _until(lambda: "-- waiting for one" in said.read_text() or run.poll() is not None)
+        assert not ran.exists(), f"ran beside the push gate's slot:\n{said.read_text()}"
+        assert run.poll() is None, said.read_text()
     finally:
         _end(gate)
-    out, _ = run.communicate(timeout=timing_bounds.patience(60))
+    run.wait(timeout=timing_bounds.patience(60))
+    out = said.read_text()
     assert run.returncode == 0, out
     assert ran.exists(), out
     assert "gate slot 1/1 taken" in out, out

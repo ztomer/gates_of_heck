@@ -17,6 +17,10 @@ LITERAL = re.compile(
     r"|(?:monotonic|time|perf_counter)\(\)\s*\+\s*[0-9]"
     # ... or by the load read once, when the wait began: `time.monotonic() + patience(5)`.
     r"|(?:monotonic|time|perf_counter)\(\)\s*\+\s*patience\("
+    # ... or an ABSENCE watched with a give-up wait: `assert not wait_until(ran.exists, 2.0)`.
+    # Stretched by the load, its 2 s ran past the literal --wait-max of the child it watched
+    # (x50 at load 38 on 3 slow cores; v0.140.1's CI, GOH.CIRED01401): see the child say it waits.
+    r"|\bassert\s+not\s+[\w.]*\bwait_until\("
 )
 
 
@@ -28,8 +32,9 @@ def test_no_test_bounds_an_elapsed_time_by_a_literal() -> None:
         for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
         if LITERAL.search(line)
     ]
-    assert found == [], "use timing_bounds.assert_sooner, or a same-run control:\n" + "\n".join(
-        found
+    assert found == [], (
+        "use timing_bounds.assert_sooner, a same-run control, or the child saying it waits:\n"
+        + "\n".join(found)
     )
 
 
@@ -43,6 +48,7 @@ def test_the_pattern_sees_each_shape() -> None:
         "        deadline = time.monotonic() + 5",
         "        deadline = time.monotonic() + patience(5)",
         "    deadline = time.time() + patience(5)",
+        '    assert not load_kit.wait_until(ran.exists, 2.0), "ran"',
     ):
         assert LITERAL.search(line), line
     for line in (
@@ -50,6 +56,7 @@ def test_the_pattern_sees_each_shape() -> None:
         "    assert elapsed < limit",
         "    assert len(x) < 3",
         "        while _alive(pid) and not give_up.passed():",
+        "    if not wait_until(done):",
     ):
         assert not LITERAL.search(line), line
 
