@@ -19,8 +19,10 @@ tools/affected_tests.py does not choose for the diff, whose profile the store ho
 source tree and THIS run's binary -- one audited use of the `carry` path, so one source in ten is
 a shadow whose nodes run anyway. Its profile is linked into the run's profile directory (the
 report merges it: the floor judges a complete profile, the owner's term 1) and stored again under
-this tree, so the next land carries it on. The idle lander's and the ship's fresh full
-instrumented run carries nothing (terms 2 and 3 stay: lib/full_run.py, lib/prof_carry.py).
+this tree, so the next land carries it on. The idle lander's full instrumented run carries
+nothing (terms 2 and 3 stay: lib/full_run.py, lib/prof_carry.py); the ship's takes a profile
+only by its exact key -- the binary, the node, its inputs by content, the tools -- stored under
+`ship-<key>` (tests/_prof_reuse.py, GOH.COVPROFILEREUSE).
 
 THE KILL SWITCH, GOH_PROFCARRY_TESTS=off: nothing stored, nothing carried; and the `profcarry`
 audit turned off (a fresh run disagreed with a land's claim) stops every coverage reuse already.

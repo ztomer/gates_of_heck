@@ -308,9 +308,10 @@ def test_every_registered_site_exists_and_every_sampled_one_asks_the_audit():
                 assert asks, (p.name, site)
     sampled = sorted(p.name for p in reuse.PATHS.values() if p.shadow)
     # slice 1, GOH.VERDICTCARRY's `carry`, GOH.REUSEAUDIT2's, GOH.COVCARRY2's `profcarry`,
-    # GOH.ONEVERDICTTREE3's `affected` (GOH.ONEVERDICTTREE4's `fullrun` went with the skip it
+    # GOH.ONEVERDICTTREE3's `affected`, GOH.COVPROFILEREUSE's `profreuse` (GOH.ONEVERDICTTREE4's
+    # `fullrun` went with the skip it
     # sampled, GOH.COVOFFLAND); the rest say why (`unsampled`)
-    want = ["affected", "carry", "estate", "landed", "profcarry", "step", "test"]
+    want = ["affected", "carry", "estate", "landed", "profcarry", "profreuse", "step", "test"]
     assert sampled == want, sampled
 
 

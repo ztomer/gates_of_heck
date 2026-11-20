@@ -18,13 +18,17 @@ Every test that runs the binary, every carried one and every unmeasured one runs
 this tree: the coverage profile is the whole of what this tree's binary-running tests cover (a
 skipped node leaves none), so the run is still the fresh full instrumented one, and the shadow the
 coverage carry is compared with (GOH_PROFCARRY_AUDIT=fresh) sees exactly what a run of all would.
-Nothing carries from another tree, no stored profile is taken, and each skip is one use of the
-audited `test` path, as a land's same-tree reuse is (tests/_land_audit.py).
+Nothing carries from another tree, and each skip is one use of the audited `test` path, as a land's
+same-tree reuse is (tests/_land_audit.py). A binary-running test whose stored profile has its exact
+key -- the binary's bytes, its inputs by content, the tools -- is taken by that profile instead
+(tests/_prof_reuse.py, GOH.COVPROFILEREUSE), one audited `profreuse` use a run.
 """
 
 from __future__ import annotations
 
 import os
+
+import _prof_reuse  # tests/: a binary test's stored profile of the same bytes and inputs
 
 SAME = "@tree"  # GOH_LAND_VERDICTS_REUSE's value for this mode; no file is named so
 
@@ -66,4 +70,5 @@ def plan(rec: dict | None, coverage: bool, audited) -> dict:
     same = audited(out, found) if found else set()  # a sampled node runs: the `test` shadow
     out.update(skipped=dict.fromkeys(same, False), skip=set(same), judged=set(same),
                nobin=set(same))  # fmt: skip
+    _prof_reuse.take(out, coverage)  # GOH.COVPROFILEREUSE: the ship's binary tests, by key
     return out

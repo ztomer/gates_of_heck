@@ -41,6 +41,7 @@ import tempfile
 from pathlib import Path
 
 import _land_verdicts as lv
+import _prof_reuse  # tests/: the ship's reuse of a profile by its exact key (GOH.COVPROFILEREUSE)
 import pytest
 from timing_bounds import patience
 
@@ -360,7 +361,11 @@ def pytest_sessionfinish(session) -> None:
     the controller checks the run filled the profile store (`check`), then bounds it."""
     if not hasattr(session.config, "workerinput") and key("", ""):
         if lv._on(lv.RECORD) or lv._on(lv.REUSE):  # a run that records: it fills the store
-            check(session, {n for n in _profiled if n in lv._called and n not in lv._failed})
+            ran = {n for n in _profiled if n in lv._called and n not in lv._failed}
+            check(session, ran)
+            term = session.config.pluginmanager.get_plugin("terminalreporter")
+            for line in _prof_reuse.finish(ran):  # the ship's: kept by key, counted, checked
+                (term.write_line if term else print)(f"land verdicts: {line}")
         with lv._in_store():
             _ps().prune()
     base = _state.get("base")

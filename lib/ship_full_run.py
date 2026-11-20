@@ -27,7 +27,12 @@ the ship's worker AFTER it gives the land lock back, so lands go on -- runs the 
 lands since the last ship (`goh-landed`, the tips land.sh recorded), halving, to the first red one,
 and files a fault item naming it (`loopctl file`). The last ship is taken as green: it released.
 
-    ship_full_run.py --repo MAIN --wt DIR   exit 0 green (or owed none), 1 red, 2 no verdict
+    ship_full_run.py --repo MAIN --wt DIR [--profiles-out FILE]
+                                            exit 0 green (or owed none), 1 red, 2 no verdict
+
+A binary-running test whose stored profile has its exact key (the binary's bytes, its inputs by
+content, the tools) is taken by that profile, not run (tests/_prof_reuse.py, GOH.COVPROFILEREUSE);
+FILE gets the reused and fresh counts per binary, which tools/ship.py puts in the ship record.
 
 Pinned by tests/test_ship_starve.py and tests/test_ship_cov_bisect.py.
 """
@@ -202,7 +207,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="ship_full_run.py", description=__doc__.splitlines()[0])
     ap.add_argument("--repo", type=Path, required=True, help="the main checkout the ship releases")
     ap.add_argument("--wt", type=Path, required=True, help="the run's own worktree (kept)")
+    ap.add_argument("--profiles-out", default="", help="where the run writes its reused and fresh "
+                    "binary tests (tests/_prof_reuse.py, GOH.COVPROFILEREUSE)")  # fmt: skip
     a = ap.parse_args(argv)
+    if a.profiles_out:
+        os.environ["GOH_PROF_REUSE_OUT"] = a.profiles_out
     return run(a.repo.resolve(), a.wt)
 
 

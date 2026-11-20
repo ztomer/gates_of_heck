@@ -327,7 +327,7 @@ def _plan(config) -> dict:
         lines = ["land verdicts: nothing reused under coverage: the audit turned `profcarry` off"]
         _state["plan"] = {"lines": lines, "skipped": {}, "other": 0, "shadows": [], "skip": set()}
         return _state["plan"]  # type: ignore[return-value]
-    if path == _same_tree.SAME:  # the ship's fresh run: no file, no carry, no stored profile
+    if path == _same_tree.SAME:  # the ship's run: no file, no carry; profiles by exact key only
         _state["plan"] = _same_tree.plan(_own_record(), coverage, lambda p, n: _land_audit.audited(
             p, n, identity(), str(config.rootpath), _store_or_none()))  # fmt: skip
         return _state["plan"]  # type: ignore[return-value]

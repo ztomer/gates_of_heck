@@ -220,6 +220,20 @@ def plan(args: argparse.Namespace) -> dict:
     }  # fmt: skip
 
 
+def profiles_file(res: dict) -> str:
+    """Where the suite step writes its reused and fresh binary tests (lib/ship_full_run.py)."""
+    return str(Path(res["result"]).with_suffix("")) + ".suite.profiles.json"
+
+
+def profiles(res: dict) -> list | None:
+    """The suite step's reused and fresh binary tests per binary; None when it wrote none."""
+    try:
+        got = json.loads(Path(profiles_file(res)).read_text(encoding="utf-8")).get("binaries")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return got if isinstance(got, list) else None
+
+
 def command(res: dict, name: str) -> tuple[str | None, str]:
     """The shell command for step NAME, or None and why it is skipped."""
     lc = shlex.quote(res["loopctl"])
@@ -231,9 +245,10 @@ def command(res: dict, name: str) -> tuple[str | None, str]:
         if why := ship_full_run.owed(repo):
             return None, why
         me, wt = ROOT / "lib" / "ship_full_run.py", Path(res["result"]).parent / "suite-wt"
+        counts = shlex.quote(profiles_file(res))  # GOH.COVPROFILEREUSE: reused vs fresh, per binary
         return f"{py} {shlex.quote(str(me))} --repo {shlex.quote(str(repo))} --wt " + shlex.quote(
             str(wt)
-        ), ""
+        ) + f" --profiles-out {counts}", ""
     if name == "push":
         if res.get("release_pushes") and command(res, "release")[0] is not None:
             return (
@@ -289,6 +304,8 @@ def run_steps(res: dict, first: str = STEPS[0]) -> int:
                                    str(log))  # fmt: skip
         secs = round(time.monotonic() - t0, 1)
         entry = {"name": name, "code": out.code, "seconds": secs, "log": str(log), "timings": prof}
+        if name == "suite" and (counted := profiles(res)) is not None:  # reused vs fresh
+            entry["profiles"] = counted
         if out.code == 0 and not out.timed_out:
             entry["status"] = "ok"
             res["steps"].append(entry)
