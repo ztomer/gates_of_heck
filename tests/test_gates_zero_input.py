@@ -86,6 +86,10 @@ ZERO_INPUT: dict[str, Probe | Pinned | Legit] = {
         "its question is whether the ruffs on this machine DISAGREE, and no ruff cannot disagree. "
         "Its one caller (tools/pytest.sh) runs --pin, which counts a missing ruff as off the pin"
     ),
+    "ruff_currency.py": Legit(
+        "its subject is the ruffs on this machine against a tree's manifest: no ruff, or a tree "
+        "with no manifest, has no newer release to bump to, which is the true answer (exit 0)"
+    ),
     "ruff_house.py": Legit("it prints the house rule set, a constant: it reads no input"),
 }
 

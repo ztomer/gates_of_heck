@@ -119,6 +119,14 @@ if [ -n "$(GIT_OPTIONAL_LOCKS=0 git status --porcelain --untracked-files=no)" ];
     err "land.sh: uncommitted changes to tracked files in $here -- the gate would judge a tree that is not ${tip:0:8} -- nothing landed"
     exit 1
 fi
+# THE RUFF PIN FOLLOWS THE BOX (GOH.RUFFCURRENCY, gates/ruff_currency.py): a ruff an updater moved
+# past the tree's pin is committed as the bump on this tip before any step judges. A stack or a
+# speculative half carries what the land under it committed; a consumer has no manifest to bump.
+if [ -z "${GOH_LAND_STACK_ONTO:-}$hold" ] && [ -f "$here/gates/required_tools.tsv" ]; then
+    "$GOH_PY" "$GOH/gates/ruff_currency.py" --bump-tree "$here" </dev/null 7>&- \
+        || { err "land.sh: the ruff pin bump this box needs was not committed -- nothing landed"; exit 1; }
+    tip="$(git rev-parse HEAD)"
+fi
 # THE PRE-STEP (GOH.TREETESTSFIRST): the tests the diff chooses, BEFORE the land lock and the gate's
 # slot, so a test the lane never ran fails in seconds, not after a lock wait, a slot wait and ~8 min
 # of suite (GOH.ONEADMISSION's first land, 2026-11-16, lost to tests/test_lock_order.py). Declared in
