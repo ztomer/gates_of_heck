@@ -4,6 +4,7 @@
 
     goh budget [--json] [--refresh-ships]      # the table; --json the same facts for a caller
     budget.py backfill-ships                   # ledger rows from the ship result JSONs (idempotent)
+    goh budget gates [--json]                  # each estate repo's last push gate, per check
 
 OWNER, 2026-11-15: "once we reach the 10m mark, going above 15m will trigger a self improvement
 cycle until we are back below 10m". Per SUBJECT (a push gate, a land, a ship, a ship's release step,
@@ -67,6 +68,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import budget_breach  # lib/: a BREACHED subject named for the coordinator (GOH.LANDTARGET)
 import budget_ships  # lib/: a ship result's rows (split for the headroom, GOH.LANDTARGET)
 import cip_history  # lib/: the CIP lanes' push gates, the ledger's first rows (GOH.GATEBUDGET2)
+import gate_times  # lib/: `goh budget gates`, each estate repo's last push gate (CLS.CIPROFILE)
 import land_attempts  # lib/: each land attempt a row, an item's retries one run (GOH.GATEBUDGET2)
 import land_e2e  # lib/: a land end to end, request to main, one run per item (GOH.LANDTARGET)
 import reuse_audit  # lib/: each reuse path's counts (GOH.REUSEAUDIT2)
@@ -398,8 +400,10 @@ def main(argv: list[str]) -> int:
         "--refresh-ships", action="store_true", help="read the ship results first (default)"
     )
     ap.add_argument("--no-backfill", action="store_true", help="do not read the ship results")
-    ap.add_argument("cmd", nargs="?", choices=["backfill-ships"])
+    ap.add_argument("cmd", nargs="?", choices=["backfill-ships", "gates"])
     a = ap.parse_args(argv)
+    if a.cmd == "gates":  # every estate repo's last push gate, per check (CLS.CIPROFILE)
+        return gate_times.main(["--json"] if a.json else [])
     if a.cmd == "backfill-ships":
         print(f"backfilled {backfill_ships()} ship rows")
         return 0

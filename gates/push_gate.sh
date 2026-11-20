@@ -346,6 +346,12 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
     change_base="$(push_change_base "$root" "$commit" "${remote_sha:-$zero}" "$remote_name")"   # lib/push_runs.sh
     repo_before="$(goh_repo_snapshot "$root")"   # what the gate may not write (lib/repo_writes.sh)
     slept_mark="$(goh_sleep_mark)"
+    # The gate's checks for its ledger row (CLS.CIPROFILE, `goh budget gates`): a push nobody profiles
+    # times its steps into a file of its own, removed after the row; a land or a profile hands one.
+    own_timings=""
+    if [ -z "${GOH_TIMINGS:-}" ]; then
+        own_timings="$(mktemp "$(goh_tmp)/goh-push-timings.XXXXXX")" && export GOH_TIMINGS="$own_timings" || own_timings=""
+    fi
     goh_span_start   # the full gate's START: after the slot, the export and the checks (lib/budget.py KINDS)
     # The structural layer and the steps .gatesrc DECLARES run whatever the repo's gate calls (6.7,
     # test_push_gate_ci_steps.py), each marking its tree; a release-only commit: lib/push_runs.sh.
@@ -363,6 +369,7 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
     [ -z "$shadow_base" ] || push_release_shadow "$shadow_base" "$status" push_full_gate_again || true
     # The full gate's END: one ledger row (GOH.GATEBUDGET); none for a release-only or floor push, none under a land
     [ -n "$release_base$config_base${GOH_TIMING_VIA:-}" ] || goh_push_row "$root" "$status" "$commit"
+    [ -z "$own_timings" ] || { rm -f "$own_timings"; unset GOH_TIMINGS; }
     rm -f "$structural_mark" "$steps_mark"
     set -e
     goh_repo_writes "$root" "$repo_before" || { err "pre-push: nothing pushed"; exit 1; }

@@ -4,6 +4,8 @@
 #   tools/gate_profile.sh <repo> [top]    # profile <repo>'s push gate on HEAD; nothing is pushed
 #   GOH_PROFILE_PROVEN=1 tools/gate_profile.sh <repo>   # keep the proven-step cache (default: off)
 #
+# Step 2 of the CIP method (docs/map.md, under this tool): `goh budget gates` finds the slow repos.
+#
 # Feeds gates/push_gate.sh the ref line git would, for a remote that has nothing (so no ref is
 # skipped as already-held), with GOH_TIMINGS set: every step of every nested gate appends one JSON
 # line (lib/step_timings.py). Then prints the slowest steps and each label summed across every
