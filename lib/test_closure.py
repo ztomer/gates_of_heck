@@ -3,7 +3,8 @@
 Split out of tools/affected_tests.py (GOH.PREPARITY, at its 500-line cap) with no change of rule:
 file -> what it imports or sources (lib/source_closure.py, the one dependency reader), the
 scripts a test or tests/ or checks/ helper names by path, and what a reached SHELL script runs by a
-variable-rooted path (`uses`). `Closure.base()` is what pytest loads before every test.
+variable-rooted path (`uses`). `Closure.base()` is what pytest loads before every test, the data
+its code opens included (LOAD_READ); a base file a test imports itself brings its imports.
 A test module another file imports is reached as the SLICE the importer uses (lib/test_slice.py,
 GOH.SELECTTESTIMPORTS): its imports whole, but only the slice's code names or reads a path.
 Pinned by tests/test_affected_tests.py.
@@ -43,6 +44,16 @@ ENTRY_READS = (
     ".github/actions/goh-setup/action.yml",
     ".github/actions/goh-floors/action.yml",
 )
+# DATA the base's code opens while pytest runs -- at import, in a session or collection hook, as an
+# xdist worker takes a share token -- which no import or spelling reaches, DECLARED on the code
+# line that opens it by a trailing `load-read` comment naming the file from the root (GOH.
+# BASEDATAREADS: a broken lib/lock_order.tsv crashed xdist for every test, and a change to it chose
+# only its declared readers). In the base when its opener is, so a main move reruns and the gate
+# carries nothing across it; a change chooses every test (`load_reads`). Checked against what a
+# real pooled, sharded load opens, both ways, by tests/test_base_data_reads.py. A comment, not a
+# table here: a path in this file's code is a named edge of every step closure that reaches it.
+LOAD_READ = re.compile(r"^[ \t]*[^#\s][^#\n]*#\s*load-read:\s*([\w./-]+)[ \t]*$", re.MULTILINE)
+ENTRY = "tests/conftest.py"  # what pytest loads before every test; the base is what it reaches
 # Tests whose reads are not all known (lib/declared_reads.py's ratchet: a REPO_ROOT joined with a
 # non-literal). Such a test reaches every test module it imports whole, never as a slice, and
 # such a module is reached whole when the slice taken holds the unknown join: the wider closure
@@ -90,6 +101,8 @@ class Closure:
         self._cuts: dict[str, dict[str, tuple[str, frozenset[str]]]] = {}
         self._sliced: dict[tuple[str, frozenset[str]], tuple[str, frozenset[str]] | None] = {}
         self._cut_code: dict[tuple[str, frozenset[str]], str] = {}
+        self._below: dict[str, dict[str, tuple[str, ...]]] = {}
+        self._loaded: dict[str, str] | None = None
         listed = root / UNDECLARED
         self.undeclared = (
             {ln.strip() for ln in listed.read_text().splitlines() if ln.strip() and ln[0] != "#"}
@@ -214,26 +227,69 @@ class Closure:
 
     def base(self) -> set[str]:
         """tests/conftest.py and all it reaches: what pytest loads before EVERY test (the reference
-        kits, suite home, the gate libraries they copy). A change in it is in every test's closure,
+        kits, suite home, the gate libraries they copy). A change in it is in every test's closure
         so the closure cannot choose among tests by it (it chose 443 of 464 files); such a change
-        is the full gate's, and the tests that import or name the changed file are chosen by the
-        diff as before."""
+        is the full gate's, and the tests that import or name the changed file, or import a base
+        file importing it (`base_reach`), are chosen by the diff. The DATA its code opens is in it
+        too (LOAD_READ), and a change to that chooses every test: every test reads it."""
         if self._base is None:
             self._base = set()
-            if "tests/conftest.py" in self.texts:
-                reached = self.reach("tests/conftest.py", (), runs=False)[0]
-                self._base = {"tests/conftest.py", *reached}
+            if ENTRY in self.texts:
+                reached = self.reach(ENTRY, (), runs=False)[0]
+                self._base = {ENTRY, *reached}
             # ... and what it READS at entry: a land's suite takes its environment from the
-            # workflow (tests/ci_shape.py, GOH.CIPARITY), which no import or spelling reaches.
+            # workflow (tests/ci_shape.py, GOH.CIPARITY), which no import or spelling reaches,
+            # and the data its loaded code opens (LOAD_READ).
             self._base |= {p for p in ENTRY_READS if (self.root / p).is_file()}
+            self._base |= set(self.load_reads())
         return self._base
+
+    def load_reads(self) -> dict[str, str]:
+        """{data file: its opener} for each LOAD_READ a base file declares on the line opening it,
+        when the file is here. Every test reads it, so a change to it chooses them all."""
+        if self._loaded is None:
+            base = self._base if self._base is not None else self.base()
+            self._loaded = {
+                data: opener
+                for opener in sorted(base)
+                for data in LOAD_READ.findall(self.texts.get(opener, ""))
+                if (self.root / data).is_file()
+            }
+        return self._loaded
+
+    def base_reach(self, test: str) -> dict[str, tuple[str, ...]]:
+        """{base file: the chain to it} for what `test` IMPORTS of the base itself, not through
+        tests/conftest.py: a base file stays read by its readers (GOH.BASEDATAREADS:
+        tests/test_affected_binary_reach.py imports tools/affected_tests.py, which imports
+        lib/binary_runners.py, and a change there chose neither binary test). Import edges only,
+        within the base: a base file's names and runs are every test's, so `reach` keeps them
+        out (followed, they took a gates/push_gate.sh change from 87 files to 149)."""
+        if test not in self._below:
+            base = self.base()
+            reached, read = self.reach(test)
+            todo = [
+                (dep, (*reached.get(src, ()), dep))
+                for src in (test, *sorted(read))
+                for dep in self.imports(src)
+                if dep in base and dep != ENTRY
+            ]
+            below: dict[str, tuple[str, ...]] = {}
+            while todo:
+                dep, chain = todo.pop(0)
+                if dep in below or dep == test:
+                    continue
+                below[dep] = chain
+                todo += [(d, (*chain, d)) for d in self.imports(dep) if d in base and d != ENTRY]
+            self._below[test] = below
+        return self._below[test]
 
     def reach(
         self, test: str, skip: set[str] | None = None, runs: bool = True
     ) -> tuple[dict[str, tuple[str, ...]], set[str]]:
         """({file: the chain from the test to it}, the files among them it IMPORTS rather than
         runs), for everything the test depends on, nearest first, the base excepted (`skip` None)
-        or the files in `skip`. Imports are followed at any depth; a name is followed only out of
+        or the files in `skip`; the base files it imports itself are `base_reach`'s. Imports are
+        followed at any depth; a name is followed only out of
         a test or a tests/ or checks/ helper, and the script it names brings its imports and
         sources, not the scripts that script mentions in turn. With `runs`, a shell script's
         variable-rooted uses are edges too (Closure.uses), a base file among them included: pytest
@@ -313,11 +369,16 @@ class Closure:
 
 
 def transitive(graph: Closure, test: str, changed: list[str]) -> str | None:
-    """Why `test` is chosen by something it reaches (not by its own text), or None."""
+    """Why `test` is chosen by something it reaches (not by its own text), or None. Data pytest's
+    load opens (LOAD_READ) every test reaches (GOH.BASEDATAREADS)."""
+    opened = graph.load_reads()
+    if wide := next((p for p in changed if p in opened), None):
+        return f"{wide} is opened before every test ({opened[wide]})"
     reached, read = graph.reach(test)
+    below = graph.base_reach(test)
     for path in changed:
-        if path in reached:
-            chain = reached[path]
+        if path in reached or path in below:
+            chain = reached.get(path) or below[path]
             return f"reaches {path}" + (f" through {' -> '.join(chain)}" if len(chain) > 1 else "")
     for node, chain in reached.items():
         if node not in read:

@@ -44,6 +44,7 @@ THE SET is the union of
   * the BINARY'S RUNNERS (GOH.AFFECTEDBINARY): a build-input change chooses every test running it.
   * the READERS of a changed path (lib/declared_reads.py, GOH.SELECTAUDIT, SELECTLOCKORDER): what
     a test, its tests/ helpers, or a scanner it points at the root globs, copies or declares.
+  * EVERY test for a change to data pytest's load opens (lib/test_closure.py, GOH.BASEDATAREADS).
   * the RELEASE CANARY, after the tests, when a consumer NAMES a changed path from its own files
     (lib/consumer_reads.py, GOH.LANDMISS1119): no goh test runs a consumer's script, the canary
     does (GOH.PYTESTPIN: sys_updater reads `required_tools.py --floors`; green here, red in the
@@ -124,7 +125,6 @@ _names_path = source_closure.names_path
 
 # The graph (lib/test_closure.py); tests/_land_verdicts.py reads Closure here.
 Closure = test_closure.Closure
-PY_DIRS = test_closure.PY_DIRS
 _transitive = test_closure.transitive
 
 

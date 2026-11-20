@@ -10,7 +10,8 @@ Icons: → · ✓ ✗ ⚠   Colors: restrained, NO_COLOR + non-tty aware (degrad
 import os
 import sys
 
-_STYLERC_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stylerc")
+_TUI_DIR = os.path.dirname(os.path.abspath(__file__))
+_STYLERC_PATH = os.path.join(_TUI_DIR, "stylerc")  # load-read: tui/stylerc
 
 _DEFAULTS = {
     "ICON_START": "→",

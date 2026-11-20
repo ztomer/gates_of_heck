@@ -49,7 +49,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-TABLE = Path(__file__).resolve().with_name("lock_order.tsv")
+TABLE = Path(__file__).resolve().with_name("lock_order.tsv")  # load-read: lib/lock_order.tsv
 ENV = "GOH_HELD_LOCKS"
 EXIT_ORDER = 78  # EX_CONFIG: the invocation nests locks against the table
 

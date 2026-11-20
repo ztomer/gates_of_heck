@@ -51,7 +51,7 @@ import pytest
 
 ENV = "GOH_SUITE_SHARD"  # tools/pytest.sh's, popped by _schedule.take() like its table
 _SPEC = re.compile(r"([1-9][0-9]*)/([1-9][0-9]*)")
-WEIGHTS = Path(__file__).with_name("shard_weights.json")
+WEIGHTS = Path(__file__).with_name("shard_weights.json")  # load-read: tests/shard_weights.json
 UNKNOWN_S = 1.0  # a test of a file the weights never measured (tests/_schedule.py's own)
 SLOW_S = 3.0  # a test this slow is weighed by its own node id
 
