@@ -12,4 +12,3 @@ tests/test_check_swift_warnings.py checks/check_swift_warnings.py
 tests/test_not_applicable.py checks/check_empty_scope.py
 tests/test_not_applicable.py checks/check_estate_corpus.py
 tests/test_reuse_audit_root.py checks/check_estate_corpus.py
-tests/test_reuse_fault.py checks/check_estate_corpus.py
