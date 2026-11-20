@@ -12,6 +12,8 @@ import _drift_guard
 from _drift_planted import planted, planted_load, took_over_ceiling
 from conftest import REPO_ROOT
 
+TREE_READS = ("tests/",)  # the files SETUP_SLOW names
+
 FIXTURE_SLEEPER = (
     "import pytest, time\n\n"
     "@pytest.fixture(scope='module')\n"
