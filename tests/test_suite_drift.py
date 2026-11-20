@@ -18,6 +18,7 @@ from pathlib import Path
 import _drift_guard
 import pytest
 from conftest import REPO_ROOT
+from timing_bounds import patience
 
 TESTS = REPO_ROOT / "tests"
 
@@ -136,7 +137,7 @@ def _planted(
         "import _drift_guard\n"
         "from _drift_guard import pytest_runtest_makereport  # noqa: F401\n"
         f"_drift_guard.CEILING_S = {ceiling}\n"
-        f"_drift_guard.load_factor = lambda: {load}\n"
+        f"_drift_guard.load_factor = lambda *_window: {load}\n"
     )
     (tmp_path / "test_planted.py").write_text(body)
     return subprocess.run(
@@ -196,6 +197,64 @@ def test_a_slower_box_stretches_every_bound_by_its_measured_speed(monkeypatch) -
         monkeypatch.delenv(_drift_guard.SPEED_ENV)
         monkeypatch.setattr(_drift_guard, "_probe_cpu_s", lambda p=probe: p)
         assert _drift_guard.speed_factor() == want
+
+
+def _planted_load(tmp_path: Path, body: str) -> subprocess.CompletedProcess[str]:
+    """A one-test suite under the real guard and its real sampler, on a box of 16 cores whose run
+    queue is FAKED by phase: 64 until the test body says `run`, 8 (a quiet box) while it runs,
+    and 8 again once it says `end` -- os.getloadavg is what the sampler and the end reading ask."""
+    (tmp_path / "conftest.py").write_text(
+        f"import os, sys\nsys.path.insert(0, {str(TESTS)!r})\n"
+        f"os.environ[{_drift_guard.SPEED_ENV!r}] = '1'\n"
+        "import _drift_guard\n"
+        "from _drift_guard import pytest_runtest_makereport  # noqa: F401\n"
+        "_drift_guard.CEILING_S = 0.3\n"
+        "_drift_guard.SAMPLE_S = 0.02\n"
+        "os.cpu_count = lambda: 16\n"
+        "LOADS = {'before': 64.0, 'run': 64.0, 'end': 8.0}\n"
+        "def _fake():\n"
+        "    n = LOADS[os.environ.get('FAKE_LOAD_PHASE', 'before')]\n"
+        "    return (n, n, n)\n"
+        "os.getloadavg = _fake\n"
+    )
+    (tmp_path / "test_planted.py").write_text(body)
+    env = {k: v for k, v in os.environ.items() if k != "FAKE_LOAD_PHASE"}
+    return subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "no:xdist",
+         str(tmp_path)],
+        capture_output=True, text=True, cwd=tmp_path, timeout=patience(60), check=False, env=env,
+        stdin=subprocess.DEVNULL,
+    )  # fmt: skip
+
+
+def test_a_load_that_fell_before_the_test_ended_still_stretches_its_ceiling(tmp_path) -> None:
+    """GOH.CEILINGHEADROOM: the ceiling was stretched by the load read when the test ENDED, so a
+    test that ran its whole call at load 64 on 16 cores (4x) and ended as the box went quiet was
+    judged as if it ran on a quiet one. The load is sampled through the run; a ceiling of 0.3 s
+    x4 holds a 0.6 s call."""
+    body = (
+        "import os, time\n\ndef test_slow():\n"
+        "    os.environ['FAKE_LOAD_PHASE'] = 'run'\n    time.sleep(0.6)\n"
+        "    os.environ['FAKE_LOAD_PHASE'] = 'end'\n    time.sleep(0.05)\n"
+    )
+    r = _planted_load(tmp_path, body)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_2x_slowdown_at_low_load_still_fails_after_a_loaded_test(tmp_path) -> None:
+    """The other half: a call twice its ceiling on a quiet box fails, however loaded the box was
+    BEFORE it started -- the test before it ran at load 64 (and passed, x4), and its samples must
+    not stretch the quiet call that followed."""
+    body = (
+        "import os, time\n\n"
+        "def test_a_loaded_one():\n    time.sleep(0.8)\n\n"
+        "def test_b_slow_on_a_quiet_box():\n"
+        "    os.environ['FAKE_LOAD_PHASE'] = 'end'\n    time.sleep(0.6)\n"
+    )
+    r = _planted_load(tmp_path, body)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "1 failed, 1 passed" in r.stdout, r.stdout
+    assert "test_b_slow_on_a_quiet_box took 0.6 s, over its 0.3 s" in r.stdout, r.stdout
 
 
 def test_a_test_that_builds_goh_fails_and_other_cargo_passes(tmp_path: Path) -> None:

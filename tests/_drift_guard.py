@@ -13,8 +13,9 @@ other sessions load, a timing gate flakes and gets switched off:
   core, tight enough to catch a leaked child holding a captured pipe (one waited out a whole
   `sleep 30` -- a leak that long or longer) or a runaway build. A wall-clock bound IS a timing
   gate, so it stretches by `load_factor()`, the run queue per core: a 15 s test took 63.8 s at
-  load 38 on 16 cores and refused a push (2026-10-08). A test that genuinely needs longer is
-  named in SLOW with its own ceiling, which stretches the same way.
+  load 38 on 16 cores and refused a push (2026-10-08). The load is the one DURING the call --
+  sampled through it (`_sample`), never only the reading when it ended (GOH.CEILINGHEADROOM). A
+  test that genuinely needs longer is named in SLOW with its own ceiling, stretched the same way.
 
 Found by the build guard on its first run: under GOH_LIVE with uncommitted Rust, every gate test
 resolved the working tree's goh by BUILDING it (gates/_goh_bin.sh, `goh_live_binary`) -- 75 tests
@@ -39,7 +40,9 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
+from collections import deque
 from pathlib import Path
 
 import pytest
@@ -97,13 +100,51 @@ def speed_factor() -> float:
     return factor
 
 
-def load_factor() -> float:
+def load_factor(start: float | None = None, stop: float | None = None) -> float:
     """How much slower than quiet this box runs a test: the run queue per core, never below 1,
     times its cores' speed against the owner's (`speed_factor`). Read when the test ends, as the
     larger of the 1- and 5-minute averages: a 197 s test that ran at load 180 ended at 13 and was
-    judged by the 1-minute figure alone (2026-10-08)."""
+    judged by the 1-minute figure alone (2026-10-08). Given the call's window (epoch seconds), the
+    mean of the 1-minute samples taken inside it counts too, when larger: the end reading alone
+    misses a load that fell before the test ended (GOH.CEILINGHEADROOM). Samples from before the
+    window never count, so a loaded setup does not stretch a slow call on a quiet box."""
     one, five, _ = os.getloadavg()
-    return max(1.0, max(one, five) / (os.cpu_count() or 1)) * speed_factor()
+    load = max(one, five)
+    if start is not None and stop is not None:
+        with _SAMPLES_LOCK:
+            during = [n for t, n in _SAMPLES if start <= t <= stop]
+        if during:
+            load = max(load, sum(during) / len(during))
+    return max(1.0, load / (os.cpu_count() or 1)) * speed_factor()
+
+
+# THE LOAD DURING THE CALL (GOH.CEILINGHEADROOM). test_land_identity ran 75.5 s against its 60 s
+# ceiling stretched x1.3 by the load read as it ended (2026-11-20, GOH.PRESTEPMOVED's land): one
+# reading, at the one moment the run had already left. A daemon thread per test process samples
+# the 1-minute average every SAMPLE_S (the kernel updates it every 5 s), an hour of them kept;
+# `load_factor` averages those inside a call's window. Started by the first report (a setup's,
+# before any call), so a conftest that sets SAMPLE_S first is obeyed.
+SAMPLE_S = 2.0
+_SAMPLES: deque[tuple[float, float]] = deque(maxlen=1800)
+_SAMPLES_LOCK = threading.Lock()
+_sampler: list[threading.Thread] = []
+
+
+def _sample() -> None:
+    while True:
+        try:
+            sample = (time.time(), os.getloadavg()[0])
+        except OSError:  # no load average on this box: the end reading decides, as it always did
+            return
+        with _SAMPLES_LOCK:
+            _SAMPLES.append(sample)
+        time.sleep(SAMPLE_S)
+
+
+def _start_sampler() -> None:
+    if not _sampler:
+        _sampler.append(threading.Thread(target=_sample, name="drift-load-sampler", daemon=True))
+        _sampler[0].start()
 
 
 speed_factor()  # the controller's measurement, before any worker or child inherits the variable
@@ -168,12 +209,13 @@ if _REAL_CARGO:
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
+    _start_sampler()
     outcome = yield
     rep = outcome.get_result()
     if rep.when != "call" or not rep.passed:
         return
     ceiling = SLOW.get(item.nodeid, CEILING_S)
-    factor = load_factor()
+    factor = load_factor(call.start, call.stop)
     if call.duration > ceiling * factor:
         stretch = f" x{factor:.2g} for the box's load and speed" if factor > 1 else ""
         rep.outcome = "failed"

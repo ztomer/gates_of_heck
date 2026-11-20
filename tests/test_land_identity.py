@@ -59,7 +59,11 @@ def test_a_rebased_land_records_the_landed_tips_identity(tmp_path: Path) -> None
     )
     assert "# moved" in lib.read_text(), "the fixture must move a gate byte"
     _git(main, "commit", "-q", "--no-verify", "-am", "main moved a gate")
-    env = hermetic_env(drop_git=True, GOH_LAND_GATE="true")
+    # No pre-step (GOH_LAND_PRE set empty): the subject is the identity a rebased land records, and
+    # the declared pre-step ran the structural gates and the diff's tests on the fixture's tree --
+    # ~90 of this test's ~100 s at load 20-30, at its 60 s ceiling at low load, so any load
+    # turned a land red (GOH.CEILINGHEADROOM, 2026-11-20). The rebase it reads happens without it.
+    env = hermetic_env(drop_git=True, GOH_LAND_GATE="true", GOH_LAND_PRE="")
     for k in ("GOH_LIVE", "GOH_LIVE_ROOT", "PYTEST_CURRENT_TEST", "PYTHONPATH"):
         env.pop(k, None)
     # GATES_OF_HECK_SUITE_RUNNER: no loaded run started behind this land
