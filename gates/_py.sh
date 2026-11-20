@@ -136,6 +136,10 @@ goh_py_ruff_pinned() {
     pin="$("$GOH_PY" -S "$_goh_py_here/ruff_house.py" --pin </dev/null)" \
         || die "$GOH_NAME: gates/ruff_house.py --pin did not run"
     [[ $1 =~ ([0-9]+(\.[0-9]+)+) ]] && found="${BASH_REMATCH[1]}"
+    # A ruff NEWER than the pin is a bump goh lands (GOH.RUFFBUMPLAND, lib/ruff_bump.py): this red
+    # starts that bump-only land, detached and at most once per release, before it refuses.
+    [ "$found" = "$pin" ] \
+        || "$GOH_PY" -S "$_goh_py_here/ruff_house.py" --bump-if-newer "$found" </dev/null >/dev/null 2>&1 || true
     [ "$found" = "$pin" ] \
         || die "$GOH_NAME: '$RUN ruff' is ruff ${found:-of no readable version} and goh pins ruff $pin (gates/ruff_house.py), the release hosted CI installs: a gate on another ruff is not CI's (rule 17) -- install exactly ruff==$pin into the interpreter '$RUN' names (python3 -m pip install ruff==$pin), or move goh's pin in its own commit"
 }

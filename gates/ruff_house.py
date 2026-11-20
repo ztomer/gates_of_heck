@@ -22,6 +22,7 @@ loop into a generator argument -- a readability ruling, not a defect.
 
     ruff_house.py            # prints the set as ruff's comma list, for `--extend-select`
     ruff_house.py --pin      # prints RUFF, the one ruff release the house gates judge with
+    ruff_house.py --bump-if-newer FOUND  # FOUND is not RUFF: start goh's bump-only land, detached
 
 RUFF (GOH.RUFFVERSION, 2026-11-14): divoom_control was red on GitHub with SIM102 while its local
 gate was green -- the local gate ran 0.17.0 and hosted CI installed the newest, 0.17.4. A ruff
@@ -84,6 +85,27 @@ def extend_select() -> str:
     return ",".join(HOUSE)
 
 
+def bump_if_newer(found: str) -> None:
+    """A gate met ruff FOUND, not the pin: ask goh's binary for `goh land --ruff-bump --detach`
+    (lib/ruff_bump.py, GOH.RUFFBUMPLAND), which lands the bump once when FOUND is the box's newer
+    release. A side effect of the red, no input of its verdict: never waited for (the binary
+    detaches a session of its own, holding no lock of this gate's), its failure never the gate's.
+    Through the binary, not the script, so no gate's key or lock closure grows by the lander."""
+    goh = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin", "goh")
+    if not found or found == RUFF or not os.access(goh, os.X_OK):
+        return
+    import subprocess
+
+    try:
+        subprocess.run([goh, "land", "--ruff-bump", "--detach"], stdin=subprocess.DEVNULL,
+                       capture_output=True, timeout=60, check=False)  # fmt: skip
+    except (OSError, subprocess.TimeoutExpired):
+        return
+
+
+if __name__ == "__main__" and sys.argv[1:2] == ["--bump-if-newer"]:
+    bump_if_newer((sys.argv[2:3] or [""])[0])
+    sys.exit(0)
 if __name__ == "__main__":
     print(RUFF if sys.argv[1:] == ["--pin"] else extend_select())
     sys.exit(0)

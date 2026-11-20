@@ -6,6 +6,7 @@
     goh land --wait ID|REQUEST [--timeout S]  # block until it finished: exit 0 landed, 1 red
     goh land --drain        # the lander: run every request in order, then exit
     goh land --status       # what is pending, running, and how each finished
+    goh land --ruff-bump [--detach]  # a ruff newer than goh's pin: its bump-only land, once
 
 WHY. An agent ran its own push gate (1197-1523 s under load); now it ends at "committed, enqueued".
 
@@ -46,6 +47,8 @@ its code's digest (landq.py, land.sh, lib/ at the live checkout's HEAD); changed
 a fresh copy (GOH.LANDERSTALECODE). Out of requests, it frees the lock and looks once more for one
 enqueued meanwhile; then, idle, runs the full suite on main's tip when the release needs one and
 none is recorded (lib/idle_suite.py, GOH.GATEBUDGET2), holding no lock, stopped by a request.
+First, a box ruff newer than goh's pin lands as its own bump-only request (lib/ruff_bump.py,
+GOH.RUFFBUMPLAND); `--ruff-bump` is that look on demand, started by a consumer gate's red.
 
 WHERE IT RUNS, AND A REBOOT (D-0006, docs/decisions/). No launchd agent: `--enqueue` starts a
 detached lander when none holds the lock, and the coordinator's tick may run `--drain`. A request
@@ -94,6 +97,7 @@ landq_request = importlib.import_module("landq_request")
 landq_look = importlib.import_module("landq_look")
 landq_inflight = importlib.import_module("landq_inflight")
 landq_state = importlib.import_module("landq_state")
+ruff_bump = importlib.import_module("ruff_bump")
 selection_miss = importlib.import_module("selection_miss")
 Refused, request = landq_request.Refused, landq_request.request
 land_request = landq_request.land_request
@@ -362,6 +366,8 @@ def drain() -> int:
         # hand run (lib/idle_suite.py). It holds no lock and yields to the first request that
         # arrives: then drain again.
         idle = not any((q / "pending").glob("*.json"))
+        if idle and ruff_bump.run(q, live_root(), info) == "enqueued":
+            continue  # the bump's own request (GOH.RUFFBUMPLAND): drain it, or its lander does
         if idle and idle_suite.run(q, live_root(), info) != "yielded":
             return 0
 
@@ -379,6 +385,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--enqueue", nargs="*", metavar="REPO SHA")
     mode.add_argument("--drain", action="store_true")
     mode.add_argument("--status", action="store_true")
+    mode.add_argument("--ruff-bump", action="store_true", help="land a newer ruff's pin bump, once")
     mode.add_argument("--wait", metavar="ID|REQUEST", help="block until it finished (THE WAIT)")
     landq_report.add_arguments(mode, ap)
     ap.add_argument("--land", metavar="WORKTREE", help="run tools/land.sh there (mode land)")
@@ -389,6 +396,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-pre", metavar="REASON", nargs="?", const="",
                     help="skip the enqueue's pre-step run; a reason is required")  # fmt: skip
     ap.add_argument("--no-start", action="store_true", help="enqueue only; start no lander")
+    ap.add_argument("--detach", action="store_true", help="--ruff-bump: look in the background")
     args = ap.parse_args(argv)
     if args.report:
         return landq_report.run(qdir(), args.since, args.json)
@@ -396,6 +404,8 @@ def main(argv: list[str] | None = None) -> int:
         return drain()
     if args.status:
         return landq_look.status(qdir())
+    if args.ruff_bump:  # lib/ruff_bump.py look: the bump-only land, if one is owed
+        return ruff_bump.look(home, live_root(), args.detach, Path(__file__).resolve(), info)
     if args.wait is not None:
         return landq_look.wait(qdir(), args.wait, args.timeout, nudge)
     req: dict = {}
