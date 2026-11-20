@@ -151,7 +151,27 @@ pub(crate) fn goh_root() -> PathBuf {
         )
 }
 
+/// A plain `goh` says it ran (GOH.PLAINBINMARK): when the directory `LLVM_PROFILE_FILE` names
+/// holds `.goh-binmark`, an empty `goh-<pid>.binmark` there. The suite's plain recording run gives
+/// each test such a directory (`tests/_prof_record.py`), so a run that measures no profile still
+/// learns which tests ran the binary -- through the one variable every route to an instrumented
+/// run's profile carries -- and coverage may carry the rest. Written first, before any refusal: a
+/// run that refused still ran. Any other profile directory is left alone; a failed write is a
+/// test re-run, never an error. (One expression, no early return: the instrumented run that
+/// measures these lines always has the variable set, so a `return` arm could never be counted.)
+fn leave_run_mark() {
+    let dir = std::env::var_os("LLVM_PROFILE_FILE").and_then(|p| {
+        std::path::Path::new(&p)
+            .parent()
+            .map(std::path::Path::to_path_buf)
+    });
+    if let Some(dir) = dir.filter(|d| d.join(".goh-binmark").is_file()) {
+        std::fs::write(dir.join(format!("goh-{}.binmark", std::process::id())), b"").ok();
+    }
+}
+
 fn main() {
+    leave_run_mark();
     goh_dir::repair();
     let (os, arch) = platform::current();
     if let Err(reason) = platform::check(&os, &arch) {

@@ -130,7 +130,7 @@ test-seconds, `~/.local/state/goh/test-durations.json` against the record's `mea
 the lane's run passed them on this very tree. THE SECOND COST is `release_canary.py`, 82-157 s
 (227-532 CPU-seconds) on every land whose gates changed, memoised exactly already (GOH.CANARYMEMO).
 
-THE CUT, the next item (GOH.PLAINBINMARK): give the plain run the same measurement. The plain
+THE CUT (GOH.PLAINBINMARK, built; tests/test_plain_bin_mark.py): give the plain run the same measurement. The plain
 `goh` leaves a mark where LLVM_PROFILE_FILE points (the variable the instrumented binary writes
 through, so the mark reaches every child the profile reaches, conftest's Popen hook included);
 tests/_prof_record.py runs its per-test directories in plain runs too, calibrated once per session
@@ -140,6 +140,18 @@ A mark is written at start and a profile at exit, so the two disagree only towar
 audit: a sampled same-tree node that leaves a profile under coverage after a plain run measured it
 running none is a disagreement. Expected: the measured suite drops to the binary-running nodes and
 whatever the lane did not run, about 150-300 s against 705 s.
+
+As built: the mark is asked for, not assumed -- a plain `goh` writes `goh-<pid>.binmark` only where
+the directory LLVM_PROFILE_FILE names holds `.goh-binmark` (crates/goh/src/main.rs
+`leave_run_mark`), so no caller's own profile pool is written into. A worker is calibrated through
+conftest's `native_goh` (the binary it resolved runs `--version` into a fresh asking directory and
+must leave the mark); only a calibrated worker's nodes are `measured`, and one that never resolved
+the binary measures nothing. The store merges `measured` so a node any run saw running the binary
+stays so (lib/reuse.py record_suite): a later plain `False` never clears an instrumented `True`.
+The claim's audit is the one an instrumented claim has: `test`'s sampled same-tree nodes run under
+coverage, and `_cov_claims` turns a claimed node that leaves a profile red. The pre-step runs the
+diff's tests, not the suite, so a land carries what its pre-step passed binary-free; a change to
+what every test loads (conftest.py, this item's own) makes the pre-step the whole suite.
 
 ## The one store
 

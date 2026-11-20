@@ -357,10 +357,10 @@ def _build_goh() -> Path:
     raise AssertionError("goh artifact missing from cargo build output")
 
 
-# Under the coverage gate's external part (GOH_COVERAGE_BIN_DIR set), every explicit `env=` keeps
-# LLVM_PROFILE_FILE: a test that scrubs its child's environment (a fake `curl` on PATH, a bare
-# HOME) otherwise loses the instrumented binary's runs to the report and leaves default_*.profraw
-# in its cwd. Read at each call, so a suite run outside the gate is untouched.
+# Under the coverage gate's external part (GOH_COVERAGE_BIN_DIR set) or a plain recording run (its
+# marks, tests/_prof_record.py `marking`), every explicit `env=` keeps LLVM_PROFILE_FILE: a test
+# scrubbing its child's environment (a fake `curl` on PATH) otherwise loses the binary's runs to the
+# report. Read at each call, so a suite run outside the gate is untouched (GOH.PLAINBINMARK).
 _popen_init = subprocess.Popen.__init__
 
 
@@ -369,7 +369,7 @@ def _measured_popen_init(self, *args, **kwargs):
     if (
         env is not None
         and "LLVM_PROFILE_FILE" not in env
-        and os.environ.get("GOH_COVERAGE_BIN_DIR")
+        and (os.environ.get("GOH_COVERAGE_BIN_DIR") or _land_verdicts._prof_record.marking())
         and os.environ.get("LLVM_PROFILE_FILE")
     ):
         kwargs["env"] = {**env, "LLVM_PROFILE_FILE": os.environ["LLVM_PROFILE_FILE"]}
@@ -427,8 +427,8 @@ def native_goh(tmp_path_factory) -> Path:
                 raise RuntimeError(f"GOH_TEST_BIN={provided} is not an executable")
             if not (shared / GOH_BUILD_RECORD).exists():
                 (shared / GOH_BUILD_RECORD).write_text("provided\n")
-            return Path(provided)
-        if not published.exists():
+            published = Path(provided)
+        elif not published.exists():
             built = _build_goh()
             with open(shared / GOH_BUILD_RECORD, "a") as record:
                 record.write(f"{os.environ.get('PYTEST_XDIST_WORKER', 'master')}\n")
@@ -436,7 +436,7 @@ def native_goh(tmp_path_factory) -> Path:
             staging = published.with_suffix(".staging")
             shutil.copy2(built, staging)
             staging.rename(published)  # atomic: readers see all of it or none
-    return published
+    return _land_verdicts._prof_record.calibrate(published)  # it leaves marks (GOH.PLAINBINMARK)
 
 
 def run_goh(cwd: Path, *args: str, **kw) -> subprocess.CompletedProcess:

@@ -19,6 +19,17 @@ and 19 KB a test), the name the report's own merge globs: llvm-profdata reads an
 in its input list as it reads a raw one (tests/test_cov_carry.py proves the report counts it). A
 merge that fails moves the raw files there instead, never drops them. Whatever a test's stray child
 writes after its teardown is merged once more at the worker's session end.
+
+A PLAIN RUN MEASURES TOO (GOH.PLAINBINMARK). A plain run that records (the land's pre-step, the
+keys and a store named) gives each test its own directory the same way, holding `.goh-binmark`:
+a plain `goh` started with LLVM_PROFILE_FILE there leaves `goh-<pid>.binmark` beside it
+(crates/goh/src/main.rs `leave_run_mark`), so the mark reaches every child a profile would,
+conftest's Popen hook included. A test that left a mark is marked as one that left a profile is,
+and every node a CALIBRATED worker ran is `measured` (`calibrate`: the binary conftest's
+`native_goh` resolved must leave the mark, else that worker measures nothing and its nodes rerun
+under coverage). A mark is written at start and a profile at exit, so the two disagree only toward
+re-running; a claim the profile refutes is red wherever it runs instrumented (tests/_cov_claims.py),
+the `test` audit's sampled nodes among them.
 """
 
 from __future__ import annotations
@@ -26,16 +37,70 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import _land_verdicts as lv
 import pytest
+from timing_bounds import patience
 
 PROFILE = "LLVM_PROFILE_FILE"
 STORE_KEY = "goh_land_store"  # the controller's store, handed to each xdist worker
 PROF_MARK = "goh_prof"  # a user property: the test LEFT a profile (a mark alone may run nothing)
+MARK_ASK = ".goh-binmark"  # a per-test directory's request: a plain goh leaves a mark there
+MARK_KEY = "goh_land_marking"  # the controller's decision to mark, handed to each xdist worker
+MEASURED = "goh_measured"  # a user property: a calibrated plain worker measured this node
 _state: dict[str, object] = {}
 _profiled: set[str] = set()  # the controller's: the nodes whose call left a raw profile
+_measured: set[str] = set()  # the controller's: the nodes a calibrated plain worker ran
+
+
+def _mode() -> str:
+    """ "profile" in an instrumented run; "mark" in a plain run that records into a store, the
+    controller's decision (an xdist worker's keys left with `_land_verdicts._take`); else ""."""
+    if "mode" not in _state:
+        mode = ""
+        if lv.instrumented():
+            mode = "profile"
+        elif not (os.environ.get("GOH_COVERAGE_BIN_DIR") or os.environ.get(PROFILE)):
+            mode = "mark" if lv._store() and (lv._on(lv.RECORD) or lv._on(lv.REUSE)) else ""
+        _state["mode"] = mode
+    return str(_state["mode"])
+
+
+def marking() -> bool:
+    """A plain run whose tests leave marks: conftest's Popen hook keeps LLVM_PROFILE_FILE then."""
+    return _mode() == "mark"
+
+
+def calibrate(binary: Path) -> Path:
+    """Once per worker of a marking run: `binary` (the one the suite resolved) must leave the mark,
+    else this worker measures nothing -- an older goh, or a mark that broke, claims no test ran
+    none. conftest's `native_goh` calls it; a worker that never resolved one measures nothing."""
+    if not marking() or "calibrated" in _state:
+        return binary
+    d, was = Path(tempfile.mkdtemp(prefix="goh-binmark-cal-")), os.environ.get(PROFILE)
+    try:  # the worker's own environment, as a test's run of it has; only the profile moved
+        (d / MARK_ASK).touch()
+        os.environ[PROFILE] = str(d / "goh-%4m.profraw")
+        subprocess.run([str(binary), "--version"], capture_output=True, timeout=patience(60),
+                       stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+        _state["calibrated"] = any(d.glob("*.binmark"))
+    except (OSError, subprocess.SubprocessError):
+        _state["calibrated"] = False
+    finally:
+        if was is None:
+            os.environ.pop(PROFILE, None)
+        else:
+            os.environ[PROFILE] = was
+        shutil.rmtree(d, ignore_errors=True)
+    return binary
+
+
+def measured(passed: dict[str, bool]) -> dict[str, bool]:
+    """What a marking run saw each passed node do ({node: it ran the binary}), for the nodes a
+    calibrated worker ran; {} in any other run (an instrumented one reads its own profiles)."""
+    return {n: b for n, b in passed.items() if n in _measured} if marking() else {}
 
 
 def _profdata() -> str | None:
@@ -57,11 +122,14 @@ def _base() -> Path | None:
     instrumented run."""
     if "base" not in _state:
         base = None
-        if lv.instrumented():
+        if _mode() == "profile":
             base = Path(os.environ[PROFILE]).parent / "t" / str(os.getpid())
             shutil.rmtree(base, ignore_errors=True)  # a reused pid's dir is never this run's
             base.mkdir(parents=True, exist_ok=True)
             _state["outer"] = os.environ[PROFILE]
+        elif _mode() == "mark":  # nothing outside the run's own directory reads these
+            base = Path(tempfile.mkdtemp(prefix="goh-binmark-"))
+            _state["outer"] = None
         _state["base"] = base
     return _state["base"]  # type: ignore[return-value]
 
@@ -180,6 +248,8 @@ def pytest_configure(config) -> None:
     got = getattr(config, "workerinput", {}).get(STORE_KEY)
     if got and not lv._store():
         lv._KEYS[lv.STORE] = got
+    if hasattr(config, "workerinput"):
+        _state["mode"] = "profile" if lv.instrumented() else config.workerinput.get(MARK_KEY, "")
 
 
 @pytest.hookimpl(optionalhook=True)
@@ -187,6 +257,7 @@ def pytest_configure_node(node) -> None:
     """xdist, in the controller: hand each worker the store it keeps profiles in."""
     if lv._store():
         node.workerinput[STORE_KEY] = lv._store()
+    node.workerinput[MARK_KEY] = "mark" if marking() else ""
 
 
 def take(tree: str, tools: str, nodes) -> None:
@@ -237,36 +308,51 @@ def pytest_runtest_protocol(item, nextitem):
         yield
         return
     d.mkdir(parents=True, exist_ok=True)
+    if _state["outer"] is None:
+        (d / MARK_ASK).touch()
     os.environ[PROFILE] = str(d / "goh-%4m.profraw")
     try:
         yield
     finally:
-        os.environ[PROFILE] = str(_state["outer"])
-        raws = sorted(d.glob("*.profraw"))
-        if raws:
-            dest = (
-                Path(str(_state["outer"])).parent
-                / f"t-{node_hash(item.nodeid)}-{os.getpid()}.profraw"
-            )
-            if merge(raws, dest):
-                _keep(item.nodeid, dest)
+        if _state["outer"] is None:  # a marking run: the marks were read after the call
+            os.environ.pop(PROFILE, None)
+            shutil.rmtree(d, ignore_errors=True)
+        else:
+            _merged(item, d)
+
+
+def _merged(item, d: Path) -> None:
+    """The test's raw profiles merged where the report reads them, and kept for the next tree."""
+    os.environ[PROFILE] = str(_state["outer"])
+    raws = sorted(d.glob("*.profraw"))
+    me = f"t-{node_hash(item.nodeid)}-{os.getpid()}.profraw"
+    if raws and merge(raws, dest := Path(str(_state["outer"])).with_name(me)):
+        _keep(item.nodeid, dest)
 
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_call(item):
-    """After the call: a raw profile in the test's dir means it ran the binary (setup or call)."""
+    """After the call: a raw profile in the test's dir means it ran the binary (setup or call), in
+    a marking run a plain goh's mark; a calibrated marking worker's node is measured either way."""
     yield
     d = _dir_of(item)
-    if d is not None and any(d.glob("*.profraw")):
+    if d is None:
+        return
+    if any(d.glob("*.binmark" if marking() else "*.profraw")):
         lv.mark_binary(item)
         if (PROF_MARK, True) not in item.user_properties:
             item.user_properties.append((PROF_MARK, True))
+    if marking() and _state.get("calibrated") is True:
+        item.user_properties.append((MEASURED, True))
 
 
 def pytest_runtest_logreport(report) -> None:
-    """The controller's account of which nodes left a profile (xdist replays each report there)."""
+    """The controller's account of which nodes left a profile, and which a calibrated plain worker
+    measured (xdist replays each report there)."""
     if (PROF_MARK, True) in report.user_properties:
         _profiled.add(report.nodeid)
+    if (MEASURED, True) in report.user_properties:
+        _measured.add(report.nodeid)
 
 
 def pytest_sessionfinish(session) -> None:
@@ -281,6 +367,6 @@ def pytest_sessionfinish(session) -> None:
     if not isinstance(base, Path):
         return
     late = sorted(base.glob("*/*.profraw"))
-    if late:
+    if late and _state.get("outer"):
         merge(late, Path(str(_state["outer"])).parent / f"t-late-{os.getpid()}.profraw")
     shutil.rmtree(base, ignore_errors=True)

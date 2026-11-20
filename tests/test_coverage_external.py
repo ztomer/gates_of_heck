@@ -12,6 +12,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import conftest
 import pytest
 from conftest import REPO_ROOT, hermetic_env
 from env_probe import probe_sh, read_probe
@@ -166,12 +167,15 @@ def test_a_scrubbed_test_environment_keeps_the_profile_destination(monkeypatch, 
     )
     assert r.stdout.strip() == str(tmp_path / "p-%8m.profraw"), r.stdout
     monkeypatch.delenv("GOH_COVERAGE_BIN_DIR")
-    r = subprocess.run(
-        printenv,
-        env={"PATH": "/usr/bin:/bin"},
-        capture_output=True,
-        text=True,
-        stdin=subprocess.DEVNULL,
-        check=False,
-    )
-    assert (r.returncode, r.stdout) == (1, ""), "outside a measured run an env is left as given"
+    # A plain recording run measures through the same variable (GOH.PLAINBINMARK): kept there too.
+    for marking, want in ((True, (0, str(tmp_path / "p-%8m.profraw"))), (False, (1, ""))):
+        monkeypatch.setattr(conftest._land_verdicts._prof_record, "marking", lambda m=marking: m)
+        r = subprocess.run(
+            printenv,
+            env={"PATH": "/usr/bin:/bin"},
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            check=False,
+        )
+        assert (r.returncode, r.stdout.strip()) == want, "outside a measured run an env is as given"

@@ -256,8 +256,8 @@ def _record_store(session) -> None:
     plan = _state.get("plan") or {}
     rootdir = Path(session.config.rootpath)
     passed = {n: n in _bin for n in _called - _failed}
-    # What an instrumented run saw each node do (tests/_prof_record.py): what coverage may carry.
-    measured = dict(passed) if instrumented() else {}
+    # What a run saw each node do (profiles; a plain run's marks, tests/_prof_record.py): carriable.
+    measured = dict(passed) if instrumented() else _prof_record.measured(passed)
     for n, ran_bin in plan.get("skipped", {}).items():  # passed here: same tree, or carried
         if (rootdir / n.split("::")[0]).is_file():
             passed.setdefault(n, ran_bin)
