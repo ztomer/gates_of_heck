@@ -26,14 +26,14 @@ unreleased -- the tag ships the whole tree -- so:
 * `ready --version X [--title T] [--contract cut|unreleased]`: goh ship's preflight, asked BEFORE
   its push (GOH.SHIPPREFLIGHT), under the kit's declared contract (GOH.SHIPCHANGELOG): exit 1 when
   the kit would find nothing to release (`nothing_to_release`) or its title, T or the
-  derived one, is no phrase or a clause clipped at TITLE_MAX (GOH.SHIPSUMMARY), else 0.
+  derived one, is no phrase or a clause clipped at TITLE_MAX (GOH.SHIPSUMMARY), or the release's
+  text trips a goh scanner (changelog_scan.py, GOH.SHIPTITLESCAN), else 0.
 
 An entry is a top-level list item (`* ` or `- ` at column 0) with its continuation lines, compared
 with whitespace collapsed. Headings: `## Unreleased` / `## [Unreleased]`, `## vX...` / `## [X]...`.
 
-    changelog_cut.py cut   --version 1.2.3 [--title "what it ships"] [--file CHANGELOG.md]
+    changelog_cut.py cut|ready --version 1.2.3 [--title "what it ships"] [--file CHANGELOG.md]
     changelog_cut.py check --version 1.2.3 [--file CHANGELOG.md]
-    changelog_cut.py ready --version 1.2.3 [--title "what it ships"] [--file CHANGELOG.md]
 """
 
 from __future__ import annotations
@@ -46,6 +46,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import changelog_fragments  # one file per change, folded at release (GOH.CLASS.CHECKOUT)
+import changelog_scan  # goh's content scanners over the text a release writes (GOH.SHIPTITLESCAN)
 from changelog_day import today  # the cut's day, pinnable by GOH_TODAY (GOH.MIDNIGHTDATE)
 
 from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
@@ -468,7 +469,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"✗ changelog: {path}: {why}; pass `goh ship --summary TEXT`, which titles "
                   "the stanza", file=sys.stderr)  # fmt: skip
             return 1
-        return 0
+        moved = [ln for u in sections(lines) if u.unreleased for ln in body(lines, u)]
+        return changelog_scan.report(path, a.version, a.title or None, moved)  # not ~1000 s in
     if a.mode == "check":
         findings = check(lines, a.version)
         left = changelog_fragments.paths(a.fragments) if a.fragments is not None else []

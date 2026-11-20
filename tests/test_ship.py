@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 from _shipped_kit import FAKE_LOOPCTL, make_shipped, shipped_clone  # noqa: F401  (re-exported)
-from conftest import REPO_ROOT, git, hermetic_env, run_goh
+from conftest import REPO_ROOT, git, hermetic_env, native_goh_path, run_goh
 from timing_bounds import GiveUp, assert_sooner
 
 SHIP = REPO_ROOT / "tools" / "ship.py"
@@ -38,6 +38,7 @@ def _env(tmp_path: Path, **over: str) -> dict[str, str]:
         "FAKE_LOOPCTL_LOG": str(tmp_path / "loopctl.calls"),
         "LOOPCTL_ROOT": str(tmp_path),
         "FAKE_GOH_ROOT": str(REPO_ROOT),
+        "GOH_BIN": str(native_goh_path()),  # the release text's scanners (GOH.SHIPTITLESCAN)
         "GOH_SHIP_RELEASE": 'git tag "v$GOH_SHIP_VERSION" && git push -q origin "v$GOH_SHIP_VERSION"',
     }
     return hermetic_env(drop_git=True, **{**base, **over})

@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 import test_release_kit as rk
-from conftest import REPO_ROOT, hermetic_env
+from conftest import REPO_ROOT, hermetic_env, native_goh_path
 from suite_home import PINNED_TODAY
 from test_release_kit import TAG, VERSION, commit_all, run_release, sh
 
@@ -34,8 +34,9 @@ DATED_TAIL = "## v1.1.0 — older _(2026-01-01)_\n\n- older\n"
 
 
 def _cut(path: Path, *args: str) -> subprocess.CompletedProcess:
+    env = hermetic_env(GOH_BIN=str(native_goh_path()))  # `ready` runs goh's scanners
     return subprocess.run([sys.executable, str(CUT), *args, "--file", str(path)],
-                          capture_output=True, text=True, check=False, env=hermetic_env(),
+                          capture_output=True, text=True, check=False, env=env,
                           stdin=subprocess.DEVNULL)  # fmt: skip
 
 
