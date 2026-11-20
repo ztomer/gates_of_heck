@@ -54,11 +54,11 @@ in an ssh heredoc, echoed both ntfy password hashes into its transcript (compose
 the command and in the code it hands to `ssh` or a shell. The escape is `# secrets-ok: <reason>`.
 The rule is `lib/secret_render.py`.
 
-THE SHARED CHECKOUT (GOH.NORESET, 2026-11-11). `git stash`, `git reset` in any form, a branch switch
-(`git switch`, `git checkout <branch>`) and a whole-index `git restore --staged` are refused in a
-PRIMARY checkout -- the one every session shares; a linked worktree is its creator's -- because each
-moves other sessions' work with yours. The escape is `# reset-ok: <reason>`. The rule is
-`lib/shared_checkout.py`.
+THE SHARED CHECKOUT (GOH.NORESET, 2026-11-11). `git reset` in any form, a branch switch (`git
+switch`, `git checkout <branch>`) and a whole-index `git restore --staged` are refused in a PRIMARY
+checkout -- the one every session shares; a linked worktree is its creator's -- because each moves
+other sessions' work with yours. A work-moving `git stash` is refused in EVERY checkout, worktrees
+included (GOH.STASHANYWHERE). The escape is `# reset-ok: <reason>`. Rule: `lib/shared_checkout.py`.
 
 THE TEMP SWEEP (GOH.FLAKYENVCOV, 2026-11-14). `rm -rf $TMPDIR/goh-pytest.*/` deleted every live
 gate's pytest temp root, and another lane's land failed with 1281 FileNotFoundError errors. A

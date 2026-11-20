@@ -45,9 +45,6 @@ def shared(repo: Path) -> Path:
         "git reset -q",
         "git reset --soft HEAD~1",
         "git reset HEAD -- a.py",
-        "git stash",
-        "git stash push -m wip",
-        "git stash pop",
         "git switch other",
         "git switch -c new",
         "git checkout other",
@@ -95,7 +92,65 @@ def test_a_pathed_unstage_a_read_text_and_the_escape_run(shared: Path, command: 
 def test_a_linked_worktree_is_its_creators(shared: Path, tmp_path: Path) -> None:
     wt = tmp_path / "wt"
     git(shared, "worktree", "add", "-q", "-b", "mine", str(wt))
-    for command in ("git reset -q", "git stash", "git switch other", "git checkout -b x2"):
+    for command in ("git reset -q", "git switch other", "git checkout -b x2"):
+        assert _decide(command, wt) is None, command
+
+
+STASH_FORMS = [
+    "git stash",
+    "git stash push",
+    "git stash push -m wip",
+    "git stash save wip",
+    "git stash pop",
+    "git stash apply",
+    "git stash drop",
+    "git stash clear",
+    "git stash branch newbr",
+    "git stash -p",
+    "git stash push --keep-index",
+    "git stash --keep-index",
+    "git add x && git stash; echo done",
+    "rtk git stash",
+    "git -c core.quotepath=off stash pop",
+]
+
+
+@pytest.mark.parametrize("command", STASH_FORMS)
+def test_a_stash_is_refused_in_a_primary_checkout_and_in_a_linked_worktree(
+    shared: Path, tmp_path: Path, command: str
+) -> None:
+    """GOH.STASHANYWHERE: the rule is never `git stash`, in EVERY checkout (a lane in its own
+    worktree stashed on 2026-11-19: the guard only refused a primary checkout)."""
+    wt = tmp_path / "wt"
+    git(shared, "worktree", "add", "-q", "-b", "mine", str(wt))
+    for where in (shared, wt):
+        why = _decide(command, where)
+        assert why is not None, (command, where)
+        assert "commit a WIP on" in why and "branch" in why and "reset-ok" in why, why
+
+
+def test_a_stash_is_followed_through_dash_c_and_cd_into_a_linked_worktree(
+    shared: Path, tmp_path: Path
+) -> None:
+    wt = tmp_path / "wt"
+    git(shared, "worktree", "add", "-q", "-b", "mine", str(wt))
+    assert _decide(f"git -C {wt} stash push", tmp_path) is not None
+    assert _decide(f"cd {wt} && git stash pop", tmp_path) is not None
+    assert _decide(f"git -C {wt} stash list", tmp_path) is None
+    assert _decide(f"git -C {wt} stash show -p", tmp_path) is None
+
+
+def test_stash_reads_and_the_escape_run_in_a_linked_worktree(shared: Path, tmp_path: Path) -> None:
+    wt = tmp_path / "wt"
+    git(shared, "worktree", "add", "-q", "-b", "mine", str(wt))
+    for command in (
+        "git stash list",
+        "git stash show",
+        "git stash show -p stash@{0}",
+        "echo 'git stash'",
+        "git log --grep stash",
+        "git stash  # reset-ok: a fixture repo nobody else writes to",
+    ):
         assert _decide(command, wt) is None, command
 
 

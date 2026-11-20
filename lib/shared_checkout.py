@@ -7,6 +7,12 @@ unstages every other session's staged work in that checkout, a `git stash` takes
 edits away, and a `git checkout <branch>` moves the tree out from under every writer at once. An
 earlier ZeroThunder brief had to allow `git restore --staged` by hand.
 
+THE STASH IS REFUSED IN EVERY CHECKOUT (GOH.STASHANYWHERE, 2026-11-20). The owner's rule is never
+`git stash`, and a lane in its OWN worktree stashed on 2026-11-19 because the check below only
+fired in a primary checkout. A stash that moves work (push, bare, save, pop, apply, drop, clear,
+branch, -p, --keep-index; `list` and `show` only read it) is refused in a linked worktree too, with
+the way forward: commit a WIP on the lane branch.
+
 THE RULE, in the CODE of a Bash command (`lib/shell_segments.py`: quoted text, heredoc bodies and
 comments are not commands), for a git command whose repository is a PRIMARY checkout (its git dir
 is the common git dir -- the checkout every session shares; a linked worktree is its creator's):
@@ -38,6 +44,13 @@ ESCAPE = re.compile(r"#\s*reset-ok:\s*\S")
 WHOLE_TREE = {".", ":/", ":/*", "*", "./", ":"}
 _STASH_READS = {"list", "show"}
 _GIT_VALUED = {"-C", "-c", "--git-dir", "--work-tree", "--namespace"}
+
+STASH_WAY_OUT = (
+    "Never `git stash`, in any checkout: it takes uncommitted edits out of the tree and a pop or "
+    "drop can lose them. Instead, commit a WIP on your lane branch (`git commit -m 'wip: ...'`, "
+    "amend or squash it before landing) and keep working. "
+    "To do it on purpose, add `# reset-ok: <reason>` to the command."
+)
 
 WAY_OUT = (
     "This checkout is shared: every session's staged and unstaged work lives in it, and this "
@@ -72,14 +85,16 @@ def _is_rev(where: str, word: str) -> bool:
     return _git(where, "rev-parse", "--verify", "-q", f"{word}^{{commit}}") is not None
 
 
+def moves_stash(verb: str, rest: list[str]) -> bool:
+    """Is this `git <verb> <rest>` a stash that moves work (anything but `list` and `show`)?"""
+    words = [a for a in rest if not a.startswith("-")]
+    return verb == "stash" and not (words and words[0] in _STASH_READS)
+
+
 def _what(where: str, verb: str, rest: list[str]) -> str | None:
     """What this git verb does to a shared checkout, or None when it moves nobody's work."""
     flags = [a for a in rest if a.startswith("-")]
     words = [a for a in rest if not a.startswith("-")]
-    if verb == "stash":
-        if words and words[0] in _STASH_READS:
-            return None
-        return "a stash takes every session's uncommitted edits out of the tree"
     if verb == "reset":
         return "a reset moves the index (and with --hard or --keep the tree) for every session"
     if verb == "switch":
@@ -122,10 +137,14 @@ def judge(command: str, cwd: str) -> str | None:
             args = args[2:]
         if not args:
             continue
+        if moves_stash(args[0], args[1:]):
+            return (
+                f"`{' '.join(seg)}` in {where}: a stash moves work out of the tree. {STASH_WAY_OUT}"
+            )
         why = _what(where, args[0], args[1:])
         if why and is_shared(where):
             return f"`{' '.join(seg)}` in {where}: {why}. {WAY_OUT}"
     return None
 
 
-__all__ = ["ESCAPE", "is_shared", "judge"]
+__all__ = ["ESCAPE", "is_shared", "judge", "moves_stash"]
