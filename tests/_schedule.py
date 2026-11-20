@@ -22,11 +22,13 @@ worker (`pytest_configure_node`), so every worker sorts the same table and colle
 which xdist requires: the file is shared by every suite on the box, and workers that each read it
 collected in different orders whenever another session's suite rewrote it between their starts
 ("Different tests were collected", 2026-10-08). A test not yet measured counts
-as UNKNOWN_S. An xdist_group is one unit of work, so its members move together, by their sum.
+as UNKNOWN_S. An xdist_group is one unit of work, so its members move together, by their sum; the
+group is read from the marks (tests/_loadgroup.py `group`), never from a node id.
 Ordering cannot change a verdict: the suite already runs in any order under xdist.
 
 Registered as a PLUGIN from conftest's pytest_configure, not imported by name: a conftest that
 imports a hook shadows its own hook of the same name (it happened to pytest_configure, 2026-10-06).
+It registers tests/_loadgroup.py in turn, so every run that orders by group also schedules by it.
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ import os
 from collections import defaultdict
 from pathlib import Path
 
+import _loadgroup
 import _shard
 import pytest
 
@@ -60,9 +63,12 @@ def take(environ=os.environ) -> Path | None:
 _seen: dict[str, float] = defaultdict(float)
 
 
-def _scope(nodeid: str) -> str:
-    """xdist loadgroup's unit: the group after `@`, else the test itself."""
-    return nodeid.split("@")[-1] if nodeid.rfind("@") > nodeid.rfind("]") else nodeid
+def _scope(item) -> str:
+    """xdist loadgroup's unit: the test's group (tests/_loadgroup.py `group`, the name the
+    scheduler is handed), else the test itself. Node ids carry no `@group` suffix: xdist 3.8.0's
+    suffix never landed under pytest 9.2, and the fix keeps ids pytest's (GOH.XDISTGROUP)."""
+    g = _loadgroup.group(item)
+    return "@" + g if g is not None else item.nodeid
 
 
 def _load() -> dict[str, float]:
@@ -81,6 +87,8 @@ def pytest_configure(config) -> None:
     _read[_KEY] = worker.get(_KEY, {}) if worker is not None else _load()
     if worker is not None:
         _shard_spec[:] = [worker[_SHARD_KEY]] if worker.get(_SHARD_KEY) else []
+    if not config.pluginmanager.has_plugin("goh-loadgroup"):  # loadgroup that groups
+        config.pluginmanager.register(_loadgroup, "goh-loadgroup")
     if _shard_spec:  # the part is its OWN hook (GOH.CIRED013913), never this module's
         config.pluginmanager.register(_shard.Plugin(_shard_spec[0]), "goh-suite-shard")
 
@@ -105,8 +113,8 @@ def pytest_collection_modifyitems(config, items) -> None:
         return
     weight: dict[str, float] = defaultdict(float)
     for item in items:
-        weight[_scope(item.nodeid)] += known.get(item.nodeid, UNKNOWN_S)
-    items.sort(key=lambda i: (-weight[_scope(i.nodeid)], _scope(i.nodeid), i.nodeid))
+        weight[_scope(item)] += known.get(item.nodeid, UNKNOWN_S)
+    items.sort(key=lambda i: (-weight[_scope(i)], _scope(i), i.nodeid))
 
 
 def pytest_runtest_logreport(report) -> None:

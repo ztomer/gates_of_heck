@@ -3,8 +3,8 @@
 Each hosted shard is its own machine that collects the suite and keeps its K-th part. The parts are
 proved here as CI makes them: one process per shard, gate.yml's own shard list, on a fixture with
 parametrized tests and xdist groups spanning files -- no test dropped, none run twice, no
-group split -- and once more under xdist's loadgroup scheduler, which renames grouped tests as
-it collects.
+group split -- and once more under xdist's loadgroup scheduler, which groups them by the map
+tests/_loadgroup.py hands it (the ids stay pytest's).
 """
 
 from __future__ import annotations
@@ -165,8 +165,8 @@ class _Item:
     def __init__(self, nodeid: str) -> None:
         self.nodeid = nodeid
 
-    def get_closest_marker(self, _name):
-        return None
+    def iter_markers(self, _name):
+        return iter(())
 
 
 class _Config:

@@ -46,6 +46,7 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+import _loadgroup
 import pytest
 
 ENV = "GOH_SUITE_SHARD"  # tools/pytest.sh's, popped by _schedule.take() like its table
@@ -138,10 +139,8 @@ def assign(units: dict[str, float], n: int) -> dict[str, int]:
 
 
 def _group(item) -> str | None:
-    mark = item.get_closest_marker("xdist_group")
-    if mark is None:
-        return None
-    return str(mark.args[0] if mark.args else mark.kwargs.get("name", "default"))
+    """The item's group as the scheduler is handed it (tests/_loadgroup.py, the one spelling)."""
+    return _loadgroup.group(item)
 
 
 def select(config, items, spec: str, table: dict[str, float] | None = None) -> None:

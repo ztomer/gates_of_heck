@@ -90,7 +90,10 @@ latter reads corrupted bytes and dies with a syntax error (found
 has its own group: its tests take the REAL machine-wide mutex, so
 splitting them across workers means contending with themselves.
 Pin: the full suite green under `-n 12 --dist loadgroup`; serial green
-proves nothing about the grouping.
+proves nothing about the grouping, and neither does a green parallel run:
+under pytest 9.2 + xdist 3.8.0 every group was inert (GOH.XDISTGROUP)
+until `tests/_loadgroup.py` handed the scheduler the groups. Pin:
+`tests/test_loadgroup.py` (a planted group on one worker of three).
 
 ## 11. `.gatesrc` runs as shell — trusted repos only
 

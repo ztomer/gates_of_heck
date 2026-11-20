@@ -10,7 +10,14 @@ import _schedule
 
 
 def _items(*ids):
-    return [SimpleNamespace(nodeid=i) for i in ids]
+    """Fake items; `"t.py::g1@G"` is the test `t.py::g1` marked `xdist_group("G")` (its id stays
+    pytest's: the group is read from the mark, tests/_loadgroup.py `group`)."""
+    out = []
+    for i in ids:
+        nodeid, _, group = i.partition("@")
+        marks = [SimpleNamespace(args=(group,), kwargs={})] if group else []
+        out.append(SimpleNamespace(nodeid=nodeid, iter_markers=lambda _n, m=marks: iter(m)))
+    return out
 
 
 CONFIG = SimpleNamespace(rootpath=Path("/checkout"))
@@ -29,13 +36,13 @@ def _table(tmp_path, monkeypatch, durations):
 
 
 def test_the_longest_runs_first_and_a_group_moves_as_one(tmp_path, monkeypatch) -> None:
-    _table(tmp_path, monkeypatch, {"t.py::a": 1, "t.py::b": 9, "t.py::g1@G": 4, "t.py::g2@G": 4})
+    _table(tmp_path, monkeypatch, {"t.py::a": 5, "t.py::b": 9, "t.py::g1": 4, "t.py::g2": 4})
     items = _items("t.py::a", "t.py::g1@G", "t.py::b", "t.py::g2@G", "t.py::new")
     _schedule.pytest_collection_modifyitems(CONFIG, items)
-    assert [i.nodeid for i in items] == [
+    assert [i.nodeid for i in items] == [  # the group's 4+4 s weigh 8, ahead of a's 5
         "t.py::b",
-        "t.py::g1@G",
-        "t.py::g2@G",
+        "t.py::g1",
+        "t.py::g2",
         "t.py::a",
         "t.py::new",
     ]
