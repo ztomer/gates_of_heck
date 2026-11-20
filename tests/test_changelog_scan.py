@@ -33,10 +33,11 @@ def shipped(repo: Path, tmp_path: Path) -> Path:
     return make_shipped(repo, tmp_path)
 
 
-def _ready(tmp_path: Path, text: str, *args: str) -> tuple[subprocess.CompletedProcess, float]:
+def _ready(tmp_path: Path, text: str, *args: str,
+           binary: str | None = None) -> tuple[subprocess.CompletedProcess, float]:  # fmt: skip
     log = tmp_path / "CHANGELOG.md"
     log.write_text(text)
-    env = hermetic_env(GOH_BIN=str(goh_bin()))
+    env = hermetic_env(GOH_BIN=binary or str(goh_bin()))
     t0 = time.monotonic()
     r = subprocess.run([sys.executable, str(CUT), "ready", "--version", "1.1.0", *args,
                         "--file", str(log)], capture_output=True, text=True, check=False,
@@ -49,6 +50,14 @@ def test_a_clean_release_text_is_ready(tmp_path):
     """Calibration: the instrument can say yes, or its refusals below mean nothing."""
     r, _ = _ready(tmp_path, FOUND, "--title", "a real change")
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+@pytest.mark.load_sensitive
+def test_a_scan_that_cannot_run_is_a_refusal_never_a_clean_text(tmp_path):
+    """A binary that is not there read as 'no findings' would be the scan that stopped reading."""
+    r, _ = _ready(tmp_path, FOUND, "--title", "fine", binary=str(tmp_path / "no-such-goh"))
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "no native goh binary" in r.stderr and "no-such-goh" in r.stderr, r.stderr
 
 
 @pytest.mark.load_sensitive

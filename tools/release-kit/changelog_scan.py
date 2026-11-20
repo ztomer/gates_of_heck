@@ -7,7 +7,7 @@ tests/test_self_walk.py counted it (`no hard-coded home paths`, 136 -> 137), 101
 release writes is known before anything is pushed: the heading's title and the entries the cut
 moves out of Unreleased (fragments already folded in by `changelog_cut.py ready`). This composes
 exactly that and runs the scanners the self-walk counts that read a markdown changelog, THE
-BINARY'S OWN (`gates/goh.sh`, never a copy of their patterns), over it as a file named CHANGELOG.md
+BINARY'S OWN (never a copy of their patterns), over it as a file named CHANGELOG.md
 in a scratch repository of its own: nothing in the checkout is written, so a refusal leaves nothing
 to undo. The scratch repository has no .gatesrc, seed or exclusion, which is the self-walk's view.
 
@@ -46,6 +46,18 @@ def release_text(version: str, title: str | None, moved: list[str]) -> list[str]
     return ([f"## v{version} -- {title}", ""] if title else []) + list(moved)
 
 
+def _binary(env: dict[str, str]) -> tuple[str, str]:
+    """(the native goh binary, "") by the one resolution (`gates/_goh_bin.sh`, GOH_BIN first), or
+    ("", why not): resolved ONCE, then called directly (`goh.sh` resolves again at every call, 0.2 s
+    a scanner, and this runs in the ship's start)."""
+    script = '. "$1/gates/_goh_bin.sh"; goh_resolve_native; printf %s "$goh_native"; ' \
+             'printf %s "$goh_native_why" >&2'  # fmt: skip
+    r = subprocess.run(["bash", "-c", script, "_", str(ROOT)], env=env, capture_output=True,
+                       text=True, stdin=subprocess.DEVNULL, timeout=BOUND_S,
+                       check=False)  # fmt: skip
+    return r.stdout.strip(), r.stderr.strip() or "it is not built"
+
+
 def _env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
 
@@ -62,11 +74,14 @@ def scan(text: list[str]) -> list[str]:
     with tempfile.TemporaryDirectory(dir=tmp_root.goh_tmp(), prefix="goh-release-text.") as d:
         (Path(d) / "CHANGELOG.md").write_text("\n".join(text) + "\n", encoding="utf-8")
         env = _env()
+        goh, why = _binary(env)
+        if not goh:
+            return [f"no native goh binary to read the release text with: {why}"]
         for cmd in (["git", "init", "-q", "--template="], ["git", "add", "CHANGELOG.md"]):
             subprocess.run(cmd, cwd=d, env=env, stdin=subprocess.DEVNULL, check=True,
                            capture_output=True, timeout=BOUND_S)  # fmt: skip
         for check, label in SCANNERS.items():
-            r = subprocess.run(["bash", str(ROOT / "gates" / "goh.sh"), check], cwd=d, env=env,
+            r = subprocess.run([goh, check], cwd=d, env=env,
                                stdin=subprocess.DEVNULL, capture_output=True, text=True,
                                timeout=BOUND_S, check=False)  # fmt: skip
             if r.returncode == 0:
