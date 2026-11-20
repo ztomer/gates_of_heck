@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## v0.139.20 -- reconcile: COVOFFLAND (Take instrumented coverage off the LAND path. Measured 2026-11-19)
+
+* **Coverage is the ship's, not every land's** (GOH.COVOFFLAND): the instrumented coverage run was 69-76% of a goh land's
+  gate (493-781 s; lands took 15-30 min end to end). A land of a repo whose ship makes the instrumented full run
+  (`GOH_SHIP_FULL_SUITE=on`) now runs the coverage step's tests plain (`gates/rust_gate.sh` `GOH_RUST_COVERAGE=plain`,
+  set by `lib/land_gate.sh`), so a red test is still red at the land. Every floor stays as strict: the ship's own run
+  (`lib/ship_full_run.py`), never skipped now, judges the line floor and the diff coverage of every line landed since
+  the last ship (`GOH_CHANGE_BASE` at the last version tag; it judged no base before). A red run releases nothing, and
+  the ship's worker, with the land lock given back, bisects the lands since the last ship (`goh-landed`) to the first
+  red one and files a fault item naming it (`bisect` in the ship result). Retired with it: the ship's skip on another
+  run's record and its audited `fullrun` path, and the land's fast pre-step set for a gate that measures
+  (`GOH_LAND_PRE_FAST`, `lib/pre_fast.py`, `affected_tests.py --fast-only`).
+  A switch, `.gatesrc` `GOH_SHIP_COVERAGE=dummy` (off by default), measures coverage nowhere: while it stands every
+  `goh ship` is refused, "coverage in dummy mode; no release"; deleting the line turns coverage back on.
+
+* **A release tag on an ancestor of a pushed branch is gated with it:** `tag_version` wants an unpushed release tag in
+  the same push as its branch, and the push gate then rebuilt the tag's old commit with today's gates and refused it
+  (ZSUS: a file that had since moved into goh read as a vendored copy), so no push shape passed. A ref whose commit is
+  an ancestor of another ref's commit in the same push gains the remote nothing the gated tip does not carry; it is
+  skipped with a line saying so, and a red tip is still refused.
+
 ## v0.139.19 -- reconcile: PLAINBINMARK (A plain goh run leaves a mark where LLVM_PROFILE_FILE points or an), FULLKEYSCRIPTS (Wrong-reuse hole left open by GOH.STEPCLOSUREREFUSE 1989b594), STEPDATAKEY (Left open by GOH.FULLKEYSCRIPTS a7a55026)
 
 * **The CAD layer** (`gates/cad_gate.sh`, opt-in): a repo of FDM parts made by code is judged as the slicer and the
