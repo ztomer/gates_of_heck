@@ -210,6 +210,15 @@ cat >"$refs_file"
 
 push_refusals   # the tag, disk, commit-message and landed-only refusals (gates/_push_refusals.sh)
 
+# Every commit this push names, so a ref on an ANCESTOR of another is gated with it, not alone:
+# tag_version wants an unpushed release tag in the same push as its branch, and gating the tag's
+# old commit with today's gates refused a push no shape could pass (ZSUS 2026-11-19).
+push_commits=""
+while read -r _ref_l sha_l _ref_r _sha_r; do
+    [ -n "${sha_l:-}" ] && [ "$sha_l" != "$zero" ] || continue
+    push_commits="$push_commits $(git -C "$root" rev-parse --verify --quiet "${sha_l}^{commit}" || echo "$sha_l")"
+done <"$refs_file"
+
 gated=0
 # <"$refs_file", NOT stdin: `cat` above drained it, and a while-read on a spent
 # stream is a loop that never runs — a gate that silently gates nothing.
@@ -248,6 +257,15 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
     esac
     # NB: both skips below are about CODE, and neither may excuse a TAG's version
     # claim — which is why check_tag_version runs above, over the refs as given.
+    descendant=""
+    for other in $push_commits; do
+        [ "$other" != "$commit" ] && git -C "$root" merge-base --is-ancestor "$commit" "$other" 2>/dev/null \
+            && { descendant="$other"; break; }
+    done
+    if [ -n "$descendant" ]; then
+        info "pre-push: $local_ref @ $short — an ancestor of $(git -C "$root" rev-parse --short "$descendant") in this push; its code is gated with it"
+        continue
+    fi
     if [ -n "$remote_name" ] && [ -n "$(git -C "$root" for-each-ref --contains "$commit" \
             --format='%(refname)' "refs/remotes/$remote_name/")" ]; then
         info "pre-push: $local_ref @ $short — $remote_name already has this commit; nothing new to gate"

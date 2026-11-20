@@ -282,6 +282,46 @@ def test_a_branch_and_its_release_tag_on_one_commit_are_gated_once(tmp_path):
     assert "gated earlier in this push" in out, out
 
 
+def test_a_tag_on_an_ancestor_of_a_branch_in_the_same_push_is_gated_with_it(tmp_path):
+    """ZSUS 2026-11-19: tag_version wants an unpushed release tag in the same push as main, and the
+    gate then rebuilt the tag's OLD commit with today's gates (a file that had since moved into goh
+    read as a vendored copy) and refused it. No push shape passed. Pushing main makes the ancestor
+    reachable anyway: its code gains the remote nothing the gated tip does not carry."""
+    repo = _repo(tmp_path)
+    (repo / "fail.flag").write_text("x")  # the old release would fail today's gate...
+    _git(repo, "add", "fail.flag")
+    _git(repo, "commit", "-q", "-m", "old release, red by today's rules")
+    _git(repo, "tag", "-a", "v1.0.0", "-m", "old release")
+    _git(repo, "rm", "-q", "fail.flag")
+    _git(repo, "commit", "-q", "-m", "green tip")
+    tip, tag_obj = _git(repo, "rev-parse", "HEAD"), _git(repo, "rev-parse", "v1.0.0")
+    lines = (  # the tag first: the descendant is gated whatever order git feeds the refs in
+        f"refs/tags/v1.0.0 {tag_obj} refs/tags/v1.0.0 {'0' * 40}\n"
+        f"refs/heads/main {tip} refs/heads/main {'0' * 40}\n"
+    )
+    code, report, out = _push_lines(repo, lines, tmp_path)
+    assert code == 0, out
+    assert report.count("tracked=") == 1, f"the tip alone is gated, got: {report}"
+    assert "an ancestor of" in out, out
+
+
+def test_a_red_tip_is_still_refused_when_it_carries_an_ancestor_tag(tmp_path):
+    repo = _repo(tmp_path)
+    _git(repo, "tag", "-a", "v1.0.0", "-m", "release")
+    tag_obj = _git(repo, "rev-parse", "v1.0.0")
+    (repo / "fail.flag").write_text("x")
+    _git(repo, "add", "fail.flag")
+    _git(repo, "commit", "-q", "-m", "new and broken")
+    tip = _git(repo, "rev-parse", "HEAD")
+    lines = (
+        f"refs/tags/v1.0.0 {tag_obj} refs/tags/v1.0.0 {'0' * 40}\n"
+        f"refs/heads/main {tip} refs/heads/main {'0' * 40}\n"
+    )
+    code, report, _out = _push_lines(repo, lines, tmp_path)
+    assert code != 0, "a broken tip passed because an ancestor tag rode along"
+    assert "tracked=" in report
+
+
 def test_a_new_commit_is_still_gated_when_the_remote_has_its_parent(tmp_path):
     """The skip must not swallow new work: only commits the remote already HAS are exempt."""
     repo = _repo(tmp_path)
