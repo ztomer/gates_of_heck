@@ -11,6 +11,15 @@ An entry is a RATCHET, so a stale one is a rug: it must carry a reason, must LOW
 (at or above it, it names nothing), and must name a crate (a Cargo.toml's directory or package name
 anywhere in the repo) or a file (on disk) that exists. Judged here, apart from the merger's line
 cap. A crate is the nearest enclosing Cargo.toml of a measured file.
+
+A FLOOR WITHIN THE MEASURED SPREAD IS REFUSED (GOH.COVNONDET). One tree measured more than once can
+move: monitor's ratchet (2026-11-18) read agent 90.35 to 90.50, multitop 89.67 to 89.82 and vault
+90.52 to 90.76, and a floor set from one run (multitop 89.74) went red on the push gate's
+clean-tree run (89.67). An entry may record its runs of one tree, `"measured": [89.74, 89.67,
+89.82]` (two or more percents); a floor above the lowest of them is refused (exit 2), since a run
+at that low end reds an unchanged tree. goh's own number does not move: two ship-shaped
+instrumented runs of 2c9ae35f (2026-11-20, load 34-46) covered the same 26381 of 28310 lines, line
+for line, and lib/prof_carry.py's 22 fresh-against-claim compares agree at a band of 0.
 """
 
 from __future__ import annotations
@@ -48,8 +57,33 @@ def load_entries(raw, key: str, path: str):
         if not isinstance(reason, str) or not reason.strip():
             err(f"[coverage] {path}: {key}[{name!r}] needs a `reason` (why it is lowered)")
             return None
+        if "measured" in entry and (why := _within_spread(key, name, float(floor), entry)):
+            err(f"[coverage] {path}: {why}")
+            return None
         out[name] = (float(floor), reason.strip())
     return out
+
+
+def _percent(r) -> bool:
+    return isinstance(r, (int, float)) and not isinstance(r, bool) and 0 <= r <= 100
+
+
+def _within_spread(key: str, name: str, floor: float, entry: dict) -> str:
+    """Why an entry's floor stands inside the spread its `measured` runs record, or ''."""
+    runs = entry["measured"]
+    if not (isinstance(runs, list) and len(runs) >= 2 and all(map(_percent, runs))):
+        return (
+            f"{key}[{name!r}]: `measured` needs two or more runs of one tree, each a percent in "
+            f"0..100 (got {runs!r})"
+        )
+    lo, hi = min(runs), max(runs)
+    if floor <= lo:
+        return ""
+    return (
+        f"{key}[{name!r}] floor {floor:g}% is above the lowest of its measured runs "
+        f"({lo:g}..{hi:g}%), {len(runs)} runs of one tree: a run at {lo:g}% reds an unchanged "
+        f"tree -- set the floor at or below {lo:g}%"
+    )
 
 
 def not_lowering(entries, uniform: float, key: str) -> list[str]:

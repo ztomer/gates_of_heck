@@ -138,6 +138,75 @@ def test_crate_floors_without_a_uniform_floor_fail(tmp_path: Path) -> None:
     assert "none is set" in _all(r), _all(r)
 
 
+# ── a floor within the measured spread (GOH.COVNONDET) ────────────────────────────────────────
+# One tree measured more than once moved: monitor's ratchet (2026-11-18) read agent 90.35 to 90.50,
+# multitop 89.67 to 89.82 and vault 90.52 to 90.76 over runs of ONE tree, and a floor set from one
+# run (multitop 89.74) went red on the push gate's clean-tree run (89.67). An entry may record its
+# runs (`measured`); a floor above the lowest of them is refused, never left to red at random.
+MONITOR_SPREAD = {  # monitor's tools/coverage_floors.json and its reruns, 2026-11-18
+    "agent": ([90.50, 90.48, 90.35], 90.3),
+    "multitop": ([89.74, 89.67, 89.82], 89.6),
+    "vault": ([90.68, 90.52, 90.76], 90.5),
+}
+
+
+def _spread(floor: float, runs: list) -> dict:
+    return {**_entry(floor), "measured": runs}
+
+
+def test_a_floor_inside_its_measured_spread_is_refused(tmp_path: Path) -> None:
+    proj = _repo(tmp_path, a_hit=4)
+    for name, (runs, _floor) in MONITOR_SPREAD.items():
+        inside = round((min(runs) + max(runs)) / 2, 2)  # multitop: the 89.74 that went red
+        r = _run(proj, {"crate_floors": {"a": _spread(inside, runs)}}, "--floor", "95")
+        assert r.returncode == 2, (name, _all(r))
+        lo, hi = min(runs), max(runs)
+        assert (
+            f"crate_floors['a'] floor {inside:g}% is above the lowest of its measured runs "
+            f"({lo:g}..{hi:g}%)" in _all(r)
+        ), (name, _all(r))
+
+
+def test_a_floor_above_every_measured_run_is_refused(tmp_path: Path) -> None:
+    proj = _repo(tmp_path, a_hit=4)
+    r = _run(proj, {"crate_floors": {"a": _spread(91, [90.50, 90.48, 90.35])}}, "--floor", "95")
+    assert r.returncode == 2, _all(r)
+    assert "above the lowest of its measured runs" in _all(r), _all(r)
+
+
+def test_monitors_floors_at_the_lowest_run_rounded_down_are_kept(tmp_path: Path) -> None:
+    proj = _repo(tmp_path, a_hit=4)
+    for name, (runs, floor) in MONITOR_SPREAD.items():
+        r = _run(proj, {"crate_floors": {"a": _spread(floor, runs)}}, "--floor", "95")
+        assert r.returncode == 0, (name, _all(r))
+    r = _run(proj, {"crate_floors": {"a": _spread(90.35, [90.50, 90.35])}}, "--floor", "95")
+    assert r.returncode == 0, _all(r)  # at the lowest run: that run passes
+
+
+def test_a_spread_of_one_run_is_refused(tmp_path: Path) -> None:
+    proj = _repo(tmp_path, a_hit=4)
+    r = _run(proj, {"crate_floors": {"a": _spread(89.6, [89.74])}}, "--floor", "95")
+    assert r.returncode == 2, _all(r)
+    assert "`measured` needs two or more runs of one tree" in _all(r), _all(r)
+
+
+def test_a_spread_that_is_not_numbers_is_refused(tmp_path: Path) -> None:
+    proj = _repo(tmp_path, a_hit=4)
+    for bad in ("89.67..89.82", [89.67, "89.82"], [89.67, True], [89.67, 101]):
+        r = _run(proj, {"crate_floors": {"a": _spread(89.6, bad)}}, "--floor", "95")
+        assert r.returncode == 2, (bad, _all(r))
+        assert "`measured` needs two or more runs of one tree" in _all(r), (bad, _all(r))
+
+
+def test_a_file_floor_inside_its_measured_spread_is_refused(tmp_path: Path) -> None:
+    proj = _repo(tmp_path)
+    f = "crates/a/src/lib.rs"
+    floors = {"file_floor": 95, "file_floors": {f: _spread(89.74, [89.74, 89.67, 89.82])}}
+    r = _run(proj, floors, "--floor", "95")
+    assert r.returncode == 2, _all(r)
+    assert f"file_floors[{f!r}] floor 89.74% is above the lowest" in _all(r), _all(r)
+
+
 # ── file_floors ─────────────────────────────────────────────────────────────────────────────────
 
 
