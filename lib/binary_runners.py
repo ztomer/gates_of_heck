@@ -13,6 +13,7 @@ mentions one runs nothing.
 from __future__ import annotations
 
 import ast
+import functools
 import re
 
 try:
@@ -48,6 +49,7 @@ def names(code: str) -> bool:
     return CODE.search(code) is not None
 
 
+@functools.cache  # pure in its text: one parse per file, not one per test that reaches it
 def asks(text: str) -> bool:
     """A function in `text` takes the `goh` or `native_goh` fixture."""
     try:
@@ -67,23 +69,31 @@ def runs(text: str, code: str) -> bool:
     return asks(text) or names(code)
 
 
-def words(rel: str, text: str, code: str) -> set[str]:
+def words(rel: str, code: str) -> frozenset[str]:
+    """What a file could pass the binary as its subcommand (`_words`, read once per file: a
+    helper every test reaches was parsed once per test, 4258 parses for one choice,
+    GOH.CEILINGHEADROOM2)."""
+    return _words(rel.endswith(".py"), code)
+
+
+@functools.cache
+def _words(python: bool, code: str) -> frozenset[str]:
     """What a file could pass the binary as its subcommand: in Python each string literal that is
     one word (an argv element: `[goh, "layer-parity"]`, docstrings blanked in `code`), elsewhere
     every word of its code (a shell line runs `"$bin" structural`)."""
-    if not rel.endswith(".py"):
-        return set(WORD.findall(code))
+    if not python:
+        return frozenset(WORD.findall(code))
     try:
         tree = ast.parse(code)
     except SyntaxError:
         tree = ast.parse("")
-    return {
+    return frozenset(
         n.value.strip()
         for n in ast.walk(tree)
         if isinstance(n, ast.Constant)
         and isinstance(n.value, str)
         and WORD.fullmatch(n.value.strip())
-    }
+    )
 
 
 def _reached(graph, rel: str) -> dict:
@@ -102,7 +112,7 @@ def invoked(graph, rel: str, text: str, subcommands: set[str]) -> set[str] | Non
     found: set[str] = set()
     for dep in [rel, *_reached(graph, rel)]:
         dep_text = text if dep == rel else graph.texts.get(dep, "")
-        own = words(dep, dep_text, graph.code(dep)) & subcommands
+        own = words(dep, graph.code(dep)) & subcommands
         if not own and runs(dep_text, graph.code(dep)) and (dep == rel or names(graph.code(dep))):
             return None
         found |= own
