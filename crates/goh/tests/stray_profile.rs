@@ -51,12 +51,30 @@ fn a_run_with_no_profile_named_writes_none_into_its_cwd() {
     // The profile is still written, where the build named it: the run is counted nowhere, and lost
     // nowhere a person would trip over it.
     if cfg!(coverage) {
-        assert_eq!(
-            profiles(tmp.path()).len(),
-            1,
-            "the named default under TMPDIR"
-        );
+        let named = profiles(tmp.path());
+        assert_eq!(named.len(), 1, "the named default under TMPDIR");
+        count_in_the_run(Path::new(&named[0]));
     }
+}
+
+/// The profile the unnamed run wrote joins the run measuring this test (GOH.SHIPRED01403): the
+/// lines that name the default (`name_stray_profile`, `goh_sys::name_profile`) run only with no
+/// `LLVM_PROFILE_FILE`, so their counts live in that one file, and a scratch TMPDIR deleted with
+/// the test took them with it -- the ship's diff coverage read them as never run. Moved beside this
+/// test's own profile (`LLVM_PROFILE_FILE`'s directory, the one the coverage report merges), it is
+/// counted. A run nobody measures has no such directory: nothing to join.
+fn count_in_the_run(profile: &Path) {
+    let Some(dir) = std::env::var_os("LLVM_PROFILE_FILE")
+        .filter(|v| !v.is_empty())
+        .and_then(|v| Path::new(&v).parent().map(Path::to_path_buf))
+    else {
+        return;
+    };
+    let name = format!("goh-stray-{}.profraw", std::process::id());
+    let dest = dir.join(name);
+    // A rename across file systems fails: the copy is the fallback, never a lost count.
+    let joined = std::fs::rename(profile, &dest).is_ok() || std::fs::copy(profile, &dest).is_ok();
+    assert!(joined, "the unnamed run's profile joins the measured run");
 }
 
 #[test]

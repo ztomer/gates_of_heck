@@ -180,9 +180,11 @@ fn name_stray_profile() {
         let path = std::env::temp_dir()
             .join("goh-profraw")
             .join("default_%m_%p.profraw");
-        if let Ok(c) = std::ffi::CString::new(path.as_os_str().as_bytes()) {
-            goh_sys::name_profile(Box::leak(c.into_boxed_c_str()));
-        }
+        // No failure arm (GOH.SHIPRED01403): the path comes from the environment, which holds no
+        // NUL byte, so the conversion never fails, and an `if let` arm for it was a line no run can
+        // count (the ship's diff coverage named its closing brace).
+        let c = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap_or_default();
+        goh_sys::name_profile(Box::leak(c.into_boxed_c_str()));
     }
 }
 

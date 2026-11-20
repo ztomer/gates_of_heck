@@ -170,3 +170,24 @@ fn snapshot(path: &Path, step: &[String], survivors: &[i32]) {
         eprintln!("orphan_canary: cannot write {}: {e}", path.display());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// No survivors, no `ps` (GOH.SHIPRED01403): `ps -p ""` is a usage error, never an empty
+    /// table. `run_cli` only snapshots a non-empty set, so this arm is reached only here.
+    #[test]
+    fn no_survivors_stamp_nothing() {
+        assert_eq!(stamps(&[]), Vec::<String>::new());
+    }
+
+    /// A live survivor is stamped with its own pid first, as `pid_owner.stamp_line` reads it.
+    #[test]
+    fn a_live_survivor_is_stamped_by_its_pid() {
+        let me = i32::try_from(std::process::id()).expect("a pid fits an i32");
+        let got = stamps(&[me]);
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert!(got[0].starts_with(&format!("{me} ")), "{got:?}");
+    }
+}
