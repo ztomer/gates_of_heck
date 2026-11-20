@@ -11,14 +11,13 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-import sys
 from collections import Counter
 from pathlib import Path
 
 import _drift_guard
 import pytest
+from _drift_planted import planted, planted_load, took_over_ceiling
 from conftest import REPO_ROOT
-from timing_bounds import patience
 
 TESTS = REPO_ROOT / "tests"
 
@@ -127,31 +126,11 @@ def test_no_new_pool_sized_to_the_machine() -> None:
     _ratchet(found, CPU_COUNT_POOLS, "cpu_count() pool")
 
 
-def _planted(
-    tmp_path: Path, body: str, ceiling: float = 30, load: float = 1.0
-) -> subprocess.CompletedProcess[str]:
-    """A one-test suite whose conftest is the real guard's, run in a child pytest, at a pinned
-    load factor -- the box running this test has its own, and the planted ceilings are tenths."""
-    (tmp_path / "conftest.py").write_text(
-        f"import sys\nsys.path.insert(0, {str(TESTS)!r})\n"
-        "import _drift_guard\n"
-        "from _drift_guard import pytest_runtest_makereport  # noqa: F401\n"
-        f"_drift_guard.CEILING_S = {ceiling}\n"
-        f"_drift_guard.load_factor = lambda *_window: {load}\n"
-    )
-    (tmp_path / "test_planted.py").write_text(body)
-    return subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "no:xdist",
-         str(tmp_path)],
-        capture_output=True, text=True, cwd=tmp_path, timeout=60, check=False, stdin=subprocess.DEVNULL,
-    )  # fmt: skip
-
-
 SLEEPER = "import time\n\ndef test_slow():\n    time.sleep(0.6)\n"
 
 
 def test_a_test_over_its_ceiling_fails(tmp_path: Path) -> None:
-    r = _planted(tmp_path, SLEEPER, ceiling=0.3)
+    r = planted(tmp_path, SLEEPER, ceiling=0.3)
     assert r.returncode == 1, r.stdout + r.stderr
     assert "over its 0.3 s ceiling" in r.stdout, r.stdout
 
@@ -159,12 +138,12 @@ def test_a_test_over_its_ceiling_fails(tmp_path: Path) -> None:
 def test_the_ceiling_stretches_with_the_boxs_load(tmp_path: Path) -> None:
     """A 15 s test took 63.8 s at load 38 on 16 cores and refused a push (bigkoff, 2026-10-08): a
     fixed wall-clock bound on a box other sessions load is the flake the docstring says it is not."""
-    r = _planted(tmp_path, SLEEPER, ceiling=0.3, load=4.0)
+    r = planted(tmp_path, SLEEPER, ceiling=0.3, load=4.0)
     assert r.returncode == 0, r.stdout + r.stderr
 
 
 def test_a_stretched_ceiling_still_fails_and_says_by_how_much(tmp_path: Path) -> None:
-    r = _planted(tmp_path, SLEEPER, ceiling=0.3, load=1.5)
+    r = planted(tmp_path, SLEEPER, ceiling=0.3, load=1.5)
     assert r.returncode == 1, r.stdout + r.stderr
     assert "over its 0.3 s ceiling x1.5 for the box's load and speed" in r.stdout, r.stdout
 
@@ -199,34 +178,6 @@ def test_a_slower_box_stretches_every_bound_by_its_measured_speed(monkeypatch) -
         assert _drift_guard.speed_factor() == want
 
 
-def _planted_load(tmp_path: Path, body: str) -> subprocess.CompletedProcess[str]:
-    """A one-test suite under the real guard and its real sampler, on a box of 16 cores whose run
-    queue is FAKED by phase: 64 until the test body says `run`, 8 (a quiet box) while it runs,
-    and 8 again once it says `end` -- os.getloadavg is what the sampler and the end reading ask."""
-    (tmp_path / "conftest.py").write_text(
-        f"import os, sys\nsys.path.insert(0, {str(TESTS)!r})\n"
-        f"os.environ[{_drift_guard.SPEED_ENV!r}] = '1'\n"
-        "import _drift_guard\n"
-        "from _drift_guard import pytest_runtest_makereport  # noqa: F401\n"
-        "_drift_guard.CEILING_S = 0.3\n"
-        "_drift_guard.SAMPLE_S = 0.02\n"
-        "os.cpu_count = lambda: 16\n"
-        "LOADS = {'before': 64.0, 'run': 64.0, 'end': 8.0}\n"
-        "def _fake():\n"
-        "    n = LOADS[os.environ.get('FAKE_LOAD_PHASE', 'before')]\n"
-        "    return (n, n, n)\n"
-        "os.getloadavg = _fake\n"
-    )
-    (tmp_path / "test_planted.py").write_text(body)
-    env = {k: v for k, v in os.environ.items() if k != "FAKE_LOAD_PHASE"}
-    return subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "no:xdist",
-         str(tmp_path)],
-        capture_output=True, text=True, cwd=tmp_path, timeout=patience(60), check=False, env=env,
-        stdin=subprocess.DEVNULL,
-    )  # fmt: skip
-
-
 def test_a_load_that_fell_before_the_test_ended_still_stretches_its_ceiling(tmp_path) -> None:
     """GOH.CEILINGHEADROOM: the ceiling was stretched by the load read when the test ENDED, so a
     test that ran its whole call at load 64 on 16 cores (4x) and ended as the box went quiet was
@@ -237,30 +188,21 @@ def test_a_load_that_fell_before_the_test_ended_still_stretches_its_ceiling(tmp_
         "    os.environ['FAKE_LOAD_PHASE'] = 'run'\n    time.sleep(0.6)\n"
         "    os.environ['FAKE_LOAD_PHASE'] = 'end'\n    time.sleep(0.05)\n"
     )
-    r = _planted_load(tmp_path, body)
+    r = planted_load(tmp_path, body)
     assert r.returncode == 0, r.stdout + r.stderr
-
-
-def _took_over_ceiling(out: str, name: str, ceiling: float) -> float | None:
-    """The seconds the guard reports for `name` ("<name> took <n> s, over its <ceiling> s
-    ceiling"), or None when it does not report it. The measured <n> depends on the machine
-    (v0.139.22's hosted CI, tracing under coverage, printed 0.7 for a 0.6 s sleep), so a test
-    asserts the verdict and a bound on <n>, never the exact digits (GOH.CIRED013922)."""
-    m = re.search(rf"{re.escape(name)} took (\d+(?:\.\d+)?) s, over its {ceiling:g} s ceiling", out)
-    return float(m.group(1)) if m else None
 
 
 def test_the_reported_duration_is_parsed_not_pinned() -> None:
     line = "test_b_slow_on_a_quiet_box took {} s, over its 0.3 s ceiling"
     for shown in ("0.6", "0.7", "12.4"):  # a quiet box, a traced box, a starved one
-        assert _took_over_ceiling(line.format(shown), "test_b_slow_on_a_quiet_box", 0.3) == float(
+        assert took_over_ceiling(line.format(shown), "test_b_slow_on_a_quiet_box", 0.3) == float(
             shown
         )
     assert (
-        _took_over_ceiling("test_b_slow_on_a_quiet_box passed", "test_b_slow_on_a_quiet_box", 0.3)
+        took_over_ceiling("test_b_slow_on_a_quiet_box passed", "test_b_slow_on_a_quiet_box", 0.3)
         is None
     )
-    assert _took_over_ceiling(line.format("0.6"), "test_other", 0.3) is None
+    assert took_over_ceiling(line.format("0.6"), "test_other", 0.3) is None
 
 
 def test_a_2x_slowdown_at_low_load_still_fails_after_a_loaded_test(tmp_path) -> None:
@@ -273,17 +215,17 @@ def test_a_2x_slowdown_at_low_load_still_fails_after_a_loaded_test(tmp_path) -> 
         "def test_b_slow_on_a_quiet_box():\n"
         "    os.environ['FAKE_LOAD_PHASE'] = 'end'\n    time.sleep(0.6)\n"
     )
-    r = _planted_load(tmp_path, body)
+    r = planted_load(tmp_path, body)
     assert r.returncode == 1, r.stdout + r.stderr
     assert "1 failed, 1 passed" in r.stdout, r.stdout
-    took = _took_over_ceiling(r.stdout, "test_b_slow_on_a_quiet_box", 0.3)
+    took = took_over_ceiling(r.stdout, "test_b_slow_on_a_quiet_box", 0.3)
     assert took is not None, r.stdout
     assert took >= 0.6, r.stdout  # the call slept 0.6 s; coverage tracing only adds to it
 
 
 def test_a_test_that_builds_goh_fails_and_other_cargo_passes(tmp_path: Path) -> None:
     manifest = REPO_ROOT / "Cargo.toml"
-    r = _planted(
+    r = planted(
         tmp_path,
         "import subprocess\n\n"
         "def test_metadata_passes():\n"

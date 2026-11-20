@@ -275,7 +275,7 @@
   "tests/test_structural_keep_going.py": 2,
   "tests/test_subject_floors.py": 1,
   "tests/test_suite_cache_isolation.py": 2,
-  "tests/test_suite_drift.py": 8,
+  "tests/test_suite_drift.py": 7,
   "tests/test_swift_gate_baseline.py": 2,
   "tests/test_swift_gate_tests_warnings.py": 1,
   "tests/test_swift_staged.py": 1,

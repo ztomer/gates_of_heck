@@ -165,7 +165,7 @@ def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
 import _drift_guard
 import _land_verdicts
 import _schedule
-from _drift_guard import pytest_runtest_makereport  # noqa: F401
+from _drift_guard import pytest_runtest_makereport, pytest_runtest_setup  # noqa: F401
 from _goh_request import _remember_request, native_goh_path  # noqa: F401  (an autouse fixture)
 from _retired import NATIVE as _NATIVE
 from _tree_guard import pytest_sessionfinish, pytest_sessionstart  # noqa: F401

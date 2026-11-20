@@ -134,7 +134,6 @@
   "test_step_timings.py": 3,
   "test_step_wrapper_cli.py": 4,
   "test_suite_cache_isolation.py": 5,
-  "test_suite_drift.py": 1,
   "test_suite_drops_the_profile.py": 1,
   "test_suite_tmp_reaped.py": 3,
   "test_temp_claimable.py": 1,

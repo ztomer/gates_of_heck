@@ -9,6 +9,7 @@ other sessions load, a timing gate flakes and gets switched off:
   meant -- `DRIFT_BUILD_OK=1` in that build's environment: the session fixture's one build, and a
   test whose subject IS the build. Said at the call site, not by file, because such a test scrubs
   its environment (PYTEST_CURRENT_TEST with it), and the opt-in is then the one thing it passes;
+* a test's setup over SETUP_CEILING_S fails the same way (GOH.SETUPCEILING, below);
 * a test's call phase over CEILING_S fails -- 60 s on a box at most one runnable thread per
   core, tight enough to catch a leaked child holding a captured pipe (one waited out a whole
   `sleep 30` -- a leak that long or longer) or a runaway build. A wall-clock bound IS a timing
@@ -51,6 +52,30 @@ from _reused_tmp import reused_mkdtemp
 _ROOT = Path(__file__).resolve().parents[1]
 
 CEILING_S = 60.0
+# A test's SETUP phase has its own ceiling (GOH.SETUPCEILING): pytest's setup report covers every
+# fixture set up for that test, and a module or session fixture is charged once, to the first test
+# that triggers it. Only the call was judged, so test_self_walk's module fixture spent 45.5 s on two
+# `structural --full` walks that no gate saw. Which test is first depends on the worker and the
+# order, so a module's own setup ceiling is keyed by its FILE, never by a test id that moves.
+# 20 s: the dearest ordinary fixtures (test_gate_temp_leaks' structural walk and the module
+# fixtures of test_gate_calibration and test_rust_gate_scoped_cache) run 4-8 s on a quiet box,
+# read as a loaded run's seconds over the load factor the guard stretches by (2026-11-20, load
+# 45-90 on 16 cores: 54 s / x7, 14 s / x2.8, 13 s / x2.8); 0.8 of 20 is 16 s, twice the dearest
+# of them. A leaked child or a fixture that gates a whole tree to prove one thing waits 30 s+,
+# over this at any load.
+SETUP_CEILING_S = 20.0
+SETUP_SLOW: dict[str, float] = {  # test FILE -> its own setup ceiling, each with its reason
+    # the module fixture IS the asserted subject: two `structural --full` walks of goh side by side
+    # (one clean, one with planted violations), 13-15 s on a quiet box by the load figure, 45.5 s
+    # measured by GOH.CEILINGHEADROOM2. It cannot be cut without un-asserting the walk.
+    "tests/test_self_walk.py": 60,
+}
+
+
+def setup_ceiling(nodeid: str) -> float:
+    return SETUP_SLOW.get(nodeid.split("::", 1)[0], SETUP_CEILING_S)
+
+
 SLOW: dict[str, float] = {  # nodeid -> its own ceiling, each with its reason
     # a real `cargo build --release` of goh, cold in a fresh export: 30 s measured under load
     "tests/test_goh_build_publish.py::test_a_broken_uncommitted_edit_never_reaches_the_published_binary": 600,
@@ -207,18 +232,33 @@ if _REAL_CARGO:
     os.environ["PATH"] = f"{_shim_dir}{os.pathsep}{os.environ.get('PATH', '')}"
 
 
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item):
+    """Start the load sampler before the first fixture: a setup is judged by the load it ran in."""
+    _start_sampler()
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     _start_sampler()
     outcome = yield
     rep = outcome.get_result()
-    if rep.when != "call" or not rep.passed:
+    if rep.when not in ("setup", "call") or not rep.passed:
         return
-    ceiling = SLOW.get(item.nodeid, CEILING_S)
+    setup = rep.when == "setup"
+    ceiling = setup_ceiling(item.nodeid) if setup else SLOW.get(item.nodeid, CEILING_S)
     factor = load_factor(call.start, call.stop)
     if call.duration > ceiling * factor:
         stretch = f" x{factor:.2g} for the box's load and speed" if factor > 1 else ""
         rep.outcome = "failed"
+        if setup:
+            rep.longrepr = (
+                f"{item.nodeid} setup took {call.duration:.1f} s, over its {ceiling:g} s ceiling"
+                f"{stretch} (tests/_drift_guard.py): the fixtures this test was the first to need, "
+                "a module or session fixture charged once. Make the fixture cheaper, or name its "
+                "test FILE in SETUP_SLOW with a reason."
+            )
+            return
         rep.longrepr = (
             f"{item.nodeid} took {call.duration:.1f} s, over its {ceiling:g} s ceiling{stretch} "
             "(tests/_drift_guard.py): a leaked child holding a captured pipe, a hidden build, or a "
