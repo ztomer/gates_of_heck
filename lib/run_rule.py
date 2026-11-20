@@ -79,6 +79,7 @@ DECLARED = {
     "gates/push_gate.sh: . $1": GATESRC_ARG,
     "lib/push_runs.sh: . $1": GATESRC_ARG,
     "gates/_push_refusals.sh: . $root/.gatesrc": GATESRC,
+    "gates/cad_gate.sh: . ./.gatesrc": GATESRC,
     "gates/local_ci.sh: . $ROOT/.gatesrc": GATESRC,
     "gates/proven.sh: . $top/.gatesrc": GATESRC,
     "gates/push_gate.sh: . ./.gatesrc": GATESRC,

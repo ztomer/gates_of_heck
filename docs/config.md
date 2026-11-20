@@ -230,6 +230,13 @@ type, which the compiler reports by NAME and never by pointing at the pin.
 | `GOH_SWIFT_COLD` | `1` | `1` wipes ALL of `.build` before build+test (cold on purpose). `0` allows incremental. |
 | `GOH_SWIFT_LINT_BASELINE` | unset (bare `swiftlint --strict`) | Path to baseline JSON. When set, lint becomes a shrink-only ratchet: baselined violations tolerated, new ones fail named, vanished ones print a re-record nudge. |
 
+## CAD (`gates/cad_gate.sh`)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `GOH_CAD_LAYOUT` | unset (the gate refuses, exit 2) | The repo's layout JSON: its plates, objects (STL, plate, centre, settings, `shells`, support regions), the slicer profiles and what the slice must show. Every key is listed in `checks/cad_bambu.py`'s docstring. The mesh, strain and slicer steps all read it. |
+| `GOH_CAD_BAMBU` | `/Applications/BambuStudio.app/Contents/MacOS/BambuStudio` | The Bambu Studio CLI the slicer step runs (the layout's `bambu` wins). Missing is exit 2 naming the path. |
+
 ## Coverage (`gates/coverage_gate.sh` + `gates/coverage_swift.py`)
 
 | Key | Default | Meaning |
