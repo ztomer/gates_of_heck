@@ -7,6 +7,7 @@ import re
 
 import pytest
 import timing_bounds
+from _this_thread import this_thread
 from conftest import REPO_ROOT
 
 # An upper bound on an elapsed time written as a number: `elapsed < 15`, `time.time() - t0 < 5`.
@@ -87,7 +88,8 @@ def test_a_failure_not_clear_of_its_pass_is_a_design_error() -> None:
 def test_a_give_up_deadline_rereads_the_load_while_it_waits(monkeypatch) -> None:
     # 2026-10-10: a deadline read once at load 1 expired while a push loaded the box mid-wait.
     clock = [100.0]
-    monkeypatch.setattr(timing_bounds.time, "monotonic", lambda: clock[0])
+    real = timing_bounds.time.monotonic
+    monkeypatch.setattr(timing_bounds.time, "monotonic", this_thread(lambda: clock[0], real))
     monkeypatch.setattr(timing_bounds, "load_factor", lambda: 1.0)
     wait = timing_bounds.GiveUp(10)
     clock[0] += 15

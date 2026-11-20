@@ -12,7 +12,6 @@ import importlib.util
 import json
 import os
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -87,9 +86,7 @@ def test_two_lands_filed_within_the_window_go_through_one_gate_run(tmp_path, mon
     monkeypatch.delenv("GOH_LANDQ_WINDOW", raising=False)
     monkeypatch.delenv("GOH_LANDQ_BATCH", raising=False)
     lq, q = _landq(), _dirs(tmp_path)
-    clock = Clock(T0)
-    monkeypatch.setattr(time, "time", clock.time)
-    monkeypatch.setattr(time, "sleep", clock.sleep)
+    clock = Clock(T0)  # handed to drain_held, never patched into the time module (below)
     t0 = clock.t
     _file(q, t0, "T.ONE")
     marker = _mark(q, "T.TWO", os.getpid(), t0 + 3600)
@@ -104,9 +101,39 @@ def test_two_lands_filed_within_the_window_go_through_one_gate_run(tmp_path, mon
     monkeypatch.setattr(lq.landq_early, "sweep", lambda *_a: 0)
     monkeypatch.setattr(lq, "record", lambda *_a: None)
     monkeypatch.setattr(lq, "batch_kit", lambda: None)
-    assert lq.drain_held(q) is True
+    assert lq.drain_held(q, clock=clock.time, sleep=clock.sleep) is True
     assert runs == [["T.ONE", "T.TWO"]], runs
     assert 32 <= clock.slept < 32 + 2.5, clock.slept  # one poll past the filing, no more
+
+
+def test_a_land_that_files_and_exits_between_the_two_reads_joins_the_batch(tmp_path, monkeypatch):
+    """GOH.LANDQWINFLAKE: the window listed pending/, THEN read the markers. TWO filing and its
+    enqueue exiting between the two reads left it in neither, so the window closed on "no enqueue
+    left" with a list that lacked it, and TWO went through a second gate run: `[['T.ONE'],
+    ['T.TWO']]` in a pre-step at load 116-138, where the old test's fake `time.sleep`, patched into
+    the whole process, could run the filing on another thread between the reads. The markers are
+    read first now; a land whose marker is gone by then is already listed."""
+    monkeypatch.delenv("GOH_LANDQ_WINDOW", raising=False)
+    monkeypatch.delenv("GOH_LANDQ_BATCH", raising=False)
+    import landq_inflight
+    import landq_window
+
+    q, clock, said = _dirs(tmp_path), Clock(T0), []
+    _file(q, clock.t, "T.ONE")
+    marker = _mark(q, "T.TWO", os.getpid(), clock.t + 3600)
+    real = landq_inflight.live
+
+    def live(qq, item=None):  # TWO files and exits just as the lander reads the markers
+        if marker.exists():
+            _file(q, clock.t + 1, "T.TWO")
+            marker.unlink()
+        return real(qq, item)
+
+    monkeypatch.setattr(landq_inflight, "live", live)
+    listed = sorted((q / "pending").glob("*.json"))
+    out = landq_window.hold(q, listed, said.append, clock.time, clock.sleep)
+    assert [p.stem.partition("-")[2] for p in out] == ["T.ONE", "T.TWO"], out
+    assert (clock.slept, said) == (0.0, [])
 
 
 @pytest.fixture

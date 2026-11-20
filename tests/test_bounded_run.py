@@ -30,6 +30,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import bounded_run
 import pid_owner
+from _this_thread import this_thread
 from timing_bounds import assert_sooner
 
 
@@ -207,7 +208,7 @@ def test_a_step_that_exits_on_its_own_is_not_charged_a_ceiling_poll(monkeypatch)
         slept.append(seconds)
         real_sleep(seconds)
 
-    monkeypatch.setattr(bounded_run.time, "sleep", spy)
+    monkeypatch.setattr(bounded_run.time, "sleep", this_thread(spy, real_sleep))
     outcome = bounded_run.run_step(
         ["/bin/sh", "-c", "/bin/sleep 0.05"],
         30,

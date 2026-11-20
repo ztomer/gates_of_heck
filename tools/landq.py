@@ -77,6 +77,7 @@ import os
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -295,14 +296,20 @@ def live_pythonpath(value: str) -> str:
     return os.pathsep.join(out)
 
 
-def drain_held(q: Path, digest: str = "") -> bool:
-    """Run every pending request; False when the lander's code changed and it must re-exec."""
+def drain_held(
+    q: Path,
+    digest: str = "",
+    clock: Callable[[], float] | None = None,
+    sleep: Callable[[float], None] | None = None,
+) -> bool:
+    """Run every pending request; False when the lander's code changed and it must re-exec.
+    CLOCK and SLEEP: the batch window's and the held pause's (a test's fake clock), else time's."""
     # A request a dead lander was running goes back to the front: its name keeps its place.
     for stale in sorted((q / "running").glob("*.json")):
         stale.replace(q / "pending" / stale.name)
         warn(f"{stale.name}: its lander died mid-request -- running it again")
     fails: dict[str, int] = {}  # passes each request has been left pending by a git failure
-    while pending := landq_window.pending(q, info):  # after the batch window (GOH.BATCHWINDOW)
+    while pending := landq_window.pending(q, info, clock, sleep):  # the window (GOH.BATCHWINDOW)
         paths = [q / "running" / p.name for p in landq_batch.pick(pending)]  # GOH.LANDBATCH
         for path in paths:
             (q / "pending" / path.name).replace(path)
@@ -320,7 +327,7 @@ def drain_held(q: Path, digest: str = "") -> bool:
             path.unlink(missing_ok=True)
         landq_early.sweep(q, record, info)  # GOH.EARLYCONFLICT: red now, not at its turn
         if held:
-            time.sleep(landq_batch.PAUSE)  # the git failure may be load: not a hot retry loop
+            (sleep or time.sleep)(landq_batch.PAUSE)  # the git failure may be load: no hot retry
         if digest and code_digest() != digest:
             return False
     return True

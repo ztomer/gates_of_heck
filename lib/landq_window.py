@@ -108,12 +108,14 @@ def _batchable(pending: list[Path], repo: object) -> list[dict]:
     return [r for r in reqs if r.get("mode") == "land" and r.get("repo") == repo]
 
 
-def others(q: Path, pending: list[Path]) -> list[dict]:
+def others(q: Path, pending: list[Path], markers: list[dict] | None = None) -> list[dict]:
     """The live enqueue markers that would join the head's batch: another land of its repo whose
-    request is not filed yet (a marker naming no repo is one whose repo is unknown: it counts)."""
+    request is not filed yet (a marker naming no repo is one whose repo is unknown: it counts).
+    MARKERS: landq_inflight.live(q), read BEFORE `pending` was listed (`hold`); read now if none."""
     repo = landq_batch.read(pending[0]).get("repo")
     items = {r.get("item") or Path(str(repo)).name for r in _batchable(pending, repo)}
-    return [m for m in landq_inflight.live(q)
+    markers = landq_inflight.live(q) if markers is None else markers
+    return [m for m in markers
             if m.get("repo") in (None, "", repo) and m.get("item") not in items]  # fmt: skip
 
 
@@ -128,8 +130,10 @@ def hold(
     clock: Callable[[], float] | None = None,
     sleep: Callable[[float], None] | None = None,
 ) -> list[Path]:
-    """The pending list once the window closed (module doc): PENDING itself when nobody waited.
-    CLOCK and SLEEP default to time's own, looked up per call (a test's fake replaces them)."""
+    """The pending list once the window closed (module doc), listed again after the markers were
+    read: PENDING's head decides whether it waits at all.
+    CLOCK and SLEEP default to time's own; a test passes its fake clock here, never by patching
+    the time module, which every thread of the process reads (GOH.LANDQWINFLAKE)."""
     clock, sleep = clock or time.time, sleep or time.sleep
     head, bound, cap = landq_batch.read(pending[0]), window(), landq_batch.cap()
     if head.get("mode") != "land" or cap == 1 or bound == 0:
@@ -137,7 +141,17 @@ def hold(
     name, at, start, waited = pending[0].stem, filed(pending[0]), clock(), False
     took = expected(q, head.get("repo"))
     while True:
-        waiting = others(q, pending)
+        # The markers FIRST, then the listing (GOH.LANDQWINFLAKE): an enqueue files its request,
+        # then its marker goes, so a land whose marker is gone at this read is in the listing
+        # below. Listed first, a land that filed and exited between the two reads was in neither:
+        # the window closed on "no enqueue left" with a list that lacked it, and it went through
+        # a second gate run of its own.
+        markers = landq_inflight.live(q)
+        if not (pending := sorted((q / "pending").glob("*.json"))):
+            if waited:
+                say(f"{name}: left pending/ while the batch waited -- {clock() - start:.0f}s")
+            return pending
+        waiting = others(q, pending, markers)
         end = deadline(at, waiting, took)
         size, left = len(_batchable(pending, head.get("repo"))), end - clock()
         why = ("no enqueue is left in its pre-step" if not waiting else
@@ -155,12 +169,15 @@ def hold(
                 f"its pre-steps take {took:.0f}s)")  # fmt: skip
         waited = True
         sleep(min(POLL_S, left))
-        if not (pending := sorted((q / "pending").glob("*.json"))):
-            say(f"{name}: left pending/ while the batch waited -- {clock() - start:.0f}s")
-            return pending
 
 
-def pending(q: Path, say: Callable[[str], None]) -> list[Path]:
-    """The lander's pending requests in queue order, once the batch window closed (its one call)."""
+def pending(
+    q: Path,
+    say: Callable[[str], None],
+    clock: Callable[[], float] | None = None,
+    sleep: Callable[[float], None] | None = None,
+) -> list[Path]:
+    """The lander's pending requests in queue order, once the batch window closed (its one call);
+    CLOCK and SLEEP as `hold` takes them (a test's fake clock, never a patch of the time module)."""
     listed = sorted((q / "pending").glob("*.json"))
-    return hold(q, listed, say) if listed else listed
+    return hold(q, listed, say, clock, sleep) if listed else listed

@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 import timing_bounds
+from _this_thread import this_thread
 from conftest import REPO_ROOT
 from load_kit import WHY
 
@@ -89,7 +90,7 @@ def test_an_owner_that_died_is_never_reported_as_success(monkeypatch) -> None:
 
     monkeypatch.setattr(module.os, "getppid", lambda: 1)
     monkeypatch.setattr(module.os, "_exit", fake_exit)
-    monkeypatch.setattr(module.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(module.time, "sleep", this_thread(lambda _s: None, module.time.sleep))
     with pytest.raises(Stop):
         module._watch_parent(FakeExperiment(), 4242)
     assert exits and exits[0] != 0, exits
