@@ -76,3 +76,25 @@ def test_a_main_that_moves_during_the_pre_step_gets_a_second_one(
     runs = judged.read_text().split()
     assert len(runs) == 2 and runs[1] == _main(repo) != runs[0], out
     assert seen.read_text() == "gate\n", out
+
+
+def test_the_pre_step_is_the_one_the_rebased_tree_declares(repo: Path, tmp_path: Path) -> None:
+    """Main changes GOH_LAND_PRE while the lane is out: the land runs main's, not the lane's.
+
+    land.sh read the declaration once, before rebasing, and ran it on the rebased tree: when
+    GOH.COVOFFLAND dropped `--fast-only` from goh's GOH_LAND_PRE and from tools/affected_tests.py,
+    the next land (GOH.CADOVERRIDE, 2026-11-19) ran the old command on the new tool, which refused
+    the flag, and landed nothing.
+    """
+    seen, judged = tmp_path / "seen", tmp_path / "judged"
+    gate = f"GOH_LAND_GATE='echo gate >> {seen}'\n"
+    _declare(repo, gate + f"GOH_LAND_PRE='echo lane >> {judged}'\n")
+    wt = _worktree(repo, tmp_path)
+    _declare(repo, gate + f"GOH_LAND_PRE='echo main >> {judged}'\n")
+    env = hermetic_env(drop_git=True)
+    env.pop("GATES_OF_HECK_SUITE_RUNNER", None)
+    r = subprocess.run(["bash", str(LAND)], cwd=wt, env=env, capture_output=True, text=True,
+                       stdin=subprocess.DEVNULL, timeout=patience(120), check=False)  # fmt: skip
+    out = r.stdout + r.stderr
+    assert r.returncode == 0, out
+    assert judged.read_text().split() == ["main"], out

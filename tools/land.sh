@@ -180,6 +180,10 @@ land_rebase() {
     info "rebased $branch onto main ${base:0:8}: ${tip:0:8} -> ${now:0:8}"
     tip="$now"
     rebased=1   # the gates that judge the new tip are chosen before the gate (land_roots, below)
+    # The declarations are the rebased tree's (GOH.LANDPREREREAD): read before the rebase, main's
+    # change to GOH_LAND_PRE ran as the lane's old command on main's new tools.
+    pre="$(gatesrc_var GOH_LAND_PRE)" || exit 2
+    ship_full="$(gatesrc_var GOH_SHIP_FULL_SUITE)" || exit 2
 }
 . "$GOH/lib/land_row.sh" || exit 2   # land_row: the land's own profile rows (GOH.RELEASELANDGATE)
 # land_pre [CMD RECORD] -- the pre-step (or CMD, recording into RECORD) on the tip as it is now;
