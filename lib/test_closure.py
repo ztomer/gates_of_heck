@@ -244,6 +244,16 @@ class Closure:
             self._base |= set(self.load_reads())
         return self._base
 
+    def base_code(self, changed: list[str]) -> list[str]:
+        """The changed Python files pytest may IMPORT while it loads (GOH.BASECODESELECT): a base
+        module, or a deleted .py, which a module still importing it breaks at collection. Its
+        direct readers stay the diff's choice; the pre-step also collects the whole suite
+        (lib/fast_tests.py `collects`), since a broken base module fails any test's load."""
+        base = self.base()
+        return [
+            p for p in changed if p.endswith(".py") and (p in base or not (self.root / p).exists())
+        ]
+
     def load_reads(self) -> dict[str, str]:
         """{data file: its opener} for each LOAD_READ a base file declares on the line opening it,
         when the file is here. Every test reads it, so a change to it chooses them all."""

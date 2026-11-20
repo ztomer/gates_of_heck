@@ -44,7 +44,8 @@ THE SET is the union of
   * the BINARY'S RUNNERS (GOH.AFFECTEDBINARY): a build-input change chooses every test running it.
   * the READERS of a changed path (lib/declared_reads.py, GOH.SELECTAUDIT, SELECTLOCKORDER): what
     a test, its tests/ helpers, or a scanner it points at the root globs, copies or declares.
-  * EVERY test for a change to data pytest's load opens (lib/test_closure.py, GOH.BASEDATAREADS).
+  * EVERY test for a change to data pytest's load opens (lib/test_closure.py, GOH.BASEDATAREADS);
+    for one to its CODE, its readers, the whole suite collected first (lib/fast_tests.py).
   * the RELEASE CANARY, after the tests, when a consumer NAMES a changed path from its own files
     (lib/consumer_reads.py, GOH.LANDMISS1119): no goh test runs a consumer's script, the canary
     does (GOH.PYTESTPIN: sys_updater reads `required_tools.py --floors`; green here, red in the
@@ -325,7 +326,7 @@ def main(argv: list[str]) -> int:
         else affected(root, changed)
     )
     if args.run:
-        if args.structural and (rc := structural(root)):
+        if args.structural and (rc := fast_tests.structural(root)):
             return rc
         whole = args.changed is None and not args.readers_only
         base = pre_reuse.base_sha(root, args.base) if whole else None  # ONE run per change: av
@@ -334,20 +335,6 @@ def main(argv: list[str]) -> int:
     for rel, why in chosen.items():
         print(f"{rel}  # {why}" if args.why else rel)
     return 0
-
-
-def structural(root: Path) -> int:
-    """The structural gates over the whole branch, before any test (GOH.PREPARITY): the 500-line
-    cap, the roadmap, the seeds -- seconds, where the land gate met them after ~10 min of suite
-    (GOH.AFFECTEDBINARY's land). This checkout's gates/structural.sh, as the land gate runs it."""
-    info("pre-land: the structural gates over the branch first (gates/structural.sh --full)")
-    script = Path(__file__).resolve().parent.parent / "gates" / "structural.sh"
-    from checks._gitutil import local_env_vars  # git's own list of what binds it to one repo
-
-    env = {k: v for k, v in os.environ.items() if k not in local_env_vars()}  # the ROOT's git
-    return subprocess.run(
-        ["bash", str(script), "--full"], cwd=root, env=env, check=False, stdin=subprocess.DEVNULL
-    ).returncode
 
 
 def canary(root: Path, changed: list[str], repos: list[Path] | None = None) -> int:
@@ -382,6 +369,8 @@ def run(root: Path, changed: list[str], chosen: dict[str, str], base: str | None
     runs nothing: pytest.sh with no file runs the whole suite, which is the full gate's job, never
     the pre-step's. Inside a running goh suite (a fixture land of a goh copy) it runs nothing
     either and says so: pytest.sh refuses a nested suite, and the suite around it runs these."""
+    if rc := fast_tests.collects(root, changed):
+        return rc
     if not chosen:
         why = f"no test is chosen by {counted(len(changed), 'changed path')}"
         ok(f"pre-land: {why}")

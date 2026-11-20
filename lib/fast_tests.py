@@ -15,6 +15,9 @@ BUDGET_S. Never a hand list: a judge that grows slow leaves the set by its own m
 one joins once a top-level suite has timed it. An unmeasured test, or a cached id whose function
 the file no longer defines (the table prunes by FILE only), is not chosen: a nodeid pytest cannot
 find is a usage error, not a red.
+
+The pre-step's other cheap phases live here too: `structural` (gates/structural.sh --full) and
+`collects` (the whole suite collected when base code changes, GOH.BASECODESELECT).
 """
 
 from __future__ import annotations
@@ -26,6 +29,8 @@ import subprocess
 from pathlib import Path
 
 from tui.lib import counted, info
+
+RECORD, REUSE = "GOH_LAND_VERDICTS_RECORD", "GOH_LAND_VERDICTS_REUSE"  # lib/affected_verdict.py
 
 # Summed measured seconds of the set, and the most one test may cost to join it. The cut is a
 # serial run (`-n 0`: an xdist bring-up costs ~7 s on this box, more than the set), so its wall
@@ -141,3 +146,39 @@ def run(root: Path, judges: dict[str, str]) -> int:
     if rc not in (0, 1):
         info(f"pre-land: the fast judges gave no verdict (exit {rc}) -- the full set decides")
     return 1 if rc == 1 else 0
+
+
+def structural(root: Path) -> int:
+    """The structural gates over the whole branch, before any test (GOH.PREPARITY): the 500-line
+    cap, the roadmap, the seeds -- seconds, where the land gate met them after ~10 min of suite
+    (GOH.AFFECTEDBINARY's land). This checkout's gates/structural.sh, as the land gate runs it."""
+    info("pre-land: the structural gates over the branch first (gates/structural.sh --full)")
+    script = Path(__file__).resolve().parent.parent / "gates" / "structural.sh"
+    from checks._gitutil import local_env_vars  # git's own list of what binds it to one repo
+
+    env = {k: v for k, v in os.environ.items() if k not in local_env_vars()}  # the ROOT's git
+    return subprocess.run(
+        ["bash", str(script), "--full"], cwd=root, env=env, check=False, stdin=subprocess.DEVNULL
+    ).returncode
+
+
+def collects(root: Path, changed: list[str]) -> int:
+    """The WHOLE suite collected, when the diff changes a module pytest may import as it loads
+    (lib/test_closure.py `base_code`, GOH.BASECODESELECT): a broken base module fails every test's
+    load, and the set chooses only its readers, so the pre-step says so itself, in ~16 s serial,
+    never by the luck of a judge loading it. No record, no reuse: a collection judges no test.
+    Never inside a running goh suite (run's rule): pytest.sh refuses a nested one."""
+    from lib import test_closure  # here: tests/_shard.py loads this module for its table alone
+    from lib.step_timings import timed
+
+    code = test_closure.Closure(root).base_code(changed)
+    if not code or os.environ.get("GATES_OF_HECK_SUITE_RUNNER"):
+        return 0
+    info(f"pre-land: base code changed ({', '.join(code[:3])}{' ...' * (len(code) > 3)}) -- "
+         "the whole suite collects first")  # fmt: skip
+    quiet = 'set -o pipefail; "$@" | { grep -Ev "^tests/[^ ]+: [0-9]+$" || true; }'  # no count rows
+    return timed(
+        "pre-land: the whole suite collects",
+        ["bash", "-c", quiet, "collect", "env", "-u", RECORD, "-u", REUSE, "bash",
+         str(root / "tools" / "pytest.sh"), "--collect-only", "-q", "-n", "0"],
+    )  # fmt: skip
