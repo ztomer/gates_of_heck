@@ -170,7 +170,25 @@ fn leave_run_mark() {
     }
 }
 
+/// An instrumented build's run never profiles into its cwd (GOH.STRAYPROFRAW): with no
+/// `LLVM_PROFILE_FILE` the profile goes under the temp directory, never the runtime's relative
+/// default. `crates/goh/tests/stray_profile.rs`.
+#[cfg(coverage)]
+fn name_stray_profile() {
+    use std::os::unix::ffi::OsStrExt;
+    if std::env::var_os("LLVM_PROFILE_FILE").is_none_or(|v| v.is_empty()) {
+        let path = std::env::temp_dir()
+            .join("goh-profraw")
+            .join("default_%m_%p.profraw");
+        if let Ok(c) = std::ffi::CString::new(path.as_os_str().as_bytes()) {
+            goh_sys::name_profile(Box::leak(c.into_boxed_c_str()));
+        }
+    }
+}
+
 fn main() {
+    #[cfg(coverage)]
+    name_stray_profile();
     leave_run_mark();
     goh_dir::repair();
     let (os, arch) = platform::current();

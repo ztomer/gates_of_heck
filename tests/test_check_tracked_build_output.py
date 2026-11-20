@@ -210,3 +210,41 @@ def test_a_commit_that_stages_nothing_is_not_refused(repo):
     """A scope with no subject is a commit with nothing to judge, not a repository tracking nothing."""
     r = run(repo, "--staged")
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# ── a coverage profile, tracked or not (GOH.STRAYPROFRAW) ───────────────────────────────────────
+# On 2026-11-20 two `default_<sig>_0_<pid>.profraw` appeared untracked in the loop's checkout: an
+# instrumented goh run there with no LLVM_PROFILE_FILE. No build keeps one in a work tree, and the
+# next `git add -A` commits it, so a profile git can see is refused even untracked.
+
+STRAY = "default_275138824730222865_0_68871.profraw"
+
+
+def test_a_planted_untracked_profile_is_refused_in_both_scopes(repo):
+    write(repo, "src/main.rs", "fn main() {}\n")
+    stage(repo, "src/main.rs")
+    write(repo, STRAY, "not a profile\n")
+    write(repo, f"sub/{STRAY}", "not a profile\n")
+    for args in ((), ("--staged",)):
+        r = run(repo, *args)
+        assert r.returncode == 1, r.stdout + r.stderr
+        assert STRAY in r.stderr and f"sub/{STRAY}" in r.stderr, r.stderr
+        assert "LLVM_PROFILE_FILE" in r.stderr, r.stderr
+
+
+def test_a_staged_profile_is_refused(repo):
+    write(repo, f"x/{STRAY}", "not a profile\n")
+    stage(repo, f"x/{STRAY}")
+    r = run(repo, "--staged")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "coverage profile" in r.stderr, r.stderr
+
+
+def test_an_ignored_profile_is_the_coverage_run_s_own(repo):
+    """cargo-llvm-cov writes its profiles under the ignored `target/`: not a stray."""
+    write(repo, ".gitignore", "/target/\n/prof/\n")
+    stage(repo, ".gitignore")
+    write(repo, f"target/{STRAY}", "not a profile\n")
+    write(repo, f"prof/{STRAY}", "not a profile\n")
+    r = run(repo)
+    assert r.returncode == 0, r.stdout + r.stderr

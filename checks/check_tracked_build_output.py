@@ -27,6 +27,13 @@ the CONTENT decides: a binary object starts with a magic number or holds NUL byt
 does neither. An extension that names no text format (`.o`, `.so`, `.class`...) is still decided by
 name alone, and so is a file inside a build directory.
 
+A COVERAGE PROFILE, TRACKED OR NOT (GOH.STRAYPROFRAW). `.profraw` is what an instrumented binary
+writes when it exits, and with no `LLVM_PROFILE_FILE` the LLVM runtime writes it into the directory
+it was started in: on 2026-11-20 two of them appeared untracked in the loop's checkout. No build
+keeps one in a work tree (cargo-llvm-cov writes them under the ignored `target/`), so a `.profraw`
+git can see -- tracked, staged, or untracked and not ignored -- is refused: the one exception to
+"only the tracked files" below, because the next `git add -A` would commit it.
+
 WHAT IT IS NOT. It reads the TRACKED files (`git ls-files`), so it says nothing about a build
 directory that is merely ON DISK: that is what `.gitignore` is for, and `goh`'s tracked-ignored
 step already covers a file that is tracked AND ignored. And a repository that tracks nothing is
@@ -80,6 +87,10 @@ FILE_SUFFIXES = (
     ".class",
     ".xcactivitylog",
 )
+
+# A coverage profile an instrumented run left: refused tracked AND untracked (`stray_profiles`).
+PROFILE_SUFFIX = ".profraw"
+STRAY_WHY = "an untracked coverage profile, left by a run with no LLVM_PROFILE_FILE: delete it"
 
 # The suffixes above that ALSO name a text format, so the name alone cannot say. These are decided
 # by the file's content (`is_binary_object`); every other FILE_SUFFIXES entry is decided by name.
@@ -206,7 +217,24 @@ def findings(paths, heads=None):
         if path.endswith(FILE_SUFFIXES):
             out.append((path, "a compiled file"))
             continue
+        if path.endswith(PROFILE_SUFFIX):
+            out.append((path, "a coverage profile (an instrumented run with no LLVM_PROFILE_FILE)"))
     return out
+
+
+def stray_profiles(root, env):
+    """The coverage profiles in ROOT's work tree that git sees and does not track: untracked and not
+    ignored, so `git add -A` would commit them. [] when git cannot answer (the tracked half still
+    judges)."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", root, "ls-files", "-z", "--others", "--exclude-standard",
+             "--", f"*{PROFILE_SUFFIX}"],
+            capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL, env=env,
+        )  # fmt: skip
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return [p for p in out.stdout.split("\0") if p] if out.returncode == 0 else []
 
 
 def staged_paths(root):
@@ -248,6 +276,7 @@ def main(argv=None):
         return 1
     ambiguous = [p for p in paths if p.endswith(AMBIGUOUS_SUFFIXES) and not in_build_dir(p)]
     found = findings(paths, blobs(root, ambiguous, env))
+    found += [(p, STRAY_WHY) for p in stray_profiles(root, env)]
     if found:
         err(
             f"tracked build output: {len(found)} {'staged' if args.staged else 'tracked'} "

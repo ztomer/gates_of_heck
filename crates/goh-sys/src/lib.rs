@@ -64,6 +64,23 @@ pub fn group_alive(pgid: i32) -> bool {
     }
 }
 
+/// An instrumented build's profile goes to `path` when nobody named one (GOH.STRAYPROFRAW).
+///
+/// The LLVM runtime's own default is the RELATIVE `default_%m_%p.profraw`, so a coverage build run
+/// with no `LLVM_PROFILE_FILE` (an agent probing the ship's binary from the loop's checkout,
+/// 2026-11-20) wrote into whatever directory it was started in. `__llvm_profile_set_filename`
+/// outranks the environment, so the caller asks only when the variable is unset: a run the coverage
+/// gate points somewhere still profiles there. Only in the coverage build (`cfg(coverage)`, set by
+/// cargo-llvm-cov), the one that links the runtime defining it.
+#[cfg(coverage)]
+pub fn name_profile(path: &'static std::ffi::CStr) {
+    extern "C" {
+        fn __llvm_profile_set_filename(name: *const libc::c_char);
+    }
+    // SAFETY: the runtime reads a NUL-terminated pattern and keeps a copy; `path` is 'static anyway.
+    unsafe { __llvm_profile_set_filename(path.as_ptr()) }
+}
+
 /// User + system CPU, in milliseconds, of every child this process has reaped.
 ///
 /// Each child's own reaped descendants are folded in by the kernel at each wait, so a delta

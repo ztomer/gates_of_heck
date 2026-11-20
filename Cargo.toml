@@ -11,6 +11,11 @@ expect_used = "warn"
 panic = "warn"
 exit = "warn"
 
+# `cfg(coverage)`: cargo-llvm-cov's instrumented build passes `--cfg=coverage` to the workspace's
+# crates; the build names its profile's default there (goh-sys `name_profile`, GOH.STRAYPROFRAW).
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage)"] }
+
 # `unsafe_code` is denied at each crate ROOT (`#![deny(unsafe_code)]`), not here: crates/goh-sys is
 # the FFI boundary and inherits every other workspace lint (`goh lints` refuses a crate that does
 # not); tests/test_unsafe_scope.py holds `unsafe` to its one file.
