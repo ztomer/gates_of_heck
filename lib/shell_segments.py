@@ -78,6 +78,70 @@ def _cut_heredocs(command: str) -> tuple[str, dict[str, str]]:
     return "".join(out), bodies
 
 
+_MASK = {";": "\ue000", "&": "\ue001", "|": "\ue002", "\n": "\ue003", "<": "\ue004", ">": "\ue005"}
+_UNMASK = str.maketrans({v: k for k, v in _MASK.items()})
+_OP_MASKED = frozenset("\ue004\ue005")
+
+
+class Literal(str):
+    """A word whose `<` or `>` was quoted or escaped: text, never a redirection (`tr a b '<' f`)."""
+
+
+_BEFORE_REDIRECT = " \t\n;&|<>("  # a redirect after one of these is not glued to a word
+
+
+def _glued(text: str, i: int) -> bool:
+    """Is the `<`/`>` at text[i] glued to the word before it (`tr a b<f`), not a word of its own,
+    a doubled operator, `<(`, or the fd number of `2>f` (a digit run that starts its word)?"""
+    if i == 0 or text[i - 1] in _BEFORE_REDIRECT or text[i + 1 : i + 2] == "(":
+        return False
+    j = i
+    while j > 0 and text[j - 1].isdigit():
+        j -= 1
+    return not (j < i and (j == 0 or text[j - 1] in _BEFORE_REDIRECT))
+
+
+def _protect(text: str) -> str:
+    """The text with what shlex cannot tell from an operator once it drops the quotes made plain
+    (GOH.STDINGUARDFP): a QUOTED or backslashed `;`, `&`, `|` or newline becomes a private
+    character (`split_ops` restores it in its word), so `tr '\\n' ';' < f` keeps `';'` a word;
+    so does a quoted `<` or `>`, and its word is a `Literal`; a `#` comment is cut to its newline
+    (shlex joined the next line's command to this one); an unquoted `<`/`>` glued to a word gets a
+    space before it, so `b<f` is a word and a redirect; `>&` `<&` `&>` `>|` stay whole."""
+    out: list[str] = []
+    quote = ""
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if quote:
+            if ch == "\\" and quote == '"' and text[i + 1 : i + 2] in ('"', "\\"):
+                out.append(text[i : i + 2])
+                i += 2
+                continue
+            out.append(_MASK.get(ch, ch))
+            quote = "" if ch == quote else quote
+        elif ch == "\\" and i + 1 < n:
+            out.append(ch + _MASK.get(text[i + 1], text[i + 1]))
+            i += 1
+        elif ch in "'\"":
+            quote = ch
+            out.append(ch)
+        elif ch == "#":
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+        elif ch in "<>" and _glued(text, i):
+            out.append(" " + ch)
+        elif (ch == "&" and (text[i - 1 : i] in ("<", ">") or text[i + 1 : i + 2] == ">")) or (
+            ch == "|" and text[i - 1 : i] == ">"
+        ):  # the redirection operators `>&` `<&` `&>` `>|`: not a separator
+            out.append(_MASK[ch])
+        else:
+            out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def split_ops(command: str) -> tuple[list[tuple[list[str], str]], dict[str, str]]:
     """(simple commands each with the operator that ENDS it, heredoc bodies by marker).
 
@@ -86,7 +150,7 @@ def split_ops(command: str) -> tuple[list[tuple[list[str], str]], dict[str, str]
     (`lib/stdin_reader.py`, GOH.STDINHANG). Raises ValueError where shlex cannot split the command.
     """
     text, bodies = _cut_heredocs(command.replace("\\\n", " "))
-    lex = shlex.shlex(text, posix=True, punctuation_chars=";&|\n")
+    lex = shlex.shlex(_protect(text), posix=True, punctuation_chars=";&|\n")
     lex.whitespace = " \t\r"
     lex.whitespace_split = True
     lex.commenters = "#"
@@ -101,7 +165,8 @@ def split_ops(command: str) -> tuple[list[tuple[list[str], str]], dict[str, str]
                 segs[-1] = (segs[-1][0], op)
             words = []
         else:
-            words.append(tok)
+            word = tok.translate(_UNMASK)
+            words.append(Literal(word) if _OP_MASKED & set(tok) else word)
     if words:
         segs.append((words, ""))
     return segs, bodies
@@ -149,4 +214,13 @@ def reads_script(seg: list[str]) -> bool:
     return "-c" not in args and ("-s" in args or not operands)
 
 
-__all__ = ["SEPARATORS", "SHELLS", "program", "reads_script", "segments", "split", "split_ops"]
+__all__ = [
+    "SEPARATORS",
+    "SHELLS",
+    "Literal",
+    "program",
+    "reads_script",
+    "segments",
+    "split",
+    "split_ops",
+]

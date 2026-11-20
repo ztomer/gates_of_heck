@@ -198,3 +198,77 @@ def test_an_empty_quoted_word_is_a_word_not_a_separator():
     separator test (`set(tok) <= set(";&|\\n")`) holds for the empty set (GOH.STDINFILTERS)."""
     segs, _ = shell_segments.split("grep -c \"\" f; rm -rf '' ~/y")
     assert segs == [["grep", "-c", "", "f"], ["rm", "-rf", "", "~/y"]], segs
+
+
+# GOH.STDINGUARDFP: the splitter read a QUOTED separator as a separator (`tr '\n' ';' < $L` split at
+# the `';'`, so the `< $L` stood alone as another command and `tr` looked unfed), dropped what a
+# comment left on its line into the next line's command, and read a redirect glued to a word
+# (`tr a b<$F`) as part of the word. The guard refused commands that cannot read the terminal.
+@pytest.mark.parametrize(
+    "command",
+    [
+        "tr '\\n' ';' < $L",  # the incident: a quoted `;` is a word
+        'tr a b <"$F"',
+        "tr a b < $L",
+        "tr a b <$F",
+        "tr a b<$F",  # glued to its last word
+        'tr a b<"$F"',
+        "tr -d ';' < f",
+        'tr "|" " " < f',
+        "tr '&' x <f | sort",
+        "cat < f | tr a b",
+        "echo x | tr a b < f",  # a redirect inside a pipeline stage that reads stdin
+        "sed 's/a/b/' < f | tr '|' ' ' | wc -l",
+        "tr a b <<< x",  # a here-string feeds it
+        "tr a b<<<x",
+        "tr a b <<EOF\nx\nEOF",  # a heredoc feeds it
+        "tr a b < f # a comment\n: ok",  # the comment is cut, the next line is its own command
+        "tr a b <&3",
+        "tr a b 2>&1 < f",  # `>&` is a redirection operator, not a separator
+        "tr a b &>/dev/null < f",
+        "tr a b >| out < f",
+        "tr a b 2>/dev/null < f",
+        "tr a b 0< f",
+        "tr a b < f 2>&1",
+    ],
+)
+def test_a_redirect_on_the_reader_feeds_it_whatever_is_quoted_around_it(tmp_path, command):
+    assert _decide(command, tmp_path) is None, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "tr a b",
+        "tr '\\n' ';'",  # a quoted `;` is not a redirect
+        "cat",
+        "tr a b # no < in a comment feeds nothing",
+        "ls # note\ncat",  # a comment does not join the next line's command to this one
+        "echo ';' | cat > f; tr a b",
+        "tr a b > out",  # an output redirect feeds nothing
+        "tr a b 2>err",
+        "tr a b '<' f",  # a quoted `<` is text
+        "echo 'a < b'; cat",
+    ],
+)
+def test_a_reader_with_no_input_is_still_refused_beside_quoted_separators(tmp_path, command):
+    reason = _decide(command, tmp_path)
+    assert reason is not None, command
+    assert "stdin-ok" in reason, reason
+
+
+def test_a_quoted_separator_is_one_word_of_its_command():
+    segs, _ = shell_segments.split("tr '\\n' ';' < $L; echo \"|\" & find . -exec x {} \\;")
+    assert segs == [
+        ["tr", "\\n", ";", "<", "$L"],
+        ["echo", "|"],
+        ["find", ".", "-exec", "x", "{}", ";"],
+    ], segs
+
+
+def test_a_redirect_glued_to_a_word_is_its_own_token_and_a_quoted_one_is_not():
+    segs, _ = shell_segments.split("tr a b<$F; echo 'a<b' 2>&1 a<<<x 3>|f")
+    assert segs[0] == ["tr", "a", "b", "<$F"], segs
+    assert segs[1] == ["echo", "a<b", "2>&1", "a", "<<<x", "3>|f"], segs
+    assert isinstance(segs[1][1], shell_segments.Literal)
+    assert not isinstance(segs[1][2], shell_segments.Literal)

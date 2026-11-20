@@ -32,6 +32,14 @@ and runs.
 One fed or bounded reader beside an unfed one does not excuse it. The escape is
 `# stdin-ok: <reason>`.
 
+WHAT THE SPLITTER MUST NOT MISREAD (GOH.STDINGUARDFP, `shell_segments._protect`): a QUOTED or
+backslashed `;` `&` `|` is a word, not a separator (`tr '\\n' ';' < $L` was cut at the `';'` and its
+`< $L` judged a command of its own); a redirect glued to a word (`tr a b<$F`) is its own token; `>&`
+`<&` `&>` `>|` are redirection operators; a `#` comment ends at its newline; a quoted
+`<`/`>` is a `Literal` word, never a redirect. `<<WORD` is a heredoc (its body cut out and
+marked), `<<<` a here-string, `<(cmd)` a process substitution that is a WORD (an operand,
+not a feed): `<`, `<<<` and a heredoc feed the command, `<(` does not.
+
 The detector for the readers already hung is `hooks/claude/stdin_hangs.py` (`goh agent-stalls`),
 and it asks `reads_stdin` the same question of a live process's argv: one definition of a reader.
 A read BUILTIN has no process of its own (the shell is the reader); `shell_reads` names it in the
@@ -175,7 +183,7 @@ class _Frame:
 
 def _redirect(tok: str) -> tuple[str, str] | None:
     """(operator, glued target) of a redirection token, or None for a word (`<(cmd)` is a word)."""
-    m = REDIRECT.match(tok)
+    m = None if isinstance(tok, shell_segments.Literal) else REDIRECT.match(tok)
     if m is None or m.group(3).startswith("("):
         return None
     return m.group(2), m.group(3)
