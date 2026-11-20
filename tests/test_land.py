@@ -208,3 +208,22 @@ def test_with_no_declared_gate_the_kits_profile_runs_by_path(repo: Path, tmp_pat
     r = _land(wt, None)
     assert f"gate: {REPO_ROOT}/tools/gate_profile.sh ." in r.stdout, r.stdout + r.stderr
     assert "No such file" not in r.stdout + r.stderr, r.stdout + r.stderr
+
+
+def test_a_land_never_measures_coverage_where_the_ship_does(repo: Path, tmp_path: Path) -> None:
+    """GOH.COVOFFLAND: the instrumented run was 69-76% of every goh land's gate. A repo whose ship
+    makes the instrumented full run (GOH_SHIP_FULL_SUITE=on, lib/ship_full_run.py) judges every
+    coverage floor there, so its land's gate runs the coverage step's tests plain
+    (GOH_RUST_COVERAGE=plain); a repo whose ship measures nothing keeps measuring at the land."""
+    wt = _worktree(repo, tmp_path)
+    probe = "GOH_LAND_GATE='printf %s \"${GOH_RUST_COVERAGE-unset}\" > cov.txt'"
+    _declare_gate(wt, f"GOH_SHIP_FULL_SUITE=on\n{probe}")
+    r = _land(wt, None)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (wt / "cov.txt").read_text() == "plain"
+    wt2 = tmp_path / "wt2"
+    git(repo, "worktree", "add", "-q", "-b", "other", str(wt2))
+    _declare_gate(wt2, probe)
+    r = _land(wt2, None)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (wt2 / "cov.txt").read_text() == "unset"

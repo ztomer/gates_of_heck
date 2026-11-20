@@ -38,7 +38,9 @@ STEP = re.compile(r"^\s*(?:[→✓✗⚠] \[\d+/\d+\]|\s*(?:pre-push: gating|loc
 # The Rust coverage step's decision, `↔ [rust] coverage: measuring -- WHY` (or `reused`), after
 # any colour escapes: the lander names it per land (lib/landq_report.py coverage_said).
 ESC = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
-COVERAGE = re.compile(r"^\s*↔ \[rust\] coverage: (?:measuring|reused) -- ")
+COVERAGE = re.compile(
+    r"^\s*↔ \[rust\] coverage: (?:measuring -- |reused -- |not measured at a land)"
+)
 # A coverage phase's END, `✓ phase 'NAME': N s`: lib/land_profile.py reads it from the land's log,
 # the gate's own log being removed with the land (GOH.LANDLEAKS).
 PHASE = re.compile(r"^\s*✓ phase '.+': \d+ s\s*$")

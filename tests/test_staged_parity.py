@@ -32,6 +32,7 @@ from conftest import REPO_ROOT, hermetic_env
 from test_commit_gate_structural import _consumer, _git
 
 PUSH_GATES = ("py_gate.sh", "swift_gate.sh", "rust_gate.sh")
+PARTS = {"rust_gate.sh": ("rust_gate.sh", "_rust_coverage.sh")}  # a gate and the files it sources
 
 # A twin is a script under gates/ whose step label starts with the push label, or a (script, label)
 # pair naming the exact staged step: structural.sh's native Rust step judges the staged .rs files
@@ -92,8 +93,9 @@ SLOW: dict[tuple[str, str], str] = {
     ("rust_gate.sh", "lint policy is inherited"): "manifest",
     ("rust_gate.sh", "coverage (floor ${GOH_COV_FLOOR_RUST}%)"): _W,
     ("rust_gate.sh", "coverage (per-target floors)"): _W,
-    # GOH.RUSTCOVSKIP: the coverage run's tests, plain, when its measurement is reused.
-    ("rust_gate.sh", "cargo test (plain: the coverage measurement stands)"): _W,
+    # GOH.RUSTCOVSKIP: the coverage run's tests, plain, when its measurement is reused or a land
+    # measures none (GOH.COVOFFLAND); in gates/_rust_coverage.sh, which rust_gate.sh sources.
+    ("rust_gate.sh", "cargo test (plain)"): _W,
     ("rust_gate.sh", "external (plain): $GOH_COV_RUST_EXTERNAL"): _W,
 }
 
@@ -124,7 +126,8 @@ def parity_faults(gates: Path) -> list[str]:
     commit_gate = (gates / "commit_gate.sh").read_text(encoding="utf-8")
     seen: set[tuple[str, str]] = set()
     for gate in PUSH_GATES:
-        for label in step_labels((gates / gate).read_text(encoding="utf-8")):
+        text = "".join((gates / f).read_text(encoding="utf-8") for f in PARTS.get(gate, (gate,)))
+        for label in step_labels(text):
             key = (gate, label)
             seen.add(key)
             if key in SLOW or key in OPEN:
@@ -173,7 +176,13 @@ def _copy_gates(tmp_path: Path) -> Path:
     src.mkdir(parents=True)
     for name in ("structural.rs", "steps_rust.rs"):
         shutil.copy(REPO_ROOT / "crates" / "goh" / "src" / name, src / name)
-    for name in (*PUSH_GATES, "commit_gate.sh", "py_staged.sh", "swift_staged.sh"):
+    for name in (
+        *PUSH_GATES,
+        *PARTS["rust_gate.sh"],
+        "commit_gate.sh",
+        "py_staged.sh",
+        "swift_staged.sh",
+    ):
         src = REPO_ROOT / "gates" / name
         if src.is_file():
             shutil.copy(src, gates / name)

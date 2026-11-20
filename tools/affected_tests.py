@@ -326,14 +326,10 @@ def main(argv: list[str]) -> int:
     ap.add_argument(
         "--structural", action="store_true", help="--run: gates/structural.sh --full first"
     )
-    ap.add_argument("--fast-only", action="store_true", help="--run: the fast judges alone")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     if args.run and (rc := fast_tests.run(root, affected(root, []))):
         return rc  # the cheap judges, before the diff is even read (GOH.PRESTEPFAILFAST)
-    if args.run and args.fast_only:  # a moved tree the gate measures (lib/pre_fast.py)
-        _ran_nothing("the fast judges alone: the gate's instrumented suite runs the rest")
-        return 0
     changed = args.changed if args.changed is not None else changed_paths(root, args.base)
     chosen = (
         dict(sorted(readers(root, changed).items()))

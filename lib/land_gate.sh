@@ -1,4 +1,4 @@
-# shellcheck shell=bash disable=SC2154  # verdicts, tip, ship_timings, land_timings: land.sh's, set before this is sourced
+# shellcheck shell=bash disable=SC2154  # verdicts, tip, ship_timings, land_timings, ship_full: land.sh's, set before this is sourced
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # lib/land_gate.sh -- the land's gate run, sourced by tools/land.sh (GOH_PY, GOH, tip, verdicts,
 # land_timings, ship_timings, land_row); pinned by tests/test_land_prewait.py and tests/test_land.py.
@@ -21,6 +21,11 @@ land_gate() {
     local over=()
     [ "$1" = "$GOH" ] || over=(GOH_DIR="$1" PYTHONPATH="$(goh_path_front PYTHONPATH "$1"; printf %s "$PYTHONPATH")")
     [ -z "$ship_timings" ] || over+=(GOH_TIMINGS_PARENT="land: gate")
+    # COVERAGE IS THE SHIP'S (GOH.COVOFFLAND): where the ship makes the instrumented full run and
+    # judges every floor over what landed since the last ship (lib/ship_full_run.py), the gate runs
+    # the coverage step's tests plain (gates/rust_gate.sh GOH_RUST_COVERAGE=plain): 493-781 s of
+    # instrumented suite was 69-76% of a goh land's gate (2026-11-19).
+    [ "${ship_full:-}" != on ] || over+=(GOH_RUST_COVERAGE=plain)
     local g0="${EPOCHREALTIME/,/.}" grc=0 gate_wait=() gate_mark gate_t0
     gate_t0=$(date +%s)
     [ -z "${GOH_LAND_GATE_WAIT:-}" ] || gate_wait=(--wait-max "$GOH_LAND_GATE_WAIT")

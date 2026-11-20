@@ -17,9 +17,8 @@ from pathlib import Path
 
 from conftest import git
 from test_landq_batch import env, landq, lane, recorded  # noqa: F401  (env: a fixture)
-from test_prestep_dup import _declare_on_main
 
-from lib import log_follow, pre_fast
+from lib import log_follow
 
 
 def _pre_runs(log: Path) -> list[str]:
@@ -89,22 +88,3 @@ def test_the_lander_says_why_a_land_s_gate_measured(
     assert (
         "T.ONE: the gate's coverage: measuring -- the last measurement was on other inputs" in out
     ), out
-
-
-def _gatesrc_moved(repo: Path, tmp_path: Path, line: str) -> tuple[int, str]:
-    _declare_on_main(repo, tmp_path)
-    base = git(repo, "rev-parse", "HEAD").strip()
-    with (repo / ".gatesrc").open("a") as f:
-        f.write(f"# a comment naming GOH_COV_FLOOR_RUST\n{line}\n")
-    git(repo, "commit", "-q", "--no-verify", "-am", "gatesrc")
-    return pre_fast.decide(repo, base, "./run.sh")
-
-
-def test_a_gatesrc_change_outside_goh_cov_is_no_coverage_input(repo: Path, tmp_path: Path) -> None:
-    code, why = _gatesrc_moved(repo, tmp_path, "GOH_LAND_PRE_FAST='true'")
-    assert code == pre_fast.MAY_REUSE, why
-
-
-def test_a_goh_cov_line_in_gatesrc_is_a_coverage_input(repo: Path, tmp_path: Path) -> None:
-    code, why = _gatesrc_moved(repo, tmp_path, "GOH_COV_FLOOR_RUST=90")
-    assert code == pre_fast.MEASURES and ".gatesrc" in why, why

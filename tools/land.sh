@@ -64,7 +64,7 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # the wait for the lock is its own field, not gate time). A land that never took the lock (a
 # refusal before it, a failed pre-step) measured no gate and writes no row. The ledger never fails
 # a land: the script's exit status is what it was.
-verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall="" pre_run="" pre_workers="" pre_reused="" suite_reused="" pre_fast_ran=""
+verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall="" pre_run="" pre_workers="" pre_reused="" suite_reused=""
 # shellcheck disable=SC2329  # invoked by the EXIT trap below
 land_exit() {
     local rc=$?
@@ -76,7 +76,7 @@ land_exit() {
         --field "exit=$rc" ${pre_wall:+--field "pre_s=$pre_wall"} \
         ${pre_run:+--field "pre_run_s=$pre_run" --field "pre_workers=$pre_workers"} \
         ${pre_reused:+--field "pre_reused=$pre_reused"} ${suite_reused:+--field "suite_reused=$suite_reused"} \
-        ${pre_fast_ran:+--field "pre_fast=1"} --field "sha=$(printf %.12s "${tip:-}")" || true
+        --field "sha=$(printf %.12s "${tip:-}")" || true
     [ -z "$land_timings" ] || { [ ! -s "$land_timings" ] || [ -z "${GOH_LAND_TIMINGS_KEEP:-}" ] || mv -f "$land_timings" "$GOH_LAND_TIMINGS_KEEP"   # kept beside the land's log (GOH.LANDLEAKS)
         rm -f "$land_timings" "$land_timings".*; }
 }
@@ -133,14 +133,12 @@ gatesrc_var() {
         || { err "land.sh: cannot read $here/.gatesrc"; exit 2; }
 }
 pre="$(gatesrc_var GOH_LAND_PRE)" || exit 2
-# THE FAST SET ON A MOVED TREE (GOH.PRESTEPDUP, lib/land_pre_reuse.sh land_pre_fast): what runs
-# instead of the set on a tree moved after a pre-step judged the lane, when the gate measures coverage.
-pre_fast="$(gatesrc_var GOH_LAND_PRE_FAST)" || exit 2
-cov_ext="$(gatesrc_var GOH_COV_RUST_EXTERNAL)" || exit 2
+# COVERAGE IS THE SHIP'S (GOH.COVOFFLAND, lib/land_gate.sh): a repo whose ship makes the instrumented
+# full run (GOH_SHIP_FULL_SUITE=on) has its floors judged there, so its land's tests run plain.
+ship_full="$(gatesrc_var GOH_SHIP_FULL_SUITE)" || exit 2
 # ONE RUN PER TEST (GOH.LANDPREDUP): a goh suite run by the pre-step records the tests it passed
 # (GOH_LAND_VERDICTS_RECORD) and the gate's suite skips them on the same tree and tools
-# (GOH_LAND_VERDICTS_REUSE, tests/_land_verdicts.py), the instrumented coverage run keeping every
-# test that ran the binary. One file per land, removed with it. A rebased tip CARRIES verdicts from
+# (GOH_LAND_VERDICTS_REUSE, tests/_land_verdicts.py). One file per land, removed with it. A rebased tip CARRIES verdicts from
 # the pre-step's tree and main's recorded tip, for what the diff between them does not choose
 # (GOH.VERDICTCARRY, the one store's `carry` path).
 # land_rebase -- the branch on top of main as it is now: sets base, moves tip, and sets rebased=1

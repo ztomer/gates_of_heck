@@ -55,7 +55,9 @@ WAITED = re.compile(r"waited (?:(\d+)m )?(\d+)s for a gate slot")
 SKEW_S = 2.0  # a clock/filename rounding slack when a log "predates" its request
 # The Rust coverage step's decision (gates/_rust_proven.sh rust_coverage_reuse), as
 # lib/log_follow.py carries it into a land's log: `measuring -- WHY` or `reused -- ...`.
-COVERAGE = re.compile(r"\[rust\] coverage: (measuring -- .*|reused -- .*)$", re.MULTILINE)
+COVERAGE = re.compile(
+    r"\[rust\] coverage: (measuring -- .*|reused -- .*|not measured at a land.*)$", re.MULTILINE
+)
 
 
 def slot_wait_s(log_text: str) -> float | None:
@@ -73,7 +75,7 @@ def slot_wait_s(log_text: str) -> float | None:
 
 def coverage_said(log_text: str) -> list[str]:
     """Each distinct coverage decision a land's log records, in order (GOH.BATCHPREFROM): the
-    lander's line names why a gate measured, which lib/pre_fast.py predicts from paths alone."""
+    lander's line names why a gate measured, or that a land measures none (GOH.COVOFFLAND)."""
     return list(dict.fromkeys(m.strip() for m in COVERAGE.findall(log_text)))
 
 

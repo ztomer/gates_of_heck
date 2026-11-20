@@ -513,7 +513,6 @@
 "tests/test_pre_reuse.py::test_the_real_table_reads_no_release_commits_version_or_fragments": 7.01,
 "tests/test_preflight_disk.py": 3.43,
 "tests/test_preflight_disk.py::test_the_push_gate_refuses_before_any_export": 3.3,
-"tests/test_prestep_dup.py": 10.41,
 "tests/test_prestep_fast.py": 3.28,
 "tests/test_prestep_judges.py": 15.68,
 "tests/test_prestep_judges.py::test_goh_s_own_judges_run_first_for_any_change": 7.95,

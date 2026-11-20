@@ -71,7 +71,8 @@ GOH.ONEVERDICTTREE4 (measured on the ship records, `~/.local/state/goh/ship/gate
   before every ship) owes one. The key is the `carry` record's (repo, tree, suite tools) with
   `full` and `full_instrumented`; nothing else reaches a test (tests/suite_home.py drops every
   other GOH_* first, and every writer of the record runs in the land's `ci` shape, which a land
-  key forces). What it lacked was the audit: the skip is the sampled `fullrun` path now.
+  key forces). The skip is gone (GOH.COVOFFLAND): the ship's run is the only coverage measurement
+  on the path to a release, judging every floor since the last ship, so no other run stands for it.
 * The release step (581.4 s in v0.139.14, 866.2 s in v0.139.13) is NOT the pin sweep, which runs
   detached after the ship (`*.sweep.json`, its own `created`): it is the release push's full gate,
   478.1 s and 731.0 s of `gates/rust_gate.sh` (the plain external suite 427.9 s), run because the
@@ -232,5 +233,4 @@ moves; one on the live checkout keeps it only while goh's main does not move.
 | `test` | inline, 1 in 10 same-tree nodes a land's gate would skip: decided once by the controller and handed to every xdist worker, the node runs anyway; a failure is re-run in a child pytest and the pre-land record read again, and a repeat turns `test` off, so the next gate reuses nothing (GOH.REUSEAUDIT2) | `tests/_land_audit.py` (`audited`, `shadows`), asked by `tests/_land_verdicts.py` |
 | `gate`, `origin`, `rustcov`, `file` | none: each registration says why (`reuse_audit.py report`, `goh budget`). `gate` waits on an idle-slot full gate only the idle lander can schedule; `origin` reuses no verdict (a scope rule); `rustcov` is minutes a sample under set -e; `file` needs the counter in Rust | |
 | `affected` | inline, 1 in 10 takes: the set runs anyway and its verdict is compared with the kept one; a repeat turns `affected` off, so every set runs | `lib/affected_verdict.py` (`judged`), asked by `tools/affected_tests.py --run` |
-| `fullrun` | inline, 1 in 10 skips of the ship's suite step: the instrumented full run is made anyway, fresh (no same-tree reuse), and compared with the record's green; a repeated red turns `fullrun` off, so every ship runs its suite | `lib/ship_full_run.py` (`decide`, `run`), asked by `tools/ship.py`'s `suite` step |
 | `pushed` | none by design: identity-free | |

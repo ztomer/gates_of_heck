@@ -48,7 +48,8 @@ _GOH_BIN = "the goh binary: the build of the gates root's crates/, never run by 
 _HELPER = "a helper the same file assigns by a rooted path, an edge of the closure already"
 # `<file>: <the form>` -> why what it reaches is keyed, or is no input of the measurement.
 DECLARED = {
-    'gates/rust_gate.sh: bash -c "$GOH_COV_RUST_EXTERNAL"': "the external suite: the `runner` line",
+    'gates/_rust_coverage.sh: bash -c "$GOH_COV_RUST_EXTERNAL"': "the external suite: the "
+    "`runner` line",
     'gates/_coverage_rust.sh: bash -c "$EXTERNAL"': "the external suite: the `runner` line",
     'gates/local_ci.sh: bash -c -- "$cmd"': "a step of the repo's local CI (gates/local_ci.sh)",
     'gates/_export_bin_goh.sh: exec "$goh_native"': _GOH_BIN,

@@ -171,11 +171,6 @@ CARRY = register(
     sites=("tests/_land_verdicts.py", "lib/pre_reuse.py"), shadow="inline",
 )  # fmt: skip
 register(
-    "fullrun", CARRY.fields, DAY_S, "the ship's suite step skipped on the tip tree's FULL "
-    "instrumented record, whoever made it (lib/ship_suite.py full_suite, GOH.ONEVERDICTTREE4)",
-    store="the `carry` record", sites=("lib/ship_full_run.py",), shadow="inline",
-)  # fmt: skip
-register(
     "affected", ("repo", "tree", "selection", "identity", "env"), DAY_S, "the pre-land set's green "
     "run on a tree, the next run of that set on it under those inputs (lib/affected_verdict.py)",
     sites=("lib/affected_verdict.py",), shadow="inline",

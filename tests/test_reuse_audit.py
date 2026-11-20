@@ -249,7 +249,9 @@ READS = re.compile(
 # A reader that skips no judgement on what it reads: the record it would MAKE is on disk.
 PRODUCERS = {
     "lib/idle_suite.py": "the idle run exists to make main's full record; with one on "
-    "disk there is nothing to make, and the ship's step (`fullrun`) is what reuses it"
+    "disk there is nothing to make",
+    "lib/ship_full_run.py": "the ship's run is never skipped (GOH.COVOFFLAND); it reads the record "
+    "its own green run made, and a green run with none is no verdict",
 }
 ASKS = re.compile(r"\b(?:use|use_many|compare)\(\s*\"([\w-]+)\"")
 
@@ -306,9 +308,9 @@ def test_every_registered_site_exists_and_every_sampled_one_asks_the_audit():
                 assert asks, (p.name, site)
     sampled = sorted(p.name for p in reuse.PATHS.values() if p.shadow)
     # slice 1, GOH.VERDICTCARRY's `carry`, GOH.REUSEAUDIT2's, GOH.COVCARRY2's `profcarry`,
-    # GOH.ONEVERDICTTREE3's `affected`, GOH.ONEVERDICTTREE4's `fullrun`; the rest say why
-    # (`unsampled`)
-    want = ["affected", "carry", "estate", "fullrun", "landed", "profcarry", "step", "test"]
+    # GOH.ONEVERDICTTREE3's `affected` (GOH.ONEVERDICTTREE4's `fullrun` went with the skip it
+    # sampled, GOH.COVOFFLAND); the rest say why (`unsampled`)
+    want = ["affected", "carry", "estate", "landed", "profcarry", "step", "test"]
     assert sampled == want, sampled
 
 

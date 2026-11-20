@@ -197,11 +197,6 @@ GOH_LANDED_ONLY=main
 # every test naming a changed path or importing a changed module, and every tree reader -- the structural
 # gates and the tree readers FIRST, so a deadline on the rest never swallows them (GOH.PREPARITY). $1 is main's tip.
 GOH_LAND_PRE='"$GOH_PY" tools/affected_tests.py --run --structural --base "$1"'
-# A tree the lander moved (rebased under the lock, or stacked in a batch) whose gate MEASURES coverage
-# runs this instead (GOH.PRESTEPDUP, lib/pre_fast.py): the instrumented suite re-runs every test the
-# set would, under the lock that took away the set's fail-fast. A gate that may reuse the set's
-# verdict (GOH.SUITEONCE) still gets the whole set.
-GOH_LAND_PRE_FAST='"$GOH_PY" tools/affected_tests.py --run --fast-only'
 
 # NO GOH_EXPORT_KEEP (G2c). bin/goh was carried into the pre-push export (2026-10-15) because the
 # export held no binary and every native checker said "goh binary not built". That need is gone at
@@ -223,6 +218,10 @@ GOH_SHIP_RELEASE_PUSHES=1
 # goh's land gate carries test verdicts across trees (tests/_land_verdicts.py, GOH.VERDICTCARRY), so
 # a release needs a suite run that judged every test on the tip's tree itself (lib/reuse.py full-suite).
 GOH_SHIP_FULL_SUITE=on
+# COVERAGE IN DUMMY MODE (GOH.COVOFFLAND, owner 2026-11-19): a land never measures coverage (it runs
+# the tests plain) and the ship's instrumented run is the only measurement. OFF: the ship measures.
+# TO TURN IT ON (coverage measured nowhere, every `goh ship` refused, "coverage in dummy mode; no
+# release"): add the line GOH_SHIP_COVERAGE=dummy here; delete it to turn coverage back on.
 # The release commit's push re-runs only what its land ran: release files only on a parent whose land
 # was green (goh-landed) runs the structural gate and the release files' readers (lib/release_gate.py).
 GOH_PUSH_RELEASE_REUSE=on

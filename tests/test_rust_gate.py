@@ -349,6 +349,30 @@ def test_deferred_coverage_is_named_and_not_run(tmp_path, fake):
     assert "coverage deferred" in combined.lower(), combined
 
 
+# GOH_RUST_COVERAGE=plain (GOH.COVOFFLAND): a goh land runs the coverage step's TESTS plain and
+# measures nothing; the ship measures every floor over what landed since the last ship. An
+# uncovered crate under an 80% floor is green here only because nothing was measured -- and the
+# tests still ran (a red test stays red at a land).
+def test_plain_coverage_runs_the_tests_and_never_the_instrumented_run(tmp_path, fake):
+    c = fresh(tmp_path / "covplain", LIB_UNTESTED)
+    write_gatesrc(c, "GOH_COV_FLOOR_RUST=80\n")
+    r = run_script(CURRENT, c, {"GOH_RUST_COVERAGE": "plain", "GOH_PROVEN": "0"})
+    combined = r.stdout + r.stderr
+    assert r.returncode == 0, combined
+    assert "coverage: not measured at a land" in combined, combined
+    calls = (fake / "cargo.calls").read_text()
+    assert "test --locked --workspace --tests --all-features" in calls, calls
+    assert "llvm-cov" not in combined + calls, combined
+
+
+def test_plain_coverage_keeps_a_red_test_red(tmp_path, fake):
+    c = fresh(tmp_path / "covplainred", LIB_TESTED)
+    write_gatesrc(c, "GOH_COV_FLOOR_RUST=80\n")
+    _fake_cargo.plant_red(fake, "test", "test adds ... FAILED\n", code=101)
+    r = run_script(CURRENT, c, {"GOH_RUST_COVERAGE": "plain", "GOH_PROVEN": "0"})
+    assert r.returncode != 0, r.stdout + r.stderr
+
+
 def test_an_unknown_coverage_mode_fails(tmp_path, fake):
     c = fresh(tmp_path / "covmode", LIB_TESTED)
     write_gatesrc(c, "GOH_COV_FLOOR_RUST=50\n")

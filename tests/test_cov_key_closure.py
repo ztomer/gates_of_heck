@@ -53,7 +53,6 @@ MENTIONS = {
     "lib/reuse.py -> lib/config_push.py": "a reuse site's name, registry metadata",
     "lib/reuse.py -> lib/pre_reuse.py": "a reuse site's name, registry metadata",
     "lib/reuse.py -> lib/release_gate.py": "a reuse site's name, registry metadata",
-    "lib/reuse.py -> lib/ship_full_run.py": "a reuse site's name, registry metadata",
     "lib/reuse.py -> lib/ship_verdict.py": "a reuse site's name, registry metadata",
     "lib/reuse.py -> tools/affected_tests.py": "a reuse site's name, registry metadata",
     "lib/reuse.py -> tools/landq.py": "a reuse site's name, registry metadata",

@@ -41,7 +41,8 @@
 #      the callee cannot see them through the environment). Unset keeps
 #      fmt+clippy only, with a printed nudge (the py/swift-gate precedent).
 #      GOH_RUST_COVERAGE=defer (env) skips it BY NAME for a commit gate whose
-#      push gate runs it; any other value fails.
+#      push gate runs it; =plain (env, a land of a repo whose ship measures:
+#      lib/land_gate.sh) runs its TESTS plain and measures nothing; any other value fails.
 #
 #   rust_gate.sh                       # run from repo root (uses $PWD)
 #   rust_gate.sh <repo>                # run from anywhere
@@ -87,7 +88,7 @@ _group_on() { case "$_groups" in *",$1,"*) return 0 ;; esac; return 1; }
 [ -z "${GOH_SUITE_SHARD:-}" ] || die "GOH_SUITE_SHARD='${GOH_SUITE_SHARD}' reached the gate -- a shard is a coverage part's (GOH_COV_PART=K/N)"
 _cov_parts="${GOH_COV_PART:-}${GOH_COV_PARTS_IN:-}"
 [ -z "${GOH_COV_PARTS_IN:-}" ] || [ "$_groups" = ",coverage," ] || die "GOH_COV_PARTS_IN merges parts: GOH_RUST_GROUPS=coverage alone, got '${GOH_RUST_GROUPS:-crate,repo,coverage}'"
-[ -z "$_cov_parts" ] || [ "${GOH_RUST_COVERAGE:-}" != defer ] || die "GOH_RUST_COVERAGE=defer and a coverage part (GOH_COV_PART / GOH_COV_PARTS_IN) contradict"
+[ -z "$_cov_parts" ] || [ -z "${GOH_RUST_COVERAGE:-}" ] || die "GOH_RUST_COVERAGE=${GOH_RUST_COVERAGE} and a coverage part (GOH_COV_PART / GOH_COV_PARTS_IN) contradict"
 
 repo="${1:-$PWD}"
 cargo_dir="${2:-$repo}"
@@ -367,35 +368,9 @@ rust_repo_checks() {
     goh_step "no emptiness asserts" "${_goh_cmd[@]}" empty-assert ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
 }
 
-rust_coverage_checks() {
-    if [ -n "${GOH_COV_FLOOR_RUST:-}" ]; then
-        goh_step "coverage (floor ${GOH_COV_FLOOR_RUST}%)" \
-            ${_change_base[@]+"${_change_base[@]}"} bash "$HERE/coverage_gate.sh" --lang rust \
-            ${GOH_COV_RUST_EXTERNAL:+--external "$GOH_COV_RUST_EXTERNAL"} \
-            ${GOH_COV_FLOORS_JSON:+--floors-json "$GOH_COV_FLOORS_JSON"} \
-            --floor "$GOH_COV_FLOOR_RUST" "$cargo_dir"
-    else
-        goh_step "coverage (per-target floors)" \
-            ${_change_base[@]+"${_change_base[@]}"} bash "$HERE/coverage_gate.sh" --lang rust \
-            ${GOH_COV_RUST_EXTERNAL:+--external "$GOH_COV_RUST_EXTERNAL"} \
-            --floors-json "$GOH_COV_FLOORS_JSON" "$cargo_dir"
-    fi
-}
-
-# The tests of a coverage run, without the measurement: cargo's own targets (lib, bins, tests;
-# doctests are a step of their own where a repo wants them) and the external suite against the
-# plain build of the same Rust inputs. Run only when that measurement is recorded (GOH.RUSTCOVSKIP).
-rust_coverage_plain() {
-    local v unbind=(-u LLVM_PROFILE_FILE)
-    for v in $(git rev-parse --local-env-vars 2>/dev/null); do unbind+=(-u "$v"); done
-    goh_timings_unbind unbind  # the tests write no row into this gate's profile (GOH.TIMINGSBLEED)
-    goh_step_in "$cargo_dir" "cargo test (plain: the coverage measurement stands)" \
-        env "${unbind[@]}" cargo test --locked --workspace --tests --all-features
-    # shellcheck disable=SC2154  # RUST_COV_PLAIN_BINS is set by rust_coverage_reuse for this call
-    goh_step_in "$cargo_dir" "external (plain): $GOH_COV_RUST_EXTERNAL" \
-        env "${unbind[@]}" GOH_COVERAGE_BIN_DIR="$RUST_COV_PLAIN_BINS" bash -c "$GOH_COV_RUST_EXTERNAL"
-}
-rust_coverage_measured_or_plain() { rust_coverage_reuse rust_coverage_checks rust_coverage_plain; }
+# The coverage step's functions, measured and plain (GOH.COVOFFLAND split them out for the line cap).
+# shellcheck source=gates/_rust_coverage.sh
+. "$HERE/_rust_coverage.sh"
 
 # shellcheck source=gates/_rust_proven.sh
 . "$HERE/_rust_proven.sh"
@@ -416,8 +391,8 @@ _group_on repo && rust_proven_group repo tree rust_repo_checks
 # commit gate need not rebuild every touched crate instrumented (a release
 # touches them all). Named, never silent; any other value is a miswiring.
 case "${GOH_RUST_COVERAGE:-}" in
-    ""|defer) ;;
-    *) die "GOH_RUST_COVERAGE='${GOH_RUST_COVERAGE}' - the only value is 'defer'" ;;
+    ""|defer|plain) ;;
+    *) die "GOH_RUST_COVERAGE='${GOH_RUST_COVERAGE}' - the values are 'defer' and 'plain'" ;;
 esac
 
 if ! _group_on coverage; then
@@ -426,6 +401,8 @@ elif [ -n "$_cov_parts" ]; then
     rust_coverage_checks   # never proven nor reused: a recorded part would skip its merge's export
 elif [ "${GOH_RUST_COVERAGE:-}" = defer ]; then
     info "coverage deferred to the push gate (GOH_RUST_COVERAGE=defer)"
+elif [ "${GOH_RUST_COVERAGE:-}" = plain ] && [ -n "${GOH_COV_FLOOR_RUST:-}${GOH_COV_FLOORS_JSON:-}" ]; then
+    rust_proven_group coverage tree rust_coverage_plain_only   # its key holds GOH_RUST_COVERAGE (_rust_step)
 elif [ -n "${GOH_COV_FLOOR_RUST:-}" ] || [ -n "${GOH_COV_FLOORS_JSON:-}" ]; then
     # An external command reads the whole tree (a test suite), so its group keys on the whole tree:
     # a crate-scoped key would skip a coverage run whose tests changed. Inside it, the MEASUREMENT

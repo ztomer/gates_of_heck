@@ -232,7 +232,7 @@ push_release_run() {
 # push_release_shadow PARENT STATUS RERUN... -- the `landed` sample's verdict (lib/release_gate.py
 # shadow-judge): the full gate's STATUS against PARENT's land green; a red runs RERUN (the same
 # full gate) once more first, and only a red both runs repeat turns the reuse off. Returns STATUS:
-# the push is the first run's verdict, as a ship's sampled suite is (lib/ship_full_run.py).
+# the push is the first run's verdict.
 push_release_shadow() {
     local parent="$1" status="$2" fresh=green again="" rc=0
     shift 2

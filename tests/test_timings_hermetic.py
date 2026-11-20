@@ -40,7 +40,7 @@ def test_the_coverage_gate_s_tests_write_no_row_to_the_parent_profile(tmp_path: 
 
 def test_the_plain_cargo_test_runs_with_no_profile() -> None:
     """A measured repo's plain run (rust_coverage_plain) runs both its test commands unbound."""
-    text = (REPO_ROOT / "gates" / "rust_gate.sh").read_text()
+    text = (REPO_ROOT / "gates" / "_rust_coverage.sh").read_text()
     body = text.split("rust_coverage_plain() {", 1)[1].split("\n}\n", 1)[0]
     assert "goh_timings_unbind" in body, body
     assert body.count('env "${unbind[@]}"') == 2, body

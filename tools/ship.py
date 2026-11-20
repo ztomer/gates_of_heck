@@ -11,11 +11,12 @@ after its first push -- re-run the gate, release, install, read the claim card, 
 every agent's context (GOH.SPENDWATCH). Here it is a pipeline no turn watches:
 
     suite    the fresh INSTRUMENTED full run on the tip the ship releases (the owner's term,
-             GOH.COVCARRY), when `.gatesrc` GOH_SHIP_FULL_SUITE=on and the tip has none yet:
-             lib/ship_full_run.py, run holding the land lock, so main cannot move past the run
-             before the release kit checks it (GOH.SHIPSTARVE: the idle lander's run yields to
-             every land, so a busy queue starved the ship); skipped, naming whose run it stands
-             on, when the tip has one
+             GOH.COVCARRY), when `.gatesrc` GOH_SHIP_FULL_SUITE=on: lib/ship_full_run.py, run
+             holding the land lock, so main cannot move past the run before the release kit
+             checks it (GOH.SHIPSTARVE). It judges every coverage floor over what landed since the
+             last ship -- a land measures none (GOH.COVOFFLAND) -- and a red run releases nothing:
+             the worker, the land lock given back, bisects the lands to the first red one and files
+             a fault item naming it (`bisect` in the result)
     push     `git push REMOTE HEAD:BRANCH` (the upstream the branch tracks), through the pre-push
              gate; skipped when `.gatesrc` GOH_SHIP_RELEASE_PUSHES=1 and the release step runs: that
              kit pushes the hand-off with its release commit (a repo whose release note may only
@@ -129,7 +130,8 @@ save, tail = ship_status.save, ship_status.tail  # the result file, a step log (
 GRACE, DEFAULT_TIMEOUT = 5, 3600
 _HELD: dict[str, float] = {}  # "at": time.monotonic() when this worker took the land lock
 KEYS = ("GOH_SHIP_RELEASE", "GOH_SHIP_INSTALL", "GOH_SHIP_TIMEOUT", "GOH_SHIP_RELEASE_PUSHES",
-        "GOH_SHIP_PREFLIGHT", "GOH_SHIP_CHANGELOG", "GOH_CHANGELOG_FRAGMENTS")  # fmt: skip
+        "GOH_SHIP_PREFLIGHT", "GOH_SHIP_CHANGELOG", "GOH_CHANGELOG_FRAGMENTS",
+        "GOH_SHIP_COVERAGE")  # fmt: skip
 
 
 def config(repo: Path) -> dict[str, str]:
@@ -184,6 +186,10 @@ def plan(args: argparse.Namespace) -> dict:
     if why:
         raise Refused(why)
     cfg = config(repo)
+    if cfg["GOH_SHIP_COVERAGE"]:  # GOH.COVOFFLAND: coverage measured nowhere, so nothing released
+        raise Refused("coverage in dummy mode; no release" if cfg["GOH_SHIP_COVERAGE"] == "dummy"
+                      else f"GOH_SHIP_COVERAGE={cfg['GOH_SHIP_COVERAGE']!r}: the one value is "
+                      "'dummy'")  # fmt: skip
     tag = newest_tag(repo)
     sha = git(repo, "rev-parse", "HEAD")
     if tag and not cfg["GOH_SHIP_RELEASE"]:
@@ -222,13 +228,12 @@ def command(res: dict, name: str) -> tuple[str | None, str]:
         import ship_full_run  # here, not at the top: tools/ship.py's import ceiling (E402) is spent
 
         repo = Path(res["repo"])
-        kind, why = ship_full_run.decide(repo, git(repo, "rev-parse", "HEAD"))  # one audited use
-        if kind == "skip":
+        if why := ship_full_run.owed(repo):
             return None, why
         me, wt = ROOT / "lib" / "ship_full_run.py", Path(res["result"]).parent / "suite-wt"
         return f"{py} {shlex.quote(str(me))} --repo {shlex.quote(str(repo))} --wt " + shlex.quote(
             str(wt)
-        ) + (" --shadow" if kind == "shadow" else ""), ""
+        ), ""
     if name == "push":
         if res.get("release_pushes") and command(res, "release")[0] is not None:
             return (
@@ -346,7 +351,12 @@ def worker(result: str, resume: bool = False) -> int:
         with land_lock.held(queue, who, info):  # lock-order: land, under the ship lock
             _HELD["at"] = time.monotonic()  # the queue's time ends, the ship's own begins
             res["land_wait_s"] = round(res.get("land_wait_s", 0.0) + _HELD["at"] - asked, 1)
-            return run_steps(res, "verify" if resume else STEPS[0])
+            rc = run_steps(res, "verify" if resume else STEPS[0])
+        if rc and not resume:  # a red suite run, bisected with the land lock given back
+            import ship_full_run  # here, not at the top: the import ceiling (E402) is spent
+
+            ship_full_run.after_red(res, save)
+        return rc
 
 
 def start(args: argparse.Namespace) -> int:

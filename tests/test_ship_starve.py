@@ -123,7 +123,11 @@ def test_lands_keep_arriving_and_the_ship_still_releases_a_tip_with_its_run(
 
 
 @pytest.mark.load_sensitive
-def test_a_tip_that_has_its_run_is_not_run_again(shipped: Path, tmp_path: Path) -> None:
+def test_a_tip_with_the_idle_landers_run_is_still_judged_by_the_ship(
+    shipped: Path, tmp_path: Path
+) -> None:
+    """GOH.COVOFFLAND: the ship judges every coverage floor, its diff coverage based at the last
+    ship; the idle lander's run of the tip judged no such base, so it stands for none of it."""
     _declare(shipped)
     _record_run(shipped, tmp_path / "store")
     p = _ship(shipped, tmp_path)
@@ -131,9 +135,8 @@ def test_a_tip_that_has_its_run_is_not_run_again(shipped: Path, tmp_path: Path) 
     res = json.loads((tmp_path / "ship.json").read_text())
     assert p.returncode == 0, f"{out}\n{res.get('tail')}"
     suite = res["steps"][0]
-    assert (suite["name"], suite["status"]) == ("suite", "skipped"), res["steps"]
-    assert "already has its instrumented full run (by idle)" in suite["why"], suite
-    assert _judged(tmp_path) == []
+    assert (suite["name"], suite["status"]) == ("suite", "ok"), res["steps"]
+    assert _judged(tmp_path) == [git(shipped, "rev-parse", "HEAD").strip()]
 
 
 def test_the_budget_judges_the_ships_own_run_not_its_wait_for_the_queue() -> None:
