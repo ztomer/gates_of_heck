@@ -32,6 +32,16 @@ def test_a_path_turned_off_files_its_fault_under_class_first(
     assert fault["class_of"] == "none" and "'landed'" in fault["class_why"], fault
 
 
+def test_every_fault_goh_files_is_a_regression_so_spd_takes_it(fake_loopctl) -> None:  # noqa: F811
+    """GOH.COVREALON, 2026-11-20: the ship's bisect named db67e0ec, and its fault was refused, "give
+    `saves_land_s`" -- LOOP.SPDEARN makes an SPD item name the land seconds it saves unless it is a
+    regression. Everything goh files through `_file` is a fault (a reuse path off, a red bisect), so
+    the one funnel marks it `regression: true`; a filer that says otherwise keeps its own word."""
+    _off_by_a_repeated_red()
+    [fault] = filed(fake_loopctl)
+    assert fault["regression"] is True, fault
+
+
 def test_a_fault_files_under_a_phase_that_requires_metric_and_predicted(
     fake_loopctl,  # noqa: F811
     tmp_path,

@@ -94,6 +94,9 @@ def current_phase(fields: set[str]) -> str:
 
 
 def _file(loopctl: str, item: dict) -> tuple[int, str]:
+    # Everything goh files here is a fault (a reuse path off, a red ship bisect): a regression.
+    # LOOP.SPDEARN refuses an SPD item with neither `saves_land_s` nor `regression` (GOH.COVREALON).
+    item = {"regression": True, **item}
     queue = os.environ.get("GOH_LOOP_QUEUE", "")
     argv = [sys.executable, loopctl, *(["--queue", queue] if queue else []), "file", "--json",
             json.dumps(item)]  # fmt: skip
