@@ -1,2 +1,0 @@
-* An instrumented goh never profiles into its cwd: with no LLVM_PROFILE_FILE the coverage build names `$TMPDIR/goh-profraw/default_%m_%p.profraw` (goh-sys `name_profile`, `cfg(coverage)`), where the LLVM runtime's relative default left two profiles in the loop's checkout (GOH.STRAYPROFRAW).
-* `no tracked build output` refuses a `.profraw` git can see: tracked, staged, or untracked and not ignored.
