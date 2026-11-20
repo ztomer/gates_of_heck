@@ -37,6 +37,14 @@ verdict there. CODE_PARTS is the one list of goh's code now; gate_identity.PARTS
 binary's build inputs, and every key mode reads that. And the step closure skipped a `source` word
 no reading places (`. "$_goh_copy"`, `. "$ROOT/.gatesrc"`) without a word: `source_holes` is the
 coverage key's reading of one, and run_closure refuses one DECLARED does not name.
+
+DATA TOO (GOH.STEPDATAKEY). Every key mode still dropped the goh DATA a step reads outside the code
+parts: gates/doctor.sh reads `"$GOH_ROOT"/hooks/*`, retired_hooks.sha256 and docs/config.md, and
+structural.sh's hook currency (lib/hook_currency.py) the first two, so an edit to a stock hook
+reused a consumer's doctor or structural verdict. DATA is the one declaration of what goh's code
+reads of goh's own tree outside CODE_PARTS (tests/test_step_data_key.py finds every goh-rooted read
+and holds this to it, both ways): the whole-content key keys `data_files`, and run_closure adds a
+reader's data to its closure.
 """
 
 from __future__ import annotations
@@ -50,6 +58,33 @@ from source_closure import ROOT_VARS, SELF_VARS
 
 SCRIPT = (".sh", ".py", ".bash")
 CODE_PARTS = ("gates", "checks", "lib", "tools", "tui", "scripts")  # goh's code, a tail may name
+
+# The goh data a goh file reads outside CODE_PARTS: `<reader>` -> paths under the goh checkout,
+# `dir/*` each file directly in dir (hooks/claude/ is no stock hook). The ONE list: gate_identity's
+# whole content keys every file it names, a step's closure the files its readers name.
+DATA = {
+    "gates/doctor.sh": ("hooks/*", "retired_hooks.sha256", "docs/config.md"),
+    "lib/hook_currency.py": ("hooks/*", "retired_hooks.sha256"),
+    # Its `goh / "hooks" / HOOK` is the pre-push alone: spelled whole here, this file would NAME the
+    # hook, and every closure holding it would follow the hook's runs as code (source_closure).
+    "lib/push_gated.py": ("hooks/*", "retired_hooks.sha256"),
+}
+
+
+def data_files(root: Path, readers: tuple[str, ...] | None = None) -> list[str]:
+    """The DATA files under root that `readers` (None: every reader) read, root-relative, each an
+    existing file or link: a stock hook added under hooks/ is one more without a word here."""
+    out: set[str] = set()
+    for reader in DATA if readers is None else readers:
+        for pat in DATA.get(reader, ()):
+            if pat.endswith("/*"):
+                top = root / pat[:-2]
+                out.update(f"{pat[:-2]}/{p.name}" for p in (top.iterdir() if top.is_dir() else ())
+                           if p.is_file() or p.is_symlink())  # fmt: skip
+            elif (root / pat).is_file() or (root / pat).is_symlink():
+                out.add(pat)
+    return sorted(out)
+
 
 # A variable ONE file declares as its own directory: `<file>` -> the names. gates/_goh_bin.sh's
 # `here="${live:-$me}/gates"` is this root's gates/ (`me`), or, run from an export, the live
@@ -202,7 +237,8 @@ def run_closure(seeds: set[str], root: Path, goh: Path, named_edges: bool = Fals
     """seeds and every file under root they source, import (source_closure.closure) or run through
     a declared root; with `named_edges`, every file their code names by path too. Raises
     LookupError on a hole DECLARED does not name, a script path (GOH.STEPCLOSUREREFUSE) or a
-    `source` word (source_holes, GOH.FULLKEYSCRIPTS): no key can follow it. A declared root to
+    `source` word (source_holes, GOH.FULLKEYSCRIPTS): no key can follow it. A DATA reader adds the
+    data it reads (GOH.STEPDATAKEY). A declared root to
     no file is no edge here (the closure is read again from the next tree, so the file is keyed
     once it exists); the coverage key refuses one (lib/rust_cov_scripts.py)."""
     files = set(seeds)
@@ -224,6 +260,6 @@ def run_closure(seeds: set[str], root: Path, goh: Path, named_edges: bool = Fals
                 grown |= {t.relative_to(root).as_posix() for t in targets if t.is_relative_to(root)}
         if holes:
             raise LookupError("the closure runs what no reading places: " + "; ".join(holes))
-        if grown <= files:
-            return files
+        if grown <= files:  # a reader's data, never read for edges: a stock hook is git's to run
+            return files | set(data_files(root, tuple(r for r in files if r in DATA)))
         files |= grown

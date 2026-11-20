@@ -101,7 +101,6 @@ GOH_STEPS = ("./gates/rust_gate.sh", "./gates/structural.sh --full")
 MENTIONS = {
     "install.sh": "gates/doctor.sh and gates/_goh_bin.sh name it in a fix message, never run it",
     ".githooks/pre-push": "lib/gate_coverage.py ENTRIES: the gated repo's hook, read from it",
-    "hooks/pre-push": "the tail of lib/gate_coverage.py's `.githooks/pre-push`, a name match",
 }
 
 
@@ -114,7 +113,8 @@ def test_no_code_file_a_real_step_runs_is_outside_the_default_key() -> None:
     for step in GOH_STEPS:
         gohs, _, _ = sc._step_seeds(step, REPO_ROOT, REPO_ROOT)
         reach |= sc._goh_reach(gohs, REPO_ROOT, judge=False)[0]
-    outside = {r for r in reach if _runs(r) and r.split("/")[0] not in gate_identity.PARTS}
+    keyed = set(gate_identity._files(REPO_ROOT, gate_identity.PARTS, data=True))  # stock hooks too
+    outside = {r for r in reach if _runs(r) and r not in keyed}
     omitted = sorted(outside - set(MENTIONS))
     assert not omitted, f"files a step runs that its default key omits: {omitted}"
     assert not sorted(set(MENTIONS) - outside), "MENTIONS no closure reaches any more"

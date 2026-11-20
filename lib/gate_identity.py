@@ -22,15 +22,15 @@ The three parts:
   * the CONTENT of the gates that ran: every file under gates/ checks/ lib/ tools/ tui/ scripts/ of
     the gates root (lib/run_rule.py CODE_PARTS), and the goh binary's build inputs (crates/,
     Cargo.toml, Cargo.lock, rust-toolchain.toml: the trees its source stamp names,
-    gates/_goh_bin.sh), by path, kind and bytes -- ONE formula, so a checkout and its commit's head
-    export key alike (GOH.VERDICTKEYDRIFT: two formulas put one tree's loaded verdict under two keys
-    and the ship missed it); bytecode skipped. The gates run bin/goh, the build of those inputs:
-    without them a change to goh's Rust alone left every key unchanged (GOH.PROVENIDENTITY). Where
-    the binary is NOT the content's build it is keyed apart: an explicit GOH_BIN by its bytes (a
-    tool line), and a checkout whose build inputs differ from HEAD without GOH_LIVE (it runs HEAD's
-    build) by HEAD's trees. The version string a build reports (`git describe`, the release tag) is
-    not keyed: the binary store already holds one build per source (gates/_goh_bin.sh), and a tag
-    push reuses its commit's proofs;
+    gates/_goh_bin.sh), and the data it reads (run_rule.DATA), by path, kind and bytes -- ONE
+    formula, so a checkout and its commit's head export key alike (GOH.VERDICTKEYDRIFT: two formulas
+    put one tree's loaded verdict under two keys, the ship missed it); bytecode skipped. The gates
+    run bin/goh, the build of those inputs: without them a change to goh's Rust alone left every key
+    unchanged (GOH.PROVENIDENTITY). Where the binary is NOT the content's build it is keyed apart:
+    an explicit GOH_BIN by its bytes (a tool line), and a checkout whose build inputs differ from
+    HEAD without GOH_LIVE (it runs HEAD's build) by HEAD's trees. The version string a build reports
+    (`git describe`, the release tag) is not keyed: the binary store already holds one build per
+    source (gates/_goh_bin.sh), and a tag push reuses its commit's proofs;
   * the TOOLS: for each of rustc, cargo, python (the house interpreter), swift, shellcheck, ruff,
     cargo-llvm-cov and xcodebuild, the PATH hit, the binary it resolves to and that binary's size
     and mtime (no spawn: an upgrade rewrites the binary); a rustup proxy also by the toolchain
@@ -46,19 +46,18 @@ transitively, read from the sources by lib/rust_cov_scripts.py, never a hand lis
 the external suite's command runs the binary THROUGH (runner_files: goh's tools/pytest.sh and
 its closure, tests/ never: the owner's rule), PYTHONPATH with each gates root on it by content
 (pythonpath: goh's land puts a new head export path on it every commit, GOH.RUSTCOVKEYSCOPE),
-plus the tools. gates/_rust_proven.sh keys the coverage record on these lines;
-on a hit the instrumented build and report are skipped and the tests still run, plain. A workspace
-member or path dependency outside the keyed inputs has no such identity (exit 1): a change there
-could not move the key, so the coverage runs.
+plus the tools. gates/_rust_proven.sh keys the coverage record on these lines; on a hit the
+instrumented build and report are skipped and the tests still run, plain. A workspace member or
+path dependency outside the keyed inputs has no such identity (exit 1): a change there could not
+move the key, so the coverage runs.
 Used by lib/step_closure.py (each proven step's goh roots by its CLOSURE, GOH.PROVENCLOSURE;
-GOH.PROVENIDENTITY: gates/_proven.sh kept a formula of
-its own, HEAD sha and diff for a checkout, the PATH for an export, so a commit's checkout and its
-head export never reused each other's proven steps; and PYTHONPATH, by the one `pythonpath` formula
-the coverage key uses, scope gate_files: by path, a land's head export made every key new,
-GOH.PROVENPYPATH), checks/_estate_cache.py (GOH_DIR by `identity`, not its path), and
-tools/land.sh's goh-landed line (read by the push rule); the loaded run's record key went with
-that run (GOH.LOADEDDROP). Pinned by
-tests/test_verdict_key.py and tests/test_proven_goh_content.py.
+GOH.PROVENIDENTITY: gates/_proven.sh kept a formula of its own, HEAD sha and diff for a checkout,
+the PATH for an export, so a commit's checkout and its head export never reused each other's proven
+steps; and PYTHONPATH, by the one `pythonpath` formula the coverage key uses, scope gate_files: by
+path, a land's head export made every key new, GOH.PROVENPYPATH), checks/_estate_cache.py (GOH_DIR
+by `identity`, not its path), and tools/land.sh's goh-landed line (read by the push rule); the
+loaded run's record key went with that run (GOH.LOADEDDROP). Pinned by tests/test_verdict_key.py
+and tests/test_proven_goh_content.py.
 """
 
 from __future__ import annotations
@@ -136,13 +135,14 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
                           stdin=subprocess.DEVNULL, check=False)  # fmt: skip
 
 
-def _files(root: Path, parts: tuple[str, ...] | list[str] = PARTS) -> list[str]:
+def _files(root: Path, parts: tuple[str, ...] | list[str] = PARTS, data: bool = False) -> list[str]:
     """The gates' files under root, repo-relative: a checkout's tracked and untracked-unignored
-    ones that exist, or every file of an export (a `git archive` of a commit: its tracked files)."""
+    ones that exist, or an export's (its commit's tracked files); `data`: and run_rule.DATA's."""
+    read = run_rule.data_files(root) if data else []
     if (root / ".git").exists():
         listed = identity_cache.listed(root, tuple(parts), PARTS, BUILD[1:], _git)
         if listed is not None:
-            return sorted(r for r in listed if os.path.lexists(root / r))
+            return sorted({r for r in listed if os.path.lexists(root / r)} | set(read))
     rels = []
     for part in parts:
         top = root / part
@@ -152,12 +152,12 @@ def _files(root: Path, parts: tuple[str, ...] | list[str] = PARTS) -> list[str]:
             rels.extend(
                 str(p.relative_to(root)) for p in top.rglob("*") if p.is_file() or p.is_symlink()
             )
-    return sorted(rels)
+    return sorted({*rels, *read})
 
 
-def _entries(root: Path, parts: tuple[str, ...] | list[str], skip: frozenset[str] = frozenset()):
-    """(rel, kind, bytes) of each keyed file under root: bytecode and `skip` left out."""
-    for rel in _files(root, parts):
+def _entries(root: Path, parts: tuple[str, ...] | list[str], skip=frozenset(), data=False):
+    """(rel, kind, bytes) per keyed file under root (`data`: see _files); bytecode, `skip` out."""
+    for rel in _files(root, parts, data):
         if "__pycache__" in rel.split("/") or rel in skip:
             continue
         p = root / rel
@@ -168,14 +168,14 @@ def _entries(root: Path, parts: tuple[str, ...] | list[str], skip: frozenset[str
 
 
 def content(root: Path, parts: tuple[str, ...] | list[str] = PARTS,
-            skip: frozenset[str] = frozenset()) -> str:  # fmt: skip
+            skip: frozenset[str] = frozenset(), data: bool = False) -> str:  # fmt: skip
     """sha256 of the gates' bytes under root, ONE formula wherever they are read: each file's
     repo-relative path, kind (link, executable, file) and bytes. A checkout and the head export of
     its commit hold the same bytes and key alike; two formulas (`ls-files -s` plus the diff here,
     path and bytes there) put one commit's verdict under two keys (GOH.VERDICTKEYDRIFT)."""
     h = hashlib.sha256()
-    for rel, kind, data in _entries(root, parts, skip):
-        h.update(rel.encode() + b"\0" + kind + b"\0" + str(len(data)).encode() + b"\0" + data)
+    for rel, kind, raw in _entries(root, parts, skip, data):
+        h.update(rel.encode() + b"\0" + kind + b"\0" + str(len(raw)).encode() + b"\0" + raw)
     return h.hexdigest()
 
 
@@ -186,7 +186,7 @@ def manifest(roots: list[Path]) -> list[str]:
     (GOH.PROOFKEY) instead of a bare new key."""
     out: dict[str, str] = {}
     for root in roots:
-        for rel, kind, data in _entries(root, PARTS, test_only(root)):
+        for rel, kind, data in _entries(root, PARTS, test_only(root), data=True):
             out.setdefault(rel, f"{hashlib.sha256(data).hexdigest()} {kind.decode()} {rel}")
     return [out[r] for r in sorted(out)]
 
@@ -229,7 +229,7 @@ def binary(root: Path) -> str:
 def identity(root: Path) -> str:
     """The gates root as one line: its content, and the binary if it is not the content's build."""
     extra = binary(root)
-    return f"content {content(root, PARTS, test_only(root))}" + (f" {extra}" if extra else "")
+    return f"content {content(root, PARTS, test_only(root), True)}" + (f" {extra}" if extra else "")
 
 
 def key(mode: str, root: Path = GOH_ROOT) -> str:

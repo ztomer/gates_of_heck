@@ -30,6 +30,7 @@ import shlex
 import sys
 from pathlib import Path
 
+import run_rule  # lib/, beside this file: the one declaration of goh's code and data
 import source_closure  # lib/, beside this file
 from gate_identity import (
     _RUN,
@@ -67,8 +68,15 @@ ROOT_PY_DIRS = ("", "lib", "checks", "gates", "tools")
 
 @functools.cache
 def candidates(goh: Path) -> list[str]:
-    """goh's keyed files (PARTS) a consumer's Python may name by path."""
-    return [r for r in source_closure.tree_files(goh) if r.split("/")[0] in PARTS]
+    """goh's keyed files (PARTS and its data) a consumer's Python may name by path."""
+    data = _data(goh)
+    return [r for r in source_closure.tree_files(goh) if r.split("/")[0] in PARTS or r in data]
+
+
+@functools.cache
+def _data(goh: Path) -> frozenset[str]:
+    """The goh data its code reads (run_rule.DATA): keyed, and never judged as code."""
+    return frozenset(run_rule.data_files(goh))
 
 
 @functools.cache
@@ -164,8 +172,10 @@ def _goh_reach(seeds: set[str], goh: Path, judge: bool) -> tuple[set[str], str]:
     if not judge:
         return files, ""
     for rel in sorted(files):
-        if not (rel.endswith(source_closure.CODE) or source_closure._is_shell(goh / rel)):
-            continue  # data: it runs nothing
+        if rel in _data(goh) or not (
+            rel.endswith(source_closure.CODE) or source_closure._is_shell(goh / rel)
+        ):
+            continue  # data: it runs nothing (a stock hook is git's to run, doctor's to compare)
         code = _code(goh, rel)
         if _DISPATCH.search(code):
             return files, f"{rel} dispatches the goh binary"
@@ -201,8 +211,11 @@ def step_closure(step: str, repo: Path, goh: Path) -> tuple[list[str], str]:
     if not why:
         gohs, why = _goh_reach(gohs, goh, judge=True)
     # The keyed parts only, the whole-content key's (PARTS, scripts/ among them: gates/_goh_bin.sh
-    # runs scripts/build-goh.sh, GOH.STEPCLOSUREREFUSE): docs/ and tests/ never decided a step.
-    keyed = {r for r in gohs | runner_closure(goh) if r.split("/")[0] in PARTS}
+    # runs scripts/build-goh.sh, GOH.STEPCLOSUREREFUSE, and the data the code reads, run_rule.DATA,
+    # GOH.STEPDATAKEY, those its readers read: a doc a message merely names decided no step).
+    reach = gohs | runner_closure(goh)
+    data = run_rule.data_files(goh, tuple(r for r in reach if r in run_rule.DATA))
+    keyed = {r for r in reach if r.split("/")[0] in PARTS} | set(data)
     return sorted(keyed), why
 
 
@@ -273,7 +286,7 @@ def _hashed(root: Path) -> dict[str, str]:
     selection of these (32 steps of divoom-control re-listed the tree each: 22 s)."""
     skip = test_only(root)  # PARTS from its one cached listing
     return {rel: f"{kind.decode()} {hashlib.sha256(data).hexdigest()}"
-            for rel, kind, data in _entries(root, PARTS, skip)}  # fmt: skip
+            for rel, kind, data in _entries(root, PARTS, skip, data=True)}  # fmt: skip
 
 
 def _part_hash(root: Path, files: tuple[str, ...]) -> str:

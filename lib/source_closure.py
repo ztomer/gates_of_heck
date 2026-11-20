@@ -308,13 +308,33 @@ def names_path(code: str, path: str) -> bool:
     """Whether `code` names the tree path `path`: spelled whole, or every part quoted
     (`REPO_ROOT / "lib" / "x.py"`). A file at the root (`.gatesrc`, `install.sh`) is named only as
     `REPO_ROOT / ".gatesrc"`: its bare name is every fixture's own copy, not goh's. The one rule of
-    tools/affected_tests.py and the `named` edge (GOH.AFFECTEDTRANSITIVE, GOH.PROVENCLOSURE)."""
+    tools/affected_tests.py and the `named` edge (GOH.AFFECTEDTRANSITIVE, GOH.PROVENCLOSURE).
+    Spelled whole is the WHOLE path: `.githooks/pre-push` (the gated repo's hook) and
+    `tools/hooks/pre-commit` name no hooks/... (GOH.STEPDATAKEY); after a `/` only a root does
+    (`$GOH_ROOT/`, `"$X"/`, `{root}/`, `$(...)/`, `./`, `../`)."""
     parts = Path(path).parts
     if len(parts) == 1:
         return re.search(rf"\bREPO_ROOT\s*/\s*[\"']{re.escape(path)}[\"']", code) is not None
-    if path in code:
+    if any(_whole(code, m.start(), m.end()) for m in re.finditer(re.escape(path), code)):
         return True
     return all(f'"{c}"' in code or f"'{c}'" in code for c in parts)
+
+
+# Before a path spelled whole: a word or path character makes it the tail of another path.
+_PATH_CHAR = re.compile(r"[\w.-]")
+# Before the `/` that leads a rooted spelling: a variable, a closing quote/brace/paren, or `.`/`..`.
+_ROOTED_END = re.compile(r"(?:\$\{?\w+|[}\"')]|(?:^|[^\w.-])\.\.?)$")
+
+
+def _whole(code: str, start: int, end: int) -> bool:
+    if end < len(code) and (_PATH_CHAR.match(code[end]) or code[end] == "/"):
+        return False
+    if start == 0 or code[max(0, start - 2) : start] in ("\\t", "\\n"):  # a table's `\t` cell
+        return True
+    before = code[start - 1]
+    if before == "/":
+        return _ROOTED_END.search(code[max(0, start - 80) : start - 1]) is not None
+    return not _PATH_CHAR.match(before)
 
 
 CODE = (".py", ".sh", ".bash", ".rs", ".swift", ".mjs", ".js", ".cjs")

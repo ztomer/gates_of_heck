@@ -64,12 +64,14 @@ MENTIONS = {
 
 
 def _declares(rel: str, other: str) -> bool:
-    """Whether `rel` names `other` only in a lib/run_rule.py DECLARED key: its file, or the tail
-    of its form (`$root/tools/gate.sh`, the gated repo's own)."""
+    """Whether `rel` names `other` only in a lib/run_rule.py DECLARED key (its file, or the tail
+    of its form: `$root/tools/gate.sh`, the gated repo's own) or a DATA reader's name."""
     import run_rule
 
     keys = [k.split(": ", 1) for k in run_rule.DECLARED]
-    return rel == "lib/run_rule.py" and any(f == other or g.endswith("/" + other) for f, g in keys)
+    return rel == "lib/run_rule.py" and (
+        other in run_rule.DATA or any(f == other or g.endswith("/" + other) for f, g in keys)
+    )
 
 
 def _scripts():
