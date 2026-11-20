@@ -21,7 +21,8 @@
 //! build of the same trees that the store already holds.
 //!
 //! AN INSTRUMENTED BUILD SAYS NO COMMIT (GOH.COVCARRY2). Under cargo-llvm-cov (`CARGO_LLVM_COV` set)
-//! the version is `lib/goh_version.sh --coverage`: the release, or `X.Y.Z-coverage` past it. The
+//! the version is `lib/goh_version.sh --coverage`: the release, or `X.Y.Z-coverage` past it, X.Y.Z
+//! the release its last build-input change sits past (GOH.COVPROFILEREUSE: a release moved it). The
 //! coverage step keys each test's profile on that binary's bytes, and `-N-g<sha>` moved them on a
 //! commit that touched no build input (b851b948 -> d2454263), so no profile could ever be reused.
 

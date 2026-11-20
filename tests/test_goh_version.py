@@ -179,6 +179,33 @@ def test_an_instrumented_build_keeps_its_version_across_a_commit_of_no_build_inp
     assert _ask(repo, "--coverage") == first
 
 
+def test_an_instrumented_build_keeps_its_version_across_a_release_of_no_build_input(
+    repo: Path,
+) -> None:
+    """GOH.COVPROFILEREUSE: the ship reuses a binary test's stored profile only for the same
+    instrumented BYTES, and `X.Y.Z-coverage` named the release HEAD sits past -- so every release
+    moved them: four ships in a row (v0.139.20..v0.140.0) whose Rust inputs last changed at
+    e7bf6d43 built four binaries (e7617334.., 7f110ecf.., e8b280da.., 31515780..), and the store
+    matched nothing. The release is the one the last build-input change sits past: a release
+    commit, which changes none, leaves it alone; the next input change takes the new one."""
+    _inputs(repo)
+    git(repo, "tag", "v1.2.3")
+    _commit(repo, "past it")
+    first = _ask(repo, "--coverage")
+    assert first == "1.2.3-coverage", first
+    git(repo, "tag", "v1.2.4")  # a release: it changes no build input
+    assert _ask(repo, "--coverage") == "1.2.4"  # a tagged commit is its release, as before
+    (repo / "README").write_text("a doc, not a build input\n")
+    git(repo, "add", "-A")
+    _commit(repo, "past the next release")
+    assert _ask(repo).startswith("1.2.4-1-g")  # calibration: the plain version took the tag
+    assert _ask(repo, "--coverage") == first
+    (repo / "crates" / "a.rs").write_text("fn main() { let _ = 1; }\n")
+    git(repo, "add", "-A")
+    _commit(repo, "a build input changes")
+    assert _ask(repo, "--coverage") == "1.2.4-coverage"
+
+
 def test_the_binary_reports_the_version_its_build_kind_asks_for(goh: Path) -> None:
     """build.rs asks `--coverage` exactly when cargo-llvm-cov drives the build (CARGO_LLVM_COV):
     under the coverage step the suite's binary is built here from this tree and reports exactly

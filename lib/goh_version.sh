@@ -73,13 +73,25 @@ goh_version_at() {
 # keys a test's profile on the instrumented binary's BYTES, and `-N-g<sha>` moved them on every
 # commit: b851b948 -> d2454263 touched no build input and moved goh's sha256. gohpin reads only the
 # release part, and goh_require_current takes any `X.Y.Z-*` past a release (gates/structural.sh).
+# AND NO RELEASE PAST THE BINARY'S OWN SOURCE (GOH.COVPROFILEREUSE): the release named is the one
+# the LAST BUILD-INPUT CHANGE at or below REV sits past, not REV's -- a release commit changes no
+# input, yet `X.Y.Z` moving with it moved the bytes of every ship's build (four ships, four
+# binaries, one set of Rust inputs), so a profile stored by one ship never matched the next.
 goh_coverage_version_at() {
-    local v
-    v="$(goh_version_at "$1" "${2:-HEAD}")"
+    local v c="${2:-HEAD}" last
+    local -a inputs=()
+    v="$(goh_version_at "$1" "$c")"
     case "$v" in
-        *-*-g*) printf '%s-coverage\n' "${v%%-*}" ;;
-        *) printf '%s\n' "$v" ;;
+        *-*-g*) ;;
+        *) printf '%s\n' "$v"; return 0 ;;   # a release, or `unknown`: as it is
     esac
+    mapfile -t inputs < <(goh_stamp_inputs_at "$1" "$c")
+    last="$(_goh_version_git "$1" log -1 --format=%H "$c" -- "${inputs[@]}")" || last=""
+    if [ -n "$last" ]; then
+        last="$(goh_version_at "$1" "$last")"
+        [ "$last" = unknown ] || v="$last"   # a change below every release: REV's own release
+    fi
+    printf '%s-coverage\n' "${v%%-*}"
 }
 
 # goh_stamp_inputs_at ROOT [REV] -- the build inputs the stamp names, one per line (GOH.STAMPINPUTS):
