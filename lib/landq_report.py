@@ -26,7 +26,7 @@ per attempt, but a batch's items (their `batch` {id, gates}, lib/landq_batch.py)
 count was made with). `unloaded_s` is
 the shortest green run in the window: what a gate costs when nothing else is running. `selection`
 is the selection-miss ledger by day (lib/selection_miss.py, GOH.SELECTAUDIT): {day: {judged,
-missed, tests, full, full_missed}}, a red attempt judged against its diff's selection.
+missed, tests, steps, full, full_missed}}, a red attempt judged against its diff's selection.
 
 Pinned by tests/test_landq_report.py.
 """
@@ -305,6 +305,11 @@ def render(rep: dict) -> str:
     return "\n".join(lines)
 
 
+def _steps(d: dict) -> str:
+    """The gate steps the pre-step never ran that went red (GOH.MISSLEDGERGATE), when any."""
+    return f", {counted(d['steps'], 'gate step')} not run" if d.get("steps") else ""
+
+
 def _selection_lines(days: dict[str, dict]) -> list[str]:
     """The selection misses per day: reds whose failed tests the pre-step's selection did not
     choose, of the reds judged, and the idle full runs' shadow."""
@@ -312,7 +317,8 @@ def _selection_lines(days: dict[str, dict]) -> list[str]:
     for day, d in days.items():
         rate = f"{d['missed'] / d['judged']:.0%}" if d["judged"] else "-"
         out.append(f"selection misses {day}: {d['missed']} of {counted(d['judged'], 'red land')} "
-                   f"judged ({rate}), {counted(d['tests'], 'test')} not chosen; full-run shadow: "
+                   f"judged ({rate}), {counted(d['tests'], 'test')} not chosen"
+                   f"{_steps(d)}; full-run shadow: "
                    f"{d['full_missed']} of {d['full']}")  # fmt: skip
     return out
 

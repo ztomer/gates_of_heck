@@ -1,0 +1,126 @@
+
+────────────────────────────────────────────────────────────────────────
+  land lane/pytestpin @ d0aa17a3 -> gates_of_heck
+────────────────────────────────────────────────────────────────────────
+→ rebased lane/pytestpin onto main 137c938d: d0aa17a3 -> 1a5e4e9f
+→ pre-land: the fast set alone on 1a5e4e9f where the verdict the enqueue judged at d0aa17a3 does not hold: gates/required_pins.py (+3 more) moved since main 137c938d: the gate measures coverage
+→ pre-land: "$GOH_PY" tools/affected_tests.py --run --fast-only
+→ load: baseline before the spinners: load average 26.7 / 37.9 / 46.3 (1/5/15 min) on 16 cores
+→ load: gate slot 2/2 taken after 0s (GOH_GATE_SLOTS, class short); workers 8 (GOH.POOLSHARE)
+load: 0 spinners started: 
+→ pre-land: 160 fast judges first (3.971 s measured, serial)
+~/Library/Python/3.15/lib/python/site-packages/pytest_asyncio/plugin.py:299: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the "fixture" caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to "function" scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+........................................................................ [ 31%]
+........................................................................ [ 62%]
+........................................................................ [ 93%]
+................                                                         [100%]
+load: spinners stopped, registry cleared
+✓ pre-land green in 13 s: waited 0 s, ran 13 s of 1500 s at 8 workers
+→ the lane changes the gate code: main 137c938d's gates judge 1a5e4e9f first, then its own
+→ gate: ~/.cache/goh/head/137c938d8814386e3ee09f60b6d924f36c441408/tools/gate_profile.sh . (under main 137c938d's gates)
+→ load: baseline before the spinners: load average 22.0 / 36.3 / 45.6 (1/5/15 min) on 16 cores
+→ load: gate slot 1/2 taken after 0s (GOH_GATE_SLOTS, class ship); workers 16 (GOH.POOLSHARE)
+load: 0 spinners started: 
+1 @ 1a5e4e9ff6d9: push gate running (log: /var/folders/0f/w2bl2pnx4mn7pvrkjwvwt3p40000gn/T/goh.noindex/goh-land-timings.w9QacE.log)
+pre-push: gating 1a5e4e9ff6d931b3913cc13d6b18a76d07a8b18a @ 1a5e4e9f in a clean worktree
+local CI — 9 steps in ~/.cache/goh/push/1-703cdf8d5f39/1
+→ [1/9] (.gatesrc) ./gates/rust_gate.sh
+✓ [1/9] ./gates/rust_gate.sh
+↔ [rust] coverage: measuring -- the last measurement (8m ago) was on other inputs: the Rust build inputs (gates/required_tools.tsv); the coverage scripts (gates/required_pins.py, gates/required_tools.py); the suite's runner (gates/required_pins.py, gates/required_tools.py, tools/pytest.sh); PYTHONPATH (its gates roots by content) moved
+→ [2/9] (.gatesrc) ./gates/structural.sh --full
+✓ [2/9] ./gates/structural.sh --full
+→ [3/9] (.gatesrc) cargo test --workspace --doc --locked
+✓ [3/9] cargo test --workspace --doc --locked
+→ [4/9] (.gatesrc) ./gates/goh.sh status-markers
+✓ [4/9] ./gates/goh.sh status-markers
+→ [5/9] (.gatesrc) ./gates/goh.sh shape-diff . --estate --since main
+✓ [5/9] ./gates/goh.sh shape-diff . --estate --since main
+→ [6/9] (.gatesrc) ./gates/py_staged.sh --all .
+✓ [6/9] ./gates/py_staged.sh --all .
+→ [7/9] (.gatesrc) "$GOH_PY" ./gates/path_invariance.py -- ./gates/structural.sh --full
+✓ [7/9] "$GOH_PY" ./gates/path_invariance.py -- ./gates/structural.sh --full
+→ [8/9] (.gatesrc) "$GOH_PY" ./checks/check_lock_order.py .
+✓ [8/9] "$GOH_PY" ./checks/check_lock_order.py .
+→ [9/9] (.gatesrc) "$GOH_PY" ./scripts/release_canary.py
+✗ [9/9] FAILED (exit status 1): "$GOH_PY" ./scripts/release_canary.py
+1 @ 1a5e4e9ff6d9: push gate exit 1 in 502s (log: /var/folders/0f/w2bl2pnx4mn7pvrkjwvwt3p40000gn/T/goh.noindex/goh-land-timings.w9QacE.log)
+1350 steps recorded
+-- top 20 steps by wall time --
+  448.04 s 3466.06 s cpu  rc=0   1                    ./gates/rust_gate.sh
+  425.02 s 3436.45 s cpu  rc=0   1                    coverage (floor 93.1%)
+  389.00 s  rc=0   1                    coverage phase: external: GOH_TEST_BIN="$GOH_COVERAGE_BIN_DIR/goh" ./tools/pytest.sh
+  104.42 s  335.15 s cpu  rc=1   1                    "$GOH_PY" ./scripts/release_canary.py
+   20.81 s   65.61 s cpu  rc=0   1                    "$GOH_PY" ./gates/path_invariance.py -- ./gates/structural.sh --full
+   13.00 s  rc=0   1                    coverage phase: external: instrumented build
+   12.00 s  rc=0   1                    coverage phase: workspace: test binaries
+    8.15 s   10.84 s cpu  rc=0   1                    clippy (-D warnings, all targets, all features)
+    7.23 s    0.46 s cpu  rc=0   1                    cargo test --workspace --doc --locked
+    7.00 s  rc=0   1                    coverage phase: workspace: instrumented build
+    5.91 s  rc=0   1                    path_invariance: under ~/.cache/goh/goh-path-invariance.h0ii2yiz/tree
+    5.05 s    8.27 s cpu  rc=0   1                    clippy (--target x86_64-unknown-linux-gnu)
+    4.93 s  rc=0   1                    path_invariance: under /private/var/folders/0f/w2bl2pnx4mn7pvrkjwvwt3p40000gn/T/goh.noindex/goh-path-invariance.0wocwgk1/tree
+    4.87 s  rc=0   1                    path_invariance: under /System/Volumes/Data/private/var/folders/0f/w2bl2pnx4mn7pvrkjwvwt3p40000gn/T/goh.noindex/goh-path-invariance.0wocwgk1/tree
+    4.59 s   17.07 s cpu  rc=0   1                    ./gates/structural.sh --full
+    4.42 s  rc=0   1                    path_invariance: under /var/folders/0f/w2bl2pnx4mn7pvrkjwvwt3p40000gn/T/goh.noindex/goh-path-invariance.0wocwgk1/tree
+    2.62 s    2.63 s cpu  rc=0   1                    cargo lints (manifest)
+    1.67 s  rc=0   tree                 gates refuse to pass over an empty tree
+    1.19 s  rc=0   1                    gates refuse to pass over an empty tree
+    1.18 s  rc=0   tree                 gates refuse to pass over an empty tree
+-- top 20 labels, summed over every run of the label --
+  448.04 s 3466.06 s cpu  x1    ./gates/rust_gate.sh
+  425.02 s 3436.45 s cpu  x1    coverage (floor 93.1%)
+  389.00 s  x1    coverage phase: external: GOH_TEST_BIN="$GOH_COVERAGE_BIN_DIR/goh" ./tools/pytest.sh
+  104.42 s  335.15 s cpu  x1    "$GOH_PY" ./scripts/release_canary.py
+   20.81 s   65.61 s cpu  x1    "$GOH_PY" ./gates/path_invariance.py -- ./gates/structural.sh --full
+   13.00 s  x1    coverage phase: external: instrumented build
+   12.00 s  x1    coverage phase: workspace: test binaries
+    8.15 s   10.84 s cpu  x1    clippy (-D warnings, all targets, all features)
+    7.23 s    0.46 s cpu  x1    cargo test --workspace --doc --locked
+    7.00 s  x1    coverage phase: workspace: instrumented build
+    5.91 s  x1    path_invariance: under ~/.cache/goh/goh-path-invariance.h0ii2yiz/tree
+    5.05 s    8.27 s cpu  x1    clippy (--target x86_64-unknown-linux-gnu)
+    5.01 s  x18   gates refuse to pass over an empty tree
+    4.93 s  x1    path_invariance: under /private/var/folders/0f/w2bl2pnx4mn7pvrkjwvwt3p40000gn/T/goh.noindex/goh-path-invariance.0wocwgk1/tree
+    4.87 s  x1    path_invariance: under /System/Volumes/Data/private/var/folders/0f/w2bl2pnx4mn7pvrkjwvwt3p40000gn/T/goh.noindex/goh-path-invariance.0wocwgk1/tree
+    4.59 s   17.07 s cpu  x1    ./gates/structural.sh --full
+    4.42 s  x1    path_invariance: under /var/folders/0f/w2bl2pnx4mn7pvrkjwvwt3p40000gn/T/goh.noindex/goh-path-invariance.0wocwgk1/tree
+    2.62 s    2.63 s cpu  x1    cargo lints (manifest)
+    1.54 s  x7    no process kill by name
+    1.42 s    6.11 s cpu  x2    control:rust
+-- CPU over a same-kind control (BACKLOG 5.3) --
+native: raw CPU holds across loads for in-process work (BACKLOG 5.3)
+   17.07 s  ./gates/structural.sh --full
+rust: control 3.05 s cpu, control drift -0.7%
+ 1135.15  ./gates/rust_gate.sh
+ 1125.45  coverage (floor 93.1%)
+    3.55  clippy (-D warnings, all targets, all features)
+    2.71  clippy (--target x86_64-unknown-linux-gnu)
+    0.86  cargo lints (manifest)
+    0.15  no known advisory in Cargo.lock (cargo audit: warnings, unmaintained, unsound, yanked)
+    0.12  fmt
+    0.10  no unused dependencies
+    0.07  every Cargo.lock at its newest compatible releases (cargo update --dry-run)
+    0.04  no emptiness asserts
+    0.03  no raw cargo audit outside goh's advisory-db wrapper (GOH_CI_STEPS, tools/)
+    0.02  the lockfile resolves --locked
+    0.01  no #[allow] / #[expect]
+    0.01  dependency currency
+    0.00  lint policy is inherited
+timings: /var/folders/0f/w2bl2pnx4mn7pvrkjwvwt3p40000gn/T/goh.noindex/goh-land-timings.w9QacE
+── failure lines (grep error:|FAILED|failed|panicked at|Assertion|✗) ──
+34:✗ [9/9] FAILED (exit status 1): "$GOH_PY" ./scripts/release_canary.py
+39:✗ release canary: v0.139.7-2-g1a5e4e9f turns 1 consumer red at push that v0.139.7 left green:
+40:✗   sys_updater: gates refuse to pass over an empty tree -- fix the findings (`goh structural --full --keep-going` in the repo lists them)
+44:✗ release canary: REFUSED -- fix or seed each consumer above (in that repo), then land
+45:✗   again; a consumer that should leave the estate leaves its registry, by name
+50:✗ 1 of 9 steps failed:
+51:✗ 
+53:✗ 
+54:✗   full output: /var/folders/0f/w2bl2pnx4mn7pvrkjwvwt3p40000gn/T/goh.noindex/goh-local-ci.OhyXNf
+58:✗ pre-push: the gate failed on 1a5e4e9f — nothing pushed
+59:✗ pre-push: the full gate output is kept at ~/.cache/goh/push-logs/1-1a5e4e9f-20261119T033842.log
+load: spinners stopped, registry cleared
+✗ land.sh: the gate failed on 1a5e4e9f under main 137c938d's gates -- nothing landed

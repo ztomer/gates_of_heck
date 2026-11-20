@@ -19,9 +19,11 @@ safe was a feeling. Here every judged red is read against the selection its diff
                       (`python3 lib/selection_miss.py --replay --since DAY`)
 
 Ledger: `<landq>/selection_misses.jsonl`; `goh land --report` shows misses per day (summary()).
-A test the selection chose is never a miss, wherever it went red (a red pre-step is the selection
-working; a chosen test red only in the gate is the rebase or load). Pinned by
-tests/test_selection_miss.py.
+A red gate STEP (no failed test: GOH.PYTESTPIN's canary) writes a `step` row: the step, whether the
+pre-step ran it (PRE_RAN), the changed files; one the pre-step never ran is a miss, counted in
+summary()'s `missed` and `steps` (GOH.MISSLEDGERGATE). A test the selection chose is never a miss,
+wherever it went red (a red pre-step is the selection working; a chosen test red only in the gate is
+the rebase or load). Pinned by tests/test_selection_miss.py.
 """
 
 from __future__ import annotations
@@ -54,10 +56,43 @@ from tmp_root import goh_tmp
 LEDGER = "selection_misses.jsonl"
 FAILED = re.compile(r"^(?:\d+:)?[ \t]*FAILED (tests/[^\s@]+)", re.MULTILINE)
 SELECTOR = "tools/affected_tests.py"
+# A gate step's red line, the gate's failure-lines copy included (gates/local_ci.sh: `✗ [9/9]
+# FAILED (exit status 1): "$GOH_PY" ./scripts/release_canary.py`, GOH.PYTESTPIN's land).
+STEP_RED = re.compile(r"^(?:\d+:)?[ \t]*✗ \[\d+/\d+\] FAILED \([^)]*\): (.+?)[ \t]*$", re.MULTILINE)
+# The gate steps the pre-step can run, by script, and the line its run prints in the land log
+# (tools/affected_tests.py canary, lib/fast_tests.py structural). A step not here never ran there.
+PRE_RAN = {
+    "scripts/release_canary.py": "the release canary, as the land gate runs it",
+    "gates/structural.sh": "pre-land: the structural gates over the branch first",
+}
 
 
 def failed_tests(text: str) -> list[str]:
     return sorted(set(FAILED.findall(text)))
+
+
+def red_steps(text: str) -> list[str]:
+    """The gate steps a log saw go red, by their command."""
+    return sorted(set(STEP_RED.findall(text)))
+
+
+def step_script(cmd: str) -> str:
+    """The script a step runs: its first path-like word, `./` dropped."""
+    words = [w.strip("\"'") for w in cmd.split()]
+    return next((w.removeprefix("./") for w in words if "/" in w and "$" not in w), cmd)
+
+
+def step_rows(base: dict, changed: list[str], steps: list[str], text: str) -> list[dict]:
+    """One `step` row per red gate step: whether the pre-step ran it (its PRE_RAN line in the log).
+    One it ran and that still went red is recorded with pre_ran and miss False -- the selection
+    worked, as a chosen test red only in the gate does; one it never ran is the selection's miss."""
+    rows = []
+    for cmd in steps:
+        script = step_script(cmd)
+        ran = PRE_RAN.get(script, "\0") in text
+        rows.append({"kind": "step", **base, "step": cmd, "script": script, "pre_ran": ran,
+                     "miss": not ran, "changed": changed})  # fmt: skip
+    return rows
 
 
 def covered(test: str, chosen: Iterable[str]) -> bool:
@@ -68,12 +103,18 @@ def covered(test: str, chosen: Iterable[str]) -> bool:
 
 
 def judge(source: str, item: str, sha: str, day: str, changed: list[str], chosen: list[str],
-          failed: list[str]) -> list[dict]:  # fmt: skip
+          failed: list[str], steps: list[str] | None = None,
+          text: str = "") -> list[dict]:  # fmt: skip
+    """The judged row, a `miss` row per unchosen failed test, a `step` row per red gate STEP
+    (GOH.MISSLEDGERGATE: a step red failed no test, so it once wrote nothing)."""
     missed = [t for t in failed if not covered(t, chosen)]
     base = {"source": source, "item": item, "sha": sha, "day": day}
+    srows = step_rows(base, changed, steps or [], text)
     head = {"kind": "judged", **base, "changed": changed, "selected": len(chosen),
-            "failed": len(failed), "missed": len(missed)}  # fmt: skip
-    return [head, *({"kind": "miss", **base, "test": t, "selected": len(chosen)} for t in missed)]
+            "failed": len(failed), "missed": len(missed), "steps": len(srows),
+            "steps_missed": sum(r["miss"] for r in srows)}  # fmt: skip
+    misses = ({"kind": "miss", **base, "test": t, "selected": len(chosen)} for t in missed)
+    return [head, *misses, *srows]
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -123,7 +164,7 @@ def append(q: Path, rows: list[dict]) -> int:
 
 
 def _key(row: dict) -> tuple:
-    return tuple(row.get(k) for k in ("kind", "source", "item", "sha", "test"))
+    return tuple(row.get(k) for k in ("kind", "source", "item", "sha", "test", "step"))
 
 
 def read(q: Path) -> list[dict]:
@@ -144,12 +185,13 @@ def read(q: Path) -> list[dict]:
 
 def _measure(q: Path, source: str, item: str, repo: Path, base: str, sha: str,
              log: Path | list[Path], day: str) -> list[dict]:  # fmt: skip
-    failed = _failed(log if isinstance(log, list) else [log])
+    logs = log if isinstance(log, list) else [log]
+    failed, text = _failed(logs), _text(logs)
     paths = changed(repo, _git(repo, "merge-base", base, sha).strip(), sha)
     chosen = selection(repo, sha, paths)
     if chosen is None:
         return []
-    rows = judge(source, item, sha, day, paths, chosen, failed)
+    rows = judge(source, item, sha, day, paths, chosen, failed, red_steps(text), text)
     append(q, rows)
     return rows
 
@@ -164,8 +206,18 @@ def attempt_logs(outcome: dict) -> list[Path]:
     return [p for p in dict.fromkeys(Path(n) for n in named if n) if p.is_file()]
 
 
+def _text(logs: list[Path]) -> str:
+    return "\n".join(p.read_text(errors="replace") for p in logs)
+
+
 def _failed(logs: list[Path]) -> list[str]:
-    return sorted({t for p in logs for t in failed_tests(p.read_text(errors="replace"))})
+    return failed_tests(_text(logs))
+
+
+def _judgeable(logs: list[Path]) -> bool:
+    """A failed test or a red gate step to judge."""
+    text = _text(logs)
+    return bool(failed_tests(text) or red_steps(text))
 
 
 def _today() -> str:
@@ -179,7 +231,7 @@ def record_land(q: Path, outcome: dict, item: str) -> str:
     if outcome.get("state") == "landed" or outcome.get("mode") != "land" or not logs:
         return ""
     try:
-        if not _failed(logs):
+        if not _judgeable(logs):
             return ""
         repo, sha = Path(outcome["repo"]), str(outcome["sha"])
         _measure(q, "land", item, repo, "HEAD", sha, logs, _today())
@@ -213,7 +265,7 @@ def replay(q: Path, since: str = "") -> list[dict]:
         logs = attempt_logs(rec)
         if rec.get("state") == "landed" or rec.get("mode") != "land" or day < since:
             continue
-        if not _failed(logs):
+        if not _judgeable(logs):
             continue
         base = f"main@{{{int(ns) // 10**9}}}"
         try:
@@ -224,18 +276,19 @@ def replay(q: Path, since: str = "") -> list[dict]:
 
 
 def summary(rows: list[dict], since: str = "") -> dict[str, dict]:
-    """{day: {judged, missed (judged reds with a miss), tests (missed tests), full (shadow runs),
-    full_missed}} from SINCE."""
+    """{day: {judged, missed (judged reds with a miss: an unchosen test or a gate step the pre-step
+    never ran), tests (missed tests), steps (missed steps), full (shadow runs), full_missed}}."""
     out: dict[str, dict] = {}
     for r in rows:
         if r.get("kind") != "judged" or str(r.get("day")) < since:
             continue
-        d = out.setdefault(str(r["day"]), dict.fromkeys(("judged", "missed", "tests", "full",
-                                                          "full_missed"), 0))  # fmt: skip
+        d = out.setdefault(str(r["day"]), dict.fromkeys(("judged", "missed", "tests", "steps",
+                                                          "full", "full_missed"), 0))  # fmt: skip
         full = r.get("source") == "full"
         d["full" if full else "judged"] += 1
-        d["full_missed" if full else "missed"] += bool(r.get("missed"))
+        d["full_missed" if full else "missed"] += bool(r.get("missed") or r.get("steps_missed"))
         d["tests"] += int(r.get("missed") or 0)
+        d["steps"] += int(r.get("steps_missed") or 0)
     return dict(sorted(out.items()))
 
 

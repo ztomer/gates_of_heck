@@ -56,7 +56,7 @@ def test_the_days_reds_replayed_from_the_landq_logs_find_two_misses():
                  "GOH.CAPHEADROOM@42b91c6c"):  # fmt: skip
         assert judged[name]["failed"] and not judged[name]["missed"], name
     assert sm.summary(rows) == {
-        DAY: {"judged": 19, "missed": 2, "tests": 11, "full": 0, "full_missed": 0}
+        DAY: {"judged": 19, "missed": 2, "tests": 11, "steps": 0, "full": 0, "full_missed": 0}
     }
 
 
@@ -167,7 +167,49 @@ def test_a_batch_red_judges_the_stack_runs_its_item_was_in_not_only_its_own_log(
                "red_logs": [str(stack), str(own)]}  # fmt: skip
     assert sm.attempt_logs(outcome) == [own, stack]
     assert sm.record_land(q, outcome, "GOH.X") == ""
-    assert [(r["kind"], r.get("test")) for r in sm.read(q)] == [
+    assert [(r["kind"], r.get("test") or r.get("step")) for r in sm.read(q)] == [
         ("judged", None),
         ("miss", "tests/test_b.py::test_y"),
+        ("step", "./checks/check_x.py ."),  # gate 3's step, which no pre-step runs
     ]
+
+
+PYTESTPIN = FIXTURE / "step_red-GOH.PYTESTPIN.log"
+CANARY = '"$GOH_PY" ./scripts/release_canary.py'
+
+
+def test_a_land_red_on_a_gate_step_the_pre_step_skipped_is_a_judged_miss(tmp_path):
+    """GOH.PYTESTPIN (d0aa17a3, 2026-11-19): the pre-step ran its tests green and no canary, the
+    land gate went red on step 9/9, scripts/release_canary.py, and no test failed -- so the ledger
+    wrote nothing (GOH.LANDMISS1119). Its own landq log, verbatim, now writes the step's row."""
+    repo, _, tip = _repo(tmp_path)
+    q = tmp_path / "q"
+    q.mkdir()
+    outcome = {"state": "red", "mode": "land", "repo": str(repo), "sha": tip, "log": str(PYTESTPIN)}
+    assert sm.red_steps(PYTESTPIN.read_text()) == [CANARY]
+    assert sm.record_land(q, outcome, "GOH.PYTESTPIN") == ""
+    rows = sm.read(q)
+    assert [(r["kind"], r.get("step")) for r in rows] == [("judged", None), ("step", CANARY)]
+    head, step = rows
+    assert (head["failed"], head["missed"], head["steps"], head["steps_missed"]) == (0, 0, 1, 1)
+    assert step["script"] == "scripts/release_canary.py" and step["pre_ran"] is False
+    assert step["miss"] is True and step["changed"] == ["a.py"]
+    assert sm.summary(rows)[head["day"]] == {"judged": 1, "missed": 1, "tests": 0, "steps": 1,
+                                             "full": 0, "full_missed": 0}  # fmt: skip
+
+
+def test_a_step_the_pre_step_ran_and_still_went_red_is_recorded_but_no_miss(tmp_path):
+    """The pre-step ran the canary (affected_tests.canary's line) and the gate's canary still went
+    red: the selection worked, the rebase or the estate: a step row, pre_ran, no miss."""
+    repo, _, tip = _repo(tmp_path)
+    q = tmp_path / "q"
+    q.mkdir()
+    ran = "→ pre-land: 1 consumer name lib/x.py -- the release canary, as the land gate runs it\n"
+    log = tmp_path / "land.log"
+    log.write_text(ran + PYTESTPIN.read_text())
+    outcome = {"state": "red", "mode": "land", "repo": str(repo), "sha": tip, "log": str(log)}
+    assert sm.record_land(q, outcome, "GOH.X") == ""
+    head, step = sm.read(q)
+    assert step["pre_ran"] is True and step["miss"] is False
+    assert (head["steps"], head["steps_missed"]) == (1, 0)
+    assert sm.summary([head, step])[head["day"]]["missed"] == 0
