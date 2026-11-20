@@ -116,6 +116,9 @@ REGISTRY: dict[str, Bound | Kept | Container] = {
         "them; 506 made on 11-18",
     ),
     "reuse": Container("the verdict store (lib/reuse.py)"),
+    "reuse/affected": Kept(
+        "pruned by TTL at each write batch (lib/affected_verdict.py reuse.prune)"
+    ),
     "reuse/carry": Kept("pruned by TTL at each write batch (lib/reuse.py prune)"),
     "reuse/gate": Kept("pruned by TTL at each write batch (lib/reuse.py prune)"),
     "reuse/pushed": Kept("pruned by TTL at each write batch (lib/reuse.py prune)"),

@@ -130,3 +130,19 @@ def test_session_start_names_an_unbounded_state_directory(tmp_path, monkeypatch)
         "lib/state_bounds.py REGISTRY, or excuse it there"
     )
     assert lines == [want]
+
+
+def test_every_reuse_path_stored_under_reuse_has_its_bound_row() -> None:
+    # GOH.AFFECTEDBOUND: reuse/affected (pruned by TTL in lib/affected_verdict.py) had no row,
+    # so the session-start audit called it unbounded at 58 entries. A path whose records live
+    # in the verdict store (`store` lib/reuse.py) writes reuse/<name> and needs its row.
+    import reuse
+
+    missing = [
+        n
+        for n, p in reuse.PATHS.items()
+        if p.store == "lib/reuse.py" and f"reuse/{n}" not in sb.REGISTRY
+    ]
+    assert not missing, (
+        f"reuse paths stored under reuse/ with no lib/state_bounds.py row: {missing}"
+    )
