@@ -32,9 +32,15 @@ import reuse
 shipped = test_ship.shipped  # the fixture, by assignment
 
 # The tip's stand-in coverage gate (what idle_suite.INSTRUMENTED runs): it logs the commit it judged
-# and records an instrumented full run on its tree, as the real suite's record does.
-STAND_IN = """\
+# and records an instrumented full run on its tree, as the real suite's record does; and it says
+# what it reused and ran fresh per binary where the ship asks (tests/_prof_reuse.py).
+COUNTS = [{"bin": "b" * 64, "reused": 1706, "fresh": 3, "audit": "reuse"}]
+STAND_IN = (
+    """\
 git rev-parse HEAD >> "$STAND_IN_LOG"
+[ -z "${{GOH_PROF_REUSE_OUT:-}}" ] || printf '%s' '"""
+    + json.dumps({"binaries": COUNTS}).replace("{", "{{").replace("}", "}}")
+    + """' >"$GOH_PROF_REUSE_OUT"
 exec {py} -c '
 import subprocess, sys
 from pathlib import Path
@@ -46,6 +52,7 @@ reuse.record_suite(Path("."), tree, gate_identity.suite_tools(), {{"t.py::a": Tr
                    "stand-in", instrumented=True)
 '
 """
+)
 # The release kit's own check (tools/release_goh.sh), then the tag.
 KIT = (f'{sys.executable} {REPO_ROOT / "lib" / "reuse.py"} full-suite --repo . '
        '--sha "$(git rev-parse HEAD)" && git tag "v$GOH_SHIP_VERSION" && '
@@ -137,6 +144,7 @@ def test_a_tip_with_the_idle_landers_run_is_still_judged_by_the_ship(
     suite = res["steps"][0]
     assert (suite["name"], suite["status"]) == ("suite", "ok"), res["steps"]
     assert _judged(tmp_path) == [git(shipped, "rev-parse", "HEAD").strip()]
+    assert suite["profiles"] == COUNTS, suite  # GOH.COVPROFILEREUSE: reused vs fresh, per binary
 
 
 def test_the_budget_judges_the_ships_own_run_not_its_wait_for_the_queue() -> None:

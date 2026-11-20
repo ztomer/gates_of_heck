@@ -204,6 +204,7 @@ def take(plan: dict, coverage: bool) -> None:
         with lv._in_store():
             for n, p in held.items():
                 ps.place(p, _out() / f"t-reused-{ps.node_hash(n)}.profraw")
+            os.utime(ps._dir(k))  # in use: the newest KEEP keys stay (prof_store.prune)
         plan.setdefault("skipped", {}).update(dict.fromkeys(held, True))
         for name in ("skip", "judged", "binprof"):
             plan.setdefault(name, set()).update(held)
@@ -282,8 +283,8 @@ def finish(ran: set[str]) -> list[str]:
             )
         except OSError as e:  # the compare never fails the run: no sample made, said
             lines.append(f"profile reuse: the shadow compared nothing ({e})")
-    with lv._in_store():
-        index = _index(k)
+    with lv._in_store():  # a node whose file is gone leaves the index
+        index = {n: d for n, d in _index(k).items() if (lv.REPO_ROOT / n.split("::")[0]).is_file()}
         for n, p in sorted(fresh.items()):
             if d := now.get(n.split("::")[0]):
                 ps.put(k, slot(n, d), p)
