@@ -213,10 +213,22 @@ done
 suite_kind=suite
 [ ! -s "${GOH_LAND_VERDICTS_REUSE:-}" ] || suite_kind=suite:carried
 [ -z "${GOH_SUITE_SHARD:-}" ] || suite_kind=suite:shard
+# THE RUN'S FILE EVENTS (GOH.FSCHURN2, tests/_fs_churn.py): a whole run counts the FSEvents records
+# under its own roots and is red over tests/fs_events_ceiling.json; the count joins its ledger row
+# (`fs_events`, `fs_dirs`). A caller that names the file (GATES_OF_HECK_FS_EVENTS) gets a narrowed
+# run counted too.
+[ "$#" -ne 0 ] || export GATES_OF_HECK_FS_EVENTS="${GATES_OF_HECK_FS_EVENTS:-$PYTEST_DEBUG_TEMPROOT/fs-events.json}"
 [ "$#" -ne 0 ] || goh_span_start
 rc=0
 "$GOH_PY" -m pytest "${TARGET[@]}" "${ARGS[@]}" "$@" || rc=$?
-[ "$#" -ne 0 ] || goh_span_record "$suite_kind" goh "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" --field "exit=$rc"
+fs_fields=()
+if [ "$#" -eq 0 ] && [ -s "${GATES_OF_HECK_FS_EVENTS:-}" ]; then
+    mapfile -t fs_fields < <("$GOH_PY" -c 'import json, sys
+r = json.load(open(sys.argv[1]))
+if "events" in r:
+    print("--field", "fs_events=%d" % r["events"], "--field", "fs_dirs=%d" % r["dirs_created"], sep="\n")' "$GATES_OF_HECK_FS_EVENTS" 2>/dev/null || true)
+fi
+[ "$#" -ne 0 ] || goh_span_record "$suite_kind" goh "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" --field "exit=$rc" "${fs_fields[@]}"
 if [ "$rc" -eq 0 ]; then
     goh_rm_tree "$PYTEST_DEBUG_TEMPROOT"
 else

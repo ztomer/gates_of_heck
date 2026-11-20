@@ -15,6 +15,7 @@ import atexit
 import contextlib
 import ctypes
 import errno
+import fcntl
 import os
 import shutil
 import subprocess
@@ -76,7 +77,7 @@ def template_of(factory, key: str) -> Path | None:
 
 
 def from_template(factory, key: str, build, dst: Path) -> Path:
-    """`dst` as a clone of the tree `build(path)` makes, built ONCE per session (per worker) under
+    """`dst` as a clone of the tree `build(path)` makes, built ONCE per run (`_run_template`) under
     `factory` (the session's `tmp_path_factory`). `build` must make the same tree every time: it is
     what each test would have built for itself, and nothing the test then writes reaches it."""
     clone_tree(template(factory, key, build), dst)
@@ -84,14 +85,46 @@ def from_template(factory, key: str, build, dst: Path) -> Path:
 
 
 def template(factory, key: str, build) -> Path:
-    """The tree `build(path)` makes, built ONCE per session (per worker) and never handed out to
-    write in: a caller clones it, or parts of it, with `clone_tree`."""
+    """The tree `build(path)` makes, built ONCE per run -- by the first worker to ask, shared by
+    the others -- and never handed out to write in: a caller clones it, or parts of it, with
+    `clone_tree`."""
     built = _TEMPLATES.setdefault(id(factory), (factory, {}))[1]
     if key not in built:
-        tree = factory.mktemp(f"template-{key}") / key
-        _build_quietly(build, tree)
-        built[key] = tree
+        built[key] = _run_template(_run_dir(factory) / "goh-templates", key, build)
     return built[key]
+
+
+def _run_dir(factory) -> Path:
+    """The directory every worker of this run shares: an xdist worker's basetemp is
+    `<run>/popen-gwN`, a lone session's is the run's own."""
+    base = factory.getbasetemp()
+    return base.parent if os.environ.get("PYTEST_XDIST_WORKER") else base
+
+
+def _run_template(parent: Path, key: str, build) -> Path:
+    """ONE BUILD PER RUN, NOT PER WORKER (GOH.FSCHURN2, 2026-11-20). Each of a run's 12 workers
+    built every template it met (`template-goh0` under its own basetemp): ~350 copied files, a
+    `git add` of as many loose objects, and their 256 fan-out dirs, twelve times -- the largest
+    single creator of the suite's file events (8% over a 60 s window of seven suites). The first
+    worker to ask builds under an flock (`<key>.lock`, a blocking wait, never a poll) into a
+    staging dir and publishes it with one rename, so a tree that exists is a whole one; the rest
+    find it. `build` must make the same tree every time -- the contract it always had."""
+    parent.mkdir(parents=True, exist_ok=True)
+    done = parent / key
+    if not done.is_dir():
+        fd = os.open(parent / f"{key}.lock", os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            if not done.is_dir():
+                stage = parent / f"{key}.build-{os.getpid()}"
+                if stage.exists():
+                    shutil.rmtree(stage)
+                stage.mkdir()
+                _build_quietly(build, stage / key)
+                os.rename(stage, done)
+        finally:
+            os.close(fd)
+    return done / key
 
 
 # GOH.TEMPLATEQUIET (2026-11-18): every commit a build makes detaches `git maintenance run`, which
@@ -145,12 +178,9 @@ def _wait_quiescent(tree: Path) -> None:
 def _keep_quiet(tree: Path) -> None:
     """Write the quiet config into every repository in `tree` (a work tree's .git, a bare origin):
     the clones inherit it, so a commit a TEST makes in one detaches no maintenance either."""
-    for objects in Path(tree).rglob("objects"):
-        git_dir = objects.parent
-        config = git_dir / "config"
-        if (git_dir / "refs").is_dir() and (git_dir / "HEAD").is_file() and config.is_file():
-            with config.open("a", encoding="utf-8") as fh:
-                fh.write(_QUIET_GIT_CONFIG)
+    for git_dir in _repositories(tree):
+        with (git_dir / "config").open("a", encoding="utf-8") as fh:
+            fh.write(_QUIET_GIT_CONFIG)
 
 
 def _build_quietly(build, tree: Path) -> None:
@@ -160,7 +190,45 @@ def _build_quietly(build, tree: Path) -> None:
         build(tree)
     _wait_quiescent(tree)
     _keep_quiet(tree)
+    _pack(tree)
     _refuse_self_reference(tree)
+
+
+def _repositories(tree: Path) -> Iterator[Path]:
+    """Every git dir in `tree`: a work tree's .git, a bare origin."""
+    for objects in Path(tree).rglob("objects"):
+        git_dir = objects.parent
+        if (
+            (git_dir / "refs").is_dir()
+            and (git_dir / "HEAD").is_file()
+            and (git_dir / "config").is_file()
+        ):
+            yield git_dir
+
+
+def _pack(tree: Path) -> None:
+    """Every repository in `tree` with its objects in ONE pack (GOH.FSCHURN2): a commit of the
+    goh estate left ~380 loose objects in up to 256 fan-out dirs, and every clone a test took was
+    removed at its teardown file by file -- one file event each, in every test that used it. A
+    repository with nothing loose is left alone (no git spawn)."""
+    for git_dir in _repositories(tree):
+        loose = [
+            d for d in (git_dir / "objects").iterdir() if len(d.name) == 2 and any(d.iterdir())
+        ]
+        if loose:
+            subprocess.run(
+                ["git", "--git-dir", str(git_dir), "repack", "-adq"],
+                check=True, capture_output=True, stdin=subprocess.DEVNULL, timeout=patience(60.0),
+                env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
+            )  # fmt: skip
+            subprocess.run(
+                ["git", "--git-dir", str(git_dir), "prune-packed", "-q"],
+                check=True, capture_output=True, stdin=subprocess.DEVNULL, timeout=patience(60.0),
+                env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
+            )  # fmt: skip
+            for d in (git_dir / "objects").iterdir():
+                if len(d.name) == 2 and d.is_dir() and not any(d.iterdir()):
+                    d.rmdir()
 
 
 def _refuse_self_reference(tree: Path) -> None:

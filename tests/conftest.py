@@ -68,7 +68,7 @@ def pytest_configure(config):
     _drift_guard.prebuild_live(config)
     config.pluginmanager.register(_schedule, "goh-longest-first")
     config.pluginmanager.register(_land_verdicts, "goh-land-verdicts")  # GOH.LANDPREDUP
-    config.pluginmanager.import_plugin("_share_tokens")  # the live share (GOH.SHAREGROW)
+    config.pluginmanager.import_plugin("_suite_plugins")  # live share, file events: its docstring
 
 
 def git(repo: Path, *args: str) -> str:
