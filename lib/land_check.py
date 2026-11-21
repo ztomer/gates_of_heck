@@ -43,7 +43,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT)]
-from lib import fast_tests  # noqa: E402
+from lib import cov_risk, fast_tests  # noqa: E402
 
 EACH_S = 1.0  # the most a past refuser may cost, by the suite's measurement
 DECLARED_EACH_S = 10.0  # ... and a declared guard: its file chose it
@@ -268,6 +268,7 @@ def at_enqueue(q: Path, req: dict, file, record, say=print) -> str:
     lines: list[str] = []
     t0 = time.monotonic()
     refused = run(Path(req["worktree"]), q, lambda s: (say(s), lines.append(s)), req["repo"])
+    req["cov_risk"] = cov_risk.say(req["worktree"], req["repo"], say)  # kept on the land record
     if not refused:
         say(f"check: every guard green in {time.monotonic() - t0:.1f} s")
         return ""
@@ -294,7 +295,7 @@ def at_enqueue(q: Path, req: dict, file, record, say=print) -> str:
 def cli(worktree: str, q: Path) -> int:
     """`goh land --check WORKTREE`: its committed tip's guards; 0 green, 1 refused, 2 unusable."""
     from lib import gitrun  # no-lock readers under a deadline (GOH.GITKILL)
-    from tui.lib import err, info, ok
+    from tui.lib import err, info, ok, warn
 
     found = gitrun.run_reader(("rev-parse", "--show-toplevel"), repo=worktree, timeout=60)
     top = found.stdout.strip() if found.returncode == 0 else ""
@@ -315,6 +316,9 @@ def cli(worktree: str, q: Path) -> int:
     t0 = time.monotonic()
     refused = run(Path(top), q, info, main)
     took = f"{time.monotonic() - t0:.1f} s"
+    t1 = time.monotonic()
+    cov_risk.say(top, main, warn)  # GOH.DIFFCOVLAND: a warning, never this check's verdict
+    info(f"diff coverage risk read in {time.monotonic() - t1:.1f} s")
     if refused:
         err(f"goh land --check: refused in {took} by {', '.join(refused)}")
         return 1

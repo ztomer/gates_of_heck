@@ -245,6 +245,8 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
     outcome.update(land_slot.done(done_dir.parent, req))  # GOH.LANDSNAPSHOT: slot_s, released
     land_prestep.discard(req, done_dir.parent)  # its verdict, and any orphan (GOH.LANDLEAKS)
     outcome.update(item=named, attempt=land_attempts.attempt_of(done_dir, named))
+    if "cov_risk" in req:  # GOH.DIFFCOVLAND: the next ship's diff coverage, predicted
+        outcome["cov_risk"] = req["cov_risk"]
     outcome.update(land_check.fields(outcome))  # the refusing guard, read from a red's log
     if item:
         tool = loopctl()

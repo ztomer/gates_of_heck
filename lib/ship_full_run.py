@@ -57,6 +57,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import cov_risk  # lib/: the kept per-line coverage sources (GOH.DIFFCOVLAND)
 import full_run  # lib/: the instrumented command, the worktree, the .gatesrc read (no lock)
 import reuse  # lib/: the land record (`landed_identity`)
 import reuse_fault  # lib/: `loopctl file` and the queue's current phase
@@ -115,11 +116,26 @@ def run(repo: Path, wt: Path, argv: list[str] | None = None) -> int:
         print(f"ship full suite: none owed: {why}", flush=True)
         return GREEN
     rc = _judge(repo, wt, sha, last_ship(repo, sha), argv)
+    keep_profile(wt)
     if rc == GREEN and (why := ship_suite.full_suite(repo, sha)[1]):  # green, yet no record: say so
         print(f"ship full suite on {sha[:8]}: green, but {why}", flush=True)
         return NO_VERDICT
     print(f"ship full suite on {sha[:8]}: {'green' if rc == GREEN else 'red'}", flush=True)
     return rc
+
+
+def keep_profile(wt: Path) -> None:
+    """The run's per-line coverage sources, kept beside the ship's records for the next land's
+    diff coverage warning (lib/cov_risk.py, GOH.DIFFCOVLAND); a failure is said, never a verdict."""
+    try:
+        kept = cov_risk.keep(
+            wt / "target" / "llvm-cov" / "lcov-parts", wt, wt.parent / cov_risk.NAME
+        )
+    except Exception as exc:  # noqa: BLE001 -- the profile is a hint, the ship's verdict stands
+        print(f"ship full suite: coverage profile not kept: {exc}", flush=True)
+        return
+    if kept is None:
+        print("ship full suite: no lcov parts, no coverage profile kept", flush=True)
 
 
 def lands(repo: Path, base: str, head: str) -> list[str]:
