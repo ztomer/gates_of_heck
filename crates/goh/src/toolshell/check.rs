@@ -50,6 +50,19 @@ pub fn parse_probe(out: &[u8]) -> Probed {
 /// # Errors
 /// When the shell cannot be run or the run hits its ceiling.
 pub fn real_probe(shell: &str, bash_env: Option<&str>, home: &str) -> Result<Probed, String> {
+    let user = std::env::var("USER").ok();
+    probe_within(shell, bash_env, home, user.as_deref(), PROBE_CEILING)
+}
+
+/// `real_probe` with the `USER` it passes and the ceiling as parameters, so a test can start the
+/// shell without a user and make the run hit its ceiling.
+pub(super) fn probe_within(
+    shell: &str,
+    bash_env: Option<&str>,
+    home: &str,
+    user: Option<&str>,
+    ceiling: Duration,
+) -> Result<Probed, String> {
     let mut cmd = Command::new(shell);
     cmd.arg("-c")
         .arg(SCRIPT)
@@ -57,18 +70,18 @@ pub fn real_probe(shell: &str, bash_env: Option<&str>, home: &str) -> Result<Pro
         .env("HOME", home)
         .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
         .stdin(Stdio::null());
-    if let Ok(user) = std::env::var("USER") {
+    if let Some(user) = user {
         cmd.env("USER", user);
     }
     if let Some(rc) = bash_env {
         cmd.env("BASH_ENV", rc);
     }
-    let ran = crate::bounded::run(&mut cmd, None, PROBE_CEILING)
+    let ran = crate::bounded::run(&mut cmd, None, ceiling)
         .map_err(|e| format!("cannot run {shell}: {e}"))?;
     if ran.timed_out {
         return Err(format!(
             "{shell} -c did not finish in {}s",
-            PROBE_CEILING.as_secs()
+            ceiling.as_secs()
         ));
     }
     Ok(parse_probe(&ran.stdout))

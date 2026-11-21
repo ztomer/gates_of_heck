@@ -148,7 +148,7 @@ impl Walk {
             match item {
                 CommandPrefixOrSuffixItem::Word(word) if declares => {
                     if let Some((var, value)) = split_assignment(&word.value) {
-                        by_builtin.push((var.to_owned(), value.to_owned()));
+                        by_builtin.push((var, value));
                     }
                 }
                 CommandPrefixOrSuffixItem::Word(word) => self.used(word, Role::Argument),
@@ -165,7 +165,6 @@ impl Walk {
                 CommandPrefixOrSuffixItem::AssignmentWord(assignment, _) if name.is_none() => {
                     assigned.push(assignment);
                 }
-                CommandPrefixOrSuffixItem::ProcessSubstitution(_, sub) => self.list(&sub.list),
                 _ => {}
             }
         }
@@ -222,9 +221,9 @@ impl Walk {
 
     /// A word whose TOP-LEVEL pieces (outside any quotes) expand a whitespace-holding variable.
     fn used(&mut self, word: &Word, role: Role) {
-        let Ok(pieces) = word::parse(&word.value, &self.options) else {
-            return;
-        };
+        // The parser already read this word as part of the program, and `word::parse` took every
+        // such word in a 400 000-string fuzz, so the empty fallback is never the path taken.
+        let pieces = word::parse(&word.value, &self.options).unwrap_or_default();
         for piece in &pieces {
             if let WordPiece::ParameterExpansion(expr) = &piece.piece {
                 if let Some(value) = plain_name(expr).and_then(|v| self.spaced.get(v)) {
@@ -252,13 +251,23 @@ fn plain_name(expr: &ParameterExpr) -> Option<&str> {
 }
 
 /// `NAME=value` as a declaration builtin's argument; `None` for any other word.
-fn split_assignment(text: &str) -> Option<(&str, &str)> {
-    let (var, value) = text.split_once('=')?;
+///
+/// The parser reads an unquoted `NAME=value` as an assignment word, so a plain word reaches here
+/// only when the whole assignment is quoted (`export "F=a b"`, which still assigns): the quotes
+/// are taken off the name and put back round the value, so the value reads as it was written.
+fn split_assignment(text: &str) -> Option<(String, String)> {
+    let quote = text.chars().next().filter(|c| matches!(c, '"' | '\''));
+    let body = quote.map_or(text, |q| {
+        let rest = &text[1..];
+        rest.strip_suffix(q).unwrap_or(rest)
+    });
+    let (var, value) = body.split_once('=')?;
     let mut chars = var.chars();
     let first = chars.next()?;
     let ok = (first.is_ascii_alphabetic() || first == '_')
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_');
-    ok.then_some((var, value))
+    let q = quote.map(String::from).unwrap_or_default();
+    ok.then(|| (var.to_owned(), format!("{q}{value}{q}")))
 }
 
 /// The refusal for the first finding: what zsh does with it, and the three fixes.

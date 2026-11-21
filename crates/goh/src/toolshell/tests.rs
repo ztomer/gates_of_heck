@@ -4,9 +4,9 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use super::check::{check, parse_probe, real_probe, Inputs, Probed};
+use super::check::{check, parse_probe, probe_within, real_probe, Inputs, Probed};
 use super::split::{findings, Role};
-use super::{deny, escaped, is_zsh, judge_event, tool_shell};
+use super::{deny, escaped, guard_output, is_zsh, judge_event, tool_shell};
 
 /// The three commands as they ran, then the role each finding takes.
 const TODAY: [(&str, &str, Role); 3] = [
@@ -279,4 +279,100 @@ fn the_real_probe_reads_bash_env_in_an_empty_environment() {
     let bare = real_probe("bash", None, home).expect("bash runs");
     assert_eq!(bare.goh_dir, "");
     assert!(real_probe("/no/such/shell", None, home).is_err());
+}
+
+#[test]
+fn shell_check_names_a_shell_that_cannot_be_probed() {
+    let map: BTreeMap<String, String> = SET
+        .iter()
+        .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+        .collect();
+    let env = move |k: &str| map.get(k).cloned();
+    let is_file = |p: &Path| p == Path::new("/h/.bashrc");
+    let probe = |_: &str, _: Option<&str>, _: &str| Err("cannot run it".to_owned());
+    let refused = problems(check(&Inputs {
+        env: &env,
+        is_file: &is_file,
+        probe: &probe,
+    }));
+    assert!(
+        refused
+            .contains("CLAUDE_CODE_SHELL=/opt/homebrew/bin/bash cannot be probed (cannot run it)")
+            && refused.contains("brew install bash"),
+        "{refused}"
+    );
+    // Only that one problem: a shell that cannot run has nothing else to judge.
+    assert_eq!(refused.lines().count(), 1, "{refused}");
+}
+
+#[test]
+fn a_probe_that_outlives_its_ceiling_is_refused_naming_the_shell() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().expect("tmp");
+    let slow = dir.path().join("slow-shell");
+    std::fs::write(&slow, "#!/bin/sh\nexec sleep 30\n").expect("script");
+    std::fs::set_permissions(&slow, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let shell = slow.to_str().expect("utf8");
+    let home = dir.path().to_str().expect("utf8");
+    let started = std::time::Instant::now();
+    let why = probe_within(shell, None, home, None, std::time::Duration::from_secs(1))
+        .expect_err("hits the ceiling");
+    assert_eq!(why, format!("{shell} -c did not finish in 1s"));
+    assert!(
+        started.elapsed().as_secs() < 20,
+        "the run was cut, not awaited"
+    );
+}
+
+// ---- goh zsh-split-guard's stdin ----
+
+/// A reader that fails, as a closed or non-text stdin does.
+struct Broken;
+
+impl std::io::Read for Broken {
+    fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::other("stdin is gone"))
+    }
+}
+
+#[test]
+fn the_guard_prints_a_denial_only_for_a_readable_refused_event() {
+    let refused = event(TODAY[0].0).to_string();
+    let out = guard_output(refused.as_bytes(), &zsh_env).expect("denied");
+    let json: serde_json::Value = serde_json::from_str(&out).expect("json");
+    assert_eq!(json["hookSpecificOutput"]["permissionDecision"], "deny");
+    // The same event under bash, an event that is no JSON, and a stdin that cannot be read: the
+    // guard never breaks a command, so each prints nothing.
+    assert_eq!(guard_output(refused.as_bytes(), &bash_env), None);
+    assert_eq!(guard_output(&b"not json"[..], &zsh_env), None);
+    assert_eq!(guard_output(&b""[..], &zsh_env), None);
+    assert_eq!(guard_output(&[0xff_u8, 0xfe][..], &zsh_env), None);
+    assert_eq!(guard_output(Broken, &zsh_env), None);
+}
+
+#[test]
+fn the_probe_passes_the_user_only_when_there_is_one() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().expect("tmp");
+    // A shell that reports the USER it was started with in the version field.
+    let echo = dir.path().join("echo-user");
+    std::fs::write(
+        &echo,
+        "#!/bin/sh\nu=none; [ -z \"$USER\" ] || u=$USER\nprintf '5\\0%s\\0\\0\\0\\0' \"$u\"\n",
+    )
+    .expect("script");
+    std::fs::set_permissions(&echo, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let shell = echo.to_str().expect("utf8");
+    let home = dir.path().to_str().expect("utf8");
+    let ceiling = std::time::Duration::from_secs(20);
+    let named = probe_within(shell, None, home, Some("alice"), ceiling).expect("runs");
+    assert_eq!(
+        (named.bash_major, named.bash_version.as_str()),
+        (Some(5), "alice")
+    );
+    let anonymous = probe_within(shell, None, home, None, ceiling).expect("runs");
+    assert_eq!(
+        anonymous.bash_version, "none",
+        "nothing inherited reaches the probe"
+    );
 }

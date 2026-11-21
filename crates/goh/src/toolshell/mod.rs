@@ -15,6 +15,8 @@ pub mod split;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod walk_tests;
 
 use std::io::Read;
 use std::path::Path;
@@ -87,18 +89,20 @@ fn real_env(key: &str) -> Option<String> {
     std::env::var(key).ok()
 }
 
+/// What the guard prints for one hook event read from `input`: the denial JSON, or `None` when
+/// the event is unreadable (not text, not JSON) or the command may run.
+pub fn guard_output(mut input: impl Read, env: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+    let mut text = String::new();
+    input.read_to_string(&mut text).ok()?;
+    let event = serde_json::from_str::<serde_json::Value>(&text).ok()?;
+    judge_event(&event, env).map(|reason| deny(&reason))
+}
+
 /// `goh zsh-split-guard`: the hook event on stdin; a denial on stdout; always exit 0.
 #[must_use]
 pub fn run_split_guard() -> i32 {
-    let mut input = String::new();
-    if std::io::stdin().read_to_string(&mut input).is_err() {
-        return 0;
-    }
-    let Ok(event) = serde_json::from_str::<serde_json::Value>(&input) else {
-        return 0;
-    };
-    if let Some(reason) = judge_event(&event, &real_env) {
-        println!("{}", deny(&reason));
+    if let Some(out) = guard_output(std::io::stdin(), &real_env) {
+        println!("{out}");
     }
     0
 }
