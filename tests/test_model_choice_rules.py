@@ -27,7 +27,11 @@ import model_choice
 RULES_FILE = REPO_ROOT / "hooks" / "claude" / "model_choice.json"
 RULES = json.loads(RULES_FILE.read_text(encoding="utf-8"))
 GUARD = REPO_ROOT / "hooks" / "claude" / "agent_guard.py"
-READERS = (GUARD, *(REPO_ROOT / "scripts" / f for f in ("agent_audit.py", "usage_review.py")))
+READERS = (
+    GUARD,
+    GUARD.with_name("brief.py"),
+    *(REPO_ROOT / "scripts" / f for f in ("agent_audit.py", "usage_review.py")),
+)
 CHECK_KINDS = {"claude_version", "agent_enum", "contains", "price_row"}
 
 CLASS_LITERAL = re.compile(r"\b(?:sonnet|opus|haiku|fable)@(?:low|medium|high|xhigh|max)\b|\*@max")

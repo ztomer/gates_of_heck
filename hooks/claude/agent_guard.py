@@ -10,9 +10,10 @@ by hand; this hook keeps them structurally (tests/test_claude_agent_guard.py):
   prompt must declare the choice -- `Model-choice: <model>@<effort> because <tags>` -- in terms
   the rules file's `tiers` accept (`model_choice.json`, read through `model_choice.py`; the
   researched rule is `~/.claude/skills/agent-fanout/references/model-choice-decision.md`).
-  Anything else is refused with the table in the reason, so the caller fixes it in one try. A
-  spawn it allows gets the report contract appended to its prompt (once: a respawn carrying it is
-  left alone). Agent types where the choice does not matter (`exempt_agent_types`) are exempt.
+  Anything else is refused with the table in the reason and the header that would have passed
+  (`goh brief`, brief.py, GOH.BRIEFHEADER), so the caller fixes it in one try. A spawn it
+  allows gets the report contract appended to its prompt (once: a respawn carrying it is left
+  alone). Agent types where the choice does not matter (`exempt_agent_types`) are exempt.
 * Profiles (the rules file's `profiles`, GOH.ULTRARULES): the tables in force are the owner's
   declared profile (pro, max, ultra), dropped one step by the budget guard when token-pool's Claude
   7-day meter is low, stale or unreadable (`model_choice.active_profile`). Every refusal goes
@@ -74,6 +75,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # its siblings, whoever imports it
 import appstate  # the owner's login-item apps, put back after an agent (GOH.APPSTATE)
+import brief  # the corrected header a refusal carries (GOH.BRIEFHEADER)
 import ci_door  # a direct gh CI read past loopctl's door (GOH.GHDOOR)
 import lane_room  # a write spawn starts only while the machine has room (GOH.ADAPTLANES)
 import model_choice  # the rules file's one reader, beside this script
@@ -258,6 +260,13 @@ def _deny(reason: str, rules: model_choice.Rules) -> dict[str, Any]:
                                    "permissionDecisionReason": reason}}  # fmt: skip
 
 
+def _refuse(reason: str, rules: model_choice.Rules, prompt: str, agent_type: str) -> dict[str, Any]:
+    """A header refusal, carrying the header that would have passed (goh brief, GOH.BRIEFHEADER)."""
+    fix = brief.corrected(rules, prompt, agent_type, DECLARED, POOL_LINE, TYPE_ESCAPE,
+                          lane_room.owner_words(prompt))  # fmt: skip
+    return _deny(f"{reason}\n{fix}", rules)
+
+
 def _meter(reading: Any) -> dict[str, Any] | None:
     """The meter figures a ledger line keeps (the weekly review's minimum reads them)."""
     if not isinstance(reading, dict):
@@ -295,11 +304,11 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
     if not exempt:
         why, info = judge_choice(model, effort, prompt, rules)
         if why:
-            return _deny(
+            return _refuse(
                 f"Refused: this {agent_type} spawn -- {why}. Name model AND effort, and declare "
                 f"them in the prompt as {FORMAT}, tags from this table:\n{rules.table_text()}",
-                rules,
-            )
+                rules, prompt, agent_type,
+            )  # fmt: skip
     out: dict[str, Any] = {}
     final, new_input = prompt, dict(tool_input)
     declared = f"{info['model']}@{info['effort']}"
@@ -307,14 +316,14 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
     if not exempt:
         why, pool = judge_pool(declared, prompt, rules)
         if why:
-            return _deny(why, rules)
+            return _refuse(why, rules, prompt, agent_type)
     if not exempt and (why := _judge_ci(prompt, CONTRACT)):
         return _deny(why, rules)
     escape = None
     if not exempt:
         why, escape = judge_type(agent_type, declared, prompt, rules)
         if why:
-            return _deny(why, rules)
+            return _refuse(why, rules, prompt, agent_type)
     lane = lane_room.Verdict()
     tier = None if exempt else (rules.rule(*declared.split("@")) or {}).get("tier")
     if lane_room.is_write(tier, rules.lean.get("read_only_tiers") or []):

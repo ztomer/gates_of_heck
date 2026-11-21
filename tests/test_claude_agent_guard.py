@@ -116,7 +116,11 @@ def test_a_spawn_naming_no_model_or_no_effort_is_refused_with_the_table(
     for needle in ("sonnet@high, opus@low", "checkable + known-fix", "opus@xhigh", "read-only",
                    "owner-asked", "never: sonnet@low, sonnet@medium, sonnet@xhigh"):  # fmt: skip
         assert needle in reason, (needle, reason)
-    assert len(reason.splitlines()) <= 10, reason  # the table in a few lines
+    table, fix = reason.split(
+        "\nCorrected header", 1
+    )  # then the header that passes (GOH.BRIEFHEADER)
+    assert len(table.splitlines()) <= 10, reason  # the table in a few lines
+    assert "Model-choice: " in fix and "Agent call: model=" in fix, reason
     assert _ledger(tmp_path) == []  # a refused spawn is not a spawn
 
 

@@ -12,3 +12,4 @@ capacity	lib/capacity.py	The machine's room for another write lane: slots, load,
 hooks	scripts/hooks_refresh.py	Name estate repos with stale stock hooks; `--refresh` fixes them (`hooks_refresh.py`)
 wf-pin	scripts/wf_pin.py	Name estate workflows pinning an older goh release; `--bump` moves them (`wf_pin.py`)
 load	lib/load_sources.py	Rank what burns the CPU by process family and repo from the sampler's ledger: `--report [--since]` (`lib/load_sources.py`)
+brief	hooks/claude/brief.py	The header lines and Agent call a subagent spawn needs, from the active model-choice profile (`hooks/claude/brief.py`)
