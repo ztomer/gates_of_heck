@@ -69,6 +69,12 @@ docstring-code-format = false
 # The set is the manifest's goh-suite pins' (tests/test_ci_install_pins.py: red on a plugin loaded
 # and not pinned, or pinned and not named).
 addopts = "--strict-markers --disable-plugin-autoload -p xdist.plugin -p xdist.looponfail -p pytest_cov.plugin"
+# A PytestDeprecationWarning fails the run (GOH.ASYNCIOSCOPE): pytest-asyncio's "asyncio_default_fixture_loop_scope
+# is unset" printed in every pre-step until the plugin set was pinned, because a warning is a line nobody reads.
+# The next deprecation fails the land that brings it (tests/test_pytest_deprecations.py plants one). goh loads no
+# pytest-asyncio now (the manifest pins none), so there is no loop scope to set, and an ini key no loaded plugin
+# declares would itself be a warning.
+filterwarnings = ["error::pytest.PytestDeprecationWarning"]
 markers = [
     "slow: needs a real toolchain (swiftlint, a release build); skip with -m 'not slow'",
     "xdist_group: pin tests to one worker under --dist loadgroup (also declared by pytest-xdist)",
