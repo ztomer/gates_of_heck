@@ -48,7 +48,9 @@ def fake_loopctl(tmp_path, monkeypatch) -> Path:
     with a `class_why`, or it is not filed; and an id already in the queue (FAKE_ITEMS, one per
     line) is refused as tools/loopq.py file_item refuses it, done or open. A `--queue` file's phase
     `requires` (rules.phase_contracts, the loop's queue_rules.py) refuses an item missing one, and
-    a closed phase any open item."""
+    a closed phase any open item. A prediction (`metric` and `predicted`) with no `verify_after`
+    {"lands"|"ships": N} is refused, as the loop's triggers.verify_problems refuses it
+    (GOH.REUSEFAULTVA); tests/test_filer_live_rules.py files through the real rules."""
     log = tmp_path / "loopctl.jsonl"
     script = tmp_path / "loopctl.py"
     script.write_text(
@@ -60,6 +62,11 @@ def fake_loopctl(tmp_path, monkeypatch) -> Path:
         "                                         and str(new.get('class_why') or '').strip())\n"
         "    if not named:\n"
         "        print(f\"\\u2717 {new['id']}: name its class (rules.class_first)\")\n"
+        "        sys.exit(1)\n"
+        "    va = new.get('verify_after')\n"
+        "    if new.get('metric') and new.get('predicted') and not (isinstance(va, dict)\n"
+        "            and len(va) == 1 and next(iter(va)) in ('lands', 'ships')):\n"
+        "        print(f\"\\u2717 {new['id']}: a prediction with no `verify_after`\")\n"
         "        sys.exit(1)\n"
         "    if '--queue' in sys.argv:\n"
         "        q = json.load(open(sys.argv[sys.argv.index('--queue') + 1]))\n"

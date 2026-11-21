@@ -116,3 +116,20 @@ def test_a_second_off_after_its_item_is_done_files_a_new_item_naming_its_run(
         "GOH.REUSEOFFLANDED2",
         "GOH.REUSEOFFLANDED3",
     ]
+
+
+def test_the_funnel_gives_any_prediction_its_verify_after(fake_loopctl) -> None:  # noqa: F811
+    """GOH.REUSEFAULTVA: the loop refuses a prediction (`metric` and `predicted`) with no
+    `verify_after`. contract_fields carries it, and `_file` supplies it to any other filer's
+    prediction that leaves it out, so the next filer cannot drop it; one naming its own keeps it."""
+    import os
+
+    import reuse_fault
+
+    item = {"id": "GOH.X", "metric": "m", "predicted": "p", "class_of": "none", "class_why": "w"}
+    loopctl = os.environ["GOH_LOOPCTL"]
+    assert reuse_fault._file(loopctl, item)[0] == 0
+    assert reuse_fault._file(loopctl, {**item, "id": "GOH.Y", "verify_after": {"ships": 1}})[0] == 0
+    assert reuse_fault._file(loopctl, {"id": "GOH.Z", "class_of": "none", "class_why": "w"})[0] == 0
+    got = {f["id"]: f.get("verify_after") for f in filed(fake_loopctl)}
+    assert got == {"GOH.X": {"lands": 5}, "GOH.Y": {"ships": 1}, "GOH.Z": None}, got

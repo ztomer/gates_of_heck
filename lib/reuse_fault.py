@@ -20,6 +20,8 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import reuse  # lib/, beside this file: the store's root and its path registry
 
+# When the loop re-measures a goh prediction (triggers.verify_problems: {"lands"|"ships": N}).
+VERIFY_AFTER = {"lands": 5}
 FILE_TRIES = 20  # ids GOH.REUSEOFF<PATH>, then <PATH>2 .. <PATH>20: one per off of the path
 
 
@@ -69,12 +71,16 @@ def _fault_item(p: reuse.ReusePath, iid: str, before: str, cause: str, why: str,
 
 def contract_fields(p: reuse.ReusePath) -> dict:
     """The fields a phase's `requires` names (SPD and EC: `metric`, `predicted`), for any filer
-    of a reuse path's item: the metric is the path's skip, the prediction its state after a fix."""
+    of a reuse path's item: the metric is the path's skip, the prediction its state after a fix.
+    A prediction says when it is re-measured, `verify_after` (the loop's triggers.verify_problems
+    refuses one without: GOH.REUSEFAULTVA), and a path turned off is time the reuse no longer
+    saves, a `regression` (LOOP.SPDEARN)."""
     at = ", ".join(p.sites) or p.store
     return {"metric": f"reuse path {p.name!r} ({at}): on or off; off re-runs, on every use, the "
             f"work it skips ({p.doc})",
             "predicted": f"off -> on after `reuse_audit.py enable {p.name} --fix SHA --test NODE`"
-            ": the skip reused again, its window clean"}  # fmt: skip
+            ": the skip reused again, its window clean",
+            "verify_after": dict(VERIFY_AFTER), "regression": True}  # fmt: skip
 
 
 def current_phase(fields: set[str]) -> str:
@@ -96,7 +102,11 @@ def current_phase(fields: set[str]) -> str:
 def _file(loopctl: str, item: dict) -> tuple[int, str]:
     # Everything goh files here is a fault (a reuse path off, a red ship bisect): a regression.
     # LOOP.SPDEARN refuses an SPD item with neither `saves_land_s` nor `regression` (GOH.COVREALON).
-    item = {"regression": True, **item}
+    # A prediction (`metric` and `predicted`) the loop re-measures only with `verify_after`
+    # (GOH.REUSEFAULTVA): the funnel supplies it, so no filer of a prediction can leave it out.
+    predicts = item.get("metric") and item.get("predicted")
+    va = {"verify_after": dict(VERIFY_AFTER)} if predicts else {}
+    item = {"regression": True, **va, **item}
     queue = os.environ.get("GOH_LOOP_QUEUE", "")
     argv = [sys.executable, loopctl, *(["--queue", queue] if queue else []), "file", "--json",
             json.dumps(item)]  # fmt: skip

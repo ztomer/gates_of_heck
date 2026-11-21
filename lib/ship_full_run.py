@@ -168,6 +168,7 @@ def file_fault(repo: Path, culprit: str, since: str, base: str, subject: str) ->
             f"rust` on {culprit[:12]} with GOH_CHANGE_BASE={base[:12] or '(unset)'}.",
             "metric": "the ship's suite step on main's tip: red, nothing released",
             "predicted": "red -> green: the next ship releases",
+            "verify_after": {"ships": 1},  # the next ship is the re-measure (GOH.REUSEFAULTVA)
             "done_state": "the floor or the test the culprit land broke is met on main, a test "
             "pins it, and a ship releases",
             "class_of": "none", "class_why": "one land's red, found by the ship's bisect",
