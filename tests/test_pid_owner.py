@@ -227,3 +227,36 @@ def test_the_shell_half_kills_its_stamp_and_refuses_a_recycled_one() -> None:
         "echo fine\n"
     )
     assert done.returncode == 0 and done.stdout.strip() == "fine", (done.returncode, done.stderr)
+
+
+def _exiting(monkeypatch: pytest.MonkeyPatch, proc: subprocess.Popen) -> None:
+    """The kernel's answer for a process that has begun to exit: `proc_pidinfo` refuses it while
+    `ps` still lists it (state `E`), measured on macOS 2026-11-20 with a 3 GiB child: two
+    samples 20 ms apart, unreadable and `?E`, before it read `Z`. The window cannot be held open
+    on demand, so the refusal is faked for this one pid; `ps` stays the real one."""
+    real = pid_owner.birth
+
+    def birth(pid: int, platform: str | None = None):
+        return None if pid == proc.pid else real(pid, platform)
+
+    monkeypatch.setattr(pid_owner, "birth", birth)
+
+
+@pytest.mark.load_sensitive(reason="spawns and signals its own sleeper")
+def test_a_process_that_is_exiting_is_not_gone_yet(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GOH.BACKSTOPSTAMP: `alive` read `same`, so a stamped process in its exit window read as
+    gone while `ps` still listed it, and a wait that ended on it raced every `ps` reader. It is
+    alive until the number is free or a zombie."""
+    proc = _sleeper()
+    try:
+        held = pid_owner.stamp(proc.pid)
+        assert held is not None
+        _exiting(monkeypatch, proc)
+        assert not pid_owner.same(held), "the fake did not take"
+        assert pid_owner.alive(held) and not pid_owner.gone(held)
+        proc.kill()
+        assert _gone(held), "a zombie is gone"  # the child is a zombie until waited on
+    finally:
+        proc.kill()
+        proc.wait()
+    assert pid_owner.gone(held) and not pid_owner.alive(held)

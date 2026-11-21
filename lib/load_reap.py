@@ -152,7 +152,7 @@ def _ask(argv: list[str], timeout: float) -> str:
 
 
 def kill(pid: int, grace: float = GRACE_S) -> bool:
-    """SIGTERM, then SIGKILL, and report whether the process is gone.
+    """SIGTERM, then SIGKILL, and report whether the process is gone (`pid_owner.gone`).
 
     The process is STAMPED before the first signal (lib/pid_owner.py), and each signal goes only
     to that process: the grace between TERM and KILL is long enough, on the loaded box this runs
@@ -162,14 +162,14 @@ def kill(pid: int, grace: float = GRACE_S) -> bool:
     if held is None:
         return reg.pid_gone(pid)
     for number in (signal.SIGTERM, signal.SIGKILL):
-        if not pid_owner.signal(held, number):
-            return not pid_owner.same(held) or reg.pid_gone(pid)
+        if not pid_owner.signal(held, number) and pid_owner.gone(held):
+            return True
         deadline = time.monotonic() + grace
         while time.monotonic() < deadline:
-            if not pid_owner.same(held):
+            if pid_owner.gone(held):
                 return True
             time.sleep(POLL_S)
-    return not pid_owner.same(held)
+    return pid_owner.gone(held)
 
 
 def pgrep(pattern: str) -> list[int]:

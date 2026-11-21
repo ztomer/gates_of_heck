@@ -287,13 +287,13 @@ class Session:
                 pid_owner.signal(s, sig)
             end = time.monotonic() + (GRACE if sig == signal.SIGTERM else 1.0)
             while time.monotonic() < end and (
-                self.proc.poll() is None or any(pid_owner.same(s) for s in stamps)
+                self.proc.poll() is None or any(pid_owner.alive(s) for s in stamps)
             ):
                 time.sleep(0.05)
         self.proc.wait()
         self.stderr.close()
         shutil.rmtree(self.scratch, ignore_errors=True)
-        return sorted(s.number for s in stamps if pid_owner.same(s))
+        return sorted(s.number for s in stamps if pid_owner.alive(s))
 
 
 def _meta() -> dict:

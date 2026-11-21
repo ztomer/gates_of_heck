@@ -173,11 +173,41 @@ def same(s: Stamp | None) -> bool:
     return found is not None and found[0] == s.born
 
 
+def gone(s: Stamp) -> bool:
+    """Has the stamped process ended for good: the number is free, a zombie, or somebody else's?
+
+    NOT `not same(s)` (GOH.BACKSTOPSTAMP): the kernel stops answering `proc_pidinfo` for a process
+    the moment it starts to exit, while `ps` still lists it (state `E`) until the exit is done and
+    it is a zombie. Under load that window is long enough for a kill that waited on `same` to call
+    a SIGKILLed spinner dead and a check reading `ps` to find it still there. A birth that cannot
+    be read is therefore judged by the number: free, or held by another user's process (the
+    stamped one was ours), is gone; held and a zombie is gone; held and not a zombie -- the stamped
+    process, exiting -- is not gone yet."""
+    found = birth(s.number)
+    if found is not None:
+        return found[0] != s.born
+    try:
+        os.kill(s.number, 0)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return True  # another user's process holds the number now: ours is gone
+    try:
+        out = subprocess.run(["ps", "-o", "stat=", "-p", str(s.number)], capture_output=True,
+                             text=True, stdin=subprocess.DEVNULL, timeout=30,
+                             check=False).stdout  # fmt: skip
+    except (OSError, subprocess.TimeoutExpired):
+        return False  # unknown is not gone: a caller waiting on it keeps waiting
+    state = out.strip()
+    return not state or state.startswith("Z")
+
+
 def alive(s: Stamp | None) -> bool:
     """The liveness probe for a SAVED pid (GOH.STRAYSIGNAL2): `os.kill(pid, 0)` answers yes for
     whatever process holds the number now, so a lock or a wait on a pid whose process ended reads
-    a stranger as its holder. True only while the stamped process itself runs (a zombie is gone)."""
-    return same(s)
+    a stranger as its holder. True while the stamped process itself is there, exiting included,
+    and False once it is gone (`gone`: a zombie is gone)."""
+    return s is not None and not gone(s)
 
 
 def alive_line(text: str) -> bool:

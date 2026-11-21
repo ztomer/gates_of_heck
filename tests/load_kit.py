@@ -177,10 +177,10 @@ def kill_pid(target: int | pid_owner.Stamp) -> bool:
     pid_owner.signal(held, signal.SIGKILL)
     give_up = timing_bounds.GiveUp(5)
     while not give_up.passed():
-        if not pid_owner.same(held):
+        if not pid_owner.alive(held):  # exiting is not gone yet (GOH.BACKSTOPSTAMP)
             return True
         time.sleep(0.02)
-    return not pid_owner.same(held)
+    return not pid_owner.alive(held)
 
 
 def _stamp_of(pid: int) -> pid_owner.Stamp | None:
