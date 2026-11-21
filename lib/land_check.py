@@ -240,16 +240,18 @@ def guards(text: str) -> list[str]:
     return list(dict.fromkeys(found))[:10]
 
 
-def fields(outcome: dict) -> dict:
-    """`guard` and `guards` for a red OUTCOME that names none yet, read from its log."""
+def fields(outcome: dict, req: dict | None = None) -> dict:
+    """`guard` and `guards` for a red OUTCOME that names none yet, read from its log; and REQ's
+    diff coverage warning from its enqueue (`cov_risk`, lib/cov_risk.py), whatever the state."""
+    kept = {"cov_risk": req["cov_risk"]} if req and "cov_risk" in req else {}
     if outcome.get("state") != "red" or outcome.get("guards"):
-        return {}
+        return kept
     try:
         text = Path(outcome.get("log") or "").read_text(errors="replace")
     except OSError:
         text = ""
     found = guards(text) or ([outcome["why"]] if outcome.get("why") else [])
-    return {"guard": found[0], "guards": found} if found else {}
+    return {**kept, **({"guard": found[0], "guards": found} if found else {})}
 
 
 def count(q: Path) -> dict[str, int]:

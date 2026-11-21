@@ -17,7 +17,9 @@ AT RISK when, in the kept profile:
     it (external suite only, or nothing);
   * it was edited since: no in-process-covered executable line within WINDOW lines of where its
     hunk sat in the measured commit (an untested neighbourhood);
-  * its file is not in the profile at all (new since the measured commit, or never measured).
+  * its file is new since the measured commit, and not named as test code (`tests.rs`,
+    `*_test(s).rs`, `tests/`); a file the measured commit had but the profile lacks is excluded
+    from measurement, and the ship never judges it.
 No profile, no tag, or a measured commit this clone lacks is said and skipped. Rust only: the
 ship's diff coverage judges `*.rs` alone. Printed by `goh land --check` and at enqueue, and kept
 on the land record as `cov_risk`; it never changes either verdict.
@@ -33,13 +35,14 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path[:0] = [str(ROOT), str(ROOT / "gates")]
+sys.path[:0] = [str(ROOT), str(ROOT / "lib"), str(ROOT / "gates")]
 from lib import gitrun  # noqa: E402
 from tui.lib import counted  # noqa: E402
 
 NAME = "covsrc.json"
 WINDOW = 3
 HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+TESTS = re.compile(r"(^|/)tests?(/|\.rs$)|_tests?\.rs$")
 SHOWN = 12  # files named in the warning; the record keeps them all
 
 
@@ -97,7 +100,8 @@ def _hunks(top: str, base: str) -> dict[str, tuple[str, list[tuple[int, int, int
     """new path -> (old path, [(old start, old count, new start, new count)]) of BASE..HEAD."""
     out = _git(
         top, "-c", "core.quotePath=false", "diff", "-U0", "--no-color", "--no-ext-diff",
-        "--no-textconv", "-M", "--diff-filter=d", base, "HEAD", "--", ":(glob)**/*.rs",
+        "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/", "-M", "--diff-filter=d",
+        base, "HEAD", "--", ":(glob)**/*.rs",
     )  # fmt: skip
     found: dict[str, tuple[str, list]] = {}
     old = new = None
@@ -153,7 +157,11 @@ def at_risk(top: str | Path, summary: Path) -> tuple[list[tuple[str, list[int], 
         old_rel, shs = since.get(rel, (rel, []))
         prof = files.get(old_rel or rel)
         if prof is None:
-            risky.append((rel, lines, "not in the last ship's profile"))
+            # Measured then and absent: never measured (an excluded file), so never judged. New
+            # since: unknown, unless its name says test code, which the report never carries.
+            if old_rel or TESTS.search(rel):
+                continue
+            risky.append((rel, lines, "new since the last ship's profile"))
             continue
         exe, own = set(prof["exec"]), set(prof["own"])
         bad = []

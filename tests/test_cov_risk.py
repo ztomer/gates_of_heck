@@ -45,6 +45,8 @@ SPLIT = "crates/goh/src/toolshell/split.rs"
 CHECK = "crates/goh/src/toolshell/check.rs"
 MOD = "crates/goh/src/toolshell/mod.rs"
 LIB = "crates/goh/src/lib.rs"
+CLI = "crates/goh/src/cli.rs"  # in the measured commit, excluded from its report
+TESTS_RS = "crates/goh/src/toolshell/tests.rs"
 
 
 def _shipped(tmp_path: Path, monkeypatch) -> Path:
@@ -58,6 +60,7 @@ def _shipped(tmp_path: Path, monkeypatch) -> Path:
     _git(repo, "tag", "v0.1.0")
     _write(repo, SPLIT, 20)
     _write(repo, CHECK, 10)
+    _write(repo, CLI, 5)
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "toolshell")  # the ship's measured commit
     parts = tmp_path / "parts"
@@ -79,6 +82,8 @@ def _shipped(tmp_path: Path, monkeypatch) -> Path:
     text = (repo / LIB).read_text().replace("let x5 = 5;", "let x5 = 50;")
     (repo / LIB).write_text(text)
     _write(repo, MOD, 3, "m")
+    _write(repo, TESTS_RS, 4, "t")
+    (repo / CLI).write_text("changed\n")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "more")
     return repo
@@ -90,7 +95,8 @@ def test_the_warning_names_the_toolshell_lines_no_in_process_test_ran(tmp_path, 
     got = {f: (ls, why) for f, ls, why in risky}
     assert got[SPLIT][0] == [10, 11, 12, 13], said  # external only (10-12) and no test (13)
     assert got[CHECK][0] == [2, 3, 4]  # the external suite alone
-    assert got[MOD] == ([1, 2, 3], "not in the last ship's profile")
+    assert got[MOD] == ([1, 2, 3], "new since the last ship's profile")
+    assert CLI not in got and TESTS_RS not in got  # never measured, so never judged
     assert LIB not in got  # its edit sits among in-process-covered lines
     lines, rec = cov_risk.report(repo, repo)
     assert any(f"{SPLIT}:10-13" in ln for ln in lines), lines
@@ -103,3 +109,12 @@ def test_no_profile_is_said_and_never_raises(tmp_path, monkeypatch):
     seen: list[str] = []
     rec = cov_risk.say(tmp_path, tmp_path / "repo", seen.append)
     assert "no kept ship coverage profile" in seen[0] and rec["lines"] == 0
+
+
+def test_the_land_record_keeps_the_warning_landed_or_red():
+    from lib import land_check
+
+    req = {"cov_risk": {"lines": 3, "files": {SPLIT: "10-12"}}}
+    assert land_check.fields({"state": "landed"}, req) == {"cov_risk": req["cov_risk"]}
+    red = land_check.fields({"state": "red", "why": "gate exit 1", "log": ""}, req)
+    assert red["cov_risk"] == req["cov_risk"] and red["guard"] == "gate exit 1"
