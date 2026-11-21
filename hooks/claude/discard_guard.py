@@ -5,10 +5,9 @@ THE DISCARD (v0.30.0). `git checkout -- <file>`, `git restore <file>`, `git rese
 checkout -f` and `git clean -f` discard worktree changes that no reflog keeps. The calibration loop
 (break the code, watch the test go red, restore it) reaches for the first of them, and on a file
 that held other uncommitted work it destroyed that work -- twice in one session, with the lesson
-already written down in two skills (tests/test_claude_discard_guard.py). So the system says no
-instead: when the command's scope holds uncommitted changes, it is refused with the files that
-would be lost and the ways forward. A deliberate discard says so in the command:
-`# discard-ok: <reason>`.
+already written down in two skills (tests/test_claude_discard_guard.py). So it is refused when
+its scope holds uncommitted changes, naming the files and `goh undo <files>` (GOH.UNDOMINE), which
+undoes one's own edits keeping a copy. A deliberate discard says `# discard-ok: <reason>`.
 
 THE LOAD (v0.44.0). A command that spawns a backgrounded busy loop (`while :; do :; done &`) is
 refused too. A busy loop has nothing to reap it: when the shell that owns it is killed, the
@@ -155,6 +154,7 @@ shared_checkout = _optional("shared_checkout")  # stash/reset/switch, GOH.NORESE
 temp_sweep = _optional("temp_sweep")  # a glob rm over goh's per-run temp roots, GOH.FLAKYENVCOV
 stdin_reader = _optional("stdin_reader")  # a stdin reader nothing feeds, GOH.STDINHANG
 no_verify = _optional("no_verify")  # a git commit/push that skips the hooks, GOH.NOVERIFYGUARD
+undo_hint = _optional("undo_hint")  # a discard refusal names `goh undo <files>`
 
 # The tools whose input holds a shell command (Bash, Monitor): ONE list, `lib/shell_tools.py`.
 try:
@@ -323,11 +323,12 @@ def judge(command: str, cwd: str) -> str | None:
         lost = _at_risk(where, *scope)
         if lost:
             shown = ", ".join(lost[:8]) + (f" (+{len(lost) - 8} more)" if len(lost) > 8 else "")
+            undo = undo_hint.hint(where, lost) if undo_hint else ""  # GOH.UNDOMINE
             return (
                 f"`{' '.join(seg)}` would throw away uncommitted work in {where}: {shown}. "
-                "No reflog keeps it. To keep it, commit a WIP first (the restore then goes back to "
-                "that), or undo a deliberate break with an inverse edit. To discard it on purpose, "
-                "add `# discard-ok: <reason>` to the command."
+                f"No reflog keeps it. {undo} To keep it, commit a WIP first (the restore then goes "
+                "back to that), or undo a deliberate break with an inverse edit. To discard it on "
+                "purpose, add `# discard-ok: <reason>` to the command."
             )
     return None
 

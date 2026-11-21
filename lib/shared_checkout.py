@@ -48,8 +48,9 @@ _GIT_VALUED = {"-C", "-c", "--git-dir", "--work-tree", "--namespace"}
 STASH_WAY_OUT = (
     "Never `git stash`, in any checkout: it takes uncommitted edits out of the tree and a pop or "
     "drop can lose them. Instead, commit a WIP on your lane branch (`git commit -m 'wip: ...'`, "
-    "amend or squash it before landing) and keep working. "
-    "To do it on purpose, add `# reset-ok: <reason>` to the command."
+    "amend or squash it before landing) and keep working. To undo your OWN edits to a file, "
+    "keeping a copy, run `goh undo <file>...` in your worktree (`goh undo --back <file>` steps "
+    "back). To do it on purpose, add `# reset-ok: <reason>` to the command."
 )
 
 WAY_OUT = (
