@@ -32,9 +32,12 @@ CORES = os.cpu_count() or 1
 class Planted:
     """A slot dir with slot-0 held (this process's flock, its record naming `goh`), one live long
     ticket per `waiting` (two by default: over GOH_LANE_MAX_WAITING's 1), one dead one; a timing
-    ledger saying a goh gate burns 7 cores; plenty of memory."""
+    ledger saying a goh gate burns 7 cores; plenty of memory; the CPU `idle` percent idle (10 by
+    default: under GOH_LANE_MIN_IDLE_PCT's 20)."""
 
-    def __init__(self, tmp: Path, *, waiting: int = 2, holder: str = "goh") -> None:
+    def __init__(
+        self, tmp: Path, *, waiting: int = 2, holder: str = "goh", idle: float = 10
+    ) -> None:
         self.dir = tmp / "slots"
         self.dir.mkdir()
         self.fd = os.open(self.dir / "slot-0", os.O_RDWR | os.O_CREAT, 0o644)
@@ -58,7 +61,7 @@ class Planted:
             "GOH_GATE_SLOTS": "2", "GOH_GATE_SLOT_DIR": str(self.dir),
             "GOH_LOADAVG_READING": f"{CORES * 4} {CORES * 3} {CORES * 2}",
             "GOH_TIMING_DIR": str(timing), "GOH_MEM_READING": str(mem),
-            "GOH_CAPACITY_DISK": str(tmp),
+            "GOH_CAPACITY_DISK": str(tmp), "GOH_CPU_IDLE_READING": f"{idle:g}",
         }  # fmt: skip
 
     def close(self) -> None:
@@ -96,11 +99,12 @@ def test_the_reading_names_slots_tickets_load_memory_disk_and_the_cpu_weight(tmp
     why = " ".join(got["room"]["why"])
     assert got["room"]["ok"] is False
     assert "2 gates waiting for a slot" in why and "GOH_LANE_MAX_WAITING=1" in why, why
-    assert "3.00 per core" in why and "GOH_LANE_LOAD_PER_CORE=2.5" in why, why
+    assert "CPU 10% idle" in why and "GOH_LANE_MIN_IDLE_PCT=20" in why, why
+    assert got["cpu"]["idle_pct"] == 10, got["cpu"]
 
 
 def test_an_idle_reading_has_room_and_an_unknown_holder_weighs_the_machine_median(tmp_path):
-    p = Planted(tmp_path, waiting=0, holder="wt: cargo test")
+    p = Planted(tmp_path, waiting=0, holder="wt: cargo test", idle=80)
     p.env["GOH_LOADAVG_READING"] = "0.5 0.5 0.5"
     try:
         r = _cli(p.env, "--json")
@@ -161,7 +165,7 @@ def test_a_reading_that_fails_is_named_unread_and_never_judged_no_room(tmp_path)
 
 
 def test_a_disk_under_the_floor_is_no_room(tmp_path) -> None:
-    p = Planted(tmp_path, waiting=0)
+    p = Planted(tmp_path, waiting=0, idle=80)
     p.env.update(GOH_LOADAVG_READING="0 0 0", GOH_LANE_MIN_FREE_GIB="100000")
     try:
         r = _cli(p.env, "--json")
@@ -205,3 +209,52 @@ def test_an_empty_load_seam_reads_the_os(tmp_path) -> None:
     finally:
         p.close()
     assert got["unread"] == [] and len(got["load"]["avg"]) == 3, got
+
+
+# LOOP.FILLIDLE (owner 2026-11-21: "we're at 60% idle cpu"). macOS's load average counts threads
+# blocked on I/O: the rule refused at load 63.6 on 16 cores while the CPU was 72% idle. The measured
+# idle judges; the load average judges only when the idle cannot be measured.
+
+
+def test_high_load_with_high_idle_has_room(tmp_path) -> None:
+    p = Planted(tmp_path, waiting=0, idle=72)
+    p.env["GOH_LOADAVG_READING"] = f"{CORES * 4} {CORES * 4} {CORES * 4}"  # 4 per core
+    try:
+        r = _cli(p.env, "--json")
+    finally:
+        p.close()
+    got = json.loads(r.stdout)
+    assert r.returncode == 0 and got["room"]["why"] == [], got["room"]
+    assert got["load"]["per_core"] == 4.0 and got["cpu"]["idle_pct"] == 72
+
+
+def test_low_idle_with_low_load_has_no_room(tmp_path) -> None:
+    p = Planted(tmp_path, waiting=0, idle=5)
+    p.env["GOH_LOADAVG_READING"] = "0.5 0.5 0.5"
+    try:
+        r = _cli(p.env, "--json")
+    finally:
+        p.close()
+    why = " ".join(json.loads(r.stdout)["room"]["why"])
+    assert r.returncode == 1 and "CPU 5% idle" in why, why
+
+
+def test_the_idle_is_sampled_from_the_tick_counters_over_a_window(monkeypatch) -> None:
+    samples = iter([(1000, 2000), (1300, 2400)])  # 300 of 400 ticks idle over the window
+    monkeypatch.setattr(capacity, "cpu_ticks", lambda: next(samples))
+    monkeypatch.delenv("GOH_CPU_IDLE_READING", raising=False)
+    monkeypatch.setenv("GOH_CPU_IDLE_WINDOW_S", "0")
+    assert capacity._cpu_idle() == {"idle_pct": 75.0, "window_s": 0.0, "source": "ticks"}
+
+
+def test_an_unmeasured_idle_falls_back_to_the_load_average() -> None:
+    base = {"waiting": {"long": 0}, "unread": [],
+            "load": {"avg": [CORES * 3] * 3, "cores": CORES, "per_core": 3.0}}  # fmt: skip
+    unmeasured = capacity.room({**base, "cpu": {"idle_pct": None}}, {})
+    assert not unmeasured["ok"] and "CPU idle unmeasured" in unmeasured["why"][0], unmeasured
+    assert capacity.room({**base, "cpu": {"idle_pct": 60.0}}, {})["ok"] is True
+
+
+def test_the_real_sampler_reads_this_machine() -> None:
+    idle, total = capacity.cpu_ticks()
+    assert 0 <= idle <= total and total > 0

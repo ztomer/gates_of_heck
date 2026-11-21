@@ -38,7 +38,7 @@ def _lanes(tmp: Path) -> list[dict[str, Any]]:
 
 
 def _judge(tmp: Path, mode: str, *, room: bool, ti: dict[str, Any] = GOOD, **extra: str):
-    p = Planted(tmp, waiting=0 if room else 2)
+    p = Planted(tmp, waiting=0 if room else 2, idle=80 if room else 10)
     if room:
         p.env["GOH_LOADAVG_READING"] = "0 0 0"
     try:
@@ -50,7 +50,7 @@ def _judge(tmp: Path, mode: str, *, room: bool, ti: dict[str, Any] = GOOD, **ext
 def test_refuse_mode_refuses_a_write_spawn_with_no_room_naming_the_reading(tmp_path) -> None:
     reason = _reason(_judge(tmp_path, "refuse", room=False))
     for needle in ("no room for another write lane", "2 gates waiting for a slot",
-                   "per core", "goh capacity", "GOH_LANE_ADMIT"):  # fmt: skip
+                   "% idle", "goh capacity", "GOH_LANE_ADMIT"):  # fmt: skip
         assert needle in reason, (needle, reason)
     (line,) = _lanes(tmp_path)
     assert (line["verdict"], line["mode"], line["subagent_type"]) == ("refused", "refuse",
@@ -103,7 +103,7 @@ OWNER = dict(GOOD, prompt=f'{GOOD["prompt"]}\nOwner-asked: "Yes, make it enforce
 
 def test_the_default_refuses_a_plain_write_spawn_with_no_room_as_deferred(tmp_path) -> None:
     reason = _reason(_judge(tmp_path, "", room=False))  # GOH_LANE_ADMIT unset: the default
-    for needle in ("no room for another write lane", "2 gates waiting for a slot", "per core",
+    for needle in ("no room for another write lane", "2 gates waiting for a slot", "% idle",
                    "deferred", "re-dispatch", "Owner-asked:"):  # fmt: skip
         assert needle in reason, (needle, reason)
     (line,) = _lanes(tmp_path)

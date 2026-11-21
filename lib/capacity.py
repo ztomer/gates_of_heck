@@ -20,17 +20,22 @@ a lane worktree's label says `wt`). `gate_weight` is that weight; GOH.CPUADMIT r
 by it and kept the count (docs/decisions/D-0009).
 
 THE RULE (`room`): another write lane has room while at most GOH_LANE_MAX_WAITING long-lane gates
-wait for a slot, the 5-minute load per core is at or under GOH_LANE_LOAD_PER_CORE (the 5-min,
-not the 1-min: a test burst swings the 1-min, and a lane starts its gates minutes after it starts),
-free disk is at or over GOH_LANE_MIN_FREE_GIB, and memory is not low by mem_admit's own rule.
+wait for a slot, the MEASURED CPU idle is at or over GOH_LANE_MIN_IDLE_PCT, free disk is at or
+over GOH_LANE_MIN_FREE_GIB, and memory is not low by mem_admit's own rule. The CPU idle is the
+host's own tick counters (HOST_CPU_LOAD_INFO on macOS, /proc/stat on Linux) sampled twice,
+GOH_CPU_IDLE_WINDOW_S apart (LOOP.FILLIDLE, owner 2026-11-21 "we're at 60% idle cpu"): the load
+average on macOS counts I/O-blocked threads, so it refused at load 63.6 while the CPU was 72% idle.
+The load average is now the SECONDARY signal: it is read and shown, and it judges (the 5-min per
+core over GOH_LANE_LOAD_PER_CORE) only when the idle could not be measured.
 A part that could not be read is listed in `unread`, and a reading with any unread part is judged
 ROOM: a broken instrument never refuses work (probe-first). hooks/claude/lane_room.py applies it to
 every session's write spawns.
 
-SEAMS: GOH_LOADAVG_READING="1m 5m 15m" in place of os.getloadavg(); GOH_MEM_READING (mem_admit's);
-GOH_TIMING_DIR (timing_ledger's); GOH_GATE_SLOT_DIR / GOH_GATE_SLOTS (the slots'). The reading
-try-locks each slot file for an instant (gate_slot.held): a gate polling at that instant retries at
-its next poll. Pinned by tests/test_capacity.py.
+SEAMS: GOH_LOADAVG_READING="1m 5m 15m" in place of os.getloadavg(); GOH_CPU_IDLE_READING="<pct>"
+in place of sampling the CPU ticks (`cpu_ticks` is the sampler a test fakes); GOH_MEM_READING
+(mem_admit's); GOH_TIMING_DIR (timing_ledger's); GOH_GATE_SLOT_DIR / GOH_GATE_SLOTS (the
+slots'). The reading try-locks each slot file for an instant (gate_slot.held): a gate polling at
+that instant retries at its next poll. Pinned by tests/test_capacity.py.
 """
 
 from __future__ import annotations
@@ -52,6 +57,7 @@ import os
 import shutil
 import statistics
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -75,7 +81,9 @@ SETTINGS: dict[str, tuple[float, type]] = {
     "GOH_LANE_MAX_WAITING": (1, int),
     "GOH_LANE_LOAD_PER_CORE": (2.5, float),
     "GOH_LANE_MIN_FREE_GIB": (30.0, float),
+    "GOH_LANE_MIN_IDLE_PCT": (20.0, float),
 }
+IDLE_WINDOW_S = 2.0  # GOH_CPU_IDLE_WINDOW_S: seconds between the two tick samples
 
 
 def settings(environ: dict[str, str] | None = None) -> dict[str, float]:
@@ -180,6 +188,48 @@ def _loadavg() -> list[float]:
     return avg
 
 
+def cpu_ticks() -> tuple[int, int]:
+    """(idle ticks, total ticks) since boot, summed over every core: macOS's HOST_CPU_LOAD_INFO
+    (user, system, idle, nice) or Linux's /proc/stat `cpu` line (idle + iowait as idle)."""
+    if sys.platform == "darwin":
+        import ctypes
+        import ctypes.util
+
+        lib = ctypes.CDLL(ctypes.util.find_library("System"))
+        lib.mach_host_self.restype = ctypes.c_uint
+        arr, count = (ctypes.c_uint32 * 4)(), ctypes.c_uint32(4)
+        kr = lib.host_statistics(lib.mach_host_self(), 3, ctypes.byref(arr), ctypes.byref(count))
+        if kr != 0:
+            raise OSError(f"host_statistics(HOST_CPU_LOAD_INFO) returned {kr}")
+        return arr[2], sum(arr)
+    with open("/proc/stat", encoding="ascii") as f:
+        fields = [int(x) for x in f.readline().split()[1:]]
+    return fields[3] + (fields[4] if len(fields) > 4 else 0), sum(fields[:8])
+
+
+def _cpu_idle() -> dict[str, Any]:
+    """{"idle_pct", "window_s", "source"}: the share of CPU time idle over the sampling window."""
+    seam = os.environ.get("GOH_CPU_IDLE_READING", "").strip()
+    if seam:
+        try:
+            pct = float(seam)
+        except ValueError:
+            raise ValueError(f"GOH_CPU_IDLE_READING={seam!r} is not a percentage") from None
+        return {"idle_pct": pct, "window_s": None, "source": "GOH_CPU_IDLE_READING"}
+    raw = os.environ.get("GOH_CPU_IDLE_WINDOW_S", "").strip()
+    try:
+        window = float(raw) if raw else IDLE_WINDOW_S
+    except ValueError:
+        window = IDLE_WINDOW_S
+    idle0, total0 = cpu_ticks()
+    time.sleep(window)
+    idle1, total1 = cpu_ticks()
+    if total1 <= total0:
+        raise OSError("the CPU tick counters did not advance")
+    pct = round(100.0 * (idle1 - idle0) / (total1 - total0), 1)
+    return {"idle_pct": pct, "window_s": window, "source": "ticks"}
+
+
 def reading() -> dict[str, Any]:
     """The machine now. Every part is read on its own: one that fails is named in `unread`."""
     unread: list[str] = []
@@ -197,6 +247,13 @@ def reading() -> dict[str, Any]:
     except (OSError, ValueError) as e:
         unread.append(f"load average: {e}")
         out["load"] = None
+    try:
+        out["cpu"] = _cpu_idle()
+    except (OSError, ValueError, IndexError, AttributeError) as e:
+        # not `unread` while the load average stands in for it: the rule falls back to the load
+        out["cpu"] = {"idle_pct": None, "window_s": None, "source": f"unmeasured: {e}"}
+        if out["load"] is None:
+            unread.append(f"cpu idle: {e}")
     mem = mem_admit.reading()
     mb = mem_admit.MB
     out["memory"] = {"avail_pct": mem.avail_pct, "source": mem.source,
@@ -230,10 +287,17 @@ def room(r: dict[str, Any], environ: dict[str, str] | None = None) -> dict[str, 
         why.append(f"{counted(waiting, 'gate')} waiting for a slot, over "
                    f"GOH_LANE_MAX_WAITING={s['GOH_LANE_MAX_WAITING']:g}")  # fmt: skip
     load = r.get("load")
-    if load and load["per_core"] > s["GOH_LANE_LOAD_PER_CORE"]:
+    idle = (r.get("cpu") or {}).get("idle_pct")
+    if idle is not None:  # the measured idle judges; the load average is only shown beside it
+        if idle < s["GOH_LANE_MIN_IDLE_PCT"]:
+            beside = f" (5-min load {load['avg'][1]:g} on {load['cores']} cores)" if load else ""
+            why.append(f"CPU {idle:g}% idle, under GOH_LANE_MIN_IDLE_PCT="
+                       f"{s['GOH_LANE_MIN_IDLE_PCT']:g}{beside}")  # fmt: skip
+    elif load and load["per_core"] > s["GOH_LANE_LOAD_PER_CORE"]:
         why.append(f"5-min load {load['avg'][1]:g} on {load['cores']} cores, "
                    f"{load['per_core']:.2f} per core, over "
-                   f"GOH_LANE_LOAD_PER_CORE={s['GOH_LANE_LOAD_PER_CORE']:g}")  # fmt: skip
+                   f"GOH_LANE_LOAD_PER_CORE={s['GOH_LANE_LOAD_PER_CORE']:g} "
+                   f"(CPU idle unmeasured)")  # fmt: skip
     disk = r.get("disk")
     if disk and disk["free_gib"] < s["GOH_LANE_MIN_FREE_GIB"]:
         why.append(f"{disk['free_gib']:g} GiB free at {disk['path']}, under "
@@ -250,6 +314,9 @@ def summary(r: dict[str, Any]) -> str:
     """One line of the reading, for a refusal or a warning."""
     s, load, w = r["slots"], r.get("load"), r.get("waiting") or {}
     parts = [f"gate slots {s['held']}/{s['total']} held, {w.get('long', '?')} waiting"]
+    idle = (r.get("cpu") or {}).get("idle_pct")
+    if idle is not None:
+        parts.append(f"CPU {idle:g}% idle")
     if load:
         parts.append(f"load {load['avg'][1]:g}/{load['cores']} cores")
     parts.append(f"gates in flight weigh {r['cpu_weight']['in_flight']:g} cores")
