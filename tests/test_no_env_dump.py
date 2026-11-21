@@ -19,6 +19,7 @@ It cannot see a dict a helper returns whole (a read-back of a dump file); that i
 itself is the thing refused. It landed as a ratchet seeded with every file's dumps; the seed is
 empty now, so any dump is red (close-the-class).
 """
+# goh-land-guard: test_no_test_dumps_an_environment
 
 from __future__ import annotations
 

@@ -71,7 +71,7 @@ def _planted_clone(dest: Path) -> Path:
     commit = ("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--no-verify", "-am")
     _git(dest, "add", "-A")
     _git(dest, *commit, "this tree", "--allow-empty")
-    _git(dest, "branch", "-f", "main", "HEAD")
+    _git(dest, "update-ref", "refs/heads/main", "HEAD")  # the clone may be on main itself
     for rel, fixed, before in PLANTS:
         path = dest / rel
         text = path.read_text()
@@ -129,7 +129,9 @@ def test_the_guard_tests_are_the_declared_ones_and_the_measured_past_refusers(
         "tests/test_c.py::test_slow[1]@g",
         "tests/test_c.py::test_new",
     ]
-    (done / "1.json").write_text(json.dumps({"state": "red", "guards": guards}))
+    (done / "1.json").write_text(json.dumps({"state": "red", "repo": "/r", "guards": guards}))
+    other = {"state": "red", "repo": "/other", "guards": ["tests/test_c.py::test_other"]}
+    (done / "2.json").write_text(json.dumps(other))  # another repo's guard is not this one's
     times = tmp_path / "durations.json"
     times.write_text(
         json.dumps(
@@ -137,12 +139,16 @@ def test_the_guard_tests_are_the_declared_ones_and_the_measured_past_refusers(
                 "tests/test_c.py::test_fast": 0.1,
                 "tests/test_c.py::test_slow[1]": 0.6,
                 "tests/test_c.py::test_slow[2]": 0.6,
-                "tests/test_b.py::test_q": 3.0,
+                "tests/test_b.py::test_q": 12.0,
             }
         )
     )
     monkeypatch.setenv("GOH_TEST_DURATIONS", str(times))
-    got = land_check.tests(tmp_path / "tree", tmp_path / "q")
+    (tests / "test_c.py").write_text((tests / "test_c.py").read_text() + "def test_other(): pass\n")
+    times.write_text(
+        json.dumps({**json.loads(times.read_text()), "tests/test_c.py::test_other": 0.1})
+    )
+    got = land_check.tests(tmp_path / "tree", tmp_path / "q", "/r")
     # declared: run unless measured slow; past refusers: only when measured cheap
     assert got == [
         "tests/test_a.py::test_x",
@@ -157,6 +163,7 @@ def test_a_red_lands_record_names_the_guard_its_log_shows(tmp_path):
     log.write_text(
         "FAILED tests/test_wiring.py::test_every_script_has_a_row_in_the_map - Assertion\n"
         "E         FAILED tests/test_x.py::test_y[a]@grp - nope\n"
+        "ERROR tests/test_e.py::test_setup - fixture blew up\n"
         "✗ [changelog_tags] 1 way the changelog and the tags disagree (tracked):\n"
         "✗ [1/9] FAILED (exit status 1): ./gates/rust_gate.sh\n"
     )
@@ -164,6 +171,7 @@ def test_a_red_lands_record_names_the_guard_its_log_shows(tmp_path):
     want = [
         "tests/test_wiring.py::test_every_script_has_a_row_in_the_map",
         "tests/test_x.py::test_y",
+        "tests/test_e.py::test_setup",
         "[changelog_tags]",
         "./gates/rust_gate.sh",
     ]
@@ -178,6 +186,27 @@ def test_a_red_lands_record_names_the_guard_its_log_shows(tmp_path):
         (done / f"{n}.json").write_text(json.dumps({"state": "red", "guard": g}))
     (done / "9.json").write_text(json.dumps({"state": "landed"}))
     assert land_check.count(tmp_path / "q") == {"a": 2, "b": 1}
+    # a pre-step's refusal at enqueue files no land record: it is learned, counted and run next
+    refusal = (
+        "the pre-land tests failed on 1234 (failing: tests/test_e.py::test_dump[x], tests/z.py)"
+    )
+    land_check.learn(tmp_path / "q", {"repo": "/r", "item": "T", "sha": "1234"}, refusal)
+    land_check.learn(tmp_path / "q", {"repo": "/r"}, "no node named here")
+    assert land_check.count(tmp_path / "q") == {"a": 2, "b": 1, "tests/test_e.py::test_dump": 1}
+    assert land_check.history(tmp_path / "q", "/r") == ["tests/test_e.py::test_dump"]
+    assert land_check.history(tmp_path / "q", "/elsewhere") == []
+
+
+def test_the_guard_tests_split_into_runs_of_near_equal_cost(tmp_path, monkeypatch):
+    times = tmp_path / "durations.json"
+    times.write_text(json.dumps({"t.py::a": 6.0, "t.py::b": 3.0, "t.py::c": 3.0, "t.py::d": 0.5}))
+    monkeypatch.setenv("GOH_TEST_DURATIONS", str(times))
+    assert land_check.shards(["t.py::a", "t.py::b", "t.py::c", "t.py::d"], 2) == [
+        ["t.py::a", "t.py::d"],
+        ["t.py::b", "t.py::c"],
+    ]  # 6.5 s and 6 s
+    assert land_check.shards(["t.py::a"], 3) == [["t.py::a"]]
+    assert land_check.shards([], 3) == []
 
 
 def test_check_and_enqueue_refuse_on_a_guard_and_record_it(repo, tmp_path, env):  # noqa: F811
@@ -192,12 +221,14 @@ def test_check_and_enqueue_refuse_on_a_guard_and_record_it(repo, tmp_path, env):
     assert _pending(tmp_path) == []
     (rec,) = [json.loads(p.read_text()) for p in (tmp_path / "landq" / "done").glob("*.json")]
     assert (rec["state"], rec["stage"], rec["sha"]) == ("red", "check", tip), rec
-    assert rec["guard"] == f"{planted} [planted_guard]", rec
-    assert recorded(red)["T.C"]["guard"] == rec["guard"]
+    assert rec["guard"] == "[planted_guard]", rec
+    told = recorded(red)["T.C"]["guard"]  # what loopctl was told
+    assert told == rec["guard"]
     slow = {**red, "GOH_LAND_CHECK_STEPS": "exit 124"}  # a step past its deadline: no verdict
     checked = landq(slow, "--check", str(wt))
     assert checked.returncode == 0 and "no verdict" in checked.stdout + checked.stderr, checked
     green = {**red, "GOH_LAND_CHECK_STEPS": "true"}
-    assert landq(green, "--check", str(wt)).returncode == 0
+    checked = landq(green, "--check", str(wt))
+    assert checked.returncode == 0, checked.stdout + checked.stderr
     done = landq(green, "--enqueue", "--land", str(wt), "--item", "T.C", "--no-start")
     assert done.returncode == 0 and len(_pending(tmp_path)) == 1, done.stdout + done.stderr

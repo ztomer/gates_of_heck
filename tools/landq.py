@@ -143,6 +143,7 @@ def prestep(req: dict) -> None:
     try:  # its seconds: the e2e's pre-step share (lib/land_e2e.py)
         req["pre_s"] = land_prestep.run_kept(req, qdir(), land_script(wt), git_bindings())
     except land_prestep.Red as e:
+        land_check.learn(qdir(), req, str(e))  # its guards, for the next check (GOH.LANDCHECK)
         raise Refused(str(e)) from None
 
 
@@ -418,12 +419,12 @@ def main(argv: list[str] | None = None) -> int:
             if args.enqueue or args.ship:
                 raise Refused("--land takes the worktree only: no REPO SHA, no --ship")
             req = land_request(args.land, args.item, qdir())  # in a slot (GOH.LANDSNAPSHOT)
+            if args.no_pre is not None and not args.no_pre.strip():
+                raise Refused("--no-pre needs a reason: --no-pre 'why this tip skips the pre-step'")
             if land_check.at_enqueue(qdir(), req, enqueue, record, info):
                 return 1  # recorded red, its guards named (GOH.LANDCHECK)
             if args.no_pre is None:
                 prestep(req)
-            elif not args.no_pre.strip():
-                raise Refused("--no-pre needs a reason: --no-pre 'why this tip skips the pre-step'")
             else:
                 warn(f"--no-pre: the enqueue's pre-step skipped: {args.no_pre}")
         elif len(args.enqueue) != 2:

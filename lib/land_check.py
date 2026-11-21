@@ -16,9 +16,11 @@ THE GUARDS, run in the checkout as the land runs them, side by side:
     (`# goh-reads-staged:`, gates/staged_guards.sh) or a land guard (`# goh-land-guard: NAME...`,
     no name meaning every function of the file), plus every test a past land's record names as
     its refusing guard (`guards` in `<landq>/done/*.json`, below) -- each kept only while the
-    suite's own measurement (lib/fast_tests.py `load`) costs it at most EACH_S, so a guard that
-    grows slow leaves by its own number. Run serially by plain pytest with GOH_STAGED_GUARD_RUN=1
-    (no binary: a guard reads text), the way a commit's source guards run.
+    suite's own measurement (lib/fast_tests.py `load`) costs it at most EACH_S (a declared one
+    DECLARED_EACH_S), so a guard that grows slow leaves by its own number. Run by plain pytest in
+    up to SHARDS serial runs balanced by that cost, with GOH_STAGED_GUARD_RUN=1 (no binary: a
+    guard reads text), the way a commit's source guards run. A pre-step's refusal at enqueue is
+    `learn`ed into `<landq>/guards.jsonl`, so the next check runs the test that refused it.
 
 THE RECORD. A refused land names its guard: `guards(text)` reads a land's log for the failing
 test node ids and the failing gate steps, `fields` puts `guard` (the first) and `guards` on the
@@ -28,11 +30,13 @@ done record, and `goh land-profile --guards` counts refusals by guard. The enque
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -41,7 +45,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT)]
 from lib import fast_tests  # noqa: E402
 
-EACH_S = 1.0  # the most one guard test may cost, by the suite's measurement
+EACH_S = 1.0  # the most a past refuser may cost, by the suite's measurement
+DECLARED_EACH_S = 10.0  # ... and a declared guard: its file chose it
+SHARDS = 3  # the guard tests' pytest runs, side by side, balanced by measured cost
 HISTORY = 400  # the newest done records read for past refusing guards
 STEP_TIMEOUT = 300
 # Exits that are no verdict on the tree: a step past STEP_TIMEOUT (124); pytest interrupted (3),
@@ -49,7 +55,7 @@ STEP_TIMEOUT = 300
 NO_VERDICT = {"steps": {124}, "guard tests": {3, 4, 5, 124}}
 GUARD = re.compile(r"^# goh-land-guard:(.*)$", re.MULTILINE)
 STAGED = re.compile(r"^# goh-reads-staged:", re.MULTILINE)
-FAILED = re.compile(r"^(?:E\s+)?FAILED (tests/[^\s:]+\.py::[^\s]+)", re.MULTILINE)
+FAILED = re.compile(r"^(?:E\s+)?(?:FAILED|ERROR) (tests/[^\s:]+\.py::[^\s]+)", re.MULTILINE)
 SUBGATE = re.compile(r"^✗ (?:\[([a-z][\w-]*)\]|structural: (.+?) failed\b)", re.MULTILINE)
 STEP_RED = re.compile(r"✗ \[\d+/\d+\] FAILED \([^)]*\): (.+)$", re.MULTILINE)
 
@@ -91,31 +97,66 @@ def declared(root: Path) -> list[str]:
     return out
 
 
-def history(q: Path | None) -> list[str]:
-    """The test nodes past lands' records name as their refusing guards, newest first."""
-    if q is None or not (q / "done").is_dir():
+def records(q: Path | None, newest: int | None = None) -> list[dict]:
+    """The red records naming guards: done/ (the NEWEST that many, newest first) and the
+    pre-step refusals `learn` kept."""
+    if q is None:
         return []
+    out: list[dict] = []
+    for path in sorted((q / "done").glob("*.json"), reverse=True)[:newest]:
+        with contextlib.suppress(OSError, ValueError):
+            out.append(json.loads(path.read_text()))
+    with contextlib.suppress(OSError):
+        lines = (q / "guards.jsonl").read_text().splitlines()
+        for line in reversed(lines[-newest:] if newest else lines):
+            with contextlib.suppress(ValueError):
+                out.append(json.loads(line))
+    named = [r for r in out if isinstance(r, dict) and r.get("state") == "red"]
+    return [
+        {**r, "guard": r.get("guard") or r["guards"][0]}
+        for r in named
+        if r.get("guard") or r.get("guards")
+    ]
+
+
+def history(q: Path | None, repo: str = "") -> list[str]:
+    """The test nodes past refusals of REPO (any, when empty) name as their guards, newest first."""
     out: list[str] = []
-    for path in sorted((q / "done").glob("*.json"), reverse=True)[:HISTORY]:
-        try:
-            rec = json.loads(path.read_text())
-        except (OSError, ValueError):
-            continue
-        out += [g for g in rec.get("guards") or [] if isinstance(g, str) and "::" in g]
+    for rec in records(q, HISTORY):
+        if not repo or rec.get("repo") == repo:
+            out += [g for g in rec.get("guards") or [] if isinstance(g, str) and "::" in g]
     return list(dict.fromkeys(out))
 
 
-def tests(root: Path, q: Path | None) -> list[str]:
-    """The guard test functions the tree defines now, each measured at most EACH_S; a declared
-    guard the suite has not timed yet is run (its first measurement is the next suite's)."""
-    known = fast_tests.load()
+def costs() -> dict[str, float]:
+    """The suite's measured seconds per test function (its parameters and groups summed)."""
     cost: dict[str, float] = {}
-    for nodeid, s in known.items():
+    for nodeid, s in fast_tests.load().items():
         cost[fast_tests._base(nodeid)] = cost.get(fast_tests._base(nodeid), 0.0) + s
+    return cost
+
+
+def tests(root: Path, q: Path | None, repo: str = "") -> list[str]:
+    """The guard test functions the tree defines now: a declared one measured at most
+    DECLARED_EACH_S (one the suite has not timed yet is run), a past refuser at most EACH_S."""
+    cost = costs()
     mine = set(fast_tests.units(root, declared(root)))
-    past = [fast_tests._base(g) for g in history(q)]
+    past = [fast_tests._base(g) for g in history(q, repo)]
     every = list(dict.fromkeys([*sorted(mine), *fast_tests.units(root, past)]))
-    return [n for n in every if cost.get(n, 0.0 if n in mine else EACH_S + 1) <= EACH_S]
+    cap = dict.fromkeys(mine, DECLARED_EACH_S)
+    return [n for n in every if cost.get(n, 0.0 if n in mine else EACH_S + 1) <= cap.get(n, EACH_S)]
+
+
+def shards(nodes: list[str], n: int = SHARDS) -> list[list[str]]:
+    """NODES in up to N runs of near-equal measured cost (the costliest first, to the lightest)."""
+    cost = costs()
+    out: list[list[str]] = [[] for _ in range(min(n, len(nodes)))]
+    load = [0.0] * len(out)
+    for node in sorted(nodes, key=lambda x: -cost.get(x, 0.1)):
+        i = load.index(min(load))
+        out[i].append(node)
+        load[i] += cost.get(node, 0.1)
+    return [sorted(s) for s in out if s]
 
 
 def _env(root: Path) -> dict[str, str]:
@@ -133,33 +174,37 @@ def _env(root: Path) -> dict[str, str]:
 
 
 def _run(argv: list[str], root: Path, env: dict[str, str]) -> tuple[int, str, float]:
+    """ARGV in its own session, its output in a file (a child that outlives it holds no pipe), the
+    whole group stopped at STEP_TIMEOUT (lib/killtree.py: TERM, a grace, then KILL)."""
+    from lib import killtree
+
     t0 = time.monotonic()
-    try:
-        res = subprocess.run(
-            argv,
-            cwd=root,
-            env=env,
-            capture_output=True,
-            text=True,
-            stdin=subprocess.DEVNULL,
-            timeout=STEP_TIMEOUT,
-            check=False,
-        )
-        rc, out = res.returncode, res.stdout + res.stderr
-    except subprocess.TimeoutExpired:
-        rc, out = 124, f"timed out after {STEP_TIMEOUT} s"
+    with tempfile.TemporaryFile() as log:
+        proc = subprocess.Popen(argv, cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=log,
+                                stderr=subprocess.STDOUT, start_new_session=True)  # fmt: skip
+        try:
+            rc = proc.wait(timeout=STEP_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            killtree.stop_group(killtree.session_pgid(proc), proc=proc)
+            proc.wait()
+            rc = 124
+        log.seek(0)
+        out = log.read().decode(errors="replace")
+    if rc == 124:
+        out += f"\ntimed out after {STEP_TIMEOUT} s"
     return rc, out, round(time.monotonic() - t0, 1)
 
 
-def run(root: Path, q: Path | None = None, say=print) -> list[str]:
+def run(root: Path, q: Path | None = None, say=print, repo: str = "") -> list[str]:
     """Every guard over ROOT; the refusing guards' names ([] is green). SAY prints a line."""
     env = _env(root)
-    nodes = tests(root, q)
+    nodes = tests(root, q, repo)
     jobs: dict[str, list[str]] = {s: ["bash", "-c", s] for s in steps(root)}
-    if nodes:
-        serial = ["-n", "0"] if (root / "tests" / "_shard.py").is_file() else []  # goh's xdist
-        py = [env["GOH_PY"], "-m", "pytest", "-q", "-p", "no:cacheprovider", *serial]
-        jobs["guard tests"] = [*py, "--", *nodes]
+    serial = ["-n", "0"] if (root / "tests" / "_shard.py").is_file() else []  # goh's xdist
+    py = [env["GOH_PY"], "-m", "pytest", "-q", "-p", "no:cacheprovider", *serial]
+    parts = shards(nodes)
+    for i, part in enumerate(parts, 1):
+        jobs[f"guard tests {i}/{len(parts)}"] = [*py, "--", *part]
     if not jobs:
         say("check: no guard declared (GOH_LAND_CHECK_STEPS, # goh-land-guard:) -- nothing to run")
         return []
@@ -171,12 +216,15 @@ def run(root: Path, q: Path | None = None, say=print) -> list[str]:
         if rc == 0:
             say(f"check: {name}: green in {took} s")
             continue
-        if rc in NO_VERDICT["guard tests" if name == "guard tests" else "steps"]:
+        pytest = name.startswith("guard tests")
+        if rc in NO_VERDICT["guard tests" if pytest else "steps"]:
             say(f"check: {name}: no verdict in {took} s (exit {rc}) -- the land's own run decides")
             continue
         subgates = dict.fromkeys(map("".join, SUBGATE.findall(out)))
         named = (
-            FAILED.findall(out) if name == "guard tests" else [f"{name} [{g}]" for g in subgates]
+            list(dict.fromkeys(map(fast_tests._base, FAILED.findall(out))))
+            if pytest
+            else [f"[{g}]" for g in subgates]
         )
         refused += named or [name]
         tail = "\n".join(out.rstrip().splitlines()[-25:])
@@ -205,15 +253,10 @@ def fields(outcome: dict) -> dict:
 
 
 def count(q: Path) -> dict[str, int]:
-    """Refusals by guard over every done record (`goh land-profile --guards`)."""
+    """Refusals by guard over every record (`goh land-profile --guards`)."""
     tally: dict[str, int] = {}
-    for path in (q / "done").glob("*.json"):
-        try:
-            rec = json.loads(path.read_text())
-        except (OSError, ValueError):
-            continue
-        if rec.get("state") == "red" and rec.get("guard"):
-            tally[rec["guard"]] = tally.get(rec["guard"], 0) + 1
+    for rec in records(q):
+        tally[rec["guard"]] = tally.get(rec["guard"], 0) + 1
     return dict(sorted(tally.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
@@ -224,7 +267,7 @@ def at_enqueue(q: Path, req: dict, file, record, say=print) -> str:
 
     lines: list[str] = []
     t0 = time.monotonic()
-    refused = run(Path(req["worktree"]), q, lambda s: (say(s), lines.append(s)))
+    refused = run(Path(req["worktree"]), q, lambda s: (say(s), lines.append(s)), req["repo"])
     if not refused:
         say(f"check: every guard green in {time.monotonic() - t0:.1f} s")
         return ""
@@ -258,20 +301,40 @@ def cli(worktree: str, q: Path) -> int:
     if not top:
         err(f"goh land --check: {worktree} is not a git checkout")
         return 2
-    dirty = gitrun.run_reader(
-        ("status", "--porcelain", "--untracked-files=no"), repo=top, timeout=60
-    )
+    dirty = gitrun.run_reader(("status", "--porcelain"), repo=top, timeout=60)
     if dirty.returncode or dirty.stdout.strip():
+        some = ", ".join(ln[3:] for ln in dirty.stdout.splitlines()[:5])
         err(
-            f"goh land --check: {top} has uncommitted changes to tracked files -- the land judges "
-            "the commit; commit them, then check"
+            f"goh land --check: {top} is not its commit ({some or 'git status failed'}) -- the "
+            "land judges the commit, and an uncommitted or untracked file would judge another "
+            "tree; commit or remove them, then check"
         )
         return 2
+    listing = gitrun.run_reader(("worktree", "list", "--porcelain"), repo=top, timeout=60)
+    main = listing.stdout.split("\n", 1)[0].removeprefix("worktree ")
     t0 = time.monotonic()
-    refused = run(Path(top), q, info)
+    refused = run(Path(top), q, info, main)
     took = f"{time.monotonic() - t0:.1f} s"
     if refused:
         err(f"goh land --check: refused in {took} by {', '.join(refused)}")
         return 1
     ok(f"goh land --check: every guard green in {took}")
     return 0
+
+
+NODE = re.compile(r"tests/[^\s:,()]+\.py::[^\s,()]+")
+
+
+def learn(q: Path, req: dict, refusal: str) -> None:
+    """A pre-step's refusal at enqueue, which files no land record: the test nodes it names, in
+    `<landq>/guards.jsonl` for `history` and `count` (never a reason the refusal is not said)."""
+    found = list(dict.fromkeys(map(fast_tests._base, NODE.findall(refusal))))[:10]
+    if not found:
+        return
+    row = {"repo": req.get("repo", ""), "item": req.get("item", ""), "sha": req.get("sha", ""),
+           "stage": "pre", "state": "red", "guard": found[0], "guards": found,
+           "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}  # fmt: skip
+    with contextlib.suppress(OSError):
+        q.mkdir(parents=True, exist_ok=True)
+        with (q / "guards.jsonl").open("a") as f:
+            f.write(json.dumps(row) + "\n")
