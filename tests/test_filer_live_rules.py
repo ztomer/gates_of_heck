@@ -43,6 +43,10 @@ def live(tmp_path, monkeypatch) -> Path:
     monkeypatch.setenv("GOH_LOOP_QUEUE", str(queue))
     monkeypatch.setenv("GOH_REUSE_DIR", str(tmp_path / "reuse"))
     monkeypatch.delenv("LOOPCTL_UMBRELLA", raising=False)
+    # The loop's rules resolve a repo token under ~/Projects (queue_rules.ROOT, expanduser): the
+    # real home's, not the suite home that hides the checkouts (the land's pre-step refused
+    # "repo token 'gates_of_heck' is no repo under ~/Projects" without it).
+    monkeypatch.setenv("HOME", str(REAL_HOME))
     return queue
 
 
