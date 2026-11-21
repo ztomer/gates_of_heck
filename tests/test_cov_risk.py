@@ -14,6 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from _fast_git import fast_init
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT))
@@ -52,8 +53,7 @@ TESTS_RS = "crates/goh/src/toolshell/tests.rs"
 def _shipped(tmp_path: Path, monkeypatch) -> Path:
     """A repo whose last ship (v0.1.0, then a red ship's commit) left a kept profile."""
     repo = tmp_path / "gates_of_heck"
-    repo.mkdir()
-    _git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     _write(repo, LIB, 20)
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "base")
