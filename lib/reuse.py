@@ -1,21 +1,18 @@
 """The ONE verdict store and the ONE API every reuse path uses to reach it (GOH.ONEVERDICT).
 
-goh kept a verdict store per reuse path, each keyed its own way (docs/reuse.md maps them all): the
-push gate wrote `green <sha>` into a per-ship file only while `goh ship` ran, so a commit the land
-queue had already pushed and gated was "never gated" to the ship (koffee_big ship
-20261115T121828Z-952ef800: push.log "pre-push: nothing to gate", the release kit's full gate re-run,
-3137.5 s for the release step). A verdict is now one record, keyed by what decided it, in one store
-any caller can query:
+goh kept a verdict store per reuse path, each keyed its own way (docs/reuse.md maps them all): a
+commit the land queue had pushed and gated was "never gated" to the ship (koffee_big ship
+20261115T121828Z-952ef800: the full gate re-run, 3137.5 s). A verdict is now one record, keyed by
+what decided it, in one store any caller can query:
 
     reuse.py paths                                   # the registered paths and their key fields
     reuse.py record-gate --repo R [--] SHA[:HOW]...  # the push gate: each SHA green under HOW
                                                      # (full, release or config; default full)
     reuse.py full-suite --repo R --sha SHA           # exit 0: goh's whole suite judged SHA's
                                                      # tree itself, instrumented (ship_suite.py)
-    reuse.py lookup-gate --repo R --sha SHA [--how full]
-                                                     # exit 0, the record printed: a green verdict
-                                                     # on SHA's TREE under today's gate identity;
-                                                     # exit 1, the reason on stderr: a miss
+    reuse.py lookup-gate --repo R --sha SHA [--how full]   # exit 0, the record printed: a green
+                                                     # verdict on SHA's TREE under today's gate
+                                                     # identity; exit 1, why on stderr: a miss
 
 THE KEY. A reuse path REGISTERS its name and its key fields (`register`, below, the one table).
 A record's key is sha256 over the path name and each field's value in the registered order; a
@@ -43,9 +40,9 @@ is no longer written, and read here only, by sha, for a base pushed before the s
 without it every consumer's first floor push re-ran its whole gate. TTL a year: the base is the
 remote's tip, however old.
 
-THE AUDIT. Every reuse in goh is a registered path here -- its sites, store, shadow and rate --
-wherever its records live (docs/reuse.md); lib/reuse_audit.py samples, compares and switches off
-(GOH.REUSEAUDIT). tests/test_reuse_audit.py refuses a reuse site no path names.
+THE AUDIT. Every reuse in goh is a registered path here, wherever its records live (docs/reuse.md);
+lib/reuse_audit.py samples, compares and switches off (GOH.REUSEAUDIT); tests/test_reuse_audit.py
+refuses a reuse site no path names.
 
 The store's root: GOH_REUSE_DIR (absolute), else $XDG_STATE_HOME/goh/reuse, else
 ~/.local/state/goh/reuse. Nothing else reads or writes under it, nor the legacy record files named
@@ -146,6 +143,9 @@ LANDED = register(
     "the release push rule: release files only on a parent whose land was green (release_gate.py)",
     store="goh-landed", sites=("lib/release_gate.py",), shadow="inline",
 )  # fmt: skip
+register("relset", ("repo", "tree", "base", "identity"), DAY_S, "release_gate.py's reduced set "
+         "green on a tree since BASE: the land writes, the push reads (GOH.SHIPSLOW01410)",
+         sites=("lib/release_gate.py",), shadow="inline")  # fmt: skip
 register(
     "origin", ("repo", "sha", "remote"), 0,
     "the push gate's 'the remote already has this commit': nothing new to gate",

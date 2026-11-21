@@ -283,3 +283,60 @@ def test_a_ci_only_red_never_reaches_the_landed_path(repo, tmp_path, monkeypatch
     assert not hasattr(reuse_audit, "drain"), "the audit still reads hosted CI"
     assert reuse_audit.reuse.PATHS["landed"].shadow == "inline"
     assert reuse_audit.state("landed")["state"] == "on"
+
+
+def _release_land(wt: Path, tmp_path: Path, parent: str) -> subprocess.CompletedProcess[str]:
+    """The release commit's own land, as tools/release_goh.sh makes it: GOH_LAND_GATE is
+    release_gate.py's reduced set since the tip the release was cut from, over the push's store."""
+    gate = (
+        f"{sys.executable} {REPO_ROOT / 'lib' / 'release_gate.py'} run --base {parent} --full false"
+    )
+    env = hermetic_env(drop_git=True, GATE_REPORT=str(tmp_path / "land-report.txt"),
+                       GOH_LAND_GATE=gate, GOH_REUSE_DIR=str(tmp_path / "reuse"))  # fmt: skip
+    return subprocess.run(["bash", str(LAND)], cwd=wt, env=env, capture_output=True, text=True,
+                          timeout=patience(120), stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+
+
+def test_the_release_push_takes_the_release_sets_green_from_its_own_land_on_the_same_tree(
+    repo, tmp_path
+) -> None:
+    """GOH.SHIPSLOW01410: the release land ran the reduced set on the release commit, and its push
+    ran the SAME set on the SAME commit again (v0.140.0: 28.9 s land, 29.4 s push; with the text
+    judges of GOH.REUSEOFFLANDED5 about 80 s each). The set's green is keyed on the tree, the base
+    and the gates' identity (lib/release_gate.py, the `relset` path): the push finds it, runs
+    nothing, and still records the commit green under the release gate's identity."""
+    wt = _fixture(repo, tmp_path)
+    parent = git(wt, "rev-parse", "HEAD").strip()
+    assert _land(wt, None).returncode == 0
+    sha = _release(wt)
+    (tmp_path / "land-report.txt").unlink()  # the parent's land wrote it
+    landed = _release_land(wt, tmp_path, parent)
+    assert landed.returncode == 0, landed.stdout + landed.stderr
+    land_ran = (tmp_path / "land-report.txt").read_text().split()
+    assert land_ran == ["structural", "pytest"], (land_ran, landed.stdout)
+    rc, ran, out = _push(wt, tmp_path)
+    assert rc == 0, out
+    assert ran == [], (ran, out)
+    assert f"the release set passed on this tree since {parent[:8]}" in out, out
+    assert recorded_hows(tmp_path / "reuse", sha) == ["release"], out
+
+
+def test_the_sampled_relset_use_runs_the_set_again_and_the_audit_compares(
+    repo, tmp_path, monkeypatch
+) -> None:
+    """One `relset` hit in `every` is the audit's sample: the push runs the set anyway and the audit
+    counts the agreement; a skip nobody re-runs would never be found wrong."""
+    monkeypatch.setenv("GOH_REUSE_DIR", str(tmp_path / "reuse"))
+    monkeypatch.setenv("GOH_LOOPCTL", str(tmp_path / "no-loopctl.py"))  # nothing filed anywhere
+    wt = _fixture(repo, tmp_path)
+    parent = git(wt, "rev-parse", "HEAD").strip()
+    assert _land(wt, None).returncode == 0
+    _release(wt)
+    assert _release_land(wt, tmp_path, parent).returncode == 0
+    every = reuse_audit.reuse.PATHS["relset"].every
+    fields = dict.fromkeys(reuse_audit.reuse.PATHS["relset"].fields, "x")
+    assert set(reuse_audit.use_many("relset", [fields] * (every - 1))) == {"reuse"}
+    rc, ran, out = _push(wt, tmp_path)
+    assert rc == 0 and ran == ["structural", "pytest"], (ran, out)
+    rec = reuse_audit.state("relset")
+    assert rec["state"] == "on" and rec["window"]["agreed"] == 1, rec

@@ -123,6 +123,7 @@ REGISTRY: dict[str, Bound | Kept | Container] = {
     "reuse/gate": Kept("pruned by TTL at each write batch (lib/reuse.py prune)"),
     "reuse/pushed": Kept("pruned by TTL at each write batch (lib/reuse.py prune)"),
     "reuse/profcarry": Kept("pruned by TTL at each write batch (lib/reuse.py prune)"),
+    "reuse/relset": Kept("pruned by TTL at each write (lib/release_gate.py reuse.prune)"),
     "reuse/profstore": Kept("the newest keys only (lib/prof_store.py prune)"),
     "reuse/audit": Kept("one record per reuse path (lib/reuse_audit.py)"),
     "load_sources": Kept("one file per day, pruned at write (lib/load_sources.py prune)"),

@@ -39,6 +39,12 @@ miss); and the diff parent..HEAD is release files only, by release_only() above,
 definition the land uses. It prints `release PARENT` or `full REASON`, and push_gate.sh says
 the reason. Pinned by tests/test_push_release_reuse.py, each calibration by the reason it names.
 
+ONE RUN OF THE SET PER TREE (`relset`, GOH.SHIPSLOW01410). The push's set is the land's set on the
+same commit: v0.140.0 ran it 28.9 s at the land and 29.4 s at the push. `run` records a green set
+under (repo, HEAD's tree, the base commit, the gates' identity with the structural command), for a
+clean tree only, and a run that finds that record runs nothing and says so; one use in the path's
+`every` runs the set anyway and the audit compares (lib/reuse_audit.py).
+
 THE REUSE IS AUDITED (`landed`, lib/reuse_audit.py; GOH.LANDEDREUSEON). One release push in the
 path's `every` prints `shadow PARENT`: the push runs the FULL gate anyway, in the land's suite shape
 (GATES_OF_HECK_SUITE_SHAPE=ci, tests/suite_home.py: the land's gate runs its suite so), and hands
@@ -198,12 +204,29 @@ def _sh(cmd: str, root: Path, label: str) -> int:
     return step_timings.timed(label, ["bash", "-c", cmd], cwd=root)
 
 
-def run(root: Path, base: str, full: str, structural: str, runner: str) -> int:
-    paths = changed(root, base)
-    if paths is None or not release_only(paths):
-        print(f"release gate: the diff since {base[:8]} is not release files only -- the full gate")
-        sys.stdout.flush()
-        return _sh(full, root, "release gate: the full gate")
+def relset_fields(root: Path, base: str, structural: str) -> dict[str, str] | None:
+    """The `relset` key of the reduced set on root's HEAD since base (lib/reuse.py): the tree, the
+    base commit, and the gates' identity with the structural command; None for a tree with any
+    change or untracked file, whose bytes are not HEAD's tree."""
+    if _git_out(root, "status", "--porcelain"):
+        return None
+    tree = _git_out(root, "rev-parse", "HEAD^{tree}")
+    full_base = _git_out(root, "rev-parse", f"{base}^{{commit}}")
+    return {"repo": reuse.repo_id(root), "tree": tree, "base": full_base,
+            "identity": gate_identity.key(f"relset {structural}")}  # fmt: skip
+
+
+def _relset_reused(root: Path, base: str, fields: dict[str, str] | None) -> str:
+    """`reuse` when the reduced set passed on this very tree since base under these gates (the
+    release land's run; the push's is then the same run again), "shadow" for the audit's sampled
+    one, "" with no record or the audit off."""
+    if fields is None or reuse.lookup("relset", fields)[0] is None:
+        return ""
+    use = reuse_audit.use("relset", fields)
+    return "" if use == "off" else use
+
+
+def _reduced(root: Path, paths: list[str], base: str, structural: str, runner: str) -> int:
     t0 = time.monotonic()  # the readers' graph is seconds of its own (8.7 s at load 125)
     tests = names(root, paths)
     step_timings.record(
@@ -218,6 +241,37 @@ def run(root: Path, base: str, full: str, structural: str, runner: str) -> int:
         return 0
     cmd = f"{runner} {' '.join(shlex.quote(t) for t in tests)}"
     return _sh(cmd, root, f"release gate: {len(tests)} test files")
+
+
+def run(root: Path, base: str, full: str, structural: str, runner: str) -> int:
+    paths = changed(root, base)
+    if paths is None or not release_only(paths):
+        print(f"release gate: the diff since {base[:8]} is not release files only -- the full gate")
+        sys.stdout.flush()
+        return _sh(full, root, "release gate: the full gate")
+    fields = relset_fields(root, base, structural)
+    use = _relset_reused(root, base, fields)
+    if use == "reuse":
+        print(f"release gate: the release set passed on this tree since {base[:8]} under these "
+              "gates (its land's run, the `relset` reuse) -- not run again")  # fmt: skip
+        sys.stdout.flush()
+        return 0
+    rc = _reduced(root, paths, base, structural, runner)
+    if use == "shadow" and fields is not None:  # the audit's sample: the reuse's green, judged
+        again = (lambda: ("green", "green" if _reduced(root, paths, base, structural, runner) == 0
+                          else "red")) if rc else None  # fmt: skip
+        reuse_audit.compare(
+            "relset",
+            fields,
+            "green",
+            "green" if rc == 0 else "red",
+            again,
+            fresh_from=f"the release set run again on tree {fields['tree'][:12]}",
+        )
+    if rc == 0 and fields is not None:
+        reuse.record("relset", fields, "green", by="release_gate.py run")
+        reuse.prune("relset")
+    return rc
 
 
 def main(argv: list[str] | None = None) -> int:
