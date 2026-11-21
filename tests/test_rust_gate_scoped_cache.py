@@ -115,9 +115,13 @@ def fake_cargo(tmp_path: Path, monkeypatch) -> Path:
 
 
 def _gate(repo: Path, crate: str, **env: str) -> subprocess.CompletedProcess:
-    full = hermetic_env(drop_git=True)
     gates = Path(os.environ["SCOPED_CACHE_GATES"])
-    full.update(GOH_DIR=str(gates), GOH_BIN=os.environ["SCOPED_CACHE_GOH"], **env)
+    # The frozen clone is PYTHONPATH too, never the live checkout the suite's PYTHONPATH names:
+    # every proven key holds each gates root on PYTHONPATH by content (lib/gate_identity.py
+    # `pythonpath`), and a new file another test of the parallel suite briefly made in the live
+    # lib/ missed the second run of one tree (GOH.FLAKYSCOPEDCACHE; test_proven.py sets both too).
+    full = hermetic_env(drop_git=True, GOH_DIR=str(gates), PYTHONPATH=str(gates))
+    full.update(GOH_BIN=os.environ["SCOPED_CACHE_GOH"], **env)
     if fake := os.environ.get("SCOPED_CACHE_FAKE_CARGO"):
         full["PATH"] = f"{fake}:{full['PATH']}"
     return subprocess.run(
