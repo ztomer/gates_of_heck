@@ -319,6 +319,15 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
     # real one rather than a mktemp suffix.
     worktree="$run_dir/$(basename "$root")"
     section "pre-push: gating $local_ref @ $short in a clean worktree"
+    # GOH.TOOLTIMEOUT: a pre-push gate cannot background itself (git waits on its exit to push), so
+    # it says, before it runs, how long it runs here and how a caller runs it unwatched.
+    p95=$("$GOH_PY" -S "$GOH/lib/timing_ledger.py" p95 --kind push --repo "$root" 2>/dev/null || true)
+    if [ -n "$p95" ]; then
+        p95="p95 ${p95%% *} s over the last ${p95##* } pushes of $(basename "$root")"
+    else
+        p95="minutes; no push of $(basename "$root") measured yet"
+    fi
+    info "pre-push: this gate runs long ($p95): from an agent, run \`git push\` with run_in_background, or hand it to \`goh land --enqueue REPO SHA\`"
     git -C "$root" worktree add --detach --quiet "$worktree" "$commit"
     export_siblings "$worktree" "$run_dir" "$root"   # every sibling a tracked manifest's path dependency names (lib/push_runs.sh)
     # ...and the build dirs cargo keys on the export, asked while it exists (gates/_push_build_dirs.py).

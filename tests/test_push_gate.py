@@ -6,6 +6,7 @@ repo whose `tools/gate.sh` records what it saw, then push a commit while the wor
 something else.
 """
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -409,3 +410,22 @@ def test_a_main_tip_land_sh_never_recorded_is_refused_by_name(tmp_path):
     (common / "goh-landed").write_text(sha + "\n")
     rc, report, out = _push(repo, sha, tmp_path)
     assert rc == 0 and "tracked=COMMITTED" in report, out
+
+
+def test_the_gate_says_it_runs_long_with_its_measured_p95_before_it_runs(tmp_path, monkeypatch):
+    """GOH.TOOLTIMEOUT: a `git push` from the Bash tool sat past its timeout, unannounced (14 of 78
+    timeouts in a week). The gate names its own p95 from the timing ledger, and the way to run it
+    unwatched, BEFORE the gate starts; with no measurement it still says it runs long."""
+    ledger = tmp_path / "timing"
+    monkeypatch.setenv("GOH_TIMING_DIR", str(ledger))
+    repo = _repo(tmp_path)
+    code, _report, out = _push(repo, _git(repo, "rev-parse", "HEAD"), tmp_path)
+    assert code == 0, out
+    assert "runs long" in out and "run_in_background" in out, out
+    rows = [json.dumps({"v": 1, "subject": "repo push", "repo": "repo", "kind": "push",
+                        "wall_s": float(s)}) for s in range(401, 421)]  # fmt: skip
+    (ledger / "ledger.jsonl").write_text("\n".join(rows) + "\n")
+    code, _report, out = _push(repo, _git(repo, "rev-parse", "HEAD"), tmp_path)
+    assert code == 0, out
+    said = [ln for ln in out.splitlines() if "runs long" in ln]
+    assert said and "p95 419 s over the last 20 pushes" in said[0], out

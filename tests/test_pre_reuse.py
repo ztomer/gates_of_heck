@@ -103,7 +103,7 @@ def _land(
         f' && cp {record} "$GOH_LAND_VERDICTS_RECORD"' if record else ""
     )
     env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": pre}
-    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.T", "--no-start")
+    done = landq(env, "--enqueue", "--foreground", "--land", str(wt), "--item", "T.T", "--no-start")
     assert done.returncode == 0, done.stdout + done.stderr
     if moves:
         _main_moves(repo, moves)

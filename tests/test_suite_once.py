@@ -227,7 +227,7 @@ def test_the_land_record_names_the_verdict_the_gates_suite_took(repo, tmp_path, 
             ' && echo 0123456789ab:feedfacecafe > "$GOH_LAND_VERDICTS_REUSE.reused"')  # fmt: skip
     env = {**env, "GOH_LAND_GATE": gate, "GOH_TIMING_DIR": str(tmp_path / "timing"),
            "GOH_LAND_PRE": 'echo "{}" > "$GOH_LAND_VERDICTS_RECORD"'}  # fmt: skip
-    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.T", "--no-start")
+    done = landq(env, "--enqueue", "--foreground", "--land", str(wt), "--item", "T.T", "--no-start")
     assert done.returncode == 0, done.stdout + done.stderr
     assert landq(env, "--drain").returncode == 0
     got = recorded(env)["T.T"]

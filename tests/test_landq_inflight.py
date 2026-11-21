@@ -51,7 +51,8 @@ def _until(cond, what: str, seconds: float = 60) -> None:
 
 def _enqueue(env: dict[str, str], wt: Path, item: str) -> subprocess.Popen:
     return subprocess.Popen(
-        [sys.executable, str(LANDQ), "--enqueue", "--land", str(wt), "--item", item, "--no-start"],
+        [sys.executable, str(LANDQ), "--enqueue", "--foreground", "--land", str(wt), "--item", item,
+         "--no-start"],
         env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True,
     )  # fmt: skip

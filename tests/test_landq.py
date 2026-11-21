@@ -89,6 +89,11 @@ def landq(env: dict[str, str], *args: str) -> subprocess.CompletedProcess:
     )
 
 
+def enq(env: dict[str, str], *args: str) -> subprocess.CompletedProcess:
+    """`--enqueue --foreground`: the pre-step here, its verdict the exit (GOH.TOOLTIMEOUT)."""
+    return landq(env, "--enqueue", "--foreground", *args)
+
+
 def recorded(env: dict[str, str]) -> dict[str, dict]:
     """The outcome each item was given: `loopctl set ID landing JSON --json`, by item."""
     out = {}
@@ -211,7 +216,7 @@ def _land_wt(repo: Path, tmp_path: Path) -> tuple[Path, str]:
 def test_a_green_land_request_fast_forwards_main_and_records_landed(repo, tmp_path, env):
     wt, tip = _land_wt(repo, tmp_path)
     env = {**env, "GOH_LAND_GATE": "true"}
-    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.L", "--no-start")
+    done = enq(env, "--land", str(wt), "--item", "T.L", "--no-start")
     assert done.returncode == 0, done.stdout + done.stderr
     assert landq(env, "--drain").returncode == 0
     got = recorded(env)["T.L"]
@@ -225,7 +230,7 @@ def test_a_landed_request_carries_its_request_time_and_is_one_e2e_row(repo, tmp_
     pre-step) and the pre-step's seconds, and the lander writes the item's end-to-end row."""
     wt, _ = _land_wt(repo, tmp_path)
     env = {**env, "GOH_LAND_GATE": "true", "GOH_TIMING_DIR": str(tmp_path / "timing")}
-    assert landq(env, "--enqueue", "--land", str(wt), "--item", "T.E", "--no-start").returncode == 0
+    assert enq(env, "--land", str(wt), "--item", "T.E", "--no-start").returncode == 0
     assert landq(env, "--drain").returncode == 0
     (rec,) = [json.loads(p.read_text()) for p in (tmp_path / "landq" / "done").glob("*.json")]
     assert rec["requested"].endswith("Z") and isinstance(rec["pre_s"], float), rec
@@ -240,7 +245,7 @@ def test_a_red_land_gate_lands_nothing_and_records_the_log(repo, tmp_path, env):
     wt, tip = _land_wt(repo, tmp_path)
     before = git(repo, "rev-parse", "HEAD").strip()
     env = {**env, "GOH_LAND_GATE": "echo red-gate-says-why; false"}
-    assert landq(env, "--enqueue", "--land", str(wt), "--item", "T.R", "--no-start").returncode == 0
+    assert enq(env, "--land", str(wt), "--item", "T.R", "--no-start").returncode == 0
     landq(env, "--drain")
     got = recorded(env)["T.R"]
     assert got["state"] == "red" and got["sha"] == tip, got
@@ -256,7 +261,7 @@ def test_a_lane_that_moved_after_enqueue_lands_the_enqueued_tip_not_the_new_one(
     enqueued, never the lane's newer one."""
     wt, tip = _land_wt(repo, tmp_path)
     env = {**env, "GOH_LAND_GATE": "true"}
-    assert landq(env, "--enqueue", "--land", str(wt), "--item", "T.M", "--no-start").returncode == 0
+    assert enq(env, "--land", str(wt), "--item", "T.M", "--no-start").returncode == 0
     write(wt, "f.txt", "moved\n")
     git(wt, "commit", "-qam", "moved", "--no-verify")
     landq(env, "--drain")
@@ -282,7 +287,7 @@ def test_wait_blocks_until_the_outcome_and_exits_by_it(repo, tmp_path, env, gate
     """`goh land --wait ID` is the lane's one wait: no lander running (--no-start) is started."""
     wt, tip = _land_wt(repo, tmp_path)
     env = {**env, "GOH_LAND_GATE": gate}
-    assert landq(env, "--enqueue", "--land", str(wt), "--item", "T.W", "--no-start").returncode == 0
+    assert enq(env, "--land", str(wt), "--item", "T.W", "--no-start").returncode == 0
     done = landq(env, "--wait", "T.W", "--timeout", "90")
     assert done.returncode == code, done.stdout + done.stderr
     assert state in done.stdout + done.stderr and tip[:8] in done.stdout + done.stderr
@@ -297,7 +302,7 @@ def test_wait_on_an_item_with_no_request_says_so(env):
 def test_wait_on_an_item_never_takes_another_items_request(repo, tmp_path, env):
     """Request names are `<ns>-<item>`: an item `B` is not the request of an item `X-B`."""
     wt, _ = _land_wt(repo, tmp_path)
-    assert landq(env, "--enqueue", "--land", str(wt), "--item", "X-B", "--no-start").returncode == 0
+    assert enq(env, "--land", str(wt), "--item", "X-B", "--no-start").returncode == 0
     done = landq(env, "--wait", "B")
     assert done.returncode == 2 and "no request for B" in done.stdout + done.stderr, done.stderr
 
@@ -310,7 +315,7 @@ def test_a_rebased_land_records_the_sha_on_main_as_landing_sha(repo, tmp_path, e
     git(repo, "add", "m.txt")
     git(repo, "commit", "-q", "--no-verify", "-m", "main moved")
     env = {**env, "GOH_LAND_GATE": "true"}
-    assert landq(env, "--enqueue", "--land", str(wt), "--item", "T.S", "--no-start").returncode == 0
+    assert enq(env, "--land", str(wt), "--item", "T.S", "--no-start").returncode == 0
     assert landq(env, "--drain").returncode == 0
     got = recorded(env)["T.S"]
     on_main = git(repo, "rev-parse", "HEAD").strip()
@@ -400,7 +405,7 @@ def test_enqueue_refuses_a_tip_whose_pre_step_fails_and_names_the_test(repo, tmp
     wt, _ = _land_wt(repo, tmp_path)
     pre = "echo 'FAILED tests/test_wiring.py::test_every_doc_row - planted'; exit 1"
     env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": pre}
-    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.P", "--no-start")
+    done = enq(env, "--land", str(wt), "--item", "T.P", "--no-start")
     out = done.stdout + done.stderr
     assert done.returncode != 0 and "tests/test_wiring.py::test_every_doc_row" in out, out
     assert "nothing enqueued" in out, out
@@ -411,7 +416,7 @@ def test_enqueue_queues_a_green_tip_after_running_the_pre_step_once(repo, tmp_pa
     wt, tip = _land_wt(repo, tmp_path)
     seen = tmp_path / "seen"
     env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": f"echo pre >> {seen}"}
-    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.G", "--no-start")
+    done = enq(env, "--land", str(wt), "--item", "T.G", "--no-start")
     assert done.returncode == 0, done.stdout + done.stderr
     assert seen.read_text() == "pre\n"  # the enqueue ran it, in the worktree, and landed nothing
     assert git(repo, "rev-parse", "HEAD").strip() != tip
@@ -428,7 +433,7 @@ def test_enqueue_queues_a_tip_whose_pre_step_hit_its_deadline_and_says_so(repo, 
         "GOH_LAND_PRE_MAX": "2s",
         "GOH_LAND_PRE_CEIL": "2s",
     }
-    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.D", "--no-start")
+    done = enq(env, "--land", str(wt), "--item", "T.D", "--no-start")
     out = done.stdout + done.stderr
     assert done.returncode == 0, out
     assert "no verdict" in out and "queued" in out, out
@@ -438,10 +443,10 @@ def test_enqueue_queues_a_tip_whose_pre_step_hit_its_deadline_and_says_so(repo, 
 def test_enqueue_no_pre_names_its_reason_and_skips_the_pre_step(repo, tmp_path, env):
     wt, _ = _land_wt(repo, tmp_path)
     env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": "exit 1"}
-    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.X", "--no-start", "--no-pre")
+    done = enq(env, "--land", str(wt), "--item", "T.X", "--no-start", "--no-pre")
     assert done.returncode == 2 and "--no-pre needs a reason" in done.stdout + done.stderr
     assert _pending(tmp_path) == []
-    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.X", "--no-start",
+    done = enq(env, "--land", str(wt), "--item", "T.X", "--no-start",
                  "--no-pre", "lane ran the set by hand")  # fmt: skip
     assert done.returncode == 0 and "lane ran the set by hand" in done.stdout + done.stderr
     assert len(_pending(tmp_path)) == 1

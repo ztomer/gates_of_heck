@@ -180,3 +180,26 @@ def test_the_push_row_carries_the_slot_wait_once(tmp_path: Path) -> None:
         first["sha"] == "aaaaaaaaaaaa" and 1.2 <= first["slot_wait_s"] < first["slot_asked_at"]
     ), first
     assert first["epoch"] - first["slot_asked_at"] >= 1.2 and "slot_wait_s" not in second, second
+
+
+def test_the_p95_counts_the_waits_an_agent_sat_through_and_names_its_sample(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """GOH.TOOLTIMEOUT: the push gate prints its own p95 so a caller knows it runs long. The wait
+    for a slot or the land lock is time the caller's command sat through, so it counts."""
+    monkeypatch.setenv("GOH_TIMING_DIR", str(tmp_path))
+    for wall in range(1, 101):  # 1..100 s, one of them waited 500 s for a slot
+        timing_ledger.record(
+            "push", "ztools", float(wall), slot_wait_s=500.0 if wall == 3 else None
+        )
+    timing_ledger.record("push", "other", 9999.0)
+    timing_ledger.record("land", "ztools", 9999.0)
+    # nearest rank, 95th of 100: 96 s with the 503 s run counted, 95 s if its wait were dropped
+    assert timing_ledger.p95("push", "ztools") == (96.0, 100)
+    assert timing_ledger.p95("push", "nothing") is None
+    argv = [sys.executable, str(REPO_ROOT / "lib" / "timing_ledger.py"), "p95", "--kind", "push",
+            "--repo", "ztools"]  # fmt: skip
+    env = {**hermetic_env(), "GOH_TIMING_DIR": str(tmp_path)}
+    out = subprocess.run(argv, capture_output=True, text=True, env=env, check=True,
+                         stdin=subprocess.DEVNULL)  # fmt: skip
+    assert out.stdout.split() == ["96", "100"]

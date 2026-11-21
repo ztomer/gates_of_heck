@@ -47,6 +47,7 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 import argparse
 import datetime as dt
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -149,6 +150,22 @@ def read(path: Path | None = None) -> list[dict]:
     return rows
 
 
+def p95(kind: str, repo: str, rows: list[dict] | None = None) -> tuple[float, int] | None:
+    """REPO's KIND runs' 95th percentile, nearest rank, in seconds as its caller sat through them
+    (the run plus its wait for a gate slot or the land lock), and how many runs it read; None with
+    none (GOH.TOOLTIMEOUT: the push gate says how long it runs before it does)."""
+    name = repo_name(repo)
+    waits = sorted(
+        float(r.get("wall_s") or 0) + float(r.get("slot_wait_s") or 0)
+        + float(r.get("wait_lock_s") or 0)
+        for r in (read() if rows is None else rows)
+        if r.get("kind") == kind and r.get("repo") == name
+    )  # fmt: skip
+    if not waits:
+        return None
+    return waits[max(0, math.ceil(0.95 * len(waits)) - 1)], len(waits)
+
+
 def append(row: dict, path: Path | None = None) -> bool:
     """One atomic line; False when it could not be written (never raises)."""
     target = path or ledger_path()
@@ -230,11 +247,20 @@ def main(argv: list[str]) -> int:
     rec.add_argument("--timings", default="", help="a GOH_TIMINGS file: control drift, top steps")
     rec.add_argument("--field", action="append", default=[], metavar="K=V")
     sub.add_parser("path")
+    pc = sub.add_parser(
+        "p95", help="print `SECONDS RUNS` for a repo's kind, nothing when unmeasured"
+    )
+    pc.add_argument("--kind", required=True)
+    pc.add_argument("--repo", required=True, help="a path or a name")
     tl = sub.add_parser("tail")
     tl.add_argument("n", nargs="?", type=int, default=10)
     a = ap.parse_args(argv)
     if a.cmd == "path":
         print(ledger_path())
+        return 0
+    if a.cmd == "p95":
+        if got := p95(a.kind, a.repo):
+            print(f"{got[0]:.0f} {got[1]}")
         return 0
     if a.cmd == "tail":
         for r in read()[-a.n :]:

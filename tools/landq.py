@@ -31,6 +31,7 @@ a red tip naming the failing tests: a tree reader the lane never ran met its fir
 serial queue (GOH.REUSEAUDIT's land: 537 s, red on three). Past its deadline is no verdict and the
 tip queues (GOH.PRESTEPDEADLINE). A green verdict is kept on the request (`pre`) for the lander's
 pre-step (GOH.PRELANDTWICE, lib/land_prestep.py). `--no-pre REASON` skips the run, saying why.
+Without `--wait` or `--foreground` it runs detached (GOH.TOOLTIMEOUT, lib/landq_background.py).
 
 THE WAIT. `goh land --wait ID` (an item, or a request's path or name) blocks until that item's
 newest request reached done/, prints its outcome (and a red log's tail), and exits 0 landed, 1
@@ -98,6 +99,7 @@ landq_report = importlib.import_module("landq_report")
 landq_request = importlib.import_module("landq_request")
 landq_look = importlib.import_module("landq_look")
 landq_inflight = importlib.import_module("landq_inflight")
+landq_background = importlib.import_module("landq_background")
 landq_state = importlib.import_module("landq_state")
 ruff_bump = importlib.import_module("ruff_bump")
 selection_miss = importlib.import_module("selection_miss")
@@ -385,24 +387,22 @@ def nudge() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="goh land", description=__doc__.splitlines()[0])
-    mode = ap.add_mutually_exclusive_group(required=True)
+    mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--enqueue", nargs="*", metavar="REPO SHA")
     mode.add_argument("--drain", action="store_true")
     mode.add_argument("--status", action="store_true")
     mode.add_argument("--ruff-bump", action="store_true", help="land a newer ruff's pin bump, once")
-    mode.add_argument("--wait", metavar="ID|REQUEST", help="block until it finished (THE WAIT)")
     mode.add_argument("--check", metavar="WORKTREE", help="its tip's structural land guards")
     landq_report.add_arguments(mode, ap)
-    ap.add_argument("--land", metavar="WORKTREE", help="run tools/land.sh there (mode land)")
+    landq_background.add_arguments(ap)  # --land, --no-pre, --no-start, --wait, --foreground
     ap.add_argument("--timeout", type=float, default=WAIT_TIMEOUT, help="--wait's bound, seconds")
     ap.add_argument("--item", default="")
     ap.add_argument("--ship", action="store_true", help="run goh ship --wait, not a bare push")
     ap.add_argument("--summary", default="")
-    ap.add_argument("--no-pre", metavar="REASON", nargs="?", const="",
-                    help="skip the enqueue's pre-step run; a reason is required")  # fmt: skip
-    ap.add_argument("--no-start", action="store_true", help="enqueue only; start no lander")
     ap.add_argument("--detach", action="store_true", help="--ruff-bump: look in the background")
     args = ap.parse_args(argv)
+    if landq_background.check(ap, args):  # the enqueue's long pre-step, detached (GOH.TOOLTIMEOUT)
+        return landq_background.start(args, argv, qdir(), Path(__file__).resolve())
     if args.report:
         return landq_report.run(qdir(), args.since, args.json)
     if args.drain or args.status:
@@ -411,13 +411,12 @@ def main(argv: list[str] | None = None) -> int:
         return land_check.cli(args.check, qdir())
     if args.ruff_bump:  # lib/ruff_bump.py look: the bump-only land, if one is owed
         return ruff_bump.look(home, live_root(), args.detach, Path(__file__).resolve(), info)
-    if args.wait is not None:  # THE WAIT
+    if args.wait and args.enqueue is None:  # THE WAIT
         return landq_look.wait(qdir(), args.wait, args.timeout, nudge)
     req: dict = {}
     try:
         if args.land is not None:
-            if args.enqueue or args.ship:
-                raise Refused("--land takes the worktree only: no REPO SHA, no --ship")
+            landq_background.worktree_only(args)
             req = land_request(args.land, args.item, qdir())  # in a slot (GOH.LANDSNAPSHOT)
             if args.no_pre is not None and not args.no_pre.strip():
                 raise Refused("--no-pre needs a reason: --no-pre 'why this tip skips the pre-step'")
@@ -434,6 +433,7 @@ def main(argv: list[str] | None = None) -> int:
     except Refused as e:
         land_slot.release_req(qdir(), req)
         err(f"goh land: {e} -- nothing enqueued")
+        landq_background.red(args, req, str(e), qdir(), enqueue, record)
         return 2
     if req["mode"] == "land" and (red := landq_early.at_enqueue(qdir(), req, enqueue, record)):
         err(f"goh land: {red.splitlines()[0]} -- recorded red at enqueue, nothing queued")
@@ -443,7 +443,7 @@ def main(argv: list[str] | None = None) -> int:
         start_lander()
     who = req["item"] or Path(req["repo"]).name
     ok(f"enqueued {who} @ {req['sha'][:8]} ({req['mode']}): {path}")
-    return 0
+    return 0 if args.wait is None else landq_look.wait(qdir(), str(path), args.timeout, nudge)
 
 
 if __name__ == "__main__":

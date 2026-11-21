@@ -46,7 +46,7 @@ def test_the_request_and_its_done_record_say_what_the_pre_step_did_with_the_lane
     run it did not repeat) or ran the set, and why -- on the request and on its done record."""
     wt, _ = _land_wt(repo, tmp_path)
     env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": f"echo {shlex.quote(said)}"}
-    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.A", "--no-start")
+    done = landq(env, "--enqueue", "--foreground", "--land", str(wt), "--item", "T.A", "--no-start")
     assert done.returncode == 0, done.stdout + done.stderr
     (path,) = _pending(tmp_path)
     assert json.loads(path.read_text()).get("pre_affected") == want

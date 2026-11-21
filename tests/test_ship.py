@@ -148,6 +148,8 @@ def test_started_detached_it_returns_at_once_and_the_worker_finishes_alone(shipp
     assert_sooner(time.monotonic() - t0, 1.5, 8, "goh ship's detached start")
     assert "goh ship started" in r.stdout
     assert str(tmp_path / "ship.json") in r.stdout
+    # GOH.TOOLTIMEOUT: the start says it runs long and was backgrounded, and how to block on it
+    assert "runs long" in r.stdout and "--wait" in r.stdout and "--status" in r.stdout, r.stdout
     give_up = GiveUp(90)
     while not give_up.passed() and _result(tmp_path)["status"] == "running":
         time.sleep(0.5)

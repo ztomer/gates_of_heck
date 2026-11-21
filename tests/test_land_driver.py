@@ -49,7 +49,7 @@ def test_the_enqueue_pre_step_is_mains_not_a_lanes_weakened_land_sh(repo, tmp_pa
     wt, _ = _weak_lane(repo, tmp_path)
     pre = "echo 'FAILED tests/test_wiring.py::test_planted - planted'; exit 1"
     env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": pre}
-    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.H", "--no-start")
+    done = landq(env, "--enqueue", "--foreground", "--land", str(wt), "--item", "T.H", "--no-start")
     out = done.stdout + done.stderr
     assert done.returncode != 0 and "tests/test_wiring.py::test_planted" in out, out
     assert _pending(tmp_path) == []
@@ -59,7 +59,7 @@ def test_the_lander_gates_with_mains_land_sh_not_a_lanes_weakened_one(repo, tmp_
     wt, _ = _weak_lane(repo, tmp_path)
     before = git(repo, "rev-parse", "HEAD").strip()
     env = {**env, "GOH_LAND_GATE": "echo main-gate-ran; false"}
-    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.K", "--no-start",
+    done = landq(env, "--enqueue", "--foreground", "--land", str(wt), "--item", "T.K", "--no-start",
                  "--no-pre", "the test gates in the lander")  # fmt: skip
     assert done.returncode == 0, done.stdout + done.stderr
     landq(env, "--drain")

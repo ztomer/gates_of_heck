@@ -63,7 +63,7 @@ def _branch(repo: Path, tmp_path: Path, files: dict[str, str]) -> Path:
 def _enqueue(env: dict[str, str], wt: Path, **extra: str):
     env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": PRE, **extra}
     env.pop("GATES_OF_HECK_SUITE_RUNNER", None)  # the fixture's own suite is no nested goh suite
-    return landq(env, "--enqueue", "--land", str(wt), "--item", "T.J", "--no-start")
+    return landq(env, "--enqueue", "--foreground", "--land", str(wt), "--item", "T.J", "--no-start")
 
 
 def test_a_branch_with_a_501_line_file_is_refused_at_enqueue(repo, tmp_path, env) -> None:

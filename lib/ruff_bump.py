@@ -85,9 +85,10 @@ def pin_at_tip(main: Path) -> str | None:
 
 
 def default_enqueue(wt: Path, item: str) -> tuple[int, str]:
-    """`goh land --enqueue --land WT --item ITEM`: the normal queue, its pre-step and its lander."""
-    argv = [sys.executable, str(_HERE.parent / "tools" / "landq.py"), "--enqueue", "--land",
-            str(wt), "--item", item]  # fmt: skip
+    """`goh land --enqueue --land WT --item ITEM`: the normal queue, its pre-step and its lander;
+    `--foreground`, so its exit is the pre-step's verdict (GOH.TOOLTIMEOUT backgrounds it else)."""
+    argv = [sys.executable, str(_HERE.parent / "tools" / "landq.py"), "--enqueue", "--foreground",
+            "--land", str(wt), "--item", item]  # fmt: skip
     done = subprocess.run(argv, capture_output=True, text=True, stdin=subprocess.DEVNULL,
                           check=False, timeout=3600)  # fmt: skip
     said = " | ".join((done.stdout + done.stderr).strip().splitlines()[-2:])

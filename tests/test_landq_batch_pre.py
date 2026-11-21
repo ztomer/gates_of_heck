@@ -37,7 +37,9 @@ def test_a_lone_item_at_its_enqueued_tree_reuses_the_enqueue_verdict_a_stack_doe
         (lane(repo, tmp_path, "two", {"two.txt": "2\n"}), "T.TWO"),
     ]
     for wt, item in wts:
-        done = landq(env, "--enqueue", "--land", str(wt), "--item", item, "--no-start")
+        done = landq(
+            env, "--enqueue", "--foreground", "--land", str(wt), "--item", item, "--no-start"
+        )
         assert done.returncode == 0, done.stdout + done.stderr
     enqueued = [git(wt, "rev-parse", "HEAD").strip() for wt, _ in wts]
     assert _pre_runs(pre_log) == enqueued  # the enqueue's own pre-step, once per item
@@ -79,7 +81,16 @@ def test_the_lander_says_why_a_land_s_gate_measured(
     env = {**env, "GOH_LANDQ_BATCH": "1", "GOH_LAND_GATE": f"printf '%s\\n' '{DECISION}'"}
     wt = lane(repo, tmp_path, "one", {"one.txt": "1\n"})
     done = landq(
-        env, "--enqueue", "--land", str(wt), "--item", "T.ONE", "--no-start", "--no-pre", "fixture"
+        env,
+        "--enqueue",
+        "--foreground",
+        "--land",
+        str(wt),
+        "--item",
+        "T.ONE",
+        "--no-start",
+        "--no-pre",
+        "fixture",
     )
     assert done.returncode == 0, done.stdout + done.stderr
     drained = landq(env, "--drain")

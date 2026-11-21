@@ -88,8 +88,8 @@ def test_the_request_records_that_the_pre_step_had_no_verdict_and_why(
     try:
         done = subprocess.run(
             [sys.executable, str(REPO_ROOT / "tools" / "landq.py"), "--enqueue", "--land", str(wt),
-             "--item", "T.W", "--no-start"], env=env, capture_output=True, text=True,
-            stdin=subprocess.DEVNULL, timeout=patience(120), check=False)  # fmt: skip
+             "--item", "T.W", "--no-start", "--foreground"], env=env, capture_output=True,
+            text=True, stdin=subprocess.DEVNULL, timeout=patience(120), check=False)  # fmt: skip
     finally:
         _end(holder)
     out = done.stdout + done.stderr

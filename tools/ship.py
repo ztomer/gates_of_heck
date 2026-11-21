@@ -395,6 +395,9 @@ def start(args: argparse.Namespace) -> int:
                          stdin=subprocess.DEVNULL, start_new_session=True,
                          close_fds=True)  # fmt: skip
     info(f"goh ship started: {res['result']}")
+    # GOH.TOOLTIMEOUT: say why it returned at once, so no caller re-runs it in the foreground
+    info(f"goh ship runs long (push gate, release, install, verify): detached; "
+         f"`goh ship --status {res['result']}` reads its marks, --wait runs it here")  # fmt: skip
     return 0
 
 

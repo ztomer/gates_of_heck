@@ -68,7 +68,9 @@ def lane(repo: Path, tmp_path: Path) -> tuple[Path, str]:
 
 def enqueue(env: dict[str, str], wt: Path, item: str, pre: bool = False) -> None:
     flags = () if pre else ("--no-pre", "fixture: the pre-step is not under test")
-    done = landq(env, "--enqueue", "--land", str(wt), "--item", item, "--no-start", *flags)
+    done = landq(
+        env, "--enqueue", "--foreground", "--land", str(wt), "--item", item, "--no-start", *flags
+    )
     assert done.returncode == 0, done.stdout + done.stderr
 
 
