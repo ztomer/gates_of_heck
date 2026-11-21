@@ -18,7 +18,10 @@ changelog's included) and then the tests `names` finds. Anything else -- one sou
 diff, a TIP that is no ancestor because main moved and land.sh rebased -- runs CMD, the full gate,
 unchanged. The named set is the tests that READ a changed path by the one rule the land's pre-step
 and its verdict carry use (tools/affected_tests.py `readers`: a test naming `REPO_ROOT /
-"CHANGELOG.md"`, importing or reaching a reader of it), so a new reader joins it by being written.
+"CHANGELOG.md"`, importing or reaching a reader of it), so a new reader joins it by being written,
+plus affected_tests.TEXT_JUDGES: the self-walk judges every tracked file's text and `readers`
+leaves tree readers out, so v0.140.3's release land passed a heading the full gate refused
+(GOH.REUSEOFFLANDED5).
 It was a text probe (any test whose text said CHANGELOG.md or changelog/): 26 files and 384 tests,
 133 s at load 50, of which one file reads goh's own changelog -- the other 25 write a fixture's,
 and their verdict on the tip holds (GOH.RELEASELANDGATE). Each part is a timed row
