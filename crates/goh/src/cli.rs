@@ -327,6 +327,12 @@ pub enum Commands {
     /// Fail on a `GOH_INSTALLS` entry the installed-version reader cannot read: each is an app at
     /// `/Applications/...X.app` or `~/Applications/...X.app`, or a CLI by its bare name.
     Installs,
+    /// `SessionStart`: the agent tool shell is bash >= 5 and its `BASH_ENV` builds the house env
+    /// (`GOH_DIR`, `PYTHONPATH`, `AGENT_ENV_LOADED`); exit 1 naming each fix otherwise.
+    ShellCheck,
+    /// `PreToolUse` (Bash, Monitor): while the tool shell is zsh, refuse an unquoted `$VAR` used as
+    /// a command word or word list after a whitespace-holding assignment (`# zsh-split-ok:`).
+    ZshSplitGuard,
     /// One roadmap (`GOH_ROADMAP`) of open entries, each with an id and a `Done when:`.
     Roadmap(RoadmapArgs),
     /// Fail on a test spawn no guard reaps, or whose reap sits below a line that can panic.

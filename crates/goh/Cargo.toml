@@ -33,6 +33,7 @@ signal-hook = "0.4.5"
 sha2 = "0.11"
 toml = { version = "1", features = ["preserve_order"] }
 unicode-normalization = "0.1"
+brush-parser = "0.4.0"
 
 [dev-dependencies]
 goh-testkit = { path = "../goh-testkit" }

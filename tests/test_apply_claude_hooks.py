@@ -136,6 +136,21 @@ def test_a_foreign_hook_is_never_mistaken_for_goh() -> None:
     assert ach.is_goh(GOH)
 
 
+BIN = '"${GOH_DIR:-$HOME/Projects/gates_of_heck}/bin/goh" zsh-split-guard || exit 1'
+
+
+def test_a_hook_the_goh_binary_answers_is_goh_s_and_keyed_by_its_subcommand() -> None:
+    """GOH.ZSHSPLITGUARD: `"$GOH_DIR/bin/goh" <sub>` is installed, fitted and drift-checked."""
+    assert ach.is_goh(BIN) and ach._script(BIN) == "goh zsh-split-guard"
+    assert not ach.is_goh("/usr/local/bin/goh ship") and ach._script(RTK) is None
+    other = BIN.replace("zsh-split-guard", "shell-check")
+    assert ach._script(other) == "goh shell-check"
+    regs = {"hooks": {"PreToolUse": [{"matcher": "Bash|Monitor", "command": BIN, "timeout": 10}]}}
+    drifted = {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [_hook(BIN, 3)]}]}}
+    out, notes = ach.apply(drifted, regs)
+    assert _groups(out) == [{"matcher": "Bash|Monitor", "hooks": [_hook(BIN, 10)]}], notes
+
+
 def test_every_registration_applies_to_an_empty_settings_and_the_drift_check_agrees(
     tmp_path: Path,
 ) -> None:

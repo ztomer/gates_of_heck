@@ -122,6 +122,7 @@ pub mod tagpush;
 pub mod tagver;
 pub mod tapwrite;
 pub mod tool_versions;
+pub mod toolshell;
 pub mod tuimarks;
 pub mod unreaped;
 pub mod urlexpand;
@@ -369,6 +370,8 @@ fn run_scanners(command: Commands) -> Result<i32, Box<Commands>> {
         Commands::PrivateNames(a) => privnames::run_command(a.staged),
         Commands::LayerParity(a) => layerparity::run_command(a.staged),
         Commands::Installs => installs::run_command(),
+        Commands::ShellCheck => toolshell::run_shell_check(),
+        Commands::ZshSplitGuard => toolshell::run_split_guard(),
         other => return Err(Box::new(other)),
     })
 }

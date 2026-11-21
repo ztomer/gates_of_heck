@@ -57,17 +57,26 @@ DEFAULT_SETTINGS = Path.home() / ".claude" / "settings.json"
 AGENT_SOURCES = ROOT / "hooks" / "claude" / "agents"
 DEFAULT_AGENTS = Path.home() / ".claude" / "agents"
 SCRIPT = re.compile(r"hooks/claude/([\w.]+)")
+# A hook the goh BINARY answers (GOH.ZSHSPLITGUARD): `"$GOH_DIR/bin/goh" <subcommand>`, keyed
+# `goh <subcommand>` as a script is keyed by its file name.
+BINARY = re.compile(r"/bin/goh\"?\s+([a-z][\w-]*)")
 
 
 def is_goh(command: object) -> bool:
-    """A hook goh owns: it runs a script under hooks/claude/ of the goh checkout."""
+    """A hook goh owns: it runs a script under hooks/claude/, or a subcommand of bin/goh, of the
+    goh checkout."""
     cmd = str(command or "")
-    return "hooks/claude/" in cmd and ("GOH_DIR" in cmd or "gates_of_heck" in cmd)
+    ours = "hooks/claude/" in cmd or BINARY.search(cmd) is not None
+    return ours and ("GOH_DIR" in cmd or "gates_of_heck" in cmd)
 
 
 def _script(command: object) -> str | None:
-    m = SCRIPT.search(str(command or ""))
-    return m.group(1) if m and is_goh(command) else None
+    if not is_goh(command):
+        return None
+    if m := SCRIPT.search(str(command)):
+        return m.group(1)
+    m = BINARY.search(str(command))
+    return f"goh {m.group(1)}" if m else None
 
 
 def _matcher(group: dict[str, Any]) -> str | None:
