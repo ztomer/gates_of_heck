@@ -26,7 +26,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -36,6 +36,7 @@ import lock_order
 import pid_owner
 
 pytestmark = pytest.mark.load_sensitive(reason="spawns and kills its own stand-in sleepers")
+TREE_READS = ("lib/",)  # the five libs it sources and imports
 AN_HOUR_AGO = time.time() - 3600
 
 
@@ -58,7 +59,7 @@ def _aged(path: Path) -> Path:
 def _bash(lib: str, script: str, **env: str) -> subprocess.CompletedProcess:
     return subprocess.run(["bash", "-c", f'. "{REPO_ROOT / "lib" / lib}"\n{script}'],
                           capture_output=True, text=True, stdin=subprocess.DEVNULL,
-                          env={**os.environ, **env}, timeout=patience(60),
+                          env=hermetic_env(**env), timeout=patience(60),
                           check=False)  # fmt: skip
 
 
