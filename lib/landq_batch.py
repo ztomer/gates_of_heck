@@ -14,8 +14,10 @@ dropped from below is never carried). An item whose rebase conflicts is red (`co
 the rebase's) and the rest stack without it. Then the TIP's land.sh runs as any land does -- its
 pre-step, gate and fast-forward, under the lander's hold (GOH_LAND_LOCK_OWNER) -- and verdict carry
 and reuse apply to the tip's tree as to any tree. The enqueue's kept pre-step verdict
-(GOH_LAND_PRE_FROM) goes with a tip whose tree IS its enqueued commit's -- a lone item after a
-bisect -- never with a stacked one, whose tree no enqueue judged (GOH.BATCHPREFROM).
+(GOH_LAND_PRE_FROM, a copy: GOH.BATCHPREFROM, GOH.PRELANDBATCH) goes with the tip, and land.sh asks
+lib/pre_reuse.py whether it holds for the stacked tree: what differs from the judged one is the
+lower items' paths and main's moves, so a stack none of whose moved paths a test reads runs no
+second pre-land, a path some test reads runs its readers, and a lower item's own tests run.
 
 THE VERDICT. Green lands every item: each done record names the item's OWN commit (an ancestor of
 main, so `loopctl done` and a ship's ancestry check read it), and `goh land --wait ID` returns per
@@ -248,35 +250,29 @@ class Batch:
         return out
 
     def gate(self, top: Item, size: int) -> tuple[str, Path, str]:
-        """The tip's land.sh, as a lane runs it by hand: (landed|red|timeout, its log, why)."""
+        """The tip's land.sh, as a lane runs it by hand: (landed|red|timeout, its log, why).
+        The enqueue's kept verdict goes with it as a COPY (GOH.PRELANDBATCH): land.sh judges
+        whether it holds for the stacked tip (lib/pre_reuse.py: the lower items' paths and main's
+        moves, none read by a test), and removes what it reads, which a bisect still needs."""
         self.gates += 1
         log = self.q / "logs" / f"{self.id}.gate{self.gates}.log"
         wt = Path(top.req["worktree"])
         self.kit.say(f"batch {self.id}: gate {self.gates} on {top.tip[:8]}, {size} stacked")
-        argv = ["env", *self.kit.unset, *self.pre_from(top), *land_prestep.timings_keep(log),
-                "bash", "-c",
-                'cd -- "$1" && exec bash "$2"', "land",
-                str(wt), str(self.kit.land_script(wt))]  # fmt: skip
-        res = bounded_run.run_step(argv, self.kit.timeout, self.kit.grace, "land batch", str(log))
+        with land_prestep.gate_copy(self.q, top.req) as copy:
+            named = land_prestep.lander_env(top.req, copy) if copy else land_slot.label(top.req)
+            argv = ["env", *self.kit.unset, *named, *land_prestep.timings_keep(log),
+                    "bash", "-c",
+                    'cd -- "$1" && exec bash "$2"', "land",
+                    str(wt), str(self.kit.land_script(wt))]  # fmt: skip
+            res = bounded_run.run_step(
+                argv, self.kit.timeout, self.kit.grace, "land batch", str(log)
+            )
         if res.timed_out:
             return "timeout", log, f"timed out after {self.kit.timeout}s"
         # land.sh's gate never ran: nothing to bisect (GOH.PREWAITVERDICT)
         if res.code == NO_GATE_SLOT:
             return "noverdict", log, exit_why(res.code)
         return ("landed" if res.code == 0 else "red"), log, f"exit {res.code}"
-
-    def pre_from(self, top: Item) -> list[str]:
-        """The `env` words naming TOP to land.sh: with the enqueue's kept verdict
-        (GOH.BATCHPREFROM) only when the gated tree IS the enqueued commit's -- a stack moved it,
-        and that tree is judged again."""
-        req = top.req
-        if not req.get("pre"):
-            return land_slot.label(req)
-        wt = Path(req["worktree"])
-        gated, judged = (
-            self.git(wt, "rev-parse", f"{sha}^{{tree}}") for sha in (top.tip, req["sha"])
-        )
-        return land_prestep.lander_env(req) if gated == judged else land_slot.label(req)
 
     def settle(self, items: list[Item]) -> None:
         """Gate ITEMS stacked; green lands them all, red splits them in two (module doc)."""

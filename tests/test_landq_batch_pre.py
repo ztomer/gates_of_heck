@@ -3,9 +3,9 @@
 
 lib/landq_batch.py's gate started tools/land.sh without GOH_LAND_PRE_FROM, so the lander never saw
 the verdict `goh land --enqueue` kept: a lone item gated on main exactly as enqueued ran the whole
-pre-step again, which SUITEONCE's reuse exists to spare (found by GOH.PRESTEPDUP). The verdict is
-passed only when the gated tree IS the enqueued commit's tree: a stack of two moved the tip, and
-that tree is judged again.
+pre-step again, which SUITEONCE's reuse exists to spare (found by GOH.PRESTEPDUP). A stack's tip
+is named the verdict too since GOH.PRELANDBATCH (tests/test_landq_batch_reuse.py), where land.sh
+judges it by lib/pre_reuse.py; this fixture's tree has no reads table, so the stack runs again.
 
 The fixture: `one` plants the gate's red file, so the stack of two is red and bisects into two
 lone items, each gated on main at its enqueued tree. GOH_LAND_PRE logs the sha of every run.
@@ -48,11 +48,13 @@ def test_a_lone_item_at_its_enqueued_tree_reuses_the_enqueue_verdict_a_stack_doe
     got = recorded(env)
     assert got["T.ONE"]["state"] == "red" and got["T.TWO"]["state"] == "landed", got
     runs = _pre_runs(pre_log)[2:]
-    # The stack's tip (two on one) is a tree no enqueue judged: its pre-step runs. Each lone item
-    # after the bisect is gated at its enqueued tree: the enqueue's verdict holds, nothing runs.
+    # The stack's tip (two on one) is a tree no enqueue judged, and this tree has no reads table to
+    # say the lower item's paths are unread (GOH.PRELANDBATCH, tests/test_landq_batch_reuse.py): its
+    # pre-step runs. Each lone item after the bisect is gated at its enqueued tree: the enqueue's
+    # verdict holds, nothing runs.
     assert len(runs) == 1 and runs[0] not in enqueued, (runs, enqueued)
     logs = sorted((Path(env["GOH_LANDQ_DIR"]) / "logs").glob("*.gate*.log"))
-    held = [p.name for p in logs if "the verdict the enqueue judged" in p.read_text()]
+    held = [p.name for p in logs if "judged at" in p.read_text() and "holds for" in p.read_text()]
     assert len(logs) == 3 and len(held) == 2, [p.read_text() for p in logs]
     assert not list((Path(env["GOH_LANDQ_DIR"]) / "pre").glob("*")), (
         "a kept verdict outlived its batch"

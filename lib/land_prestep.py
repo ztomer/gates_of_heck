@@ -13,10 +13,12 @@ import importlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 affected_verdict = importlib.import_module("affected_verdict")
@@ -118,10 +120,35 @@ def timings_keep(log: Path | str) -> list[str]:
     return [f"GOH_LAND_TIMINGS_KEEP={str(log).removesuffix('.log')}.timings.jsonl"]
 
 
-def lander_env(req: dict) -> list[str]:
-    """The lander's tools/land.sh reads the kept verdict from GOH_LAND_PRE_FROM."""
-    kept = [f"GOH_LAND_PRE_FROM={req['pre']['keep']}"] if req.get("pre") else []
+def lander_env(req: dict, keep: Path | str | None = None) -> list[str]:
+    """The lander's tools/land.sh reads the kept verdict from GOH_LAND_PRE_FROM: REQ's own keep, or
+    KEEP (a batch gate's copy of it, `gate_copy`)."""
+    kept = [f"GOH_LAND_PRE_FROM={keep or req['pre']['keep']}"] if req.get("pre") else []
     return [*kept, *land_slot.label(req)]
+
+
+@contextlib.contextmanager
+def gate_copy(q: Path, req: dict) -> Iterator[Path | None]:
+    """A copy of REQ's kept verdict (and its record) for ONE gate run, removed after it
+    (GOH.PRELANDBATCH): land.sh removes the verdict it reads, and a stack's gate that goes red is
+    bisected into lone items, each of which then needs its own enqueue's verdict. None when REQ
+    kept none, or its keep is gone."""
+    keep = Path((req.get("pre") or {}).get("keep") or "")
+    copy = q / "pre-gate" / f"{keep.name}.{os.getpid()}.{time.time_ns()}"
+    made = [copy, Path(f"{copy}.record")]
+    got: Path | None = None
+    try:
+        if req.get("pre") and keep.is_file():
+            with contextlib.suppress(OSError):  # no copy is no verdict: the lander runs the set
+                copy.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(keep, copy)
+                if Path(f"{keep}.record").is_file():
+                    shutil.copyfile(f"{keep}.record", made[1])
+                got = copy
+        yield got
+    finally:
+        for path in made:
+            path.unlink(missing_ok=True)
 
 
 def run_kept(req: dict, q: Path, script: Path, bindings: tuple[str, ...]) -> float:

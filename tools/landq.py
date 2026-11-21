@@ -303,6 +303,7 @@ def drain_held(
 ) -> bool:
     """Run every pending request; False when the lander's code changed and it must re-exec.
     CLOCK and SLEEP: the batch window's and the held pause's (a test's fake clock), else time's."""
+    land_prestep.reap(q)  # an enqueue killed before its request leaves a keep (GOH.PRELANDBATCH)
     # A request a dead lander was running goes back to the front: its name keeps its place.
     for stale in sorted((q / "running").glob("*.json")):
         stale.replace(q / "pending" / stale.name)
