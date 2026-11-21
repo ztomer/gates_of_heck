@@ -244,26 +244,18 @@ def at_enqueue(q: Path, req: dict, file, record, say=print) -> str:
 
 def cli(worktree: str, q: Path) -> int:
     """`goh land --check WORKTREE`: its committed tip's guards; 0 green, 1 refused, 2 unusable."""
+    from lib import gitrun  # no-lock readers under a deadline (GOH.GITKILL)
     from tui.lib import err, info, ok
 
-    top = subprocess.run(
-        ["git", "-C", worktree, "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-        check=False,
-        stdin=subprocess.DEVNULL,
-    ).stdout.strip()
+    found = gitrun.run_reader(("rev-parse", "--show-toplevel"), repo=worktree, timeout=60)
+    top = found.stdout.strip() if found.returncode == 0 else ""
     if not top:
         err(f"goh land --check: {worktree} is not a git checkout")
         return 2
-    dirty = subprocess.run(
-        ["git", "-C", top, "status", "--porcelain", "--untracked-files=no"],
-        capture_output=True,
-        text=True,
-        check=False,
-        stdin=subprocess.DEVNULL,
-    ).stdout.strip()
-    if dirty:
+    dirty = gitrun.run_reader(
+        ("status", "--porcelain", "--untracked-files=no"), repo=top, timeout=60
+    )
+    if dirty.returncode or dirty.stdout.strip():
         err(
             f"goh land --check: {top} has uncommitted changes to tracked files -- the land judges "
             "the commit; commit them, then check"
