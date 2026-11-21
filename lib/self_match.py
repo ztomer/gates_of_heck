@@ -47,6 +47,10 @@ It passes when the command excludes its own pid (`$$`, `$BASHPID`, `$PPID`), and
 passes by itself. The refusal names the safe forms: a pid file or `$!`, waiting on a log line, the
 bracket form. Same escape.
 
+THE PAVED PATH FIRST (GOH.WAITSTOP, 2026-11-21). Every refusal opens with `Run instead:` and the
+one `goh wait` / `goh stop` line that replaces the refused call (`lib/paved_path.py`): 114 of these
+refusals in a week were rewritten by hand, often into the next refused shape.
+
 Not judged: a file. A script's command line is `bash script.sh`, which does not contain the
 script's patterns, so the loop is not a self-match there.
 """
@@ -58,6 +62,7 @@ import re
 import shlex
 
 import busyloop
+import paved_path
 
 ESCAPE = re.compile(r"#\s*pgrep-ok:\s*\S")
 
@@ -81,9 +86,18 @@ WAY_OUT = (
 )
 
 
+def _instead(prog: str, pattern: str) -> str:
+    """The paved-path line that replaces the call (GOH.WAITSTOP): a kill is `goh stop`, a look or
+    a wait `goh wait`."""
+    if prog != "pgrep":  # the kill of the pair
+        return paved_path.stop_command(paved_path.live_pids(pattern))
+    return paved_path.wait_command(pattern)
+
+
 def _reason_anywhere(prog: str, pattern: str) -> str:
     bracket = f"[{pattern[0]}]{pattern[1:]}" if pattern[:1].isalnum() else "[f]oo"
     return (
+        f"Run instead: {_instead(prog, pattern)}. "
         f"This `{prog} -f {pattern}` matches the shell that runs it: the pattern appears in that "
         "shell's OWN command line (the whole command, or the `sh -c` string / ssh remote command "
         f'that holds it), and `{prog}` skips itself, never its parent -- so "is it running" is '
@@ -97,6 +111,7 @@ def _reason_anywhere(prog: str, pattern: str) -> str:
 
 def _reason(prog: str, pattern: str) -> str:
     return (
+        f"Run instead: {paved_path.wait_command(pattern)}. "
         f"This wait can never end: its condition runs `{prog}` with the pattern `{pattern}`, "
         "and the pattern appears in the waiting shell's OWN command line (`zsh -c '... "
         f"{pattern} ...'`), which `{prog}` matches -- it skips itself, never its parent. Three "

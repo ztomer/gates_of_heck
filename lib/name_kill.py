@@ -25,6 +25,10 @@ pattern. So an unscoped pattern kill (`-f` or a bare pattern), an all-of-a-name 
 feeding kill are refused whatever they name, and the refusal names what the pattern matches RIGHT
 NOW (`pgrep -fl`), so the caller sees the process it would have hit. A scoped kill (`-P <pid>`,
 `-g`, `-s`), a numeric pid and a job still run.
+
+THE PAVED PATH FIRST (GOH.WAITSTOP, 2026-11-21). The refusal opens with `Run instead:` and the
+`goh stop` line for what the name matches now (`goh stop` refuses a process the caller did not
+start), or the stamp route when nothing matches (`lib/paved_path.py`).
 """
 
 from __future__ import annotations
@@ -33,6 +37,8 @@ import os
 import re
 import shlex
 import subprocess
+
+import paved_path
 
 ESCAPE = re.compile(r"#\s*kill-ok:\s*\S")
 
@@ -67,16 +73,18 @@ def live(pattern: str, full: bool, exact: bool = False) -> list[str]:
     return [r for r in rows if not r.split()[0].isdigit() or int(r.split()[0]) not in mine][:8]
 
 
-def _hits(pairs: list[tuple[str, bool, bool]]) -> str:
-    rows = [row for pattern, full, exact in pairs for row in live(pattern, full, exact)]
+def _hits(rows: list[str]) -> str:
     if not rows:
         return "It matches no process right now, so a later one it would hit is unknown. "
     return "Right now it would hit: " + "; ".join(r[:120] for r in rows[:8]) + ". "
 
 
 def _reason(what: str, pairs: list[tuple[str, bool, bool]] | None = None) -> str:
+    rows = [row for pattern, full, exact in pairs or [] for row in live(pattern, full, exact)]
+    pids = sorted({int(r.split()[0]) for r in rows if r.split()[0].isdigit()})[:8]
     return (
-        f"This kills by name: {what} {_hits(pairs or [])}A name reaches every process whose name "
+        f"Run instead: {paved_path.stop_command(pids)}. "
+        f"This kills by name: {what} {_hits(rows)}A name reaches every process whose name "
         "or command line carries it, not just yours: on 2026-11-08 an agent stopped its own gate "
         "with a pattern kill of `tools/gate.sh --full` and killed two other sessions' gate runs, "
         "and on 2026-11-09 a pattern kill of a result file's name killed the `goh ship` whose "
