@@ -119,36 +119,6 @@
       "call": "os.kill(pid, 0)",
       "status": "legitimate",
       "reason": "Outcome.survivors filters the group members sampled at the step's exit (group_members), read moments later by the canary: the same window as the entry above"
-    },
-    {
-      "path": "lib/bench_lock.sh",
-      "call": "kill -0 \"$1\" 2>/dev/null",
-      "status": "bare",
-      "reason": "GOH.STRAYSIGNAL2 debt: a liveness probe of a pid kept in a bench registry entry (pid only; it rules out a zombie, not a reuse): the entry must carry goh_pid_stamp"
-    },
-    {
-      "path": "lib/load_registry.py",
-      "call": "os.kill(pid, 0)",
-      "status": "bare",
-      "reason": "GOH.STRAYSIGNAL2 debt: a liveness probe of a pid kept in a load registry's owner pid (lib/load_reap.py): the registry carries spinner start times but not the owner's"
-    },
-    {
-      "path": "lib/lock_order.py",
-      "call": "os.kill(pid, 0)",
-      "status": "bare",
-      "reason": "GOH.STRAYSIGNAL2 debt: a liveness probe of a pid kept in a held-lock environment entry (name:pid): the entry must carry the holder's start time"
-    },
-    {
-      "path": "lib/place.sh",
-      "call": "kill -0 \"$pid\" 2>/dev/null",
-      "status": "bare",
-      "reason": "GOH.STRAYSIGNAL2 debt: a liveness probe of a pid kept in a staging file's name suffix: the staging name or file must carry the writer's start time"
-    },
-    {
-      "path": "tools/land.sh",
-      "call": "kill -0 \"$pid\" 2>/dev/null",
-      "status": "bare",
-      "reason": "GOH.STRAYSIGNAL2 debt: a liveness probe of a pid kept in a GOH_LAND_LOCK_OWNER's pid (lib/land_lock.py): the variable and the lock line must carry the holder's start time"
     }
   ]
 }

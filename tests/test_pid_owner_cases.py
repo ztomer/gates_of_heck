@@ -20,12 +20,14 @@ Every process here is one the test started.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT
@@ -56,6 +58,7 @@ class Setup:
     pid: int
     py_fake: Callable[[pytest.MonkeyPatch], None] | None = None
     sh_fake: str = ""
+    sh_fake_etime: str = ""
     procs: list[subprocess.Popen] = field(default_factory=list)
 
 
@@ -111,6 +114,8 @@ def setup(case: str) -> Iterator[Setup]:
             start = sh.split(None, 1)[1] if case == "exiting" else ""
             made.py_fake = _refuse_birth(first.pid)
             made.sh_fake = f'_goh_pid_ps() {{ echo "?E   {start}"; }}\n'
+            elapsed = "00:01" if start else ""
+            made.sh_fake_etime = f'_goh_pid_ps_etime() {{ echo "?E   {elapsed}"; }}\n'
         elif case == "reused":
             first.kill()
             first.wait()
@@ -147,6 +152,37 @@ def test_both_halves_answer_each_case_alike(
             made.py_fake(monkeypatch)
         assert pid_owner.alive(made.py) is alive, f"lib/pid_owner.py alive, case {case}"
         assert pid_owner.gone(made.py) is not alive
+
+
+def _shell_alive_since(made: Setup, record: Path) -> bool:
+    fake = made.sh_fake_etime
+    script = (f'. "{SHELL_LIB}"\n{fake}goh_pid_alive_since {made.pid} "{record}" '
+              "&& echo alive || echo gone\n")  # fmt: skip
+    done = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                          stdin=subprocess.DEVNULL, timeout=patience(30), check=False)  # fmt: skip
+    assert done.stdout.strip() in ("alive", "gone"), (done.returncode, done.stderr)
+    return done.stdout.strip() == "alive"
+
+
+@pytest.mark.load_sensitive(reason="spawns, kills and leaves zombie its own sleepers")
+@pytest.mark.parametrize(("case", "alive"), CASES, ids=[c for c, _ in CASES])
+def test_both_halves_judge_a_record_file_alike(
+    case: str, alive: bool, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The same table for a pid a RECORD FILE names (GOH.STRAYSIGNAL3: `alive_since_file`,
+    `goh_pid_alive_since`): the writer wrote it after it started; the reused case's record is an
+    hour older than the stand-in at its pid. A missing record is never alive."""
+    with setup(case) as made:
+        record = tmp_path / "record"
+        record.write_text(f"{made.pid}\n")
+        if case == "reused":
+            os.utime(record, (time.time() - 3600, time.time() - 3600))
+        assert _shell_alive_since(made, record) is alive, f"goh_pid_alive_since, case {case}"
+        assert not _shell_alive_since(made, tmp_path / "missing")
+        if made.py_fake is not None:
+            made.py_fake(monkeypatch)
+        assert pid_owner.alive_since_file(made.pid, record) is alive, f"alive_since_file, {case}"
+        assert not pid_owner.alive_since_file(made.pid, tmp_path / "missing")
 
 
 @pytest.mark.load_sensitive(reason="spawns and kills its own sleeper")

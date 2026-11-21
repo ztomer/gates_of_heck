@@ -56,6 +56,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import lock_order  # lib/: every importer puts it on sys.path
+import pid_owner
 
 REGISTRY_NAME = "registry.json"
 # The lock every mutation of the load directory takes. Not `*.json`, so `registry_files` never
@@ -393,22 +394,20 @@ def _ps(pid: int, spec: str) -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-def pid_alive(pid: int) -> bool:
-    """Is there a process with this pid? A zombie still has one."""
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
 def pid_gone(pid: int) -> bool:
-    """Is the process gone for good? A zombie is gone: it holds the pid, not the CPU."""
-    if not pid_alive(pid):
-        return True
-    return _ps(pid, "stat=").startswith("Z")
+    """Is the process gone for good? A zombie is gone: it holds the pid, not the CPU. Asked of a pid
+    whose recorded start time the caller compares next (`owner_gone`, the reaper's entries), or of
+    one that could not be stamped (lib/pid_owner.py `number_gone`; another user's is not gone)."""
+    return pid_owner.number_gone(pid, foreign_gone=False)
+
+
+def owner_alive(pipe: str | os.PathLike[str], owner: int) -> bool:
+    """Is the tool a release pipe names still running? The pipe's name carries only the owner's pid,
+    and a pid alone read whatever process the number was handed to as the owner (GOH.STRAYSIGNAL3):
+    the owner made the pipe, so a process at the number that started after the pipe was last
+    written is a stranger (lib/pid_owner.py `alive_since_file`). A pipe that is gone tells nothing,
+    and nothing is never a live owner."""
+    return pid_owner.alive_since_file(owner, pipe)
 
 
 def pid_ppid(pid: int) -> int | None:

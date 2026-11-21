@@ -8,9 +8,9 @@
 #   goh_lock_check NAME [WHERE]  0 when waiting on NAME keeps the order; else 78, the refusal printed
 #   goh_lock_take NAME FD [--nb] [--where P]
 #                                the kernel flock on the open FD for NAME: --nb a try-lock (1 when it
-#                                is taken), else checked first and waited on; taken, NAME@$$:KEY joins
+#                                is taken), else checked first and waited on; taken, NAME@$$+BORN:KEY joins
 #                                GOH_HELD_LOCKS, exported, so every child knows what is held
-#   goh_lock_mark NAME [WHERE]   NAME@$$:KEY joins GOH_HELD_LOCKS (a lock taken some other way: mkdir)
+#   goh_lock_mark NAME [WHERE]   NAME@$$+BORN:KEY joins GOH_HELD_LOCKS (BORN: $$'s start time) (a lock taken some other way: mkdir)
 #   goh_lock_drop NAME           NAME@$$ leaves it: every release before exit calls it, or a child
 #                                started later is refused a lock nobody holds (Adv360's probe)
 # WHERE (a path in the lock's repository; the working directory when absent) scopes a `repo` lock
@@ -40,7 +40,7 @@ goh_lock_drop() {
     local want="${1:?lock name}@$$" part kept=""
     local IFS=,
     for part in ${GOH_HELD_LOCKS:-}; do
-        [ "${part%%:*}" = "$want" ] || kept="${kept:+$kept,}$part"
+        [ "${part%%[+:]*}" = "$want" ] || kept="${kept:+$kept,}$part" # NAME@PID+BORN:KEY
     done
     GOH_HELD_LOCKS="$kept"
     export GOH_HELD_LOCKS

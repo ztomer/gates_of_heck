@@ -278,15 +278,11 @@ land_pre() {
 # (GOH_LAND_PRE_ONLY) moves nothing: the queue holds the sha the lane enqueued.
 rebased=0
 lock="$(git -C "$main" rev-parse --path-format=absolute --git-common-dir)/goh-land.lock"
-# land_lock_ours -- this land runs BY the land lock's holder (goh ship's release kit, the lander's
-# batch; lib/land_lock.py): GOH_LAND_LOCK_OWNER names this lock and a live pid, and the lock file
-# names that same pid.
-land_lock_ours() {
-    local owner="${GOH_LAND_LOCK_OWNER:-}" line=""
-    local pid="${owner##* }"
-    { IFS= read -r line <"$lock"; } 2>/dev/null || true
-    [ "${owner% *}" = "$lock" ] && [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && [[ "$line" == *"(pid $pid,"* ]]
-}
+# land_lock_ours -- this land runs BY the land lock's holder (lib/land_lock.sh goh_land_lock_ours:
+# the owner variable, the holder line and the holder itself, not whoever has its pid now).
+# shellcheck source=lib/land_lock.sh
+. "$GOH/lib/land_lock.sh" || exit 2
+land_lock_ours() { goh_land_lock_ours "$lock"; }
 # STACKED (GOH.LANDBATCH, tools/landq.py's batch, lib/landq_batch.py): the lander, holding the land
 # lock, stacks several lanes' branches -- each rebased onto the one below it -- and gates the tip
 # once. Each branch is moved by this script's own rebase (the row merge driver with it), then it

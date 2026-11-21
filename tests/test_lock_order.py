@@ -20,6 +20,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 import lock_order
 
 ME = os.getpid()
+BORN = lock_order.born_of(ME)  # a mark names its holder by pid AND birth (GOH.STRAYSIGNAL3)
 
 
 def test_the_table_is_ranked_once_per_lock_and_names_real_files() -> None:
@@ -33,7 +34,7 @@ def test_the_table_is_ranked_once_per_lock_and_names_real_files() -> None:
 
 
 def test_a_wait_below_a_held_lock_is_refused_naming_both() -> None:
-    env = {lock_order.ENV: f"load@{ME}"}
+    env = {lock_order.ENV: f"load@{ME}+{BORN}"}
     why = lock_order.refusal("land", env)
     assert why is not None
     assert "'land' (rank 20" in why and "'load' (rank 30, held by pid" in why, why
@@ -41,13 +42,17 @@ def test_a_wait_below_a_held_lock_is_refused_naming_both() -> None:
 
 
 def test_a_wait_above_every_held_lock_is_allowed() -> None:
-    assert lock_order.refusal("load", {lock_order.ENV: f"ship@{ME},land@{ME}"}) is None
+    assert (
+        lock_order.refusal("load", {lock_order.ENV: f"ship@{ME}+{BORN},land@{ME}+{BORN}"}) is None
+    )
     assert lock_order.refusal("land", {}) is None
 
 
 def test_a_reentrant_lock_held_by_an_ancestor_is_its_own_rule_not_a_refusal() -> None:
-    assert lock_order.refusal("land", {lock_order.ENV: f"land@{ME}"}) is None
-    assert lock_order.refusal("tree", {lock_order.ENV: f"tree@{ME}"}) is not None  # not re-entrant
+    assert lock_order.refusal("land", {lock_order.ENV: f"land@{ME}+{BORN}"}) is None
+    assert (
+        lock_order.refusal("tree", {lock_order.ENV: f"tree@{ME}+{BORN}"}) is not None
+    )  # not re-entrant
 
 
 @pytest.mark.load_sensitive
@@ -63,7 +68,7 @@ def test_an_unknown_lock_is_refused() -> None:
 
 def test_flock_refuses_the_wait_before_touching_the_lock(tmp_path, monkeypatch) -> None:
     """Deterministic: the lock is free, and the out-of-order wait is refused all the same."""
-    monkeypatch.setenv(lock_order.ENV, f"load@{ME}")
+    monkeypatch.setenv(lock_order.ENV, f"load@{ME}+{BORN}")
     with (tmp_path / "l").open("w") as f:
         with pytest.raises(lock_order.OrderError, match="refusing to wait on 'land'"):
             lock_order.flock(f, "land")
@@ -78,7 +83,9 @@ def test_holding_exports_the_lock_to_children_and_restores() -> None:
         seen = subprocess.run([sys.executable, "-c", show],
                               capture_output=True, text=True, stdin=subprocess.DEVNULL,
                               check=True).stdout.strip()  # fmt: skip
-    assert seen.rpartition(",")[2].partition(":")[0] == f"land@{ME}", seen  # `:key` (GOH.LOCKNEST)
+    assert seen.rpartition(",")[2].partition(":")[0] == f"land@{ME}+{BORN}", (
+        seen
+    )  # `:key` (GOH.LOCKNEST)
     assert os.environ.get(lock_order.ENV) == before
 
 
@@ -90,16 +97,16 @@ def _sh(script: str, held: str = "") -> subprocess.CompletedProcess[str]:
 
 
 def test_the_shell_refuses_the_wait_and_exits_78(tmp_path) -> None:
-    done = _sh(f'exec 7>>"{tmp_path}/l"; goh_lock_take land 7', held=f"load@{ME}")
+    done = _sh(f'exec 7>>"{tmp_path}/l"; goh_lock_take land 7', held=f"load@{ME}+{BORN}")
     assert done.returncode == lock_order.EXIT_ORDER, done
     assert "refusing to wait on 'land'" in done.stderr, done.stderr
 
 
 def test_the_shell_takes_in_order_and_marks_it_held(tmp_path) -> None:
     done = _sh(f'exec 7>>"{tmp_path}/l"; goh_lock_take land 7 && echo "$GOH_HELD_LOCKS"',
-               held=f"ship@{ME}")  # fmt: skip
+               held=f"ship@{ME}+{BORN}")  # fmt: skip
     assert done.returncode == 0, done.stderr
-    assert done.stdout.strip().startswith(f"ship@{ME},land@"), done.stdout
+    assert done.stdout.strip().startswith(f"ship@{ME}+{BORN},land@"), done.stdout
 
 
 def test_the_shell_try_lock_says_taken_with_1(tmp_path) -> None:
@@ -111,7 +118,7 @@ def test_the_shell_try_lock_says_taken_with_1(tmp_path) -> None:
 
 
 def test_load_py_refuses_to_wait_for_the_slot_under_a_later_lock(tmp_path) -> None:
-    env = hermetic_env(GOH_LOAD_DIR=str(tmp_path), **{lock_order.ENV: f"gate_slot@{ME}"})
+    env = hermetic_env(GOH_LOAD_DIR=str(tmp_path), **{lock_order.ENV: f"gate_slot@{ME}+{BORN}"})
     # an EXPERIMENT that waits: a 0-spinner run takes a gate slot, not the load slot, since
     # GOH.ONEADMISSION (and gate_slot is re-entrant under its own holder)
     done = subprocess.run([sys.executable, str(REPO_ROOT / "tools" / "load.py"), "--background-ok",

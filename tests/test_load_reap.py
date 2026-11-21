@@ -291,13 +291,13 @@ def test_the_backstop_kills_an_orphan_no_registry_names(
     test is told that owner is gone (GOH.FLAKE1). A fixture naming a dead owner was fair game for
     them all, and under load the minute job took it first. The owner question itself is pinned in
     tests/test_load_orphan_exemption.py; this test pins the real lookup, read-back and kill."""
-    me, alive = os.getpid(), reg.pid_alive
+    me, alive = os.getpid(), reg.owner_alive
     fifo = tmp_path / f"release-{me}-0.fifo"
     pid = _spinner(fifo)
     assert reg.pid_ppid(pid) == 1, "the fixture did not become an orphan"
     _the_machines_backstop_fires(tmp_path)
     assert load_kit.alive(pid), "another sweeper took a fixture whose owner is alive"
-    monkeypatch.setattr(reg, "pid_alive", lambda p: p != me and alive(p))
+    monkeypatch.setattr(reg, "owner_alive", lambda f, p: p != me and alive(f, p))
     report = load_reap.reap_orphans()
     assert pid in report.killed, report
     assert not load_kit.alive(pid), "the orphan outlived the backstop"

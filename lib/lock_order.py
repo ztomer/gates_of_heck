@@ -3,7 +3,7 @@
     (lib/lock_order.sh runs main() from the module beside it: never a from-HEAD re-exec, which
     would not hand the shell's fd to the flock reliably, nor pay an export per acquisition)
     lock_order check NAME [--where P]     # exit 0, or 78 refusing, naming the held lock, the table
-    lock_order held NAME PID [--where P]  # GOH_HELD_LOCKS with NAME@PID:KEY added (shell's export)
+    lock_order held NAME PID [--where P]  # GOH_HELD_LOCKS with NAME@PID+BORN:KEY added (exported)
     lock_order flock FD NAME [--nb] [--shared] [--where P]  # check, then the kernel flock on FD
 
 THE INCIDENT (GOH.LOCKORDER, 2026-11-15). goh v0.122.0's ship held the land lock and its release
@@ -14,9 +14,13 @@ other until the release timed out. Nothing named the cycle; it read as a slow ma
 THE RULE (lockdep's). Every lock has a rank in ONE table. A process may WAIT on a lock only when its
 rank is above every lock held by it or by an ancestor; an out-of-order wait is refused before it
 starts, deterministically (contention or not), naming both locks and the table. A try-lock that
-never waits is always allowed. Held locks travel to children in GOH_HELD_LOCKS (`name@pid,...`): a
-child waiting on a lock its ancestor holds a later one of is the deadlock's shape whoever runs it.
-An entry whose pid is dead is ignored (an inherited variable from a gone holder guards nothing).
+never waits is always allowed. Held locks travel to children in GOH_HELD_LOCKS
+(`name@pid+born,...`): a child waiting on a lock its ancestor holds a later one of is the
+deadlock's shape whoever runs it.
+An entry whose holder is gone is ignored (an inherited variable from a gone holder guards nothing),
+and the holder is its pid AND its birth (`born`, lib/pid_owner.py's start time, GOH.STRAYSIGNAL3):
+a pid alone read whatever process the number was handed to as the holder still running. An entry
+an older goh wrote, with no birth, is never a live holder.
 A lock the table marks re-entrant (its own nesting rule lets a holder's child through) is not
 refused when it is the one already held; anything else held at or above its rank is.
 
@@ -48,6 +52,9 @@ import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import pid_owner  # the lib directory, on the path from the line above
 
 TABLE = Path(__file__).resolve().with_name("lock_order.tsv")  # load-read: lib/lock_order.tsv
 ENV = "GOH_HELD_LOCKS"
@@ -82,14 +89,24 @@ def table(path: Path = TABLE) -> dict[str, Lock]:
     return out
 
 
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+def born_of(pid: int) -> str:
+    """The birth a mark carries after its pid (`sec.usec`), or "" when the pid has none to read."""
+    found = pid_owner.stamp(pid)
+    return "" if found is None else f"{found.born[0]}.{found.born[1]}"
+
+
+def _alive(pid: int, born: str) -> bool:
+    """The mark's holder is still the process that took the lock (a mark without a birth: no)."""
+    sec, dot, usec = born.partition(".")
+    if not (dot and sec.isdigit() and usec.isdigit()):
         return False
-    except PermissionError:
-        return True
-    return True
+    return pid_owner.alive(pid_owner.Stamp(pid, (int(sec), int(usec)), 0))
+
+
+def _holder(part: str) -> str:
+    """`name@pid` of a mark, whatever birth and key follow it."""
+    name, at, rest = part.strip().partition("@")
+    return name + at + rest.partition(":")[0].partition("+")[0]
 
 
 def _common_dir(start: Path) -> Path | None:
@@ -129,8 +146,9 @@ def held_marks(environ: dict[str, str] | None = None) -> list[tuple[str, int, st
     out = []
     for part in raw.split(","):
         name, _, rest = part.strip().partition("@")
-        pid, _, key = rest.partition(":")
-        if name and pid.isdigit() and _alive(int(pid)):
+        holder, _, key = rest.partition(":")
+        pid, _, born = holder.partition("+")
+        if name and pid.isdigit() and _alive(int(pid), born):
             out.append((name, int(pid), key))
     return out
 
@@ -213,13 +231,15 @@ def with_held(
     environ: dict[str, str] | None = None,
     where: str | os.PathLike[str] | None = None,
 ) -> str:
-    """GOH_HELD_LOCKS with NAME@PID:KEY added (KEY: WHERE's repository, "" outside one): the value a
-    holder exports to its children."""
+    """GOH_HELD_LOCKS with NAME@PID+BORN:KEY added (BORN: PID's start time; KEY: WHERE's repository,
+    "" outside one): the value a holder exports to its children."""
     raw = (os.environ if environ is None else environ).get(ENV, "")
     me = f"{name}@{pid}"
-    parts = [p for p in raw.split(",") if p.strip() and p.strip().partition(":")[0] != me]
+    parts = [p for p in raw.split(",") if p.strip() and _holder(p) != me]
+    born = born_of(pid)
+    mark = f"{me}+{born}" if born else me
     key = repo_key(where)
-    return ",".join([*parts, f"{me}:{key}" if key else me])
+    return ",".join([*parts, f"{mark}:{key}" if key else mark])
 
 
 @contextlib.contextmanager

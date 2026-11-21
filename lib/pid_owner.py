@@ -31,6 +31,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -186,20 +187,69 @@ def gone(s: Stamp) -> bool:
     found = birth(s.number)
     if found is not None:
         return found[0] != s.born
+    return number_gone(s.number)
+
+
+def number_gone(pid: int, *, foreign_gone: bool = True) -> bool:
+    """The half of `gone` for a pid whose birth cannot be read: free or a zombie is gone; held and
+    not a zombie (the stamped process, exiting) is not gone yet. Held by another user's process is
+    gone when FOREIGN_GONE (the stamped one was ours), else judged by its state like any other."""
     try:
-        os.kill(s.number, 0)
+        os.kill(pid, 0)
     except ProcessLookupError:
         return True
+    except PermissionError:
+        if foreign_gone:
+            return True  # another user's process holds the number now: ours is gone
     except OSError:
-        return True  # another user's process holds the number now: ours is gone
+        return True
     try:
-        out = subprocess.run(["ps", "-o", "stat=", "-p", str(s.number)], capture_output=True,
+        out = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True,
                              text=True, stdin=subprocess.DEVNULL, timeout=30,
                              check=False).stdout  # fmt: skip
     except (OSError, subprocess.TimeoutExpired):
         return False  # unknown is not gone: a caller waiting on it keeps waiting
     state = out.strip()
     return not state or state.startswith("Z")
+
+
+START_SLACK_S = 2.0  # `ps -o lstart=` reads a start to the second; a file's mtime is finer
+
+
+def started_at(pid: int) -> float | None:
+    """The start of the process `pid` names now, in epoch seconds (`ps -o lstart=`, to the second),
+    or None when it cannot be read."""
+    text = lstart(pid)
+    if text is None:
+        return None
+    try:
+        return time.mktime(time.strptime(text, "%a %b %d %H:%M:%S %Y"))
+    except ValueError:
+        return None
+
+
+def alive_since(pid: int, written: float | None) -> bool:
+    """The liveness probe for a pid a RECORD names, where the record is written by the process
+    itself and carries no stamp but its own write time (a file's mtime, GOH.STRAYSIGNAL3): the
+    writer started before it wrote, so a process at the number that started AFTER the record was
+    written (`START_SLACK_S` for `ps`'s one-second reading) is a stranger handed the number since.
+    False for a free number, a zombie and an unknown write time; True for an exiting process whose
+    start cannot be read, as `alive` is. Judged by `ps` alone, as the shell half is, so another
+    user's process at the number is judged by its start like any other."""
+    if pid <= 0 or written is None or number_gone(pid, foreign_gone=False):
+        return False
+    started = started_at(pid)  # `ps`, which reads another user's process too
+    return started is None or started <= written + START_SLACK_S
+
+
+def alive_since_file(pid: int, record: str | os.PathLike[str]) -> bool:
+    """`alive_since` against the mtime of the record file the process wrote (a missing file is an
+    unknown write time: not alive)."""
+    try:
+        written = os.stat(record).st_mtime
+    except OSError:
+        return False
+    return alive_since(pid, written)
 
 
 def alive(s: Stamp | None) -> bool:

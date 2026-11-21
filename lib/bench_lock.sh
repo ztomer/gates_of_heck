@@ -44,6 +44,8 @@
 # Pinned by tests/test_bench_lock.py and tests/test_load_gate_inflight.py.
 
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
+# shellcheck source=lib/pid_owner.sh
+. "${BASH_SOURCE[0]%/*}/pid_owner.sh" || return 1
 BENCH_LOCK_DIR="${GOH_BENCH_LOCK_DIR:-/tmp/gates-of-heck-bench.lock}"
 BENCH_LOCK_MAX_HOLD="${GOH_BENCH_MAX_HOLD:-900}"
 BENCH_LOCK_ENTRY="" # this process's registration: the caller's cleanup removes it
@@ -81,9 +83,8 @@ _bench_exclusive_stale() {
         [ -n "$(find "$BENCH_LOCK_DIR/exclusive" -maxdepth 0 -mmin +1 2>/dev/null)" ]
         return
     fi
-    _bench_running "$pid" || return 0
     start="$(_bench_owner_field 2)" || return 0
-    [ "$(_bench_start_time "$pid")" = "$start" ] || return 0
+    goh_pid_alive "$pid $start" || return 0 # dead, a zombie, or the number somebody else's now
     since="$(_bench_owner_field 3)" || return 0
     hold="$(_bench_owner_field 4)" || return 0
     now="$(date +%s)"
@@ -182,23 +183,26 @@ _bench_yield() {
     for f in "$BENCH_LOCK_DIR/waiting"/*; do
         [ -e "$f" ] || continue
         pid="${f##*/}"
-        if _bench_running "$pid"; then waiters="$waiters $pid"; else rm -f "$f"; fi
+        if _bench_running "$pid" "$f"; then waiters="$waiters $pid"; else rm -f "$f"; fi
     done
     [ -n "$waiters" ] || return 0
     printf '· bench lock: letting the gates already waiting start first:%s\n' "$waiters" >&2
     end=$(($(date +%s) + 10))
     for pid in $waiters; do
-        while [ -e "$BENCH_LOCK_DIR/waiting/$pid" ] && _bench_running "$pid" && [ "$(date +%s)" -lt "$end" ]; do
+        while [ -e "$BENCH_LOCK_DIR/waiting/$pid" ] && _bench_running "$pid" "$BENCH_LOCK_DIR/waiting/$pid" && [ "$(date +%s)" -lt "$end" ]; do
             sleep 0.5
         done
     done
 }
 
-# The process runs: `kill -0` alone answers yes for a zombie, an exited gate its parent has not
-# reaped yet, and the drain would wait on it until the parent did.
+# _bench_running PID FILE -- the gate that wrote FILE (its gates/ entry or waiting/ mark, named by
+# its pid) still runs. `kill -0` alone answered yes for a zombie, an exited gate its parent has not
+# reaped, and for whatever process the number was handed to after a SIGKILLed gate (GOH.STRAYSIGNAL3):
+# the drain waited on a stranger. The entry is written by the gate itself, so its mtime bounds the
+# gate's start: a process at the number that started after it is not the gate (the rule
+# lib/gates_in_flight.py applies to the same entries). The write stays builtins-only.
 _bench_running() {
-    kill -0 "$1" 2>/dev/null || return 1
-    case "$(ps -o stat= -p "$1" 2>/dev/null)" in Z* | "") return 1 ;; esac
+    goh_pid_alive_since "$1" "$2"
 }
 
 # Every registered gate has finished; a dead one's entry is removed. Sets BENCH_LOCK_BUSY. The
@@ -211,7 +215,7 @@ _bench_drained() {
         [ -e "$f" ] || continue
         pid="${f##*/}"
         case "${BENCH_LOCK_MINE:- }" in *" $pid "*) continue ;; esac
-        if _bench_running "$pid"; then
+        if _bench_running "$pid" "$f"; then
             BENCH_LOCK_BUSY="$BENCH_LOCK_BUSY $pid ($(head -n 1 "$f" 2>/dev/null))"
         else
             rm -f "$f"

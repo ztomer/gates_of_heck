@@ -29,6 +29,7 @@ import lock_order
 import pytest
 
 ME = os.getpid()
+BORN = lock_order.born_of(ME)  # a mark names its holder by pid AND birth (GOH.STRAYSIGNAL3)
 LOAD = REPO_ROOT / "tools" / "load.py"
 
 
@@ -59,7 +60,11 @@ def test_a_zero_spinner_run_with_a_stray_load_mark_still_takes_its_slot(tmp_path
     detached process) shares nothing: the run takes its own gate slot."""
     stray = subprocess.Popen(["sleep", "30"], stdin=subprocess.DEVNULL)
     try:
-        env = _fresh(GOH_GATE_SLOTS="1", GOH_MEM_ADMIT="0", **{lock_order.ENV: f"load@{stray.pid}"})
+        env = _fresh(
+            GOH_GATE_SLOTS="1",
+            GOH_MEM_ADMIT="0",
+            **{lock_order.ENV: f"load@{stray.pid}+{lock_order.born_of(stray.pid)}"},
+        )
         done = subprocess.run(
             [sys.executable, str(LOAD), "--background-ok", "test", "0", "--", "true"],
             capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL, check=False,
@@ -140,7 +145,7 @@ def test_the_scope_is_the_repository_not_the_checkout(tmp_path) -> None:
         lock_order.repo_key(wt) == lock_order.repo_key(a) == lock_order.repo_key(a / ".git" / "x")
     )
     assert lock_order.repo_key(tmp_path) == ""  # in no repository: no scope
-    held = {lock_order.ENV: f"gate_slot@{ME}:{lock_order.repo_key(wt)}"}
+    held = {lock_order.ENV: f"gate_slot@{ME}+{BORN}:{lock_order.repo_key(wt)}"}
     assert lock_order.refusal("land", held, where=a) is not None
     assert lock_order.refusal("land", held, where=_repo(tmp_path / "b")) is None
 
@@ -150,6 +155,8 @@ def test_an_unscoped_mark_and_a_machine_lock_stay_ordered(tmp_path) -> None:
     from no known repository (or an older goh) orders everything, as before."""
     a, b = _repo(tmp_path / "a"), _repo(tmp_path / "b")
     key_a = lock_order.repo_key(a)
-    assert lock_order.refusal("land", {lock_order.ENV: f"gate_slot@{ME}"}, where=b) is not None
-    assert lock_order.refusal("load", {lock_order.ENV: f"gate_slot@{ME}:{key_a}"}, where=b)
-    assert lock_order.with_held("load", ME, {}, where=a) == f"load@{ME}:{key_a}"
+    assert (
+        lock_order.refusal("land", {lock_order.ENV: f"gate_slot@{ME}+{BORN}"}, where=b) is not None
+    )
+    assert lock_order.refusal("load", {lock_order.ENV: f"gate_slot@{ME}+{BORN}:{key_a}"}, where=b)
+    assert lock_order.with_held("load", ME, {}, where=a) == f"load@{ME}+{BORN}:{key_a}"

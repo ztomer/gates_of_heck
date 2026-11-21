@@ -64,3 +64,36 @@ goh_pid_alive() {
     [ "$#" -gt 0 ] || return 0
     [ "$pid $*" = "$stamp" ]
 }
+
+# goh_pid_alive_since PID FILE: the liveness probe for a pid a RECORD FILE names that the process
+# wrote itself and that carries no stamp but its own write time (a bench gate's entry, a staging
+# file; GOH.STRAYSIGNAL3, lib/pid_owner.py `alive_since_file`). The writer started before it wrote,
+# so a process at the number that started more than 2 s (`ps`'s one-second reading) AFTER the file
+# was last written is a stranger handed the number since: status 1, as for a free number, a zombie
+# or a missing file. An exiting process whose elapsed time cannot be read is not gone yet (0).
+goh_pid_alive_since() {
+    local pid="${1:-}" file="${2:-}" raw st written elapsed=0 secs=0 part
+    case "$pid" in '' | *[!0-9]*) return 1 ;; esac
+    written="$(stat -c %Y "$file" 2>/dev/null || stat -f %m "$file" 2>/dev/null)" || return 1
+    case "$written" in '' | *[!0-9]*) return 1 ;; esac
+    raw="$(_goh_pid_ps_etime "$pid")"
+    # shellcheck disable=SC2086 # the split collapses ps's padding
+    set -- $raw
+    [ "$#" -gt 0 ] || return 1
+    st="$1"
+    case "$st" in Z*) return 1 ;; esac
+    [ "$#" -gt 1 ] || return 0
+    raw="$2" # etime: [[dd-]hh:]mm:ss
+    case "$raw" in *-*)
+        elapsed=$((10#${raw%%-*} * 86400))
+        raw="${raw#*-}"
+        ;;
+    esac
+    local IFS=:
+    for part in $raw; do secs=$((secs * 60 + 10#$part)); done
+    elapsed=$((elapsed + secs))
+    [ $((EPOCHSECONDS - elapsed)) -le $((written + 2)) ]
+}
+
+# `<stat> <etime>` of a pid, or nothing when no process holds it (a seam, as `_goh_pid_ps` is).
+_goh_pid_ps_etime() { ps -o stat=,etime= -p "$1" 2>/dev/null || true; }

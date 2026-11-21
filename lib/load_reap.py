@@ -217,8 +217,8 @@ def our_orphans(candidates: list[int]) -> list[int]:
         shape = reg.spinner_shape(command)
         if shape is None:
             continue
-        _pipe, owner = shape
-        if reg.pid_alive(owner):
+        pipe, owner = shape
+        if reg.owner_alive(pipe, owner):
             continue
         ours.append(Seen(pid, command))
     return ours
@@ -392,7 +392,7 @@ def sweep_release_pipes(directory: Path | None = None) -> list[str]:
         if len(parts) < 3 or not parts[1].isdigit():
             continue
         owner = int(parts[1])
-        if owner == os.getpid() or reg.pid_alive(owner):
+        if owner == os.getpid() or reg.owner_alive(path, owner):
             continue
         reg.remove(path)
         gone.append(str(path))

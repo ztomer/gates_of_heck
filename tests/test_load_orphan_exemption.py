@@ -268,7 +268,7 @@ def test_the_shape_filter_asks_three_questions_and_no_more(monkeypatch) -> None:
     # pinned in test_load_reap_log.py; outside the suite it takes everything, as here.
     monkeypatch.setattr(load_reap, "in_scope", lambda command: True)
     monkeypatch.setattr(load_reap, "_process", lambda pid: (1, EXACT_COMMAND))
-    monkeypatch.setattr(reg, "pid_alive", lambda pid: asked.append(("owner", pid)) or False)
+    monkeypatch.setattr(reg, "owner_alive", lambda _, pid: asked.append(("owner", pid)) or False)
     assert load_reap.our_orphans([4242]) == [4242]
     assert asked == [("owner", 999999)], "the owner is asked about, and about nothing else"
 
@@ -284,7 +284,7 @@ def test_the_shape_filter_asks_three_questions_and_no_more(monkeypatch) -> None:
 
     asked.clear()
     monkeypatch.setattr(load_reap, "_process", lambda pid: (1, EXACT_COMMAND))
-    monkeypatch.setattr(reg, "pid_alive", lambda pid: asked.append(("owner", pid)) or True)
+    monkeypatch.setattr(reg, "owner_alive", lambda _, pid: asked.append(("owner", pid)) or True)
     assert load_reap.our_orphans([4242]) == [], "a spinner whose owner is alive is not ours"
 
 

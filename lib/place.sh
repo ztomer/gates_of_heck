@@ -8,7 +8,10 @@
 # "1 uncommitted". So the stage is `<dest>.<pid>.staging` -- a name the checkout's .gitignore
 # ignores (`/bin/*.staging`) -- a copy that fails removes its stage, and every placement first
 # reaps the stages beside its destination whose process is gone (SIGKILL runs no trap). A stage
-# whose pid still runs is mid-copy and is left alone. tests/test_place_staging.py.
+# whose pid still runs is mid-copy and is left alone -- and "its pid" is the writer, not whatever
+# process the number went to after a killed copy: the stage is written by its process, so its mtime
+# bounds the writer's start, and a process at the pid that started after it is a stranger
+# (GOH.STRAYSIGNAL3, lib/pid_owner.sh goh_pid_alive_since). tests/test_place_staging.py.
 #
 # Since GOH.CLASS.CHECKOUT part 2 the stage is not beside its destination at all: it is
 # `<base>.<pid>.staging` in the destination directory's own run directory (lib/run_path.sh), outside
@@ -20,6 +23,8 @@
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=lib/run_path.sh
 . "${BASH_SOURCE[0]%/*}/run_path.sh" || exit 1
+# shellcheck source=lib/pid_owner.sh
+. "${BASH_SOURCE[0]%/*}/pid_owner.sh" || exit 1
 
 # goh_place <src> <dest>
 goh_place() {
@@ -62,7 +67,7 @@ goh_place_reap() {
         pid="${f%.staging}"
         pid="${pid##*.}"
         case "$pid" in "" | *[!0-9]*) continue ;; esac
-        kill -0 "$pid" 2>/dev/null && continue
+        goh_pid_alive_since "$pid" "$f" && continue
         rm -f "$f"
     done
 }
