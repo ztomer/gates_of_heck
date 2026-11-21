@@ -20,9 +20,11 @@ THE SET is the union of
     -- or IMPORTS a changed Python module (`import admission`, `from lib import admission`, an
     import of a changed tests/ helper), read with ast;
   * the TREE READERS, chosen by what they read: a test file that defines a test_every_/test_no_
-    function, or whose source (or a tests/ helper it imports) lists or walks the tracked tree
-    (`git ls-files`, `rglob(`, `os.walk(`, a glob or
-    iterdir of a REPO_ROOT directory), plus ALWAYS (readers no pattern sees). A changed path
+    function, or whose source lists or walks the tracked tree (`git ls-files`, `rglob(`,
+    `os.walk(`, a glob or iterdir of a REPO_ROOT directory), or reaches a tests/ helper's walk OF
+    THE ROOT -- importing a helper that walks only what it is handed (tests/_tree_clone.py's
+    templates) is no tree read (lib/tree_walk.py, GOH.CLONENOTJUDGE) -- plus ALWAYS (readers no
+    pattern sees). A changed path
     can break a tree reader whatever it names, so they run on every land.
   * the TRANSITIVE closure of each test (GOH.AFFECTEDTRANSITIVE): what a test imports, what that
     imports (tests/ helpers, checks/, lib/, tools/ modules: lib/source_closure.py reads the
@@ -75,6 +77,7 @@ from lib import (
     source_closure,
     test_closure,
     test_slice,
+    tree_walk,
 )
 from lib.step_timings import timed
 from tui.lib import counted, info, ok
@@ -88,10 +91,7 @@ TEXT_JUDGES = ("tests/test_self_walk.py",)
 TREE_NAMED = re.compile(r"^\s*def (test_every_|test_no_)", re.MULTILINE)
 # ... or that RUNS a tool over the whole checkout, `cwd=REPO_ROOT` (tests/test_gate_temp_leaks.py
 # runs `structural.sh --full` there; GOH.PREPARITY: red in two lands no pre-step chose it for).
-TREE_READ = re.compile(
-    r"ls-files|ls_files|\.rglob\(|os\.walk\(|REPO_ROOT\b[^\n]*\.(?:glob|iterdir)\("
-    r"|cwd=(?:str\()?REPO_ROOT\)?\s*[,)]"
-)
+TREE_READ = tree_walk.TREE_READ
 
 
 def _imports(text: str) -> set[str]:
@@ -153,7 +153,7 @@ def _helpers(root: Path) -> dict[str, str]:
 _segment, _refs, _bound = test_slice.segment, test_slice.refs, test_slice.bound
 
 
-def reader_nodes(text: str, walking: set[str]) -> list[str] | None:
+def reader_nodes(text: str, walking: tree_walk.Walking) -> list[str] | None:
     """The tests of a tree-reading file that read the tree, as pytest node ids relative to the
     file (`test_x`, `TestY::test_z`); None when the file must run whole (GOH.LANDPREDUP).
 
@@ -172,14 +172,10 @@ def reader_nodes(text: str, walking: set[str]) -> list[str] | None:
     except SyntaxError:
         return None
     lines = text.splitlines()
-    walkers: set[str] = set(walking)
-    for node in tree.body:  # names a walking helper binds here (`from _self_walk import walk`)
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            mods = {a.name for a in node.names} | (
-                {node.module} if isinstance(node, ast.ImportFrom) and node.module else set()
-            )
-            if any(m.split(".")[0] in walking for m in mods):
-                walkers |= _bound(node)
+    # names bound to a helper's walk of the root (`from _self_walk import walk`), and to a helper
+    # def that walks only what it is handed (lib/tree_walk.py, GOH.CLONENOTJUDGE)
+    walkers, given = tree_walk.imported(tree, walking)
+    roots = tree_walk.aliases(tree.body)
     # (name, node) for every top-level and class-level definition or statement
     units: list[tuple[set[str], ast.AST]] = []
     for node in tree.body:
@@ -190,7 +186,7 @@ def reader_nodes(text: str, walking: set[str]) -> list[str] | None:
             for sub in node.body:
                 units.append((_bound(sub), sub))
     for bound, node in units:
-        if TREE_READ.search(_segment(lines, node)):
+        if TREE_READ.search(_segment(lines, node)) or tree_walk.hands_root(node, given, roots):
             if not bound:
                 return None  # a module-level walk with no name to follow: the whole file
             walkers |= bound
@@ -222,9 +218,11 @@ def reader_nodes(text: str, walking: set[str]) -> list[str] | None:
     return found or None
 
 
-def _walking(root: Path) -> set[str]:
-    """The tests/ helpers that list or walk the tree, by import name."""
-    return {name for name, text in _helpers(root).items() if TREE_READ.search(text)}
+def _walking(root: Path) -> tree_walk.Walking:
+    """{tests/ helper import name: what its defs walk, the root or what they are handed}
+    (lib/tree_walk.py) for the helpers that list or walk a tree."""
+    found = {name: tree_walk.walks(text) for name, text in _helpers(root).items()}
+    return {name: w for name, w in found.items() if w}
 
 
 def tree_readers(root: Path, tests: dict[str, str] | None = None) -> dict[str, str]:
@@ -239,8 +237,8 @@ def tree_readers(root: Path, tests: dict[str, str] | None = None) -> dict[str, s
             found[rel] = "defines a test_every_/test_no_ test"
         elif TREE_READ.search(text):
             found[rel] = "lists or walks the tree"
-        elif via := sorted(walking & _imports(text)):
-            found[rel] = f"imports {via[0]}, which lists or walks the tree"
+        elif via := tree_walk.reaches(text, walking):
+            found[rel] = f"imports {via}, which lists or walks the tree"
     return found
 
 
