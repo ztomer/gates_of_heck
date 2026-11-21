@@ -215,7 +215,7 @@ def test_check_and_enqueue_refuse_on_a_guard_and_record_it(repo, tmp_path, env):
     red = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": "true", "GOH_LAND_CHECK_STEPS": planted}
     checked = landq(red, "--check", str(wt))
     assert checked.returncode == 1 and "[planted_guard]" in checked.stdout + checked.stderr, checked
-    done = landq(red, "--enqueue", "--land", str(wt), "--item", "T.C", "--no-start")
+    done = landq(red, "--enqueue", "--foreground", "--land", str(wt), "--item", "T.C", "--no-start")
     out = done.stdout + done.stderr
     assert done.returncode == 1 and "nothing queued" in out and "[planted_guard]" in out, out
     assert _pending(tmp_path) == []
@@ -230,5 +230,7 @@ def test_check_and_enqueue_refuse_on_a_guard_and_record_it(repo, tmp_path, env):
     green = {**red, "GOH_LAND_CHECK_STEPS": "true"}
     checked = landq(green, "--check", str(wt))
     assert checked.returncode == 0, checked.stdout + checked.stderr
-    done = landq(green, "--enqueue", "--land", str(wt), "--item", "T.C", "--no-start")
+    done = landq(
+        green, "--enqueue", "--foreground", "--land", str(wt), "--item", "T.C", "--no-start"
+    )
     assert done.returncode == 0 and len(_pending(tmp_path)) == 1, done.stdout + done.stderr
