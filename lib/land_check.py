@@ -44,6 +44,9 @@ from lib import fast_tests  # noqa: E402
 EACH_S = 1.0  # the most one guard test may cost, by the suite's measurement
 HISTORY = 400  # the newest done records read for past refusing guards
 STEP_TIMEOUT = 300
+# Exits that are no verdict on the tree: a step past STEP_TIMEOUT (124); pytest interrupted (3),
+# misused (4: a node it cannot find) or given no test (5). The land's own run judges those.
+NO_VERDICT = {"steps": {124}, "guard tests": {3, 4, 5, 124}}
 GUARD = re.compile(r"^# goh-land-guard:(.*)$", re.MULTILINE)
 STAGED = re.compile(r"^# goh-reads-staged:", re.MULTILINE)
 FAILED = re.compile(r"^(?:E\s+)?FAILED (tests/[^\s:]+\.py::[^\s]+)", re.MULTILINE)
@@ -167,6 +170,9 @@ def run(root: Path, q: Path | None = None, say=print) -> list[str]:
     for name, (rc, out, took) in results.items():
         if rc == 0:
             say(f"check: {name}: green in {took} s")
+            continue
+        if rc in NO_VERDICT["guard tests" if name == "guard tests" else "steps"]:
+            say(f"check: {name}: no verdict in {took} s (exit {rc}) -- the land's own run decides")
             continue
         subgates = dict.fromkeys(map("".join, SUBGATE.findall(out)))
         named = (

@@ -194,6 +194,9 @@ def test_check_and_enqueue_refuse_on_a_guard_and_record_it(repo, tmp_path, env):
     assert (rec["state"], rec["stage"], rec["sha"]) == ("red", "check", tip), rec
     assert rec["guard"] == f"{planted} [planted_guard]", rec
     assert recorded(red)["T.C"]["guard"] == rec["guard"]
+    slow = {**red, "GOH_LAND_CHECK_STEPS": "exit 124"}  # a step past its deadline: no verdict
+    checked = landq(slow, "--check", str(wt))
+    assert checked.returncode == 0 and "no verdict" in checked.stdout + checked.stderr, checked
     green = {**red, "GOH_LAND_CHECK_STEPS": "true"}
     assert landq(green, "--check", str(wt)).returncode == 0
     done = landq(green, "--enqueue", "--land", str(wt), "--item", "T.C", "--no-start")
