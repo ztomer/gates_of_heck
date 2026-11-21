@@ -26,6 +26,9 @@ The table groups lands by MODE (plain, instrumented: lib/land_e2e.instrumented) 
 cleared a faulty fseventsd) or after (`normal`). Per stage: n, median and max wall, median cpu-s,
 its share of the group's summed e2e, and the median 1-min load at the landing's start.
 
+`--guards` counts the red lands by the guard that refused them (`guard` on each done record,
+lib/land_check.py, GOH.LANDCHECK): which structural guard keeps costing lands.
+
 Pinned by tests/test_land_profile.py.
 """
 
@@ -374,9 +377,17 @@ def main(argv: list[str]) -> int:
         "--min-s", type=float, default=5.0, help="hide a step whose max wall is under this"
     )
     ap.add_argument("--json", action="store_true", help="the same tables as JSON")
+    ap.add_argument("--guards", action="store_true", help="red lands counted by refusing guard")
     ap.add_argument("--landq", help="the landing queue dir (default $GOH_LANDQ_DIR)")
     a = ap.parse_args(argv)
     q = Path(a.landq or os.environ.get("GOH_LANDQ_DIR") or Path.home() / ".local/state/goh/landq")
+    if a.guards:
+        import land_check
+
+        tally = land_check.count(q)
+        print(json.dumps(tally, indent=2) if a.json else "\n".join(
+            f"{n:5d}  {g}" for g, n in tally.items()) or "no red land names its guard")  # fmt: skip
+        return 0
     gates = [r for r in timing_ledger.read() if r.get("kind") == "land"]
     rows = lands(q, gates)
     since = land_e2e._when(a.since) if a.since else None

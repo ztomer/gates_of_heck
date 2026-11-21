@@ -5,6 +5,8 @@ Each real-tree case is a selection miss the selection-miss ledger found (lib/sel
 or a read the naming rule cannot see: a change under a fixture a test copies whole chose nothing
 on 2026-11-17's selector.
 """
+# goh-land-guard: test_every_test_joining_a_path_it_does_not_spell_declares_its_reads
+# goh-land-guard: test_every_declared_read_matches_a_file_of_the_tree
 
 from __future__ import annotations
 

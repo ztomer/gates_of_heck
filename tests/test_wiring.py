@@ -12,6 +12,7 @@ Guarded refs are now parsed like any other: only target-repo-local tools/
 references may be absent (the consumer repo's contract); anything pointing at
 THIS repo's checks/, gates/ or hooks/ must resolve here.
 """
+# goh-land-guard:
 
 import re
 from pathlib import Path

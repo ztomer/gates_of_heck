@@ -11,6 +11,7 @@ The seed, tests/env_spread_seed.json, is exactly the spreads each file held when
 NEW spread is red, and so is an entry larger than its file's count (a stale entry hides the next
 one), so the list only shrinks (close-the-class).
 """
+# goh-land-guard:
 
 from __future__ import annotations
 

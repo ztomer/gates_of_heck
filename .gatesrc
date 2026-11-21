@@ -199,6 +199,11 @@ GOH_LANDED_ONLY=main
 # every test naming a changed path or importing a changed module, and every tree reader -- the structural
 # gates and the tree readers FIRST, so a deadline on the rest never swallows them (GOH.PREPARITY). $1 is main's tip.
 GOH_LAND_PRE='"$GOH_PY" tools/affected_tests.py --run --structural --base "$1"'
+# `goh land --check WORKTREE`, and every `goh land --enqueue --land` before its pre-step, runs these
+# land-gate steps (each verbatim one of GOH_CI_STEPS) beside the declared guard tests, in seconds
+# (GOH.LANDCHECK, lib/land_check.py): the structural gate, lint as the gate runs it, the lock order,
+# the saved-pid probes -- what refused lands after a 200-900 s pre-step, refused before it.
+GOH_LAND_CHECK_STEPS='./gates/structural.sh --full:./gates/goh.sh status-markers:./gates/goh.sh shape-diff . --estate --since main:./gates/py_staged.sh --all .:"$GOH_PY" ./checks/check_lock_order.py .:"$GOH_PY" ./checks/check_saved_pid_kill.py .'
 
 # NO GOH_EXPORT_KEEP (G2c). bin/goh was carried into the pre-push export (2026-10-15) because the
 # export held no binary and every native checker said "goh binary not built". That need is gone at

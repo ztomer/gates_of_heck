@@ -3,12 +3,11 @@
 
     goh land --enqueue REPO SHA [--item ID] [--ship [--summary TEXT]] [--no-start]
     goh land --enqueue --land WORKTREE [--item ID] [--no-start] [--no-pre REASON]
+    goh land --check WORKTREE   # the land's structural guards, in seconds (lib/land_check.py)
     goh land --wait ID|REQUEST [--timeout S]  # block until it finished: exit 0 landed, 1 red
     goh land --drain        # the lander: run every request in order, then exit
     goh land --status       # what is pending, running, and how each finished
     goh land --ruff-bump [--detach]  # a ruff newer than goh's pin: its bump-only land, once
-
-WHY. An agent ran its own push gate (1197-1523 s under load); now it ends at "committed, enqueued".
 
 THE REQUEST is one JSON file under `<dir>/pending/` (GOH_LANDQ_DIR, default
 ~/.local/state/goh/landq), named by enqueue time so a listing is the order. It names the repo, the
@@ -25,7 +24,8 @@ SHA, the remote and branch the checkout tracks, the item, and the mode:
           rebased it); the enqueued tip is kept as `enqueued`.
 A red gate pushes nothing (git refuses the push when its pre-push hook fails), nor lands.
 
-THE ENQUEUE PRE-STEP (GOH.ENQUEUEPRE). `--enqueue --land` first runs land.sh's pre-step
+THE ENQUEUE PRE-STEP (GOH.ENQUEUEPRE). `--enqueue --land` runs `--check` in the request's slot (a
+refusal recorded red naming its `guards`, in seconds: GOH.LANDCHECK), then land.sh's pre-step
 (GOH_LAND_PRE; GOH_LAND_PRE_ONLY=1 stops it before the lock) in the request's slot and refuses
 a red tip naming the failing tests: a tree reader the lane never ran met its first run inside THIS
 serial queue (GOH.REUSEAUDIT's land: 537 s, red on three). Past its deadline is no verdict and the
@@ -86,6 +86,7 @@ bounded_run = importlib.import_module("bounded_run")
 gitrun = importlib.import_module("gitrun")
 idle_suite = importlib.import_module("idle_suite")
 land_attempts = importlib.import_module("land_attempts")
+land_check = importlib.import_module("land_check")
 land_e2e = importlib.import_module("land_e2e")
 lock_order = importlib.import_module("lock_order")
 land_prestep = importlib.import_module("land_prestep")
@@ -106,9 +107,8 @@ _tui = importlib.import_module("tui.lib")
 err, info, ok, warn = _tui.err, _tui.info, _tui.ok, _tui.warn
 
 GRACE = 5
-DEFAULT_TIMEOUT = 3600
+DEFAULT_TIMEOUT, WAIT_TIMEOUT = 3600, 3 * 3600
 LAND_TIMEOUT = 2 * 3600  # land.sh: a 10 min pre-step, a 90 min gate, and a wait for the lock first
-WAIT_TIMEOUT = 3 * 3600
 DIRS = ("pending", "running", "done", "logs")
 
 
@@ -146,18 +146,13 @@ def prestep(req: dict) -> None:
         raise Refused(str(e)) from None
 
 
-def write_json(path: Path, data: dict) -> None:
-    """One rename, so a reader never sees half a request (lib/landq_state.py, its one writer)."""
-    landq_state.write(path, data)
-
-
 def enqueue(req: dict, into: str = "pending") -> Path:
     q = qdir()
     for d in (*DIRS, into):
         (q / d).mkdir(parents=True, exist_ok=True)
     slug = (req["item"] or Path(req["repo"]).name).replace("/", "_")
     path = q / into / f"{time.time_ns():020d}-{slug}.json"
-    write_json(path, req)
+    landq_state.write(path, req)  # one rename: never half a request
     return path
 
 
@@ -247,6 +242,7 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
     outcome.update(land_slot.done(done_dir.parent, req))  # GOH.LANDSNAPSHOT: slot_s, released
     land_prestep.discard(req, done_dir.parent)  # its verdict, and any orphan (GOH.LANDLEAKS)
     outcome.update(item=named, attempt=land_attempts.attempt_of(done_dir, named))
+    outcome.update(land_check.fields(outcome))  # the refusing guard, read from a red's log
     if item:
         tool = loopctl()
         if tool.is_file():
@@ -259,7 +255,7 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
         else:
             outcome["recorded"] = False
             warn(f"no loopctl at {tool} (GOH_LOOPCTL): {item}'s outcome is only in done/")
-    write_json(done_dir / req_path.name, outcome)
+    landq_state.write(done_dir / req_path.name, outcome)
     try:
         land_attempts.record(outcome, req_path.stem)
         land_e2e.backfill(done_dir.parent)  # GOH.LANDTARGET: the item end to end, once it landed
@@ -394,6 +390,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--status", action="store_true")
     mode.add_argument("--ruff-bump", action="store_true", help="land a newer ruff's pin bump, once")
     mode.add_argument("--wait", metavar="ID|REQUEST", help="block until it finished (THE WAIT)")
+    mode.add_argument("--check", metavar="WORKTREE", help="its tip's structural land guards")
     landq_report.add_arguments(mode, ap)
     ap.add_argument("--land", metavar="WORKTREE", help="run tools/land.sh there (mode land)")
     ap.add_argument("--timeout", type=float, default=WAIT_TIMEOUT, help="--wait's bound, seconds")
@@ -407,13 +404,13 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.report:
         return landq_report.run(qdir(), args.since, args.json)
-    if args.drain:
-        return drain()
-    if args.status:
-        return landq_look.status(qdir())
+    if args.drain or args.status:
+        return drain() if args.drain else landq_look.status(qdir())
+    if args.check is not None:
+        return land_check.cli(args.check, qdir())
     if args.ruff_bump:  # lib/ruff_bump.py look: the bump-only land, if one is owed
         return ruff_bump.look(home, live_root(), args.detach, Path(__file__).resolve(), info)
-    if args.wait is not None:
+    if args.wait is not None:  # THE WAIT
         return landq_look.wait(qdir(), args.wait, args.timeout, nudge)
     req: dict = {}
     try:
@@ -421,6 +418,8 @@ def main(argv: list[str] | None = None) -> int:
             if args.enqueue or args.ship:
                 raise Refused("--land takes the worktree only: no REPO SHA, no --ship")
             req = land_request(args.land, args.item, qdir())  # in a slot (GOH.LANDSNAPSHOT)
+            if land_check.at_enqueue(qdir(), req, enqueue, record, info):
+                return 1  # recorded red, its guards named (GOH.LANDCHECK)
             if args.no_pre is None:
                 prestep(req)
             elif not args.no_pre.strip():

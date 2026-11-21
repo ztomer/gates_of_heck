@@ -5,6 +5,7 @@ collide at land. Every file over HEADROOM is listed in `tests/cap_headroom_allow
 fails here before it blocks anyone, and an entry no longer over (or gone) fails as stale, so the
 list only shrinks.
 """
+# goh-land-guard:
 
 import re
 import subprocess
