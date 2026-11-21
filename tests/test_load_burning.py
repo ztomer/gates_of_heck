@@ -36,6 +36,7 @@ from conftest import REPO_ROOT
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 import load_reap
+import load_reap_code
 import load_registry as reg
 
 # ONE WORKER (with tests/test_load_reap.py, test_load_tool.py ...): the backstop's sweep is GLOBAL,
@@ -128,7 +129,7 @@ def _cpu_of(pid: int) -> float:
         timeout=10,
         check=False,
     )  # fmt: skip
-    return load_reap._cpu_seconds(out.stdout)
+    return load_reap_code.cpu_seconds(out.stdout)
 
 
 def _burning(pid: int, floor: float = FLOOR_S) -> bool:

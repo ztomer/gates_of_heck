@@ -63,6 +63,7 @@ from pathlib import Path
 import busyloop
 import load_registry as reg
 import pid_owner
+from load_reap_code import cpu_seconds, shell_code
 from load_reap_report import (
     RULE_HAND,
     RULE_HOUSE,
@@ -95,14 +96,6 @@ BURN_CPU_S = 60.0
 # How long the sweep watches a candidate's CPU time grow, and how often it looks.
 SAMPLE_S = 1.0
 SAMPLE_STEP_S = 0.2
-
-# The shells whose code this rule reads. A process that is not one of these is not running shell
-# code, and a shell loop is the shape.
-SHELLS = ("sh", "bash", "zsh", "ksh", "dash")
-
-# How much of a script the rule reads. A loader is small; a huge file is not read to the end for
-# a loop that is in its first lines.
-SCRIPT_BYTES = 65536
 
 
 # THE SUITE'S OWN CHILDREN (run 42950563400). A shape sweep reads the WHOLE machine, so a sweep a
@@ -249,31 +242,7 @@ def reap_orphans() -> Report:
 
 
 # ── the third shape: an orphaned process BURNING a core on a busy loop ───────────────────────
-
-
-def _cpu_seconds(text: str) -> float:
-    """The CPU time `ps` reports, in seconds.
-
-    `ps` prints it as `[[dd-]hh:]mm:ss[.ss]`; a day is 86400 seconds and an hour 3600, and a
-    value this cannot read is zero -- a process whose CPU time is unknown is not burning.
-    """
-    text = text.strip()
-    if not text:
-        return 0.0
-    seconds = 0.0
-    if "-" in text:
-        head, _, text = text.partition("-")
-        try:
-            seconds = float(head) * 86400
-        except ValueError:
-            return 0.0
-    try:
-        numbers = [float(part) for part in text.split(":")]
-    except ValueError:
-        return 0.0
-    for number in numbers:
-        seconds = seconds * 60 + number
-    return seconds
+# (what a process runs -- its CPU time, its shell code -- is read by lib/load_reap_code.py)
 
 
 def _table() -> dict[int, tuple[int, float, str]]:
@@ -293,63 +262,8 @@ def _table() -> dict[int, tuple[int, float, str]]:
             parent = int(parts[1])
         except ValueError:
             continue
-        out[pid] = (parent, _cpu_seconds(parts[2]), parts[3])
+        out[pid] = (parent, cpu_seconds(parts[2]), parts[3])
     return out
-
-
-def _words(command: str) -> list[tuple[str, int]]:
-    """The command's words, and where each one starts."""
-    out = []
-    index = 0
-    length = len(command)
-    while index < length:
-        if command[index].isspace():
-            index += 1
-            continue
-        start = index
-        while index < length and not command[index].isspace():
-            index += 1
-        out.append((command[start:index], start))
-    return out
-
-
-def _inline_code(command: str, at: int) -> str | None:
-    """The text after a `-c`, as the shell will read it.
-
-    The quotes come off once: the argument of `-c` IS code, and a loop inside it runs. What is
-    inside THAT code is judged by the mask, so a loop the code only quotes is still text.
-    """
-    rest = command[at + 2 :].lstrip()
-    if not rest:
-        return None
-    if rest[0] in "'\"":
-        quote = rest[0]
-        end = rest.find(quote, 1)
-        return rest[1:end] if end > 0 else rest[1:]
-    parts = rest.split()
-    return parts[0] if parts else None
-
-
-def _shell_code(command: str) -> str | None:
-    """The code a SHELL in this command line runs: an inline `-c` argument, or a script file.
-
-    None when the command line runs no shell, or names no file this rule can read: a script whose
-    directory was pruned is a spinner nobody can judge, and it is left alone.
-    """
-    words = _words(command)
-    for index, (word, _at) in enumerate(words):
-        if word.rsplit("/", 1)[-1] not in SHELLS:
-            continue
-        if index + 1 >= len(words):
-            continue
-        nxt, nxt_at = words[index + 1]
-        if nxt == "-c":
-            return _inline_code(command, nxt_at)
-        try:
-            return Path(nxt).read_text(encoding="utf-8", errors="replace")[:SCRIPT_BYTES]
-        except OSError:
-            return None
-    return None
 
 
 def burning_orphans(candidates: list[int], min_cpu_s: float = BURN_CPU_S) -> list[int]:
@@ -375,7 +289,7 @@ def burning_orphans(candidates: list[int], min_cpu_s: float = BURN_CPU_S) -> lis
             continue
         if cpu < min_cpu_s:
             continue
-        code = _shell_code(command)
+        code = shell_code(command)
         if code is None:
             continue
         if not busyloop.has_busy_loop(code):
