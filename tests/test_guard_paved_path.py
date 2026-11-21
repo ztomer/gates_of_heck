@@ -41,7 +41,7 @@ REFUSED_WAITS = [
     (f'L=$(ls -t {LOGS} | head -1); while {SHIP}; do sleep 20; done; tail -15 "$L"',
      "`goh wait ship RESULT`"),
     (f"until ! {SHIP}; do sleep 15; done; tail -15 x.log", "`goh wait ship RESULT`"),
-    (f'cd ~/Projects/.loop && until [ -z "{COMMIT}" ]; do sleep 5; done',
+    (f'cd "$HOME/x" && until [ -z "{COMMIT}" ]; do sleep 5; done',
      "the wait is already over"),
     (f"for i in $(seq 1 110); do {SELFMOVE} || break; sleep 5; done; {SELFMOVE} && echo still",
      "`goh wait land GOH.PRESTEPSELFMOVE`"),
