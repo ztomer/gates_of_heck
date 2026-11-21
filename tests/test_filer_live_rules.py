@@ -13,8 +13,8 @@ tests/test_reuse_audit.py mirrors the same rule for CI."""
 
 from __future__ import annotations
 
+import json
 import os
-import shutil
 from pathlib import Path
 
 import pytest
@@ -33,12 +33,21 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+OPEN = ("todo", "in_progress")
+
+
 @pytest.fixture
 def live(tmp_path, monkeypatch) -> Path:
     """The real loopctl, on a temp copy of the live queue (never the live one)."""
     queue = tmp_path / "loop" / "queue.json"
     queue.parent.mkdir()
-    shutil.copy(LOOP / "queue.json", queue)
+    # The rules, phases and closed items as they are; the OPEN items out. `loopctl file` refuses an
+    # item whose text overlaps an open one (loopdup), so a live open ship-red item ate the test's
+    # own synthetic one (2026-11-21: GOH.SHIPRED12163BB1 vs "a red land"): the test passed or
+    # failed by what the queue held that day.
+    data = json.loads((LOOP / "queue.json").read_text())
+    data["items"] = [i for i in data["items"] if i.get("status") not in OPEN]
+    queue.write_text(json.dumps(data))
     monkeypatch.setenv("GOH_LOOPCTL", str(LOOP / "tools" / "loopctl.py"))
     monkeypatch.setenv("GOH_LOOP_QUEUE", str(queue))
     monkeypatch.setenv("GOH_REUSE_DIR", str(tmp_path / "reuse"))
