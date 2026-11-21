@@ -293,10 +293,13 @@ def _selfmatching(script: str, context: str, minimum: int) -> str | None:
     """The refusal for a `pgrep -f` / `pkill -f` that is CODE in `script` and whose pattern matches
     `context` at `minimum` places or more (the call's own spelling is one of them), or None."""
     masked = busyloop.mask(script)
+    unexpanded = busyloop.blank_quoted_heredocs(script)
     for match in _PROG.finditer(script):
         prefix = script[: match.start()].rsplit("\n", 1)[-1]
         if masked[match.start()] != script[match.start()] and not _OPEN_SUBST.search(prefix):
             continue  # quoted text, a heredoc body or a comment: not a call
+        if unexpanded[match.start()] != script[match.start()]:
+            continue  # a quoted heredoc's body, where even a backtick is text
         prog = match.group("prog")
         if not prog.startswith("p"):  # pgrep / pkill (the grep family is _PROG's other half)
             continue

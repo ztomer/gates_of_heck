@@ -38,6 +38,7 @@ import re
 import shlex
 import subprocess
 
+import busyloop
 import paved_path
 
 ESCAPE = re.compile(r"#\s*kill-ok:\s*\S")
@@ -94,17 +95,32 @@ def _reason(what: str, pairs: list[tuple[str, bool, bool]] | None = None) -> str
 
 
 def _tokens(command: str) -> list[str]:
-    lex = shlex.shlex(command.replace("$(", " $( ").replace("`", " ` "), posix=True,
-                      punctuation_chars=";&|()")  # fmt: skip
+    """The command's shell tokens, a code newline among them (`\\n`): a kill on a later line is a
+    command of its own (GOH.WAITSTOP). A quoted heredoc's body is blanked first (text, backticks
+    included), a backslash-newline is the space it means, and each newline is doubled because a
+    comment swallows the newline that ends it."""
+    text = busyloop.blank_quoted_heredocs(command).replace("\\\n", " ").replace("\n", "\n\n")
+    lex = shlex.shlex(text.replace("$(", " $( ").replace("`", " ` "), posix=True,
+                      punctuation_chars=";&|()\n")  # fmt: skip
+    lex.whitespace = " \t\r"
     lex.whitespace_split = True
     lex.commenters = "#"
     return list(lex)
 
 
+def _unfold(tok: str) -> list[str]:
+    """A punctuation token holding newlines as the tokens it means: the newline ends the pipeline,
+    unless it follows an operator that continues it onto the next line (`|`, `&&`, `||`)."""
+    if "\n" not in tok or not set(tok) <= set(";&|()\n"):
+        return [tok]
+    rest = tok.replace("\n", "")
+    return [rest] if rest in {"|", "|&", "&&", "||"} else [t for t in (rest, "\n") if t]
+
+
 def _pipelines(tokens: list[str]) -> list[list[list[str]]]:
     """Pipelines of simple commands; a `$(`/`(`/`)` starts a new simple command in the same one."""
     pipes: list[list[list[str]]] = [[[]]]
-    for tok in tokens:
+    for tok in (t for raw in tokens for t in _unfold(raw)):
         if tok in _PIPELINE_BREAK or (set(tok) <= set(";&") and tok):
             pipes.append([[]])
         elif tok in {"|", "$(", "(", ")", "`", "|&"} or (set(tok) <= set("|()") and tok):

@@ -134,6 +134,37 @@ def _mask_heredoc(text: str, out: list[str], start: int) -> int:
     return len(text)
 
 
+_QUOTED_DOC = re.compile(r"<<-?[ \t]*(?:'([^'\n]+)'|\"([^\"\n]+)\"|\\(\w+))")
+
+
+def blank_quoted_heredocs(text: str) -> str:
+    """The text with the bodies of QUOTED heredocs (`<<'EOF'`, `<<"EOF"`, `<<\\EOF`) blanked and
+    nothing else, the length kept. Such a body is never expanded, so a backtick or `$(` in it is
+    text; an unquoted heredoc's body still runs its substitutions, so it is left as it is. A guard
+    that reads backticks as code (`lib/self_match.py`, `lib/name_kill.py`) judges this instead of
+    the raw command (GOH.WAITSTOP: a commit message quoting a refused command was refused)."""
+    code = mask(text)
+    out = list(text)
+    done = 0
+    for m in _QUOTED_DOC.finditer(text):
+        if m.start() < done or code[m.start()] != "<" or text[m.start() - 1 : m.start()] == "<":
+            continue  # inside a body already blanked, inside quotes or a comment, or a `<<<`
+        delimiter = m.group(1) or m.group(2) or m.group(3)
+        line = text.find("\n", m.end())
+        if line < 0:
+            break
+        line += 1
+        while line < len(text):
+            end = text.find("\n", line)
+            end = len(text) if end < 0 else end
+            if text[line:end].strip() == delimiter:
+                break
+            _blank(out, line, end)
+            line = end + 1
+        done = line
+    return "".join(out)
+
+
 def mask(text: str) -> str:
     """The text with everything that is TEXT blanked: quoted spans, heredoc bodies, comments.
 
