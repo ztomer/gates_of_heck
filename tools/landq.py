@@ -303,11 +303,7 @@ def drain_held(
 ) -> bool:
     """Run every pending request; False when the lander's code changed and it must re-exec.
     CLOCK and SLEEP: the batch window's and the held pause's (a test's fake clock), else time's."""
-    land_prestep.reap(q)  # an enqueue killed before its request leaves a keep (GOH.PRELANDBATCH)
-    # A request a dead lander was running goes back to the front: its name keeps its place.
-    for stale in sorted((q / "running").glob("*.json")):
-        stale.replace(q / "pending" / stale.name)
-        warn(f"{stale.name}: its lander died mid-request -- running it again")
+    landq_batch.resume(q, warn)  # a dead lander's requests, an enqueue's orphan keep
     fails: dict[str, int] = {}  # passes each request has been left pending by a git failure
     while pending := landq_window.pending(q, info, clock, sleep):  # the window (GOH.BATCHWINDOW)
         paths = [q / "running" / p.name for p in landq_batch.pick(pending)]  # GOH.LANDBATCH

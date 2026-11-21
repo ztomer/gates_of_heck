@@ -101,6 +101,16 @@ def strict_git(repo: Path, *args: str, tries: int = 1) -> str:
     raise GitFailed(f"git {' '.join(args)} in {repo}: {why}")
 
 
+def resume(q: Path, say: Callable[[str], None]) -> None:
+    """What a lander finds at its start: a request a dead lander was running goes back to the front
+    (its name keeps its place), and a kept verdict nothing names is reaped (GOH.PRELANDBATCH: an
+    enqueue killed before its request left one until the next recorded land)."""
+    for stale in sorted((q / "running").glob("*.json")):
+        stale.replace(q / "pending" / stale.name)
+        say(f"{stale.name}: its lander died mid-request -- running it again")
+    land_prestep.reap(q)
+
+
 def hold(q: Path, path: Path, outcome: dict, fails: dict[str, int], say: Callable[[str], None]
          ) -> dict | None:  # fmt: skip
     """The record for OUTCOME, or None when its request went back to pending/ (a git failure)."""
