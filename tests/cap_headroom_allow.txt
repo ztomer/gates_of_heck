@@ -36,7 +36,6 @@ hooks/claude/discard_guard.py
 lib/bounded_run.py
 lib/gate_slot.py
 lib/golden_core.py
-lib/load_reap.py
 lib/load_sources.py
 lib/mcp_scaffold.py
 lib/reuse.py
