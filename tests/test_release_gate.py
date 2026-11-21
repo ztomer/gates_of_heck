@@ -130,6 +130,17 @@ def test_the_set_is_the_readers_of_goh_s_own_changelog_not_every_test_that_says_
     assert len(found) < 10, f"the set reads more than the release files' readers: {found}"
 
 
+def test_the_set_holds_the_judge_of_every_tracked_file_s_text_so_a_release_line_is_read() -> None:
+    """GOH.REUSEOFFLANDED5: v0.140.3's release commit d0d40569 put a home path on CHANGELOG.md:5;
+    its land ran this set (structural + 1 test file) green, and the `landed` sample's full gate
+    went red at tests/test_self_walk.py (`no hard-coded home paths` 137, seeded 136). The self-walk
+    runs every scanner goh ships over every tracked file, the release text included, but it is a
+    tree reader, and `readers` leaves the tree readers out: the reuse would have pushed a red
+    commit. The judges of every file's text join the set (tools/affected_tests.py TEXT_JUDGES)."""
+    found = release_gate.names(REPO_ROOT, ["CHANGELOG" + ".md", "changelog/GOH.X.md"])
+    assert "tests/test_self_walk.py" in found, found
+
+
 def test_each_part_of_the_release_gate_is_a_timed_row_the_land_s_seconds_are_named(
     repo: Path, tmp_path: Path
 ) -> None:

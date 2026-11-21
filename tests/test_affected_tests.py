@@ -290,6 +290,13 @@ def test_every_always_entry_is_a_test_file_that_exists() -> None:
     assert [p for p in at.ALWAYS if not (REPO_ROOT / p).is_file()] == []
 
 
+def test_every_text_judge_is_a_tree_reader_that_exists() -> None:
+    """TEXT_JUDGES is kept by hand too (GOH.REUSEOFFLANDED5): each names a file, and a tree reader,
+    so the land runs it on every change as the release gate runs it on the release text."""
+    readers = at.tree_readers(REPO_ROOT)
+    assert [p for p in at.TEXT_JUDGES if p not in readers] == []
+
+
 def test_a_root_file_is_named_only_joined_to_the_repo_root(tmp_path) -> None:
     """80 fixture tests write their own `.gatesrc`; the ones reading goh's say REPO_ROOT / it."""
     root = _tree(

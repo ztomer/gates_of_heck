@@ -81,6 +81,10 @@ from tui.lib import counted, info, ok
 
 # Tree readers that neither a test name nor a tree-walking call in their own source gives away.
 ALWAYS = ("tests/test_self_walk.py", "tests/test_python_from_head.py")
+# The tree readers that judge the TEXT of every tracked file, whatever its kind: a diff of any file
+# is theirs to read, release text included (lib/release_gate.py `names`, GOH.REUSEOFFLANDED5: the
+# release set left the self-walk out, and v0.140.3's changelog heading broke its home-path count).
+TEXT_JUDGES = ("tests/test_self_walk.py",)
 TREE_NAMED = re.compile(r"^\s*def (test_every_|test_no_)", re.MULTILINE)
 # ... or that RUNS a tool over the whole checkout, `cwd=REPO_ROOT` (tests/test_gate_temp_leaks.py
 # runs `structural.sh --full` there; GOH.PREPARITY: red in two lands no pre-step chose it for).
