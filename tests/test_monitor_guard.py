@@ -33,6 +33,18 @@ SELF_MATCH = 'until ! pgrep -f "git push origin main"; do sleep 15; done'
 CLEAN = 'until ! pgrep -f "[g]it push origin main"; do sleep 15; done'
 
 
+@pytest.fixture(autouse=True)
+def _one_process_table(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both judgements read ONE process table. A refusal names what its pattern matches right now
+    (`lib/paved_path.py`, `lib/name_kill.py`, GOH.WAITSTOP), so a `git push` another test starts
+    between the Bash call and the Monitor call would make two equal verdicts read differently."""
+    import name_kill
+    import paved_path
+
+    monkeypatch.setattr(paved_path, "live_pids", lambda pattern, full=True: [])
+    monkeypatch.setattr(name_kill, "live", lambda pattern, full, exact=False: [])
+
+
 def _monitor(command: str, cwd: Path) -> dict:
     """A Monitor tool event shaped like the logged ones: `command` beside its other fields."""
     return {
