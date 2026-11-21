@@ -38,6 +38,7 @@ import os
 import shutil
 import site
 import tempfile
+from collections.abc import MutableMapping
 from pathlib import Path
 
 import _schedule  # (no HOME/TMPDIR read at import)
@@ -283,7 +284,22 @@ def _shape_ci() -> None:
     os.environ[SHAPE] = "ci"
 
 
+# The caller's shell startup files (GOH.ZSHSPLITGUARD, 2026-11-21): `BASH_ENV` (and POSIX `ENV`)
+# make EVERY non-interactive bash child source the named rc. The agent tool shell's is ~/.bashrc,
+# which rebuilds its env from a `zsh -lic` under $HOME -- this suite's throwaway home -- and exports
+# that PATH over the one the test gave its child: the gate's own `cargo` went missing and the whole
+# suite refused to start ("cargo: command not found", tests/_drift_guard.py prebuild_live). No test
+# child sources the owner's rc; a test that wants one passes it.
+SHELL_RC_VARS = ("BASH_ENV", "ENV")
+
+
+def drop_shell_rc(environ: MutableMapping[str, str]) -> None:
+    for name in SHELL_RC_VARS:
+        environ.pop(name, None)
+
+
 def _enter() -> None:
+    drop_shell_rc(os.environ)
     # The duration table tools/pytest.sh names for its top-level run (GOH.DURATIONSSTALE), POPPED
     # before anything here starts a child: the run it was named for owns it, and no xdist worker or
     # fixture run under it inherits it to write it.
