@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+## v0.149.0 -- GOH-TINY group (14 small fixes: ruff bump item, stash escape, uv floor/venv drift, uv no-sync, split quote, brief pool fill, ship order error, install exit, kill-tree popen, load arg order, wait elapsed, name-kill backtick, lock order word), GOH.REDREVIEW (red land causes + goh land-reds), GOH.MISTAKEGUARDS (dirty-worktree rm and encrypted-unmount guards)
+
+* agent_guard refuses a `Pool:` line still carrying goh brief's `<fill in ...>` placeholder and says what to put there; the agent-fanout skill names `goh brief` as the way to write a spawn header (GOH.BRIEFPOOLFILL).
+
+* A pip tool below its floor now names the fix by how the repo resolves python: a uv project's .venv behind a lock that meets the floor gets `uv sync --frozen` in that project, a lock below it `uv lock --upgrade-package <tool>`; a plain interpreter keeps the pip line (GOH.FLOORHINTUV, GOH.VENVDRIFT).
+
+* tests/test_self_hosted_hook.py gives the copy a prebuilt goh with GOH_SKIP_BUILD (no cargo build in the test) and asserts install.sh exits 0 (GOH.INSTALLEXIT).
+
+* lib/killtree.py defers its annotations, so a consumer that patches subprocess.Popen with a function can import it on Python 3.13 (GOH.KILLTREEPOPEN).
+
+* tools/load.py refuses a load.py option placed after N (it was passed to the command: `load.py 0 --wait -- cmd` ran taskpolicy with --wait), naming the order (GOH.LOADARGORDER).
+
+* checks/check_lock_order.py reads a module name inside a string literal as no reference (an import or a module call is found in code with its strings blanked; import_module("x") still counts); the tree's graph is unchanged, 40 edges (GOH.LOCKORDERWORD).
+
+* The kill-by-name guard judges the `...` and $(...) substitutions inside double quotes, which run, so `echo "`<kill by name>`"` is refused; single quotes and quoted heredoc bodies stay text (GOH.NAMEKILLBACKTICK).
+
+* Every red land record now carries `red_cause: {cause, rule, tests}`: its failing test ids and a cause class (`tip-moved`, `conflict`, `flake`, `consistency-table`, `env-leak`, `pinned-text`, `real-bug`, `other`) from deterministic rules over the record, its log and the failing tests' source at the red commit (`lib/land_reds.py`, GOH.REDREVIEW). `goh land-reds [--last N] [--json] [--backfill]` counts the classes with example records; `--backfill` classifies the records already in `done/` into `<landq>/red_causes.json` without writing a record.
+
+* A ruff bump land goh starts by itself now files its GOH.RUFF<digits> queue item through lib/reuse_fault._file (a regression) before it enqueues, so the loop ships and closes it (GOH.RUFFBUMPITEM). Its tests point loopctl and the queue at fixtures, never the real queue.
+
+* goh ship under a held lock (a gate slot under load.py) prints one Kare refusal naming it and saying ship takes its own slots, exit 2, instead of a lock_order.OrderError traceback (GOH.SHIPORDERERR).
+
+* A quoted redirect-like word (`grep "8>&-" f`) is pinned as a word to every stdin reader (GOH.SPLITQUOTE); the parse itself was fixed by GOH.STDINGUARDFP (6bb5d750).
+
+* `# reset-ok:` no longer lets any work-moving `git stash` through, in a linked worktree or a primary checkout: the owner rule is never stash. Reset and the other discard forms keep the escape (GOH.STASHNOESCAPE).
+
+* The staged-view uv test builds its child env with conftest.hermetic_env, not an os.environ spread (GOH.UVNOSYNC, with TP.WEBVISION3 cherry-picked from 294d72e6).
+
+* goh land --wait's heartbeat names the land's own age since its request beside the call's wait (GOH.WAITELAPSED).
+
+* The discard guard refuses a recursive `rm` of a path holding a git work tree with uncommitted tracked changes, naming the tree and its files (`lib/worktree_rm.py`; escape `# rm-ok: <reason>`), and an unmount, eject or `hdiutil detach` of a FileVault APFS volume, which locks it until the owner's password opens it (`lib/encrypted_unmount.py`; escape `# unmount-ok: <reason>`). Both were mistakes of 2026-11-22 (LOOP.MISTAKEGUARDS).
+
+* fix(python): a uv repo's commit gate no longer syncs the index view into the checkout's .venv (TP.WEBVISION3): py_staged.sh and staged_guards.sh ran `uv run` in the view with the checkout's environment, so uv re-pointed the checkout's editable install at the soon-deleted view and the next `uv run` in the checkout uninstalled and reinstalled it (token-pool: "one package on every call"). The view runs with `UV_NO_SYNC=1` (the runner synced in the checkout first), and the staged guards import the index's modules through `PYTHONPATH`.
+
 ## v0.148.2 -- cache wave 2: SCCACHEPATHS (path-free proc-macro install names, content-addressed OUT_DIR), RUSTCWRAPWIRE (goh-rustc wraps every build)
 
 * **`lib/rustc_wrap.py apply` wires `lib/goh-rustc` machine-wide; `check` names each place that disagrees (GOH.RUSTCWRAPWIRE).** `~/.zshenv` exported `RUSTC_WRAPPER=sccache`, which outranks `~/.cargo/config.toml`'s `build.rustc-wrapper`, so builds outside goh (lanes, IDEs, other repos) never ran the wrapper that drops cargo's own variables and keeps build-dir paths out of keys. `apply` writes a trampoline (`GOH_RUSTC_BIN`, default `~/.local/bin/goh-rustc`) that runs the MAIN checkout's `lib/goh-rustc`, or plain sccache when that is gone, and points both settings at it, keeping every other line; the zshenv line names sccache when the trampoline itself is gone, so a moved goh never fails a build. `tests/test_rustc_wrap.py`: through the trampoline an exported `CARGO_TERM_COLOR` never reaches what runs after goh's wrapper; with goh's wrapper absent a fake sccache gets the call unfiltered; zsh sourcing the written line gets `sccache` once the trampoline is deleted. Red runs: no module; an unconditional `exec` of goh's wrapper and a zshenv line without its fallback each fail their test.

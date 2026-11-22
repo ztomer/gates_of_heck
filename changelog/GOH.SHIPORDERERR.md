@@ -1,1 +1,0 @@
-* goh ship under a held lock (a gate slot under load.py) prints one Kare refusal naming it and saying ship takes its own slots, exit 2, instead of a lock_order.OrderError traceback (GOH.SHIPORDERERR).

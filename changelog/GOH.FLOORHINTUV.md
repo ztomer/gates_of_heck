@@ -1,1 +1,0 @@
-* A pip tool below its floor now names the fix by how the repo resolves python: a uv project's .venv behind a lock that meets the floor gets `uv sync --frozen` in that project, a lock below it `uv lock --upgrade-package <tool>`; a plain interpreter keeps the pip line (GOH.FLOORHINTUV, GOH.VENVDRIFT).

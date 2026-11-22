@@ -1,1 +1,0 @@
-* agent_guard refuses a `Pool:` line still carrying goh brief's `<fill in ...>` placeholder and says what to put there; the agent-fanout skill names `goh brief` as the way to write a spawn header (GOH.BRIEFPOOLFILL).

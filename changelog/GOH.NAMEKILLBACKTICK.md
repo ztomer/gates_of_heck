@@ -1,1 +1,0 @@
-* The kill-by-name guard judges the `...` and $(...) substitutions inside double quotes, which run, so `echo "`<kill by name>`"` is refused; single quotes and quoted heredoc bodies stay text (GOH.NAMEKILLBACKTICK).

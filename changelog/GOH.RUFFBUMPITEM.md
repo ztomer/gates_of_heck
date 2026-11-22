@@ -1,1 +1,0 @@
-* A ruff bump land goh starts by itself now files its GOH.RUFF<digits> queue item through lib/reuse_fault._file (a regression) before it enqueues, so the loop ships and closes it (GOH.RUFFBUMPITEM). Its tests point loopctl and the queue at fixtures, never the real queue.
