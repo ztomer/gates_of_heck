@@ -150,7 +150,15 @@ PLANTS = {
 EDITED = "checks/check_no_screen_linkage.sh"
 
 # Every shellcheck the walks spawn, logged by its last argument (the file), then run for real.
-SHIM = '#!/bin/sh\nfor a; do last=$a; done\nprintf "%s\\n" "$last" >> {log}\nexec {real} "$@"\n'
+# The shim is part of the verdict key (shell-lint keys a tool by its path, size and mtime), so it
+# lives beside the store and is rewritten only when its text changes: a shim per session made every
+# key new and the kept store cold (168 s in a land, 2026-11-22). Its text names the REAL binary by
+# its resolved path, so a shellcheck upgrade rewrites it and turns every key over. The log is the
+# session's, read from the environment.
+SHIM = (
+    '#!/bin/sh\nfor a; do last=$a; done\nprintf "%s\\n" "$last" >> "$SELF_WALK_SC_LOG"\n'
+    'exec {real} "$@"\n'
+)
 
 # THE PARTS of the walk, one case each (GOH.SELFWALKFILTER). The dear steps are named, so no part
 # holds two of them (measured 2026-11-21, debug build: kill-by-name 9.9 s, unreaped 5.1, emoji 4.7,
@@ -219,11 +227,16 @@ def trees(native_goh: Path, tmp_path_factory) -> dict:
     plants[EDITED] = (w.REPO_ROOT / EDITED).read_text() + nonce
     real = shutil.which("shellcheck")
     assert real, "the walk needs shellcheck on PATH"
-    shim, log = root / "shim", root / "shellcheck.log"
-    shim.mkdir()
-    (shim / "shellcheck").write_text(SHIM.format(log=log, real=real))
-    (shim / "shellcheck").chmod(0o755)
-    env = hermetic_env(GOH_VERDICT_DIR=str(w.verdict_store()),
+    store = w.verdict_store()
+    shim, log = store.parent / "self-walk-shim", root / "shellcheck.log"
+    shim.mkdir(exist_ok=True)
+    text = SHIM.format(real=os.path.realpath(real))
+    if not (shim / "shellcheck").is_file() or (shim / "shellcheck").read_text() != text:
+        tmp = shim / f".shellcheck.{os.getpid()}"
+        tmp.write_text(text)
+        tmp.chmod(0o755)
+        tmp.replace(shim / "shellcheck")
+    env = hermetic_env(GOH_VERDICT_DIR=str(store), SELF_WALK_SC_LOG=str(log),
                        PATH=f"{shim}{os.pathsep}{os.environ.get('PATH', '')}")  # fmt: skip
     built = {}
     for name, planted in (("goh", {}), ("planted", plants)):
