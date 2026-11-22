@@ -23,6 +23,17 @@ AT RISK when, in the kept profile:
 No profile, no tag, or a measured commit this clone lacks is said and skipped. Rust only: the
 ship's diff coverage judges `*.rs` alone. Printed by `goh land --check` and at enqueue, and kept
 on the land record as `cov_risk`; it never changes either verdict.
+
+CARRY (GOH.DIFFCOVCARRY). The warning alone cost three red ships (v0.140.3, v0.142.0, v0.143.0):
+the land went on, and the ship found the same lines after its 15 min suite. So the record also
+keeps `carry`, each line the next ship's diff coverage would refuse as `{file, line, text, why,
+own}` at the judged tip `head` (lines on `base`, the last ship's tag): the at-risk lines that read
+as code (no blank, comment, attribute, `use` or `mod x;` line; an in-file test module's lines are
+judged by the ship too: v0.143.0 refused an untaken closure arm in one), less those the profile
+saw covered by the external suite (`cov`: the ship's diff coverage counts every part, so those
+pass it). `own` marks the lines this land's commits
+changed (since its merge base with main): the lander files an item for those, and `goh ship`
+refuses before its suite while any carried line is still uncovered (lib/diffcov_carry.py).
 """
 
 from __future__ import annotations
@@ -68,26 +79,28 @@ def keep(parts_dir: Path, top: Path, dest: Path) -> dict | None:
     if not sha or not parts:
         return None
     every: dict = defaultdict(int)
-    own: dict = defaultdict(int)
+    own: dict = defaultdict(int)  # the in-process parts; `cov`, any part (GOH.DIFFCOVCARRY)
     for pf in parts:
         parse_part(str(pf), every)
         if not pf.name.startswith("part-external"):
             parse_part(str(pf), own)
     real = os.path.realpath(top)
     files: dict[str, dict[str, list[int]]] = {}
-    for sf, ln in every:
+    for (sf, ln), hits in every.items():
         rel = os.path.relpath(
             os.path.realpath(sf if os.path.isabs(sf) else os.path.join(real, sf)), real
         )
         if rel.startswith(".."):
             continue
-        f = files.setdefault(rel, {"exec": [], "own": []})
+        f = files.setdefault(rel, {"exec": [], "own": [], "cov": []})
         f["exec"].append(ln)
         if own.get((sf, ln), 0) > 0:
             f["own"].append(ln)
+        if hits > 0:
+            f["cov"].append(ln)
     for f in files.values():
-        f["exec"].sort()
-        f["own"].sort()
+        for k in ("exec", "own", "cov"):
+            f[k].sort()
     data = {"sha": sha, "files": files}
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(".tmp")
@@ -131,25 +144,26 @@ def _old_line(hunks: list[tuple[int, int, int, int]], ln: int) -> tuple[int, boo
     return ln + shift, True
 
 
-def at_risk(top: str | Path, summary: Path) -> tuple[list[tuple[str, list[int], str]], str]:
-    """([(file, lines, why)], said): the changed Rust lines since the last ship at risk."""
-    top = str(top)
+def _judge(top: str, summary: Path) -> tuple[list[tuple[str, int, str, bool]], str, str]:
+    """([(file, line, why, carried)], said, tag): each changed Rust line since the last ship at
+    risk, and whether the ship's diff coverage would refuse it (not covered by any part); TAG is
+    empty when nothing was judged."""
     try:
         data = json.loads(summary.read_text())
     except (OSError, ValueError):
-        return [], f"no kept ship coverage profile ({summary})"
+        return [], f"no kept ship coverage profile ({summary})", ""
     sha = data.get("sha", "")
     if not sha or _git(top, "cat-file", "-e", f"{sha}^{{commit}}") is None:
-        return [], f"the profile's commit {sha[:8] or '(none)'} is not in this clone"
+        return [], f"the profile's commit {sha[:8] or '(none)'} is not in this clone", ""
     tag = (
         _git(top, "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", "HEAD") or ""
     ).strip()
     if not tag:
-        return [], "no v-tag below HEAD: no last ship to diff from"
+        return [], "no v-tag below HEAD: no last ship to diff from", ""
     changed = _hunks(top, tag)
     since = _hunks(top, sha)
     files = data.get("files", {})
-    risky: list[tuple[str, list[int], str]] = []
+    risky: list[tuple[str, int, str, bool]] = []
     for rel, (_o, hs) in sorted(changed.items()):
         lines = sorted({ln for _a, _b, c, d in hs for ln in range(c, c + d)})
         if not lines:
@@ -161,22 +175,55 @@ def at_risk(top: str | Path, summary: Path) -> tuple[list[tuple[str, list[int], 
             # since: unknown, unless its name says test code, which the report never carries.
             if old_rel or TESTS.search(rel):
                 continue
-            risky.append((rel, lines, "new since the last ship's profile"))
+            risky += [(rel, ln, "new since the last ship's profile", True) for ln in lines]
             continue
         exe, own = set(prof["exec"]), set(prof["own"])
-        bad = []
+        cov = set(prof["cov"]) if "cov" in prof else set()  # a profile kept before GOH.DIFFCOVCARRY
         for ln in lines:
             o, same = _old_line(shs, ln)
-            if same:
-                if o in exe and o not in own:
-                    bad.append(ln)
-            else:
-                near = range(o - WINDOW, o + WINDOW + 1)
-                if any(n in exe for n in near) and not any(n in own for n in near):
-                    bad.append(ln)
-        if bad:
-            risky.append((rel, bad, "external suite only, or no test"))
-    return risky, f"since {tag}, profile {sha[:8]}"
+            near = [o] if same else range(o - WINDOW, o + WINDOW + 1)
+            if any(n in exe for n in near) and not any(n in own for n in near):
+                carried = not any(n in cov for n in near)
+                risky.append((rel, ln, "external suite only, or no test", carried))
+    return risky, f"since {tag}, profile {sha[:8]}", tag
+
+
+def at_risk(top: str | Path, summary: Path) -> tuple[list[tuple[str, list[int], str]], str]:
+    """([(file, lines, why)], said): the changed Rust lines since the last ship at risk."""
+    found, said, _tag = _judge(str(top), summary)
+    return at_risk_from(found), said
+
+
+NOT_CODE = re.compile(r"^(//|/\*|\*(/|\s|$)|#!?\[|(pub(\([\w:]+\))?\s+)?(use\s|mod\s+\w+\s*;))")
+
+
+def carry(top: str | Path, repo: str | Path, found: list[tuple[str, int, str, bool]]) -> list[dict]:
+    """The carried lines of FOUND as code reads them, `own` when this land's commits changed them
+    (since the merge base of TOP's HEAD with REPO's): what the next ship's diff coverage refuses."""
+    top = str(top)
+    main = (_git(str(repo), "rev-parse", "HEAD") or "").strip()
+    base = (_git(top, "merge-base", "HEAD", main) or "").strip() if main else ""
+    mine = {
+        rel: {ln for _a, _b, c, d in hs for ln in range(c, c + d)}
+        for rel, (_o, hs) in (_hunks(top, base) if base else {}).items()
+    }
+    texts: dict[str, list[str]] = {}
+    out: list[dict] = []
+    for rel, ln, why, carried in found:
+        if not carried:
+            continue
+        if rel not in texts:
+            try:
+                texts[rel] = (Path(top) / rel).read_text(errors="replace").splitlines()
+            except OSError:
+                texts[rel] = []
+        text = texts[rel]
+        line = text[ln - 1].strip() if ln <= len(text) else ""
+        if not line or NOT_CODE.match(line):
+            continue
+        out.append({"file": rel, "line": ln, "text": line, "why": why,
+                    "own": ln in mine.get(rel, ())})  # fmt: skip
+    return out
 
 
 def _ranges(lines: list[int]) -> str:
@@ -192,10 +239,15 @@ def _ranges(lines: list[int]) -> str:
 
 
 def report(top: str | Path, repo: str | Path) -> tuple[list[str], dict]:
-    """(lines to print, the record's `cov_risk`)."""
-    risky, said = at_risk(top, summary_path(repo))
+    """(lines to print, the record's `cov_risk`): with `head`, `base` and `carry` when judged."""
+    found, said, tag = _judge(str(top), summary_path(repo))
+    risky = at_risk_from(found)
     n = sum(len(ls) for _f, ls, _w in risky)
-    rec = {"lines": n, "said": said, "files": {f: _ranges(ls) for f, ls, _w in risky}}
+    rec: dict = {"lines": n, "said": said, "files": {f: _ranges(ls) for f, ls, _w in risky}}
+    if tag:
+        rec["head"] = (_git(str(top), "rev-parse", "HEAD") or "").strip()
+        rec["base"] = tag
+        rec["carry"] = carry(top, repo, found)
     if not risky:
         return [f"diff coverage risk: none ({said})"], rec
     head = (
@@ -206,7 +258,21 @@ def report(top: str | Path, repo: str | Path) -> tuple[list[str], dict]:
     out += [f"    {f}:{_ranges(ls)}  ({w})" for f, ls, w in risky[:SHOWN]]
     if len(risky) > SHOWN:
         out.append(f"    ... and {counted(len(risky) - SHOWN, 'more file')}")
+    if kept := rec.get("carry"):
+        mine = sum(1 for c in kept if c["own"])
+        out.append(
+            f"diff coverage carry: {counted(len(kept), 'line')} no test covered in the profile "
+            f"({mine} this land's own) -- recorded; `goh ship` refuses before its suite until "
+            "they are covered (GOH.DIFFCOVCARRY)"
+        )
     return out, rec
+
+
+def at_risk_from(found: list[tuple[str, int, str, bool]]) -> list[tuple[str, list[int], str]]:
+    grouped: dict[str, tuple[list[int], str]] = {}
+    for rel, ln, why, _c in found:
+        grouped.setdefault(rel, ([], why))[0].append(ln)
+    return [(rel, ls, why) for rel, (ls, why) in grouped.items()]
 
 
 def say(top: str | Path, repo: str | Path, emit=print) -> dict:

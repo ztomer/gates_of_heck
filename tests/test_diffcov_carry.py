@@ -1,0 +1,249 @@
+"""A land's uncovered changed lines are carried to the next ship (lib/diffcov_carry.py,
+GOH.DIFFCOVCARRY).
+
+Modelled on v0.143.0 (ship record 20261122T021940Z-84cbc55f): a land added a Rust file
+(crates/goh/src/toolshell/grep_probe.rs) whose lines no test ran; the land only warned, and the
+ship's diff coverage refused them after a 961 s suite. Here a fixture land leaves ONE uncovered
+line: the land records it (file, line, text) and files its fix item at the landing, and the ship's
+preflight refuses naming it in seconds -- until it is covered (the item's land) or deleted, or the
+ship is told --allow-diffcov REASON.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import pytest
+from _fast_git import fast_init
+from conftest import REPO_ROOT
+
+sys.path.insert(0, str(REPO_ROOT / "lib"))
+sys.path.insert(0, str(REPO_ROOT))
+from lib import cov_risk, diffcov_carry
+
+A = "crates/goh/src/a.rs"
+PROBE = "crates/goh/src/probe.rs"
+LINE = "return None;"
+FAKE_LOOPCTL = """\
+import json, os, sys
+with open(os.environ["FAKE_LOOPCTL_LOG"], "a") as f:
+    f.write(json.dumps(sys.argv[1:]) + "\\n")
+"""
+
+
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t",
+                           "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", *args],
+                          check=True, capture_output=True, text=True,
+                          stdin=subprocess.DEVNULL).stdout.strip()  # fmt: skip
+
+
+def _commit(repo: Path, msg: str) -> str:
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", msg)
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _land(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
+    """(main, the lane worktree): main shipped v0.1.0 with a kept profile; the lane adds
+    probe.rs, one line of it code no test ran, among lines that are no code."""
+    main = tmp_path / "gates_of_heck"
+    fast_init(main, "main")
+    (main / A).parent.mkdir(parents=True)
+    (main / A).write_text("".join(f"let a{i} = {i};\n" for i in range(1, 11)))
+    _commit(main, "base")
+    _git(main, "tag", "v0.1.0")
+    parts = tmp_path / "parts"
+    parts.mkdir()
+    das = "".join(f"DA:{i},1\n" for i in range(1, 11))
+    (parts / "part-workspace.info").write_text(f"SF:{main / A}\n{das}end_of_record\n")
+    monkeypatch.setenv("GOH_SHIP_DIR", str(tmp_path / "ship"))
+    assert cov_risk.keep(parts, main, cov_risk.summary_path(main))
+    wt = tmp_path / "wt"
+    _git(main, "worktree", "add", "-q", "-b", "lane", str(wt))
+    (wt / PROBE).write_text(f"//! the probe\nuse std::env;\n\n{LINE}\n#[inline]\nmod util;\n")
+    _commit(wt, "the land")
+    return main, wt
+
+
+def _landed(q: Path, main: Path, wt: Path, rec: dict, item: str, filed: str = "") -> dict:
+    """The landing record the lander writes: WT's tip fast-forwarded onto main."""
+    sha = _git(wt, "rev-parse", "HEAD")
+    _git(main, "merge", "-q", "--ff-only", sha)
+    out = {"sha": sha, "enqueued": sha, "landed": sha, "repo": str(main), "mode": "land",
+           "state": "landed", "item": item, "cov_risk": rec,
+           **({"diffcov_item": {"id": filed, "said": "filed"}} if filed else {})}  # fmt: skip
+    (q / "done").mkdir(parents=True, exist_ok=True)
+    n = len(list((q / "done").iterdir()))
+    (q / "done" / f"{n:04d}-{item}.json").write_text(json.dumps(out))
+    return out
+
+
+def test_a_land_records_its_uncovered_line_and_files_its_item(tmp_path, monkeypatch):
+    main, wt = _land(tmp_path, monkeypatch)
+    lines, rec = cov_risk.report(wt, main)
+    assert rec["carry"] == [{"file": PROBE, "line": 4, "text": LINE, "own": True,
+                             "why": "new since the last ship's profile"}], rec  # fmt: skip
+    assert rec["base"] == "v0.1.0" and rec["head"] == _git(wt, "rev-parse", "HEAD")
+    assert any("diff coverage carry: 1 line" in ln for ln in lines), lines
+    fake = tmp_path / "loopctl.py"
+    fake.write_text(FAKE_LOOPCTL)
+    monkeypatch.setenv("FAKE_LOOPCTL_LOG", str(tmp_path / "calls"))
+    outcome = {"state": "landed", "sha": "abcdef0123456789", "repo": str(main)}
+    got = diffcov_carry.file_item(outcome, {"cov_risk": rec}, str(fake), "GOH.LANE")
+    assert got == {"diffcov_item": {"id": "GOH.DIFFCOVABCDEF01", "said": "filed"}}
+    argv = json.loads((tmp_path / "calls").read_text().splitlines()[0])
+    item = json.loads(argv[argv.index("file") + 2])
+    assert item["id"] == "GOH.DIFFCOVABCDEF01" and item["status"] == "todo"
+    assert item["phase"] == "SPD" and item["regression"] is True
+    assert item["class_of"] == "GOH.DIFFCOVCARRY" and f"{PROBE}:4 `{LINE}`" in item["item"]
+    # a red land, or a land with no line of its own, files nothing
+    assert diffcov_carry.file_item({**outcome, "state": "red"}, {"cov_risk": rec}, str(fake)) == {}
+    other = {"cov_risk": {"carry": [{**rec["carry"][0], "own": False}]}}
+    assert diffcov_carry.file_item(outcome, other, str(fake)) == {}
+
+
+def test_the_ship_preflight_refuses_naming_the_line_until_it_is_covered(tmp_path, monkeypatch):
+    main, wt = _land(tmp_path, monkeypatch)
+    q = tmp_path / "landq"
+    _lines, rec = cov_risk.report(wt, main)
+    _landed(q, main, wt, rec, "GOH.LANE", filed="GOH.DIFFCOVLANE")
+    head = _git(main, "rev-parse", "HEAD")
+    why = diffcov_carry.refusal(main, "v0.1.0", head, q)
+    assert why and f"{PROBE}:4  {LINE}" in why and "--allow-diffcov" in why, why
+    # an unrelated later land judged with the same profile still carries it: still refused
+    (wt / A).write_text((wt / A).read_text() + "let a11 = 11;\n")
+    _commit(wt, "unrelated")
+    _l, rec2 = cov_risk.report(wt, main)
+    _landed(q, main, wt, rec2, "GOH.OTHER")
+    head = _git(main, "rev-parse", "HEAD")
+    assert diffcov_carry.refusal(main, "v0.1.0", head, q), "an unrelated land covers nothing"
+    # the fix lane lands under the filed item: covered
+    (wt / "crates/goh/src/probe_tests.rs").write_text("fn covers() {}\n")
+    _commit(wt, "cover it")
+    _landed(q, main, wt, {"lines": 0}, "GOH.DIFFCOVLANE")
+    assert diffcov_carry.refusal(main, "v0.1.0", _git(main, "rev-parse", "HEAD"), q) is None
+
+
+def test_a_carried_line_since_deleted_or_judged_covered_no_longer_counts(tmp_path, monkeypatch):
+    main, wt = _land(tmp_path, monkeypatch)
+    q = tmp_path / "landq"
+    _lines, rec = cov_risk.report(wt, main)
+    _landed(q, main, wt, rec, "GOH.LANE")  # filing failed: no item to clear it
+    # a parallel lane, judged on a tip without the land's change, clears nothing
+    par = tmp_path / "par"
+    _git(main, "worktree", "add", "-q", "-b", "par", str(par), "v0.1.0")
+    (par / A).write_text((par / A).read_text() + "let a12 = 12;\n")
+    tip = _commit(par, "parallel")
+    _git(main, "merge", "-q", "--no-ff", "-m", "land par", tip)
+    blind = {"lines": 0, "head": tip, "base": "v0.1.0", "carry": []}
+    _landed(q, main, main, blind, "GOH.PAR")
+    assert diffcov_carry.refusal(main, "v0.1.0", _git(main, "rev-parse", "HEAD"), q)
+    # a later land whose judgment (a newer profile) of a tip holding the land no longer carries it
+    _git(wt, "merge", "-q", "--ff-only", "main")
+    (wt / A).write_text((wt / A).read_text() + "let a11 = 11;\n")
+    _commit(wt, "later")
+    judged = {"lines": 0, "head": _git(wt, "rev-parse", "HEAD"), "base": "v0.1.0", "carry": []}
+    _landed(q, main, wt, judged, "GOH.LATER")
+    assert diffcov_carry.refusal(main, "v0.1.0", _git(main, "rev-parse", "HEAD"), q) is None
+    # without that judgment it counts; once the line is deleted it does not
+    (q / "done" / max(p.name for p in (q / "done").iterdir())).unlink()
+    head = _git(main, "rev-parse", "HEAD")
+    assert diffcov_carry.refusal(main, "v0.1.0", head, q)
+    _git(main, "tag", "v0.2.0")  # a land before the base tag was the last ship's
+    assert diffcov_carry.refusal(main, "v0.2.0", head, q) is None
+    text = (main / PROBE).read_text().replace(f"{LINE}\n", "")
+    (main / PROBE).write_text(text)
+    assert diffcov_carry.refusal(main, "v0.1.0", _commit(main, "delete it"), q) is None
+
+
+@pytest.mark.load_sensitive  # the preflight's wall time: seconds, against the suite's 961 s
+def test_goh_ship_refuses_in_preflight_unless_allowed(tmp_path, tmp_path_factory):
+    from _shipped_kit import shipped_clone
+    from test_ship import _result, _ship
+    from timing_bounds import assert_sooner
+
+    repo = shipped_clone(tmp_path, tmp_path_factory)
+    head = _git(repo, "rev-parse", "HEAD")
+    carried = {"file": "f.txt", "line": 1, "text": "change", "own": True, "why": "new"}
+    rec = {
+        "sha": head,
+        "landed": head,
+        "repo": str(repo),
+        "mode": "land",
+        "state": "landed",
+        "item": "GOH.LANE",
+        "cov_risk": {"head": head, "base": "v1.0.0", "carry": [carried]},
+    }
+    q = tmp_path / "landq"
+    (q / "done").mkdir(parents=True)
+    (q / "done" / "1-GOH.LANE.json").write_text(json.dumps(rec))
+    t0 = time.monotonic()
+    r = _ship(repo, tmp_path, "--wait", GOH_LANDQ_DIR=str(q))
+    assert_sooner(time.monotonic() - t0, 4, 961, "goh ship's diff coverage preflight")
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "f.txt:1  change" in r.stderr and not (tmp_path / "ship.json").exists(), r.stderr
+    r = _ship(repo, tmp_path, "--wait", "--allow-diffcov", " ", GOH_LANDQ_DIR=str(q))
+    assert r.returncode == 2 and "needs a REASON" in r.stderr, r.stderr
+    r = _ship(repo, tmp_path, "--wait", "--allow-diffcov", "covered by hand", GOH_LANDQ_DIR=str(q))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _result(tmp_path)["allow_diffcov"] == "covered by hand"
+
+
+REFUSING_LOOPCTL = """\
+import json, os, sys
+item = json.loads(sys.argv[-1])
+with open(os.environ["FAKE_LOOPCTL_LOG"], "a") as f:
+    f.write(json.dumps(item) + "\\n")
+if item["class_of"] != "none":
+    sys.exit(print("GOH.DIFFCOVCARRY is done, so its check missed this instance") or 1)
+if "GOH.DIFFCOVOLD" not in item.get("not_dup_of", {}):
+    sys.exit(print("probably repeats open item GOH.DIFFCOVOLD (text overlap 0.91)") or 1)
+"""
+
+
+def test_a_closed_class_and_an_open_carry_item_still_file(tmp_path, monkeypatch):
+    fake = tmp_path / "loopctl.py"
+    fake.write_text(REFUSING_LOOPCTL)
+    monkeypatch.setenv("FAKE_LOOPCTL_LOG", str(tmp_path / "calls"))
+    carried = {"carry": [{"file": PROBE, "line": 4, "text": LINE, "own": True, "why": "new"}]}
+    outcome = {"state": "landed", "sha": "0123456789", "repo": str(tmp_path)}
+    got = diffcov_carry.file_item(outcome, {"cov_risk": carried}, str(fake), "ZT.LANE")
+    assert got == {"diffcov_item": {"id": "ZT.DIFFCOV01234567", "said": "filed"}}
+    tries = [json.loads(x) for x in (tmp_path / "calls").read_text().splitlines()]
+    assert len(tries) == 3 and tries[-1]["class_why"] and tries[-1]["not_dup_of"]
+
+
+def test_the_lander_files_the_item_and_names_it_on_the_landing_record(tmp_path, monkeypatch):
+    import importlib.util
+
+    if "landq" in sys.modules:
+        landq = sys.modules["landq"]
+    else:
+        spec = importlib.util.spec_from_file_location("landq", REPO_ROOT / "tools" / "landq.py")
+        landq = importlib.util.module_from_spec(spec)
+        sys.modules["landq"] = landq
+        spec.loader.exec_module(landq)
+    q = tmp_path / "landq"
+    for d in ("running", "done", "logs"):
+        (q / d).mkdir(parents=True)
+    fake = tmp_path / "loopctl.py"
+    fake.write_text(FAKE_LOOPCTL)
+    monkeypatch.setenv("GOH_LOOPCTL", str(fake))
+    monkeypatch.setenv("FAKE_LOOPCTL_LOG", str(tmp_path / "calls"))
+    monkeypatch.setenv("GOH_TIMING_DIR", str(tmp_path / "timing"))
+    carried = {"carry": [{"file": PROBE, "line": 4, "text": LINE, "own": True, "why": "new"}]}
+    req = {"sha": "fedcba9876543210", "repo": str(tmp_path), "mode": "land", "item": "GOH.LANE",
+           "worktree": str(tmp_path), "cov_risk": carried}  # fmt: skip
+    path = q / "running" / "01-GOH.LANE.json"
+    path.write_text(json.dumps(req))
+    outcome = {"sha": req["sha"], "repo": str(tmp_path), "mode": "land", "state": "landed"}
+    landq.record(path, outcome, "GOH.LANE")
+    done = json.loads((q / "done" / path.name).read_text())
+    assert done["diffcov_item"] == {"id": "GOH.DIFFCOVFEDCBA98", "said": "filed"}, done
+    calls = [json.loads(x) for x in (tmp_path / "calls").read_text().splitlines()]
+    assert any("file" in c for c in calls) and any("set" in c for c in calls), calls

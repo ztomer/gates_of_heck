@@ -48,6 +48,7 @@ repo under the ship's bound with GOH_SHIP_VERSION/SUMMARY/ITEM set; a non-zero e
 pushed. A new check is a line in the repo's preflight, never a case here (ship_preflight_audit).
 Before those, what the LAST steps refused (lib/ship_item.py, GOH.SHIPITEM): an --item loopctl
 refuses for this repo (unknown, done, another repo's), and an OLDER stock hook in the repo.
+And lines a land left uncovered, unless --allow-diffcov REASON (lib/diffcov_carry.py).
 
 Started without --wait it validates, writes the result JSON (status `running`), detaches a worker
 in its own session and prints one line naming the result; the worker prints a ✓/✗/· line per step
@@ -197,6 +198,10 @@ def plan(args: argparse.Namespace) -> dict:
                       ".gatesrc: name its release kit, e.g. GOH_SHIP_RELEASE='tools/release.sh "
                       "{version}'")  # fmt: skip
     version = next_version(repo, tag, args.version, args.bump, bool(cfg["GOH_SHIP_RELEASE"]))
+    import diffcov_carry  # lib/, here: tools/ship.py's import ceiling (E402) is spent
+
+    if why := diffcov_carry.ship_refusal(repo, tag, sha, allow := args.allow_diffcov):
+        raise Refused(why)
     try:
         timeout = int(cfg["GOH_SHIP_TIMEOUT"] or DEFAULT_TIMEOUT)
     except ValueError:
@@ -217,6 +222,7 @@ def plan(args: argparse.Namespace) -> dict:
         "status": "running", "started": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         "steps": [], "failed_step": None, "tail": [], "undo": [], "pid": None,
         "load1": os.getloadavg()[0],  # the box's load at the ship's START, for the budget's row
+        "allow_diffcov": allow,
     }  # fmt: skip
 
 
@@ -421,6 +427,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--bump", choices=("patch", "minor", "major", "none"),
                     help="the next version's part, or none: ship with no release (no version, "
                          "or a HEAD already tagged)")  # fmt: skip
+    ap.add_argument("--allow-diffcov", metavar="REASON", help="ship despite uncovered lines")
     ap.add_argument("--wait", action="store_true", help="run in the foreground, a mark per step")
     ap.add_argument("--out", help="the result JSON (default ~/.local/state/goh/ship/REPO/...)")
     ap.add_argument("--status", metavar="RESULT", help="print a result's marks")
