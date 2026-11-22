@@ -60,6 +60,7 @@ set -euo pipefail
 # writes core.bare=true into its shared config (a private consumer, 2026-09-27); `git -C "$GOH" status` below
 # listed the pusher's files against the gates checkout as uncommitted gate source.
 goh_hook_unbind || exit $?
+push_class="${GOH_GATE_CLASS:-}"   # read before the slot's admission consumes it (GOH.BUILDDIRSHARE)
 
 GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
 . "$GOH/tui/lib.sh"
@@ -312,9 +313,13 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
     # sources are gone keeps this one while the checkout exists (scripts' reclaim_build_root.py;
     # tests/test_push_gate_runs.py). The private fallback's build dir dies with its run: no marker.
     [ -n "$export_build_dir" ] || printf '%s\n' "$(cd "$root" && /bin/pwd -P)" >"$run_dir.source"
+    shared_build_dir=""
     if [ -n "$export_build_dir" ]; then
         export_build_dir="$run_dir/.cargo-build"
         private_cargo_config "$run_dir" "$export_build_dir"
+    elif [ "$push_class" = ship ]; then   # the checkout's own build dir, clean at $commit (gates/_push_build_dirs.py)
+        shared_build_dir="$("$GOH_PY" -S "$GOH/gates/_push_build_dirs.py" --shared "$root" "$commit" 2>/dev/null || true)"
+        [ -z "$shared_build_dir" ] || private_cargo_config "$run_dir" "$shared_build_dir"
     fi
     owner_stamp "$$" >"$run_dir/.owner"
     # Named after the repo, so a tool that reads its project's name from the directory sees the
@@ -377,6 +382,7 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
         elif [ -n "$config_base" ]; then GOH_CROSS_REPO_ROOT="$root" GOH_CHANGE_BASE="$change_base" push_config_run "$config_base"
         else push_full_gate; fi) 2>&1 | tee "$log"
     status="${PIPESTATUS[0]}"
+    [ -z "$shared_build_dir" ] || "$GOH_PY" -S "$GOH/gates/_push_build_dirs.py" --touch-changed "$root" || true
     [ -z "$shadow_base" ] || push_release_shadow "$shadow_base" "$status" push_full_gate_again || true
     # The full gate's END: one ledger row (GOH.GATEBUDGET); none for a release-only or floor push, none under a land
     [ -n "$release_base$config_base${GOH_TIMING_VIA:-}" ] || goh_push_row "$root" "$status" "$commit"

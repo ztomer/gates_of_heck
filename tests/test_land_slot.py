@@ -179,3 +179,30 @@ def test_a_slot_past_keep_is_removed_when_released(repo, tmp_path, monkeypatch):
     assert not Path(extra["path"]).exists() and Path(kept["path"]).is_dir()
     listed = git(repo, "worktree", "list", "--porcelain")
     assert extra["path"] not in listed and kept["path"] in listed
+
+
+def _cargo_build_dir(where: Path) -> Path:
+    out = subprocess.run(
+        ["cargo", "metadata", "-q", "--format-version", "1", "--no-deps", "--offline"],
+        cwd=where, capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
+    ).stdout  # fmt: skip
+    return Path(json.loads(out)["build_directory"])
+
+
+def test_a_removed_slot_takes_its_own_build_dir_with_it(repo, tmp_path, monkeypatch):
+    """GOH.BUILDDIRSHARE: cargo keys the build dir by workspace path, so a slot past KEEP left a
+    full copy behind when it was removed; the main checkout's own build dir stays."""
+    write(repo, "Cargo.toml", '[package]\nname = "x"\nversion = "1.0.0"\nedition = "2021"\n')
+    write(repo, "src/lib.rs", "")
+    git(repo, "add", "-A")
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--no-verify", "-m", "c")
+    monkeypatch.setattr(land_slot, "KEEP", 0)
+    q, sha = tmp_path / "q", git(repo, "rev-parse", "HEAD").strip()
+    slot = land_slot.claim(q, repo, sha)
+    mine, mains = _cargo_build_dir(Path(slot["path"])), _cargo_build_dir(repo)
+    assert mine != mains, "fixture: the slot and the main checkout share one build dir"
+    for d in (mine, mains):
+        (d / "debug").mkdir(parents=True, exist_ok=True)
+    land_slot.release(q, repo, slot["path"], slot["token"])
+    assert not Path(slot["path"]).exists() and not mine.exists(), f"left behind: {mine}"
+    assert mains.is_dir(), "the main checkout's build dir was removed"

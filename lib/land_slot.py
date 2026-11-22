@@ -42,6 +42,7 @@ import time
 import uuid
 from pathlib import Path
 
+import build_dir_reap
 import full_run
 import pid_owner
 
@@ -114,13 +115,16 @@ def _take(q: Path, owner: Path, token: str) -> bool:
         tmp.unlink(missing_ok=True)
 
 
-def _drop(main: Path, wt: Path) -> None:
-    """WT gone as a worktree and as a directory."""
+def _drop(main: Path, wt: Path, reap: bool = False) -> None:
+    """WT gone as a worktree and as a directory; with REAP, the cargo build dirs it alone used
+    (lib/build_dir_reap.py: a removed slot's copy no longer waits for a reclaimer)."""
+    builds = build_dir_reap.owned(wt, main) if reap else []
     with contextlib.suppress(OSError):
         full_run._git(main, "worktree", "remove", "--force", str(wt), write=True)
     shutil.rmtree(wt, ignore_errors=True)
     with contextlib.suppress(OSError):
         full_run._git(main, "worktree", "prune", write=True)
+    build_dir_reap.remove(builds)
 
 
 def claim(q: Path, main: Path, sha: str) -> dict:
@@ -176,7 +180,7 @@ def release(q: Path, main: Path, wt: str, token: str) -> None:
         return
     with contextlib.suppress(ValueError):
         if int(Path(wt).name) >= KEEP:
-            _drop(main, Path(wt))
+            _drop(main, Path(wt), reap=True)
     owner.unlink(missing_ok=True)
 
 
