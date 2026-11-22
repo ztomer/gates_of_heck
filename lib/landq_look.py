@@ -86,6 +86,15 @@ def _mins(s: float) -> str:
     return f"{m}:{sec:02d}"
 
 
+def _age(name: str) -> str:
+    """'requested m:ss ago; ' -- the land's own age, from its request name's time_ns prefix
+    (GOH.WAITELAPSED: the call's own wait read the same on every call), or ""."""
+    try:
+        return f"requested {_mins(time.time() - int(name.split('-', 1)[0]) / 1e9)} ago; "
+    except ValueError:
+        return ""
+
+
 def status(q: Path) -> int:
     for d in ("pending", "running"):
         for f in sorted((q / d).glob("*.json")) if (q / d).is_dir() else []:
@@ -215,7 +224,7 @@ def _wait(q: Path, what: str, timeout: float, nudge: Callable[[], None]) -> tupl
             was, since, told = now, tick, tick
         elif now and tick - told >= heartbeat:  # unchanged: again, with how long (GOH.WAITEARLY)
             _say(info, f"goh land --wait: {what} is still {now}, for {_mins(tick - since)} "
-                       f"(waited {_mins(tick - begun)})")  # fmt: skip
+                       f"({_age(name)}waited {_mins(tick - begun)})")  # fmt: skip
             told = tick
         if tick > start_by:
             whole = "; its done record is not a whole record" if torn else ""

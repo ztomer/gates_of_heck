@@ -143,3 +143,30 @@ def test_a_closed_stdout_still_exits_by_the_record(tmp_path):
         if p.poll() is None:
             p.kill()
             p.wait()
+
+
+@pytest.mark.load_sensitive  # a thread waited for, bounded by patience
+def test_a_wait_on_a_land_running_twenty_minutes_says_so(tmp_path, monkeypatch):
+    """GOH.WAITELAPSED: each 170 s call said 'for 2:00 (waited 2:00)' whatever the land's age; the
+    line names the land's own time since its request (the request name's time_ns prefix)."""
+    said: list[str] = []
+    monkeypatch.setattr(landq_look, "info", said.append)
+    monkeypatch.setattr(landq_look, "ok", said.append)
+    monkeypatch.setattr(landq_look, "poll", 0.01)
+    monkeypatch.setattr(landq_look, "heartbeat", 0.05)
+    name = f"0{time.time_ns() - 20 * 60 * 10**9}-T.S"
+    _running(tmp_path, name)
+    out: list[int] = []
+    t = threading.Thread(
+        target=lambda: out.append(landq_look.wait(tmp_path, "T.S", patience(60), lambda: None))
+    )
+    t.start()
+    give_up = GiveUp(30)
+    while not any("still" in s for s in said):
+        assert not give_up.passed(), said
+        time.sleep(0.01)
+    _land(tmp_path, name)
+    t.join(patience(30))
+    assert out == [0]
+    line = next(s for s in said if "still" in s)
+    assert "requested 20:0" in line and "waited" in line, line
