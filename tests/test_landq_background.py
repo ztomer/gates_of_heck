@@ -7,7 +7,6 @@ lane's `--wait ITEM` follows it -- a red pre-step included.
 
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 import time
@@ -17,7 +16,11 @@ import pytest
 from conftest import git, hermetic_env
 from orphan_kit import wait_for_file
 from test_landq import FAKE_LOOPCTL, LANDQ, _land_wt, landq, recorded
-from timing_bounds import assert_sooner, patience
+from timing_bounds import GiveUp, assert_sooner, patience
+
+sys.path.insert(0, str(LANDQ.parent.parent / "lib"))
+import land_reds  # lib/, on the path above
+import landq_state
 
 
 @pytest.fixture
@@ -107,7 +110,7 @@ def test_a_wait_beside_an_enqueue_says_pre_step_running_and_never_the_last_red(r
     done = tmp_path / "landq" / "done"
     done.mkdir(parents=True)
     old = {"item": "T.WS", "state": "red", "sha": "b" * 40, "mode": "land", "why": "try 1"}
-    (done / "1000000001-T.WS.json").write_text(json.dumps(old))
+    landq_state.write(done / "1000000001-T.WS.json", old)
     at = {k: tmp_path / k for k in ("in-check", "go-check", "in-pre", "go-pre")}
     hold = {k: f"touch {at['in-' + k]}; {wait_for_file(at['go-' + k])}" for k in ("check", "pre")}
     env = {**env, "GOH_LAND_CHECK_STEPS": hold["check"], "GOH_LAND_PRE": hold["pre"]}
@@ -117,9 +120,9 @@ def test_a_wait_beside_an_enqueue_says_pre_step_running_and_never_the_last_red(r
                            stderr=subprocess.STDOUT, text=True)  # fmt: skip
     try:
         for phase in ("check", "pre"):
-            give_up = time.monotonic() + patience(60)
+            give_up = GiveUp(60)
             while not at[f"in-{phase}"].exists() and enq.poll() is None:
-                assert time.monotonic() < give_up, f"the enqueue never reached its {phase}"
+                assert not give_up.passed(), f"the enqueue never reached its {phase}"
                 time.sleep(0.05)
             waited = landq(env, "--wait", "T.WS", "--timeout", "1")
             out = waited.stdout + waited.stderr
@@ -163,7 +166,4 @@ def test_a_pre_step_red_record_keeps_each_failing_test_and_a_bounded_traceback(r
     assert "E       AssertionError: lib/x.py has no row in docs/map.md" in log, log
     assert "FAILED tests/test_wiring.py::test_planted_red" in log, log
     assert "frame 59" in log and "frame 0\n" not in log, log  # the last lines, bounded
-    sys.path.insert(0, str(LANDQ.parent.parent / "lib"))
-    import land_reds
-
     assert land_reds.judge({**rec, "why": rec.get("why", "")})["cause"] == "consistency-table"
