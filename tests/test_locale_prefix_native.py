@@ -50,3 +50,11 @@ def test_a_scan_that_cannot_run_is_exit_2(repo: Path, tmp_path: Path):
     outside.mkdir()
     r = run_goh(outside, "locale-prefix", env=hermetic_env(drop_git=True, GOH_DIR=str(REPO_ROOT)))
     assert r.returncode == 2, r.stdout + r.stderr
+
+
+def test_a_listing_git_cannot_give_is_exit_2(repo: Path, tmp_path: Path):
+    write(repo, "build.sh", PLANTED)
+    commit_all(repo)
+    (repo / ".git" / "index").write_bytes(b"not an index")  # rev-parse works, ls-files cannot
+    r = _check(repo, tmp_path)
+    assert r.returncode == 2, r.stdout + r.stderr
