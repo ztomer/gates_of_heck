@@ -126,8 +126,10 @@ def test_the_worktree_root_is_overridable(tmp_path):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     cwd = (tmp_path / "r.txt").read_text().split("cwd=")[1].strip()
     assert cwd.startswith(os.path.realpath(root)), cwd
-    left = [p for p in root.iterdir() if p.suffix != ".source"]  # the stable path's identity stays
+    # the stable path's identity stays; its tree is kept, unregistered (GOH.PUSHMTIME)
+    left = [p for p in root.iterdir() if p.suffix not in (".source", ".kept")]
     assert not left, f"the worktree was not removed: {left}"
+    assert _git(repo, "worktree", "list").count("\n") == 0, "the kept tree is still a worktree"
 
 
 def test_ignored_files_are_absent_unless_kept(tmp_path):

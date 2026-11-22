@@ -16,6 +16,7 @@ owner_stamp() {
 reap_dead_runs() {
     local export_root="$1" dir pid
     for dir in "$export_root"/*/; do
+        case "$dir" in *.kept/) continue ;; esac   # a stable export's kept tree, never a run (push_export_tree)
         if [ ! -f "$dir.owner" ]; then
             # An ownerless run dir is a dead run's once it has idled past the gap between a run's
             # mkdir and its `.owner` (milliseconds): a stray writer (an sccache server a test
@@ -38,8 +39,45 @@ reap_dead_runs() {
     for marker in "$export_root"/*.source; do
         [ -f "$marker" ] || continue
         read -r owner <"$marker" || owner=""
-        [ -n "$owner" ] && [ -e "$owner" ] || rm -f "$marker"
+        [ -n "$owner" ] && [ -e "$owner" ] && continue
+        rm -f "$marker"
+        [ ! -e "${marker%.source}.kept" ] || goh_rm_tree "${marker%.source}.kept"
     done
+}
+
+# push_export_tree ROOT TREE COMMIT KEPT: TREE, a detached worktree of ROOT at COMMIT (GOH.PUSHMTIME).
+# A fresh `worktree add` gave every file a new mtime, so cargo rebuilt every workspace crate in
+# every profile. KEPT is the last run's tree, set aside UNREGISTERED (push_keep_tree: no extra
+# `git worktree list` entry): its files move into a --no-checkout worktree, the index is read and
+# refreshed by content, and `reset --hard` rewrites only the files that differ, so the rest keep
+# their mtimes and cargo rebuilds only what changed. `clean -ffdx` removes all a gate left (the
+# in-tree target/ kept: cargo's own). Any step refused: a fresh tree, as before.
+push_export_tree() {
+    if [ -n "$4" ] && [ -d "$4" ] && git -C "$1" worktree add --detach --quiet --no-checkout "$2" "$3"; then
+        local f ok=1
+        for f in "$4"/* "$4"/.[!.]* "$4"/..?*; do
+            [ -e "$f" ] || [ -L "$f" ] || continue
+            [ "${f##*/}" = .git ] || mv "$f" "$2/" || ok=""
+        done
+        goh_rm_tree "$4"
+        if [ -n "$ok" ] && git -C "$2" read-tree HEAD && { git -C "$2" update-index -q --refresh >/dev/null || :; } &&
+            git -C "$2" reset -q --hard && git -C "$2" clean -ffdxq -e /target; then
+            return 0
+        fi
+        git -C "$1" worktree remove --force "$2" >/dev/null 2>&1 || goh_rm_tree "$2"
+        git -C "$1" worktree prune
+    fi
+    [ -z "$4" ] || [ ! -e "$4" ] || goh_rm_tree "$4"
+    git -C "$1" worktree add --detach --quiet "$2" "$3"
+}
+
+# push_keep_tree ROOT TREE KEPT: TREE set aside at KEPT for the next run, mtimes kept, and no longer
+# a worktree of ROOT (its .git link dropped, the entry pruned). Exit 1 leaves TREE for removal.
+push_keep_tree() {
+    [ ! -e "$3" ] || goh_rm_tree "$3"
+    mv "$2" "$3" 2>/dev/null || return 1
+    rm -f "$3/.git"
+    git -C "$1" worktree prune 2>/dev/null || true
 }
 
 # THE SIBLINGS. A path dependency that leaves the checkout resolves BESIDE it, and beside the

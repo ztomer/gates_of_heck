@@ -50,8 +50,9 @@ def _push(repo: Path, tmp_path: Path, export_root: Path) -> subprocess.Completed
 
 def _run_litter(export_root: Path) -> list[Path]:
     """What a run left in the export root, beyond the `<run dir>.source` marker that names a
-    stable export's checkout and outlives every run by design."""
-    return [p for p in export_root.iterdir() if p.suffix != ".source"]
+    stable export's checkout and the `<run dir>.kept` tree the next run reuses (GOH.PUSHMTIME),
+    both of which outlive every run by design."""
+    return [p for p in export_root.iterdir() if p.suffix not in (".source", ".kept")]
 
 
 def _stamp(pid: int) -> str:

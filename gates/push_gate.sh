@@ -169,11 +169,13 @@ remote_url="${2:-}"
 gated_commits=" "
 log_root="${GOH_PUSH_LOGS:-$HOME/.cache/goh/push-logs}"
 keep_failed_logs=20
-worktree="" run_dir="" refs_file=""
+worktree="" run_dir="" refs_file="" kept_tree=""
 export_root="${GOH_PUSH_WORKTREES:-$HOME/.cache/goh/push}"; goh_suite_cache_ok "$log_root" "the push log" && goh_suite_cache_ok "$export_root" "the push worktree" || exit 2
 
 cleanup_run() {
-    if [ -n "$worktree" ] && [ -d "$worktree" ]; then
+    if [ -n "$kept_tree" ] && [ -d "$worktree" ] && push_keep_tree "$root" "$worktree" "$kept_tree"; then
+        :   # kept for the next run, its mtimes with it (push_export_tree, lib/push_runs.sh; GOH.PUSHMTIME)
+    elif [ -n "$worktree" ] && [ -d "$worktree" ]; then
         git -C "$root" worktree remove --force "$worktree" >/dev/null 2>&1 || goh_rm_tree "$worktree"
     fi
     if [ -n "$run_dir" ] && [ -d "$run_dir" ]; then
@@ -335,7 +337,9 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
         p95="minutes; no push of $(basename "$root") measured yet"
     fi
     info "pre-push: this gate runs long ($p95): from an agent, run \`git push\` with run_in_background, or hand it to \`goh land --enqueue REPO SHA\`"
-    git -C "$root" worktree add --detach --quiet "$worktree" "$commit"
+    # A ship sharing the checkout's build dir builds from a fresh tree: kept mtimes vouch only for the export's own dir.
+    kept_tree="" && [ -n "$export_build_dir$shared_build_dir" ] || kept_tree="$run_dir.kept"
+    push_export_tree "$root" "$worktree" "$commit" "$kept_tree"   # lib/push_runs.sh
     export_siblings "$worktree" "$run_dir" "$root"   # every sibling a tracked manifest's path dependency names (lib/push_runs.sh)
     # ...and the build dirs cargo keys on the export, asked while it exists (gates/_push_build_dirs.py).
     [ -n "$export_build_dir" ] || "$GOH_PY" -S "$GOH/gates/_push_build_dirs.py" "$worktree" 2>/dev/null |
