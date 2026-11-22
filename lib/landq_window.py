@@ -26,7 +26,9 @@ with none), so the lander knows when each is DUE (start + that + 30 s). The wait
 latest due marker, never past GOH_LANDQ_WINDOW_MAX (default 300 s) past the head's filing: a land
 gate is ~850 s (lock to landed, docs/reuse.md), so a hold of at most 300 s that saves another
 land a whole gate pays for itself whenever it catches one in three. A marker due later than that
-is waited for only the base bound; one with no `at` likewise; a lone land, none at all.
+is not waited for at all (GOH.WINDOWDUE: 27 of 35 windows closed on the base bound having caught
+nothing, median 120 s, 58 min in all, each with a marker still in a pre-step due past the cap); one
+with no `at`, whose due is unknown, gets the base bound; a lone land, none at all.
 
 Each wait is one line in lander.log as it starts and one as it ends, naming the markers it waited
 on and the seconds it took. Pinned by tests/test_landq_window.py, on a fake clock.
@@ -83,13 +85,26 @@ def expected(q: Path, repo: object) -> float:
     return statistics.median(took) if took else PRE_S
 
 
+def due_inside(head_filed: float, waiting: list[dict], took: float) -> list[dict]:
+    """The markers worth holding for (GOH.WINDOWDUE): one whose pre-step is DUE by the cap
+    (start + TOOK + slack, never later than the head's filing + the most), and one that says no
+    start, whose due is unknown. A marker due past the cap is not: the wait would close on the
+    bound with it still in its pre-step (27 of 35 windows did, median 120 s, 58 min in all)."""
+    cap = head_filed + max(window(), most())
+    return [
+        m for m in waiting
+        if not isinstance(m.get("at"), (int, float)) or float(m["at"]) + took + SLACK_S <= cap
+    ]  # fmt: skip
+
+
 def deadline(head_filed: float, waiting: list[dict], took: float) -> float:
-    """The window's end: the base bound, stretched to the latest marker due within the most."""
-    base, cap = head_filed + window(), head_filed + max(window(), most())
-    due = [
-        float(m["at"]) + took + SLACK_S for m in waiting if isinstance(m.get("at"), (int, float))
-    ]
-    return max([base, *(d for d in due if d <= cap)])
+    """The window's end: the base bound, stretched to the latest marker due within the most; the
+    head's own filing (no wait) when no marker of WAITING is due inside the window."""
+    base = head_filed + window()
+    if not (worth := due_inside(head_filed, waiting, took)):
+        return head_filed
+    due = [float(m["at"]) + took + SLACK_S for m in worth if isinstance(m.get("at"), (int, float))]
+    return max([base, *due])
 
 
 def filed(path: Path) -> float:
@@ -156,6 +171,8 @@ def hold(
         size, left = len(_batchable(pending, head.get("repo"))), end - clock()
         why = ("no enqueue is left in its pre-step" if not waiting else
                "the batch is full" if size >= cap else
+               f"none of {_names(waiting)} is due inside the window" if not due_inside(
+                   at, waiting, took) else
                f"the bound ({end - at:.0f}s past its filing) is reached with {_names(waiting)} "
                "still in the pre-step" if left <= 0 else "")  # fmt: skip
         if why:

@@ -281,21 +281,42 @@ def test_a_pre_step_due_soon_after_the_base_bound_is_waited_for(window, q):
     assert "its pre-steps take 300s" in said[0], said
 
 
-def test_the_stretch_is_bounded_and_a_marker_due_past_it_gets_the_base_bound(window, q):
+def test_the_stretch_is_bounded_to_the_marker_due_inside_it(window, q):
     clock, said = Clock(T0), []
     _done(q, [300.0])
     _file(q, clock.t, "T.ONE")
     _started(q, "T.TWO", clock.t - 200)  # due at +130, never files
     assert _hold(window, q, clock, said) == ["T.ONE"]
     assert clock.slept == pytest.approx(130)  # its due, not a minute more
-    clock, said = Clock(T0 + 1000), []
-    for p in (q / "pending").glob("*.json"):
-        p.unlink()
-    (q / "enqueuing" / f"{os.getpid()}-T.TWO.json").unlink()
+
+
+def test_a_marker_due_inside_the_cap_but_past_the_base_bound_is_waited_for(window, q):
+    """GOH.WINDOWDUE, the kept half: due at +250 (base 120, cap 300) it holds the lander to 250."""
+    clock, said = Clock(T0), []
+    _done(q, [220.0])
     _file(q, clock.t, "T.ONE")
-    _started(q, "T.THREE", clock.t)  # just started: due at +330, past the 300 s most
+    _started(q, "T.TWO", clock.t)  # due at 220 + 30 = +250, never files
     assert _hold(window, q, clock, said) == ["T.ONE"]
-    assert clock.slept == pytest.approx(window.DEFAULT_S)
+    assert clock.slept == pytest.approx(250)
+    assert "T.TWO" in said[0] and "bound" in said[1], said
+
+
+def test_a_marker_due_past_the_cap_is_not_waited_for(window, q):
+    """GOH.WINDOWDUE: just started, due at +330 (cap 300): the old code held the base 120 s for it
+    and closed on the bound with it still in its pre-step. Nothing is due inside the window, so the
+    lander takes its batch at once, and says nothing (no wait began)."""
+    clock, said = Clock(T0), []
+    _done(q, [300.0])
+    _file(q, clock.t, "T.ONE")
+    _started(q, "T.THREE", clock.t)
+    assert _hold(window, q, clock, said) == ["T.ONE"]
+    assert (clock.slept, said) == (0.0, [])
+    # one due inside and one past: it waits for the first only, and ends at ITS due
+    _started(q, "T.FOUR", clock.t - 200)  # due at +130
+    clock = Clock(T0)
+    assert _hold(window, q, clock, said) == ["T.ONE"]
+    assert clock.slept == pytest.approx(130)
+    assert "T.FOUR" in said[0], said
 
 
 def test_the_most_is_the_named_setting_and_never_below_the_base(window, q, monkeypatch):

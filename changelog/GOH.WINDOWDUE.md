@@ -1,0 +1,1 @@
+- fix(land): the batch window holds a land only for an enqueue whose pre-step is DUE inside the window (GOH.WINDOWDUE): a marker due past `GOH_LANDQ_WINDOW_MAX` is no longer waited for the base 120 s. 27 of 35 windows closed on the bound having caught nothing (median 120 s, 58 min in all); a marker due inside the window, or with no start, is waited for as before.
