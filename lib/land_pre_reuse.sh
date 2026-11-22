@@ -1,4 +1,4 @@
-# shellcheck shell=bash disable=SC2154,SC2034  # pre_reused: land.sh's ledger field; tip, here, main, pre: tools/land.sh's, which sources it
+# shellcheck shell=bash disable=SC2154,SC2034  # pre_reused, pre_why: land.sh's ledger fields; tip, here, main, pre: tools/land.sh's, which sources it
 # lib/land_pre_reuse.sh -- a land's pre-step verdict, reused where the tip moved only in paths no
 # test reads (GOH.PRELANDTWICE). Sourced by tools/land.sh, whose land_pre, tip, here, main, pre,
 # verdicts and GOH_PY it reads; lib/pre_reuse.py decides. Pinned by tests/test_pre_reuse.py.
@@ -39,12 +39,17 @@ land_pre_keep() {
 # some tests read run those tests alone; anything else, or no verdict to reuse, runs the whole set.
 # The judged tip's record stays the gate's, which carries from it what the diff does not choose.
 land_pre_again() {
-    local why out rc=0 moved=() narrow cmd structural=()
+    local why out rc=0 moved=() also=() narrow cmd structural=()
     if [ -z "$pre_judged" ]; then
+        # Every decision is recorded (GOH.SUITEONCEMISS); never worded "no verdict", which names a
+        # pre-land past its deadline (GOH.PRESTEPDEADLINE).
+        pre_why="rerun: nothing kept from the enqueue"
+        [ -n "${pre_from:-}" ] || [ -n "${GOH_LAND_PRE_ONLY:-}" ] \
+            || info "pre-land: nothing kept from the enqueue for this land -- the set runs"
         land_pre
         return
     fi
-    # The judged verdict's record names the set it judged: a move to the selection's own code is
+    # The judged verdict's record names the set it judged: a move to the pre-step's own code is
     # held to it (GOH.PRESTEPSELFMOVE, lib/pre_reuse.py `within`).
     out="$("$GOH_PY" "$GOH/lib/pre_reuse.py" --root "$here" --judged "$pre_judged" --tip "$tip" \
         --base "$(git -C "$main" rev-parse HEAD)" ${verdicts:+--record "$verdicts"} </dev/null 7>&- 8<&-)" || rc=$?
@@ -52,17 +57,22 @@ land_pre_again() {
     # The binary's build inputs moved (GOH.PRECODERUST): structural --full runs the binary, so the
     # narrow run does too, before the tests that run it; the verdict's other tests stand.
     [[ $'\n'"$out"$'\n' != *$'\n--structural\n'* ]] || structural=(--structural)
+    # The tests the tip's set adds after a move to the pre-step's own code (GOH.SUITEONCEMISS): run
+    # too, each a changed test file to the narrow run (`readers` chooses a changed test file).
+    mapfile -t also < <(sed -n 's/^--also //p' <<<"$out")
     case $rc in
-        0)  pre_reused="${pre_judged:0:12} whole"
+        0)  pre_reused="${pre_judged:0:12} whole" pre_why="reuse: $why"
             ok "pre-land: the verdict $1 judged at ${pre_judged:0:8} holds for ${tip:0:8} -- not run again: $why" ;;
         3)  info "pre-land: the verdict $1 judged at ${pre_judged:0:8} holds for ${tip:0:8} but what the moved paths' readers judge: $why"
-            pre_reused="${pre_judged:0:12} readers"
+            pre_reused="${pre_judged:0:12} readers" pre_why="narrow: $why"
             narrow="$(mktemp "$(goh_tmp)/goh-land-narrow.XXXXXX")" || exit 2
             mapfile -t moved < <(git diff --name-only --no-renames "$pre_judged" "$tip" 7>&-)
+            moved+=(${also[@]+"${also[@]}"})
             printf -v cmd '%q ' "$GOH_PY" tools/affected_tests.py --run --readers-only ${structural[@]+"${structural[@]}"} --changed "${moved[@]}"
             land_pre "$cmd" "$narrow"
             rm -f "$narrow" "$narrow.judges" ;;
         *)  info "pre-land: the verdict $1 judged at ${pre_judged:0:8} is not ${tip:0:8}'s ($why) -- run again"
+            pre_why="rerun: $why"
             land_pre ;;
     esac
 }

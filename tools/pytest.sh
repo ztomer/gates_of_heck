@@ -41,9 +41,12 @@ if [ "$#" -eq 0 ] && [ -s "${GOH_LAND_VERDICTS_REUSE:-}" ] && [ -s "$GOH_LAND_VE
         --base "$suite_base" </dev/null)" || suite_rc=$?
     if [ "$suite_rc" -eq 0 ] && [ -n "${suite_why#*$'\n'}" ] && [ "${suite_why#*$'\n'}" != "$suite_why" ]; then
         printf '%s\n' "${suite_why#*$'\n'}" >"$GOH_LAND_VERDICTS_REUSE.reused"
+        # Every decision, either way, for the land's record (GOH.SUITEONCEMISS: tools/land.sh `.why`).
+        printf 'reused: %s\n' "${suite_why%%$'\n'*}" >>"$GOH_LAND_VERDICTS_REUSE.why" || true
         ok "suite: the pre-step's verdict ${suite_why#*$'\n'} holds for this tree -- not run again: ${suite_why%%$'\n'*}"
         exit 0
     fi
+    printf 'missed: %s\n' "${suite_why%%$'\n'*}" >>"$GOH_LAND_VERDICTS_REUSE.why" || true
     info "suite: the pre-step's verdict is not this run's (${suite_why%%$'\n'*}) -- the suite runs"
 fi
 # ONE SUITE PER CHECKOUT (G2e, 2026-10-25). Two suites of one tree at once share its bin/, its

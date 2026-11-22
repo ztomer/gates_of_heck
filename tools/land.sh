@@ -64,18 +64,19 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # the wait for the lock is its own field, not gate time). A land that never took the lock (a
 # refusal before it, a failed pre-step) measured no gate and writes no row. The ledger never fails
 # a land: the script's exit status is what it was.
-verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall="" pre_run="" pre_workers="" pre_reused="" suite_reused=""
+verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall="" pre_run="" pre_workers="" pre_reused="" suite_reused="" pre_why="" suite_why=""
 # shellcheck disable=SC2329  # invoked by the EXIT trap below
 land_exit() {
     local rc=$?
     rm -f "$verdicts" "$pre_start"
-    [ -z "$verdicts" ] || rm -f "$verdicts.base" "$verdicts.reused"
+    [ -z "$verdicts" ] || rm -f "$verdicts.base" "$verdicts.reused" "$verdicts.why"
     [ -z "${GOH_LAND_PRE_ONLY:-}${GOH_LAND_STACK_ONTO:-}" ] || return "$rc"   # the enqueue's pre-step run, a stacking rebase: no land, no ledger row
     goh_span_record land "$(goh_repo_id "${main:-.}")" "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" \
         ${land_timings:+--timings "${GOH_TIMINGS:-$land_timings}"} --field "wait_lock_s=$lock_wait" \
         --field "exit=$rc" ${pre_wall:+--field "pre_s=$pre_wall"} \
         ${pre_run:+--field "pre_run_s=$pre_run" --field "pre_workers=$pre_workers"} \
         ${pre_reused:+--field "pre_reused=$pre_reused"} ${suite_reused:+--field "suite_reused=$suite_reused"} \
+        ${pre_why:+--field "pre_why=$pre_why"} ${suite_why:+--field "suite_why=$suite_why"} \
         --field "sha=$(printf %.12s "${tip:-}")" || true
     [ -z "$land_timings" ] || { [ ! -s "$land_timings" ] || [ -z "${GOH_LAND_TIMINGS_KEEP:-}" ] || mv -f "$land_timings" "$GOH_LAND_TIMINGS_KEEP"   # kept beside the land's log (GOH.LANDLEAKS)
         rm -f "$land_timings" "$land_timings".*; }
@@ -395,6 +396,7 @@ land_timings="$(mktemp "$(goh_tmp)/goh-land-timings.XXXXXX")" || land_timings=""
 . "$GOH/lib/land_par.sh" || exit 2
 land_par
 [ -z "$verdicts" ] || [ ! -s "$verdicts.reused" ] || IFS= read -r suite_reused <"$verdicts.reused" || true
+land_suite_why   # why the gate's suite took or missed the enqueue's verdict (GOH.SUITEONCEMISS, lib/land_gate.sh)
 if [ "$tip_root" != "$GOH" ]; then   # the tip's gates key the goh-landed line (GOH.VERDICTKEYDRIFT)
     GOH="$tip_root"; export GOH_DIR="$GOH"; goh_path_front PYTHONPATH "$GOH"
 fi

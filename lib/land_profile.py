@@ -166,7 +166,8 @@ def land(q: Path, item: str, chain: list[tuple[Path, dict]], gates: list[dict],
             "landed": rec.get("landed") or rec.get("sha"),
             "batch": (rec.get("batch") or {}).get("id"),
             "pre_affected": rec.get("pre_affected"), "pre_run": rec.get("pre_run"),
-            "kind": land_spd.lander_kind(found)}  # fmt: skip
+            "kind": land_spd.lander_kind(found),
+            "decisions": land_spd.decisions(found)}  # fmt: skip
 
 
 def lands(q: Path, gates: list[dict]) -> list[dict]:

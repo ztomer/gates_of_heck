@@ -1,4 +1,4 @@
-# shellcheck shell=bash disable=SC2154  # verdicts, tip, ship_timings, land_timings, ship_full: land.sh's, set before this is sourced
+# shellcheck shell=bash disable=SC2154,SC2034  # verdicts, tip, ship_timings, land_timings, ship_full: land.sh's, set before this is sourced; suite_why: its ledger field
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # lib/land_gate.sh -- the land's gate run, sourced by tools/land.sh (GOH_PY, GOH, tip, verdicts,
 # land_timings, ship_timings, land_row); pinned by tests/test_land_prewait.py and tests/test_land.py.
@@ -51,4 +51,18 @@ land_gate() {
         err "land.sh: the gate failed on ${tip:0:8} under $2's gates -- nothing landed"
         exit 1
     fi
+}
+
+# land_suite_why -- EVERY REUSE DECISION RECORDED (GOH.SUITEONCEMISS): why the gate's suite took or
+# missed the enqueue's verdict (tools/pytest.sh `<record>.why`, a line per gate run), or why it never
+# asked; logged, and kept for the land's ledger row (`suite_why`, beside the pre-land's `pre_why`).
+land_suite_why() {
+    if [ ! -s "${verdicts:-}" ]; then
+        suite_why="missed: no kept record from the enqueue"
+    elif [ -s "$verdicts.why" ]; then
+        suite_why="$(paste -sd ';' "$verdicts.why")" || suite_why=""
+    else
+        suite_why="missed: the gate ran no whole suite to ask (tools/pytest.sh with no arguments)"
+    fi
+    info "suite: $suite_why"
 }

@@ -23,6 +23,11 @@ every member. This module is the one definition, three parts:
                        `ran` against `took`), and the enqueue pre-step's wait, run and worker count
                        (the record's `pre_run`, else the line `pre-land green in N s: waited W s,
                        ran R s of D s at K workers` of the enqueue's own log)
+    decisions(texts)   EVERY REUSE DECISION (GOH.SUITEONCEMISS): what the lander's pre-land did with
+                       the enqueue's verdict (`reuse`, `narrow`, `rerun`) and why, from its log
+                       line, and what the gate's suite did with it (`reused`, `missed`) and why
+                       (tools/land.sh's `suite:` line, from tools/pytest.sh); `summary` counts
+                       them by reason, shas and numbers masked and a moved path named `<path>`
 
 Pinned by tests/test_land_spd.py.
 """
@@ -33,6 +38,7 @@ import datetime as dt
 import re
 import statistics
 import subprocess
+from collections import Counter
 from pathlib import Path
 
 import land_e2e
@@ -44,8 +50,41 @@ PRE_TOOK = re.compile(
 ENQUEUED = re.compile(r"^✓ enqueued .*/pending/(\S+)\.json\s*$", re.MULTILINE)
 REUSED = re.compile(r"pre-land: the verdict .* not run again")
 NARROW = re.compile(r"pre-land: the verdict .* but what the moved paths' readers judge")
-RERUN = re.compile(r"pre-land: the verdict .*run again|pre-land: no verdict from the enqueue")
+RERUN = re.compile(
+    r"pre-land: the verdict .*run again|pre-land: no verdict from the enqueue|"
+    r"pre-land: nothing kept from the enqueue"
+)
 RAN = re.compile(r"✓ pre-land green in \d+")
+PRE_WHY = re.compile(
+    r"pre-land: (?:the verdict .*? (?:holds for \S+ -- not run again: (?P<reuse>.*)|holds for "
+    r"\S+ but what the moved paths' readers judge: (?P<narrow>.*)|is not \S+'s \((?P<rerun>.*)\) "
+    r"-- run again)|(?P<none>no verdict from the enqueue|nothing kept from the enqueue)\b.*)$",
+    re.MULTILINE,
+)
+SUITE_WHY = re.compile(r"suite: (reused|missed): (.*)$", re.MULTILINE)
+
+
+def decisions(texts: list[str]) -> dict[str, tuple[str, str] | None]:
+    """{"pre": (kind, why), "suite": (kind, why)} of the lander's first pre-land decision and the
+    gate's suite (module doc); None for a decision the logs do not record."""
+    text = "\n".join(texts)
+    pre = None
+    if m := PRE_WHY.search(text):
+        kind = next(k for k in ("reuse", "narrow", "rerun", "none") if m.group(k) is not None)
+        pre = (
+            ("rerun", "nothing kept from the enqueue") if kind == "none" else (kind, m.group(kind))
+        )
+    suite = SUITE_WHY.search(text)
+    return {"pre": pre, "suite": (suite.group(1), suite.group(2)) if suite else None}
+
+
+def reason(why: str) -> str:
+    """WHY as a class: its first clause, a leading moved path `<path>`, shas and numbers masked."""
+    head = re.split(r", and |; |: \d+ moved path", why, maxsplit=1)[0]
+    head = re.sub(r"^\S+ moved:", "<path> moved:", head.strip())
+    if re.match(r"\d+ moved paths?\b", head):  # the paths it lists are the land's, not the class
+        head = re.sub(r" \(\d+ merged: [^)]*\)", "", head).split(": ", 1)[0]
+    return re.sub(r"\b\d+\b", "N", re.sub(r"\b[0-9a-f]{7,40}\b", "<sha>", head))
 
 
 def pre_run(lines: list[str]) -> dict | None:
@@ -158,7 +197,10 @@ def summary(q: Path, rows: list[dict]) -> dict:
     """The SPD figures over the landed ROWS (land_profile.land's): see the module doc."""
     c2l, e2e, whole, ran, took, wait, run, workers = [], [], 0, 0, 0, [], [], []
     judged = no_pre = 0
+    why: dict[str, Counter] = {"pre": Counter(), "suite": Counter()}
     for r in rows:
+        for part, got in (r.get("decisions") or {}).items():
+            why[part][f"{got[0]}: {reason(got[1])}" if got else "unrecorded"] += 1
         done = authored(r["repo"], r["landed"]) if r.get("landed") and r.get("repo") else None
         if done is not None and r.get("end"):
             c2l.append((r["end"] - done).total_seconds())
@@ -182,7 +224,9 @@ def summary(q: Path, rows: list[dict]) -> dict:
             "whole_rerun_share": whole / judged if judged else None,
             "prestep_ran": ran, "prestep_took": took, "prestep_without_record": no_pre,
             "prestep_wait_s": _med(wait), "prestep_run_s": _med(run),
-            "prestep_workers": _med(workers)}  # fmt: skip
+            "prestep_workers": _med(workers),
+            "pre_why": dict(why["pre"].most_common()),
+            "suite_why": dict(why["suite"].most_common())}  # fmt: skip
 
 
 def _min(s: float | None) -> str:
@@ -204,4 +248,13 @@ def render(name: str, s: dict) -> str:
         f"enqueue pre-step ran the set {s['prestep_ran']}, "
         f"took a kept verdict {s['prestep_took']}\n"
         f"enqueue pre-step: {pre}"
+        + _why("lander pre-land", s.get("pre_why"))
+        + _why("gate suite", s.get("suite_why"))
     )
+
+
+def _why(name: str, counts: dict | None) -> str:
+    """A line of NAME's decisions by reason, the most frequent first; nothing when none."""
+    if not counts:
+        return ""
+    return f"\n{name}: " + "; ".join(f"{n} {why}" for why, n in counts.items())

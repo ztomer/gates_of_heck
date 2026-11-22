@@ -15,21 +15,32 @@ carry (tests/_land_verdicts.py) use. The answer, one line of why first, then a n
 
     0  REUSE   no moved path is read: the verdict judged at J stands (an empty diff too)
     3  NARROW  the moved paths are read only by the nodes listed: run those, keep J's verdict
+               (`--also PATH` lines: tests the tip's set adds after a move to the pre-step's
+               own code, run too; `--structural`: a move the structural gates reach)
                (a move to the binary's build inputs -- Cargo.lock, crates/ -- is NARROW too, the
                nodes the tests that run the binary, and a line `--structural` before them: the
                structural gates run the binary, so structural --full runs again; GOH.PRECODERUST)
-    1  RERUN   anything else, with why -- the pre-step's own code moved (`pre_step_code`: what
-               chooses the set, the pytest entry, the structural gates and all they import,
-               source or run, read from the tip's sources), a file pytest loads before every
-               test, no reads table in the tree, or a diff git cannot give
+    1  RERUN   anything else, with why -- pytest's own configuration or a conftest.py moved,
+               the pre-step's declaration moved, a move to the pre-step's own code whose tip
+               set cannot be compared (below), no reads table in the tree, or a diff git
+               cannot give
 
-THE SELECTION'S OWN CODE (GOH.PRESTEPSELFMOVE): a move to what only the selection reaches
-(`selector_code`: tools/affected_tests.py and its imports that no other pre-step root reaches but
-through it) asks the TIP's selector for the tip's set, seconds, against the set the verdict judged
-(the record's `chosen`, `stamp`). Within it, the move is judged as any moved path is, by its
-readers; a test it adds, a set not recorded, or a selector that fails runs the whole set again,
-and the why names which. GOH.LANEPRESTEP's land ran its set again, 402 s, for lib/binary_runners.py
-(41f73575, a cache: the same set).
+THE PRE-STEP'S OWN CODE (GOH.PRESTEPSELFMOVE, GOH.SUITEONCEMISS): a move to it -- what chooses the
+set, the pytest entry and the structural gates with all they import, source or run, and files
+pytest loads before every test -- asks the TIP's selector for the tip's set, seconds, against the
+set the verdict judged (the record's `chosen`, `stamp`), in the enqueue's own mode (the tree
+readers whose reads are known run only when chosen: GOH.JUDGESBYREADS). A test the tip's set adds
+runs (a line `--also PATH` per file, NARROW); every moved path is judged by its readers, as the
+selection judges a lane's own change to the same files (a base change is the full gate's, and its
+readers are the diff's: lib/test_closure.py `base`); a move the structural gates reach runs them
+first (`--structural`). A set not recorded or a selector that fails runs the whole set again.
+WHY: such moves were a whole re-run in 11 of 11 lander re-runs of 2026-11-21 (`.gatesrc`,
+`lib/pre_reuse.py`, `lib/reuse.py`, `lib/declared_reads.py`, ...), 450-850 s each, while the land
+gate beside it (GOH.GATEPARALLEL) runs the tip's diff-chosen tests under the tip's runner anyway:
+its carry takes nothing from the judged tree across a runner or base move (tests/_land_verdicts.py
+`choose`). What stays a whole re-run: `pyproject.toml` (pytest's own configuration), a
+`conftest.py`, the data pytest's base opens as it loads (every test reads it), and a `.gatesrc`
+whose GOH_LAND_PRE (the pre-step's declaration) moved.
 
 A merged file -- one main moved and the branch changes too -- is judged as any moved path is, by
 the tests that read it (GOH.PRESTEPMOVED). The tree readers are not re-run here: each file the tip
@@ -59,6 +70,7 @@ import argparse
 import importlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -72,7 +84,9 @@ REUSE, RERUN, NARROW = 0, 1, 3
 PRE_CODE = (".gatesrc", "pyproject.toml")
 PRE_ROOTS = ("tools/affected_tests.py", "tools/pytest.sh", "gates/structural.sh")
 PRE_CHECKS = "checks/check_"  # the structural binary runs these by name (crates/goh steps)
-STRUCTURAL = "--structural"  # NARROW's line after the why when the binary's build inputs moved
+STRUCTURAL = "--structural"  # NARROW's line after the why: the structural gates run again
+ALSO = "--also"  # NARROW's line per test file the tip's set adds (GOH.SUITEONCEMISS)
+PRE_DECL = "GOH_LAND_PRE"  # the pre-step's declaration in .gatesrc: a move there reruns the set
 SELECTOR = "tools/affected_tests.py"  # what chooses the set (GOH.PRESTEPSELFMOVE)
 
 
@@ -124,43 +138,55 @@ def _plural(n: int, what: str) -> str:
     return f"{n} {what}" + ("s" if n != 1 else "")
 
 
-def within(root: Path, table, tip: str, base: str, judged: list[str] | None) -> tuple[bool, str]:
-    """(the tip's selector chooses no test the verdict did not judge, why) (GOH.PRESTEPSELFMOVE):
-    the tip's `affected` over its diff from main, each node judged by itself or its whole file."""
+def within(root: Path, table, tip: str, base: str,
+           judged: list[str] | None) -> tuple[list[str] | None, str]:  # fmt: skip
+    """(the tests the tip's selector chooses that the verdict did not judge, why); None when it
+    cannot tell (GOH.PRESTEPSELFMOVE): the tip's `affected` over its diff from main in the
+    enqueue's mode (the judged set's own), each node judged by itself or its file."""
     if judged is None:
-        return False, "the set the verdict judged is not recorded (its record has no `chosen`)"
+        return None, "the set the verdict judged is not recorded (its record has no `chosen`)"
     if not hasattr(table, "affected"):
-        return False, f"the tip's {SELECTOR} chooses no set (no `affected`)"
+        return None, f"the tip's {SELECTOR} chooses no set (no `affected`)"
     mb = _git(root, "merge-base", base, tip)
     changed = _diff(root, mb, tip) if mb else None
     if changed is None:
-        return False, f"git cannot diff main {base[:8]}...{tip[:8]}"
+        return None, f"git cannot diff main {base[:8]}...{tip[:8]}"
     try:
-        chosen = list(table.affected(root, changed))
+        try:
+            chosen = list(table.affected(root, changed, enqueue=True))
+        except TypeError:  # a table older than the enqueue's mode (GOH.JUDGESBYREADS) has one
+            chosen = list(table.affected(root, changed))
     except Exception as e:  # noqa: BLE001 -- a selector that fails chose nothing to compare
-        return False, f"the tip's selector failed ({e.__class__.__name__}: {e})"
+        return None, f"the tip's selector failed ({e.__class__.__name__}: {e})"
     held = set(judged)
     if added := [n for n in chosen if n not in held and n.split("::")[0] not in held]:
         more = f" (+{len(added) - 5} more)" if len(added) > 5 else ""
-        return False, (f"the tip's set adds {_plural(len(added), 'test')} the verdict did not "
-                       f"judge: {' '.join(added[:5])}{more}")  # fmt: skip
-    return True, f"the tip's set ({_plural(len(chosen), 'test')}) is within the {len(held)} judged"
+        return added, (f"the tip's set adds {_plural(len(added), 'test')} the verdict did not "
+                       f"judge, run too: {' '.join(added[:5])}{more}")  # fmt: skip
+    return [], f"the tip's set ({_plural(len(chosen), 'test')}) is within the {len(held)} judged"
 
 
 def decide(
     root: Path, judged: str, tip: str, base: str, record: Path | None = None
 ) -> tuple[int, str, list[str]]:
     """(REUSE|NARROW|RERUN, why, the nodes NARROW runs); RECORD is the verdict's (`judged_set`)."""
+    return _decide(root, judged, tip, base, record)[:3]
+
+
+def _decide(
+    root: Path, judged: str, tip: str, base: str, record: Path | None = None
+) -> tuple[int, str, list[str], list[str]]:
+    """`decide`, and the test files the tip's set adds, which NARROW runs too (`--also`)."""
     moved = _diff(root, judged, tip)
     if moved is None:
-        return RERUN, f"git cannot diff {judged[:8]}..{tip[:8]}", []
+        return RERUN, f"git cannot diff {judged[:8]}..{tip[:8]}", [], []
     if not moved:
-        return REUSE, f"the tree judged at {judged[:8]} is {tip[:8]}'s", []
+        return REUSE, f"the tree judged at {judged[:8]} is {tip[:8]}'s", [], []
     n = f"{len(moved)} moved path" + ("s" if len(moved) != 1 else "")
     shown = " ".join(moved[:8]) + (f" (+{len(moved) - 8} more)" if len(moved) > 8 else "")
     own = _diff(root, base, tip)
     if own is None:
-        return RERUN, f"git cannot diff main {base[:8]}..{tip[:8]}", []
+        return RERUN, f"git cannot diff main {base[:8]}..{tip[:8]}", [], []
     # A merged file -- main moved it and the branch changes it -- is in neither judged tree: its
     # readers judge its bytes like any moved path's (GOH.PRESTEPMOVED: docs/map.md, named by 10
     # test files, ran GOH.LOADSOURCE's whole set again, 466 s). The tree readers' verdict on them
@@ -168,36 +194,64 @@ def decide(
     merged = sorted(set(moved) & set(own))
     if merged:
         n += f" ({len(merged)} merged: {' '.join(merged[:3])}{' ...' if len(merged) > 3 else ''})"
-    if code := [p for p in moved if p in PRE_CODE]:
-        return RERUN, f"{code[0]} moved: the pre-step's own code", []
+    if "pyproject.toml" in moved:
+        return RERUN, "pyproject.toml moved: pytest's own configuration", [], []
+    if wide := [p for p in moved if Path(p).name == "conftest.py"]:
+        return RERUN, f"{wide[0]} moved: pytest loads it before every test", [], []
+    if ".gatesrc" in moved and _declared(root, judged) != _declared(root, tip):
+        return RERUN, f"{PRE_DECL} moved in .gatesrc: the pre-step's own declaration", [], []
     table = _table(root)
     if table is None:
-        return RERUN, "no reads table (tools/affected_tests.py readers) in the tree", []
-    graph = table.Closure(root)  # built once: the pre-step's code and pytest's base both read it
-    lead, held = "", set()
-    # The binary's build inputs are not the runner's code (GOH.PRECODERUST): they change what the
-    # structural gates and the binary-running tests RUN, which the narrow run repeats -- structural
-    # --full and those tests (`binary_runners.choose` is in `readers`), never the whole set.
+        return RERUN, "no reads table (tools/affected_tests.py readers) in the tree", [], []
+    graph = table.Closure(root)  # built once: the pre-step's code and the readers both read it
+    # The DATA pytest's base opens as it loads (lib/test_closure.py `load_reads`): every test reads
+    # it, so the selection chooses every test for a change to it, and so does this.
+    loads = graph.load_reads() if hasattr(graph, "load_reads") else {}
+    if wide := sorted(set(moved) & set(loads)):
+        return RERUN, f"{wide[0]} moved: pytest loads it before every test", [], []
+    lead, also = "", []
+    # The pre-step's own code (GOH.PRESTEPSELFMOVE, GOH.SUITEONCEMISS: module doc): the tip's set
+    # against the judged one; what it adds runs, and the moved files are judged by their readers.
+    # The binary's build inputs are not the runner's code (GOH.PRECODERUST): their readers are
+    # the tests that run the binary (`binary_runners.choose` is in `readers`), and `--structural`.
     if code := pre_step_code(root, table, moved, graph, binary=False):
-        sel = selector_code(root, table, code, graph)
-        if runner := [p for p in code if p not in sel]:
-            return RERUN, f"{runner[0]} moved: the pre-step's own code", []
-        same, why = within(root, table, tip, base, judged_set(record))
-        if not same:
-            return RERUN, f"{code[0]} moved: the pre-step's own code, and {why}", []
-        lead, held = f"{code[0]} moved: the selection's own code, and {why}; ", set(code)
-    if wide := [p for p in moved if Path(p).name == "conftest.py"]:
-        return RERUN, f"{wide[0]} moved: pytest loads it before every test", []
-    if wide := sorted(set(moved) & (graph.base() - only_via_selector(graph, held))):
-        return RERUN, f"{wide[0]} moved: pytest loads it before every test", []
+        added, why = within(root, table, tip, base, judged_set(record))
+        if added is None:
+            return RERUN, f"{code[0]} moved: the pre-step's own code, and {why}", [], []
+        lead, also = f"{code[0]} moved: the pre-step's own code, and {why}; ", added
     read = table.readers(root, moved)
-    if read or _built(root, table, moved):
+    if read or also or _built(root, table, moved) or structural(root, table, moved, graph):
+        nodes = sorted(set(read) | set(also))
         return (
             NARROW,
             f"{lead}{n}, read by {len(read)} test file{'s' if len(read) != 1 else ''}: {shown}",
-            sorted(read),
+            nodes,
+            sorted({x.split("::")[0] for x in also}),
         )
-    return REUSE, f"{lead}{n}, none read by a test: {shown}", []
+    return REUSE, f"{lead}{n}, none read by a test: {shown}", [], []
+
+
+def _declared(root: Path, rev: str) -> list[str]:
+    """The lines of REV's .gatesrc that declare the pre-step (PRE_DECL), as text."""
+    r = subprocess.run(["git", "-C", str(root), "show", f"{rev}:.gatesrc"], capture_output=True,
+                       text=True, check=False, stdin=subprocess.DEVNULL,
+                       env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})  # fmt: skip
+    decl = re.compile(rf"^\s*(?:export\s+)?{PRE_DECL}=")
+    return (
+        [ln.strip() for ln in r.stdout.splitlines() if decl.match(ln)] if not r.returncode else []
+    )
+
+
+def structural(root: Path, table, moved: list[str], graph=None) -> bool:
+    """A move the structural gates reach (gates/structural.sh, the checks the binary runs, all they
+    import, source or run): the narrow run runs structural --full first, as the whole set does."""
+    graph = table.Closure(root) if graph is None else graph
+    if not hasattr(graph, "reach"):
+        return False
+    own: set[str] = set()
+    for rel in (r for r in _roots(graph) if r not in (SELECTOR, "tools/pytest.sh")):
+        own |= {rel, *graph.reach(rel, skip=set())[0]}
+    return any(p in own for p in moved)
 
 
 def pre_step_code(
@@ -218,35 +272,6 @@ def pre_step_code(
         own.update(graph.reach(rel, skip=set())[0])
     built = _built(root, table, moved) if binary else set()
     return [p for p in moved if p in own or p in built]
-
-
-def selector_code(root: Path, table, moved: list[str], graph=None) -> list[str]:
-    """Each of `moved` that only the selection reaches (GOH.PRESTEPSELFMOVE): SELECTOR and what it
-    imports, less what PRE_CODE, the other roots (each reached without passing through SELECTOR:
-    tools/pytest.sh runs lib/pre_reuse.py, whose table is the gate's suite's, judged on the tip)
-    and the binary's build inputs hold. A move there changes the set, if anything: `within` asks.
-    A table whose graph cannot reach has no selection's own code: every move to it reruns."""
-    graph = table.Closure(root) if graph is None else graph
-    if SELECTOR not in getattr(graph, "texts", {}) or not hasattr(graph, "reach"):
-        return []
-    sel = {SELECTOR, *graph.reach(SELECTOR, skip=set())[0]}
-    runner = {*PRE_CODE, *_built(root, table, moved)}
-    for rel in (r for r in _roots(graph) if r != SELECTOR):
-        runner |= {rel, *graph.reach(rel, skip={SELECTOR})[0]}
-    return [p for p in moved if p in sel and p not in runner]
-
-
-def only_via_selector(graph, held: set[str]) -> set[str]:
-    """Those of HELD (the selection's own code, its tip set within the judged one) that pytest's
-    base holds only through SELECTOR (GOH.PRESTEPSELFMOVE: lib/binary_runners.py's one chain from
-    tests/conftest.py is tests/_land_verdicts.py, which imports tools/affected_tests.py inside
-    `choose`, the gate's carry). Such a move is judged as the lane's own pre-step judges a change
-    there, by its readers; the gate's carry treats it as loaded before every test, so the full gate
-    on the tip carries nothing across it. What tests/conftest.py reaches another way stays wide."""
-    if not held or not hasattr(graph, "reach") or "tests/conftest.py" not in graph.texts:
-        return set()
-    direct = graph.reach("tests/conftest.py", {SELECTOR}, runs=False)[0]
-    return {p for p in held if p not in direct and p != "tests/conftest.py"}
 
 
 def _roots(graph) -> list[str]:
@@ -289,7 +314,7 @@ def base_sha(root: Path, base: str) -> str | None:
 def stamp(record: str, base: str | None, chosen: list[str] | None = None) -> None:
     """The record says it is the WHOLE selection the diff from BASE chose (GOH.SUITEONCE): the gate
     of the tree it judged takes it for the suite only then (lib/pre_reuse.py `suite`). With CHOSEN,
-    it names that set (`chosen`), which a move to the selection's own code is held to (`within`)."""
+    it names that set (`chosen`), which a move to the pre-step's own code is held to (`within`)."""
     if not base or not record or record == os.devnull:
         return
     try:
@@ -387,11 +412,14 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("--judged and --tip are required without --suite")
     record = Path(args.record) if args.record else None
     root = Path(args.root).resolve()
-    code, why, nodes = decide(root, args.judged, args.tip, args.base, record)
+    code, why, nodes, also = _decide(root, args.judged, args.tip, args.base, record)
     print(why)
     table = _table(root) if code == NARROW else None
-    if table is not None and _built(root, table, _diff(root, args.judged, args.tip) or []):
-        print(STRUCTURAL)  # the binary's build moved: structural --full runs it (PRECODERUST)
+    moved = _diff(root, args.judged, args.tip) or [] if table is not None else []
+    if table is not None and (_built(root, table, moved) or structural(root, table, moved)):
+        print(STRUCTURAL)  # the binary's build or the structural gates moved: structural --full
+    for f in also:
+        print(f"{ALSO} {f}")  # a test file the tip's set adds: the narrow run runs it too
     for n in nodes:
         print(n)
     return code

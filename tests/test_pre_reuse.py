@@ -235,10 +235,13 @@ def test_a_gate_or_check_the_pre_step_never_runs_reruns_only_its_readers(
 @pytest.mark.parametrize(
     "path", ["gates/_common.sh", "checks/check_x.py", "lib/sel_helper.py", "tools/pytest.sh"]
 )
-def test_a_move_to_the_pre_steps_own_code_runs_it_all_again(repo, tmp_path, path):
+def test_a_move_to_the_pre_steps_own_code_with_no_judged_set_runs_it_all_again(
+    repo, tmp_path, path
+):
     """What the pre-step runs is read from its own sources: a file the structural gates source, a
     check the binary runs, the selection's own lib/ module (which the prefix rule never saw), the
-    pytest entry. Each still runs the whole set again."""
+    pytest entry. With no judged set to hold the tip's against, each runs the whole set again
+    (with one, its readers: tests/test_pre_reuse_runner.py, GOH.SUITEONCEMISS)."""
     judged, tip, base = _history(repo, tmp_path, "lane.txt", path, kit=True)
     code, why, _ = pre_reuse.decide(repo, judged, tip, base)
     assert code == pre_reuse.RERUN and f"{path} moved: the pre-step's own code" in why, why
@@ -319,25 +322,17 @@ def test_a_selector_move_whose_tip_set_the_verdict_judged_runs_only_its_readers(
     record = _judged_set(tmp_path, [*JUDGED_SET, "tests/test_lane.py"])
     code, why, nodes = pre_reuse.decide(repo, judged, tip, base, record)
     assert (code, nodes) == (pre_reuse.NARROW, ["tests/test_sel.py"]), why
-    assert "lib/sel_helper.py moved: the selection's own code" in why, why
+    assert "lib/sel_helper.py moved: the pre-step's own code" in why, why
     assert "the tip's set (1 test) is within the 2 judged" in why, why
-
-
-def test_a_selector_move_that_adds_a_test_runs_the_whole_set_and_names_it(repo, tmp_path):
-    judged, tip, base = _history(repo, tmp_path, "lane.txt", "lib/sel_helper.py", kit=True,
-                                 main_text='EXTRA = "tests/test_extra.py"\n')  # fmt: skip
-    code, why, _ = pre_reuse.decide(repo, judged, tip, base, _judged_set(tmp_path, JUDGED_SET))
-    assert code == pre_reuse.RERUN and "lib/sel_helper.py moved: the pre-step's own code" in why
-    assert "the tip's set adds 1 test the verdict did not judge: tests/test_extra.py" in why, why
 
 
 def test_a_whole_file_the_verdict_judged_only_some_tests_of_is_an_added_test(repo, tmp_path):
     judged, tip, base = _history(repo, tmp_path, "lane.txt", "lib/sel_helper.py", kit=True,
                                  main_text='EXTRA = "tests/test_walk.py"\n')  # fmt: skip
-    code, why, _ = pre_reuse.decide(repo, judged, tip, base, _judged_set(tmp_path, JUDGED_SET))
-    assert code == pre_reuse.RERUN and "adds 1 test" in why and "tests/test_walk.py" in why, why
+    code, why, nodes = pre_reuse.decide(repo, judged, tip, base, _judged_set(tmp_path, JUDGED_SET))
+    assert code == pre_reuse.NARROW and "adds 1 test" in why and "tests/test_walk.py" in nodes, why
     record = _judged_set(tmp_path, ["tests/test_walk.py"])  # the whole file judged: its nodes too
-    assert pre_reuse.decide(repo, judged, tip, base, record)[0] == pre_reuse.NARROW
+    assert pre_reuse.decide(repo, judged, tip, base, record)[2] == ["tests/test_sel.py"]
 
 
 @pytest.mark.parametrize("chosen", [None, "no record"])
@@ -349,28 +344,18 @@ def test_a_selector_move_with_no_judged_set_recorded_runs_the_whole_set(repo, tm
     assert "the set the verdict judged is not recorded" in why, why
 
 
-@pytest.mark.parametrize("direct", [False, True])
-def test_a_selector_module_pytest_loads_only_through_the_selector_is_not_wide(
-    repo, tmp_path, direct
+def test_a_selector_module_pytest_loads_only_through_the_selector_is_judged_by_its_readers(
+    repo, tmp_path
 ):
     """LANEPRESTEP's lib/binary_runners.py is in pytest's base only through tests/_land_verdicts.py,
-    which imports tools/affected_tests.py: judged by its readers. One conftest imports is wide."""
+    which imports tools/affected_tests.py: judged by its readers (one conftest imports itself is
+    too: tests/test_pre_reuse_runner.py, GOH.SUITEONCEMISS)."""
     (repo / "tests").mkdir(exist_ok=True)
-    (repo / "tests" / "conftest.py").write_text("import _lv\n" + ("import sel_helper\n" * direct))
+    (repo / "tests" / "conftest.py").write_text("import _lv\n")
     (repo / "tests" / "_lv.py").write_text("def choose():\n    import affected_tests\n")
     judged, tip, base = _history(repo, tmp_path, "lane.txt", "lib/sel_helper.py", kit=True)
     code, why, nodes = pre_reuse.decide(repo, judged, tip, base, _judged_set(tmp_path, JUDGED_SET))
-    if direct:
-        assert code == pre_reuse.RERUN and "pytest loads it before every test" in why, why
-    else:
-        assert (code, nodes) == (pre_reuse.NARROW, ["tests/test_sel.py"]), why
-
-
-def test_a_runner_move_reruns_whatever_the_tip_set(repo, tmp_path):
-    """tools/pytest.sh runs the set: the same set under another runner is another verdict."""
-    judged, tip, base = _history(repo, tmp_path, "lane.txt", "tools/pytest.sh", kit=True)
-    code, why, _ = pre_reuse.decide(repo, judged, tip, base, _judged_set(tmp_path, JUDGED_SET))
-    assert code == pre_reuse.RERUN and "tools/pytest.sh moved: the pre-step's own code" in why, why
+    assert (code, nodes) == (pre_reuse.NARROW, ["tests/test_sel.py"]), why
 
 
 def test_the_land_hands_the_judged_set_to_the_decision(
@@ -383,7 +368,7 @@ def test_the_land_hands_the_judged_set_to_the_decision(
     record = _judged_set(tmp_path, JUDGED_SET)
     seen, log = _land(repo, tmp_path, env, "lib/sel_helper.py", kit=True, record=str(record))
     assert seen == ["full", "narrow lib/sel_helper.py"], log
-    assert "the selection's own code" in log, log
+    assert "the pre-step's own code, and the tip's set" in log, log
 
 
 def test_the_record_names_the_set_it_judged(tmp_path):
@@ -392,12 +377,3 @@ def test_the_record_names_the_set_it_judged(tmp_path):
     pre_reuse.stamp(str(record), "b" * 40, ["tests/test_b.py", "tests/test_a.py::t"])
     got = json.loads(record.read_text())
     assert got["chosen"] == ["tests/test_a.py::t", "tests/test_b.py"], got
-
-
-def test_the_real_selections_own_code_is_what_only_the_selection_reaches():
-    """goh's own tree: lib/binary_runners.py (LANEPRESTEP's move) is the selection's alone; the
-    pytest entry and lib/pre_reuse.py, which tools/pytest.sh runs, are not."""
-    table = pre_reuse._table(REPO_ROOT)
-    moved = ["lib/binary_runners.py", "tools/affected_tests.py", "lib/test_closure.py",
-             "tools/pytest.sh", "lib/pre_reuse.py", "gates/_common.sh"]  # fmt: skip
-    assert pre_reuse.selector_code(REPO_ROOT, table, moved) == moved[:3]
