@@ -7,8 +7,10 @@ and probed against swiftlint 0.65.1 on 2026-08-25):
 
   1. Violations LISTED in the baseline are tolerated.
   2. NEW violations (not listed) fail, each named file:line rule reason.
-  3. Listed violations that have VANISHED are never a failure — they mean the
-     debt shrank and the baseline should be re-recorded (a printed nudge).
+  3. Listed violations that have VANISHED or SHRUNK fail with the exact
+     re-record command (GOH.SWIFTBASELINESTALE): a stale entry is room for the
+     debt to grow back unseen, so a ratchet's stale entry must FAIL, as
+     py_lint_ceiling's does. Before crate::grace's day it is a named warning.
 
 Match key — what makes a live violation "the same one" as a baselined entry.
 Probed, not assumed (each row verified by mutating a real tree):
@@ -30,8 +32,8 @@ extracting a function out of a grandfathered draw() failed the build twice,
 and the only way through was hand-editing the baseline). Here, after exact
 matches are spent, a leftover live violation pairs with a leftover baselined
 one of the same file and rule whose reason has the same WORDS (numbers
-masked) and whose every number is >= the live one. It passes, with a
-re-record nudge naming old -> new. A larger number in any position stays
+masked) and whose every number is >= the live one. It is not NEW; it is
+refused as stale, naming old -> new and the re-record command. A larger number in any position stays
 new, and the message names the baselined value it grew from. Every rule
 swiftlint ships with a count in its reason is an upper bound, so "smaller"
 means "better"; a raised limit is a larger number and stays new.
@@ -44,7 +46,7 @@ repo-relative form (also stripping a file:// scheme). Both sides are
 normalized here to repo-root-relative strings so a baseline means the same
 thing from any checkout directory.
 
-Exit codes: 0 clean-or-nudge, 1 new violations (named), 2 unusable input
+Exit codes: 0 clean, 1 new or stale violations (named), 2 unusable input
 (missing/malformed baseline or report — with the swiftlint exit status named,
 since a crashed swiftlint must fail the gate, not silently pass it).
 """
@@ -71,6 +73,9 @@ from pathlib import Path
 from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import step_tools  # crate::grace's day, read from grace.rs (its one home)
+
 from tui.lib import noun  # the count meets its noun (GOH.HEDGEOWN)
 
 FILE_URL_SCHEME = "file://"
@@ -204,6 +209,41 @@ def describe_new(v: dict) -> str:
     return f"{file_raw}:{line} {rule}: {reason}"
 
 
+def rerecord_command(baseline: Path, root: Path) -> str:
+    """The one command that shrinks the baseline to what occurs, run where the gate lints: the
+    tracked .swift only (a build dir's generated sources are no debt), under the config's
+    `excluded` as swift_staged.sh binds it."""
+    where = baseline.resolve()
+    shown = where.relative_to(root) if root == where.parent or root in where.parents else where
+    return (
+        f"cd {root} && swiftlint lint --quiet --force-exclude --write-baseline {shown}"
+        " $(git ls-files '*.swift')"
+    )
+
+
+def refuse_stale(got: Reconciliation, baseline: Path, root: Path) -> int:
+    """1 for a shrunk or vanished baselined violation once the grace is over; named either way."""
+    over = step_tools.grace_over()
+    mark = "\u2717" if over else "\u26a0"
+    word = "refused" if over else "refused from 2026-11-23"
+    if got.improved:
+        print(
+            f"{mark} swift gate: {len(got.improved)} baselined "
+            f"{noun(len(got.improved), 'violation')} shrank ({word}):"
+        )
+        for v, was in sorted(got.improved, key=lambda p: describe_new(p[0])):
+            print(f"  {describe_new(v)}  ({describe_change(was, v.get('reason', ''))})")
+    if got.stale:
+        print(
+            f"{mark} swift gate: {len(got.stale)} baselined "
+            f"{noun(len(got.stale), 'violation')} no longer occur ({word}):"
+        )
+        for file, rule, reason in sorted(got.stale):
+            print(f"  {file} {rule}: {reason}")
+    print(f"  re-record the baseline (shrink-only): {rerecord_command(baseline, root)}")
+    return 1 if over else 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--baseline", required=True, type=Path)
@@ -255,23 +295,8 @@ def main() -> int:
         print(f"  {len(got.new)} new (baseline tolerates {sum(1 for _ in baseline)} listed)")
         return 1
 
-    if got.improved:
-        print(
-            f"\u26a0 {len(got.improved)} baselined {noun(len(got.improved), 'violation')} shrank —",
-            "re-record the baseline to lock the gain in (never grow it):",
-        )
-        for v, was in sorted(got.improved, key=lambda p: describe_new(p[0])):
-            print(f"  {describe_new(v)}  ({describe_change(was, v.get('reason', ''))})")
-
-    if got.stale:
-        print(
-            f"\u26a0 {len(got.stale)} baselined {noun(len(got.stale), 'violation')} no "
-            f"longer occur —",
-            "re-record the baseline to shrink it (never grow it)",
-        )
-
     if got.improved or got.stale:
-        return 0
+        return refuse_stale(got, args.baseline, root)
 
     if baseline or report:
         print("\u2713 all reported violations are baselined")

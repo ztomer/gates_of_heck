@@ -262,7 +262,7 @@ type, which the compiler reports by NAME and never by pointing at the pin.
 | `GOH_SWIFT_CAS` | `1` | xcode mode, cold: the build reads Xcode's compilation cache (a hit replays its diagnostics, probed GOH.SWIFTCASPROBE). `0` turns it off. spm mode has none. |
 | `GOH_SWIFT_CAS_DIR` | `~/.cache/goh/swift-cas` | Where that cache lives, outside the `.build` the cold wipe empties. |
 | `GOH_SWIFT_CAS_LIMIT` | `10G` | Xcode's `COMPILATION_CACHE_LIMIT_SIZE` for it; Xcode prunes past it. |
-| `GOH_SWIFT_LINT_BASELINE` | unset (bare `swiftlint --strict`) | Path to baseline JSON. When set, lint becomes a shrink-only ratchet: baselined violations tolerated, new ones fail named, vanished ones print a re-record nudge. |
+| `GOH_SWIFT_LINT_BASELINE` | unset (bare `swiftlint --strict`) | Path to baseline JSON. When set, lint becomes a shrink-only ratchet: baselined violations tolerated, new ones fail named, shrunk or vanished ones fail with the re-record command (a named warning before `crate::grace`'s day). |
 
 ## CAD (`gates/cad_gate.sh`)
 

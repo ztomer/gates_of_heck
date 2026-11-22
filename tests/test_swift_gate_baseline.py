@@ -12,7 +12,8 @@ Ratchet semantics under test (probed from swiftlint --baseline, and the
 contract ZoneTilerWM's make check-lint already ships):
 
   listed violation tolerated / NEW one fails naming it /
-  vanished entry = nudge, never failure / baseline may only shrink.
+  shrunk or vanished entry = refused with the re-record command (a ratchet's stale
+  entry fails) / baseline may only shrink.
 """
 
 import importlib.util
@@ -189,15 +190,6 @@ def test_identical_duplicate_tolerated_only_per_baseline_count(root):
     assert got2.returncode == 0, got2.stdout + got2.stderr
 
 
-def test_vanished_entry_is_a_nudge_not_a_failure(root):
-    b = write_baseline(root, [BASELINE_ENTRY])
-    r = write_report(root, [])  # debt fully burned down
-    got = run_cli("--baseline", str(b), "--report", str(r), "--root", str(root))
-    assert got.returncode == 0, got.stdout + got.stderr
-    out = got.stdout + got.stderr
-    assert "\u26a0" in out and "re-record" in out.lower()
-
-
 # ── a count-bearing finding that IMPROVED is the same debt, smaller ──────────
 #
 # Earned on ZeroThunder (2026-10-17): extracting a pure function out of a
@@ -218,17 +210,6 @@ def _baseline_with(
     entry["violation"].update(reason=reason, ruleIdentifier=rule)
     entry["violation"]["location"]["file"] = file
     return entry
-
-
-def test_improved_count_is_tolerated_with_a_re_record_nudge(root):
-    b = write_baseline(root, [_baseline_with(COMPLEXITY_27)])
-    r = write_report(
-        root, [_report_entry(live_path(root), 9, "cyclomatic_complexity", COMPLEXITY_26)]
-    )
-    got = run_cli("--baseline", str(b), "--report", str(r), "--root", str(root))
-    out = got.stdout + got.stderr
-    assert got.returncode == 0, out
-    assert "27 -> 26" in out and "re-record" in out.lower(), out
 
 
 def test_worsened_count_still_fails_naming_both_values(root):
