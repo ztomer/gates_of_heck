@@ -163,6 +163,18 @@ fix is `reclaim_build_space.sh` next to it.
 | `GOH_WATCH_PATHS` | `~/.cache/cargo-target` + `~/Projects/*/target` | Colon/comma/space-separated cache dirs to watch. `--watch-paths` flag overrides it. |
 | `GOH_SCRATCH_ROOTS` | `$TMPDIR` + `/tmp` (auto) | Override scratch roots (same separators). Scope production runs; point tests at fixtures. |
 
+## Cache tiers and eviction (`lib/cache_tier.py`, `lib/cache_sweep.py`, GOH.CACHEEVICT)
+
+The removable large tier is resolved at use time and never written into static config; one
+GDSF evictor ranks the cargo build dirs, the llvm-cov entries and the sccache bytes over one
+budget per tier.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `GOH_CACHE_VOLUME_UUID` | unset | Pins the removable cache volume: its marker's `volume_uuid=` must equal this as well as the volume's own UUID. Unset, any mounted volume whose marker names its own UUID qualifies. |
+| `GOH_CACHE_INTERNAL` | `~/.cache/goh` | The internal root `goh cache-root` answers when the large tier does not qualify. |
+| `GOH_CACHE_EVICT_STATE` | `~/.local/state/goh/cache-evict.json` | The evictor's ledger: uses, last use and clock per object, keyed by path, and the clock L. Point it elsewhere only to isolate a test. |
+
 ## Python (`gates/py_gate.sh`)
 
 | Key | Default | Meaning |
