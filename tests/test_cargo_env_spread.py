@@ -62,6 +62,8 @@ ALLOWED = {
     ("tests/test_share_grow.py", "CARGO_HOME"): "worker_share's runner env, no cargo run",
     ("tests/test_suite_drift.py", "CARGO_BUILD_BUILD_DIR"): "the caller-named build-dir case",
     ("tests/test_goh_rustc.py", "CARGO_TERM_COLOR"): "the F1b probe, on a private sccache",
+    ("tests/test_rustc_wrap.py", "CARGO_INCREMENTAL"): "zshenv fixture text, no cargo run",
+    ("tests/test_rustc_wrap.py", "CARGO_TERM_COLOR"): "the trampoline's recorder, no cargo run",
     ("tests/test_goh_rustc.py", "CARGO_TERM_PROGRESS_WHEN"): "the F1b probe, on a private sccache",
 }
 # This file names every shape it refuses; it runs no cargo.
