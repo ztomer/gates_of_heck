@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 import pytest
-from conftest import REPO_ROOT, git
+from conftest import REPO_ROOT, git, hermetic_env
 
 
 def _hook_toolchain_env() -> dict[str, str]:
@@ -106,13 +106,19 @@ def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
     git(copy, "rm", "-q", "--cached", "--", *sample)
     base = "-c core.hooksPath=/dev/null -c user.name=t -c user.email=t commit -q --no-gpg-sign"
     git(copy, *base.split(), "--allow-empty", "-m", "base")
-    subprocess.run(
+    # A prebuilt goh, never a build (GOH.INSTALLEXIT: install.sh compiled goh in the copy, 13-29 s),
+    # and install.sh's exit is asserted: a failed install judged nothing.
+    (copy / "bin").mkdir(exist_ok=True)
+    shutil.copy2(goh, copy / "bin" / "goh")
+    inst = subprocess.run(
         ["/bin/bash", str(copy / "install.sh"), str(copy)],
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
         check=False,
+        env=hermetic_env(GOH_SKIP_BUILD="1"),
     )
+    assert inst.returncode == 0, inst.stdout + inst.stderr
     git(copy, "add", "-A")
     staged = set(git(copy, "diff", "--cached", "--name-only").splitlines())
     assert set(sample) <= staged, f"the sample is not what the hook judges: {set(sample) - staged}"
