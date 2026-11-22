@@ -7,6 +7,13 @@ ship's diff coverage refused them after a 961 s suite. Here a fixture land leave
 line: the land records it (file, line, text) and files its fix item at the landing, and the ship's
 preflight refuses naming it in seconds -- until it is covered (the item's land) or deleted, or the
 ship is told --allow-diffcov REASON.
+
+Unmeasured is not uncovered (GOH.DIFFCOVUNMEASURED): the land of GOH.SELFWALKFILTER (0cfcb5a1)
+added 428 Rust lines in files the last ship's profile never saw; no land can measure Rust, so they
+were carried as uncovered, filed GOH.DIFFCOV0CFCB5A1 and refused the next ship until
+--allow-diffcov. Here the carried line is MEASURED uncovered (its file is in the profile, no part
+ran it); a line of a file new since the profile is carried `measured: false`, files nothing and
+refuses no ship: the ship's own diff coverage judges it after the suite.
 """
 
 from __future__ import annotations
@@ -48,24 +55,32 @@ def _commit(repo: Path, msg: str) -> str:
     return _git(repo, "rev-parse", "HEAD")
 
 
-def _land(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
-    """(main, the lane worktree): main shipped v0.1.0 with a kept profile; the lane adds
-    probe.rs, one line of it code no test ran, among lines that are no code."""
+def _probe(code: str) -> str:
+    return f"//! the probe\nuse std::env;\n\n{code}\n#[inline]\nmod util;\n"
+
+
+def _land(tmp_path: Path, monkeypatch, measured: bool = True) -> tuple[Path, Path]:
+    """(main, the lane worktree): main shipped v0.1.0 with a kept profile; the lane changes
+    probe.rs's line 4 to code no test ran, among lines that are no code. MEASURED: probe.rs was in
+    the profile (line 4 executable, no part ran it); else the lane adds it, new since then."""
     main = tmp_path / "gates_of_heck"
     fast_init(main, "main")
     (main / A).parent.mkdir(parents=True)
     (main / A).write_text("".join(f"let a{i} = {i};\n" for i in range(1, 11)))
+    if measured:
+        (main / PROBE).write_text(_probe("let p = 0;"))
     _commit(main, "base")
     _git(main, "tag", "v0.1.0")
     parts = tmp_path / "parts"
     parts.mkdir()
     das = "".join(f"DA:{i},1\n" for i in range(1, 11))
-    (parts / "part-workspace.info").write_text(f"SF:{main / A}\n{das}end_of_record\n")
+    probe = f"SF:{main / PROBE}\nDA:4,0\nend_of_record\n" if measured else ""
+    (parts / "part-workspace.info").write_text(f"SF:{main / A}\n{das}end_of_record\n{probe}")
     monkeypatch.setenv("GOH_SHIP_DIR", str(tmp_path / "ship"))
     assert cov_risk.keep(parts, main, cov_risk.summary_path(main))
     wt = tmp_path / "wt"
     _git(main, "worktree", "add", "-q", "-b", "lane", str(wt))
-    (wt / PROBE).write_text(f"//! the probe\nuse std::env;\n\n{LINE}\n#[inline]\nmod util;\n")
+    (wt / PROBE).write_text(_probe(LINE))
     _commit(wt, "the land")
     return main, wt
 
@@ -86,8 +101,9 @@ def _landed(q: Path, main: Path, wt: Path, rec: dict, item: str, filed: str = ""
 def test_a_land_records_its_uncovered_line_and_files_its_item(tmp_path, monkeypatch):
     main, wt = _land(tmp_path, monkeypatch)
     lines, rec = cov_risk.report(wt, main)
-    assert rec["carry"] == [{"file": PROBE, "line": 4, "text": LINE, "own": True,
-                             "why": "new since the last ship's profile"}], rec  # fmt: skip
+    want = {"file": PROBE, "line": 4, "text": LINE, "own": True,
+            "why": "external suite only, or no test", "measured": True}  # fmt: skip
+    assert rec["carry"] == [want], rec
     assert rec["base"] == "v0.1.0" and rec["head"] == _git(wt, "rev-parse", "HEAD")
     assert any("diff coverage carry: 1 line" in ln for ln in lines), lines
     fake = tmp_path / "loopctl.py"
@@ -161,6 +177,39 @@ def test_a_carried_line_since_deleted_or_judged_covered_no_longer_counts(tmp_pat
     assert diffcov_carry.refusal(main, "v0.1.0", _commit(main, "delete it"), q) is None
 
 
+def test_an_unmeasured_carry_files_no_item_and_refuses_no_ship(tmp_path, monkeypatch):
+    main, wt = _land(tmp_path, monkeypatch, measured=False)
+    lines, rec = cov_risk.report(wt, main)
+    want = {"file": PROBE, "line": 4, "text": LINE, "own": True,
+            "why": "new since the last ship's profile", "measured": False}  # fmt: skip
+    assert rec["carry"] == [want], rec
+    said = "\n".join(lines)
+    assert "unmeasured" in said and "refuses before its suite" not in said, said
+    fake = tmp_path / "loopctl.py"
+    fake.write_text(FAKE_LOOPCTL)
+    monkeypatch.setenv("FAKE_LOOPCTL_LOG", str(tmp_path / "calls"))
+    outcome = {"state": "landed", "sha": "abcdef0123456789", "repo": str(main)}
+    assert diffcov_carry.file_item(outcome, {"cov_risk": rec}, str(fake), "GOH.LANE") == {}
+    assert not (tmp_path / "calls").exists(), "an unmeasured-only carry files nothing"
+    # a mixed carry files its measured lines only
+    hit = {"file": A, "line": 2, "text": "let a2 = 2;", "own": True, "why": "x", "measured": True}
+    mixed = {"cov_risk": {"carry": [*rec["carry"], hit]}}
+    assert diffcov_carry.file_item(outcome, mixed, str(fake), "GOH.LANE")["diffcov_item"]
+    argv = json.loads((tmp_path / "calls").read_text().splitlines()[0])
+    item = json.loads(argv[argv.index("file") + 2])
+    assert f"{A}:2" in item["item"] and PROBE not in item["item"], item["item"]
+    # the ship's preflight leaves it to the suite's diff coverage: the new record, and one kept
+    # before GOH.DIFFCOVUNMEASURED (no `measured`, read from its `why`, as 0cfcb5a1's was)
+    q = tmp_path / "landq"
+    _landed(q, main, wt, rec, "GOH.LANE")
+    head = _git(main, "rev-parse", "HEAD")
+    assert diffcov_carry.refusal(main, "v0.1.0", head, q) is None
+    old = {**rec, "carry": [{k: v for k, v in c.items() if k != "measured"} for c in rec["carry"]]}
+    rec_path = next((q / "done").iterdir())
+    rec_path.write_text(json.dumps({**json.loads(rec_path.read_text()), "cov_risk": old}))
+    assert diffcov_carry.refusal(main, "v0.1.0", head, q) is None
+
+
 @pytest.mark.load_sensitive  # the preflight's wall time: seconds, against the suite's 961 s
 def test_goh_ship_refuses_in_preflight_unless_allowed(tmp_path, tmp_path_factory):
     from _shipped_kit import shipped_clone
@@ -192,6 +241,24 @@ def test_goh_ship_refuses_in_preflight_unless_allowed(tmp_path, tmp_path_factory
     r = _ship(repo, tmp_path, "--wait", "--allow-diffcov", "covered by hand", GOH_LANDQ_DIR=str(q))
     assert r.returncode == 0, r.stdout + r.stderr
     assert _result(tmp_path)["allow_diffcov"] == "covered by hand"
+
+
+def test_goh_ship_starts_on_an_unmeasured_only_carry(tmp_path, tmp_path_factory):
+    from _shipped_kit import shipped_clone
+    from test_ship import _ship
+
+    repo = shipped_clone(tmp_path, tmp_path_factory)
+    head = _git(repo, "rev-parse", "HEAD")
+    new = {"file": "f.txt", "line": 1, "text": "change", "own": True,
+           "why": "new since the last ship's profile", "measured": False}  # fmt: skip
+    risk = {"head": head, "base": "v1.0.0", "carry": [new]}
+    rec = {"sha": head, "landed": head, "repo": str(repo), "mode": "land", "state": "landed",
+           "item": "GOH.LANE", "cov_risk": risk}  # fmt: skip
+    q = tmp_path / "landq"
+    (q / "done").mkdir(parents=True)
+    (q / "done" / "1-GOH.LANE.json").write_text(json.dumps(rec))
+    r = _ship(repo, tmp_path, "--wait", GOH_LANDQ_DIR=str(q))
+    assert r.returncode == 0, "an unmeasured-only carry starts the ship: " + r.stdout + r.stderr
 
 
 REFUSING_LOOPCTL = """\

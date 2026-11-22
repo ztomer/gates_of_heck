@@ -24,6 +24,9 @@ carried line no longer counts when:
   * a later land's own judgment did not carry it: a record after it whose cov_risk judged a tip
     (`head`) holding this land lists no line of that file with that text (a newer profile, or a
     covered neighbourhood). A lane judged on a tip without this land's change never clears it.
+Only MEASURED lines count (GOH.DIFFCOVUNMEASURED, cov_risk.measured): a line of a file new since
+the profile was never measured by any land, so it files no item and refuses no ship; the ship's
+own diff coverage judges it after the suite.
 Pinned by tests/test_diffcov_carry.py.
 """
 
@@ -90,8 +93,10 @@ def _item(iid: str, outcome: dict, item: str, own: list[dict]) -> dict:
 def file_item(outcome: dict, req: dict | None, loopctl: str, item: str = "") -> dict:
     """At a landing: file the item for the land's own carried lines; `{"diffcov_item": {...}}`
     naming it (or why not), or {} when the land carried none. Never raises."""
+    import cov_risk  # lib/: what a measured carried line is
+
     carried = ((req or {}).get("cov_risk") or {}).get("carry") or []
-    own = [c for c in carried if c.get("own")]
+    own = [c for c in carried if c.get("own") and cov_risk.measured(c)]
     if outcome.get("state") != "landed" or not own:
         return {}
     iid = item_id(outcome, item)
@@ -195,6 +200,8 @@ def open_lines(repo: Path, tag: str, head: str, q: Path | None = None) -> list[d
             )
         return seen[(landed, judged)]
 
+    import cov_risk  # lib/: what a measured carried line is
+
     found: dict[tuple[str, int], dict] = {}
     cleared: set[tuple[str, int]] = set()
     for n, rec in enumerate(recs):
@@ -205,6 +212,8 @@ def open_lines(repo: Path, tag: str, head: str, q: Path | None = None) -> list[d
         later = [j for r in recs[n + 1 :] if (j := r.get("cov_risk") or {}).get("head")
                  and isinstance(j.get("carry"), list)]  # fmt: skip
         for c in cr.get("carry") or []:
+            if not cov_risk.measured(c):
+                continue  # unmeasured, not uncovered: the ship's diff coverage judges it
             rel, text = c["file"], c["text"]
             at = tree.where(frm, rel, c["line"], text)
             lines = tree.text(rel) or []

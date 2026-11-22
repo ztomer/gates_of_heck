@@ -34,6 +34,14 @@ saw covered by the external suite (`cov`: the ship's diff coverage counts every 
 pass it). `own` marks the lines this land's commits
 changed (since its merge base with main): the lander files an item for those, and `goh ship`
 refuses before its suite while any carried line is still uncovered (lib/diffcov_carry.py).
+
+UNMEASURED IS NOT UNCOVERED (GOH.DIFFCOVUNMEASURED). A line of a file new since the profile was
+never measured: no land can measure Rust coverage, only the ship's run does. The land of
+GOH.SELFWALKFILTER (0cfcb5a1) carried 428 such lines, filed GOH.DIFFCOV0CFCB5A1 and refused the
+next ship until --allow-diffcov, so every ship carrying new Rust needed the flag. Each carried line
+says `measured` (`measured(c)` reads a record kept before the field from its `why`): only a
+measured one files an item or refuses a ship; an unmeasured one is noted and left to the ship's
+own diff coverage, which judges it after the suite.
 """
 
 from __future__ import annotations
@@ -55,6 +63,7 @@ WINDOW = 3
 HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 TESTS = re.compile(r"(^|/)tests?(/|\.rs$)|_tests?\.rs$")
 SHOWN = 12  # files named in the warning; the record keeps them all
+NEW = "new since the last ship's profile"  # the why of a line no profile measured
 
 
 def ship_dir() -> Path:
@@ -175,7 +184,7 @@ def _judge(top: str, summary: Path) -> tuple[list[tuple[str, int, str, bool]], s
             # since: unknown, unless its name says test code, which the report never carries.
             if old_rel or TESTS.search(rel):
                 continue
-            risky += [(rel, ln, "new since the last ship's profile", True) for ln in lines]
+            risky += [(rel, ln, NEW, True) for ln in lines]
             continue
         exe, own = set(prof["exec"]), set(prof["own"])
         cov = set(prof["cov"]) if "cov" in prof else set()  # a profile kept before GOH.DIFFCOVCARRY
@@ -222,8 +231,14 @@ def carry(top: str | Path, repo: str | Path, found: list[tuple[str, int, str, bo
         if not line or NOT_CODE.match(line):
             continue
         out.append({"file": rel, "line": ln, "text": line, "why": why,
-                    "own": ln in mine.get(rel, ())})  # fmt: skip
+                    "own": ln in mine.get(rel, ()), "measured": why != NEW})  # fmt: skip
     return out
+
+
+def measured(c: dict) -> bool:
+    """Carried line C was measured uncovered (a record kept before GOH.DIFFCOVUNMEASURED holds no
+    `measured`: its `why` says)."""
+    return bool(c.get("measured", c.get("why") != NEW))
 
 
 def _ranges(lines: list[int]) -> str:
@@ -258,12 +273,18 @@ def report(top: str | Path, repo: str | Path) -> tuple[list[str], dict]:
     out += [f"    {f}:{_ranges(ls)}  ({w})" for f, ls, w in risky[:SHOWN]]
     if len(risky) > SHOWN:
         out.append(f"    ... and {counted(len(risky) - SHOWN, 'more file')}")
-    if kept := rec.get("carry"):
-        mine = sum(1 for c in kept if c["own"])
+    kept = rec.get("carry") or []
+    if hit := [c for c in kept if c["measured"]]:
+        mine = sum(1 for c in hit if c["own"])
         out.append(
-            f"diff coverage carry: {counted(len(kept), 'line')} no test covered in the profile "
+            f"diff coverage carry: {counted(len(hit), 'line')} no test covered in the profile "
             f"({mine} this land's own) -- recorded; `goh ship` refuses before its suite until "
             "they are covered (GOH.DIFFCOVCARRY)"
+        )
+    if left := len(kept) - len(hit):
+        out.append(
+            f"diff coverage carry: {counted(left, 'line')} unmeasured (new since the profile) -- "
+            "noted; the ship's diff coverage judges them after its suite (GOH.DIFFCOVUNMEASURED)"
         )
     return out, rec
 
