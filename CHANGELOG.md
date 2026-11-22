@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.146.1 -- land path: the batch window waits only for a pre-step due inside it; the ship preflight re-judges a carried line against the newest ship profile
+
+- The ship preflight's diff coverage carry (lib/diffcov_carry.py) re-judges a carry judged on an older profile against the newest kept ship profile: a line that profile covers no longer refuses the ship (GOH.CARRYREJUDGE).
+
+- fix(land): the batch window holds a land only for an enqueue whose pre-step is DUE inside the window (GOH.WINDOWDUE): a marker due past `GOH_LANDQ_WINDOW_MAX` is no longer waited for the base 120 s. 27 of 35 windows closed on the bound having caught nothing (median 120 s, 58 min in all); a marker due inside the window, or with no start, is waited for as before.
+
 ## v0.146.0 -- land path: every pass-on-retry is a flake record and two in 14 days file an item; a land measures the diff coverage of its own changed Rust lines
 
 - feat(land): a land measures the diff coverage of its own changed Rust lines (GOH.LANDRUSTCOV): the pre-step's second run (the chosen tests, the binary's judges moved into it) runs under the coverage gate's Rust mode as a subset run (`--diff-only`: instrumented build, workspace tests, the tests against the instrumented goh), replacing their plain run, and an uncovered changed line turns the land red naming `file:line`, before the ship's 8-14 min suite finds it (v0.145.0 went red twice on 2-3 such lines). A land changing no `.rs` file measures nothing.

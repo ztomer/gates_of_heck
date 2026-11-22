@@ -1,1 +1,0 @@
-- The ship preflight's diff coverage carry (lib/diffcov_carry.py) re-judges a carry judged on an older profile against the newest kept ship profile: a line that profile covers no longer refuses the ship (GOH.CARRYREJUDGE).
