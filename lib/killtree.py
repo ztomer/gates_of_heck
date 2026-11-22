@@ -13,6 +13,8 @@ can block the caller. subprocess.TimeoutExpired is re-raised unchanged, so
 every existing caller's except-clause keeps working.
 """
 
+from __future__ import annotations  # lazy: a consumer may patch Popen (GOH.KILLTREEPOPEN)
+
 import os
 import signal
 import subprocess

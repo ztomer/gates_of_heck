@@ -172,3 +172,29 @@ def test_ratchet_load_current_leaves_no_orphans_on_timeout():
     with pytest.raises(subprocess.TimeoutExpired):
         ratchet.load_current(args)
     _assert_nothing_survives(marker)
+
+
+def test_it_imports_with_popen_patched_to_a_plain_function(tmp_path) -> None:
+    """GOH.KILLTREEPOPEN: `subprocess.Popen | None` evaluated at definition broke importing it
+    under a consumer conftest that patched Popen with a function (game_asset_factory)."""
+    import subprocess as sp
+    import sys as _sys
+
+    src = (
+        "import subprocess, sys\n"
+        "subprocess.Popen = lambda *a, **k: None\n"
+        f"sys.path.insert(0, {str(REPO_ROOT / 'lib')!r})\n"
+        "import killtree\n"
+        "print('ok')\n"
+    )
+    # 3.14+ defers annotations itself (PEP 649); a consumer on 3.13 evaluates them at definition,
+    # so the module says so itself, whatever interpreter this suite runs on.
+    assert "from __future__ import annotations" in (REPO_ROOT / "lib/killtree.py").read_text()
+    import shutil
+
+    from timing_bounds import patience
+
+    for py in filter(None, {_sys.executable, shutil.which("python3.13")}):
+        r = sp.run([py, "-c", src], capture_output=True, text=True, check=False,
+                   stdin=sp.DEVNULL, timeout=patience(60))  # fmt: skip
+        assert r.returncode == 0 and "ok" in r.stdout, (py, r.stderr)
