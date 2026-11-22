@@ -94,6 +94,7 @@ land_check = importlib.import_module("land_check")
 land_e2e = importlib.import_module("land_e2e")
 lock_order = importlib.import_module("lock_order")
 land_prestep = importlib.import_module("land_prestep")
+land_reds = importlib.import_module("land_reds")
 land_slot = importlib.import_module("land_slot")
 landq_batch = importlib.import_module("landq_batch")
 landq_early = importlib.import_module("landq_early")
@@ -230,9 +231,8 @@ def run_one(q: Path, path: Path) -> dict:
 
 
 def record(req_path: Path, outcome: dict, item: str) -> None:
-    """The outcome to loopctl, done/ and the timing ledger. It names its ITEM and which ATTEMPT
-    at it this was (a re-enqueue after a red is attempt n+1, lib/land_attempts.py), and every
-    attempt -- red, timed out, landed -- is one `land attempt` row (GOH.GATEBUDGET2)."""
+    """The outcome to loopctl, done/ and the timing ledger, naming its ITEM and ATTEMPT (a red's
+    re-enqueue is attempt n+1, lib/land_attempts.py); each is a `land attempt` row (GATEBUDGET2)."""
     done_dir = req_path.parent.parent / "done"
     named = land_attempts.item_of(req_path, {"item": item})
     outcome = {**outcome, "at": now()}
@@ -243,6 +243,7 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
     outcome.update(item=named, attempt=land_attempts.attempt_of(done_dir, named))
     outcome.update(flakes.land_retry(done_dir, named, outcome))  # a re-enqueue's pass, if any
     outcome.update(land_check.fields(outcome, req))  # its guard; cov_risk (GOH.DIFFCOVLAND)
+    outcome.update(land_reds.fields(outcome))  # a red's tests and cause class (GOH.REDREVIEW)
     # A landing that leaves its own uncovered lines files their fix item now (GOH.DIFFCOVCARRY).
     outcome.update(diffcov_carry.file_item(outcome, req, str(loopctl()), item))
     if item:
@@ -364,9 +365,8 @@ def drain() -> int:
             env = dict(os.environ, PYTHONPATH=live_pythonpath(os.environ.get("PYTHONPATH", "")))
             os.chdir(q)  # the fresh lander inherits the state dir, whatever happened to it since
             os.execve(sys.executable, [sys.executable, str(fresh), "--drain"], env)
-        # Idle (none enqueued after the last look): main's full suite record, so no ship waits on a
-        # hand run (lib/idle_suite.py). It holds no lock and yields to the first request that
-        # arrives: then drain again.
+        # Idle (none enqueued since the last look): main's full suite record, so no ship waits on
+        # a hand run (lib/idle_suite.py); lockless, it yields to the next request, then drains.
         idle = not any((q / "pending").glob("*.json"))
         if idle and ruff_bump.run(q, live_root(), info) == "enqueued":
             continue  # the bump's own request (GOH.RUFFBUMPLAND): drain it, or its lander does

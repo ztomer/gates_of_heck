@@ -17,3 +17,4 @@ stop	lib/proc_stop.py	Stop processes YOU started, by pid or stamp, TERM then KIL
 undo	tools/undo.py	Put back only your own edits in your own worktree, keeping a copy for `--back` (`tools/undo.py`)
 brief	hooks/claude/brief.py	The header lines and Agent call a subagent spawn needs, from the active model-choice profile (`hooks/claude/brief.py`)
 flakes	lib/flakes.py	The flake register: every test that went red and passed on a retry, by test (`lib/flakes.py`)
+land-reds	lib/land_reds.py	Every red land record's cause class by count, with example records: `--last N`, `--json`, `--backfill` (`lib/land_reds.py`)

@@ -250,6 +250,7 @@ def test_a_red_land_gate_lands_nothing_and_records_the_log(repo, tmp_path, env):
     got = recorded(env)["T.R"]
     assert got["state"] == "red" and got["sha"] == tip, got
     assert "red-gate-says-why" in Path(got["log"]).read_text(), got
+    assert got["red_cause"] == {"cause": "other", "rule": "no test named", "tests": []}  # REDREVIEW
     assert git(repo, "rev-parse", "HEAD").strip() == before
 
 
