@@ -50,7 +50,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT)]
-from lib import cov_risk, fast_tests, land_reds, proc_deadline  # noqa: E402
+from lib import cov_risk, fast_tests, land_reds, main_red, proc_deadline  # noqa: E402
 from tui.lib import counted  # noqa: E402
 
 EACH_S = 1.0  # the most a past refuser may cost, by the suite's measurement
@@ -329,6 +329,7 @@ def at_enqueue(q: Path, req: dict, file, record, say=print) -> str:
         err(f"goh land: {red.splitlines()[0]} -- recorded red at enqueue, nothing queued")
         return red.splitlines()[0]  # GOH.BATCHCONFLICTFIRST: no guard or pre-step for it
     lines: list[str] = []
+    main_red.notice(q, req, say)  # main red in the idle suite: said, its nodes to the pre-step
     t0 = time.monotonic()
     refused = run(Path(req["worktree"]), q, lambda s: (say(s), lines.append(s)), req["repo"])
     req["cov_risk"] = cov_risk.say(req["worktree"], req["repo"], say)  # kept on the land record

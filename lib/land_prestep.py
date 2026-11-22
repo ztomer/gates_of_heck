@@ -26,6 +26,7 @@ from pathlib import Path
 affected_verdict = importlib.import_module("affected_verdict")
 gitrun = importlib.import_module("gitrun")
 land_cause = importlib.import_module("land_cause")
+main_red = importlib.import_module("main_red")
 killtree = importlib.import_module("killtree")
 land_slot = importlib.import_module("land_slot")
 land_spd = importlib.import_module("land_spd")
@@ -226,6 +227,7 @@ def run_kept(req: dict, q: Path, script: Path, bindings: tuple[str, ...]) -> flo
     ran: dict = {}
     # In goh's slot the pre-step judges the tip rebased onto main (GOH.PREONTIP): never the lane's.
     onto = ["GOH_LAND_PRE_ONTO=1"] if req.get("slot") else []
+    onto += main_red.env(req)  # main's idle-suite reds join the set (GOH.MAINREDNOTICE)
     took = run(Path(req["worktree"]), req["sha"], script, bindings, keep,
                [*land_slot.label(req), *onto], noted, did, ran)  # fmt: skip
     # The pre-step's wait, run, limit, workers and cpu_s: the SPD's figures (GOH.LANDPROFILEFIX),

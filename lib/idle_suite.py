@@ -52,6 +52,7 @@ import idle_red
 import killtree
 import landq_inflight
 import lock_order
+import main_red
 import selection_miss
 import ship_suite
 from full_run import INSTRUMENTED, MAX, _git, declares_full, prepare  # lib/: shared, lock-free
@@ -137,8 +138,13 @@ def run(
             say(f"idle full suite on {sha[:8]}: {filed}")
     finally:
         os.close(fd)
-    record = {"sha": sha, "outcome": outcome, "at": dt.datetime.now(dt.UTC).isoformat(),
-              "green": sha if outcome == "green" else str(last.get("green") or "")}  # fmt: skip
+    record = {
+        "sha": sha,
+        "outcome": outcome,
+        "at": dt.datetime.now(dt.UTC).isoformat(),
+        "green": sha if outcome == "green" else str(last.get("green") or ""),
+        "red": main_red.carry(last, sha, outcome),
+    }  # every enqueue says it (MAINREDNOTICE)
     tmp = state / ".last.json.tmp"
     tmp.write_text(json.dumps(record) + "\n")
     tmp.replace(last_path)

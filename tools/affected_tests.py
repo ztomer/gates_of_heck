@@ -74,6 +74,7 @@ from lib import (
     declared_reads,
     fast_tests,
     land_rustcov,  # GOH.LANDRUSTCOV: a Rust change's run measures its lines
+    main_red,
     pre_cpu,  # GOH.PREWIDTH: the pytest tree's CPU, for the land record's pre_run
     pre_reuse,
     source_closure,
@@ -310,7 +311,7 @@ def affected(
         else:
             chosen.update((f"{rel}::{n}", why) for n in nodes)
     chosen, SKIPPED[:] = binary_runners.once(chosen, SKIPPED)
-    return dict(sorted(chosen.items()))
+    return dict(sorted({**chosen, **main_red.also(root)}.items()))  # GOH.MAINREDNOTICE
 
 
 def changed_paths(root: Path, base: str) -> list[str]:

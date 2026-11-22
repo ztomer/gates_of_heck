@@ -117,7 +117,7 @@ def test_a_planted_base_fault_only_an_unchosen_test_sees_goes_red_and_files_its_
     assert f"since the last green full run at {green[:8]}" in text, text
     assert "a base module and its suite" not in text, text  # the green tip itself is not a suspect
     last = json.loads((q / "idle-suite" / "last.json").read_text())
-    assert (last["outcome"], last["green"]) == ("red", green), last
+    assert (last["outcome"], last["green"], last["red"]) == ("red", green, tip), last
 
 
 @pytest.mark.load_sensitive  # a thread, a clock, a sleep: each wait bounded by patience
