@@ -9,20 +9,20 @@ constant, and its gates drop an inherited SCCACHE_CACHE_SIZE so the file is the 
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
 
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 
 CAP = REPO_ROOT / "lib" / "sccache_cap.py"
 GIB = 1 << 30
 
 
 def _cap(conf: Path, *args: str, **env: str) -> subprocess.CompletedProcess:
-    full = {k: v for k, v in os.environ.items() if k != "SCCACHE_CACHE_SIZE"}
-    full.update(SCCACHE_CONF=str(conf), **env)
+    full = hermetic_env(SCCACHE_CONF=str(conf), **env)
+    if "SCCACHE_CACHE_SIZE" not in env:
+        full.pop("SCCACHE_CACHE_SIZE", None)
     return subprocess.run([sys.executable, str(CAP), *args], env=full, capture_output=True,
                           text=True, check=False, stdin=subprocess.DEVNULL)  # fmt: skip
 
@@ -54,7 +54,7 @@ def test_a_second_owner_in_the_environment_is_named(tmp_path):
 
 def test_the_gates_drop_an_inherited_cap(tmp_path):
     script = f'. "{REPO_ROOT}/lib/sccache_dir.sh"; printf "%s" "${{SCCACHE_CACHE_SIZE-unset}}"'
-    env = dict(os.environ, SCCACHE_CACHE_SIZE="20G")
+    env = hermetic_env(SCCACHE_CACHE_SIZE="20G")
     got = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True,
                          check=False, stdin=subprocess.DEVNULL)  # fmt: skip
     assert got.stdout == "unset", got.stdout + got.stderr
