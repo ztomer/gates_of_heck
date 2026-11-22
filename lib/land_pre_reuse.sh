@@ -39,16 +39,19 @@ land_pre_keep() {
 # some tests read run those tests alone; anything else, or no verdict to reuse, runs the whole set.
 # The judged tip's record stays the gate's, which carries from it what the diff does not choose.
 land_pre_again() {
-    local why rc=0 moved=() narrow cmd
+    local why out rc=0 moved=() narrow cmd structural=()
     if [ -z "$pre_judged" ]; then
         land_pre
         return
     fi
     # The judged verdict's record names the set it judged: a move to the selection's own code is
     # held to it (GOH.PRESTEPSELFMOVE, lib/pre_reuse.py `within`).
-    why="$("$GOH_PY" "$GOH/lib/pre_reuse.py" --root "$here" --judged "$pre_judged" --tip "$tip" \
+    out="$("$GOH_PY" "$GOH/lib/pre_reuse.py" --root "$here" --judged "$pre_judged" --tip "$tip" \
         --base "$(git -C "$main" rev-parse HEAD)" ${verdicts:+--record "$verdicts"} </dev/null 7>&- 8<&-)" || rc=$?
-    why="${why%%$'\n'*}"   # the first line says why; tools/affected_tests.py chooses the nodes
+    why="${out%%$'\n'*}"   # the first line says why; tools/affected_tests.py chooses the nodes
+    # The binary's build inputs moved (GOH.PRECODERUST): structural --full runs the binary, so the
+    # narrow run does too, before the tests that run it; the verdict's other tests stand.
+    [[ $'\n'"$out"$'\n' != *$'\n--structural\n'* ]] || structural=(--structural)
     case $rc in
         0)  pre_reused="${pre_judged:0:12} whole"
             ok "pre-land: the verdict $1 judged at ${pre_judged:0:8} holds for ${tip:0:8} -- not run again: $why" ;;
@@ -56,7 +59,7 @@ land_pre_again() {
             pre_reused="${pre_judged:0:12} readers"
             narrow="$(mktemp "$(goh_tmp)/goh-land-narrow.XXXXXX")" || exit 2
             mapfile -t moved < <(git diff --name-only --no-renames "$pre_judged" "$tip" 7>&-)
-            printf -v cmd '%q ' "$GOH_PY" tools/affected_tests.py --run --readers-only --changed "${moved[@]}"
+            printf -v cmd '%q ' "$GOH_PY" tools/affected_tests.py --run --readers-only ${structural[@]+"${structural[@]}"} --changed "${moved[@]}"
             land_pre "$cmd" "$narrow"
             rm -f "$narrow" "$narrow.judges" ;;
         *)  info "pre-land: the verdict $1 judged at ${pre_judged:0:8} is not ${tip:0:8}'s ($why) -- run again"

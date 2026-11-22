@@ -31,13 +31,15 @@ READS = """\
 import sys
 sys.path.insert(0, {kit!r})
 from lib.test_closure import Closure  # the kit's graph: what the pre-step's code reaches
+from lib import binary_runners  # the binary's build inputs: what `_built` asks the table
 del sys.path[0]
 try:
     import sel_helper  # noqa: F401 -- the selection's own lib/ module, when the tree has one
 except ImportError:
     pass
 READ = {{"read.txt": "tests/test_r.py", "gates/push_gate.sh": "tests/test_push.py",
-        "checks/cad_bambu.py": "tests/test_cad.py", "lib/sel_helper.py": "tests/test_sel.py"}}
+        "checks/cad_bambu.py": "tests/test_cad.py", "lib/sel_helper.py": "tests/test_sel.py",
+        "Cargo.lock": "tests/test_bin.py", "crates/goh/src/x.rs": "tests/test_bin.py"}}
 def readers(root, changed, tests=None):
     return {{READ[p]: "reads " + p for p in changed if p in READ}}
 def affected(root, changed):  # THE SET: a tree reader's node, the readers, what sel_helper names
@@ -49,7 +51,8 @@ def affected(root, changed):  # THE SET: a tree reader's node, the readers, what
     return dict(sorted(got.items()))
 if __name__ == "__main__":
     with open({seen!r}, "a") as f:
-        f.write("narrow " + " ".join(sys.argv[sys.argv.index("--changed") + 1 :]) + "\\n")
+        s = "+structural " if "--structural" in sys.argv else ""
+        f.write("narrow " + s + " ".join(sys.argv[sys.argv.index("--changed") + 1 :]) + "\\n")
 """
 
 
@@ -73,7 +76,7 @@ def _with_table(repo: Path, tmp_path: Path, kit: bool = False) -> Path:
     (repo / "tools" / "affected_tests.py").write_text(
         READS.format(seen=str(seen), kit=str(REPO_ROOT))
     )
-    for name in ("read.txt", "CHANGELOG.md"):
+    for name in ("read.txt", "CHANGELOG.md", "Cargo.lock"):
         (repo / name).write_text("main's first\n")
     for name, text in KIT_TREE.items() if kit else ():
         (repo / name).parent.mkdir(parents=True, exist_ok=True)

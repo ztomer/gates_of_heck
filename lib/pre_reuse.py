@@ -15,6 +15,9 @@ carry (tests/_land_verdicts.py) use. The answer, one line of why first, then a n
 
     0  REUSE   no moved path is read: the verdict judged at J stands (an empty diff too)
     3  NARROW  the moved paths are read only by the nodes listed: run those, keep J's verdict
+               (a move to the binary's build inputs -- Cargo.lock, crates/ -- is NARROW too, the
+               nodes the tests that run the binary, and a line `--structural` before them: the
+               structural gates run the binary, so structural --full runs again; GOH.PRECODERUST)
     1  RERUN   anything else, with why -- the pre-step's own code moved (`pre_step_code`: what
                chooses the set, the pytest entry, the structural gates and all they import,
                source or run, read from the tip's sources), a file pytest loads before every
@@ -69,6 +72,7 @@ REUSE, RERUN, NARROW = 0, 1, 3
 PRE_CODE = (".gatesrc", "pyproject.toml")
 PRE_ROOTS = ("tools/affected_tests.py", "tools/pytest.sh", "gates/structural.sh")
 PRE_CHECKS = "checks/check_"  # the structural binary runs these by name (crates/goh steps)
+STRUCTURAL = "--structural"  # NARROW's line after the why when the binary's build inputs moved
 SELECTOR = "tools/affected_tests.py"  # what chooses the set (GOH.PRESTEPSELFMOVE)
 
 
@@ -171,7 +175,10 @@ def decide(
         return RERUN, "no reads table (tools/affected_tests.py readers) in the tree", []
     graph = table.Closure(root)  # built once: the pre-step's code and pytest's base both read it
     lead, held = "", set()
-    if code := pre_step_code(root, table, moved, graph):
+    # The binary's build inputs are not the runner's code (GOH.PRECODERUST): they change what the
+    # structural gates and the binary-running tests RUN, which the narrow run repeats -- structural
+    # --full and those tests (`binary_runners.choose` is in `readers`), never the whole set.
+    if code := pre_step_code(root, table, moved, graph, binary=False):
         sel = selector_code(root, table, code, graph)
         if runner := [p for p in code if p not in sel]:
             return RERUN, f"{runner[0]} moved: the pre-step's own code", []
@@ -184,7 +191,7 @@ def decide(
     if wide := sorted(set(moved) & (graph.base() - only_via_selector(graph, held))):
         return RERUN, f"{wide[0]} moved: pytest loads it before every test", []
     read = table.readers(root, moved)
-    if read:
+    if read or _built(root, table, moved):
         return (
             NARROW,
             f"{lead}{n}, read by {len(read)} test file{'s' if len(read) != 1 else ''}: {shown}",
@@ -193,11 +200,15 @@ def decide(
     return REUSE, f"{lead}{n}, none read by a test: {shown}", []
 
 
-def pre_step_code(root: Path, table, moved: list[str], graph=None) -> list[str]:
+def pre_step_code(
+    root: Path, table, moved: list[str], graph=None, binary: bool = True
+) -> list[str]:
     """Each of `moved` that is the pre-step's own code at `root` (GOH.PRESTEPMOVED): PRE_CODE, the
     PRE_ROOTS and the checks the structural binary runs (PRE_CHECKS), with all they import, source
     or run as `table`'s graph reads it (lib/test_closure.py `reach`, the selection's one dependency
-    reader), and the native binary's build inputs, which the structural gates run. An edge a move
+    reader), and the native binary's build inputs, which the structural gates run (BINARY: the
+    runner's code alone without them, GOH.PRECODERUST: `decide` re-runs structural and the tests
+    that run the binary for a move there, not the set). An edge a move
     adds or drops is a change to a file the graph reaches, so the tip's graph alone misses none.
     A table whose graph cannot reach answers with the roots alone."""
     graph = table.Closure(root) if graph is None else graph
@@ -205,7 +216,7 @@ def pre_step_code(root: Path, table, moved: list[str], graph=None) -> list[str]:
     own = {*PRE_CODE, *PRE_ROOTS, *roots}
     for rel in roots if hasattr(graph, "reach") else ():
         own.update(graph.reach(rel, skip=set())[0])
-    built = _built(root, table, moved)
+    built = _built(root, table, moved) if binary else set()
     return [p for p in moved if p in own or p in built]
 
 
@@ -375,8 +386,12 @@ def main(argv: list[str] | None = None) -> int:
     if not (args.judged and args.tip):
         ap.error("--judged and --tip are required without --suite")
     record = Path(args.record) if args.record else None
-    code, why, nodes = decide(Path(args.root).resolve(), args.judged, args.tip, args.base, record)
+    root = Path(args.root).resolve()
+    code, why, nodes = decide(root, args.judged, args.tip, args.base, record)
     print(why)
+    table = _table(root) if code == NARROW else None
+    if table is not None and _built(root, table, _diff(root, args.judged, args.tip) or []):
+        print(STRUCTURAL)  # the binary's build moved: structural --full runs it (PRECODERUST)
     for n in nodes:
         print(n)
     return code
