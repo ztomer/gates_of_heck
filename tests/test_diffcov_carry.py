@@ -314,3 +314,27 @@ def test_the_lander_files_the_item_and_names_it_on_the_landing_record(tmp_path, 
     assert done["diffcov_item"] == {"id": "GOH.DIFFCOVFEDCBA98", "said": "filed"}, done
     calls = [json.loads(x) for x in (tmp_path / "calls").read_text().splitlines()]
     assert any("file" in c for c in calls) and any("set" in c for c in calls), calls
+
+
+@pytest.mark.parametrize("hits", [1, 0])
+def test_a_carry_is_rejudged_against_the_newest_ship_profile(tmp_path, monkeypatch, hits):
+    """GOH.CARRYREJUDGE: GOH.LANDRUSTCOV carried observed.rs `_ => Vec::new(),` judged on the
+    v0.144.0 profile; v0.145.0's profile covered it, yet the preflight refused two ships. A carry
+    judged on an older profile is re-judged on the newest: covered there clears it, else refuses."""
+    main, wt = _land(tmp_path, monkeypatch)
+    q = tmp_path / "landq"
+    _lines, rec = cov_risk.report(wt, main)
+    _landed(q, main, wt, rec, "GOH.LANE")
+    (main / PROBE).write_text("// moved down\n" + (main / PROBE).read_text())
+    _commit(main, "shift the line to 5")
+    parts = tmp_path / "parts2"
+    parts.mkdir()
+    (parts / "part-external.info").write_text(f"SF:{main / PROBE}\nDA:5,{hits}\nend_of_record\n")
+    assert cov_risk.keep(parts, main, cov_risk.summary_path(main))  # the newer ship's profile
+    (main / PROBE).write_text("// again\n" + (main / PROBE).read_text())
+    head = _commit(main, "after that ship: the line is 6")
+    why = diffcov_carry.refusal(main, "v0.1.0", head, q)
+    if hits:
+        assert why is None, why
+    else:
+        assert why and f"{PROBE}:6  {LINE}" in why, why

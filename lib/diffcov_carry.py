@@ -181,6 +181,50 @@ class _Tree:
         return ln + shift
 
 
+class _Newest:
+    """The newest kept ship profile, asked whether it covers line LN of REL at HEAD."""
+
+    def __init__(self, repo: Path, head: str) -> None:
+        import cov_risk  # lib/: where the profile is kept
+
+        self.repo, self.head, self.data = repo, head, {}
+        with contextlib.suppress(OSError, ValueError):
+            self.data = json.loads(cov_risk.summary_path(repo).read_text())
+        self.sha = self.data.get("sha") or ""
+        if self.sha and _git(repo, "cat-file", "-e", f"{self.sha}^{{commit}}") is None:
+            self.sha = ""
+        self.diffs: dict[str, list[tuple[int, int, int, int]] | None] = {}
+
+    def newer_than(self, said: str) -> bool:
+        return bool(self.sha) and f"profile {self.sha[:8]}" not in (said or "")
+
+    def covers(self, rel: str, ln: int) -> bool:
+        prof = (self.data.get("files") or {}).get(rel)
+        if not prof or not self.sha:
+            return False
+        if rel not in self.diffs:
+            import cov_risk  # lib/: the one -U0 hunk reader's pattern
+
+            out = _git(self.repo, "diff", "-U0", "--no-color", "--no-ext-diff", "--no-textconv",
+                       self.sha, self.head, "--", rel)  # fmt: skip
+            self.diffs[rel] = None if out is None else [
+                tuple(int(m.group(i) or 1) for i in (1, 2, 3, 4))
+                for m in map(cov_risk.HUNK.match, out.splitlines()) if m
+            ]  # fmt: skip
+        hunks = self.diffs[rel]
+        if hunks is None:
+            return False
+        shift = 0  # HEAD's line LN back to the profile's commit: a changed line is not judged
+        for a, b, c, d in hunks:
+            if d and c <= ln < c + d:
+                return False
+            if (c + d if d else c + 1) <= ln:
+                shift = (a + b if b else a + 1) - (c + d if d else c + 1)
+            else:
+                break
+        return ln + shift in set(prof.get("cov") or [])
+
+
 def open_lines(repo: Path, tag: str, head: str, q: Path | None = None) -> list[dict]:
     """The carried lines of the lands since TAG still uncovered at HEAD, each once, at HEAD's
     numbering: `{file, line, text, land, item}`."""
@@ -191,6 +235,7 @@ def open_lines(repo: Path, tag: str, head: str, q: Path | None = None) -> list[d
     recs = _landed(q, repo, {s: i for i, s in enumerate(shas)})
     landed_items = {r.get("item") for r in recs if r.get("item")}
     tree = _Tree(repo, head)
+    newest = _Newest(repo, head)
     seen: dict[tuple[str, str], bool] = {}
 
     def holds(landed: str, judged: str) -> bool:  # a later judgment saw this land's change
@@ -224,12 +269,16 @@ def open_lines(repo: Path, tag: str, head: str, q: Path | None = None) -> list[d
             found.setdefault(
                 key, {"file": rel, "line": at, "text": text, "land": land, "item": filed or ""}
             )
-            if (c.get("own") and filed in landed_items) or any(
-                holds(landed, j["head"])
-                and not any(o["file"] == rel and o["text"] == text for o in j["carry"])
-                for j in later
+            if (
+                (c.get("own") and filed in landed_items)
+                or any(
+                    holds(landed, j["head"])
+                    and not any(o["file"] == rel and o["text"] == text for o in j["carry"])
+                    for j in later
+                )
+                or (newest.newer_than(cr.get("said") or "") and newest.covers(rel, at))
             ):
-                cleared.add(key)  # its fix lane landed, or a later judgment no longer carries it
+                cleared.add(key)  # its fix lane landed, a later judgment or the newest profile
     return sorted((c for k, c in found.items() if k not in cleared),
                   key=lambda c: (c["file"], c["line"]))  # fmt: skip
 
