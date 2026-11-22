@@ -189,13 +189,18 @@ def test_an_edit_outside_every_crate_re_gates_no_crate_but_shared_config_re_gate
 def test_a_resolvable_reach_outside_the_crate_keys_on_exactly_that_file(
     estate: Path, fake_cargo: Path
 ) -> None:
-    """A test reading `../shared/fixture.json` (relative to its package) is keyed on that file:
+    """An include of `../../shared/fixture.json` (relative to its source) is keyed on that file:
     editing it re-gates the crate, a README edit does not. Measured 2026-10-05: every crate of a
     private server workspace has include_str!("../../../VERSION"), and keying them on the whole tree
-    for it made the cache worthless."""
+    for it made the cache worthless. (An include: the crate group compiles and runs no test, so a
+    path read at run time is not its input -- GOH.GATEFLOOR, tests/test_rust_gate_floor.py.)"""
     (estate / "crates" / "shared").mkdir()
     (estate / "crates" / "shared" / "fixture.json").write_text("{}\n")
-    _edit(estate, "crates/c/src/lib.rs", '\npub const FIXTURE: &str = "../shared/fixture.json";\n')
+    _edit(
+        estate,
+        "crates/c/src/lib.rs",
+        '\npub const FIXTURE: &str = include_str!("../../shared/fixture.json");\n',
+    )
     assert _gate(estate, "c").returncode == 0
     _edit(estate, "README.md", "more prose\n")
     assert _skipped(_gate(estate, "c"), "crate"), "a README edit re-gated a precisely keyed crate"
@@ -203,9 +208,13 @@ def test_a_resolvable_reach_outside_the_crate_keys_on_exactly_that_file(
     assert not _skipped(_gate(estate, "c"), "crate"), "editing the file it reads did not re-gate"
 
 
-def test_an_unnameable_reach_keys_the_crate_on_the_whole_tree(
+def test_an_unnameable_reach_keys_the_crate_on_the_whole_tree_only_where_it_compiles(
     estate: Path, fake_cargo: Path
 ) -> None:
+    """A `..` join read at RUN time keys the crate's tests on the whole tree (`goh rust-scope`,
+    tests/test_rust_gate_floor.py), never the crate group, which compiles and runs none: a README
+    edit re-gates nothing there (GOH.GATEFLOOR). One in a build script runs at compile time: the
+    whole tree again."""
     _edit(
         estate,
         "crates/c/src/lib.rs",
@@ -215,7 +224,14 @@ def test_an_unnameable_reach_keys_the_crate_on_the_whole_tree(
     )
     assert _gate(estate, "c").returncode == 0
     _edit(estate, "README.md", "more prose\n")
-    assert not _skipped(_gate(estate, "c"), "crate"), "a `..` join was keyed on the crate only"
+    assert _skipped(_gate(estate, "c"), "crate"), "a run-time reach widened the compile scope"
+    (estate / "crates" / "c" / "build.rs").write_text(
+        'fn main() {\n    let _ = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");\n}\n'
+    )
+    _git(estate, "add", "-A")
+    assert _gate(estate, "c").returncode == 0
+    _edit(estate, "README.md", "more prose\n")
+    assert not _skipped(_gate(estate, "c"), "crate"), "a build script's `..` was keyed on the crate"
 
 
 def test_a_path_dependencys_own_test_reads_do_not_widen_its_users(estate: Path) -> None:

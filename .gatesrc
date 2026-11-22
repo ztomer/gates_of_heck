@@ -106,6 +106,11 @@ GOH_RUST_LINT_CONFIGS='--target x86_64-unknown-linux-gnu'
 # cargo test), so the coverage gate also runs it against the INSTRUMENTED binary and counts it.
 # Without it the crate read 62.5% (2026-10-06) for code the suite covers.
 GOH_COV_RUST_EXTERNAL='GOH_TEST_BIN="$GOH_COVERAGE_BIN_DIR/goh" ./tools/pytest.sh'
+# What no Rust test reads (GOH.GATEFLOOR): the land's `cargo test (plain)` is keyed on the tree minus
+# these git globs (gates/_rust_inputs.sh `tests`), so a land of the Python suite, docs or changelog
+# alone skips its 41-69 s. Not lib/ nor tools/: goh's Rust tests run goh's own scripts (GOH_DIR is the
+# checkout; cli_signal runs `goh land`). tests/test_rust_gate_floor.py refuses a Rust source naming one.
+GOH_RUST_TEST_UNREAD='tests/**/*.py docs/** changelog/**'
 
 # A number in prose, re-derived from the tree (`goh claim-derivation`). Opt-in
 # in every repo because it lands RED wherever it lands first: three adversarial
@@ -190,9 +195,13 @@ GOH_CI_STEPS='./gates/rust_gate.sh:./gates/structural.sh --full:cargo test --wor
 # pytest suite runs 85 s alone and 142 s beside the twin this list gave it.
 # Re-measured for G2e (2026-10-25, GOH_PROVEN=0, at 3a63301): 317 s, rust_gate.sh 269 s beside
 # the other five steps' 302 s, of which the twin suite was 196 s. With the suite once, rust_gate.sh
-# carries it and is the long pole; every other step together runs beside it, so 2 still suffices --
-# a third slot would have nothing to start.
-GOH_CI_JOBS=2
+# carries it and is the long pole; every other step together runs beside it.
+# 3 since GOH.GATEFLOOR (2026-11-22): a land's gate is ten steps now, and at 2 the canary (100 s
+# median), path_invariance (29 s), the doctests and the structural pass queued behind ONE slot beside
+# rust_gate.sh. The cores are there: 16, of which the land path takes 3/4 (GOH.LANDSHARE) -- 12 split
+# over at most a gate and a pre-step, so a land gate's share is 6-12 -- and the third slot's steps are
+# 1-4 cores each (the canary's own JOBS is 4) beside rust_gate.sh's suite, sized by that same share.
+GOH_CI_JOBS=3
 # main moves only through tools/land.sh: a push of a main tip it never gated is refused (BACKLOG 1.5).
 GOH_LANDED_ONLY=main
 # Before the land lock and the gate, tools/land.sh runs the tests the diff chooses (GOH.TREETESTSFIRST):

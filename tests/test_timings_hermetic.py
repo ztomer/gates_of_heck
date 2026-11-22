@@ -39,8 +39,13 @@ def test_the_coverage_gate_s_tests_write_no_row_to_the_parent_profile(tmp_path: 
 
 
 def test_the_plain_cargo_test_runs_with_no_profile() -> None:
-    """A measured repo's plain run (rust_coverage_plain) runs both its test commands unbound."""
+    """A measured repo's plain run (rust_coverage_plain) runs both its test commands unbound: each
+    of its two functions (two groups at a land, GOH.GATEFLOOR) runs its command under the unbind."""
     text = (REPO_ROOT / "gates" / "_rust_coverage.sh").read_text()
-    body = text.split("rust_coverage_plain() {", 1)[1].split("\n}\n", 1)[0]
-    assert "goh_timings_unbind" in body, body
-    assert body.count('env "${unbind[@]}"') == 2, body
+
+    def body(fn: str) -> str:
+        return text.split(f"{fn}() {{", 1)[1].split("\n}\n", 1)[0]
+
+    assert "goh_timings_unbind" in body("_rust_cov_unbind"), body("_rust_cov_unbind")
+    for fn in ("rust_cov_cargo_plain", "rust_cov_external_plain"):
+        assert "_rust_cov_unbind" in body(fn) and body(fn).count('env "${_unbind[@]}"') == 1, fn

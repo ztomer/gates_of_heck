@@ -92,6 +92,7 @@ pub mod run_path;
 pub mod runpaths;
 pub mod rust_depinfo;
 pub mod rust_scope;
+pub mod rust_scope_reads;
 pub mod rustfmt_staged;
 pub mod rustlex;
 pub mod scope;
@@ -241,7 +242,16 @@ fn run_core(command: Commands) -> i32 {
         Commands::RustScope {
             cargo_dir,
             check_depinfo,
-        } => rust_scope::run_command(&cargo_dir, check_depinfo.as_deref()),
+            compile,
+        } => rust_scope::run_command(
+            &cargo_dir,
+            check_depinfo.as_deref(),
+            if compile {
+                rust_scope::Reads::Compile
+            } else {
+                rust_scope::Reads::Run
+            },
+        ),
         Commands::BareOpen(a) => paths(a.exclude, |x| bareopen::run_command(a.staged, x)),
         Commands::RunPaths(a) => paths(a.exclude, |x| runpaths::run_command(a.staged, x)),
         Commands::LaunchApp(a) => launchapp::run_args(a),

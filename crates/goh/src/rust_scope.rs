@@ -22,6 +22,9 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+pub use crate::rust_scope_reads::Reads;
+use crate::rust_scope_reads::{compile_time, compiles_a_read, normalize, string_literals};
+
 /// Config files cargo, clippy, rustfmt and the house gates read from a directory or its ancestors.
 const CONFIG_NAMES: &[&str] = &[
     "Cargo.toml",
@@ -151,9 +154,7 @@ fn reached(line: &str, source: &Path, package: &Path, root: &Path) -> Option<Vec
     if literals.is_empty() || literals.contains(&"..") {
         return None;
     }
-    let compile_time = ["include_str!", "include_bytes!", "include!"]
-        .iter()
-        .any(|m| line.contains(m));
+    let compile_time = compile_time(line);
     let mut out = Vec::new();
     for lit in literals {
         let base = if compile_time && !lit.starts_with('/') {
@@ -163,45 +164,6 @@ fn reached(line: &str, source: &Path, package: &Path, root: &Path) -> Option<Vec
         };
         let resolved = normalize(&base.join(lit.trim_start_matches('/')))?;
         out.push(rel(root, &resolved)?);
-    }
-    Some(out)
-}
-
-/// The contents of the `"..."` literals on a line, `\` escapes honoured (a shell script written
-/// from a test has `\"` inside its literal; splitting on `"` read that as no path at all).
-fn string_literals(line: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut cur: Option<String> = None;
-    let mut chars = line.chars();
-    while let Some(c) = chars.next() {
-        match (&mut cur, c) {
-            (None, '"') => cur = Some(String::new()),
-            (Some(_), '"') => out.extend(cur.take()),
-            (Some(s), '\\') => {
-                if let Some(next) = chars.next() {
-                    s.push(if next == 'n' { '\n' } else { next });
-                }
-            }
-            (Some(s), other) => s.push(other),
-            (None, _) => {}
-        }
-    }
-    out
-}
-
-/// `a/b/../c` -> `a/c`, lexically; `None` if `..` climbs above the root of the path.
-fn normalize(path: &Path) -> Option<PathBuf> {
-    let mut out = PathBuf::new();
-    for part in path.components() {
-        match part {
-            std::path::Component::ParentDir => {
-                if !out.pop() {
-                    return None;
-                }
-            }
-            std::path::Component::CurDir => {}
-            other => out.push(other),
-        }
     }
     Some(out)
 }
@@ -243,7 +205,7 @@ fn tracked_rs(root: &Path, dirs: &[&str]) -> Vec<PathBuf> {
 ///
 /// When the scope cannot be named: cargo or git failed, or a path dependency lies outside the repo.
 pub fn scope(cargo_dir: &Path) -> Result<Vec<String>, String> {
-    scope_keyed(cargo_dir, &keyed_roots())
+    scope_keyed(cargo_dir, &keyed_roots(), Reads::Run)
 }
 
 /// The roots the caller's proven identity already keys.
@@ -273,13 +235,25 @@ pub fn under_keyed(path: &Path, roots: &[PathBuf]) -> bool {
 /// # Errors
 ///
 /// As [`scope`]: a path dependency outside the repo and outside every keyed root is refused.
-pub fn scope_keyed(cargo_dir: &Path, keyed: &[PathBuf]) -> Result<Vec<String>, String> {
+pub fn scope_keyed(
+    cargo_dir: &Path,
+    keyed: &[PathBuf],
+    reads: Reads,
+) -> Result<Vec<String>, String> {
     let root = repo_root(cargo_dir)?;
     let meta = metadata(cargo_dir, false)?;
     let mut entries = BTreeSet::new();
     let mut dirs = Vec::new();
     for pkg in local_packages(&meta) {
         if rel(&root, &pkg).is_none() && under_keyed(&pkg, keyed) {
+            if reads == Reads::Compile {
+                // The compile key holds no whole gates identity (gates/_rust_inputs.sh): the caller
+                // keys this workspace by the run scope and that identity instead.
+                return Err(format!(
+                    "{} is a path dependency left to the proven identity, which the compile scope does not key",
+                    pkg.display()
+                ));
+            }
             continue; // keyed by the proven identity (the gates checkout), not by this repo's git
         }
         let r = rel(&root, &pkg).ok_or_else(|| {
@@ -344,7 +318,11 @@ pub fn scope_keyed(cargo_dir: &Path, keyed: &[PathBuf]) -> Result<Vec<String>, S
             }
             // Comments are prose about paths, not reads of them.
             let code = text.lines().filter(|l| !l.trim_start().starts_with("//"));
+            let build_script = file.file_name().is_some_and(|n| n == "build.rs");
             for line in code.filter(|l| escapes(l)) {
+                if reads == Reads::Compile && !build_script && !compiles_a_read(line) {
+                    continue; // a read at run time: no compile reads it
+                }
                 match reached(line, &file, &package, &root) {
                     Some(paths) => entries.extend(paths),
                     None => return Ok(vec![".".to_owned()]),
@@ -371,7 +349,11 @@ fn prune_nested(entries: BTreeSet<String>) -> Vec<String> {
 
 /// `goh rust-scope`: print the scope, or check the last build's dep-info against a scope file.
 /// Exit 0 printed / clean, 1 when dep-info names files outside the scope, 2 when it cannot answer.
-pub fn run_command(cargo_dir: &std::path::Path, check: Option<&std::path::Path>) -> i32 {
+pub fn run_command(
+    cargo_dir: &std::path::Path,
+    check: Option<&std::path::Path>,
+    reads: Reads,
+) -> i32 {
     if let Some(file) = check {
         let entries: Vec<String> = std::fs::read_to_string(file)
             .unwrap_or_default()
@@ -393,7 +375,7 @@ pub fn run_command(cargo_dir: &std::path::Path, check: Option<&std::path::Path>)
             Ok(_) => 0,
         };
     }
-    match scope(cargo_dir) {
+    match scope_keyed(cargo_dir, &keyed_roots(), reads) {
         Err(message) => {
             goh_tui::eoutln!("{ERR} [rust_scope] {message}");
             2

@@ -68,6 +68,7 @@ from tui.lib import counted, err, info, ok, warn
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import canary_grace
 import canary_memo
+import consumer_reads
 import estate_registry
 import killtree
 import not_applicable
@@ -329,6 +330,9 @@ def run(args: argparse.Namespace) -> tuple[dict, int]:
             return rec, 0
     repos, problems = consumers(args.root, args.state, args.goh)
     rec.update(consumers=len(repos), problems=problems)
+    if not explicit and repos and (why := consumer_reads.land_skip(args.goh, repos, info)):
+        rec.update(verdict="no-consumer-read", why=why)
+        return rec, 0
     registry = estate_registry.registry_path(args.state)
     # No estate at all -- no registry, no consumer under the root: a clean machine. A hosted runner
     # says the canary is NOT APPLICABLE; anywhere else it refuses below, as it always did, because
@@ -374,6 +378,9 @@ def say(rec: dict) -> None:
         return  # said where it was found (not_applicable.declare)
     if rec["verdict"] == "no-gate-change":
         ok(f"release canary: no gate input changed since {base} -- nothing to sweep")
+        return
+    if rec["verdict"] == "no-consumer-read":
+        ok(f"release canary: {rec['why']} -- nothing to sweep at this land")
         return
     for where, steps in sorted(rec["already_red"].items()):
         warn(f"release canary: {where} is red at push under {base} AND {head} (its own debt, not")

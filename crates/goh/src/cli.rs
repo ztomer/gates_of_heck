@@ -33,6 +33,10 @@ pub enum Commands {
         /// Instead: name every file the last build read that lies outside the scope in FILE.
         #[arg(long)]
         check_depinfo: Option<PathBuf>,
+        /// Only what the compiler reads (`include!` and kin, build scripts), not a test's reads at
+        /// run time: the scope of a group that compiles and runs no test (GOH.GATEFLOOR).
+        #[arg(long)]
+        compile: bool,
     },
     /// Run a command under a ceiling, its group swept on expiry or a signal (`lib/bounded_run.py`).
     Step(StepArgs),

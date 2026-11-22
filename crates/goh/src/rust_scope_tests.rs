@@ -198,6 +198,37 @@ fn an_unnameable_reach_scopes_the_whole_tree() {
     );
 }
 
+/// GOH.GATEFLOOR: a read at run time never widens the scope of a group that only compiles.
+#[test]
+fn a_runtime_reach_does_not_widen_the_compile_scope() {
+    let dir = estate();
+    let (a, up) = (
+        dir.path().join("crates/a"),
+        "std::path::Path::new(env!(\"CARGO_MANIFEST_DIR\")).join(\"..\")",
+    );
+    write(
+        dir.path(),
+        "crates/a/src/up.rs",
+        &format!("pub fn up() -> std::path::PathBuf {{\n    {up}\n}}\n"),
+    );
+    goh_testkit::git_in(dir.path(), &["add", "-A"]).expect("git add");
+    let scope = |reads| super::scope_keyed(&a, &[], reads).expect("scope");
+    let compile = scope(super::Reads::Compile);
+    assert!(
+        compile.contains(&"VERSION".to_owned()) && !compile.contains(&".".to_owned()),
+        "{compile:?}"
+    );
+    assert_eq!(scope(super::Reads::Run), vec!["."]);
+    write(
+        dir.path(),
+        "crates/a/build.rs",
+        &format!("fn main() {{\n    let _ = {up};\n}}\n"),
+    );
+    goh_testkit::git_in(dir.path(), &["add", "-A"]).expect("git add");
+    assert_eq!(scope(super::Reads::Compile), vec!["."], "build.rs");
+    drop(dir);
+}
+
 #[test]
 fn a_dep_info_read_outside_the_scope_is_named_and_one_inside_is_not() {
     let dir = estate();
@@ -355,12 +386,15 @@ fn a_relative_read_resolves_against_the_package_or_workspace_root_not_the_build_
 fn the_command_prints_a_scope_checks_a_file_and_refuses_a_non_workspace() {
     let dir = estate();
     let cargo_dir = dir.path().join("crates/a");
-    assert_eq!(super::run_command(&cargo_dir, None), 0);
+    assert_eq!(super::run_command(&cargo_dir, None, super::Reads::Run), 0);
     let scope_file = dir.path().join("scope.txt");
     std::fs::write(&scope_file, "crates/a\ncrates/b\n").expect("write scope");
-    assert_eq!(super::run_command(&cargo_dir, Some(&scope_file)), 0);
+    assert_eq!(
+        super::run_command(&cargo_dir, Some(&scope_file), super::Reads::Run),
+        0
+    );
     let empty = tempfile::tempdir().expect("tempdir");
-    assert_eq!(super::run_command(empty.path(), None), 2);
+    assert_eq!(super::run_command(empty.path(), None, super::Reads::Run), 2);
     drop(dir); // the estate holds the build directory until the last read above
 }
 
@@ -408,7 +442,8 @@ fn estate_with_outside_dep() -> (Estate, tempfile::TempDir) {
 #[test]
 fn an_outside_path_dep_in_no_keyed_root_still_refuses_the_scope() {
     let (dir, _outside) = estate_with_outside_dep();
-    let err = super::scope_keyed(&dir.path().join("crates/a"), &[]).expect_err("an outside dep");
+    let err = super::scope_keyed(&dir.path().join("crates/a"), &[], super::Reads::Run)
+        .expect_err("an outside dep");
     assert!(err.contains("outside the repository"), "{err}");
 }
 
@@ -416,7 +451,8 @@ fn an_outside_path_dep_in_no_keyed_root_still_refuses_the_scope() {
 fn an_outside_path_dep_inside_a_keyed_root_is_left_to_the_identity() {
     let (dir, outside) = estate_with_outside_dep();
     let keyed = vec![std::fs::canonicalize(outside.path()).expect("canonical")];
-    let entries = super::scope_keyed(&dir.path().join("crates/a"), &keyed).expect("scope");
+    let entries =
+        super::scope_keyed(&dir.path().join("crates/a"), &keyed, super::Reads::Run).expect("scope");
     assert!(entries.iter().any(|e| e == "crates/a"), "{entries:?}");
     assert!(
         !entries.iter().any(|e| e.contains("goh-tui")),

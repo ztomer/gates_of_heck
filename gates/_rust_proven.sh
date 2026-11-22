@@ -32,6 +32,8 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 # shellcheck source=gates/_goh_bin.sh
 . "$_goh_d/_goh_bin.sh"
 proven_settings || exit 2
+# shellcheck source=gates/_rust_inputs.sh
+. "$(dirname "${BASH_SOURCE[0]}")/_rust_inputs.sh"   # the `compile` and `tests` modes: keyed on the group's own inputs
 
 RUST_SCOPE_FILE=""
 _rust_scope_tried=""
@@ -118,7 +120,9 @@ _rust_step() {
 }
 
 _rust_key() { # <mode> <step>
-    if [ "$1" = crate ]; then
+    if [ "$1" = compile ] || [ "$1" = tests ]; then
+        _rust_inputs_key "$1" "$2"
+    elif [ "$1" = crate ]; then
         [ -n "$RUST_SCOPE_FILE" ] || return 1
         # shellcheck disable=SC2046  # one entry per line, no spaces: rust-scope prints paths
         proven_scoped_key "$2" $(cat "$RUST_SCOPE_FILE")
@@ -143,15 +147,16 @@ _rust_phase_end() {
 # _rust_group_record <group> <mode> <step> <pkey> <ptree> <live> -- after a GREEN group: the key
 # again, the kept-rewrite verdict, the dep-info check, the record. 0 recorded or not worth recording.
 _rust_group_record() {
-    local group="$1" mode="$2" step="$3" pkey="$4" ptree="$5" live="$6" moved=0 escaped where
+    local group="$1" mode="$2" step="$3" pkey="$4" ptree="$5" live="$6" moved=0 escaped where scope=""
     # GOH.KEEP1: a kept path the group rewrote is NAMED, and red unless the repo's ratchet carries
     # it. The ratchet names the group by this label, not by the step string, which carries a hash.
     [ "$(_rust_key "$mode" "$step" </dev/null)" = "$pkey $ptree" ] || moved=1
     where="$(_rust_where)"
     [ "$group" = repo ] && where="(repo)"
     proven_kept_check "rust_gate $group $where" "$live" "$moved" || return 1
-    if [ "$mode" = crate ]; then
-        if ! escaped="$("$goh_native" rust-scope "$cargo_dir" --check-depinfo "$RUST_SCOPE_FILE" 2>&1)"; then
+    case "$mode" in crate) scope="$RUST_SCOPE_FILE" ;; compile) scope="$RUST_COMPILE_SCOPE_FILE" ;; esac
+    if [ -n "$scope" ]; then
+        if ! escaped="$("$goh_native" rust-scope "$cargo_dir" --check-depinfo "$scope" 2>&1)"; then
             # shellcheck disable=SC2086  # one path per line, no spaces: rust-scope prints paths
             if _rust_learn $escaped; then
                 info "[rust] $group checks not recorded this run: the build read $(printf '%s' "$escaped" | tr '\n' ' ')"
@@ -175,6 +180,10 @@ _rust_group_record() {
 rust_proven_group() {
     local group="$1" mode="$2" fn="$3" step pair="" pkey="" ptree="" hit age by live="" t0 rc=0
     t0="$EPOCHREALTIME"
+    if [ "$mode" = compile ]; then   # no compile scope: the run scope and the whole identity, as before
+        _rust_compile_scope_init
+        [ -n "$RUST_COMPILE_SCOPE_FILE" ] || mode=crate
+    fi
     [ "$mode" = crate ] && _rust_scope_init
     step="$(_rust_step "$group")"
     if pair="$(_rust_key "$mode" "$step" </dev/null)"; then

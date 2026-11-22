@@ -384,7 +384,8 @@ _goh_cmd=(bash "$HERE/goh.sh")
 [ -x "${GOH_RESOLVED_BIN:-}" ] && _goh_cmd=("$GOH_RESOLVED_BIN")
 # Advisories FIRST: half a second, and the finding that matters most should not wait on clippy.
 _group_on repo && rust_advisories
-_group_on crate && rust_proven_group crate crate rust_crate_checks
+# The crate group compiles and runs no test: keyed on what the compiler reads (GOH.GATEFLOOR).
+_group_on crate && rust_proven_group crate compile rust_crate_checks
 _group_on repo && rust_proven_group repo tree rust_repo_checks
 
 # GOH_RUST_COVERAGE=defer: the caller's PUSH gate checks the floor, so a
@@ -402,7 +403,7 @@ elif [ -n "$_cov_parts" ]; then
 elif [ "${GOH_RUST_COVERAGE:-}" = defer ]; then
     info "coverage deferred to the push gate (GOH_RUST_COVERAGE=defer)"
 elif [ "${GOH_RUST_COVERAGE:-}" = plain ] && [ -n "${GOH_COV_FLOOR_RUST:-}${GOH_COV_FLOORS_JSON:-}" ]; then
-    rust_proven_group coverage tree rust_coverage_plain_only   # its key holds GOH_RUST_COVERAGE (_rust_step)
+    rust_coverage_plain_only   # its groups' keys hold GOH_RUST_COVERAGE (_rust_step)
 elif [ -n "${GOH_COV_FLOOR_RUST:-}" ] || [ -n "${GOH_COV_FLOORS_JSON:-}" ]; then
     # An external command reads the whole tree (a test suite), so its group keys on the whole tree:
     # a crate-scoped key would skip a coverage run whose tests changed. Inside it, the MEASUREMENT

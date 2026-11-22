@@ -91,3 +91,30 @@ def readers(goh: Path, changed: list[str], repos: list[Path] | None = None) -> d
     with cf.ThreadPoolExecutor(max_workers=8) as pool:
         hits = dict(zip(repos, pool.map(lambda r: named(r, paths), repos), strict=True))
     return {str(r): hits[r] for r in sorted(hits) if hits[r]}
+
+
+def land_skip(goh: Path, repos: list[Path], say=print) -> str | None:
+    """At a LAND (GOH_GATE_CLASS=land, GOH_CHANGE_BASE main's tip), why no sweep is owed: no
+    consumer names a path the land changes (lib/consumer_reads.py, the pre-step's own question,
+    tools/affected_tests.py canary). None: sweep -- not a land, no base, git cannot say, or a
+    consumer names one. A consumer runs goh's gates through its .gatesrc, which goh's own tests
+    judge; the release canary is the test of what a consumer runs BY PATH. It cost a median 100
+    s (362 cpu-s) of every land whose gates changed (GOH.GATEFLOOR); the push and the sweep
+    still run it whole."""
+    base = os.environ.get("GOH_CHANGE_BASE", "")
+    if os.environ.get("GOH_GATE_CLASS") != "land" or not base:
+        return None
+    try:
+        r = gitrun.run_reader(("diff", "--name-only", base, "HEAD", "--"), repo=goh, timeout=60)
+    except subprocess.TimeoutExpired:
+        return None
+    if r.returncode != 0:
+        return None
+    changed = r.stdout.split()
+    if found := readers(goh, changed, repos):
+        paths = sorted({p for v in found.values() for p in v})
+        n = len(found)
+        say(f"release canary: {n} consumer{'s' * (n != 1)} name {', '.join(paths)} -- swept")
+        return None
+    return (f"no consumer names a path this land changes ({len(changed)} changed since "
+            f"{base[:8]}, lib/consumer_reads.py)")  # fmt: skip
