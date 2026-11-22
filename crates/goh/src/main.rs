@@ -252,12 +252,13 @@ fn run_core(command: Commands) -> i32 {
             staged,
             full,
             keep_going,
+            only,
             list_steps,
         } => {
             if list_steps {
                 structural::list_steps()
             } else {
-                structural::run(staged, full, keep_going)
+                structural::run(staged, full, keep_going, &only)
             }
         }
         Commands::Canary(args) => canarycmd::run_cli(&args),

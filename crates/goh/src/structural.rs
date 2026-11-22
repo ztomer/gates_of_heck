@@ -1,14 +1,12 @@
 //! The structural pipeline -- `goh structural [--staged|--full]`, the only tier
 //! since Phase N3 retired `gates/structural.sh`'s Python branch.
 
-use crate::{
-    blobs, busyloop, checkoutcreds, claims, credurls, deadexec, earlypipe, gatesrc, gitutil,
-    goh_root, hookindex, killname, lockver, mdlinks, movingtag, prefetch, provenance, pyformat,
-    scope, shell_lint, steps, steps_delegated, steps_rust, substdin, tapwrite, unreaped, vendored,
-    workflowpin,
-};
+use crate::{blobs, gatesrc, gitutil, goh_root, prefetch, scope};
 use goh_tui::{ERR, OK};
+use pipeline::{Ctx, Entry, PIPELINE};
 
+mod only;
+mod pipeline;
 mod trackedignored;
 
 /// The steps this binary carries, as `structural_steps.txt` read when it was built: one stable
@@ -99,11 +97,20 @@ impl Tally {
     }
 }
 
-/// `goh structural`: every step, fail-fast unless `--keep-going`, delegated checkers started together.
+/// `goh structural`: every step (or those `--only` names), fail-fast unless `--keep-going`, delegated
+/// checkers started together.
 #[must_use]
-pub fn run(staged: bool, full: bool, keep_going: bool) -> i32 {
+pub fn run(staged: bool, full: bool, keep_going: bool, only: &[String]) -> i32 {
     let scope = match scope::resolve(staged, full) {
         Ok(scope) => scope,
+        Err(message) => {
+            goh_tui::eoutln!("{ERR} {message}");
+            return 2;
+        }
+    };
+    // Refused before any work: a step name the binary does not carry runs nothing at all.
+    let only = match only::Only::parse(only, &step_names()) {
+        Ok(only) => only,
         Err(message) => {
             goh_tui::eoutln!("{ERR} {message}");
             return 2;
@@ -140,79 +147,42 @@ pub fn run(staged: bool, full: bool, keep_going: bool) -> i32 {
         let _cached = blobs::prefetch_staged(&repo, &files);
     }
 
+    let ctx = Ctx {
+        repo: &repo,
+        files: &files,
+        cfg: &cfg,
+        checks: &checks,
+        staged,
+    };
     // The delegated checkers start together and report in order (crate::prefetch, BACKLOG P1e);
-    // `_drain` joins any still running on every return path below, the red ones included.
+    // `_drain` joins any still running on every return path below, the red ones included. Started
+    // under the names the table runs them under: a step `--only` skips starts no checker.
     let _drain = prefetch::Drain;
     let specs = prefetch::collect(|| {
-        let _ = steps_delegated::step_tracked_build_output(&repo, &checks, staged);
-        let _ = steps_delegated::step_changelog_fragments(&repo, &checks, staged);
-        let _ = steps_delegated::step_full_only(&repo, &checks, staged);
+        let _ = only.run(pipeline::BUILD_OUTPUT, || pipeline::build_output(&ctx));
+        let _ = only.run(pipeline::FRAGMENTS, || pipeline::fragments(&ctx));
+        let _ = only.run(pipeline::FULL_ONLY, || pipeline::full_only(&ctx));
     });
     prefetch::start(specs, &checks, &repo);
 
+    // One loop over one table, so the keep-going decision lives in exactly one place and a step
+    // added later cannot be wired to bypass it.
     let tally = Tally::new(keep_going);
-    // One macro rather than twenty `if let Some(code) = ... { return code; }` arms, so the
-    // keep-going decision lives in exactly one place and a step added later cannot be wired to
-    // bypass it by copying the old shape.
-    macro_rules! step {
-        ($outcome:expr) => {
-            if let Some(code) = $outcome {
-                if let Some(code) = tally.red(code) {
-                    return code;
-                }
-            }
+    for entry in PIPELINE {
+        let outcome = match entry {
+            Entry::One(names, step) => only.run(names, || step(&ctx)),
+            Entry::Group(steps) => first_stop(
+                steps
+                    .iter()
+                    .map(|(names, step)| only.run(names, || step(&ctx)))
+                    .collect(),
+                &tally,
+            ),
         };
+        if let Some(code) = outcome.and_then(|code| tally.red(code)) {
+            return code;
+        }
     }
-
-    step!(steps::step_emoji(&repo, &files, &cfg, staged));
-    step!(steps::step_markers(&repo, &files, staged));
-    step!(steps::step_length(&repo, &files, &cfg, staged));
-    step!(steps::step_ceiling(&repo, &files, &cfg, staged));
-    step!(steps::step_corpus(&repo, &cfg, staged));
-    step!(shell_steps(&repo, &files, &cfg, staged, &tally));
-    step!(steps::step_secrets(&repo, &files, staged));
-    step!(git_config_steps(&repo, &files, staged, &tally));
-    // What a build or a deploy pulls: a container image pinned to one build, never a moving tag.
-    step!(movingtag::step(&repo, &files, staged));
-    // What CI runs on and runs: a named runner image and named action releases, never a moving label.
-    step!(workflowpin::step(&repo, &files, staged));
-    // Which goh CI runs, and on what clone: a current release, and every tag the gate reads.
-    step!(crate::gohpin::step(&repo, &files, staged));
-    // What a script RUNS: a backgrounded busy loop has nothing to reap it, and the house has
-    // ONE way to make load. Beside the moving-tag step: both are the house's own tools, and
-    // both are about a pin or a load that outlives the thing that started it.
-    step!(busyloop::step(&repo, &files, staged));
-    step!(steps::step_home_paths(&repo, &files, &cfg, staged));
-    // A tracked file the repo's own `.gitignore` matches; beside the home-path step because both
-    // find a file in the tree that one machine's state put there.
-    step!(trackedignored::step(&repo, &files, staged));
-    // Beside it: a tracked file that is a build's OUTPUT (owner ruling OW.29, BACKLOG 7.4). Both
-    // are a file in the tree that should not be, and the same staged-scope rule applies.
-    step!(steps_delegated::step_tracked_build_output(
-        &repo, &checks, staged
-    ));
-    step!(steps_rust::step(&repo, &files, &cfg, staged));
-    // The JavaScript this repository tracks parses, when this repository asked for it
-    // (`GOH_JS_SYNTAX=on`). Opt-in, because most of the estate tracks no JavaScript at all,
-    // and a gate with no subject would say "not applicable" on every push forever.
-    step!(crate::jssyntax::command::step(&cfg));
-    step!(provenance::step(&repo, staged));
-    step!(mdlinks::step(&cfg, staged));
-    // A plan that says what is installed: true the day it was written, false at the next release.
-    step!(crate::instline::step(&repo, &files, staged));
-    // What the repo says it installs: each entry in a form the installed-version reader reads.
-    step!(crate::installs::step(&cfg));
-    // The plan itself: one file, open entries only, each with an id and a `Done when:`.
-    step!(crate::roadmap::step(&repo, &files, &cfg, staged));
-    step!(lockver::step());
-    step!(pyformat::step(&cfg, staged));
-    step!(killname::step(&cfg, staged));
-    step!(crate::privnames::step(&repo, &cfg, staged));
-    step!(unreaped::step(&cfg, staged));
-    step!(late_steps(&repo, &files, &checks, &cfg, staged, &tally));
-    // Last: every scanner above recorded what it read, and this judges each against its floor
-    // (full scope only), or says which scanners have none.
-    step!(crate::subject::step(&repo, &cfg, staged));
 
     // A keep-going run that reached here had findings on the way; they are named now. A
     // fail-fast run can only reach here with none, so `finish` is 0 and the pass line stands.
@@ -226,100 +196,14 @@ pub fn run(staged: bool, full: bool, keep_going: bool) -> i32 {
     0
 }
 
-/// The last four steps, which are the ones that read the repo's own configuration and
-/// helper files rather than its source: a documented claim, a vendored copy of a house
-/// checker, the rules `GOH_REQUIRES_CALL` names, and every child process's stdin.
-///
-/// They are last because each is a finding about a file the repo CHOOSED to write, and a
-/// source-shaped defect earlier in the pipeline is the one that has to be fixed first. The
-/// group is a function so `run` stays inside the line cap rather than growing a step per
-/// release forever.
-///
-/// `or_else` was the shape here until `--keep-going` (BACKLOG 6.16): it stops at the first red in
-/// the group, so a keep-going run would have reported the group's first finding and stopped before
-/// its fourth. The steps are run in order and the tally decides whether a red ends the run.
-fn late_steps(
-    repo: &std::path::Path,
-    files: &[String],
-    checks: &std::path::Path,
-    cfg: &gatesrc::Gatesrc,
-    staged: bool,
-    tally: &Tally,
-) -> Option<i32> {
-    let steps = [
-        claims::step_gate(cfg, staged),
-        vendored::step(repo, files, staged),
-        crate::requires_call::step(repo, cfg, staged),
-        substdin::step(cfg, files, staged),
-        crate::changelog_tags::step(repo, staged),
-        crate::changelog_fragments::step(repo, cfg, staged),
-        steps_delegated::step_changelog_fragments(repo, checks, staged),
-        crate::gatesrc_dupes::step(repo, files, staged),
-        crate::layerparity::step(repo, cfg, staged),
-        steps_delegated::step_full_only(repo, checks, staged),
-    ];
-    first_stop(steps, tally)
-}
-
-/// The shell-source steps, in order: shell lint, then two defects shellcheck 0.11.0 exits 0 on,
-/// over the same files -- a race (an early-exit pipe) and dead code (a statement after `exec`) --
-/// contract #12's carried hook index read anywhere but `goh_bind_hook_index`, and a bare `python3`
-/// in a hook or the gate (the repo's pinned interpreter runs through `gates/python.sh`).
-fn shell_steps(
-    repo: &std::path::Path,
-    files: &[String],
-    cfg: &gatesrc::Gatesrc,
-    staged: bool,
-    tally: &Tally,
-) -> Option<i32> {
-    let steps = [
-        shell_lint::step(cfg, staged),
-        earlypipe::step(repo, files, cfg, staged),
-        deadexec::step(repo, files, cfg, staged),
-        hookindex::step(repo, files, cfg, staged),
-        crate::relquiet::step(repo, files, cfg, staged),
-        crate::mktempport::step(repo, files, cfg, staged),
-        crate::bareopen::step(repo, files, cfg, staged),
-        crate::runpaths::step(repo, files, cfg, staged),
-        crate::gitdeadline::step(repo, files, cfg, staged),
-        crate::deadport::step(repo, files, cfg, staged),
-        crate::pluralhedge::step(repo, files, cfg, staged),
-        crate::tuimarks::step(repo, files, cfg, staged),
-        crate::barepy::step(repo, files, cfg, staged),
-    ];
-    first_stop(steps, tally)
-}
-
-/// The first outcome that must end the run, if any. Eagerly evaluated above: an ARRAY of outcomes
-/// runs every step before this sees it, which under `--keep-going` is the point and under the
+/// The first outcome that must end the run, if any. Eagerly evaluated above: a group's outcomes
+/// are COLLECTED, every step run before this sees them, which under `--keep-going` is the point and under the
 /// default is invisible, because the first red returns the same code it did before. A lazily
 /// chained alternative would have been shorter and would have silently reintroduced the
 /// stop-at-first-red this group needed to lose.
-fn first_stop<const N: usize>(outcomes: [Option<i32>; N], tally: &Tally) -> Option<i32> {
+fn first_stop(outcomes: Vec<Option<i32>>, tally: &Tally) -> Option<i32> {
     outcomes
         .into_iter()
         .flatten()
         .find_map(|code| tally.red(code))
-}
-
-/// A credential in git config, which `step_secrets` cannot see: `.git/config` is untracked.
-/// Adjacent to `step_secrets` because it is the same defect class and the same reasoning about
-/// it -- one committed, one not -- so a reader comparing the steps finds them adjacent rather than
-/// having to know they are related. Then the commonest way a token GETS there: `actions/checkout`
-/// persists the job token as `http.*.extraheader` unless its step sets
-/// `persist-credentials: false`. The first step finds it in CI, after the checkout ran; the second
-/// finds it in the workflow, at the commit. Last, the token's commonest use in a release: writing
-/// a Homebrew tap around the tap's own gate (`goh tap-writes`).
-fn git_config_steps(
-    repo: &std::path::Path,
-    files: &[String],
-    staged: bool,
-    tally: &Tally,
-) -> Option<i32> {
-    let steps = [
-        credurls::step(),
-        checkoutcreds::step(repo, files, staged),
-        tapwrite::step(repo, files, staged),
-    ];
-    first_stop(steps, tally)
 }

@@ -15,8 +15,11 @@ a consumer meets none of those. The walk removes all three:
 
 THE REGISTRY is the binary's (`goh shape-diff --registry`, the shape table's own `registry()`):
 every structural step and every subject scanner. A step is read from `goh structural --full
---keep-going`; a subject scanner named `goh <cmd>` that is no structural step is run as that
-command. A scanner added to the registry is walked with no edit here.
+--keep-going --only <its part's steps>`; a subject scanner named `goh <cmd>` that is no structural
+step is run as that command. A scanner added to the registry is walked with no edit here. The walk
+is run in PARTS (`walk`'s `labels`), each a run of its own a parallel runner can spread: one
+`structural --full` was 52 steps in one process, ~33 s that no worker count could split
+(GOH.SELFWALKFILTER).
 
 THE SEED, `tests/self_walk_seed.json`, holds goh's own violations per scanner, counted as the
 distinct `path:line` sites the scanner printed. It only shrinks: a scanner that finds more, finds
@@ -87,8 +90,25 @@ def registry(goh: Path) -> list[dict]:
     return json.loads(out.stdout)
 
 
+def carried(goh: Path) -> set[str]:
+    """The structural steps the binary carries (`goh structural --list-steps`): the names `--only`
+    takes, and the registry labels read from a structural run rather than run as a command."""
+    out = subprocess.run([str(goh), "structural", "--list-steps"], capture_output=True, text=True,
+                         stdin=subprocess.DEVNULL, check=True, timeout=patience(60))  # fmt: skip
+    return set(out.stdout.split("\n")) - {""}
+
+
 def load_seed(path: Path = SEED) -> dict:
     return json.loads(path.read_text())
+
+
+def restrict(seed: dict, labels: list[str]) -> dict:
+    """`seed` with only the entries for `labels`: a part of the walk is judged on its own scanners,
+    and an entry naming no scanner at all is judged once, over the whole registry
+    (`test_every_seed_entry_names_a_scanner`)."""
+    keep = set(labels)
+    return {**seed, **{k: {n: v for n, v in seed.get(k, {}).items() if n in keep}
+                       for k in ("enable", "not_run", "unjudged", "findings")}}  # fmt: skip
 
 
 def walked_tree(dest: Path, seed: dict, plants: dict[str, str] | None = None) -> Path:
@@ -196,14 +216,20 @@ def shellchecked(log: Path, root: Path) -> dict[str, Counter[str]]:
     return out
 
 
-def walk(goh: Path, tree: Path, env: dict[str, str], reg: list[dict]) -> dict[str, Result]:
-    """Every registry scanner's Result over `tree`."""
-    labels = [r["scanner"] for r in reg]
-    log = _run([str(goh), "structural", "--full", "--keep-going"], tree, env)
-    (tree.parent / f"{tree.name}.log").write_text(log.stdout)  # the evidence, beside the tree
-    results = parse_structural(log.stdout, labels)
+def walk(goh: Path, tree: Path, env: dict[str, str], labels: list[str], steps: set[str],
+         part: str) -> dict[str, Result]:  # fmt: skip
+    """Each of `labels`' Result over `tree`: the carried `steps` among them in ONE `structural
+    --only` run, each `goh <cmd>` label that is no step run as its command."""
+    results: dict[str, Result] = {}
+    only = [label for label in labels if label in steps]
+    if only:
+        argv = [str(goh), "structural", "--full", "--keep-going"]
+        argv += [arg for label in only for arg in ("--only", label)]
+        log = _run(argv, tree, env)
+        (tree.parent / f"{tree.name}-{part}.log").write_text(log.stdout)  # evidence, beside it
+        results = parse_structural(log.stdout, only)
     for label in labels:
-        if label in results or not label.startswith("goh "):
+        if label in steps or not label.startswith("goh "):
             continue
         done = _run([str(goh), *label.split()[1:]], tree, env)
         r = results[label] = Result(ran=True, failed=done.returncode != 0)

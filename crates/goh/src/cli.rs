@@ -112,8 +112,14 @@ pub enum Commands {
         /// commit hook does not pass it -- one red is what a commit wants.
         #[arg(long, requires = "full", conflicts_with_all = ["staged", "list_steps"])]
         keep_going: bool,
+        /// Run only this step (`--list-steps` names them); repeat it for more, one step per flag
+        /// (a carried name holds a comma, so there is no comma list). A name the binary does not
+        /// carry is refused. One serial run split into parts a parallel runner can spread: the
+        /// self-walk (GOH.SELFWALKFILTER).
+        #[arg(long, value_name = "STEP")]
+        only: Vec<String>,
         /// Print the steps this binary carries, one per line, and run none of them.
-        #[arg(long, conflicts_with_all = ["staged", "full", "keep_going"])]
+        #[arg(long, conflicts_with_all = ["staged", "full", "keep_going", "only"])]
         list_steps: bool,
     },
     /// Fail on merge-conflict markers (native port of `check_no_conflict_markers`).
