@@ -27,24 +27,49 @@ from lib import land_check
 
 TREE_READS = ("docs/map.md", "tests/", ".gatesrc")  # a clone of the whole tree, planted
 
-# Each STRAYSIGNAL3 refusal, planted back: (file, the fix's text, the text before the fix).
-PLANTS = (
-    ("docs/map.md", "| `load_reap_code.py` |", ""),  # the whole row
-    (
-        "tests/cap_headroom_allow.txt",
-        "lib/load_sources.py\n",
-        "lib/load_reap.py\nlib/load_sources.py\n",
+# Each STRAYSIGNAL3 refusal, planted back, ONE CASE EACH (GOH.PRELONGPOLE): the guard the check must
+# name, and the plants that break it (file, the fix's text, the text before the fix). The three
+# refusals together were one 67 s test (a pre-step's floor at every enqueue); each alone is a
+# clone, five cheap steps and the guard tests, which xdist spreads over the workers.
+REFUSALS = {
+    "map-row": (
+        "tests/test_wiring.py::test_every_script_has_a_row_in_the_map",
+        (("docs/map.md", "| `load_reap_code.py` |", ""),),  # the whole row
     ),
-    ("tests/test_saved_pid_probes.py", "env=hermetic_env(**env)", "env={**os.environ, **env}"),
-    ("tests/test_saved_pid_probes.py", "import REPO_ROOT, hermetic_env\n", "import REPO_ROOT\n"),
-    ("tests/test_saved_pid_probes.py", 'TREE_READS = ("lib/",)', "_READS = ()"),
-)
-REFUSED = {
-    "tests/test_wiring.py::test_every_script_has_a_row_in_the_map",
-    "tests/test_cap_headroom.py::test_stale_entries_fail",
-    "tests/test_no_env_spread.py::test_no_test_spreads_os_environ_beyond_the_seed",
-    "tests/test_declared_reads.py::test_every_test_joining_a_path_it_does_not_spell_declares_its_reads",
+    "headroom": (
+        "tests/test_cap_headroom.py::test_stale_entries_fail",
+        (
+            (
+                "tests/cap_headroom_allow.txt",
+                "lib/load_sources.py\n",
+                "lib/load_reap.py\nlib/load_sources.py\n",
+            ),
+        ),
+    ),
+    "env-spread": (
+        "tests/test_no_env_spread.py::test_no_test_spreads_os_environ_beyond_the_seed",
+        (
+            (
+                "tests/test_saved_pid_probes.py",
+                "env=hermetic_env(**env)",
+                "env={**os.environ, **env}",
+            ),
+            (
+                "tests/test_saved_pid_probes.py",
+                "import REPO_ROOT, hermetic_env\n",
+                "import REPO_ROOT\n",
+            ),
+        ),
+    ),
+    "declared-reads": (
+        "tests/test_declared_reads.py::test_every_test_joining_a_path_it_does_not_spell_declares_its_reads",
+        (("tests/test_saved_pid_probes.py", 'TREE_READS = ("lib/",)', "_READS = ()"),),
+    ),
 }
+# The one step the replay does not run: `structural --full` over a fresh clone is 43 s alone (the
+# shell lint's first pass), and none of the plants is its business; the other five run, and
+# test_every_check_step_is_verbatim_a_land_gate_step pins that the list is the land gate's.
+SKIPPED_STEP = "./gates/structural.sh --full"
 
 
 def _git(repo: Path, *args: str, data: bytes | None = None) -> bytes:
@@ -53,7 +78,7 @@ def _git(repo: Path, *args: str, data: bytes | None = None) -> bytes:
                           ).stdout  # fmt: skip
 
 
-def _planted_clone(dest: Path) -> Path:
+def _planted_clone(dest: Path, plants: tuple[tuple[str, str, str], ...]) -> Path:
     """This checkout as it stands, committed in a clone with `main` at it, then the plants."""
     subprocess.run(["git", "clone", "-q", "--shared", str(REPO_ROOT), str(dest)], check=True,
                    capture_output=True, stdin=subprocess.DEVNULL, timeout=patience(120),
@@ -72,7 +97,7 @@ def _planted_clone(dest: Path) -> Path:
     _git(dest, "add", "-A")
     _git(dest, *commit, "this tree", "--allow-empty")
     _git(dest, "update-ref", "refs/heads/main", "HEAD")  # the clone may be on main itself
-    for rel, fixed, before in PLANTS:
+    for rel, fixed, before in plants:
         path = dest / rel
         text = path.read_text()
         assert fixed in text, f"the replay's plant no longer applies: {fixed!r} not in {rel}"
@@ -86,16 +111,24 @@ def _planted_clone(dest: Path) -> Path:
 
 
 @pytest.mark.load_sensitive(reason="times the check against the pre-step it replaces")
+@pytest.mark.parametrize("name", REFUSALS)
 def test_the_check_names_each_of_straysignal3s_three_refusals_in_seconds(
-    tmp_path, goh, monkeypatch
+    name, tmp_path, goh, monkeypatch
 ):
-    clone = _planted_clone(tmp_path / "clone")
+    """One planted refusal in a clone: the check names its guard and nothing else (a guard the
+    clone already failed is no proof), in seconds. The four cases are STRAYSIGNAL3's three
+    refusals (the third broke two guards, so it plants two fixes back)."""
+    refused_guard, plants = REFUSALS[name]
+    ran = [s for s in land_check.steps(REPO_ROOT) if s != SKIPPED_STEP]
+    assert len(ran) < len(land_check.steps(REPO_ROOT)), f"{SKIPPED_STEP} is no declared step"
+    monkeypatch.setenv("GOH_LAND_CHECK_STEPS", ":".join(ran))
+    clone = _planted_clone(tmp_path / "clone", plants)
     monkeypatch.setenv("GOH_BIN", str(goh))  # the suite's build of these crates: the clone's own
     said: list[str] = []
     t0 = time.monotonic()
     refused = land_check.run(clone, None, said.append)
     took = time.monotonic() - t0
-    assert set(refused) == REFUSED, "\n".join(said)
+    assert refused == [refused_guard], "\n".join(said)
     assert_sooner(took, 30, 200, "goh land --check over STRAYSIGNAL3's planted tries")
 
 
