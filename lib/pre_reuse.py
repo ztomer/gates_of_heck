@@ -31,13 +31,14 @@ pytest loads before every test -- asks the TIP's selector for the tip's set, sec
 set the verdict judged (the record's `chosen`, `stamp`), in the enqueue's own mode (the tree
 readers whose reads are known run only when chosen: GOH.JUDGESBYREADS). A test the tip's set adds
 runs (a line `--also PATH` per file, NARROW); every moved path is judged by its readers, as the
-selection judges a lane's own change to the same files (a base change is the full gate's, and its
-readers are the diff's: lib/test_closure.py `base`); a move the structural gates reach runs them
-first (`--structural`). A set not recorded or a selector that fails runs the whole set again.
+selection judges a lane's own change to the same files (a base change is judged by its readers,
+the whole suite its backstop on main: lib/test_closure.py `base`, GOH.CARRYBASECODE); a move the
+structural gates reach runs them first (`--structural`). A set not recorded or a selector that
+fails runs the whole set again.
 WHY: such moves were a whole re-run in 11 of 11 lander re-runs of 2026-11-21 (`.gatesrc`,
 `lib/pre_reuse.py`, `lib/reuse.py`, `lib/declared_reads.py`, ...), 450-850 s each, while the land
 gate beside it (GOH.GATEPARALLEL) runs the tip's diff-chosen tests under the tip's runner anyway:
-its carry takes nothing from the judged tree across a runner or base move (tests/_land_verdicts.py
+its carry takes nothing from the judged tree across a runner move (tests/_land_verdicts.py
 `choose`). What stays a whole re-run: `pyproject.toml` (pytest's own configuration), a
 `conftest.py`, the data pytest's base opens as it loads (every test reads it), and a `.gatesrc`
 whose GOH_LAND_PRE (the pre-step's declaration) moved.
@@ -375,7 +376,8 @@ def suite(root: Path, record: Path, base: str) -> tuple[bool, str, str]:
     if changed is None or table is None:
         return False, "no diff from main, or no selection table in the tree", ""
     lv = _kit("_land_verdicts", "tests")
-    chosen, why = lv.choose(root, changed, table)
+    mode = _kit("_carry_shadow", "tests").mode_of(str(record))  # GOH.CARRYBASECODE
+    chosen, why = lv.choose(root, changed, table, mode)
     if chosen is None:
         return False, f"nothing carries across the diff: {why}", ""
     mains = {n: bool(b) for n, b in got["passed"].items()}

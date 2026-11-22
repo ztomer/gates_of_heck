@@ -228,9 +228,10 @@ class Closure:
     def base(self) -> set[str]:
         """tests/conftest.py and all it reaches: what pytest loads before EVERY test (the reference
         kits, suite home, the gate libraries they copy). A change in it is in every test's closure
-        so the closure cannot choose among tests by it (it chose 443 of 464 files); such a change
-        is the full gate's, and the tests that import or name the changed file, or import a base
-        file importing it (`base_reach`), are chosen by the diff. The DATA its code opens is in it
+        so the closure cannot choose among tests by it (it chose 443 of 464 files); the tests that
+        import or name the changed file, or import a base file importing it (`base_reach`), are
+        chosen by the diff, and the land gate runs those (GOH.CARRYBASECODE: the whole suite is
+        its backstop on main, lib/idle_suite.py and the ship). The DATA its code opens is in it
         too (LOAD_READ), and a change to that chooses every test: every test reads it."""
         if self._base is None:
             self._base = set()

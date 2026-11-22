@@ -26,10 +26,12 @@ tree T when the diff T..HEAD does not choose it -- tools/affected_tests.py, the 
 pre-step already trusts, asked on HEAD's tree. Tree readers always run (affected chooses them on
 every diff). Its sources: the pre-step's tree (the record names its commit), a batch's other
 items' judged tips (`<record>.sources`, GOH.PREONTIP) and the nearest records on HEAD's
-first-parent chain (main's tip, which the last land's gate recorded). It carries
-nothing from a tree whose diff touches what pytest loads before every test (affected_tests'
-Closure.base, pyproject.toml, tools/pytest.sh), and no node that ran the native binary across a
-change to its build inputs (binary_runners.build_input). A carried node is recorded as passed on
+first-parent chain (main's tip, which the last land's gate recorded). It carries nothing across
+what pytest's start reads whole (pyproject.toml, tools/pytest.sh, a conftest.py, load-read data,
+a base file tests/base_files.tsv does not class base code); a base-code change is judged by its
+readers in the kept record's mode, the whole suite on main its backstop (tests/_carry_shadow.py
+`choose`, GOH.CARRYBASECODE), and no node that ran the native binary across a change to its build
+inputs (binary_runners.build_input). A carried node is recorded as passed on
 the new tree, so the next land carries it on, and stays CARRIED there: a later run taking it
 from that tree's own record counts it carried, not judged (GOH.CARRYASFULL); only a run that
 carried nothing and failed nothing is FULL, and the release kit refuses a tip without a full record
@@ -53,7 +55,7 @@ import os
 import sys
 from pathlib import Path
 
-import _carry_shadow  # tests/: the proposed carry rule, measured beside this one (GOH.CARRYSHADOW)
+import _carry_shadow  # tests/: the carry rule and its measure (GOH.CARRYBASECODE, GOH.CARRYSHADOW)
 import _cov_claims  # tests/: the non-binary carry and its gate (GOH.COVNONBIN)
 import _land_audit  # tests/, beside this file: the audited `test` and `carry` uses
 import _prof_record  # tests/: each test's own profile under coverage (GOH.COVCARRY)
@@ -325,7 +327,7 @@ def _plan(config) -> dict:
         same = _land_audit.audited(plan, same, identity(), str(config.rootpath), _store_or_none())
     plan["skipped"] = {n: b for n, b in _file_passed(path).items() if n in same}
     plan["judged"] = set(plan["skipped"])  # the pre-step's passes of THIS tree (its identity)
-    plan["shadow"] = _carry_shadow.Shadow(plan, path)  # the proposed rule (GOH.CARRYSHADOW)
+    plan["shadow"] = _carry_shadow.Shadow(plan, path)  # F against what ran (GOH.CARRYSHADOW)
     if path:
         _carry(plan, _file_sha(path), coverage, Path(config.rootpath), sources(path))
     if coverage:  # a same-tree pass is skipped only when it was measured running no binary
@@ -405,16 +407,15 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path, also: list[s
                 shadow.same(nodes)
             else:
                 changed = diff(REPO_ROOT, sha)
-                chosen, why = (
-                    choose(REPO_ROOT, changed) if changed is not None else (None, "no diff")
-                )
+                chosen, why = (choose(REPO_ROOT, changed, mode=shadow.mode)  # record's mode
+                               if changed is not None else (None, "no diff"))  # fmt: skip
                 bld = _builds(changed or [])
-                shadow.other(REPO_ROOT, changed, lambda c, p=passed, m=measured, h=held, b=bld:
+                shadow.other(chosen, lambda c, p=passed, m=measured, h=held, b=bld:
                              carried(p, c, coverage, b, m, h))  # fmt: skip
                 if chosen is None:
                     lines.append(f"land verdicts: nothing carried from {sha[:8]}: {why}")
                     continue
-                nodes = carried(passed, chosen, coverage, _builds(changed or []), measured, held)
+                nodes = carried(passed, chosen, coverage, bld, measured, held)
                 plan.setdefault("nobin", set()).update(
                     carried(measured, chosen, True, False, measured)
                 )

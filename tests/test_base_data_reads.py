@@ -73,7 +73,7 @@ def test_a_data_file_the_base_opens_is_in_the_base_and_chooses_every_test(tmp_pa
 def test_the_gate_carries_nothing_across_a_base_data_file(tmp_path):
     root = _tree(tmp_path, LOCKS)
     got, why = lv.choose(root, ["lib/lock_order.tsv"], at)
-    assert got is None and "lib/lock_order.tsv is loaded before every test" in why, (got, why)
+    assert got is None and "lib/lock_order.tsv is read whole as pytest starts" in why, (got, why)
 
 
 def test_a_main_move_of_a_base_data_file_reruns_the_pre_step(repo, tmp_path):

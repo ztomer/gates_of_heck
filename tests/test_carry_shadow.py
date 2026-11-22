@@ -1,11 +1,12 @@
-"""The proposed carry rule is measured beside the gate's, never obeyed (GOH.CARRYSHADOW).
+"""The gate's carry rule judges a base-code change by its readers, and is measured
+(GOH.CARRYBASECODE, GOH.CARRYSHADOW).
 
-The owner rules on GOH.CARRYBASECODE (a base-code change judged by its readers, not the whole suite
-under the lock) with one number: how often the gate went red on a test the proposed rule would have
-carried a pass over. Pinned here: the proposed rule's choice (tests/_carry_shadow.py `proposed`), a
-fixture gate whose red lies outside F is counted and one whose red lies inside F is not, the line
-tools/land.sh reads from `<record>.why` into the ledger, and `goh land-profile --last N`'s three
-figures over a fixture queue and ledger.
+The owner ruled on 2026-11-22 ("Approve CARRYBASECODE now"): a change to a file pytest loads before
+every test is judged by its readers in the kept record's mode, not by the whole suite under the
+lock. Pinned here: the rule's choice (tests/_carry_shadow.py `choose`), a fixture gate that carries
+across a base-code change and records F against what ran, a red in an audit-shadowed source counted
+outside F, the line tools/land.sh reads from `<record>.why` into the ledger, and
+`goh land-profile --last N`'s three figures over a fixture queue and ledger.
 """
 
 from __future__ import annotations
@@ -26,17 +27,19 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 import land_profile
 import reuse
 
-# -- the proposed rule's choice ------------------------------------------------------------------
+# -- the rule's choice -----------------------------------------------------------------------------
 
 
 class Graph:
     built = 0
+    extra: ClassVar[set[str]] = set()
 
     def __init__(self, root: Path) -> None:
         Graph.built += 1
 
     def base(self) -> set[str]:
-        return {"tests/_schedule.py", "lib/lock_order.tsv", "tests/conftest.py"}
+        return {"tests/_schedule.py", "lib/lock_order.tsv", "tests/conftest.py",
+                ".github/workflows/gate.yml", *Graph.extra}  # fmt: skip
 
     def load_reads(self) -> dict[str, str]:
         return {"lib/lock_order.tsv": "tests/_lock_order.py"}
@@ -52,21 +55,40 @@ class Table:
         return {"tests/test_schedule.py": "imports _schedule"}
 
 
-def test_a_base_code_change_is_judged_by_its_readers_in_the_records_mode() -> None:
+@pytest.mark.parametrize("mode", [cs.GATE, cs.ENQUEUE])
+def test_a_base_code_change_is_judged_by_its_readers_in_the_records_mode(mode: str) -> None:
     Table.asked.clear()
     Graph.built = 0
     with cs.one_graph():
-        assert cs.choose(REPO_ROOT, ["tests/_schedule.py"], Table)[0] is None  # the gate's rule
-        got, _ = cs.proposed(REPO_ROOT, ["tests/_schedule.py"], cs.GATE, Table)
-    assert got == {"tests/test_schedule.py"}
-    assert [(c, e) for c, e, _ in Table.asked] == [(["tests/_schedule.py"], False)]
+        got, why = cs.choose(REPO_ROOT, ["tests/_schedule.py"], Table, mode)
+        assert cs.choose(REPO_ROOT, ["tests/_schedule.py"], Table, mode)[0] == got
+    assert got == {"tests/test_schedule.py"}, why
+    want = mode == cs.ENQUEUE
+    assert [(c, e) for c, e, _ in Table.asked] == [(["tests/_schedule.py"], want)] * 2
     assert Graph.built == 1 and isinstance(Table.asked[0][2], Graph)  # one Closure, shared
 
 
-@pytest.mark.parametrize("path", ["tests/conftest.py", "pyproject.toml", "lib/lock_order.tsv"])
+@pytest.mark.parametrize("path", ["tests/conftest.py", "pyproject.toml", "lib/lock_order.tsv",
+                                  ".github/workflows/gate.yml", "lib/unclassed.py"])  # fmt: skip
 def test_what_pytest_reads_whole_as_it_starts_stays_wide(path: str) -> None:
-    got, why = cs.proposed(REPO_ROOT, [path, "lib/reuse.py"], cs.ENQUEUE, Table)
-    assert got is None and path in why
+    """Suite-wide and load-read stay wide, and so does a base file the table classes otherwise
+    (the workflow) or not at all."""
+    Graph.extra = {"lib/unclassed.py"}
+    try:
+        got, why = cs.choose(REPO_ROOT, [path, "tests/_schedule.py"], Table, cs.ENQUEUE)
+    finally:
+        Graph.extra = set()
+    assert got is None and path in why, why
+
+
+def test_on_the_real_tree_a_base_code_change_runs_its_readers_not_the_suite() -> None:
+    """tests/_schedule.py (base code: it orders) chose nothing to carry before; now its readers."""
+    got, why = cs.choose(REPO_ROOT, ["tests/_schedule.py"], mode=cs.ENQUEUE)
+    assert got is not None, why
+    files = {n.split("::")[0] for n in got}
+    suite = list((REPO_ROOT / "tests").glob("test_*.py"))
+    assert "tests/test_schedule.py" in files, sorted(files)
+    assert len(files) < len(suite) // 2, (len(files), len(suite))
 
 
 def test_the_mode_is_the_records_and_the_enqueues_when_it_names_none(tmp_path: Path) -> None:
@@ -77,20 +99,20 @@ def test_the_mode_is_the_records_and_the_enqueues_when_it_names_none(tmp_path: P
     assert cs.mode_of(str(tmp_path / "none.json")) == cs.ENQUEUE
 
 
-# -- a fixture gate: what the proposed rule would run, and the reds outside it ---------------------
+# -- a fixture gate: F carried across a base-code change, and the reds outside it ------------------
 
 SESSION_CONFTEST = f"""
-import os, sys
+import dataclasses, os, sys
 sys.path.insert(0, {str(REPO_ROOT / "tests")!r})
 sys.path.insert(0, {str(REPO_ROOT / "lib")!r})
-import _carry_shadow
 import _land_verdicts as lv
+import reuse
 lv.identity = lambda root=None: "ID"
 lv.here = lambda root=None: ("T1", "TOOLS")
 lv.trees = lambda root, pre: [("c0" * 20, "T0")]
 lv.diff = lambda root, sha: ["tests/_schedule.py"]
-lv.choose = lambda root, changed: (None, "tests/_schedule.py is loaded before every test")
-_carry_shadow.proposed = lambda root, changed, mode: (set(os.environ["PROPOSED"].split()), mode)
+lv.choose = lambda root, changed, table=None, mode=None: (set(os.environ["CHOSEN"].split()), mode)
+reuse.PATHS["carry"] = dataclasses.replace(reuse.PATHS["carry"], every=int(os.environ["EVERY"]))
 
 def pytest_configure(config):
     config.pluginmanager.register(lv, "goh-land-verdicts")
@@ -115,34 +137,37 @@ def gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     record = d / "kept.json"
     record.write_text(json.dumps({"identity": "OTHER", "passed": {}, "mode": "gate"}))
 
-    def run(proposed: str, *args: str) -> str:
+    def run(chosen: str, every: int, *args: str) -> tuple[str, str]:
         r = subprocess.run(
             [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-q", *args], cwd=d,
             capture_output=True, text=True, stdin=subprocess.DEVNULL, check=False,
             timeout=patience(120),
-            env=hermetic_env(drop_git=True, GOH_REUSE_DIR=str(store), PROPOSED=proposed,
-                             GOH_LOOPCTL=str(d / "no-loopctl"),
+            env=hermetic_env(drop_git=True, GOH_REUSE_DIR=str(store), CHOSEN=chosen,
+                             EVERY=str(every), GOH_LOOPCTL=str(d / "no-loopctl"),
                              GOH_LAND_VERDICTS_REUSE=str(record)),
         )  # fmt: skip
-        assert r.returncode == 1 and "nothing carried from" in r.stdout, r.stdout + r.stderr
-        return Path(f"{record}.why").read_text()
+        assert r.returncode == 1, r.stdout + r.stderr
+        return Path(f"{record}.why").read_text(), r.stdout
 
     return run
 
 
 @pytest.mark.parametrize("workers", [[], ["-n", "2"]], ids=["serial", "xdist"])
-def test_a_gate_red_the_proposed_rule_would_have_carried_is_counted(gate, workers) -> None:
-    """The gate's rule carried nothing (a base file moved) and ran all four; the proposed rule
-    chooses only test_s.py, so it would have carried test_t.py's pass: test_planted is red outside
-    F, test_broken (chosen) red inside it."""
-    why = gate("test_s.py", *workers)
+def test_the_gate_carries_across_a_base_code_change_and_runs_f(gate, workers) -> None:
+    """The diff moved a base file; its readers are test_s.py, so test_t.py's passes carry and F is
+    test_s.py's two: test_planted, broken only where nothing chose it, never runs."""
+    why, out = gate("test_s.py", 1000, *workers)
+    assert "2 deselected, carried from" in out, out
+    assert why == "shadow: F 2 of 2 run, 0 red outside F (gate mode)\n", why
+
+
+def test_a_red_in_an_audit_shadowed_source_is_counted_outside_f(gate) -> None:
+    """One use in ten the audit runs the carried nodes anyway: test_planted, outside F, goes red
+    there, and the line names it -- F missed it."""
+    why, out = gate("test_s.py", 1)
+    assert "RUN anyway" in out, out
     assert why == ("shadow: F 2 of 4 run, 1 red outside F (gate mode): "
                    "test_t.py::test_planted\n"), why  # fmt: skip
-
-
-def test_a_gate_red_inside_f_is_not_counted(gate) -> None:
-    why = gate("test_s.py test_t.py")
-    assert why == "shadow: F 4 of 4 run, 0 red outside F (gate mode)\n", why
 
 
 # -- tools/land.sh: the `.why` lines into the ledger row ------------------------------------------
@@ -227,8 +252,9 @@ def test_land_profile_prints_shadowed_lands_f_against_run_and_reds_outside_f(
     monkeypatch.setenv("GOH_LANDQ_DIR", str(q))
     assert land_profile.main(["--last", "3"]) == 0
     out = capsys.readouterr().out
-    want = ("carry shadow (GOH.CARRYBASECODE): 2 of 3 lands shadowed; the proposed rule would run "
-            f"92 tests where 812 ran (4 gate runs); 1 gate reds outside F: {red}")  # fmt: skip
+    want = ("carry shadow (GOH.CARRYBASECODE): 2 of 3 lands measured; F, the set the carry rule "
+            f"runs, was 92 tests where 812 ran (4 gate runs); 1 audit-shadowed reds outside F: "
+            f"{red}")  # fmt: skip
     assert want in out, out
     assert land_profile.main(["--last", "3", "--json"]) == 0
     spd = json.loads(capsys.readouterr().out)["spd"]["last 3"]

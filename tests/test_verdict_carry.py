@@ -59,8 +59,8 @@ def test_a_build_input_change_is_one_for_the_binary() -> None:
     assert not lv._builds(["lib/reuse.py", "crates_notes.md"])
 
 
-@pytest.mark.parametrize("path", ["tests/conftest.py", "pyproject.toml", "tests/_schedule.py"])
-def test_nothing_is_carried_across_a_change_to_what_every_test_loads(path: str) -> None:
+@pytest.mark.parametrize("path", ["tests/conftest.py", "pyproject.toml"])
+def test_nothing_is_carried_across_a_change_to_what_pytests_start_reads_whole(path: str) -> None:
     chosen, why = lv.choose(REPO_ROOT, [path, "lib/reuse.py"])
     assert chosen is None and path in why
 
@@ -114,9 +114,7 @@ lv.identity = lambda root=None: "ID"
 lv.here = lambda root=None: (os.environ.get("TREE", "T1"), "TOOLS")
 lv.trees = lambda root, pre: [("c0" * 20, "T0")]
 lv.diff = lambda root, sha: ["lib/x.py"]
-lv.choose = lambda root, changed: (set(os.environ.get("CHOSEN", "").split()), "")
-import _carry_shadow
-_carry_shadow.proposed = lambda root, changed, mode: (set(os.environ.get("CHOSEN", "").split()), "")
+lv.choose = lambda root, changed, *a, **k: (set(os.environ.get("CHOSEN", "").split()), "")
 if os.environ.get("EVERY"):
     reuse.PATHS["carry"] = dataclasses.replace(reuse.PATHS["carry"], every=int(os.environ["EVERY"]))
 

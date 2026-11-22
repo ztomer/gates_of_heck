@@ -68,12 +68,13 @@ land_suite_why() {
     info "suite: $suite_why"
 }
 
-# land_shadow -- THE PROPOSED CARRY RULE, MEASURED (GOH.CARRYSHADOW): the `shadow:` lines the gate's
-# suite runs left in `<record>.why` (tests/_carry_shadow.py), summed over its runs, for the land's
-# ledger row: shadow_f (what the proposed rule, GOH.CARRYBASECODE, would have run), shadow_ran (what
-# ran), shadow_red_out (reds it would have carried a pass over) and shadow_red (those nodes). Read by
+# land_shadow -- THE CARRY RULE, MEASURED (GOH.CARRYSHADOW): the `shadow:` lines the gate's suite
+# runs left in `<record>.why` (tests/_carry_shadow.py), summed over its runs, for the land's ledger
+# row: shadow_f (F, the set the carry rule runs, GOH.CARRYBASECODE), shadow_ran (what ran, an audit-
+# shadowed source's carried nodes too), shadow_red_out (reds among those F would have carried a pass
+# over) and shadow_red (those nodes). Read by
 # tools/land.sh's EXIT trap, so a red gate is measured too. A suite that took the enqueue's verdict
-# ran nothing, and neither would the proposed rule: 0 of 0. No line, no gate suite: nothing set.
+# ran nothing: 0 of 0. No line, no gate suite: nothing set.
 land_shadow() {
     local line f=0 ran=0 red=0 names="" seen=""
     local re='^shadow: F ([0-9]+) of ([0-9]+) run, ([0-9]+) red outside F[^:]*(: (.*))?$'

@@ -35,9 +35,10 @@ A BATCH'S SHARED RUNS (the lander run, pre-land, gate, slot wait, steps) count o
 (lib/land_spd.py `once`; GOH.LANDPROFILEFIX). `--last N` and `--since COMMIT` (lands whose landed
 commit descends from it) print the SPD exit's figures: commit to landed, the share of lands whose
 lander ran the whole pre-land again, the enqueue pre-step's wait, run and workers, and the carry
-shadow (GOH.CARRYSHADOW): how many lands' gates measured the proposed carry rule, the tests it would
-have run (F) against those run, over every gate run of the land red ones included, and the gate reds
-outside F -- a pass it would have carried over a change that broke it.
+shadow (GOH.CARRYSHADOW): how many lands' gates measured the carry rule's set F (GOH.CARRYBASECODE)
+against the tests run, over every gate run of the land red ones included, and the reds outside F --
+a node of an audit-shadowed source, run anyway, that F would have carried over a change that broke
+it.
 
 `--guards` counts the red lands by the guard that refused them (`guard` on each done record,
 lib/land_check.py, GOH.LANDCHECK): which structural guard keeps costing lands.

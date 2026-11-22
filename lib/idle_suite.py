@@ -26,7 +26,13 @@ a time (`<q>/idle-suite/lock`); a tip already judged here (green or red, `last.j
 again until main moves. Off with GOH_LANDQ_IDLE_SUITE=off, and inside a goh suite (IN_SUITE). The
 run's own `goh suite` row is the timing ledger's (tools/pytest.sh); its log is
 `<q>/logs/idle-suite-<sha>.log`. Each green or red run is measured against the selection for the
-diff since the previous run's tip (lib/selection_miss.py's shadow, GOH.SELECTAUDIT): never a skip.
+diff since the last green run's tip (lib/selection_miss.py's shadow, GOH.SELECTAUDIT): never a skip.
+
+THE BACKSTOP OF A BASE-CODE CHANGE (GOH.CARRYBASECODE). The land gate judges a change to a file
+pytest loads first by its readers, not the whole suite (tests/_carry_shadow.py `choose`), so this
+run and the ship's full run are where a fault only an unchosen test sees turns red. A red run files
+a fault item naming the lands since the last green full run (lib/idle_red.py; `last.json` keeps
+`green`, the tip of the last green run), and the shadow records the tests F missed.
 
 Pinned by tests/test_idle_suite.py.
 """
@@ -42,6 +48,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import idle_red
 import killtree
 import landq_inflight
 import lock_order
@@ -118,14 +125,20 @@ def run(
         except BlockingIOError:
             return "busy"
         outcome = _run_locked(q, main, state, sha, say, argv or default_argv(), poll)
-        prev = str(last.get("sha") or "")  # GOH.SELECTAUDIT: the shadow since the last run
+        # GOH.SELECTAUDIT: the shadow since the last GREEN run (GOH.CARRYBASECODE), else the last
+        green = str(last.get("green") or "")
+        since = green or str(last.get("sha") or "")
         if outcome in ("green", "red") and (
-            why := selection_miss.shadow(q, main, prev, sha, log_of(q, sha))
+            why := selection_miss.shadow(q, main, since, sha, log_of(q, sha))
         ):
             say(why)
+        if outcome == "red":  # the backstop of a base-code change: its fault item
+            filed = idle_red.file_red(main, green, sha, log_of(q, sha))
+            say(f"idle full suite on {sha[:8]}: {filed}")
     finally:
         os.close(fd)
-    record = {"sha": sha, "outcome": outcome, "at": dt.datetime.now(dt.UTC).isoformat()}
+    record = {"sha": sha, "outcome": outcome, "at": dt.datetime.now(dt.UTC).isoformat(),
+              "green": sha if outcome == "green" else str(last.get("green") or "")}  # fmt: skip
     tmp = state / ".last.json.tmp"
     tmp.write_text(json.dumps(record) + "\n")
     tmp.replace(last_path)

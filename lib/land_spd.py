@@ -30,11 +30,11 @@ every member. This module is the one definition, three parts:
                        them by reason, shas and numbers masked and a moved path named `<path>`
 
     shadows(..)        THE CARRY SHADOW (GOH.CARRYSHADOW): each gate run of a land's chain, red ones
-                       too, whose ledger row measured the proposed carry rule (tools/land.sh
+                       too, whose ledger row measured the carry rule's F (tools/land.sh
                        `shadow_f`, `shadow_ran`, `shadow_red_out`, `shadow_red`); `summary` counts
-                       the shadowed lands, sums F against what ran over each run once (a batch's
-                       one run is every member's), and the gate reds outside F -- the number the
-                       owner rules on GOH.CARRYBASECODE with
+                       the measured lands, sums F against what ran over each run once (a batch's
+                       one run is every member's), and the reds outside F: a node of a source the
+                       audit shadowed (it ran anyway) that F did not choose (GOH.CARRYBASECODE)
 
 Pinned by tests/test_land_spd.py and tests/test_carry_shadow.py.
 """
@@ -283,9 +283,9 @@ def shadow_line(s: dict) -> str:
     red = s.get("shadow_red") or []
     named = f": {' '.join(red[:5])}{' ...' if len(red) > 5 else ''}" if red else ""
     return (f"carry shadow (GOH.CARRYBASECODE): {s.get('shadowed', 0)} of {s['lands']} lands "
-            f"shadowed; the proposed rule would run {s.get('shadow_f', 0)} tests where "
+            f"measured; F, the set the carry rule runs, was {s.get('shadow_f', 0)} tests where "
             f"{s.get('shadow_ran', 0)} ran ({s.get('shadow_runs', 0)} gate runs); "
-            f"{s.get('shadow_red_out', 0)} gate reds outside F{named}")  # fmt: skip
+            f"{s.get('shadow_red_out', 0)} audit-shadowed reds outside F{named}")  # fmt: skip
 
 
 def _why(name: str, counts: dict | None) -> str:

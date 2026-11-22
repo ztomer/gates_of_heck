@@ -70,6 +70,56 @@ def test_an_idle_lander_runs_the_suite_on_mains_tip_in_its_own_worktree(main, tm
     assert out.read_text().split()[0] == git(main, "rev-parse", "HEAD").strip()
 
 
+# A base-code fault only an unchosen test sees (GOH.CARRYBASECODE): the land gate runs base.py's
+# readers (test_reader.py imports it, and passes); test_unchosen.py reads base.py only through the
+# conftest fixture every test loads, so the gate never chose it; the idle full suite backstops it.
+BASE = "def scale():\n    return {}\n"
+CONFTEST = (
+    "import pytest\nimport base\n\n\n@pytest.fixture\ndef factor():\n    return base.scale()\n"
+)
+READER = "import base\n\n\ndef test_reader():\n    assert base.scale() > 0\n"
+UNCHOSEN = "def test_unchosen(factor):\n    assert factor == 2\n"
+FAKE_LOOPCTL = "import sys\nopen(sys.argv[0] + '.filed', 'a').write(sys.argv[-1] + '\\n')\n"
+
+
+def test_a_planted_base_fault_only_an_unchosen_test_sees_goes_red_and_files_its_item(
+    main, tmp_path, monkeypatch
+) -> None:
+    q = queue(tmp_path)
+    loopctl = tmp_path / "loopctl.py"
+    loopctl.write_text(FAKE_LOOPCTL)
+    (tmp_path / "queue.json").write_text(json.dumps(
+        {"phases": [{"id": "SPD", "requires": ["metric", "predicted"]}]}))  # fmt: skip
+    monkeypatch.setenv("GOH_LOOPCTL", str(loopctl))
+    monkeypatch.setenv("GOH_LOOP_QUEUE", str(tmp_path / "queue.json"))
+    for rel, text in (("base.py", BASE.format(2)), ("conftest.py", CONFTEST),
+                      ("tests/test_reader.py", READER),
+                      ("tests/test_unchosen.py", UNCHOSEN)):  # fmt: skip
+        write(main, rel, text)
+    commit_all(main, "a base module and its suite")
+    green = git(main, "rev-parse", "HEAD").strip()
+    suite = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "no:xdist"]
+    assert idle_suite.run(q, main, argv=suite, poll=0.05) == "green"
+    assert json.loads((q / "idle-suite" / "last.json").read_text())["green"] == green
+    write(main, "base.py", BASE.format(3))  # the planted fault
+    commit_all(main, "feat: base scales faster (GOH.PLANTED)")
+    write(main, "notes.txt", "x\n")
+    commit_all(main, "docs: a note (GOH.OTHER)")
+    said: list[str] = []
+    assert idle_suite.run(q, main, say=said.append, argv=suite, poll=0.05) == "red"
+    tip = git(main, "rev-parse", "HEAD").strip()
+    assert f"idle full suite on {tip[:8]}: filed GOH.IDLERED{tip[:8].upper()}" in said, said
+    item = json.loads(Path(f"{loopctl}.filed").read_text().splitlines()[-1])
+    assert item["id"] == f"GOH.IDLERED{tip[:8].upper()}" and item["phase"] == "SPD", item
+    text = item["item"]
+    assert "tests/test_unchosen.py::test_unchosen" in text and "test_reader" not in text, text
+    assert "(GOH.PLANTED)" in text and "(GOH.OTHER)" in text, text  # the lands since green
+    assert f"since the last green full run at {green[:8]}" in text, text
+    assert "a base module and its suite" not in text, text  # the green tip itself is not a suspect
+    last = json.loads((q / "idle-suite" / "last.json").read_text())
+    assert (last["outcome"], last["green"]) == ("red", green), last
+
+
 @pytest.mark.load_sensitive  # a thread, a clock, a sleep: each wait bounded by patience
 def test_a_pending_land_stops_the_suite_at_once(main, tmp_path) -> None:
     q = queue(tmp_path)
