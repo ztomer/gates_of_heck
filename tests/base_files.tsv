@@ -65,7 +65,9 @@ lib/pgid_cpu.py	base-code
 lib/pid_owner.py	base-code
 lib/pid_owner.sh	base-code
 lib/place.sh	base-code
+lib/pre_cpu.py	base-code
 lib/pre_reuse.py	base-code
+lib/proc_table.py	base-code
 lib/prune_kept.py	base-code
 lib/reuse.py	base-code
 lib/reuse_audit.py	base-code
@@ -82,6 +84,7 @@ lib/step_timings.py	base-code
 lib/suite_cache_guard.sh	base-code
 lib/test_closure.py	base-code
 lib/test_slice.py	base-code
+lib/timing_ledger.py	base-code
 lib/timing_ledger.sh	base-code
 lib/tmp_root.py	base-code
 lib/tmp_root.sh	base-code
