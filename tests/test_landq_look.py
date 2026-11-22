@@ -116,3 +116,27 @@ def test_where_reads_a_request_moving_on_mid_look_once_and_never_as_its_own(tmp_
     monkeypatch.setattr(landq_state, "read", lander_moves_it_now)
     assert landq_look.where(q, "01-T.S.json") == "queued behind T.AHEAD"
     assert landq_look.where(q, "01-T.S.json") == "queued behind T.AHEAD"
+
+
+@pytest.mark.load_sensitive  # a thread, its join bounded by patience
+def test_wait_after_a_re_enqueue_waits_for_that_attempt_not_the_last_red(tmp_path, monkeypatch):
+    # GOH.WAITSTALE, 2026-11-21 (GOH.TOOLTIMEOUT try 3): the item's previous attempt is red in
+    # done/ and its re-enqueue is still in its pre-step; the wait returned try 2's red at once.
+    monkeypatch.setattr(landq_look, "poll", 0.01)
+    q = tmp_path / "q"
+    (q / "done").mkdir(parents=True)
+    landq_state.write(q / "done" / "1000000001-T.S.json",
+                      {"item": "T.S", "state": "red", "sha": "b" * 40, "why": "try 2"})  # fmt: skip
+    marker = landq_inflight.mark(q, "T.S")
+    out: list[int] = []
+    t = threading.Thread(
+        target=lambda: out.append(landq_look.wait(q, "T.S", patience(60), lambda: None))
+    )
+    t.start()
+    t.join(patience(0.5))  # the old wait returned at its first look, well within this
+    assert not out, "the wait returned the previous attempt's record"
+    landq_state.write(q / "done" / "1000000002-T.S.json",
+                      {"item": "T.S", "state": "landed", "sha": "c" * 40})  # fmt: skip
+    landq_inflight.clear(marker)
+    t.join(patience(30))
+    assert out == [0]

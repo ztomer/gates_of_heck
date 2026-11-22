@@ -1,10 +1,11 @@
 """Reading the landing queue (split from tools/landq.py, GOH.CAPHEADROOM): `goh land --status`,
 and `--wait`, which finds a request wherever it is now and blocks until it is done. An enqueue of
 the item still in its pre-step (lib/landq_inflight.py) is waited for until it files; with neither,
-the wait exits 2 (GOH.WAITUNFILED). Each tick re-reads where the request is and says so once per
-change: queued behind whom, running (a batch's gate N), done (GOH.LANDWAITSTALE). Every record
-is read through lib/landq_state.py: one moved or not whole is read again next tick, never a crash
-(GOH.CIRED01310). Pinned by tests/test_landq.py, tests/test_landq_inflight.py,
+the wait exits 2 (GOH.WAITUNFILED); a done record while one is in flight is the previous
+attempt's, never returned (GOH.WAITSTALE). Each tick re-reads where the request is and says so
+once per change: queued behind whom, running (a batch's gate N), done (GOH.LANDWAITSTALE).
+Every record is read through lib/landq_state.py: one moved or not whole is read again next
+tick, never a crash (GOH.CIRED01310). Pinned by tests/test_landq.py, tests/test_landq_inflight.py,
 tests/test_landq_look.py, tests/test_landq_state.py."""
 
 from __future__ import annotations
@@ -51,11 +52,21 @@ def find_request(q: Path, what: str) -> Path | None:
     return newest[1] if newest else None
 
 
+def _current(q: Path, what: str) -> Path | None:
+    """WHAT's newest request, unless it is a done record while an enqueue of WHAT is still in its
+    pre-step: that record is the PREVIOUS attempt's, and the enqueue files the one to wait for
+    (GOH.WAITSTALE: a re-enqueue's wait returned try 2's red)."""
+    found = find_request(q, what)
+    if found is not None and found.parent.name == "done" and landq_inflight.live(q, what):
+        return None
+    return found
+
+
 def unfiled(q: Path, what: str, start_by: float) -> Path | int | None:
     """WHAT's request; while there is none, wait out an enqueue of it still in its pre-step
     (GOH.WAITUNFILED): None when neither exists, 3 past START_BY."""
     said = False
-    while (found := find_request(q, what)) is None:
+    while (found := _current(q, what)) is None:
         if not landq_inflight.live(q, what):
             return find_request(q, what)  # it filed, then exited, between the two looks
         if time.monotonic() > start_by:

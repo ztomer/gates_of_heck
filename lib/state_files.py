@@ -68,6 +68,14 @@ FILES: dict[str, FileBound | FileKept] = {
         "lib/selection_miss.py; goh land --report per day, and replay() from logs/ (HISTORY_DAYS) "
         "dedupes against it",
     ),
+    "landq/guards.jsonl": FileBound(
+        HISTORY_DAYS,
+        5000,
+        "at",
+        "state_file",
+        "lib/land_check.py learn, one row per pre-step refusal naming a test; read by land "
+        "--check's history and count beside done/ (HISTORY_DAYS)",
+    ),
     "lane-starts.jsonl": FileBound(
         28,
         20000,

@@ -342,5 +342,6 @@ def learn(q: Path, req: dict, refusal: str) -> None:
            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}  # fmt: skip
     with contextlib.suppress(OSError):
         q.mkdir(parents=True, exist_ok=True)
-        with (q / "guards.jsonl").open("a") as f:
-            f.write(json.dumps(row) + "\n")
+        import state_append  # the lock lib/state_files.py trims under (GOH.GUARDSBOUND)
+
+        state_append.append(q / "guards.jsonl", (json.dumps(row) + "\n").encode())

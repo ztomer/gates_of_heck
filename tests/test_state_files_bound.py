@@ -109,3 +109,17 @@ def test_each_bound_keeps_what_its_readers_need() -> None:
     assert sf.FILES["timing/ledger.jsonl"].days >= 28  # the weekly usage review's month
     for rel, rule in sf.FILES.items():
         assert rule.why, rel
+
+
+def test_the_guard_log_is_bounded_and_its_writer_appends_through_the_lock(tmp_path) -> None:
+    # GOH.GUARDSBOUND: landq/guards.jsonl (lib/land_check.py learn) was the one unlisted file.
+    import land_check
+
+    q = tmp_path / "landq"
+    land_check.learn(q, {"item": "T.G"}, "refused: tests/test_x.py::test_y failed")
+    assert state_append.lock_path(q / "guards.jsonl").exists()
+    assert not sb.unbounded(tmp_path, NOW), sb.unbounded(tmp_path, NOW)
+    rule = sf.FILES["landq/guards.jsonl"]
+    assert isinstance(rule, sf.FileBound) and rule.stamp == "at" and rule.lock == "state_file"
+    (q / "unlisted.jsonl").write_text("{}\n")  # the check still bites beside it
+    assert sb.unbounded(tmp_path, NOW) == ["landq/unlisted.jsonl: an append-only file and no bound"]
