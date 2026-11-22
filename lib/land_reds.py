@@ -102,7 +102,8 @@ def judges_a_table(test: str) -> bool:
 
 def tables(log: str) -> list[str]:
     """The table files the assertion lines of LOG name, once each, in order."""
-    return list(dict.fromkeys(TABLE_FILE.findall(error_lines(log))))
+    found = TABLE_FILE.findall(error_lines(log))
+    return list(dict.fromkeys(f for f in found if "..." not in f))  # pytest's cut is no name
 
 
 def error_lines(log: str) -> str:

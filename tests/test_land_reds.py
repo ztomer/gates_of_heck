@@ -270,3 +270,4 @@ def test_the_table_rule_reads_a_test_id_alone_and_names_the_tables_an_assertion_
     )
     assert lr.tables(log) == ["docs/map.md", "house_scripts.tsv", "tests/cap_headroom_allow.txt"]
     assert lr.tables("E   assert 1 == 2\n") == []
+    assert lr.tables("E   assert ['lib/main_re...se_files.tsv'] == []\n") == []  # pytest's cut
