@@ -119,6 +119,9 @@ CALLER_INPUTS = (
     # the suite's share.
     "GOH_TEST_BIN",
     "GOH_COVERAGE_BIN_DIR",
+    # ... and the same goh for the gate scripts a test runs (gates/_goh_bin.sh, GOH.COVGOHBIN):
+    # dropped here, their runs stayed the release build's and left no profile.
+    "GOH_COV_GOH",
     # gates/staged_guards.sh marks its run of the staged guards (tests/_drift_guard.py).
     "GOH_STAGED_GUARD_RUN",
     # tools/land.sh's pre-step and gate hand the suite its verdict record (tests/_land_verdicts.py,

@@ -85,3 +85,21 @@ def test_an_instrumented_build_of_other_source_is_never_taken(tmp_path, monkeypa
     env, _ = _env(tmp_path, monkeypatch, fake)
     r = _run(RESOLVE, env, tmp_path)
     assert r.stdout and r.stdout != str(fake), r.stdout + r.stderr
+
+
+def test_every_variable_the_coverage_run_hands_the_suite_survives_its_entry():
+    """The suite drops every caller GOH_* but its declared inputs (tests/suite_home.py
+    CALLER_INPUTS): GOH_COV_GOH, set in .gatesrc's external command and dropped there, left the
+    gate scripts' goh the release build in the real run while the fixture test above passed."""
+    import shlex
+
+    import suite_home
+
+    line = next(
+        ln for ln in (REPO_ROOT / ".gatesrc").read_text().splitlines()
+        if ln.startswith("GOH_COV_RUST_EXTERNAL=")
+    )  # fmt: skip
+    words = shlex.split(shlex.split(line.split("=", 1)[1])[0])
+    handed = [w.split("=", 1)[0] for w in words if "=" in w and w.startswith("GOH_")]
+    assert "GOH_COV_GOH" in handed, words  # the calibration: the reader sees the assignment
+    assert not set(handed) - set(suite_home.CALLER_INPUTS), handed
