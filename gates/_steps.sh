@@ -8,6 +8,8 @@
 #   [produces=target/debug/app] cargo build     the ARTIFACT DECLARATIONS (gates/_proven.sh): what
 #   [consumes=target/debug/app] pytest ...        the step creates, and what it reads. A
 #                                                 declaration is not a tag: it names a file.
+#   [scope=src+mutants.toml] cargo mutants      the step's declared INPUTS (GOH.PROVENSCOPE): the
+#                                                 proven cache keys it on those paths alone.
 #
 # A path list is separated by `+` (a comma separates the items in the prefix). The declaration is
 # part of the step string, so it is part of the key the proven cache computes: a record written
@@ -36,8 +38,8 @@ parse_step_prefix() {
                     *=*)
                         key="${item%%=*}"
                         case "$key" in
-                            produces|consumes) ;;
-                            *) die "step $n: '$key=' is not a declaration (produces= and consumes= are the two)" ;;
+                            produces|consumes|scope) ;;
+                            *) die "step $n: '$key=' is not a declaration (produces=, consumes= and scope= are the three)" ;;
                         esac
                         paths="${item#*=}"
                         while [ -n "$paths" ]; do
@@ -47,7 +49,7 @@ parse_step_prefix() {
                                 ""|*" "*) die "step $n: an artifact path holds a space in it (got '$p')" ;;
                             esac
                             if [ "$key" = produces ]; then PRODUCES[n]="${PRODUCES[n]}$p,"
-                            else CONSUMES[n]="${CONSUMES[n]}$p,"; fi
+                            elif [ "$key" = consumes ]; then CONSUMES[n]="${CONSUMES[n]}$p,"; fi
                         done
                         ;;
                     *)

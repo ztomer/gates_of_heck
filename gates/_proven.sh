@@ -103,9 +103,17 @@ _proven_native_key() {
 # keys: under a commit hook that carried its index (`commit -a`, gates/_git_env.sh) the tree is the
 # one being committed, and that binding must not outlive the key.
 proven_key() (
-    local tree key kstep
+    local tree key kstep scope
     goh_bind_hook_index
     [ "${PROVEN_ON:-1}" = 1 ] || return 1
+    # A step that declares its inputs (`[scope=a+b] ...`, GOH.PROVENSCOPE) keys on them alone.
+    scope="$(proven_decl_scope "$1")"
+    if [ -n "$scope" ]; then
+        local -a entries
+        mapfile -t entries <<<"$scope"
+        proven_scoped_key "$1" "${entries[@]}"
+        return
+    fi
     kstep="$(_proven_key_step "$1")"
     if _proven_native_key; then
         _proven_identity_live | "$GOH_RESOLVED_BIN" proven key -- "$kstep"
@@ -281,7 +289,7 @@ proven_record() {
     local dir tmp now f epoch line kind path hash
     local decl="" spec=()
     if ! proven_decl_valid "$3"; then
-        proven_error "proven: a declaration in '$3' is not produces=/consumes=, or names a path with a space in it"
+        proven_error "proven: a declaration in '$3' is not produces=/consumes=/scope=, or names a path with a space in it"
         return 2
     fi
     decl="$(proven_decl "$3")"

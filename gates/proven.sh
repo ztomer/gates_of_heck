@@ -35,6 +35,9 @@
 #   pass it VERBATIM as GOH_CI_STEPS spells it, or the push-time run keys a different step.
 #   --label  who is recording (shown by a later skip); default "proven.sh"
 #   --log    send the step's output to FILE; this script's own lines stay on stdout
+#   --scope  PATHS: key the step on these repo-relative inputs alone (comma- or space-separated),
+#            the same as the step string's `[scope=P1+P2]` prefix (GOH.PROVENSCOPE); a commit that
+#            leaves them unchanged reuses the verdict
 #   --explain print the step's key, tree and identity LINES (what the key hashes) and run nothing;
 #            each record keeps its lines under .id/, so a later miss names what moved (GOH.PROOFKEY)
 # Exit: the step's code; 0 when skipped; 2 on a usage or configuration error.
@@ -53,11 +56,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 label="proven.sh"
 log=""
 explain=0
+scope_arg=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --label) [ $# -ge 2 ] || die "proven: --label needs a name" 2; label="$2"; shift 2 ;;
         --log)   [ $# -ge 2 ] || die "proven: --log needs a file" 2; log="$2"; shift 2 ;;
         --explain) explain=1; shift ;;
+        --scope) [ $# -ge 2 ] || die "proven: --scope needs paths" 2; scope_arg="$2"; shift 2 ;;
         -h|--help) sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0 ;;
         --) shift; break ;;
         -*) die "proven: unknown option: $1" 2 ;;
@@ -67,6 +72,15 @@ done
 [ $# -eq 1 ] || die "proven: expected exactly one step string (got $#) -- quote it" 2
 step_cmd="$1"
 [ -n "$step_cmd" ] || die "proven: the step string is empty" 2
+# --scope P1,P2 (GOH.PROVENSCOPE) is the step's `[scope=P1+P2]` declaration, written for it: the same
+# key GOH_CI_STEPS gets from that spelling, so a step proven here is found by local_ci.sh and back.
+if [ -n "$scope_arg" ]; then
+    scope_decl="scope=$(printf '%s' "$scope_arg" | tr ', ' '++' | tr -s '+' | sed 's/^+//; s/+$//')"
+    case "$step_cmd" in
+        "["*"] "*) step_cmd="[$scope_decl,${step_cmd#[}" ;;
+        *) step_cmd="[$scope_decl] $step_cmd" ;;
+    esac
+fi
 # The step string may carry a bracket prefix (the artifact declarations, gates/_proven.sh). The
 # KEY is the whole string -- the declaration is part of what is being proved -- but the COMMAND
 # that runs is what is after the prefix, exactly as local_ci.sh runs it.

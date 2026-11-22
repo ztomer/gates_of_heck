@@ -22,6 +22,11 @@ THE THREE WAYS IT CAN LIE, each with its own test:
   2. a stamp that matches a STALE artifact -> the artifact's BYTES changed -> the hit is void;
   3. a step that consumes a build from another commit -> the consumed artifact's bytes changed ->
      the consumer's proof is void.
+
+THE THIRD DECLARATION, `scope=` (GOH.PROVENSCOPE): a step's declared INPUTS. A consumer's mutation
+step (208 s of a 502 s push gate) re-ran on every commit because only Rust could key a step on its
+inputs (gates/_rust_proven.sh); `proven.sh --scope P` and the step string's `[scope=P]` prefix (the
+spelling GOH_CI_STEPS carries) now key it on the git objects of those paths alone.
 """
 
 from __future__ import annotations
@@ -30,7 +35,8 @@ import os
 import subprocess
 from pathlib import Path
 
-from test_proven import _git, env, goh, proven, records, repo, runs  # noqa: F401
+from _gatesrc_kit import write_gatesrc
+from test_proven import GATE, STEP, _git, env, goh, local_ci, proven, records, repo, runs  # noqa: F401
 
 BUILD = (
     '[produces=build/app.bin] echo ran >> "$COUNT"; mkdir -p build; printf built > build/app.bin'
@@ -263,3 +269,62 @@ def test_the_build_classifier_reads_the_command_not_a_word_in_it(goh):
         "go build ./...",
         "[consumes=target/debug/x] cargo build",
     }, (out.stdout, out.stderr)
+
+
+# -- scope= : the declared inputs (GOH.PROVENSCOPE) --
+
+
+def _commit(repo, name, text):
+    (repo / name).write_text(text)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", name)
+
+
+def test_a_change_outside_the_scope_reuses_the_verdict(goh, repo, env):
+    assert proven(goh, repo, env, STEP, "--scope", "src.txt").returncode == 0
+    _commit(repo, "other.txt", "unrelated\n")
+    again = proven(goh, repo, env, STEP, "--scope", "src.txt")
+    assert again.returncode == 0 and runs(env) == 1, again.stdout + again.stderr
+    assert "proven on this tree" in again.stdout
+
+
+def test_without_a_scope_the_same_change_re_runs(goh, repo, env):
+    assert proven(goh, repo, env).returncode == 0
+    _commit(repo, "other.txt", "unrelated\n")
+    assert proven(goh, repo, env).returncode == 0 and runs(env) == 2
+
+
+def test_a_change_inside_the_scope_re_runs(goh, repo, env):
+    assert proven(goh, repo, env, STEP, "--scope", "src.txt,other.txt").returncode == 0
+    _commit(repo, "other.txt", "now it exists\n")  # a missing input appearing changes the key
+    assert proven(goh, repo, env, STEP, "--scope", "src.txt,other.txt").returncode == 0
+    assert runs(env) == 2
+    _commit(repo, "src.txt", "two\n")
+    assert proven(goh, repo, env, STEP, "--scope", "src.txt other.txt").returncode == 0
+    assert runs(env) == 3
+
+
+def test_the_flag_and_the_step_prefix_are_one_key(goh, repo, env):
+    """GOH_CI_STEPS spells it `[scope=a+b] cmd`; a verdict proven either way is found the other."""
+    assert proven(goh, repo, env, STEP, "--scope", "src.txt").returncode == 0
+    hit = proven(goh, repo, env, f"[scope=src.txt] {STEP}")
+    assert hit.returncode == 0 and runs(env) == 1, hit.stdout + hit.stderr
+
+
+def test_a_malformed_scope_is_refused_before_the_step_runs(goh, repo, env):
+    bad = proven(goh, repo, env, f"[scpoe=src.txt] {STEP}")
+    assert bad.returncode == 2 and runs(env) == 0
+
+
+def test_local_ci_reuses_a_scoped_step_across_an_unrelated_commit(goh, repo, env):
+    """The consumer's spelling: the step in GOH_CI_STEPS carries its own `[scope=]`."""
+    (repo / "tools").mkdir()
+    (repo / "tools" / "gate.sh").write_text(GATE)
+    (repo / "tools" / "gate.sh").chmod(0o755)
+    write_gatesrc(repo, f"GOH_CI_STEPS='[scope=src.txt] {STEP}'\n")
+    _commit(repo, "wire.txt", "wired\n")
+    first = local_ci(goh, repo, env)
+    assert first.returncode == 0 and runs(env) == 1, first.stdout + first.stderr
+    _commit(repo, "other.txt", "unrelated\n")
+    second = local_ci(goh, repo, env)
+    assert second.returncode == 0 and runs(env) == 1, second.stdout + second.stderr

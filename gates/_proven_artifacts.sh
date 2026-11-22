@@ -54,7 +54,33 @@ proven_decl() {
     done
 }
 
-# proven_decl_valid <step> — 0 when every declaration in the prefix is one of the two kinds.
+# proven_decl_scope <step> — the step's declared INPUTS, one repo-relative path per line
+# (GOH.PROVENSCOPE): `[scope=src+mutants.toml] cargo mutants` keys the step on the git objects of
+# those paths alone (gates/_proven.sh proven_scoped_key), so it is reused while they are unchanged,
+# whatever else the commit touched. The declaration is the caller's claim: a step reading outside
+# its scope would be reused stale, so declare every input (Rust's crate scope is derived and
+# checked against dep-info instead: gates/_rust_proven.sh).
+proven_decl_scope() {
+    local step="$1" head rest item paths path
+    case "$step" in
+        "["*"] "*) head="${step%%]*}" ;;
+        *) return 0 ;;
+    esac
+    rest="${head#[}"
+    while [ -n "$rest" ]; do
+        item="${rest%%,*}"
+        if [ "$item" = "$rest" ]; then rest=""; else rest="${rest#*,}"; fi
+        case "$item" in scope=*) ;; *) continue ;; esac
+        paths="${item#scope=}"
+        while [ -n "$paths" ]; do
+            path="${paths%%+*}"
+            if [ "$path" = "$paths" ]; then paths=""; else paths="${paths#*+}"; fi
+            [ -n "$path" ] && printf '%s\n' "$path"
+        done
+    done
+}
+
+# proven_decl_valid <step> — 0 when every declaration in the prefix is one of the known kinds.
 # An unknown key is REFUSED, not ignored: a typo in a declaration is a gate that silently checks
 # nothing, which is the class this file exists for.
 proven_decl_valid() {
@@ -74,7 +100,7 @@ proven_decl_valid() {
         esac
         kind="${item%%=*}"
         case "$kind" in
-            produces|consumes) ;;
+            produces|consumes|scope) ;;
             *) return 1 ;;
         esac
         paths="${item#*=}"
