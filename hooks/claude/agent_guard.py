@@ -37,7 +37,8 @@ by hand; this hook keeps them structurally (tests/test_claude_agent_guard.py):
 * Adaptive lanes (GOH.ADAPTLANES, `lane_room.py`): a write spawn asks lib/capacity.py's reading
   (`goh capacity`) whether the machine has room for another lane; GOH_LANE_ADMIT `refuse`
   (default) defers it naming what the reading lacked, `warn` says so and admits, an `Owner-asked:`
-  line or a failed reading admits; `lane-starts.jsonl`.
+  line is deferred too (admitted in warn mode) and refused above the hard ceiling (GOH.OWNERASKCAP),
+  a failed reading admits; `lane-starts.jsonl`.
 * Every allowed spawn is one line in `$XDG_CACHE_HOME/goh/agent-spawns.jsonl`; SubagentStop adds
   the outcome line -- tokens summed from the agent's transcript, the report's `Status:` and the
   report itself (the audit checks its shas) -- so a wrong choice either way is visible as data.

@@ -5,7 +5,8 @@ whose two gate slots were already held, at a load of 40-130 on 16 cores. agent_g
 lib/capacity.py's reading -- the one `goh capacity --json` prints -- on every write spawn of every
 session (GOH_LANE_ADMIT: `refuse`, the default since GOH.ADAPTLANES2, defers it naming the reading,
 `warn` says so and admits, `off` asks nothing), never on a read-only one, admits an `Owner-asked:`
-spawn and, with a warning, any spawn whose reading fails, and records every judged spawn in
+spawn only while there is room (with none it is deferred; above the hard ceiling, refused) and, with
+a warning, any spawn whose reading fails, and records every judged spawn in
 `$XDG_STATE_HOME/goh/lane-starts.jsonl` for the weekly review.
 """
 
@@ -17,7 +18,7 @@ from typing import Any
 
 from _hook_inproc import run_hook
 from conftest import hermetic_env
-from test_capacity import Planted
+from test_capacity import CORES, Planted
 from test_claude_agent_guard import GOOD, GUARD, _allowed, _reason, _spawn
 
 READ_ONLY = {"description": "look", "subagent_type": "Explore", "prompt": "Where is foo defined?"}
@@ -110,17 +111,47 @@ def test_the_default_refuses_a_plain_write_spawn_with_no_room_as_deferred(tmp_pa
     assert (line["verdict"], line["mode"]) == ("refused", "refuse"), line
 
 
-def test_an_owner_asked_spawn_starts_with_no_room_and_is_logged_owner(tmp_path) -> None:
-    out = _judge(tmp_path, "", room=False, ti=OWNER)
-    _allowed(out)
-    assert "owner-asked" in out["systemMessage"] and "no room" in out["systemMessage"], out
+def test_an_owner_asked_spawn_with_no_room_is_deferred_naming_the_numbers(tmp_path) -> None:
+    # GOH.OWNERASKCAP (mistakes.json M5, 2026-11-22): the owner asking for the work is not the
+    # owner asking for it to run at once -- an Owner-asked spawn past the refusal let gate-heavy
+    # lanes start and load reached 130 on 16 cores.
+    reason = _reason(_judge(tmp_path, "", room=False, ti=OWNER))
+    for needle in ("Deferred", "owner-asked", "no room for another write lane",
+                   "2 gates waiting for a slot", "% idle", "goh capacity"):  # fmt: skip
+        assert needle in reason, (needle, reason)
     (line,) = _lanes(tmp_path)
-    assert line["verdict"] == "owner" and line["why"], line
+    assert line["verdict"] == "owner-deferred" and line["why"], line
     assert line["owner"] == '"Yes, make it enforce" (2026-11-17)', line
     # the words must open a line of their own: a brief that merely quotes the marker is plain
     quoted = dict(GOOD, prompt=f"{GOOD['prompt']}\nThe marker is `Owner-asked: <words>`.")
     (tmp_path / "q").mkdir()
     _reason(_judge(tmp_path / "q", "", room=False, ti=quoted))
+    assert _lanes(tmp_path / "q")[0]["verdict"] == "refused"
+
+
+def test_an_owner_asked_spawn_in_warn_mode_starts_below_the_hard_ceiling(tmp_path) -> None:
+    out = _judge(tmp_path, "warn", room=False, ti=OWNER)
+    _allowed(out)
+    assert "owner-asked" in out["systemMessage"], out
+    assert _lanes(tmp_path)[0]["verdict"] == "owner"
+
+
+def test_an_owner_asked_spawn_above_the_hard_ceiling_is_refused_in_any_mode(tmp_path) -> None:
+    cores = CORES
+    for mode, load, idle in (("", cores * 4 + 1, 10), ("warn", 0, 3)):
+        tmp = tmp_path / (mode or "default")
+        tmp.mkdir()
+        p = Planted(tmp, waiting=2, idle=idle)
+        p.env["GOH_LOADAVG_READING"] = f"{load} {load} {load}"
+        try:
+            out = _run(_spawn(OWNER), tmp, {**p.env, "GOH_LANE_ADMIT": mode})
+        finally:
+            p.close()
+        reason = _reason(out)
+        assert "Refused" in reason and "hard ceiling" in reason, reason
+        want = f"load1 {load:g} over {cores * 4}" if load else "3% idle, under 5%"
+        assert want in reason, (want, reason)
+        assert _lanes(tmp)[0]["verdict"] == "owner-refused"
 
 
 def test_an_unreadable_reading_admits_under_the_default(tmp_path) -> None:

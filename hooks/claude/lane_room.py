@@ -16,17 +16,22 @@ refusal starts nothing and loses nothing: its text says what the reading lacked 
 coordinator re-dispatches the spawn when `goh capacity` exits 0. Any other mode word is warn, said
 as such.
 
-AN OWNER-ASKED SPAWN STILL STARTS: a prompt line opening `Owner-asked: <the owner's words>` admits
-with no room, in refuse and warn mode alike, and is recorded as `owner` with the words. The marker
-must open its own line, so a brief that merely quotes it is a plain spawn. The hard ceilings (the
-coordinator's caps on agents and lanes) are not this rule's: it only ever adds a refusal.
+AN OWNER-ASKED SPAWN IS DEFERRED, NOT FORCED (GOH.OWNERASKCAP, mistakes.json M5): a prompt line
+opening `Owner-asked: <the owner's words>` used to admit with no room, and on 2026-11-22 that let
+gate-heavy lanes start past a refusal until load reached 130 on 16 cores. The owner asking for the
+work is not the owner asking for it to run at once: with no room, refuse mode DEFERS it (recorded
+`owner-deferred`: nothing starts, and the coordinator starts it when `goh capacity` admits), warn
+mode admits it (`owner`), and above the HARD CEILING -- load1 over HARD_LOAD_PER_CORE x the cores,
+or CPU idle under HARD_MIN_IDLE_PCT -- it is refused in every mode (`owner-refused`), naming the
+numbers. The marker must open its own line, so a brief that merely quotes it is a plain spawn. The
+coordinator's caps on agents and lanes are not this rule's: it only ever adds a refusal.
 
 A reading that cannot be taken, or has an unread part, ADMITS with a warning in every mode
 (probe-first: the instrument is never the reason work stops). Each judged spawn is one line of
 `$XDG_STATE_HOME/goh/lane-starts.jsonl` (default `~/.local/state/goh/`): the verdict (`room`,
-`warned`, `refused`, `owner`, `unread`), the reasons, the mode, the queue item the prompt names
-(`Queue item <ID>`, so the weekly review joins a spawn to its land without the transcript) and
-the whole reading.
+`warned`, `refused`, `owner`, `owner-deferred`, `owner-refused`, `unread`), the reasons, the mode,
+the queue item the prompt names (`Queue item <ID>`, so the weekly review joins a spawn to its land
+without the transcript) and the whole reading.
 Pinned by tests/test_agent_guard_lanes.py.
 """
 
@@ -48,6 +53,8 @@ DEFAULT_MODE = "refuse"
 WARN = "warn"  # what an unknown mode word reads as
 MAX_LINE = 4000  # under PIPE_BUF: one O_APPEND write stays whole
 OWNER = re.compile(r"^Owner-asked:[ \t]*(\S.*?)[ \t]*$", re.MULTILINE)
+HARD_LOAD_PER_CORE = 4  # load1 over this many per core: no spawn starts, owner-asked or not
+HARD_MIN_IDLE_PCT = 5  # CPU idle under this: the same
 ITEM = re.compile(r"\bQueue item ([A-Z][A-Z0-9]*(?:\.[A-Z0-9]+)+)\b")
 
 
@@ -88,6 +95,20 @@ def owner_words(prompt: str) -> str | None:
     return m.group(1) if m else None
 
 
+def hard_ceiling(reading: dict[str, Any]) -> list[str]:
+    """What of `reading` is past the hard ceiling, each with its numbers; [] when nothing is."""
+    over = []
+    load = reading.get("load") or {}
+    avg, cores = load.get("avg") or [], load.get("cores") or 0
+    if avg and cores and avg[0] > HARD_LOAD_PER_CORE * cores:
+        over.append(f"load1 {avg[0]:g} over {HARD_LOAD_PER_CORE * cores} "
+                    f"({HARD_LOAD_PER_CORE}x {cores} cores)")  # fmt: skip
+    idle = (reading.get("cpu") or {}).get("idle_pct")
+    if idle is not None and idle < HARD_MIN_IDLE_PCT:
+        over.append(f"CPU {idle:g}% idle, under {HARD_MIN_IDLE_PCT}%")
+    return over
+
+
 def judge(event: dict[str, Any], agent_type: str, declared: str) -> Verdict:
     """The lane verdict for a write spawn; never raises (a failure admits, said)."""
     raw = os.environ.get("GOH_LANE_ADMIT", "").strip()
@@ -115,8 +136,10 @@ def judge(event: dict[str, Any], agent_type: str, declared: str) -> Verdict:
                      f"this spawn was admitted unjudged")  # fmt: skip
     elif room["ok"]:
         verdict = "room"
+    elif owner and (hard := hard_ceiling(reading)):
+        verdict = "owner-refused"
     elif owner:
-        verdict = "owner"
+        verdict = "owner-deferred" if mode == "refuse" else "owner"
     else:
         verdict = "refused" if mode == "refuse" else "warned"
     record = {
@@ -136,8 +159,24 @@ def judge(event: dict[str, Any], agent_type: str, declared: str) -> Verdict:
         return Verdict(
             deny=f"Refused, deferred: {no_room}. Nothing was started; re-dispatch this spawn "
             f"unchanged once `goh capacity` exits 0 (a slot frees, a waiter clears or the load "
-            f"drops). A spawn the owner asked for starts anyway: a prompt line "
-            f"`Owner-asked: <the owner's own words>`.",
+            f"drops). A spawn the owner asked for (a prompt line `Owner-asked: <the owner's own "
+            f"words>`) is deferred the same way, never forced past the capacity.",
+            message=" ".join(notes) or None,
+            record={"verdict": verdict},
+        )
+    if verdict == "owner-refused":
+        return Verdict(
+            deny=f"Refused, above the hard ceiling: {'; '.join(hard)} -- {no_room}. An owner-asked "
+            f"spawn ({owner}) is not started past it in any mode; the coordinator starts it once "
+            f"the load drops and `goh capacity` exits 0.",
+            message=" ".join(notes) or None,
+            record={"verdict": verdict},
+        )
+    if verdict == "owner-deferred":
+        return Verdict(
+            deny=f"Deferred, owner-asked ({owner}): {no_room}. The owner asking for the work is "
+            f"not the owner asking for it to start now: nothing was started; the coordinator "
+            f"starts this spawn unchanged once `goh capacity` exits 0.",
             message=" ".join(notes) or None,
             record={"verdict": verdict},
         )

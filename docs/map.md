@@ -599,7 +599,8 @@ Every structural checker is native since Phase N3; the Python checkers they port
 * `hooks/claude/lane_room.py` — agent_guard's lane-start rule (GOH.ADAPTLANES): a write spawn (a judged tier that is not
   read-only) asks `lib/capacity.py`'s reading whether the machine has room for another lane; `GOH_LANE_ADMIT` `refuse`
   (default, GOH.ADAPTLANES2) defers it naming what the reading lacked, `warn` admits and says why not, `off` asks nothing;
-  an `Owner-asked:` prompt line and a reading that fails admit with a warning. Each judged spawn is a line of
+  an `Owner-asked:` prompt line is deferred the same way (refused above the hard ceiling: load1 over
+  4x the cores or idle under 5%, GOH.OWNERASKCAP) and a reading that fails admits with a warning. Each judged spawn is a line of
   `~/.local/state/goh/lane-starts.jsonl` (verdict, reasons, queue item, the reading).
   Pinned by `test_agent_guard_lanes.py`.
 * `scripts/usage_review.py` — the weekly usage review `model_choice_watch.py` runs: the week's spawns,
