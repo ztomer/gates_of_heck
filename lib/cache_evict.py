@@ -34,12 +34,15 @@ identity, at GOH_CACHE_EVICT_STATE (default ~/.local/state/goh/cache-evict.json)
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import glob
 import json
 import os
+import sys
 import time
 from dataclasses import dataclass
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import lock_order  # lib/, beside this file
 
 GIB = 1 << 30
 HALF_LIFE_S = 86400.0
@@ -203,7 +206,7 @@ def _flock_taken(path: str) -> bool:
     except OSError:
         return False
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lock_order.flock(fd, "cargo_build", wait=False)
     except BlockingIOError:
         return True
     except OSError:

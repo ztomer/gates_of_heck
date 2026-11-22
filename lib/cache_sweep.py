@@ -34,7 +34,6 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
     del _sys.path[0]
 
 import contextlib
-import fcntl
 import glob
 import json
 import os
@@ -50,6 +49,7 @@ import _head_cache  # gates/  # noqa: E402
 import cache_evict as ce  # noqa: E402
 import cache_move  # noqa: E402
 import cache_tier  # noqa: E402
+import lock_order  # noqa: E402
 import sccache_repoint  # noqa: E402
 
 STAMP = ".goh-used"
@@ -163,7 +163,7 @@ def _locks_held(path: str):
         for lock in ce.cargo_locks(path):
             fd = os.open(lock, os.O_RDONLY)
             fds.append(fd)
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_order.flock(fd, "cargo_build", wait=False)
         yield
     finally:
         for fd in fds:
@@ -294,7 +294,7 @@ def main(argv: list[str]) -> int:
     os.makedirs(os.path.dirname(state), exist_ok=True)
     with open(state + ".lock", "a", encoding="ascii") as lock:
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_order.flock(lock, "cache_sweep", wait=False)
         except BlockingIOError:
             print("cache sweep: another sweep runs")
             return 0
