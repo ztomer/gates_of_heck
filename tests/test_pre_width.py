@@ -181,6 +181,16 @@ def test_the_pytest_trees_cpu_is_its_live_members_own_and_reaped() -> None:
     assert pre_cpu.tree_cpu(99, snap) == 0.0
 
 
+def test_a_reaped_run_is_counted_into_the_named_file(tmp_path) -> None:
+    f = tmp_path / "cpu"
+    with pre_cpu.counted({pre_cpu.ENV: str(f)}):
+        subprocess.run([sys.executable, "-c", "sum(range(5 * 10**6))"], check=True,
+                       stdin=subprocess.DEVNULL)  # fmt: skip
+    assert (pre_cpu.read(f) or 0.0) > 0.01
+    with pre_cpu.counted({}):  # no file named: nothing written anywhere
+        pass
+
+
 def test_the_cpu_file_accumulates_and_reads_absent_as_none(tmp_path) -> None:
     f = tmp_path / "cpu"
     assert pre_cpu.read(f) is None

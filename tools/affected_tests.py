@@ -388,14 +388,6 @@ def phases(root: Path, chosen: dict[str, str]) -> tuple[list[str], list[str]]:
     return judges, [n for n in chosen if n not in judges]
 
 
-def _reaped_cpu() -> float:
-    """User+system seconds of every child this process has reaped, theirs included."""
-    import resource
-
-    u = resource.getrusage(resource.RUSAGE_CHILDREN)
-    return u.ru_utime + u.ru_stime
-
-
 def run(root: Path, changed: list[str], chosen: dict, base: str | None = None, rust=None) -> int:
     """tools/pytest.sh over the set: the JUDGES first, in a run of their own, then the rest
     (GOH.PREPARITY: one run of both reached the 600 s deadline at load 175 with no verdict, and
@@ -436,12 +428,10 @@ def run(root: Path, changed: list[str], chosen: dict, base: str | None = None, r
         what = "judging the whole tree" if n == 0 else "the diff chose"
         plain = ["bash", str(root / "tools" / "pytest.sh"), "-q", *nodes]
         argv = land_rustcov.argv(root, rust, nodes) if rust and n == 1 else plain
-        cpu0 = _reaped_cpu()
-        rc = timed(  # its own row (GOH.RELEASELANDGATE); no cwd: pytest.sh runs in its own checkout
-            f"pre-land: {len(nodes)} tests {what}", argv
-        )
-        if cpu_file := os.environ.get(pre_cpu.ENV):  # the run's tree, for `pre_run` (GOH.PREWIDTH)
-            pre_cpu.add(cpu_file, _reaped_cpu() - cpu0)
+        with pre_cpu.counted():  # the run's tree, for the land record's `pre_run` (GOH.PREWIDTH)
+            rc = timed(  # its own row (GOH.RELEASELANDGATE); no cwd: pytest.sh runs in its checkout
+                f"pre-land: {len(nodes)} tests {what}", argv
+            )
         if rc:
             return rc
         if first and n == 0 and rest and Path(record).is_file():

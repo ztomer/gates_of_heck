@@ -1,6 +1,6 @@
 """THE PRE-STEP'S CPU (GOH.PREWIDTH): user+system seconds of its pytest process tree.
 
-    add(path, seconds)          # tools/affected_tests.py, after each pytest run it reaped
+    counted()                   # tools/affected_tests.py: around each pytest run it reaps
     tree_cpu(root, snapshot)    # lib/pre_deadline.py, at the deadline: the pytest runs still live
     read(path)                  # tools/land.sh, for the land record's `pre_run.cpu_s`
 
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 ENV = "GOH_LAND_PRE_CPU"
@@ -38,6 +39,26 @@ def add(path: Path | str, seconds: float) -> None:
         tmp = f"{path}.{os.getpid()}"
         Path(tmp).write_text(f"{total:.3f}\n", encoding="utf-8")
         os.replace(tmp, path)
+
+
+def reaped() -> float:
+    """User+system seconds of every child this process has reaped, theirs included."""
+    import resource
+
+    u = resource.getrusage(resource.RUSAGE_CHILDREN)
+    return u.ru_utime + u.ru_stime
+
+
+@contextlib.contextmanager
+def counted(environ: dict[str, str] | None = None) -> Iterator[None]:
+    """Add what the children reaped inside the block cost to GOH_LAND_PRE_CPU's file, if named."""
+    path = (os.environ if environ is None else environ).get(ENV, "")
+    before = reaped()
+    try:
+        yield
+    finally:
+        if path:
+            add(path, reaped() - before)
 
 
 def tree_cpu(root: int, snapshot: dict) -> float:
