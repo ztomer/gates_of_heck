@@ -4,7 +4,7 @@
     goh land --enqueue REPO SHA [--item ID] [--ship [--summary TEXT]] [--no-start]
     goh land --enqueue --land WORKTREE [--item ID] [--no-start] [--no-pre REASON]
     goh land --check WORKTREE   # the land's structural guards, in seconds (lib/land_check.py)
-    goh land --wait ID|REQUEST [--timeout S]  # block until it finished: exit 0 landed, 1 red
+    goh land --wait ID|REQUEST [--timeout S]  # block until it finished: 0 landed, 1 red, 3 else
     goh land --drain        # the lander: run every request in order, then exit
     goh land --status       # what is pending, running, and how each finished
     goh land --ruff-bump [--detach]  # a ruff newer than goh's pin: its bump-only land, once
@@ -34,8 +34,8 @@ pre-step (GOH.PRELANDTWICE, lib/land_prestep.py). `--no-pre REASON` skips the ru
 Without `--wait` or `--foreground` it runs detached (GOH.TOOLTIMEOUT, lib/landq_background.py).
 
 THE WAIT. `goh land --wait ID` (an item, or a request's path or name) blocks until that item's
-newest request reached done/, prints its outcome (and a red log's tail), and exits 0 landed, 1
-red, 3 past --timeout; a pending request with no lander starts one: no wait sits on an idle queue.
+newest request is done, exits 0 landed, 1 red, 3 else (a timeout, a signal: GOH.WAITEARLY, its
+last line names it); a pending request with no lander starts one: no wait sits on an idle queue.
 
 THE LANDER is one process holding an flock on `<dir>/lander.lock` (a second exits at once). It moves
 a request to `running/`, runs it under lib/bounded_run.py (GOH_LAND_TIMEOUT, default 3600 s, its
