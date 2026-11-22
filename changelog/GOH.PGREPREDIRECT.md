@@ -1,1 +1,0 @@
-* **A redirection is no pgrep pattern (GOH.PGREPREDIRECT).** The self-match guard read the `2` of `pgrep -P N -lf 2>/dev/null` as `pgrep -f 2`; an fd before `>`/`<` now ends the call's arguments, and a closed backtick pair in a heredoc body no longer reads the text after it as code. `pgrep -f <own text>` is still refused.

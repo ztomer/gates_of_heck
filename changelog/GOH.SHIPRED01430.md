@@ -1,1 +1,0 @@
-- shell-check grep probe (GOH.SHIPRED01430): the HOME fallback for the record dir, the could-not-probe refusal line and the probe ceiling are pinned by behaviour tests; the unreachable timed-out arm (a ceiling kill is SIGKILL, so no exit code) and the parentless-path arm are gone, and `goh shell-check` hands its grep line through `grep_probe::report`.

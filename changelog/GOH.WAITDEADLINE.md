@@ -1,1 +1,0 @@
-* **A hand-written sleeping wait needs a deadline (GOH.WAITDEADLINE).** The Bash guard refuses an `until`/`while` loop that sleeps with no `timeout N` wrapper or deadline check, naming `goh wait` (`lib/wait_deadline.py`; escape `# wait-ok: <reason>`).
