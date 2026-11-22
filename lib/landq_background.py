@@ -74,11 +74,15 @@ def check(ap: argparse.ArgumentParser, args: argparse.Namespace) -> bool:
 
 def worktree_only(args: argparse.Namespace, q: Path | None = None) -> None:
     """Refuse REPO SHA or --ship beside --land; given the queue Q, then stop the item's earlier
-    enqueue in its pre-step, before this one claims a slot (GOH.REENQUEUECANCEL)."""
+    enqueue in its pre-step, before this one claims a slot (GOH.REENQUEUECANCEL), and mark this
+    one in flight NOW: its slot, conflict check and guards come before the pre-step, and a
+    `--wait ITEM` in those seconds returned the PREVIOUS attempt's record (GOH.WAITSTALE2)."""
     if args.enqueue or args.ship:
         raise landq_request.Refused("--land takes the worktree only: no REPO SHA, no --ship")
     if q is not None:
         supersede(q, args.item)
+        if args.item:  # the pre-step's own mark rewrites this one with its repo and slot
+            landq_inflight.mark(q, args.item)
 
 
 def red(args: argparse.Namespace, req: dict, why: str, q: Path, enqueue, record) -> None:

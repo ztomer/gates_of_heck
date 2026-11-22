@@ -2,7 +2,9 @@
 and `--wait`, which finds a request wherever it is now and blocks until it is done. An enqueue of
 the item still in its pre-step (lib/landq_inflight.py) is waited for until it files; with neither,
 the wait exits 2 (GOH.WAITUNFILED); a done record while one is in flight is the previous
-attempt's, never returned (GOH.WAITSTALE). Each tick re-reads where the request is and says so
+attempt's, never returned (GOH.WAITSTALE): the enqueue is marked in flight from its first step,
+not its pre-step's, and a wait past --timeout before it files says "pre-step running", exit 3
+(GOH.WAITSTALE2). Each tick re-reads where the request is and says so
 once per change: queued behind whom, running (a batch's gate N), done (GOH.LANDWAITSTALE).
 Every record is read through lib/landq_state.py: one moved or not whole is read again next
 tick, never a crash (GOH.CIRED01310). Pinned by tests/test_landq.py, tests/test_landq_inflight.py,
@@ -208,8 +210,8 @@ def _wait(q: Path, what: str, timeout: float, nudge: Callable[[], None]) -> tupl
     begun = time.monotonic()
     start_by = begun + timeout
     found = unfiled(q, what, start_by)
-    if found == 3:
-        return 3, f"its enqueue filed nothing after {timeout:.0f}s"
+    if found == 3:  # GOH.WAITSTALE2: running, not stuck; the lane waits again
+        return 3, f"pre-step running: its enqueue has filed nothing yet after {timeout:.0f}s"
     if found is None:
         return 2, f"no request for {what} under {q}, and no enqueue of it running"
     assert isinstance(found, Path)

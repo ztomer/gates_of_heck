@@ -7,12 +7,16 @@ lane's `--wait ITEM` follows it -- a red pre-step included.
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 import time
 from pathlib import Path
 
 import pytest
 from conftest import git, hermetic_env
-from test_landq import FAKE_LOOPCTL, _land_wt, landq, recorded
+from orphan_kit import wait_for_file
+from test_landq import FAKE_LOOPCTL, LANDQ, _land_wt, landq, recorded
 from timing_bounds import assert_sooner, patience
 
 
@@ -91,3 +95,42 @@ def test_enqueue_land_with_wait_runs_here_and_blocks_until_it_landed(repo, tmp_p
 def test_a_bare_wait_with_no_enqueue_is_refused_naming_what_it_needs(env):
     done = landq(env, "--wait")
     assert done.returncode == 2 and "ID|REQUEST" in done.stdout + done.stderr, done.stderr
+
+
+@pytest.mark.load_sensitive  # its waits are bounded by patience
+def test_a_wait_beside_an_enqueue_says_pre_step_running_and_never_the_last_red(repo, tmp_path, env):
+    """GOH.WAITSTALE2 (8 lanes on 2026-11-22): the in-flight marker went up only when the pre-step
+    started, after the slot and the enqueue's guards, so a `--wait ITEM` in that window returned
+    the item's PREVIOUS red; and a wait past --timeout in the pre-step said "filed nothing". The
+    enqueue is held in its guards, then in its pre-step, by release files: events, not clocks."""
+    wt, _ = _land_wt(repo, tmp_path)
+    done = tmp_path / "landq" / "done"
+    done.mkdir(parents=True)
+    old = {"item": "T.WS", "state": "red", "sha": "b" * 40, "mode": "land", "why": "try 1"}
+    (done / "1000000001-T.WS.json").write_text(json.dumps(old))
+    at = {k: tmp_path / k for k in ("in-check", "go-check", "in-pre", "go-pre")}
+    hold = {k: f"touch {at['in-' + k]}; {wait_for_file(at['go-' + k])}" for k in ("check", "pre")}
+    env = {**env, "GOH_LAND_CHECK_STEPS": hold["check"], "GOH_LAND_PRE": hold["pre"]}
+    argv = [sys.executable, str(LANDQ), "--enqueue", "--foreground", "--land", str(wt),
+            "--item", "T.WS", "--no-start"]  # fmt: skip
+    enq = subprocess.Popen(argv, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT, text=True)  # fmt: skip
+    try:
+        for phase in ("check", "pre"):
+            give_up = time.monotonic() + patience(60)
+            while not at[f"in-{phase}"].exists() and enq.poll() is None:
+                assert time.monotonic() < give_up, f"the enqueue never reached its {phase}"
+                time.sleep(0.05)
+            waited = landq(env, "--wait", "T.WS", "--timeout", "1")
+            out = waited.stdout + waited.stderr
+            assert waited.returncode == 3 and "pre-step running" in out, (phase, out)
+            assert "try 1" not in out, (phase, out)
+            at[f"go-{phase}"].touch()
+        assert enq.wait(patience(60)) == 0, enq.stdout.read() if enq.stdout else ""
+    finally:
+        for f in at.values():
+            f.touch()
+        enq.wait(patience(60))
+        if enq.stdout:
+            enq.stdout.close()
+    assert len(_pending(tmp_path)) == 1
