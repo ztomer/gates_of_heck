@@ -21,6 +21,12 @@ in a different place, and nothing put the two side by side. This check does, fro
      edge against the table's ranks is red too; a lock re-taken under itself is red unless the
      table marks it re-entrant (its own rule lets a holder's child through).
 
+  4. THROUGH THE BINARY (GOH.LOCKORDERBIN2). `goh land` IS tools/landq.py: a subcommand that runs
+     one house script (crates/goh/house_scripts.tsv) refers to that script, whether a shell runs
+     `"$GOH/bin/goh" land` or Python an argv `[goh, "land", ...]`. A DETACHED call -- `--detach`,
+     `setsid`, `start_new_session=True` -- starts a child in a session of its own that holds none
+     of the caller's locks, and forms no edge.
+
 The graph over-approximates (a reference after an acquisition counts as made under it) and never
 under-approximates within goh's tree; invocations outside the tree (a coordinator's command line)
 are the runtime helper's to refuse. Calibrated by tests/test_check_lock_order.py, which re-plants
@@ -72,6 +78,15 @@ RAW_RS = re.compile(r"\.(?:try_)?lock(?:_shared)?\(\)")
 RS_FILE = re.compile(r"\bFile::(?:open|create)\b|\bOpenOptions\b")
 RUNS = re.compile(r"lock-order-runs:((?:\s+GOH_[A-Z0-9_]+)+)")
 KEY = re.compile(r"^(GOH_[A-Z0-9_]+)=(.*)$")
+HOUSE_SCRIPTS = "crates/goh/house_scripts.tsv"
+# `goh SUB` as a shell command (`goh land`, `"$GOH/bin/goh" land`), and as a Python argv
+# (`[goh, "land"`, `["bin/goh", "land"`): a word in prose or a tuple of names is neither.
+SUBCMD_SH = re.compile(
+    r"""(?:^|[;&|(`]|\$\()\s*(?:(?:exec|if|then|do|else|command|!)\s+)*"""
+    r"""["']?(?:[^\s"';&|]*/)?goh["']?\s+([a-z][a-z0-9-]*)\b"""
+)
+SUBCMD_PY = re.compile(r"""\[\s*(?:goh|["'](?:[^"']*/)?goh["'])\s*,\s*["']([a-z][a-z0-9-]*)["']""")
+DETACH_SH = re.compile(r"(?:^|\s)--detach\b|\bsetsid\b")
 
 
 @dataclass
@@ -147,10 +162,29 @@ def _index(tree: Tree) -> dict[str, list[str]]:
     for rel in tree.files:
         if rel.endswith((".py", ".sh")) and rel not in HELPERS:
             names[Path(rel).name].append(rel)
+    try:
+        rows = (tree.root / HOUSE_SCRIPTS).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        rows = []
+    for row in rows:
+        cols = row.split("\t")
+        if row.startswith("#") or len(cols) < 2 or cols[1] not in tree.files:
+            continue
+        for sub in cols[0].split("|"):
+            names[f"goh {sub}"].append(cols[1])
     return names
 
 
 _STRING = re.compile(r"\"(?:[^\"\\\\]|\\\\.)*\"|'(?:[^'\\\\]|\\\\.)*'")
+
+
+def _subcommands(rel: str, text: str, names: dict[str, list[str]]) -> set[str]:
+    """The house scripts the `goh SUB` calls in TEXT run (a shell's commands, a Python argv)."""
+    rx = SUBCMD_SH if rel.endswith(".sh") else SUBCMD_PY if rel.endswith(".py") else None
+    hit: set[str] = set()
+    for sub in rx.findall(text) if rx else ():
+        hit.update(names.get(f"goh {sub}", ()))
+    return hit
 
 
 def _mentions(text: str, names: dict[str, list[str]]) -> set[str]:
@@ -197,6 +231,28 @@ def _uncommented(rel: str, line: str) -> str:
     return "".join(out)
 
 
+def _detached(rel: str, lines: list[str]) -> set[int]:
+    """The lines of a call whose child runs in a session of its own: a shell line naming
+    `--detach` or `setsid`; every line of a Python call passing `start_new_session=True` or a
+    `--detach`/`setsid` word."""
+    if not rel.endswith(".py"):
+        return {n for n, line in enumerate(lines, 1) if DETACH_SH.search(_uncommented(rel, line))}
+    try:
+        parsed = ast.parse("\n".join(lines))
+    except SyntaxError:
+        return set()
+    out: set[int] = set()
+    for node in ast.walk(parsed):
+        if not isinstance(node, ast.Call):
+            continue
+        new_session = any(k.arg == "start_new_session" and isinstance(k.value, ast.Constant)
+                          and k.value.value is True for k in node.keywords)  # fmt: skip
+        words = {c.value for c in ast.walk(node) if isinstance(c, ast.Constant)}
+        if new_session or {"--detach", "setsid"} & words:
+            out.update(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+    return out
+
+
 def scan(tree: Tree) -> list[str]:
     """Fill tree.sites and tree.refs; return the table findings (rule 2)."""
     table = lock_order.table(tree.root / "lib" / "lock_order.tsv")
@@ -215,13 +271,17 @@ def scan(tree: Tree) -> list[str]:
         if rel in HELPERS or rel == ".gatesrc":
             continue
         sites, refs = [], []
+        detached = _detached(rel, lines)
         for n, line in _code(rel, lines):
             for name in SITE.findall(line):
                 if name not in table:
                     out.append(f"{rel}:{n}: lock {name!r} is not in lib/lock_order.tsv")
                     continue
                 sites.append((n, name))
-            for g in _mentions(_uncommented(rel, line), names) - {rel}:
+            if n in detached:
+                continue  # a child of its own session holds none of this file's locks
+            code = _uncommented(rel, line)
+            for g in (_mentions(code, names) | _subcommands(rel, code, names)) - {rel}:
                 refs.append((n, g))
             for key in " ".join(RUNS.findall(line)).split():  # a key's command, run from data
                 refs.extend((n, g) for g in keys.get(key, set()) - {rel})
