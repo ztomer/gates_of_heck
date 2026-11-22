@@ -207,3 +207,24 @@ fn the_real_ancestors_start_at_this_process_parent() {
         "{chain:?}"
     );
 }
+
+#[test]
+fn no_ancestors_are_seen_when_ps_cannot_run() {
+    let missing = Path::new("/nonexistent/ps");
+    assert_eq!(
+        super::observed::ancestors_via(missing),
+        Vec::<(u32, String)>::new()
+    );
+}
+
+#[test]
+fn a_snapshot_name_without_a_second_dash_names_its_shell_whole() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(dir.path().join("snapshot-zsh"), "").expect("write");
+    assert_eq!(
+        newest_snapshot(dir.path())
+            .map(|(shell, _)| shell)
+            .as_deref(),
+        Some("zsh")
+    );
+}

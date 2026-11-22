@@ -58,10 +58,10 @@ pub fn newest_snapshot(dir: &Path) -> Option<(String, PathBuf)> {
         .filter_map(Result::ok)
         .filter_map(|entry| {
             let name = entry.file_name().into_string().ok()?;
-            let shell = name
-                .strip_prefix("snapshot-")?
-                .split('-')
-                .next()?
+            let rest = name.strip_prefix("snapshot-")?;
+            let shell = rest
+                .split_once('-')
+                .map_or(rest, |(shell, _)| shell)
                 .to_owned();
             let mtime = entry.metadata().ok()?.modified().ok()?;
             (!shell.is_empty()).then(|| (mtime, shell, entry.path()))
@@ -101,7 +101,12 @@ const PS_CEILING: std::time::Duration = std::time::Duration::from_secs(5);
 /// The real ancestors, from one `ps -A -o pid=,ppid=,command=`; empty when ps cannot run.
 #[must_use]
 pub fn real_ancestors() -> Vec<(u32, String)> {
-    let mut ps = Command::new("/bin/ps");
+    ancestors_via(Path::new("/bin/ps"))
+}
+
+/// The ancestors as `ps` at `ps_path` lists them; empty when it cannot run or overruns.
+pub(super) fn ancestors_via(ps_path: &Path) -> Vec<(u32, String)> {
+    let mut ps = Command::new(ps_path);
     ps.args(["-A", "-ww", "-o", "pid=,ppid=,command="])
         .stdin(std::process::Stdio::null());
     match crate::bounded::run(&mut ps, None, PS_CEILING) {
