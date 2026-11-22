@@ -76,6 +76,14 @@ FILES: dict[str, FileBound | FileKept] = {
         "lib/land_check.py learn, one row per pre-step refusal naming a test; read by land "
         "--check's history and count beside done/ (HISTORY_DAYS)",
     ),
+    "commit-gated.jsonl": FileBound(
+        LEDGER_DAYS,
+        20000,
+        "at",
+        "state_file",
+        "lib/commit_stamp.py record, one row per tree a commit gate passed; read by goh land "
+        "--check, which runs the gate on a commit whose tree is not there",
+    ),
     "lane-starts.jsonl": FileBound(
         28,
         20000,

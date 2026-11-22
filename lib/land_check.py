@@ -376,7 +376,15 @@ def cli(worktree: str, q: Path) -> int:
     listing = gitrun.run_reader(("worktree", "list", "--porcelain"), repo=top, timeout=60)
     main = listing.stdout.split("\n", 1)[0].removeprefix("worktree ")
     t0 = time.monotonic()
+    # A commit no commit gate judged (a cherry-pick, a rebase, --no-verify) is judged now, by the
+    # gate its pre-commit would have run, and named (GOH.CHERRYPICKGATE).
+    from lib import commit_stamp
+
+    refused_commits = commit_stamp.check(top, info)
+    for r in refused_commits:
+        err(f"goh land --check: {r}")
     refused = run(Path(top), q, info, main, tables=True)
+    refused += [f"the commit gate on {r.split(' ', 5)[4]}" for r in refused_commits]
     took = f"{time.monotonic() - t0:.1f} s"
     t1 = time.monotonic()
     cov_risk.say(top, main, warn)  # GOH.DIFFCOVLAND: a warning, never this check's verdict

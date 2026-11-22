@@ -131,6 +131,12 @@ fi
 goh_repo_writes "$root" "$repo_before" || { err "pre-commit: nothing committed"; exit 1; }
 [ "$status" -eq 0 ] || exit "$status"
 [ -z "$lint" ] || { ok "goh lint: the commit gate passes these files (nothing committed)"; exit 0; }
+# The tree this gate passed, stamped, so `goh land --check` finds a commit no commit gate judged (a
+# cherry-pick, a rebase, --no-verify) and runs this gate on it (GOH.CHERRYPICKGATE, lib/commit_stamp.py).
+# shellcheck source=gates/_py.sh
+. "$HERE/_py.sh"
+"$GOH_PY" "$HERE/../lib/commit_stamp.py" record "$root" \
+    || warn "pre-commit: this tree was not stamped; goh land --check will run the commit gate on it"
 if [ -n "$(ls -A "$pending")" ]; then   # every step passed: the settles the checks journalled
     # shellcheck source=gates/_goh_bin.sh
     . "$HERE/_goh_bin.sh"
