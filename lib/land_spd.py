@@ -29,7 +29,14 @@ every member. This module is the one definition, three parts:
                        (tools/land.sh's `suite:` line, from tools/pytest.sh); `summary` counts
                        them by reason, shas and numbers masked and a moved path named `<path>`
 
-Pinned by tests/test_land_spd.py.
+    shadows(..)        THE CARRY SHADOW (GOH.CARRYSHADOW): each gate run of a land's chain, red ones
+                       too, whose ledger row measured the proposed carry rule (tools/land.sh
+                       `shadow_f`, `shadow_ran`, `shadow_red_out`, `shadow_red`); `summary` counts
+                       the shadowed lands, sums F against what ran over each run once (a batch's
+                       one run is every member's), and the gate reds outside F -- the number the
+                       owner rules on GOH.CARRYBASECODE with
+
+Pinned by tests/test_land_spd.py and tests/test_carry_shadow.py.
 """
 
 from __future__ import annotations
@@ -189,6 +196,23 @@ def enqueue_pre(q: Path, row: dict) -> dict | None:
     return None
 
 
+def shadows(gates: list[dict], repo: str, chain: list[tuple[Path, dict]]) -> list[dict]:
+    """The ledger rows of CHAIN's gate runs (land_e2e.gate_row) that carry the shadow's fields."""
+    rows = (land_e2e.gate_row(gates, repo, rec) for _, rec in chain)
+    return [r for r in rows if "shadow_f" in r]
+
+
+def _shadow(rows: list[dict]) -> dict:
+    """The carry shadow's figures over ROWS (module doc), each gate run once."""
+    runs = {(g.get("epoch"), g.get("sha")): g for r in rows for g in r.get("shadow") or ()}
+    red = [n for g in runs.values() for n in str(g.get("shadow_red") or "").split() if "::" in n]
+    total = {k: sum(int(g.get(f"shadow_{k}") or 0) for g in runs.values())
+             for k in ("f", "ran", "red_out")}  # fmt: skip
+    return {"shadowed": sum(bool(r.get("shadowed")) for r in rows), "shadow_runs": len(runs),
+            "shadow_f": total["f"], "shadow_ran": total["ran"],
+            "shadow_red_out": total["red_out"], "shadow_red": sorted(set(red))}  # fmt: skip
+
+
 def _med(xs: list[float]) -> float | None:
     return statistics.median(xs) if xs else None
 
@@ -226,7 +250,7 @@ def summary(q: Path, rows: list[dict]) -> dict:
             "prestep_wait_s": _med(wait), "prestep_run_s": _med(run),
             "prestep_workers": _med(workers),
             "pre_why": dict(why["pre"].most_common()),
-            "suite_why": dict(why["suite"].most_common())}  # fmt: skip
+            "suite_why": dict(why["suite"].most_common()), **_shadow(rows)}  # fmt: skip
 
 
 def _min(s: float | None) -> str:
@@ -247,10 +271,21 @@ def render(name: str, s: dict) -> str:
         f"lander re-ran the whole pre-land: {share} ({s['whole_rerun']}/{s['whole_rerun_of']}); "
         f"enqueue pre-step ran the set {s['prestep_ran']}, "
         f"took a kept verdict {s['prestep_took']}\n"
-        f"enqueue pre-step: {pre}"
+        f"enqueue pre-step: {pre}\n"
+        + shadow_line(s)
         + _why("lander pre-land", s.get("pre_why"))
         + _why("gate suite", s.get("suite_why"))
     )
+
+
+def shadow_line(s: dict) -> str:
+    """The carry shadow's line: lands shadowed, F against what ran, the gate reds outside F."""
+    red = s.get("shadow_red") or []
+    named = f": {' '.join(red[:5])}{' ...' if len(red) > 5 else ''}" if red else ""
+    return (f"carry shadow (GOH.CARRYBASECODE): {s.get('shadowed', 0)} of {s['lands']} lands "
+            f"shadowed; the proposed rule would run {s.get('shadow_f', 0)} tests where "
+            f"{s.get('shadow_ran', 0)} ran ({s.get('shadow_runs', 0)} gate runs); "
+            f"{s.get('shadow_red_out', 0)} gate reds outside F{named}")  # fmt: skip
 
 
 def _why(name: str, counts: dict | None) -> str:

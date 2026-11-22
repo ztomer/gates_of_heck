@@ -59,10 +59,33 @@ land_gate() {
 land_suite_why() {
     if [ ! -s "${verdicts:-}" ]; then
         suite_why="missed: no kept record from the enqueue"
-    elif [ -s "$verdicts.why" ]; then
-        suite_why="$(paste -sd ';' "$verdicts.why")" || suite_why=""
+    elif [ -s "$verdicts.why" ] && suite_why="$(grep -v "^shadow: " "$verdicts.why" | paste -sd ';' -)" \
+            && [ -n "$suite_why" ]; then
+        :   # the plugin's `shadow:` lines are land_shadow's, not a reuse decision
     else
         suite_why="missed: the gate ran no whole suite to ask (tools/pytest.sh with no arguments)"
     fi
     info "suite: $suite_why"
+}
+
+# land_shadow -- THE PROPOSED CARRY RULE, MEASURED (GOH.CARRYSHADOW): the `shadow:` lines the gate's
+# suite runs left in `<record>.why` (tests/_carry_shadow.py), summed over its runs, for the land's
+# ledger row: shadow_f (what the proposed rule, GOH.CARRYBASECODE, would have run), shadow_ran (what
+# ran), shadow_red_out (reds it would have carried a pass over) and shadow_red (those nodes). Read by
+# tools/land.sh's EXIT trap, so a red gate is measured too. A suite that took the enqueue's verdict
+# ran nothing, and neither would the proposed rule: 0 of 0. No line, no gate suite: nothing set.
+land_shadow() {
+    local line f=0 ran=0 red=0 names="" seen=""
+    local re='^shadow: F ([0-9]+) of ([0-9]+) run, ([0-9]+) red outside F[^:]*(: (.*))?$'
+    { [ -n "${verdicts:-}" ] && [ -s "$verdicts.why" ]; } || return 0
+    while IFS= read -r line; do
+        if [[ "$line" =~ $re ]]; then
+            seen=1 f=$((f + BASH_REMATCH[1])) ran=$((ran + BASH_REMATCH[2]))
+            red=$((red + BASH_REMATCH[3])) names="${names:+$names }${BASH_REMATCH[5]}"
+        elif [[ "$line" == reused:* ]]; then
+            seen=${seen:-0}
+        fi
+    done <"$verdicts.why"
+    [ -n "$seen" ] || return 0
+    shadow_f=$f shadow_ran=$ran shadow_red_out=$red shadow_red=$names
 }

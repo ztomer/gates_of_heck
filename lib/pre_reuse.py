@@ -314,7 +314,9 @@ def base_sha(root: Path, base: str) -> str | None:
 def stamp(record: str, base: str | None, chosen: list[str] | None = None) -> None:
     """The record says it is the WHOLE selection the diff from BASE chose (GOH.SUITEONCE): the gate
     of the tree it judged takes it for the suite only then (lib/pre_reuse.py `suite`). With CHOSEN,
-    it names that set (`chosen`), which a move to the pre-step's own code is held to (`within`)."""
+    it names that set (`chosen`), which a move to the pre-step's own code is held to (`within`),
+    and the MODE it was chosen in (`mode`: `enqueue` under GOH_LAND_PRE_ONLY, else `gate`), which
+    the gate's carry shadow asks in (tests/_carry_shadow.py, GOH.CARRYSHADOW)."""
     if not base or not record or record == os.devnull:
         return
     try:
@@ -323,7 +325,10 @@ def stamp(record: str, base: str | None, chosen: list[str] | None = None) -> Non
         return
     if isinstance(rec, dict):
         named = {"chosen": sorted(chosen)} if chosen is not None else {}
-        Path(record).write_text(json.dumps({**rec, "base": base, "selection": "affected", **named}))
+        mode = "enqueue" if os.environ.get("GOH_LAND_PRE_ONLY") else "gate"
+        Path(record).write_text(
+            json.dumps({**rec, "base": base, "selection": "affected", "mode": mode, **named})
+        )
 
 
 def suite(root: Path, record: Path, base: str) -> tuple[bool, str, str]:

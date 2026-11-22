@@ -64,10 +64,11 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # the wait for the lock is its own field, not gate time). A land that never took the lock (a
 # refusal before it, a failed pre-step) measured no gate and writes no row. The ledger never fails
 # a land: the script's exit status is what it was.
-verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall="" pre_run="" pre_workers="" pre_reused="" suite_reused="" pre_why="" suite_why=""
+verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall="" pre_run="" pre_workers="" pre_reused="" suite_reused="" pre_why="" suite_why="" shadow_f="" shadow_ran="" shadow_red_out="" shadow_red=""
 # shellcheck disable=SC2329  # invoked by the EXIT trap below
 land_exit() {
     local rc=$?
+    ! declare -F land_shadow >/dev/null || land_shadow || true   # before .why goes, red gates too (GOH.CARRYSHADOW)
     rm -f "$verdicts" "$pre_start"
     [ -z "$verdicts" ] || rm -f "$verdicts.base" "$verdicts.reused" "$verdicts.why"
     [ -z "${GOH_LAND_PRE_ONLY:-}${GOH_LAND_STACK_ONTO:-}" ] || return "$rc"   # the enqueue's pre-step run, a stacking rebase: no land, no ledger row
@@ -77,6 +78,7 @@ land_exit() {
         ${pre_run:+--field "pre_run_s=$pre_run" --field "pre_workers=$pre_workers"} \
         ${pre_reused:+--field "pre_reused=$pre_reused"} ${suite_reused:+--field "suite_reused=$suite_reused"} \
         ${pre_why:+--field "pre_why=$pre_why"} ${suite_why:+--field "suite_why=$suite_why"} \
+        ${shadow_f:+--field "shadow_f=$shadow_f" --field "shadow_ran=$shadow_ran" --field "shadow_red_out=$shadow_red_out"} ${shadow_red:+--field "shadow_red=$shadow_red"} \
         --field "sha=$(printf %.12s "${tip:-}")" || true
     [ -z "$land_timings" ] || { [ ! -s "$land_timings" ] || [ -z "${GOH_LAND_TIMINGS_KEEP:-}" ] || mv -f "$land_timings" "$GOH_LAND_TIMINGS_KEEP"   # kept beside the land's log (GOH.LANDLEAKS)
         rm -f "$land_timings" "$land_timings".*; }

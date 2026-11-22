@@ -278,21 +278,26 @@ def readers(
     return chosen
 
 
-def affected(root: Path, changed: list[str], enqueue: bool | None = None) -> dict[str, str]:
+def affected(
+    root: Path, changed: list[str], enqueue: bool | None = None, graph=None
+) -> dict[str, str]:
     """{test file or node id: why it runs before the land} for a change to `changed` (paths from
     `root`). A file the diff chooses runs whole; a tree reader the diff does not choose runs only
     its reading tests (`reader_nodes`), whole when they cannot be told apart. At the ENQUEUE
     (GOH_LAND_PRE_ONLY; GOH.JUDGESBYREADS) a reader whose reads are known (lib/declared_reads.py
-    `standing`) runs only when chosen by the diff; the land gate runs every tree reader."""
+    `standing`) runs only when chosen by the diff; the land gate runs every tree reader. GRAPH is
+    root's Closure when the caller built one (tests/_land_verdicts.py, GOH.CARRYSHADOW): the
+    answer is the same, the graph's reach is read once."""
     enqueue = bool(os.environ.get("GOH_LAND_PRE_ONLY")) if enqueue is None else enqueue
     tests = _tests(root)
-    graph = Closure(root) if enqueue else None
+    if graph is None and enqueue:
+        graph = Closure(root)
     chosen = readers(root, changed, tests, graph)
     walking = _walking(root)
     for rel, why in tree_readers(root, tests).items():
         if rel in chosen:
             continue  # chosen whole by the diff
-        if graph and rel not in ALWAYS and not standing(graph, rel, tests[rel], root, walking):
+        if enqueue and rel not in ALWAYS and not standing(graph, rel, tests[rel], root, walking):
             continue  # its reads are known, and the diff touches none of them
         nodes = None if rel in ALWAYS else reader_nodes(tests[rel], walking)
         if nodes is None:

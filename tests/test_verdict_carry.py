@@ -115,6 +115,8 @@ lv.here = lambda root=None: (os.environ.get("TREE", "T1"), "TOOLS")
 lv.trees = lambda root, pre: [("c0" * 20, "T0")]
 lv.diff = lambda root, sha: ["lib/x.py"]
 lv.choose = lambda root, changed: (set(os.environ.get("CHOSEN", "").split()), "")
+import _carry_shadow
+_carry_shadow.proposed = lambda root, changed, mode: (set(os.environ.get("CHOSEN", "").split()), "")
 if os.environ.get("EVERY"):
     reuse.PATHS["carry"] = dataclasses.replace(reuse.PATHS["carry"], every=int(os.environ["EVERY"]))
 

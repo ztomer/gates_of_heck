@@ -34,7 +34,10 @@ its share of the group's summed e2e, and the median 1-min load at the landing's 
 A BATCH'S SHARED RUNS (the lander run, pre-land, gate, slot wait, steps) count once, on one member
 (lib/land_spd.py `once`; GOH.LANDPROFILEFIX). `--last N` and `--since COMMIT` (lands whose landed
 commit descends from it) print the SPD exit's figures: commit to landed, the share of lands whose
-lander ran the whole pre-land again, the enqueue pre-step's wait, run and workers.
+lander ran the whole pre-land again, the enqueue pre-step's wait, run and workers, and the carry
+shadow (GOH.CARRYSHADOW): how many lands' gates measured the proposed carry rule, the tests it would
+have run (F) against those run, over every gate run of the land red ones included, and the gate reds
+outside F -- a pass it would have carried over a change that broke it.
 
 `--guards` counts the red lands by the guard that refused them (`guard` on each done record,
 lib/land_check.py, GOH.LANDCHECK): which structural guard keeps costing lands.
@@ -167,6 +170,7 @@ def land(q: Path, item: str, chain: list[tuple[Path, dict]], gates: list[dict],
             "batch": (rec.get("batch") or {}).get("id"),
             "pre_affected": rec.get("pre_affected"), "pre_run": rec.get("pre_run"),
             "kind": land_spd.lander_kind(found),
+            "shadow": land_spd.shadows(gates, repo, chain), "shadowed": "shadow_f" in g,
             "decisions": land_spd.decisions(found)}  # fmt: skip
 
 

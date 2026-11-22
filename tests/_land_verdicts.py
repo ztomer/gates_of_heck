@@ -52,12 +52,14 @@ import os
 import sys
 from pathlib import Path
 
+import _carry_shadow  # tests/: the proposed carry rule, measured beside this one (GOH.CARRYSHADOW)
 import _cov_claims  # tests/: the non-binary carry and its gate (GOH.COVNONBIN)
 import _land_audit  # tests/, beside this file: the audited `test` and `carry` uses
 import _prof_record  # tests/: each test's own profile under coverage (GOH.COVCARRY)
 import _same_tree  # tests/: the fresh instrumented run's own-tree reuse (@tree)
 import _whole_run  # tests/: whether the arguments select the whole suite (GOH.FSCEILINGRED)
 import pytest
+from _carry_shadow import SUITE_WIDE, choose  # noqa: F401  (patched here; pre_reuse reads it)
 from _land_trees import ANCESTORS, _git, carried, diff, trees  # noqa: F401  (patched here)
 
 RECORD = "GOH_LAND_VERDICTS_RECORD"
@@ -68,12 +70,12 @@ CARRY = "carry"  # the audited reuse path (lib/reuse.py); a same-tree node's, `t
 DROPPED_KEY = "goh_land_verdicts_dropped"  # worker -> controller: nodes it deselected
 WORKER_KEY = "goh_land_reuse"  # the controller's decision, handed to each xdist worker
 SOURCES = 2  # ... of which this many records are carried from (each costs one affected_tests run)
-SUITE_WIDE = ("pyproject.toml", "tools/pytest.sh", "gates/_pytest_root.sh")
 
 _state: dict[str, object] = {}
 _bin: set[str] = set()
 _failed: set[str] = set()
 _called: set[str] = set()
+_seen: set[str] = set()  # every node a report names: what this run ran (GOH.CARRYSHADOW)
 
 
 def identity(root: Path = REPO_ROOT) -> str | None:
@@ -151,22 +153,6 @@ def here(root: Path = REPO_ROOT) -> tuple[str, str] | None:
     return None if tree is None else (tree, gi.suite_tools())
 
 
-def choose(root: Path, changed: list[str], table=None) -> tuple[set[str] | None, str]:
-    """(what tools/affected_tests.py -- or `table`, one loaded apart -- runs for `changed` on root:
-    files and node ids, why); None when the change is suite-wide, so nothing carries across it."""
-    if table is None:
-        sys.path.insert(0, str(root / "tools"))
-        try:
-            import affected_tests as table
-        finally:
-            sys.path.pop(0)
-    wide = [p for p in changed if p in SUITE_WIDE or Path(p).name == "conftest.py"]
-    wide += [p for base in [table.Closure(root).base()] for p in changed if p in base]
-    if wide:
-        return None, f"{wide[0]} is loaded before every test"
-    return set(table.affected(root, changed)), ""
-
-
 def _builds(changed: list[str], root: Path = REPO_ROOT) -> bool:
     """A change to the native binary's build inputs at `root`: the four roots and each file a
     crate embeds (lib/binary_runners.py build_input, GOH.BUILDINCLUDES)."""
@@ -199,6 +185,7 @@ def pytest_sessionstart(session) -> None:
 def pytest_runtest_logreport(report) -> None:
     if not (_on(RECORD) or _on(REUSE)):  # the controller's keys: it judges every report
         return
+    _seen.add(report.nodeid)
     if (BIN_MARK, True) in report.user_properties:
         _bin.add(report.nodeid)
     if report.failed:
@@ -240,6 +227,8 @@ def pytest_sessionfinish(session) -> None:
                "passed": passed}  # fmt: skip
         tmp.write_text(json.dumps(rec))
         tmp.replace(path)  # atomic: a reader sees a whole record or the old one
+    if (shadow := (_state.get("plan") or {}).get("shadow")) and _on(REUSE) != os.devnull:
+        _carry_shadow.write(_on(REUSE), shadow, _seen, _failed)
     if path or _on(REUSE):
         _shadows()
         _record_store(session)
@@ -335,6 +324,7 @@ def _plan(config) -> dict:
         same = _land_audit.audited(plan, same, identity(), str(config.rootpath), _store_or_none())
     plan["skipped"] = {n: b for n, b in _file_passed(path).items() if n in same}
     plan["judged"] = set(plan["skipped"])  # the pre-step's passes of THIS tree (its identity)
+    plan["shadow"] = _carry_shadow.Shadow(plan, path)  # the proposed rule (GOH.CARRYSHADOW)
     if path:
         _carry(plan, _file_sha(path), coverage, Path(config.rootpath))
     if coverage:  # a same-tree pass is skipped only when it was measured running no binary
@@ -391,7 +381,9 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
         lines.append(f"land verdicts: nothing carried ({why})")
         return
     tree, tools = me
-    with _in_store() as (reuse, audit):
+    shadow = plan["shadow"]
+    with _in_store() as (reuse, audit), _carry_shadow.one_graph():
+        shadow.audit(audit)
         taken = 0
         for sha, src in trees(REPO_ROOT, pre_sha):
             if taken >= SOURCES:
@@ -408,11 +400,15 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
                          or (not b and measured.get(n) is False)}  # fmt: skip
                 plan.setdefault("nobin", set()).update(n for n, b in measured.items() if b is False)
                 how = "the same tree"
+                shadow.same(nodes)
             else:
                 changed = diff(REPO_ROOT, sha)
                 chosen, why = (
                     choose(REPO_ROOT, changed) if changed is not None else (None, "no diff")
                 )
+                bld = _builds(changed or [])
+                shadow.other(REPO_ROOT, changed, lambda c, p=passed, m=measured, h=held, b=bld:
+                             carried(p, c, coverage, b, m, h))  # fmt: skip
                 if chosen is None:
                     lines.append(f"land verdicts: nothing carried from {sha[:8]}: {why}")
                     continue
@@ -428,6 +424,7 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
                 continue
             fields = reuse.carry_fields(REPO_ROOT, src, tools)
             decision = audit.use("carry", fields)
+            shadow.decide(decision)
             if decision == "off":
                 lines.append("land verdicts: nothing carried: the audit turned `carry` off "
                              "(lib/reuse_audit.py report)")  # fmt: skip
@@ -439,6 +436,7 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
                              f"audit's shadow ({how})")  # fmt: skip
                 continue
             plan["skipped"].update((n, bool(passed[n])) for n in nodes)
+            shadow.took(nodes)
             if coverage and nodes & held:  # their profiles, where the report reads them
                 _prof_record.take(src, tools, nodes & held)
                 plan.setdefault("binprof", set()).update(nodes & held)
@@ -449,6 +447,7 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
             plan.setdefault("judged", set()).update(mine)
             plan["other"] += len(nodes - mine)
             lines.append(f"land verdicts: {len(nodes)} deselected, carried from {sha[:8]} ({how})")
+        shadow.settle()
     for sh in plan["shadows"]:  # a node another source skips does not run: not this shadow's
         sh["nodes"] = [n for n in sh["nodes"] if n not in plan["skipped"]]
 
