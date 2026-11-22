@@ -11,12 +11,11 @@ only when the build it reuses was instrumented. So the verdicts stay honest: a p
 fails the build step, and a seeded coverage drop still fails the floor, read from the same payload.
 """
 
-import os
 import subprocess
 from pathlib import Path
 
 from _tool_versions import floor
-from conftest import REPO_ROOT, mk_xcrun_find_shim, write
+from conftest import REPO_ROOT, hermetic_env, mk_xcrun_find_shim, write
 
 SWIFT_GATE = REPO_ROOT / "gates" / "swift_gate.sh"
 
@@ -77,7 +76,7 @@ def _repo(tmp_path: Path, gatesrc: str):
 def _run(tmp_path: Path, gatesrc: str = "GOH_SWIFT_COV_MIN=50\n", **extra):
     repo, bin_ = _repo(tmp_path, gatesrc)
     calls_file = tmp_path / "calls.txt"
-    env = dict(os.environ, SWIFT_CALLS=str(calls_file), **extra)
+    env = hermetic_env(SWIFT_CALLS=str(calls_file), **extra)
     env["PATH"] = f"{bin_}:{env['PATH']}"
     r = subprocess.run(
         ["/bin/bash", str(SWIFT_GATE), str(repo)],

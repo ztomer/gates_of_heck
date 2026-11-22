@@ -12,11 +12,10 @@ and `-Xswiftc -cache-compile-job -Xswiftc -cas-path` fails every compile ("stat 
 not found"); the native build system that might take it is deprecated (engineering rule 17).
 """
 
-import os
 import subprocess
 from pathlib import Path
 
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 from test_swift_gate_project_selection import _mk_repo
 
 SWIFT_GATE = REPO_ROOT / "gates" / "swift_gate.sh"
@@ -28,8 +27,7 @@ def _run(tmp_path: Path, gatesrc_extra: str = "", **extra):
         f.write(gatesrc_extra)
     argv = tmp_path / "xcodebuild.argv"
     (bin_ / "xcodebuild").write_text(f'#!/bin/bash\nprintf "%s\\n" "$@" > "{argv}"\nexit 0\n')
-    env = dict(os.environ, XDG_CACHE_HOME=str(tmp_path / "xdg"), **extra)
-    env.pop("GOH_SWIFT_CAS_DIR", None)
+    env = hermetic_env(XDG_CACHE_HOME=str(tmp_path / "xdg"), **extra)
     env["PATH"] = f"{bin_}:{env['PATH']}"
     r = subprocess.run(
         ["/bin/bash", str(SWIFT_GATE), str(repo)],
