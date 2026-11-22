@@ -24,6 +24,7 @@ from conftest import REPO_ROOT
 from test_claude_load_guard import _decide
 
 PUSH = 'until ! pgrep -f "git push origin main"; do sleep 30; done'
+WAIT_OK = "  # wait-ok: this fixture judges another rule (GOH.WAITDEADLINE refuses unbounded waits)"
 
 
 @pytest.mark.parametrize(
@@ -77,7 +78,9 @@ def test_the_refusal_names_the_ways_out(tmp_path: Path) -> None:
     ],
 )
 def test_the_shapes_that_can_end_are_allowed(command: str, tmp_path: Path) -> None:
-    assert _decide(command, tmp_path) is None, f"the guard refused a wait that can end: {command}"
+    assert _decide(command + WAIT_OK, tmp_path) is None, (
+        f"the guard refused a wait that can end: {command}"
+    )
 
 
 @pytest.mark.parametrize(
@@ -96,10 +99,14 @@ def test_text_is_not_a_loop(command: str, tmp_path: Path) -> None:
 
 def test_pgrep_ok_is_the_one_escape(tmp_path: Path) -> None:
     assert (
-        _decide(f"{PUSH}  # pgrep-ok: the pattern is a name the shell never spells", tmp_path)
+        _decide(
+            f"{PUSH}  # pgrep-ok: the pattern is a name the shell never spells{WAIT_OK}", tmp_path
+        )
         is None
     )
-    assert _decide(f"{PUSH}  # pgrep-ok:", tmp_path) is not None, "an empty reason excuses nothing"
+    assert _decide(f"{PUSH}{WAIT_OK}  # pgrep-ok:", tmp_path) is not None, (
+        "an empty reason excuses nothing"
+    )
 
 
 def test_a_script_file_is_not_the_class(tmp_path: Path) -> None:
@@ -135,7 +142,7 @@ def test_the_rule_is_what_refuses(tmp_path: Path) -> None:
 
     run = subprocess.run(
         [sys.executable, str(tree / "hooks/claude/discard_guard.py")],
-        input=json.dumps({"tool_name": "Bash", "tool_input": {"command": PUSH}, "cwd": str(tmp_path)}),
+        input=json.dumps({"tool_name": "Bash", "tool_input": {"command": PUSH + WAIT_OK}, "cwd": str(tmp_path)}),
         capture_output=True, text=True, timeout=30, check=False,
     )  # fmt: skip
     assert run.returncode == 0 and not run.stdout.strip(), (

@@ -25,6 +25,8 @@ import os
 import re
 import subprocess
 
+import session_owner
+
 PGREP = "p" + "grep"  # split, so the house's kill-by-name check does not read this as a call
 ITEM = re.compile(r"\b[A-Z][A-Z0-9]+\.[A-Z0-9][A-Z0-9_]*\b")
 STAMP_ROUTE = (
@@ -66,7 +68,11 @@ def wait_command(pattern: str, pids: list[int] | None = None) -> str:
 
 
 def stop_command(pids: list[int]) -> str:
-    """The `goh stop` line that replaces a kill of what a name matches (PIDS: its matches now)."""
+    """The `goh stop` line that replaces a kill of what a name matches (PIDS: its matches now).
+
+    Only the pids `goh stop` would accept are named (GOH.STOPOWNSHELL): this agent session's, by
+    `lib/session_owner.py`; a refusal must never print a command that will refuse in turn."""
+    pids = [p for p in pids if session_owner.mine(p)]
     if pids:
         return (
             f"`goh stop {' '.join(map(str, pids))}` (what it matches right now; `goh stop` "

@@ -24,6 +24,7 @@ from test_claude_load_guard import _decide
 from timing_bounds import patience
 
 PKILL = "p" + "kill"  # split, so the house's kill-by-name check does not read the fixtures as calls
+WAIT_OK = "  # wait-ok: this fixture judges another rule (GOH.WAITDEADLINE refuses unbounded waits)"
 REFUSED = [
     'pgrep -f "camoufox" || camoufox &',  # the pattern is spelled again: the shell holds it
     'if pgrep -f "git push"; then echo waiting; fi; git push origin main',
@@ -69,7 +70,7 @@ def test_the_refusal_names_the_safe_forms(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("command", ALLOWED)
 def test_the_safe_forms_run(command: str, tmp_path: Path) -> None:
-    assert _decide(command, tmp_path) is None, f"the guard refused a safe form: {command}"
+    assert _decide(command + WAIT_OK, tmp_path) is None, f"the guard refused a safe form: {command}"
 
 
 def test_an_empty_escape_excuses_nothing(tmp_path: Path) -> None:

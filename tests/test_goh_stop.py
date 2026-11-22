@@ -32,17 +32,18 @@ def _stop(*args: str) -> subprocess.CompletedProcess[str]:
                           check=False)  # fmt: skip
 
 
-def _bash(script: str, *args: str) -> subprocess.CompletedProcess[str]:
+def _bash(script: str, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["bash", "-c", script, "bash", *args], capture_output=True, text=True,
-                          stdin=subprocess.DEVNULL,
-                          env=hermetic_env(), timeout=patience(120), check=False)  # fmt: skip
+                          stdin=subprocess.DEVNULL, env=hermetic_env(**env),
+                          timeout=patience(120), check=False)  # fmt: skip
 
 
 @pytest.fixture
 def orphan() -> Iterator[pid_owner.Stamp]:
     """A process started by a shell that has exited: nobody's child, as an agent's `cmd &` from an
     earlier Bash call is. Reaped through its stamp."""
-    r = _bash(f'"{PY}" -c "{LONG}" >/dev/null 2>&1 & echo $!')
+    # Another agent session's (GOH.STOPOWNSHELL): this session's own earlier process is stoppable.
+    r = _bash(f'"{PY}" -c "{LONG}" >/dev/null 2>&1 & echo $!', CLAUDE_CODE_SESSION_ID="other")
     stamp = pid_owner.stamp(int(r.stdout.strip()))
     assert stamp is not None
     try:

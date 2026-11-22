@@ -154,6 +154,8 @@ shared_checkout = _optional("shared_checkout")  # stash/reset/switch, GOH.NORESE
 temp_sweep = _optional("temp_sweep")  # a glob rm over goh's per-run temp roots, GOH.FLAKYENVCOV
 stdin_reader = _optional("stdin_reader")  # a stdin reader nothing feeds, GOH.STDINHANG
 no_verify = _optional("no_verify")  # a git commit/push that skips the hooks, GOH.NOVERIFYGUARD
+harness_grep, wait_deadline = _optional("harness_grep"), _optional("wait_deadline")
+_RULES = [r for r in (temp_sweep, stdin_reader, no_verify, harness_grep) if r]
 undo_hint = _optional("undo_hint")  # a discard refusal names `goh undo <files>`
 
 # The tools whose input holds a shell command (Bash, Monitor): ONE list, `lib/shell_tools.py`.
@@ -466,6 +468,7 @@ def main() -> int:
         return 0
     tool = event.get("tool_name") or ""
     tool_input = event.get("tool_input") or {}
+    reason = None
     if tool in ("Write", "Edit", "MultiEdit"):
         reason = judge_file(tool_input.get("file_path") or "", _new_text(tool_input))
     elif tool in SHELL_TOOLS:
@@ -478,14 +481,11 @@ def main() -> int:
             or judge_self_match(command)
             or judge_secret_render(command)
             or judge_name_kill(command)
-            or (temp_sweep.judge(command) if temp_sweep else None)
-            or (stdin_reader.judge(command) if stdin_reader else None)
-            or (no_verify.judge(command) if no_verify else None)
+            or next((r for rule in _RULES if (r := rule.judge(command))), None)
+            or (wait_deadline.judge(command) if wait_deadline and tool == "Bash" else None)
             or judge_priority(command)
             or judge_bare(command)
         )
-    else:
-        reason = None
     if reason:
         json.dump(
             {"hookSpecificOutput": {"hookEventName": "PreToolUse",

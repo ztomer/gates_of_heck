@@ -39,6 +39,8 @@ GUARD = REPO_ROOT / "hooks" / "claude" / "discard_guard.py"
 SPINNER = "while :; do :; done &"
 BUSY_WAIT_MARK = "busy-waits"  # the refusal names the form it refused
 
+WAIT_OK = "  # wait-ok: this fixture judges another rule (GOH.WAITDEADLINE refuses unbounded waits)"
+
 
 def _decide(command: str, cwd: Path) -> str | None:
     """The guard's verdict on a Bash command: its refusal reason, or None when it lets it run."""
@@ -116,7 +118,7 @@ def test_a_background_job_that_is_not_a_spinner_is_allowed(tmp_path: Path) -> No
 def test_a_conjunction_is_not_a_background_operator(tmp_path: Path) -> None:
     """`&&` is a conjunction, not a background job: reading it as one would refuse half the
     ordinary commands a shell runs."""
-    assert _decide("while :; do sleep 1; break; done && true", tmp_path) is None
+    assert _decide("while :; do sleep 1; break; done && true" + WAIT_OK, tmp_path) is None
 
 
 def test_load_ok_is_the_one_escape(tmp_path: Path) -> None:
@@ -285,7 +287,7 @@ def test_a_busy_wait_is_refused_with_the_way_to_wait(command: str, tmp_path: Pat
     ],
 )
 def test_a_wait_that_waits_or_is_only_text_is_allowed(command: str, tmp_path: Path) -> None:
-    assert _decide(command, tmp_path) is None, command
+    assert _decide(command + WAIT_OK, tmp_path) is None, command
 
 
 def test_load_ok_excuses_a_busy_wait(tmp_path: Path) -> None:

@@ -181,6 +181,12 @@ def _end_of_command(text: str, start: int) -> int:
         elif char in _TERMINATORS:
             break
         index += 1
+    if index < len(text) and text[index] in "<>":  # `2>/dev/null`: the fd is the redirection's
+        fd = index
+        while fd > start and text[fd - 1].isdigit():
+            fd -= 1
+        if fd < index and (fd == start or text[fd - 1] in " \t"):
+            index = fd
     return index
 
 
@@ -249,7 +255,13 @@ def _judge_loop(original: str, start: int, end: int, context: str) -> str | None
 
 _OWN_PID = re.compile(r"\$\$|\$\{\$\}|\$\{?BASHPID\}?|\$\{?PPID\}?")
 _SSH_ARG = set("bcDEeFIiJLlmOopQRSWw")  # ssh options that take an argument
-_OPEN_SUBST = re.compile(r"\$\([^)]*$|`[^`]*$")  # inside an unclosed `$(` or backtick
+_OPEN_SUBST = re.compile(r"\$\([^)]*$")  # inside an unclosed `$(`
+
+
+def _in_substitution(prefix: str) -> bool:
+    """Whether the line up to a call is inside an unclosed `$(` or an OPEN backtick (an odd count:
+    the second of a closed pair followed by text is not one, GOH.PGREPREDIRECT)."""
+    return bool(_OPEN_SUBST.search(prefix)) or prefix.count("`") % 2 == 1
 
 
 def _nested(command: str) -> list[str]:
@@ -296,7 +308,7 @@ def _selfmatching(script: str, context: str, minimum: int) -> str | None:
     unexpanded = busyloop.blank_quoted_heredocs(script)
     for match in _PROG.finditer(script):
         prefix = script[: match.start()].rsplit("\n", 1)[-1]
-        if masked[match.start()] != script[match.start()] and not _OPEN_SUBST.search(prefix):
+        if masked[match.start()] != script[match.start()] and not _in_substitution(prefix):
             continue  # quoted text, a heredoc body or a comment: not a call
         if unexpanded[match.start()] != script[match.start()]:
             continue  # a quoted heredoc's body, where even a backtick is text

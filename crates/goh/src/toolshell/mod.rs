@@ -3,7 +3,8 @@
 //! Two commands, wired as Claude Code hooks by `hooks/claude/registrations.json`:
 //!
 //! * `goh shell-check` (`SessionStart`): the tool shell is bash >= 5 and its `BASH_ENV` builds the
-//!   house env (`check`); exit 1 naming each fix otherwise.
+//!   house env (`check`); exit 1 naming each fix otherwise. It also probes the harness grep's
+//!   `-v -q` exit code and records it for the Bash guard (`grep_probe`, GOH.UGREPVQ).
 //! * `goh zsh-split-guard` (`PreToolUse` on the shell tools): while the tool shell is still zsh,
 //!   refuse an unquoted `$VAR` used as a command word, a `for` list or an argument list when the
 //!   command assigned VAR a whitespace-holding value (`split`). Under any other shell it passes
@@ -11,6 +12,7 @@
 //!   The escape is `# zsh-split-ok: <reason>`.
 
 pub mod check;
+pub mod grep_probe;
 pub mod split;
 
 #[cfg(test)]
@@ -21,7 +23,7 @@ mod walk_tests;
 use std::io::Read;
 use std::path::Path;
 
-use goh_tui::{ERR, OK};
+use goh_tui::{ERR, OK, WARN};
 
 /// The tools whose input holds a shell command (`lib/shell_tools.py`'s list).
 pub const SHELL_TOOLS: [&str; 2] = ["Bash", "Monitor"];
@@ -115,6 +117,13 @@ pub fn run_shell_check() -> i32 {
         is_file: &|p: &Path| p.is_file(),
         probe: &check::real_probe,
     };
+    // The harness grep's -v -q (GOH.UGREPVQ): said and recorded, never a failure of its own.
+    if let Some((line, warn)) =
+        grep_probe::probe_and_record(&real_env, &grep_probe::real_grep_probe)
+    {
+        let mark = if warn { WARN } else { OK };
+        goh_tui::eoutln!("{mark} goh shell-check: {line}");
+    }
     match check::check(&inputs) {
         Ok(line) => {
             goh_tui::eoutln!("{OK} goh shell-check: {line}");

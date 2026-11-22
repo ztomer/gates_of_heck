@@ -8,6 +8,9 @@ better once it has been kept a while: the number is handed out again (GOH.STRAYS
 THE RULE. A TARGET is one of
   * a pid that is a DESCENDANT of the caller -- the shell that ran `goh stop` (`cmd & goh stop $!`),
     the `goh` binary between them skipped;
+  * a pid started under the caller's own agent session (GOH.STOPOWNSHELL): each Bash tool call is
+    a new shell, so an earlier call's `cmd &` is nobody's child; its start environment carries the
+    same `CLAUDE_CODE_SESSION_ID` (`lib/session_owner.py`), another session's does not;
   * a STAMP, `<pid> <start time>` as `goh stop --stamp PID` prints it (and `lib/pid_owner`'s
     `stamp_line` / `goh_pid_stamp`), given as the line itself or as a file holding it. The stamp is
     taken while the process is the caller's (`goh stop --stamp` refuses any other), so it carries
@@ -47,6 +50,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(1, str(Path(__file__).resolve().parent.parent))
 import pid_owner
+import session_owner
 
 from tui.lib import err, info, ok
 
@@ -118,10 +122,11 @@ def owned(pid: int, tree: dict[int, int], me: int) -> None:
     """Raise Refused unless PID is a descendant of the caller ME (never the caller or its own
     ancestors)."""
     not_self(pid, tree)
-    if me not in ancestors(pid, tree):
+    if me not in ancestors(pid, tree) and not session_owner.mine(pid):
         raise Refused(
-            f"{pid} was not started by this command's shell (pid {me}), so it is not yours to "
-            "stop. Stop a process you started in this same command (`cmd & goh stop $!`), or "
+            f"{pid} was not started by this command's shell (pid {me}) nor by this agent "
+            "session (CLAUDE_CODE_SESSION_ID), so it is not yours to stop. Stop a process you "
+            "started in this same command (`cmd & goh stop $!`), or "
             "stamp it when you start it (`cmd & goh stop --stamp $! > x.pid`) and stop the "
             "stamp later (`goh stop x.pid`); a background task of the Bash tool stops by "
             "TaskStop <id>."
