@@ -147,14 +147,21 @@ case "$MODE" in
     # LoginItemTests.swift:46-47 passed this step with two (GOH.GATEHONEST, probed 2026-11-09).
     # The dirs are the package's own, from the git root the checker joins them to.
     _pfx="$(git rev-parse --show-prefix 2>/dev/null || true)"
+    #
+    # ONE COMPILE PER RUN (GOH.SWIFTONEBUILD): the test step used to be a bare `swift test
+    # --enable-code-coverage`, whose different flags recompiled every target -- token-pool's widget
+    # gate paid build 23.0 s + test 40.8 s for it (2026-11-15). The build step now compiles with the
+    # coverage instrumentation too, and the test step runs that build (--skip-build); the warnings
+    # verdict reads this one build's log, the floor reads the payload its test run writes.
     _spm_log=".build/swift-build-warnings.log"; mkdir -p .build
+    _cov_flag=""; [ -n "${GOH_SWIFT_COV_MIN:-}" ] && _cov_flag="--enable-code-coverage"
     goh_step "build + tests (warnings as errors)" /usr/bin/env bash -c \
-        '"$1" build --build-tests --jobs "$GOH_GATE_WORKERS" -Xswiftc -warnings-as-errors >"$2" 2>&1; rc=$?; cat "$2"
+        '"$1" build --build-tests $6 --jobs "$GOH_GATE_WORKERS" -Xswiftc -warnings-as-errors >"$2" 2>&1; rc=$?; cat "$2"
          [ "$rc" -eq 0 ] || exit "$rc"; exec "$3" "$4" --log "$2" --dirs "$5"' _ \
         "$SWIFT" "$_spm_log" "$GOH_PY" "$HERE/../checks/check_swift_warnings.py" \
-        "${GOH_SWIFT_WARN_DIRS:-${_pfx}Sources,${_pfx}Tests}"
+        "${GOH_SWIFT_WARN_DIRS:-${_pfx}Sources,${_pfx}Tests}" "$_cov_flag"
     if [ -n "${GOH_SWIFT_COV_MIN:-}" ]; then
-        goh_step "test + coverage" "$SWIFT" test --jobs "$GOH_GATE_WORKERS" --enable-code-coverage
+        goh_step "test + coverage" "$SWIFT" test --skip-build --jobs "$GOH_GATE_WORKERS" --enable-code-coverage
         _cov_args=(--min "$GOH_SWIFT_COV_MIN")
         # Where THIS toolchain wrote the payload: the layout moved with
         # Swift 6.3 (.build/<triple>/debug -> .build/out/Products/Debug),
@@ -170,7 +177,7 @@ case "$MODE" in
         goh_step "coverage >= ${GOH_SWIFT_COV_MIN}%${GOH_SWIFT_COV_FLOORS:+ + per-target floors}" \
             "$GOH_PY" "$HERE/../checks/check_swift_coverage.py" "${_cov_args[@]}"
     else
-        goh_step "test" "$SWIFT" test --jobs "$GOH_GATE_WORKERS"
+        goh_step "test" "$SWIFT" test --skip-build --jobs "$GOH_GATE_WORKERS"
         warn "no coverage floor — set GOH_SWIFT_COV_MIN in .gatesrc"
     fi
     ;;
