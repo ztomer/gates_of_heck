@@ -83,7 +83,11 @@ QOS = {"GOH_LANE_QOS": "off"}
 # THE REMOVABLE CACHE TIER OUT OF REACH (GOH.CACHEEVICT): a gate a test runs asks lib/cache_tier.py
 # for the large tier before cargo; pointed nowhere, no test reads or writes a real /Volumes drive.
 CACHE_TIER = {"GOH_CACHE_VOLUMES": "/nonexistent/goh-suite-volumes"}
+# NO QUIET WAIT (GOH.SHIPQUIET): a fixture ship would wait up to 600 s for the loaded box a suite
+# runs on; tests/test_ship_quiet.py turns it on by name.
+SHIP_QUIET = {"GOH_SHIP_QUIET_MAX_S": "0"}
 HERMETIC_PINS = {
+    **SHIP_QUIET,
     **MACHINE_SHAPE,
     **CACHE_TIER,
     **CLOCK,

@@ -72,6 +72,8 @@ version a commit already bumped, which the kit then tags) and the bumps (GOH.CIW
 THE SHIP'S OWN TIME (GOH.SHIPSTARVE). `land_wait_s` is the seconds the worker waited for the land
 lock (the queue's time, not the ship's); `own_s` is the lock taken to `finished`, every step, its
 own full run included: the owner's ship budget (`goh budget`, lib/budget.py) judges `own_s`.
+Before the lock, `quiet` is the bounded wait for a quiet host (lib/ship_quiet.py, GOH.SHIPQUIET:
+GOH_SHIP_QUIET_IDLE_PCT, GOH_SHIP_QUIET_MAX_S), and each step records the CPU idle over its run.
 `sha` in the result is the LANDED commit: HEAD after the release step, which may commit a version
 bump the hand-off never had; `handoff_sha` is the commit the agent handed off.
 Exit: 0 started (or, with --wait, shipped), 1 a step failed, 2 refused.
@@ -134,7 +136,7 @@ GRACE, DEFAULT_TIMEOUT = 5, 3600
 _HELD: dict[str, float] = {}  # "at": time.monotonic() when this worker took the land lock
 KEYS = ("GOH_SHIP_RELEASE", "GOH_SHIP_INSTALL", "GOH_SHIP_TIMEOUT", "GOH_SHIP_RELEASE_PUSHES",
         "GOH_SHIP_PREFLIGHT", "GOH_SHIP_CHANGELOG", "GOH_CHANGELOG_FRAGMENTS",
-        "GOH_SHIP_COVERAGE")  # fmt: skip
+        "GOH_SHIP_COVERAGE", "GOH_SHIP_QUIET_IDLE_PCT", "GOH_SHIP_QUIET_MAX_S")  # fmt: skip
 
 
 def config(repo: Path) -> dict[str, str]:
@@ -210,6 +212,12 @@ def plan(args: argparse.Namespace) -> dict:
         timeout = int(cfg["GOH_SHIP_TIMEOUT"] or DEFAULT_TIMEOUT)
     except ValueError:
         raise Refused(f"GOH_SHIP_TIMEOUT={cfg['GOH_SHIP_TIMEOUT']!r} is not seconds") from None
+    import ship_quiet  # lib/, here: tools/ship.py's import ceiling (E402) is spent
+
+    try:
+        quiet = ship_quiet.settings(cfg)  # GOH.SHIPQUIET: the bounded wait for a quiet host
+    except ValueError as e:
+        raise Refused(str(e)) from None
     asked = preflights(repo, cfg, version, args.summary or "")
     run_preflights(repo, asked, version, args, timeout)
     return {
@@ -225,7 +233,7 @@ def plan(args: argparse.Namespace) -> dict:
         "status": "running", "started": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         "steps": [], "failed_step": None, "tail": [], "undo": [], "pid": None,
         "load1": os.getloadavg()[0],  # the box's load at the ship's START, for the budget's row
-        "allow_diffcov": allow,
+        "allow_diffcov": allow, "quiet_settings": list(quiet),
     }  # fmt: skip
 
 
@@ -302,6 +310,8 @@ def run_steps(res: dict, first: str = STEPS[0]) -> int:
     # first admission in each step, so nothing that gate starts inherits it.
     os.environ["GOH_GATE_CLASS"] = "ship"
     stem = Path(res["result"]).with_suffix("")
+    import ship_quiet  # here, not at the top: tools/ship.py's import ceiling (E402) is spent
+
     for name in STEPS[STEPS.index(first) :]:
         cmd, why = command(res, name)
         if cmd is None:
@@ -311,12 +321,14 @@ def run_steps(res: dict, first: str = STEPS[0]) -> int:
             continue
         log, prof = Path(f"{stem}.{name}.log"), ship_status.profile(stem, name)
         log.write_text(f"$ {cmd}\n", encoding="utf-8")
-        t0 = time.monotonic()
+        t0, ticks0 = time.monotonic(), ship_quiet.ticks()  # the step's own idle (GOH.SHIPQUIET)
         snap = ship_undo.snapshot(Path(res["repo"])) if name == "release" else None
         out = bounded_run.run_step(["bash", "-c", cmd], res["timeout_s"], GRACE, f"ship {name}",
                                    str(log))  # fmt: skip
         secs = round(time.monotonic() - t0, 1)
-        entry = {"name": name, "code": out.code, "seconds": secs, "log": str(log), "timings": prof}
+        entry = {"name": name, "code": out.code, "seconds": secs, "log": str(log), "timings": prof,
+                 "idle_pct": ship_quiet.idle_since(ticks0),
+                 "load1_end": round(os.getloadavg()[0], 2)}  # fmt: skip
         if name == "suite" and (counted := profiles(res)) is not None:  # reused vs fresh
             entry["profiles"] = counted
         if out.code == 0 and not out.timed_out:
@@ -376,6 +388,12 @@ def worker(result: str, resume: bool = False) -> int:
         save(res)
         import land_lock  # here, not at the top: tools/ship.py's import ceiling (E402) is spent
 
+        if not resume:  # GOH.SHIPQUIET: a measuring run waits, bounded, for a quiet host
+            import ship_quiet  # here, not at the top: the import ceiling (E402) is spent
+
+            low, most = res.get("quiet_settings") or (ship_quiet.DEFAULT_IDLE_PCT, 0.0)
+            res["quiet"] = ship_quiet.wait(low, most, poll_s=ship_quiet.poll_s(), say=info)
+            save(res)
         queue, who = land_lock.path(Path(res["repo"])), f"goh ship {res['name']} @ {res['sha'][:8]}"
         asked = time.monotonic()
         with land_lock.held(queue, who, info):  # lock-order: land, under the ship lock
