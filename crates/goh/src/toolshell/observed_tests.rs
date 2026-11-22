@@ -197,3 +197,13 @@ fn the_ancestor_chain_and_snapshot_names_are_read() {
     let got: Option<Seen> = seen(&env_for(config.path()), &no_ancestors);
     assert_eq!(got.map(|s| s.shell).as_deref(), Some("zsh"));
 }
+
+#[test]
+fn the_real_ancestors_start_at_this_process_parent() {
+    let chain = super::observed::real_ancestors();
+    assert_eq!(
+        chain.first().map(|(pid, _)| *pid),
+        Some(std::os::unix::process::parent_id()),
+        "{chain:?}"
+    );
+}
