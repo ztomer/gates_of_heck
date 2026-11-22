@@ -1,1 +1,0 @@
-* **An all-digit sha prefix stays a string in the timing ledger (GOH.BUDGETSHAINT).** `timing_ledger.py record --field sha=152013349298` read the value back as an int, which turned a land red whenever a commit's 12-character prefix had no letter; `sha`, `item`, `slot_class`, `pre_why` and `suite_why` are now text fields (`TEXT_FIELDS`).

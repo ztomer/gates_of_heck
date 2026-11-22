@@ -1,1 +1,0 @@
-- A new checkout of a known repo (a land slot, a lane worktree) starts its Rust coverage build from the repo's seed (gates/_cov_seed.py): the last green build of any checkout, APFS-cloned in under a second with the checkout's own packages left out, so a slot's first Rust land no longer builds every dependency cold (GOH.COVCACHEWARM).
