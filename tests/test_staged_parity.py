@@ -109,11 +109,13 @@ def step_labels(text: str) -> list[str]:
 
 def native_labels(gates: Path) -> list[str]:
     """The staged step labels structural.sh's native layer runs: each `let label = "..."` in a
-    `steps_*.rs` that crates/goh/src/structural.rs registers with `step!(<module>::step(`."""
+    `steps_*.rs` that the pipeline's one table (crates/goh/src/structural/pipeline.rs,
+    GOH.SELFWALKFILTER) registers as a step, `|c| <module>::step(`."""
     src = gates.parent / "crates" / "goh" / "src"
-    registry = (src / "structural.rs").read_text(encoding="utf-8") if src.is_dir() else ""
+    table = src / "structural" / "pipeline.rs"
+    registry = table.read_text(encoding="utf-8") if table.is_file() else ""
     labels: list[str] = []
-    for module in re.findall(r"step!\((steps_\w+)::step\(", registry):
+    for module in re.findall(r"\|\w+\| (steps_\w+)::step\(", registry):
         path = src / f"{module}.rs"
         if path.is_file():
             labels += re.findall(r'let label = "([^"]+)"', path.read_text(encoding="utf-8"))
@@ -174,7 +176,8 @@ def _copy_gates(tmp_path: Path) -> Path:
     gates.mkdir()
     src = tmp_path / "crates" / "goh" / "src"
     src.mkdir(parents=True)
-    for name in ("structural.rs", "steps_rust.rs"):
+    for name in ("structural/pipeline.rs", "steps_rust.rs"):
+        (src / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(REPO_ROOT / "crates" / "goh" / "src" / name, src / name)
     for name in (
         *PUSH_GATES,
@@ -191,10 +194,11 @@ def _copy_gates(tmp_path: Path) -> Path:
 
 def test_a_native_twin_that_loses_its_step_is_red(tmp_path):
     """RUSTTWINS: the Rust source checks' twin is structural.sh's native staged step; unregister
-    it from structural.rs and the three push steps are untwinned, by name."""
+    it from the pipeline's table and the three push steps are untwinned, by name."""
     gates = _copy_gates(tmp_path)
-    reg = tmp_path / "crates" / "goh" / "src" / "structural.rs"
-    reg.write_text(reg.read_text().replace("step!(steps_rust::step(", "drop!(steps_rust::step("))
+    reg = tmp_path / "crates" / "goh" / "src" / "structural" / "pipeline.rs"
+    assert "|c| steps_rust::step(" in reg.read_text(), "the mutation has no subject"
+    reg.write_text(reg.read_text().replace("|c| steps_rust::step(", "|c| dropped::step("))
     faults = parity_faults(gates)
     assert sum("runs no staged step 'rust source policies (staged)'" in f for f in faults) == 3
 
