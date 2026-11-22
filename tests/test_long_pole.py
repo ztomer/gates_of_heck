@@ -50,7 +50,9 @@ def test_an_allowance_holds_its_file_to_its_own_limit() -> None:
 def test_an_allowance_that_no_longer_earns_its_place_is_red() -> None:
     allow = {"tests/test_slow.py": {"limit_s": 150, "why": "two walks"}}
     (red,) = lp.judge({SLOW: 12.0}, allow)
-    assert "every test is under 30 s now: delete the entry" in red
+    assert "every test is under 15 s now: delete the entry" in red
+    # a last run's number is under that run's load: 20 s is no proof the file was cut
+    assert lp.judge({SLOW: 20.0}, allow) == []
     (red,) = lp.judge({"tests/test_fast.py::test_c": 1.0}, allow)
     assert "no longer runs it: delete the entry" in red
 

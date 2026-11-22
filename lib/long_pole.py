@@ -18,8 +18,9 @@ parametrized ones is the stale one from before the split.
 
 THE RATCHET is `tests/long_pole_allow.json`: file -> {"limit_s", "why"}, today's tests over the
 LIMIT_S that could not be cut yet. It only shrinks (tests/test_long_pole.py): a test over its
-file's limit, or over LIMIT_S with no entry, is red; an entry whose tests are all under LIMIT_S, or
-for a file the standing set no longer holds, is stale and red.
+file's limit, or over LIMIT_S with no entry, is red; an entry for a file the standing set no longer
+holds, or whose tests are all under half the LIMIT_S, is stale and red (the table is a last run's,
+under that run's load: see STALE_BELOW).
 """
 
 from __future__ import annotations
@@ -42,6 +43,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 LIMIT_S = 30.0  # the most one test of the standing set may take, measured
+# The table holds each test's LAST run, taken under whatever load that run had (a pre-step at 16
+# workers doubles a test that takes 16 s alone), so an allowance goes stale only when its file is
+# CLEARLY cut: every test under this share of the limit. Nearer the line it is noise, not a cut.
+STALE_BELOW = 0.5
 ALLOW = ROOT / "tests" / "long_pole_allow.json"
 
 
@@ -109,8 +114,10 @@ def judge(cases: dict[str, float], allow: dict[str, dict], limit: float = LIMIT_
             reds.append(f"{rel}: limit_s {entry.get('limit_s')} is no allowance over {limit:g} s")
         if rel not in files:
             reds.append(f"{rel}: the standing set no longer runs it: delete the entry")
-        elif all(s <= limit for n, s in cases.items() if _split(n)[0] == rel):
-            reds.append(f"{rel}: every test is under {limit:g} s now: delete the entry")
+        elif all(s <= limit * STALE_BELOW for n, s in cases.items() if _split(n)[0] == rel):
+            reds.append(
+                f"{rel}: every test is under {limit * STALE_BELOW:g} s now: delete the entry"
+            )
     for nodeid, seconds in sorted(cases.items(), key=lambda kv: -kv[1]):
         rel = _split(nodeid)[0]
         cap = float(allow.get(rel, {}).get("limit_s", limit))

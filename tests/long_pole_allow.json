@@ -1,4 +1,28 @@
 {
+  "tests/test_affected_binary.py": {
+    "limit_s": 60,
+    "why": "test_every_test_that_asks_the_binary_by_a_plain_read_is_chosen_on_the_real_tree asks the selector about the real tree for every binary runner: 15.8 s alone, 33-36 s in a 16-worker pre-step; to be split by runner (GOH.PRELONGPOLE, next cut)"
+  },
+  "tests/test_full_key_scripts.py": {
+    "limit_s": 90,
+    "why": "test_no_code_file_a_real_step_runs_is_outside_the_default_key walks every step's code files for the whole tree: 14 s alone, 47 s in a 16-worker pre-step (the table's last run is the loaded one); to be cut by step, or given declared reads"
+  },
+  "tests/test_gate_temp_leaks.py": {
+    "limit_s": 60,
+    "why": "test_structural_full_leaves_nothing_in_tmpdir runs `structural.sh --full` over the checkout (9 s warm, 32 s in a 16-worker pre-step) to prove it leaves no temp path: one run, nothing to spread; wants the binary's step filter, as the self-walk does"
+  },
+  "tests/test_kill_by_name_native_parity.py": {
+    "limit_s": 60,
+    "why": "test_every_python_file_here_yields_the_same_code_lines parses every Python file twice, native and Python: 20-25 s; wants one case per directory"
+  },
+  "tests/test_land_check.py": {
+    "limit_s": 45,
+    "why": "the replay's four cases are 13-17 s alone and 30 s in a 16-worker pre-step, the guard tests of the check (test_declared_reads' tree reader is the longest) run beside its five steps; shrinks with the guard tests' own cost"
+  },
+  "tests/test_self_hosted_hook.py": {
+    "limit_s": 80,
+    "why": "one real pre-commit hook run over a sample of every kind of tracked file, 22 s alone and 42 s in a 16-worker pre-step; its layers run one after another inside the hook, so a split is one case per kind of file (GOH.SELFHOSTTEST)"
+  },
   "tests/test_self_walk.py": {
     "limit_s": 150,
     "why": "two whole-tree walks of the registry (goh as it stands and goh planted), 60 s for the clean one alone: a cold shell lint (27 s of shellcheck) then `goh structural --full --keep-going`, whose 52 steps run one after another in the binary; xdist cannot split a fixture and the binary cannot yet run a subset of its steps (a `--only` filter, the next cut), so each case that asks for the walks pays them (GOH.PRELONGPOLE)"
