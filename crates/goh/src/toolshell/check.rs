@@ -95,6 +95,8 @@ pub struct Inputs<'a> {
     pub env: &'a dyn Fn(&str) -> Option<String>,
     pub is_file: &'a dyn Fn(&Path) -> bool,
     pub probe: ProbeFn<'a>,
+    /// The process ancestors (`observed::real_ancestors`), to see a Bash tool call's shell.
+    pub ancestors: super::observed::AncestorsFn<'a>,
 }
 
 /// The verdict: the one line that says all is well.
@@ -130,6 +132,19 @@ pub fn check(inputs: &Inputs) -> Result<String, Vec<String>> {
         ));
         return Err(problems);
     };
+    let seen = super::observed::seen(inputs.env, inputs.ancestors);
+    if let Some(seen) = seen.as_ref().filter(|s| !super::is_bash(&s.shell)) {
+        problems.push(format!(
+            "the harness runs tool commands in {} (seen in {}), not CLAUDE_CODE_SHELL={shell}: \
+             this host does not honour the setting (the Claude desktop app runs zsh), so \
+             ${{PIPESTATUS[0]}} is empty and an unquoted $VAR is one word. Run agents from the \
+             claude CLI, which honours it; until then write commands zsh-safe (`${{pipestatus[1]}}` \
+             or rc captured before the pipe; arrays for lists), which `goh zsh-split-guard` \
+             enforces",
+            seen.shell, seen.source
+        ));
+        return Err(problems);
+    }
     let probed = match (inputs.probe)(&shell, rc, &home) {
         Ok(p) => p,
         Err(why) => {
@@ -156,8 +171,12 @@ pub fn check(inputs: &Inputs) -> Result<String, Vec<String>> {
         env_problems(&probed, &shell, rc, &mut problems);
     }
     if problems.is_empty() {
+        let witness = seen.map_or_else(
+            || "not seen running: no tool-shell ancestor or shell snapshot".to_owned(),
+            |s| format!("seen in {}", s.source),
+        );
         Ok(format!(
-            "agent tool shell: bash {} ({shell}); BASH_ENV={} gives GOH_DIR={}",
+            "agent tool shell: bash {} ({shell}; {witness}); BASH_ENV={} gives GOH_DIR={}",
             probed.bash_version,
             rc.unwrap_or_default(),
             probed.goh_dir

@@ -9,12 +9,19 @@
 //!   refuse an unquoted `$VAR` used as a command word, a `for` list or an argument list when the
 //!   command assigned VAR a whitespace-holding value (`split`). Under any other shell it passes
 //!   everything: removing the cause (bash) is the fix, the guard covers the gap until it lands.
+//!   It also refuses `PIPESTATUS`, which zsh leaves empty (its array is `pipestatus`).
 //!   The escape is `# zsh-split-ok: <reason>`.
+//!
+//! Both judge the shell the harness REALLY runs (`observed`), never only the setting: the Claude
+//! desktop app runs zsh whatever `CLAUDE_CODE_SHELL` names (GOH.SHELLCHECKREAL).
 
 pub mod check;
 pub mod grep_probe;
+pub mod observed;
 pub mod split;
 
+#[cfg(test)]
+mod observed_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -34,6 +41,45 @@ pub fn tool_shell(env: &dyn Fn(&str) -> Option<String>) -> String {
         .filter(|v| !v.is_empty())
         .or_else(|| env("SHELL"))
         .unwrap_or_default()
+}
+
+/// The shell a hook judges: the one seen (`observed::seen`, snapshots only: a hook's parent is
+/// the harness), else the setting.
+pub fn effective_shell(env: &dyn Fn(&str) -> Option<String>) -> String {
+    observed::seen(env, &observed::no_ancestors).map_or_else(|| tool_shell(env), |s| s.shell)
+}
+
+/// A bash by its file name (`/opt/homebrew/bin/bash`, `bash`).
+#[must_use]
+pub fn is_bash(shell: &str) -> bool {
+    Path::new(shell)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.starts_with("bash"))
+}
+
+/// Whether `command` expands `PIPESTATUS` (`$PIPESTATUS`, `${PIPESTATUS[0]}`, `${#PIPESTATUS}`).
+#[must_use]
+pub fn uses_pipestatus(command: &str) -> bool {
+    command.match_indices("PIPESTATUS").any(|(at, _)| {
+        let before = command[..at].trim_end_matches(['{', '#', '!']);
+        let after = command[at + "PIPESTATUS".len()..].chars().next();
+        before.ends_with('$') && !after.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+    })
+}
+
+/// The refusal for `PIPESTATUS` under zsh.
+#[must_use]
+pub fn pipestatus_reason(shell: &str) -> String {
+    format!(
+        "The tool shell is zsh ({shell}), where PIPESTATUS is unset: `${{PIPESTATUS[0]}}` expands \
+         to nothing, and `cmd | tail` exits with tail's status, so the command reads an exit code \
+         that is not there. Use zsh's own array (`${{pipestatus[1]}}`, 1-based), or capture the \
+         code before any pipe (`cmd > out.log 2>&1; rc=$?; tail out.log; exit $rc`). The \
+         CLAUDE_CODE_SHELL setting is not honoured by the desktop app (`goh shell-check` says \
+         which shell really runs). To run it as written on purpose, add \
+         `# zsh-split-ok: <reason>` to the command."
+    )
 }
 
 /// A zsh by its file name (`/bin/zsh`, `/opt/homebrew/bin/zsh-5.9`).
@@ -67,9 +113,12 @@ pub fn judge_event(
         return None;
     }
     let command = event.get("tool_input")?.get("command")?.as_str()?;
-    let shell = tool_shell(env);
+    let shell = effective_shell(env);
     if !is_zsh(&shell) || escaped(command) {
         return None;
+    }
+    if uses_pipestatus(command) {
+        return Some(pipestatus_reason(&shell));
     }
     split::reason(command, &shell)
 }
@@ -116,6 +165,7 @@ pub fn run_shell_check() -> i32 {
         env: &real_env,
         is_file: &|p: &Path| p.is_file(),
         probe: &check::real_probe,
+        ancestors: &observed::real_ancestors,
     };
     // The harness grep's -v -q (GOH.UGREPVQ): said and recorded, never a failure of its own.
     grep_probe::report(&real_env, &grep_probe::real_grep_probe, &mut |l| {

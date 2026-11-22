@@ -183,6 +183,7 @@ fn run_check(vars: &[(&str, &str)], probed: Probed) -> Result<String, Vec<String
         env: &env,
         is_file: &is_file,
         probe: &probe,
+        ancestors: &super::observed::no_ancestors,
     })
 }
 
@@ -294,6 +295,7 @@ fn shell_check_names_a_shell_that_cannot_be_probed() {
         env: &env,
         is_file: &is_file,
         probe: &probe,
+        ancestors: &super::observed::no_ancestors,
     }));
     assert!(
         refused
