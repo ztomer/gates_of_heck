@@ -1,0 +1,107 @@
+"""The evictor's sweep acts on real directories: demote with a large tier, delete without one, never
+touch a held build dir (GOH.CACHEEVICT). Tmp roots, a tmp "drive", fake sizes and free space;
+nothing touches ~/.cargo/build, ~/.cache/goh, /Volumes or a live sccache.
+"""
+
+from __future__ import annotations
+
+import fcntl
+import os
+import sys
+
+from conftest import REPO_ROOT
+
+sys.path.insert(0, str(REPO_ROOT / "lib"))
+import cache_evict as ce
+import cache_move
+import cache_sweep
+import cache_tier
+
+GIB = 1 << 30
+NOW = 1_800_000_000.0
+
+
+def _bd(root, name, age_h):
+    d = root / "build" / name[:2] / name
+    (d / "debug" / "deps").mkdir(parents=True)
+    (d / "debug" / "deps" / "liba-0.rlib").write_bytes(b"r" * 100)
+    (d / "debug" / ".cargo-lock").write_text("")
+    t = NOW - age_h * 3600
+    for p in [d / "debug" / "deps", d / "debug" / ".cargo-lock", d / "debug", d]:
+        os.utime(p, (t, t))
+    return d
+
+
+def _roots(tmp_path, free_gib=400.0):
+    (tmp_path / "cov").mkdir()
+    (tmp_path / "sccache").mkdir()
+    return cache_sweep.Roots(str(tmp_path / "build"), str(tmp_path / "cov"),
+                             str(tmp_path / "sccache"), str(tmp_path), 30.0,
+                             size=lambda p: 0 if p.endswith("sccache") else 40 * GIB,
+                             free=lambda p: int(free_gib * GIB))  # fmt: skip
+
+
+def _drive(tmp_path):
+    root = tmp_path / "drive" / "cache.noindex"
+    root.mkdir(parents=True)
+    v = cache_tier.Verdict(str(root), True, "test drive", 900 * GIB, 1000 * GIB)
+    opener = lambda v: os.open(v.root, os.O_RDONLY | os.O_DIRECTORY)  # noqa: E731
+    return root, v, opener
+
+
+def test_with_the_large_tier_cold_dirs_demote_and_the_hot_one_stays(tmp_path):
+    cold, hot = _bd(tmp_path, "aa11", 72), _bd(tmp_path, "bb22", 2)
+    root, v, opener = _drive(tmp_path)
+    state = str(tmp_path / "state.json")
+    report = cache_sweep.sweep(_roots(tmp_path), v, state, NOW, True, opener)
+    assert [(d["verb"], d["key"], d["ok"]) for d in report["done"]] == [("demote", str(cold), True)]
+    assert hot.exists() and not cold.exists()
+    assert (root / "demoted" / "build" / cache_move.slot(str(cold)) / "debug").is_dir()
+    assert ce.load(state)["L"] > 0
+    again = cache_sweep.sweep(_roots_again(tmp_path), v, state, NOW, False, opener)
+    keys = {(o["key"], o["verb"]) for o in again["actions"]}
+    assert (str(cold), "demote") not in keys  # the copy is external now, counted there
+
+
+def _roots_again(tmp_path):
+    return cache_sweep.Roots(str(tmp_path / "build"), str(tmp_path / "cov"),
+                             str(tmp_path / "sccache"), str(tmp_path), 30.0,
+                             size=lambda p: 40 * GIB, free=lambda p: 400 * GIB)  # fmt: skip
+
+
+def test_without_the_large_tier_the_cold_dir_is_deleted(tmp_path):
+    cold, hot = _bd(tmp_path, "aa11", 72), _bd(tmp_path, "bb22", 2)
+    v = cache_tier.Verdict(str(tmp_path / "int"), False, "absent")
+    report = cache_sweep.sweep(_roots(tmp_path, free_gib=10), v, str(tmp_path / "s.json"), NOW,
+                               True)  # fmt: skip
+    assert [d["verb"] for d in report["done"]] == ["delete"]
+    assert hot.exists() and not cold.exists()
+    assert not list((tmp_path / "build" / "aa").iterdir())
+
+
+def test_a_dir_whose_cargo_lock_is_taken_survives_a_real_sweep(tmp_path):
+    cold, _hot = _bd(tmp_path, "aa11", 72), _bd(tmp_path, "bb22", 2)
+    v = cache_tier.Verdict(str(tmp_path / "int"), False, "absent")
+    with open(cold / "debug" / ".cargo-lock") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        report = cache_sweep.sweep(_roots(tmp_path, free_gib=10), v, str(tmp_path / "s.json"),
+                                   NOW, True)  # fmt: skip
+    assert cold.exists()
+    assert str(cold) not in [d["key"] for d in report["done"]]
+
+
+def test_plan_changes_nothing(tmp_path):
+    cold = _bd(tmp_path, "aa11", 72)
+    _bd(tmp_path, "bb22", 2)
+    v = cache_tier.Verdict(str(tmp_path / "int"), False, "absent")
+    report = cache_sweep.sweep(_roots(tmp_path, free_gib=10), v, str(tmp_path / "s.json"), NOW,
+                               False)  # fmt: skip
+    assert report["actions"] and not report["done"]
+    assert cold.exists() and not (tmp_path / "s.json").exists()
+
+
+def test_stamp_marks_a_use(tmp_path):
+    d = _bd(tmp_path, "aa11", 72)
+    before = cache_sweep.build_last_use(str(d))
+    cache_sweep.stamp(str(d), NOW)
+    assert cache_sweep.build_last_use(str(d)) == NOW > before + 3600

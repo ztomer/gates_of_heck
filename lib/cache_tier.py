@@ -62,7 +62,9 @@ def _diskutil_uuid(mount: str) -> str | None:
         return None
 
 
-def _mounts(volumes: str = VOLUMES) -> list[str]:
+def _mounts(volumes: str | None = None) -> list[str]:
+    """Every entry under /Volumes (GOH_CACHE_VOLUMES moves it: the suite points it nowhere)."""
+    volumes = volumes or os.environ.get("GOH_CACHE_VOLUMES") or VOLUMES
     try:
         names = sorted(os.listdir(volumes))
     except OSError:
@@ -112,8 +114,9 @@ def _marker_uuid(fd: int) -> str | None:
     return None
 
 
-def check(mount: str, want: str | None, sysm: System) -> Verdict:
-    """One candidate mount judged against (a) to (e); external=False carries the first failure."""
+def check(mount: str, want: str | None, sysm: System, own_uuid: bool = True) -> Verdict:
+    """One candidate mount judged against (a) to (e); external=False carries the first failure.
+    `own_uuid` False skips asking diskutil, for a caller that only READS the tier (a promote)."""
     fail = lambda why: Verdict("", False, why)  # noqa: E731
     try:
         st = os.stat(mount)
@@ -136,7 +139,7 @@ def check(mount: str, want: str | None, sysm: System) -> Verdict:
         return fail(f"{croot} has no {MARKER} marker with volume_uuid=")
     if want and got != want.upper():
         return fail(f"marker names {got}, expected {want.upper()}")
-    own = (sysm.volume_uuid(mount) or "").upper()
+    own = (sysm.volume_uuid(mount) or "").upper() if own_uuid else got
     if own != got:
         return fail(f"marker names {got} but the volume is {own or 'unknown'} (a copied marker)")
     if not os.access(croot, os.W_OK):
@@ -150,8 +153,8 @@ def check(mount: str, want: str | None, sysm: System) -> Verdict:
                    free, total)  # fmt: skip
 
 
-def resolve(internal: str, environ: dict[str, str] | None = None,
-            sysm: System | None = None) -> Verdict:  # fmt: skip
+def resolve(internal: str, environ: dict[str, str] | None = None, sysm: System | None = None,
+            own_uuid: bool = True) -> Verdict:  # fmt: skip
     """The external root when a marked volume passes every check, else `internal` with why not."""
     sysm = sysm or System()
     want = expected_uuid(environ)
@@ -159,7 +162,7 @@ def resolve(internal: str, environ: dict[str, str] | None = None,
     for mount in sysm.mounts():
         if not os.path.isdir(os.path.join(mount, CACHE_DIR)) and not want:
             continue  # an unrelated volume: not a candidate, not a reason
-        verdict = check(mount, want, sysm)
+        verdict = check(mount, want, sysm, own_uuid)
         if verdict.external:
             return verdict
         reasons.append(verdict.reason)

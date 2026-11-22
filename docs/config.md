@@ -172,6 +172,7 @@ budget per tier.
 | Key | Default | Meaning |
 |---|---|---|
 | `GOH_CACHE_VOLUME_UUID` | unset | Pins the removable cache volume: its marker's `volume_uuid=` must equal this as well as the volume's own UUID. Unset, any mounted volume whose marker names its own UUID qualifies. |
+| `GOH_CACHE_VOLUMES` | `/Volumes` | Where the resolver looks for mounted volumes. The suite points it at a path that does not exist (`tests/suite_home.py` CACHE_TIER), so no test reaches a real drive. |
 | `GOH_CACHE_INTERNAL` | `~/.cache/goh` | The internal root `goh cache-root` answers when the large tier does not qualify. |
 | `GOH_CACHE_EVICT_STATE` | `~/.local/state/goh/cache-evict.json` | The evictor's ledger: uses, last use and clock per object, keyed by path, and the clock L. Point it elsewhere only to isolate a test. |
 

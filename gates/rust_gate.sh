@@ -142,6 +142,10 @@ manifest="$(cd "$cargo_dir" && cargo locate-project --workspace --message-format
 lockfile="$(dirname "$manifest")/Cargo.lock"
 [ -f "$lockfile" ] || die "[rust] no Cargo.lock at $lockfile -- commit one; without it the gate certifies whatever resolves today"
 lock_sum="$(shasum -a 256 "$lockfile")"
+# A BUILD DIR THE EVICTOR DEMOTED comes back before cargo reads it (GOH.CACHEEVICT, lib/cache_move.py):
+# 12.4 s for a 4.3 GiB dir, cargo still Fresh, against a 300-440 s cold build. Quiet and cheap when
+# nothing is demoted (no cargo asked, no diskutil); a failure costs only the cold build it would save.
+"$GOH_PY" "$HERE/../lib/cache_move.py" promote-for "$cargo_dir" || true
 # ── THE THREE GROUPS, each proven once on its own inputs (BACKLOG P3, gates/_rust_proven.sh) ──
 # crate: what reads this cargo workspace and the packages it reaches by path -- keyed on exactly
 #   those (`goh rust-scope`), and recorded only if the compiler's dep-info read nothing else.

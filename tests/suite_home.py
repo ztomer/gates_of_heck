@@ -80,8 +80,12 @@ CLOCK = {"GOH_TODAY": PINNED_TODAY}
 # own tests 6-7x under contention. The suite runs at its gate's QoS, inherited; a test of the clamp
 # turns it on by name.
 QOS = {"GOH_LANE_QOS": "off"}
+# THE REMOVABLE CACHE TIER OUT OF REACH (GOH.CACHEEVICT): a gate a test runs asks lib/cache_tier.py
+# for the large tier before cargo; pointed nowhere, no test reads or writes a real /Volumes drive.
+CACHE_TIER = {"GOH_CACHE_VOLUMES": "/nonexistent/goh-suite-volumes"}
 HERMETIC_PINS = {
     **MACHINE_SHAPE,
+    **CACHE_TIER,
     **CLOCK,
     **QOS,
 }  # what every hermetic child is told, beside its scrub
