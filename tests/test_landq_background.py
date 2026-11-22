@@ -134,3 +134,36 @@ def test_a_wait_beside_an_enqueue_says_pre_step_running_and_never_the_last_red(r
         if enq.stdout:
             enq.stdout.close()
     assert len(_pending(tmp_path)) == 1
+
+
+@pytest.mark.load_sensitive  # --wait is bounded
+def test_a_pre_step_red_record_keeps_each_failing_test_and_a_bounded_traceback(repo, tmp_path, env):
+    """GOH.PRESTEPLOG: a pre-step red's record kept only its why line, so `goh land-reds` had no
+    E line to read and classed by name and source alone. The log keeps each failing test's
+    section, its last lines only, and the FAILED lines: the cause is read without a re-run."""
+    wt, _ = _land_wt(repo, tmp_path)
+    frames = "".join(f"    frame {n}\n" for n in range(60))
+    pytest_out = (
+        f"{'_' * 20} test_planted_red {'_' * 20}\n{frames}"
+        "E       AssertionError: lib/x.py has no row in docs/map.md\n"
+        "tests/test_wiring.py:12: AssertionError\n"
+        f"{'=' * 20} short test summary info {'=' * 20}\n"
+        "FAILED tests/test_wiring.py::test_planted_red - AssertionError\n"
+    )
+    out_file = tmp_path / "pytest.out"
+    out_file.write_text(pytest_out)
+    env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": f"cat {out_file}; exit 1"}
+    assert (
+        landq(env, "--enqueue", "--land", str(wt), "--item", "T.PL", "--no-start").returncode == 0
+    )
+    waited = landq(env, "--wait", "T.PL", "--timeout", str(patience(90)))
+    assert waited.returncode == 1, waited.stdout + waited.stderr
+    rec = recorded(env)["T.PL"]
+    log = Path(rec["log"]).read_text()
+    assert "E       AssertionError: lib/x.py has no row in docs/map.md" in log, log
+    assert "FAILED tests/test_wiring.py::test_planted_red" in log, log
+    assert "frame 59" in log and "frame 0\n" not in log, log  # the last lines, bounded
+    sys.path.insert(0, str(LANDQ.parent.parent / "lib"))
+    import land_reds
+
+    assert land_reds.judge({**rec, "why": rec.get("why", "")})["cause"] == "consistency-table"

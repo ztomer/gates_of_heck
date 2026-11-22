@@ -2,8 +2,9 @@
 
 It is land.sh's own pre-step: GOH_LAND_PRE_ONLY=1 stops the script before the land lock, so the
 set (GOH_LAND_PRE), the short lane and the deadline (GOH_LAND_PRE_MAX) are the lander's. A red
-set raises Red naming the failing tests; a deadline is no verdict (GOH.PRESTEPDEADLINE), so the
-tip queues and a line says so. Pinned by tests/test_landq.py.
+set raises Red naming the failing tests, its later lines each failing test's bounded traceback
+(lib/land_cause.py `excerpt`, GOH.PRESTEPLOG); a deadline is no verdict (GOH.PRESTEPDEADLINE),
+so the tip queues and a line says so. Pinned by tests/test_landq.py.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from pathlib import Path
 
 affected_verdict = importlib.import_module("affected_verdict")
 gitrun = importlib.import_module("gitrun")
+land_cause = importlib.import_module("land_cause")
 killtree = importlib.import_module("killtree")
 land_slot = importlib.import_module("land_slot")
 land_spd = importlib.import_module("land_spd")
@@ -295,7 +297,9 @@ def run(
         raise Red(clash)  # the slot's rebase onto main, before any test (GOH.PREONTIP)
     named = [ln.split()[1] for ln in lines if ln.startswith("FAILED ") and len(ln.split()) > 1]
     what = f"failing: {', '.join(named)}" if named else f"exit {code}, see the output above"
+    detail = land_cause.excerpt("".join(lines))  # the record's log keeps it (GOH.PRESTEPLOG)
     raise Red(
         f"the pre-land tests failed on {sha[:8]} ({what}) -- fix them, or "
         "--no-pre REASON when this tip's set was run another way"
+        + (f"\n{detail}" if detail else "")
     )

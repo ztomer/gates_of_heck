@@ -71,3 +71,23 @@ def test_every_cause_has_a_case_and_every_case_a_cause() -> None:
 def test_a_failed_node_is_named_once_wherever_the_log_indents_it() -> None:
     log = "FAILED tests/test_a.py::t - x\n29:FAILED tests/test_a.py::t - x\n  FAILED tests/b.py\n"
     assert lc.failed_tests(log) == ["tests/test_a.py::t", "tests/b.py"]
+
+
+def test_the_excerpt_keeps_each_failing_sections_last_lines_and_the_failed_lines():
+    """GOH.PRESTEPLOG: what a pre-step red record keeps, bounded per test and in tests."""
+    sections = "".join(
+        f"{'_' * 5} test_{n} {'_' * 5}\n" + "".join(f"  line {n}.{i}\n" for i in range(5))
+        for n in range(4)
+    )
+    log = f"noise\n{'=' * 5} FAILURES {'=' * 5}\n{sections}{'=' * 5} summary {'=' * 5}\n"
+    log += "FAILED tests/test_a.py::test_0 - x\nERROR tests/test_a.py::test_9 - y\n"
+    got = lc.excerpt(log, each=2, most=3).splitlines()
+    assert got[:4] == [
+        "_____ test_0 _____",
+        "    ... 3 lines above cut",
+        "  line 0.3",
+        "  line 0.4",
+    ]
+    assert "test_3" not in " ".join(got[:-3]) and "1 more failing" in got[-3], got
+    assert got[-2:] == ["FAILED tests/test_a.py::test_0 - x", "ERROR tests/test_a.py::test_9 - y"]
+    assert "noise" not in got and lc.excerpt("nothing failed\n") == ""

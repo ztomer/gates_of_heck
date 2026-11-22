@@ -59,6 +59,36 @@ def failed_tests(log: str) -> list[str]:
     return out
 
 
+# A pytest failure section's header (`____ test_x[a] ____`) and the `=== ... ===` rule that ends it.
+SECTION = re.compile(r"^_{3,} (.+?) _{3,}$")
+RULE = re.compile(r"^={3,} .* ={3,}$")
+EACH, MOST, WIDE = 40, 10, 300  # lines kept per failing test, tests kept, characters per line
+
+
+def excerpt(log: str, each: int = EACH, most: int = MOST) -> str:
+    """What a pre-step red record keeps of its run (GOH.PRESTEPLOG): each failing test's pytest
+    section, its LAST `each` lines (the frames nearest the failure and its E lines), at most
+    `most` of them, then the FAILED and ERROR summary lines; "" when the log holds none."""
+    sections: list[list[str]] = []
+    current: list[str] | None = None
+    for line in log.splitlines():
+        if SECTION.match(line):
+            current = [line]
+            sections.append(current)
+        elif RULE.match(line):
+            current = None
+        elif current is not None:
+            current.append(line[:WIDE])
+    out: list[str] = []
+    for head, *body in sections[:most]:
+        cut = len(body) - each
+        out += [head, *([f"    ... {cut} lines above cut"] if cut > 0 else []), *body[-each:]]
+    if len(sections) > most:
+        out.append(f"... {len(sections) - most} more failing tests' sections cut")
+    out += [ln[:WIDE] for ln in log.splitlines() if ln.startswith(("FAILED ", "ERROR "))]
+    return "\n".join(out)
+
+
 def is_ratchet(node: str) -> bool:
     return bool(RATCHET_NAME.search(node)) or node.split("::")[0] in RATCHET_FILES
 
