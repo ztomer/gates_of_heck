@@ -52,6 +52,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import killtree  # beside this file
+import proc_deadline  # beside this file: the stdlib timed wait is wrong on macOS
 import step_timings  # beside this file; run as a script AND imported by orphan_canary
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -384,9 +385,7 @@ def _run_step(
                 stall=stall,
             )
         else:
-            try:
-                proc.wait(timeout=timeout)
-            except subprocess.TimeoutExpired:
+            if proc_deadline.wait(proc, timeout) is None:
                 expired = f"TIMED OUT after {timeout}s: {label or ' '.join(argv)}"
         if expired is not None:
             _sweep(pgid, proc, grace)

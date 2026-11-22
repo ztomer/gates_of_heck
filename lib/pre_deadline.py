@@ -30,10 +30,13 @@ narrowed, on the box POOLSHARE measured at load 213-237; the share stays, the cl
 THE SHARE is read AFTER admission: this wrapper runs inside tools/load.py's slot, where
 GOH_GATE_WORKERS is the admission's own count, so the deadline is never a guess made before a wait.
 The command runs in a process group of its own, killed whole at the deadline (lib/load_tree.py),
-and the exit is 124, load.py's EXIT_DEADLINE, which land.sh reads as no verdict. The mark file gets
-`<start epoch> <workers> <deadline s>` as the command starts; at the deadline the live pytest
-runs' CPU joins GOH_LAND_PRE_CPU's file before the kill (lib/pre_cpu.py, GOH.PREWIDTH). Pinned by
-tests/test_pre_deadline.py.
+and the exit is 124, load.py's EXIT_DEADLINE, which land.sh reads as no verdict. The wait is
+lib/proc_deadline.py's, never the stdlib's timed wait (GOH.PRESTEPMSGS: on macOS that one reads a
+child that ends after half its deadline as expired, its status lost), and the wrapper says nothing
+of its own at the deadline: tools/land.sh's one line names the run, the wait and the limit apart.
+The mark file gets `<start epoch> <workers> <deadline s>` as the command starts; at the deadline the
+live pytest runs' CPU joins GOH_LAND_PRE_CPU's file before the kill (lib/pre_cpu.py, GOH.PREWIDTH).
+Pinned by tests/test_pre_deadline.py.
 """
 
 from __future__ import annotations
@@ -59,6 +62,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pre_cpu
+import proc_deadline
 import timing_ledger
 import worker_share
 from load_tree import kill_tree
@@ -111,17 +115,11 @@ def _run(command: list[str], limit: int, mark: Path, workers: int) -> int:
 
     for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         signal.signal(number, stop)
-    try:
-        status = child.wait(timeout=limit)
-    except subprocess.TimeoutExpired:
+    status = proc_deadline.wait(child, limit)
+    if status is None:  # the one outcome is tools/land.sh's line: no verdict, run and wait apart
         # What the killed pytest run cost, read while it lives (GOH.PREWIDTH, lib/pre_cpu.py).
         pre_cpu.at_deadline(child.pid, os.environ.get(pre_cpu.ENV))
         kill_tree(child)
-        print(
-            f"pre-land: the deadline of {limit} s at a {workers}-worker share expired "
-            "(GOH.PRESTEPSHARE, lib/pre_deadline.py)",
-            file=sys.stderr,
-        )
         return EXIT_DEADLINE
     return 128 - status if status < 0 else status
 

@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import foreign_repo_env
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from lib import proc_deadline
 from lib.killtree import session_pgid, stop_group
 
 DEFAULT_BUILD_TIMEOUT = 1800
@@ -80,11 +81,11 @@ def build(command: str, root: pathlib.Path, timeout: int) -> str | None:
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
-            try:
-                code = proc.wait(timeout=timeout)
-                verdict = None if code == 0 else f"failed (status {code})"
-            except subprocess.TimeoutExpired:
+            code = proc_deadline.wait(proc, timeout)
+            if code is None:
                 verdict = f"did not finish within {timeout}s"
+            else:
+                verdict = None if code == 0 else f"failed (status {code})"
             stop_group(session_pgid(proc), proc=proc)  # pass or fail: nothing outlives the build
             proc.wait()
             if verdict is None:

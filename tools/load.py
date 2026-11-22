@@ -328,6 +328,7 @@ def _admit_gate(
     import admission  # lib/ is on the path (above); here, so an experiment never imports it
 
     experiment.registry = None  # a gate starts no spinner: nothing for the reaper's registry
+    waited_from = time.time()
     if (above := load_slot.holder_above()) is not None:
         info(f"load: inside the load slot of pid {above} -- this run is that holder's")
     else:
@@ -340,6 +341,7 @@ def _admit_gate(
             print(f"load: cannot take a gate slot: {error}", file=sys.stderr)
             return 2
     experiment.data = load_slot.record(command, max_s, why)  # the deadline counts from admission
+    experiment.data["waited_s"] = experiment.data["started_at"] - waited_from
     return None
 
 
@@ -459,25 +461,21 @@ def main(argv: list[str]) -> int:
         experiment.finish()
         print(f"load: no such command: {command[0]}", file=sys.stderr)
         return 127
+    import proc_deadline  # lib/, on the path above
+
     try:
-        status = experiment.child.wait(
-            timeout=max(0.0, experiment.data["deadline_at"] - time.time())
-        )
-    except subprocess.TimeoutExpired:
+        status = proc_deadline.wait(experiment.child, experiment.data["deadline_at"] - time.time())
+    except KeyboardInterrupt:
+        experiment.abort()
+        return 130
+    if status is None:  # ONE outcome: the kill, with the run's seconds and the wait's apart
         survivors = experiment.abort()
-        print(
-            f"load: deadline of {max_s:g}s expired: the command (pid {experiment.child.pid}), its "
-            f"process tree and the spinners were killed; pass --max to give it longer",
-            file=sys.stderr,
-        )
+        print(proc_deadline.expired(max_s, experiment.data, experiment.child.pid), file=sys.stderr)
         if survivors:
             print(
                 f"load: {counted(len(survivors), 'spinner')} outlived the cleanup", file=sys.stderr
             )
         return EXIT_DEADLINE
-    except KeyboardInterrupt:
-        experiment.abort()
-        return 130
     survivors = experiment.finish()
     if survivors:
         print(

@@ -46,6 +46,7 @@ import admission
 import killtree
 import land_prestep
 import land_slot
+import proc_deadline
 
 if TYPE_CHECKING:
     from landq_batch import Batch, Item
@@ -90,13 +91,13 @@ class Spec:
                 self.proc = proc
                 os.close(hold)
                 self.begun.set()
-                try:
-                    self.code = proc.wait(timeout=self.timeout)
-                    self.state = "landed" if self.code == 0 else "red"
-                except subprocess.TimeoutExpired:
+                self.code = proc_deadline.wait(proc, self.timeout)
+                if self.code is None:
                     killtree.stop_group(proc.pid, self.grace, proc)
                     proc.wait()
                     self.state = "timeout"
+                else:
+                    self.state = "landed" if self.code == 0 else "red"
         except OSError as e:
             if self.proc is None:
                 os.close(hold)

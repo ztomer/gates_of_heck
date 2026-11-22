@@ -94,7 +94,7 @@ from _gitutil import foreign_repo_env
 from _mcp_build import DEFAULT_BUILD_TIMEOUT, build, build_command, server_env
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from lib import pid_owner
+from lib import pid_owner, proc_deadline
 from lib.bounded_run import _descendants, group_members
 from tui.lib import counted, err, info, noun, ok, step
 
@@ -210,9 +210,8 @@ class Session:
         reaped, so one poll() at that moment read "status None" under load -- the pipe is how the
         exit was noticed, not the exit. A server still alive at the deadline closed its pipe and
         lives on, and says so."""
-        try:
-            code = self.proc.wait(timeout=max(self.deadline - time.monotonic(), 0.0))
-        except subprocess.TimeoutExpired:
+        code = proc_deadline.wait(self.proc, self.deadline - time.monotonic())
+        if code is None:
             return (
                 f"the server {closed} and did not exit within {self.timeout}s,"
                 f" before answering {what}{self.tail()}"

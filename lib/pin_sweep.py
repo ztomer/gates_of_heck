@@ -72,6 +72,7 @@ import consumer_pins
 import estate_registry
 import killtree
 import pid_owner
+import proc_deadline
 import step_timings
 
 from tui.lib import counted, err, info, ok, step
@@ -275,9 +276,8 @@ def supervise(path: Path) -> int:
     argv = [sys.executable, str(Path(__file__).resolve()), "run", str(path)]
     env = {k: v for k, v in os.environ.items() if k != "GOH_GATE_SLOT"}
     proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, env=env, start_new_session=True)
-    try:
-        code = proc.wait(timeout=BOUND)
-    except subprocess.TimeoutExpired:
+    code = proc_deadline.wait(proc, BOUND)
+    if code is None:
         killtree.stop_group(proc.pid, proc=proc)  # TERM first: a killed git leaves its lock
         code = proc.wait()
     why = (f"not pushed: the sweep ended before its push (exit {code}; bound {BOUND} s; "

@@ -43,7 +43,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT)]
-from lib import cov_risk, fast_tests  # noqa: E402
+from lib import cov_risk, fast_tests, proc_deadline  # noqa: E402
 
 EACH_S = 1.0  # the most a past refuser may cost, by the suite's measurement
 DECLARED_EACH_S = 10.0  # ... and a declared guard: its file chose it
@@ -182,9 +182,8 @@ def _run(argv: list[str], root: Path, env: dict[str, str]) -> tuple[int, str, fl
     with tempfile.TemporaryFile() as log:
         proc = subprocess.Popen(argv, cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=log,
                                 stderr=subprocess.STDOUT, start_new_session=True)  # fmt: skip
-        try:
-            rc = proc.wait(timeout=STEP_TIMEOUT)
-        except subprocess.TimeoutExpired:
+        rc = proc_deadline.wait(proc, STEP_TIMEOUT)
+        if rc is None:
             killtree.stop_group(killtree.session_pgid(proc), proc=proc)
             proc.wait()
             rc = 124
