@@ -24,8 +24,9 @@ records (either key above) also merges its passes into the one store's `carry` p
 the repo, the TREE it judged, the tools), and the gate's run deselects a node that passed on another
 tree T when the diff T..HEAD does not choose it -- tools/affected_tests.py, the selection the
 pre-step already trusts, asked on HEAD's tree. Tree readers always run (affected chooses them on
-every diff). Its sources: the pre-step's tree (the record names its commit) and the nearest
-records on HEAD's first-parent chain (main's tip, which the last land's gate recorded). It carries
+every diff). Its sources: the pre-step's tree (the record names its commit), a batch's other
+items' judged tips (`<record>.sources`, GOH.PREONTIP) and the nearest records on HEAD's
+first-parent chain (main's tip, which the last land's gate recorded). It carries
 nothing from a tree whose diff touches what pytest loads before every test (affected_tests'
 Closure.base, pyproject.toml, tools/pytest.sh), and no node that ran the native binary across a
 change to its build inputs (binary_runners.build_input). A carried node is recorded as passed on
@@ -60,7 +61,7 @@ import _same_tree  # tests/: the fresh instrumented run's own-tree reuse (@tree)
 import _whole_run  # tests/: whether the arguments select the whole suite (GOH.FSCEILINGRED)
 import pytest
 from _carry_shadow import SUITE_WIDE, choose  # noqa: F401  (patched here; pre_reuse reads it)
-from _land_trees import ANCESTORS, _git, carried, diff, trees  # noqa: F401  (patched here)
+from _land_trees import ANCESTORS, _git, carried, diff, named, sources, trees  # noqa: F401
 
 RECORD = "GOH_LAND_VERDICTS_RECORD"
 REUSE = "GOH_LAND_VERDICTS_REUSE"
@@ -326,7 +327,7 @@ def _plan(config) -> dict:
     plan["judged"] = set(plan["skipped"])  # the pre-step's passes of THIS tree (its identity)
     plan["shadow"] = _carry_shadow.Shadow(plan, path)  # the proposed rule (GOH.CARRYSHADOW)
     if path:
-        _carry(plan, _file_sha(path), coverage, Path(config.rootpath))
+        _carry(plan, _file_sha(path), coverage, Path(config.rootpath), sources(path))
     if coverage:  # a same-tree pass is skipped only when it was measured running no binary
         nobin = plan.get("nobin", set())
         dropped = {n for n in same if n not in nobin}
@@ -372,8 +373,9 @@ def _file_sha(path: str) -> str:
     return rec["sha"] if isinstance(rec, dict) and isinstance(rec.get("sha"), str) else ""
 
 
-def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
-    """Add to `plan` the nodes carried from the recorded trees: each source, one audited use."""
+def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path, also: list[str]) -> None:
+    """Add to `plan` the nodes carried from the recorded trees: each source, one audited use. ALSO
+    are a batch's other items' judged tips (GOH.PREONTIP): each is a source of its own, first."""
     lines: list[str] = plan["lines"]
     me = _here()
     if me is None or not _store():
@@ -385,8 +387,8 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path) -> None:
     with _in_store() as (reuse, audit), _carry_shadow.one_graph():
         shadow.audit(audit)
         taken = 0
-        for sha, src in trees(REPO_ROOT, pre_sha):
-            if taken >= SOURCES:
+        for sha, src in [*named(REPO_ROOT, also), *trees(REPO_ROOT, pre_sha)]:
+            if taken >= SOURCES + len(also):
                 break
             rec, _ = reuse.lookup_suite(REPO_ROOT, src, tools)
             if rec is None:

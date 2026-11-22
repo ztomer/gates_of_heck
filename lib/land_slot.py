@@ -12,9 +12,10 @@ A SLOT is a detached checkout of the enqueued sha, owned by goh, under the queue
 `<q>/slots/<repo key>/<n>` (a linked worktree of the repo's main checkout). The enqueue claims
 one (`claim`) and puts it on the request as its `worktree`, the lane's path kept as `lane`; every
 pre-step, stack, rebase and gate of that request runs there, so the lane's tree may change, move,
-or enqueue a second item at once, and no git command of the land ever writes to it. The lander
-checks the slot out at the sha again before it runs the request (`ready`), and releases it with
-the request's record (`release`).
+or enqueue a second item at once, and no git command of the land ever writes to it. The enqueue's
+pre-step rebases the slot onto main before it judges (GOH.PREONTIP, tools/land.sh), so the lander
+checks the slot out at the enqueued sha again before it runs the request (`ready`), and releases
+it with the request's record (`release`).
 
 SLOTS ARE REUSED, NOT MADE PER LAND. A checkout keeps its ignored build output (full_run.prepare:
 `checkout -f` and `clean -fd`, never -x), and cargo's build-dir is keyed by the workspace path, so a

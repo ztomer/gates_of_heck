@@ -17,7 +17,9 @@ and reuse apply to the tip's tree as to any tree. The enqueue's kept pre-step ve
 (GOH_LAND_PRE_FROM, a copy: GOH.BATCHPREFROM, GOH.PRELANDBATCH) goes with the tip, and land.sh asks
 lib/pre_reuse.py whether it holds for the stacked tree: what differs from the judged one is the
 lower items' paths and main's moves, so a stack none of whose moved paths a test reads runs no
-second pre-land, a path some test reads runs its readers, and a lower item's own tests run.
+second pre-land, a path some test reads runs its readers, and a lower item's own tests run. The
+lower items' judged tips go with it too (GOH_LAND_PRE_ALSO, GOH.PREONTIP): the gate's suite carries
+from every member's verdict, so only what two items both reach, and main's move, runs again.
 
 THE VERDICT. Green lands every item: each done record names the item's OWN commit (an ancestor of
 main, so `loopctl done` and a ship's ancestry check read it), and `goh land --wait ID` returns per
@@ -259,17 +261,22 @@ class Batch:
             base = it.tip
         return out
 
-    def gate(self, top: Item, size: int) -> tuple[str, Path, str]:
+    def gate(self, top: Item, size: int, below: list[Item] | None = None) -> tuple[str, Path, str]:
         """The tip's land.sh, as a lane runs it by hand: (landed|red|timeout, its log, why).
         The enqueue's kept verdict goes with it as a COPY (GOH.PRELANDBATCH): land.sh judges
         whether it holds for the stacked tip (lib/pre_reuse.py: the lower items' paths and main's
-        moves, none read by a test), and removes what it reads, which a bisect still needs."""
+        moves, none read by a test), and removes what it reads, which a bisect still needs. The
+        items BELOW it name their judged tips too, so the gate's suite carries from every member's
+        verdict, not the tip's alone (GOH.PREONTIP, lib/land_prestep.py `lander_env`)."""
         self.gates += 1
         log = self.q / "logs" / f"{self.id}.gate{self.gates}.log"
         wt = Path(top.req["worktree"])
         self.kit.say(f"batch {self.id}: gate {self.gates} on {top.tip[:8]}, {size} stacked")
         with land_prestep.gate_copy(self.q, top.req) as copy:
-            named = land_prestep.lander_env(top.req, copy) if copy else land_slot.label(top.req)
+            also = [it.req for it in below or ()]
+            named = (
+                land_prestep.lander_env(top.req, copy, also) if copy else land_slot.label(top.req)
+            )
             argv = ["env", *self.kit.unset, *named, *land_prestep.timings_keep(log),
                     "bash", "-c",
                     'cd -- "$1" && exec bash "$2"', "land",
@@ -295,7 +302,7 @@ class Batch:
             state, (log, why) = "red", self.red_trees[tree]
             self.kit.say(f"batch {self.id}: {top.tip[:8]}'s tree was gated red in {log.name}")
         else:
-            state, log, why = self.gate(top, len(stacked))
+            state, log, why = self.gate(top, len(stacked), stacked[:-1])
         if state == "landed":
             self.landed(stacked, log)
             return

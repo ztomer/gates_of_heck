@@ -25,13 +25,26 @@ land_pre_from() {
     fi
 }
 # land_pre_keep -- under GOH_LAND_PRE_ONLY, a green verdict kept for the lander (GOH_LAND_PRE_KEEP).
+# REBASED IN ITS SLOT (GOH.PREONTIP, pre_onto): the judged tip P is no commit the lane or main
+# names, so it is PINNED (refs/goh/pre/<keep>, removed with the request by lib/land_prestep.py
+# `discard`) and the keep's second line is the main it was rebased onto: (P, base).
 land_pre_keep() {
     if [ -n "$pre_keep" ] && [ -n "$pre_judged" ]; then   # green, with a verdict: kept for the lander
         if ! { { [ ! -s "$verdicts" ] || cp "$verdicts" "$pre_keep.record"; } \
-                && printf '%s\n' "$pre_judged" >"$pre_keep.tmp" && mv -f "$pre_keep.tmp" "$pre_keep"; }; then
+                && printf '%s\n' "$pre_judged" ${pre_onto:+"${base:-}"} >"$pre_keep.tmp" && mv -f "$pre_keep.tmp" "$pre_keep"; }; then
             warn "pre-land: the verdict could not be kept ($pre_keep) -- the lander runs the set again"
+        elif [ -n "$pre_onto" ] && ! git update-ref "refs/goh/pre/${pre_keep##*/}" "$pre_judged" 7>&- </dev/null; then
+            warn "pre-land: the judged tip ${pre_judged:0:8} could not be pinned (refs/goh/pre/${pre_keep##*/}) -- kept unpinned"
         fi
     fi
+}
+# land_pre_sources -- a batch's other items' judged tips (GOH_LAND_PRE_ALSO, lib/landq_batch.py
+# `gate`) beside the gate's record, `.sources`: its suite carries from every member's verdict
+# (tests/_land_verdicts.py `_carry`), not the tip's alone (GOH.PREONTIP).
+land_pre_sources() {
+    local shas=()
+    read -ra shas <<<"${pre_also:-}"
+    [ "${#shas[@]}" -eq 0 ] || printf '%s\n' "${shas[@]}" >"$verdicts.sources"
 }
 # land_pre_again WHOSE -- the pre-step on the tip, unless the verdict judged at pre_judged holds for
 # it (GOH.PRELANDTWICE, lib/pre_reuse.py): the rebased tree differs from the judged one only in

@@ -22,6 +22,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 affected_verdict = importlib.import_module("affected_verdict")
+gitrun = importlib.import_module("gitrun")
 killtree = importlib.import_module("killtree")
 land_slot = importlib.import_module("land_slot")
 land_spd = importlib.import_module("land_spd")
@@ -63,11 +64,36 @@ def keep_path(q: Path, sha: str) -> Path:
     return q / "pre" / f"{sha}-{time.time_ns()}"
 
 
+SHA = re.compile(r"[0-9a-f]{40}")
+PIN = "refs/goh/pre/"  # a rebased pre-step's judged tip, pinned per keep (GOH.PREONTIP)
+
+
 def adopt(req: dict, keep: Path) -> None:
-    """Put a kept green verdict on the request: `keep` names the very sha enqueued, or nothing."""
+    """Put a kept green verdict on the request: `keep` names the very sha enqueued, or -- a request
+    in a slot, whose pre-step rebased onto main first (GOH.PREONTIP) -- the rebased tip it judged
+    and the main below it, `{"judged": P, "base": B}`; anything else is nothing."""
     with contextlib.suppress(OSError):
-        if keep.read_text().split() == [req["sha"]]:
+        words = keep.read_text().split()
+        if words == [req["sha"]]:
             req["pre"] = {"judged": req["sha"], "keep": str(keep)}
+        elif req.get("slot") and len(words) == 2 and all(SHA.fullmatch(w) for w in words):
+            req["pre"] = {"judged": words[0], "base": words[1], "keep": str(keep)}
+
+
+def _unpin(repo: str | Path, names: list[str]) -> None:
+    """The pins of the keeps NAMES removed from REPO (best effort: a pin is only a gc root)."""
+    for name in names:
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            gitrun.run_writer(("update-ref", "-d", f"{PIN}{name}"), repo=repo, deadline_s=60)
+
+
+def _pins(repo: str | Path) -> list[str]:
+    """The keep names REPO holds a pin for."""
+    try:
+        got = gitrun.run_reader(("for-each-ref", "--format=%(refname)", PIN), repo=repo, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return [ln.removeprefix(PIN) for ln in got.stdout.splitlines() if ln.startswith(PIN)]
 
 
 def discard(req: dict, q: Path | None = None) -> None:
@@ -80,19 +106,22 @@ def discard(req: dict, q: Path | None = None) -> None:
     if keep := (req.get("pre") or {}).get("keep"):
         for path in (Path(keep), Path(f"{keep}.record")):
             path.unlink(missing_ok=True)
+        if req.get("repo"):
+            _unpin(req["repo"], [Path(keep).name])
     if q is not None:
-        reap(q)
+        reap(q, repo=req.get("repo"))
         state_bounds.sweep(q.parent)
 
 
-def reap(q: Path, now_ns: int | None = None) -> list[Path]:
+def reap(q: Path, now_ns: int | None = None, repo: str | Path | None = None) -> list[Path]:
     """Every kept verdict under Q's `pre/` whose request is gone, removed with its record; the
     paths removed (GOH.LANDLEAKS: 14 files kept before `discard` existed outlived their lands).
 
     A verdict is a request's while a request in `pending/` or `running/` names it, and an
     enqueue's while it is younger than the enqueue's own bound (its name carries its birth in ns,
     lib/landq_inflight.py's pre-step bound plus margin): the pre-step keeps it BEFORE the request
-    is filed. A record outlives no verdict of its own."""
+    is filed. A record outlives no verdict of its own; given the REPO, no pin outlives its keep
+    (GOH.PREONTIP)."""
     named: set[str] = set()
     for d in ("pending", "running"):
         for path in (q / d).glob("*.json") if (q / d).is_dir() else []:
@@ -102,14 +131,20 @@ def reap(q: Path, now_ns: int | None = None) -> list[Path]:
     bound = int(os.environ.get("GOH_ENQUEUE_PRE_TIMEOUT") or landq_inflight.PRE_TIMEOUT_S)
     oldest = (now_ns or time.time_ns()) - (bound + landq_inflight.MARGIN_S) * 10**9
     gone: list[Path] = []
+
+    def held(name: str) -> bool:
+        born = name.rpartition("-")[2]
+        return name in named or (born.isdigit() and int(born) > oldest)
+
     for path in sorted((q / "pre").iterdir()) if (q / "pre").is_dir() else []:
         keep = path.with_name(path.name.removesuffix(".record"))
-        born = keep.name.rpartition("-")[2]
-        if keep.name in named or (born.isdigit() and int(born) > oldest):
+        if held(keep.name):
             continue
         with contextlib.suppress(OSError):
             path.unlink()
             gone.append(path)
+    if repo:  # a pin goes with its keep; a running land's (land.sh read its keep) is held
+        _unpin(repo, [n for n in _pins(repo) if not held(n) and not (q / "pre" / n).exists()])
     return gone
 
 
@@ -121,10 +156,14 @@ def timings_keep(log: Path | str) -> list[str]:
     return [f"GOH_LAND_TIMINGS_KEEP={str(log).removesuffix('.log')}.timings.jsonl"]
 
 
-def lander_env(req: dict, keep: Path | str | None = None) -> list[str]:
+def lander_env(req: dict, keep: Path | str | None = None, also: list[dict] | None = None
+               ) -> list[str]:  # fmt: skip
     """The lander's tools/land.sh reads the kept verdict from GOH_LAND_PRE_FROM: REQ's own keep, or
-    KEEP (a batch gate's copy of it, `gate_copy`)."""
+    KEEP (a batch gate's copy of it, `gate_copy`). ALSO, a batch's other requests: the tips their
+    pre-steps judged, GOH_LAND_PRE_ALSO, which the gate's suite carries from too (GOH.PREONTIP)."""
     kept = [f"GOH_LAND_PRE_FROM={keep or req['pre']['keep']}"] if req.get("pre") else []
+    shas = [j for r in also or () if SHA.fullmatch(j := str((r.get("pre") or {}).get("judged")))]
+    kept += [f"GOH_LAND_PRE_ALSO={' '.join(shas)}"] if shas else []
     return [*kept, *land_slot.label(req)]
 
 
@@ -159,8 +198,10 @@ def run_kept(req: dict, q: Path, script: Path, bindings: tuple[str, ...]) -> flo
     noted: dict = {}
     did: dict = {}
     ran: dict = {}
-    took = run(Path(req["worktree"]), req["sha"], script, bindings, keep, land_slot.label(req),
-               noted, did, ran)  # fmt: skip
+    # In goh's slot the pre-step judges the tip rebased onto main (GOH.PREONTIP): never the lane's.
+    onto = ["GOH_LAND_PRE_ONTO=1"] if req.get("slot") else []
+    took = run(Path(req["worktree"]), req["sha"], script, bindings, keep,
+               [*land_slot.label(req), *onto], noted, did, ran)  # fmt: skip
     if ran:  # the pre-step's wait, run, limit and workers: the SPD's figures (GOH.LANDPROFILEFIX)
         req["pre_run"] = ran
     if noted:
@@ -218,6 +259,8 @@ def run(
                 noted.update(none)
             warn(f"the pre-step had no verdict ({none['why']}); queued, the lander decides")
         return round(time.monotonic() - t0, 1)
+    if clash := next((ln.strip() for ln in lines if "conflicts with main" in ln), ""):
+        raise Red(clash)  # the slot's rebase onto main, before any test (GOH.PREONTIP)
     named = [ln.split()[1] for ln in lines if ln.startswith("FAILED ") and len(ln.split()) > 1]
     what = f"failing: {', '.join(named)}" if named else f"exit {code}, see the output above"
     raise Red(

@@ -70,7 +70,7 @@ land_exit() {
     local rc=$?
     ! declare -F land_shadow >/dev/null || land_shadow || true   # before .why goes, red gates too (GOH.CARRYSHADOW)
     rm -f "$verdicts" "$pre_start"
-    [ -z "$verdicts" ] || rm -f "$verdicts.base" "$verdicts.reused" "$verdicts.why"
+    [ -z "$verdicts" ] || rm -f "$verdicts.base" "$verdicts.reused" "$verdicts.why" "$verdicts.sources"
     [ -z "${GOH_LAND_PRE_ONLY:-}${GOH_LAND_STACK_ONTO:-}" ] || return "$rc"   # the enqueue's pre-step run, a stacking rebase: no land, no ledger row
     goh_span_record land "$(goh_repo_id "${main:-.}")" "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" \
         ${land_timings:+--timings "${GOH_TIMINGS:-$land_timings}"} --field "wait_lock_s=$lock_wait" \
@@ -107,7 +107,7 @@ tip="$(git rev-parse HEAD)"
 # In goh's detached checkout of the enqueued sha (GOH.LANDSNAPSHOT, lib/land_slot.py) the queue
 # names the lane's branch, so every line says whose land this is; read once, never in the gate's env.
 branch="${GOH_LAND_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
-unset GOH_LAND_BRANCH
+pre_onto="${GOH_LAND_PRE_ONTO:-}" pre_also="${GOH_LAND_PRE_ALSO:-}"; unset GOH_LAND_BRANCH GOH_LAND_PRE_ONTO GOH_LAND_PRE_ALSO
 gate="${GOH_LAND_GATE:-}"
 if [ -z "$gate" ] && [ -f "$here/.gatesrc" ]; then
     gate="$(cd "$here" && bash -c 'unset GOH_LAND_GATE; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_GATE-}"')" \
@@ -280,7 +280,7 @@ land_pre() {
 # left it and the rebase came after, under the lock: PREPARITY's land went green at 3709f571, was
 # rebased onto a main holding gates/_proven.sh at 500 lines, and went red in the full gate at 501;
 # every lane older than a ship failed changelog_tags so (REUSEAUDIT2 dd8403da). The enqueue's run
-# (GOH_LAND_PRE_ONLY) moves nothing: the queue holds the sha the lane enqueued.
+# (GOH_LAND_PRE_ONLY) moves only goh's slot (GOH.PREONTIP, below): the queue holds the enqueued sha.
 lock="$(git -C "$main" rev-parse --path-format=absolute --git-common-dir)/goh-land.lock"
 # land_lock_ours -- this land runs BY the land lock's holder (lib/land_lock.sh goh_land_lock_ours:
 # the owner variable, the holder line and the holder itself, not whoever has its pid now).
@@ -295,7 +295,7 @@ if [ -n "${GOH_LAND_STACK_ONTO:-}" ]; then
     land_rebase
     exit 0
 fi
-[ -n "${GOH_LAND_PRE_ONLY:-}" ] || land_rebase
+[ -n "${GOH_LAND_PRE_ONLY:-}" ] && [ -z "$pre_onto" ] || land_rebase   # the enqueue's in goh's slot (GOH.PREONTIP)
 # THE ENQUEUE'S VERDICT (GOH.PRELANDTWICE, lib/land_pre_reuse.sh): a kept green verdict is reused
 # where the tip moved only in paths no test reads.
 # shellcheck source=lib/land_pre_reuse.sh
@@ -391,7 +391,7 @@ land_timings="$(mktemp "$(goh_tmp)/goh-land-timings.XXXXXX")" || land_timings=""
 # this very tree against this base (tools/pytest.sh, lib/pre_reuse.py `suite`), and carries it for
 # what the diff does not choose otherwise; it reads the base here and leaves the verdict's id in
 # `.reused`, which the land's record names (`suite_reused`).
-[ ! -s "$verdicts" ] || printf '%s\n' "$base" >"$verdicts.base"
+[ ! -s "$verdicts" ] || { printf '%s\n' "$base" >"$verdicts.base"; land_pre_sources; }
 # THE PRE-STEP AND THE GATE AT ONCE (GOH.GATEPARALLEL): both judge this tree and neither reads the
 # other, so they run together and the land costs the longer; the first red stops the other.
 # shellcheck source=lib/land_par.sh

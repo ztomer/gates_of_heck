@@ -35,6 +35,26 @@ def trees(root: Path, pre_sha: str) -> list[tuple[str, str]]:
     return out
 
 
+def named(root: Path, shas: list[str]) -> list[tuple[str, str]]:
+    """(commit, tree) of each of SHAS git can read: the tips a batch's other items' pre-steps
+    judged, which the gate's suite carries from too (GOH.PREONTIP, `<record>.sources`)."""
+    out = []
+    for sha in shas:
+        tree = _git(root, "rev-parse", "--verify", "--quiet", f"{sha}^{{tree}}")
+        if tree:
+            out.append((sha, tree))
+    return out
+
+
+def sources(record: str) -> list[str]:
+    """The shas named beside a gate's RECORD (`<record>.sources`, tools/land.sh); [] for none."""
+    try:
+        text = Path(f"{record}.sources").read_text(encoding="utf-8") if record else ""
+    except OSError:
+        return []
+    return [w for w in text.split() if len(w) == 40 and all(c in "0123456789abcdef" for c in w)]
+
+
 def diff(root: Path, sha: str) -> list[str] | None:
     """The paths whose bytes differ between sha's tree and HEAD's; None when git cannot say."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
