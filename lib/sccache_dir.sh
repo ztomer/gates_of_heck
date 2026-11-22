@@ -9,6 +9,8 @@
 # Pinned once, at the gate's entry, the sandbox can move HOME and nothing else: the variable is
 # inherited by every child, so the server a test starts is the user's. A dir the user chose stays.
 # Sourced by gates/_common.sh (every gate runner) and gates/push_gate.sh.
+# The cap is the config file's alone, written by lib/sccache_cap.py (GOH.SCCACHECAP): an inherited
+# SCCACHE_CACHE_SIZE outranks it, so a server a gate starts would take a hand-set second value.
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 if [ -z "${SCCACHE_DIR:-}" ]; then
     case "$(uname -s)" in
@@ -17,3 +19,4 @@ if [ -z "${SCCACHE_DIR:-}" ]; then
     esac
     export SCCACHE_DIR
 fi
+unset SCCACHE_CACHE_SIZE
