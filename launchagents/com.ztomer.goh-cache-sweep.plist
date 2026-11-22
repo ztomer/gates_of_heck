@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ztomer.goh-cache-sweep</string>
+
+    <!-- The ONE cache evictor (GOH.CACHEEVICT, 2026-11-22). Three policies fought over one disk:
+         the scripts build-root ceiling, goh's llvm-cov budget and sccache's own LRU, each evicting
+         what another had just rebuilt. Every half hour this ranks the cargo build dirs, the
+         llvm-cov entries and the sccache bytes together (GDSF, lib/cache_evict.py) and brings each
+         tier under its budget: with the removable drive present the cold ones are DEMOTED to it,
+         without it they are deleted. An object a live build holds is never touched. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <!-- path-ok: launchd execs this with no shell and no environment, so an absolute path is the only form it can use. Quiet until the gates checkout carries the job's script. -->
+        <string>p=/Users/ztomer/Projects/gates_of_heck/tools/cache_sweep.sh; [ -x "$p" ] || exit 0; exec "$p"</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>1800</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>WorkingDirectory</key>
+    <!-- path-ok: the gates checkout, so the job resolves the house interpreter and the HEAD export cache. -->
+    <string>/Users/ztomer/Projects/gates_of_heck</string>
+
+    <key>LowPriorityIO</key>
+    <true/>
+
+    <key>Nice</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <!-- path-ok: launchd opens this file itself and does not expand `~`, so the path must be absolute. -->
+    <string>/Users/ztomer/Library/Logs/goh-cache-sweep.log</string>
+    <key>StandardErrorPath</key>
+    <!-- path-ok: the same file as StandardOutPath, for the same reason. -->
+    <string>/Users/ztomer/Library/Logs/goh-cache-sweep.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>NO_COLOR</key><string>1</string>
+    </dict>
+</dict>
+</plist>

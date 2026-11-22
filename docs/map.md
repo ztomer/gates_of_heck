@@ -490,6 +490,11 @@ Every structural checker is native since Phase N3; the Python checkers they port
   (`launchagents/LABEL.plist`, or another repo's plist given by path, whose file name and `Label` must agree, copied into `~/Library/LaunchAgents`, idempotently; `check` compares content and names
   drift; `remove` DELETES it, the house deletes, it does not trash). `tools/install_load_reap.sh`,
   `tools/install_load_sources.sh` and `tools/install_actions_sweep.sh` are one-line callers naming their job; `.loop`'s tick installs through the PLIST form (GOH.STALLS2). Pinned by `test_install_launchagent.py`.
+* `tools/cache_sweep.sh` / `tools/install_cache_sweep.sh` (GOH.CACHEEVICT, 2026-11-22) — the ONE
+  cache evictor on a schedule: the launchd job `com.ztomer.goh-cache-sweep` runs `lib/cache_sweep.py
+  run` from HEAD every 30 min (LowPriorityIO, nice 10), logging to `~/Library/Logs/goh-cache-sweep.log`
+  (moved to `.1` past 256 KiB). Installed by `bash tools/install_cache_sweep.sh install`. Pinned by
+  `test_install_launchagent.py`.
 * `scripts/actions_sweep.py` / `tools/actions_sweep.sh` (G14, 2026-10-26) — GitHub Actions storage cleans itself: for every
   non-archived repo of the owner, artifacts older than 14 days go, caches go when off the default branch or unused for more
   than 7 days (a default-branch cache in use stays), and artifact-and-log retention is set to 14 days when higher, so a new

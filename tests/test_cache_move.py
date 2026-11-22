@@ -147,3 +147,14 @@ def test_the_suite_never_sees_the_real_volumes(monkeypatch):
 
     monkeypatch.setenv("GOH_CACHE_VOLUMES", "/nonexistent/goh-volumes")
     assert cache_tier._mounts() == []
+
+
+def test_both_gates_promote_before_they_build():
+    """A demotion is worth its copy only if the next run brings the dir back BEFORE cargo judges
+    freshness: the rust gate before its first cargo step, the coverage run before its hit check."""
+    rust = (REPO_ROOT / "gates" / "rust_gate.sh").read_text()
+    assert rust.index('cache_move.py" promote-for') < rust.index("rust_crate_checks() {")
+    cov = (REPO_ROOT / "gates" / "_coverage_rust.sh").read_text()
+    assert cov.index('cache_move.py" promote "$COV_CACHE/$COV_KEY" --kind llvm-cov') < cov.index(
+        "COV_HIT=0;"
+    )

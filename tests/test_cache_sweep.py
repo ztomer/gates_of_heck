@@ -105,3 +105,28 @@ def test_stamp_marks_a_use(tmp_path):
     before = cache_sweep.build_last_use(str(d))
     cache_sweep.stamp(str(d), NOW)
     assert cache_sweep.build_last_use(str(d)) == NOW > before + 3600
+
+
+def test_only_cargo_shaped_dirs_are_objects(tmp_path):
+    keep = _bd(tmp_path, "aa11", 1)
+    for odd in ["aa/.evict-aa11-1", "aa/notes", "zz/aa11", "aa/AB12"]:
+        (tmp_path / "build" / odd).mkdir(parents=True)
+    (tmp_path / "build" / "aa" / "bb22").symlink_to(keep)
+    assert cache_sweep.build_dirs(str(tmp_path / "build")) == [str(keep)]
+
+
+def test_a_killed_sweeps_leftovers_are_reaped(tmp_path):
+    keep = _bd(tmp_path, "aa11", 1)
+    tomb = tmp_path / "build" / "aa" / ".evict-bb22-99"
+    (tomb / "debug").mkdir(parents=True)
+    root, _v, opener = _drive(tmp_path)
+    part = root / "demoted" / "build" / "abc.part"
+    (part / "debug").mkdir(parents=True)
+    whole = root / "demoted" / "build" / "abd"
+    whole.mkdir()
+    fd = opener(_v)
+    try:
+        assert cache_sweep.reap_leftovers(str(tmp_path / "build"), fd) == 2
+    finally:
+        os.close(fd)
+    assert not tomb.exists() and not part.exists() and whole.exists() and keep.exists()

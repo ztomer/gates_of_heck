@@ -50,6 +50,8 @@ RESERVE_GIB = 10.0  # one build in flight on top of the floor (gates/_cov_cache.
 BUILD_COST_S = 370.0  # a cold cargo build dir: 300-440 s measured 2026-11-22
 COV_COST_S = 600.0  # an instrumented build: RUSTC_WRAPPER="" (gates/_coverage_rust.sh), no sccache
 PROMOTE_BPS = 4.3 * GIB / 12.4  # a 4.3 GiB build dir came back in 12.4 s at load ~40
+SCCACHE_GIB = 40  # sccache's share: its own LRU is the backstop at this cap (lib/sccache_cap.py
+# writes it; GOH.SCCACHECAP's 48 h measurement decides whether 40 stays)
 MOVABLE = frozenset({"build", "llvm-cov"})
 TRIVIAL = 1 << 20  # under this, a demotion would copy nothing worth keeping: delete instead
 COV_MARKER = ".goh-running"

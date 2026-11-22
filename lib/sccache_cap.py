@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""sccache's disk cap, owned here and nowhere else (GOH.SCCACHECAP).
+"""sccache's disk cap, written here and nowhere else (GOH.SCCACHECAP).
 
 sccache evicted before reuse: at its 20 GiB cap the oldest entry was 7.6 h old (median 2.7 h) and
 the Rust hit rate 49% (2026-11-15); 17.9% on 2026-11-22 (16204 hit / 74379 miss). The cap was set
@@ -11,7 +11,9 @@ owner). The gates drop an inherited SCCACHE_CACHE_SIZE (lib/sccache_dir.sh), so 
 starts reads the file. A running server keeps the size it started with: `sccache --stop-server`.
 
 Whether 40 GiB stays is GOH.SCCACHECAP's 48 h measurement (verify_after): kept if the Rust hit rate
-rises 10 points, else CAP_GIB goes back with the numbers. The eviction policy is GOH.CACHEEVICT's.
+rises 10 points, else CAP_GIB goes back with the numbers. The VALUE is the one evictor's
+(lib/cache_evict.py SCCACHE_GIB, GOH.CACHEEVICT), which counts sccache's bytes in its budget and
+leaves sccache's own LRU as the backstop at this cap.
 
 usage: sccache_cap.py apply|check        (SCCACHE_CONF names another config file)
 """
@@ -33,7 +35,10 @@ import re
 import sys
 from pathlib import Path
 
-CAP_GIB = 40
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cache_evict  # lib/, beside this file
+
+CAP_GIB = cache_evict.SCCACHE_GIB
 CAP_BYTES = CAP_GIB << 30
 _SIZE = re.compile(r"^\s*size\s*=\s*(\d+)")
 _TABLE = re.compile(r"^\s*\[([^\]]+)\]")

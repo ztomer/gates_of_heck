@@ -24,6 +24,7 @@ JOBS = {
     "install_load_reap.sh": "com.ztomer.goh-load-reap",
     "install_actions_sweep.sh": "com.ztomer.goh-actions-sweep",
     "install_load_sources.sh": "com.ztomer.goh-load-sources",
+    "install_cache_sweep.sh": "com.ztomer.goh-cache-sweep",
 }
 
 
@@ -106,6 +107,15 @@ def test_the_sweep_job_is_daily_applies_and_logs_where_the_proof_reads():
     assert "tools/actions_sweep.sh" in data["ProgramArguments"][2]
     wrapper = (TOOLS / "actions_sweep.sh").read_text()
     assert "--apply" in wrapper and "scripts/actions_sweep.py" in wrapper
+
+
+def test_the_cache_sweep_job_runs_half_hourly_acts_and_logs():
+    data = _plist("com.ztomer.goh-cache-sweep")
+    assert data["StartInterval"] == 1800 and data["LowPriorityIO"] is True
+    assert data["StandardOutPath"].endswith("/Library/Logs/goh-cache-sweep.log")
+    assert "tools/cache_sweep.sh" in data["ProgramArguments"][2]
+    wrapper = (TOOLS / "cache_sweep.sh").read_text()
+    assert 'lib/cache_sweep.py" run' in wrapper and "262144" in wrapper
 
 
 def _with_fake_launchctl(tmp_path, mode, loaded):

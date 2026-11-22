@@ -149,6 +149,9 @@ run_rust() {
     COV_ROOT="$( (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
         root="$(git -C "$PROJ" rev-parse --show-toplevel 2>/dev/null)" && cd "$root" && pwd -P) || pwd -P)"
     COV_KEY="$(printf '%s\n' "$COV_ROOT" | shasum -a 256 | cut -c1-16)"
+    # An entry the evictor demoted to the removable tier comes back first (GOH.CACHEEVICT,
+    # lib/cache_move.py); quiet when nothing is demoted, and a failure costs only a cold build.
+    "$GOH_PY" "$GOH_ROOT/lib/cache_move.py" promote "$COV_CACHE/$COV_KEY" --kind llvm-cov || true
     # THE METRIC (GOH.COVCACHECHURN): a run hits when its repo's build is still here; cov_reap
     # records it, and `gates/_cov_cache.py report` reads the hit rate.
     COV_HIT=0; [ -d "$COV_CACHE/$COV_KEY/build" ] && COV_HIT=1

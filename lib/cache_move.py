@@ -263,15 +263,14 @@ def main(argv: list[str]) -> int:
     kind = argv[argv.index("--kind") + 1] if "--kind" in argv else "build"
     verdict = cache_tier.resolve(cache_tier.internal_root(), own_uuid=False)
     if not verdict.external:
-        print(f"promote: no large tier ({verdict.reason})")
-        return 0
+        return 0  # quiet: a gate calls this before every run
     fd = cache_tier.open_root(verdict)
     try:
         moved = promote(argv[1], fd, kind)
     finally:
         os.close(fd)
-    print(f"promote: {argv[1]}: {moved / (1 << 30):.2f} GiB back" if moved else
-          f"promote: {argv[1]}: nothing demoted")  # fmt: skip
+    if moved:
+        print(f"promote: {argv[1]}: {moved / (1 << 30):.2f} GiB back", file=sys.stderr)
     return 0
 
 

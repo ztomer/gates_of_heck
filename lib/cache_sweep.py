@@ -38,6 +38,7 @@ import fcntl
 import glob
 import json
 import os
+import re
 import shutil
 import sys
 from dataclasses import dataclass, field
@@ -52,6 +53,7 @@ import cache_tier  # noqa: E402
 import sccache_repoint  # noqa: E402
 
 STAMP = ".goh-used"
+_HEX = re.compile(r"^[0-9a-f]+$")
 
 
 @dataclass
@@ -91,8 +93,12 @@ def build_last_use(path: str) -> float:
 
 
 def build_dirs(root: str) -> list[str]:
-    return sorted(p for p in glob.glob(os.path.join(glob.escape(root), "*", "*"))
-                  if os.path.isdir(p) and not os.path.basename(p).startswith("."))  # fmt: skip
+    """Only cargo's own shape, `<hex>/<hex>` ({workspace-path-hash}): anything else under the
+    build root is not the evictor's to judge (a tombstone, a hand-made dir)."""
+    found = glob.glob(os.path.join(glob.escape(root), "*", "*"))
+    return sorted(p for p in found if os.path.isdir(p) and not os.path.islink(p)
+                  and _HEX.match(os.path.basename(p))
+                  and _HEX.match(os.path.basename(os.path.dirname(p))))  # fmt: skip
 
 
 def cov_entries(root: str) -> list[str]:
@@ -213,10 +219,33 @@ def act(acts: list[ce.Action], root_fd: int | None) -> list[tuple[str, str, bool
     return done
 
 
+def reap_leftovers(build_root: str, root_fd: int | None) -> int:
+    """What a killed sweep left: `.evict-*` tombstones beside the build dirs, and `.part` copies on
+    the large tier. Only a sweep makes either, and this one holds the sweep lock: all are stale."""
+    gone = 0
+    for tomb in glob.glob(os.path.join(glob.escape(build_root), "*", ".evict-*")):
+        shutil.rmtree(tomb, ignore_errors=True)
+        gone += 1
+    for kind in sorted(ce.MOVABLE) if root_fd is not None else []:
+        try:
+            kfd = cache_move._kind_fd(root_fd, kind, create=False)
+        except OSError:
+            continue
+        try:
+            for name in [n for n in os.listdir(kfd) if n.endswith(".part")]:
+                cache_move._rm_at(kfd, name)
+                gone += 1
+        finally:
+            os.close(kfd)
+    return gone
+
+
 def sweep(roots: Roots, verdict: cache_tier.Verdict, state: str, now: float, execute: bool,
           opener=cache_tier.open_root) -> dict:  # fmt: skip
     root_fd = opener(verdict) if verdict.external else None
     try:
+        if execute:
+            reap_leftovers(roots.build, root_fd)
         data = ce.load(state)
         objs = discover(roots, verdict.root, root_fd, now)
         ce.observe(data, objs)
