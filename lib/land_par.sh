@@ -16,7 +16,9 @@
 #   * the pre-land records into a file of its own: the gate's suite reads the enqueue's kept record
 #     ($verdicts, carried for what the diff does not choose: GOH.VERDICTCARRY), never a file the
 #     branch beside it is still writing. The pre-land's ledger fields come back through a file.
-# Pinned by tests/test_land_par.py (both at once, each red first, each hanging to its deadline).
+# ONE PYTEST PER LANDER RUN (GOH.LANDONERUN): where the gate's suite reuses the enqueue's kept record,
+# no pre-land runs beside it (land_par, below); the gate's one run fails fast in its place.
+# Pinned by tests/test_land_par.py (both at once, each red first, each hanging to its deadline, one run).
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=lib/pid_owner.sh
 . "$_goh_d/pid_owner.sh" || exit 2
@@ -29,7 +31,16 @@ land_par() {
     [ -n "$pre_start" ] || pre_start="$(mktemp "$(goh_tmp)/goh-land-prestart.XXXXXX")" || exit 2
     mkfifo "$dir/done" || exit 2
     exec 9<>"$dir/done"
-    if [ -n "$pre" ]; then
+    # ONE PYTEST PER LANDER RUN (GOH.LANDONERUN): the gate's suite that reuses the enqueue's kept
+    # record ($verdicts, tools/pytest.sh) runs every test the pre-land would run on this tree, or
+    # more (the diff's readers, and the whole suite where nothing carries), judges first and
+    # stopping at the first red. The pre-land beside it ran that set a second time: 1,300-3,800
+    # cpu-s a land (docs: testonce_design 2.2d). Its REUSE/NARROW/RERUN is still decided and logged
+    # (pre_why); nothing of it runs. With no kept record the gate cannot carry, and the pre-land
+    # stays beside it as before.
+    if [ -n "$pre" ] && [ -s "${verdicts:-}" ]; then
+        land_pre_again "the enqueue" decide
+    elif [ -n "$pre" ]; then
         ( set +e
           ( trap 'printf "%s\n" "$pre_wall" "$pre_run" "$pre_workers" "$pre_reused" "$pre_why" "$pre_cpu_s" >"$dir/pre.vars"' EXIT
             set -e; pre_record="$dir/pre.record"

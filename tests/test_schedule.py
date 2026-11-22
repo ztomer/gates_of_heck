@@ -234,3 +234,27 @@ def test_an_id_a_whole_file_run_did_not_collect_is_pruned_and_a_partial_run_prun
     got = run("-n", "2", "test_x.py")  # whole, through xdist workers
     assert sorted(got) == ["test_x.py::test_b", "test_x.py::test_new", "test_y.py::test_y"], got
     assert sorted(json.loads(poles.read_text())) == [], "the long-pole table kept a stale id"
+
+
+def test_a_lands_one_run_hands_out_its_judges_first_a_group_whole(tmp_path, monkeypatch) -> None:
+    """GOH.LANDONERUN: the tree readers lead the land's one run, ahead of longer tests, so a red
+    judge stops it (--maxfail) in seconds; a group holding a judge moves with it."""
+    _table(tmp_path, monkeypatch, {"tests/l.py::a": 9, "tests/j.py::t": 1, "tests/g.py::g": 2})
+    _schedule._read[_schedule._JUDGE_KEY] = ["tests/j.py", "tests/g.py"]
+    items = _items("tests/l.py::a", "tests/j.py::t", "tests/l.py::g2@G", "tests/g.py::g@G")
+    _schedule.pytest_collection_modifyitems(CONFIG, items)
+    assert [i.nodeid for i in items] == [
+        "tests/g.py::g",  # the group G (2 s + 1 s unknown) holds a judge: first, whole
+        "tests/l.py::g2",
+        "tests/j.py::t",
+        "tests/l.py::a",  # the longest, after every judge
+    ]
+
+
+def test_the_judges_are_the_named_checkouts_own_tree_readers(tmp_path) -> None:
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "tools" / "affected_tests.py").write_text(
+        "def tree_readers(root):\n"
+        "    return {'tests/test_b.py': 'b', 'tests/test_a.py': str(root)}\n"
+    )
+    assert _schedule.judges(tmp_path) == ["tests/test_a.py", "tests/test_b.py"]

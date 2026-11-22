@@ -218,6 +218,13 @@ done
 suite_kind=suite
 [ ! -s "${GOH_LAND_VERDICTS_REUSE:-}" ] || suite_kind=suite:carried
 [ -z "${GOH_SUITE_SHARD:-}" ] || suite_kind=suite:shard
+# A LAND'S ONE RUN (GOH.LANDONERUN): the lander runs no pre-land beside its gate when the gate's
+# suite reuses the enqueue's record (lib/land_par.sh), so this run fails fast in its place: the tree
+# readers are handed out first (tests/_schedule.py `judges`) and the first red stops it.
+if [ "$#" -eq 0 ] && [ -s "${GOH_LAND_VERDICTS_REUSE:-}" ]; then
+    ARGS+=(--maxfail=1)
+    export GATES_OF_HECK_SUITE_JUDGES_FIRST=1
+fi
 # THE RUN'S FILE EVENTS (GOH.FSCHURN2, tests/_fs_churn.py): an argument-less run counts the FSEvents
 # records under its own roots; the count joins its ledger row (`fs_events`, `fs_dirs`, and `fs_tests`
 # and `fs_whole`, so a ceiling is re-set from whole rows). Its per-run ceiling

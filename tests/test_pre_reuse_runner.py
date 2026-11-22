@@ -115,7 +115,7 @@ def test_a_land_after_a_runner_move_runs_no_second_pre_land(
     assert "tools/pytest.sh moved: the pre-step's own code" in log and "not run again" in log, log
 
 
-def test_a_land_after_a_selector_move_that_adds_a_test_runs_it_and_the_readers(
+def test_a_land_after_a_selector_move_that_adds_a_test_decides_narrow_and_runs_none(
     repo: Path,
     tmp_path: Path,
     env: dict,  # noqa: F811 -- the fixture imported above
@@ -130,7 +130,9 @@ def test_a_land_after_a_selector_move_that_adds_a_test_runs_it_and_the_readers(
     monkeypatch.setattr(test_pre_reuse, "_main_moves", moves)
     seen, log = _land(repo, tmp_path, env, "lib/sel_helper.py", kit=True,
                       record=str(_judged_set(tmp_path, JUDGED_SET)))  # fmt: skip
-    assert seen == ["full", "narrow lib/sel_helper.py tests/test_extra.py"], log
+    assert seen == ["full"], log  # NARROW decided, never run: the gate's one suite (GOH.LANDONERUN)
+    assert "but what the moved paths' readers judge" in log, log
+    assert "not run -- the gate's one suite judges them" in log, log
 
 
 def test_the_real_tree_judges_a_runner_move_by_its_readers():

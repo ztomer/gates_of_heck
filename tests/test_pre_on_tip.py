@@ -161,8 +161,9 @@ def test_a_land_whose_main_did_not_move_since_its_enqueue_reuses_in_pre_land_and
 def test_a_land_whose_main_moved_after_its_enqueue_rejudges_only_the_readers_of_that_move(
     repo: Path, tmp_path: Path, kit: dict
 ) -> None:
-    """Main moved x.txt before the enqueue and read.txt after it: only read.txt's readers run
-    again (the judged tree already held main's x.txt)."""
+    """Main moved x.txt before the enqueue and read.txt after it: only read.txt's readers are
+    judged again (the judged tree already held main's x.txt) -- by the gate's one suite, which
+    carries the rest; the lander's NARROW is decided and logged, never run (GOH.LANDONERUN)."""
     wt = lane(repo, tmp_path, "lane", {"b.txt": "the lane's\n"})
     _commit(repo, "main moves x.txt", **{"x.txt": "main moved it\n"})
     _enqueue(kit, wt, "T.T")
@@ -171,7 +172,7 @@ def test_a_land_whose_main_moved_after_its_enqueue_rejudges_only_the_readers_of_
     got = recorded(kit)["T.T"]
     log = Path(got["log"]).read_text()
     assert got["state"] == "landed", log
-    assert _lines(tmp_path / "seen") == ["full", "narrow read.txt"], log
+    assert _lines(tmp_path / "seen") == ["full"], log  # the enqueue's run; the gate's is its own
     assert _land_row(tmp_path).get("pre_why", "").startswith("narrow: 1 moved path,"), log
 
 

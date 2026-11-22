@@ -141,7 +141,8 @@ def _runner(tmp_path: Path, answer: int, reuse_file: Path | None) -> tuple[str, 
         f'case "$*" in *timing_ledger.py*|*worker_share.py*) exec "{sys.executable}" "$@" ;; esac\n'
         f'case "$*" in *pre_reuse.py*) echo "$*" >> "{seen}"; echo "the stub judged"; '
         f"echo 0123456789ab:feedfacecafe; exit {answer} ;; esac\n"
-        f'if [ "$1 $2" = "-m pytest" ] && [ "$3" != --version ]; then echo pytest >> "{seen}"; fi\n'
+        f'if [ "$1 $2" = "-m pytest" ] && [ "$3" != --version ]; then echo pytest >> "{seen}"; '
+        f'echo "$* judges=${{GATES_OF_HECK_SUITE_JUDGES_FIRST:-}}" >> "{seen}.argv"; fi\n'
         "exit 0\n"
     )
     stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
@@ -179,6 +180,18 @@ def test_the_gates_runner_runs_pytest_when_the_verdict_does_not_hold(tmp_path):
     assert calls[-1] == "pytest" and not (tmp_path / "verdicts.reused").exists(), (calls, out)
     _, calls = _runner(tmp_path / "plain", 0, None)
     assert calls == ["pytest"], calls  # no land's record: nothing to ask
+
+
+def test_a_lands_one_run_fails_fast_judges_first_and_no_other_run_does(tmp_path):
+    """GOH.LANDONERUN: with no pre-land beside it, the land gate's suite stops at the first red
+    and hands its judges out first (tests/_schedule.py); a run with no land's record does
+    neither."""
+    _runner(tmp_path, 1, _record(tmp_path))
+    (argv,) = (tmp_path / "seen.argv").read_text().splitlines()
+    assert "--maxfail=1" in argv.split() and argv.endswith(" judges=1"), argv
+    _runner(tmp_path / "plain", 0, None)
+    (argv,) = (tmp_path / "plain" / "seen.argv").read_text().splitlines()
+    assert "--maxfail" not in argv and argv.endswith(" judges="), argv
 
 
 def test_the_pre_step_stamps_its_whole_selection_and_its_base(repo: Path, tmp_path: Path):

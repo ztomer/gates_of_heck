@@ -364,10 +364,13 @@ def test_the_land_hands_the_judged_set_to_the_decision(
     env: dict,  # noqa: F811 -- the fixture imported above
 ) -> None:
     """tools/land.sh passes the kept record (lib/land_pre_reuse.sh `--record`): a selector move
-    whose tip set the enqueue judged runs the moved file's readers, not the set."""
+    whose tip set the enqueue judged is decided NARROW (the moved file's readers, not the set),
+    which the gate's one suite judges: the lander runs no pre-land of its own (GOH.LANDONERUN)."""
     record = _judged_set(tmp_path, JUDGED_SET)
     seen, log = _land(repo, tmp_path, env, "lib/sel_helper.py", kit=True, record=str(record))
-    assert seen == ["full", "narrow lib/sel_helper.py"], log
+    assert seen == ["full"], log
+    assert "but what the moved paths' readers judge" in log, log
+    assert "not run -- the gate's one suite judges them" in log, log
     assert "the pre-step's own code, and the tip's set" in log, log
 
 

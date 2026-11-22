@@ -63,13 +63,15 @@ def test_a_stacked_batch_whose_main_moved_only_where_no_test_reads_runs_no_secon
     assert "not run again" in log and "none read by a test" in log, log
 
 
-def test_a_stacked_batch_with_a_path_a_test_reads_runs_that_reader_alone(
+def test_a_stacked_batch_with_a_path_a_test_reads_leaves_that_reader_to_the_gate(
     repo: Path,
     tmp_path: Path,
     env: dict,  # noqa: F811
 ) -> None:
     seen, log = _batch(repo, tmp_path, env, "CHANGELOG.md", {"read.txt": "one reads\n"})
-    assert len(seen) == 3 and seen[2].startswith("narrow ") and "read.txt" in seen[2], (seen, log)
+    assert seen == ["full", "full"], log  # NARROW decided, never run (GOH.LANDONERUN)
+    assert "read by 1 test file: " in log and "read.txt" in log, log
+    assert "not run -- the gate's one suite judges them" in log, log
 
 
 def test_a_red_stack_s_bisect_still_finds_each_lone_item_s_verdict(

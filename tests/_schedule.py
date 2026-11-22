@@ -41,6 +41,13 @@ no argument named a node inside it (`f.py::t`), and nothing deselected one of it
 `pytest_deselected`). Whoever collects records it (an xdist worker hands it to the controller in
 `workeroutput`; every worker collects the same set, so the controller takes the union).
 
+JUDGES FIRST IN A LAND'S ONE RUN (GOH.LANDONERUN). The lander runs one pytest, the gate's suite
+(the pre-land beside it is gone, lib/land_par.sh), and tools/pytest.sh names it
+GATES_OF_HECK_SUITE_JUDGES_FIRST with --maxfail: the tree readers (tools/affected_tests.py
+`phases`' JUDGES, which judge every file whatever the diff) are handed out before the rest, so a
+red judge stops the run in seconds, as the pre-step's own judges-first run did. Popped by `take()`
+like the table; the controller asks the checkout's selector once and hands the list to every worker.
+
 Registered as a PLUGIN from conftest's pytest_configure, not imported by name: a conftest that
 imports a hook shadows its own hook of the same name (it happened to pytest_configure, 2026-10-06).
 It registers tests/_loadgroup.py in turn, so every run that orders by group also schedules by it.
@@ -49,6 +56,7 @@ It registers tests/_loadgroup.py in turn, so every run that orders by group also
 from __future__ import annotations
 
 import contextlib
+import importlib.util
 import json
 import os
 import sys
@@ -67,6 +75,8 @@ _read: dict[str, dict[str, float]] = {}  # this process's one read: the controll
 _table: list[Path] = []  # the table this run owns, set by `take()` on the top-level run only
 _SHARD_KEY = "goh_suite_shard"
 _shard_spec: list[str] = []  # this run's shard (tests/_shard.py), set by `take()` likewise
+JUDGES_ENV, _JUDGE_KEY = "GATES_OF_HECK_SUITE_JUDGES_FIRST", "goh_judges_first"
+_judges_first: list[bool] = []  # a land's one run (tools/pytest.sh), set by `take()` likewise
 
 
 def take(environ=os.environ) -> Path | None:
@@ -75,6 +85,7 @@ def take(environ=os.environ) -> Path | None:
     _table[:] = [Path(path)] if path else []
     spec = environ.pop(_shard.ENV, "")  # one shard of hosted CI's suite (GOH.CIWALL)
     _shard_spec[:] = [spec] if spec else []
+    _judges_first[:] = [True] if environ.pop(JUDGES_ENV, "") else []
     return _table[0] if _table else None
 
 
@@ -104,6 +115,17 @@ def _scope(item) -> str:
     return "@" + g if g is not None else item.nodeid
 
 
+def judges(root: Path) -> list[str]:
+    """The checkout's tree readers, by its own tools/affected_tests.py (`phases`' JUDGES), loaded
+    from its path: an `affected_tests` imported by name may be another checkout's."""
+    path = root / "tools" / "affected_tests.py"
+    spec = importlib.util.spec_from_file_location("goh_judges", path)
+    assert spec is not None and spec.loader is not None, root
+    selector = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(selector)
+    return sorted(selector.tree_readers(root))
+
+
 def _load(poles: bool = False) -> dict[str, float]:
     if not _table:
         return {}
@@ -122,6 +144,9 @@ def pytest_configure(config) -> None:
     _read[_POLE_KEY] = worker.get(_POLE_KEY, {}) if worker is not None else _load(poles=True)
     if worker is not None:
         _shard_spec[:] = [worker[_SHARD_KEY]] if worker.get(_SHARD_KEY) else []
+        _read[_JUDGE_KEY] = worker.get(_JUDGE_KEY, [])
+    else:
+        _read[_JUDGE_KEY] = judges(Path(str(config.rootpath))) if _judges_first else []
     if not config.pluginmanager.has_plugin("goh-loadgroup"):  # loadgroup that groups
         config.pluginmanager.register(_loadgroup, "goh-loadgroup")
     if _shard_spec:  # the part is its OWN hook (GOH.CIRED013913), never this module's
@@ -134,10 +159,12 @@ def pytest_configure_node(node) -> None:
     node.workerinput[_KEY] = _read.get(_KEY, {})
     node.workerinput[_POLE_KEY] = _read.get(_POLE_KEY, {})
     node.workerinput[_SHARD_KEY] = _shard_spec[0] if _shard_spec else ""
+    node.workerinput[_JUDGE_KEY] = _read.get(_JUDGE_KEY, [])
 
 
 def pytest_collection_modifyitems(config, items) -> None:
-    """Sort `items` in place: the longest unit of work first, ties by nodeid. A node id naming the
+    """Sort `items` in place: a land's judges first (GOH.LANDONERUN), then the longest unit of work
+    first, ties by nodeid. A node id naming the
     checkout is refused: every per-node store (this table, the verdict records) is keyed by it, and
     such a node exists only in the checkout that collected it (GOH.SHIPTREEFULL: one carried pass
     with the land's checkout in its id kept every later full run of the tree from being full)."""
@@ -145,12 +172,14 @@ def pytest_collection_modifyitems(config, items) -> None:
     if named := [i.nodeid for i in items if root in i.nodeid]:
         raise pytest.UsageError(f"a node id names the checkout {root} (give it ids=): {named[0]}")
     known = _read[_KEY] if _KEY in _read else _load()
-    if not known:
+    judge = set(_read.get(_JUDGE_KEY, ()))
+    if not known and not judge:
         return
     weight: dict[str, float] = defaultdict(float)
     for item in items:
         weight[_scope(item)] += known.get(item.nodeid, UNKNOWN_S)
-    items.sort(key=lambda i: (-weight[_scope(i)], _scope(i), i.nodeid))
+    first = {_scope(i) for i in items if i.nodeid.split("::")[0] in judge}  # a group moves whole
+    items.sort(key=lambda i: (_scope(i) not in first, -weight[_scope(i)], _scope(i), i.nodeid))
 
 
 def pytest_deselected(items) -> None:

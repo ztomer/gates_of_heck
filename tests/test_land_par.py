@@ -6,6 +6,11 @@ Now both start together under the land lock, the first red stops the other and i
 a step that hangs still dies at its own deadline, and nothing lands unless both are green (or the
 pre-land had no verdict, which was never red) on the exact tree main fast-forwards to.
 
+ONE PYTEST PER LANDER RUN (GOH.LANDONERUN): where the gate's suite reuses the enqueue's kept
+record, the pre-land beside it ran the same tests (or fewer) a second time, 1,300-3,800 cpu-s a
+land; it is gone there, its REUSE/NARROW/RERUN decided and logged only. With no kept record (the
+cases above) the gate cannot carry, and the pre-land still runs beside it.
+
 Concurrency is proven by a RENDEZVOUS, not a stopwatch: each side waits for the other's mark, so
 a serial land deadlocks into the waiting side's red and a concurrent one passes on any load.
 """
@@ -17,10 +22,14 @@ import subprocess
 import uuid
 from pathlib import Path
 
+import pytest
 from conftest import git, hermetic_env
 from orphan_kit import wait_for_file
 from test_affected_tests import _declare
 from test_land import LAND, _main, _worktree
+from test_landq import env, landq, recorded  # noqa: F401  -- `env` is the queue's fixture
+from test_landq_batch import lane
+from test_pre_on_tip import _commit, _enqueue, _land_row, _lines, kit  # noqa: F401  -- a fixture
 from timing_bounds import patience
 
 WAIT_S = 6  # a side's wait for the other's mark
@@ -34,11 +43,11 @@ def _wait_for(mark: Path) -> str:
     return f"bash {script}"
 
 
-def _land(wt: Path, tmp_path: Path, pre: str, gate: str, **env: str):
+def _land(wt: Path, tmp_path: Path, pre: str, gate: str, **over: str):
     _declare(wt, f"GOH_LAND_GATE='{gate}'\nGOH_LAND_PRE='{pre}'\n")
     timing = tmp_path / "timing"
     timing.mkdir(exist_ok=True)
-    e = hermetic_env(drop_git=True, GOH_TIMING_DIR=str(timing), **env)
+    e = hermetic_env(drop_git=True, GOH_TIMING_DIR=str(timing), **over)
     e.pop("GATES_OF_HECK_SUITE_RUNNER", None)
     return subprocess.run(["bash", str(LAND)], cwd=wt, env=e, capture_output=True, text=True,
                           stdin=subprocess.DEVNULL, timeout=patience(120), check=False)  # fmt: skip
@@ -121,3 +130,32 @@ def test_a_gate_that_hangs_dies_at_its_deadline_and_lands_nothing(
     assert "the gate went red -- nothing landed" in out, out  # the pre-land was green before it
     assert _main(repo) == before, out
     assert not _alive(hang), out
+
+
+@pytest.mark.parametrize(
+    ("moved", "why"),
+    [("read.txt", "narrow: 1 moved path,"), ("pyproject.toml", "rerun: pyproject.toml moved")],
+)
+def test_a_land_whose_gate_reuses_the_kept_record_runs_one_pytest(
+    repo: Path,
+    tmp_path: Path,
+    kit: dict,  # noqa: F811 -- the fixture imported above
+    moved: str,
+    why: str,
+) -> None:
+    """Main moved MOVED after the enqueue: the old lander ran the pre-land again beside the gate
+    (NARROW the readers, RERUN the set), two test runs on one tree. Now the gate's suite is the
+    one run, and the decision is still on the land's row."""
+    seen = tmp_path / "seen"
+    kit = {**kit, "GOH_LAND_GATE": f"{kit['GOH_LAND_GATE']}; echo gate >> {seen}"}
+    wt = lane(repo, tmp_path, "lane", {"b.txt": "the lane's\n"})
+    _enqueue(kit, wt, "T.T")
+    assert _lines(seen) == ["full"]  # the enqueue's run
+    _commit(repo, f"main moves {moved}", **{moved: "main moved it\n"})
+    assert landq(kit, "--drain").returncode == 0
+    got = recorded(kit)["T.T"]
+    log = Path(got["log"]).read_text()
+    assert got["state"] == "landed", log
+    assert _lines(seen) == ["full", "gate"], log  # the lander's run: the gate's suite alone
+    assert _land_row(tmp_path).get("pre_why", "").startswith(why), log
+    assert "not run -- the gate's one suite judges" in log, log

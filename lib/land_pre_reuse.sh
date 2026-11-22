@@ -51,12 +51,15 @@ land_pre_sources() {
 # paths no test reads (tools/affected_tests.py `readers`, the selection's own notion). Moved paths
 # some tests read run those tests alone; anything else, or no verdict to reuse, runs the whole set.
 # The judged tip's record stays the gate's, which carries from it what the diff does not choose.
+# DECIDE (the lander, GOH.LANDONERUN, lib/land_par.sh): the decision is made and logged (pre_why)
+# but nothing runs -- the gate's one suite judges this tree, carrying from the kept record.
 land_pre_again() {
-    local why out rc=0 moved=() also=() narrow cmd structural=()
+    local why out rc=0 moved=() also=() narrow cmd structural=() only="${2:-}"
     if [ -z "$pre_judged" ]; then
         # Every decision is recorded (GOH.SUITEONCEMISS); never worded "no verdict", which names a
         # pre-land past its deadline (GOH.PRESTEPDEADLINE).
         pre_why="rerun: nothing kept from the enqueue"
+        [ -z "$only" ] || return 0
         [ -n "${pre_from:-}" ] || [ -n "${GOH_LAND_PRE_ONLY:-}" ] \
             || info "pre-land: nothing kept from the enqueue for this land -- the set runs"
         land_pre
@@ -78,6 +81,7 @@ land_pre_again() {
             ok "pre-land: the verdict $1 judged at ${pre_judged:0:8} holds for ${tip:0:8} -- not run again: $why" ;;
         3)  info "pre-land: the verdict $1 judged at ${pre_judged:0:8} holds for ${tip:0:8} but what the moved paths' readers judge: $why"
             pre_reused="${pre_judged:0:12} readers" pre_why="narrow: $why"
+            [ -z "$only" ] || { info "pre-land: not run -- the gate's one suite judges them (GOH.LANDONERUN)"; return 0; }
             narrow="$(mktemp "$(goh_tmp)/goh-land-narrow.XXXXXX")" || exit 2
             mapfile -t moved < <(git diff --name-only --no-renames "$pre_judged" "$tip" 7>&-)
             moved+=(${also[@]+"${also[@]}"})
@@ -86,6 +90,7 @@ land_pre_again() {
             rm -f "$narrow" "$narrow.judges" ;;
         *)  info "pre-land: the verdict $1 judged at ${pre_judged:0:8} is not ${tip:0:8}'s ($why) -- run again"
             pre_why="rerun: $why"
+            [ -z "$only" ] || { info "pre-land: not run -- the gate's one suite judges this tree (GOH.LANDONERUN)"; return 0; }
             land_pre ;;
     esac
 }
