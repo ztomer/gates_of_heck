@@ -46,7 +46,7 @@ WAIT_EXEMPT = {
 LEADER_EXEMPT = {
     "ps_table.py": "`ps -ax` under a CPU-stall judge, waited for in the same function",
     "suite_tmp.py": "the temp reaper, an orphan BY DESIGN: it exits when its pipe closes",
-    "test_check_lock_order_bin.py": "the keyword is a planted fixture's TEXT the checker reads; "
+    "test_check_lock_order.py": "the keyword is a planted fixture's TEXT the checker reads; "
     "it spawns nothing",
 }
 
