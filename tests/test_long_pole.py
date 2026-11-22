@@ -21,6 +21,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import _drift_guard
 import _schedule
 import pytest
 from conftest import REPO_ROOT, hermetic_env
@@ -172,9 +173,10 @@ def test_burns():
 
 def test_a_run_records_each_tests_quiet_seconds_beside_its_wall(tmp_path: Path) -> None:
     """The suite's own wiring (the drift guard's reading, the schedule's table) in a child run,
-    through an xdist worker, at a pinned stretch of 3. The waiting test keeps its wall;
-    the burning one is its wall over the factor, or less the CPU the load stretched, whichever is
-    more -- at most 0.6 of its wall up to a real stretch of five."""
+    through an xdist worker, at a pinned stretch of 3 above one. Asserts only what no load moves
+    (GOH.LONGPOLEFLAKE: a fraction of the wall such as 0.6 held only while the box's real stretch
+    stayed under the pinned one; under load 1.485 <= 0.6 x 2.286 failed): no estimate exceeds its
+    wall, the waiting test keeps its whole wall, and the burning one reads below its wall."""
     (tmp_path / "conftest.py").write_text(
         f"import sys\nsys.path.insert(0, {str(REPO_ROOT / 'tests')!r})\n"
         "import _schedule, _drift_guard\n"
@@ -199,8 +201,24 @@ def test_a_run_records_each_tests_quiet_seconds_beside_its_wall(tmp_path: Path) 
     waits, burns = "test_x.py::test_waits", "test_x.py::test_burns"
     assert set(poles) == {waits, burns}, poles
     assert poles[waits] >= 0.38 and poles[waits] >= 0.95 * walls[waits], (poles, walls)
-    assert poles[burns] <= 0.6 * walls[burns], (poles, walls)
+    assert all(poles[t] <= walls[t] for t in (waits, burns)), (poles, walls)
+    assert poles[burns] < walls[burns], "a burning test's quiet seconds fall below its wall"
     assert lp.judge({waits: poles[waits]}, {}, limit=0.3), "the wait is judged at its wall"
+
+
+def test_the_stretch_is_the_median_of_the_probes_samples_not_one_of_them() -> None:
+    """One sample preempted for ten loops, or one that ran in a lull, must not set the stretch."""
+    quiet = _drift_guard.REFERENCE_CPU_S * _drift_guard.speed_factor()
+    assert _drift_guard.stretch_of([quiet * 3] * 5) == pytest.approx(3.0)
+    assert _drift_guard.stretch_of(
+        [quiet * 3, quiet * 3, quiet * 40, quiet * 3, quiet * 3]
+    ) == pytest.approx(3.0)
+    assert _drift_guard.stretch_of(
+        [quiet * 0.5, quiet * 3, quiet * 3, quiet * 3, quiet * 3]
+    ) == pytest.approx(3.0)
+    assert _drift_guard.stretch_of([quiet * 2, quiet * 4]) == pytest.approx(3.0)
+    assert _drift_guard.stretch_of([quiet * 0.2] * 3) == 1.0, "never below a quiet core"
+    assert _drift_guard.POLE_PROBE_SAMPLES >= 3
 
 
 def test_the_allowance_file_is_well_formed() -> None:

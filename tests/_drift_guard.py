@@ -258,16 +258,30 @@ if _REAL_CARGO:
 # ~65 ms would be most of it.
 _CPU_MARK = pytest.StashKey[float]()
 POLE_PROBE_AFTER_S = 2.0
-POLE_PROBE_LOOPS = 4
+POLE_PROBE_SAMPLES = 5
+
+
+def stretch_of(walls: list[float]) -> float:
+    """The stretch the walls of the probe's loops read: their MEDIAN over what one loop costs a
+    quiet core. One ~65 ms sample read 25% low and an outlier moved it either way under load
+    (GOH.LONGPOLEFLAKE); a median of several short ones is held by the middle of them."""
+    ordered = sorted(walls)
+    mid = (
+        ordered[len(ordered) // 2]
+        if len(ordered) % 2
+        else sum(ordered[len(ordered) // 2 - 1 :][:2]) / 2
+    )
+    return max(1.0, mid / (REFERENCE_CPU_S * speed_factor()))
 
 
 def pole_stretch() -> float:
     """How many times longer than on a quiet core of this box this thread runs CPU work now."""
-    t0 = time.perf_counter()
-    for _ in range(POLE_PROBE_LOOPS):
+    walls = []
+    for _ in range(POLE_PROBE_SAMPLES):
+        t0 = time.perf_counter()
         _loop()
-    took = time.perf_counter() - t0
-    return max(1.0, took / (POLE_PROBE_LOOPS * REFERENCE_CPU_S * speed_factor()))
+        walls.append(time.perf_counter() - t0)
+    return stretch_of(walls)
 
 
 def _cpu_s() -> float:
