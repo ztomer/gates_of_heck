@@ -246,12 +246,11 @@ land_pre() {
         fi
     fi
     pre_wall=$((${pre_wall:-0} + pre_t1 - pre_t0))
-    pre_took="in $((pre_t1 - pre_t0)) s: waited $((pre_s - pre_t0)) s, ran $((pre_t1 - pre_s)) s of ${pre_limit:-?} s at ${pre_workers:-?} workers"
+    pre_took="in $((pre_t1 - pre_t0)) s: waited $((pre_s - pre_t0)) s, ran $((pre_t1 - pre_s)) s of ${pre_limit:-?} s at ${pre_workers:-?} workers"; land_pre_took "$((pre_s - pre_t0))" "$((pre_t1 - pre_s))"
     # A run that reached a verdict is the ledger's measure of what the set costs (lib/pre_deadline.py WORK).
     if [ "$pre_rc" -ne 124 ] && [[ "$pre_workers" =~ ^[0-9]+$ ]]; then
         pre_run=$((pre_t1 - pre_s))
     fi
-    land_pre_took "$((pre_s - pre_t0))" "$((pre_t1 - pre_s))"
     # A pre-step that reached its deadline (load.py's EXIT_DEADLINE, 124) found nothing: it exists
     # to fail FAST, and the gate runs the whole suite anyway -- no verdict, never red
     # (GOH.PRESTEPDEADLINE: GOH.REUSEAUDIT's land, killed at 82% of a green-so-far run).
