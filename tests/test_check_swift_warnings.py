@@ -12,6 +12,9 @@ from pathlib import Path
 
 from conftest import REPO_ROOT
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("checks/check_swift_warnings.py",)
+
 CHECK = "checks/check_swift_warnings.py"
 ESC = "\x1b"
 

@@ -26,6 +26,9 @@ from conftest import REPO_ROOT, hermetic_env, native_goh_path
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import hook_currency  # the one reading `goh hooks` asks
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("hooks/",)
+
 # name -> (commit, hook): retired stock copies that delegate to the runtime gate, each a hook-body
 # change that stranded consumers once it was retired untagged.
 ESTATE = {"one": ("18330c7", "pre-commit"), "two": ("7c285e5", "pre-commit"),

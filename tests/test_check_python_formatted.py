@@ -28,6 +28,9 @@ from conftest import REPO_ROOT, commit_all, stage, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 from timing_bounds import assert_sooner
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("checks/check_python_formatted.py",)
+
 _PIN = pin("ruff")
 
 CHECK = "checks/check_python_formatted.py"

@@ -23,6 +23,9 @@ import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT as ROOT
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("checks/",)
+
 CHECK = ROOT / "checks" / "check_display_seam.py"
 PROBE = ROOT / "checks" / "_display_seam_probe.py"
 MARKER = ROOT / "checks" / "_marker_reason.py"

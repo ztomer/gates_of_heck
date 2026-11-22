@@ -14,6 +14,9 @@ import subprocess
 import pytest
 from conftest import REPO_ROOT
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("launchagents/",)
+
 pytestmark = pytest.mark.skipif(shutil.which("plutil") is None, reason="plutil is macOS only")
 
 TOOLS = REPO_ROOT / "tools"

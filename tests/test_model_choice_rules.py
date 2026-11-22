@@ -24,6 +24,9 @@ from conftest import REPO_ROOT, hermetic_env
 sys.path.insert(0, str(REPO_ROOT / "hooks" / "claude"))
 import model_choice
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("scripts/",)
+
 RULES_FILE = REPO_ROOT / "hooks" / "claude" / "model_choice.json"
 RULES = json.loads(RULES_FILE.read_text(encoding="utf-8"))
 GUARD = REPO_ROOT / "hooks" / "claude" / "agent_guard.py"

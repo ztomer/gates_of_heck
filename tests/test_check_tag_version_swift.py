@@ -29,6 +29,9 @@ sys.path.insert(0, str(REPO_ROOT / "checks"))
 from _fast_git import fast_init
 from _tag_version_kit import extract
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("checks/check_tag_version.py",)
+
 CHECKER = "checks/check_tag_version.py"
 ZERO = "0" * 40
 

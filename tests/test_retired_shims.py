@@ -19,6 +19,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "checks"))
 from _retired import NATIVE, SHIMS
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("checks/",)
+
 PAIRS = [(stem, NATIVE[stem]) for stem in SHIMS]
 
 

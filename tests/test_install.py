@@ -15,6 +15,9 @@ import subprocess
 
 from conftest import EMOJI_SMILE, REPO_ROOT, git, hermetic_env, write
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("hooks/",)
+
 
 def _install(target, *args):
     return subprocess.run(

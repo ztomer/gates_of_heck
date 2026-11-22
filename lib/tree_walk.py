@@ -240,7 +240,11 @@ def imported(tree: ast.Module, walking: Walking) -> tuple[set[str], dict[str, Gi
         if isinstance(node, ast.ImportFrom) and node.module in walking:
             w = walking[node.module]
             for a in node.names:
-                kind = ROOT if MODULE in w or a.name == "*" else w.get(a.name)
+                if a.name == "*":  # every def it walks with, under its own name
+                    roots |= {n for n, k in w.items() if k == ROOT}
+                    given |= {n: k for n, k in w.items() if isinstance(k, Given)}
+                    continue
+                kind = ROOT if MODULE in w else w.get(a.name)
                 if kind == ROOT:
                     roots.add(a.asname or a.name)
                 elif isinstance(kind, Given):

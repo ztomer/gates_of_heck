@@ -21,6 +21,9 @@ from _hook_goh import hook_goh
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = (".githooks/", "hooks/")
+
 HOOKS = ("commit-msg", "post-rewrite", "pre-applypatch", "pre-commit", "pre-push")
 # The shim's ABI. Changing the shim is the ONE change that needs every consumer refreshed (`goh
 # hooks --refresh`), so it is deliberate: retire the old bytes in retired_hooks.sha256, then move

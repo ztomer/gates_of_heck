@@ -33,6 +33,9 @@ from pathlib import Path
 
 from conftest import REPO_ROOT
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("gates/required_tools.tsv",)
+
 MANIFEST = "gates/required_tools.tsv"
 EXEMPT = {
     MANIFEST: "the manifest",

@@ -42,8 +42,12 @@ from __future__ import annotations
 import ast
 import fnmatch
 import functools
+import io
 import re
+import tokenize
 from pathlib import Path
+
+from lib import tree_walk
 
 ROOTS = frozenset({"REPO_ROOT", "ROOT", "GOH_DIR", "GOH_ROOT"})
 GLOBS = frozenset({"glob", "rglob", "iterdir"})
@@ -93,9 +97,14 @@ def declared(text: str) -> tuple[str, ...]:
 
 def inferred(text: str, root: Path) -> set[str]:
     """The read patterns the file's spelled directory reads give away (see INFERRED)."""
+    return set(_inferred_at(text, root))
+
+
+def _inferred_at(text: str, root: Path) -> dict[str, set[int]]:
+    """{inferred pattern: the lines it is read on}."""
     tree = _parse(text)
     if tree is None:
-        return set()
+        return {}
     names: dict[str, str] = {}
     for node in tree.body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1:
@@ -107,7 +116,7 @@ def inferred(text: str, root: Path) -> set[str]:
         found = names.get(node.id) if isinstance(node, ast.Name) else _chain(node)
         return found if found not in (None, DYNAMIC) and (root / found).is_dir() else None
 
-    out: set[str] = set()
+    out: dict[str, set[int]] = {}
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -116,15 +125,16 @@ def inferred(text: str, root: Path) -> set[str]:
         if name in GLOBS and isinstance(fn, ast.Attribute) and (d := where(fn.value)):
             arg = node.args[0] if node.args else None
             pat = arg.value if isinstance(arg, ast.Constant) and isinstance(arg.value, str) else ""
-            out.add(f"{d}/{pat}" if pat and name != "iterdir" else f"{d}/")
+            key = f"{d}/{pat}" if pat and name != "iterdir" else f"{d}/"
+            out.setdefault(key, set()).add(node.lineno)
         elif name in WHOLE and node.args and (d := where(node.args[0])):
-            out.add(f"{d}/")
+            out.setdefault(f"{d}/", set()).add(node.lineno)
     for node in ast.walk(tree):  # `FIXTURES / name`: some file under a spelled directory
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
             right = node.right
             literal = isinstance(right, ast.Constant) and isinstance(right.value, str)
             if not literal and (d := where(node.left)):
-                out.add(f"{d}/")
+                out.setdefault(f"{d}/", set()).add(node.lineno)
     return out
 
 
@@ -243,3 +253,78 @@ def choose(root: Path, tests: dict[str, str], changed: list[str], chosen: dict[s
             if hit := next((p for p in changed if matches(pattern, p)), None):
                 chosen[rel] = f"reads {pattern} ({hit})" + (f" through {via}" if via else "")
                 break
+
+
+# A run that reads the whole checkout, whatever names it: a listing, a grep, a tool run in it. No
+# spelling says what such a run reads, so a reader making one judges every diff.
+WHOLE_RUN = re.compile(
+    r"ls-files|ls_files|ls-tree|ls_tree|[\"']grep[\"']|git grep"
+    r"|cwd=(?:str\()?(?:REPO_ROOT|ROOT|GOH_DIR|GOH_ROOT)\)?\s*[,)]"
+)
+
+
+def unexplained(text: str, root: Path) -> list[int]:
+    """The lines of TEXT's walks of the tree that no spelled read explains: a whole-checkout run
+    (WHOLE_RUN), or a tree walk (lib/tree_walk.py TREE_READ) whose line holds no INFERRED read."""
+    explained = set().union(*_inferred_at(text, root).values())
+    walk = tree_walk.TREE_READ
+    return [
+        i
+        for i, line in enumerate(_code(text), 1)
+        if WHOLE_RUN.search(line) or (walk.search(line) and i not in explained)
+    ]
+
+
+def _code(text: str) -> list[str]:
+    """TEXT's lines with its prose blanked -- comments and docstrings (a string standing alone as
+    a statement) -- so a walk a docstring describes is no walk. Unparsable text is kept whole."""
+    lines = text.splitlines()
+    tree = _parse(text)
+    if tree is None:
+        return lines
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+            for i in range(node.lineno - 1, node.end_lineno or node.lineno):
+                lines[i] = ""
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+            if tok.type == tokenize.COMMENT:
+                row, col = tok.start
+                lines[row - 1] = lines[row - 1][:col]
+    except (tokenize.TokenError, SyntaxError):
+        pass
+    return lines
+
+
+def standing(graph, test: str, text: str, root: Path, walking: tree_walk.Walking) -> str | None:
+    """Why the tree reader TEST still judges every diff at the enqueue (GOH.JUDGESBYREADS), or None
+    when all it reads is known -- spelled, inferred or declared -- so the enqueue runs it only for a
+    diff its reads cover (`choose`, with the rest of the selection). It stands when it
+    walks the tree where no spelling says what (`unexplained`), reaches a tests/ helper's walk of
+    the root, joins the root with a non-literal and declares no TREE_READS (gates/
+    undeclared_reads.txt), points the root at anything but scanners that declare TREE_READS, or
+    reaches a tests/ helper doing one of these. The land gate runs every tree reader whatever."""
+    if lines := unexplained(text, root):
+        return f"walks the tree at line {lines[0]}, where no spelling says what"
+    if via := tree_walk.reaches(text, walking):
+        return f"reaches {via}'s walk of the root"
+    if dynamic(text) and not declared(text):
+        return "joins the root with a non-literal part and declares no TREE_READS"
+    for node, _by in _chains(graph, test):
+        if not node.startswith("tests/"):
+            continue
+        seen = _seen(graph, test, node)
+        if tree_walk.ROOT in tree_walk.walks(seen).values() or WHOLE_RUN.search(seen):
+            return f"reaches {node}, which walks the tree"
+        if drives_root(seen) and not declared(seen):
+            return f"reaches {node}, which points something at the root"
+        if dynamic(seen) and not declared(seen):
+            return f"reaches {node}, which joins the root with a non-literal part"
+    if drives_root(text):  # what it points at the root reads what it is pointed at
+        scanners = driven(graph, test)
+        if not scanners:
+            return "points the root at code of its own (a git run, a local helper)"
+        for node in scanners:
+            if not declared(graph.texts[node]):
+                return f"points {node} at the root, and {node} declares no TREE_READS"
+    return None

@@ -16,6 +16,9 @@ from _fast_git import fast_init
 from _tree_clone import from_template
 from conftest import REPO_ROOT
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("gates/",)
+
 STAMP = REPO_ROOT / "lib" / "tree_stamp.py"
 
 

@@ -18,6 +18,9 @@ import pytest
 from _tree_clone import template
 from conftest import REPO_ROOT, hermetic_env
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("gates/",)
+
 
 def path_without(tool: str, factory) -> str:
     """A PATH that finds every executable the real PATH does, except `tool`: each PATH directory

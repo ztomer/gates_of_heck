@@ -20,6 +20,9 @@ from conftest import REPO_ROOT, hermetic_env, run_goh
 sys.path.insert(0, str(REPO_ROOT / "hooks" / "claude"))
 import agent_stalls as st
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("launchagents/",)
+
 NOW = 1_800_000_000.0
 SCRIPT = REPO_ROOT / "hooks" / "claude" / "agent_stalls.py"
 # The real process table stays out: a hung shell elsewhere on the machine is not this test's.

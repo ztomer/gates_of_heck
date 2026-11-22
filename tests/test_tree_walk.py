@@ -117,3 +117,15 @@ def test_the_tree_clone_importers_are_judges_only_by_their_own_reads() -> None:
     assert "tests/test_wall_clock_ratchet.py" in readers
     nodes = at.affected(REPO_ROOT, [])
     assert "tests/test_proven.py" not in _files(nodes)  # it copies gates/ lib/: reads those
+
+
+def test_a_star_import_brings_each_walking_def_under_its_own_name(tmp_path) -> None:
+    root = _tree(
+        tmp_path,
+        {
+            "tests/_cloner.py": CLONER,
+            "tests/test_c.py": "from _cloner import *\n\ndef test_a():\n    scrub(REPO_ROOT)\n\n"
+            "def test_b(tmp_path):\n    scrub(tmp_path)\n",
+        },
+    )
+    assert list(at.affected(root, [])) == ["tests/test_c.py::test_a"]

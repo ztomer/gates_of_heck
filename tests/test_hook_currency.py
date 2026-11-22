@@ -15,6 +15,9 @@ import subprocess
 import pytest
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("hooks/",)
+
 
 def _git(*args: str) -> str:
     return subprocess.run(

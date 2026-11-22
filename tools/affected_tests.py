@@ -24,8 +24,8 @@ THE SET is the union of
     `os.walk(`, a glob or iterdir of a REPO_ROOT directory), or reaches a tests/ helper's walk OF
     THE ROOT -- importing a helper that walks only what it is handed (tests/_tree_clone.py's
     templates) is no tree read (lib/tree_walk.py, GOH.CLONENOTJUDGE) -- plus ALWAYS (readers no
-    pattern sees). A changed path
-    can break a tree reader whatever it names, so they run on every land.
+    pattern sees). A changed path can break a tree reader whatever it names, so the land gate
+    runs them all; the enqueue runs one whose reads are known only for a diff touching them.
   * the TRANSITIVE closure of each test (GOH.AFFECTEDTRANSITIVE): what a test imports, what that
     imports (tests/ helpers, checks/, lib/, tools/ modules: lib/source_closure.py reads the
     edges, the one dependency reader), and a script it names by path with what that script sources
@@ -124,6 +124,7 @@ def _module_names(path: str) -> set[str]:
     return {".".join(p.with_suffix("").parts), p.stem}
 
 
+standing = declared_reads.standing  # why a tree reader judges every diff at the enqueue
 # The one naming rule (lib/source_closure.py): the `named` edge of a proven step's closure too.
 _names_path = source_closure.names_path
 
@@ -242,7 +243,9 @@ def tree_readers(root: Path, tests: dict[str, str] | None = None) -> dict[str, s
     return found
 
 
-def readers(root: Path, changed: list[str], tests: dict[str, str] | None = None) -> dict[str, str]:
+def readers(
+    root: Path, changed: list[str], tests: dict[str, str] | None = None, graph=None
+) -> dict[str, str]:
     """{test file: why} for the tests that READ a path in `changed` -- every rule of THE SET but
     the tree readers' standing run: the one notion of "a test reads this path", which the land's
     verdict reuse asks too (lib/pre_reuse.py, GOH.PRELANDTWICE)."""
@@ -265,7 +268,7 @@ def readers(root: Path, changed: list[str], tests: dict[str, str] | None = None)
                 chosen[rel] = f"names {path}"
                 break
     if changed:
-        graph = Closure(root)
+        graph = Closure(root) if graph is None else graph
         for rel in tests:
             if rel not in chosen and (why := _transitive(graph, rel, changed)):
                 chosen[rel] = why
@@ -274,16 +277,22 @@ def readers(root: Path, changed: list[str], tests: dict[str, str] | None = None)
     return chosen
 
 
-def affected(root: Path, changed: list[str]) -> dict[str, str]:
+def affected(root: Path, changed: list[str], enqueue: bool | None = None) -> dict[str, str]:
     """{test file or node id: why it runs before the land} for a change to `changed` (paths from
     `root`). A file the diff chooses runs whole; a tree reader the diff does not choose runs only
-    its reading tests (`reader_nodes`), whole when they cannot be told apart."""
+    its reading tests (`reader_nodes`), whole when they cannot be told apart. At the ENQUEUE
+    (GOH_LAND_PRE_ONLY; GOH.JUDGESBYREADS) a reader whose reads are known (lib/declared_reads.py
+    `standing`) runs only when chosen by the diff; the land gate runs every tree reader."""
+    enqueue = bool(os.environ.get("GOH_LAND_PRE_ONLY")) if enqueue is None else enqueue
     tests = _tests(root)
-    chosen = readers(root, changed, tests)
+    graph = Closure(root) if enqueue else None
+    chosen = readers(root, changed, tests, graph)
     walking = _walking(root)
     for rel, why in tree_readers(root, tests).items():
         if rel in chosen:
             continue  # chosen whole by the diff
+        if graph and rel not in ALWAYS and not standing(graph, rel, tests[rel], root, walking):
+            continue  # its reads are known, and the diff touches none of them
         nodes = None if rel in ALWAYS else reader_nodes(tests[rel], walking)
         if nodes is None:
             chosen[rel] = why
@@ -319,8 +328,8 @@ def main(argv: list[str]) -> int:
     )
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
-    if args.run and (rc := fast_tests.run(root, affected(root, []))):
-        return rc  # the cheap judges, before the diff is even read (GOH.PRESTEPFAILFAST)
+    if args.run and (rc := fast_tests.run(root, affected(root, [], enqueue=False))):
+        return rc  # every cheap judge, before the diff is read (GOH.PRESTEPFAILFAST): seconds
     changed = args.changed if args.changed is not None else changed_paths(root, args.base)
     chosen = (
         dict(sorted(readers(root, changed).items()))

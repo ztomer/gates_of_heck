@@ -27,6 +27,9 @@ from _hook_goh import hook_goh
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
 from env_probe import probe_sh, read_probe
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("hooks/",)
+
 HOOKS = {
     "pre-commit": "commit_gate.sh",
     "pre-push": "push_gate.sh",

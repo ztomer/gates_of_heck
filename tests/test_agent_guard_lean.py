@@ -24,6 +24,9 @@ from test_claude_agent_guard import (
     _spawn,
 )
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("hooks/claude/agents/",)
+
 LEAN = RULES.lean
 
 

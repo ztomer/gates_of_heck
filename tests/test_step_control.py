@@ -26,6 +26,9 @@ sys.path.insert(0, str(LIB))
 import step_control
 import step_timings
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("gates/",)
+
 
 def _row(label: str, cpu_ms: float, kind: str = "", control: bool = False) -> dict:
     row = {"label": label, "ms": cpu_ms, "rc": 0, "tier": "step", "parent": "", "cwd": "/r"}

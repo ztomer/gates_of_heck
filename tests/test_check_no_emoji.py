@@ -22,6 +22,9 @@ from conftest import (
     write,
 )
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("checks/check_no_emoji.py",)
+
 SCRIPT = "checks/check_no_emoji.py"
 
 

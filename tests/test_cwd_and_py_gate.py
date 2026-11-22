@@ -15,6 +15,9 @@ from _gatesrc_kit import write_gatesrc
 from _tool_versions import pin
 from conftest import REPO_ROOT, write
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("gates/structural.sh",)
+
 # The ruff release goh's Python gates accept: the manifest's pin (GOH.CLASS.PARITY).
 _RUFF_PIN = pin("ruff")
 

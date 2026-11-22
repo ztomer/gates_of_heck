@@ -11,6 +11,9 @@ import subprocess
 from _gatesrc_kit import write_gatesrc
 from conftest import EMOJI_SMILE, REPO_ROOT, run_gate, stage, write
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("gates/structural.sh",)
+
 STRUCTURAL = "gates/structural.sh"
 
 ALLOWED_GLYPHS_RE = re.compile(r"[→·✓✗⚠↔↑↓←⌘⌥⌨]")

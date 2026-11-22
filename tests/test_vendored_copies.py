@@ -16,6 +16,9 @@ from pathlib import Path
 
 from conftest import REPO_ROOT, commit_all, git, hermetic_env, write
 
+# What its joins of the root with a variable read (lib/declared_reads.py).
+TREE_READS = ("tui/",)
+
 LABEL = "no vendored copies of house files"
 
 
