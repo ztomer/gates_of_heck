@@ -1,4 +1,6 @@
-"""No test every enqueue runs is longer than 30 s, or says why (GOH.PRELONGPOLE, lib/long_pole.py).
+"""No test every enqueue runs reads over 60 s, or says why (GOH.PRELONGPOLE, lib/long_pole.py).
+
+30 s is the target `report` holds it to; 60 s is the ratchet, because the table is a last run's.
 
 The enqueue's pre-step cannot finish before its longest test does, at any worker count: on
 2026-11-21 tests/test_self_walk.py (147 s) and tests/test_land_check.py (98 s) ran at every
@@ -35,33 +37,40 @@ def _tree(tmp_path: Path) -> Path:
 
 
 def test_a_test_over_the_limit_is_red_and_one_under_it_is_green() -> None:
-    assert lp.judge({SLOW: 29.9}, {}) == []
-    (red,) = lp.judge({SLOW: 30.1}, {})
-    assert SLOW in red and "30.1 s over 30 s" in red and "declare its reads" in red
+    assert lp.judge({SLOW: 59.9}, {}) == []
+    (red,) = lp.judge({SLOW: 60.1}, {})
+    assert SLOW in red and "60.1 s over 60 s" in red and "declare its reads" in red
+    assert lp.judge({SLOW: 31.0}, {}) == [], "30-60 s is the report's, not the ratchet's"
 
 
 def test_an_allowance_holds_its_file_to_its_own_limit() -> None:
     allow = {"tests/test_slow.py": {"limit_s": 150, "why": "two walks"}}
     assert lp.judge({SLOW: 100.0}, allow) == []
     assert len(lp.judge({SLOW: 150.5}, allow)) == 1, "an allowance is a ceiling, not a licence"
-    assert len(lp.judge({SLOW: 100.0, "tests/test_other.py::test_b": 31.0}, allow)) == 1
+    assert len(lp.judge({SLOW: 100.0, "tests/test_other.py::test_b": 61.0}, allow)) == 1
 
 
-def test_an_allowance_that_no_longer_earns_its_place_is_red() -> None:
+def test_an_allowance_for_a_file_the_set_no_longer_runs_is_red_and_a_fast_run_is_not() -> None:
     allow = {"tests/test_slow.py": {"limit_s": 150, "why": "two walks"}}
-    (red,) = lp.judge({SLOW: 12.0}, allow)
-    assert "every test is under 15 s now: delete the entry" in red
-    # a last run's number is under that run's load: 20 s is no proof the file was cut
-    assert lp.judge({SLOW: 20.0}, allow) == []
     (red,) = lp.judge({"tests/test_fast.py::test_c": 1.0}, allow)
     assert "no longer runs it: delete the entry" in red
+    # The table is a last run's, under that run's load: the land gate's own run read a file at 8 s
+    # that a 16-worker pre-step read at 33 s (the first land of this ratchet went red on it).
+    assert lp.judge({SLOW: 12.0}, allow) == []
+    assert lp.judge({SLOW: 20.0}, allow) == []
+
+
+def test_the_report_names_an_allowance_that_may_go() -> None:
+    allow = {"tests/test_slow.py": {"limit_s": 150, "why": "w"}}
+    assert lp.report({SLOW: 12.0}, allow=allow)[-1].startswith("  allowance for tests/test_slow.py")
+    assert not any("allowance" in line for line in lp.report({SLOW: 20.0}, allow=allow))
 
 
 def test_an_allowance_with_no_why_or_no_room_is_red() -> None:
-    reds = lp.judge({SLOW: 40.0}, {"tests/test_slow.py": {"limit_s": 60}})
+    reds = lp.judge({SLOW: 40.0}, {"tests/test_slow.py": {"limit_s": 90}})
     assert reds == ["tests/test_slow.py: the allowance carries no why"]
-    reds = lp.judge({SLOW: 40.0}, {"tests/test_slow.py": {"limit_s": 30, "why": "w"}})
-    assert any("no allowance over 30 s" in r for r in reds), reds
+    reds = lp.judge({SLOW: 40.0}, {"tests/test_slow.py": {"limit_s": 60, "why": "w"}})
+    assert any("no allowance over 60 s" in r for r in reds), reds
 
 
 def test_the_cases_of_a_parametrized_test_are_judged_one_by_one() -> None:
@@ -110,7 +119,7 @@ def test_the_allowance_file_is_well_formed() -> None:
     assert set(json.loads(lp.ALLOW.read_text())) == set(allow)
 
 
-def test_no_test_every_enqueue_runs_takes_longer_than_30_s_but_the_allowed() -> None:
+def test_no_test_every_enqueue_runs_takes_longer_than_60_s_but_the_allowed() -> None:
     """The real tree: the standing set (the selector's, on an empty diff) against the suite's own
     duration table. Red here is a test that every land's pre-step now waits for."""
     # The table this run read at its start (tests/_schedule.py): tools/pytest.sh hands its path to

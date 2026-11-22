@@ -1,6 +1,6 @@
 """lib/long_pole.py -- the longest test every enqueue runs (GOH.PRELONGPOLE).
 
-    long_pole.py [--root DIR] [--limit S]    # the longest test, the serial sum, the offenders
+    long_pole.py [--root DIR] [--limit S] [--check]    # the longest test, the sum, the offenders
 
 THE STANDING SET is what `goh land --enqueue`'s pre-step chooses for an EMPTY diff
 (`tools/affected_tests.py` `affected(root, [], enqueue=True)`): the judges whose reads are not
@@ -16,11 +16,15 @@ case is a test of its own. A cached id the tree no longer defines is not judged 
 a deleted file, never a deleted function), and an id with no parameters beside the same function's
 parametrized ones is the stale one from before the split.
 
-THE RATCHET is `tests/long_pole_allow.json`: file -> {"limit_s", "why"}, today's tests over the
-LIMIT_S that could not be cut yet. It only shrinks (tests/test_long_pole.py): a test over its
-file's limit, or over LIMIT_S with no entry, is red; an entry for a file the standing set no longer
-holds, or whose tests are all under half the LIMIT_S, is stale and red (the table is a last run's,
-under that run's load: see STALE_BELOW).
+THE RATCHET is `tests/long_pole_allow.json`: file -> {"limit_s", "why"}, today's tests over RED_S
+that could not be cut yet (the ones over LIMIT_S, the target, are `report`'s). It only shrinks
+(tests/test_long_pole.py): a test over its file's limit, or over RED_S with no entry, is red; an
+entry for a file the standing set no longer holds is stale and red. An entry whose tests all run
+fast is NOT stale-red: the table is each test's LAST run, under that run's load (a 16-worker
+pre-step triples some tests: 14 s alone, 47 s in it, and the land gate's own run read one file at
+8 s), so "cut" cannot be read from one number; `report` names such an entry for a person to delete.
+The first two lands of this ratchet (2026-11-21) went red on exactly that: a line at the target
+flapped with the load of the last run, and RED_S is the line a reading cannot cross by load alone.
 """
 
 from __future__ import annotations
@@ -42,11 +46,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-LIMIT_S = 30.0  # the most one test of the standing set may take, measured
-# The table holds each test's LAST run, taken under whatever load that run had (a pre-step at 16
-# workers doubles a test that takes 16 s alone), so an allowance goes stale only when its file is
-# CLEARLY cut: every test under this share of the limit. Nearer the line it is noise, not a cut.
-STALE_BELOW = 0.5
+LIMIT_S = 30.0  # the target: what `report` calls long, and what the 10-minute land plan wants
+# The RATCHET's red line. The table is each test's LAST run, under that run's load: a 16-worker
+# pre-step reads a test at up to three times its time alone (14 s alone, 47 s in it) and the land
+# gate's own run read the same file at 8 s, so a hard line AT the target flapped red and green on
+# the load of the last run (the first two lands of this ratchet, 2026-11-21). A test read over
+# this is over the target by any load.
+RED_S = 60.0
 ALLOW = ROOT / "tests" / "long_pole_allow.json"
 
 
@@ -103,7 +109,7 @@ def load_allow(path: Path = ALLOW) -> dict[str, dict]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def judge(cases: dict[str, float], allow: dict[str, dict], limit: float = LIMIT_S) -> list[str]:
+def judge(cases: dict[str, float], allow: dict[str, dict], limit: float = RED_S) -> list[str]:
     """Every way the standing set breaks the ratchet; empty is green."""
     reds: list[str] = []
     files = {_split(n)[0] for n in cases}
@@ -114,10 +120,6 @@ def judge(cases: dict[str, float], allow: dict[str, dict], limit: float = LIMIT_
             reds.append(f"{rel}: limit_s {entry.get('limit_s')} is no allowance over {limit:g} s")
         if rel not in files:
             reds.append(f"{rel}: the standing set no longer runs it: delete the entry")
-        elif all(s <= limit * STALE_BELOW for n, s in cases.items() if _split(n)[0] == rel):
-            reds.append(
-                f"{rel}: every test is under {limit * STALE_BELOW:g} s now: delete the entry"
-            )
     for nodeid, seconds in sorted(cases.items(), key=lambda kv: -kv[1]):
         rel = _split(nodeid)[0]
         cap = float(allow.get(rel, {}).get("limit_s", limit))
@@ -136,7 +138,9 @@ def check(root: Path = ROOT, table: dict[str, float] | None = None) -> list[str]
     return judge(cases, load_allow(root / "tests" / ALLOW.name))
 
 
-def report(cases: dict[str, float], limit: float = LIMIT_S) -> list[str]:
+def report(
+    cases: dict[str, float], limit: float = LIMIT_S, allow: dict[str, dict] | None = None
+) -> list[str]:
     """The longest single test, the serial sum and the tests over the limit, as lines."""
     if not cases:
         return ["no measured test in the standing set"]
@@ -150,19 +154,24 @@ def report(cases: dict[str, float], limit: float = LIMIT_S) -> list[str]:
         for n, s in sorted(cases.items(), key=lambda kv: -kv[1])
         if s > limit
     ]
+    for rel in allow or {}:
+        mine = [s for n, s in cases.items() if _split(n)[0] == rel]
+        if mine and max(mine) <= limit / 2:
+            lines.append(f"  allowance for {rel} may go: its slowest test took {max(mine):.1f} s")
     return lines
 
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--root", default=str(ROOT))
-    ap.add_argument("--limit", type=float, default=LIMIT_S)
+    ap.add_argument("--limit", type=float, default=LIMIT_S, help="the target `report` lists over")
     ap.add_argument("--check", action="store_true", help="the ratchet: exit 1 on any red")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     cases = measured(root, standing(root), _fast().load())
-    print("\n".join(report(cases, args.limit)))
-    reds = judge(cases, load_allow(root / "tests" / ALLOW.name), args.limit) if args.check else []
+    allow = load_allow(root / "tests" / ALLOW.name)
+    print("\n".join(report(cases, args.limit, allow)))
+    reds = judge(cases, allow) if args.check else []
     print("\n".join(f"✗ {r}" for r in reds))
     return 1 if reds else 0
 
