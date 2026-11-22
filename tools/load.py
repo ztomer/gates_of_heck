@@ -124,7 +124,12 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(load_priority.ESCAPE_FLAG, metavar="REASON", help=load_priority.HELP)
     parser.add_argument(load_locks.ESCAPE_FLAG, metavar="REASON", help=load_locks.HELP)
     parser.add_argument("rest", nargs=argparse.REMAINDER, help="N -- COMMAND [ARG...]")
-    return parser.parse_args(argv)
+    opts = parser.parse_args(argv)
+    after = opts.rest[1:] if opts.rest[:1] == ["--"] else opts.rest
+    flag = after[1] if len(after) > 1 and after[1].startswith("-") and after[1] != "--" else ""
+    if flag:  # no command starts with a dash: a load.py option after N (GOH.LOADARGORDER)
+        parser.error(f"{flag} after N: options go before N ({flag} ... N -- COMMAND)")
+    return opts
 
 
 def parse_duration(text: str, flag: str = "--max") -> float:
