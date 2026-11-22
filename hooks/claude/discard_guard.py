@@ -33,8 +33,8 @@ THE BUSY-WAIT (G16, 2026-10-26), A `while`/`until` of ANY condition whose body d
 nothing (`until [ -f ready ]; do :; done`) is refused too, foreground or background: it re-tests the
 condition as fast as the CPU allows, pinning a core and hanging the shell, with no orphan needed. An
 agent ran one and the spinner-shaped rule above let it through (its condition was not `:`). The way
-forward is a loop that sleeps, run through Monitor; `tools/load.py` for deliberate load; the escape is
-`# load-ok: <reason>`. G17 (same day): the WRITE path judges the shape too, so a script that
+forward is a loop that sleeps, run through Monitor; `tools/load.py` for deliberate load; the escape
+is `# load-ok: <reason>`. G17 (same day): the WRITE path judges the shape too, so a script that
 busy-waits is refused when it is written, and the tracked-file check judges it at the commit.
 
 THE SELF-MATCHING WAIT (2026-11-01). `until ! pgrep -f "git push origin main"; do sleep 30; done`

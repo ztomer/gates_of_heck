@@ -10,6 +10,14 @@ missing from it, or higher than HEAD's, is a finding -- deleting the file or
 raising a number is how debt is reset, and a ceiling that can be reset proves nothing. A ceiling
 for a file the commit does not carry is stale and fails: its debt left with the file.
 
+AT COMMIT (`--view`) A FILE HEAD CARRIES IS JUDGED BY ITS DELTA (GOH.LINTDELTA): its findings are
+matched against HEAD's own (rule, message and the text of the line, as multisets), and any finding
+the change ADDS is red whatever the ceiling -- a new long line in a file with room under its count,
+or one that took the place of a finding the change fixed (hooks/claude/discard_guard.py:36 went in
+that way). Findings that predate the change are one counted line, never a failure: a file over its
+ceiling from a ruff bump no longer refuses every lane that touches it (65 lane reports re-named such
+findings). The push (no `--view`) still judges every file whole against its ceiling.
+
 ruff runs the repo's own rule set PLUS the house set (gates/ruff_house.py, RUFF.RULES): a seed
 counts both, so a repo adopting the house rules carries today's findings and adds none.
 
@@ -40,7 +48,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # the goh root: tui.lib
-from tui.lib import counted
+from tui.lib import counted, err, warn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # gates/: the house rule set
 from ruff_house import extend_select
@@ -82,6 +90,43 @@ def _ceilings_at(rev: str, path: str) -> dict[str, int] | None:
     if not isinstance(data, dict) or not all(isinstance(v, int) for v in data.values()):
         raise SystemExit(f'✗ {KEY}: {path} must be {{"path.py": count}}')
     return data
+
+
+def head_findings(runner: str, file: str) -> list[dict] | None:
+    """`file`'s findings at HEAD, judged under its own name (per-file rules apply); None when HEAD
+    has no such file."""
+    shown = _git("show", f"HEAD:{file}")
+    if shown.returncode != 0:
+        return None
+    cmd = [*shlex.split(runner), "ruff", "check", "--extend-select", extend_select()]
+    cmd += ["--output-format", "json", "--exit-zero", "--stdin-filename", file, "-"]
+    r = subprocess.run(cmd, input=shown.stdout, capture_output=True, text=True, check=False)
+    try:
+        return [dict(f, _line=_row(shown.stdout, f)) for f in json.loads(r.stdout or "[]")]
+    except json.JSONDecodeError:
+        err(f"ruff gave no report for HEAD:{file} (exit {r.returncode}): {r.stderr.strip()[:300]}")
+        raise SystemExit(2) from None
+
+
+def _row(text: str, finding: dict) -> str:
+    """The text of the line a finding is on (empty past the end)."""
+    lines = text.splitlines()
+    n = (finding.get("location") or {}).get("row") or 0
+    return lines[n - 1].strip() if 0 < n <= len(lines) else ""
+
+
+def added(live: list[dict], head: list[dict], text: str) -> list[dict]:
+    """The findings of `live` (the file's text `text`) that HEAD's `head` does not carry: matched
+    by rule, message and the line's text, as multisets, so a line that only moved still matches."""
+    have = collections.Counter((f["code"], f["message"], f["_line"]) for f in head)
+    out = []
+    for f in live:
+        k = (f["code"], f["message"], _row(text, f))
+        if have[k] > 0:
+            have[k] -= 1
+        else:
+            out.append(f)
+    return out
 
 
 def findings(runner: str, files: list[str]) -> dict[str, list[dict]]:
@@ -187,6 +232,23 @@ def check(
     found = findings(runner, files)
     for f in sorted(files):
         have, ceiling = len(found.get(f, [])), staged.get(f, 0)
+        head = head_findings(runner, f) if view else None
+        if head is not None:
+            new = added(found.get(f, []), head, Path(f).read_text(encoding="utf-8"))
+            if new:
+                problems.append(f"{f}: {counted(len(new), 'ruff finding')} this change adds")
+                problems += [
+                    f"    {f}:{x['location']['row']}:{x['location']['column']} "
+                    f"{x['code']} {x['message']}"
+                    for x in new
+                ]
+                continue
+            if have > ceiling:
+                warn(
+                    f"{f}: {counted(have, 'ruff finding')} predate this change (ceiling "
+                    f"{ceiling}): not judged at commit; the push judges the file whole"
+                )
+                continue
         if have > ceiling:
             problems.append(f"{f}: {counted(have, 'ruff finding')}, ceiling {ceiling}")
             problems += [
@@ -198,7 +260,10 @@ def check(
                 f"{f}: {counted(have, 'ruff finding')}, under its ceiling {ceiling} -- write {have} in {path}"
             )
     for p in problems:
-        print(f"✗ {p}" if not p.startswith(" ") else p, file=sys.stderr)
+        if p.startswith(" "):
+            print(p, file=sys.stderr)
+        else:
+            err(p)
     if problems:
         # The one command that reproduces this verdict (GOH.STAGEDNEW): a plain `ruff check` runs
         # the repo's rules without the house set and judges no ceiling, so it reads clean here.

@@ -60,7 +60,7 @@
   "hooks/claude/appstate.py": 2,
   "hooks/claude/ci_judge.py": 3,
   "hooks/claude/compact_nudge.py": 1,
-  "hooks/claude/discard_guard.py": 1,
+  "hooks/claude/discard_guard.py": 0,
   "hooks/claude/estate_advisories.py": 5,
   "hooks/claude/model_choice.py": 1,
   "hooks/claude/scratch_guard.py": 3,
