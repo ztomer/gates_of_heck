@@ -153,7 +153,7 @@ echo "$*" > "$root/bin/build-args"
 """
 
 
-def _git_env(repo: Path, *args: str, env: dict | None = None) -> subprocess.CompletedProcess:
+def _git_in(repo: Path, *args: str, env: dict | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
                           check=False, env=env or hermetic_env(drop_git=True),
                           stdin=subprocess.DEVNULL, timeout=patience(60))  # fmt: skip
@@ -173,22 +173,25 @@ def _goh_tree(root: Path) -> Path:
     (repo / ".gitignore").write_text("bin/\n")
     fast_init(repo)
     for kv in (("user.email", "t@t"), ("user.name", "t"), ("core.hooksPath", ".githooks")):
-        _git_env(repo, "config", *kv)
-    _git_env(repo, "add", "-A")
-    assert _git_env(repo, "commit", "-q", "--no-verify", "-m", "fixture").returncode == 0
+        _git_in(repo, "config", *kv)
+    _git_in(repo, "add", "-A")
+    assert _git_in(repo, "commit", "-q", "--no-verify", "-m", "fixture").returncode == 0
     return repo
 
 
-def _env(goh: Path, home: Path) -> dict:
-    return hermetic_env(drop_git=True, GOH_DIR=str(goh), HOME=str(home))
+def _worktree_add(repo: Path, goh: Path, home: Path, *args: str) -> subprocess.CompletedProcess:
+    """`git worktree add ARGS` in REPO with GOH_DIR at the goh copy, as a lane claim runs it."""
+    return subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", *args],
+                          capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
+                          env=hermetic_env(drop_git=True, GOH_DIR=str(goh), HOME=str(home)),
+                          timeout=patience(60))  # fmt: skip
 
 
 def test_a_lane_worktree_runs_its_bin_goh_at_once(tmp_path):
     goh = hook_goh(tmp_path / "goh")
     repo = _goh_tree(tmp_path)
     wt = tmp_path / "lanes" / "1" / "wt"
-    made = _git_env(repo, "worktree", "add", "-q", "-b", "lane-x", str(wt), "HEAD",
-                env=_env(goh, tmp_path / "home"))  # fmt: skip
+    made = _worktree_add(repo, goh, tmp_path / "home", "-b", "lane-x", str(wt), "HEAD")
     assert made.returncode == 0, made.stderr
     ran = subprocess.run([str(wt / "bin" / "goh"), "--version"], capture_output=True, text=True,
                          check=False, stdin=subprocess.DEVNULL)  # fmt: skip
@@ -200,8 +203,7 @@ def test_a_detached_export_worktree_builds_nothing(tmp_path):
     goh = hook_goh(tmp_path / "goh")
     repo = _goh_tree(tmp_path)
     wt = tmp_path / "export"
-    made = _git_env(repo, "worktree", "add", "-q", "--detach", str(wt), "HEAD",
-                env=_env(goh, tmp_path / "home"))  # fmt: skip
+    made = _worktree_add(repo, goh, tmp_path / "home", "--detach", str(wt), "HEAD")
     assert made.returncode == 0, made.stderr
     assert not (wt / "bin").exists(), made.stderr
 
@@ -209,11 +211,10 @@ def test_a_detached_export_worktree_builds_nothing(tmp_path):
 def test_another_repos_branch_checkout_builds_nothing(tmp_path):
     goh = hook_goh(tmp_path / "goh")
     repo = _goh_tree(tmp_path)
-    _git_env(repo, "rm", "-rq", "crates")
-    _git_env(repo, "commit", "-q", "--no-verify", "-m", "not goh")
+    _git_in(repo, "rm", "-rq", "crates")
+    _git_in(repo, "commit", "-q", "--no-verify", "-m", "not goh")
     wt = tmp_path / "lanes" / "2" / "wt"
-    made = _git_env(repo, "worktree", "add", "-q", "-b", "lane-y", str(wt), "HEAD",
-                env=_env(goh, tmp_path / "home"))  # fmt: skip
+    made = _worktree_add(repo, goh, tmp_path / "home", "-b", "lane-y", str(wt), "HEAD")
     assert made.returncode == 0, made.stderr
     assert not (wt / "bin").exists(), made.stderr
 
