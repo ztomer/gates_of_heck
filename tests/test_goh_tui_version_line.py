@@ -14,7 +14,6 @@ goh-tui, the workspace version is bumped the way a release bumps it, and the con
 `version.workspace = true` must go red, or the test could not tell the two setups apart.
 """
 
-import os
 import re
 import shutil
 import subprocess
@@ -85,10 +84,12 @@ def _release_bump(goh: Path) -> None:
 
 
 def _cargo(consumer: Path, *args: str) -> subprocess.CompletedProcess:
+    # the target dir on the command line, after the subcommand: an exported CARGO_* is in sccache's
+    # key (GOH.SCCACHEENV)
+    target = ["--config", f"build.target-dir='{consumer / 'target'}'"]
     return subprocess.run(
-        ["cargo", *args, "--offline", "--quiet"],
+        ["cargo", args[0], *target, *args[1:], "--offline", "--quiet"],
         cwd=consumer,
-        env={**os.environ, "CARGO_TARGET_DIR": str(consumer / "target")},
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,

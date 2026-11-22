@@ -105,7 +105,16 @@ def _crate_source(cache: Path) -> Path:
 def rust_plan(cache: Path) -> list[Run]:
     name, version = RUST_CRATE
     copies = [cache / "rust" / f"copy{i}" / f"{name}-{version}" for i in range(RUST_COPIES)]
-    return [Run(c, c.parent / "target", ["cargo", "clippy", "--offline", "-q"]) for c in copies]
+    # The target dir is an ARGUMENT, never CARGO_TARGET_DIR: sccache 0.19 hashes every CARGO_*
+    # variable rustc inherits into its key, a path per copy (GOH.SCCACHEENV).
+    return [
+        Run(
+            c,
+            c.parent / "target",
+            ["cargo", "clippy", "--offline", "-q", "--target-dir", str(c.parent / "target")],
+        )
+        for c in copies
+    ]
 
 
 def _prepare_rust(cache: Path) -> list[Run]:
@@ -133,7 +142,6 @@ def _run_all(plan: list[Run]) -> int:
                 subprocess.Popen(
                     r.argv,
                     cwd=r.cwd,
-                    env=dict(os.environ, CARGO_TARGET_DIR=str(r.target)),
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     stdin=subprocess.DEVNULL,

@@ -217,13 +217,43 @@ if _REAL_CARGO:
             '  for c in "$d/.cargo/config.toml" "$d/.cargo/config"; do\n'
             '  [ -f "$c" ] && grep -Eq "^[[:space:]]*build-dir[[:space:]]*=" "$c" && return 0; done; fi\n'
             '  [ "$d" = / ] && return 1; d="$(dirname "$d")"; done; }\n'
+            'bd=""; inc=""\n'
             f'case "$(cd "$dir" 2>/dev/null && pwd -P)/" in "{_ROOT.resolve()}/"*) ;; *) '
-            '[ -n "${CARGO_BUILD_BUILD_DIR:-}" ] || own_build_dir "$(cd "$dir" 2>/dev/null && pwd -P)" '
+            '[ -n "${CARGO_BUILD_BUILD_DIR:-}" ] '
+            '|| own_build_dir "$(cd "$dir" 2>/dev/null && pwd -P)" '
+            f"|| bd='{BUILD_DIR}/{{workspace-path-hash}}'\n"
             # ...and builds it whole, never incrementally (GOH.FSCHURN3): a throwaway is built once,
             # so an incremental session dir is only files to make and remove (and sccache caches
             # no incremental build).
-            f"|| export CARGO_BUILD_BUILD_DIR='{BUILD_DIR}/{{workspace-path-hash}}' "
-            '"CARGO_INCREMENTAL=${CARGO_INCREMENTAL:-0}" ;; esac\n'
+            '[ -n "${CARGO_INCREMENTAL:-}" ] || inc=1 ;; esac\n'
+            # ON THE COMMAND LINE, NEVER IN THE ENVIRONMENT (GOH.SCCACHEENV). sccache 0.19 hashes
+            # every CARGO_* variable rustc inherits into its key, and an exported build-dir is a
+            # path per run: 68% of the machine's Rust misses. Cargo keeps `--config` to itself.
+            # It goes right AFTER the subcommand's name, unless the caller put its own `--config`
+            # before it. Cargo 1.100 keeps one of the two lists: any `--config` after the name
+            # drops every one before it (an incremental session was still written), and `clippy`
+            # drops a list before its name, forwarding one after it to `cargo check` (probed).
+            # Any other external subcommand keeps the environment, a named deviation.
+            'c1=""; c2=""; c3=""; c4=""\n'
+            '[ -n "$bd" ] && c1=--config && c2="build.build-dir=\'$bd\'"\n'
+            '[ -n "$inc" ] && c3=--config && c4=build.incremental=false\n'
+            'if [ -n "$bd$inc" ]; then n=$#; prev=""; sub=""; pre=""\n'
+            "for a; do\n"
+            '  [ -z "$sub" ] && case "$a" in --config|--config=*) pre=1 ;; esac\n'
+            '  if [ -z "$sub" ]; then case "$prev" in -Z|--config|-C|--color) ;; *)\n'
+            '  case "$a" in -*|+*) ;; *) sub="$a"\n'
+            '    case "$a" in\n'
+            "    build|b|check|c|test|t|run|r|bench|doc|d|rustc|rustdoc|install|fix|metadata|tree"
+            "|clippy)\n"
+            '      if [ -n "$pre" ]; then set -- "$@" ${c1:+"$c1"} ${c2:+"$c2"} '
+            '${c3:+"$c3"} ${c4:+"$c4"} "$a"\n'
+            '      else set -- "$@" "$a" ${c1:+"$c1"} ${c2:+"$c2"} ${c3:+"$c3"} ${c4:+"$c4"}; fi\n'
+            '      prev="$a"; continue ;;\n'
+            '    *) [ -n "$bd" ] && export CARGO_BUILD_BUILD_DIR="$bd"\n'
+            '      [ -n "$inc" ] && export CARGO_INCREMENTAL=0 ;;\n'
+            "    esac ;; esac ;; esac; fi\n"
+            '  set -- "$@" "$a"; prev="$a"\n'
+            'done; shift "$n"; fi\n'
             'case " $* " in *" build "*|*" test "*|*" run "*|*" install "*) ;; '
             f'*) exec "{_REAL_CARGO}" "$@" ;; esac\n'
             f'[ -n "${{DRIFT_BUILD_OK:-}}" ] && exec "{_REAL_CARGO}" "$@"\n'

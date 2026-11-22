@@ -297,6 +297,83 @@ def test_a_throwaway_crate_builds_into_the_runs_own_build_dir(tmp_path: Path) ->
     assert units(named, "*/"), "a caller's own build dir was not kept"
 
 
+def _rustc_env_names(
+    crate: Path, wrapper_log: Path, argv: list[str], env: dict[str, str]
+) -> set[str]:
+    """The CARGO_* names rustc inherits when `argv` builds `crate`, read by a recording wrapper."""
+    wrapper = wrapper_log.with_suffix(".sh")
+    wrapper.write_text(
+        f'#!/bin/sh\nenv | grep -E "^(CARGO_|GOHPROBE=)" | cut -d= -f1 >> "{wrapper_log}"\n'
+        'exec "$@"\n',
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    r = subprocess.run(
+        argv,
+        cwd=crate,
+        capture_output=True,
+        text=True,
+        env={**env, "RUSTC_WRAPPER": str(wrapper)},
+        stdin=subprocess.DEVNULL,
+        check=False,
+    )
+    assert r.returncode == 0, r.stderr
+    assert wrapper_log.exists(), (
+        f"{argv}: the recording wrapper never ran, the instrument saw nothing"
+    )
+    return set(wrapper_log.read_text(encoding="utf-8").split())
+
+
+@pytest.mark.parametrize("sub", ["build", "clippy", "--config"])
+def test_the_shim_keeps_its_build_dir_out_of_rustcs_environment(tmp_path: Path, sub: str) -> None:
+    """The shim's build-dir and no-incremental reach cargo on its COMMAND LINE, never in the
+    environment rustc inherits (GOH.SCCACHEENV). sccache 0.19 hashes every CARGO_* variable it sees
+    into the Rust key; the exported per-run build-dir made every suite run's compiles a fresh key,
+    68% of the machine's Rust misses (design GOH.CACHEEVICT section 4, F1). A recording
+    RUSTC_WRAPPER stands in for sccache; the baseline is the real cargo on the same crate, so what
+    cargo and the user's `[env]` set is not charged to the shim. `--config`: a caller's own
+    `--config` before the subcommand survives the shim's (cargo keeps one list of the two)."""
+    import shutil
+    import uuid
+
+    if shutil.which("cargo") is None or _drift_guard._REAL_CARGO is None:
+        return
+    name = f"envprobe{uuid.uuid4().hex[:10]}"
+    crate = tmp_path / name
+    (crate / "src").mkdir(parents=True)
+    (crate / "Cargo.toml").write_text(
+        f'[package]\nname = "{name}"\nversion = "0.0.0"\nedition = "2021"\n', encoding="utf-8"
+    )
+    (crate / "src" / "lib.rs").write_text("pub fn f() {}\n", encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("CARGO_") or k == "CARGO_HOME"}
+    plain = _rustc_env_names(
+        crate,
+        tmp_path / "plain.log",
+        [
+            _drift_guard._REAL_CARGO,
+            "clippy" if sub == "clippy" else "build",
+            "-q",
+            "--config",
+            f"build.build-dir='{tmp_path / 'b'}'",
+        ],
+        env,
+    )
+    argv = ["cargo", sub, "-q"]
+    if sub == "--config":
+        argv = ["cargo", "--config", "env.GOHPROBE='1'", "build", "-q"]
+        sub = "build"
+    shimmed = _rustc_env_names(crate, tmp_path / "shim.log", argv, env)
+    if argv[1] == "--config":
+        assert "GOHPROBE" in shimmed, "the shim's --config dropped the caller's own"
+    added = sorted(shimmed - plain - {"GOHPROBE"})
+    assert not added, f"cargo {sub}: the shim put {added} in rustc's environment, into every key"
+    own = Path(_drift_guard.BUILD_DIR)
+    built = [*own.glob(f"**/.fingerprint/{name}-*"), *own.glob(f"**/build/{name}/*/fingerprint")]
+    assert built, f"cargo {sub} did not build in the run's own build dir {_drift_guard.BUILD_DIR}"
+    sessions = [*own.glob(f"**/incremental/{name}-*")]
+    assert not sessions, f"cargo {sub} built the throwaway incrementally: {sessions}"
+
+
 def test_a_workspace_under_home_is_not_mistaken_for_one_naming_its_build_dir() -> None:
     """The shim keeps a workspace's OWN build-dir (a `.cargo/config.toml` at or above it), and it
     walked up into `$HOME/.cargo/config.toml` -- the user's GLOBAL config, which keys `build-dir` by

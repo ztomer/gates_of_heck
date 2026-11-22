@@ -127,6 +127,20 @@ def test_the_rust_control_runs_four_copies_at_once() -> None:
     assert step_control.RUST_CRATE == ("regex-syntax", "0.8.11")
 
 
+def test_the_rust_control_names_its_target_dir_on_the_command_line(tmp_path: Path) -> None:
+    """Each copy's target dir is `--target-dir`, never CARGO_TARGET_DIR (GOH.SCCACHEENV): sccache
+    0.19 hashes every CARGO_* variable rustc inherits, so four copies exporting four paths were
+    four keys for one crate, and none matched a lane's build of it."""
+    plan = step_control.rust_plan(Path("/c"))
+    assert all(p.argv[-2:] == ["--target-dir", str(p.target)] for p in plan)
+    seen = tmp_path / "env"
+    step_control._run_all(
+        [step_control.Run(tmp_path, tmp_path / "t", ["sh", "-c", f"env > {seen}"])]
+    )
+    names = {line.split("=", 1)[0] for line in seen.read_text().splitlines()}
+    assert "CARGO_TARGET_DIR" not in names, "the control exported its target dir"
+
+
 def test_an_unknown_kind_is_a_usage_error(tmp_path: Path) -> None:
     env = hermetic_env()
     env.update(GOH_TIMINGS=str(tmp_path / "t.jsonl"), GOH_STEP_CONTROL_CACHE=str(tmp_path / "c"))
