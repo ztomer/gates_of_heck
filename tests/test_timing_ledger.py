@@ -205,3 +205,18 @@ def test_the_p95_counts_the_waits_an_agent_sat_through_and_names_its_sample(
     out = subprocess.run(argv, capture_output=True, text=True, env=env, check=True,
                          stdin=subprocess.DEVNULL)  # fmt: skip
     assert out.stdout.split() == ["96", "100"]
+
+
+@pytest.mark.parametrize("sha", ["152013349298", "000000000001", "123456e78901"])
+def test_a_sha_field_stays_a_string_when_its_prefix_reads_as_a_number(
+    monkeypatch, tmp_path: Path, sha: str
+) -> None:
+    """`--field sha=152013349298` once came back as the int 152013349298 (GOH.BUDGETSHAINT): a
+    fixture commit whose 12-char prefix is all digits turned a land red. A text field is a
+    string."""
+    monkeypatch.setenv("GOH_TIMING_DIR", str(tmp_path))
+    argv = ["record", "--kind", "push", "--wall", "1", "--field", f"sha={sha}"]
+    assert timing_ledger.main(argv) == 0
+    (row,) = timing_ledger.read()
+    assert row["sha"] == sha and isinstance(row["sha"], str)
+    assert timing_ledger._fields(["wait_lock_s=3", "x=1.5"]) == {"wait_lock_s": 3, "x": 1.5}

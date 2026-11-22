@@ -220,11 +220,19 @@ def timings_facts(path: str) -> tuple[float | None, list[list]]:
     return drift, steps
 
 
+TEXT_FIELDS = frozenset({"sha", "item", "slot_class", "pre_why", "suite_why"})  # never numbers
+
+
 def _fields(pairs: list[str]) -> dict[str, object]:
+    """`--field K=V` pairs; a number reads as one, except a TEXT_FIELDS value: a 12-character sha
+    prefix of all digits is an identity, not 152013349298 (GOH.BUDGETSHAINT)."""
     out: dict[str, object] = {}
     for p in pairs:
         key, _, val = p.partition("=")
         if not key:
+            continue
+        if key in TEXT_FIELDS:
+            out[key] = val
             continue
         try:
             out[key] = float(val) if "." in val else int(val)
