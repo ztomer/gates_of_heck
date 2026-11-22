@@ -120,6 +120,7 @@ from ship_version import (
     Refused,
     git,
     git_bindings,
+    held_lock_refusal,
     newest_tag,
     next_version,
     unbound_env,
@@ -410,19 +411,8 @@ def start(args: argparse.Namespace) -> int:
     return 0
 
 
+@held_lock_refusal(err)  # GOH.SHIPORDERERR
 def main(argv: list[str] | None = None) -> int:
-    """goh ship; a lock the caller holds (a gate slot under load.py) is one Kare refusal, never
-    a lock_order.OrderError traceback (GOH.SHIPORDERERR)."""
-    from lock_order import OrderError  # here: the import ceiling (E402) is spent
-
-    try:
-        return _main(argv)
-    except OrderError as e:
-        err(f"goh ship: {e} -- goh ship takes its own slots: run it outside the held one")
-        return 2
-
-
-def _main(argv: list[str] | None = None) -> int:
     given = sys.argv[1:] if argv is None else argv
     if given[:1] == ["verdict"]:  # the recorded gate verdict (GOH.VERDICTAPI)
         from ship_verdict import main as verdict

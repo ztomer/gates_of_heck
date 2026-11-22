@@ -4,17 +4,22 @@ environment a step runs in without git's repository bindings. Pinned by tests/te
 
 from __future__ import annotations
 
+import functools
 import os
 import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import gitrun
 
 ROOT = Path(__file__).resolve().parent.parent
 SEMVER = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+
+
+Main = Callable[[list[str] | None], int]
 
 
 def git_bindings() -> tuple[str, ...]:
@@ -28,6 +33,25 @@ def git_bindings() -> tuple[str, ...]:
 
 class Refused(Exception):
     pass
+
+
+def held_lock_refusal(err: Callable[[str], None]) -> Callable[[Main], Main]:
+    """goh ship's main, with a lock the caller holds (a gate slot under load.py) one Kare refusal
+    naming it, exit 2, never a lock_order.OrderError traceback (GOH.SHIPORDERERR)."""
+    from lock_order import OrderError  # lib/, beside this file
+
+    def wrap(main: Main) -> Main:
+        @functools.wraps(main)
+        def run(argv: list[str] | None = None) -> int:
+            try:
+                return main(argv)
+            except OrderError as e:
+                err(f"goh ship: {e} -- goh ship takes its own slots: run it outside the held one")
+                return 2
+
+        return run
+
+    return wrap
 
 
 def git(repo: Path, *args: str) -> str:
