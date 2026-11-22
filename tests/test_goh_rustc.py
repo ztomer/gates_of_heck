@@ -1,4 +1,4 @@
-"""lib/goh_rustc.sh, cargo's rustc-wrapper ahead of sccache (GOH.SCCACHEENV, F1b): the variables
+"""lib/goh-rustc, cargo's rustc-wrapper ahead of sccache (GOH.SCCACHEENV, F1b): the variables
 only cargo reads leave the environment before sccache keys the compile, so an exported
 CARGO_TERM_COLOR or CARGO_TARGET_DIR no longer makes a key no other build shares."""
 
@@ -12,10 +12,11 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from env_probe import probe_sh, read_probe
 from timing_bounds import patience
 
 ROOT = Path(__file__).resolve().parent.parent
-SHIM = ROOT / "lib" / "goh_rustc.sh"
+SHIM = ROOT / "lib" / "goh-rustc"
 DROPPED = ("CARGO_TARGET_DIR", "CARGO_HOME", "CARGO_INCREMENTAL", "CARGO_BUILD_BUILD_DIR")
 DROPPED += ("CARGO_TERM_COLOR",)
 
@@ -23,7 +24,7 @@ DROPPED += ("CARGO_TERM_COLOR",)
 def test_the_shim_drops_cargos_own_variables_and_keeps_the_crates(tmp_path: Path) -> None:
     seen = tmp_path / "seen"
     nxt = tmp_path / "next.sh"
-    nxt.write_text(f'#!/bin/sh\necho "$*" > "{seen}.args"\nenv > "{seen}"\n')
+    nxt.write_text(f'#!/bin/sh\necho "$*" > "{seen}.args"\n{probe_sh(seen)}\n')
     nxt.chmod(0o755)
     env = {"PATH": os.environ["PATH"], "GOH_RUSTC_NEXT": str(nxt), "CARGO_PKG_NAME": "x"}
     env.update(dict.fromkeys(DROPPED, "/somewhere"))
@@ -36,7 +37,7 @@ def test_the_shim_drops_cargos_own_variables_and_keeps_the_crates(tmp_path: Path
         check=False,
     )
     assert r.returncode == 0, r.stderr
-    names = {line.split("=", 1)[0] for line in seen.read_text().splitlines()}
+    names = set(read_probe(seen))
     assert not names & set(DROPPED), names & set(DROPPED)
     assert "CARGO_PKG_NAME" in names, "a variable cargo sets for the crate was dropped"
     assert Path(f"{seen}.args").read_text() == "rustc --crate-name x a b.rs\n"

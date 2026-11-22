@@ -39,7 +39,6 @@
   "test_goh_noallow_parity.py": 1,
   "test_goh_screen_parity.py": 1,
   "test_goh_skills_parity.py": 2,
-  "test_goh_tui_version_line.py": 1,
   "test_gpu_lock.py": 3,
   "test_hook_git_env.py": 1,
   "test_install.py": 1,

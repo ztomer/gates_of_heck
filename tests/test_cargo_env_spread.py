@@ -61,7 +61,11 @@ ALLOWED = {
     ("tests/test_proven_artifacts.py", "CARGO_TERM_COLOR"): "a fake cargo: no rustc",
     ("tests/test_share_grow.py", "CARGO_HOME"): "worker_share's runner env, no cargo run",
     ("tests/test_suite_drift.py", "CARGO_BUILD_BUILD_DIR"): "the caller-named build-dir case",
+    ("tests/test_goh_rustc.py", "CARGO_TERM_COLOR"): "the F1b probe, on a private sccache",
+    ("tests/test_goh_rustc.py", "CARGO_TERM_PROGRESS_WHEN"): "the F1b probe, on a private sccache",
 }
+# This file names every shape it refuses; it runs no cargo.
+SELF = "tests/test_cargo_env_spread.py"
 
 
 def sets_in(text: str) -> list[tuple[int, str]]:
@@ -77,18 +81,24 @@ def sets_in(text: str) -> list[tuple[int, str]]:
     return found
 
 
-def check_cargo_env_spread(root: Path) -> tuple[list[str], list[str]]:
-    """(sets the allowlist does not name, allowlist entries the tree no longer has)."""
-    tracked = subprocess.run(
+def tracked(root: Path) -> list[str]:
+    """The Python, shell, Rust and .mjs files git tracks under `root`."""
+    return subprocess.run(
         ["git", "-C", str(root), "ls-files", "-z", "--", "*.py", "*.sh", "*.rs", "*.mjs"],
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
         check=True,
     ).stdout.split("\0")
+
+
+def check_cargo_env_spread(root: Path, files: list[str]) -> tuple[list[str], list[str]]:
+    """(sets the allowlist does not name, allowlist entries the tree no longer has)."""
     seen: set[tuple[str, str]] = set()
     bad = []
-    for rel in filter(None, tracked):
+    for rel in filter(None, files):
+        if rel == SELF:
+            continue
         path = root / rel
         if not path.is_file():
             continue
@@ -105,7 +115,7 @@ def check_cargo_env_spread(root: Path) -> tuple[list[str], list[str]]:
 
 
 def test_no_goh_code_sets_a_cargo_config_variable_for_a_cargo_it_runs() -> None:
-    bad, stale = check_cargo_env_spread(ROOT)
+    bad, stale = check_cargo_env_spread(ROOT, tracked(ROOT))
     why = (
         "sccache hashes every CARGO_* rustc inherits: pass --config K=V, --target-dir or --color "
         "on cargo's command line instead (GOH.SCCACHEENV)"
@@ -153,12 +163,8 @@ def test_a_read_a_comment_an_echo_or_an_unhashed_variable_is_not_a_set() -> None
 
 def test_a_stale_allowlist_entry_fails(tmp_path: Path, monkeypatch) -> None:
     """The ratchet bites both ways: a set it does not name fails, and so does a name with no set."""
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, stdin=subprocess.DEVNULL)
     (tmp_path / "a.sh").write_text("export CARGO_TERM_COLOR=never\n")
-    subprocess.run(
-        ["git", "-C", str(tmp_path), "add", "a.sh"], check=True, stdin=subprocess.DEVNULL
-    )
     monkeypatch.setattr(sys.modules[__name__], "ALLOWED", {("gone.py", "CARGO_HOME"): "gone"})
-    bad, stale = check_cargo_env_spread(tmp_path)
+    bad, stale = check_cargo_env_spread(tmp_path, ["a.sh"])
     assert bad == ["a.sh:1: sets CARGO_TERM_COLOR"]
     assert stale == ["gone.py: CARGO_HOME"]

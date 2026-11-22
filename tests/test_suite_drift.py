@@ -18,6 +18,7 @@ import _drift_guard
 import pytest
 from _drift_planted import planted, planted_load, took_over_ceiling
 from conftest import REPO_ROOT
+from env_probe import probe_sh, read_probe
 
 TESTS = REPO_ROOT / "tests"
 
@@ -302,8 +303,9 @@ def _rustc_env_names(
 ) -> set[str]:
     """The CARGO_* names rustc inherits when `argv` builds `crate`, read by a recording wrapper."""
     wrapper = wrapper_log.with_suffix(".sh")
+    # The crate's own compile only, and its names only (tests/env_probe.py, GOH.ENVDUMP).
     wrapper.write_text(
-        f'#!/bin/sh\nenv | grep -E "^(CARGO_|GOHPROBE=)" | cut -d= -f1 >> "{wrapper_log}"\n'
+        f'#!/bin/sh\ncase "$*" in *"--crate-name {crate.name} "*) {probe_sh(wrapper_log)} ;; esac\n'
         'exec "$@"\n',
         encoding="utf-8",
     )
@@ -321,7 +323,7 @@ def _rustc_env_names(
     assert wrapper_log.exists(), (
         f"{argv}: the recording wrapper never ran, the instrument saw nothing"
     )
-    return set(wrapper_log.read_text(encoding="utf-8").split())
+    return {n for n in read_probe(wrapper_log) if n.startswith(("CARGO_", "GOHPROBE"))}
 
 
 @pytest.mark.parametrize("sub", ["build", "clippy", "--config"])

@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 from conftest import git, hermetic_env, write
+from env_probe import probe_sh, read_probe
 from timing_bounds import patience
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -135,9 +136,9 @@ def test_the_rust_control_names_its_target_dir_on_the_command_line(tmp_path: Pat
     assert all(p.argv[-2:] == ["--target-dir", str(p.target)] for p in plan)
     seen = tmp_path / "env"
     step_control._run_all(
-        [step_control.Run(tmp_path, tmp_path / "t", ["sh", "-c", f"env > {seen}"])]
+        [step_control.Run(tmp_path, tmp_path / "t", ["sh", "-c", probe_sh(seen)])]
     )
-    names = {line.split("=", 1)[0] for line in seen.read_text().splitlines()}
+    names = set(read_probe(seen))
     assert "CARGO_TARGET_DIR" not in names, "the control exported its target dir"
 
 
