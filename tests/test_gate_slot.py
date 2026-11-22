@@ -370,7 +370,7 @@ def test_a_push_gate_nested_in_a_push_gate_does_not_deadlock(tmp_path):
 def test_the_push_gate_takes_a_slot_before_the_export():
     gate = (REPO_ROOT / "gates" / "push_gate.sh").read_text()
     take = gate.index('gate_slot_acquire "$(basename "$root")"')
-    assert take < gate.index('git -C "$root" worktree add --detach'), (
+    assert take < gate.index('push_export_tree "$root" "$worktree"'), (  # GOH.PUSHMTIME
         "the export ran before the slot"
     )
     cleanup = gate[gate.index("cleanup() {") : gate.index("trap cleanup EXIT")]
