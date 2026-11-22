@@ -67,6 +67,7 @@ lib/pid_owner.sh	base-code
 lib/place.sh	base-code
 lib/pre_cpu.py	base-code
 lib/pre_reuse.py	base-code
+lib/proc_deadline.py	base-code
 lib/proc_table.py	base-code
 lib/prune_kept.py	base-code
 lib/reuse.py	base-code
