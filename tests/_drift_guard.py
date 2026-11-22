@@ -64,12 +64,10 @@ CEILING_S = 60.0
 # of them. A leaked child or a fixture that gates a whole tree to prove one thing waits 30 s+,
 # over this at any load.
 SETUP_CEILING_S = 20.0
-SETUP_SLOW: dict[str, float] = {  # test FILE -> its own setup ceiling, each with its reason
-    # the module fixture IS the asserted subject: two `structural --full` walks of goh side by side
-    # (one clean, one with planted violations), 13-15 s on a quiet box by the load figure, 45.5 s
-    # measured by GOH.CEILINGHEADROOM2. It cannot be cut without un-asserting the walk.
-    "tests/test_self_walk.py": 60,
-}
+# test FILE -> its own setup ceiling, each with its reason. Empty since GOH.SELFWALKFILTER:
+# test_self_walk's module fixture walked goh twice (45.5 s, GOH.CEILINGHEADROOM2); it clones the
+# two trees now, and each part's walk is its own test's call.
+SETUP_SLOW: dict[str, float] = {}
 
 
 def setup_ceiling(nodeid: str) -> float:

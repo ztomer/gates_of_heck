@@ -12,12 +12,15 @@ from __future__ import annotations
 
 import os
 import shutil
+import uuid
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import _self_walk as w
 import pytest
+import real_state_guard
+import suite_home
 from _self_walk import Result
 from conftest import hermetic_env
 
@@ -203,20 +206,24 @@ def trees(native_goh: Path, tmp_path_factory) -> dict:
     No part lints the shell sources but SHELL, and SHELL lints the clean tree ONCE before either of
     its walks (GOH.SELFWALKSC: two full walks paid two shellchecks for every file both trees hold
     byte for byte, 742 spawns, 745 CPU-s in one land, 2026-11-19), into ONE verdict store the trees
-    share, the one shell-lint keys by the file's bytes, its sources, the tools and the flags."""
+    share, the one shell-lint keys by the file's bytes, its sources, the tools and the flags. The
+    store outlives the session (`w.verdict_store`), so that lint spawns shellcheck only for bytes
+    it has not seen; EDITED and the shell plant carry this session's nonce, so the planted walk
+    lints them in every session and the calibration below has its subject."""
     seed = w.load_seed()
     reg = w.registry(native_goh)
     steps = w.carried(native_goh)
     root = tmp_path_factory.mktemp("self-walk")
-    plants = dict(PLANTS.values())
-    plants[EDITED] = (w.REPO_ROOT / EDITED).read_text() + "# edited by the planted walk\n"
+    nonce = f"# the planted walk of session {uuid.uuid4().hex}\n"
+    plants = {rel: text + nonce if rel.endswith(".sh") else text for rel, text in PLANTS.values()}
+    plants[EDITED] = (w.REPO_ROOT / EDITED).read_text() + nonce
     real = shutil.which("shellcheck")
     assert real, "the walk needs shellcheck on PATH"
     shim, log = root / "shim", root / "shellcheck.log"
     shim.mkdir()
     (shim / "shellcheck").write_text(SHIM.format(log=log, real=real))
     (shim / "shellcheck").chmod(0o755)
-    env = hermetic_env(GOH_VERDICT_DIR=str(root / "verdicts"),
+    env = hermetic_env(GOH_VERDICT_DIR=str(w.verdict_store()),
                        PATH=f"{shim}{os.pathsep}{os.environ.get('PATH', '')}")  # fmt: skip
     built = {}
     for name, planted in (("goh", {}), ("planted", plants)):
@@ -241,6 +248,16 @@ def test_the_parts_hold_every_scanner_once_and_name_no_other(trees) -> None:
     )
 
 
+def test_the_verdict_store_outlives_the_session() -> None:
+    """The store is the machine's, not the session's: under an xdist worker the suite's HOME is
+    its own, and a store keyed off it died with the session (the first cut did: the shell part
+    linted every file cold, 130 s, 2026-11-22)."""
+    store = os.path.realpath(w.verdict_store())
+    real_home = os.environ.get(suite_home.MARKER) or suite_home.REAL_HOME
+    scratch = [*real_state_guard.scratch_roots(real_home), os.path.realpath(Path.home())]
+    assert not any(store == r or store.startswith(r.rstrip("/") + "/") for r in scratch), store
+
+
 def test_every_seed_entry_names_a_scanner(trees) -> None:
     """`restrict` judges each part on its own entries; an entry for no scanner is judged here."""
     every_ran = {lb: Result(ran=True) for lb in trees["labels"]}
@@ -255,8 +272,10 @@ def test_goh_obeys_every_scanner_it_ships_but_for_its_seed(native_goh, trees, pa
     each plant in the part raises its own scanner's count over the clean walk."""
     labels, steps = trees["parts"][part], trees["steps"]
     clean, planted = trees["goh"], trees["planted"]
+    warm: dict[str, Counter[str]] = {}
     if part == SHELL:
         w.lint(native_goh, *clean)  # before either walk: the planted walk reads its verdicts
+        warm = w.shellchecked(trees["log"], trees["root"])
     with ThreadPoolExecutor(2) as pool:
         got = pool.map(lambda te: w.walk(native_goh, *te, labels, steps, part), (clean, planted))
         walked, sown = got
@@ -274,14 +293,19 @@ def test_goh_obeys_every_scanner_it_ships_but_for_its_seed(native_goh, trees, pa
     for name in mine:
         assert any(r.startswith(f"`{name}` finds") for r in sown_reds), name
     if part == SHELL:
-        _shellchecks_each_file_once(w.shellchecked(trees["log"], trees["root"]))
+        _shellchecks_only_new_bytes(warm, w.shellchecked(trees["log"], trees["root"]))
 
 
-def _shellchecks_each_file_once(by_file: dict[str, Counter[str]]) -> None:
-    """GOH.SELFWALKSC: a file both trees hold byte for byte is linted ONCE in the run; one whose
-    bytes differ (EDITED) or that only the planted tree holds is linted in the planted tree."""
-    assert by_file, "the walks spawned no shellcheck: the shim is not on their PATH"
-    twice = {f for f, trees in by_file.items() if len(trees) > 1}
-    assert twice == {EDITED}, f"linted in both trees: {sorted(twice)[:8]} ({len(twice)})"
-    assert all(n == 1 for trees in by_file.values() for n in trees.values()), "a tree re-linted"
-    assert by_file[PLANTS["no code after exec"][0]] == Counter(planted=1)
+def _shellchecks_only_new_bytes(
+    warm: dict[str, Counter[str]], run: dict[str, Counter[str]]
+) -> None:
+    """GOH.SELFWALKSC: the warm lint lints each file at most once, and the WALKS lint only what the
+    store has no verdict for -- nothing in the clean tree, and in the planted tree exactly the files
+    whose bytes are this session's: EDITED and the shell plant, once each."""
+    assert all(set(trees) == {"goh"} and trees["goh"] == 1 for trees in warm.values()), warm
+    walks = {f: trees - warm.get(f, Counter()) for f, trees in run.items()}
+    walks = {f: trees for f, trees in walks.items() if trees}
+    plant = PLANTS["no code after exec"][0]
+    assert walks == {EDITED: Counter(planted=1), plant: Counter(planted=1)}, (
+        f"the walks linted {sorted(walks)[:8]} ({len(walks)}): only the planted tree's new bytes"
+    )

@@ -31,13 +31,17 @@ that ran and said it could not judge here.
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import re
 import subprocess
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import real_state_guard
 import suite_home
 from timing_bounds import patience
 
@@ -52,6 +56,9 @@ ANNOUNCE = re.compile(r"^\S+ (?P<label>.+?) \(≤\d+s\)$")
 SITE = re.compile(r"(?<![\w./#-])(?=[\w.#-]*[./])([\w.][\w./#-]*):(\d+)\b")
 UNJUDGED = re.compile(r"not judged|UNSCOPED", re.IGNORECASE)
 WALK_S = 600
+# A verdict the walk's store has not read or written in this long is dropped: a miss costs one
+# shellcheck, and the store never grows past what a month of goh's shell sources held.
+STORE_DAYS = 30
 
 
 @dataclass
@@ -147,6 +154,30 @@ def walked_tree(dest: Path, seed: dict, plants: dict[str, str] | None = None) ->
     _git(dest, "-c", "user.name=walk", "-c", "user.email=walk@walk", "commit", "-q", "--no-verify",
          "--allow-empty", "-m", "the tree under walk")  # fmt: skip
     return dest
+
+
+def verdict_store() -> Path:
+    """The shell-lint verdicts the walk reads and writes, kept ACROSS sessions in goh's real state
+    (GOH.SELFWALKFILTER), each record dropped after STORE_DAYS.
+
+    A verdict is keyed by everything it depends on -- the file's bytes, its sources, shellcheck's
+    identity and the flags (`crates/goh/src/shell_lint.rs`, `verdict_cache.rs`) -- so one recorded
+    in an earlier session is the verdict this one would compute. A store per session paid a cold
+    lint of every shell file in goh once a session, in one case: 20 s on a quiet box and 91-113 s
+    in a loaded pre-step, over the 60 s line on its own (2026-11-21). Kept, a session lints only
+    the shell files whose bytes are new to it. The same precedent as a land's verdict store
+    (`GOH_LAND_VERDICTS_STORE`, under the same state directory)."""
+    # The REAL home: an xdist worker imports suite_home under the suite's own HOME, so its
+    # REAL_HOME is the suite's; the marker carries the user's (the store died with the session).
+    real_home = os.environ.get(suite_home.MARKER) or suite_home.REAL_HOME
+    store = real_state_guard.real_state_dir(real_home) / "self-walk-verdicts"
+    store.mkdir(parents=True, exist_ok=True)
+    cutoff = time.time() - STORE_DAYS * 86400
+    for record in store.rglob("*.json"):
+        with contextlib.suppress(OSError):
+            if record.stat().st_mtime < cutoff:
+                record.unlink()
+    return store
 
 
 def walk_env(base: dict[str, str], place: Path) -> dict[str, str]:

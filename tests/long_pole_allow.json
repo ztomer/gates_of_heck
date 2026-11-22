@@ -1,6 +1,1 @@
-{
-  "tests/test_self_walk.py": {
-    "limit_s": 150,
-    "why": "two whole-tree walks of the registry (goh as it stands and goh planted), 60 s for the clean one alone: a cold shell lint (27 s of shellcheck) then `goh structural --full --keep-going`, whose 52 steps run one after another in the binary; xdist cannot split a fixture and the binary cannot yet run a subset of its steps (a `--only` filter, the next cut), so each case that asks for the walks pays them (GOH.PRELONGPOLE)"
-  }
-}
+{}
