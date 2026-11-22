@@ -11,15 +11,17 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
-from conftest import REPO_ROOT, git
+from conftest import REPO_ROOT, git, hermetic_env
 from test_land_profile import REPO, at, put
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import land_e2e
 import land_prestep
 import land_profile
 import land_spd
@@ -98,8 +100,6 @@ def test_the_enqueue_pre_step_keeps_its_wait_and_run_in_the_land_record(tmp_path
     land_prestep.run(tmp_path, "a" * 40, script, (), took=took)
     assert took == {"wait_s": 2, "run_s": 28, "limit_s": 888, "workers": 16}
     req = {"enqueued_at": "t", "pre_run": took}
-    import land_e2e
-
     assert land_e2e.asked(req) == {"requested": "t", "pre_run": took}
 
 
@@ -116,11 +116,8 @@ def spd(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
         (repo / name).write_text(name)
         git(repo, "add", name)
         stamp = {"GIT_AUTHOR_DATE": iso(minutes), "GIT_COMMITTER_DATE": iso(minutes)}
-        import os
-        import subprocess
-
         subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t",
-                        "commit", "-q", "-m", name], check=True, env={**os.environ, **stamp},
+                        "commit", "-q", "-m", name], check=True, env=hermetic_env(**stamp),
                        stdin=subprocess.DEVNULL)  # fmt: skip
         shas[name] = git(repo, "rev-parse", "HEAD").strip()
     q = tmp_path / "q"
