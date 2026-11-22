@@ -7,8 +7,8 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 # admission every gate takes, so a land and a push gate wait for the same slots (GOH.ONEADMISSION,
 # docs/decisions/D-0008) -- taken HERE, under the land lock, never around this script: a land queued
 # on the lock then holds nothing a ship holding the lock can be waiting on (GOH.LOCKORDER: land 20
-# before gate_slot 50). 90 minutes bounds the gate as the coordinator's wrapper did. Class `ship`
-# (GOH_GATE_CLASS, consumed by lib/admission.py): ahead of every `work` waiter (GOH.SLOTFAIR).
+# before gate_slot 50). 90 minutes bounds the gate as the coordinator's wrapper did. Class `land`
+# (GOH_GATE_CLASS, consumed by lib/admission.py): ahead of every other long waiter (GOH.SLOTPRIORITY).
 # GOH_TIMING_VIA: the push gate this runs is this land's, so it leaves the ledger row to land.sh.
 # land_gate ROOT WHOSE GATE -- the gate (empty: ROOT's push gate) under ROOT's gates; red exits 1.
 land_gate() {
@@ -32,7 +32,7 @@ land_gate() {
     gate_mark="$(mktemp "$(goh_tmp)/goh-land-gatestart.XXXXXX")" || gate_mark=""
     [ -z "$gate_mark" ] || : >"$gate_mark"
     env ${over[@]+"${over[@]}"} GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" GOH_LAND_VERDICTS_REUSE="$verdicts" \
-            GOH_GATE_CLASS=ship GOH_TIMING_VIA=land GOH_TIMINGS="${GOH_TIMINGS:-$land_timings}" \
+            GOH_GATE_CLASS=land GOH_TIMING_VIA=land GOH_TIMINGS="${GOH_TIMINGS:-$land_timings}" \
             "$GOH_PY" "$1/tools/load.py" ${gate_wait[@]+"${gate_wait[@]}"} --background-ok "land gate" \
             --max 90m 0 -- bash -c 'date +%s >"$1" 2>/dev/null; exec bash -c "$2"' gate "${gate_mark:-/dev/null}" "$cmd" \
             7>&- 8<&- </dev/null || grc=$?

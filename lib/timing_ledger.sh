@@ -49,7 +49,8 @@ goh_repo_id() {
 # The push gate's machine-wide slot wait (GOH.LOADSOURCES): its span starts AFTER the slot, so the
 # wait was in no record and a replay of the day's admissions (lib/admit_replay.py) could only put a
 # lower bound on it. goh_slot_asked before gate_slot_acquire, goh_slot_taken after; the next push
-# row carries `slot_wait_s` and `slot_asked_at` (epoch), once.
+# row carries `slot_wait_s`, `slot_asked_at` (epoch) and `slot_class` (the class it waited as,
+# GOH.SLOTPRIORITY), once.
 goh_slot_asked() { _goh_slot_asked="${EPOCHREALTIME/,/.}"; _goh_slot_wait=""; }
 goh_slot_taken() {
     [ -n "${_goh_slot_asked:-}" ] || return 0
@@ -61,7 +62,8 @@ goh_push_row() {
     local ok=0 slot=()
     [ "$2" -ne 0 ] || ok=1
     [ -z "${_goh_slot_wait:-}" ] ||
-        slot=(--field "slot_wait_s=$_goh_slot_wait" --field "slot_asked_at=$_goh_slot_asked")
+        slot=(--field "slot_wait_s=$_goh_slot_wait" --field "slot_asked_at=$_goh_slot_asked"
+              --field "slot_class=${GATE_SLOT_CLASS:-work}")
     _goh_slot_wait=""   # one push row carries the wait: the slot is taken once per push
     goh_span_record push "$(goh_repo_id "$1")" "$ok" ${GOH_TIMINGS:+--timings "$GOH_TIMINGS"} \
         --field "sha=${3:0:12}" "${slot[@]}"

@@ -73,6 +73,38 @@ def slot_wait_s(log_text: str) -> float | None:
     return float(max(waited)) if waited else None
 
 
+# A slot taken, with the class it was asked as (GOH.SLOTPRIORITY): tools/load.py's "load: gate slot
+# 1/2 taken after 12s (GOH_GATE_SLOTS, class land)" and lib/gate_slot.sh's "gate slot 1/2 taken
+# after 12s waiting (class lane)" or, with no wait, "gate slot 1/2 taken (GOH_GATE_SLOTS, class
+# work)".
+TAKEN_CLASS = re.compile(r"gate slot \d+/\d+ taken (?:after (\d+)s)?[^\n]*?\bclass (\w+)\)")
+
+
+def slot_waits_by_class(log_text: str) -> dict[str, float]:
+    """Seconds waited for gate slots per class, read from a land's log: every slot taken whose line
+    names its class, summed by class ({} when none does). The land profile shows each class's wait
+    as its own step, so a land waiting behind a lower class cannot hide in one figure."""
+    out: dict[str, float] = {}
+    for secs, klass in TAKEN_CLASS.findall(log_text):
+        out[klass] = out.get(klass, 0.0) + float(secs or 0)
+    return out
+
+
+def slot_waits(outcome: dict) -> dict:
+    """`slot_wait_s` and `slot_wait_by_class` read from the attempt's log, for the land record
+    tools/landq.py writes beside GOH.LANDSNAPSHOT's slot_s (GOH.SLOTPRIORITY); {} when the log
+    names no slot taken with its class. The land profile's `slot wait` and each class's
+    row under it, and the `land attempt` ledger row, are these fields."""
+    try:
+        text = Path(str(outcome.get("log") or "")).read_text(errors="replace")
+    except OSError:
+        return {}
+    by = slot_waits_by_class(text)
+    if not by:
+        return {}
+    return {"slot_wait_s": round(sum(by.values()), 1), "slot_wait_by_class": by}
+
+
 def coverage_said(log_text: str) -> list[str]:
     """Each distinct coverage decision a land's log records, in order (GOH.BATCHPREFROM): the
     lander's line names why a gate measured, or that a land measures none (GOH.COVOFFLAND)."""

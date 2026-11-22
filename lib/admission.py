@@ -86,7 +86,7 @@ class Admitted:
     gate_class: str = gate_lanes.DEFAULT_CLASS
 
 
-CLASS_ENV = "GOH_GATE_CLASS"  # short | ship | work (lib/gate_slot.py CLASSES); empty: work
+CLASS_ENV = "GOH_GATE_CLASS"  # short | land | ship | lane | work (lib/gate_lanes.py); empty: work
 _HELD: list[int] = []  # the fds this process holds its slot by: open until it exits
 
 
@@ -106,7 +106,7 @@ def admit_here(repo: str, max_wait: float | None = None) -> Admitted:
     runs (the fd is non-inheritable, PEP 446, so no child keeps it), marked for its children the
     way lib/gate_slot.sh marks a shell's (GOH_GATE_SLOT, GOH_HELD_LOCKS), so the gate it runs
     takes no second slot. OSError when the lock order refuses the wait."""
-    # The class is the caller's word for THIS admission (tools/land.sh says `ship`), consumed first
+    # The class is the caller's word for THIS admission (lib/land_gate.sh: `land`), consumed first
     # so the gate it runs -- nested in this slot, or under no slot at all -- does not inherit it.
     gate_class = os.environ.pop(CLASS_ENV, "").strip() or gate_lanes.DEFAULT_CLASS
     lane, _ = gate_lanes.lane_of(gate_class)

@@ -242,3 +242,8 @@ GOH_SHIP_CHANGELOG=cut
 # release cuts; the commit gate keeps CHANGELOG.md's Unreleased empty (GOH.CLASS.CHECKOUT part d:
 # every lane land of 2026-11-14 conflicted on the one stanza they all wrote).
 GOH_CHANGELOG_FRAGMENTS=on
+# THE STARVATION BOUND of the gate slots' queue (GOH.SLOTPRIORITY, lib/gate_lanes.py): slots go by
+# class (land, ship, lane, work) then age, and a waiter older than this many minutes goes ahead of
+# every class, so a sweep or another repo's gate waits behind lands for at most this long. 15: a
+# land gate's ~12 min and a margin -- one land ahead, never a stream of them.
+GOH_GATE_SLOT_STARVE_MIN=15

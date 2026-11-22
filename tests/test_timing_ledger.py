@@ -180,6 +180,8 @@ def test_the_push_row_carries_the_slot_wait_once(tmp_path: Path) -> None:
         first["sha"] == "aaaaaaaaaaaa" and 1.2 <= first["slot_wait_s"] < first["slot_asked_at"]
     ), first
     assert first["epoch"] - first["slot_asked_at"] >= 1.2 and "slot_wait_s" not in second, second
+    # no acquire named a class: the lowest (GOH.SLOTPRIORITY)
+    assert first["slot_class"] == "work", first
 
 
 def test_the_p95_counts_the_waits_an_agent_sat_through_and_names_its_sample(

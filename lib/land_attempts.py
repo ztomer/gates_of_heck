@@ -87,6 +87,8 @@ def row_of(outcome: dict, ref: str) -> dict | None:
         mode=outcome.get("mode"),
         why=outcome.get("why"),
         sha=str(outcome.get("sha") or "")[:12] or None,
+        slot_wait_s=outcome.get("slot_wait_s"),  # GOH.SLOTPRIORITY: the slot waits, per class
+        slot_wait_by_class=outcome.get("slot_wait_by_class") or None,
     )
 
 

@@ -9,22 +9,42 @@ from __future__ import annotations
 
 import contextlib
 import os
+import subprocess
 import time
 
 import lock_order
 
-# THE LANES AND THE CLASSES (GOH.SLOTFAIR, 2026-11-16). One lane of N slots for every gate was a
-# priority inversion: a commit gate (`tools/gate.sh --staged`, minutes at most) waited 38+ min
-# behind a 49-min cargo test and a 15-min push gate holding both slots, and queue commits timed out
-# at 600 s the same way. A gate's CLASS picks its lane and its rank in the lane's queue:
-#   short  the commit gate (gates/commit_gate.sh marks its gate.sh): the SHORT lane, N slots of its
-#          own that no long gate takes, so it waits only behind other commit gates
-#   ship   a push gate (gates/push_gate.sh) or a land (tools/land.sh): the long lane, ranked first
-#   work   everything else (a hand-run `gate.sh --full`, an agent's `load.py 0 -- cargo test`):
-#          the long lane, after every ship waiter (land and push over the rest, D-0008)
+# THE LANES AND THE CLASSES (GOH.SLOTFAIR, 2026-11-16; GOH.SLOTPRIORITY, 2026-11-21). One lane of N
+# slots for every gate was a priority inversion: a commit gate (`tools/gate.sh --staged`, minutes at
+# most) waited 38+ min behind a 49-min cargo test and a 15-min push gate holding both slots. Then
+# a second one inside the long lane: every push gate was `ship`, ranked with a land, so on
+# 2026-11-21 a land's gate waited 161 s behind the coordinator's `.loop` push gate and a consumer
+# lane's `tools/ci_hook.sh` (10 min), and earlier lands 293 s behind the pin sweep's consumer
+# pushes -- and lands are the critical path. A gate's CLASS picks its lane and its rank in the
+# lane's queue, and the CALLER declares it (GOH_GATE_CLASS, consumed by the admission); it is
+# never inferred from a command line:
+#   short  the commit gate (gates/commit_gate.sh marks its gate.sh) and a land's pre-step: the SHORT
+#          lane, N slots of its own that no long gate takes, so it waits only behind other shorts
+#   land   a land's gate (lib/land_gate.sh): the long lane, ranked first
+#   ship   `goh ship`'s full suite (lib/ship_full_run.py) and its push (tools/ship.py)
+#   lane   a lane's own test run, declared by the lane's runner (GOH_GATE_CLASS=lane)
+#   work   everything else, the DEFAULT and the lowest: the pin sweep's consumer pushes, any push
+#          gate nobody classed (another repo's, the coordinator's), a `gate.sh --full`, a hand run
+# Within a rank a freed slot goes to the longest waiter; a waiter older than the STARVATION BOUND
+# (`GOH_GATE_SLOT_STARVE_MIN`, minutes) outranks every class, oldest first, so a lower class waits
+# behind higher ones for at most that long.
 LANES = {"long": "slot", "short": "short"}
-CLASSES = {"short": ("short", 0), "ship": ("long", 0), "work": ("long", 1)}
+CLASSES = {
+    "short": ("short", 0),
+    "land": ("long", 0),
+    "ship": ("long", 1),
+    "lane": ("long", 2),
+    "work": ("long", 3),
+}
 DEFAULT_CLASS = "work"
+STARVE_ENV = "GOH_GATE_SLOT_STARVE_MIN"
+STARVE_MIN = 15.0  # the bound when nothing names one: a land gate's ~12 min, and a margin
+PROMOTED = -1  # the rank a starved ticket takes: ahead of every class
 
 
 def lane_of(gate_class: str) -> tuple[str, int]:
@@ -34,17 +54,73 @@ def lane_of(gate_class: str) -> tuple[str, int]:
     return CLASSES[gate_class]
 
 
+def class_of(lane: str, rank: int) -> str:
+    """The class a ticket's (lane, rank) was taken by; `?` for one no class names."""
+    return next((c for c, lr in CLASSES.items() if lr == (lane, rank)), "?")
+
+
+def _gatesrc(key: str, root: str = ".") -> str:
+    """KEY as ROOT's .gatesrc sets it, read in a child (tools/land.sh's `gatesrc_var`), else ""."""
+    if not os.path.isfile(os.path.join(root, ".gatesrc")):
+        return ""
+    prog = 'unset "$1"; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${!1-}"'
+    try:
+        res = subprocess.run(["bash", "-c", prog, "gatesrc", key], cwd=root, capture_output=True,
+                             text=True, stdin=subprocess.DEVNULL, timeout=30,
+                             check=False)  # fmt: skip
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return res.stdout if res.returncode == 0 else ""
+
+
+def starve_ns(environ: dict[str, str] | None = None, root: str = ".") -> int:
+    """The starvation bound in ns: `GOH_GATE_SLOT_STARVE_MIN` minutes, from the environment, else
+    the waiter's repository's .gatesrc (ROOT, its working directory), else STARVE_MIN. Each waiter
+    writes its own bound into its ticket, so every reader orders the queue alike. ValueError for
+    anything but a positive number."""
+    env = os.environ if environ is None else environ
+    raw = (env[STARVE_ENV] if STARVE_ENV in env else _gatesrc(STARVE_ENV, root)).strip()
+    try:
+        minutes = float(raw) if raw else STARVE_MIN
+    except ValueError:
+        minutes = -1.0
+    if not minutes > 0:
+        raise ValueError(f"{STARVE_ENV} must be a positive number of minutes (got {raw!r})")
+    return int(minutes * 60e9)
+
+
+def parse_ticket(name: str) -> tuple[str, int, int, int, int | None] | None:
+    """(lane, rank, seq, pid, promote-at ns) of a ticket's name, None for any other file. A ticket
+    written before the bound (four fields) is never promoted."""
+    parts = name.split("-")
+    if len(parts) not in (4, 5) or parts[0] not in LANES:
+        return None
+    try:
+        nums = [int(p) for p in parts[1:]]
+    except ValueError:
+        return None
+    return parts[0], nums[0], nums[1], nums[2], nums[3] if len(nums) == 4 else None
+
+
+def effective(rank: int, seq: int, pid: int, promote: int | None, now: int) -> tuple[int, int, int]:
+    """A ticket's place at `now`: its rank, or PROMOTED once past its bound; then age."""
+    return (PROMOTED if promote is not None and now >= promote else rank, seq, pid)
+
+
 WAITING = "waiting"  # <dir>/waiting/: one ticket file per live waiter
 
 
 class Ticket:
-    """A waiter's place in its lane's queue (GOH.SLOTFAIR): `waiting/<lane>-<rank>-<seq>-<pid>`.
+    """A waiter's place in its lane's queue (GOH.SLOTFAIR):
+    `waiting/<lane>-<rank>-<seq>-<pid>-<promote>`.
 
     THE DEFECT IT ENDS (2026-11-15/16). A freed slot went to whichever waiter's try-lock came
     first: a monitor push waited 20m30s while six gates that asked after it each took a slot. Now
     only the FIRST live ticket of the lane -- lowest (rank, seq) -- may take a slot; `seq` is the
-    system-wide monotonic clock at arrival (ns), so arrival order is the order, and a ship ticket
-    (rank 0) goes ahead of every work ticket (rank 1).
+    system-wide monotonic clock at arrival (ns), so arrival order is the order, and a higher class
+    (lower rank: land 0, ship 1, lane 2, work 3) goes ahead of every lower one -- until a ticket's
+    `promote` time (arrival plus the starvation bound, written into its name by its own waiter, so
+    every reader orders the queue the same way) passes, when it goes ahead of every class.
 
     LIVENESS IS THE FLOCK, as for the slots: the waiter holds an exclusive lock on its ticket for as
     long as it lives, so a ticket nobody holds belongs to a dead waiter and is reaped by the first
@@ -52,12 +128,17 @@ class Ticket:
     it has its name (made under a temporary name, locked, then hard-linked in), so no reader can
     see a live ticket unlocked and reap it."""
 
-    def __init__(self, directory: str, lane: str, rank: int) -> None:
+    def __init__(
+        self, directory: str, lane: str, rank: int, clock=time.monotonic_ns, bound_ns: int = 0
+    ) -> None:
         self.dir = os.path.join(directory, WAITING)
         self.lane = lane
+        self.clock = clock  # a seam: the suite's fake clock (system-wide monotonic ns otherwise)
         os.makedirs(self.dir, exist_ok=True)
-        self.key = (rank, time.monotonic_ns(), os.getpid())
-        self.name = f"{lane}-{rank}-{self.key[1]:020d}-{self.key[2]}"
+        seq = clock()
+        self.rank, self.seq, self.pid = rank, seq, os.getpid()
+        self.promote = seq + (bound_ns or starve_ns())
+        self.name = f"{lane}-{rank}-{seq:020d}-{self.pid}-{self.promote:020d}"
         self.path = os.path.join(self.dir, self.name)
         draft = os.path.join(self.dir, f".draft-{self.name}")
         self.fd = os.open(draft, os.O_RDWR | os.O_CREAT, 0o644)
@@ -65,22 +146,27 @@ class Ticket:
         os.link(draft, self.path)
         os.unlink(draft)
 
+    @property
+    def key(self) -> tuple[int, int, int]:
+        """This ticket's place now (`effective`): its rank until its bound passes, then its age."""
+        return effective(self.rank, self.seq, self.pid, self.promote, self.clock())
+
     def ahead(self) -> list[str]:
-        """The live tickets of this lane ahead of this one, first first; dead ones are reaped."""
+        """The live tickets of this lane ahead of this one NOW, first first; dead ones are reaped.
+        Class then age; a ticket past its starvation bound before every class (GOH.SLOTPRIORITY)."""
         try:
             names = os.listdir(self.dir)
         except OSError:
             return []
+        now = self.clock()
+        mine = effective(self.rank, self.seq, self.pid, self.promote, now)
         found = []
         for name in names:
-            parts = name.split("-")
-            if len(parts) != 4 or parts[0] != self.lane or name == self.name:
+            got = parse_ticket(name)
+            if got is None or got[0] != self.lane or name == self.name:
                 continue
-            try:
-                key = (int(parts[1]), int(parts[2]), int(parts[3]))
-            except ValueError:
-                continue
-            if key < self.key and _live_ticket(os.path.join(self.dir, name)):
+            key = effective(*got[1:], now)
+            if key < mine and _live_ticket(os.path.join(self.dir, name)):
                 found.append((key, name))
         return [name for _, name in sorted(found)]
 

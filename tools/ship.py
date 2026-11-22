@@ -288,6 +288,10 @@ def run_steps(res: dict, first: str = STEPS[0]) -> int:
         os.environ.pop(k, None)
     os.environ.update(GOH_SHIP_VERSION=res["version"], GOH_SHIP_RESULT=res["result"],
                       GOH_SHIP_SUMMARY=res["summary"], GOH_SHIP_ITEM=res["item"] or "")  # fmt: skip
+    # THE SHIP'S CLASS (GOH.SLOTPRIORITY): the push gate a step's `git push` runs is admitted as
+    # `ship` -- the ship declares it, the gate never guesses from its command line; consumed by the
+    # first admission in each step, so nothing that gate starts inherits it.
+    os.environ["GOH_GATE_CLASS"] = "ship"
     stem = Path(res["result"]).with_suffix("")
     for name in STEPS[STEPS.index(first) :]:
         cmd, why = command(res, name)

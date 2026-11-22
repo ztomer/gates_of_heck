@@ -242,7 +242,7 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
     outcome = {**outcome, "at": now()}
     req = landq_batch.read(req_path)
     outcome.update(land_e2e.asked(req))  # the e2e's start (GOH.LANDTARGET)
-    outcome.update(land_slot.done(done_dir.parent, req))  # GOH.LANDSNAPSHOT: slot_s, released
+    outcome.update(land_slot.done(done_dir.parent, req), **landq_report.slot_waits(outcome))
     land_prestep.discard(req, done_dir.parent)  # its verdict, and any orphan (GOH.LANDLEAKS)
     outcome.update(item=named, attempt=land_attempts.attempt_of(done_dir, named))
     outcome.update(land_check.fields(outcome, req))  # its guard; cov_risk (GOH.DIFFCOVLAND)

@@ -14,7 +14,10 @@ landing to the one that landed). Its stages, each a wall in seconds, cpu-s where
     lander run        the landing's `finished` - its `started`, made of:
       pre-land        the lander's pre-land (its log's "pre-land green in N s"; 0 when reused)
       gate            the land gate (`land` ledger row inside the run: wall_s, cpu_s), made of:
-        slot wait     the record's `slot_wait_s`
+        slot wait     the record's `slot_wait_s`: every gate slot the land waited for, made of:
+          slot wait <class>  each class's share (`slot_wait_by_class`, GOH.SLOTPRIORITY): `short`
+                      the pre-step's lane, `land` the gate's -- a land queued behind a lower
+                      class shows here, never inside one figure
         step <label>  each gate step, summed over the gate's passes (its timings kept beside its
                       log as `<log stem>.timings.jsonl`, else the log's last "top 20 steps"
                       table); nested ones (`> <label>`) under their parent
@@ -70,6 +73,14 @@ COVERAGE_LABEL = re.compile(r"^coverage \(floor [^)]*\)")
 STEP, NESTED, UNPLACED, PHASE_ROW = "    step ", "      > ", "      ? ", "        phase "
 ORDER = ("e2e", "enqueue pre-step", "queue wait", "retries", "lander run", "  pre-land", "  gate",
          "    slot wait")  # fmt: skip
+SLOT_CLASS = "      slot wait "
+SLOT_CLASSES = (
+    "short",
+    "land",
+    "ship",
+    "lane",
+    "work",
+)  # lib/gate_lanes.py CLASSES, by lane and rank
 
 
 def label(raw: str) -> str:
@@ -242,6 +253,8 @@ def land(q: Path, item: str, chain: list[tuple[Path, dict]], gates: list[dict]) 
         st["  gate"] = [float(g["wall_s"]), g.get("cpu_s")]
     if rec.get("slot_wait_s") is not None:
         st["    slot wait"] = [float(rec["slot_wait_s"]), None]
+    for klass, secs in (rec.get("slot_wait_by_class") or {}).items():
+        st[SLOT_CLASS + str(klass)] = [float(secs), None]
     parents: dict[str, str] = {}
     for s in gate_steps(found, kept_timings(q, last, rec)):
         if not s["parent"]:
@@ -294,15 +307,20 @@ def _ordered(names: list[str], parents: dict[str, str], median: dict[str, float]
     for n in names:
         if n in parents:
             kids.setdefault(parents[n], []).append(n)
-    out = [n for n in ORDER if n in names]
+    out = []
+    for n in (n for n in ORDER if n in names):
+        out.append(n)
+        if n == "    slot wait":  # each class's wait under the whole, in rank order
+            out += [SLOT_CLASS + c for c in SLOT_CLASSES if SLOT_CLASS + c in names]
 
     def put(n: str) -> None:
         out.append(n)
         for k in sorted(kids.get(n, []), key=lambda k: -median[k]):
             put(k)
 
-    tops = [n for n in names if n.startswith(STEP) or (n not in ORDER and n not in parents
-            and n != "  lander other" and not n.startswith(UNPLACED))]  # fmt: skip
+    tops = [n for n in names if n not in out and (n.startswith(STEP) or (
+            n not in ORDER and n not in parents and n != "  lander other"
+            and not n.startswith(UNPLACED)))]  # fmt: skip
     for n in sorted(tops, key=lambda n: -median[n]):
         put(n)
     out += sorted((n for n in names if n.startswith(UNPLACED)), key=lambda n: -median[n])

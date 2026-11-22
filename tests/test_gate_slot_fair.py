@@ -252,4 +252,4 @@ def test_an_unknown_class_is_refused(tmp_path):
         text=True, timeout=timing_bounds.patience(60), stdin=subprocess.DEVNULL, check=False,
     )  # fmt: skip
     assert got.returncode == 2, got.stdout + got.stderr
-    assert "short, ship or work" in got.stdout + got.stderr
+    assert "short, land, ship, lane or work" in got.stdout + got.stderr

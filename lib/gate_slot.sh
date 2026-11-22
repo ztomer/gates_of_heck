@@ -7,7 +7,8 @@
 # nesting rule are in lib/gate_slot.py's header; this is the shell's half:
 #
 #     gate_slot_acquire <repo name> [class] [max wait s]   # blocks until a slot is free; announces
-#         # the wait and its end. class: short | ship | work (lib/gate_slot.py LANES, GOH.SLOTFAIR);
+#         # the wait and its end. class: short | land | ship | lane | work (lib/gate_lanes.py CLASSES,
+#         # GOH.SLOTFAIR, GOH.SLOTPRIORITY);
 #         # none given, GOH_GATE_CLASS (gates/commit_gate.sh sets `short` for the gate.sh it runs),
 #         # consumed by the acquire so nothing this gate starts inherits it; neither: work. A max
 #         # wait (seconds, the memory wait counted inside it) bounds it: past it, the holders are
@@ -44,6 +45,7 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 GATE_SLOT_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gate_slot.py" # beside this file
 GATE_SLOT_PID="" # the holder process (lib/gate_slot.py hold); gate_slot_release ends it
 GATE_SLOT_STAMP="" # its goh_pid_stamp: the release signals only that process, never a reused pid
+GATE_SLOT_CLASS="" # the class the last acquire asked by (GOH.SLOTPRIORITY): the push row records it
 
 gate_slot_acquire() {
     _gate_slot_take "${1:-gate}" "$$" "" "${2:-}" "${3:-}"
@@ -68,10 +70,11 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller> <class | ""> <max w
     local max="${5:-}"
     unset GOH_GATE_CLASS   # this admission's word: never inherited by what the gate starts
     case "$class" in
-        short | ship | work) ;;
-        *) err "GOH_GATE_CLASS must be short, ship or work (got '$class')"
+        short | land | ship | lane | work) ;;
+        *) err "GOH_GATE_CLASS must be short, land, ship, lane or work (got '$class')"
            exit 2 ;;
     esac
+    GATE_SLOT_CLASS="$class"   # the push row's `slot_class` (lib/timing_ledger.sh goh_push_row)
     local dir="${GOH_GATE_SLOT_DIR:-$HOME/.cache/goh/slots}"
     local helper="$GATE_SLOT_HELPER" fifo line idx total waited path pid mech
     case "$max" in
@@ -145,7 +148,7 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller> <class | ""> <max w
     # THE WIDTH (GOH.POOLSHARE): cores / the gates admitted now, this one included, exported in the
     # variables every runner it starts reads. Counted afresh: an inherited share is another gate's.
     goh_workers_export --admitted --dir "$dir" || { err "gate slot: cannot size this gate's workers (lib/worker_share.py)"; exit 1; }
-    local whose="(GOH_GATE_SLOTS, class $class)"
+    local whose="(GOH_GATE_SLOTS, class $GATE_SLOT_CLASS)"
     if [ -n "$mode" ]; then
         # Never this shell's to release: the holder ends with the gate.sh it was taken for.
         whose="for tools/gate.sh (pid $owner), held until it ends"
@@ -156,7 +159,7 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller> <class | ""> <max w
     local word="gate slot"
     case "${path##*/}" in short-*) word="short-lane gate slot" ;; esac
     if [ "$waited" -gt 0 ]; then
-        ok "$word $((idx + 1))/$total taken after ${waited}s waiting -- the step limits count from here"
+        ok "$word $((idx + 1))/$total taken after ${waited}s waiting (class $class) -- the step limits count from here"
         [ -z "$mode" ] || info "  $whose"
     else
         info "$word $((idx + 1))/$total taken $whose"

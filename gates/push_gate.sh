@@ -284,8 +284,10 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
     # had no limit: a private consumer's gate was killed mid-test and games' Release rebuild ran out its 900 s step
     # limit at a load average of 49.6 (2026-10-18) -- failures of the box, not of the change. Taken
     # once per push, before the export, and held to exit; every step ceiling starts inside the gate,
-    # so the wait is in the push row (`slot_wait_s`) and charged to no step. Class `ship`: ahead of every `work` waiter.
-    [ -n "${slot_asked:-}" ] || { goh_slot_asked; gate_slot_acquire "$(basename "$root")" ship; goh_slot_taken; slot_asked=1; }
+    # so the wait is in the push row (`slot_wait_s`, `slot_class`) and charged to no step. The class is
+    # the CALLER's (GOH_GATE_CLASS: `goh ship` says `ship`), else `work`, the lowest: a push nobody
+    # classed -- the pin sweep's, another repo's -- never goes ahead of a land (GOH.SLOTPRIORITY).
+    [ -n "${slot_asked:-}" ] || { goh_slot_asked; gate_slot_acquire "$(basename "$root")"; goh_slot_taken; slot_asked=1; }
     mkdir -p "$export_root"
     # A STABLE path per repo, claimed with an atomic mkdir. ~/.cargo/config.toml keys the build
     # directory by `{workspace-path-hash}`, so a random export path meant every push built every

@@ -168,10 +168,9 @@ def _waiting(directory: str | None) -> dict[str, int]:
     except FileNotFoundError:
         names = []
     for name in names:
-        parts = name.split("-")
-        live = len(parts) == 4 and parts[0] in found
-        if live and gate_lanes._live_ticket(os.path.join(where, name)):  # its one reader's rule
-            found[parts[0]] += 1
+        got = gate_lanes.parse_ticket(name)  # the tickets' one parser
+        if got and gate_lanes._live_ticket(os.path.join(where, name)):  # its one reader's rule
+            found[got[0]] += 1
     return found
 
 
