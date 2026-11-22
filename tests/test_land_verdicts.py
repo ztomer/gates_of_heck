@@ -327,7 +327,12 @@ def test_a_test_reaching_the_binary_through_the_helper_is_marked(request) -> Non
 # -- land.sh hands the record over -----------------------------------------------------------
 
 
-def test_land_hands_the_pre_steps_record_to_its_gate_and_removes_it(repo, tmp_path) -> None:
+def test_land_hands_the_enqueues_record_to_its_gate_never_the_pre_land_beside_it(
+    repo, tmp_path
+) -> None:
+    """The pre-land runs BESIDE the gate (GOH.GATEPARALLEL): it records into a file of its own,
+    and the gate's suite reads the enqueue's kept record (GOH_LAND_PRE_FROM), never a file the
+    branch beside it is still writing. Both are removed with the land."""
     wt = _worktree(repo, tmp_path)
     seen = tmp_path / "seen"
     _declare(
@@ -337,11 +342,22 @@ def test_land_hands_the_pre_steps_record_to_its_gate_and_removes_it(repo, tmp_pa
         f'echo " $GOH_LAND_VERDICTS_REUSE" >> {seen}\'\n',
     )
     tip = git(wt, "rev-parse", "HEAD").strip()
-    r = _land(wt)
+    keep = tmp_path / "keep"
+    keep.write_text(tip + "\n")
+    Path(f"{keep}.record").write_text("kept")
+    r = _land(wt, GOH_LAND_PRE_FROM=str(keep))
     assert r.returncode == 0, r.stdout + r.stderr
     text, path = seen.read_text().split(" ", 1)
-    assert text == "recorded" and _main(repo) == tip
+    assert text == "kept" and _main(repo) == tip, r.stdout + r.stderr
     assert not Path(path.strip()).exists(), "the land's record outlived it"
+    # A land with no kept verdict hands its gate nothing to reuse: the pre-land's record is its own.
+    seen.unlink()
+    (wt / "g.txt").write_text("g\n")
+    git(wt, "add", "g.txt")
+    git(wt, "commit", "-q", "--no-verify", "-m", "more")
+    r = _land(wt)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert seen.read_text().split(" ", 1)[0] == "", r.stdout + r.stderr
 
 
 def test_a_green_pre_step_that_wrote_no_record_is_a_fault(repo, tmp_path) -> None:
@@ -361,7 +377,7 @@ def test_a_green_pre_step_that_wrote_no_record_is_a_fault(repo, tmp_path) -> Non
         out = r.stdout + r.stderr
         assert r.returncode == 1, out
         assert "wrote no verdict record" in r.stderr and "nothing landed" in r.stderr, out
-        assert not seen.exists() and _main(repo) == before, out
+        assert _main(repo) == before, out  # the gate beside it may have run: nothing landed
     _declare(wt, "GOH_LAND_PRE='printf x > \"$GOH_LAND_VERDICTS_RECORD\"'\nGOH_LAND_GATE='true'\n")
     r = _land(wt)
     assert r.returncode == 0, r.stdout + r.stderr

@@ -34,6 +34,28 @@ goh_pid_kill() {
     kill "-$sig" "${stamp%% *}" 2>/dev/null
 }
 
+# goh_pid_tree_kill SIGNAL STAMP: SIGNAL to the stamped process and every process below it NOW,
+# leaves first (GOH.GATEPARALLEL: a land stops one of its two concurrent branches -- a subshell, its
+# load.py, the step -- while the other and the land itself run on, so neither a group signal nor
+# the root alone will do). The root is refused as goh_pid_kill refuses it; a descendant is one by
+# its parent at this instant, and is signalled only if its stamp still holds when it is reached.
+# Status 0 when the root was signalled.
+goh_pid_tree_kill() {
+    local sig="$1" stamp="${2:-}" pid ppid i s
+    local -A kids=()
+    goh_pid_kill 0 "$stamp" || return 1
+    while read -r pid ppid; do kids[$ppid]+=" $pid"; done < <(ps -A -o pid=,ppid= 2>/dev/null)
+    local -a order=("${stamp%% *}")
+    for ((i = 0; i < ${#order[@]}; i++)); do
+        # shellcheck disable=SC2206 # the space-joined child list splits into pids
+        order+=(${kids[${order[i]}]:-})
+    done
+    for ((i = ${#order[@]} - 1; i > 0; i--)); do
+        s="$(goh_pid_stamp "${order[i]}")" && goh_pid_kill "$sig" "$s" || true
+    done
+    goh_pid_kill "$sig" "$stamp"
+}
+
 # The state and start time `ps` reports for a pid, `<stat> <lstart>`, or nothing when no process
 # holds it. One `ps`, and a SEAM: the suite's shared case table (tests/test_pid_owner_cases.py)
 # redefines it to hand the exiting state, which cannot be held open on demand.

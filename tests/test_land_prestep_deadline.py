@@ -40,4 +40,4 @@ def test_a_pre_step_past_its_deadline_lets_the_gate_decide(repo: Path, tmp_path:
 def test_a_pre_step_that_fails_still_lands_nothing(repo: Path, tmp_path: Path) -> None:
     r, wt = _land(repo, tmp_path, "exit 1")
     assert r.returncode == 1 and "the pre-land tests failed" in r.stdout + r.stderr
-    assert not (tmp_path / "seen").exists() and _main(repo) != git(wt, "rev-parse", "HEAD").strip()
+    assert _main(repo) != git(wt, "rev-parse", "HEAD").strip()  # the gate beside it may have run

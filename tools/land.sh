@@ -7,7 +7,7 @@
 # disciplinary). So the two are one command:
 #
 #   0. the repo's declared pre-step (GOH_LAND_PRE; goh's runs the tests its diff chooses,
-#      tools/affected_tests.py) runs before the land lock and the gate's slot (THE PRE-STEP, below);
+#      tools/affected_tests.py) runs at `goh land --enqueue`, and under the lock beside the gate (below);
 #   1. the tip is read once, and the gate runs: GOH_LAND_GATE from the environment, else the one the
 #      repo DECLARES in its .gatesrc (read by name in a child, like GOH_RELEASE_GATE), else the kit's
 #      gate_profile.sh over the repo (its push gate, which reads that same .gatesrc). The default
@@ -127,13 +127,15 @@ if [ -z "${GOH_LAND_STACK_ONTO:-}$hold" ] && [ -f "$here/gates/required_tools.ts
         || { err "land.sh: the ruff pin bump this box needs was not committed -- nothing landed"; exit 1; }
     tip="$(git rev-parse HEAD)"
 fi
-# THE PRE-STEP (GOH.TREETESTSFIRST): the tests the diff chooses, BEFORE the land lock and the gate's
-# slot, so a test the lane never ran fails in seconds, not after a lock wait, a slot wait and ~8 min
-# of suite (GOH.ONEADMISSION's first land, 2026-11-16, lost to tests/test_lock_order.py). Declared in
-# .gatesrc as GOH_LAND_PRE (goh's: tools/affected_tests.py --run, the changed paths' tests and every
-# tree reader); run with main's tip as $1, in the worktree, admitted in the short lane (a 0-spinner
-# load.py run takes a gate slot, lib/admission.py; GOH.PRESTEPADMIT below) and released before the lock is queued for, so
-# it nests no lock (GOH.LOCKORDER). Bounded by its share (lib/pre_deadline.py: 10-25 min); a repo that declares none has no pre-step.
+# THE PRE-STEP (GOH.TREETESTSFIRST): the tests the diff chooses, so a test the lane never ran fails
+# in seconds, not after ~8 min of suite (GOH.ONEADMISSION's first land, 2026-11-16, lost to
+# tests/test_lock_order.py). `goh land --enqueue` runs it before the queue (GOH_LAND_PRE_ONLY); a land
+# runs it under the lock BESIDE the gate on the tip main will hold, the first red stopping the other
+# (GOH.GATEPARALLEL, lib/land_par.sh). Declared in .gatesrc as GOH_LAND_PRE (goh's:
+# tools/affected_tests.py --run, the changed paths' tests and every tree reader); run with main's tip
+# as $1, in the worktree, admitted in the short lane (a 0-spinner load.py run takes a gate slot,
+# lib/admission.py; GOH.PRESTEPADMIT below), after the land lock as the gate's slot is (GOH.LOCKORDER).
+# Bounded by its share (lib/pre_deadline.py: 10-25 min); a repo that declares none has no pre-step.
 # gatesrc_var NAME -- NAME from the environment, else the tree's .gatesrc (empty when neither sets it).
 gatesrc_var() {
     if [ -n "${!1+set}" ] || [ ! -f "$here/.gatesrc" ]; then printf %s "${!1-}"; return; fi
@@ -149,12 +151,11 @@ ship_full="$(gatesrc_var GOH_SHIP_FULL_SUITE)" || exit 2
 # (GOH_LAND_VERDICTS_REUSE, tests/_land_verdicts.py). One file per land, removed with it. A rebased tip CARRIES verdicts from
 # the pre-step's tree and main's recorded tip, for what the diff between them does not choose
 # (GOH.VERDICTCARRY, the one store's `carry` path).
-# land_rebase -- the branch on top of main as it is now: sets base, moves tip, and sets rebased=1
+# land_rebase -- the branch on top of main as it is now: sets base and moves tip
 # when it had to move. A conflict aborts the rebase and lands nothing. STACKED (GOH_LAND_STACK_ONTO,
 # below): onto that commit instead, carrying only the branch's own commits above
 # GOH_LAND_STACK_UPSTREAM -- a commit of a batch item dropped from below it is not carried.
 land_rebase() {
-    rebased=0
     local upon=() below=""
     base="${GOH_LAND_STACK_ONTO:-$(git -C "$main" rev-parse HEAD)}"
     if [ -n "${GOH_LAND_STACK_ONTO:-}" ]; then
@@ -186,8 +187,7 @@ land_rebase() {
     fi
     now="$(git rev-parse HEAD)"
     info "rebased $branch onto main ${base:0:8}: ${tip:0:8} -> ${now:0:8}"
-    tip="$now"
-    rebased=1   # the gates that judge the new tip are chosen before the gate (land_roots, below)
+    tip="$now"   # the gates that judge the new tip are chosen before the gate (land_roots, below)
     # The declarations are the rebased tree's (GOH.LANDPREREREAD): read before the rebase, main's
     # change to GOH_LAND_PRE ran as the lane's old command on main's new tools.
     pre="$(gatesrc_var GOH_LAND_PRE)" || exit 2
@@ -198,8 +198,8 @@ land_rebase() {
 # exits 1 on a red set (THE PRE-STEP, above). A green full run leaves its tip in pre_judged.
 land_pre() {
     local cmd="${1:-$pre}" record
-    [ -n "$verdicts" ] || verdicts="$(mktemp "$(goh_tmp)/goh-land-verdicts.XXXXXX")" || exit 2
-    record="${2:-$verdicts}"
+    [ -n "$verdicts" ] || [ -n "${pre_record:-}" ] || verdicts="$(mktemp "$(goh_tmp)/goh-land-verdicts.XXXXXX")" || exit 2
+    record="${2:-${pre_record:-$verdicts}}"   # pre_record: the concurrent branch's own (lib/land_par.sh)
     rm -f "$record"   # the pre-step's suite writes it whole, or there is no record
     [ -n "${1:-}" ] || pre_judged=""
     pre_base="$(git -C "$main" rev-parse HEAD)"
@@ -258,7 +258,7 @@ land_pre() {
         [ -n "$load1" ] || load1="$(cut -d' ' -f1 /proc/loadavg 2>/dev/null)"
         info "pre-land: no verdict after $((pre_t1 - pre_s)) s at load ${load1:-?} -- the gate decides ($pre_took)"
     elif [ "$pre_rc" -ne 0 ]; then
-        err "land.sh: the pre-land tests failed on ${tip:0:8} $pre_took, before the land lock and the gate -- nothing landed"
+        err "land.sh: the pre-land tests failed on ${tip:0:8} $pre_took -- nothing landed"
         exit 1
     elif [ -f "$here/tests/_land_verdicts.py" ] && [ ! -s "$record" ]; then
         # A tree whose suite records (tests/_land_verdicts.py) owes a record from a green pre-step:
@@ -273,12 +273,11 @@ land_pre() {
     fi
 }
 # THE TIP MAIN WILL HOLD (GOH.PREPARITY class 3): a branch behind main is rebased BEFORE its pre-step,
-# outside the lock (the rebase moves the branch, never main). The pre-step judged the tip as the lane
+# outside the lock (the rebase moves the branch, never main), and again under it. The pre-step judged the tip as the lane
 # left it and the rebase came after, under the lock: PREPARITY's land went green at 3709f571, was
 # rebased onto a main holding gates/_proven.sh at 500 lines, and went red in the full gate at 501;
 # every lane older than a ship failed changelog_tags so (REUSEAUDIT2 dd8403da). The enqueue's run
 # (GOH_LAND_PRE_ONLY) moves nothing: the queue holds the sha the lane enqueued.
-rebased=0
 lock="$(git -C "$main" rev-parse --path-format=absolute --git-common-dir)/goh-land.lock"
 # land_lock_ours -- this land runs BY the land lock's holder (lib/land_lock.sh goh_land_lock_ours:
 # the owner variable, the holder line and the holder itself, not whoever has its pid now).
@@ -299,11 +298,12 @@ fi
 # shellcheck source=lib/land_pre_reuse.sh
 . "$GOH/lib/land_pre_reuse.sh" || exit 2
 land_pre_from
-[ -z "$pre" ] || land_pre_again "the enqueue"
 # GOH_LAND_PRE_ONLY (GOH.ENQUEUEPRE): `goh land --enqueue` runs the pre-step in the caller's worktree
 # before it queues the tip -- this script, so the set, the lane and the deadline are the lander's own
 # -- and stops here: no lock, no gate, no fast-forward. 0 is green or no verdict, 1 is a red set.
+# A land runs its pre-step under the lock instead, beside the gate (GOH.GATEPARALLEL, below).
 if [ -n "${GOH_LAND_PRE_ONLY:-}" ]; then
+    [ -z "$pre" ] || land_pre_again "the enqueue"
     land_pre_keep
     exit 0
 fi
@@ -342,13 +342,9 @@ if [ "$tip" = "$base" ]; then
     exit 1
 fi
 # Gate the commit main will fast-forward to: the branch on top of main as it is now, under the lock.
-# Main moved again while the pre-step ran (another lane landed): the rebased tip is pre-stepped
-# again, before the gate, so the red only the merged tree has is still the pre-step's (GOH.PREPARITY).
+# The pre-step judges that same tip, so the red only the merged tree has is still the pre-step's
+# (GOH.PREPARITY) -- run beside the gate, not before it (GOH.GATEPARALLEL, lib/land_par.sh).
 land_rebase
-if [ "$rebased" = 1 ] && [ -n "$pre" ]; then
-    info "pre-land: main moved during the pre-step -- again on ${tip:0:8}"
-    land_pre_again "this land's"
-fi
 # THE GATES THAT JUDGE A GOH LAND (GOH.PRESTEPHEAD, docs/decisions/D-0012). The queue drives every
 # land with main's land.sh (tools/landq.py land_script), but the gate code is the tree's own when the
 # tree IS the gates' repo, so a lane that weakened a gate was judged by its own weakened copy. When
@@ -388,12 +384,16 @@ land_roots
 land_timings="$(mktemp "$(goh_tmp)/goh-land-timings.XXXXXX")" || land_timings=""
 # shellcheck source=lib/land_gate.sh
 . "$GOH/lib/land_gate.sh" || exit 2   # land_gate ROOT WHOSE GATE: the gate run, its slot wait read honestly (GOH.PREWAITVERDICT)
-# ONE RUN PER LAND (GOH.SUITEONCE): the gate's suite takes the pre-step's verdict when it judged
-# this very tree against this base (tools/pytest.sh, lib/pre_reuse.py `suite`); it reads the base
-# here and leaves the verdict's id in `.reused`, which the land's record names (`suite_reused`).
+# ONE RUN PER LAND (GOH.SUITEONCE): the gate's suite takes the enqueue's verdict when it judged
+# this very tree against this base (tools/pytest.sh, lib/pre_reuse.py `suite`), and carries it for
+# what the diff does not choose otherwise; it reads the base here and leaves the verdict's id in
+# `.reused`, which the land's record names (`suite_reused`).
 [ ! -s "$verdicts" ] || printf '%s\n' "$base" >"$verdicts.base"
-[ -z "$judge_root" ] || land_gate "$judge_root" "main ${base:0:8}" "$judge_gate"
-land_gate "$tip_root" "$tip_who" "$gate"
+# THE PRE-STEP AND THE GATE AT ONCE (GOH.GATEPARALLEL): both judge this tree and neither reads the
+# other, so they run together and the land costs the longer; the first red stops the other.
+# shellcheck source=lib/land_par.sh
+. "$GOH/lib/land_par.sh" || exit 2
+land_par
 [ -z "$verdicts" ] || [ ! -s "$verdicts.reused" ] || IFS= read -r suite_reused <"$verdicts.reused" || true
 if [ "$tip_root" != "$GOH" ]; then   # the tip's gates key the goh-landed line (GOH.VERDICTKEYDRIFT)
     GOH="$tip_root"; export GOH_DIR="$GOH"; goh_path_front PYTHONPATH "$GOH"

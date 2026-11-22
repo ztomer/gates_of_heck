@@ -4,8 +4,8 @@ tools/land.sh ran the pre-step on the branch as the lane left it and rebased ont
 under the land lock: PREPARITY's own land went green in its pre-step at 3709f571, was rebased onto
 da1d14f0 (which held gates/_proven.sh at exactly 500 lines) and then went red in the full gate on a
 501-line file, and every in-flight lane older than a ship failed changelog_tags the same way
-(REUSEAUDIT2 dd8403da). Now a branch behind main is rebased BEFORE its pre-step, and one whose main
-moved again while the pre-step ran is rebased and pre-stepped again under the lock, before the gate.
+(REUSEAUDIT2 dd8403da). Now a branch behind main is rebased BEFORE its pre-step, which runs once,
+under the lock, on the rebased tip and beside the gate (GOH.GATEPARALLEL).
 """
 
 from __future__ import annotations
@@ -46,10 +46,9 @@ def test_a_branch_behind_main_is_rebased_before_its_pre_step(repo: Path, tmp_pat
     assert git_ok(repo, "merge-base", "--is-ancestor", moved, landed), out
 
 
-def test_a_red_only_the_rebased_tree_has_is_refused_before_the_gate(
-    repo: Path, tmp_path: Path
-) -> None:
-    """The tree the lane left passes; the one main would hold (main's file and the branch) fails."""
+def test_a_red_only_the_rebased_tree_has_is_refused(repo: Path, tmp_path: Path) -> None:
+    """The tree the lane left passes; the one main would hold (main's file and the branch) fails.
+    The gate runs beside the pre-step (GOH.GATEPARALLEL), so whether it ran is not the claim."""
     wt = _worktree(repo, tmp_path)
     _main_moves(repo, "big.txt")
     before = _main(repo)
@@ -58,24 +57,23 @@ def test_a_red_only_the_rebased_tree_has_is_refused_before_the_gate(
     out = r.stdout + r.stderr
     assert r.returncode == 1, out
     assert "the pre-land tests failed" in out, out
-    assert not seen.exists(), out  # no gate ran
     assert _main(repo) == before
 
 
-def test_a_main_that_moves_during_the_pre_step_gets_a_second_one(
+def test_a_main_moved_outside_land_sh_during_the_land_lands_nothing(
     repo: Path, tmp_path: Path
 ) -> None:
-    """Another lane lands while this pre-step runs: rebased again under the lock, judged again."""
+    """The pre-step runs ONCE, under the lock, on the tip main will hold (GOH.GATEPARALLEL), so no
+    other land moves main under it; a main moved by hand meanwhile is named and nothing lands."""
     wt = _worktree(repo, tmp_path)
-    seen, judged, once = tmp_path / "seen", tmp_path / "judged", tmp_path / "once"
+    seen, judged = tmp_path / "seen", tmp_path / "judged"
     commit = f"git -C {repo} add late.txt; git -C {repo} commit -q --no-verify -m late"
-    move = f"[ -e {once} ] || {{ : > {once}; echo x > {repo}/late.txt; {commit}; }}"
-    r = _land(wt, f"git rev-parse HEAD >> {judged}; {move}", seen)
+    r = _land(wt, f"git rev-parse HEAD >> {judged}; echo x > {repo}/late.txt; {commit}", seen)
     out = r.stdout + r.stderr
-    assert r.returncode == 0, out
-    runs = judged.read_text().split()
-    assert len(runs) == 2 and runs[1] == _main(repo) != runs[0], out
-    assert seen.read_text() == "gate\n", out
+    assert r.returncode == 1, out
+    assert len(judged.read_text().split()) == 1, out
+    assert "while" in out and "outside land.sh" in out, out
+    assert git(repo, "log", "-1", "--format=%s").strip() == "late", out
 
 
 def test_the_pre_step_is_the_one_the_rebased_tree_declares(repo: Path, tmp_path: Path) -> None:

@@ -5,7 +5,7 @@ after a slot wait and the suite: the lane's hand-picked list missed a test that 
 tools/load.py by path. GOH.TAGPUSHGATE's went red on tests/test_self_walk.py, a tree reader no name
 pattern sees. Here: each way a test can depend on a change is chosen, a test depending on nothing
 is not, the readers that cost lands are chosen on an empty diff, and land.sh runs the declared
-pre-step before the land lock and the gate, a red one landing nothing.
+pre-step beside the gate under the land lock (GOH.GATEPARALLEL), a red one landing nothing.
 """
 
 from __future__ import annotations
@@ -354,14 +354,15 @@ def _declare(wt: Path, body: str) -> None:
     git(wt, "commit", "-q", "--no-verify", "-m", "declare")
 
 
-def _land(wt: Path) -> subprocess.CompletedProcess[str]:
-    env = hermetic_env(drop_git=True)
+def _land(wt: Path, **extra: str) -> subprocess.CompletedProcess[str]:
+    env = hermetic_env(drop_git=True, **extra)
     env.pop("GATES_OF_HECK_SUITE_RUNNER", None)
     return subprocess.run(["bash", str(LAND)], cwd=wt, env=env, capture_output=True, text=True,
                           timeout=patience(60), stdin=subprocess.DEVNULL, check=False)  # fmt: skip
 
 
-def test_a_red_pre_step_lands_nothing_and_the_gate_never_runs(repo: Path, tmp_path: Path) -> None:
+def test_a_red_pre_step_lands_nothing(repo: Path, tmp_path: Path) -> None:
+    """The gate runs beside it (GOH.GATEPARALLEL) and may have finished first: nothing lands."""
     wt = _worktree(repo, tmp_path)
     seen = tmp_path / "seen"
     _declare(
@@ -370,12 +371,15 @@ def test_a_red_pre_step_lands_nothing_and_the_gate_never_runs(repo: Path, tmp_pa
     before = _main(repo)
     r = _land(wt)
     assert r.returncode == 1 and "pre-land tests failed" in r.stderr, r.stdout + r.stderr
-    assert seen.read_text() == "pre\n" and _main(repo) == before
+    assert "pre\n" in seen.read_text() and _main(repo) == before
 
 
-def test_the_pre_step_runs_before_the_land_lock_with_mains_tip(repo: Path, tmp_path: Path) -> None:
-    """Before the lock: a land lock file nobody has written yet (land.sh writes its holder line
-    on taking it). $1 is main's tip, which the selector diffs against."""
+def test_the_pre_step_runs_under_the_land_lock_beside_the_gate_with_mains_tip(
+    repo: Path, tmp_path: Path
+) -> None:
+    """Under the lock, beside the gate (GOH.GATEPARALLEL): the lock file holds this land's holder
+    line (land.sh writes it on taking the lock). $1 is main's tip, which the selector diffs
+    against. The enqueue's run (GOH_LAND_PRE_ONLY) is the one before any lock."""
     wt = _worktree(repo, tmp_path)
     seen, lock = tmp_path / "seen", repo / ".git" / "goh-land.lock"
     _declare(
@@ -386,7 +390,9 @@ def test_the_pre_step_runs_before_the_land_lock_with_mains_tip(repo: Path, tmp_p
     base, tip = _main(repo), git(wt, "rev-parse", "HEAD").strip()
     r = _land(wt)
     assert r.returncode == 0, r.stdout + r.stderr
-    assert seen.read_text() == f"pre {base} \ngate\n" and _main(repo) == tip
+    lines = sorted(seen.read_text().splitlines())
+    assert lines[0] == "gate" and lines[1].startswith(f"pre {base} feature @ "), lines
+    assert _main(repo) == tip
     assert "pre-land green in" in r.stdout, r.stdout
 
 

@@ -50,9 +50,10 @@ def test_a_lone_item_at_its_enqueued_tree_reuses_the_enqueue_verdict_a_stack_doe
     runs = _pre_runs(pre_log)[2:]
     # The stack's tip (two on one) is a tree no enqueue judged, and this tree has no reads table to
     # say the lower item's paths are unread (GOH.PRELANDBATCH, tests/test_landq_batch_reuse.py): its
-    # pre-step runs. Each lone item after the bisect is gated at its enqueued tree: the enqueue's
+    # pre-step runs -- beside the stack's gate (GOH.GATEPARALLEL), whose red may stop it before its
+    # first line. Each lone item after the bisect is gated at its enqueued tree: the enqueue's
     # verdict holds, nothing runs.
-    assert len(runs) == 1 and runs[0] not in enqueued, (runs, enqueued)
+    assert len(runs) <= 1 and not set(runs) & set(enqueued), (runs, enqueued)
     logs = sorted((Path(env["GOH_LANDQ_DIR"]) / "logs").glob("*.gate*.log"))
     held = [p.name for p in logs if "judged at" in p.read_text() and "holds for" in p.read_text()]
     assert len(logs) == 3 and len(held) == 2, [p.read_text() for p in logs]
