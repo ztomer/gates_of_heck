@@ -13,9 +13,55 @@
 # variables cargo sets FOR crates (CARGO_PKG_*, CARGO_MANIFEST_*, CARGO_CRATE_NAME, CARGO, ...)
 # are kept, and stay in the key.
 #
-# GOH_RUSTC_NEXT names what runs next (default: sccache on PATH).
+# It also keeps the build dir's path out of the key (GOH.SCCACHEPATHS, F2 and F3):
+#   * a proc-macro dylib's install name was its absolute build-dir path, so its bytes, and the
+#     key of every crate using it, differed per build dir. On macOS it is named
+#     `@rpath/lib<crate>.dylib`; rustc dlopens proc-macros by path and never reads the name.
+#   * OUT_DIR (`include!(concat!(env!("OUT_DIR"), ...))`) put the build dir's path in the crate's
+#     dep-info and rlib, so it and its dependents missed in every new build dir. OUT_DIR is
+#     pointed at a copy in GOH_OUTDIR_STORE named by the content's hash: the same output shares a
+#     key, a different one cannot. A copy that fails leaves OUT_DIR as cargo set it.
+# The workspace member's cwd stays in the key (sccache 0.19 has no Rust path remap; its
+# SCCACHE_BASEDIRS is C-only and gives false hits with the preprocessor cache: never set it).
+#
+# GOH_RUSTC_NEXT names what runs next (default: sccache on PATH); GOH_RUSTC_OS overrides `uname -s`.
+store=${GOH_OUTDIR_STORE:-${XDG_CACHE_HOME:-$HOME/.cache}/goh/outdir}
 unset CARGO_TARGET_DIR CARGO_HOME CARGO_INCREMENTAL
 for v in $(env | awk -F= '/^CARGO_(BUILD|TERM)_[A-Za-z0-9_]*=/ { print $1 }'); do
     unset "$v"
 done
+
+# F2: the crate's name and type, read from cargo's argv
+name='' kind='' prev=''
+for a in "$@"; do
+    case $prev in --crate-name) name=$a ;; --crate-type) kind=$a ;; esac
+    case $a in --crate-type=*) kind=${a#--crate-type=} ;; esac
+    prev=$a
+done
+if [ "$kind" = proc-macro ] && [ -n "$name" ] && [ "${GOH_RUSTC_OS:-$(uname -s)}" = Darwin ]; then
+    set -- "$@" -C "link-arg=-Wl,-install_name,@rpath/lib$name.dylib"
+fi
+
+# F3: OUT_DIR by content. The hash covers every file's relative path and bytes.
+if command -v shasum >/dev/null 2>&1; then sha='shasum -a 256'; else sha=sha256sum; fi
+cas() (
+    cd "$OUT_DIR" 2>/dev/null || exit 1
+    # one `<sha>  <path>` line per file, then the hash of those lines
+    h=$(find . -type f -print0 | LC_ALL=C sort -z | xargs -0 $sha | $sha | cut -c1-32)
+    case $h in *[!0-9a-f]* | '') exit 1 ;; esac
+    dst=$store/$h
+    if [ ! -d "$dst" ]; then
+        mkdir -p "$store" 2>/dev/null || exit 1
+        tmp=$(mktemp -d "$store/.tmp.XXXXXX") || exit 1
+        cp -cR . "$tmp/" 2>/dev/null || cp -R . "$tmp/" || { rm -rf "$tmp"; exit 1; }
+        # a racing compile may have made dst: mv then moves tmp INTO it, which is undone
+        mv "$tmp" "$dst" 2>/dev/null
+        rm -rf "$tmp" "$dst/${tmp##*/}"
+    fi
+    [ -d "$dst" ] && printf '%s' "$dst"
+)
+if [ -n "${OUT_DIR:-}" ] && [ -d "$OUT_DIR" ] && dst=$(cas); then
+    OUT_DIR=$dst
+    export OUT_DIR
+fi
 exec "${GOH_RUSTC_NEXT:-sccache}" "$@"
