@@ -253,3 +253,20 @@ def test_goh_land_reds_prints_the_classes_and_json(tmp_path):
         ).stdout
     )
     assert got["classes"]["tip-moved"]["count"] == 1
+
+
+def test_the_table_rule_reads_a_test_id_alone_and_names_the_tables_an_assertion_names():
+    """GOH.TABLESEARLY: `goh land --check` selects consistency-table tests by this rule, the one
+    `classify` judges a red by, never a hand list."""
+    assert lr.judges_a_table("tests/test_wiring.py::test_every_script_has_a_row_in_the_map")
+    assert lr.judges_a_table("tests/test_cap_headroom.py::test_no_new_file_crosses_the_headroom")
+    assert not lr.judges_a_table("tests/test_landq.py::test_a_red_is_recorded")
+    rec = {"why": PRE.format("tests/test_wiring.py::test_every_script_has_a_row_in_the_map")}
+    assert lr.classify(rec, "")["cause"] == "consistency-table"
+    log = (
+        "E   AssertionError: lib/x.py has no row in docs/map.md\n"
+        "E   assert 'tools/y.sh' in house_scripts.tsv rows; see tests/cap_headroom_allow.txt\n"
+        "lib/z.py is not in docs/map.md (an untested line, not an E line)\n"
+    )
+    assert lr.tables(log) == ["docs/map.md", "house_scripts.tsv", "tests/cap_headroom_allow.txt"]
+    assert lr.tables("E   assert 1 == 2\n") == []

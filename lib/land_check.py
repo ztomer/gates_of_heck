@@ -22,6 +22,13 @@ THE GUARDS, run in the checkout as the land runs them, side by side:
     guard reads text), the way a commit's source guards run. A pre-step's refusal at enqueue is
     `learn`ed into `<landq>/guards.jsonl`, so the next check runs the test that refused it.
 
+THE TABLES (`goh land --check` only; GOH.TABLESEARLY). 25 of the 48 reds in 100 land records were
+consistency-table tests (lib/land_reds.py's class), each a whole enqueue cycle. The check adds the
+ones the change can affect: the enqueue pre-step's own choice for the diff, cut to the test
+functions land_reds' rule calls table judges (`judges_a_table`, the rule `goh land-reds` counts
+by, never a hand list), under a cost cap; a refusal names the table files its assertions name.
+The enqueue's check leaves them out: its pre-step runs them minutes later anyway.
+
 THE RECORD. A refused land names its guard: `guards(text)` reads a land's log for the failing
 test node ids and the failing gate steps, `fields` puts `guard` (the first) and `guards` on the
 done record, and `goh land-profile --guards` counts refusals by guard. The enqueue's own refusal
@@ -43,11 +50,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT)]
-from lib import cov_risk, fast_tests, proc_deadline  # noqa: E402
+from lib import cov_risk, fast_tests, land_reds, proc_deadline  # noqa: E402
+from tui.lib import counted  # noqa: E402
 
 EACH_S = 1.0  # the most a past refuser may cost, by the suite's measurement
 DECLARED_EACH_S = 10.0  # ... and a declared guard: its file chose it
 SHARDS = 3  # the guard tests' pytest runs, side by side, balanced by measured cost
+# The consistency-table tests `cli` adds (GOH.TABLESEARLY): each at most TABLE_EACH_S by the
+# suite's measurement (an unmeasured one costed UNMEASURED_S), cheapest first while the sum stays
+# within TABLE_BUDGET_S, over TABLE_SHARDS runs. 25 of 48 reds in 100 land records were this class.
+TABLE_EACH_S, TABLE_BUDGET_S, TABLE_SHARDS, UNMEASURED_S = 25.0, 150.0, 5, 1.0
+SELECT_TIMEOUT = 120
 HISTORY = 400  # the newest done records read for past refusing guards
 STEP_TIMEOUT = 300
 # Exits that are no verdict on the tree: a step past STEP_TIMEOUT (124); pytest interrupted (3),
@@ -147,6 +160,38 @@ def tests(root: Path, q: Path | None, repo: str = "") -> list[str]:
     return [n for n in every if cost.get(n, 0.0 if n in mine else EACH_S + 1) <= cap.get(n, EACH_S)]
 
 
+def chosen_by_diff(root: Path) -> list[str]:
+    """What the enqueue's pre-step would choose for ROOT's diff against main: the tree's own
+    tools/affected_tests.py in its enqueue mode; [] for a tree without one, or when it fails."""
+    tool = root / "tools" / "affected_tests.py"
+    if not tool.is_file():
+        return []
+    env = {**_env(root), "GOH_LAND_PRE_ONLY": "1"}
+    argv = [env["GOH_PY"], str(tool), "--root", str(root), "--base", "main"]
+    try:
+        res = subprocess.run(argv, cwd=root, env=env, capture_output=True, text=True, check=False,
+                             stdin=subprocess.DEVNULL, timeout=SELECT_TIMEOUT)  # fmt: skip
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    lines = res.stdout.splitlines() if res.returncode == 0 else []
+    return [ln.strip() for ln in lines if ln.startswith("tests/")]
+
+
+def table_tests(root: Path) -> list[str]:
+    """The consistency-table tests ROOT's change can affect: the pre-step's choice for its diff
+    (`chosen_by_diff`) cut to the test functions lib/land_reds.py's rule calls table judges,
+    cheapest first under TABLE_EACH_S each and TABLE_BUDGET_S in all."""
+    cost = costs()
+    found = [n for n in fast_tests.units(root, chosen_by_diff(root)) if land_reds.judges_a_table(n)]
+    out, total = [], 0.0
+    for node in sorted(dict.fromkeys(found), key=lambda n: cost.get(n, UNMEASURED_S)):
+        took = cost.get(node, UNMEASURED_S)
+        if took <= TABLE_EACH_S and total + took <= TABLE_BUDGET_S:
+            out.append(node)
+            total += took
+    return sorted(out)
+
+
 def shards(nodes: list[str], n: int = SHARDS) -> list[list[str]]:
     """NODES in up to N runs of near-equal measured cost (the costliest first, to the lightest)."""
     cost = costs()
@@ -194,14 +239,23 @@ def _run(argv: list[str], root: Path, env: dict[str, str]) -> tuple[int, str, fl
     return rc, out, round(time.monotonic() - t0, 1)
 
 
-def run(root: Path, q: Path | None = None, say=print, repo: str = "") -> list[str]:
-    """Every guard over ROOT; the refusing guards' names ([] is green). SAY prints a line."""
+def run(
+    root: Path, q: Path | None = None, say=print, repo: str = "", tables: bool = False
+) -> list[str]:
+    """Every guard over ROOT; the refusing guards' names ([] is green). SAY prints a line. TABLES
+    (`goh land --check`) adds the consistency-table tests the change can affect (`table_tests`)."""
     env = _env(root)
     nodes = tests(root, q, repo)
+    if tables:
+        t0 = time.monotonic()
+        extra = [n for n in table_tests(root) if n not in nodes]
+        took = time.monotonic() - t0
+        say(f"check: {counted(len(extra), 'consistency-table test')} chosen in {took:.1f} s")
+        nodes += extra
     jobs: dict[str, list[str]] = {s: ["bash", "-c", s] for s in steps(root)}
     serial = ["-n", "0"] if (root / "tests" / "_shard.py").is_file() else []  # goh's xdist
     py = [env["GOH_PY"], "-m", "pytest", "-q", "-p", "no:cacheprovider", *serial]
-    parts = shards(nodes)
+    parts = shards(nodes, TABLE_SHARDS if tables else SHARDS)
     for i, part in enumerate(parts, 1):
         jobs[f"guard tests {i}/{len(parts)}"] = [*py, "--", *part]
     if not jobs:
@@ -226,6 +280,9 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "") -> list[st
             else [f"[{g}]" for g in subgates]
         )
         refused += named or [name]
+        if tabled := [n for n in named if land_reds.judges_a_table(n)]:
+            files = ", ".join(land_reds.tables(out)) or "none named (read the test)"
+            say(f"check: {counted(len(tabled), 'table test')} refused; the tables named: {files}")
         tail = "\n".join(out.rstrip().splitlines()[-25:])
         say(f"check: {name}: REFUSED in {took} s (exit {rc}): {', '.join(named) or name}\n{tail}")
     return refused
@@ -315,7 +372,7 @@ def cli(worktree: str, q: Path) -> int:
     listing = gitrun.run_reader(("worktree", "list", "--porcelain"), repo=top, timeout=60)
     main = listing.stdout.split("\n", 1)[0].removeprefix("worktree ")
     t0 = time.monotonic()
-    refused = run(Path(top), q, info, main)
+    refused = run(Path(top), q, info, main, tables=True)
     took = f"{time.monotonic() - t0:.1f} s"
     t1 = time.monotonic()
     cov_risk.say(top, main, warn)  # GOH.DIFFCOVLAND: a warning, never this check's verdict

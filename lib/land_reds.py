@@ -71,6 +71,11 @@ TABLE_NAME = re.compile(
     r"_seed|registered|_listed|inventory"
 )
 TABLE_TEXT = re.compile(r"\.tsv\b|map\.md|allowlist|_allow\.|_seed\.json|manifest", re.IGNORECASE)
+# A table file an assertion names, whole (`docs/map.md`, `house_scripts.tsv`, an allow list).
+TABLE_FILE = re.compile(
+    r"[\w./-]*(?:\.tsv|map\.md|allowlist[\w.]*|_allow\.\w+|_seed\.json|manifest\.\w+)"
+    r"(?![\w/])"
+)
 ENV_NAME = re.compile(r"environ|_env(?:_|$)|hermetic|leak")
 ENV_TEXT = re.compile(r"os\.environ|monkeypatch\.(?:set|del)env")
 STEP_ENV = re.compile(r"^✗ [^:\n]+: external \([^)]*\): (.*) failed \(exit", re.MULTILINE)
@@ -87,6 +92,17 @@ def tests_of(rec: dict, log: str) -> list[str]:
     if found := FAILING.search(str(rec.get("why") or "")):
         out = [t.strip() for t in found.group(1).split(",") if t.strip()]
     return out + [t for t in land_cause.failed_tests(log) if t not in out]
+
+
+def judges_a_table(test: str) -> bool:
+    """The consistency-table rule over a test id alone: `classify`'s name rule, and the one
+    `goh land --check` selects the tests it runs before an enqueue by (GOH.TABLESEARLY)."""
+    return bool(TABLE_NAME.search(test))
+
+
+def tables(log: str) -> list[str]:
+    """The table files the assertion lines of LOG name, once each, in order."""
+    return list(dict.fromkeys(TABLE_FILE.findall(error_lines(log))))
 
 
 def error_lines(log: str) -> str:
@@ -146,7 +162,7 @@ def classify(
     errors = error_lines(log)
     if land_cause.STRUCTURAL.search(log):
         return out("consistency-table", "a structural gate step failed")
-    if hit := [t for t in tests if TABLE_NAME.search(t)]:
+    if hit := [t for t in tests if judges_a_table(t)]:
         return out("consistency-table", f"{hit[0]} judges a table or the whole tree")
     if tests and TABLE_TEXT.search(errors):
         return out("consistency-table", "its assertion names a table file")

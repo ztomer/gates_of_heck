@@ -242,6 +242,47 @@ def test_the_guard_tests_split_into_runs_of_near_equal_cost(tmp_path, monkeypatc
     assert land_check.shards([], 3) == []
 
 
+TABLE_TESTS = """\
+def test_every_script_has_a_row():
+    assert False, "lib/x.py has no row in docs/map.md"
+def test_no_slow_table_rows(): pass
+def test_plain_behaviour(): assert False
+def test_no_new_manifest_entry(): pass
+"""
+
+
+def test_the_check_runs_the_table_tests_the_diff_chooses_and_names_the_table(tmp_path, monkeypatch):
+    """GOH.TABLESEARLY: 25 of 48 reds in 100 land records were consistency-table tests, each a
+    whole enqueue cycle. The check runs the ones the pre-step would choose for the diff, picked by
+    lib/land_reds.py's rule (a plain test it chose is not run), cheapest first under a cap (an
+    unmeasured one runs), and names the table the failing assertion names."""
+    tree = tmp_path / "tree"
+    (tree / "tests").mkdir(parents=True)
+    (tree / "tests" / "test_t.py").write_text(TABLE_TESTS)
+    times = tmp_path / "durations.json"
+    times.write_text(
+        json.dumps(
+            {
+                "tests/test_t.py::test_every_script_has_a_row": 0.1,
+                "tests/test_t.py::test_no_slow_table_rows": land_check.TABLE_EACH_S + 1,
+                "tests/test_t.py::test_plain_behaviour": 0.1,
+            }
+        )
+    )
+    monkeypatch.setenv("GOH_TEST_DURATIONS", str(times))
+    monkeypatch.setattr(land_check, "chosen_by_diff", lambda root: ["tests/test_t.py"])
+    assert land_check.table_tests(tree) == [
+        "tests/test_t.py::test_every_script_has_a_row",
+        "tests/test_t.py::test_no_new_manifest_entry",
+    ]
+    said: list[str] = []
+    refused = land_check.run(tree, None, said.append, "", tables=True)
+    assert refused == ["tests/test_t.py::test_every_script_has_a_row"], said
+    assert any("table test" in s and "docs/map.md" in s for s in said), said
+    said.clear()
+    assert land_check.run(tree, None, said.append, "") == [], said  # the enqueue's check: none
+
+
 def test_check_and_enqueue_refuse_on_a_guard_and_record_it(repo, tmp_path, env):  # noqa: F811
     wt, tip = _land_wt(repo, tmp_path)
     planted = "echo '✗ [planted_guard] a planted refusal'; exit 1"
