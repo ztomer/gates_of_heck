@@ -39,6 +39,7 @@ pub mod earlypipe;
 pub mod emoji;
 pub mod emptyassert;
 pub mod estate_seed;
+pub mod exit_status;
 pub mod fixedsleep;
 pub mod gatesrc;
 pub mod gatesrc_dupes;
@@ -230,7 +231,7 @@ fn house_script(name: &str, rel: &str, args: &[String]) -> i32 {
                 goh_tui::eoutln!("{ERR} goh {name}: cannot run {}: {e}", script.display());
                 2
             },
-            |s| s.code().unwrap_or(2),
+            exit_status::code_of,
         )
 }
 

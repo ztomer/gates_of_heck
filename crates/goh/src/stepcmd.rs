@@ -16,7 +16,7 @@
 //!   the line carries the step tree's CPU (`cpu_ms`, from the rusage of what this wrapper reaped)
 //!   beside its wall time, because on a box that is never quiet the wall measures the box too.
 
-use std::os::unix::process::{CommandExt, ExitStatusExt};
+use std::os::unix::process::CommandExt;
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -200,9 +200,7 @@ pub(crate) fn bounded(
 }
 
 fn finish_exit(status: std::io::Result<std::process::ExitStatus>, pgid: i32) -> (i32, Vec<i32>) {
-    let code = status.map_or(127, |s| {
-        s.code().unwrap_or_else(|| 128 + s.signal().unwrap_or(0))
-    });
+    let code = status.map_or(127, crate::exit_status::code_of);
     (code, survivors(pgid))
 }
 

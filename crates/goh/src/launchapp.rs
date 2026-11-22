@@ -102,7 +102,7 @@ fn launch(argv: &[OsString]) -> i32 {
                 );
                 2
             },
-            |s| s.code().unwrap_or(2),
+            crate::exit_status::code_of,
         )
 }
 
