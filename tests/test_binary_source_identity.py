@@ -36,6 +36,15 @@ def private_store(checkout: Path) -> Path:
     return checkout.parent / "shared-bin-store"
 
 
+def resolver_under_test(checkout: Path) -> dict[str, str]:
+    """The env of a test of the resolver's own answers (bin/goh, the store): no answer the test did
+    not plant outranks them. The private store, and no coverage run's goh: the suite's instrumented
+    run names one (GOH_COV_GOH, kept by hermetic_env) that the resolver takes before both for the
+    source it was built from, so under coverage a stale bin/goh planted on an untagged HEAD was
+    never asked, never rebuilt, and the test went red only there (GOH.COVGOHBIN)."""
+    return {"GOH_BIN_STORE": str(private_store(checkout)), "GOH_COV_GOH": ""}
+
+
 def _fake(path: Path, version: str, tree: str | None) -> Path:
     tree_line = f'[ "$1" = source-tree ] && {{ echo "{tree}"; exit 0; }}\n' if tree else ""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -89,9 +98,7 @@ def _structural(checkout: Path, tmp_path: Path, **env: str):
         cwd=repo,
         capture_output=True,
         text=True,
-        env=hermetic_env(
-            **{"GOH_DIR": str(checkout), "GOH_BIN_STORE": str(private_store(checkout)), **env}
-        ),
+        env=hermetic_env(**{"GOH_DIR": str(checkout), **resolver_under_test(checkout), **env}),
         timeout=120,
         stdin=subprocess.DEVNULL,
         check=False,
@@ -139,6 +146,23 @@ def test_a_stale_dirty_or_unstamped_binary_is_rebuilt_from_head_and_used(tmp_pat
         assert "rebuilt native ran" in got.stdout, (tree, got.stdout + got.stderr)
         assert calls.read_text().split() == ["--if-stale"], (tree, calls.read_text())
         calls.unlink()
+
+
+def test_the_coverage_runs_goh_does_not_hide_a_stale_binary_from_its_test(tmp_path, monkeypatch):
+    """The test above, under the suite's coverage run every time: its instrumented goh (GOH_COV_GOH)
+    of HEAD's exact source is in the suite's env, and hermetic_env keeps it. Before
+    resolver_under_test, the resolver answered with it, so the stale bin/goh was never rebuilt and
+    the land went red only in its instrumented run (GOH.COVGOHBIN)."""
+    checkout = _clean_checkout_of_todays_gates(tmp_path)
+    _head_tagged(checkout, False)
+    monkeypatch.setenv("GOH_COV_GOH", str(_fake(tmp_path / "cov" / "goh", _version(checkout),
+                                                 _head_stamp(checkout))))  # fmt: skip
+    _no_store(checkout)
+    _fake(checkout / "bin" / "goh", _version(checkout), "0000 0000 0000 0000")
+    calls = _fake_builder(checkout, _version(checkout), _head_stamp(checkout))
+    got = _structural(checkout, tmp_path)
+    assert "rebuilt native ran" in got.stdout, got.stdout + got.stderr
+    assert calls.read_text().split() == ["--if-stale"], calls.read_text()
 
 
 def test_a_failed_rebuild_refuses_and_says_so(tmp_path):
