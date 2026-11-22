@@ -68,6 +68,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import lib.affected_verdict as av
 from lib import (
+    bin_reach_audit,
     binary_runners,
     consumer_reads,
     declared_reads,
@@ -88,6 +89,7 @@ ALWAYS = ("tests/test_self_walk.py", "tests/test_python_from_head.py")
 # is theirs to read, release text included (lib/release_gate.py `names`, GOH.REUSEOFFLANDED5: the
 # release set left the self-walk out, and v0.140.3's changelog heading broke its home-path count).
 TEXT_JUDGES = ("tests/test_self_walk.py",)
+SKIPPED: list[str] = []  # what the last enqueue choice's binary reach left out (GOH.BINREACH)
 TREE_NAMED = re.compile(r"^\s*def (test_every_|test_no_)", re.MULTILINE)
 # ... or that RUNS a tool over the whole checkout, `cwd=REPO_ROOT` (tests/test_gate_temp_leaks.py
 # runs `structural.sh --full` there; GOH.PREPARITY: red in two lands no pre-step chose it for).
@@ -244,14 +246,16 @@ def tree_readers(root: Path, tests: dict[str, str] | None = None) -> dict[str, s
     return found
 
 
-def readers(
-    root: Path, changed: list[str], tests: dict[str, str] | None = None, graph=None
-) -> dict[str, str]:
+def readers(root: Path, changed: list[str], tests: dict[str, str] | None = None, graph=None,
+            reach: bool = False) -> dict[str, str]:  # fmt: skip
     """{test file: why} for the tests that READ a path in `changed` -- every rule of THE SET but
     the tree readers' standing run: the one notion of "a test reads this path", which the land's
-    verdict reuse asks too (lib/pre_reuse.py, GOH.PRELANDTWICE)."""
+    verdict reuse asks too (lib/pre_reuse.py, GOH.PRELANDTWICE). REACH (the enqueue's,
+    GOH.BINREACH): a Rust change's binary tests by their stored profiles' reach; what that left
+    out is SKIPPED's, for the audit."""
     tests = _tests(root) if tests is None else tests
     chosen: dict[str, str] = {}
+    SKIPPED[:] = []
     for path in changed:
         if path.startswith("tests/test_") and path.endswith(".py") and path in tests:
             chosen.setdefault(path, "changed")
@@ -273,7 +277,7 @@ def readers(
         for rel in tests:
             if rel not in chosen and (why := _transitive(graph, rel, changed)):
                 chosen[rel] = why
-        binary_runners.choose(graph, tests, changed, chosen)
+        SKIPPED[:] = binary_runners.choose(graph, tests, changed, chosen, reach=reach)
         declared_reads.choose(root, tests, changed, chosen, graph)
     return chosen
 
@@ -292,7 +296,7 @@ def affected(
     tests = _tests(root)
     if graph is None and enqueue:
         graph = Closure(root)
-    chosen = readers(root, changed, tests, graph)
+    chosen = readers(root, changed, tests, graph, reach=enqueue)
     walking = _walking(root)
     for rel, why in tree_readers(root, tests).items():
         if rel in chosen:
@@ -304,6 +308,7 @@ def affected(
             chosen[rel] = why
         else:
             chosen.update((f"{rel}::{n}", why) for n in nodes)
+    chosen, SKIPPED[:] = binary_runners.once(chosen, SKIPPED)
     return dict(sorted(chosen.items()))
 
 
@@ -432,7 +437,7 @@ def run(root: Path, changed: list[str], chosen: dict, base: str | None = None, r
     if first and first.is_file():
         _merge(Path(record), first)
     pre_reuse.stamp(record, base, list(chosen))
-    return 0
+    return bin_reach_audit.after(root, changed, list(SKIPPED))  # GOH.BINREACH, 1 in 10
 
 
 if __name__ == "__main__":

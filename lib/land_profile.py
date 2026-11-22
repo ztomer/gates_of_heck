@@ -67,6 +67,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import bin_reach_audit
 import land_e2e
 import land_spd
 import timing_ledger
@@ -343,13 +344,17 @@ def main(argv: list[str]) -> int:
         rows = [r for r in rows if land_spd.descends(r["repo"], sha, r["landed"])]
         figures[f"since {a.since}"] = land_spd.summary(q, rows)
     by = groups(rows, land_e2e._when(a.normal_since) if a.normal_since else None)
+    audits = bin_reach_audit.audits()  # GOH.BINREACH: the reach's audit, a number
     if a.json:
         known = known_parents(rows)
         tables = {k: table(v, a.min_s, known) for k, v in by.items()}
-        print(json.dumps({**tables, **({"spd": figures} if figures else {})}, indent=2))
+        reach = {"audits": len(audits), "disagreements": bin_reach_audit.disagreements(audits)}
+        spd = {"spd": figures, "binreach": reach} if figures else {}
+        print(json.dumps({**tables, **spd}, indent=2))
     else:
         print(render(by, a.min_s))
         print("\n".join(land_spd.render(k, v) for k, v in figures.items()))
+        print(bin_reach_audit.audit_line(audits))
     return 0
 
 

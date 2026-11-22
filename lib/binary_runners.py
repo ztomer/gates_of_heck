@@ -17,8 +17,9 @@ import functools
 import re
 
 try:
-    from lib import crate_reach, gate_identity
+    from lib import bin_reach, crate_reach, gate_identity
 except ImportError:  # run by path, not as a package
+    import bin_reach  # type: ignore[no-redef]
     import crate_reach  # type: ignore[no-redef]
     import gate_identity  # type: ignore[no-redef]
 
@@ -134,17 +135,30 @@ def runners(graph, tests: dict[str, str], build: str) -> dict[str, str]:
     return out
 
 
-def choose(graph, tests: dict[str, str], changed: list[str], chosen: dict[str, str]) -> None:
+def _durations() -> dict[str, float]:
+    """The suite's duration table (lib/fast_tests.py `load`): the node ids of each test file."""
+    try:
+        from lib import fast_tests
+    except ImportError:  # run by path: tui is beside lib
+        import fast_tests  # type: ignore[no-redef]
+    return fast_tests.load()
+
+
+def choose(
+    graph, tests: dict[str, str], changed: list[str], chosen: dict[str, str], reach: bool = False
+) -> list[str]:
     """Add to `chosen` every test that runs the binary when `changed` holds a build input
     (GOH.AFFECTEDBINARY), narrowed to the tests whose subcommands the change can reach
     (lib/crate_reach.py, GOH.AFFECTEDBINARY2). A change whose reach cannot be told (main.rs,
-    Cargo.toml, a module every run reaches) still chooses them all."""
+    Cargo.toml, a module every run reaches) still chooses them all. REACH (the enqueue's mode,
+    GOH.BINREACH): only the runners' tests whose stored profile reaches the change
+    (lib/bin_reach.py); the return is what that left out ([] otherwise), for the audit."""
     crate = crate_reach.Crate(graph.root)
     built = set(build_inputs_in(graph.root, changed))
     inputs = [p for p in changed if p in built or p in crate.includes]
     if not inputs:
-        return
-    reach: set[str] = set()
+        return []
+    reach_set: set[str] = set()
     whole: str | None = None
     for path in inputs:
         subs = crate.subcommands(path)
@@ -152,14 +166,35 @@ def choose(graph, tests: dict[str, str], changed: list[str], chosen: dict[str, s
         if subs is None or (unplaced and not subs):  # an embed the reach cannot place: every one
             whole = whole or path
         else:
-            reach |= subs
+            reach_set |= subs
     names = {crate_reach.kebab(v) for v in crate.variants}
+    picked: dict[str, str] = {}
     for rel, why in runners(graph, tests, whole or inputs[0]).items():
+        if rel in chosen:
+            continue
         if whole is None:
             subs = invoked(graph, rel, tests[rel], names)
-            if not reach or (subs is not None and not subs & reach):
+            if not reach_set or (subs is not None and not subs & reach_set):
                 continue  # a test-only source reaches no subcommand
-            via = "every subcommand" if subs is None else f"goh {min(subs & reach)}"
-            chosen.setdefault(rel, f"{why} ({via})")
+            via = "every subcommand" if subs is None else f"goh {min(subs & reach_set)}"
+            picked[rel] = f"{why} ({via})"
         else:
-            chosen.setdefault(rel, why)
+            picked[rel] = why
+    skipped: list[str] = []
+    hit = bin_reach.touched(crate, inputs) if reach and bin_reach.enabled() and picked else None
+    if hit is not None and (stored := bin_reach.Reach.load(repo=graph.root)).by_hash:
+        known: dict[str, list[str]] = {}
+        for n in _durations():
+            known.setdefault(n.split("::", 1)[0], []).append(n)
+        picked, skipped = bin_reach.narrow(crate, stored, hit, picked, tests, known)
+    for entry, why in picked.items():
+        chosen.setdefault(entry, why)
+    return skipped
+
+
+def once(chosen: dict[str, str], skipped: list[str]) -> tuple[dict[str, str], list[str]]:
+    """CHOSEN with a node dropped where its file runs whole (pytest would run it twice), and
+    SKIPPED less what CHOSEN runs after all (another rule chose it)."""
+    whole = {k for k in chosen if "::" not in k}
+    kept = {k: v for k, v in chosen.items() if "::" not in k or k.split("::")[0] not in whole}
+    return kept, [n for n in skipped if n not in kept and n.split("::")[0] not in whole]
