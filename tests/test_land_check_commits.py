@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _fast_git import fast_init
 from conftest import hermetic_env
 
 from lib import commit_stamp, land_check
@@ -47,8 +48,7 @@ def lane(tmp_path, monkeypatch) -> tuple[Path, str]:
     for k in [k for k in __import__("os").environ if k.startswith("GIT_")]:
         monkeypatch.delenv(k)
     repo = tmp_path / "repo"
-    repo.mkdir()
-    _git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     for kv in (("user.email", "t@t"), ("user.name", "t"), ("core.hooksPath", "/dev/null")):
         _git(repo, "config", *kv)
     _commit(repo, "a.txt", "a\n", "base")
