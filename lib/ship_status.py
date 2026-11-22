@@ -14,11 +14,38 @@ import consumer_pins
 import pid_owner
 import pin_sweep
 import ship_profile
+import ship_quiet
 
 from tui.lib import err, info, ok, step
 
 TAIL = 40  # a failed step's last log lines, carried in the result
 profile = ship_profile.profile  # each step's GOH_TIMINGS file (tools/ship.py's one name for it)
+ticks = ship_quiet.ticks  # the tick counters a step's `idle_pct` is read between (GOH.SHIPQUIET)
+
+
+def quiet_settings(cfg: dict[str, str]) -> list[float]:
+    """[minimum idle %, maximum wait s] from the ship's keys; a bad one is a Refused, named."""
+    from ship_version import Refused
+
+    try:
+        return list(ship_quiet.settings(cfg))
+    except ValueError as e:
+        raise Refused(str(e)) from None
+
+
+def quiet_wait(res: dict, resume: bool = False) -> None:
+    """Before the land lock, the bounded wait for a quiet host, recorded in `quiet` (GOH.SHIPQUIET);
+    a resumed ship (it measures nothing more) and a result planned before the keys wait for none."""
+    if resume:
+        return
+    low, most = res.get("quiet_settings") or (ship_quiet.DEFAULT_IDLE_PCT, 0.0)
+    res["quiet"] = ship_quiet.wait(low, most, poll_s=ship_quiet.poll_s(), say=info)
+    save(res)
+
+
+def step_load(start: tuple[int, int] | None) -> dict:
+    """A step entry's load: the CPU idle over its run since START's ticks, and load1 at its end."""
+    return {"idle_pct": ship_quiet.idle_since(start), "load1_end": round(os.getloadavg()[0], 2)}
 
 
 def record_ship_timing(res: dict) -> None:
