@@ -59,6 +59,8 @@ def test_the_bash_guard_refuses_todays_loop_and_runs_it_under_timeout(tmp_path: 
     assert _decide(f"timeout 600 bash -c '{TODAY}'", tmp_path) is None
 
 
-def test_a_monitor_loop_is_left_to_the_monitor_tool(tmp_path: Path) -> None:
+def test_a_monitor_loop_gets_the_bash_verdict(tmp_path: Path) -> None:
+    """Every shell-running tool gets every command check Bash gets (GOH.MONGUARD)."""
     event = {"tool_name": "Monitor", "tool_input": {"command": TODAY}, "cwd": str(tmp_path)}
-    assert _decide_event(event) is None
+    reason = _decide_event(event)
+    assert reason is not None and "goh wait" in reason, reason

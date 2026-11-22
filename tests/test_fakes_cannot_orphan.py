@@ -39,6 +39,7 @@ WAIT_EXEMPT = {
     "test_check_busy_loop.py": "string fixtures for the busy-loop linter, never run",
     "test_claude_load_guard.py": "string fixtures for the load guard's hook, never run",
     "test_monitor_guard.py": "string fixtures for the monitor guard's hook, never run",
+    "test_wait_deadline.py": "string fixtures for the wait-deadline guard, never run",
     "test_load_burning.py": "a spinner of the house's shape, owned through load_kit on purpose",
 }
 # file -> why a session leader in it needs no owner of its own.

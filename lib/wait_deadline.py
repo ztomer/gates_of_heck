@@ -4,8 +4,8 @@ THE CLASS. A coordinator's background `until <cond>; do sleep 20; done` had no d
 condition could never turn true (the harness grep's -v -q exit code, GOH.UGREPVQ): it ran 2 h 50 min
 until the owner noticed. `goh wait` has a timeout (default 7200 s); a hand-written loop does not.
 
-THE RULE. In the CODE of a Bash command (quoted text, heredoc bodies and comments are masked by
-`busyloop.mask`), a `while`/`until` loop whose body sleeps is refused unless it is bounded:
+THE RULE. In the CODE of a Bash or Monitor command (quoted text, heredoc bodies and comments are
+masked by `busyloop.mask`), a `while`/`until` loop whose body sleeps is refused unless bounded:
 
   * a `timeout N` / `gtimeout N` wrapper earlier in the command, or
   * a deadline check in the loop: `$SECONDS`, a `deadline`/`DEADLINE` variable, `date +%s`, an

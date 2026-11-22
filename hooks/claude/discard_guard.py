@@ -155,7 +155,7 @@ temp_sweep = _optional("temp_sweep")  # a glob rm over goh's per-run temp roots,
 stdin_reader = _optional("stdin_reader")  # a stdin reader nothing feeds, GOH.STDINHANG
 no_verify = _optional("no_verify")  # a git commit/push that skips the hooks, GOH.NOVERIFYGUARD
 harness_grep, wait_deadline = _optional("harness_grep"), _optional("wait_deadline")
-_RULES = [r for r in (temp_sweep, stdin_reader, no_verify, harness_grep) if r]
+_RULES = [r for r in (temp_sweep, stdin_reader, no_verify, harness_grep, wait_deadline) if r]
 undo_hint = _optional("undo_hint")  # a discard refusal names `goh undo <files>`
 
 # The tools whose input holds a shell command (Bash, Monitor): ONE list, `lib/shell_tools.py`.
@@ -482,7 +482,6 @@ def main() -> int:
             or judge_secret_render(command)
             or judge_name_kill(command)
             or next((r for rule in _RULES if (r := rule.judge(command))), None)
-            or (wait_deadline.judge(command) if wait_deadline and tool == "Bash" else None)
             or judge_priority(command)
             or judge_bare(command)
         )

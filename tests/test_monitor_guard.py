@@ -30,7 +30,8 @@ import shell_tools
 
 REGS = json.loads((REPO_ROOT / "hooks" / "claude" / "registrations.json").read_text())["hooks"]
 SELF_MATCH = 'until ! pgrep -f "git push origin main"; do sleep 15; done'
-CLEAN = 'until ! pgrep -f "[g]it push origin main"; do sleep 15; done'
+# Bounded (GOH.WAITDEADLINE): this file judges the self-match rule, not the deadline one.
+CLEAN = 'until ! pgrep -f "[g]it push origin main" || [ $SECONDS -ge 600 ]; do sleep 15; done'
 
 
 @pytest.fixture(autouse=True)
@@ -76,7 +77,11 @@ def test_a_monitor_busy_loop_is_refused(tmp_path: Path) -> None:
 
 
 def test_a_clean_monitor_command_passes(tmp_path: Path) -> None:
-    for command in (CLEAN, "until [ -f ready ]; do sleep 2; done", "tail -f build.log"):
+    for command in (
+        CLEAN,
+        "until [ -f ready ]; do sleep 2; done  # wait-ok: Monitor timeout_ms",
+        "tail -f build.log",
+    ):
         assert _decide_event(_monitor(command, tmp_path)) is None, command
 
 
