@@ -37,6 +37,9 @@ import os, sys, time
 args = sys.argv[1:]
 if args[0] == "nested":
     sys.exit(1)
+if args[0] == "default-class":  # an undeclared gate's class (GOH.LANECLASS)
+    print("work")
+    sys.exit(0)
 fd = os.open(args[args.index("--handshake") + 1], os.O_WRONLY)
 for i, part in enumerate(os.environ["FAKE_HANDSHAKE"].split("|")):
     if i:

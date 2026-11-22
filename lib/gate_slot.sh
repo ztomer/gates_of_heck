@@ -10,6 +10,7 @@
 #         # the wait and its end. class: short | land | ship | lane | work (lib/gate_lanes.py CLASSES,
 #         # GOH.SLOTFAIR, GOH.SLOTPRIORITY);
 #         # none given, GOH_GATE_CLASS (gates/commit_gate.sh sets `short` for the gate.sh it runs),
+        # else `lane` in a loop lane's worktree (GOH.LANECLASS),
 #         # consumed by the acquire so nothing this gate starts inherits it; neither: work. A max
 #         # wait (seconds, the memory wait counted inside it) bounds it: past it, the holders are
 #         # named and it RETURNS 75 with no slot taken (tools/pytest.sh, GOH.ADMITSUITE); none: unbounded
@@ -66,17 +67,23 @@ gate_slot_acquire_for_caller() {
 }
 
 _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller> <class | ""> <max wait s | "">
-    local repo="$1" owner="$2" mode="$3" class="${4:-${GOH_GATE_CLASS:-work}}" n="${GOH_GATE_SLOTS-}"
+    local repo="$1" owner="$2" mode="$3" class="${4:-${GOH_GATE_CLASS:-}}" n="${GOH_GATE_SLOTS-}"
     local max="${5:-}"
     unset GOH_GATE_CLASS   # this admission's word: never inherited by what the gate starts
+    local dir="${GOH_GATE_SLOT_DIR:-$HOME/.cache/goh/slots}"
+    local helper="$GATE_SLOT_HELPER" fifo line idx total waited path pid mech
+    # Undeclared: `lane` when this gate runs in a loop lane's worktree, else `work` (GOH.LANECLASS;
+    # lib/gate_lanes.py default_class). Derived from where it runs, never asked of each lane.
+    # With the slots off (GOH_GATE_SLOTS=0) nothing is admitted, so nothing is asked.
+    [ -n "$class" ] || [ "$n" = 0 ] || class="$("$GOH_PY" -S "$helper" default-class --checkout "$PWD")" \
+        || { err "gate slot: cannot derive the gate's class (lib/gate_slot.py default-class)"; exit 1; }
+    class="${class:-work}"
     case "$class" in
         short | land | ship | lane | work) ;;
         *) err "GOH_GATE_CLASS must be short, land, ship, lane or work (got '$class')"
            exit 2 ;;
     esac
     GATE_SLOT_CLASS="$class"   # the push row's `slot_class` (lib/timing_ledger.sh goh_push_row)
-    local dir="${GOH_GATE_SLOT_DIR:-$HOME/.cache/goh/slots}"
-    local helper="$GATE_SLOT_HELPER" fifo line idx total waited path pid mech
     case "$max" in
         *[!0-9]*) err "gate slot: a max wait is whole seconds (got '$max')"
                   exit 2 ;;

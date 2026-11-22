@@ -2,6 +2,8 @@
 """The machine-wide gate slots: a counting semaphore over N flock'd files. Driven by lib/gate_slot.sh.
 
     lib/gate_slot.py default                       # the default N on this machine
+    lib/gate_slot.py default-class [--checkout D]  # the class a gate in D takes: GOH_GATE_CLASS,
+                                                   # else `lane` under the lanes root, else `work`
     lib/gate_slot.py nested --dir D                # exit 0 (and say so) inside a gate holding a slot
     lib/gate_slot.py hold --dir D [--slots N] --owner PID --repo NAME --handshake FIFO [--poll S]
                           [--for-caller]   # the owner is the caller's caller, not this process's parent
@@ -83,7 +85,14 @@ from collections.abc import Callable
 
 import lock_order
 import pid_owner
-from gate_lanes import CLASSES, DEFAULT_CLASS, LANES, Ticket, lane_of  # who goes next
+from gate_lanes import (
+    CLASSES,
+    DEFAULT_CLASS,
+    LANES,
+    Ticket,
+    default_class,
+    lane_of,
+)  # who goes next
 
 if __name__ == "__main__":
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -432,6 +441,8 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("default")
+    dc = sub.add_parser("default-class")  # the class a gate in CHECKOUT takes (GOH.LANECLASS)
+    dc.add_argument("--checkout", default=".")
     n = sub.add_parser("nested")
     n.add_argument("--dir", required=True)
     h = sub.add_parser("hold")
@@ -447,6 +458,9 @@ def main(argv: list[str]) -> int:
     args = ap.parse_args(argv)
     if args.cmd == "default":
         print(default_slots())
+        return 0
+    if args.cmd == "default-class":
+        print(default_class(args.checkout))
         return 0
     if args.cmd == "nested":
         found = nested(os.path.realpath(args.dir))

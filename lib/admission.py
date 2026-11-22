@@ -108,7 +108,9 @@ def admit_here(repo: str, max_wait: float | None = None) -> Admitted:
     takes no second slot. OSError when the lock order refuses the wait."""
     # The class is the caller's word for THIS admission (lib/land_gate.sh: `land`), consumed first
     # so the gate it runs -- nested in this slot, or under no slot at all -- does not inherit it.
-    gate_class = os.environ.pop(CLASS_ENV, "").strip() or gate_lanes.DEFAULT_CLASS
+    # Undeclared, it is `lane` in a loop lane's worktree, else `work` (GOH.LANECLASS).
+    declared = os.environ.pop(CLASS_ENV, "")
+    gate_class = gate_lanes.default_class(os.getcwd(), {CLASS_ENV: declared, **os.environ})
     lane, _ = gate_lanes.lane_of(gate_class)
     directory, slots = configured()
     if slots == 0:

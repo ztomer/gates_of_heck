@@ -80,7 +80,7 @@ if [ -z "${GATES_OF_HECK_SUITE_RUNNER:-}" ] && [ -z "${GATES_OF_HECK_SUITE_NESTE
     # wait counted inside it), then exit 75 naming the holders -- never a run beside them, never a
     # wait that looks like a hang. Inside a gate (GOH_GATE_SLOT, or a holder among the ancestors)
     # the suite is that gate's and takes nothing. Pinned by tests/test_suite_admission.py.
-    suite_class="${GOH_GATE_CLASS:-work}"
+    suite_class="${GOH_GATE_CLASS:-}"   # empty: the acquire derives it -- `lane` in a lane worktree, else `work` (GOH.LANECLASS)
     for a in "$@"; do
         [ -n "${GOH_GATE_CLASS:-}" ] || [ ! -e "${a%%::*}" ] || { suite_class=short; break; }
     done

@@ -27,7 +27,10 @@ import lock_order
 #          lane, N slots of its own that no long gate takes, so it waits only behind other shorts
 #   land   a land's gate (lib/land_gate.sh): the long lane, ranked first
 #   ship   `goh ship`'s full suite (lib/ship_full_run.py) and its push (tools/ship.py)
-#   lane   a lane's own test run, declared by the lane's runner (GOH_GATE_CLASS=lane)
+#   lane   a gate run in a loop lane's worktree (GOH.LANECLASS): derived, not asked of each lane --
+#          a gate whose checkout is under the lanes root ($LOOPCTL_LANES_ROOT, else
+#          $XDG_STATE_HOME/loop/lanes, else ~/.local/state/loop/lanes) is `lane` unless its caller
+#          declares another class (a land's gate says `land` there, `goh ship` says `ship`)
 #   work   everything else, the DEFAULT and the lowest: the pin sweep's consumer pushes, any push
 #          gate nobody classed (another repo's, the coordinator's), a `gate.sh --full`, a hand run
 # Within a rank a freed slot goes to the longest waiter; a waiter older than the STARVATION BOUND
@@ -42,9 +45,35 @@ CLASSES = {
     "work": ("long", 3),
 }
 DEFAULT_CLASS = "work"
+CLASS_ENV = "GOH_GATE_CLASS"  # the caller's word for one admission
+LANES_ROOT_ENV = "LOOPCTL_LANES_ROOT"  # the loop's lane worktrees (GOH.LANECLASS)
 STARVE_ENV = "GOH_GATE_SLOT_STARVE_MIN"
 STARVE_MIN = 15.0  # the bound when nothing names one: a land gate's ~12 min, and a margin
 PROMOTED = -1  # the rank a starved ticket takes: ahead of every class
+
+
+def lanes_root(environ: dict[str, str] | None = None) -> str:
+    """The loop's lanes root, resolved: $LOOPCTL_LANES_ROOT, else $XDG_STATE_HOME/loop/lanes, else
+    ~/.local/state/loop/lanes (the spelling of loopctl's own)."""
+    env = os.environ if environ is None else environ
+    named = env.get(LANES_ROOT_ENV, "").strip()
+    if not named:
+        state = env.get("XDG_STATE_HOME", "").strip() or os.path.join(
+            os.path.expanduser("~"), ".local", "state"
+        )
+        named = os.path.join(state, "loop", "lanes")
+    return os.path.realpath(named)
+
+
+def default_class(checkout: str, environ: dict[str, str] | None = None) -> str:
+    """The class a gate takes its slot by: the caller's GOH_GATE_CLASS if it declared one; else
+    `lane` when `checkout` is under the lanes root (GOH.LANECLASS); else `work`."""
+    env = os.environ if environ is None else environ
+    if declared := env.get(CLASS_ENV, "").strip():
+        return declared
+    root = lanes_root(env)
+    here = os.path.realpath(checkout)
+    return "lane" if here == root or here.startswith(root + os.sep) else DEFAULT_CLASS
 
 
 def lane_of(gate_class: str) -> tuple[str, int]:
