@@ -68,7 +68,7 @@ class _Occupant:
 
 
 def _holder(tmp_path: Path, gate_class: str) -> _Occupant:
-    """The slot of `gate_class`'s lane (short: the pre-step's own; work: the gate's), held."""
+    """The slot of `gate_class`'s lane (pre: the pre-step's own; work: the gate's), held."""
     occupant = _Occupant(tmp_path, gate_class)
     assert occupant.held(), "the occupant holds the slot"
     return occupant
@@ -86,7 +86,7 @@ def _land(repo: Path, tmp_path: Path, **env: str) -> tuple[subprocess.CompletedP
 
 
 def test_a_pre_step_that_never_got_a_slot_is_no_verdict_not_red(repo: Path, tmp_path: Path) -> None:
-    holder = _holder(tmp_path, "short")
+    holder = _holder(tmp_path, "pre")
     try:
         r, wt = _land(repo, tmp_path, GOH_LAND_PRE_WAIT="1s")
     finally:
@@ -119,7 +119,7 @@ def test_the_request_records_that_the_pre_step_had_no_verdict_and_why(
     """The selection-miss ledger and GOH.PRESTEPRECORD read `pre_verdict` off the land request."""
     wt, _ = _land_wt(repo, tmp_path)
     _declare(wt, "GOH_LAND_GATE=true\nGOH_LAND_PRE='true'\n")
-    holder = _holder(tmp_path, "short")
+    holder = _holder(tmp_path, "pre")
     env = hermetic_env(drop_git=True, **{**_env(tmp_path, GOH_GATE_SLOTS="1"),
                                          "GOH_LAND_PRE_WAIT": "1s",
                                          "GOH_LANDQ_DIR": str(tmp_path / "landq")})  # fmt: skip

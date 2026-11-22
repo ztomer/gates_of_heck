@@ -92,7 +92,7 @@ def test_the_reading_names_slots_tickets_load_memory_disk_and_the_cpu_weight(tmp
     assert (holder["slot"], holder["repo"], holder["pid"]) == ("slot-0", "goh", os.getpid())
     assert (holder["weight"], holder["weight_from"]) == (7.0, "goh")  # the median of its rows
     assert got["cpu_weight"]["in_flight"] == 7.0
-    assert got["waiting"] == {"long": 2, "short": 0}  # the dead ticket is not a waiter
+    assert got["waiting"] == {"long": 2, "short": 0, "pre": 0}  # the dead ticket is not a waiter
     assert got["load"]["avg"] == [CORES * 4, CORES * 3, CORES * 2]
     assert (got["load"]["cores"], got["load"]["per_core"]) == (CORES, 3.0)  # the 5-min average
     assert got["memory"]["avail_pct"] == 80 and got["disk"]["free_gib"] > 0
