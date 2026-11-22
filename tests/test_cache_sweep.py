@@ -211,7 +211,8 @@ def test_a_plan_never_re_points(tmp_path):
 # GOH.CACHEEVICT2 (2): a use the evictor could not see. Cargo 1.100's build-dir layout keeps each
 # unit in `<profile>/build/<pkg>/<hash>/`, so a rebuild changed none of the old probes (probed
 # 2026-11-22: a touched main.rs rebuilt, build_last_use unchanged); and a wholly Fresh run writes
-# nothing at all, so a goh gate stamps the build dir cargo names at its start (`stamp-for`).
+# nothing at all, so a goh gate stamps the build dir cargo names at its start (cache_move.py
+# `stamp-for`, a module that takes no lock: the gate runs under the land lock).
 def test_a_rebuild_in_the_v2_layout_is_a_use(tmp_path):
     d = _bd(tmp_path, "aa11", 72)
     unit = d / "debug" / "build" / "freshprobe" / "2ebb32fa7abedaa0" / "fingerprint"
@@ -226,17 +227,17 @@ def test_a_rebuild_in_the_v2_layout_is_a_use(tmp_path):
 def test_stamp_for_marks_the_build_dir_cargo_names(tmp_path):
     d = _bd(tmp_path, "aa11", 72)
     cache_sweep.stamp(str(d), 1000.0)  # an old use
-    assert cache_sweep.stamp_for(str(tmp_path), build_dir=lambda _c: str(d)) == str(d)
+    assert cache_move.stamp_for(str(tmp_path), build_dir=lambda _c: str(d)) == str(d)
     assert (d / cache_sweep.STAMP).stat().st_mtime > 1000.0
 
 
 def test_stamp_for_never_makes_a_build_dir(tmp_path):
     gone = tmp_path / "build" / "cc" / "cc33"
-    assert cache_sweep.stamp_for(str(tmp_path), build_dir=lambda _c: str(gone)) is None
-    assert cache_sweep.stamp_for(str(tmp_path), build_dir=lambda _c: None) is None
+    assert cache_move.stamp_for(str(tmp_path), build_dir=lambda _c: str(gone)) is None
+    assert cache_move.stamp_for(str(tmp_path), build_dir=lambda _c: None) is None
     assert not gone.exists()
 
 
 def test_the_rust_gate_stamps_before_its_checks():
     rust = (REPO_ROOT / "gates" / "rust_gate.sh").read_text()
-    assert rust.index('cache_sweep.py" stamp-for') < rust.index("rust_crate_checks() {")
+    assert rust.index('cache_move.py" stamp-for') < rust.index("rust_crate_checks() {")

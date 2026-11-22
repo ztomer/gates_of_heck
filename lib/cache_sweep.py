@@ -10,8 +10,9 @@ Objects (lib/cache_evict.py ranks them):
 
 A build dir's last use is the newest of its `.goh-used` stamp, its cargo locks, its profile and
 deps dirs and (cargo 1.100's layout) each unit's fingerprint dir; a build cargo finds wholly Fresh
-writes none of them, so goh's rust gate stamps the dir at its start (`stamp-for`). Named
-deviation: a Fresh build outside goh is not seen as a use until something stamps it.
+writes none of them, so goh's rust gate stamps the dir at its start (lib/cache_move.py
+`stamp-for`). Named deviation: a Fresh build outside goh is not seen as a use until something
+stamps it.
 
 Each run also lets sccache follow the drive (lib/sccache_repoint.py `follow`): a drive that came
 or went since the last sweep re-points the server within this sweep (GOH.CACHEEVICT2).
@@ -23,7 +24,6 @@ One sweep at a time (a lock beside the ledger); a second exits 0 at once.
 
 usage: cache_sweep.py [plan|run] [--json]     plan (default) prints, run acts
        cache_sweep.py stamp PATH              mark PATH used now
-       cache_sweep.py stamp-for CARGO_DIR     mark the build dir cargo names for CARGO_DIR used now
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ import cache_tier  # noqa: E402
 import lock_order  # noqa: E402
 import sccache_repoint  # noqa: E402
 
-STAMP = ".goh-used"
+STAMP = cache_move.STAMP
 _HEX = re.compile(r"^[0-9a-f]+$")
 
 
@@ -315,16 +315,6 @@ def stamp(path: str, when: float | None = None) -> None:
     os.utime(os.path.join(path, STAMP), None if when is None else (when, when))
 
 
-def stamp_for(cargo_dir: str, build_dir=cache_move._cargo_build_dir) -> str | None:
-    """Stamp the build dir cargo names for `cargo_dir`, at a goh gate's start: a run cargo finds
-    wholly Fresh writes nothing there, so without this a hot dir ranks cold. Never makes the dir."""
-    path = build_dir(cargo_dir)
-    if not path or not os.path.isdir(path):
-        return None
-    stamp(path)
-    return path
-
-
 def _gib(n: int | None) -> str:
     return "-" if n is None else f"{n / ce.GIB:.1f} GiB"
 
@@ -335,9 +325,6 @@ def main(argv: list[str]) -> int:
         return 0
     if argv[:1] == ["stamp"] and len(argv) == 2:
         stamp(argv[1])
-        return 0
-    if argv[:1] == ["stamp-for"] and len(argv) == 2:
-        stamp_for(argv[1])
         return 0
     verb = argv[0] if argv and argv[0] in ("plan", "run") else "plan"
     state = ce.state_path()

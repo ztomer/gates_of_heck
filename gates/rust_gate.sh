@@ -148,7 +148,7 @@ lock_sum="$(shasum -a 256 "$lockfile")"
 "$GOH_PY" "$HERE/../lib/cache_move.py" promote-for "$cargo_dir" || true
 # AND THIS RUN IS A USE: a cargo that finds everything Fresh writes nothing in the build dir, so the
 # evictor would rank a hot dir cold (GOH.CACHEEVICT2). Stamped here; a dir not made yet is left.
-"$GOH_PY" "$HERE/../lib/cache_sweep.py" stamp-for "$cargo_dir" || true
+"$GOH_PY" "$HERE/../lib/cache_move.py" stamp-for "$cargo_dir" || true
 # ── THE THREE GROUPS, each proven once on its own inputs (BACKLOG P3, gates/_rust_proven.sh) ──
 # crate: what reads this cargo workspace and the packages it reaches by path -- keyed on exactly
 #   those (`goh rust-scope`), and recorded only if the compiler's dep-info read nothing else.

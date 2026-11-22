@@ -43,6 +43,7 @@ import cache_tier  # lib/, beside this file
 
 DEMOTED = "demoted"
 ORIGIN = ".goh-origin"
+STAMP = ".goh-used"  # a build dir's last-use stamp (lib/cache_sweep.py reads it)
 try:
     import posix
 
@@ -248,9 +249,26 @@ def promote_for(cargo_dir: str, build_dir=_cargo_build_dir) -> str:
     )
 
 
+def stamp_for(cargo_dir: str, build_dir=_cargo_build_dir) -> str | None:
+    """Stamp the build dir cargo names for `cargo_dir` used now, at a goh gate's start: a run
+    cargo finds wholly Fresh writes nothing there, so without this the evictor ranks a hot dir
+    cold (GOH.CACHEEVICT2). Never makes the dir. Here, not in cache_sweep.py, because a gate calls
+    it under the land lock and this module takes no lock (lib/lock_order.tsv)."""
+    path = build_dir(cargo_dir)
+    if not path or not os.path.isdir(path):
+        return None
+    with open(os.path.join(path, STAMP), "a", encoding="ascii"):
+        pass
+    os.utime(os.path.join(path, STAMP), None)
+    return path
+
+
 def main(argv: list[str]) -> int:
     if "--help" in argv or "-h" in argv:
         print(__doc__.rsplit("usage: ", 1)[1].strip())
+        return 0
+    if len(argv) == 2 and argv[0] == "stamp-for":
+        stamp_for(argv[1])
         return 0
     if len(argv) == 2 and argv[0] == "promote-for":
         said = promote_for(argv[1])
