@@ -85,6 +85,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / "lib")]
 bounded_run = importlib.import_module("bounded_run")
 diffcov_carry = importlib.import_module("diffcov_carry")
+flakes = importlib.import_module("flakes")
 gitrun = importlib.import_module("gitrun")
 idle_suite = importlib.import_module("idle_suite")
 land_attempts = importlib.import_module("land_attempts")
@@ -124,14 +125,7 @@ def loopctl() -> Path:
 
 
 git, now = landq_request.git, landq_request.now
-
-
-def git_bindings() -> tuple[str, ...]:
-    """git's own list of the variables binding it to one repository (checks/_gitutil.py)."""
-    sys.path.insert(0, str(ROOT / "checks"))
-    from _gitutil import local_env_vars
-
-    return local_env_vars()
+git_bindings = importlib.import_module("ship_version").git_bindings  # git's own list, one copy
 
 
 def land_script(_wt: Path) -> Path:
@@ -246,6 +240,7 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
     outcome.update(land_slot.done(done_dir.parent, req), **landq_report.slot_waits(outcome))
     land_prestep.discard(req, done_dir.parent)  # its verdict, and any orphan (GOH.LANDLEAKS)
     outcome.update(item=named, attempt=land_attempts.attempt_of(done_dir, named))
+    outcome.update(flakes.land_retry(done_dir, named, outcome))  # a re-enqueue's pass, if any
     outcome.update(land_check.fields(outcome, req))  # its guard; cov_risk (GOH.DIFFCOVLAND)
     # A landing that leaves its own uncovered lines files their fix item now (GOH.DIFFCOVCARRY).
     outcome.update(diffcov_carry.file_item(outcome, req, str(loopctl()), item))

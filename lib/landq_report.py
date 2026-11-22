@@ -42,7 +42,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from tui.lib import counted, err, info, ok
+from tui.lib import counted, err, info, ok, warn
 
 try:
     from lib import land_cause, selection_miss
@@ -117,6 +117,10 @@ def announce(outcome: dict, who: str) -> None:
     (ok if outcome["state"] == "landed" else err)(
         f"{who}: {outcome['state']} @ {outcome['sha'][:8]}"
     )
+    import flakes  # lib/: a pass on retry by its register entry, never "looks flaky"
+
+    for line in flakes.said(outcome):
+        (warn if outcome["state"] == "landed" else info)(f"{who}: {line}")
     if outcome.get("mode") != "land":
         return
     try:

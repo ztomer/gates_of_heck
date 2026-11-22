@@ -10,7 +10,7 @@ its gate, with the tip it was cut from:
     release_gate.py decide --base TIP           # prints `release` or `full`
     release_gate.py names --base TIP            # the tests that read what TIP..HEAD changed
     release_gate.py push-decide [--root DIR]    # the push gate's rule for HEAD (below)
-    release_gate.py shadow-judge --parent P --fresh V [--again V2]   # the `landed` sample's verdict
+    release_gate.py shadow-judge --parent P --fresh V [--again V2] [--log L]   # `landed`'s verdict
 
 `run` diffs TIP against HEAD. Every path CHANGELOG.md or under changelog/ (and at least one): it
 runs the structural gate (`gates/structural.sh --full`: every check over every tracked file, the
@@ -184,16 +184,18 @@ def _land_verdict(root: Path, parent: str, identity: str) -> str:
     return "green" if land_identity(root, parent) == identity else "absent"
 
 
-def shadow_judge(root: Path, parent: str, fresh: str, again: str = "") -> bool:
+def shadow_judge(root: Path, parent: str, fresh: str, again: str = "", log: str = "") -> bool:
     """The `landed` sample: the land's green on PARENT against the pushed commit's fresh full gate
-    (FRESH), and on a red the store read again against AGAIN, the full gate run again."""
+    (FRESH), and on a red the store read again against AGAIN, the full gate run again; LOG is the
+    push gate's, which holds both runs (a red then green is a flake record, lib/flakes.py)."""
     identity = gate_identity.key("full")
     sha = _git_out(root, "rev-parse", "HEAD")
     rerun = (lambda: (_land_verdict(root, parent, identity), again)) if again else None
     ran = f"the local full gate of {sha} in the land's shape"
     reused = _land_verdict(root, parent, identity)
     fields = _fields(root, parent, identity)
-    return reuse_audit.compare("landed", fields, reused, fresh, rerun, fresh_from=ran)
+    return reuse_audit.compare("landed", fields, reused, fresh, rerun, fresh_from=ran,
+                               logs=(log, log))  # fmt: skip
 
 
 def _sh(cmd: str, root: Path, label: str) -> int:
@@ -290,6 +292,7 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--parent", required=True)
             p.add_argument("--fresh", choices=("green", "red"), required=True)
             p.add_argument("--again", choices=("green", "red"), default="")
+            p.add_argument("--log", default="", help="the push gate's log, both runs in it")
     a = ap.parse_args(argv)
     root = a.root.resolve()
     if a.verb == "names":
@@ -302,7 +305,7 @@ def main(argv: list[str] | None = None) -> int:
         print(" ".join(decide_push(root)))
         return 0
     if a.verb == "shadow-judge":
-        return 0 if shadow_judge(root, a.parent, a.fresh, a.again) else 1
+        return 0 if shadow_judge(root, a.parent, a.fresh, a.again, a.log) else 1
     return run(root, a.base, a.full, a.structural, a.runner or runner())
 
 

@@ -6,7 +6,7 @@ disagree (GOH.REUSEAUDIT; docs/reuse.md).
                                             # the test that misses on the input it lacked
     reuse_audit.py enable PATH --why TEXT   # back on after a starved window
     reuse_audit.py use PATH [--unbacked] K=V...   # a shell site's ask: reuse, shadow or off
-    reuse_audit.py compare PATH --reused R --fresh F [--again R2 F2] K=V...
+    reuse_audit.py compare PATH --reused R --fresh F [--again R2 F2] [--logs L1 L2] K=V...
                                             # its sampled reuse against the fresh run (exit 0:
                                             # they agree; 1: they do not)
 
@@ -170,12 +170,13 @@ def use(path: str, fields: dict[str, str], backstop: bool = True) -> str:
 
 def compare(path: str, fields: dict[str, str], reused: str, fresh: str,
             again: Callable[[], tuple[str, str]] | None = None,
-            fresh_from: str = "") -> bool:  # fmt: skip
+            fresh_from: str = "", logs: tuple[str, str] = ("", "")) -> bool:  # fmt: skip
     """A sampled reuse against its fresh run; True when they agree. A disagreement re-runs both
     sides (`again` returns the store's verdict read again and the work's done again): only a
     repeated one turns the path off and files the fault; one `again` cannot repeat is a flake.
     `fresh_from` names what produced the fresh side when the key does not (`landed`'s: the key's
-    sha is the land-judged parent, the run is the pushed release commit's)."""
+    sha is the land-judged parent, the run is the pushed release commit's). A fresh red the work's
+    `again` turned green is a pass on retry: one flake record (lib/flakes.py) keeping LOGS."""
     p = reuse._path(path)
     line = {"path": p.name, "key": reuse.key(p, fields), "fields": fields, "reused": reused,
             "fresh": fresh, "epoch": reuse.now()}  # fmt: skip
@@ -197,6 +198,12 @@ def compare(path: str, fields: dict[str, str], reused: str, fresh: str,
         _write(rec)
         with (_dir() / "shadow.jsonl").open("a", encoding="utf-8") as fh:
             fh.write(json.dumps({**line, "outcome": kind}, sort_keys=True) + "\n")
+    if fresh == "red" and line.get("again", {}).get("fresh") == "green":  # outside the audit lock
+        import flakes  # lib/: the flake register (GOH.FLAKEREGISTER)
+
+        test = fields.get("step") or f"{p.name}: {p.doc}"
+        flakes.record(test, fields.get("repo", ""), fields.get("sha") or fields.get("tree", ""),
+                      f"{p.name} reuse sample run again (lib/reuse_audit.py)", logs)  # fmt: skip
     return reused == fresh
 
 
@@ -287,7 +294,7 @@ def _shell_site(a: argparse.Namespace) -> int:
             print(use(a.path, fields, backstop=not a.unbacked))
             return 0
         again = (lambda: tuple(a.again)) if a.again else None
-        return 0 if compare(a.path, fields, a.reused, a.fresh, again) else 1
+        return 0 if compare(a.path, fields, a.reused, a.fresh, again, logs=tuple(a.logs)) else 1
     except KeyError as e:
         print(f"reuse audit: {e}", file=sys.stderr)
         return 2
@@ -312,6 +319,7 @@ def main(argv: list[str] | None = None) -> int:
     co.add_argument("--reused", required=True)
     co.add_argument("--fresh", required=True)
     co.add_argument("--again", nargs=2, default=None)
+    co.add_argument("--logs", nargs=2, default=("", ""), help="the first and the again run's logs")
     co.add_argument("fields", nargs="*")
     a = ap.parse_args(argv)
     if a.verb in ("use", "compare"):

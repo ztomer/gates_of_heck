@@ -21,6 +21,7 @@ tree	60	no	repo	lib/tree_lock.sh,lib/state_bounds.py	one checkout's build tree (
 container	70	no	machine	lib/container_runtime.sh	the container runtime's lease table
 desktop	80	no	machine	lib/desktop_lock/desktop_lock.py,lib/desktop_lock/desktop_lock.sh	the one screen
 gpu	85	no	machine	lib/gpu_lock/gpu_lock.py,lib/gpu_lock/gpu_lock.sh	the GPU
+flake_test	88	no	machine	lib/flakes.py	one test's flake record and its 2-in-14-days filing, <flake register>/by-test/.<key>.flake.lock (GOH.FLAKEREGISTER): held around the read, the loopctl file and the appends (state_file, above it)
 load_registry	90	yes	machine	lib/load_registry.py	the load registry's own critical section (re-entrant within one process)
 estate_registry	91	no	machine	lib/estate_registry.py	the estate registry file's read-modify-write
 advisory_db	92	no	machine	lib/advisory_db.py	the cargo advisory database copy (shared to read, exclusive to refresh)

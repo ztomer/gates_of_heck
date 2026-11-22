@@ -54,14 +54,18 @@ proven_audit_why() {
 # proven_audit_judge <key> <tree> <step> <rc> <again...> — a shadowed hit's fresh run (exit rc)
 # against the green it would have reused. A red one runs `again...` and looks the record up again
 # first, so the audit can tell a repeated disagreement from a flake. Returns 0 when they agreed.
+# PROVEN_AUDIT_LOGS="FIRST AGAIN" names the two runs' logs, which a pass on retry's flake record
+# keeps (lib/flakes.py, GOH.FLAKEREGISTER).
 proven_audit_judge() {
-    local key="$1" tree="$2" step="$3" rc="$4" fresh=green fields=() again=() r2=green f2=green
+    local key="$1" tree="$2" step="$3" rc="$4" fresh=green fields=() again=() r2=green f2=green logs=()
     shift 4
     [ "$rc" -eq 0 ] || fresh=red
     if [ "$fresh" = red ]; then
         proven_lookup "$key" "$step" >/dev/null </dev/null || r2=absent
         "$@" || f2=red
         again=(--again "$r2" "$f2")
+        read -r -a logs <<<"${PROVEN_AUDIT_LOGS:-}"
+        [ "${#logs[@]}" -ne 2 ] || again+=(--logs "${logs[0]}" "${logs[1]}")
     fi
     mapfile -t fields < <(_proven_audit_fields "$key" "$tree" "$step" </dev/null)
     "$GOH_PY" -S "$PROVEN_GOH_ROOT/lib/reuse_audit.py" compare step --reused green \

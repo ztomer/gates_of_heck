@@ -83,6 +83,21 @@ FILES: dict[str, FileBound | FileKept] = {
         "state_file",
         "hooks/claude/lane_room.py; read by the weekly usage review only",
     ),
+    "flakes/register.jsonl": FileBound(
+        LEDGER_DAYS,
+        20000,
+        "epoch",
+        "state_file",
+        "lib/flakes.py record, one row per pass-on-retry; read by goh flakes and by a test's "
+        "filing (its records of the last 14 days)",
+    ),
+    "flakes/by-test/*": FileBound(
+        LEDGER_DAYS,
+        500,
+        "epoch",
+        "state_file",
+        "lib/flakes.py record, one test's record ids and filings; read by its 2-in-14-days rule",
+    ),
     "reuse/audit/shadow.jsonl": FileBound(
         14,
         30000,

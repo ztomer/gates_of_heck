@@ -242,7 +242,7 @@ push_release_shadow() {
         again="$([ "$rc" -eq 0 ] && echo green || echo red)"
     fi
     "$GOH_PY" "$GOH/lib/release_gate.py" shadow-judge --root "$worktree" --parent "$parent" \
-        --fresh "$fresh" ${again:+--again "$again"} </dev/null \
+        --fresh "$fresh" ${again:+--again "$again"} ${log:+--log "$log"} </dev/null \
         || warn "pre-push: the \`landed\` sample disagreed with ${parent:0:8}'s land (reuse_audit.py report)"
     return "$status"
 }

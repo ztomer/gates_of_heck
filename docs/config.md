@@ -319,6 +319,7 @@ the key fields it registers (`reuse.py paths`). The map of every store onto it: 
 
 | Key | Default | Meaning |
 |---|---|---|
+| `GOH_FLAKE_DIR` | `$XDG_STATE_HOME/goh/flakes`, else `~/.local/state/goh/flakes` | The flake register's root (`lib/flakes.py`, GOH.FLAKEREGISTER): `register.jsonl` and `by-test/`; a test points it at a temp dir. |
 | `GOH_REUSE_DIR` | `$XDG_STATE_HOME/goh/reuse`, else `~/.local/state/goh/reuse` | The store's root; a relative path is refused. |
 | `GOH_REUSE_TTL_S` | the path's own (`gate`: `86400`) | Record lifetime in seconds; an older record is a miss. |
 | (the reuse audit) | no setting | `lib/reuse_audit.py` (GOH.REUSEAUDIT): each registered path's sample share (`every`, and `every_unbacked` for a repo tracking no GitHub workflow) and window minimum (`min_samples`) live in `lib/reuse.py`'s one table, and a path's on/off state in the store (`<root>/audit/<path>.json`), never in an environment variable. A disagreement files its fault through `GOH_LOOPCTL` (into `GOH_LOOP_QUEUE` when set). |

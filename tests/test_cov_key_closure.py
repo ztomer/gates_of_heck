@@ -46,6 +46,7 @@ MENTIONS = {
     "gates/required_tools.py -> tools/gate.sh": "the gated repo's tools/gate.sh, read as text",
     "lib/cov_env.py -> tools/pytest.sh": "a WHOLESALE entry's key (a file it scans, keyed)",
     "lib/estate_registry.py -> scripts/estate_registry.py": "a command printed for the owner",
+    "lib/flakes.py -> tools/landq.py": "a flake record's site name, data in the register",
     "lib/gate_coverage.py -> tools/gate.sh": "the gated repo's entry, read as text",
     "lib/reuse.py -> checks/_estate_cache.py": "a reuse site's name, registry metadata",
     "lib/reuse.py -> gates/push_gate.sh": "a reuse site's name, registry metadata",

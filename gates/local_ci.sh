@@ -392,7 +392,7 @@ _report() { # _report <i>
         return 0
     fi
     _rec=0; [ "$rc" -ne 0 ] || "$GOH_PY" -S "$GOH_ROOT/lib/xexit.py" --say "[$i/$_n]" "$logf" </dev/null || { rc=1; RC[i]=1; }  # ✗ at exit 0 is red (GOH.XEXIT)
-    [ "${AUDIT[i]:-}" != shadow ] || proven_audit_judge "${PKEY[i]}" "${PTREE[i]}" "$cmd" "$rc" _again "$i" \
+    [ "${AUDIT[i]:-}" != shadow ] || PROVEN_AUDIT_LOGS="$logf $LOGDIR/step-$i.again.log" proven_audit_judge "${PKEY[i]}" "${PTREE[i]}" "$cmd" "$rc" _again "$i" \
         || err "[$i/$_n] the proven record said green, this run says otherwise (reuse_audit.py report)"
     if [ "$rc" -eq 0 ] && [ -n "${PKEY[i]}" ]; then
         # Recorded only if the tree and the gates did not move, and the kept-rewrite ratchet is green.

@@ -7,6 +7,7 @@ fake loopctl copies the rules it knew of; when the loop added `verify_after`
 
     lib/reuse_fault.py file_fault     a reuse path turned off
     lib/ship_full_run.py file_fault   a red ship's bisect naming its culprit land
+    lib/flakes.py record              a test's second pass on retry in 14 days (GOH.FLAKEREGISTER)
 
 Runs only where .loop is checked out (never in goh's CI); the hermetic fake in
 tests/test_reuse_audit.py mirrors the same rule for CI."""
@@ -17,6 +18,7 @@ import json
 import os
 from pathlib import Path
 
+import flakes
 import pytest
 import reuse
 import reuse_fault
@@ -73,3 +75,23 @@ def test_a_red_ship_bisect_files_its_item_through_the_real_queue_rules(live, tmp
     repo = tmp_path / "gates_of_heck"
     said = ship_full_run.file_fault(repo, "deadbeef" * 5, "c" * 40, "b" * 40, "a red land")
     assert said == "filed GOH.SHIPREDDEADBEEF", said
+
+
+def test_a_second_flake_in_14_days_files_its_item_through_the_real_queue_rules(
+    live, tmp_path, monkeypatch
+) -> None:
+    """lib/flakes.py's item -- `flake_records`, SPD's metric and prediction, `class_of: none` --
+    as the loop's own rules take it, on the temp queue (LOOPCTL_QUEUE too), never the live one."""
+    monkeypatch.setenv("GOH_FLAKE_DIR", str(tmp_path / "flakes"))  # HOME is the real one here
+    monkeypatch.setenv("LOOPCTL_QUEUE", str(live))
+    test = "tests/test_filer_live_rules.py::a_synthetic_flake"
+    flakes.record(test, str(tmp_path / "gates_of_heck"), "a" * 40, "site", ("/l/1", "/l/2"))
+    rec = flakes.record(test, str(tmp_path / "gates_of_heck"), "b" * 40, "site")
+    assert rec["filed"] == f"filed {flakes.item_id(test)}", rec
+    [item] = [i for i in json.loads(live.read_text())["items"] if i["id"] == flakes.item_id(test)]
+    assert len(item["flake_records"]) == 2 and item["status"] == "todo", item
+    # Another test's flake reads like this one's open item to loopdup: it is filed, not refused.
+    other = "tests/test_filer_live_rules.py::another_synthetic_flake"
+    flakes.record(other, str(tmp_path / "gates_of_heck"), "c" * 40, "site")
+    assert flakes.record(other, str(tmp_path / "gates_of_heck"), "d" * 40, "site")["filed"] == (
+        f"filed {flakes.item_id(other)}")  # fmt: skip

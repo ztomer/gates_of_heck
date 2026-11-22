@@ -16,3 +16,4 @@ wait	lib/proc_wait.py	Block until a pid is gone, a file is there, JSON holds val
 stop	lib/proc_stop.py	Stop processes YOU started, by pid or stamp, TERM then KILL; refuses any other (`lib/proc_stop.py`)
 undo	tools/undo.py	Put back only your own edits in your own worktree, keeping a copy for `--back` (`tools/undo.py`)
 brief	hooks/claude/brief.py	The header lines and Agent call a subagent spawn needs, from the active model-choice profile (`hooks/claude/brief.py`)
+flakes	lib/flakes.py	The flake register: every test that went red and passed on a retry, by test (`lib/flakes.py`)
