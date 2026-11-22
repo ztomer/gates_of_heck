@@ -125,3 +125,55 @@ def test_location_parses_the_0_19_form():
     assert sr.location({"cache_location": 'Local disk: "/a/b/"'}) == "/a/b"
     assert sr.location({"cache_location": "S3, bucket: x"}) is None
     assert sr.location(None) is None
+
+
+# GOH.CACHEEVICT2 (1): the sweep follows the drive with no coordinator call. `follow` re-points on
+# a CHANGE of the resolver's answer since the last sweep (the drive came or went), and on a server
+# serving a root that is neither the internal one nor the verified drive; a mismatch that was
+# already there at the last sweep is somebody's choice (a measurement window: a restart resets the
+# stats) and is reported, never acted on. A busy server is not recorded, so the next sweep retries.
+
+
+def _alive(state):
+    return lambda: json.loads(state.read_text())["running"]
+
+
+def test_follow_first_sweep_only_records(tmp_path):
+    internal, ext = str(tmp_path / "int"), str(tmp_path / "drive" / "sccache")
+    env, state, _t = _fake(tmp_path, internal)
+    env.alive = _alive(state)
+    status, record = sr.follow(env, ext, None, internal)
+    assert (status, record) == ("recorded", ext)
+    assert not [c for c in _calls(state) if c[0] in ("--stop-server", "--start-server")]
+
+
+def test_follow_a_standing_mismatch_is_left_alone(tmp_path):
+    internal, ext = str(tmp_path / "int"), str(tmp_path / "drive" / "sccache")
+    env, state, _t = _fake(tmp_path, internal)
+    env.alive = _alive(state)
+    status, record = sr.follow(env, ext, ext, internal)
+    assert status.startswith("differs") and record == ext
+    assert json.loads(state.read_text())["dir"] == internal
+
+
+def test_follow_no_server_is_never_started(tmp_path):
+    internal, ext = str(tmp_path / "int"), str(tmp_path / "drive" / "sccache")
+    env, state, _t = _fake(tmp_path, None)
+    env.alive = _alive(state)
+    assert sr.follow(env, ext, internal, internal) == ("no server", internal)
+    assert _calls(state) == []
+
+
+def test_follow_a_busy_server_is_retried_next_sweep(tmp_path):
+    internal, ext = str(tmp_path / "int"), str(tmp_path / "drive" / "sccache")
+    env, state, _t = _fake(tmp_path, internal, seq=range(101, 10_000))
+    env.alive = _alive(state)
+    assert sr.follow(env, ext, internal, internal, idle_s=30, timeout_s=60) == ("busy", internal)
+
+
+def test_follow_a_server_on_a_lost_root_comes_home_without_a_change(tmp_path):
+    internal, gone = str(tmp_path / "int"), str(tmp_path / "old-drive" / "sccache")
+    env, state, _t = _fake(tmp_path, gone)
+    env.alive = _alive(state)
+    assert sr.follow(env, internal, internal, internal, idle_s=30) == ("repointed", internal)
+    assert json.loads(state.read_text())["dir"] == internal

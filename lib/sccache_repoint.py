@@ -15,6 +15,9 @@ SCCACHE_IGNORE_SERVER_IO_ERROR=1, so a build caught by the restart compiles loca
 An unplug mid-build costs compiles, never a red gate (probed: 12 cache write errors, exit 0); this
 restores caching after it. Stats reset with each restart.
 
+The half-hourly evictor sweep (lib/cache_sweep.py) calls `follow` every run, so a drive that comes
+or goes is followed within one sweep with no call from anyone (GOH.CACHEEVICT2).
+
 usage: sccache_repoint.py check                  exit 1 (and the command to run) when it differs
        sccache_repoint.py apply [--idle S] [--timeout S]
 """
@@ -60,20 +63,29 @@ def internal_dir(environ: dict[str, str] | None = None) -> str:
     return os.path.join(env.get("XDG_CACHE_HOME") or os.path.join(home, ".cache"), "sccache")
 
 
-def _rustc_alive() -> bool:
-    out = subprocess.run(["pgrep", "-x", "rustc"], capture_output=True, check=False,
+def _alive(name: str) -> bool:
+    out = subprocess.run(["pgrep", "-x", name], capture_output=True, check=False,
                          stdin=subprocess.DEVNULL)  # fmt: skip
     return out.returncode == 0
 
 
+def _rustc_alive() -> bool:
+    return _alive("rustc")
+
+
+def _server_alive() -> bool:
+    return _alive("sccache")
+
+
 @dataclass
 class Env:
-    """The seams a test fakes: the sccache binary, the clock, sleep, the rustc probe."""
+    """The seams a test fakes: the sccache binary, the clock, sleep, the rustc and server probes."""
 
     sccache: str = "sccache"
     clock: object = time.monotonic
     sleep: object = time.sleep
     rustc_alive: object = _rustc_alive
+    alive: object = _server_alive
     base: dict = field(default_factory=lambda: dict(os.environ))
 
     def run(self, *args: str, sccache_dir: str | None = None, cwd: str | None = None):
@@ -143,6 +155,46 @@ def repoint(env: Env, want: str, idle_s: float = IDLE_S, timeout_s: float = TIME
     if got != os.path.normpath(want):
         return f"failed: serving {got} after the restart ({started.stderr.strip()[:200]})"
     return "repointed"
+
+
+FOLLOW_TIMEOUT_S = 300.0  # a sweep waits this long for quiet, then retries at the next sweep
+
+
+def follow(
+    env: Env,
+    want: str,
+    last: str | None,
+    internal: str,
+    idle_s: float = IDLE_S,
+    timeout_s: float = FOLLOW_TIMEOUT_S,
+    act: bool = True,
+) -> tuple[str, str | None]:
+    """One sweep's step (GOH.CACHEEVICT2): (status, the root to record as the last answer).
+
+    Re-points only when the resolver's answer CHANGED since the last sweep (`last`: the drive came
+    or went) or the server serves a root that is neither `internal` nor `want` (a drive that left
+    between two sweeps it was recorded in). A mismatch already standing at the last sweep is left:
+    it is a choice (a hit-rate window, which a restart's stats reset would void), and `apply` moves
+    it. The first sweep only records. A server that is not running is never started here (the
+    stats call starts one). With no server, or a busy one, the OLD answer stays recorded, so the
+    next sweep that finds a server idle makes the move."""
+    if last is None:
+        return "recorded", want
+    if not env.alive():
+        return "no server", last  # the change is still owed to the server that starts next
+    got = location(stats(env, want))
+    if got == os.path.normpath(want):
+        return "already", want
+    lost = got is not None and got not in (os.path.normpath(internal), os.path.normpath(want))
+    if os.path.normpath(last) == os.path.normpath(want) and not lost:
+        return (
+            f"differs: serving {got}, the resolver wants {want} (standing; `apply` moves it)",
+            want,
+        )
+    if not act:
+        return f"would re-point: serving {got}, the resolver wants {want}", last
+    verdict_s = repoint(env, want, idle_s, timeout_s)
+    return verdict_s, (want if verdict_s in ("already", "repointed") else last)
 
 
 def main(argv: list[str]) -> int:
