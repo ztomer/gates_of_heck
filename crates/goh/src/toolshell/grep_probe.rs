@@ -17,22 +17,27 @@ const CEILING: Duration = Duration::from_secs(10);
 /// The probe's exit code from the binary at `execpath` run as ugrep; `None` when it could not run.
 #[must_use]
 pub fn real_grep_probe(execpath: &str) -> Option<i32> {
-    let mut cmd = Command::new(execpath);
-    cmd.arg0("ugrep").args(["-G", "-vq", "a"]);
-    let ran = crate::bounded::run(&mut cmd, Some(b"a\nb\n".to_vec()), CEILING).ok()?;
-    if ran.timed_out {
-        return None;
-    }
-    ran.code
+    probe_within(execpath, CEILING)
 }
 
-/// Where the record goes: `$XDG_STATE_HOME/goh/harness_grep.json`, else under `~/.local/state`.
-pub fn state_path(env: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
+/// The probe with its ceiling; a run that outlives it is group-killed (SIGKILL), so it has no exit
+/// code and answers `None`, never a guessed code.
+fn probe_within(execpath: &str, ceiling: Duration) -> Option<i32> {
+    let mut cmd = Command::new(execpath);
+    cmd.arg0("ugrep").args(["-G", "-vq", "a"]);
+    crate::bounded::run(&mut cmd, Some(b"a\nb\n".to_vec()), ceiling)
+        .ok()?
+        .code
+}
+
+/// The record's directory: `$XDG_STATE_HOME/goh`, else `~/.local/state/goh`.
+pub fn state_dir(env: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
     let var = |k: &str| env(k).filter(|v| !v.is_empty());
-    let base = var("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| var("HOME").map(|h| PathBuf::from(h).join(".local/state")))?;
-    Some(base.join("goh").join("harness_grep.json"))
+    let base = var("XDG_STATE_HOME").map_or_else(
+        || var("HOME").map(|h| PathBuf::from(h).join(".local/state")),
+        |x| Some(PathBuf::from(x)),
+    )?;
+    Some(base.join("goh"))
 }
 
 /// The record the guard reads.
@@ -73,13 +78,25 @@ pub fn probe_and_record(
 ) -> Option<(String, bool)> {
     let execpath = env("CLAUDE_CODE_EXECPATH").filter(|v| !v.is_empty())?;
     let code = probe(&execpath);
-    if let Some(path) = state_path(env) {
-        if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let _ = std::fs::write(&path, record(&execpath, code));
-    }
+    let dir = state_dir(env);
+    let _ = dir.as_ref().map(|d| {
+        std::fs::create_dir_all(d)
+            .and_then(|()| std::fs::write(d.join("harness_grep.json"), record(&execpath, code)))
+    });
     Some(line(&execpath, code))
+}
+
+/// `goh shell-check`'s grep line, marked, handed to `say` (nothing when there is no harness binary).
+pub fn report(
+    env: &dyn Fn(&str) -> Option<String>,
+    probe: &dyn Fn(&str) -> Option<i32>,
+    say: &mut dyn FnMut(String),
+) {
+    let marked = probe_and_record(env, probe).map(|(text, warn)| {
+        let mark = if warn { goh_tui::WARN } else { goh_tui::OK };
+        format!("{mark} goh shell-check: {text}")
+    });
+    marked.into_iter().for_each(say);
 }
 
 #[cfg(test)]
@@ -106,10 +123,14 @@ mod tests {
     fn shell_check_records_the_probe_where_the_guard_reads_it() {
         let dir = tempfile::tempdir().unwrap();
         let state = dir.path().to_string_lossy().into_owned();
-        let env = |k: &str| match k {
-            "CLAUDE_CODE_EXECPATH" => Some("/x/claude".to_owned()),
-            "XDG_STATE_HOME" => Some(state.clone()),
-            _ => None,
+        let vars = [
+            ("CLAUDE_CODE_EXECPATH", "/x/claude"),
+            ("XDG_STATE_HOME", state.as_str()),
+        ];
+        let env = |k: &str| {
+            vars.iter()
+                .find(|(n, _)| *n == k)
+                .map(|(_, v)| (*v).to_owned())
         };
         let (text, warn) = probe_and_record(&env, &|_| Some(1)).unwrap();
         assert!(
@@ -123,5 +144,42 @@ mod tests {
         let (text, warn) = probe_and_record(&env, &|_| Some(0)).unwrap();
         assert!(!warn && text.contains("lifted"), "{text}");
         assert!(probe_and_record(&|_| None, &|_| Some(0)).is_none());
+    }
+
+    #[test]
+    fn a_probe_past_its_ceiling_answers_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("slow");
+        std::fs::write(&path, "#!/bin/sh\nsleep 5; exit 0\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let slow = path.to_string_lossy().into_owned();
+        assert_eq!(probe_within(&slow, Duration::from_millis(200)), None);
+    }
+
+    #[test]
+    fn an_unprobeable_harness_grep_keeps_the_refusal_and_says_so() {
+        let (text, warn) = line("/x/claude", None);
+        assert!(warn, "{text}");
+        assert!(
+            text.contains("could not be probed") && text.contains("refusal stays"),
+            "{text}"
+        );
+        let mut said = Vec::new();
+        let env = |k: &str| (k == "CLAUDE_CODE_EXECPATH").then(|| "/x/claude".to_owned());
+        report(&env, &|_| None, &mut |l| said.push(l));
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(said[0].contains("could not be probed") && said[0].starts_with(goh_tui::WARN));
+        let mut none: Vec<String> = Vec::new();
+        report(&|_| None, &|_| Some(0), &mut |l| none.push(l));
+        assert_eq!(none, Vec::<String>::new());
+    }
+
+    #[test]
+    fn the_state_dir_falls_back_to_home_when_xdg_is_unset() {
+        let home = |k: &str| (k == "HOME").then(|| "/h".to_owned());
+        assert_eq!(state_dir(&home), Some(PathBuf::from("/h/.local/state/goh")));
+        let both = |k: &str| Some(if k == "HOME" { "/h" } else { "" }.to_owned());
+        assert_eq!(state_dir(&both), Some(PathBuf::from("/h/.local/state/goh")));
+        assert_eq!(state_dir(&|_| None), None);
     }
 }

@@ -23,7 +23,7 @@ mod walk_tests;
 use std::io::Read;
 use std::path::Path;
 
-use goh_tui::{ERR, OK, WARN};
+use goh_tui::{ERR, OK};
 
 /// The tools whose input holds a shell command (`lib/shell_tools.py`'s list).
 pub const SHELL_TOOLS: [&str; 2] = ["Bash", "Monitor"];
@@ -118,12 +118,9 @@ pub fn run_shell_check() -> i32 {
         probe: &check::real_probe,
     };
     // The harness grep's -v -q (GOH.UGREPVQ): said and recorded, never a failure of its own.
-    if let Some((line, warn)) =
-        grep_probe::probe_and_record(&real_env, &grep_probe::real_grep_probe)
-    {
-        let mark = if warn { WARN } else { OK };
-        goh_tui::eoutln!("{mark} goh shell-check: {line}");
-    }
+    grep_probe::report(&real_env, &grep_probe::real_grep_probe, &mut |l| {
+        goh_tui::eoutln!("{l}");
+    });
     match check::check(&inputs) {
         Ok(line) => {
             goh_tui::eoutln!("{OK} goh shell-check: {line}");
