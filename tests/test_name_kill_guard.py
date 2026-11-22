@@ -109,3 +109,16 @@ def test_the_refusal_names_what_the_pattern_would_hit_now() -> None:
         holder.kill()
         holder.wait()
     assert "matches no process right now" in (_decide(f"{PK} -f {marker}_gone") or "")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        f'echo "`{PK} -f gate.sh`"',
+        f'echo "$({PK} -f gate.sh)"',
+        f'x="pre $(echo a; {KA} cargo) post"',
+    ],
+)
+def test_a_kill_in_a_substitution_inside_double_quotes_is_refused(command: str) -> None:
+    """GOH.NAMEKILLBACKTICK: a double-quoted word's substitution runs, so its kill is judged."""
+    assert _decide(command) is not None, command

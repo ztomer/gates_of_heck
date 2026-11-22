@@ -166,10 +166,45 @@ def _patterns(args: list[str]) -> tuple[list[str], bool, bool]:
     return pats, full, scoped
 
 
+def _dq_substitutions(command: str) -> list[str]:
+    """The `...` and $(...) bodies inside DOUBLE quotes, which run (GOH.NAMEKILLBACKTICK): shlex
+    keeps a double-quoted word whole, so their commands were never judged. Single quotes and a
+    quoted heredoc's body stay text."""
+    text, out, i, quote = busyloop.blank_quoted_heredocs(command), [], 0, ""
+    while i < len(text):
+        ch = text[i]
+        if ch == "\\":
+            i += 2
+            continue
+        if quote == "'":
+            quote = "" if ch == "'" else quote
+        elif ch == "'" and not quote:
+            quote = "'"
+        elif ch == '"':
+            quote = "" if quote == '"' else '"'
+        elif quote == '"' and ch == "`":
+            end = text.find("`", i + 1)
+            end = len(text) if end < 0 else end
+            out.append(text[i + 1 : end])
+            i = end
+        elif quote == '"' and text.startswith("$(", i):
+            depth, j = 1, i + 2
+            while j < len(text) and depth:
+                depth += {"(": 1, ")": -1}.get(text[j], 0)
+                j += 1
+            out.append(text[i + 2 : j - 1])
+            i = j - 1
+        i += 1
+    return out
+
+
 def judge(command: str) -> str | None:
     """The refusal for a by-name kill of a shared command, or None when the command runs."""
     if ESCAPE.search(command):
         return None
+    for inner in _dq_substitutions(command):
+        if why := judge(inner):
+            return why
     try:
         pipes = _pipelines(_tokens(command))
     except ValueError:
