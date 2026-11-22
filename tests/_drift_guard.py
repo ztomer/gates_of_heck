@@ -198,8 +198,14 @@ if _REAL_CARGO:
             # The verdict identity keys the cargo this runs, not this per-run file: keyed by its
             # own path, every suite run had its own tools key (lib/tool_shim.py).
             f"{SHIM_MARK}{_REAL_CARGO}\n"
-            'dir="$PWD"; prev=""\n'
-            'for a; do [ "$prev" = "--manifest-path" ] && dir="$(dirname "$a")"; prev="$a"; done\n'
+            'dir="$PWD"; prev=""; named_bd=""; named_inc=""\n'
+            'for a; do [ "$prev" = "--manifest-path" ] && dir="$(dirname "$a")"; prev="$a"\n'
+            # A build-dir already on the command line -- the caller's, or an outer shim's (an xdist
+            # worker's PATH holds the controller's shim behind its own) -- is kept, as the
+            # variable was: cargo keeps the LAST of two, and an outer shim's would land after.
+            '  case "$a" in *build.build-dir=*) named_bd=1 ;;\n'
+            "  *build.incremental=*) named_inc=1 ;; esac\n"
+            "done\n"
             # A workspace outside this checkout is a throwaway: its build goes where the run removes it,
             # still one directory per workspace -- two estates' crates named `c` sharing one build dir
             # read each other's dep-info.
@@ -219,13 +225,13 @@ if _REAL_CARGO:
             '  [ "$d" = / ] && return 1; d="$(dirname "$d")"; done; }\n'
             'bd=""; inc=""\n'
             f'case "$(cd "$dir" 2>/dev/null && pwd -P)/" in "{_ROOT.resolve()}/"*) ;; *) '
-            '[ -n "${CARGO_BUILD_BUILD_DIR:-}" ] '
+            '[ -n "${CARGO_BUILD_BUILD_DIR:-}$named_bd" ] '
             '|| own_build_dir "$(cd "$dir" 2>/dev/null && pwd -P)" '
             f"|| bd='{BUILD_DIR}/{{workspace-path-hash}}'\n"
             # ...and builds it whole, never incrementally (GOH.FSCHURN3): a throwaway is built once,
             # so an incremental session dir is only files to make and remove (and sccache caches
             # no incremental build).
-            '[ -n "${CARGO_INCREMENTAL:-}" ] || inc=1 ;; esac\n'
+            '[ -n "${CARGO_INCREMENTAL:-}$named_inc" ] || inc=1 ;; esac\n'
             # ON THE COMMAND LINE, NEVER IN THE ENVIRONMENT (GOH.SCCACHEENV). sccache 0.19 hashes
             # every CARGO_* variable rustc inherits into its key, and an exported build-dir is a
             # path per run: 68% of the machine's Rust misses. Cargo keeps `--config` to itself.
