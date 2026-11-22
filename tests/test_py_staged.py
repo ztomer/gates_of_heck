@@ -232,3 +232,42 @@ def test_all_names_only_the_failing_files(repo):
     assert "tools/drift.py" in out or "drift.py" in out, out
     assert "clean_" not in out, f"a file that passed was named in the failure:\n{out}"
     assert "ruff format --check" in out, "the command is still named, only its file list is not"
+
+
+# TP.WEBVISION3: a uv repo's staged lint ran `uv run` INSIDE the index view with the checkout's
+# .venv as the project environment, so uv synced the view's project into it: the checkout's own
+# editable install was re-pointed at the (soon deleted) view, and the next `uv run` in the checkout
+# uninstalled and reinstalled it -- "uv run uninstalls and reinstalls one package on every call"
+# (token-pool). The view must USE the checkout's environment, never sync into it.
+
+
+def _fake_uv(bindir, log):
+    bindir.mkdir(parents=True, exist_ok=True)
+    uv = bindir / "uv"
+    uv.write_text(
+        "#!/bin/sh\n"
+        f'echo "$(pwd -P)|${{UV_NO_SYNC:-}}|$*" >>"{log}"\n'
+        "shift\n"  # run
+        'while :; do case "$1" in --python) shift 2 ;; --*) shift ;; *) break ;; esac; done\n'
+        '[ "$1" = python ] && { shift; exec python3 "$@"; }\n'
+        'exec "$@"\n'
+    )
+    uv.chmod(0o755)
+
+
+def test_a_uv_repos_staged_lint_never_syncs_the_view_into_the_checkouts_venv(repo, tmp_path):
+    write(repo, "uv.lock", "version = 1\n")
+    write(repo, "ok.py", "x = 1\n")
+    stage(repo, "uv.lock", "ok.py")
+    log = tmp_path / "uv.log"
+    _fake_uv(tmp_path / "bin", log)
+    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}:{os.environ['PATH']}"}
+    env.pop("GOH_PY_RUNNER", None)
+    env.pop("UV_NO_SYNC", None)
+    r = subprocess.run(["/bin/bash", str(GATE), str(repo)], capture_output=True, text=True,
+                       stdin=subprocess.DEVNULL, check=False, env=env)  # fmt: skip
+    assert r.returncode == 0, r.stdout + r.stderr
+    calls = [line.split("|", 2) for line in log.read_text().splitlines()]
+    in_view = [c for c in calls if c[0] != str(repo.resolve())]
+    assert in_view, calls  # the lint ran in the view, through uv
+    assert all(no_sync == "1" for _, no_sync, _ in in_view), in_view

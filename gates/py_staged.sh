@@ -114,7 +114,12 @@ if [ "$scope" = staged ]; then
         /*) ;;
         */*) RUN_ARR[0]="$PWD/${RUN_ARR[0]#./}"; RUN="${RUN_ARR[*]}" ;;
     esac
-    case "$RUN" in "uv run"*) export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-$PWD/.venv}" ;; esac
+    # The view USES the checkout's environment and never syncs into it (TP.WEBVISION3): a sync there
+    # re-pointed the checkout's editable install at the view, and the next `uv run` in the checkout
+    # uninstalled and reinstalled it. goh_py_runner synced it in the checkout above.
+    case "$RUN" in "uv run"*)
+        export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-$PWD/.venv}" UV_NO_SYNC=1 ;;
+    esac
     checkout="$PWD"
     GOH_REPO_ROOT="${GOH_REPO_ROOT:-$(git rev-parse --show-toplevel)}"
     goh_index_view .

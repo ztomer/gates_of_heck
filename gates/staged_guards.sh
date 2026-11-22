@@ -67,7 +67,12 @@ case "${RUN_ARR[0]}" in
     /*) ;;
     */*) RUN_ARR[0]="$PWD/${RUN_ARR[0]#./}"; RUN="${RUN_ARR[*]}" ;;
 esac
-case "$RUN" in "uv run"*) export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-$PWD/.venv}" ;; esac
+# The view USES the checkout's environment and never syncs into it (TP.WEBVISION3): a sync there
+# re-pointed the checkout's editable install at the view, and the next `uv run` in the checkout
+# uninstalled and reinstalled it. goh_py_runner synced it in the checkout above.
+case "$RUN" in "uv run"*)
+    export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-$PWD/.venv}" UV_NO_SYNC=1 ;;
+esac
 checkout="$PWD"
 tree="$( (goh_bind_hook_index && goh_index_tree) 2>/dev/null || true)"
 if [ -n "$tree" ] && [ "${GOH_SELF_GATED:-}" = "$tree|$(pwd -P)" ]; then
@@ -82,10 +87,12 @@ fi
 . "$HERE/_pytest_root.sh"
 goh_pytest_root  # a concurrent suite cannot prune this one's temp dirs
 info "${#DUE[@]} declared $(plural_noun "${#DUE[@]}" guard) (# goh-reads-staged:) due for this commit"
+# The view first on PYTHONPATH: the environment's editable install points at the checkout, and the
+# guards judge the index (TP.WEBVISION3).
 # No cache and no bytecode: a goh view is a shared export other gates run from. GOH_STAGED_GUARD_RUN
 # tells a suite's conftest the run is a commit's guard (goh's builds no binary for it).
 goh_step_in "$view" "source guards over the index: ${DUE[*]}" \
-    env PYTHONDONTWRITEBYTECODE=1 GOH_STAGED_GUARD_RUN=1 "${RUN_ARR[@]}" pytest -q -p no:cacheprovider -- "${DUE[@]}"
+    env PYTHONDONTWRITEBYTECODE=1 GOH_STAGED_GUARD_RUN=1 PYTHONPATH="$view${PYTHONPATH:+:$PYTHONPATH}" "${RUN_ARR[@]}" pytest -q -p no:cacheprovider -- "${DUE[@]}"
 goh_rm_tree "$PYTEST_DEBUG_TEMPROOT"
 cd "$checkout"
 goh_done

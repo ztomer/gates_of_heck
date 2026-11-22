@@ -140,3 +140,57 @@ def test_the_config_schema_guard_declares_every_tree_it_scans():
     assert scanned, "SCAN names nothing"
     missing = sorted((scanned | {"docs/config.md", ".gatesrc.example"}) - specs)
     assert missing == [], f"the # goh-reads-staged: line misses {missing}"
+
+
+# TP.WEBVISION3: in a uv repo the guard ran `uv run` in the view with the checkout's .venv as its
+# environment, so uv synced the view's project into it and the checkout's next `uv run` reinstalled
+# its own package. The view now runs with UV_NO_SYNC, and imports the INDEX's modules through
+# PYTHONPATH (the environment's editable install points at the checkout, whose bytes are not the
+# commit's).
+IMPORT_GUARD = "\n".join(
+    [
+        f"{DIRECTIVE} *.py",
+        "import mod",
+        "",
+        "",
+        "def test_the_index_holds_the_new_value():",
+        "    assert mod.VALUE == 2",
+        "",
+    ]
+)
+
+
+def test_a_uv_repos_guard_never_syncs_the_view_and_imports_the_index(tmp_path):
+    import os
+    import sys
+
+    repo = _guarded(tmp_path, IMPORT_GUARD)
+    bindir, log = tmp_path / "bin", tmp_path / "uv.log"
+    bindir.mkdir()
+    (bindir / "uv").write_text(
+        "#!/bin/sh\n"
+        f'echo "$(pwd -P)|${{UV_NO_SYNC:-}}|$*" >>"{log}"\n'
+        "shift\n"
+        'while :; do case "$1" in --python) shift 2 ;; --*) shift ;; *) break ;; esac; done\n'
+        f'case "$1" in python) shift; exec "{sys.executable}" "$@" ;;\n'
+        # -P: a console script puts no cwd on sys.path, and the view IS the cwd
+        f'  pytest|ruff) t="$1"; shift; exec "{sys.executable}" -P -m "$t" "$@" ;; esac\n'
+        'exec "$@"\n'
+    )
+    (bindir / "uv").chmod(0o755)
+    (repo / "uv.lock").write_text("version = 1\n")
+    (repo / "mod.py").write_text("VALUE = 2\n")
+    _git(repo, "add", "uv.lock", "mod.py")
+    (repo / "mod.py").write_text("VALUE = 1\n")  # the working tree's copy is not the commit's
+    got = subprocess.run(
+        ["git", "-C", str(repo), "commit", "-q", "-m", "plant"],
+        env=hermetic_env(GOH_DIR=str(REPO_ROOT), PATH=f"{bindir}:{os.environ['PATH']}"),
+        capture_output=True, text=True, timeout=patience(180), stdin=subprocess.DEVNULL,
+        check=False,
+    )  # fmt: skip
+    text = got.stdout + got.stderr
+    assert got.returncode == 0, text
+    assert f"✓ {STEP}" in text, text
+    calls = [line.split("|", 2) for line in log.read_text().splitlines()]
+    guard = [c for c in calls if "pytest" in c[2] and "test_guard.py" in c[2]]
+    assert guard and all(no_sync == "1" for _, no_sync, _ in guard), calls
