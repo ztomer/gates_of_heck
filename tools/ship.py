@@ -15,8 +15,9 @@ every agent's context (GOH.SPENDWATCH). Here it is a pipeline no turn watches:
              holding the land lock, so main cannot move past the run before the release kit
              checks it (GOH.SHIPSTARVE). It judges every coverage floor over what landed since the
              last ship -- a land measures none (GOH.COVOFFLAND) -- and a red run releases nothing:
-             the worker, the land lock given back, bisects the lands to the first red one and files
-             a fault item naming it (`bisect` in the result)
+             a diff coverage red names each uncovered line's land (`diffcov_red`); any other red
+             is bisected to its first red land, a fault filed (`bisect`), the record `bisecting`
+             meanwhile; a held `.ship.lock` names its holder and state (GOH.SHIPBISECTCOV)
     push     `git push REMOTE HEAD:BRANCH` (the upstream the branch tracks), through the pre-push
              gate; skipped when `.gatesrc` GOH_SHIP_RELEASE_PUSHES=1 and the release step runs: that
              kit pushes the hand-off with its release commit (a repo whose release note may only
@@ -193,6 +194,8 @@ def plan(args: argparse.Namespace) -> dict:
                       "'dummy'")  # fmt: skip
     tag = newest_tag(repo)
     sha = git(repo, "rev-parse", "HEAD")
+    if why := ship_item.lock_refusal(out := Path(args.out) if args.out else default_out(name, sha)):
+        raise Refused(why)  # a held .ship.lock names its holder and state (GOH.SHIPBISECTCOV)
     if tag and not cfg["GOH_SHIP_RELEASE"]:
         raise Refused(f"{repo.name} tags releases ({tag}) but declares no GOH_SHIP_RELEASE in its "
                       ".gatesrc: name its release kit, e.g. GOH_SHIP_RELEASE='tools/release.sh "
@@ -208,7 +211,6 @@ def plan(args: argparse.Namespace) -> dict:
         raise Refused(f"GOH_SHIP_TIMEOUT={cfg['GOH_SHIP_TIMEOUT']!r} is not seconds") from None
     asked = preflights(repo, cfg, version, args.summary or "")
     run_preflights(repo, asked, version, args, timeout)
-    out = Path(args.out) if args.out else default_out(name, sha)
     return {
         "schema": 1, "repo": str(repo), "name": name, "item": args.item or None,
         "progress": bool(args.progress),
@@ -356,14 +358,11 @@ def worker(result: str, resume: bool = False) -> int:
     """The pipeline under the repo's ship lock; RESUME: a ship failed at verify, from verify."""
     res = json.loads(Path(result).read_text(encoding="utf-8"))
     lock = Path(res["result"]).parent / ".ship.lock"
-    import lock_order  # here, not at the top: tools/ship.py's import ceiling (E402) is spent
+    import ship_lock  # here, not at the top: tools/ship.py's import ceiling (E402) is spent
 
-    with lock.open("w") as held:
-        try:
-            lock_order.flock(held, "ship", wait=False)  # never waits: a second ship is refused
-        except OSError:
-            res.update(status="failed", failed_step="push",
-                       tail=[f"another goh ship of {res['name']} holds {lock}"])  # fmt: skip
+    with lock.open("a+") as held:  # never "w": that would empty the holder's name (ship_lock)
+        if who := ship_lock.take(held, res["result"]):  # never waits: a second ship is refused
+            res.update(status="failed", failed_step="lock", tail=[f"{lock} is held: {who}"])
             save(res)
             err(res["tail"][0])
             return 1

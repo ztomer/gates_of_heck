@@ -22,10 +22,16 @@ detached worktree kept between ships beside the ship results (`<ship dir>/suite-
 caches stay warm), admitted as class `ship`. Its seconds are the step's, so the ship record keeps
 the lock wait (`land_wait_s`) apart from the ship's own run (`own_s`).
 
-A RED RUN (exit RED) stops the ship before anything is pushed or released, and `bisect` -- run by
-the ship's worker AFTER it gives the land lock back, so lands go on -- runs the same command on the
-lands since the last ship (`goh-landed`, the tips land.sh recorded), halving, to the first red one,
-and files a fault item naming it (`loopctl file`). The last ship is taken as green: it released.
+A RED RUN (exit RED) stops the ship before anything is pushed or released. A diff coverage red
+names its uncovered lines, so it is never bisected: `git blame` names each line's land, in the
+record (`diffcov_red`) and the red's tail, seconds after the red, and a fault item is filed per land
+(GOH.SHIPBISECTCOV: a 2026-11-22 ship's worker bisected such a red for 50 min, one full suite per
+step, holding the ship lock). Any other red is bisected by the ship's worker AFTER it gives the land
+lock back, so lands go on, over the lands since the last ship (`goh-landed`, the tips land.sh
+recorded), halving, to the first red one, filing a fault item naming it (`loopctl file`): a red
+naming failing tests probes those tests alone, plain (lib/ship_red_cause.py); one naming none (a
+floor) re-runs the full command. While it bisects the record says `bisecting` with its step
+(`bisect_step`), never `finished`. The last ship is taken as green: it released.
 
     ship_full_run.py --repo MAIN --wt DIR [--profiles-out FILE]
                                             exit 0 green (or owed none), 1 red, 2 no verdict
@@ -50,6 +56,7 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
     del _sys.path[0]
 
 import argparse
+import datetime as dt
 import os
 import subprocess
 import sys
@@ -61,6 +68,7 @@ import cov_risk  # lib/: the kept per-line coverage sources (GOH.DIFFCOVLAND)
 import full_run  # lib/: the instrumented command, the worktree, the .gatesrc read (no lock)
 import reuse  # lib/: the land record (`landed_identity`)
 import reuse_fault  # lib/: `loopctl file` and the queue's current phase
+import ship_red_cause  # lib/: what the red's log names (GOH.SHIPBISECTCOV)
 import ship_suite  # lib/: the check the release kit makes
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -147,26 +155,42 @@ def lands(repo: Path, base: str, head: str) -> list[str]:
     return [*out, head] if span else []
 
 
-def bisect(repo: Path, wt: Path, head: str, argv: list[str] | None = None) -> dict:
+def bisect(repo: Path, wt: Path, head: str, argv: list[str] | None = None, tests: list[str] = (),
+           step: Callable[[dict], None] | None = None) -> dict:  # fmt: skip
     """HEAD's run was red: the first red land since the last ship, halving over `lands`, and the
-    fault item filed for it. A probe with no verdict stops the bisect, naming the range left."""
+    fault item filed for it. TESTS (the failing tests the red named): each probe runs those alone,
+    plain (lib/ship_red_cause.py), never the full instrumented run. STEP is told each probe before
+    it runs. A probe with no verdict stops the bisect, naming the range left."""
     base = last_ship(repo, head)
     cands, runs = lands(repo, base, head), []
     lo, hi = -1, len(cands) - 1
     while hi - lo > 1:
         mid = (lo + hi) // 2
-        rc = _judge(repo, wt, cands[mid], base, argv)
+        if step:
+            step({"n": len(runs) + 1, "lands": len(cands), "sha": cands[mid]})
+        if tests and (why := full_run.prepare(repo, wt, cands[mid])):
+            print(f"ship bisect: no worktree at {cands[mid][:8]}: {why}", flush=True)
+            rc = NO_VERDICT
+        elif tests:
+            print(f"ship bisect on {cands[mid][:8]}: {' '.join(tests)}", flush=True)
+            rc = ship_red_cause.probe(wt, list(tests), MAX)
+        else:
+            rc = _judge(repo, wt, cands[mid], base, argv)
         runs.append({"sha": cands[mid], "verdict": {GREEN: "green", RED: "red"}.get(rc, "none")})
         if rc == NO_VERDICT:
             break
         lo, hi = (mid, hi) if rc == GREEN else (lo, mid)
-    found = {"base": base, "lands": len(cands), "runs": runs}
+    found = {"base": base, "lands": len(cands), "runs": runs, "tests": list(tests)}
     if not cands or hi - lo > 1:
         return {**found, "culprit": "", "fault": "not filed: the bisect reached no single land"}
     culprit, since = cands[hi], cands[lo] if lo >= 0 else base
     subject = full_run._git(repo, "log", "-1", "--format=%s", culprit).stdout.strip()
     return {**found, "culprit": culprit, "since": since, "subject": subject,
             "fault": file_fault(repo, culprit, since, base, subject)}  # fmt: skip
+
+
+def _parent(repo: Path, sha: str) -> str:
+    return full_run._git(repo, "rev-parse", f"{sha}^").stdout.strip()
 
 
 def file_fault(repo: Path, culprit: str, since: str, base: str, subject: str) -> str:
@@ -199,8 +223,10 @@ def file_fault(repo: Path, culprit: str, since: str, base: str, subject: str) ->
 
 
 def after_red(res: dict, save: Callable[[dict], None]) -> None:
-    """The ship's worker, its land lock given back: a suite step that ran RED is bisected and the
-    result says which land (`bisect`); any other failure is no red run to bisect."""
+    """The ship's worker, its land lock given back, on a suite step that ran RED. A diff coverage
+    red names its lines: each is blamed to its land (`diffcov_red`), no bisect. Any other red is
+    bisected (`bisect`), on the failing tests it names when it names any, the record saying
+    `bisecting` with its step until the bisect ends (GOH.SHIPBISECTCOV)."""
     step = next((s for s in res.get("steps", []) if s.get("name") == "suite"), {})
     if (
         res.get("failed_step") != "suite"
@@ -210,11 +236,41 @@ def after_red(res: dict, save: Callable[[dict], None]) -> None:
         return
     repo = Path(res["repo"])
     head = full_run._git(repo, "rev-parse", "HEAD").stdout.strip()
-    print(
-        f"ship full suite: red on {head[:8]} -- bisecting the lands since the last ship", flush=True
-    )
-    res["bisect"] = bisect(repo, Path(res["result"]).parent / "suite-wt", head)
-    save(res)
+    log = Path(step.get("log") or os.devnull)
+    text = log.read_text(encoding="utf-8", errors="replace") if log.is_file() else ""
+    if rows := ship_red_cause.uncovered(text):
+        base = last_ship(repo, head)
+        found = ship_red_cause.attribute(repo, head, lands(repo, base, head), rows)
+        faults = {
+            r["land"]: file_fault(repo, r["land"], _parent(repo, r["land"]), base, r["subject"])
+            for r in found
+            if r["land"]
+        }
+        res["diffcov_red"] = {"base": base, "lines": found, "faults": faults}
+        said = [ship_red_cause.say(r) for r in found]
+        res["tail"] = [*res.get("tail", []), *said]
+        save(res)
+        for line in said:
+            print(f"ship full suite: {line}", flush=True)
+        return
+    tests = ship_red_cause.failed_tests(text)
+    print(f"ship full suite: red on {head[:8]} -- bisecting the lands since the last ship"
+          + (f" on its failing tests: {' '.join(tests)}" if tests else ""), flush=True)  # fmt: skip
+    res.pop("finished", None)  # the worker runs on: the record says so (GOH.SHIPBISECTCOV)
+    res["status"] = "bisecting"
+
+    def at(probe: dict) -> None:
+        res["bisect_step"] = probe
+        save(res)
+
+    try:
+        res["bisect"] = bisect(repo, Path(res["result"]).parent / "suite-wt", head, tests=tests,
+                               step=at)  # fmt: skip
+    finally:
+        res.pop("bisect_step", None)
+        res["status"] = "failed"
+        res["finished"] = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+        save(res)
     b = res["bisect"]
     print(f"ship full suite: bisect: {b['culprit'][:12] or 'no single land'} "
           f"({b.get('subject', '')}); fault {b['fault']}", flush=True)  # fmt: skip

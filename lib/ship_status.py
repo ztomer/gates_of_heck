@@ -74,7 +74,7 @@ def status(result: str) -> int:
     if prof := ship_profile.table(res):  # where the time went (GOH.SHIPPROFILE)
         step(prof[0])
         print("\n".join(prof[1:]))
-    if res["status"] == "running":
+    if res["status"] in ("running", "bisecting"):  # a bisecting worker runs on (GOH.SHIPBISECTCOV)
         pid = res.get("pid")
         # By its start time (GOH.STRAYSIGNAL2): a worker's pid reused since reads as gone.
         if not pid or pid_owner.alive_line(str(res.get("pid_stamp") or pid)):

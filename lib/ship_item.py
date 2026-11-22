@@ -1,4 +1,4 @@
-"""goh ship's two refusals that its LAST steps used to make, asked before its first (GOH.SHIPITEM).
+"""goh ship's refusals that its LAST steps used to make, asked before its first (GOH.SHIPITEM).
 
 * the item: on 2026-11-12 three goh releases (0.106.1-0.106.3) shipped under RM.MONITOR, whose repo
   is monitor, and only the done step refused it, after a 40-minute verify. `loopctl shippable ID
@@ -6,6 +6,9 @@
 * the hooks: koffee_big 2.17.5 pushed, then its release's bump commit refused '.githooks/pre-commit
   is an OLDER stock hook'. The reading is structural.sh's own (lib/hook_currency.py, which
   gates/_hook_currency.sh runs), so the two never disagree on what is stale.
+* the lock: on 2026-11-22 a ship's worker found `.ship.lock` held by a bisecting ship and failed
+  "at push", naming nobody; a held lock now refuses before anything starts, naming its holder's
+  record, pid and state (lib/ship_lock.py, GOH.SHIPBISECTCOV).
 
 Each returns why the ship is refused, or None. Pinned by tests/test_ship_item.py.
 """
@@ -52,3 +55,13 @@ def hook_refusal(repo: Path, goh_root: Path) -> str | None:
     return (f"{repo.name}: {', '.join(stale)} is an OLDER stock hook, which refuses the release's "
             f"commits after the push -- update the hooks, then commit them: {goh_root}/install.sh "
             f"{shlex.quote(str(repo))}")  # fmt: skip
+
+
+def lock_refusal(result: Path) -> str | None:
+    """A ship whose RESULT's directory holds a held `.ship.lock` would be refused by its worker:
+    say so now, naming the holder's record and state (lib/ship_lock.py, GOH.SHIPBISECTCOV)."""
+    import ship_lock  # lib/, here: only a ship needs the lock table
+
+    lock = result.parent / ".ship.lock"
+    who = ship_lock.holder(lock)
+    return f"another goh ship holds {lock}: {who}" if who else None

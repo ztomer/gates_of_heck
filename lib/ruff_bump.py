@@ -73,7 +73,7 @@ def ships_in_flight(repo: str) -> list[str]:
             rec = json.loads(p.read_text())
         except (OSError, json.JSONDecodeError):
             continue
-        if rec.get("status") == "running" and (not rec.get("pid") or _alive(rec)):
+        if rec.get("status") in ("running", "bisecting") and (not rec.get("pid") or _alive(rec)):
             out.append(p.name)
     return out
 

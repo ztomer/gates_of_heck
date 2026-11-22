@@ -118,7 +118,7 @@ def ship_finished(record: Path) -> Callable[[], bool]:
             res = json.loads(record.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return False
-        if res.get("status") != "running":
+        if res.get("status") not in ("running", "bisecting"):  # a bisecting worker runs on
             return True
         pid = res.get("pid")
         return bool(pid) and not pid_owner.alive_line(str(res.get("pid_stamp") or pid))
