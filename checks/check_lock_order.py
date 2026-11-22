@@ -150,6 +150,9 @@ def _index(tree: Tree) -> dict[str, list[str]]:
     return names
 
 
+_STRING = re.compile(r"\"(?:[^\"\\\\]|\\\\.)*\"|'(?:[^'\\\\]|\\\\.)*'")
+
+
 def _mentions(text: str, names: dict[str, list[str]]) -> set[str]:
     """The goh files TEXT refers to: a path (`tools/land.sh`: the files it ends with), a bare
     script name (`land.sh`: every file of that name), or a Python import of a module."""
@@ -160,11 +163,12 @@ def _mentions(text: str, names: dict[str, list[str]]) -> set[str]:
         if "/" in rest:
             cands = [c for c in cands if c.endswith(rest) or rest.endswith(c)] or []
         hit.update(cands)
-    for mod in re.findall(
-        r"(?:^\s*import|^\s*from|import_module\(\s*[\"'])\s*([A-Za-z_]\w*)", text
-    ):
+    code = _STRING.sub('""', text)  # a word in a string is no import (GOH.LOCKORDERWORD)
+    for mod in re.findall(r"import_module\(\s*[\"']([A-Za-z_]\w*)", text):
         hit.update(names.get(f"{mod}.py", ()))
-    for mod in re.findall(r"\b([a-z_][a-z0-9_]*)\.[A-Za-z_]\w*\(", text):  # a module's function
+    for mod in re.findall(r"(?:^\s*import|^\s*from)\s+([A-Za-z_]\w*)", code):
+        hit.update(names.get(f"{mod}.py", ()))
+    for mod in re.findall(r"\b([a-z_][a-z0-9_]*)\.[A-Za-z_]\w*\(", code):  # a module's function
         hit.update(names.get(f"{mod}.py", ()))
     return hit
 

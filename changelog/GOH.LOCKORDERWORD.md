@@ -1,0 +1,1 @@
+* checks/check_lock_order.py reads a module name inside a string literal as no reference (an import or a module call is found in code with its strings blanked; import_module("x") still counts); the tree's graph is unchanged, 40 edges (GOH.LOCKORDERWORD).

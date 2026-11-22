@@ -76,3 +76,14 @@ def test_a_tree_with_no_lock_table_is_refused_not_passed(tmp_path) -> None:
 
 def test_the_clean_tree_has_no_finding() -> None:
     assert check_lock_order.check(REPO_ROOT)[0] == []
+
+
+def test_a_module_name_in_a_string_is_no_reference_but_a_call_is() -> None:
+    """GOH.LOCKORDERWORD: a word in a string (a record key `"ship.stage("`, a label) read as a
+    reference to tools/ship.py and reported a false cycle; the lane renamed its keys to pass."""
+    names = {"ship.py": ["tools/ship.py"]}
+    assert check_lock_order._mentions('label = "ship.stage(x)"', names) == set()
+    assert check_lock_order._mentions("label = 'from ship'", names) == set()
+    assert check_lock_order._mentions("ship.stage(x)", names) == {"tools/ship.py"}  # calibration
+    assert check_lock_order._mentions("from ship import x", names) == {"tools/ship.py"}
+    assert check_lock_order._mentions('importlib.import_module("ship")', names) == {"tools/ship.py"}
