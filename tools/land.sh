@@ -196,7 +196,7 @@ land_rebase() {
     pre="$(gatesrc_var GOH_LAND_PRE)" || exit 2
     ship_full="$(gatesrc_var GOH_SHIP_FULL_SUITE)" || exit 2
 }
-. "$GOH/lib/land_row.sh" || exit 2   # land_row: the land's own profile rows (GOH.RELEASELANDGATE)
+. "$GOH/lib/land_row.sh" || exit 2   # land_row: the land's own profile rows (GOH.RELEASELANDGATE); land_pre_took
 # land_pre [CMD RECORD] -- the pre-step (or CMD, recording into RECORD) on the tip as it is now;
 # exits 1 on a red set (THE PRE-STEP, above). A green full run leaves its tip in pre_judged.
 land_pre() {
@@ -214,8 +214,7 @@ land_pre() {
     # for its gate. As a `ship` gate it queued twice, and a lane that would go red waited up to
     # 632 s first (2026-11-16). The wait is printed apart from the run: the step stamps its start.
     [ -n "$pre_start" ] || pre_start="$(mktemp "$(goh_tmp)/goh-land-prestart.XXXXXX")" || exit 2
-    : >"$pre_start"
-    rm -f "$pre_start.cpu"   # the pytest tree's CPU (GOH.PREWIDTH, lib/pre_cpu.py): this run's alone
+    : >"$pre_start"; rm -f "$pre_start.cpu"   # and the pytest tree's CPU: this run's alone (lib/pre_cpu.py)
     # THE DEADLINE FOLLOWS THE SHARE (GOH.PRESTEPSHARE, lib/pre_deadline.py): taken after the
     # admission, from the share it gave and the worker-seconds the ledger measured; GOH_LAND_PRE_MAX
     # is its floor (a wide share), GOH_LAND_PRE_CEIL its ceiling, load.py's --max the backstop.
@@ -276,22 +275,6 @@ land_pre() {
         ok "pre-land green $pre_took"
         [ -n "${1:-}" ] || pre_judged="$tip"
     fi
-}
-# land_pre_took WAIT RUN -- THE FIGURES IN EVERY OUTCOME (GOH.PREWIDTH): the land record's `pre_run`
-# was read back from the green line alone (lib/land_spd.py PRE_TOOK), so a pre-step with no verdict
-# left it null. The enqueue names a file (GOH_LAND_PRE_TOOK, lib/land_prestep.py); cpu_s is the
-# pytest tree's (lib/pre_cpu.py), 0 when no test ran; workers 0 when the step never started.
-land_pre_took() {
-    local w="${pre_workers:-0}" l="${pre_limit:-0}" verdict=green
-    pre_cpu_s=0
-    [ ! -s "$pre_start.cpu" ] || IFS= read -r pre_cpu_s <"$pre_start.cpu" || true
-    [[ "$pre_cpu_s" =~ ^[0-9]+(\.[0-9]+)?$ ]] || pre_cpu_s=0
-    [[ "$w" =~ ^[0-9]+$ ]] || w=0
-    [[ "$l" =~ ^[0-9]+$ ]] || l=0
-    [ "$pre_rc" -eq 0 ] || verdict=red
-    [ "$pre_rc" -ne 124 ] || verdict=none
-    [ -z "${GOH_LAND_PRE_TOOK:-}" ] || printf '{"wait_s": %d, "run_s": %d, "limit_s": %d, "workers": %d, "cpu_s": %s, "verdict": "%s"}\n' \
-        "$1" "$2" "$l" "$w" "$pre_cpu_s" "$verdict" >"$GOH_LAND_PRE_TOOK" || true
 }
 # THE TIP MAIN WILL HOLD (GOH.PREPARITY class 3): a branch behind main is rebased BEFORE its pre-step,
 # outside the lock (the rebase moves the branch, never main), and again under it. The pre-step judged the tip as the lane
