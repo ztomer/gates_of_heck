@@ -147,9 +147,11 @@ def _row(q: Path, item: str, chain: list[tuple[Path, dict]], gates: list[dict]) 
 
 def asked(req: dict) -> dict:
     """The done record's share of its request REQ: `requested` (its enqueued_at), `pre_s`, and
-    `pre_affected` (what the pre-step did with a kept verdict of the set, GOH.LANEPRESTEP)."""
+    `pre_affected` (what the pre-step did with a kept verdict of the set, GOH.LANEPRESTEP) and
+    `pre_run` (its wait, run, limit and workers, GOH.LANDPROFILEFIX)."""
     named = {"requested": req.get("enqueued_at"), "pre_s": req.get("pre_s"),
-             "pre_affected": req.get("pre_affected")}  # fmt: skip
+             "pre_affected": req.get("pre_affected"),
+             "pre_run": req.get("pre_run")}  # fmt: skip
     return {k: v for k, v in named.items() if v is not None}
 
 

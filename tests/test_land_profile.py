@@ -127,7 +127,7 @@ def test_the_table_has_median_max_cpu_share_and_load_per_stage(queue) -> None:
     assert t["queue wait"]["share"] == pytest.approx(420 / 2700)
     assert t["enqueue pre-step"]["n"] == 1 and t["enqueue pre-step"]["load"] == 12.0
     order = [r["stage"] for r in land_profile.table(rows, 0.0, land_profile.known_parents(rows))]
-    assert order[:8] == list(land_profile.ORDER)
+    assert order[:8] == [n for n in land_profile.ORDER if n != "earlier attempts"]
     assert order[8:11] == ["    step gates/rust_gate.sh", "      > coverage",
                            "        phase external: GOH_TEST_BIN=x ./tools/pytest.sh"]  # fmt: skip
     assert order[-1] == "  lander other"

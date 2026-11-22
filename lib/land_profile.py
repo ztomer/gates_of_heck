@@ -7,7 +7,9 @@ gate-cost wave is ordered by what a land actually spends, not by filing order.
 One LAND is one landed item's chain (lib/land_e2e.py's: its records from the first after its last
 landing to the one that landed). Its stages, each a wall in seconds, cpu-s where one is recorded:
 
-    e2e               the request (`requested`, else the filing) to the landing's `finished`
+    e2e               the FIRST enqueue attempt (the chain's earliest request, filing or enqueue
+                      log: lib/land_spd.py, red ones included) to the landing's `finished`
+    earlier attempts  the landing's own request - the first attempt (red enqueue pre-steps)
     enqueue pre-step  filing - `requested` (the enqueue's own pre-step, before the request is filed)
     queue wait        the first record's `started` - its filing
     retries           the landing's `started` - the first record's `started` (0 for one try)
@@ -28,6 +30,11 @@ The table groups lands by MODE (plain, instrumented: lib/land_e2e.instrumented) 
 `--normal-since`, by whether the land started before that time (`loaded`, e.g. before a reboot that
 cleared a faulty fseventsd) or after (`normal`). Per stage: n, median and max wall, median cpu-s,
 its share of the group's summed e2e, and the median 1-min load at the landing's start.
+
+A BATCH'S SHARED RUNS (the lander run, pre-land, gate, slot wait, steps) count once, on one member
+(lib/land_spd.py `once`; GOH.LANDPROFILEFIX). `--last N` and `--since COMMIT` (lands whose landed
+commit descends from it) print the SPD exit's figures: commit to landed, the share of lands whose
+lander ran the whole pre-land again, the enqueue pre-step's wait, run and workers.
 
 `--guards` counts the red lands by the guard that refused them (`guard` on each done record,
 lib/land_check.py, GOH.LANDCHECK): which structural guard keeps costing lands.
@@ -59,6 +66,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import land_e2e
+import land_spd
 import timing_ledger
 
 PRE_LAND = re.compile(r"✓ pre-land green in (\d+(?:\.\d+)?) s")
@@ -71,8 +79,8 @@ TABLE_ROW = re.compile(rf"^\s*{NUM} s(?:\s+{NUM} s cpu)?\s+rc=\d+\s+(\S+)\s+(.+?
 PHASE = re.compile(r"✓ phase '(.+)': (\d+) s")
 COVERAGE_LABEL = re.compile(r"^coverage \(floor [^)]*\)")
 STEP, NESTED, UNPLACED, PHASE_ROW = "    step ", "      > ", "      ? ", "        phase "
-ORDER = ("e2e", "enqueue pre-step", "queue wait", "retries", "lander run", "  pre-land", "  gate",
-         "    slot wait")  # fmt: skip
+ORDER = ("e2e", "enqueue pre-step", "earlier attempts", "queue wait", "retries", "lander run",
+         "  pre-land", "  gate", "    slot wait")  # fmt: skip
 SLOT_CLASS = "      slot wait "
 SLOT_CLASSES = (
     "short",
@@ -223,21 +231,28 @@ def chains(q: Path) -> list[tuple[str, list[tuple[Path, dict]]]]:
     return out
 
 
-def land(q: Path, item: str, chain: list[tuple[Path, dict]], gates: list[dict]) -> dict | None:
-    """One land's stages {name: [wall, cpu]}, its mode and its load; None when it cannot be read."""
+def land(q: Path, item: str, chain: list[tuple[Path, dict]], gates: list[dict],
+         prev: dt.datetime | None = None) -> dict | None:  # fmt: skip
+    """One land's stages {name: [wall, cpu]}, its mode and its load; None when it cannot be read.
+    PREV is the item's previous landing: the e2e starts at the first enqueue attempt after it, red
+    ones too (lib/land_spd.py first_attempt)."""
     (first, head), (last, rec) = chain[0], chain[-1]
-    asked = land_e2e._when(head["requested"]) if head.get("requested") else None
-    filed = land_e2e.filed(first)
-    start = asked or filed
-    f_start, l_start = land_e2e._when(head.get("started")), land_e2e._when(rec.get("started"))
+    ran = next(((p, r) for p, r in chain if r.get("started")), chain[0])  # the first lander run
+    own = rec if rec.get("requested") else head  # the request the landing came of
+    asked = land_e2e._when(own["requested"]) if own.get("requested") else None
+    filed = land_e2e.filed(last if own is rec else first)
+    f_start, l_start = land_e2e._when(ran[1].get("started")), land_e2e._when(rec.get("started"))
     end = land_e2e._when(rec.get("finished"))
+    start = land_spd.first_attempt(q, item, chain, prev, end)
     mode = land_e2e.instrumented(q, last, rec)
     if start is None or end is None or l_start is None or mode is None:
         return None
     st: dict[str, list] = {"e2e": [_secs(start, end), None]}
     if asked and filed:
         st["enqueue pre-step"] = [_secs(asked, filed), None]
-    st["queue wait"] = [_secs(filed, f_start), None]
+    if asked and asked > start:  # red enqueue pre-steps and their waits before the landing's own
+        st["earlier attempts"] = [_secs(start, asked), None]
+    st["queue wait"] = [_secs(land_e2e.filed(ran[0]), f_start), None]
     st["retries"] = [_secs(f_start, l_start), None]
     run = _secs(l_start, end)
     st["lander run"] = [run, None]
@@ -271,11 +286,22 @@ def land(q: Path, item: str, chain: list[tuple[Path, dict]], gates: list[dict]) 
         st["  lander other"] = [run - st.get("  pre-land", [0.0])[0] - st["  gate"][0], None]
     return {"item": item, "ref": last.stem, "mode": land_e2e.INSTRUMENTED if mode else
             land_e2e.PLAIN, "start": start, "load": rec.get("load_start"), "stages": st,
-            "parents": parents}  # fmt: skip
+            "parents": parents, "end": end, "repo": rec.get("repo"),
+            "landed": rec.get("landed") or rec.get("sha"),
+            "batch": (rec.get("batch") or {}).get("id"),
+            "pre_affected": rec.get("pre_affected"), "pre_run": rec.get("pre_run"),
+            "kind": land_spd.lander_kind(found)}  # fmt: skip
 
 
 def lands(q: Path, gates: list[dict]) -> list[dict]:
-    return [r for r in (land(q, i, c, gates) for i, c in chains(q)) if r is not None]
+    """Every landed item's profile, a batch's shared runs counted once (`land_spd.once`)."""
+    out, prev = [], {}
+    for item, chain in chains(q):
+        r = land(q, item, chain, gates, prev.get(item))
+        prev[item] = land_e2e._when(chain[-1][1].get("finished"))
+        if r is not None:
+            out.append(r)
+    return land_spd.once(out)
 
 
 def known_parents(rows: list[dict]) -> dict[str, str]:
@@ -387,7 +413,18 @@ def render(by: dict[str, list[dict]], min_s: float = 0.0) -> str:
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="goh land-profile", description=__doc__.splitlines()[0])
-    ap.add_argument("--since", help="only lands started at or after this ISO time")
+    ap.add_argument(
+        "--since",
+        help="only lands started at or after this ISO time, or (a commit) "
+        "whose landed commit descends from it; prints the SPD figures for them",
+    )
+    ap.add_argument(
+        "--last",
+        type=int,
+        metavar="N",
+        help="print the SPD figures of the last N "
+        "lands: commit to landed, whole pre-land re-runs, the pre-step's wait/run",
+    )
     ap.add_argument(
         "--normal-since", help="split lands at this ISO time: loaded before, normal after"
     )
@@ -409,16 +446,38 @@ def main(argv: list[str]) -> int:
     gates = [r for r in timing_ledger.read() if r.get("kind") == "land"]
     rows = lands(q, gates)
     since = land_e2e._when(a.since) if a.since else None
-    if (a.since and since is None) or (a.normal_since and land_e2e._when(a.normal_since) is None):
-        ap.error("--since / --normal-since take an ISO time, e.g. 2026-11-18T14:55Z")
+    sha = None if since else land_spd_sha(rows, a.since)
+    if (a.since and since is None and sha is None) or (
+        a.normal_since and land_e2e._when(a.normal_since) is None
+    ):
+        ap.error("--since takes an ISO time, e.g. 2026-11-18T14:55Z, or a commit of the landed "
+                 "repo; --normal-since an ISO time")  # fmt: skip
     rows = [r for r in rows if since is None or r["start"] >= since]
+    figures = {}
+    if a.last:
+        figures[f"last {a.last}"] = land_spd.summary(
+            q, sorted(rows, key=lambda r: r["end"])[-a.last :]
+        )
+    if sha:
+        rows = [r for r in rows if land_spd.descends(r["repo"], sha, r["landed"])]
+        figures[f"since {a.since}"] = land_spd.summary(q, rows)
     by = groups(rows, land_e2e._when(a.normal_since) if a.normal_since else None)
     if a.json:
         known = known_parents(rows)
-        print(json.dumps({k: table(v, a.min_s, known) for k, v in by.items()}, indent=2))
+        tables = {k: table(v, a.min_s, known) for k, v in by.items()}
+        print(json.dumps({**tables, **({"spd": figures} if figures else {})}, indent=2))
     else:
         print(render(by, a.min_s))
+        print("\n".join(land_spd.render(k, v) for k, v in figures.items()))
     return 0
+
+
+def land_spd_sha(rows: list[dict], ref: str | None) -> str | None:
+    """The commit REF names in a landed repo, for `--since`; None when it names none."""
+    for repo in dict.fromkeys(r["repo"] for r in rows if r.get("repo")):
+        if ref and (got := land_spd.resolves(repo, ref)):
+            return got
+    return None
 
 
 if __name__ == "__main__":

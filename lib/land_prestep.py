@@ -24,6 +24,7 @@ from pathlib import Path
 affected_verdict = importlib.import_module("affected_verdict")
 killtree = importlib.import_module("killtree")
 land_slot = importlib.import_module("land_slot")
+land_spd = importlib.import_module("land_spd")
 landq_inflight = importlib.import_module("landq_inflight")
 state_bounds = importlib.import_module("state_bounds")
 _tui = importlib.import_module("tui.lib")
@@ -157,8 +158,11 @@ def run_kept(req: dict, q: Path, script: Path, bindings: tuple[str, ...]) -> flo
     keep = keep_path(q, req["sha"])
     noted: dict = {}
     did: dict = {}
+    ran: dict = {}
     took = run(Path(req["worktree"]), req["sha"], script, bindings, keep, land_slot.label(req),
-               noted, did)  # fmt: skip
+               noted, did, ran)  # fmt: skip
+    if ran:  # the pre-step's wait, run, limit and workers: the SPD's figures (GOH.LANDPROFILEFIX)
+        req["pre_run"] = ran
     if noted:
         req["pre_verdict"] = noted
     if did:  # took the lane's kept verdict, or ran the set and why (GOH.LANEPRESTEP)
@@ -176,12 +180,14 @@ def run(
     label: list[str] | None = None,
     noted: dict | None = None,
     did: dict | None = None,
+    took: dict | None = None,
 ) -> float:
     """Run SCRIPT's pre-step in WT; its seconds, or raise Red unless green or past its deadline. A
     green verdict is KEPT at `keep` (the judged sha; its record at `keep`.record) for the lander's
     tools/land.sh, which reuses it where the tip moved only in paths no test reads
     (GOH.PRELANDTWICE). A pre-step with no verdict fills NOTED (`no_verdict`); a green one's run
-    of the set fills DID (lib/affected_verdict.py `outcome`: a kept verdict taken, or why not)."""
+    of the set fills DID (lib/affected_verdict.py `outcome`: a kept verdict taken, or why not) and
+    TOOK (`waited W s, ran R s of D s at K workers`, lib/land_spd.py `pre_run`)."""
     kept = [f"GOH_LAND_PRE_KEEP={keep}"] if keep else []
     kept += label or []
     argv = ["env", *(f"-u{k}" for k in bindings), "GOH_LAND_PRE_ONLY=1", *kept, "bash", "-c",
@@ -205,6 +211,8 @@ def run(
     if code == 0:
         if did is not None:
             did.update(affected_verdict.outcome(lines) or {})
+        if took is not None:
+            took.update(land_spd.pre_run(lines) or {})
         if none := no_verdict(lines):
             if noted is not None:
                 noted.update(none)
