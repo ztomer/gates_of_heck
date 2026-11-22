@@ -76,6 +76,8 @@ impl Only {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
     use super::Only;
 
     const CARRIED: &[&str] = &[
@@ -102,16 +104,16 @@ mod tests {
         let only = parse(&["file length", " shell lint "]).expect("parses");
         assert!(only.wants(&["file length"]) && only.wants(&["no conflict markers", "shell lint"]));
         assert!(!only.wants(&["no conflict markers"]) && !only.wants(&[]));
-        let mut ran = false;
-        assert_eq!(
-            only.run(&["no conflict markers"], || {
-                ran = true;
-                Some(1)
-            }),
-            None
-        );
-        assert!(!ran, "a step not named did its work");
-        assert_eq!(only.run(&["shell lint"], || Some(1)), Some(1));
+        // One closure for both calls, so its body is the named step's work and runs exactly once.
+        let ran = Cell::new(0_u8);
+        let work = || {
+            ran.set(ran.get() + 1);
+            Some(1)
+        };
+        assert_eq!(only.run(&["no conflict markers"], work), None);
+        assert_eq!(ran.get(), 0, "a step not named did its work");
+        assert_eq!(only.run(&["shell lint"], work), Some(1));
+        assert_eq!(ran.get(), 1, "the named step did not do its work once");
     }
 
     #[test]
