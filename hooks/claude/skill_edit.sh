@@ -18,7 +18,8 @@ root="${GOH_SKILLS_ROOT:-$HOME/.claude/skills}"
 # event that does not even name the corpus's directory exits here, before any Python starts.
 IFS= read -r -d '' event || true
 case "$event" in *"$(basename "$root")"*) ;; *) exit 0 ;; esac
-inside="$(printf '%s' "$event" | "$GOH_PY" -c '
+# The judge, as a quoted heredoc: Python text (its `$HOME` included) that the shell never expands.
+read -r -d '' judge <<'PY' || true
 import json, os, sys
 try:
     tool_input = json.load(sys.stdin).get("tool_input", {})
@@ -43,7 +44,8 @@ for name in list(names):
         names |= {"~" + rest, "$HOME" + rest, "${HOME}" + rest}
 if command and any(n and n in command for n in names):
     print(root)
-' "$root")" || exit 0
+PY
+inside="$(printf '%s' "$event" | "$GOH_PY" -c "$judge" "$root")" || exit 0
 [ -n "$inside" ] || exit 0
 if out="$(bash "$here/../../gates/goh.sh" skills --root "$inside" 2>&1)"; then
     exit 0

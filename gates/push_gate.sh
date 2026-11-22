@@ -188,7 +188,6 @@ cleanup_run() {
     worktree=""
     run_dir=""
 }
-# shellcheck disable=SC2329  # invoked by the EXIT, HUP, INT and TERM traps below
 cleanup() {
     cleanup_run
     [ -n "$refs_file" ] && rm -f "$refs_file"
@@ -432,5 +431,5 @@ for pair in ${gated_refs:-}; do
 done
 push_record_verdicts "$root" ${gated_how:-}   # each green in the one verdict store (lib/push_runs.sh, lib/reuse.py)
 [ "$gated" -gt 0 ] || info "pre-push: nothing to gate (deletes, or commits the remote already has)"
-exit
+command exit
 } # parse-guard

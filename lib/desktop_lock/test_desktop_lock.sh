@@ -11,7 +11,7 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 set -uo pipefail
 GOH_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 source "${GOH_DIR:-$GOH_ROOT}/tui/lib.sh"
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 1
 source desktop_lock.sh
 source ../pid_owner.sh  # goh_pid_stamp/goh_pid_kill: a helper is killed only while it is still itself
 source ../tmp_root.sh   # goh_tmp: every temp root under $TMPDIR/goh.noindex, never Spotlight-indexed (GOH.TMPNOINDEX)

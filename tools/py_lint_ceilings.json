@@ -57,7 +57,7 @@
   "hooks/claude/agent_guard.py": 7,
   "hooks/claude/agent_stalls.py": 2,
   "hooks/claude/agent_stop.py": 1,
-  "hooks/claude/appstate.py": 2,
+  "hooks/claude/appstate.py": 0,
   "hooks/claude/ci_judge.py": 3,
   "hooks/claude/compact_nudge.py": 1,
   "hooks/claude/discard_guard.py": 0,

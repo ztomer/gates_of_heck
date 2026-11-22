@@ -65,7 +65,6 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # refusal before it, a failed pre-step) measured no gate and writes no row. The ledger never fails
 # a land: the script's exit status is what it was.
 verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall="" pre_run="" pre_workers="" pre_cpu_s="" pre_reused="" suite_reused="" pre_why="" suite_why="" shadow_f="" shadow_ran="" shadow_red_out="" shadow_red=""
-# shellcheck disable=SC2329  # invoked by the EXIT trap below
 land_exit() {
     local rc=$?
     ! declare -F land_shadow >/dev/null || land_shadow || true   # before .why goes, red gates too (GOH.CARRYSHADOW)
@@ -446,5 +445,5 @@ fi
 identity="$("$GOH_PY" "$GOH/lib/gate_identity.py" key --mode "$mode" </dev/null 7>&-)" || identity=unknown
 printf '%s %s\n' "$tip" "$identity" >>"$(git -C "$main" rev-parse --path-format=absolute --git-common-dir)/goh-landed"
 ok "landed ${tip:0:8} on $(git -C "$main" rev-parse --abbrev-ref HEAD) in $main (nothing pushed)"
-exit
+command exit
 } # parse-guard

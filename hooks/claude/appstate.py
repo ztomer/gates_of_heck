@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Which of the owner's login-item apps are running -- snapshotted at a subagent's spawn, restored at
-its end (GOH.APPSTATE).
+"""Which of the owner's login-item apps are running -- snapshotted at a subagent's spawn, restored
+at its end (GOH.APPSTATE).
 
 Agents that test an app relaunch or quit it, and leave it in the wrong state: on 2026-11-07/08
 a login-item app was left NOT running after two agents' UI tests (one SIGTERMed its own
@@ -33,6 +33,7 @@ CLI: `appstate.py running` prints the login-item apps running now, one per line.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shlex
@@ -170,10 +171,8 @@ def restore(key: str | None, settle_s: float = LAUNCH_SETTLE_S) -> dict[str, Any
         before = json.loads(path.read_text(encoding="utf-8"))["apps"]
     except (OSError, ValueError, KeyError, TypeError):
         return None
-    try:
+    with contextlib.suppress(OSError):
         path.unlink()
-    except OSError:
-        pass
     now = running()
     if now is None or not isinstance(before, list):
         return None

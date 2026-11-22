@@ -142,7 +142,6 @@ fi
 [ -z "$SRC_GATESRC" ] || lci_step_tools "$ROOT" || exit 1   # a step's tool is in a table (_steps.sh)
 
 LOGDIR=""
-# shellcheck disable=SC2329  # invoked via the EXIT trap below
 # A PASSING run's logs are noise; a FAILING run's are the only record of why.
 # Deleting them on failure takes with them the one thing needed to reproduce a
 # shuffled test failure -- its seed -- which the tail below is too short to
@@ -496,5 +495,5 @@ err "$FAILED_NAMES"
 err ""
 err "  full output: $LOGDIR"
 (exit 1)
-exit
+command exit
 } # parse-guard

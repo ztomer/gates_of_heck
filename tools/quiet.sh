@@ -113,8 +113,9 @@ busiest() { ps -Ao pcpu,comm -r | head -6 >&2 || true; } # head closes early: ps
 t0="$(date +%s)"
 while :; do
     if ! bench_lock_exclusive "$label" "$budget"; then                            # 1. our place
-        [ -n "$BENCH_LOCK_BUSY" ] && ! over "$(elapsed "$t0")" "$deadline" ||
+        if [ -z "$BENCH_LOCK_BUSY" ] || over "$(elapsed "$t0")" "$deadline"; then
             die "quiet.sh: could not hold the host (above)"
+        fi
         warn "quiet: the gates running at the claim outlasted its ${budget}s budget -- letting go for ${retry}s"
         sleep "$retry"
         continue
@@ -123,12 +124,12 @@ while :; do
     gpu_lock_acquire "$label"
     t1="$(date +%s)"
     if [ -n "$floor" ]; then # the floor: every gate drained, what is left, for --settle seconds
-        samples=""
+        samples=()
         until over "$(elapsed "$t1")" "$settle"; do
-            samples="$samples $(load1)"
+            samples+=("$(load1)")
             sleep "$(awk -v p="$poll" 'BEGIN { print (p < 5 ? p : 5) }')"
         done
-        stats="$(printf '%s\n' $samples | sort -n | awk '{ v[NR] = $1 } END { printf "%s min, %s median", v[1], v[int((NR + 1) / 2)] }')"
+        stats="$(printf '%s\n' "${samples[@]}" | sort -n | awk '{ v[NR] = $1 } END { printf "%s min, %s median", v[1], v[int((NR + 1) / 2)] }')"
         ok "quiet: floor: load $stats over ${settle}s with every gate drained; control $(control) s (200 spawns)"
         exit 0
     fi

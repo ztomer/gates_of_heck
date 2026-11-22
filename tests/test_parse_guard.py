@@ -11,9 +11,15 @@ The guard is a brace group around the whole body: bash must read a compound comm
 need nothing -- `source` reads the whole file before executing it. `tools/release-kit/release.sh`
 solves the same problem by re-exec'ing a temp copy of itself, which it can afford because it does
 not resolve its siblings from its own path; the gates all do.
+
+The guard's closing line is `exit`, or `command exit` in a script whose handlers run only from a
+`trap` (GOH.NITS2): shellcheck 0.11 reads a trap-only function as never invoked (SC2329) when the
+script ends in a bare `exit`, and the old way out was a disable comment, a suppression. `command
+exit` is the same builtin with the same status, and shellcheck sees the handler's use.
 """
 
 import re
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -24,6 +30,7 @@ from conftest import REPO_ROOT
 
 OPEN = "{ # parse-guard"
 CLOSE = "} # parse-guard"
+EXITS = ("exit", "command exit")  # the guard's last line (see the docstring)
 
 
 def _own_bash() -> list[str]:
@@ -75,7 +82,7 @@ def test_every_executed_script_is_parse_guarded():
     for f in executed_scripts():
         lines = [l for l in (REPO_ROOT / f).read_text().splitlines() if l.strip()]
         code = [l for l in lines[1:] if not l.lstrip().startswith("#")]
-        if not code or not code[0].startswith(OPEN) or lines[-1] != CLOSE or lines[-2] != "exit":
+        if not code or not code[0].startswith(OPEN) or lines[-1] != CLOSE or lines[-2] not in EXITS:
             bad.append(f)
     assert not bad, f"not parse-guarded (see this file's docstring): {bad}"
 
@@ -114,3 +121,31 @@ def test_no_exit_stands_before_the_guards_exit():
         if code and re.match(r"\s*exit\b", code[-1]):
             bad.append(f"{f}: {code[-1].strip()}")
     assert not bad, f"an exit before the guard's exit: {bad}"
+
+
+TRAP_ONLY = (
+    "#!/usr/bin/env bash\n{\nf() { echo bye; }\ntrap f EXIT\necho run\n%s\n} # parse-guard\n"
+)
+
+
+@pytest.mark.skipif(shutil.which("shellcheck") is None, reason="shellcheck not on PATH")
+def test_command_exit_lets_shellcheck_see_a_trap_only_handler(tmp_path):
+    """Calibrated both ways: the bare `exit` close makes SC2329 fire; `command exit` does not."""
+    said = {}
+    for close in EXITS:
+        path = tmp_path / f"{close.replace(' ', '_')}.sh"
+        path.write_text(TRAP_ONLY % close)
+        said[close] = subprocess.run(
+            ["shellcheck", "-S", "info", str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
+        ).stdout
+    assert "SC2329" in said["exit"], said
+    assert "SC2329" not in said["command exit"], said
+
+
+def test_no_trap_handler_hides_behind_a_disable():
+    bad = [f for f in _own_bash() if "disable=SC2329" in (REPO_ROOT / f).read_text()]
+    assert not bad, f"close the guard with `command exit` instead: {bad}"

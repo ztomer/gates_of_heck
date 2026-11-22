@@ -56,7 +56,7 @@ _goh_container_live_leases() {
             [ -f "$lease" ] || continue
             pid="${lease##*/}"
             case "$pid" in
-                *[!0-9]*) rm -f "$lease" </dev/null 2>/dev/null || true; continue ;;
+                *[!0-9]*) rm -f "$lease" 2>/dev/null || true; continue ;;
             esac
             # The lease's second line is its holder's stamp (GOH.STRAYSIGNAL2): a dead gate's pid
             # handed to another process is no live lease. A lease without one (an older goh's) is
@@ -66,7 +66,7 @@ _goh_container_live_leases() {
             if goh_pid_alive "$stamp"; then
                 count=$((count + 1))
             else
-                rm -f "$lease" </dev/null 2>/dev/null || true
+                rm -f "$lease" 2>/dev/null || true
             fi
         done
     fi
@@ -95,7 +95,7 @@ goh_container_runtime_up() {
         # cannot prove it was goh (a marker left by a killed gate is not proof),
         # so it is never goh's to stop.
         if [ "$live" -eq 0 ]; then
-            rm -f "$state_dir/started_by_goh" </dev/null 2>/dev/null || true
+            rm -f "$state_dir/started_by_goh" 2>/dev/null || true
         fi
     else
         if ! command -v "$colima" </dev/null >/dev/null 2>&1; then
@@ -137,7 +137,7 @@ goh_container_runtime_down() {
 
     _goh_container_lock_acquire
 
-    rm -f "$leases_dir/$$" </dev/null 2>/dev/null || true
+    rm -f "$leases_dir/$$" 2>/dev/null || true
 
     local live
     live="$(_goh_container_live_leases)"
@@ -146,13 +146,13 @@ goh_container_runtime_down() {
         # Owner ruling OW.27: never under anyone else's running container.
         if [ -n "$("${DOCKER:-docker}" ps -q </dev/null 2>/dev/null)" ]; then
             warn "container runtime: leaving $colima running: other containers are on it"
-            rm -f "$state_dir/started_by_goh" </dev/null 2>/dev/null || true
+            rm -f "$state_dir/started_by_goh" 2>/dev/null || true
             _goh_container_lock_release
             return 0
         fi
         info "stopping container runtime ($colima stop)"
         "$colima" stop </dev/null >/dev/null 2>&1 || true
-        rm -f "$state_dir/started_by_goh" </dev/null 2>/dev/null || true
+        rm -f "$state_dir/started_by_goh" 2>/dev/null || true
     fi
 
     _goh_container_lock_release

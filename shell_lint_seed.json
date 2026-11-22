@@ -1,8 +1,6 @@
 {
   "why": "shellcheck findings below error severity when this repo adopted the ratcheted shell lint, per file#code; a count may only fall (gates_of_heck GOH.SHSEV)",
   "files": {
-    "lib/container_runtime.sh#SC2217": 6,
-    "lib/desktop_lock/test_desktop_lock.sh#SC2164": 1,
     "lib/gpu_lock/gpu_lock.sh#SC2034": 1,
     "lib/tree_lock.sh#SC2034": 1
   }
