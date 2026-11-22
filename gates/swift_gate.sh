@@ -36,6 +36,8 @@
 #       warnings fail the gate. Default: the top-level dirs of git-tracked
 #       *.swift files (so an untracked DerivedData checkout never counts).
 #   GOH_SWIFT_COLD=1     # default: 1 — set to 0 to allow incremental builds
+#   GOH_SWIFT_CAS=1      # xcode mode, cold: read Xcode's compilation cache (0 turns it off);
+#       GOH_SWIFT_CAS_DIR (default ~/.cache/goh/swift-cas), GOH_SWIFT_CAS_LIMIT (default 10G)
 #   GOH_SWIFT_COV_FLOORS=path/to/coverage-floors.json
 #       per-TARGET floors, checked before the package floor. Same schema as
 #       coverage_gate.sh's --floors-json. The package number is dominated by
@@ -200,10 +202,25 @@ case "$MODE" in
     # Pinned derived data: cold builds know what to wipe, and
     # check_swift_coverage.py knows where the xcresult lands.
     dd=".build/xcode-dd"
+    # A COLD BUILD READS THE COMPILATION CACHE (GOH.SWIFTCASPROBE). The wipe above exists because
+    # an incremental build reports only what it recompiled; a CAS hit is not that: every compile
+    # job still runs, keyed on its inputs and flags, and a hit REPLAYS the job's diagnostics.
+    # Probed 2026-11-22 (Xcode 27B52, swift 6.4.2) through this gate on a project with a planted
+    # unused value, .build wiped between runs: run 2 had 142 cache hits, 0 misses, printed the
+    # warning, and the warnings step failed on it as in run 1. The CAS lives outside .build (the
+    # wipe would empty it) under Xcode's own size cap. spm mode takes none: swiftbuild has no
+    # caching option and -Xswiftc -cache-compile-job fails every compile (tests/test_swift_gate_cas.py).
+    _cas=()
+    if [ "${GOH_SWIFT_COLD:-1}" = "1" ] && [ "${GOH_SWIFT_CAS:-1}" = "1" ]; then
+        _cas=(COMPILATION_CACHE_ENABLE_CACHING=YES
+              "COMPILATION_CACHE_CAS_PATH=${GOH_SWIFT_CAS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/goh/swift-cas}"
+              "COMPILATION_CACHE_LIMIT_SIZE=${GOH_SWIFT_CAS_LIMIT:-10G}")
+    fi
     goh_step "xcodebuild test (-scheme $GOH_SWIFT_SCHEME)" \
         xcodebuild test -project "$proj" -scheme "$GOH_SWIFT_SCHEME" \
         -derivedDataPath "$dd" -enableCodeCoverage YES \
-        -jobs "$GOH_GATE_WORKERS" -maximum-parallel-testing-workers "$GOH_GATE_WORKERS"
+        -jobs "$GOH_GATE_WORKERS" -maximum-parallel-testing-workers "$GOH_GATE_WORKERS" \
+        ${_cas[@]+"${_cas[@]}"}
     # NO WARNINGS, judged from what the compiler said. This mode used to run the
     # bare `xcodebuild test` above and enforce nothing, under a header promising
     # warnings-as-errors: koffee_oss carried twelve, four of them Swift 6

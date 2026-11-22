@@ -259,6 +259,9 @@ type, which the compiler reports by NAME and never by pointing at the pin.
 | `GOH_SWIFT_WARN_DIRS` | top-level dirs of git-tracked `*.swift` | Xcode mode: comma-separated first-party dirs whose compiler warnings fail the gate (`checks/check_swift_warnings.py` over the `xcodebuild test` log). SPM mode builds with `-warnings-as-errors` instead. |
 | `GOH_SWIFT_COV_FLOORS` | unset | Path to a per-target floors JSON (same schema as `coverage_gate.sh --floors-json`), checked BEFORE the package floor. Keys are path prefixes relative to `Sources/`, matched segment-wise, so `App/Core` floors a directory without splitting the package into targets. A key matching no measured source is exit 2, never a silent pass. Pointing at a missing file is a named refusal. |
 | `GOH_SWIFT_COLD` | `1` | `1` wipes ALL of `.build` before build+test (cold on purpose). `0` allows incremental. |
+| `GOH_SWIFT_CAS` | `1` | xcode mode, cold: the build reads Xcode's compilation cache (a hit replays its diagnostics, probed GOH.SWIFTCASPROBE). `0` turns it off. spm mode has none. |
+| `GOH_SWIFT_CAS_DIR` | `~/.cache/goh/swift-cas` | Where that cache lives, outside the `.build` the cold wipe empties. |
+| `GOH_SWIFT_CAS_LIMIT` | `10G` | Xcode's `COMPILATION_CACHE_LIMIT_SIZE` for it; Xcode prunes past it. |
 | `GOH_SWIFT_LINT_BASELINE` | unset (bare `swiftlint --strict`) | Path to baseline JSON. When set, lint becomes a shrink-only ratchet: baselined violations tolerated, new ones fail named, vanished ones print a re-record nudge. |
 
 ## CAD (`gates/cad_gate.sh`)
