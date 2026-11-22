@@ -42,7 +42,8 @@ def box(repo: Path, tmp_path: Path, monkeypatch) -> dict[str, str]:
     env.update(GOH_LANDQ_DIR=str(tmp_path / "landq"), GOH_LIVE_ROOT=str(repo),
                GOH_LOOPCTL=str(tmp_path / "loopctl.py"), GOH_SHIP_DIR=str(tmp_path / "ships"),
                GOH_LAND_GATE=GATE, GOH_LAND_TIMEOUT="120")  # fmt: skip
-    for k in ("GOH_PY", "PATH", "GOH_SHIP_DIR"):
+    env["GOH_LOOP_QUEUE"] = str(tmp_path / "queue.json")  # never the real queue
+    for k in ("GOH_PY", "PATH", "GOH_SHIP_DIR", "GOH_LOOPCTL", "GOH_LOOP_QUEUE"):
         monkeypatch.setenv(k, env[k])
     return env
 
@@ -140,3 +141,23 @@ def test_the_gates_ask_starts_goh_land_ruff_bump_detached(monkeypatch) -> None:
     ruff_house.bump_if_newer(ruff_house.RUFF)  # the pin itself: nothing to ask
     ruff_house.bump_if_newer(NEXT)
     assert seen == [[str(REPO_ROOT / "bin" / "goh"), "land", "--ruff-bump", "--detach"]]
+
+
+def test_the_bump_files_its_queue_item_before_its_land_is_enqueued(repo, tmp_path, box) -> None:
+    """GOH.RUFFBUMPITEM: a land goh starts by itself has a queue item, filed through the one
+    funnel (lib/reuse_fault._file, a regression) BEFORE the enqueue, so the loop ships it."""
+    log = tmp_path / "filed.jsonl"
+    (tmp_path / "loopctl.py").write_text(
+        "import json, sys\n"
+        f"open({str(log)!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n")  # fmt: skip
+    q, order = tmp_path / "landq", []
+
+    def enqueue(wt: Path, item: str) -> tuple[int, str]:
+        order.append(log.read_text() if log.exists() else "")
+        return 0, "enqueued"
+
+    assert ruff_bump.run(q, repo, say=lambda _: None, enqueue=enqueue) == "enqueued"
+    argv = json.loads(order[0].splitlines()[0])
+    filed = json.loads(argv[argv.index("--json") + 1])
+    assert argv[argv.index("--json") - 1] == "file"
+    assert filed["id"] == ITEM and filed["regression"] is True and filed["repo"] == "gates_of_heck"

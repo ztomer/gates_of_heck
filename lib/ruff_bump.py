@@ -42,6 +42,7 @@ sys.path.insert(1, str(_HERE.parent / "gates"))
 import idle_suite  # noqa: E402 -- lib/: main_checkout, pending, enqueuing, IN_SUITE
 import lock_order  # noqa: E402 -- lib/, beside this file
 import pid_owner  # noqa: E402 -- lib/, beside this file
+import reuse_fault  # noqa: E402 -- lib/: the one funnel that files a goh fault item
 import ruff_currency  # noqa: E402 -- gates/: the pin, the box's newest ruff, the bump commit
 from full_run import _git  # noqa: E402 -- lib/, beside this file
 
@@ -109,6 +110,28 @@ def _fresh_worktree(main: Path, wt: Path, branch: str, sha: str) -> str:
     wt.parent.mkdir(parents=True, exist_ok=True)
     done = _git(main, "worktree", "add", "-q", "-B", branch, str(wt), sha, write=True)
     return "" if done.returncode == 0 else f"git worktree add: {done.stderr.strip()[:300]}"
+
+
+def file_item(item: str, pin: str, new: str) -> str:
+    """File the bump's queue item through lib/reuse_fault._file (GOH.RUFFBUMPITEM): a land goh
+    starts by itself has no item else, and the loop never ships or closes it. An item the queue
+    holds already is fine; a refused filing is said, never fatal to the land."""
+    loopctl = os.environ.get("GOH_LOOPCTL") or str(Path.home() / "Projects/.loop/tools/loopctl.py")
+    if not os.path.isfile(loopctl):
+        return f"item not filed: no loopctl at {loopctl}"
+    rec = {"id": item, "repo": "gates_of_heck", "status": "todo", "depends": [],
+           "source": "goh ruff bump (lib/ruff_bump.py)", "class_of": "none",
+           "class_why": "a ruff release newer than goh's pin, met on this box",
+           "item": f"ruff {new} is on this box and goh pins {pin}: goh lands the pin bump itself "
+           "(GOH.RUFFBUMPLAND); ship it so every consumer gate takes the new pin.",
+           "done_state": f"gates/required_tools.tsv pins ruff {new} on main, shipped"}  # fmt: skip
+    phase = reuse_fault.current_phase(set(rec))
+    if phase.startswith("phase "):
+        rec["phase"] = phase[6:]
+    code, said = reuse_fault._file(loopctl, rec)  # the one funnel
+    if code == 0 or f"{item} already exists" in said:
+        return f"item {item} filed"
+    return f"item not filed: {said[-200:]}"
 
 
 def off() -> bool:
@@ -193,6 +216,7 @@ def _claimed(q: Path, main: Path, ledger: Path, pin: str, new: str, say: Callabl
     rc = ruff_currency.bump_tree(wt, py, path)
     if rc != 0 or _git(wt, "rev-parse", "HEAD").stdout.strip() == sha:
         return end("failed", f"the bump was not committed in {wt} (ruff_currency exit {rc})")
+    say(f"ruff bump {new}: {file_item(item, pin, new)}")  # before the land: the loop ships it
     code, said = enqueue(wt, item)
     if code != 0:
         return end("failed", f"goh land --enqueue exit {code}: {said}")
