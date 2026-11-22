@@ -113,7 +113,7 @@ fn is_zsh(rel: &str, text: &str) -> bool {
 /// The lines `goh locale-prefix` judges in one file: its findings, through its own selection.
 #[must_use]
 pub fn judged_lines(rel: &str, text: &str) -> Vec<usize> {
-    if is_zsh(rel, text) {
+    if !crate::shellsrc::is_shell(rel, text.as_bytes()) || is_zsh(rel, text) {
         Vec::new()
     } else {
         scan(text)
@@ -249,12 +249,28 @@ pub const SHAPES: crate::shapes::Declared = {
             },
             Shape {
                 name: "an argument of env",
-                path: r"\.sh$",
+                path: "",
                 line: r"\benv\s",
                 verdict: Verdict::OutOfScope(
                     "env sets it in the child it execs; bash's own locale never moves",
                 ),
                 fixture: ("a.sh", "find . | env LC_ALL=C sort\n"),
+            },
+            Shape {
+                name: "a whole-line comment",
+                path: "",
+                line: r"^\s*(#|//)",
+                verdict: Verdict::OutOfScope("a comment naming the variable sets nothing"),
+                fixture: ("a.sh", "# LC_ALL=C is given through env\n"),
+            },
+            Shape {
+                name: "a language or file the scan does not read",
+                path: r"(?i)\.(md|markdown|txt|rst|html?|rs|py|rb|swift|js|mjs|cjs|ts|ya?ml|toml|json)$",
+                line: "",
+                verdict: Verdict::OutOfScope(
+                    "only shell sources are read; elsewhere it is prose, another language's string or a test's data",
+                ),
+                fixture: ("docs/a.md", "write `LC_ALL=C sort` through env\n"),
             },
             Shape {
                 name: "a zsh source",
