@@ -1,0 +1,1 @@
+- fix(schedule): the duration and long-pole tables drop every id a whole-file collection no longer contains, so a renamed or parametrized test stops skewing the xdist order and the long-pole ratchet; a node-id, -k or deselected run prunes nothing it did not collect (GOH.DURATIONSPRUNE).

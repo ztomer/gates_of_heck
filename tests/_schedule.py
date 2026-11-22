@@ -32,6 +32,15 @@ handed to every worker the same way. Its entries are each test's quiet seconds, 
 `goh_pole` its phases' reports carry (tests/_drift_guard.py), which the long-pole ratchet judges
 (lib/long_pole.py). A report without one (a run without the drift guard) adds nothing to it.
 
+PRUNED BY COLLECTED NODE ID (GOH.DURATIONSPRUNE). Both tables drop an entry whose test file is gone,
+and, for every file this run collected WHOLE, each id of that file it did not collect: a test
+renamed or parametrized left its old id behind (a stale 61 s test_land_check skewed the order and
+the ratchet) while only the file was checked. A file is whole when it yielded at least one item,
+no argument named a node inside it (`f.py::t`), and nothing deselected one of its items (-k, -m,
+--deselect, --lf, a shard, a carried run: every plugin's deselection goes through pytest's own
+`pytest_deselected`). Whoever collects records it (an xdist worker hands it to the controller in
+`workeroutput`; every worker collects the same set, so the controller takes the union).
+
 Registered as a PLUGIN from conftest's pytest_configure, not imported by name: a conftest that
 imports a hook shadows its own hook of the same name (it happened to pytest_configure, 2026-10-06).
 It registers tests/_loadgroup.py in turn, so every run that orders by group also schedules by it.
@@ -39,6 +48,7 @@ It registers tests/_loadgroup.py in turn, so every run that orders by group also
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -70,6 +80,9 @@ def take(environ=os.environ) -> Path | None:
 
 _seen: dict[str, float] = defaultdict(float)
 _poles: dict[str, float] = defaultdict(float)
+_collected: set[str] = set()  # node ids this run's collection kept
+_narrowed: set[str] = set()  # files a deselection or a node-id argument cut short
+_COLLECTED_KEY, _NARROWED_KEY = "goh_collected_ids", "goh_narrowed_files"
 
 
 def _poles_path(table: Path) -> Path:
@@ -140,6 +153,32 @@ def pytest_collection_modifyitems(config, items) -> None:
     items.sort(key=lambda i: (-weight[_scope(i)], _scope(i), i.nodeid))
 
 
+def pytest_deselected(items) -> None:
+    _narrowed.update(i.nodeid.split("::")[0] for i in items)
+
+
+def pytest_collection_finish(session) -> None:
+    """Record what was collected and which files an argument named a node inside."""
+    config = session.config
+    _collected.update(i.nodeid for i in session.items)
+    root, here = Path(config.rootpath), Path(config.invocation_params.dir)
+    for arg in config.args:
+        path, sep, _ = arg.partition("::")
+        if sep:
+            with contextlib.suppress(ValueError):  # a path outside the root has no node id here
+                _narrowed.add((here / path).resolve().relative_to(root.resolve()).as_posix())
+    if hasattr(config, "workeroutput"):  # an xdist worker: its controller collects nothing
+        config.workeroutput[_COLLECTED_KEY] = sorted(_collected)
+        config.workeroutput[_NARROWED_KEY] = sorted(_narrowed)
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node, error) -> None:
+    out = getattr(node, "workeroutput", {})
+    _collected.update(out.get(_COLLECTED_KEY, ()))
+    _narrowed.update(out.get(_NARROWED_KEY, ()))
+
+
 def pytest_runtest_logreport(report) -> None:
     _seen[report.nodeid] += report.duration
     pole = getattr(report, "goh_pole", None)
@@ -149,19 +188,29 @@ def pytest_runtest_logreport(report) -> None:
 
 def pytest_sessionfinish(session) -> None:
     """Controller only. A partial run (`-k`, one file) MERGES what it measured; an entry whose test
-    file is gone is pruned."""
+    file is gone is pruned, and one a whole-file collection did not contain."""
     if hasattr(session.config, "workerinput") or not _seen or not _table:
         return
     root = Path(str(session.config.rootpath))
-    _write(_table[0], _load(), _seen, root)
-    if _poles:
-        _write(_poles_path(_table[0]), _load(poles=True), _poles, root)
+    whole = {k.split("::")[0] for k in _collected} - _narrowed
+    _write(_table[0], _load(), _seen, root, whole)
+    poles = _poles_path(_table[0])
+    if _poles or poles.is_file():
+        _write(poles, _load(poles=True), _poles, root, whole)
 
 
-def _write(cache: Path, old: dict[str, float], seen: dict[str, float], root: Path) -> None:
-    """`seen` merged over `old` into `cache`, every entry whose test file is gone pruned."""
+def _write(
+    cache: Path, old: dict[str, float], seen: dict[str, float], root: Path, whole: set[str]
+) -> None:
+    """`seen` merged over `old` into `cache`, every entry whose test file is gone pruned, and every
+    id of a file in `whole` that this run did not collect."""
+
+    def keep(k: str) -> bool:
+        f = k.split("::")[0]
+        return (root / f).is_file() and (f not in whole or k in _collected)
+
     merged = {**old, **{k: round(v, 3) for k, v in seen.items()}}
-    merged = {k: v for k, v in merged.items() if (root / k.split("::")[0]).is_file()}
+    merged = {k: v for k, v in merged.items() if keep(k)}
     try:
         cache.parent.mkdir(parents=True, exist_ok=True)
         tmp = cache.with_suffix(f".{os.getpid()}.tmp")

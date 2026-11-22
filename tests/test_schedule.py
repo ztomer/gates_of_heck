@@ -186,3 +186,51 @@ def test_a_node_id_naming_the_checkout_is_refused(monkeypatch) -> None:
     ):
         _schedule.pytest_collection_modifyitems(CONFIG, items)
     _schedule.pytest_collection_modifyitems(CONFIG, _items("t.py::a[/elsewhere]"))
+
+
+RENAMED = "def test_new():\n    pass\n\n\ndef test_b():\n    pass\n"
+
+
+def test_an_id_a_whole_file_run_did_not_collect_is_pruned_and_a_partial_run_prunes_none(
+    tmp_path,
+) -> None:
+    """GOH.DURATIONSPRUNE: the table pruned by FILE only, so a test renamed or parametrized kept
+    its old id (a stale 61 s test_land_check) and skewed the order and the long-pole ratchet. A run
+    that collected a file whole drops that file's ids it did not collect, from both tables; a
+    node-id or -k run drops nothing (it never saw the rest of the file)."""
+    import subprocess
+    import sys
+
+    from conftest import REPO_ROOT, hermetic_env
+    from timing_bounds import patience
+
+    wiring = (f"import sys\nsys.path.insert(0, {str(REPO_ROOT / 'tests')!r})\n"
+              "import suite_home, _schedule\n"
+              "def pytest_configure(config):\n"
+              "    config.pluginmanager.register(_schedule, 'goh-longest-first')\n")  # fmt: skip
+    (tmp_path / "conftest.py").write_text(wiring)
+    (tmp_path / "test_x.py").write_text(RENAMED)
+    (tmp_path / "test_y.py").write_text("def test_y():\n    pass\n")
+    table = tmp_path / "state" / "test-durations.json"
+    table.parent.mkdir()
+    stale = {"test_x.py::test_old": 61.0, "test_y.py::test_gone": 3.0}
+    table.write_text(json.dumps(stale))
+    poles = _schedule._poles_path(table)
+    poles.write_text(json.dumps(stale))
+
+    def run(*args: str) -> dict:
+        r = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *args],
+            capture_output=True, text=True, cwd=tmp_path, check=False, stdin=subprocess.DEVNULL,
+            env=hermetic_env(GOH_TEST_DURATIONS=str(table)), timeout=patience(120),
+        )  # fmt: skip
+        assert r.returncode == 0, r.stdout + r.stderr
+        return json.loads(table.read_text())
+
+    got = run("-n", "2", "test_x.py::test_new", "-k", "not test_y")  # partial: prunes nothing
+    assert got["test_x.py::test_old"] == 61.0 and got["test_y.py::test_gone"] == 3.0, got
+    got = run("-k", "not test_b", "test_x.py", "test_y.py")  # test_x.py partial, test_y.py whole
+    assert "test_x.py::test_old" in got and "test_y.py::test_gone" not in got, got
+    got = run("-n", "2", "test_x.py")  # whole, through xdist workers
+    assert sorted(got) == ["test_x.py::test_b", "test_x.py::test_new", "test_y.py::test_y"], got
+    assert sorted(json.loads(poles.read_text())) == [], "the long-pole table kept a stale id"
