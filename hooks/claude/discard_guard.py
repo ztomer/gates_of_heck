@@ -71,6 +71,10 @@ a command-line `core.hooksPath` is refused. Escape: `# no-verify-ok: <reason>`; 
 THE UNFED READER (GOH.STDINHANG). A stdin reader nothing feeds (`cat > f` beside a heredoc hung
 5h51m on the harness's socket) is refused. Escape: `# stdin-ok: <reason>`; `lib/stdin_reader.py`.
 
+THE HARVESTED MISTAKES (LOOP.MISTAKEGUARDS, 2026-11-22). A recursive rm of a path holding a git work
+tree with uncommitted tracked changes (`lib/worktree_rm.py`, `# rm-ok:`), and an unmount or eject
+of a FileVault volume, which locks it (`lib/encrypted_unmount.py`, `# unmount-ok:`), are refused.
+
 It judges only what it can parse. A command it cannot split runs, unjudged: the guard must never
 be the thing that breaks an ordinary command. A pattern inside a string or a heredoc is TEXT, not
 code, so it is not a finding: `echo 'while :; do :; done'` writes a loop, it does not run one. And
@@ -156,7 +160,9 @@ temp_sweep = _optional("temp_sweep")  # a glob rm over goh's per-run temp roots,
 stdin_reader = _optional("stdin_reader")  # a stdin reader nothing feeds, GOH.STDINHANG
 no_verify = _optional("no_verify")  # a git commit/push that skips the hooks, GOH.NOVERIFYGUARD
 harness_grep, wait_deadline = _optional("harness_grep"), _optional("wait_deadline")
-_RULES = [r for r in (temp_sweep, stdin_reader, no_verify, harness_grep, wait_deadline) if r]
+worktree_rm, encrypted_unmount = _optional("worktree_rm"), _optional("encrypted_unmount")
+_RULES = [r for r in (secret_render, name_kill, temp_sweep, stdin_reader, no_verify, harness_grep,
+                      wait_deadline, encrypted_unmount) if r]  # fmt: skip
 undo_hint = _optional("undo_hint")  # a discard refusal names `goh undo <files>`
 
 # The tools whose input holds a shell command (Bash, Monitor): ONE list, `lib/shell_tools.py`.
@@ -370,24 +376,6 @@ def judge_self_match(command: str) -> str | None:
     return self_match.judge(command)
 
 
-def judge_secret_render(command: str) -> str | None:
-    """The refusal for a command that prints a stack's resolved secrets (`docker compose config`,
-    an unformatted `docker inspect`), in the command or in the code it hands to ssh or a shell
-    (SRV.NTFYROTATE, 2026-11-08), or None. `# secrets-ok: <reason>`."""
-    if secret_render is None:
-        return None
-    return secret_render.judge(command)
-
-
-def judge_name_kill(command: str) -> str | None:
-    """The refusal for a by-name kill whose pattern reaches a command other sessions run (gate.sh,
-    cargo, pytest, load.py, xcodebuild), naming the owned-pid route (GOH.PKILLNAME), or None.
-    `# kill-ok: <reason>`."""
-    if name_kill is None:
-        return None
-    return name_kill.judge(command)
-
-
 def judge_shared(command: str, cwd: str) -> str | None:
     """The refusal for a `git stash`, `git reset`, branch switch or whole-index unstage in a PRIMARY
     checkout, the one every session shares (GOH.NORESET), or None. `# reset-ok: <reason>`."""
@@ -473,15 +461,14 @@ def main() -> int:
     if tool in ("Write", "Edit", "MultiEdit"):
         reason = judge_file(tool_input.get("file_path") or "", _new_text(tool_input))
     elif tool in SHELL_TOOLS:
-        command = tool_input.get(COMMAND_FIELD) or ""
+        command, cwd = tool_input.get(COMMAND_FIELD) or "", event.get("cwd") or os.getcwd()
         reason = (
-            judge(command, event.get("cwd") or os.getcwd())
-            or judge_shared(command, event.get("cwd") or os.getcwd())
+            judge(command, cwd)
+            or judge_shared(command, cwd)
+            or (worktree_rm.judge(command, cwd) if worktree_rm else None)
             or judge_load(command)
             or judge_wait(command)
             or judge_self_match(command)
-            or judge_secret_render(command)
-            or judge_name_kill(command)
             or next((r for rule in _RULES if (r := rule.judge(command))), None)
             or judge_priority(command)
             or judge_bare(command)
