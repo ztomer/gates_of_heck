@@ -5,6 +5,7 @@
     goh land --enqueue --land WORKTREE [--item ID] [--no-start] [--no-pre REASON]
     goh land --check WORKTREE   # the land's structural guards, in seconds (lib/land_check.py)
     goh land --wait ID|REQUEST [--timeout S]  # block until it finished: 0 landed, 1 red, 3 else
+    goh land --cancel ITEM  # stop its pre-step, as a re-enqueue does (lib/landq_supersede.py)
     goh land --drain        # the lander: run every request in order, then exit
     goh land --status       # what is pending, running, and how each finished
     goh land --ruff-bump [--detach]  # a ruff newer than goh's pin: its bump-only land, once
@@ -110,8 +111,7 @@ land_request = landq_request.land_request
 _tui = importlib.import_module("tui.lib")
 err, info, ok, warn = _tui.err, _tui.info, _tui.ok, _tui.warn
 
-GRACE = 5
-DEFAULT_TIMEOUT, WAIT_TIMEOUT = 3600, 3 * 3600
+GRACE, DEFAULT_TIMEOUT, WAIT_TIMEOUT = 5, 3600, 3 * 3600
 LAND_TIMEOUT = 2 * 3600  # land.sh: a 10 min pre-step, a 90 min gate, and a wait for the lock first
 DIRS = ("pending", "running", "done", "logs")
 
@@ -136,7 +136,7 @@ def land_script(_wt: Path) -> Path:
 def prestep(req: dict) -> None:
     """GOH.ENQUEUEPRE (lib/land_prestep.py): the pre-step first, then the queue."""
     wt = Path(req["worktree"])
-    landq_inflight.mark(qdir(), req["item"] or Path(req["repo"]).name, repo=req["repo"])
+    landq_inflight.mark(qdir(), req["item"] or Path(req["repo"]).name, repo=req["repo"], slot=req)
     try:  # its seconds: the e2e's pre-step share (lib/land_e2e.py)
         req["pre_s"] = land_prestep.run_kept(req, qdir(), land_script(wt), git_bindings())
     except land_prestep.Red as e:
@@ -145,6 +145,7 @@ def prestep(req: dict) -> None:
 
 
 def enqueue(req: dict, into: str = "pending") -> Path:
+    landq_inflight.bail()  # superseded: never a request for the replaced sha (GOH.REENQUEUECANCEL)
     q = qdir()
     for d in (*DIRS, into):
         (q / d).mkdir(parents=True, exist_ok=True)
@@ -388,6 +389,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--status", action="store_true")
     mode.add_argument("--ruff-bump", action="store_true", help="land a newer ruff's pin bump, once")
     mode.add_argument("--check", metavar="WORKTREE", help="its tip's structural land guards")
+    mode.add_argument("--cancel", metavar="ITEM", help="stop ITEM's enqueue in its pre-step")
     landq_report.add_arguments(mode, ap)
     landq_background.add_arguments(ap)  # --land, --no-pre, --no-start, --wait, --foreground
     ap.add_argument("--timeout", type=float, default=WAIT_TIMEOUT, help="--wait's bound, seconds")
@@ -398,6 +400,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if landq_background.check(ap, args):  # the enqueue's long pre-step, detached (GOH.TOOLTIMEOUT)
         return landq_background.start(args, argv, qdir(), Path(__file__).resolve())
+    if args.cancel:  # GOH.REENQUEUECANCEL: the re-enqueue's stop, on demand
+        return landq_background.cancel(qdir(), args.cancel)
     if args.report:
         return landq_report.run(qdir(), args.since, args.json)
     if args.drain or args.status:
@@ -411,7 +415,7 @@ def main(argv: list[str] | None = None) -> int:
     req: dict = {}
     try:
         if args.land is not None:
-            landq_background.worktree_only(args)
+            landq_background.worktree_only(args, qdir())  # stops ITEM's earlier pre-step too
             req = land_request(args.land, args.item, qdir())  # in a slot (GOH.LANDSNAPSHOT)
             if args.no_pre is not None and not args.no_pre.strip():
                 raise Refused("--no-pre needs a reason: --no-pre 'why this tip skips the pre-step'")

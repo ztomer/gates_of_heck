@@ -11,6 +11,12 @@ and a `--wait ID` started beside its own enqueue exited 2, "no request".
                     the other, never neither)
     live(q, item)   the markers whose enqueue is still running; ITEM narrows it to one item
 
+SUPERSEDED (GOH.REENQUEUECANCEL, lib/landq_supersede.py). A marker names what stops its enqueue:
+the enqueuer's pid and start (`pid_stamp`), the pre-step's process group as it was stamped at its
+spawn (`pre`, `note_child`), and the checkout slot it claimed (`slot`). A newer enqueue of the item,
+or `goh land --cancel`, puts `<pid>-<item>.superseded` beside the marker before it stops them;
+`bail` ends an enqueuer that finds its own before it files anything.
+
 STALE-SAFE. A marker counts only while its pid is alive and it is younger than its own `until`
 (the pre-step's bound plus a margin): a killed enqueue, or a pid the system reused, leaves a
 marker every reader treats as gone, and the reader deletes it. Pinned by
@@ -33,6 +39,8 @@ import pid_owner
 DIR = "enqueuing"
 MARGIN_S = 600  # past the pre-step's own bound: the enqueue files or refuses well within it
 PRE_TIMEOUT_S = 30 * 60  # lib/land_prestep.py TIMEOUT (GOH_ENQUEUE_PRE_TIMEOUT overrides both)
+SUPERSEDED = ".superseded"  # beside a marker: a newer enqueue (or --cancel) stops this one
+_MINE: list[Path] = []  # the markers this process wrote
 
 
 def slug(item: str) -> str:
@@ -40,9 +48,11 @@ def slug(item: str) -> str:
     return item.replace("/", "_")
 
 
-def mark(q: Path, item: str, pid: int | None = None, repo: str = "") -> Path:
+def mark(q: Path, item: str, pid: int | None = None, repo: str = "", slot: dict | None = None
+         ) -> Path:  # fmt: skip
     """Record that PID (this process) is enqueuing ITEM of REPO; removed when this process exits
-    (REPO: the lander's batch window waits only for lands it could batch, lib/landq_window.py)."""
+    (REPO: the lander's batch window waits only for lands it could batch, lib/landq_window.py).
+    SLOT, the request: the checkout slot it claimed (`worktree`, `slot`), freed when superseded."""
     pid = pid or os.getpid()
     bound = int(os.environ.get("GOH_ENQUEUE_PRE_TIMEOUT") or PRE_TIMEOUT_S) + MARGIN_S
     (q / DIR).mkdir(parents=True, exist_ok=True)
@@ -55,14 +65,38 @@ def mark(q: Path, item: str, pid: int | None = None, repo: str = "") -> Path:
         "at": time.time(),
         "until": time.time() + bound,
     }
+    if slot and slot.get("slot"):
+        marker["slot"] = {"worktree": slot["worktree"], "token": slot["slot"]}
     landq_state.write(path, marker, indent=None)
     atexit.register(clear, path)
+    _MINE.append(path)
     return path
+
+
+def note_child(pid: int) -> None:
+    """The pre-step this process just spawned in its own session (PID leads its group), stamped
+    onto this process's markers: what a superseding enqueue stops, by birth, never by name."""
+    got = pid_owner.stamp(pid)
+    for path in _MINE if got else ():
+        if m := landq_state.read(path):
+            m["pre"] = {"number": got.number, "born": list(got.born), "group": got.group}
+            landq_state.write(path, m, indent=None)
+
+
+def bail() -> None:
+    """End this enqueue, filing nothing, when a newer enqueue of its item (or --cancel) superseded
+    it: the stop signal may not have landed yet, and a request for the replaced sha must never be
+    filed (GOH.BINREACH's c36145ad)."""
+    if any(p.with_suffix(SUPERSEDED).exists() for p in _MINE):
+        sys.stderr.write("goh land: superseded by a newer enqueue (or --cancel): nothing filed\n")
+        raise SystemExit(3)
 
 
 def clear(path: Path) -> None:
     with contextlib.suppress(OSError):
         path.unlink()
+    with contextlib.suppress(OSError):
+        path.with_suffix(SUPERSEDED).unlink()
 
 
 def alive(pid: int, stamp: str | None = None) -> bool:

@@ -269,6 +269,7 @@ def run(
     proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True,
                             start_new_session=True)  # fmt: skip
+    landq_inflight.note_child(proc.pid)  # what a re-enqueue or --cancel stops (GOH.REENQUEUECANCEL)
     timer = threading.Timer(timeout, lambda: killtree.stop_group(proc.pid, proc=proc))
     timer.start()
     try:
@@ -279,6 +280,7 @@ def run(
     finally:
         timer.cancel()
         ran = took_figures(figures, lines)
+    landq_inflight.bail()  # superseded meanwhile: no verdict, no request (GOH.REENQUEUECANCEL)
     if code == 0:
         if did is not None:
             did.update(affected_verdict.outcome(lines) or {})

@@ -31,8 +31,11 @@ land_prestep = importlib.import_module("land_prestep")  # lib/ and the root: too
 landq_early = importlib.import_module("landq_early")
 landq_inflight = importlib.import_module("landq_inflight")
 landq_request = importlib.import_module("landq_request")
+landq_supersede = importlib.import_module("landq_supersede")
 _tui = importlib.import_module("tui.lib")
 err, info = _tui.err, _tui.info
+# A re-enqueue stops the item's earlier pre-step; --cancel on demand (GOH.REENQUEUECANCEL).
+supersede, cancel = landq_supersede.supersede, landq_supersede.cancel
 
 MARK_WAIT_S = 60  # the child imports, claims a slot and marks; far under this on a loaded box
 
@@ -55,22 +58,27 @@ def add_arguments(ap: argparse.ArgumentParser) -> None:
 def check(ap: argparse.ArgumentParser, args: argparse.Namespace) -> bool:
     """Refuse a malformed mix (argparse's exit 2); True when this enqueue goes to the background."""
     modes = (args.enqueue is not None, args.drain, args.status, args.ruff_bump, args.report,
-             args.check is not None)  # fmt: skip
+             args.check is not None, args.cancel is not None)  # fmt: skip
     if args.wait is not None and any(modes[1:]):
         ap.error("--wait goes alone (ID|REQUEST) or with --enqueue")
     if args.wait == "" and args.enqueue is None:
         ap.error("--wait needs ID|REQUEST (or comes with --enqueue)")
     if args.wait is None and not any(modes):
         ap.error(
-            "one of --enqueue --drain --status --ruff-bump --wait --report --check is required"
+            "one of --enqueue --drain --status --ruff-bump --wait --report --check --cancel is "
+            "required"
         )
     quiet = args.wait is not None or args.foreground or args.detached
     return args.land is not None and args.no_pre is None and not quiet
 
 
-def worktree_only(args: argparse.Namespace) -> None:
+def worktree_only(args: argparse.Namespace, q: Path | None = None) -> None:
+    """Refuse REPO SHA or --ship beside --land; given the queue Q, then stop the item's earlier
+    enqueue in its pre-step, before this one claims a slot (GOH.REENQUEUECANCEL)."""
     if args.enqueue or args.ship:
         raise landq_request.Refused("--land takes the worktree only: no REPO SHA, no --ship")
+    if q is not None:
+        supersede(q, args.item)
 
 
 def red(args: argparse.Namespace, req: dict, why: str, q: Path, enqueue, record) -> None:
@@ -91,6 +99,7 @@ def start(args: argparse.Namespace, given: list[str] | None, q: Path, landq: Pat
     except landq_request.Refused as e:
         err(f"goh land: {e} -- nothing enqueued")
         return 2
+    landq_supersede.supersede(q, req["item"])  # its old marker is no mark of this one's
     who = req["item"] or Path(req["repo"]).name
     log = q / "logs" / f"enqueue-{time.time_ns():020d}-{landq_inflight.slug(who)}.log"
     log.parent.mkdir(parents=True, exist_ok=True)
