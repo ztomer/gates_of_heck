@@ -20,6 +20,7 @@ from test_claude_load_guard import _decide
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1] / "lib"))
 import shell_segments
+import stdin_reader
 
 HANG = (
     "sed -i '' 's/a/b/' /tmp/y.txt; cat > /tmp/x.py 2>/dev/null; python3 - $S <<'EOF'\n"
@@ -272,3 +273,12 @@ def test_a_redirect_glued_to_a_word_is_its_own_token_and_a_quoted_one_is_not():
     assert segs[1] == ["echo", "a<b", "2>&1", "a", "<<<x", "3>|f"], segs
     assert isinstance(segs[1][1], shell_segments.Literal)
     assert not isinstance(segs[1][2], shell_segments.Literal)
+
+
+@pytest.mark.parametrize("command", ['grep "8>&-" f.txt', "grep -n '8>&- x' f.txt"])
+def test_a_quoted_redirect_like_word_is_a_word_to_every_reader(command: str) -> None:
+    """GOH.SPLITQUOTE: shlex (posix) drops quoting, so a quoted `8>&-` read as a redirect and the
+    grep read as unfed (the one false refusal in 13,692 transcript commands, GOH.STDINFILTERS)."""
+    segs, _ = shell_segments.split_ops(command)
+    assert all(isinstance(w, shell_segments.Literal) for w in segs[0][0] if ">" in w), segs
+    assert stdin_reader.judge(command) is None, command
