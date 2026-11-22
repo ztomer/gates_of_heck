@@ -24,7 +24,8 @@ is the common git dir -- the checkout every session shares; a linked worktree is
   * `git restore --staged` (or `-S`) with no named path, or a pathspec naming the whole tree
     (`.`, `:/`, `*`).
 Refused with the way forward: a worktree of your own (`git worktree add build/<name> -b <branch>`),
-or `git restore --staged <your paths>`. The one escape is `# reset-ok: <reason>`.
+or `git restore --staged <your paths>`. The one escape is `# reset-ok: <reason>`, never for a
+stash (GOH.STASHNOESCAPE).
 """
 
 from __future__ import annotations
@@ -50,7 +51,7 @@ STASH_WAY_OUT = (
     "drop can lose them. Instead, commit a WIP on your lane branch (`git commit -m 'wip: ...'`, "
     "amend or squash it before landing) and keep working. To undo your OWN edits to a file, "
     "keeping a copy, run `goh undo <file>...` in your worktree (`goh undo --back <file>` steps "
-    "back). To do it on purpose, add `# reset-ok: <reason>` to the command."
+    "back). A stash takes no escape: the owner's rule is never `git stash` (GOH.STASHNOESCAPE)."
 )
 
 WAY_OUT = (
@@ -117,8 +118,7 @@ def _what(where: str, verb: str, rest: list[str]) -> str | None:
 
 def judge(command: str, cwd: str) -> str | None:
     """The refusal for a stash, reset or branch switch in a shared checkout, or None."""
-    if ESCAPE.search(command):
-        return None
+    escaped = bool(ESCAPE.search(command))  # never for a stash (GOH.STASHNOESCAPE)
     try:
         segments = shell_segments.segments(command)
     except ValueError:
@@ -142,7 +142,7 @@ def judge(command: str, cwd: str) -> str | None:
             return (
                 f"`{' '.join(seg)}` in {where}: a stash moves work out of the tree. {STASH_WAY_OUT}"
             )
-        why = _what(where, args[0], args[1:])
+        why = None if escaped else _what(where, args[0], args[1:])
         if why and is_shared(where):
             return f"`{' '.join(seg)}` in {where}: {why}. {WAY_OUT}"
     return None

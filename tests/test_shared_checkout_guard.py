@@ -126,7 +126,7 @@ def test_a_stash_is_refused_in_a_primary_checkout_and_in_a_linked_worktree(
     for where in (shared, wt):
         why = _decide(command, where)
         assert why is not None, (command, where)
-        assert "commit a WIP on" in why and "branch" in why and "reset-ok" in why, why
+        assert "commit a WIP on" in why and "branch" in why and "takes no escape" in why, why
 
 
 def test_a_stash_is_followed_through_dash_c_and_cd_into_a_linked_worktree(
@@ -149,9 +149,19 @@ def test_stash_reads_and_the_escape_run_in_a_linked_worktree(shared: Path, tmp_p
         "git stash show -p stash@{0}",
         "echo 'git stash'",
         "git log --grep stash",
-        "git stash  # reset-ok: a fixture repo nobody else writes to",
     ):
         assert _decide(command, wt) is None, command
+
+
+def test_a_stash_takes_no_escape_in_any_checkout(shared: Path, tmp_path: Path) -> None:
+    """GOH.STASHNOESCAPE: the owner's rule is absolute (never git stash), so `# reset-ok:` lets
+    no stash through; the other discard forms keep the escape they were made for."""
+    wt = tmp_path / "wt"
+    git(shared, "worktree", "add", "-q", "-b", "mine", str(wt))
+    for where in (shared, wt):
+        why = _decide("git stash push  # reset-ok: x", where)
+        assert why is not None and "takes no escape" in why, (where, why)
+    assert _decide("git reset --hard  # reset-ok: x", shared) is None
 
 
 def test_outside_any_repository_nothing_is_refused(tmp_path: Path) -> None:

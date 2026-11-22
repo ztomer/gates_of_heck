@@ -1,0 +1,1 @@
+* `# reset-ok:` no longer lets any work-moving `git stash` through, in a linked worktree or a primary checkout: the owner rule is never stash. Reset and the other discard forms keep the escape (GOH.STASHNOESCAPE).
