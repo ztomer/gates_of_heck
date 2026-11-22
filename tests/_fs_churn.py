@@ -11,10 +11,20 @@ controller, for the whole session, and at its end
   * writes the count, the tests run and the top creators to $GATES_OF_HECK_FS_EVENTS (a JSON file
     tools/pytest.sh names for a whole run and records in the suite's timing-ledger row);
   * turns a green session RED when one test's own tmp_path took more than CEILING["per_test"]
-    events, or the run as a whole more than CEILING["per_test_run"] per test it ran (the mean, so
-    a land's partial suite and a full one are held alike) -- the run's count including the entries
-    it leaves under its roots, which the runner's removal of them turns into events after the
-    stream stops (`left_behind`).
+    events, or -- a WHOLE run only -- the run more than CEILING["per_test_run"] per test it ran,
+    the run's count including the entries it leaves under its roots, which the runner's removal
+    of them turns into events after the stream stops (`left_behind`).
+
+WHOLE RUNS ONLY (GOH.FSCEILINGRED). The mean was meant to hold a land's partial suite and a full
+one alike; it does not. A land's gate and the rust gate's external pytest are argument-less runs
+that DESELECT what the pre-step passed (tests/_land_verdicts.py), so the tests left are the
+change's own -- the heaviest, repo-building ones -- and their mean is no reading of a ceiling
+re-set from a whole run (GOH.FSCHURN3): 1187 and 1468 of 5812 ran at 204.6 and 200.3 events each
+on 2026-11-21 and two lands went red on 185 while whole runs sat at 120-155. A run is whole when
+its arguments select the whole suite (tests/_whole_run.py) and nothing was deselected after
+collection (counted in every process through pytest's own `pytest_deselected`, each xdist worker
+telling the controller, which collects nothing). A partial run's count is still written, with
+`whole` and `deselected`, and the per-test ceiling, which holds for any selection, still judges it.
 
 The ceilings live in tests/fs_events_ceiling.json; GATES_OF_HECK_FS_EVENTS_CEILING (JSON) replaces
 them for a test of this plugin. Off where FSEvents is not (Linux): the file says `unavailable`.
@@ -33,13 +43,17 @@ from pathlib import Path
 _LIB = str(Path(__file__).resolve().parent.parent / "lib")
 if _LIB not in sys.path:
     sys.path.append(_LIB)
+import _whole_run  # noqa: E402  (tests/, beside this file)
 import fs_events  # noqa: E402
+import pytest  # noqa: E402
 
 OUT = "GATES_OF_HECK_FS_EVENTS"
 CEILING_ENV = "GATES_OF_HECK_FS_EVENTS_CEILING"
 CEILING_FILE = Path(__file__).resolve().parent / "fs_events_ceiling.json"
 
 _STATE: dict = {}
+DESELECTED_KEY = "gates_of_heck_fs_deselected"  # an xdist worker -> its controller
+_DESELECTED: list[int] = [0]  # this process's deselected count, whatever plugin deselected
 # The report's per-test lists are this long: enough to rank the long tail by file (GOH.FSCHURN3).
 TOP = 200
 
@@ -49,8 +63,9 @@ def _ceiling() -> dict:
     return json.loads(raw) if raw else json.loads(CEILING_FILE.read_text())
 
 
-def verdict(rep: dict, tests_run: int, ceiling: dict) -> list[str]:
-    """Each way `rep` (a Tally report) breaks `ceiling`; empty when it holds."""
+def verdict(rep: dict, tests_run: int, ceiling: dict, whole: bool = True) -> list[str]:
+    """Each way `rep` (a Tally report) breaks `ceiling`; empty when it holds. The per-run mean is
+    judged only for a `whole` run: the ceiling describes the whole suite, never a selection."""
     faults = []
     worst = max(rep["per_test"].items(), key=lambda kv: kv[1], default=None)
     if worst and worst[1] > ceiling["per_test"]:
@@ -59,7 +74,7 @@ def verdict(rep: dict, tests_run: int, ceiling: dict) -> list[str]:
             f" over the per-test ceiling {ceiling['per_test']}"
         )
     total = rep["events"] + rep["teardown_entries"]
-    if tests_run and total / tests_run > ceiling["per_test_run"]:
+    if whole and tests_run and total / tests_run > ceiling["per_test_run"]:
         faults.append(
             f"{total} file events (with what the run left to remove) for {tests_run} tests"
             f" ({total / tests_run:.1f} each), over the ceiling {ceiling['per_test_run']} each"
@@ -91,6 +106,22 @@ def pytest_sessionstart(session) -> None:
     _STATE.update(tally=tally, stream=stream, t0=fs_events.time.monotonic(), ran=0)
 
 
+def pytest_deselected(items) -> None:
+    if not items:
+        return
+    _DESELECTED[0] += len(items)
+    config = items[0].config
+    if hasattr(config, "workerinput"):  # an xdist worker: its controller collects nothing
+        config.workeroutput[DESELECTED_KEY] = _DESELECTED[0]
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node, error) -> None:
+    """xdist, in the controller: each worker collects the whole set, so the most any deselected."""
+    n = int(getattr(node, "workeroutput", {}).get(DESELECTED_KEY, 0))
+    _DESELECTED[0] = max(_DESELECTED[0], n)
+
+
 def pytest_runtest_logreport(report) -> None:
     if "tally" in _STATE and report.when == "call":
         _STATE["ran"] += 1
@@ -106,11 +137,18 @@ def pytest_sessionfinish(session, exitstatus) -> None:
     ran = _STATE.pop("ran")
     rep["tests_run"] = ran
     rep["teardown_entries"] = left_behind(tally.roots)
+    rep["deselected"] = _DESELECTED[0]
+    rep["whole"] = whole = _whole_run.whole(session.config) and not rep["deselected"]
     ceiling = _ceiling()
-    faults = verdict(rep, ran, ceiling)
+    faults = verdict(rep, ran, ceiling, whole)
     rep["ceiling"], rep["faults"] = ceiling, faults
     Path(_STATE.pop("out")).write_text(json.dumps(rep, indent=1) + "\n")
     tr = session.config.pluginmanager.get_plugin("terminalreporter")
+    if not whole:
+        (tr.write_line if tr else print)(
+            f"→ file events: a partial run ({ran} ran, {rep['deselected']} deselected): the per-run"
+            f" ceiling describes whole runs and is not judged (tests/_fs_churn.py)"
+        )
     for f in faults:
         line = f"✗ file events (GOH.FSCHURN2, tests/fs_events_ceiling.json): {f}"
         (tr.write_line if tr else print)(line)

@@ -56,6 +56,7 @@ import _cov_claims  # tests/: the non-binary carry and its gate (GOH.COVNONBIN)
 import _land_audit  # tests/, beside this file: the audited `test` and `carry` uses
 import _prof_record  # tests/: each test's own profile under coverage (GOH.COVCARRY)
 import _same_tree  # tests/: the fresh instrumented run's own-tree reuse (@tree)
+import _whole_run  # tests/: whether the arguments select the whole suite (GOH.FSCEILINGRED)
 import pytest
 from _land_trees import ANCESTORS, _git, carried, diff, trees  # noqa: F401  (patched here)
 
@@ -214,11 +215,7 @@ def _here() -> tuple[str, str] | None:
 
 def _whole(config) -> bool:
     """This run is the whole suite: no node, -k, -m, --deselect or --lf narrowed it."""
-    o = config.option
-    if any(getattr(o, k, None) for k in ("keyword", "markexpr", "deselect", "lf")):
-        return False
-    roots = {Path(config.rootpath), Path(config.rootpath) / "tests"}
-    return all("::" not in a and Path(a).resolve() in roots for a in config.args)
+    return _whole_run.whole(config)
 
 
 def pytest_sessionfinish(session) -> None:

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -35,13 +36,32 @@ CHURNY = (
 QUIET = "def test_quiet(tmp_path):\n    (tmp_path / 'f').write_text('x')\n"
 
 
-def _session(tmp_path: Path, body: str, ceiling: dict) -> tuple[subprocess.CompletedProcess, dict]:
+# A planted selection that deselects the way the land's carry does (tests/_land_verdicts.py,
+# tests/_shard.py): through pytest's own hook, in every process that collects (each xdist worker).
+DROPS = (
+    "def pytest_collection_modifyitems(config, items):\n"
+    "    drop = [i for i in items if i.name in {names!r}]\n"
+    "    if drop:\n"
+    "        config.hook.pytest_deselected(items=drop)\n"
+    "        items[:] = [i for i in items if i not in drop]\n"
+)
+
+
+def _session(
+    tmp_path: Path, body: str, ceiling: dict, *args: str, drops: tuple[str, ...] | None = None
+) -> tuple[subprocess.CompletedProcess, dict]:
+    """A session the plugin watches. No `args`: a WHOLE run of the planted directory, the shape
+    tools/pytest.sh counts; `drops` plants a conftest deselecting those tests (a carried run)."""
     (tmp_path / "pytest.ini").write_text("[pytest]\n")
     (tmp_path / "test_planted.py").write_text(body)
+    if drops is not None:
+        (tmp_path / "conftest.py").write_text(DROPS.format(names=set(drops)))
     tmp, home = tmp_path / "t", tmp_path / "h"
-    tmp.mkdir()
-    home.mkdir()
+    for d in (tmp, home):  # a second session in one tmp_path starts from empty roots
+        shutil.rmtree(d, ignore_errors=True)
+        d.mkdir()
     out = tmp_path / "events.json"
+    out.unlink(missing_ok=True)  # never a stale count from the session before
     env = hermetic_env(
         TMPDIR=str(tmp), HOME=str(home), PYTEST_DEBUG_TEMPROOT=str(tmp),
         GATES_OF_HECK_FS_EVENTS=str(out), GATES_OF_HECK_FS_EVENTS_CEILING=json.dumps(ceiling),
@@ -49,7 +69,7 @@ def _session(tmp_path: Path, body: str, ceiling: dict) -> tuple[subprocess.Compl
     )  # fmt: skip
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "no:xdist",
-         "-p", "_fs_churn", "test_planted.py"],
+         "-p", "_fs_churn", *args],
         cwd=tmp_path, capture_output=True, text=True, timeout=patience(120), check=False,
         env=env, stdin=subprocess.DEVNULL,
     )  # fmt: skip
@@ -70,6 +90,70 @@ def test_a_planted_churny_test_breaks_the_per_run_ceiling(tmp_path: Path) -> Non
     r, _ = _session(tmp_path, CHURNY, {"per_test": 100_000, "per_test_run": 200})
     assert r.returncode == 1, r.stdout[-1500:] + r.stderr[-1500:]
     assert "over the ceiling 200 each" in r.stdout, r.stdout[-1500:]
+
+
+# Two workers: the controller collects nothing and each worker deselects alike. The suite's own
+# PYTEST_PLUGINS (tools/pytest.sh) already loads xdist, and a second `-p xdist` is refused.
+XDIST = (
+    ("-n", "2") if "xdist" in os.environ.get("PYTEST_PLUGINS", "") else ("-p", "xdist", "-n", "2")
+)
+# A test the carried run deselects: the run is that much short of the whole suite.
+CHURNY_AND_QUIET = CHURNY + QUIET
+
+
+@darwin
+@pytest.mark.parametrize("xdist", [(), XDIST], ids=["plain", "xdist"])
+def test_a_whole_run_over_the_mean_stays_red_with_nothing_deselected(
+    tmp_path: Path, xdist: tuple[str, ...]
+) -> None:
+    """GOH.FSCEILINGRED, the red half: a carried run that carried NOTHING is the whole suite, and
+    the per-run ceiling holds it, in a plain session and under xdist (whose controller collects
+    nothing)."""
+    r, rep = _session(
+        tmp_path, CHURNY_AND_QUIET, {"per_test": 100_000, "per_test_run": 200}, *xdist, drops=()
+    )
+    assert r.returncode == 1, r.stdout[-1500:] + r.stderr[-1500:]
+    assert "over the ceiling 200 each" in r.stdout, r.stdout[-1500:]
+    assert rep["whole"] is True and rep["deselected"] == 0 and rep["tests_run"] == 2, rep
+
+
+@darwin
+@pytest.mark.parametrize("xdist", [(), XDIST], ids=["plain", "xdist"])
+def test_a_carried_run_is_not_judged_by_the_whole_run_mean(
+    tmp_path: Path, xdist: tuple[str, ...]
+) -> None:
+    """GOH.FSCEILINGRED: the land's gate and the rust gate's external pytest are argument-less
+    runs that DESELECT what the pre-step passed (1187 and 1468 of 5812 ran, 204.6 and 200.3 events
+    each, 2026-11-21); the tests left are the change's own, the heaviest, so their mean is no
+    reading of the ceiling `per_test_run` (re-set from a whole run). Its count is still written,
+    and the per-test ceiling, which holds for any selection, still judges each test."""
+    r, rep = _session(
+        tmp_path, CHURNY_AND_QUIET, {"per_test": 100_000, "per_test_run": 200}, *xdist,
+        drops=("test_quiet",),
+    )  # fmt: skip
+    assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
+    assert rep["whole"] is False and rep["deselected"] == 1 and rep["tests_run"] == 1, rep
+    assert rep["faults"] == [] and rep["events"] >= 400, rep
+    assert "a partial run" in r.stdout, r.stdout[-1500:]
+    r, rep = _session(
+        tmp_path, CHURNY_AND_QUIET, {"per_test": 300, "per_test_run": 200}, *xdist,
+        drops=("test_quiet",),
+    )  # fmt: skip
+    assert r.returncode == 1 and "per-test ceiling 300" in r.stdout, r.stdout[-1500:]
+
+
+@darwin
+@pytest.mark.parametrize("narrow", [("test_planted.py",), ("-k", "churny")], ids=["path", "k"])
+def test_a_narrowed_run_is_not_judged_by_the_whole_run_mean(
+    tmp_path: Path, narrow: tuple[str, ...]
+) -> None:
+    """A caller that names the file for a narrowed run (tools/pytest.sh) gets its count, not the
+    whole run's verdict: a path or a -k selects, whatever deselects or not."""
+    r, rep = _session(
+        tmp_path, CHURNY_AND_QUIET, {"per_test": 100_000, "per_test_run": 200}, *narrow
+    )
+    assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
+    assert rep["whole"] is False and rep["faults"] == [], rep
 
 
 @darwin
@@ -108,6 +192,9 @@ def test_the_verdict_names_each_broken_ceiling() -> None:
     assert len(faults) == 2 and "test_b made 7000" in faults[0] and "900.0 each" in faults[1]
     # what the run leaves under its roots counts: its removal is events the stream never sees
     assert verdict(rep, 10, {"per_test": 8000, "per_test_run": 850}) != []
+    # a partial run (GOH.FSCEILINGRED): only the per-test ceiling, which holds for any selection
+    assert verdict(rep, 10, {"per_test": 8000, "per_test_run": 500}, whole=False) == []
+    assert len(verdict(rep, 10, {"per_test": 5000, "per_test_run": 500}, whole=False)) == 1
 
 
 def test_the_recorded_ceiling_is_a_ratchet_with_both_bounds() -> None:
