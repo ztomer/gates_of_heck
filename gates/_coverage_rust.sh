@@ -74,6 +74,7 @@ c.prune(a[2], a[3], gib=float(a[4] or c.DEFAULT_GIB), min_free_gib=float(a[5] or
         "${GOH_LANE_MIN_FREE_GIB:-}" - "${1:-}" "${COV_ROOT:-}" "${COV_HIT:-0}" 2>/dev/null || true
 }
 cov_reap() { # the EXIT trap: this run's scratch goes with it, pass, fail or signal (EST.FSEVENTSCHURN)
+    local rc=$?
     # Every test process's profile (a goh push worktree: 109 MiB, cleared only by the NEXT run) and
     # the report's view, hard links that keep a shared build's executables on disk after the cache
     # evicts it, where no budget counts them (82 MiB). The run's record -- lcov-parts, its parts and
@@ -84,7 +85,13 @@ cov_reap() { # the EXIT trap: this run's scratch goes with it, pass, fail or sig
         find "$d" -maxdepth 1 -type f -name '*.profraw' -delete 2>/dev/null || true
         rm -rf "$d/cov-view" "$d/t"   # t/: the suite's per-test profiles (tests/_prof_record.py)
     done
+    [ -z "${COV_KEY:-}" ] || cov_seed_give "$rc"
     [ -z "${COV_KEY:-}" ] || cov_cache_prune record
+}
+cov_seed_give() { # a green run's build becomes its repo's seed when that is missing or stale (gates/_cov_seed.py)
+    [ "$1" = 0 ] || return 0
+    "$GOH_PY" -S "$(dirname "${BASH_SOURCE[0]}")/_cov_seed.py" give "$COV_CACHE" "$COV_KEY" "$COV_ROOT" "$PROJ" "$$" \
+        2>/dev/null || true
 }
 run_rust() {
     cd "$PROJ" || exit 2
@@ -160,6 +167,12 @@ run_rust() {
     : >"$COV_CACHE/$COV_KEY/.goh-used"
     printf '%s\n' "$COV_ROOT" >"$COV_CACHE/$COV_KEY/.goh-root"   # whose: an entry whose root is gone goes first
     cov_cache_prune
+    # A NEW CHECKOUT OF A KNOWN REPO STARTS WARM (GOH.COVCACHEWARM): an entry with no build yet takes
+    # a copy of its repository's seed, the last green build of any checkout of it, the checkout's
+    # own packages left out (gates/_cov_seed.py). A land slot's first Rust land built every
+    # dependency cold: 440 s at load 140-160.
+    [ "$COV_HIT" = 1 ] || "$GOH_PY" -S "$(dirname "${BASH_SOURCE[0]}")/_cov_seed.py" take \
+        "$COV_CACHE" "$COV_KEY" "$COV_ROOT" 2>/dev/null | while IFS= read -r line; do info "$line"; done
     export CARGO_TARGET_DIR="$PROJ/target/llvm-cov"
     export CARGO_BUILD_BUILD_DIR="$COV_CACHE/$COV_KEY/build"
     export RUSTC_WRAPPER=""
