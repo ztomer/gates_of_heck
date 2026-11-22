@@ -411,6 +411,18 @@ def start(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """goh ship; a lock the caller holds (a gate slot under load.py) is one Kare refusal, never
+    a lock_order.OrderError traceback (GOH.SHIPORDERERR)."""
+    from lock_order import OrderError  # here: the import ceiling (E402) is spent
+
+    try:
+        return _main(argv)
+    except OrderError as e:
+        err(f"goh ship: {e} -- goh ship takes its own slots: run it outside the held one")
+        return 2
+
+
+def _main(argv: list[str] | None = None) -> int:
     given = sys.argv[1:] if argv is None else argv
     if given[:1] == ["verdict"]:  # the recorded gate verdict (GOH.VERDICTAPI)
         from ship_verdict import main as verdict
