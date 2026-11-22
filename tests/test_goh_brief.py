@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -128,7 +129,7 @@ def test_goh_brief_output_passes_the_spawn_guard_for_every_tier(
         got = json.loads(r.stdout)
         assert (got["model"], got["effort"]) == (fam, eff), got
         assert declared in got["profile"], got
-        prompt = "\n".join(got["header"]) + "\n" + TASK
+        prompt = _filled("\n".join(got["header"])) + "\n" + TASK
         why = _guard(env, prompt, got["model"], got["effort"], got["subagent_type"])
         assert why is None, (declared, fam, eff, why)
 
@@ -216,6 +217,12 @@ SHAPES = {
 }
 
 
+def _filled(text: str) -> str:
+    """The header as its caller sends it: the Pool placeholder filled with what the pool said (an
+    unfilled one is refused, GOH.BRIEFPOOLFILL)."""
+    return re.sub(r"<fill in [^>]*>", "escalate_to_caller", text)
+
+
 @pytest.mark.parametrize("shape", sorted(SHAPES))
 def test_each_refusal_carries_a_corrected_header_that_passes(tmp_path: Path, shape: str) -> None:
     declared, lines, model, effort, sub = SHAPES[shape]
@@ -225,7 +232,7 @@ def test_each_refusal_carries_a_corrected_header_that_passes(tmp_path: Path, sha
     assert why is not None, f"{shape}: the guard allowed it"
     assert "Corrected header" in why, why
     header = why.split("Corrected header", 1)[1].split("\n", 1)[1]
-    fixed, call = brief.apply(prompt, header)
+    fixed, call = brief.apply(prompt, _filled(header))
     assert "Owner-asked: Yes, dispatch them" in fixed and TASK in fixed, fixed
     again = _guard(env, fixed, call["model"], call["effort"], call["subagent_type"])
     assert again is None, f"{shape}: the corrected header was refused too:\n{fixed}\n{again}"

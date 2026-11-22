@@ -116,10 +116,17 @@ def judge_pool(declared: str, prompt: str, rules: model_choice.Rules) -> tuple[s
     found = [(said.split()[0], why) for said, why in POOL_LINE.findall(prompt) if why]
     if task_class is None:
         return None, None
+    tool = rules.pool_first["tool"]
+    if found and found[0][1].startswith("<fill in"):  # goh brief's placeholder (GOH.BRIEFPOOLFILL)
+        return (
+            f"Refused: the `Pool:` line still carries goh brief's `<fill in ...>` placeholder, "
+            f'which is no pool try. Replace it with what {tool}(task_class="{task_class}") '
+            f"returned (`Pool: tried <its answer, or why it was not accepted>`), or say "
+            f"`Pool: unfit because <reason>` when the work needs this repo's tools."
+        ), None
     if found:
         said, why = found[0]
         return None, {"said": said, "why": why}
-    tool = rules.pool_first["tool"]
     return (
         f"Refused: {declared} work goes to the free pools first ({tool}, owner ruling in "
         f'{rules.path.name} `pool_first`). Call {tool}(task_class="{task_class}", prompt=..., '
