@@ -9,15 +9,19 @@ queued again: the 40 minutes bought nothing.
 
 WHEN. After every pass of the lander (it holds the lander lock, so no request moves under it) --
 which is the moment a land fast-forwarded main -- every pending land request is judged; and an
-enqueue judges its own request before it files it, a red one recorded and never queued.
+enqueue judges its own request FIRST, before its guards and pre-step (lib/land_check.py
+`at_enqueue`, GOH.BATCHCONFLICTFIRST), and again before it files it (main may move during the
+pre-step), a red one recorded and never queued.
 
 WHAT. Each pending land is replayed onto main in objects only: each of the item's own commits
-(merge-base(main, tip)..tip) is merged onto the base by `git merge-tree --write-tree` (the
-cherry-pick a rebase makes, with land.sh's row merge driver for `merge=goh-rows`) and a
-`commit-tree` carries it on. No worktree is checked out or moved, no gate runs. A request that does
-not replay is red with the record the batch writes (`conflict: did not stack on <main>`), its log
-naming the files and the commits on main since the branch forked that touch them (their subjects
-name the landing). A git read that fails is no verdict: the request stays pending for the batch.
+(merge-base(main, tip)..tip, less those whose patch main holds already, as a rebase drops them:
+GOH.REENQUEUEREBASE, a re-enqueue whose partial landed was red after a 1411 s pre-step) is merged
+onto the base by `git merge-tree --write-tree` (the cherry-pick a rebase makes, with land.sh's row
+merge driver for `merge=goh-rows`) and a `commit-tree` carries it on. No worktree is checked out or
+moved, no gate runs. A request that does not replay is red with the record the batch writes
+(`conflict: did not stack on <main>`), its log naming the files and the commits on main since the
+branch forked that touch them (their subjects name the landing). A git read that fails is no
+verdict: the request stays pending for the batch.
 
 AGAINST MAIN ONLY, not the pending items ahead (a deviation from the item's brief). Main never
 moves back, so a conflict with it is a fact; a conflict with a request still pending is not -- that
@@ -75,7 +79,10 @@ def replay(repo: Path, base: str, upstream: str, tip: str) -> tuple[str, list[st
     only: (the replayed tip, []) or ('', the files the first conflicting commit conflicts in)."""
     if upstream == base:
         return tip, []
-    listed = _git(repo, "rev-list", "--reverse", "--no-merges", f"{upstream}..{tip}").stdout
+    # A commit whose patch is upstream already is dropped, as `git rebase` drops it: a re-enqueue
+    # whose partial landed replays only what did not (GOH.REENQUEUEREBASE).
+    listed = _git(repo, "rev-list", "--reverse", "--no-merges", "--right-only", "--cherry-pick",
+                  f"{base}...{tip}", f"^{upstream}").stdout  # fmt: skip
     for commit in listed.split():
         done = _git(repo, *rows(), "merge-tree", "--write-tree", "--name-only", "--no-messages",
                     f"--merge-base={commit}^", base, commit, codes=(0, 1))  # fmt: skip

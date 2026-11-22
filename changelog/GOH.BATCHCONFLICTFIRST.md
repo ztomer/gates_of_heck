@@ -1,0 +1,1 @@
+* An enqueue judges whether its tip stacks on main first, before its guards and pre-step (lib/land_check.py `at_enqueue`), and again before it files the request; a conflict is red in seconds, not after a pre-step (GOH.BATCHCONFLICTFIRST part a).

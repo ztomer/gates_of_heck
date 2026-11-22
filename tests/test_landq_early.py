@@ -100,3 +100,45 @@ def test_only_a_land_that_conflicts_with_main_is_red_and_the_cost_per_item(repo,
     assert "a.txt" in reds[0][2] and " a\n" in reds[0][2], reds[0][2]
     assert per_item < patience(2.0), per_item
     print(f"early conflict check: {per_item * 1000:.0f} ms per pending item")
+
+
+def test_a_re_enqueue_whose_partial_landed_stacks_as_the_rebase_does(repo, tmp_path):
+    """GOH.REENQUEUEREBASE: GOH-RUFFBUMPITEM's re-enqueue (2026-11-22, aabaee7e) ran a 1411 s
+    pre-step in a slot whose rebase onto main was CLEAN, then went red `conflict: did not stack
+    on 06d306bf`: 10 of its 15 commits had landed already, and the replay merged each again onto
+    a main that had moved past them. A rebase drops a commit whose patch is upstream; so does
+    the replay (`--cherry-pick`), so the check refuses only what the land's rebase would."""
+    wt = lane(repo, tmp_path, "tiny", {"shared.txt": "fix 1\n"})
+    write(wt, "shared.txt", "fix 1\nfix 2\n")
+    git(wt, "add", "-A")
+    git(wt, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--no-verify", "-m", "2")
+    for sha in git(wt, "rev-list", "--reverse", "HEAD~2..HEAD").split():  # the partial lands
+        git(repo, "-c", "user.name=l", "-c", "user.email=l@l", "cherry-pick", sha)
+    write(wt, "three.txt", "fix 3\n")
+    git(wt, "add", "-A")
+    git(wt, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--no-verify", "-m", "3")
+    req = {"sha": git(wt, "rev-parse", "HEAD").strip(), "repo": str(repo), "item": "T.TINY"}
+    assert landq_early.judge(repo, [(tmp_path / "t.json", req)]) == []
+    write(repo, "three.txt", "landed meanwhile\n")  # a real conflict is still one
+    git(repo, "add", "-A")
+    git(repo, "-c", "user.name=l", "-c", "user.email=l@l", "commit", "-q", "--no-verify", "-m", "x")
+    (red,) = landq_early.judge(repo, [(tmp_path / "t.json", req)])
+    assert "three.txt" in red[2] and "shared.txt" not in red[2], red[2]
+
+
+def test_an_enqueue_that_does_not_stack_is_red_before_its_guards_and_pre_step(repo, tmp_path, env):
+    """GOH.BATCHCONFLICTFIRST (a): the stacking check needs no test, so it runs first: neither
+    the enqueue's guards nor its pre-step start for a tip that conflicts with main."""
+    wt = lane(repo, tmp_path, "late", {"shared.txt": "from late\n"})
+    write(repo, "shared.txt", "landed meanwhile\n")
+    git(repo, "add", "-A")
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--no-verify", "-m",
+        "T.EARLIER landed")  # fmt: skip
+    env = {**env, "GOH_LAND_PRE": "true", "GOH_LAND_CHECK_STEPS": "true"}
+    done = landq(env, "--enqueue", "--foreground", "--land", str(wt), "--item", "T.LATE",
+                 "--no-start")  # fmt: skip
+    out = done.stdout + done.stderr
+    assert done.returncode == 1 and "conflicts with main" in out, out
+    assert "check: true" not in out and "pre-step before queueing" not in out, out
+    assert recorded(env)["T.LATE"]["why"].startswith("conflict: did not stack on"), out
+    assert not list((Path(env["GOH_LANDQ_DIR"]) / "pending").glob("*.json"))
