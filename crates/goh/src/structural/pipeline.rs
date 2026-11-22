@@ -81,6 +81,9 @@ const SHELL: &[(Names, Step)] = &[
     (&["no BSD-only mktemp -t"], |c| {
         crate::mktempport::step(c.repo, c.files, c.cfg, c.staged)
     }),
+    (&["no locale variable set by bash itself"], |c| {
+        crate::localeprefix::step(c.repo, c.files, c.cfg, c.staged)
+    }),
     (&["no bare open of an app"], |c| {
         crate::bareopen::step(c.repo, c.files, c.cfg, c.staged)
     }),

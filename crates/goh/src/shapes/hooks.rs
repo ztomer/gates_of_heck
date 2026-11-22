@@ -59,6 +59,15 @@ pub fn goh_pins(rel: &str, text: &str) -> Result<Vec<usize>, String> {
     Ok(crate::gohpin::scan::judged_lines(rel, text))
 }
 
+/// `goh locale-prefix`: its findings in a bash source.
+///
+/// # Errors
+///
+/// None; the signature is the table's.
+pub fn locale_prefix(rel: &str, text: &str) -> Result<Vec<usize>, String> {
+    Ok(crate::localeprefix::judged_lines(rel, text))
+}
+
 /// `goh dead-port`: its findings in a test source.
 ///
 /// # Errors

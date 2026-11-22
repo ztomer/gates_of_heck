@@ -158,6 +158,9 @@ fn run_line_scans(command: Commands) -> Result<i32, Box<Commands>> {
         Commands::BareHookIndex(a) => paths(a.exclude, |x| hookindex::run_command(a.staged, x)),
         Commands::ReleaseQuiet(a) => paths(a.exclude, |x| relquiet::run_command(a.staged, x)),
         Commands::MktempPortable(a) => paths(a.exclude, |x| mktempport::run_command(a.staged, x)),
+        Commands::LocalePrefix(a) => {
+            paths(a.exclude, |x| crate::localeprefix::run_command(a.staged, x))
+        }
         Commands::PluralHedge(a) => paths(a.scope.exclude, |x| {
             pluralhedge::run_command(a.scope.staged, x, a.all)
         }),

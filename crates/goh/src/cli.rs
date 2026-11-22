@@ -271,6 +271,8 @@ pub enum Commands {
     ReleaseQuiet(ExcludeStagedArgs),
     /// Fail on `mktemp -t NAME` with no X in NAME (BSD-only; GNU refuses it).
     MktempPortable(ExcludeStagedArgs),
+    /// Fail on bash setting a locale variable itself (`LC_ALL=C cmd`; write `env LC_ALL=C cmd`).
+    LocalePrefix(ExcludeStagedArgs),
     /// Fail on a git stopped at a deadline holding index.lock, or a work-tree reader taking it.
     GitDeadline(ExcludeStagedArgs),
     /// Fail on a test whose dead endpoint is a literal localhost port in the ephemeral range.

@@ -25,6 +25,7 @@ CONSUMERS: dict[str, tuple[str, ...]] = {
     "crates/goh/src/hookindex/mod.rs": ("bare hook index",),
     "crates/goh/src/relquiet.rs": ("release quiet",),
     "crates/goh/src/mktempport.rs": ("BSD-only mktemp",),
+    "crates/goh/src/localeprefix.rs": ("locale variable",),
     "crates/goh/src/bareopen.rs": ("bare open",),
     "crates/goh/src/runpaths.rs": ("run paths",),
     "crates/goh/src/pluralhedge/mod.rs": ("hedged plural",),

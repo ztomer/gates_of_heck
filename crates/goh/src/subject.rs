@@ -120,6 +120,12 @@ pub const MKTEMP_PORTABLE: Subject = Subject {
     units: "shell sources",
     scanner: "no BSD-only mktemp -t",
 };
+pub const LOCALE_PREFIX: Subject = Subject {
+    key: "GOH_LOCALE_PREFIX_MIN_FILES",
+    unit: "bash source",
+    units: "bash sources",
+    scanner: "no locale variable set by bash itself",
+};
 pub const GIT_DEADLINE: Subject = Subject {
     key: "GOH_GIT_DEADLINE_MIN_FILES",
     unit: "shell or Python source",
@@ -230,7 +236,7 @@ pub const BUSY_LOOP: Subject = Subject {
 };
 
 /// Every scanner with a subject, spelled once: the keys `.gatesrc` may hold a floor in.
-pub const ALL: [&Subject; 28] = [
+pub const ALL: [&Subject; 29] = [
     &EMOJI,
     &CONFLICT_MARKERS,
     &FILE_LENGTH,
@@ -241,6 +247,7 @@ pub const ALL: [&Subject; 28] = [
     &BARE_HOOK_INDEX,
     &RELEASE_QUIET,
     &MKTEMP_PORTABLE,
+    &LOCALE_PREFIX,
     &BARE_OPEN,
     &RUN_PATHS,
     &GIT_DEADLINE,

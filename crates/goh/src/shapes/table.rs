@@ -379,6 +379,10 @@ pub const ROWS: &[Row] = &[
         state: State::Declared(crate::runpaths::SHAPES),
     },
     Row {
+        scanner: "no locale variable set by bash itself",
+        state: State::Declared(crate::localeprefix::SHAPES),
+    },
+    Row {
         scanner: "no test endpoint on a literal ephemeral port",
         state: State::Declared(crate::deadport::SHAPES),
     },

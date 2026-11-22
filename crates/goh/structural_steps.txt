@@ -18,6 +18,7 @@ no doc keeps the installed version by hand
 no bare read of the hook's index
 no release step hides its output
 no BSD-only mktemp -t
+no locale variable set by bash itself
 no bare open of an app
 no hedged plural in a string
 no hand-rolled TUI mark

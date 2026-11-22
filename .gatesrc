@@ -74,6 +74,7 @@ GOH_BARE_HOOK_INDEX_MIN_FILES=65        # [75] shell sources
 GOH_BARE_PYTHON_MIN_FILES=5             # [6] hook/gate scripts
 GOH_RELEASE_QUIET_MIN_FILES=2           # [2] release-named shell scripts (2026-11-08)
 GOH_MKTEMP_PORTABLE_MIN_FILES=78        # [87] shell sources (2026-11-08)
+GOH_LOCALE_PREFIX_MIN_FILES=119         # [133] bash sources: the shell sources less zsh (2026-11-22)
 GOH_BARE_OPEN_MIN_FILES=78              # the same shell sources as mktemp-portable (2026-11-13)
 GOH_RUN_PATHS_MIN_FILES=410             # [461] shell, Python and Rust sources (2026-11-15)
 GOH_GIT_DEADLINE_MIN_FILES=240          # [~274] non-test shell and Python sources (2026-11-14)

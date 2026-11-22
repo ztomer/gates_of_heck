@@ -47,7 +47,7 @@ if command -v shasum >/dev/null 2>&1; then sha='shasum -a 256'; else sha=sha256s
 cas() (
     cd "$OUT_DIR" 2>/dev/null || exit 1
     # one `<sha>  <path>` line per file, then the hash of those lines
-    h=$(find . -type f -print0 | LC_ALL=C sort -z | xargs -0 $sha | $sha | cut -c1-32)
+    h=$(find . -type f -print0 | env LC_ALL=C sort -z | xargs -0 $sha | $sha | cut -c1-32)
     case $h in *[!0-9a-f]* | '') exit 1 ;; esac
     dst=$store/$h
     if [ ! -d "$dst" ]; then

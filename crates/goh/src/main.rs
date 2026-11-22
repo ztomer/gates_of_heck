@@ -63,6 +63,7 @@ pub mod launchapp;
 pub mod layerparity;
 pub mod length;
 pub mod lints;
+pub mod localeprefix;
 pub mod lockver;
 pub mod markers;
 pub mod mdlinks;
