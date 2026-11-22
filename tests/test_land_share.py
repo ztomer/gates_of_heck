@@ -221,7 +221,7 @@ def test_the_land_pre_step_and_pre_land_declare_the_land_paths_pre_class() -> No
     assert pre and all("GOH_GATE_CLASS=pre " in line for line in pre), pre
     import gate_lanes
 
-    assert gate_lanes.lane_of("pre") == ("short", 0)  # the short lane, at the commit gate's rank
+    assert gate_lanes.lane_of("pre") == ("pre", 0)  # a lane of its own, two at most (GOH.PREWIDTH)
     assert {"pre", "land", "ship"} == land_share.LAND_PATH
 
 

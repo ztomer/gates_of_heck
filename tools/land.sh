@@ -64,18 +64,18 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # the wait for the lock is its own field, not gate time). A land that never took the lock (a
 # refusal before it, a failed pre-step) measured no gate and writes no row. The ledger never fails
 # a land: the script's exit status is what it was.
-verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall="" pre_run="" pre_workers="" pre_reused="" suite_reused="" pre_why="" suite_why="" shadow_f="" shadow_ran="" shadow_red_out="" shadow_red=""
+verdicts="" pre_start="" land_timings="" lock_wait=0 pre_wall="" pre_run="" pre_workers="" pre_cpu_s="" pre_reused="" suite_reused="" pre_why="" suite_why="" shadow_f="" shadow_ran="" shadow_red_out="" shadow_red=""
 # shellcheck disable=SC2329  # invoked by the EXIT trap below
 land_exit() {
     local rc=$?
     ! declare -F land_shadow >/dev/null || land_shadow || true   # before .why goes, red gates too (GOH.CARRYSHADOW)
-    rm -f "$verdicts" "$pre_start"
+    rm -f "$verdicts" "$pre_start" "$pre_start.cpu"
     [ -z "$verdicts" ] || rm -f "$verdicts.base" "$verdicts.reused" "$verdicts.why" "$verdicts.sources"
     [ -z "${GOH_LAND_PRE_ONLY:-}${GOH_LAND_STACK_ONTO:-}" ] || return "$rc"   # the enqueue's pre-step run, a stacking rebase: no land, no ledger row
     goh_span_record land "$(goh_repo_id "${main:-.}")" "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" \
         ${land_timings:+--timings "${GOH_TIMINGS:-$land_timings}"} --field "wait_lock_s=$lock_wait" \
         --field "exit=$rc" ${pre_wall:+--field "pre_s=$pre_wall"} \
-        ${pre_run:+--field "pre_run_s=$pre_run" --field "pre_workers=$pre_workers"} \
+        ${pre_run:+--field "pre_run_s=$pre_run" --field "pre_workers=$pre_workers" --field "pre_cpu_s=${pre_cpu_s:-0}"} \
         ${pre_reused:+--field "pre_reused=$pre_reused"} ${suite_reused:+--field "suite_reused=$suite_reused"} \
         ${pre_why:+--field "pre_why=$pre_why"} ${suite_why:+--field "suite_why=$suite_why"} \
         ${shadow_f:+--field "shadow_f=$shadow_f" --field "shadow_ran=$shadow_ran" --field "shadow_red_out=$shadow_red_out"} ${shadow_red:+--field "shadow_red=$shadow_red"} \
@@ -215,6 +215,7 @@ land_pre() {
     # 632 s first (2026-11-16). The wait is printed apart from the run: the step stamps its start.
     [ -n "$pre_start" ] || pre_start="$(mktemp "$(goh_tmp)/goh-land-prestart.XXXXXX")" || exit 2
     : >"$pre_start"
+    rm -f "$pre_start.cpu"   # the pytest tree's CPU (GOH.PREWIDTH, lib/pre_cpu.py): this run's alone
     # THE DEADLINE FOLLOWS THE SHARE (GOH.PRESTEPSHARE, lib/pre_deadline.py): taken after the
     # admission, from the share it gave and the worker-seconds the ledger measured; GOH_LAND_PRE_MAX
     # is its floor (a wide share), GOH_LAND_PRE_CEIL its ceiling, load.py's --max the backstop.
@@ -225,7 +226,7 @@ land_pre() {
     # The slot wait's own bound: load.py's default (15 min) unless a seam names one (GOH.PREWAITVERDICT).
     local waitmax=()
     [ -z "${GOH_LAND_PRE_WAIT:-}" ] || waitmax=(--wait-max "$GOH_LAND_PRE_WAIT")
-    (cd "$here" && { [ -z "$ship_timings" ] || export GOH_TIMINGS_PARENT="land: pre-step"; } && GOH_LAND_VERDICTS_RECORD="$record" GOH_GATE_CLASS=pre "$GOH_PY" "$GOH/tools/load.py" \
+    (cd "$here" && { [ -z "$ship_timings" ] || export GOH_TIMINGS_PARENT="land: pre-step"; } && GOH_LAND_VERDICTS_RECORD="$record" GOH_LAND_PRE_CPU="$pre_start.cpu" GOH_GATE_CLASS=pre "$GOH_PY" "$GOH/tools/load.py" \
         ${waitmax[@]+"${waitmax[@]}"} --background-ok "pre-land" --max "$((pre_back + 60))" 0 -- \
         "$GOH_PY" "$GOH/lib/pre_deadline.py" run --mark "$pre_start" --floor "$pre_max" --ceiling "$pre_ceil" \
         -- bash -c "$cmd" pre-land "$pre_base" </dev/null 7>&- 8<&-) || pre_rc=$?
@@ -251,6 +252,7 @@ land_pre() {
     if [ "$pre_rc" -ne 124 ] && [[ "$pre_workers" =~ ^[0-9]+$ ]]; then
         pre_run=$((pre_t1 - pre_s))
     fi
+    land_pre_took "$((pre_s - pre_t0))" "$((pre_t1 - pre_s))"
     # A pre-step that reached its deadline (load.py's EXIT_DEADLINE, 124) found nothing: it exists
     # to fail FAST, and the gate runs the whole suite anyway -- no verdict, never red
     # (GOH.PRESTEPDEADLINE: GOH.REUSEAUDIT's land, killed at 82% of a green-so-far run).
@@ -274,6 +276,22 @@ land_pre() {
         ok "pre-land green $pre_took"
         [ -n "${1:-}" ] || pre_judged="$tip"
     fi
+}
+# land_pre_took WAIT RUN -- THE FIGURES IN EVERY OUTCOME (GOH.PREWIDTH): the land record's `pre_run`
+# was read back from the green line alone (lib/land_spd.py PRE_TOOK), so a pre-step with no verdict
+# left it null. The enqueue names a file (GOH_LAND_PRE_TOOK, lib/land_prestep.py); cpu_s is the
+# pytest tree's (lib/pre_cpu.py), 0 when no test ran; workers 0 when the step never started.
+land_pre_took() {
+    local w="${pre_workers:-0}" l="${pre_limit:-0}" verdict=green
+    pre_cpu_s=0
+    [ ! -s "$pre_start.cpu" ] || IFS= read -r pre_cpu_s <"$pre_start.cpu" || true
+    [[ "$pre_cpu_s" =~ ^[0-9]+(\.[0-9]+)?$ ]] || pre_cpu_s=0
+    [[ "$w" =~ ^[0-9]+$ ]] || w=0
+    [[ "$l" =~ ^[0-9]+$ ]] || l=0
+    [ "$pre_rc" -eq 0 ] || verdict=red
+    [ "$pre_rc" -ne 124 ] || verdict=none
+    [ -z "${GOH_LAND_PRE_TOOK:-}" ] || printf '{"wait_s": %d, "run_s": %d, "limit_s": %d, "workers": %d, "cpu_s": %s, "verdict": "%s"}\n' \
+        "$1" "$2" "$l" "$w" "$pre_cpu_s" "$verdict" >"$GOH_LAND_PRE_TOOK" || true
 }
 # THE TIP MAIN WILL HOLD (GOH.PREPARITY class 3): a branch behind main is rebased BEFORE its pre-step,
 # outside the lock (the rebase moves the branch, never main), and again under it. The pre-step judged the tip as the lane

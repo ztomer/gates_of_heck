@@ -26,9 +26,11 @@ import lock_order
 #   short  the commit gate (gates/commit_gate.sh marks its gate.sh), a narrowed suite: the SHORT
 #          lane, N slots of its own that no long gate takes, so it waits only behind other shorts
 #   pre    a land's pre-step and the lander's pre-land (tools/land.sh `land_pre`, GOH.LANDSHARE):
-#          the short lane at the commit gate's rank (arrival order among them, as before), named
-#          apart because it is the LAND PATH -- with `land` and `ship` it takes most of the cores
-#          and runs at default QoS while lane/work gates run clamped (lib/land_share.py)
+#          the PRE lane, PRE_SLOTS of its own (GOH.PREWIDTH), arrival order among them; it is the
+#          LAND PATH -- with `land` and `ship` it takes most of the cores and runs at default QoS
+#          while lane/work gates run clamped (lib/land_share.py). In the short lane a third
+#          pre-step started at 4 of 16 workers and ran to its 1500 s deadline with no verdict
+#          (2026-11-21), and two of them held every commit gate out: a third now waits in line
 #   land   a land's gate (lib/land_gate.sh): the long lane, ranked first
 #   ship   `goh ship`'s full suite (lib/ship_full_run.py) and its push (tools/ship.py)
 #   lane   a gate run in a loop lane's worktree (GOH.LANECLASS): derived, not asked of each lane --
@@ -40,10 +42,11 @@ import lock_order
 # Within a rank a freed slot goes to the longest waiter; a waiter older than the STARVATION BOUND
 # (`GOH_GATE_SLOT_STARVE_MIN`, minutes) outranks every class, oldest first, so a lower class waits
 # behind higher ones for at most that long.
-LANES = {"long": "slot", "short": "short"}
+LANES = {"long": "slot", "short": "short", "pre": "pre"}
+PRE_SLOTS = 2  # at most two pre-steps at once (GOH.PREWIDTH): each at 8 of 16 workers, not 4
 CLASSES = {
     "short": ("short", 0),
-    "pre": ("short", 0),  # after `short`: class_of(short, 0) stays `short`
+    "pre": ("pre", 0),
     "land": ("long", 0),
     "ship": ("long", 1),
     "lane": ("long", 2),
@@ -86,6 +89,12 @@ def lane_of(gate_class: str) -> tuple[str, int]:
     if gate_class not in CLASSES:
         raise ValueError(f"GOH_GATE_CLASS must be one of {', '.join(CLASSES)} (got {gate_class!r})")
     return CLASSES[gate_class]
+
+
+def lane_slots(lane: str, slots: int) -> int:
+    """The slots of LANE when the long and short lanes have SLOTS each: the pre lane holds
+    PRE_SLOTS, never more than the others (a 1-slot box admits one pre-step)."""
+    return max(1, min(PRE_SLOTS, slots)) if lane == "pre" else slots
 
 
 def class_of(lane: str, rank: int) -> str:

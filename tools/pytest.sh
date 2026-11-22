@@ -44,6 +44,8 @@ if [ "$#" -eq 0 ] && [ -s "${GOH_LAND_VERDICTS_REUSE:-}" ] && [ -s "$GOH_LAND_VE
         # Every decision, either way, for the land's record (GOH.SUITEONCEMISS: tools/land.sh `.why`).
         printf 'reused: %s\n' "${suite_why%%$'\n'*}" >>"$GOH_LAND_VERDICTS_REUSE.why" || true
         ok "suite: the pre-step's verdict ${suite_why#*$'\n'} holds for this tree -- not run again: ${suite_why%%$'\n'*}"
+        # The gate around it runs no suite: counted at its real width, not an equal share (GOH.PREWIDTH).
+        "$GOH_PY" "$GOH/lib/land_share.py" suiteless </dev/null || true
         exit 0
     fi
     printf 'missed: %s\n' "${suite_why%%$'\n'*}" >>"$GOH_LAND_VERDICTS_REUSE.why" || true

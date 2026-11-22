@@ -421,6 +421,7 @@ def main(argv: list[str] | None = None) -> int:
                 prestep(req)
             else:
                 warn(f"--no-pre: the enqueue's pre-step skipped: {args.no_pre}")
+                req["pre_run"] = land_prestep.skipped(args.no_pre)  # always figures (GOH.PREWIDTH)
         elif len(args.enqueue) != 2:
             raise Refused("--enqueue takes REPO SHA (or --land WORKTREE)")
         else:

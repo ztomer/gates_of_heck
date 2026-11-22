@@ -57,9 +57,10 @@ def admit(
     if not owner_alive():
         return None
     left = None if max_wait is None else max(0.0, max_wait - mem_waited)
-    got = gate_slot.acquire(
-        directory, slots, poll, owner, watch, max_wait=left, lane=lane, rank=rank
-    )
+    got = gate_slot.acquire(  # the pre lane holds at most two (GOH.PREWIDTH, gate_lanes.py)
+        directory, gate_lanes.lane_slots(lane, slots), poll, owner, watch, max_wait=left,
+        lane=lane, rank=rank,
+    )  # fmt: skip
     if got is None:
         return None
     idx, fd, waited = got
@@ -128,7 +129,7 @@ def admit_here(repo: str, max_wait: float | None = None) -> Admitted:
             "expired",
             "; ".join(
                 gate_slot.describe(gate_slot.slot_path(directory, i, lane), now)
-                for i in range(slots)
+                for i in range(gate_lanes.lane_slots(lane, slots))
             ),
         )
     idx, fd, waited, path = taken

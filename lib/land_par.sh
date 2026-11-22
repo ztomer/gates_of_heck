@@ -31,7 +31,7 @@ land_par() {
     exec 9<>"$dir/done"
     if [ -n "$pre" ]; then
         ( set +e
-          ( trap 'printf "%s\n" "$pre_wall" "$pre_run" "$pre_workers" "$pre_reused" "$pre_why" >"$dir/pre.vars"' EXIT
+          ( trap 'printf "%s\n" "$pre_wall" "$pre_run" "$pre_workers" "$pre_reused" "$pre_why" "$pre_cpu_s" >"$dir/pre.vars"' EXIT
             set -e; pre_record="$dir/pre.record"
             land_pre_again "the enqueue" ) 9>&-
           echo "pre-land $?" >&9 ) 7>&- 8<&- </dev/null &
@@ -71,6 +71,6 @@ land_par_end() {
     exec 9>&-
     # Read, never sourced: one value a line, as the pre-land branch above wrote them.
     [ ! -s "$1/pre.vars" ] || { IFS= read -r pre_wall; IFS= read -r pre_run; IFS= read -r pre_workers
-                                IFS= read -r pre_reused; IFS= read -r pre_why; } <"$1/pre.vars" || true
+                                IFS= read -r pre_reused; IFS= read -r pre_why; IFS= read -r pre_cpu_s; } <"$1/pre.vars" || true
     rm -rf "$1"
 }

@@ -29,6 +29,15 @@ does not apply to a running pid). On Linux it is nice + ionice's lowest best-eff
 cgroup weight needs a delegated cgroup the gate does not own: not used). An OS outside the house
 targets is a hard refusal behind the `GOH_QOS_OS` seam; a missing tool degrades with its reason.
 `GOH_LANE_QOS=off` turns the clamp off (a timing probe that must run at default QoS).
+
+A GATE THAT RUNS NO SUITE (GOH.PREWIDTH). A land's gate whose suite carries the pre-step's verdict
+(tools/pytest.sh) runs only its structural, cargo and canary steps, yet it held an equal share: two
+pre-steps beside it got 16 // 3 = 5 workers each. It now says so (`declare`, a word beside its slot,
+`<slots>/widths/<slot>`, honoured only while the same owner holds the slot) and every share counts
+it at its REAL width -- the busy cores of the suite-carried land rows in the timing ledger, median
+cpu_s / wall_s (`real_width`; 2.4-4.3 measured 2026-11-21, SUITELESS_SEED before any) -- taken
+off the cores before the rest are split. THE BOUND holds with it: the shares plus the real widths
+sum to at most the cores.
 """
 
 from __future__ import annotations
@@ -60,6 +69,9 @@ CLASS_ENV = "GOH_SHARE_CLASS"  # the class this run's share is counted as (set a
 QOS_ENV = "GOH_LANE_QOS"  # `off` turns the clamp off; anything else (or unset) leaves it on
 OS_ENV = "GOH_QOS_OS"  # the seam: darwin | linux (tests pin both on any box)
 DEFAULT_CLASS = "work"
+WIDTHS = "widths"  # <slots>/widths/<slot name>: `<owner pid>\t<real width>` of a gate with no suite
+SUITELESS_SEED = 3  # the cores a suite-carried land gate kept busy, before the ledger has a row
+WIDTH_WINDOW = 20  # the newest suite-carried land rows the real width is measured over
 
 
 def fraction(
@@ -83,8 +95,12 @@ def fraction(
     return got
 
 
-def weighted(total: int, classes: list[str], mine: str, frac: float = SHARE_DEFAULT) -> int:
-    """`mine`'s workers among the admitted gates of `classes` (mine among them) on `total` cores."""
+def weighted(
+    total: int, classes: list[str], mine: str, frac: float = SHARE_DEFAULT, fixed: int = 0
+) -> int:
+    """`mine`'s workers among the admitted gates of `classes` (mine among them) on `total` cores,
+    less `fixed`: the real widths of the gates that run no suite (GOH.PREWIDTH)."""
+    total = max(len(classes), total - max(0, fixed), 1)
     gates = max(1, len(classes))
     land = sum(1 for c in classes if c in LAND_PATH)
     if mine in LAND_PATH:
@@ -110,9 +126,74 @@ def runner_vars(gate_class: str, environ: dict[str, str]) -> dict[str, str]:
 
 def held_classes(directory: str) -> list[str]:
     """The class of every gate holding a slot in `directory` now (its record's fifth field)."""
+    return [klass for klass, _ in held_entries(directory)]
+
+
+def held_entries(directory: str) -> list[tuple[str, int | None]]:
+    """(class, real width or None) of every gate holding a slot in `directory` now: a width only
+    for a gate that declared it runs no suite (`declare`)."""
     import gate_slot
 
-    return [record_class(p) for p in gate_slot.slot_files(directory) if gate_slot.held(p)]
+    return [(record_class(p), declared_width(p)) for p in gate_slot.slot_files(directory)
+            if gate_slot.held(p)]  # fmt: skip
+
+
+def _owner(path: str) -> str:
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read().split("\t", 1)[0].strip()
+    except OSError:
+        return ""
+
+
+def declared_width(slot: str) -> int | None:
+    """The real width the holder of SLOT declared, or None: no word, or one a previous holder left
+    (its owner pid is not the record's)."""
+    try:
+        with open(os.path.join(os.path.dirname(slot), WIDTHS, os.path.basename(slot)),
+                  encoding="utf-8") as f:  # fmt: skip
+            owner, width = f.read().split()
+    except (OSError, ValueError):
+        return None
+    if not width.isdigit() or owner != _owner(slot):
+        return None
+    return int(width)
+
+
+def declare(width: int, environ: dict[str, str] | None = None) -> bool:
+    """Say the gate holding GOH_GATE_SLOT (`<slot file> <owner pid>`) runs no suite and keeps WIDTH
+    cores busy; False, writing nothing, outside a held slot."""
+    env = os.environ if environ is None else environ
+    claim = env.get("GOH_GATE_SLOT", "").rsplit(" ", 1)
+    if len(claim) != 2 or not claim[1].isdigit() or _owner(claim[0]) != claim[1]:
+        return False
+    where = os.path.join(os.path.dirname(claim[0]), WIDTHS)
+    try:
+        os.makedirs(where, exist_ok=True)
+        tmp = os.path.join(where, f".{os.path.basename(claim[0])}.{os.getpid()}")
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(f"{claim[1]}\t{max(0, int(width))}\n")
+        os.replace(tmp, os.path.join(where, os.path.basename(claim[0])))
+    except OSError:
+        return False
+    return True
+
+
+def real_width(rows: list[dict]) -> int:
+    """The cores a suite-carried land gate keeps busy: the median cpu_s / wall_s of the newest
+    WIDTH_WINDOW land rows that carried their suite, rounded, at least 1; SUITELESS_SEED with
+    none."""
+    rates = sorted([
+        r["cpu_s"] / r["wall_s"] for r in rows
+        if r.get("kind") == "land" and r.get("suite_reused")
+        and isinstance(r.get("cpu_s"), (int, float)) and isinstance(r.get("wall_s"), (int, float))
+        and r["wall_s"] > 0
+    ][-WIDTH_WINDOW:])  # fmt: skip
+    if not rates:
+        return SUITELESS_SEED
+    mid = len(rates) // 2
+    median = rates[mid] if len(rates) % 2 else (rates[mid - 1] + rates[mid]) / 2
+    return max(1, round(median))
 
 
 def share_of(
@@ -121,8 +202,10 @@ def share_of(
     """`mine`'s workers on `total` cores among the held slots' classes plus `extra` (1: this run
     holds no slot and is one more of class `mine`). `mine` unnamed: GOH_SHARE_CLASS, else work."""
     mine = mine or environ.get(CLASS_ENV, "").strip() or DEFAULT_CLASS
-    classes = held_classes(directory) + [mine] * extra
-    return weighted(total, classes, mine, fraction(environ))
+    entries = held_entries(directory)
+    classes = [klass for klass, width in entries if width is None] + [mine] * extra
+    fixed = sum(width for _, width in entries if width is not None)
+    return weighted(total, classes, mine, fraction(environ), fixed)
 
 
 def gatesrc(key: str) -> str:
@@ -214,7 +297,16 @@ def main(argv: list[str]) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     q = sub.add_parser("qos", help="the clamp a gate of CLASS execs under")
     q.add_argument("--class", dest="gate_class", required=True)
+    sub.add_parser("suiteless", help="this gate runs no suite: count it at its real width")
     args = ap.parse_args(argv)
+    if args.cmd == "suiteless":  # tools/pytest.sh, its suite carried (GOH.PREWIDTH)
+        import timing_ledger
+
+        width = real_width(timing_ledger.read())
+        if declare(width):
+            print(f"share: this gate runs no suite -- counted at its real width, {width} cores "
+                  "(GOH.PREWIDTH, the suite-carried land rows' median)")  # fmt: skip
+        return 0  # an instrument: never the reason a gate fails
     try:
         argv_prefix, why = qos_prefix(args.gate_class)
     except SystemExit as refusal:

@@ -93,6 +93,7 @@ from gate_lanes import (
     Ticket,
     default_class,
     lane_of,
+    lane_slots,
 )  # who goes next
 
 if __name__ == "__main__":
@@ -282,7 +283,7 @@ def acquire(
             if waited >= next_report:
                 now = time.time()
                 queue = f"; {len(ahead)} waiting ahead of this one" if ahead else ""
-                which = "short-lane gate slots" if lane == "short" else "gate slots"
+                which = f"{lane}-lane gate slots" if lane != "long" else "gate slots"
                 if next_report == 0.0:
                     header = (
                         f"all {slots} {which} are held -- waiting for one "
@@ -413,7 +414,8 @@ def hold(args: argparse.Namespace) -> int:
             # it -- a holder that just exited would read as a crash, not as a wait that ran out.
             now = time.time()
             lane, _ = lane_of(args.gate_class)
-            held = "; ".join(describe(slot_path(args.dir, i, lane), now) for i in range(slots))
+            n = lane_slots(lane, slots)
+            held = "; ".join(describe(slot_path(args.dir, i, lane), now) for i in range(n))
             os.write(shake, f"expired {' '.join(held.split())}\n".encode())
             os.close(shake)
         return 3

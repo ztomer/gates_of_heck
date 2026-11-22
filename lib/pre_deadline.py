@@ -31,7 +31,9 @@ THE SHARE is read AFTER admission: this wrapper runs inside tools/load.py's slot
 GOH_GATE_WORKERS is the admission's own count, so the deadline is never a guess made before a wait.
 The command runs in a process group of its own, killed whole at the deadline (lib/load_tree.py),
 and the exit is 124, load.py's EXIT_DEADLINE, which land.sh reads as no verdict. The mark file gets
-`<start epoch> <workers> <deadline s>` as the command starts. Pinned by tests/test_pre_deadline.py.
+`<start epoch> <workers> <deadline s>` as the command starts; at the deadline the live pytest
+runs' CPU joins GOH_LAND_PRE_CPU's file before the kill (lib/pre_cpu.py, GOH.PREWIDTH). Pinned by
+tests/test_pre_deadline.py.
 """
 
 from __future__ import annotations
@@ -56,6 +58,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import pre_cpu
 import timing_ledger
 import worker_share
 from load_tree import kill_tree
@@ -111,6 +114,8 @@ def _run(command: list[str], limit: int, mark: Path, workers: int) -> int:
     try:
         status = child.wait(timeout=limit)
     except subprocess.TimeoutExpired:
+        # What the killed pytest run cost, read while it lives (GOH.PREWIDTH, lib/pre_cpu.py).
+        pre_cpu.at_deadline(child.pid, os.environ.get(pre_cpu.ENV))
         kill_tree(child)
         print(
             f"pre-land: the deadline of {limit} s at a {workers}-worker share expired "

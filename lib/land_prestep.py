@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections.abc import Iterator
@@ -28,6 +29,7 @@ land_slot = importlib.import_module("land_slot")
 land_spd = importlib.import_module("land_spd")
 landq_inflight = importlib.import_module("landq_inflight")
 state_bounds = importlib.import_module("state_bounds")
+tmp_root = importlib.import_module("tmp_root")
 _tui = importlib.import_module("tui.lib")
 info, warn = _tui.info, _tui.warn
 
@@ -56,6 +58,28 @@ def no_verdict(lines: list[str]) -> dict | None:
             return {"state": "none", "kind": "slot-wait" if "gate slot" in why else "deadline",
                     "why": why}  # fmt: skip
     return None
+
+
+def took_figures(figures: Path, lines: list[str]) -> dict:
+    """The pre-step's wait, run, limit, workers and cpu_s as tools/land.sh wrote them to FIGURES
+    in every outcome (GOH.PREWIDTH), the file removed; else the green line's (lib/land_spd.py
+    `pre_run`: a land.sh from before the file); {} when neither says."""
+    try:
+        got = json.loads(figures.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        got = None
+    figures.unlink(missing_ok=True)
+    if isinstance(got, dict):
+        return {k: v for k, v in got.items() if k in PRE_RUN_KEYS}
+    return land_spd.pre_run(lines) or {}
+
+
+PRE_RUN_KEYS = ("wait_s", "run_s", "limit_s", "workers", "cpu_s")
+
+
+def skipped(why: str) -> dict:
+    """`pre_run` of an enqueue whose pre-step was skipped (`--no-pre WHY`): it ran nothing."""
+    return {**dict.fromkeys(PRE_RUN_KEYS, 0), "skipped": why}
 
 
 def keep_path(q: Path, sha: str) -> Path:
@@ -202,8 +226,9 @@ def run_kept(req: dict, q: Path, script: Path, bindings: tuple[str, ...]) -> flo
     onto = ["GOH_LAND_PRE_ONTO=1"] if req.get("slot") else []
     took = run(Path(req["worktree"]), req["sha"], script, bindings, keep,
                [*land_slot.label(req), *onto], noted, did, ran)  # fmt: skip
-    if ran:  # the pre-step's wait, run, limit and workers: the SPD's figures (GOH.LANDPROFILEFIX)
-        req["pre_run"] = ran
+    # The pre-step's wait, run, limit, workers and cpu_s: the SPD's figures (GOH.LANDPROFILEFIX),
+    # always present (GOH.PREWIDTH) -- zeros, and why, when land.sh ran no pre-step at all.
+    req["pre_run"] = ran or skipped("land.sh ran no pre-step (the repo declares no GOH_LAND_PRE)")
     if noted:
         req["pre_verdict"] = noted
     if did:  # took the lane's kept verdict, or ran the set and why (GOH.LANEPRESTEP)
@@ -231,6 +256,10 @@ def run(
     TOOK (`waited W s, ran R s of D s at K workers`, lib/land_spd.py `pre_run`)."""
     kept = [f"GOH_LAND_PRE_KEEP={keep}"] if keep else []
     kept += label or []
+    fd, name = tempfile.mkstemp(prefix="goh-land-pretook.", dir=tmp_root.goh_tmp())
+    os.close(fd)
+    figures = Path(name)  # tools/land.sh land_pre_took writes it
+    kept.append(f"GOH_LAND_PRE_TOOK={figures}")
     argv = ["env", *(f"-u{k}" for k in bindings), "GOH_LAND_PRE_ONLY=1", *kept, "bash", "-c",
             'cd -- "$1" && exec bash "$2"', "land", str(wt), str(script)]  # fmt: skip
     timeout = int(os.environ.get("GOH_ENQUEUE_PRE_TIMEOUT") or TIMEOUT)
@@ -249,11 +278,12 @@ def run(
         code = proc.wait()
     finally:
         timer.cancel()
+        ran = took_figures(figures, lines)
     if code == 0:
         if did is not None:
             did.update(affected_verdict.outcome(lines) or {})
         if took is not None:
-            took.update(land_spd.pre_run(lines) or {})
+            took.update(ran)
         if none := no_verdict(lines):
             if noted is not None:
                 noted.update(none)
