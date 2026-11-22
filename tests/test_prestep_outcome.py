@@ -85,21 +85,41 @@ def test_load_keeps_a_commands_status_when_it_ends_in_the_exiting_window(tmp_pat
     assert "deadline of" not in r.stdout + r.stderr, r.stdout + r.stderr
 
 
-def _slot_wait_then(tmp_path: Path, seconds: float, load_args: list[str]):
-    """load.py (a gate of the pre lane) queued behind a held slot that is released after
-    `seconds`: a run that WAITED."""
-    holder = _holder(tmp_path, "short")
-    timer = threading.Timer(seconds, holder.release)
-    timer.start()
-    try:
-        return subprocess.run(
-            [sys.executable, str(LOAD), "--background-ok", "test", *load_args], capture_output=True,
-            text=True, env=_env(tmp_path, GOH_GATE_SLOTS="1", GOH_GATE_CLASS="pre"),
-            stdin=subprocess.DEVNULL, timeout=patience(60), check=False,
-        )  # fmt: skip
-    finally:
-        timer.cancel()
-        holder.release()
+def _slot_wait_then(
+    tmp_path: Path, seconds: float, load_args: list[str]
+) -> subprocess.CompletedProcess[str]:
+    """load.py (a gate of the pre lane) queued behind a held slot that is released `seconds` after
+    it SAYS it waits (a fixed timer raced the interpreter's start under load: waited 0 s): a run
+    that WAITED."""
+    holder = _holder(tmp_path, "pre")
+    lines: list[str] = []
+    timers: list[threading.Timer] = []
+    with subprocess.Popen(
+        [sys.executable, str(LOAD), "--background-ok", "test", *load_args], text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+        env=_env(tmp_path, GOH_GATE_SLOTS="1", GOH_GATE_CLASS="pre"),
+    ) as proc:  # fmt: skip
+
+        def pump() -> None:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                lines.append(line)
+                if "waiting for one" in line and not timers:
+                    timers.append(threading.Timer(seconds, holder.release))
+                    timers[0].start()
+
+        reader = threading.Thread(target=pump)
+        reader.start()
+        try:
+            proc.wait(timeout=patience(60))
+            reader.join(timeout=patience(10))
+        finally:
+            for timer in timers:
+                timer.cancel()
+            holder.release()
+            if proc.poll() is None:
+                proc.kill()
+    return subprocess.CompletedProcess(proc.args, proc.returncode, "".join(lines), "")
 
 
 @pytest.mark.load_sensitive
