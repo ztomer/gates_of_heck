@@ -130,3 +130,15 @@ def test_a_killed_sweeps_leftovers_are_reaped(tmp_path):
     finally:
         os.close(fd)
     assert not tomb.exists() and not part.exists() and whole.exists() and keep.exists()
+
+
+def test_a_re_pointed_sccache_counts_on_the_drive(tmp_path):
+    root, v, opener = _drive(tmp_path)
+    (root / "sccache").mkdir()
+    fd = opener(v)
+    try:
+        objs = cache_sweep.discover(_roots(tmp_path), str(root), fd, NOW)
+    finally:
+        os.close(fd)
+    ext = [o for o in objs if o.key == str(root / "sccache")]  # (tmp: one device for both tiers)
+    assert [(o.kind, o.tier, o.held) for o in ext] == [("sccache", "external", True)]

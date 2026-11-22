@@ -152,6 +152,14 @@ def discover(roots: Roots, root: str, root_fd: int | None, now: float) -> list[c
         on_ext = root_fd is not None and os.stat(roots.sccache).st_dev == os.fstat(root_fd).st_dev
         objs.append(ce.Obj(roots.sccache, "sccache", "external" if on_ext else "internal",
                            roots.size(roots.sccache), now, True))  # fmt: skip
+    ext_sccache = os.path.join(root, sccache_repoint.SUBDIR) if root_fd is not None else ""
+    if (
+        ext_sccache
+        and ext_sccache != roots.sccache
+        and _dev(ext_sccache) == os.fstat(root_fd).st_dev
+    ):
+        # the server re-pointed to the drive (lib/sccache_repoint.py): its bytes count there
+        objs.append(ce.Obj(ext_sccache, "sccache", "external", roots.size(ext_sccache), now, True))
     return objs + demoted_objs(root, root_fd, roots, now)
 
 

@@ -146,3 +146,11 @@ def test_a_near_empty_dir_is_never_copied_out():
     objs = [_o("empty", gib=0.0001, age_h=90), _o("big", age_h=1), _o("cold", age_h=80)]
     acts, _ = ce.plan(objs, 11 * GIB, 250 * GIB, 0.0, NOW)
     assert _verbs(acts) == [("demote", "cold")]
+
+
+def test_a_stale_copy_of_the_same_dir_never_turns_a_demotion_into_a_delete():
+    """The dir was rebuilt cold while an old copy sat on the drive: the demotion overwrites that
+    copy, so it frees its bytes; it must not be ranked as a second object that evicts the first."""
+    objs = [_o("k", age_h=48), _o("hot", age_h=1), _o("k", age_h=900, tier="external")]
+    acts, _ = ce.plan(objs, 10 * GIB, 10 * GIB, 0.0, NOW)
+    assert _verbs(acts) == [("demote", "k")] and acts[0].obj.tier == "internal"

@@ -116,6 +116,7 @@ def plan(objs: list[Obj], internal: int, external: int | None, clock: float,
     held_in = sum(o.bytes for o in objs if o.tier == "internal")
     held_ex = sum(o.bytes for o in objs if o.tier == "external")
     ext_objs = [o for o in objs if o.tier == "external"]
+    planned: dict[int, Obj] = {}  # id(a planned copy) -> the internal object it would copy
 
     def cost(o: Obj) -> float:
         can = external is not None and o.kind in MOVABLE and TRIVIAL <= o.bytes <= external
@@ -131,20 +132,22 @@ def plan(objs: list[Obj], internal: int, external: int | None, clock: float,
         clock = max(clock, h)
         held_in -= o.bytes
         if demote:
+            for old in [e for e in ext_objs if e.key == o.key and id(e) not in planned]:
+                ext_objs.remove(old)  # the copy overwrites an older one of the same dir
+                held_ex -= old.bytes
             held_ex += o.bytes
-            ext_objs.append(Obj(o.key, o.kind, "external", o.bytes, o.last_use, False, o.uses,
-                                o.l))  # fmt: skip
+            copy = Obj(o.key, o.kind, "external", o.bytes, o.last_use, False, o.uses, o.l)
+            ext_objs.append(copy)
+            planned[id(copy)] = o
     if external is not None and held_ex > external:
-        demoted = {a.obj.key: a.obj for a in acts if a.verb == "demote"}
         movable = [o for o in ext_objs if not o.held and o.kind != "sccache"]
         for o in sorted(movable, key=lambda c: priority(c, now)):
             if held_ex <= external:
                 break
             h = priority(o, now)
-            victim = o
-            if o.key in demoted:  # no room after all: delete it where it is, never copy it out
-                acts = [a for a in acts if a.obj.key != o.key]
-                victim = demoted[o.key]
+            victim = planned.get(id(o), o)
+            if victim is not o:  # no room after all: delete it where it is, never copy it out
+                acts = [a for a in acts if a.obj is not victim]
             acts.append(Action("delete", victim, h))
             clock = max(clock, h)
             held_ex -= o.bytes
