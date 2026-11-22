@@ -2,6 +2,54 @@
 
 ## Unreleased
 
+## v0.149.1 -- GOH-LANDQ (TABLESEARLY, REENQUEUEREBASE, BATCHCONFLICTFIRST part a, WAITSTALE2, PRESTEPLOG partial, MAINREDNOTICE) + GOH-BUILD (CACHEEVICT phase 2, PUSHINTREEBUILD, PROVENSCOPE)
+
+* An enqueue judges whether its tip stacks on main first, before its guards and pre-step (lib/land_check.py `at_enqueue`), and again before it files the request; a conflict is red in seconds, not after a pre-step (GOH.BATCHCONFLICTFIRST part a).
+
+* `goh cache-sweep plan|run` (`lib/cache_evict.py`, `lib/cache_sweep.py`, `lib/cache_move.py`,
+  GOH.CACHEEVICT): one value-aware evictor ranks the cargo build dirs, the llvm-cov entries and the
+  sccache bytes together (GDSF: the clock at last use plus decayed uses x rebuild seconds / bytes),
+  never touching an object a live build holds. With the removable tier present the internal disk
+  keeps a 60 GiB hot set and demotes the rest to the drive instead of deleting it; the rust gate
+  promotes a demoted build dir back before cargo reads it.
+
+* `goh sccache-repoint check|apply` (`lib/sccache_repoint.py`, GOH.CACHEEVICT): the sccache server
+  follows the removable drive. When its cache location differs from the resolver's root, it waits
+  for sccache to go idle (no new compile requests for 30 s, no rustc running), stops the server and
+  starts it on the new root from cwd `/`, never with SCCACHE_BASEDIRS or SCCACHE_CACHE_SIZE.
+
+* The cache evictor runs on its own schedule and owns the backstops (GOH.CACHEEVICT): the launchd job
+  `com.ztomer.goh-cache-sweep` (`tools/install_cache_sweep.sh install`) runs `goh cache-sweep run`
+  every 30 min; the coverage run promotes a demoted llvm-cov entry before its hit check; sccache's
+  cap is the evictor's `SCCACHE_GIB` (still 40 GiB), so sccache's own LRU is the backstop at the
+  evictor's number. Only cargo-shaped `<hex>/<hex>` build dirs are evictor objects.
+
+* `goh cache-root` (`lib/cache_tier.py`, GOH.CACHEEVICT): the removable cache tier is decided at use
+  time. `/Volumes/<name>/cache.noindex` counts only when the volume is a mount point, its
+  `.goh-cache-volume` marker names the volume's own UUID, it is writable and above its free floor;
+  otherwise the internal root, with a one-line reason. The mount path is never written into static
+  config and never created, so an unplugged drive cannot be squatted by a `mkdir -p`.
+
+* A red idle full suite on main is told to every enqueue: the idle record keeps `red` until a green run (lib/main_red.py `carry`), the enqueue says it before its pre-step when main still holds that tip, and the run's FAILED nodes the tree still defines join the pre-step's set (`GOH_LAND_PRE_MAIN_RED`, tools/affected_tests.py), so a lane sees main's red in minutes, not at its gate (GOH.MAINREDNOTICE).
+
+* A pre-step red's record keeps the cause, not just its why line: lib/land_prestep.py's Red carries each failing test's pytest section (its last 40 lines, at most 10 tests, lib/land_cause.py `excerpt`) and the FAILED/ERROR lines, which the backgrounded enqueue writes to the red record's log, so `goh land-reds` reads the E lines instead of classifying by name and source alone (GOH.PRESTEPLOG).
+
+* A gate step in any language can key on its declared inputs (GOH.PROVENSCOPE): `proven.sh --scope
+  P1,P2` or the step string's `[scope=P1+P2]` prefix (the spelling GOH_CI_STEPS carries, accepted by
+  `local_ci.sh`) keys the proven verdict on the git objects of those paths alone, so a commit that
+  leaves them unchanged reuses it. Before, only Rust steps could (`gates/_rust_proven.sh`).
+
+* The push gate names an in-tree cargo build dir (GOH.PUSHINTREEBUILD): the export is deleted after
+  every push, so a tracked `.cargo/config.toml` with `build-dir = ".build"` compiled every
+  dependency cold on every push, silently (a private server workspace: 187 s against 108 s warm). The gate now
+  warns, naming the dir; `_push_build_dirs.py --in-tree` judges the build dirs cargo reports.
+
+* The early conflict check (lib/landq_early.py) replays only the commits main does not hold already, as `git rebase` drops a commit whose patch is upstream (`rev-list --right-only --cherry-pick`): a re-enqueue whose partial landed was red `conflict: did not stack` after a 1411 s pre-step although its slot's rebase was clean (GOH.RUFFBUMPITEM aabaee7e: 10 of 15 commits had landed) (GOH.REENQUEUEREBASE).
+
+* `goh land --check` runs the consistency-table tests the change can affect before an enqueue: the enqueue pre-step's own choice for the diff, cut by lib/land_reds.py's table rule (`judges_a_table`, the rule `goh land-reds` counts by), at most 25 s each and 150 s in all over 5 runs; a refusal names the table files its assertions name (`land_reds.tables`). That class was 25 of 48 reds in the last 100 land records (GOH.TABLESEARLY).
+
+* `goh land --wait ITEM` never returns the item's previous record beside a re-enqueue: the enqueue marks itself in flight at its first step (lib/landq_background.py `worktree_only`), not when its pre-step starts after the slot, conflict check and guards, the window in which 8 lanes on 2026-11-22 got the last attempt's red; and a wait past `--timeout` before the request is filed says `pre-step running`, exit 3, not "filed nothing" (GOH.WAITSTALE2).
+
 ## v0.149.0 -- GOH-TINY group (14 small fixes: ruff bump item, stash escape, uv floor/venv drift, uv no-sync, split quote, brief pool fill, ship order error, install exit, kill-tree popen, load arg order, wait elapsed, name-kill backtick, lock order word), GOH.REDREVIEW (red land causes + goh land-reds), GOH.MISTAKEGUARDS (dirty-worktree rm and encrypted-unmount guards)
 
 * agent_guard refuses a `Pool:` line still carrying goh brief's `<fill in ...>` placeholder and says what to put there; the agent-fanout skill names `goh brief` as the way to write a spawn header (GOH.BRIEFPOOLFILL).
