@@ -88,3 +88,35 @@ def test_the_share_is_refused_off_the_pushed_commit(tmp_path):
         [*ask, "0" * 40], capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL
     ).stdout
     assert on == _cargo_build_dir(repo) and off == "", (on, off)
+
+
+INTREE = "builds inside the export at .build"
+
+
+def test_an_in_tree_build_dir_is_named_at_push(tmp_path, monkeypatch):
+    """GOH.PUSHINTREEBUILD: the export is deleted after every push, so a tracked
+    `.cargo/config.toml` with `build-dir = ".build"` compiled every dependency cold on every push,
+    silently (a private server workspace: 187 s against 108 s warm). The push gate names it."""
+    repo = _cargo_repo(tmp_path, own_build_dir=".build")
+    monkeypatch.delenv("GOH_GATE_CLASS", raising=False)
+    got = _push(repo, tmp_path, tmp_path / "exports")
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert INTREE in got.stdout + got.stderr, got.stdout + got.stderr
+
+
+def test_the_path_keyed_default_is_not_named(tmp_path, monkeypatch):
+    repo = _cargo_repo(tmp_path)
+    monkeypatch.delenv("GOH_GATE_CLASS", raising=False)
+    got = _push(repo, tmp_path, tmp_path / "exports")
+    assert got.returncode == 0 and "builds inside the export" not in got.stdout + got.stderr
+
+
+def test_in_tree_reads_real_paths(tmp_path):
+    tree = tmp_path / "t"
+    (tree / ".build").mkdir(parents=True)
+    out = subprocess.run(
+        ["python3", str(SHARE), "--in-tree", str(tree)],
+        input=f"{tree}/.build\n{tmp_path}/elsewhere\n{tree}/../t/x\n", capture_output=True,
+        text=True, check=True,
+    ).stdout.split()  # fmt: skip
+    assert out == [".build", "x"]

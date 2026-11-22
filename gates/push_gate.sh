@@ -344,6 +344,13 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
     # ...and the build dirs cargo keys on the export, asked while it exists (gates/_push_build_dirs.py).
     [ -n "$export_build_dir" ] || "$GOH_PY" -S "$GOH/gates/_push_build_dirs.py" "$worktree" 2>/dev/null |
         sed 's/^/build-dir /' >>"$run_dir.source" || true
+    # An IN-TREE build dir is deleted with the export after every push: every dependency compiles cold,
+    # silently (GOH.PUSHINTREEBUILD; 187 s against 108 s warm). Named, so it cannot recur.
+    [ -n "$export_build_dir" ] || sed -n 's/^build-dir //p' "$run_dir.source" 2>/dev/null |
+        "$GOH_PY" -S "$GOH/gates/_push_build_dirs.py" --in-tree "$worktree" 2>/dev/null |
+        while IFS= read -r in_tree_dir; do
+            warn "push: $(basename "$root") builds inside the export at $in_tree_dir, deleted after every push: every dependency compiles cold (a tracked .cargo/config.toml build-dir; drop it for the path-keyed default)"
+        done || true
     export_kept "$root" "$worktree" $GOH_EXPORT_KEEP   # the ignored files .gatesrc names (lib/push_runs.sh)
     mkdir -p "$log_root"
     log="$log_root/$(basename "$root")-$short-$(date +%Y%m%dT%H%M%S).log"

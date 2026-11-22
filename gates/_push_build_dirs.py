@@ -22,6 +22,7 @@ would read as fresh in the checkout; after the gate, `--touch-changed` gives eve
 differs from HEAD the current time (only ever newer), closing the window the clean check cannot.
 
 usage: _push_build_dirs.py <export tree>                prints one build dir per line
+       _push_build_dirs.py --in-tree <tree> <DIRS          the stdin build dirs inside the tree
        _push_build_dirs.py --shared <checkout> <sha>    the checkout's one build dir, or nothing
        _push_build_dirs.py --touch-changed <checkout>   now-mtime every tracked file off HEAD
 """
@@ -102,6 +103,20 @@ def shared(checkout: str, sha: str) -> str:
     return found[0] if len(found) == 1 else ""
 
 
+def in_tree(tree: str, dirs: list[str]) -> list[str]:
+    """The build dirs inside TREE, each relative to it (GOH.PUSHINTREEBUILD). The export is deleted
+    after every push, so a tracked `.cargo/config.toml` naming an in-tree build-dir (`".build"`)
+    compiles every dependency cold on every push, silently: a private server workspace's push gate
+    took 187 s against 108 s with a warm `.build` and 86 s on the path-keyed default."""
+    root = os.path.realpath(tree)
+    out = []
+    for d in dirs:
+        real = os.path.realpath(d)
+        if real == root or real.startswith(root + os.sep):
+            out.append(os.path.relpath(real, root))
+    return out
+
+
 def touch_changed(checkout: str) -> None:
     """Every tracked file of CHECKOUT that differs from HEAD, its mtime now (never older)."""
     changed = _git(checkout, "diff", "--name-only", "-z", "HEAD").stdout.split("\0")
@@ -115,6 +130,10 @@ if __name__ == "__main__":
     if len(sys.argv) == 4 and sys.argv[1] == "--shared":
         if got := shared(sys.argv[2], sys.argv[3]):
             print(got)
+        sys.exit(0)
+    if len(sys.argv) == 3 and sys.argv[1] == "--in-tree":  # build dirs on stdin, one per line
+        for rel in in_tree(sys.argv[2], [ln.strip() for ln in sys.stdin if ln.strip()]):
+            print(rel)
         sys.exit(0)
     if len(sys.argv) == 3 and sys.argv[1] == "--touch-changed":
         touch_changed(sys.argv[2])
