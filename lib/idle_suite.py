@@ -15,6 +15,13 @@ when it has nothing to land, so it is on disk before a ship asks for it:
                    worktree at that tip,
                    `<q>/idle-suite/wt` (kept between runs: its build caches are warm).
 
+IT IS THE SHIP'S RUN, NEVER BESIDE IT (GOH.IDLESUITERETIRE). On v0.149.2 (2026-11-22) this run began
+38 s before the ship's run of the same tree; both ran at once and the ship's release land waited
+388 s for the slot this one held. So it judges as the ship does (`full_run.judge_env`: the diff
+coverage based at the last version tag, kept as `last.json` `base`), a ship adopts a finished green
+run of its tip and base (`full_run.adoptable`, lib/ship_full_run.py), and it starts none while a
+ship of the repository is in flight and stops the moment one starts (`shipping`).
+
 IT NEVER DELAYS A LAND. The run takes its own gate slot through admission (`tools/load.py 0`, class
 `work`: behind every land and ship), holds no lock a land takes (the lander's lock is released
 before it starts, so an enqueue starts a lander at once), and is stopped -- its whole process group,
@@ -48,6 +55,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import full_run  # lib/: shared, lock-free
 import idle_red
 import killtree
 import landq_inflight
@@ -55,7 +63,7 @@ import lock_order
 import main_red
 import selection_miss
 import ship_suite
-from full_run import INSTRUMENTED, MAX, _git, declares_full, prepare  # lib/: shared, lock-free
+from full_run import INSTRUMENTED, MAX, _git, declares_full, prepare
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -101,7 +109,8 @@ def run(
     poll: float = POLL_S,
 ) -> str:
     """One idle run, if one is owed; its outcome: off, nothing, busy, yielded (a request is
-    pending), deferred (an enqueue is in its pre-step), green, red, or failed (no worktree)."""
+    pending), deferred (an enqueue is in its pre-step), shipping (a ship of the repository is in
+    flight), green, red, or failed (no worktree)."""
     if os.environ.get(OFF_ENV) == "off" or any(os.environ.get(k) for k in IN_SUITE):
         return "off"
     main = main_checkout(live)
@@ -118,6 +127,8 @@ def run(
         return "nothing"
     if ship_suite.full_suite(main, sha)[0] is not None:
         return "nothing"
+    if full_run.ships_in_flight(main.name):  # the ship makes this very run: never beside it
+        return "shipping"
     state.mkdir(parents=True, exist_ok=True)
     fd = os.open(state / "lock", os.O_RDWR | os.O_CREAT, 0o644)
     try:
@@ -125,7 +136,8 @@ def run(
             lock_order.flock(fd, "idle_suite", wait=False)  # never waits: one idle run
         except BlockingIOError:
             return "busy"
-        outcome = _run_locked(q, main, state, sha, say, argv or default_argv(), poll)
+        base = full_run.last_ship(main, sha)
+        outcome = _run_locked(q, main, state, sha, base, say, argv or default_argv(), poll)
         # GOH.SELECTAUDIT: the shadow since the last GREEN run (GOH.CARRYBASECODE), else the last
         green = str(last.get("green") or "")
         since = green or str(last.get("sha") or "")
@@ -141,6 +153,7 @@ def run(
     record = {
         "sha": sha,
         "outcome": outcome,
+        "base": base,  # its diff coverage's base: the ship of SHA adopts a green run (full_run)
         "at": dt.datetime.now(dt.UTC).isoformat(),
         "green": sha if outcome == "green" else str(last.get("green") or ""),
         "red": main_red.carry(last, sha, outcome),
@@ -151,12 +164,24 @@ def run(
     return outcome
 
 
-def _run_locked(q: Path, main: Path, state: Path, sha: str, say: Callable[[str], None],
-                argv: list[str], poll: float) -> str:  # fmt: skip
+def _stop_for(q: Path, main: Path) -> str:
+    """Why the idle run must not run now: a land is pending (yielded), an enqueue is in its
+    pre-step (deferred), a ship of the repository is in flight (shipping); else ""."""
     if pending(q):
         return "yielded"
     if enqueuing(q):
         return "deferred"
+    return "shipping" if full_run.ships_in_flight(main.name) else ""
+
+
+STOPPED = {"yielded": "a land is pending", "deferred": "an enqueue's pre-step runs",
+           "shipping": "a ship is in flight, and makes this run itself"}  # fmt: skip
+
+
+def _run_locked(q: Path, main: Path, state: Path, sha: str, base: str,
+                say: Callable[[str], None], argv: list[str], poll: float) -> str:  # fmt: skip
+    if why := _stop_for(q, main):
+        return why
     wt = state / "wt"
     why = prepare(main, wt, sha)
     if why:
@@ -164,7 +189,10 @@ def _run_locked(q: Path, main: Path, state: Path, sha: str, say: Callable[[str],
         return "failed"
     log = log_of(q, sha)
     log.parent.mkdir(parents=True, exist_ok=True)
-    env = dict(os.environ, GOH_LAND_VERDICTS_RECORD=os.devnull, GOH_GATE_CLASS="work")
+    # The ship's own judgement (full_run.judge_env), so a green run of the tip is the ship's run.
+    env = full_run.judge_env(base, "work")
+    (state / full_run.PROFILES).unlink(missing_ok=True)
+    env["GOH_PROF_REUSE_OUT"] = str(state / full_run.PROFILES)
     say(f"idle full suite on main {sha[:8]} in {wt} -> {log}")
     with log.open("ab") as out:
         proc = subprocess.Popen(argv, cwd=wt, env=env, stdout=out, stderr=subprocess.STDOUT,
@@ -174,12 +202,10 @@ def _run_locked(q: Path, main: Path, state: Path, sha: str, say: Callable[[str],
                 rc = proc.wait(timeout=poll)
                 break
             except subprocess.TimeoutExpired:
-                why = "yielded" if pending(q) else "deferred" if enqueuing(q) else ""
-                if why:  # a land arrived, or is in its pre-step: it goes first, always
+                if why := _stop_for(q, main):  # a land, an enqueue or a ship: it goes first
                     killtree.stop_group(killtree.session_pgid(proc), proc=proc)
                     proc.wait()
-                    what = "a land is pending" if why == "yielded" else "an enqueue's pre-step runs"
-                    say(f"idle full suite on {sha[:8]}: stopped, {what}")
+                    say(f"idle full suite on {sha[:8]}: stopped, {STOPPED[why]}")
                     return why
     say(f"idle full suite on {sha[:8]}: {'green' if rc == 0 else f'red (exit {rc})'}")
     return "green" if rc == 0 else "red"

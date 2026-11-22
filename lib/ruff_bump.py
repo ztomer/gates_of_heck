@@ -30,7 +30,6 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
-import re
 import subprocess
 import sys
 from collections.abc import Callable
@@ -39,44 +38,20 @@ from pathlib import Path
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 sys.path.insert(1, str(_HERE.parent / "gates"))
+import full_run  # noqa: E402 -- lib/: git, the ships in flight
 import idle_suite  # noqa: E402 -- lib/: main_checkout, pending, enqueuing, IN_SUITE
 import lock_order  # noqa: E402 -- lib/, beside this file
-import pid_owner  # noqa: E402 -- lib/, beside this file
 import reuse_fault  # noqa: E402 -- lib/: the one funnel that files a goh fault item
 import ruff_currency  # noqa: E402 -- gates/: the pin, the box's newest ruff, the bump commit
 from full_run import _git  # noqa: E402 -- lib/, beside this file
 
 OFF_ENV = "GOH_LANDQ_RUFF_BUMP"  # "off": nothing starts a bump-only land
 STATE = "ruff-bump"
-SHIP_NAME = re.compile(r"^\d{8}T\d{6}Z-[0-9a-f]+\.json$")  # a ship result, not its side files
 
 Enqueue = Callable[[Path, str], tuple[int, str]]
 
 
-def ship_dir() -> Path:
-    return Path(os.environ.get("GOH_SHIP_DIR") or Path.home() / ".local/state/goh/ship")
-
-
-def _alive(rec: dict) -> bool:
-    """The ship's worker still runs, by the start time beside its pid (GOH.STRAYSIGNAL2): a pid
-    handed to another process once the worker ended reads as gone."""
-    return pid_owner.alive_line(str(rec.get("pid_stamp") or rec.get("pid")))
-
-
-def ships_in_flight(repo: str) -> list[str]:
-    """The ship results of REPO still running: status `running` and their worker alive (one that
-    has not said its pid yet counts as running)."""
-    out = []
-    for p in sorted((ship_dir() / repo).glob("*.json")):
-        if not SHIP_NAME.match(p.name):
-            continue
-        try:
-            rec = json.loads(p.read_text())
-        except (OSError, json.JSONDecodeError):
-            continue
-        if rec.get("status") in ("running", "bisecting") and (not rec.get("pid") or _alive(rec)):
-            out.append(p.name)
-    return out
+ships_in_flight = full_run.ships_in_flight  # lib/full_run.py: shared with the idle lander
 
 
 def pin_at_tip(main: Path) -> str | None:

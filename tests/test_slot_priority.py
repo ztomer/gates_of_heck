@@ -87,13 +87,33 @@ def test_the_starvation_bound_promotes_a_lower_class_once_it_waited_that_long(tm
         clock.now = work.seq + 10 * MIN - 1
         assert work.ahead() == _names(land), "promoted before its bound"
         clock.now = work.seq + 10 * MIN
-        assert work.ahead() == [] and land.ahead() == _names(work)
-        fresh = _ticket(tmp_path, "land", clock, bound_min=10)  # a land after the promotion waits
-        assert fresh.ahead() == _names(work, land)
-        fresh.leave()
+        # GOH.IDLESUITERETIRE: starved, a background gate still never goes ahead of a land
+        assert work.ahead() == _names(land) and land.ahead() == []
     finally:
         work.leave()
         land.leave()
+
+
+def test_a_starved_background_gate_goes_ahead_of_background_never_of_a_land_or_ship(
+    tmp_path: Path,
+) -> None:
+    """GOH.IDLESUITERETIRE: a ship's release commit waited 388 s on v0.149.2 behind background
+    work; past its bound a lane or work ticket overtakes every lane and work ticket, and a land or a
+    ship still takes the next free slot. A starved ship still goes ahead of a land."""
+    clock = Clock()
+    work = _ticket(tmp_path, "work", clock, bound_min=10)
+    lane = _ticket(tmp_path, "lane", clock, bound_min=60)
+    clock.now = work.seq + 10 * MIN  # the work gate is starved, the lane gate not
+    land = _ticket(tmp_path, "land", clock, bound_min=60)
+    ship = _ticket(tmp_path, "ship", clock, bound_min=10)
+    try:
+        assert work.ahead() == _names(land, ship), "a starved work gate overtook the release"
+        assert lane.ahead() == _names(land, ship, work)  # ahead of every other background
+        clock.now = ship.seq + 10 * MIN
+        assert ship.ahead() == [] and land.ahead() == _names(ship)  # a starved ship: first
+    finally:
+        for t in (work, lane, land, ship):
+            t.leave()
 
 
 def test_the_bound_is_named_and_a_bad_one_refused(tmp_path: Path) -> None:

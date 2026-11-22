@@ -13,8 +13,10 @@ all the lands it coalesces. Every floor is as strict as it was; only where it is
 
 So the ship's FIRST step (`suite`, tools/ship.py) runs here, holding the land lock: main cannot
 move under it, so the run judges exactly the tip the release kit then checks (lib/ship_suite.py)
-and releases. It is never skipped: no other run of the tip judged the floors against the last
-ship (the idle lander's judged no base, and a land's measured nothing). The run is the idle
+and releases. Only a finished green idle lander's run of this tip, its diff coverage based at the
+same last ship, stands for it (GOH.IDLESUITERETIRE: the idle run makes this very judgement,
+full_run.judge_env; `full_run.adoptable`): adopted, its profiles kept, nothing re-run; a land's
+run measured nothing, so it never stands for it. The run is the idle
 lander's own command (full_run.INSTRUMENTED, the coverage gate's Rust mode with its external
 suite) with GOH_LAND_VERDICTS_RECORD=/dev/null and GOH_LAND_VERDICTS_REUSE=@tree (a pass JUDGED on
 this very tree by a test measured running no binary is not run again, tests/_same_tree.py), in a
@@ -73,9 +75,7 @@ import ship_suite  # lib/: the check the release kit makes
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX = full_run.MAX
-# The tree's own passes of tests measured running no binary are not run again (tests/_same_tree.py):
-# every binary-running, carried or unmeasured test still runs instrumented (GOH.SHIPBREACH0137).
-REUSE = "@tree"
+REUSE = full_run.REUSE  # the tree's own no-binary passes are not run again (GOH.SHIPBREACH0137)
 GREEN, RED, NO_VERDICT = 0, 1, 2
 
 
@@ -84,12 +84,7 @@ def owed(repo: Path) -> str:
     return "" if full_run.declares_full(repo) else "the repo declares no GOH_SHIP_FULL_SUITE=on"
 
 
-def last_ship(repo: Path, sha: str) -> str:
-    """The commit of the newest version tag below SHA (the last ship), or "" when none is."""
-    tag = full_run._git(repo, "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", sha)
-    if tag.returncode or not tag.stdout.strip():
-        return ""
-    return full_run._git(repo, "rev-parse", f"{tag.stdout.strip()}^{{commit}}").stdout.strip()
+last_ship = full_run.last_ship  # the newest version tag below a sha (shared with the idle lander)
 
 
 def default_argv() -> list[str]:
@@ -104,10 +99,7 @@ def _judge(repo: Path, wt: Path, sha: str, base: str, argv: list[str] | None) ->
         return NO_VERDICT
     print(f"ship full suite on {sha[:8]} in {wt}, its diff coverage since "
           f"{base[:8] if base else 'the root'}", flush=True)  # fmt: skip
-    env = dict(os.environ, GOH_LAND_VERDICTS_RECORD=os.devnull, GOH_GATE_CLASS="ship",
-               GOH_LAND_VERDICTS_REUSE=REUSE)  # fmt: skip
-    if base:
-        env["GOH_CHANGE_BASE"] = base
+    env = full_run.judge_env(base, "ship")  # the idle lander's run is this same one (adopt)
     rc = subprocess.run(argv or default_argv(), cwd=wt, env=env, stdin=subprocess.DEVNULL,
                         check=False).returncode  # fmt: skip
     return GREEN if rc == 0 else RED
@@ -123,13 +115,32 @@ def run(repo: Path, wt: Path, argv: list[str] | None = None) -> int:
     if why := owed(repo):
         print(f"ship full suite: none owed: {why}", flush=True)
         return GREEN
-    rc = _judge(repo, wt, sha, last_ship(repo, sha), argv)
+    base = last_ship(repo, sha)
+    idle, why = full_run.adoptable(sha, base)
+    if idle is not None and (why := ship_suite.full_suite(repo, sha)[1]) == "":
+        print(f"ship full suite on {sha[:8]}: green, adopted: the idle lander's finished run "
+              f"judged this tree with its diff coverage since {base[:8] or 'the root'} "
+              f"(GOH.IDLESUITERETIRE)", flush=True)  # fmt: skip
+        adopt_profiles(idle)
+        keep_profile(idle)
+        return GREEN
+    print(f"ship full suite on {sha[:8]}: no idle run adopted: {why}", flush=True)
+    rc = _judge(repo, wt, sha, base, argv)
     keep_profile(wt)
     if rc == GREEN and (why := ship_suite.full_suite(repo, sha)[1]):  # green, yet no record: say so
         print(f"ship full suite on {sha[:8]}: green, but {why}", flush=True)
         return NO_VERDICT
     print(f"ship full suite on {sha[:8]}: {'green' if rc == GREEN else 'red'}", flush=True)
     return rc
+
+
+def adopt_profiles(idle_wt: Path) -> None:
+    """The adopted idle run's reused and fresh binary tests (its GOH_PROF_REUSE_OUT, beside its
+    worktree) copied to where the ship's record reads them; none kept, none copied."""
+    out = os.environ.get("GOH_PROF_REUSE_OUT")
+    kept = idle_wt.parent / full_run.PROFILES
+    if out and kept.is_file():
+        Path(out).write_bytes(kept.read_bytes())
 
 
 def keep_profile(wt: Path) -> None:

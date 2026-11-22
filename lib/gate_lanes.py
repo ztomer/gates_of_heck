@@ -57,7 +57,15 @@ CLASS_ENV = "GOH_GATE_CLASS"  # the caller's word for one admission
 LANES_ROOT_ENV = "LOOPCTL_LANES_ROOT"  # the loop's lane worktrees (GOH.LANECLASS)
 STARVE_ENV = "GOH_GATE_SLOT_STARVE_MIN"
 STARVE_MIN = 15.0  # the bound when nothing names one: a land gate's ~12 min, and a margin
-PROMOTED = -1  # the rank a starved ticket takes: ahead of every class
+PROMOTED = -1  # the rank a starved land or ship ticket takes: ahead of every class
+# THE RELEASE PATH OUTRANKS EVERY STARVED BACKGROUND GATE (GOH.IDLESUITERETIRE, 2026-11-22). A
+# ship's release commit waited for a slot behind background work on five ships (388 s on v0.149.2,
+# 96-150 s on four before): a lane or work ticket past its bound went ahead of every class, the
+# ship's too. Starved, a background ticket now goes ahead of every other background ticket, never
+# ahead of a land or a ship, which take the next free slot; their bursts end, so the bound still
+# ends its wait.
+RELEASE_RANK = CLASSES["ship"][1]  # a class ranked at or above it is the release path
+PROMOTED_BACKGROUND = RELEASE_RANK + 0.5  # behind every land and ship, ahead of lane and work
 
 
 def lanes_root(environ: dict[str, str] | None = None) -> str:
@@ -145,9 +153,14 @@ def parse_ticket(name: str) -> tuple[str, int, int, int, int | None] | None:
     return parts[0], nums[0], nums[1], nums[2], nums[3] if len(nums) == 4 else None
 
 
-def effective(rank: int, seq: int, pid: int, promote: int | None, now: int) -> tuple[int, int, int]:
-    """A ticket's place at `now`: its rank, or PROMOTED once past its bound; then age."""
-    return (PROMOTED if promote is not None and now >= promote else rank, seq, pid)
+def effective(
+    rank: int, seq: int, pid: int, promote: int | None, now: int
+) -> tuple[float, int, int]:
+    """A ticket's place at `now`: its rank, or once past its bound PROMOTED (a land or ship) or
+    PROMOTED_BACKGROUND (a lane or work gate: never ahead of the release path); then age."""
+    if promote is None or now < promote:
+        return (rank, seq, pid)
+    return (PROMOTED if rank <= RELEASE_RANK else PROMOTED_BACKGROUND, seq, pid)
 
 
 WAITING = "waiting"  # <dir>/waiting/: one ticket file per live waiter
@@ -163,7 +176,8 @@ class Ticket:
     system-wide monotonic clock at arrival (ns), so arrival order is the order, and a higher class
     (lower rank: land 0, ship 1, lane 2, work 3) goes ahead of every lower one -- until a ticket's
     `promote` time (arrival plus the starvation bound, written into its name by its own waiter, so
-    every reader orders the queue the same way) passes, when it goes ahead of every class.
+    every reader orders the queue the same way) passes, when it goes ahead of every class (a lane or
+    work ticket: of every class but land and ship, GOH.IDLESUITERETIRE).
 
     LIVENESS IS THE FLOCK, as for the slots: the waiter holds an exclusive lock on its ticket for as
     long as it lives, so a ticket nobody holds belongs to a dead waiter and is reaped by the first
@@ -190,7 +204,7 @@ class Ticket:
         os.unlink(draft)
 
     @property
-    def key(self) -> tuple[int, int, int]:
+    def key(self) -> tuple[float, int, int]:
         """This ticket's place now (`effective`): its rank until its bound passes, then its age."""
         return effective(self.rank, self.seq, self.pid, self.promote, self.clock())
 

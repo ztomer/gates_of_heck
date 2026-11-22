@@ -28,6 +28,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 import budget
 import gate_identity
 import reuse
+import ship_full_run
 
 shipped = test_ship.shipped  # the fixture, by assignment
 
@@ -134,7 +135,7 @@ def test_a_tip_with_the_idle_landers_run_is_still_judged_by_the_ship(
     shipped: Path, tmp_path: Path
 ) -> None:
     """GOH.COVOFFLAND: the ship judges every coverage floor, its diff coverage based at the last
-    ship; the idle lander's run of the tip judged no such base, so it stands for none of it."""
+    ship; a full record of the tip with no idle verdict of that base stands for none of it."""
     _declare(shipped)
     _record_run(shipped, tmp_path / "store")
     p = _ship(shipped, tmp_path)
@@ -161,3 +162,42 @@ def test_the_budget_judges_the_ships_own_run_not_its_wait_for_the_queue() -> Non
     assert ship["top_steps"][0] == ["suite", 600.0]
     old = {k: v for k, v in res.items() if k not in ("land_wait_s", "own_s")}
     assert budget.ship_rows(old)[0]["wall_s"] == 1928.0  # a result from before: started->finished
+
+
+def _idle_verdict(q: Path, sha: str, outcome: str, base: str) -> Path:
+    """The idle lander's last.json and kept worktree (lib/idle_suite.py), its profiles beside it."""
+    state = q / "idle-suite"
+    (state / "wt").mkdir(parents=True)
+    (state / "last.json").write_text(json.dumps({"sha": sha, "outcome": outcome, "base": base}))
+    (state / "profiles.json").write_text(json.dumps({"binaries": COUNTS}))
+    return state
+
+
+def test_the_ship_adopts_a_finished_green_idle_run_of_its_tree_and_base(
+    shipped: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """GOH.IDLESUITERETIRE: on v0.149.2 the idle run and the ship's run judged one tree at once.
+    The idle run now makes the ship's judgement (lib/full_run.py judge_env), so a finished green
+    one of the same tip and the same diff coverage base IS the ship's run: adopted, not re-made.
+    One of another base, or not green, is not."""
+    _declare(shipped)
+    write(shipped, "land.txt", "x\n")
+    commit_all(shipped, "fix: a land since the last ship")
+    sha = git(shipped, "rev-parse", "HEAD").strip()
+    base = ship_full_run.last_ship(shipped, sha)
+    assert base and base != sha  # the fixture's v1.0.0
+    store, q = tmp_path / "store", tmp_path / "landq"
+    _record_run(shipped, store)
+    monkeypatch.setenv("GOH_REUSE_DIR", str(store))
+    monkeypatch.setenv("GOH_LANDQ_DIR", str(q))
+    monkeypatch.setenv("GOH_PROF_REUSE_OUT", str(tmp_path / "profiles.out"))
+    ran = tmp_path / "ran"
+    argv = [sys.executable, "-c", f"open({str(ran)!r}, 'a').write('ran\\n')"]
+    state = _idle_verdict(q, sha, "green", base)
+    assert ship_full_run.run(shipped, tmp_path / "suite-wt", argv=argv) == ship_full_run.GREEN
+    assert not ran.exists(), "the ship re-made the run it could adopt"
+    assert json.loads((tmp_path / "profiles.out").read_text())["binaries"] == COUNTS
+    for outcome, at in (("green", sha), ("red", base), ("yielded", base)):  # another base, or no
+        (state / "last.json").write_text(json.dumps({"sha": sha, "outcome": outcome, "base": at}))
+        ship_full_run.run(shipped, tmp_path / "suite-wt", argv=argv)
+    assert ran.read_text().split() == ["ran"] * 3

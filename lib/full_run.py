@@ -10,15 +10,24 @@ Pinned by tests/test_ship_starve.py (and the idle lander's own tests).
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gitrun
+import pid_owner
 
 MAX = "90m"  # a land gate's own bound
+# The tree's own passes of tests measured running no binary are not run again (tests/_same_tree.py):
+# every binary-running, carried or unmeasured test still runs instrumented (GOH.SHIPBREACH0137).
+REUSE = "@tree"
+IDLE = "idle-suite"  # the idle lander's state under the landing queue (lib/idle_suite.py)
+PROFILES = "profiles.json"  # its run's reused and fresh binary tests, beside its worktree
+SHIP_NAME = re.compile(r"^\d{8}T\d{6}Z-[0-9a-f]+\.json$")  # a ship result, not its side files
 
 
 def _git(repo: Path, *args: str, write: bool = False) -> subprocess.CompletedProcess:
@@ -73,3 +82,76 @@ INSTRUMENTED = (
     '--external "$GOH_COV_RUST_EXTERNAL" '
     '--floor "$GOH_COV_FLOOR_RUST" .'
 )
+
+
+# ONE RUN, TWO CALLERS (GOH.IDLESUITERETIRE). On v0.149.2 (2026-11-22) the idle lander's run and the
+# ship's run judged the same tree at once, and the ship's release land waited 388 s for the slot the
+# idle run held. The two now run the SAME judgement (`judge_env`: the diff coverage based at the
+# last ship, the @tree reuse key), so a finished green idle run of a tip IS the ship's run of it
+# (`adoptable`), and the idle lander starts none while a ship of the repository is in flight.
+
+
+def last_ship(repo: Path, sha: str) -> str:
+    """The commit of the newest version tag below SHA (the last ship), or "" when none is."""
+    tag = _git(repo, "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", sha)
+    if tag.returncode or not tag.stdout.strip():
+        return ""
+    return _git(repo, "rev-parse", f"{tag.stdout.strip()}^{{commit}}").stdout.strip()
+
+
+def judge_env(base: str, gate_class: str) -> dict[str, str]:
+    """The environment of the instrumented run of a tip whose diff coverage is based at BASE (the
+    last ship), admitted as GATE_CLASS: the store's record alone, the tree's own verdicts reused."""
+    env = dict(os.environ, GOH_LAND_VERDICTS_RECORD=os.devnull, GOH_GATE_CLASS=gate_class,
+               GOH_LAND_VERDICTS_REUSE=REUSE)  # fmt: skip
+    env.pop("GOH_CHANGE_BASE", None)
+    if base:
+        env["GOH_CHANGE_BASE"] = base
+    return env
+
+
+def landq_dir() -> Path:
+    return Path(os.environ.get("GOH_LANDQ_DIR") or Path.home() / ".local/state/goh/landq")
+
+
+def adoptable(sha: str, base: str, q: Path | None = None) -> tuple[Path | None, str]:
+    """(the idle run's worktree, "") when the idle lander's last run judged SHA green with its diff
+    coverage based at BASE -- the very run a ship of SHA makes -- else (None, why not)."""
+    state = (q or landq_dir()) / IDLE
+    try:
+        last = json.loads((state / "last.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return None, "no idle run is recorded"
+    if last.get("sha") != sha:
+        return None, f"the idle run judged {str(last.get('sha') or 'nothing')[:8]}, not {sha[:8]}"
+    if last.get("outcome") != "green":
+        return None, f"the idle run of {sha[:8]} is {last.get('outcome') or 'no verdict'}"
+    if last.get("base", None) != base:
+        return None, f"the idle run's diff coverage was based at {str(last.get('base'))[:8]}"
+    return state / "wt", ""
+
+
+def ship_dir() -> Path:
+    return Path(os.environ.get("GOH_SHIP_DIR") or Path.home() / ".local/state/goh/ship")
+
+
+def _alive(rec: dict) -> bool:
+    """The ship's worker still runs, by the start time beside its pid (GOH.STRAYSIGNAL2): a pid
+    handed to another process once the worker ended reads as gone."""
+    return pid_owner.alive_line(str(rec.get("pid_stamp") or rec.get("pid")))
+
+
+def ships_in_flight(repo: str) -> list[str]:
+    """The ship results of REPO still running: status `running` and their worker alive (one that
+    has not said its pid yet counts as running)."""
+    out = []
+    for p in sorted((ship_dir() / repo).glob("*.json")):
+        if not SHIP_NAME.match(p.name):
+            continue
+        try:
+            rec = json.loads(p.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if rec.get("status") in ("running", "bisecting") and (not rec.get("pid") or _alive(rec)):
+            out.append(p.name)
+    return out

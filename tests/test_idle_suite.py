@@ -29,6 +29,9 @@ def main(tmp_path: Path, monkeypatch) -> Path:
     """A repository whose release needs a full suite, outside any goh suite's markers."""
     for k in (*idle_suite.IN_SUITE, idle_suite.OFF_ENV):
         monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv(
+        "GOH_SHIP_DIR", str(tmp_path / "ship")
+    )  # no ship in flight (GOH.IDLESUITERETIRE)
     repo = tmp_path / "main"
     fast_init(repo, "main")
     git(repo, "config", "user.email", "t@example.invalid")
@@ -51,7 +54,8 @@ def probe(out: Path) -> list[str]:
         "import os, subprocess, sys; sha = subprocess.run(['git', 'rev-parse', 'HEAD'], "
         "capture_output=True, text=True).stdout.strip(); "
         f"open({str(out)!r}, 'w').write(' '.join([sha, os.environ['GOH_LAND_VERDICTS_RECORD'], "
-        "os.environ['GOH_GATE_CLASS']]))"
+        "os.environ['GOH_GATE_CLASS'], os.environ['GOH_LAND_VERDICTS_REUSE'], "
+        "os.environ.get('GOH_CHANGE_BASE', '-')]))"
     )
     return [sys.executable, "-c", code]
 
@@ -60,7 +64,7 @@ def test_an_idle_lander_runs_the_suite_on_mains_tip_in_its_own_worktree(main, tm
     q, out = queue(tmp_path), tmp_path / "ran"
     sha = git(main, "rev-parse", "HEAD").strip()
     assert idle_suite.run(q, main, argv=probe(out), poll=0.05) == "green"
-    assert out.read_text().split() == [sha, "/dev/null", "work"]
+    assert out.read_text().split() == [sha, "/dev/null", "work", "@tree", "-"]  # the ship's own
     assert git(main, "status", "--porcelain").strip() == ""  # main's own checkout untouched
     assert json.loads((q / "idle-suite" / "last.json").read_text())["outcome"] == "green"
     assert idle_suite.run(q, main, argv=probe(out), poll=0.05) == "nothing"  # judged: not again
@@ -68,6 +72,69 @@ def test_an_idle_lander_runs_the_suite_on_mains_tip_in_its_own_worktree(main, tm
     commit_all(main, "two")
     assert idle_suite.run(q, main, argv=probe(out), poll=0.05) == "green"  # main moved: owed
     assert out.read_text().split()[0] == git(main, "rev-parse", "HEAD").strip()
+
+
+@pytest.fixture
+def ships(main, tmp_path: Path) -> Path:
+    """goh ship's result directory (the `main` fixture's), empty: no ship in flight."""
+    return tmp_path / "ship"
+
+
+def _ship_running(ships: Path, repo: Path) -> None:
+    (ships / repo.name).mkdir(parents=True, exist_ok=True)
+    (ships / repo.name / "20261122T174900Z-ae63e2b2.json").write_text(
+        json.dumps({"status": "running"}))  # fmt: skip
+
+
+def test_the_idle_run_judges_as_the_ship_does_and_records_its_base(main, tmp_path, ships) -> None:
+    """GOH.IDLESUITERETIRE: the ship of a tip adopts a green idle run of it, so the idle run makes
+    the ship's own judgement: its diff coverage based at the last version tag."""
+    q, out = queue(tmp_path), tmp_path / "ran"
+    tagged = git(main, "rev-parse", "HEAD").strip()
+    git(main, "tag", "v1.0.0")
+    write(main, "b.txt", "two\n")
+    commit_all(main, "two")
+    sha = git(main, "rev-parse", "HEAD").strip()
+    assert idle_suite.run(q, main, argv=probe(out), poll=0.05) == "green"
+    assert out.read_text().split() == [sha, "/dev/null", "work", "@tree", tagged]
+    last = json.loads((q / "idle-suite" / "last.json").read_text())
+    assert (last["sha"], last["outcome"], last["base"]) == (sha, "green", tagged), last
+
+
+def test_no_idle_run_starts_while_a_ship_of_the_repo_is_in_flight(main, tmp_path, ships) -> None:
+    """v0.149.2 (2026-11-22): the idle run began 38 s before the ship's run of the same tree, both
+    ran at once, and the ship's release land waited 388 s for the slot the idle run held."""
+    q, out = queue(tmp_path), tmp_path / "ran"
+    _ship_running(ships, main)
+    assert idle_suite.run(q, main, argv=probe(out), poll=0.05) == "shipping"
+    assert not out.exists()
+
+
+@pytest.mark.load_sensitive  # a thread, a clock, a sleep: each wait bounded by patience
+def test_a_ship_that_starts_stops_a_running_idle_suite(main, tmp_path, ships) -> None:
+    q = queue(tmp_path)
+    started = tmp_path / "started"
+    slow = [sys.executable, "-c",
+            f"import time; open({str(started)!r}, 'w').close(); time.sleep(600)"]  # fmt: skip
+    over = threading.Event()
+
+    def ship() -> None:
+        give_up = GiveUp(60)
+        while not started.exists() and not over.is_set() and not give_up.passed():
+            time.sleep(0.05)
+        _ship_running(ships, main)
+
+    t = threading.Thread(target=ship)
+    t.start()
+    t0 = time.monotonic()
+    said: list[str] = []
+    try:
+        assert idle_suite.run(q, main, say=said.append, argv=slow, poll=0.05) == "shipping"
+    finally:
+        over.set()
+        t.join()
+    assert_sooner(time.monotonic() - t0, 5, 600, "a ship stops the idle suite")
+    assert any("stopped, a ship is in flight" in line for line in said), said
 
 
 # A base-code fault only an unchosen test sees (GOH.CARRYBASECODE): the land gate runs base.py's
