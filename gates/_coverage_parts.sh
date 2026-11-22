@@ -89,6 +89,17 @@ cov_parts_complete() {
 # cov_judge_parts -- the floor, the audit claim and the change's lines over $PARTS: one run's tail,
 # and the whole of a merge's.
 cov_judge_parts() {
+    # A SUBSET run (--diff-only, a land's selected tests: lib/land_rustcov.py, GOH.LANDRUSTCOV)
+    # judges no floor and claims nothing: a part of the suite is no crate's percentage, and a
+    # claim of it would be a carry the fresh run disagrees with. Only the change's lines.
+    if [ -n "${DIFF_ONLY:-}" ]; then
+        cov_phase "diff coverage" ""
+        local only_rc=0
+        "$GOH_PY" "$GOH_ROOT/gates/diff_cov.py" ${INCLUDE:+--include "$INCLUDE"} --repo "$PROJ" "$PARTS" \
+            || only_rc=$?
+        cov_phase ""
+        return "$only_rc"
+    fi
     _MERGE_ARGS=()
     if [ -n "$FLOOR" ]; then _MERGE_ARGS+=(--floor "$FLOOR"); fi
     if [ -n "$FLOORS_JSON" ]; then _MERGE_ARGS+=(--floors-json "$FLOORS_JSON"); fi

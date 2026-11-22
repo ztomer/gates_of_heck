@@ -307,3 +307,29 @@ def outcome(lines: list[str]) -> dict | None:
         if found := _RAN.search(line):
             return {"ran": found["why"]}
     return None
+
+
+def merge_records(record: Path, first: Path) -> None:
+    """tools/affected_tests.py `run`: the judges' record joined into the rest's, when both
+    judged the same tree and tip."""
+    try:
+        a, b = json.loads(first.read_text()), json.loads(record.read_text())
+    except (OSError, ValueError):
+        a, b = None, None
+    if a and b and (a.get("identity"), a.get("sha")) == (b.get("identity"), b.get("sha")):
+        b["passed"] = {**a.get("passed", {}), **b.get("passed", {})}
+        record.write_text(json.dumps(b))
+    elif a and not record.is_file():
+        first.replace(record)
+        return
+    first.unlink(missing_ok=True)
+
+
+def ran_nothing(why: str) -> None:
+    """tools/affected_tests.py `run`: the land's record when no suite ran to write it: no
+    verdict, and why. tools/land.sh refuses a green pre-step with no record in a tree whose suite
+    records one (GOH.VERDICTCARRY2)."""
+    path = os.environ.get("GOH_LAND_VERDICTS_RECORD", "")
+    if not path or path == os.devnull:
+        return
+    Path(path).write_text(json.dumps({"identity": None, "sha": None, "passed": {}, "ran": why}))

@@ -59,7 +59,6 @@ from __future__ import annotations
 
 import argparse
 import ast
-import json
 import os
 import re
 import subprocess
@@ -73,6 +72,7 @@ from lib import (
     consumer_reads,
     declared_reads,
     fast_tests,
+    land_rustcov,  # GOH.LANDRUSTCOV: a Rust change's run measures its lines
     pre_reuse,
     source_closure,
     test_closure,
@@ -132,6 +132,7 @@ _names_path = source_closure.names_path
 # The graph (lib/test_closure.py); tests/_land_verdicts.py reads Closure here.
 Closure = test_closure.Closure
 _transitive = test_closure.transitive
+_merge, _ran_nothing = av.merge_records, av.ran_nothing  # the pre-step's record (moved for the cap)
 
 
 def _tests(root: Path) -> dict[str, str]:
@@ -326,6 +327,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument(
         "--structural", action="store_true", help="--run: gates/structural.sh --full first"
     )
+    ap.add_argument("--rust-cov", action="store_true", help="--run: measure its changed Rust lines")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     if args.run and (rc := fast_tests.run(root, affected(root, [], enqueue=False))):
@@ -341,7 +343,10 @@ def main(argv: list[str]) -> int:
             return rc
         whole = args.changed is None and not args.readers_only
         base = pre_reuse.base_sha(root, args.base) if whole else None  # ONE run per change: av
-        rc = av.whole(root, list(chosen), base, whole, lambda: run(root, changed, chosen, base))
+        rust = land_rustcov.plan(root, args.base) if args.rust_cov and whole else None
+        rc = av.whole(
+            root, list(chosen), base, whole, lambda: run(root, changed, chosen, base, rust)
+        )
         return rc or canary(root, changed)
     for rel, why in chosen.items():
         print(f"{rel}  # {why}" if args.why else rel)
@@ -372,14 +377,15 @@ def phases(root: Path, chosen: dict[str, str]) -> tuple[list[str], list[str]]:
     return judges, [n for n in chosen if n not in judges]
 
 
-def run(root: Path, changed: list[str], chosen: dict[str, str], base: str | None = None) -> int:
+def run(root: Path, changed: list[str], chosen: dict, base: str | None = None, rust=None) -> int:
     """tools/pytest.sh over the set: the JUDGES first, in a run of their own, then the rest
     (GOH.PREPARITY: one run of both reached the 600 s deadline at load 175 with no verdict, and
     two judges it held went red in the land 444 s later; ADAPTLANES). A red judge is a red
     verdict before the slow tests start; the two runs' records are one (`_merge`). An EMPTY set
     runs nothing: pytest.sh with no file runs the whole suite, which is the full gate's job, never
     the pre-step's. Inside a running goh suite (a fixture land of a goh copy) it runs nothing
-    either and says so: pytest.sh refuses a nested suite, and the suite around it runs these."""
+    either and says so: pytest.sh refuses a nested suite, and the suite around it runs these.
+    RUST (a Rust change, lib/land_rustcov.py): the binary's tests run second, measured."""
     if rc := fast_tests.collects(root, changed):
         return rc
     if not chosen:
@@ -398,6 +404,7 @@ def run(root: Path, changed: list[str], chosen: dict[str, str], base: str | None
         _ran_nothing(why)
         return 0
     judges, rest = phases(root, chosen)
+    judges, rest = land_rustcov.split(root, judges, rest) if rust else (judges, rest)
     info(
         f"pre-land: {counted(len(chosen), 'test')} -- {len(judges)} judging the whole tree "
         f"first, then {len(rest)} chosen by {counted(len(changed), 'changed path')}"
@@ -405,12 +412,13 @@ def run(root: Path, changed: list[str], chosen: dict[str, str], base: str | None
     record = os.environ.get("GOH_LAND_VERDICTS_RECORD", "")
     first = Path(f"{record}.judges") if record and record != os.devnull else None
     for n, nodes in enumerate((judges, rest)):
-        if not nodes:
+        if not nodes and not (rust and n == 1):  # a Rust change measures its workspace's tests
             continue
         what = "judging the whole tree" if n == 0 else "the diff chose"
+        plain = ["bash", str(root / "tools" / "pytest.sh"), "-q", *nodes]
+        argv = land_rustcov.argv(root, rust, nodes) if rust and n == 1 else plain
         rc = timed(  # its own row (GOH.RELEASELANDGATE); no cwd: pytest.sh runs in its own checkout
-            f"pre-land: {len(nodes)} tests {what}",
-            ["bash", str(root / "tools" / "pytest.sh"), "-q", *nodes],
+            f"pre-land: {len(nodes)} tests {what}", argv
         )
         if rc:
             return rc
@@ -420,30 +428,6 @@ def run(root: Path, changed: list[str], chosen: dict[str, str], base: str | None
         _merge(Path(record), first)
     pre_reuse.stamp(record, base, list(chosen))
     return 0
-
-
-def _merge(record: Path, first: Path) -> None:
-    """The judges' record joined into the rest's, when both judged the same tree and tip."""
-    try:
-        a, b = json.loads(first.read_text()), json.loads(record.read_text())
-    except (OSError, ValueError):
-        a, b = None, None
-    if a and b and (a.get("identity"), a.get("sha")) == (b.get("identity"), b.get("sha")):
-        b["passed"] = {**a.get("passed", {}), **b.get("passed", {})}
-        record.write_text(json.dumps(b))
-    elif a and not record.is_file():
-        first.replace(record)
-        return
-    first.unlink(missing_ok=True)
-
-
-def _ran_nothing(why: str) -> None:
-    """The land's record when no suite ran to write it: no verdict, and why. tools/land.sh refuses a
-    green pre-step with no record in a tree whose suite records one (GOH.VERDICTCARRY2)."""
-    path = os.environ.get("GOH_LAND_VERDICTS_RECORD", "")
-    if not path or path == os.devnull:
-        return
-    Path(path).write_text(json.dumps({"identity": None, "sha": None, "passed": {}, "ran": why}))
 
 
 if __name__ == "__main__":

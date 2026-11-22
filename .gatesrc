@@ -198,7 +198,7 @@ GOH_LANDED_ONLY=main
 # Before the land lock and the gate, tools/land.sh runs the tests the diff chooses (GOH.TREETESTSFIRST):
 # every test naming a changed path or importing a changed module, and every tree reader -- the structural
 # gates and the tree readers FIRST, so a deadline on the rest never swallows them (GOH.PREPARITY). $1 is main's tip.
-GOH_LAND_PRE='"$GOH_PY" tools/affected_tests.py --run --structural --base "$1"'
+GOH_LAND_PRE='"$GOH_PY" tools/affected_tests.py --run --structural --rust-cov --base "$1"'
 # `goh land --check WORKTREE`, and every `goh land --enqueue --land` before its pre-step, runs these
 # land-gate steps (each verbatim one of GOH_CI_STEPS) beside the declared guard tests, in seconds
 # (GOH.LANDCHECK, lib/land_check.py): the structural gate, lint as the gate runs it, the lock order,

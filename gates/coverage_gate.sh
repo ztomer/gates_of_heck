@@ -172,6 +172,8 @@ usage: coverage_gate.sh --lang rust|swift|cpp|py [--floor N] [--ignore RE]
   --external CMD      rust: also run CMD against the INSTRUMENTED binaries ($GOH_COVERAGE_BIN_DIR)
                       and count it -- for a crate whose behaviour suite drives the binary
                       from outside cargo test (GOH_COV_RUST_EXTERNAL)
+  --diff-only         rust: a SUBSET run (a land's selected tests, lib/land_rustcov.py): no
+                      floor and no coverage claim, only the change's lines (gates/diff_cov.py)
                       ($GOH_COV_SWIFT_ENGINE; scheme via GOH_COV_SCHEME,
                        existing xcresult via GOH_COV_XCRESULT)
   path                project root (default: $PWD)
@@ -189,6 +191,7 @@ MARKER_CEILING=""
 ENGINE=""
 ENGINE_EXPLICIT=""
 EXTERNAL=""
+DIFF_ONLY=""
 PROJ=""
 
 while [ $# -gt 0 ]; do
@@ -201,6 +204,7 @@ while [ $# -gt 0 ]; do
         --marker-ceiling) [ $# -ge 2 ] || die "--marker-ceiling needs a value"; MARKER_CEILING="$2"; shift 2 ;;
         --engine)         [ $# -ge 2 ] || die "--engine needs a value"; ENGINE="$2"; ENGINE_EXPLICIT=1; shift 2 ;;
         --external)       [ $# -ge 2 ] || die "--external needs a command"; EXTERNAL="$2"; shift 2 ;;
+        --diff-only)      DIFF_ONLY=1; shift ;;
         -h|--help) usage; exit 0 ;;
         --*)      die "unknown option: $1 (see --help)" ;;
         *)        PROJ="$1"; shift ;;
@@ -236,12 +240,13 @@ if [ -n "$ENGINE_EXPLICIT" ] && [ "$LANG_" != "swift" ]; then
     die "--engine applies to --lang swift only (got $LANG_)"
 fi
 
+[ -z "$DIFF_ONLY" ] || [ "$LANG_" = rust ] || die "--diff-only is a rust-only seam; --lang is '$LANG_'"
 ENV_VAR=""
-if [ -z "$FLOOR" ] && [ -z "$FLOORS_JSON" ]; then
+if [ -z "$FLOOR" ] && [ -z "$FLOORS_JSON" ] && [ -z "$DIFF_ONLY" ]; then
     ENV_VAR="GOH_COV_FLOOR_$(printf '%s' "$LANG_" | tr '[:lower:]' '[:upper:]')"
     FLOOR="${!ENV_VAR:-}"
 fi
-if [ -z "$FLOOR" ] && [ -z "$FLOORS_JSON" ]; then
+if [ -z "$FLOOR" ] && [ -z "$FLOORS_JSON" ] && [ -z "$DIFF_ONLY" ]; then
     die "no coverage floor for '$LANG_': pass --floor N or set ${ENV_VAR:-GOH_COV_FLOOR_<LANG>} or GOH_COV_FLOORS_JSON"
 fi
 if [ -n "$FLOORS_JSON" ] && [ ! -f "$FLOORS_JSON" ]; then
