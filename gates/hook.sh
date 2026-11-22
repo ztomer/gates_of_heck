@@ -69,6 +69,22 @@ case "$hook" in
         . "$goh/gates/_git_env.sh"
         goh_hook_unbind || exit $?
         exec bash "$goh/gates/sequencer_gate.sh" "$hook" "$@" ;;
+    post-checkout)
+        # goh's OWN hook (.githooks only, no stock copy): a gates_of_heck worktree checked out onto
+        # a branch with no bin/goh -- a lane's, made by `loopctl lane claim` -- gets it built now,
+        # so the lane's first `./bin/goh` runs (GOH.WTGOHBIN; the shared store's copy when it has
+        # the stamp). A detached checkout is an export (push gate, full run) that resolves its own
+        # binary, and is left alone. Never fails the checkout: git would report the hook's status.
+        # shellcheck source=gates/_git_env.sh
+        . "$goh/gates/_git_env.sh"
+        goh_hook_unbind || exit 0
+        if [ "${3:-0}" = 1 ] && [ -f scripts/build-goh.sh ] && [ -f crates/goh/Cargo.toml ] \
+            && [ ! -x bin/goh ] && git symbolic-ref -q HEAD >/dev/null; then
+            info "post-checkout: building bin/goh for this worktree (GOH.WTGOHBIN)"
+            bash scripts/build-goh.sh --if-stale >&2 \
+                || warn "post-checkout: bin/goh not built; run scripts/build-goh.sh"
+        fi
+        exit 0 ;;
     *)
         err "gates/hook.sh: no stock hook is named '${hook:-<none>}' (run as: hook.sh HOOK-PATH [ARG...])"
         exit 2 ;;
