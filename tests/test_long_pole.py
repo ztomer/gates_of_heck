@@ -7,19 +7,26 @@ The enqueue's pre-step cannot finish before its longest test does, at any worker
 enqueue, so no land's pre-step took under 2.5 minutes. The standing set is what the selector
 chooses for an empty diff; the judge here is the ratchet over it, calibrated on synthetic tables
 (each way to go red, and the stale ids of the duration table, which prunes by file only), then run
-over the real tree against the suite's own table. A machine that has measured nothing (a hosted
-runner) has nothing to judge: the table is local state, written by every top-level suite run.
+over the real tree against the suite's own long-pole table: each test's QUIET seconds, read from
+its wall, its CPU and the stretch measured as it ended, so a land never goes red because a test it
+did not touch ran long under load, and one grown by waiting or by CPU still does (GOH.LONGPOLELOAD).
+A machine that has measured nothing (a hosted runner) has nothing to judge: the table is local
+state, written by every top-level suite run.
 """
 
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
 import _schedule
 import pytest
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
+from timing_bounds import patience
+
+from lib import fast_tests
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import long_pole as lp
@@ -58,6 +65,17 @@ def test_an_allowance_for_a_file_the_set_no_longer_runs_is_red_and_a_fast_run_is
     # that a 16-worker pre-step read at 33 s (the first land of this ratchet went red on it).
     assert lp.judge({SLOW: 12.0}, allow) == []
     assert lp.judge({SLOW: 20.0}, allow) == []
+
+
+def test_an_allowance_for_a_file_the_set_runs_but_the_table_has_not_measured_is_not_stale() -> None:
+    """The long-pole table fills as top-level runs merge into it: the first one after it existed
+    held 34 entries, none of tests/test_self_walk.py, and its allowance read stale
+    (GOH.LONGPOLELOAD)."""
+    allow = {"tests/test_slow.py": {"limit_s": 150, "why": "two walks"}}
+    cases = {"tests/test_fast.py::test_c": 1.0}
+    assert lp.judge(cases, allow, running={"tests/test_fast.py", "tests/test_slow.py"}) == []
+    (red,) = lp.judge(cases, allow, running={"tests/test_fast.py"})
+    assert "no longer runs it: delete the entry" in red
 
 
 def test_the_report_names_an_allowance_that_may_go() -> None:
@@ -112,6 +130,79 @@ def test_the_report_names_the_longest_test_and_the_serial_sum() -> None:
     assert lp.report({}) == ["no measured test in the standing set"]
 
 
+def test_a_test_that_waits_past_the_line_is_red_at_any_load() -> None:
+    """A wait is not stretched by the run queue: 70 s of sleep reads 70 s at any load factor, so a
+    test grown by waiting stays red however busy the box was (GOH.LONGPOLELOAD)."""
+    for factor in (1.0, 3.0, 8.0):
+        seconds = lp.pole(70.0, 0.05, factor)
+        assert 69.0 < seconds <= 70.0, factor
+        assert lp.judge({SLOW: seconds}, {}), factor
+
+
+def test_a_cpu_bound_test_stretched_by_load_reads_its_quiet_seconds() -> None:
+    """50 s of CPU on one thread at three times the cores in the run queue is 150 s of wall: the
+    reading that went red on lands whose diff never touched the test. Its quiet time is 50 s, and
+    one that truly burns 70 s is red under the same load."""
+    assert lp.pole(150.0, 50.0, 3.0) == 50.0
+    assert lp.judge({SLOW: lp.pole(150.0, 50.0, 3.0)}, {}) == []
+    assert lp.judge({SLOW: lp.pole(210.0, 70.0, 3.0)}, {})
+    assert lp.judge({SLOW: lp.pole(70.0, 70.0, 1.0)}, {}), "a quiet box's reading is the wall"
+
+
+def test_the_quiet_estimate_is_within_the_wall_and_the_wall_over_the_factor() -> None:
+    assert lp.pole(60.0, 120.0, 2.0) == 30.0  # two children of 60 s CPU each: 30 s on a quiet box
+    assert lp.pole(90.0, 20.0, 3.0) == 50.0  # 20 s of CPU (60 s stretched) and 30 s of waiting
+    assert lp.pole(40.0, 10.0, 1.0) == 40.0 and lp.pole(40.0, 10.0, 0.5) == 40.0
+    assert lp.pole(40.0, -1.0, 2.0) == 40.0  # a clock that stepped back is no CPU
+
+
+FIXTURE = """import time
+
+
+def test_waits():
+    time.sleep(0.4)
+
+
+def test_burns():
+    start = time.process_time()
+    while time.process_time() - start < 0.4:
+        pass
+"""
+
+
+def test_a_run_records_each_tests_quiet_seconds_beside_its_wall(tmp_path: Path) -> None:
+    """The suite's own wiring (the drift guard's reading, the schedule's table) in a child run,
+    through an xdist worker, at a pinned stretch of 3. The waiting test keeps its wall;
+    the burning one is its wall over the factor, or less the CPU the load stretched, whichever is
+    more -- at most 0.6 of its wall up to a real stretch of five."""
+    (tmp_path / "conftest.py").write_text(
+        f"import sys\nsys.path.insert(0, {str(REPO_ROOT / 'tests')!r})\n"
+        "import _schedule, _drift_guard\n"
+        "from _drift_guard import pytest_runtest_makereport, pytest_runtest_setup  # noqa: F401\n"
+        "_schedule.take()\n"
+        "_drift_guard.POLE_PROBE_AFTER_S = 0.2\n"
+        "_drift_guard.pole_stretch = lambda: 3.0\n"
+        "def pytest_configure(config):\n"
+        "    config.pluginmanager.register(_schedule, 'goh-longest-first')\n"
+    )
+    (tmp_path / "test_x.py").write_text(FIXTURE)
+    table = tmp_path / "state" / "test-durations.json"
+    table.parent.mkdir()
+    r = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-n", "1", str(tmp_path)],
+        capture_output=True, text=True, cwd=tmp_path, check=False, stdin=subprocess.DEVNULL,
+        env=hermetic_env(GOH_TEST_DURATIONS=str(table)), timeout=patience(120),
+    )  # fmt: skip
+    assert r.returncode == 0 and "2 passed" in r.stdout, r.stdout + r.stderr
+    walls = json.loads(table.read_text())
+    poles = json.loads(fast_tests.poles(table).read_text())
+    waits, burns = "test_x.py::test_waits", "test_x.py::test_burns"
+    assert set(poles) == {waits, burns}, poles
+    assert poles[waits] >= 0.38 and poles[waits] >= 0.95 * walls[waits], (poles, walls)
+    assert poles[burns] <= 0.6 * walls[burns], (poles, walls)
+    assert lp.judge({waits: poles[waits]}, {}, limit=0.3), "the wait is judged at its wall"
+
+
 def test_the_allowance_file_is_well_formed() -> None:
     allow = lp.load_allow()
     assert all(isinstance(e.get("limit_s"), int | float) for e in allow.values())
@@ -121,11 +212,11 @@ def test_the_allowance_file_is_well_formed() -> None:
 
 def test_no_test_every_enqueue_runs_takes_longer_than_60_s_but_the_allowed() -> None:
     """The real tree: the standing set (the selector's, on an empty diff) against the suite's own
-    duration table. Red here is a test that every land's pre-step now waits for."""
+    long-pole table. Red here is a test that every land's pre-step now waits for."""
     # The table this run read at its start (tests/_schedule.py): tools/pytest.sh hands its path to
     # the top-level run alone, and a test's own HOME holds none.
-    table = _schedule._read.get(_schedule._KEY) or {}
+    table = _schedule._read.get(_schedule._POLE_KEY) or {}
     if not table:
-        pytest.skip("no duration table on this machine: a suite run writes it (tools/pytest.sh)")
+        pytest.skip("no long-pole table on this machine: a suite run writes it (tools/pytest.sh)")
     reds = lp.check(table=table)
     assert reds == [], "\n".join(reds)

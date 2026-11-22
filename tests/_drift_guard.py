@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import atexit
 import os
+import resource
 import shutil
 import subprocess
 import sys
@@ -99,14 +100,20 @@ REFERENCE_CPU_S = 0.016
 SPEED_CAP = 4.0
 
 
+def _loop() -> int:
+    """The fixed loop both probes time: REFERENCE_CPU_S of one core of the owner's box."""
+    x = 0
+    for i in range(400_000):
+        x += i * i % 7
+    return x
+
+
 def _probe_cpu_s() -> float:
     """The best of 5 CPU times of one fixed loop (process time: blind to the run queue)."""
     best = float("inf")
     for _ in range(5):
         t0 = time.process_time()
-        x = 0
-        for i in range(400_000):
-            x += i * i % 7
+        _loop()
         best = min(best, time.process_time() - t0)
     return best
 
@@ -175,6 +182,7 @@ speed_factor()  # the controller's measurement, before any worker or child inher
 
 sys.path.insert(0, str(_ROOT / "lib"))
 try:
+    from long_pole import pole  # a phase's quiet seconds, for the long-pole table
     from tool_shim import SHIM_MARK  # the one spelling the identity reads
 finally:
     sys.path.pop(0)
@@ -234,9 +242,45 @@ if _REAL_CARGO:
     os.environ["PATH"] = f"{_shim_dir}{os.pathsep}{os.environ.get('PATH', '')}"
 
 
+# THE LONG-POLE READING (GOH.LONGPOLELOAD). Every phase's report carries `goh_pole`, its seconds
+# on a quiet box (lib/long_pole.py `pole`): its wall, the CPU of this process and of the children
+# it waited for over the same phase, and the stretch measured on this thread (below). xdist ships
+# a report's attributes to the controller, where tests/_schedule.py sums a test's phases into the
+# long-pole table the ratchet judges -- not the wall, which reads the box's load as the test's.
+#
+# THE STRETCH is MEASURED, never read from the load average: at load 29 on 16 cores a test burning
+# one core ran 1.50 s of wall for 1.50 s of CPU, while `load_factor` said x1.8 -- a CPU test read
+# at half its time, so one grown past the line would read green (GOH.LONGPOLELOAD). The probe is
+# the WALL of the speed probe's fixed loop, run now on this test's own thread, over what the loop
+# costs a quiet core of this box: the run queue, the QoS clamp, and an efficiency core all slow
+# it as they slowed the phase. Taken at a phase's end, and only after one of POLE_PROBE_AFTER_S or
+# more: a shorter phase is its wall (no load makes three of them a long pole), and the probe's
+# ~65 ms would be most of it.
+_CPU_MARK = pytest.StashKey[float]()
+POLE_PROBE_AFTER_S = 2.0
+POLE_PROBE_LOOPS = 4
+
+
+def pole_stretch() -> float:
+    """How many times longer than on a quiet core of this box this thread runs CPU work now."""
+    t0 = time.perf_counter()
+    for _ in range(POLE_PROBE_LOOPS):
+        _loop()
+    took = time.perf_counter() - t0
+    return max(1.0, took / (POLE_PROBE_LOOPS * REFERENCE_CPU_S * speed_factor()))
+
+
+def _cpu_s() -> float:
+    """CPU seconds of this process and every child it has waited for."""
+    own = resource.getrusage(resource.RUSAGE_SELF)
+    kids = resource.getrusage(resource.RUSAGE_CHILDREN)
+    return own.ru_utime + own.ru_stime + kids.ru_utime + kids.ru_stime
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_setup(item):
     """Start the load sampler before the first fixture: a setup is judged by the load it ran in."""
+    item.stash[_CPU_MARK] = _cpu_s()
     _start_sampler()
 
 
@@ -245,6 +289,11 @@ def pytest_runtest_makereport(item, call):
     _start_sampler()
     outcome = yield
     rep = outcome.get_result()
+    now = _cpu_s()
+    cpu = now - item.stash.get(_CPU_MARK, now)
+    item.stash[_CPU_MARK] = now
+    stretch = pole_stretch() if call.duration >= POLE_PROBE_AFTER_S else 1.0
+    rep.goh_pole = round(pole(call.duration, cpu, stretch), 3)
     if rep.when not in ("setup", "call") or not rep.passed:
         return
     setup = rep.when == "setup"

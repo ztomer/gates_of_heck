@@ -26,6 +26,12 @@ as UNKNOWN_S. An xdist_group is one unit of work, so its members move together, 
 group is read from the marks (tests/_loadgroup.py `group`), never from a node id.
 Ordering cannot change a verdict: the suite already runs in any order under xdist.
 
+THE LONG-POLE TABLE (GOH.LONGPOLELOAD) rides the same path: beside the duration table
+(lib/fast_tests.py `poles`), written by the same top-level run, read by the same controller and
+handed to every worker the same way. Its entries are each test's quiet seconds, the sum of the
+`goh_pole` its phases' reports carry (tests/_drift_guard.py), which the long-pole ratchet judges
+(lib/long_pole.py). A report without one (a run without the drift guard) adds nothing to it.
+
 Registered as a PLUGIN from conftest's pytest_configure, not imported by name: a conftest that
 imports a hook shadows its own hook of the same name (it happened to pytest_configure, 2026-10-06).
 It registers tests/_loadgroup.py in turn, so every run that orders by group also schedules by it.
@@ -35,6 +41,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -44,6 +51,7 @@ import pytest
 
 UNKNOWN_S = 1.0
 _KEY = "goh_test_durations"
+_POLE_KEY = "goh_test_poles"
 ENV = "GOH_TEST_DURATIONS"
 _read: dict[str, dict[str, float]] = {}  # this process's one read: the controller's, on a worker
 _table: list[Path] = []  # the table this run owns, set by `take()` on the top-level run only
@@ -61,6 +69,18 @@ def take(environ=os.environ) -> Path | None:
 
 
 _seen: dict[str, float] = defaultdict(float)
+_poles: dict[str, float] = defaultdict(float)
+
+
+def _poles_path(table: Path) -> Path:
+    """The long-pole table beside `table`: lib/fast_tests.py `poles`, its one spelling."""
+    root = Path(__file__).resolve().parent.parent  # THIS checkout's, never a PYTHONPATH's
+    sys.path[:0] = [str(root / "lib"), str(root)]
+    try:
+        import fast_tests
+    finally:
+        del sys.path[:2]
+    return fast_tests.poles(table)
 
 
 def _scope(item) -> str:
@@ -71,11 +91,12 @@ def _scope(item) -> str:
     return "@" + g if g is not None else item.nodeid
 
 
-def _load() -> dict[str, float]:
+def _load(poles: bool = False) -> dict[str, float]:
     if not _table:
         return {}
     try:
-        data = json.loads(_table[0].read_text(encoding="utf-8"))
+        path = _poles_path(_table[0]) if poles else _table[0]
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return {k: float(v) for k, v in data.items() if isinstance(v, (int, float))}
@@ -85,6 +106,7 @@ def pytest_configure(config) -> None:
     """A worker takes the controller's read; the controller (or a run without xdist) reads now."""
     worker = getattr(config, "workerinput", None)
     _read[_KEY] = worker.get(_KEY, {}) if worker is not None else _load()
+    _read[_POLE_KEY] = worker.get(_POLE_KEY, {}) if worker is not None else _load(poles=True)
     if worker is not None:
         _shard_spec[:] = [worker[_SHARD_KEY]] if worker.get(_SHARD_KEY) else []
     if not config.pluginmanager.has_plugin("goh-loadgroup"):  # loadgroup that groups
@@ -97,6 +119,7 @@ def pytest_configure(config) -> None:
 def pytest_configure_node(node) -> None:
     """xdist, on the controller: every worker it starts sorts by the controller's one read."""
     node.workerinput[_KEY] = _read.get(_KEY, {})
+    node.workerinput[_POLE_KEY] = _read.get(_POLE_KEY, {})
     node.workerinput[_SHARD_KEY] = _shard_spec[0] if _shard_spec else ""
 
 
@@ -119,6 +142,9 @@ def pytest_collection_modifyitems(config, items) -> None:
 
 def pytest_runtest_logreport(report) -> None:
     _seen[report.nodeid] += report.duration
+    pole = getattr(report, "goh_pole", None)
+    if isinstance(pole, (int, float)):
+        _poles[report.nodeid] += pole
 
 
 def pytest_sessionfinish(session) -> None:
@@ -127,10 +153,16 @@ def pytest_sessionfinish(session) -> None:
     if hasattr(session.config, "workerinput") or not _seen or not _table:
         return
     root = Path(str(session.config.rootpath))
-    merged = {**_load(), **{k: round(v, 3) for k, v in _seen.items()}}
+    _write(_table[0], _load(), _seen, root)
+    if _poles:
+        _write(_poles_path(_table[0]), _load(poles=True), _poles, root)
+
+
+def _write(cache: Path, old: dict[str, float], seen: dict[str, float], root: Path) -> None:
+    """`seen` merged over `old` into `cache`, every entry whose test file is gone pruned."""
+    merged = {**old, **{k: round(v, 3) for k, v in seen.items()}}
     merged = {k: v for k, v in merged.items() if (root / k.split("::")[0]).is_file()}
     try:
-        cache = _table[0]
         cache.parent.mkdir(parents=True, exist_ok=True)
         tmp = cache.with_suffix(f".{os.getpid()}.tmp")
         tmp.write_text(json.dumps(merged, sort_keys=True), encoding="utf-8")

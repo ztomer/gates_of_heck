@@ -10,11 +10,16 @@ two whole-tree walks were 147 s, tests/test_land_check.py's replay 98 s, on 2026
 10-minute land plan needs each of them short, or its reads declared so a diff that cannot move
 them does not run them (lib/declared_reads.py).
 
-THE TABLE is the suite's own duration table (`fast_tests.load()`, written by tools/pytest.sh), keyed
-by node id with its parameters, so a parametrized test's cases are judged one by one: under xdist a
-case is a test of its own. A cached id the tree no longer defines is not judged (the table prunes
-a deleted file, never a deleted function), and an id with no parameters beside the same function's
-parametrized ones is the stale one from before the split.
+THE TABLE is the suite's long-pole table (`fast_tests.poles()`, beside the duration table, written
+by the same top-level runs), keyed by node id with its parameters, so a parametrized test's cases
+are judged one by one: under xdist a case is a test of its own. Each entry is `pole()` summed over
+the test's phases: the seconds it would take on a QUIET box, read from one loaded run
+(GOH.LONGPOLELOAD). The wall alone read the machine, not the test: tests/test_self_walk.py's shell
+case read 168.2 s against its 150 s allowance at load ~50, and this file's own real-tree test went
+red the same way, on two lands whose diff touched neither (2026-11-21). A cached id the tree no
+longer defines is not judged (the table prunes a deleted file, never a deleted function), and an id
+with no parameters beside the same function's parametrized ones is the stale one from before the
+split.
 
 THE RATCHET is `tests/long_pole_allow.json`: file -> {"limit_s", "why"}, today's tests over RED_S
 that could not be cut yet (the ones over LIMIT_S, the target, are `report`'s). It only shrinks
@@ -66,6 +71,22 @@ def _fast():
     return fast_tests
 
 
+def pole(wall: float, cpu: float, factor: float) -> float:
+    """A phase's seconds on a quiet box, from one run: its `wall`, the `cpu` seconds of its process
+    and the children it waited for, and `factor`, how many times slower than a quiet core the
+    phase's thread ran CPU work as it ended (tests/_drift_guard.py `pole_stretch`, measured on the
+    thread: the load average read x1.8 where a test burning one core lost nothing).
+
+    The run queue stretches CPU work, never a wait: a phase of c CPU seconds and w of waiting on
+    one thread takes c x factor + w, so wall - cpu x (factor - 1) is its quiet c + w exactly. Work
+    spread over several cores spends more CPU than wall and that term undershoots, so the floor is
+    the wall over the factor, which no phase beats: everything in it stretched by at most that. The
+    larger of the two is never above the quiet time (no load reds a test that did not grow), a
+    test grown by waiting keeps its whole wall at any load, and one grown by CPU keeps its CPU."""
+    stretch = max(1.0, factor)
+    return max(wall / stretch, wall - max(0.0, cpu) * (stretch - 1.0))
+
+
 def standing(root: Path) -> list[str]:
     """The standing set: test files, or `file::function` ids, that every enqueue runs."""
     sys.path.insert(0, str(root / "tools"))
@@ -109,10 +130,18 @@ def load_allow(path: Path = ALLOW) -> dict[str, dict]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def judge(cases: dict[str, float], allow: dict[str, dict], limit: float = RED_S) -> list[str]:
-    """Every way the standing set breaks the ratchet; empty is green."""
+def judge(
+    cases: dict[str, float],
+    allow: dict[str, dict],
+    limit: float = RED_S,
+    running: set[str] | None = None,
+) -> list[str]:
+    """Every way the standing set breaks the ratchet; empty is green. `running` is the files the
+    standing set runs (the measured cases' files unless named): an allowance is stale when the set
+    stops RUNNING its file, never when the table has not measured it yet -- the long-pole table
+    fills as runs merge into it, and a fresh one held 34 entries (GOH.LONGPOLELOAD)."""
     reds: list[str] = []
-    files = {_split(n)[0] for n in cases}
+    files = {_split(n)[0] for n in cases} if running is None else running
     for rel, entry in allow.items():
         if not str(entry.get("why", "")).strip():
             reds.append(f"{rel}: the allowance carries no why")
@@ -131,11 +160,18 @@ def judge(cases: dict[str, float], allow: dict[str, dict], limit: float = RED_S)
     return reds
 
 
+def poles() -> dict[str, float]:
+    """The long-pole table, {node id: quiet seconds}; {} on a machine that has measured nothing."""
+    return _fast().load(_fast().poles())
+
+
 def check(root: Path = ROOT, table: dict[str, float] | None = None) -> list[str]:
-    """The ratchet over `root`'s standing set against the duration table (`fast_tests.load()`
-    unless handed one); empty is green, and so is a machine that has measured nothing."""
-    cases = measured(root, standing(root), _fast().load() if table is None else table)
-    return judge(cases, load_allow(root / "tests" / ALLOW.name))
+    """The ratchet over `root`'s standing set against the long-pole table (`poles()` unless handed
+    one); empty is green, and so is a machine that has measured nothing."""
+    chosen = standing(root)
+    cases = measured(root, chosen, poles() if table is None else table)
+    running = {c.split("::", 1)[0] for c in chosen}
+    return judge(cases, load_allow(root / "tests" / ALLOW.name), running=running)
 
 
 def report(
@@ -168,10 +204,12 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--check", action="store_true", help="the ratchet: exit 1 on any red")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
-    cases = measured(root, standing(root), _fast().load())
+    chosen = standing(root)
+    cases = measured(root, chosen, poles())
     allow = load_allow(root / "tests" / ALLOW.name)
     print("\n".join(report(cases, args.limit, allow)))
-    reds = judge(cases, allow) if args.check else []
+    running = {c.split("::", 1)[0] for c in chosen}
+    reds = judge(cases, allow, running=running) if args.check else []
     print("\n".join(f"✗ {r}" for r in reds))
     return 1 if reds else 0
 

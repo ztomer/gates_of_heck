@@ -51,10 +51,21 @@ def cache() -> Path:
     return Path(base) / "goh" / "test-durations.json"
 
 
-def load() -> dict[str, float]:
-    """{node id: seconds} from `cache()`; {} when there is none or it does not parse."""
+def poles(table: Path | None = None) -> Path:
+    """The long-pole table beside a duration table (`cache()` unless named): {node id: the seconds
+    the test would take on a quiet box}, read from each phase's wall, CPU and load factor
+    (tests/_drift_guard.py records, tests/_schedule.py merges, lib/long_pole.py judges;
+    GOH.LONGPOLELOAD). Its own file: a checkout on older code still writes the duration table,
+    and would drop keys it does not know."""
+    table = table or cache()
+    return table.with_name(f"{table.stem}.poles.json")
+
+
+def load(path: Path | None = None) -> dict[str, float]:
+    """{node id: seconds} from `path` (`cache()` unless named); {} when there is none or it does
+    not parse."""
     try:
-        data = json.loads(cache().read_text(encoding="utf-8"))
+        data = json.loads((path or cache()).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     if not isinstance(data, dict):
