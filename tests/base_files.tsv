@@ -60,6 +60,7 @@ lib/lock_order.py	base-code
 lib/lock_order.sh	base-code
 lib/lock_order.tsv	load-read
 lib/long_pole.py	base-code
+lib/main_red.py	base-code
 lib/mem_admit.py	base-code
 lib/pgid_cpu.py	base-code
 lib/pid_owner.py	base-code
