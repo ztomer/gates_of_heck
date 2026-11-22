@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.146.0 -- land path: every pass-on-retry is a flake record and two in 14 days file an item; a land measures the diff coverage of its own changed Rust lines
+
+- feat(land): a land measures the diff coverage of its own changed Rust lines (GOH.LANDRUSTCOV): the pre-step's second run (the chosen tests, the binary's judges moved into it) runs under the coverage gate's Rust mode as a subset run (`--diff-only`: instrumented build, workspace tests, the tests against the instrumented goh), replacing their plain run, and an uncovered changed line turns the land red naming `file:line`, before the ship's 8-14 min suite finds it (v0.145.0 went red twice on 2-3 such lines). A land changing no `.rs` file measures nothing.
+
 ## v0.145.0 -- land path: the fs-events ceiling and the long-pole ratchet judge only what they describe; the pre-step reuses its verdict when main moves its own code; structural --only splits the self-walk; unmeasured diff-cov lines no longer refuse a ship; a diff-cov red names each line's land and never bisects; shell-check judges the real tool shell; a signal-killed house script exits 128+N; test tables prune by node id
 
 - test(structural): the `--only` run test shares one work closure between the skipped and the named step, so the body runs (once, counted) and no test line is unreachable by design (GOH.DIFFCOV0CFCB5A1: v0.145.0's ship was red on only.rs:108-110).
