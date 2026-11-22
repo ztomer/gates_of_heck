@@ -60,7 +60,9 @@ HIDDEN = {"Projects": frozenset({".loop"})}
 # GOH_MEM_ADMIT: host_locks.py turns memory admission off for every fixture gate, and a scrub that
 # dropped it sent each hermetic land (tools/load.py 0, admitted by lib/gate_slot.py) to the host's
 # memory reading, a wait of up to 600 s on a swapping machine (GOH.ONEADMISSION).
-KEPT_GOH = ("GOH_LIVE", "GOH_ESTATE_STATE", "GOH_GRACE", "GOH_MEM_ADMIT")
+# GOH_COV_GOH: the coverage run's instrumented goh (gates/_goh_bin.sh, GOH.COVGOHBIN), a binary
+# taken only for the source it was built from; dropped, a hermetic gate run left no profile.
+KEPT_GOH = ("GOH_LIVE", "GOH_ESTATE_STATE", "GOH_GRACE", "GOH_MEM_ADMIT", "GOH_COV_GOH")
 # THE MACHINE'S SHAPE, one value on every box (GOH.CIRED0136): a fixture gate sized its gate
 # slots (lib/gate_slot.py default_slots: cores // 8) and its worker share (lib/worker_share.py
 # cores) from the box it ran on. The owner's 16 cores gave 2 slots and a share of 16; the 3-core

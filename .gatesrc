@@ -104,8 +104,10 @@ GOH_COV_FLOOR_RUST=93.1
 GOH_RUST_LINT_CONFIGS='--target x86_64-unknown-linux-gnu'
 # The native checks' behaviour suite is the pytest suite (Phase N3: it drives `goh` from outside
 # cargo test), so the coverage gate also runs it against the INSTRUMENTED binary and counts it.
-# Without it the crate read 62.5% (2026-10-06) for code the suite covers.
-GOH_COV_RUST_EXTERNAL='GOH_TEST_BIN="$GOH_COVERAGE_BIN_DIR/goh" ./tools/pytest.sh'
+# Without it the crate read 62.5% (2026-10-06) for code the suite covers. GOH_COV_GOH: a test
+# driving goh through a gate script gets the same instrumented build (gates/_goh_bin.sh), so its run
+# leaves a profile too (GOH.COVGOHBIN: 635 tests had none, and lib/bin_reach.py chose them always).
+GOH_COV_RUST_EXTERNAL='GOH_TEST_BIN="$GOH_COVERAGE_BIN_DIR/goh" GOH_COV_GOH="$GOH_COVERAGE_BIN_DIR/goh" ./tools/pytest.sh'
 # What no Rust test reads (GOH.GATEFLOOR): the land's `cargo test (plain)` is keyed on the tree minus
 # these git globs (gates/_rust_inputs.sh `tests`), so a land of the Python suite, docs or changelog
 # alone skips its 41-69 s. Not lib/ nor tools/: goh's Rust tests run goh's own scripts (GOH_DIR is the

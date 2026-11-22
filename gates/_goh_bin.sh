@@ -7,7 +7,8 @@
 # one named — where the other two reported it and ran Python. Every caller now asks here.
 #
 # Order: GOH_NO_NATIVE forces Python; an explicit GOH_BIN is trusted or REPORTED, never silently
-# replaced; then the build of THIS gate's commit from the store (below); then `goh` on PATH.
+# replaced; under the coverage run, its instrumented build of the same source (GOH_COV_GOH); then
+# the build of THIS gate's commit from the store (below); then `goh` on PATH.
 #
 # THE BINARY ANSWERS TO THE SAME COMMIT AS THE SOURCE. A gate run from an export of HEAD (C4) is
 # pinned to that commit for its whole run; `bin/goh` follows the live checkout's HEAD (C3). They
@@ -67,7 +68,8 @@ goh_resolve_native() {
     # the binary's own), and every goh.sh call paid it again (2026-10-06,
     # tests/test_goh_bin_once.py). A parent's answer for the same gates root and GOH_LIVE mode is
     # taken while its binary is still executable; anything else is asked again.
-    key="$(cd "$here/.." && pwd -P)|live:${GOH_LIVE:-}${pin:+|pin:$pin}"
+    # The coverage run's goh is in the key: a parent's answer made without it is not taken.
+    key="$(cd "$here/.." && pwd -P)|live:${GOH_LIVE:-}${pin:+|pin:$pin}${GOH_COV_GOH:+|cov:$GOH_COV_GOH}"
     if [ "${GOH_RESOLVED_FOR:-}" = "$key" ] && [ -x "${GOH_RESOLVED_BIN:-}" ]; then
         goh_native="$GOH_RESOLVED_BIN"
         return 0
@@ -97,6 +99,16 @@ _goh_resolve_uncached() { # <gates dir> [<pinned commit>]
         else
             goh_native_why="goh binary not built (cd $here/.. && ./install.sh builds it)"
         fi
+        return 0
+    fi
+    # THE COVERAGE RUN'S GOH (GOH.COVGOHBIN). The suite's instrumented run names its instrumented
+    # build (GOH_COV_GOH, .gatesrc GOH_COV_RUST_EXTERNAL); a test driving goh through a gate script
+    # got the by-stamp release build instead, so 635 tests (1,322 test-s) never left a profile and
+    # lib/bin_reach.py chose them for every Rust change. The instrumented build of the source this
+    # resolution wants IS that source's goh, counted: it is the answer. Of any other source (or
+    # `dirty`), never.
+    if [ -n "${GOH_COV_GOH:-}" ] && [ "$(goh_stamp_of "$GOH_COV_GOH")" = "$want" ]; then
+        goh_native="$GOH_COV_GOH"
         return 0
     fi
     stored="$(goh_store_path "$here/.." "$want")"
