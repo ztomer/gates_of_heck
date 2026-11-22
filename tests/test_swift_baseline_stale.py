@@ -7,13 +7,12 @@ is the same lines as a warning, so the consumers have the week to re-record.
 """
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 
 HELPER = REPO_ROOT / "gates" / "swift_lint_baseline.py"
 RERECORD = (
@@ -52,7 +51,7 @@ def run_at(grace: str, root: Path, baseline: list, live: list) -> tuple[int, str
         text=True,
         stdin=subprocess.DEVNULL,
         check=False,
-        env={**os.environ, "GOH_GRACE": grace},
+        env=hermetic_env(GOH_GRACE=grace),
     )
     return got.returncode, got.stdout + got.stderr
 

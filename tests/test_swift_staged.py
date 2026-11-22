@@ -9,13 +9,12 @@ it; and a baselined violation is tolerated while a new one is not.
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import sys
 
 import pytest
-from conftest import REPO_ROOT, stage, write
+from conftest import REPO_ROOT, hermetic_env, stage, write
 
 GATE = REPO_ROOT / "gates" / "swift_staged.sh"
 
@@ -135,7 +134,7 @@ def test_a_scoped_reconcile_judges_only_the_files_linted(tmp_path):
             text=True,
             stdin=subprocess.DEVNULL,
             check=False,
-            env={**os.environ, "GOH_GRACE": "within"},  # the stale line, whatever the day
+            env=hermetic_env(GOH_GRACE="within"),  # the stale line, whatever the day
         )
         assert r.returncode == 0, r.stdout + r.stderr
         return r.stdout
