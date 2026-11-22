@@ -1,1 +1,0 @@
-- test(structural): the `--only` run test shares one work closure between the skipped and the named step, so the body runs (once, counted) and no test line is unreachable by design (GOH.DIFFCOV0CFCB5A1: v0.145.0's ship was red on only.rs:108-110).

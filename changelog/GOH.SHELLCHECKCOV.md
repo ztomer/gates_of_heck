@@ -1,1 +1,0 @@
-- test(toolshell): v0.145.0's second ship was red at diff coverage on observed.rs:64 and :112. The snapshot-name parse has no unreachable `?` (split_once), and the ps runner takes its path, so a missing ps is tested to see no ancestors (GOH.SHELLCHECKREAL).
