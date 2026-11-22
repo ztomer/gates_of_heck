@@ -418,9 +418,17 @@ def main(argv: list[str]) -> int:
     experiment.why = why
     slot_wait = load_slot.waits(count, wait)
     holder = None
+    run = command
     if count == 0:
         if (rc := _admit_gate(experiment, command, max_s, wait_s, why)) is not None:
             return rc
+        try:
+            import land_share  # lib/, on the path above: the QoS of a gate run only
+
+            run = land_share.clamp(command, info)  # a lane/work run's QoS (GOH.LANDSHARE)
+        except SystemExit as refusal:
+            print(f"load: {refusal}", file=sys.stderr)
+            return 2
     else:
         try:
             holder, _ = load_slot.claim(experiment.claim, slot_wait, wait_s, info)
@@ -446,7 +454,7 @@ def main(argv: list[str]) -> int:
         return 2
     try:
         # A group of its own, so the deadline can kill the command whole.
-        experiment.child = subprocess.Popen(command, stdin=None, process_group=0)
+        experiment.child = subprocess.Popen(run, stdin=None, process_group=0)
     except FileNotFoundError:
         experiment.finish()
         print(f"load: no such command: {command[0]}", file=sys.stderr)

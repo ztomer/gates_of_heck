@@ -7,7 +7,7 @@
     lib/gate_slot.py nested --dir D                # exit 0 (and say so) inside a gate holding a slot
     lib/gate_slot.py hold --dir D [--slots N] --owner PID --repo NAME --handshake FIFO [--poll S]
                           [--for-caller]   # the owner is the caller's caller, not this process's parent
-                          [--class short|ship|work]   # lane and rank (GOH.SLOTFAIR, LANES)
+                          [--class short|pre|land|ship|lane|work]   # lane, rank (GOH.SLOTFAIR)
 
 THE INCIDENT (2026-10-18). Every repo's pre-push runs goh's push gate, and several sessions pushed at
 once with nothing limiting them. Two pushes failed on load, not on their changes: a private consumer's gate was
@@ -18,9 +18,10 @@ a box running five cold gates.
 THE SEMAPHORE. Slot i is the file `<dir>/slot-<i>`, i < N. A gate holds a slot while it holds an
 exclusive flock(2) on one of those files; the files are never removed (removing a flock file under a
 holder hands the next caller a fresh, unlocked inode). The lock is the flock, never the content: the
-content is the holder's record (`pid<TAB>repo<TAB>epoch<TAB>key`), written after the lock is taken,
-read for the wait message and, by the lock order, for the slot an ancestor holds (`recorded_above`;
-key: the repository it was taken in, lib/lock_order.py's SCOPE).
+content is the holder's record (`pid<TAB>repo<TAB>epoch<TAB>key<TAB>class`), written after the lock
+is taken, read for the wait message and, by the lock order, for the slot an ancestor holds
+(`recorded_above`; key: the repository it was taken in, lib/lock_order.py's SCOPE; class: the
+gate's, which the worker share weighs, GOH.LANDSHARE).
 
 THE WAIT REPORT IS ONE WRITE (E59, 2026-10-21). The report that names the holders was TWO writes
 -- the header, then a line per holder -- so a reader that waited for the header could read the
@@ -160,8 +161,8 @@ def record_scoped(path: str) -> tuple[int, str, float, str] | None:
         with open(path, encoding="utf-8") as f:
             fields = f.read().strip().split("\t")
         pid, repo, since = fields[:3]
-        key = fields[3] if len(fields) == 4 else ""
-        if len(fields) not in (3, 4):
+        key = fields[3] if len(fields) >= 4 else ""
+        if len(fields) not in (3, 4, 5):  # the fifth: the class (GOH.LANDSHARE, land_share.py)
             return None
         return int(pid), repo, float(since), key
     except (OSError, ValueError):

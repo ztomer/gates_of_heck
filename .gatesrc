@@ -247,3 +247,9 @@ GOH_CHANGELOG_FRAGMENTS=on
 # every class, so a sweep or another repo's gate waits behind lands for at most this long. 15: a
 # land gate's ~12 min and a margin -- one land ahead, never a stream of them.
 GOH_GATE_SLOT_STARVE_MIN=15
+# THE LAND PATH'S SHARE of the cores (GOH.LANDSHARE, lib/land_share.py): while a land's pre-step,
+# pre-land, gate or a ship is admitted, those runs split this fraction of the cores and every other
+# gate splits the rest (at least 1 each); with none admitted every gate gets cores // admitted.
+# 0.75: 12 of 16 -- the goh suite's own worker cap -- where equal shares gave a pre-step 5 of 16
+# beside lane gates and the land path took ~30 min per land (2026-11-21, GOH.UGREPVQ).
+GOH_LAND_SHARE=0.75

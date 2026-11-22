@@ -7,7 +7,7 @@
 # nesting rule are in lib/gate_slot.py's header; this is the shell's half:
 #
 #     gate_slot_acquire <repo name> [class] [max wait s]   # blocks until a slot is free; announces
-#         # the wait and its end. class: short | land | ship | lane | work (lib/gate_lanes.py CLASSES,
+#         # the wait and its end. class: short | pre | land | ship | lane | work (lib/gate_lanes.py CLASSES,
 #         # GOH.SLOTFAIR, GOH.SLOTPRIORITY);
 #         # none given, GOH_GATE_CLASS (gates/commit_gate.sh sets `short` for the gate.sh it runs),
         # else `lane` in a loop lane's worktree (GOH.LANECLASS),
@@ -46,6 +46,8 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 GATE_SLOT_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gate_slot.py" # beside this file
 GATE_SLOT_PID="" # the holder process (lib/gate_slot.py hold); gate_slot_release ends it
 GATE_SLOT_STAMP="" # its goh_pid_stamp: the release signals only that process, never a reused pid
+LAND_SHARE_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/land_share.py" # a class's clamp (GOH.LANDSHARE)
+GATE_SLOT_QOS=() # that clamp's argv for this gate's runners (tools/pytest.sh), empty: default QoS
 GATE_SLOT_CLASS="" # the class the last acquire asked by (GOH.SLOTPRIORITY): the push row records it
 
 gate_slot_acquire() {
@@ -79,8 +81,8 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller> <class | ""> <max w
         || { err "gate slot: cannot derive the gate's class (lib/gate_slot.py default-class)"; exit 1; }
     class="${class:-work}"
     case "$class" in
-        short | land | ship | lane | work) ;;
-        *) err "GOH_GATE_CLASS must be short, land, ship, lane or work (got '$class')"
+        short | pre | land | ship | lane | work) ;;
+        *) err "GOH_GATE_CLASS must be short, pre, land, ship, lane or work (got '$class')"
            exit 2 ;;
     esac
     GATE_SLOT_CLASS="$class"   # the push row's `slot_class` (lib/timing_ledger.sh goh_push_row)
@@ -154,7 +156,19 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller> <class | ""> <max w
     goh_lock_mark gate_slot
     # THE WIDTH (GOH.POOLSHARE): cores / the gates admitted now, this one included, exported in the
     # variables every runner it starts reads. Counted afresh: an inherited share is another gate's.
-    goh_workers_export --admitted --dir "$dir" || { err "gate slot: cannot size this gate's workers (lib/worker_share.py)"; exit 1; }
+    goh_workers_export --admitted --dir "$dir" --class "$class" || { err "gate slot: cannot size this gate's workers (lib/worker_share.py)"; exit 1; }
+    # THE CLAMP (GOH.LANDSHARE, lib/land_share.py): a lane/work gate's runners exec under the QoS
+    # clamp (macOS `taskpolicy -c utility`, Linux nice + ionice), the land path never. A running
+    # shell cannot be clamped (taskpolicy's -c is exec-only), so its runners prefix GATE_SLOT_QOS
+    # (tools/pytest.sh); tools/load.py clamps the command it execs itself.
+    local qos_out qos_why qos_word
+    qos_out="$("$GOH_PY" -S "$LAND_SHARE_HELPER" qos --class "$class")" \
+        || { err "gate slot: no QoS for class $class (lib/land_share.py qos)"; exit 2; }
+    GATE_SLOT_QOS=()
+    qos_why=""
+    while IFS= read -r qos_word; do
+        if [ -z "$qos_why" ]; then qos_why="$qos_word"; else GATE_SLOT_QOS+=("$qos_word"); fi
+    done <<<"$qos_out"
     local whose="(GOH_GATE_SLOTS, class $GATE_SLOT_CLASS)"
     if [ -n "$mode" ]; then
         # Never this shell's to release: the holder ends with the gate.sh it was taken for.
@@ -172,7 +186,8 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller> <class | ""> <max w
         info "$word $((idx + 1))/$total taken $whose"
     fi
     info "  owner watch: $mech"
-    info "  workers: $GOH_GATE_WORKERS (cores / gates admitted now, GOH.POOLSHARE)"
+    info "  workers: $GOH_GATE_WORKERS (the class's part of the cores / its gates admitted now, GOH.POOLSHARE, GOH.LANDSHARE)"
+    info "  QoS: $qos_why"
 }
 
 gate_slot_release() {

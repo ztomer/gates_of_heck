@@ -68,7 +68,8 @@ def admit(
     # The repository key last: the lock order scopes a `repo` lock by it (lib/lock_order.py).
     key = lock_order.repo_key()
     name = " ".join(repo.split())  # one field of a tab-separated record
-    os.write(fd, f"{owner}\t{name}\t{time.time():.0f}\t{key}\n".encode())
+    # The class fifth (GOH.LANDSHARE): every live share reads which held slots are the land path.
+    os.write(fd, f"{owner}\t{name}\t{time.time():.0f}\t{key}\t{gate_class}\n".encode())
     return idx, fd, waited + mem_waited, gate_slot.slot_path(directory, idx, lane)
 
 
@@ -136,11 +137,14 @@ def admit_here(repo: str, max_wait: float | None = None) -> Admitted:
     os.environ[lock_order.ENV] = lock_order.with_held("gate_slot", os.getpid())
     # THE WIDTH (GOH.POOLSHARE): the gate this process runs gets cores / the gates admitted now,
     # this one included, in every runner's own variable (lib/worker_share.py RUNNER_ENV).
+    import land_share
     import worker_share
 
-    workers = worker_share.divide(worker_share.cores(), worker_share.admitted(directory))
+    # Weighted by class (GOH.LANDSHARE): the land path's part while one is admitted.
+    env = dict(os.environ)
+    workers = land_share.share_of(directory, env, worker_share.cores(), 0, gate_class)
     os.environ.update(
-        worker_share.runner_env(workers, mine=0)
+        worker_share.runner_env(workers, mine=0, klass=gate_class)
     )  # never an inherited share: another gate's
     return Admitted("taken", index=idx, slots=slots, waited=waited, gate_class=gate_class)
 

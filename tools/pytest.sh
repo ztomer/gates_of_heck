@@ -220,7 +220,9 @@ suite_kind=suite
 [ "$#" -ne 0 ] || export GATES_OF_HECK_FS_EVENTS="${GATES_OF_HECK_FS_EVENTS:-$PYTEST_DEBUG_TEMPROOT/fs-events.json}"
 [ "$#" -ne 0 ] || goh_span_start
 rc=0
-"$GOH_PY" -m pytest "${TARGET[@]}" "${ARGS[@]}" "$@" || rc=$?
+# A lane/work suite this script admitted runs under its class's QoS clamp (GATE_SLOT_QOS,
+# lib/gate_slot.sh, GOH.LANDSHARE); inside a gate it inherits that gate's.
+${GATE_SLOT_QOS[@]+"${GATE_SLOT_QOS[@]}"} "$GOH_PY" -m pytest "${TARGET[@]}" "${ARGS[@]}" "$@" || rc=$?
 fs_fields=()
 if [ "$#" -eq 0 ] && [ -s "${GATES_OF_HECK_FS_EVENTS:-}" ]; then
     mapfile -t fs_fields < <("$GOH_PY" -c 'import json, sys

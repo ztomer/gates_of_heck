@@ -73,7 +73,16 @@ MACHINE_SHAPE = {"GOH_GATE_CORES": "16", "GOH_GATE_SLOTS": "2"}
 # (tools/release-kit/changelog_cut.py, via GOH_TODAY) wrote: four reds on 2026-11-19.
 PINNED_TODAY = "2026-03-04"
 CLOCK = {"GOH_TODAY": PINNED_TODAY}
-HERMETIC_PINS = {**MACHINE_SHAPE, **CLOCK}  # what every hermetic child is told, beside its scrub
+# THE CLAMP OFF (GOH.LANDSHARE): a fixture's `load.py 0` or gate takes class `work` and would exec
+# under the lane QoS clamp (lib/land_share.py) -- inside a LAND's suite too, slowing the land path's
+# own tests 6-7x under contention. The suite runs at its gate's QoS, inherited; a test of the clamp
+# turns it on by name.
+QOS = {"GOH_LANE_QOS": "off"}
+HERMETIC_PINS = {
+    **MACHINE_SHAPE,
+    **CLOCK,
+    **QOS,
+}  # what every hermetic child is told, beside its scrub
 # Where each kept variable's tool looks under HOME when the variable is unset.
 HOME_DEFAULTS = {
     "CARGO_HOME": ".cargo",

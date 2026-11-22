@@ -204,6 +204,8 @@ land_pre() {
     [ -n "${1:-}" ] || pre_judged=""
     pre_base="$(git -C "$main" rev-parse HEAD)"
     info "pre-land: $cmd"
+    # Class `pre` (GOH.LANDSHARE): the land path's share of the cores (3/4, lib/land_share.py) and
+    # default QoS, in the SHORT lane at the commit gate's rank.
     # The SHORT lane (GOH.PRESTEPADMIT): the commit gate's slots, which no long gate takes, so the
     # pre-step starts while long gates hold every long slot -- a land queues for a long slot ONCE,
     # for its gate. As a `ship` gate it queued twice, and a lane that would go red waited up to
@@ -220,7 +222,7 @@ land_pre() {
     # The slot wait's own bound: load.py's default (15 min) unless a seam names one (GOH.PREWAITVERDICT).
     local waitmax=()
     [ -z "${GOH_LAND_PRE_WAIT:-}" ] || waitmax=(--wait-max "$GOH_LAND_PRE_WAIT")
-    (cd "$here" && { [ -z "$ship_timings" ] || export GOH_TIMINGS_PARENT="land: pre-step"; } && GOH_LAND_VERDICTS_RECORD="$record" GOH_GATE_CLASS=short "$GOH_PY" "$GOH/tools/load.py" \
+    (cd "$here" && { [ -z "$ship_timings" ] || export GOH_TIMINGS_PARENT="land: pre-step"; } && GOH_LAND_VERDICTS_RECORD="$record" GOH_GATE_CLASS=pre "$GOH_PY" "$GOH/tools/load.py" \
         ${waitmax[@]+"${waitmax[@]}"} --background-ok "pre-land" --max "$((pre_back + 60))" 0 -- \
         "$GOH_PY" "$GOH/lib/pre_deadline.py" run --mark "$pre_start" --floor "$pre_max" --ceiling "$pre_ceil" \
         -- bash -c "$cmd" pre-land "$pre_base" </dev/null 7>&- 8<&-) || pre_rc=$?

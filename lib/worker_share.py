@@ -16,6 +16,9 @@ slots and the commit gate's short slots both run a suite). A run that holds no s
 pre-step running tools/pytest.sh) counts itself as one more gate, so it too takes a share and not
 the machine. Admission's rule is unchanged (D-0009 kept count admission); this sizes width only.
 
+THE WEIGHT (GOH.LANDSHARE): while a land-path gate is admitted the counts below are weighted by
+class -- lib/land_share.py, which has the rule, the measurement and THE BOUND.
+
 THE SHARE IS LIVE (GOH.SHAREGROW, 2026-11-17 21:58). It was taken once at admission and never moved:
 the SELECTAUDIT land's coverage step ran the goh suite at `-n 4` for 11+ minutes on a box at load
 7.9 of 16 cores, the other gate and its sibling steps long gone. Now the runners that CAN follow the
@@ -70,6 +73,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import gate_slot
+import land_share  # the land path's weighted part and the lanes' clamp (GOH.LANDSHARE)
 import lock_order
 
 ENV = "GOH_GATE_WORKERS"  # this gate's share, exported at admission
@@ -125,10 +129,8 @@ def admitted(directory: str) -> int:
 def counted(directory: str, environ: dict[str, str] | None = None) -> int:
     """The share counted from the slots: this process's own gate is among the held slots when its
     ancestry holds one (by GOH_GATE_SLOT or by record), else it is one more beside them."""
-    gates = admitted(directory)
-    if gate_slot.nested(directory) is None:
-        gates += 1
-    return divide(cores(environ), gates)
+    env = os.environ if environ is None else environ
+    return land_share.share_of(directory, env, cores(env), int(gate_slot.nested(directory) is None))
 
 
 def share(directory: str | None = None, environ: dict[str, str] | None = None) -> int:
@@ -177,11 +179,10 @@ def steps(environ: dict[str, str] | None = None) -> int:
 
 
 def live(environ: dict[str, str] | None = None) -> int:
-    """This runner's share NOW: cores // the gates admitted now // the sibling steps running now."""
+    """This runner's share NOW: its class's part of the cores now // the sibling steps now."""
     env = os.environ if environ is None else environ
     directory = os.path.realpath(slot_dir(env))
-    gates = admitted(directory) + own(directory, env)
-    return divide(divide(cores(env), gates), steps(env))
+    return divide(land_share.share_of(directory, env, cores(env), own(directory, env)), steps(env))
 
 
 class Pool:
@@ -269,6 +270,7 @@ def tokens_from_env(environ: dict[str, str] | None = None) -> Tokens | None:
         CORES_ENV: src.get(SHARE_CORES_ENV, ""),
         OWN_ENV: src.get(OWN_ENV, "1"),
         STEPS_ENV: src.get(STEPS_ENV, ""),
+        **{k: src.get(k, "") for k in (land_share.CLASS_ENV, land_share.RESOLVED_ENV)},
     }
     pool = Pool(
         directory,
@@ -363,7 +365,7 @@ def slot_dir(environ: dict[str, str]) -> str:
 
 
 def runner_env(
-    workers: int, environ: dict[str, str] | None = None, mine: int | None = None
+    workers: int, environ: dict[str, str] | None = None, mine: int | None = None, klass: str = ""
 ) -> dict[str, str]:
     """The variables that hold every runner to `workers`. One already set LOWER stays: a repo
     saying RUST_TEST_THREADS=1 says its tests cannot run at once; a share never widens a runner.
@@ -379,6 +381,7 @@ def runner_env(
         have.isdigit() and 0 < int(have) <= workers and have != env.get(ENV, "")
     ):  # the repo's own count (not a share it inherited): the live share never re-sizes it
         out[PIN_ENV] = "1"
+    out.update(land_share.runner_vars(klass, env))  # its class and the land fraction it read
     if mine is not None:
         out[OWN_ENV] = str(mine)
         var, me = cargo_runner_var(), os.path.abspath(__file__)
@@ -399,6 +402,7 @@ def main(argv: list[str]) -> int:
             "--admitted", action="store_true",
             help="the caller was just admitted: its slot is among the held ones; nothing inherited",
         )  # fmt: skip
+        p.add_argument("--class", dest="gate_class", default="", help="its admission's class")
     p = sub.add_parser(
         "pool", help="KEY=VALUE: a token pool at PATH for a run of up to CEIL workers"
     )
@@ -425,7 +429,7 @@ def main(argv: list[str]) -> int:
             print(f"{SHARE_CORES_ENV}={cores(env)}")
             return 0
         if args.admitted:
-            got, mine = divide(cores(env), admitted(directory)), 0
+            got, mine = land_share.share_of(directory, env, cores(env), 0, args.gate_class), 0
         else:
             got, mine = share(args.dir or None, env), None
         workers = divide(got, args.split)
@@ -437,7 +441,7 @@ def main(argv: list[str]) -> int:
     else:
         if mine is None:
             mine = own(directory, env)
-        for key, value in runner_env(workers, env, mine).items():
+        for key, value in runner_env(workers, env, mine, args.gate_class).items():
             print(f"{key}={value}")
     return 0
 

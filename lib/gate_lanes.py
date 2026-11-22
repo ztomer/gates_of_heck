@@ -23,8 +23,12 @@ import lock_order
 # pushes -- and lands are the critical path. A gate's CLASS picks its lane and its rank in the
 # lane's queue, and the CALLER declares it (GOH_GATE_CLASS, consumed by the admission); it is
 # never inferred from a command line:
-#   short  the commit gate (gates/commit_gate.sh marks its gate.sh) and a land's pre-step: the SHORT
+#   short  the commit gate (gates/commit_gate.sh marks its gate.sh), a narrowed suite: the SHORT
 #          lane, N slots of its own that no long gate takes, so it waits only behind other shorts
+#   pre    a land's pre-step and the lander's pre-land (tools/land.sh `land_pre`, GOH.LANDSHARE):
+#          the short lane at the commit gate's rank (arrival order among them, as before), named
+#          apart because it is the LAND PATH -- with `land` and `ship` it takes most of the cores
+#          and runs at default QoS while lane/work gates run clamped (lib/land_share.py)
 #   land   a land's gate (lib/land_gate.sh): the long lane, ranked first
 #   ship   `goh ship`'s full suite (lib/ship_full_run.py) and its push (tools/ship.py)
 #   lane   a gate run in a loop lane's worktree (GOH.LANECLASS): derived, not asked of each lane --
@@ -39,6 +43,7 @@ import lock_order
 LANES = {"long": "slot", "short": "short"}
 CLASSES = {
     "short": ("short", 0),
+    "pre": ("short", 0),  # after `short`: class_of(short, 0) stays `short`
     "land": ("long", 0),
     "ship": ("long", 1),
     "lane": ("long", 2),

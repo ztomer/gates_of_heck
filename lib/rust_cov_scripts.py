@@ -65,6 +65,7 @@ DECLARED = {
     'gates/_proven_identity.sh: "$GOH_PY" -S "$_PROVEN_IDENTITY_PY"': _HELPER,
     'gates/_proven_why.sh: "$GOH_PY" -S "$_PROVEN_IDENTITY_PY"': _HELPER,
     'lib/gate_slot.sh: "$GOH_PY" -S "$helper"': _HELPER,
+    'lib/gate_slot.sh: "$GOH_PY" -S "$LAND_SHARE_HELPER"': _HELPER,
     'lib/worker_share.sh: "$GOH_PY" -S "$WORKER_SHARE_HELPER"': _HELPER,
     # A script path or source word no reading places: lib/run_rule.py's table, the step closure's.
     **run_rule.DECLARED,

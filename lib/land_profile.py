@@ -77,6 +77,7 @@ ORDER = ("e2e", "enqueue pre-step", "earlier attempts", "queue wait", "retries",
 SLOT_CLASS = "      slot wait "
 SLOT_CLASSES = (
     "short",
+    "pre",
     "land",
     "ship",
     "lane",
