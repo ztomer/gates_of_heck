@@ -124,9 +124,48 @@ def judge(row: dict, found_text: str | None = None, exact: bool = False) -> str 
     if not at_least(found, floor):
         return (
             f"{tool}: this machine has {found}, the floor is {floor} -- update it "
-            f"({row['install']}; the floor's reason is in gates/required_tools.tsv)"
+            f"({remedy(row, floor)}; the floor's reason is in gates/required_tools.tsv)"
         )
     return None
+
+
+def _prefix() -> str:
+    """The gates' interpreter's sys.prefix, through the seam the gates run ("" if unreadable)."""
+    argv = ["bash", os.path.join(HERE, "python.sh"), "-c", "import sys; print(sys.prefix)"]
+    try:
+        done = subprocess.run(argv, capture_output=True, text=True, timeout=60,
+                              stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return done.stdout.strip() if done.returncode == 0 else ""
+
+
+def _locked(lock: str, tool: str) -> str | None:
+    """TOOL's version in a uv.lock's text, or None."""
+    want = re.escape(tool.lower().replace("_", "-"))
+    m = re.search(rf'\[\[package\]\]\nname = "{want}"\nversion = "([^"]+)"', lock)
+    return m.group(1) if m else None
+
+
+def remedy(row: dict, floor: str) -> str:
+    """The fix, by how the repo resolves python (GOH.FLOORHINTUV, GOH.VENVDRIFT): a pip row whose
+    interpreter is a uv project's .venv gets `uv sync --frozen` when the lock already meets the
+    floor (the venv drifted from its lock), else `uv lock --upgrade-package`; any other the
+    manifest's install line (a pip line moves no frozen lock)."""
+    if row["kind"] != "pip":
+        return row["install"]
+    prefix = _prefix()
+    project = os.path.dirname(prefix) if os.path.basename(prefix) == ".venv" else ""
+    try:
+        with open(os.path.join(project, "uv.lock"), encoding="utf-8") as f:
+            lock = f.read()
+    except OSError:
+        return row["install"]
+    tool, locked = row["tool"], _locked(lock, row["tool"])
+    if locked and at_least(locked, floor):
+        return f"its uv.lock pins {locked} but the .venv drifted: `uv sync --frozen` in {project}"
+    return (f"`uv lock --upgrade-package {tool}` in {project} (and a floor of {floor} in its "
+            "pyproject), then `uv sync --frozen`")  # fmt: skip
 
 
 def check(selected: list[dict], found_text: str | None = None) -> int:
