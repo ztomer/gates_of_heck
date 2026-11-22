@@ -47,23 +47,25 @@ const FIX: &str = "    A locale variable bash sets itself (a temporary prefix, e
      done nothing (GOH.PROVENBUILD). Give the command its locale through env, which bash never reads:\n      \
      env LC_ALL=C sort       (not LC_ALL=C sort)\n";
 
-static LOCALE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?:LC_[A-Z]+|LANG|LANGUAGE)=").expect("static regex"));
+fn rx(p: &str) -> Regex {
+    Regex::new(p).unwrap_or_else(|e| unreachable!("a constant pattern: {e}"))
+}
+
+static LOCALE: LazyLock<Regex> = LazyLock::new(|| rx(r"(?:LC_[A-Z]+|LANG|LANGUAGE)="));
 static UNSET: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?:^|[\s;&|({])unset\s+(?:-v\s+)?[^;&|]*\b(?:LC_[A-Z]+|LANG|LANGUAGE)\b")
-        .expect("static regex")
+    rx(r"(?:^|[\s;&|({])unset\s+(?:-v\s+)?[^;&|]*\b(?:LC_[A-Z]+|LANG|LANGUAGE)\b")
 });
 /// The command a match belongs to starts after the last of these on its line.
-static SEPARATOR: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\$\(|<\(|>\(|&&|\|\||[|;&(){}`]").expect("static regex"));
+static SEPARATOR: LazyLock<Regex> = LazyLock::new(|| rx(r"\$\(|<\(|>\(|&&|\|\||[|;&(){}`]"));
 /// `env` (after any keyword that leads a command: `if env ...`, `exec env ...`), its options (an
 /// option may take one bare word: `-u NAME`), and assignments before the match: the match is one of
 /// env's arguments.
 static ENV: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\s*(?:(?:if|elif|then|else|do|while|until|exec|command|time|!)\s+)*env(?:\s+-\S+(?:\s+[A-Za-z_]\w*)?)*\s+(?:[A-Za-z_]\w*=\S*\s+)*$")
-        .expect("static regex")
+    rx(
+        r"^\s*(?:(?:if|elif|then|else|do|while|until|exec|command|time|!)\s+)*env(?:\s+-\S+(?:\s+[A-Za-z_]\w*)?)*\s+(?:[A-Za-z_]\w*=\S*\s+)*$",
+    )
 });
-static COMMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:^|\s)#").expect("static regex"));
+static COMMENT: LazyLock<Regex> = LazyLock::new(|| rx(r"(?:^|\s)#"));
 
 /// The line without a trailing comment (a `#` at the start or after whitespace).
 fn code(line: &str) -> &str {
@@ -99,7 +101,9 @@ pub fn scan(text: &str) -> Vec<usize> {
 
 /// Whether a shell source is zsh's, whose locale handling is not bash's.
 fn is_zsh(rel: &str, text: &str) -> bool {
-    rel.ends_with(".zsh")
+    Path::new(rel)
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("zsh"))
         || text
             .lines()
             .next()
