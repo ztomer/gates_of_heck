@@ -10,7 +10,7 @@ import shutil
 import subprocess
 
 import pytest
-from conftest import REPO_ROOT, commit_all, stage, write
+from conftest import REPO_ROOT, commit_all, hermetic_env, stage, write
 
 GATE = REPO_ROOT / "gates" / "py_staged.sh"
 
@@ -261,8 +261,7 @@ def test_a_uv_repos_staged_lint_never_syncs_the_view_into_the_checkouts_venv(rep
     stage(repo, "uv.lock", "ok.py")
     log = tmp_path / "uv.log"
     _fake_uv(tmp_path / "bin", log)
-    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}:{os.environ['PATH']}"}
-    env.pop("GOH_PY_RUNNER", None)
+    env = hermetic_env(PATH=f"{tmp_path / 'bin'}:{os.environ['PATH']}")
     env.pop("UV_NO_SYNC", None)
     r = subprocess.run(["/bin/bash", str(GATE), str(repo)], capture_output=True, text=True,
                        stdin=subprocess.DEVNULL, check=False, env=env)  # fmt: skip
