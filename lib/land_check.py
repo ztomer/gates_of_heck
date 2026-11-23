@@ -258,19 +258,19 @@ def _run(
     return rc, out, round(time.monotonic() - t0, 1)
 
 
-def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=False, no_pre=False):
+def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=False, no_pre=False,
+        cov=True):  # fmt: skip
     """Every guard over ROOT; the refusing guards' names ([] is green). SAY prints a line. TABLES
-    (`goh land --check`) adds every judge the change can break (`judge_tests`) and diff coverage;
-    NO_PRE `steps`' no-pre lint, the Rust gate's coverage (its tests) deferred by name."""
+    (`goh land --check`) adds every judge the change can break (`judge_tests`) and, unless not COV
+    (a batch's ratchet phase, lib/landq_ratchet.py), diff coverage; NO_PRE `steps`' no-pre lint,
+    the Rust gate's coverage (its tests) deferred by name."""
     env = {**_env(root), **({"GOH_RUST_COVERAGE": "defer"} if no_pre else {})}
     nodes = tests(root, q, repo)
     if tables:
         t0 = time.monotonic()
         extra = [n for n in judge_tests(root) if n not in nodes]
-        took = time.monotonic() - t0
-        say(
-            f"check: {counted(len(extra), 'judge test')} the diff can break, chosen in {took:.1f} s"
-        )
+        say(f"check: {counted(len(extra), 'judge test')} the diff can break, chosen in "
+            f"{time.monotonic() - t0:.1f} s")  # fmt: skip
         nodes += extra
     jobs: dict[str, list[str]] = {s: ["bash", "-c", s] for s in steps(root, no_pre)}
     serial = ["-n", "0"] if (root / "tests" / "_shard.py").is_file() else []  # goh's xdist
@@ -278,8 +278,8 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=Fal
     parts = shards(nodes, JUDGE_SHARDS if tables else SHARDS)
     for i, part in enumerate(parts, 1):
         jobs[f"guard tests {i}/{len(parts)}"] = [*py, "--", *part]
-    if tables and (cov := diff_cov_job(root, env)):
-        jobs[DIFFCOV] = cov
+    if tables and cov and (job := diff_cov_job(root, env)):
+        jobs[DIFFCOV] = job
     if not jobs:
         say("check: no guard declared (GOH_LAND_CHECK_STEPS, # goh-land-guard:) -- nothing to run")
         return []

@@ -63,6 +63,7 @@ import gitrun
 import land_lock
 import land_prestep
 import land_slot
+import landq_ratchet
 import landq_report
 import landq_size
 import landq_spec
@@ -415,8 +416,8 @@ class Batch:
                 main = self.git(self.main, "rev-parse", "HEAD")
                 for it in live:
                     it.upstream = self.git(self.main, "merge-base", main, it.tip)
-                if live:
-                    self.settle(live)
+                if live:  # the tree-wide judges first, on the stack (GOH.STACKRATCHETFIRST)
+                    self.settle(landq_ratchet.first(self, live))
             except GitFailed as e:
                 self.stalled(live, e)
             for it in live:
