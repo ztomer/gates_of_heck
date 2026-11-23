@@ -1,4 +1,6 @@
 # shellcheck shell=bash
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_proven_identity.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # _proven_identity.sh — the proven key's identity, sourced by gates/_proven.sh (split out of it at
 # the 500-line cap, GOH.PREPARITY); its callers provide PROVEN_GOH_ROOT, _PROVEN_IDENTITY_PY,

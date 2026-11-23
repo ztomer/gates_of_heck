@@ -21,6 +21,8 @@
 
 # goh_repo_snapshot ROOT -- the repository's own config and its refs, sorted: `config KEY=VALUE`
 # lines, then `ref NAME SHA` lines.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/repo_writes.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 goh_repo_snapshot() {
     git -C "$1" config --local --list 2>/dev/null | env LC_ALL=C sort | sed 's/^/config /'

@@ -7,6 +7,8 @@
 # (GITHUB_ACTIONS=true) -- having said so on its own line with the step's reason; 1 anywhere else,
 # having said why it is RED: off a hosted runner the owner's machine is the judge of record, and a
 # step that did not run there has not passed (tests/test_not_applicable.py, both directions).
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_not_applicable.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 lci_not_applicable() {
     local label="$1" cmd="$2" log="$3" why

@@ -17,6 +17,8 @@
 # silent: the verdict was already given by the checks, and a leftover temp directory is the machine's
 # housekeeping, not a defect in the code under test. Returns 0 either way. The caller's `set -e` must
 # not be able to end the gate over cleanup.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/rm_tree.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 goh_rm_tree() {
     local p

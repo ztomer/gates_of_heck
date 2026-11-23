@@ -23,6 +23,8 @@
 #                             Each use is appended to <common git dir>/goh-main-commits.log (UTC
 #                             time, HEAD, reason) and said on stderr (GOH.MAINCOMMIT, 2026-11-11).
 # Pinned by tests/test_landed_only_commit.py.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/landed_only.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 goh_refuse_unlanded_commit() {
     local root="$1" what="$2" landed branch gitdir common

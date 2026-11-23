@@ -15,6 +15,8 @@
 # shard whose artifact never arrived is "coverage exports incomplete", never a smaller report. A
 # line's verdict is its best count over the parts (gates/lcov_merge.py), so N shards of the suite and
 # the suite in one run read the same covered lines (tests/test_coverage_parts.py).
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_coverage_parts.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 
 # cov_part_mode -- read the two variables into COV_PART_ONLY (workspace|external|""), COV_SHARD

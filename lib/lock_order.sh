@@ -18,6 +18,8 @@
 #
 # The flock is held by the open file description behind FD, which this shell keeps: it ends when
 # the shell closes FD or exits, SIGKILL included. Pinned by tests/test_lock_order.py.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/lock_order.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=lib/house_python.sh
 . "${BASH_SOURCE[0]%/*}/house_python.sh" || return 1

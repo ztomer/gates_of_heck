@@ -1,4 +1,6 @@
 # shellcheck shell=bash disable=SC2154  # cargo_dir, PROVEN_ON, PROVEN_GOH_ROOT, GOH_PY: the sourcing gate's
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_rust_inputs.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # gates/_rust_inputs.sh -- the keys of rust_gate.sh's groups that are keyed on THEIR OWN inputs, not on
 # the gates that run them (GOH.GATEFLOOR). Sourced by gates/_rust_proven.sh; pinned by

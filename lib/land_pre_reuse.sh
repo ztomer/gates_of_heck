@@ -3,6 +3,8 @@
 # test reads (GOH.PRELANDTWICE). Sourced by tools/land.sh, whose land_pre, tip, here, main, pre,
 # verdicts and GOH_PY it reads; lib/pre_reuse.py decides. Pinned by tests/test_pre_reuse.py.
 #
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/land_pre_reuse.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # land_pre_from -- `goh land --enqueue` kept its green pre-step's tip and record
 # (GOH_LAND_PRE_KEEP), and the lander names them (GOH_LAND_PRE_FROM): a tip that moved only where

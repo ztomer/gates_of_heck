@@ -5,6 +5,8 @@
 # goh_sleep_mark — when the machine last went to sleep, in epoch seconds, or nothing where the
 # OS does not say (macOS's kern.sleeptime; Linux has no such counter, so it is blank there).
 # GOH_SLEEPTIME_FILE, when set, is read instead: the seam the tests plant a sleep through.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/sleep_mark.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 goh_sleep_mark() {
     if [ -n "${GOH_SLEEPTIME_FILE:-}" ]; then

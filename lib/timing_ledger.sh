@@ -14,6 +14,8 @@
 # lib/timing_ledger.py, which never fails: a ledger that cannot be written leaves a gate's exit alone.
 # Sourced, never run. Pinned by tests/test_timing_ledger.py.
 
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/timing_ledger.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 
 # Sets _goh_cpu_now to the seconds of CPU the children of THIS shell have used so far, one decimal

@@ -14,6 +14,8 @@
 # a consumer is never handed anywhere. GOH_SELF_GATED (<tree>|<toplevel>) marks the hand-off, so
 # it happens once per commit and a fixture commit a test makes inside it is judged on its own.
 # GOH_LIVE in the very checkout being committed is its developer's on purpose, and is kept.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_self_gate.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=lib/run_path.sh
 . "${BASH_SOURCE[0]%/*}/../lib/run_path.sh" || exit 1   # goh_index_tree: never the shared index.lock

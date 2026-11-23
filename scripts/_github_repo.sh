@@ -8,6 +8,8 @@
 # goh_owner_repo <root>: prints `<remote>\t<owner>/<name>` for the ONE remote under the owner's
 # account, or dies listing every remote and its owner -- a clone of someone else's repo (apes'
 # `origin` is Galzai/apes; the owner's fork is `estate`) must never have the other account archived.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "scripts/_github_repo.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 goh_owner_repo() {
     local root="$1" login remote url slug found="" listed=""

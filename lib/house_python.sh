@@ -32,6 +32,8 @@
 # interpreter misses and is probed again. Pinned by tests/test_house_python.py.
 
 # _goh_house_py_version <python>: its major.minor.micro, or nothing and 1.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/house_python.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 _goh_house_py_lib="$(cd "$_goh_d" && pwd)"
 _goh_house_py_version() {

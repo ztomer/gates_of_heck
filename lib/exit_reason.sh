@@ -9,6 +9,8 @@
 # exit 137 by itself; the words say "exit 137 = SIGKILL", which is what a status of 137 means to
 # every shell. The words hold no parentheses: lib/fail_lines.py reads them inside `failed (...)`.
 # Pinned by tests/test_step_exit_reason.py. Bash 3.2-safe.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/exit_reason.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 goh_exit_reason() {
     local rc="$1" limit="${2:-}" name

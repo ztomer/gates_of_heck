@@ -103,6 +103,8 @@
 # that only returns non-zero is not enough here: `return` from a sourced file
 # returns from the SOURCE, and the caller carries on regardless. Defining
 # fallbacks means `die` is always a real abort, whatever the caller sourced.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/gpu_lock/gpu_lock.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../../lib/bash5.sh" || exit; goh_bash5 "$@"
 for _gpu_lock_helper in info ok warn err; do
     declare -F "$_gpu_lock_helper" >/dev/null 2>&1 || eval "

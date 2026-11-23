@@ -20,6 +20,8 @@
 # Tests: tests/test_release_kit_branch.py.
 
 # release_default_branch -- origin's default branch name, or nothing when it cannot be read.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "tools/release-kit/branch_step.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../../lib/bash5.sh" || exit; goh_bash5 "$@"
 release_default_branch() {
   local def

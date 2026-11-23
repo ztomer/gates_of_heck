@@ -8,6 +8,8 @@
 # handled by return code, and no function changes shell options. Every git call on the REPO is
 # made from the cwd and honours GIT_INDEX_FILE: in a pre-commit hook it names the index being
 # committed, the tree to key on. A git call on a goh checkout strips GIT_* first.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_proven.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=gates/_hash.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_hash.sh"

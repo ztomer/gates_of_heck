@@ -13,6 +13,8 @@
 # (04:05:53): at 04:18:26 `mdfind -name` found the control and not the ~/.cache one (an earlier
 # pair, checked after 3 min, read the same). Re-measure that way before
 # moving either root; an XDG_CACHE_HOME outside a dot directory would be indexed.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/tmp_root.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 goh_tmp() {
     local base="${TMPDIR:-/tmp}"

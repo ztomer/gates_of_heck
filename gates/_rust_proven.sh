@@ -26,6 +26,8 @@
 #   * no native goh, or a scope it cannot name: the group simply runs, uncached, and says so.
 # GOH_PROVEN=0 turns all of it off.
 
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_rust_proven.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=gates/_proven.sh
 . "$_goh_d/_proven.sh"

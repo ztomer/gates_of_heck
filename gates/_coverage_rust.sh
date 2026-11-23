@@ -5,6 +5,8 @@
 # ── rust ────────────────────────────────────────────────────────────────────
 # Ported from app_updates/tools/coverage_check.sh; see lineage above. ONE instrumented run of
 # every declared lib/bin/test target, its lcov fed to the line-union merger below.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_coverage_rust.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # ── THE PHASES, STREAMED (GOH.COVPHASES) ─────────────────────────────────────
 # A step killed on its ceiling shows the tail of what it printed, and this mode printed three intro

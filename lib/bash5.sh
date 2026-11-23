@@ -56,6 +56,8 @@
 #   bash lib/bash5.sh    (run directly) prints the bash >= 5 the guard would use, or dies: CI asks
 #                        it whether to install one (.github/actions/goh-floors).
 
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/bash5.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 GOH_BASH_FLOOR=5
 # Defined once per shell: _goh_bash5_say sources tui/lib.sh, whose own guard sources this file again
 # from inside goh_bash5, and a function is never redefined while it runs.

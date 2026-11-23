@@ -11,6 +11,8 @@
 # export cannot answer: the live checkout is GOH_LIVE_ROOT, else the one that made the export
 # (`.goh-live`). Pinned by tests/test_ship_pinned.py.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_export_bin_goh.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 _goh_export="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 if [ ! -f "$_goh_export/.goh-head" ]; then

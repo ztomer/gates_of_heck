@@ -75,6 +75,8 @@
 #     <human label> (pid <pid>)
 # The Python half (desktop_lock.py) writes and reads the SAME bytes.
 
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/desktop_lock/desktop_lock.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../../lib/bash5.sh" || exit; goh_bash5 "$@"
 DESKTOP_LOCK_DIR="/tmp/mac-desktop-ui.lock"
 # Long enough that a run queued behind a real peer waits it out rather than

@@ -1,4 +1,6 @@
 # shellcheck shell=bash disable=SC2154  # cargo_dir, HERE, _change_base: rust_gate.sh's, set before this is sourced
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_rust_coverage.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # gates/_rust_coverage.sh -- rust_gate.sh's coverage step: the measurement (rust_coverage_checks),
 # its tests plain (rust_coverage_plain), the reuse between them (gates/_rust_proven.sh), and a land's

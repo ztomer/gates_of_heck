@@ -7,6 +7,8 @@
 # once (2026-10-10). PYTEST_DEBUG_TEMPROOT is pytest's own override of that root; exported, every
 # pytest this shell starts prunes only inside its own. The caller removes it after a passing run with `goh_rm_tree`, NEVER a bare
 # `rm -rf`: a test that leaves a read-only tree failed a gate with no `✗` line (2026-11-12).
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_pytest_root.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=lib/rm_tree.sh
 . "${BASH_SOURCE[0]%/*}/../lib/rm_tree.sh"   # goh_rm_tree: the removal that copes with a read-only tree

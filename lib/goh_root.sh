@@ -27,6 +27,8 @@
 # (after the stock shim, which carries no logic) ask here. tests/test_live_root_rule.py runs one
 # table through all three; tests/test_dead_goh_dir.py pins the repair. A GOH_DIR that exists is
 # never touched.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/goh_root.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 
 # goh_head_cache -- where gates/_from_head.sh builds every HEAD export, one directory per commit.

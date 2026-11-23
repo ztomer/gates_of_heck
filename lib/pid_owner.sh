@@ -11,6 +11,8 @@
 # time has a one-second resolution: a wrap of the whole pid space inside one second is the stated
 # limit. checks/check_saved_pid_kill.py refuses a bare `kill "$var"`; tests/test_pid_owner.py.
 
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/pid_owner.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 
 # `<pid> <start time>` of a live process, or nothing (status 1) when there is none to stamp.

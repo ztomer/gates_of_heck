@@ -10,6 +10,8 @@
 # refused, naming the writer and the test. Outside goh's suite this is always 0.
 
 # goh_suite_cache_ok <path> <writer> -- 0 when <path> may be written; 1, with the reason on stderr.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/suite_cache_guard.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 goh_suite_cache_ok() {
     local real="${GATES_OF_HECK_SUITE_REAL_HOME:-}"

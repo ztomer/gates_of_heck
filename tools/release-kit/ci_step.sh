@@ -21,6 +21,8 @@
 # --no-push with an unpushed HEAD refuses: no CI can run on a commit origin does not have.
 # Tests: tests/test_release_kit_ci.py (the fake gh lists runs only for commits origin holds).
 
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "tools/release-kit/ci_step.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../../lib/bash5.sh" || exit; goh_bash5 "$@"
 
 # ci_push_gated -- the checkout's pre-push hook (as git resolves it: core.hooksPath or the common

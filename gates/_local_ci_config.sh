@@ -3,6 +3,8 @@
 # by concern when that file stood at the 500-line cap (GOH.LOCALCISPLIT); local_ci.sh is the
 # runner (the slot, the scheduler, the report) and this is its configuration. Sourced, never run.
 # shellcheck shell=bash
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_local_ci_config.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 
 # GOH_LCI_TIMEOUT: per-step wall-clock ceiling in seconds. The DEFAULT is 900 (15 min), and the

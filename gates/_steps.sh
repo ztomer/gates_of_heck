@@ -22,6 +22,8 @@
 # comma-delimited tag list, comma-delimited and TRAILING-COMMA'd: the scheduler's `_tags_free`
 # walks it with `${rest#*,}` and needs that comma to end the list).
 
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_steps.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 parse_step_prefix() {
     local n="$1" cmd="$2" head items item key paths p tags=""

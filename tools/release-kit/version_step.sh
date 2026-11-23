@@ -10,6 +10,8 @@
 # with the repo's .gatesrc in its environment as the pre-push gives it) is asked here, first, over the
 # tag that WOULD be pushed: a release whose version is not committed refuses before anything is
 # pushed, waited for or tagged (tests/test_release_kit_version.py).
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "tools/release-kit/version_step.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../../lib/bash5.sh" || exit; goh_bash5 "$@"
 release_version_step() {
   local _vtop _vrefs _vrc

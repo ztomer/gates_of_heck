@@ -33,6 +33,8 @@
 # dir". So PATH leads with an `sccache` that runs the real one under the user's TMPDIR -- the same
 # shim, and the same mark, as the suite's, so a goh suite inside a step does not wrap it twice.
 # Pinned by tests/test_step_tmp.py.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/step_tmp.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=lib/tmp_root.sh
 . "${BASH_SOURCE[0]%/*}/../lib/tmp_root.sh"   # goh_tmp

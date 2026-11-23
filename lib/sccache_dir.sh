@@ -11,6 +11,8 @@
 # Sourced by gates/_common.sh (every gate runner) and gates/push_gate.sh.
 # The cap is the config file's alone, written by lib/sccache_cap.py (GOH.SCCACHECAP): an inherited
 # SCCACHE_CACHE_SIZE outranks it, so a server a gate starts would take a hand-set second value.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/sccache_dir.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 if [ -z "${SCCACHE_DIR:-}" ]; then
     case "$(uname -s)" in

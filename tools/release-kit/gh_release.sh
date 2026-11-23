@@ -6,6 +6,8 @@
 # run. The caller provides the kit's globals (VERSION, DRY_RUN, BACKFILL_FLOOR, GH_REPO_SLUG,
 # BACKFILL_NOTES, STEP) and helpers (plan ok info warn fail), and runs from the repo root, where
 # CHANGELOG.md is read. Tests: tests/test_release_kit.py, tests/test_release_goh.py.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "tools/release-kit/gh_release.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../../lib/bash5.sh" || exit; goh_bash5 "$@"
 # Regex-safe version for stanza matching (dots escaped). Every stanza helper
 # takes the version as an argument: the release step also reads the stanzas

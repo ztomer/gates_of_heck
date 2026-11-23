@@ -4,6 +4,8 @@
 # gate that may have sourced a consumer's VENDORED lib.sh, which predates these names.
 # Exactly one is singular; the plural defaults to the singular plus s. No trailing newline:
 #   ok "$(counted "$n" file) checked"      err "$n $(plural_noun "$n" entry entries) open"
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "tui/plural.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; [ ! -f "$_goh_d/../lib/bash5.sh" ] || { . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"; }   # a lone tui/ copy has none
 plural_noun() {
     local n="${1//[[:space:]]/}"

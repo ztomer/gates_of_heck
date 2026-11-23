@@ -31,6 +31,8 @@
 # The variables that bind git to ONE repository (contract #12): GOH_GIT_LOCAL_VARS, asked of git
 # once per process tree and exported (checks/_gitutil.py reads it too), and the ONE shell helper
 # that drops them, goh_unbind_git. This file is sourced first by every gate, so every gate has both.
+# Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+[ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_from_head.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=gates/_git_env.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_git_env.sh"
