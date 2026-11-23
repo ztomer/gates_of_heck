@@ -266,6 +266,11 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
         # post-rewrite reports (GIT_* honoured)
         "crates/goh/src/revblobs.rs": 2,
         "crates/goh/src/run_path.rs": 1,  # index_tree: write-tree from a private index copy
+        # decisions: `grep -w` of THIS repo for a record's `Lives in` symbol, GIT_* honoured
+        "crates/goh/src/decisions.rs": 1,
+        # private-names --add: grep / show / ls-files / ls-tree of the repo the name is added
+        # over and its origin/HEAD, GIT_* honoured
+        "crates/goh/src/privnames_add.rs": 1,
         # tracked-ignored: ls-files --ignored / check-ignore of THIS repo, GIT_* honoured
         "crates/goh/src/structural/trackedignored.rs": 1,
     }
