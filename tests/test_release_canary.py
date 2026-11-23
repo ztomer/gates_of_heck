@@ -45,9 +45,25 @@ def _git(d: Path, *args: str) -> subprocess.CompletedProcess:
     )
 
 
+# Every floor a fixture consumer's scanners read, declared as a consumer must (GOH.FLOORREQ): from
+# crate::grace::OVER_FROM (2026-11-23 00:00 UTC) an undeclared floor is red, and the canary runs
+# each side as a consumer's push does, with no GOH_GRACE seam, so the day decides. Undeclared, both
+# sides went red on "every scanner read its declared subject" at that midnight and every land with
+# this file in its set went red with them (`already_red`, GOH.IDLESUITERETIRE's land, 2026-11-22).
+FLOORS = "".join(
+    f"GOH_{k}_MIN_FILES={n}\n"
+    for k, n in (
+        ("BARE_HOOK_INDEX", 1), ("BARE_OPEN", 1), ("BUSY_LOOP", 1), ("CONFLICT_MARKERS", 2),
+        ("DEAD_AFTER_EXEC", 1), ("EARLY_EXIT_PIPE", 1), ("EMOJI", 2), ("FILE_LENGTH", 1),
+        ("GIT_DEADLINE", 1), ("LOCALE_PREFIX", 1), ("MKTEMP_PORTABLE", 1), ("PLURAL_HEDGE", 1),
+        ("SECRETS", 2), ("SHELL_LINT", 1), ("TAP_WRITES", 1),
+    )
+)  # fmt: skip
+
+
 def _consumer(at: Path, script: str) -> Path:
     fast_init(at)
-    write_gatesrc(at, "GOH_MAX_LINES=500\nGOH_ROADMAP=none\n")
+    write_gatesrc(at, "GOH_MAX_LINES=500\nGOH_ROADMAP=none\n" + FLOORS)
     (at / "run.sh").write_text(script)
     (at / "run.sh").chmod(0o755)
     _git(at, "add", "-A")
