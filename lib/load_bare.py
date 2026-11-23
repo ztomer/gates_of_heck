@@ -152,4 +152,6 @@ def judge(command: str) -> str | None:
     )
 
 
-__all__ = ["ESCAPE", "holder", "judge", "runs_bare", "wait_line"]
+bare_segment = _bare_segment  # lib/heavy_admit.py's reading of a heavy build (GOH.ADMISSION)
+
+__all__ = ["ESCAPE", "bare_segment", "holder", "judge", "runs_bare", "wait_line"]

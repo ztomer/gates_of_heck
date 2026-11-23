@@ -37,7 +37,8 @@ def _guard(command: str, load_dir: Path) -> str | None:
     assert ran.returncode == 0, ran.stderr
     if not ran.stdout.strip():
         return None
-    return json.loads(ran.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
+    # A heavy build may come back rewritten to take a gate slot first (GOH.ADMISSION): allowed.
+    return json.loads(ran.stdout)["hookSpecificOutput"].get("permissionDecisionReason")
 
 
 @pytest.fixture

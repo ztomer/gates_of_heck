@@ -164,6 +164,7 @@ worktree_rm, encrypted_unmount = _optional("worktree_rm"), _optional("encrypted_
 _RULES = [r for r in (secret_render, name_kill, temp_sweep, stdin_reader, no_verify, harness_grep,
                       wait_deadline, encrypted_unmount) if r]  # fmt: skip
 undo_hint = _optional("undo_hint")  # a discard refusal names `goh undo <files>`
+heavy_admit = _optional("heavy_admit")  # a heavy job takes a gate slot first, GOH.ADMISSION
 
 # The tools whose input holds a shell command (Bash, Monitor): ONE list, `lib/shell_tools.py`.
 try:
@@ -473,6 +474,8 @@ def main() -> int:
             or judge_priority(command)
             or judge_bare(command)
         )
+    if not reason and heavy_admit and (admitted := heavy_admit.hook_output(event)):
+        json.dump(admitted, sys.stdout)  # updatedInput alone: no permission decision is made
     if reason:
         json.dump(
             {"hookSpecificOutput": {"hookEventName": "PreToolUse",

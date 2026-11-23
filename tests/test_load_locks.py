@@ -197,7 +197,8 @@ def _guard(command: str, cwd: Path) -> str | None:
     assert result.returncode == 0, result.stderr
     if not result.stdout.strip():
         return None
-    return json.loads(result.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
+    # A heavy build may come back rewritten to take a gate slot first (GOH.ADMISSION): allowed.
+    return json.loads(result.stdout)["hookSpecificOutput"].get("permissionDecisionReason")
 
 
 @pytest.mark.parametrize(
