@@ -31,6 +31,7 @@ from pathlib import Path
 import diffcov_carry
 import flakes
 import pytest
+import queue_read
 import reuse
 import reuse_fault
 import ship_full_run
@@ -55,10 +56,29 @@ pytestmark = pytest.mark.skipif(
 OPEN = ("todo", "in_progress")
 
 
-def live_queue() -> dict:
-    """The live queue as the loop holds it. LOOP.QUEUEARCHIVE moves it to loop.db: this one read
-    then goes through goh's queue reader (lib/queue_read.py)."""
-    return json.loads((LOOP / "queue.json").read_text())
+def live_queue(loop: Path = LOOP) -> dict:
+    """The live queue as the loop holds it, through goh's queue reader (lib/queue_read.py): loop.db
+    once LOOP.QUEUEARCHIVE's cutover has removed queue.json, the JSON before it."""
+    return queue_read.load(loop / "queue.json")
+
+
+def test_the_live_queue_is_read_from_loop_db_once_the_json_is_gone(tmp_path) -> None:
+    import sqlite3
+
+    con = sqlite3.connect(tmp_path / queue_read.DB_NAME)
+    con.executescript(
+        "PRAGMA user_version = 1;"
+        "CREATE TABLE queue_keys(key TEXT PRIMARY KEY, value TEXT);"
+        "CREATE TABLE items(id TEXT PRIMARY KEY, seq INTEGER, archived INTEGER, status TEXT,"
+        " body TEXT);"
+        """INSERT INTO queue_keys VALUES ('rules', '{"focus": {}}');"""
+        """INSERT INTO items VALUES ('A.1', 0, 0, 'done', '{"id": "A.1", "status": "done"}');"""
+    )
+    con.commit()
+    con.close()
+    got = live_queue(tmp_path)  # no queue.json beside it: the cutover deletes the JSON
+    assert got["rules"] == {"focus": {}}
+    assert [i["id"] for i in got["items"]] == ["A.1"]
 
 
 @pytest.fixture
