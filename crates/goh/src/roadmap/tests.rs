@@ -250,6 +250,49 @@ fn the_queue_parses_statuses_and_refuses_a_malformed_file() {
     assert!(super::queue::parse(r#"{"items":[{"id":1}]}"#).is_err());
 }
 
+/// LOOP.QUEUEARCHIVE: once the queue lives in SQLite (`queue.db` beside its path), the statuses come
+/// from the store, the JSON beside it ignored; a store `sqlite3` refuses is an error, never empty.
+#[test]
+fn the_queue_reads_its_sqlite_store_when_one_exists() {
+    let dir = std::env::temp_dir().join(format!("goh-roadmap-queue-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let named = dir.join("queue.json");
+    std::fs::write(&named, r#"{"items":[{"id":"A.1","status":"todo"}]}"#).expect("json");
+    let flag = named.to_str().expect("utf-8 path");
+    assert_eq!(
+        super::queue::load(Some(flag))
+            .ok()
+            .and_then(|m| m.get("A.1").cloned())
+            .as_deref(),
+        Some("todo")
+    );
+    let db = dir.join(super::queue::DB_NAME);
+    let made = std::process::Command::new("sqlite3")
+        .arg(&db)
+        .arg(
+            "CREATE TABLE items(id TEXT PRIMARY KEY, seq INTEGER, status TEXT, body TEXT); \
+              INSERT INTO items VALUES ('A.1', 0, 'done', '{}'), ('B.2', 1, 'todo', '{}');",
+        )
+        .status();
+    if !made.is_ok_and(|s| s.success()) {
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            super::queue::load_db(&db).is_err(),
+            "no sqlite3: the store is NOT JUDGED"
+        );
+        return;
+    }
+    let got = super::queue::load(Some(flag)).expect("the store reads");
+    assert_eq!(got.get("A.1").map(String::as_str), Some("done"));
+    assert_eq!(got.len(), 2);
+    std::fs::write(&db, "not a database").expect("corrupt");
+    assert!(
+        super::queue::load(Some(flag)).is_err(),
+        "a corrupt store is an error, never empty"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// GOH.ROADMAPBOLD: `koffee_big`'s roadmap held five bold-paragraph entries with no `Done when:`,
 /// which the reader counted as nothing (7 entries; 12 once they were headings).
 const BOLD_ENTRIES: &str = "# Roadmap\n\n## Phase 1 — now\n\n\

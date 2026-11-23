@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import queue_read  # lib/: the loop queue's one reader (LOOP.QUEUEARCHIVE)
 import reuse  # lib/, beside this file: the store's root and its path registry
 
 # When the loop re-measures a goh prediction (triggers.verify_problems: {"lands"|"ships": N}).
@@ -87,9 +88,9 @@ def current_phase(fields: set[str]) -> str:
     """`phase ID`, the queue's current phase for an item carrying FIELDS: phase order is execution
     order (the loop's queue_rules.py), so the first phase not closed, not H or OW, whose `requires`
     FIELDS meets (GOH.REUSEOFFLANDED3: a fixed SPD filed nothing once SPD closed); else why not."""
-    path = os.environ.get("GOH_LOOP_QUEUE") or str(Path.home() / "Projects/.loop/queue.json")
+    path = queue_read.queue_path()
     try:
-        phases = json.loads(Path(path).read_text(encoding="utf-8")).get("phases") or []
+        phases = queue_read.load(path).get("phases") or []
     except (OSError, ValueError, AttributeError) as e:
         return f"the queue {path} names no phase: {e}"
     for ph in phases:

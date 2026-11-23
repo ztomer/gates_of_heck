@@ -55,8 +55,7 @@ def agent_id(response: object) -> str | None:
 def pending_items(prompt: str, queue: str) -> list[dict]:
     """Every in-progress item still pending its spawn whose id the brief names, in queue order."""
     try:
-        with open(queue, encoding="utf-8") as fh:
-            items = json.load(fh).get("items") or []
+        items = queue_hold.queue_read.load(queue).get("items") or []
     except (OSError, ValueError, AttributeError):
         return []
     named = []

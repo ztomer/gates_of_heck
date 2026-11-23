@@ -56,7 +56,7 @@ sys.path.insert(0, str(ROOT))
 from tui.lib import counted, ok, warn
 
 sys.path.insert(0, str(ROOT / "hooks" / "claude"))
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path[:0] = [str(ROOT / "scripts"), str(ROOT / "lib")]
 import agent_audit
 import apply_claude_hooks
 import model_choice
@@ -64,6 +64,7 @@ import spend_watch
 from agent_guard import STATUSES, ledger_path
 
 usage_review = importlib.import_module("usage_review")  # scripts/, on sys.path above
+queue_read = importlib.import_module("queue_read")  # lib/: the loop queue's one reader
 
 LABEL = "com.ztomer.goh-model-choice-watch"
 LOOP = Path.home() / "Projects" / ".loop"
@@ -464,10 +465,7 @@ def main(argv: list[str] | None = None) -> int:
             claude_md=args.claude_md, prior=prior.get("spend") or {}, repos=args.root)  # fmt: skip
         since = (prior.get("spend") or {}).get("ran_at")
         rows = agent_audit.fault_rows(records, since)
-        try:
-            items = json.loads(args.queue.read_text(encoding="utf-8")).get("items", [])
-        except (OSError, ValueError):
-            items = []
+        items = queue_read.items_or_empty(args.queue)
         state["fault_candidates"] = spend_watch.fault_candidates(rows, items)
         state["candidates_file"] = str(args.findings.with_name("fault-candidates.jsonl"))
     red = (

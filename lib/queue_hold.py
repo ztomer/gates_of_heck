@@ -28,16 +28,19 @@ A queue that is missing or does not parse holds nothing: the guard fails OPEN.
 
 from __future__ import annotations
 
-import json
 import os
+import sys
 from dataclasses import dataclass
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import queue_read  # lib/, beside this file: the queue's one reader (LOOP.QUEUEARCHIVE)
 
 ESTATE = "estate"
 PENDING_SPAWN = "pending-spawn"  # an item the coordinator started before its Agent call returned
 
 
 def queue_path() -> str:
-    return os.environ.get("GOH_LOOP_QUEUE") or os.path.expanduser("~/Projects/.loop/queue.json")
+    return queue_read.queue_path()
 
 
 def _real(path: str) -> str:
@@ -125,8 +128,7 @@ class _Holder:
 
 def _holders(queue: str) -> tuple[list[_Holder], str]:
     try:
-        with open(queue, encoding="utf-8") as fh:
-            q = json.load(fh)
+        q = queue_read.load(queue)
     except (OSError, ValueError):
         return [], ""
     projects = os.path.dirname(os.path.dirname(_real(queue)))

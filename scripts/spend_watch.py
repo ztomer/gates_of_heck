@@ -40,7 +40,9 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import claude_cache_probe as probe
+import queue_read  # lib/: the loop queue's one reader (LOOP.QUEUEARCHIVE)
 from image_cost import image_tokens
 
 CCUSAGE = "npx -y ccusage@20.0.48"  # a named release (house rule: never a moving tag)
@@ -383,11 +385,7 @@ def run(*, projects: Path, now: dt.datetime, queue: Path | None, loopctl: Path |
             filed.append(_file(loopctl, queue, _item(f"SPEND.WORSE.{k.upper()}.{now:%G-W%V}", k, text,
                                               f"{d['now']} -> under {d['prev']}")))  # fmt: skip
     seen = dict(prior.get("first_seen_done") or {})
-    items = (
-        json.loads(queue.read_text(encoding="utf-8")).get("items", [])
-        if queue and queue.exists()
-        else []
-    )
+    items = queue_read.items_or_empty(queue) if queue else []
     preds = []
     for it in items:
         if it.get("status") != "done" or not it.get("predicted"):
