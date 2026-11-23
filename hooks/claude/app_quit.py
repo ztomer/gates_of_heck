@@ -20,8 +20,10 @@ from __future__ import annotations
 
 import plistlib
 import re
+import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # its siblings, whoever imports it
 import appstate  # the login-item seam (GOH.APPSTATE)
 
 ESCAPE = re.compile(r"#\s*quit-ok:\s*\S")
