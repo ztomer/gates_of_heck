@@ -121,9 +121,11 @@ def test_an_instrumented_land_runs_only_what_the_diff_chooses_after_a_plain_land
     assert f"2 deselected, carried from {'c1' * 4}" in inst.stdout, inst.stdout
 
 
-def test_a_reused_pre_step_verdict_records_the_measurement_it_carries(land) -> None:  # noqa: F811
+def test_a_reused_pre_step_verdict_records_the_measurement_it_carries(land, monkeypatch) -> None:  # noqa: F811
     """GOH.SUITEONCE writes the tip's record from main's: the nodes it carries keep main's
     measurement, the one the pre-step judged has none (it ran plain)."""
+    for key in ("GOH_COVERAGE_BIN_DIR", "LLVM_PROFILE_FILE"):  # an instrumented run refuses reuse
+        monkeypatch.delenv(key, raising=False)
     repo, rec, base, _ = land
     tools = gate_identity.suite_tools()
     main_tree = git(repo, "rev-parse", f"{base}^{{tree}}").strip()

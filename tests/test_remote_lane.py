@@ -230,9 +230,13 @@ def test_a_mac_run_of_some_files_judges_those_exactly_and_the_rest_by_no_worker_
     assert rl.record(tree, linux, mac) == ([a, b], [f"{a}::t1"])
 
 
-def test_the_gate_s_suite_reuse_refuses_a_record_with_worker_passes(tmp_path: Path):
+def test_the_gate_s_suite_reuse_refuses_a_record_with_worker_passes(tmp_path: Path, monkeypatch):
     """The ship and the land gate rerun the worker's share on the Mac, and say so."""
     from lib import pre_reuse
+
+    # Run under the coverage step's instrumented suite, suite() refuses for that reason first.
+    for key in ("GOH_COVERAGE_BIN_DIR", "LLVM_PROFILE_FILE"):
+        monkeypatch.delenv(key, raising=False)
 
     rec = tmp_path / "rec.json"
     rec.write_text(json.dumps({"identity": "t", "passed": {}, "selection": "affected",
