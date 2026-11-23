@@ -158,13 +158,6 @@
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
       "repo": "gates_of_heck",
-      "path": "gates/py_lint_ceiling.py",
-      "count": 4,
-      "reason": "unreviewed: hand-rolled TUI mark at line(s) 115, 156, 201, 217; print through tui/lib.sh or tui.lib (GOH.TUIMARKS seed, 2026-11-15)"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
       "path": "gates/py_noqa_parity.py",
       "count": 1,
       "reason": "unreviewed: hand-rolled TUI mark at line(s) 135; print through tui/lib.sh or tui.lib (GOH.TUIMARKS seed, 2026-11-15)"
@@ -315,13 +308,6 @@
       "path": "tests/test_ship_item.py",
       "count": 1,
       "reason": "unreviewed: hand-rolled TUI mark at line(s) 27; print through tui/lib.sh or tui.lib (GOH.TUIMARKS seed, 2026-11-15)"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
-      "path": "tools/lint.py",
-      "count": 3,
-      "reason": "unreviewed: hand-rolled TUI mark at line(s) 49, 53, 65; print through tui/lib.sh or tui.lib (GOH.TUIMARKS seed; found by GOH.GRACEEND's grace-over self-walk, 2026-11-15)"
     },
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",

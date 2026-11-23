@@ -16,6 +16,11 @@ private store; the journal goes with its temporary directory). Nothing is commit
 repository's own index is never written.
 
     goh lint gates/x.py tests/test_x.py     # exit: the commit gate's
+    goh lint                                # every path changed against HEAD (GOH.LINTASGATE)
+
+With no path it lints what a lane changed: every tracked file that differs from HEAD and every
+untracked file git does not ignore, so the one entrypoint needs no list typed by hand. A finding the
+file carried at HEAD is labelled `baseline` by the gate's own lint step: it is not the change's.
 """
 
 from __future__ import annotations
@@ -31,6 +36,9 @@ GATE = os.path.join(os.path.dirname(HERE), "gates", "commit_gate.sh")
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "lib"))
 from tmp_root import goh_tmp  # noqa: E402  # never Spotlight-indexed (GOH.TMPNOINDEX)
 
+sys.path.insert(0, os.path.dirname(HERE))  # the goh root: tui.lib
+from tui.lib import err, ok  # noqa: E402
+
 
 def _git(*args: str, env: dict[str, str] | None = None) -> str:
     return subprocess.run(
@@ -39,20 +47,34 @@ def _git(*args: str, env: dict[str, str] | None = None) -> str:
     ).stdout.strip()  # fmt: skip
 
 
+def changed(root: str) -> list[str]:
+    """Every path that differs from HEAD (deletions aside) and every untracked, unignored file,
+    as paths relative to the cwd."""
+    diff = _git("-C", root, "diff", "--name-only", "-z", "--diff-filter=d", "HEAD")
+    new = _git("-C", root, "ls-files", "-z", "--others", "--exclude-standard")
+    rels = sorted({p for p in (diff + "\0" + new).split("\0") if p})
+    return [os.path.relpath(os.path.join(root, p)) for p in rels]
+
+
 def main(argv: list[str]) -> int:
-    if not argv or argv[0] in ("-h", "--help"):
+    if argv and argv[0] in ("-h", "--help"):
         print(__doc__.strip().splitlines()[0], file=sys.stderr)
-        print("usage: goh lint <path>...", file=sys.stderr)
+        print("usage: goh lint [<path>...]  (none: every path changed vs HEAD)", file=sys.stderr)
         return 2
     try:
         root = _git("rev-parse", "--show-toplevel")
         index = _git("rev-parse", "--path-format=absolute", "--git-path", "index")
+        if not argv:
+            argv = changed(root)
     except subprocess.CalledProcessError:
-        print("✗ goh lint: not inside a git work tree", file=sys.stderr)
+        err("goh lint: not inside a git work tree")
         return 2
+    if not argv:
+        ok("goh lint: nothing changed against HEAD, so nothing to judge")
+        return 0
     missing = [p for p in argv if not os.path.lexists(p)]
     if missing:
-        print(f"✗ goh lint: no such path: {', '.join(missing)}", file=sys.stderr)
+        err(f"goh lint: no such path: {', '.join(missing)}")
         return 2
     paths = [os.path.relpath(os.path.abspath(p), root) for p in argv]
     scratch = tempfile.mkdtemp(dir=goh_tmp(), prefix="goh-lint.")
@@ -64,7 +86,7 @@ def main(argv: list[str]) -> int:
         try:
             _git("-C", root, "add", "--", *paths, env=env)
         except subprocess.CalledProcessError as error:
-            print(f"✗ goh lint: git add refused: {error.stderr.strip()}", file=sys.stderr)
+            err(f"goh lint: git add refused: {error.stderr.strip()}")
             return 2
         env["GOH_COMMIT_LINT"] = "1"
         return subprocess.run(

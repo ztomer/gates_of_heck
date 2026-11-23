@@ -13,7 +13,12 @@ python3 -m pytest tests/ -q -n 12 --dist loadgroup  # parallel; needs pytest-xdi
 python3 -m pytest tests/ -q -n 12 --dist loadgroup -m "not slow"  # fast loop (skips the real-swiftlint test)
 python3 -m pytest tests/test_X.py -q   # one area
 gates/structural.sh --staged | --full  # direct structural run
+goh lint [PATH...]         # the commit gate's verdict on your change (none: all changed vs HEAD)
 ```
+
+Lint with `goh lint`, never a plain `ruff check`: it is the commit gate itself (house rule set,
+pinned ruff, `tools/py_lint_ceilings.json`). A `↔ ... baseline ruff findings predate this change`
+line is debt the file carried at HEAD under its ceiling: not your change's, and not a fault to report.
 
 Pre-push runs `tools/gate.sh --full`. Escape hatch: `git commit --no-verify`.
 

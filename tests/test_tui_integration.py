@@ -206,3 +206,18 @@ def test_labels_stay_data_printf_never_format():
     assert len(err_lines) == 1, f"label newline was INTERPRETED: {r.stderr!r}"
     assert r"\nline2-LITERAL" in err_lines[0], r.stderr
     assert any("100%s sure" in ln for ln in r.stdout.splitlines()), r.stdout
+
+
+def test_python_reads_every_stylerc_value_as_bash_does():
+    """GOH.LINTASGATE found it: tui/lib.py kept a trailing `# comment` as part of the value, so its
+    measure glyph was `↔"   # a measured value ...` and goh_step's pass filter, which wants the
+    glyph first, dropped every Python measure line. Each key, read by both halves, must agree."""
+    keys = ["ICON_START", "ICON_STEP", "ICON_OK", "ICON_ERR", "ICON_WARN", "ICON_MEASURE"]
+    script = f'. "{REPO_ROOT}/tui/stylerc"; ' + "; ".join(f'printf "%s\\n" "${k}"' for k in keys)
+    bash = _bash(script).stdout.splitlines()
+    code = f"from tui import lib; print('\\n'.join(getattr(lib, k) for k in {keys!r}))"
+    py = subprocess.run(
+        ["python3", "-c", code], cwd=REPO_ROOT, capture_output=True, text=True,
+        stdin=subprocess.DEVNULL, check=True,
+    ).stdout.splitlines()  # fmt: skip
+    assert py == bash, (py, bash)

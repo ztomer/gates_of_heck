@@ -23,6 +23,15 @@ _DEFAULTS = {
 }
 
 
+def _shell_value(val: str) -> str:
+    """A `KEY=value` line's value as bash's `.` reads it: a quoted value ends at its closing quote,
+    a bare one at whitespace, so a trailing `# comment` is never part of it."""
+    if val[:1] in ("'", '"'):
+        end = val.find(val[0], 1)
+        return val[1:end] if end > 0 else val[1:]
+    return val.split(None, 1)[0] if val else val
+
+
 def _parse_stylerc(path: str) -> dict:
     """Parse key="value" lines from the stylerc, converting \\033 -> ESC."""
     cfg = {}
@@ -33,7 +42,7 @@ def _parse_stylerc(path: str) -> dict:
                 if not line or line.startswith("#") or "=" not in line:
                     continue
                 key, _, val = line.partition("=")
-                cfg[key.strip()] = val.strip().strip("\"'").replace(r"\033", "\033")
+                cfg[key.strip()] = _shell_value(val.strip()).replace(r"\033", "\033")
     except OSError:
         pass
     return cfg

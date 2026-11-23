@@ -42,7 +42,21 @@ def test_a_change_that_adds_no_finding_passes_whatever_the_file_carried(repo):
     r = run(repo)
     out = r.stdout + r.stderr
     assert r.returncode == 0, out
-    assert "ruff findings predate this change" in out, out
+    assert "baseline ruff findings predate this change" in out, out
+
+
+def test_findings_within_the_ceiling_are_labelled_baseline_not_faults(repo):
+    """GOH.LINTASGATE: a lane ran plain ruff, saw a file's carried debt, and reported it as a fault
+    (153 such lines). The commit names that debt `baseline` -- it predates the change, it is not
+    the change's -- so the gate's own output says what plain ruff cannot."""
+    committed(repo, TWO_FINDINGS + "\n\nVALUE = 1\n", 3)  # I001 and two F401, at the ceiling
+    write(repo, "old.py", TWO_FINDINGS + "\n\nVALUE = 2\n")
+    stage(repo, "old.py")
+    r = run(repo)
+    out = r.stdout + r.stderr
+    assert r.returncode == 0, out
+    assert "old.py: 3 baseline ruff findings predate this change (ceiling 3)" in out, out
+    assert "not a fault" in out, out
 
 
 def test_a_new_long_line_in_a_touched_file_is_red_under_its_ceiling(repo):

@@ -80,3 +80,19 @@ def test_plain_ruff_passes_what_the_commit_refuses(tmp_path, goh):
     (repo / "tool.py").write_text(SIM105)
     assert _run(repo, "ruff", "check", "--isolated", "tool.py").returncode == 0
     assert _run(repo, str(goh), "lint", "tool.py").returncode != 0
+
+
+def test_no_path_lints_every_file_changed_against_head(tmp_path, goh):
+    """GOH.LINTASGATE: `goh lint` with no path is the commit of everything changed -- the edited
+    tracked files and the new untracked ones -- so the one command needs no list typed by hand."""
+    repo = _repo(tmp_path)
+    (repo / "tool.py").write_text(SIM105)
+    lint = _run(repo, str(goh), "lint")
+    assert lint.returncode != 0 and "SIM105" in lint.stdout + lint.stderr, lint.stdout + lint.stderr
+    (repo / "tool.py").write_text(CLEAN)
+    lint = _run(repo, str(goh), "lint")
+    assert lint.returncode == 0, lint.stdout + lint.stderr
+    _git(repo, "add", "tool.py")
+    _git(repo, "commit", "-q", "--no-verify", "-m", "clean")
+    lint = _run(repo, str(goh), "lint")
+    assert lint.returncode == 0 and "nothing changed against HEAD" in lint.stdout + lint.stderr

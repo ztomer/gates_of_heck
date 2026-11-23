@@ -14,7 +14,8 @@ AT COMMIT (`--view`) A FILE HEAD CARRIES IS JUDGED BY ITS DELTA (GOH.LINTDELTA):
 matched against HEAD's own (rule, message and the text of the line, as multisets), and any finding
 the change ADDS is red whatever the ceiling -- a new long line in a file with room under its count,
 or one that took the place of a finding the change fixed (hooks/claude/discard_guard.py:36 went in
-that way). Findings that predate the change are one counted line, never a failure: a file over its
+that way). Findings that predate the change are one counted line labelled `baseline`, never a
+failure (GOH.LINTASGATE: not the change's, so not a lane's fault to report): a file over its
 ceiling from a ruff bump no longer refuses every lane that touches it (65 lane reports re-named such
 findings). The push (no `--view`) still judges every file whole against its ceiling.
 
@@ -48,7 +49,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # the goh root: tui.lib
-from tui.lib import counted, err, warn
+from tui.lib import counted, err, measure, ok, warn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # gates/: the house rule set
 from ruff_house import extend_select
@@ -157,8 +158,8 @@ def _enabled(runner: str, file: str, extra: list[str]) -> tuple[set[str], str]:
     r = subprocess.run(cmd, capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL)
     head, sep, rest = r.stdout.partition("linter.rules.enabled = [")
     if r.returncode != 0 or not sep:
-        print(f"✗ ruff --show-settings gave no rule list (exit {r.returncode}): "
-              f"{r.stderr.strip()[:300]}", file=sys.stderr)  # fmt: skip
+        why = r.stderr.strip()[:300]
+        err(f"ruff --show-settings gave no rule list (exit {r.returncode}): {why}")
         raise SystemExit(2)
     found = re.search(r'^Settings path: "(.*)"$', head, re.MULTILINE)
     where = ""  # no config file: ruff's defaults
@@ -198,7 +199,7 @@ def _parity(runner: str, files: list[str], mode: str) -> list[str]:
     )
     if mode == "on":
         return [text]
-    print(f"⚠ {text} ({PARITY}=on refuses this)", file=sys.stderr)
+    warn(f"{text} ({PARITY}=on refuses this)")
     return []
 
 
@@ -243,11 +244,16 @@ def check(
                     for x in new
                 ]
                 continue
-            if have > ceiling:
-                warn(
-                    f"{f}: {counted(have, 'ruff finding')} predate this change (ceiling "
-                    f"{ceiling}): not judged at commit; the push judges the file whole"
+            if have:
+                # BASELINE (GOH.LINTASGATE): what the file carried at HEAD is not this change's, and
+                # a lane that reads it from a plain `ruff check` is not reporting a fault. A measure
+                # line (count against ceiling), which a passing step shows, never an advisory.
+                measure(
+                    f"{f}: {counted(have, 'baseline ruff finding')} predate this change (ceiling "
+                    f"{ceiling}): not this change's, and not a fault; the push judges the file "
+                    "whole"
                 )
+            if have > ceiling:
                 continue
         if have > ceiling:
             problems.append(f"{f}: {counted(have, 'ruff finding')}, ceiling {ceiling}")
@@ -279,7 +285,7 @@ def check(
             file=sys.stderr,
         )
     if not problems:
-        print(f"✓ ruff check: {counted(len(files), 'staged file')} within {path}")
+        ok(f"ruff check: {counted(len(files), 'staged file')} within {path}")
     return 1 if problems else 0
 
 
