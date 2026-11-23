@@ -38,7 +38,7 @@ import pid_owner
 
 DIR = "enqueuing"
 MARGIN_S = 600  # past the pre-step's own bound: the enqueue files or refuses well within it
-PRE_TIMEOUT_S = 30 * 60  # lib/land_prestep.py TIMEOUT (GOH_ENQUEUE_PRE_TIMEOUT overrides both)
+PRE_TIMEOUT_S = 45 * 60  # lib/land_prestep.py TIMEOUT, pinned equal (GOH_ENQUEUE_PRE_TIMEOUT: both)
 SUPERSEDED = ".superseded"  # beside a marker: a newer enqueue (or --cancel) stops this one
 _MINE: list[Path] = []  # the markers this process wrote
 

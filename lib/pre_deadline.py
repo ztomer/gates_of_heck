@@ -20,7 +20,7 @@ tools/land.sh), else SEED_WORK_S = 347 s * 12 = 4164, the 368-file set at 12 wor
 of the two runs per worker: 650 * 5 = 3250). Worker-seconds and not cpu-s: on a box at load 99 a
 worker's wall is several times its cpu, and the deadline is a wall clock. MARGIN 1.5 over the
 largest seen. FLOOR is GOH_LAND_PRE_MAX (10m, the old deadline: a wide share keeps it). CEILING
-(GOH_LAND_PRE_CEIL, 25m) stays under the enqueue's own 30 min bound (lib/land_prestep.py TIMEOUT)
+(GOH_LAND_PRE_CEIL, 25m) stays under the enqueue's own 45 min bound (lib/land_prestep.py TIMEOUT)
 with room for the slot wait. So the 368-file set gets 1250 s at 5 workers (650 s measured), 600 s
 at 12 or 16, and 1500 s at 4 or fewer -- where a deadline is again possible, and says so.
 

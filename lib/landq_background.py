@@ -1,6 +1,6 @@
 """`goh land --enqueue --land` in the background (GOH.TOOLTIMEOUT, 2026-11-21).
 
-WHY. The enqueue's pre-step (lib/land_prestep.py) runs up to 30 min, and the Bash tool's timeout
+WHY. The enqueue's pre-step (lib/land_prestep.py) runs up to 45 min, and the Bash tool's timeout
 is 10 min at most: 78 Bash calls in 7 days sat past its then-120 s default and were moved to the
 background unannounced. So without `--wait` or `--foreground` the enqueue
 

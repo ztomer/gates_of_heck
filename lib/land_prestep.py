@@ -24,9 +24,11 @@ from collections.abc import Iterator
 from pathlib import Path
 
 affected_verdict = importlib.import_module("affected_verdict")
+gates_in_flight = importlib.import_module("gates_in_flight")
 gitrun = importlib.import_module("gitrun")
 land_cause = importlib.import_module("land_cause")
 main_red = importlib.import_module("main_red")
+pre_deadline = importlib.import_module("pre_deadline")
 killtree = importlib.import_module("killtree")
 land_slot = importlib.import_module("land_slot")
 land_spd = importlib.import_module("land_spd")
@@ -38,8 +40,14 @@ _tui = importlib.import_module("tui.lib")
 info, warn = _tui.info, _tui.warn
 
 # land.sh bounds the set at its share's deadline (lib/pre_deadline.py: at most GOH_LAND_PRE_CEIL,
-# 25 min) after a wait for a short-lane slot.
-TIMEOUT = 30 * 60
+# 25 min) after a wait for a short-lane slot (load.py's default bound, 15 min). This clock starts
+# before both, so it covers both and a margin (the guards, the rebase): at 30 min it fired first on
+# a busy box, and its kill read "the pre-land tests failed (exit -15)" -- GOH.NITS3 and
+# GOH.ROADMAPIDS twice, each 1800 s after its pre-step started (GOH.PRESTEPDETACH).
+TIMEOUT_MARGIN_S = 5 * 60
+TIMEOUT = int(gates_in_flight.DEFAULT_WAIT_S + pre_deadline.CEILING_S) + TIMEOUT_MARGIN_S
+# The words a pre-step this clock stopped is given: no verdict, like land.sh's own deadline.
+BOUND_WHY = "stopped at the enqueue's own bound of {s} s"
 
 
 class Red(Exception):
@@ -369,7 +377,13 @@ def run(
                             stderr=subprocess.STDOUT, text=True,
                             start_new_session=True)  # fmt: skip
     landq_inflight.note_child(proc.pid)  # what a re-enqueue or --cancel stops (GOH.REENQUEUECANCEL)
-    timer = threading.Timer(timeout, lambda: killtree.stop_group(proc.pid, proc=proc))
+    fired = threading.Event()  # this clock's kill is no verdict, never a red (GOH.PRESTEPDETACH)
+
+    def bound() -> None:
+        fired.set()
+        killtree.stop_group(proc.pid, proc=proc)
+
+    timer = threading.Timer(timeout, bound)
     timer.start()
     stream = terse.full() or log is None  # no log to name: the output is said, as it was
     sink = contextlib.ExitStack()
@@ -392,6 +406,9 @@ def run(
         timer.cancel()
         ran = took_figures(figures, lines)
     landq_inflight.bail()  # superseded meanwhile: no verdict, no request (GOH.REENQUEUECANCEL)
+    if code != 0 and fired.is_set():
+        lines.append(f"pre-land: no verdict: {BOUND_WHY.format(s=timeout)} -- the gate decides\n")
+        code = 0
     if code == 0:
         if not stream:  # green: its status lines (what it reused, ran, decided), no test output
             said = [ln for ln in lines if ln.startswith(terse.STATUS)][-terse.LIMIT :]
