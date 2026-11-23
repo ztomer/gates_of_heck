@@ -22,6 +22,7 @@ import os
 import re
 import sys
 
+STATUS = ("✓", "→", "⚠", "✗")  # a house status line's marks (tui/lib.sh ok info warn err)
 LIMIT = 30  # lines of a whole red report, the verdict and the log path included
 WIDE = 240  # characters per line kept
 FAILED = re.compile(r"^(?:FAILED|ERROR) (tests/\S+?\.py(?:::\S+)?)(?: - (.*))?$")

@@ -393,6 +393,9 @@ def run(
         ran = took_figures(figures, lines)
     landq_inflight.bail()  # superseded meanwhile: no verdict, no request (GOH.REENQUEUECANCEL)
     if code == 0:
+        if not stream:  # green: its status lines (what it reused, ran, decided), no test output
+            said = [ln for ln in lines if ln.startswith(terse.STATUS)][-terse.LIMIT :]
+            sys.stderr.write("".join(said))
         if did is not None:
             did.update(affected_verdict.outcome(lines) or {})
         if took is not None:
