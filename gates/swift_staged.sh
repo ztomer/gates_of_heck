@@ -119,13 +119,21 @@ excluded_above() {
 # <root>/.swiftlint.yml, or that config names none (the whole tree is in scope). swiftlint given EXPLICIT
 # paths ignores `included`, while the push walks only those roots (a private Swift app: `included:
 # Sources`, so its Tests/ are never linted): without this a commit was refused for findings in a
-# file the push never reads (ZW.WALLCLOCK2). An inline list (`included: [A, B]`) is not parsed and
-# means "lint it": stricter.
+# file the push never reads (ZW.WALLCLOCK2). The inline list (`included: [A, B]`) is read too: once
+# "lint it", it made the commit judge files the push's walk never reads (GOH.NITS3). Any other
+# scalar there means "lint it": stricter.
 in_included() {
     local cfg="$1/.swiftlint.yml" f="$2" inc p
     [ -f "$cfg" ] || return 0
-    grep -q '^included:[[:space:]]*[^[:space:]#]' "$cfg" && return 0
+    if grep -q '^included:[[:space:]]*[^[:space:]#]' "$cfg"; then
+        grep -q '^included:[[:space:]]*\[[^]]*\][[:space:]]*\(#.*\)\{0,1\}$' "$cfg" || return 0
+    fi
     inc="$(awk '/^[^[:space:]#]/ { on = ($0 ~ /^included:/) }
+        /^included:[[:space:]]*\[/ { l = $0; sub(/^included:[[:space:]]*\[/, "", l); sub(/\].*$/, "", l)
+            n = split(l, xs, ","); for (i = 1; i <= n; i++) { x = xs[i]; gsub(/["'"'"']/, "", x)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", x); sub(/^\.\//, "", x); sub(/\/$/, "", x)
+                if (x != "") print x }
+            on = 0; next }
         on && /^[[:space:]]*-[[:space:]]+/ { sub(/^[[:space:]]*-[[:space:]]+/, ""); gsub(/["'"'"']/, "");
             sub(/[[:space:]]*(#.*)?$/, ""); sub(/^\.\//, ""); sub(/\/$/, ""); print }' "$cfg")"
     [ -n "$inc" ] || return 0

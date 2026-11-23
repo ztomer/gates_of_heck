@@ -222,6 +222,7 @@ while read -r _ref_l sha_l _ref_r _sha_r; do
 done <"$refs_file"
 
 gated=0
+gated_how=()   # one COMMIT:HOW word per gated commit, an array: never word-split (GOH.NITS3)
 # <"$refs_file", NOT stdin: `cat` above drained it, and a while-read on a spent
 # stream is a loop that never runs — a gate that silently gates nothing.
 # The full gate, in the export (cwd): tools/gate.sh --full, then the structural layer and the steps
@@ -350,7 +351,8 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
         while IFS= read -r in_tree_dir; do
             warn "push: $(basename "$root") builds inside the export at $in_tree_dir, deleted after every push: every dependency compiles cold (a tracked .cargo/config.toml build-dir; drop it for the path-keyed default)"
         done || true
-    export_kept "$root" "$worktree" $GOH_EXPORT_KEEP   # the ignored files .gatesrc names (lib/push_runs.sh)
+    read -ra kept_paths <<<"$GOH_EXPORT_KEEP"   # space-separated, split once, never globbed
+    export_kept "$root" "$worktree" "${kept_paths[@]}"   # the ignored files .gatesrc names (lib/push_runs.sh)
     mkdir -p "$log_root"
     log="$log_root/$(basename "$root")-$short-$(date +%Y%m%dT%H%M%S).log"
     set +e
@@ -412,7 +414,7 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
     gated=$((gated + 1))
     gated_commits="$gated_commits$commit "
     gated_refs="${gated_refs:-}$local_ref=$commit "
-    gated_how="${gated_how:-}$commit:${release_base:+release}${config_base:+config} "   # empty: full
+    gated_how+=("$commit:${release_base:+release}${config_base:+config}")   # empty: full
 done <"$refs_file"
 
 # THE BRANCH MUST STILL BE WHAT WAS GATED (D-0211 of a Swift app, tests/test_push_gate_race.py).
@@ -429,7 +431,7 @@ for pair in ${gated_refs:-}; do
         exit 1
     fi
 done
-push_record_verdicts "$root" ${gated_how:-}   # each green in the one verdict store (lib/push_runs.sh, lib/reuse.py)
+push_record_verdicts "$root" "${gated_how[@]}"   # each green in the one verdict store (lib/push_runs.sh, lib/reuse.py)
 [ "$gated" -gt 0 ] || info "pre-push: nothing to gate (deletes, or commits the remote already has)"
 command exit
 } # parse-guard

@@ -130,9 +130,8 @@ GPU_LOCK_MAX_IDLE="${GPU_LOCK_MAX_IDLE:-14400}"
 # Set only once actually acquired, so release is a no-op for a process that never
 # held the lock and can be called unconditionally from an EXIT trap.
 GPU_LOCK_HELD=0
-# Set when a live ancestor already holds it: this process must neither block on it
-# nor release it, because it does not own it.
-GPU_LOCK_INHERITED=0
+# A live ancestor already holding it is ADOPTED: GPU_LOCK_HELD stays 0, so this process
+# neither blocks on it nor releases it, because it does not own it.
 
 # The owner file is three lines: pid, the process start time, and a human label.
 #
@@ -260,7 +259,6 @@ gpu_lock_acquire() {
     # not claim ownership, or the child's release would free the parent's lock.
     if [[ -n "${ZTOOLS_GPU_LOCK_OWNER:-}" ]] && _gpu_lock_owner_alive \
        && [[ "$(_gpu_lock_field 1)" == "$ZTOOLS_GPU_LOCK_OWNER" ]]; then
-        GPU_LOCK_INHERITED=1
         info "gpu already held by $( _gpu_lock_owner_label ) (inherited)"
         return 0
     fi

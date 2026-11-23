@@ -170,3 +170,31 @@ def test_a_file_outside_the_configs_included_roots_is_not_linted(repo):
     stage(repo, "Sources/S.swift")
     rc, text = run(repo)
     assert rc != 0 and "S.swift" in text and "T.swift" not in text, text
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        "included:\n  - Sources\n  - Packages/Kit/Sources\n",  # a manifest beside its Sources
+        'included: [Sources, "Packages/Kit/Sources"]\n',  # the inline form selects the same files
+    ],
+)
+def test_the_staged_run_selects_what_the_full_run_walks(repo, config):
+    """The full run's walk reads only `included`; so does the commit (GOH.NITS3): a private Swift
+    app's staged run linted Packages/<Kit>/Package.swift, which its full run never reads, and the
+    inline `included: [A, B]` form was linted whole -- a commit refused for files no push judges."""
+    write(repo, ".swiftlint.yml", config)
+    write(repo, "Packages/Kit/Package.swift", BAD)
+    write(repo, "Tests/T.swift", BAD)
+    stage(repo, ".swiftlint.yml", "Packages/Kit/Package.swift", "Tests/T.swift")
+    rc, text = run(repo)
+    assert rc == 0 and "outside" in text, text
+    full = subprocess.run(
+        ["swiftlint", "lint", "--strict", "--quiet"], cwd=repo, capture_output=True, text=True,
+        stdin=subprocess.DEVNULL, check=False,
+    )  # fmt: skip
+    assert "Package.swift" not in full.stdout + full.stderr and "T.swift" not in full.stdout
+    write(repo, "Packages/Kit/Sources/K.swift", BAD)  # inside an included root: judged
+    stage(repo, "Packages/Kit/Sources/K.swift")
+    rc, text = run(repo)
+    assert rc != 0 and "K.swift" in text and "Package.swift" not in text, text

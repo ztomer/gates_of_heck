@@ -30,7 +30,24 @@ import re
 
 from _own_files import own_source_files
 from conftest import REPO_ROOT
-from test_bash5_guard import _is_bash
+
+# A shell is chosen by its shebang, never its extension: `lib/goh-rustc` (`#!/bin/sh`, no `.sh`)
+# went unread while the selection was bash5's (GOH.NITS3). macOS's /bin/sh IS bash, so a `sh`
+# shebang carries the same fork-time locale crash.
+SHEBANG = re.compile(r"^#!\s*(?:/usr)?/bin/(?:env\s+(?:-S\s+)?)?(?:\S*/)?(?:ba|z|k|da)?sh(?:\s|$)")
+
+
+def _is_shell(f: str) -> bool:
+    if f.endswith((".sh", ".bash")):
+        return True
+    with open(REPO_ROOT / f, "rb") as fh:
+        first = fh.readline(200).decode("utf-8", "replace")
+    return bool(SHEBANG.match(first))
+
+
+def shell_files() -> list[str]:
+    return [f for f in own_source_files() if _is_shell(f)]
+
 
 LOCALE = re.compile(r"(?<![\w$-])(?:LC_[A-Z]+|LANG|LANGUAGE)=")
 UNSET = re.compile(r"(?:^|[\s;&|({])unset\s+(?:-v\s+)?[^;&|]*\b(?:LC_[A-Z]+|LANG|LANGUAGE)\b")
@@ -72,11 +89,20 @@ def test_the_check_sees_the_shape_that_crashed():
         assert findings(ok) == [], ok
 
 
+def test_the_selection_reads_every_shell_by_its_shebang():
+    files = shell_files()
+    for f in ("lib/goh-rustc", "hooks/pre-push", "lib/hookgit/git"):
+        assert f in files, f
+    for line in ("#!/bin/sh", "#!/usr/bin/env bash", "#!/usr/bin/env -S bash -eu", "#!/bin/zsh"):
+        assert SHEBANG.match(line), line
+    for line in ("#!/usr/bin/env python3", "#!/usr/bin/env ruby", "#!/bin/shx", "# sh"):
+        assert not SHEBANG.match(line), line
+
+
 def test_no_shell_of_this_repo_sets_a_locale_in_bash():
     bad = [
         f"{f}:{i}: {line}"
-        for f in own_source_files()
-        if _is_bash(f)
+        for f in shell_files()
         for i, line in findings((REPO_ROOT / f).read_text(encoding="utf-8", errors="replace"))
     ]
     assert not bad, (

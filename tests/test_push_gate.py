@@ -148,6 +148,19 @@ def test_gatesrc_export_keep_carries_an_ignored_file(tmp_path):
     assert code == 0 and "ignored=LOCAL" in report, report
 
 
+def test_export_keep_is_split_never_globbed(tmp_path):
+    """GOH_EXPORT_KEEP is split on spaces and never globbed (GOH.NITS3, shellcheck SC2086 at
+    push_gate.sh:353): unquoted, a `*.txt` in it expanded in the checkout and carried its DIRTY
+    tracked files over the pushed commit's, so the gate certified a tree that is no commit."""
+    repo = _repo(tmp_path, gatesrc="GOH_EXPORT_KEEP='local.cfg *.txt'\n")
+    (repo / "local.cfg").write_text("LOCAL")
+    sha = _git(repo, "rev-parse", "HEAD")
+    (repo / "marker.txt").write_text("DIRTY")
+    code, report, out = _push(repo, sha, tmp_path)
+    assert code == 0, out
+    assert "ignored=LOCAL" in report and "tracked=COMMITTED" in report, report
+
+
 def _gatesrc_keep() -> str:
     """`GOH_EXPORT_KEEP` as this checkout's own `.gatesrc` declares it, sourced the way
     push_gate.sh sources it (a `set -a` subshell, so nothing leaks into the test process)."""
