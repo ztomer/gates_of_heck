@@ -312,10 +312,16 @@ def outcome(lines: list[str]) -> dict | None:
 def merge_records(record: Path, first: Path) -> None:
     """tools/affected_tests.py `run`: the judges' record joined into the rest's, when both
     judged the same tree and tip."""
-    try:
-        a, b = json.loads(first.read_text()), json.loads(record.read_text())
-    except (OSError, ValueError):
-        a, b = None, None
+
+    def read(path: Path) -> dict | None:
+        try:
+            return json.loads(path.read_text())
+        except (OSError, ValueError):
+            return None
+
+    # Each read alone: a missing rest's record (the worker took the whole rest, the Mac ran none)
+    # once failed both reads, and the judges' record was dropped with it (GOH.TIMINGDETECT's land).
+    a, b = read(first), read(record)
     if a and b and (a.get("identity"), a.get("sha")) == (b.get("identity"), b.get("sha")):
         b["passed"] = {**a.get("passed", {}), **b.get("passed", {})}
         if "reads" in a or "reads" in b:  # what each file read (tests/_read_audit.py)

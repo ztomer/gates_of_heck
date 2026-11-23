@@ -187,3 +187,17 @@ def test_the_judges_record_and_the_rests_are_one_record_of_the_same_tree(tmp_pat
     first.write_text(json.dumps({"identity": "other", "sha": "s", "passed": {"a": False}}))
     at._merge(record, first)
     assert json.loads(record.read_text())["passed"] == got and not first.exists()
+
+
+def test_the_judges_record_stands_alone_when_the_mac_ran_no_rest(tmp_path) -> None:
+    """GOH.TIMINGDETECT's land, 2026-11-23: the remote worker took all 5 of the rest ("beside the
+    Mac's 0"), so no Mac run wrote a record to join the judges' into. Reading the missing record
+    failed and dropped the judges' record with it; land.sh refused a green pre-step for writing
+    no verdict record. With no record to join, the judges' record becomes it."""
+    import json
+
+    first, record = tmp_path / "rec.judges", tmp_path / "rec"
+    judged = {"identity": "i", "sha": "s", "passed": {"tests/test_j.py::test_every_x": False}}
+    first.write_text(json.dumps(judged))
+    at._merge(record, first)
+    assert json.loads(record.read_text()) == judged and not first.exists()
