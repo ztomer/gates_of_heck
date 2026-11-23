@@ -18,8 +18,8 @@ part, and its verdicts join the Mac's, so the pre-step costs max(Mac, worker), n
   as its `remote` list, apart from `passed` (GOH.REMOTESHARE, ruled: accept the rerun): a record's
   identity is the Mac's tree AND toolchain, and a Linux pass is another toolchain's verdict, so the
   land gate's suite (lib/pre_reuse.py `suite`) and the ship rerun those tests on the Mac and say so.
-  The share shortens the land's pre-step, the Mac-bound wait before the lock; it never stands in
-  for the gate.
+  The share shortens the land's pre-step, the Mac-bound wait before the lock. The GATE's suite has
+  its own share since GOH.REMOTEGATE (lib/remote_gate.py), on this module's split and launcher.
 * THE SIZE (GOH.REMOTESHARE). Each land measures both sides' pace (`Rates`, `measure`) and the
   next split balances them (`split`), so the worker takes what it finishes by the time the Mac does.
 
@@ -125,18 +125,36 @@ def load_rates() -> Rates:
         return Rates()
 
 
+def unsafe_path() -> Path:
+    """The modules a sampled shadow saw disagree between the Mac and the worker (GOH.REMOTEGATE,
+    lib/remote_gate.py): {module: why}, beside the rates. Each leaves tests/linux_safe.txt by
+    itself: `split` sends none of them again."""
+    return fast_tests.cache().with_name("linux-unsafe.json")
+
+
+def unsafe() -> set[str]:
+    try:
+        data = json.loads(unsafe_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    return set(data) if isinstance(data, dict) else set()
+
+
 def split(root: Path, nodes: list[str], durations: dict[str, float] | None = None,
-          rates: Rates | None = None,
-          mac_else: float = 0.0) -> tuple[list[str], list[str]]:  # fmt: skip
+          rates: Rates | None = None, mac_else: float = 0.0,
+          runner: bool = False) -> tuple[list[str], list[str]]:  # fmt: skip
     """(the worker's, the Mac's). A node may go when its FILE is recorded Linux-safe; of those,
     the costliest go first while the worker's estimated wall (`Rates`: its overhead plus its
     seconds over its width) stays within the Mac's remaining wall (its seconds, `mac_else` -- the
     judges it runs first -- included, over its width), so both sides end together.
-    GOH_REMOTE_SHARE=F instead caps the worker at a fixed fraction F of the set's seconds."""
-    suite = os.environ.get("GATES_OF_HECK_SUITE_RUNNER") and not os.environ.get("GOH_REMOTE_HOST")
+    GOH_REMOTE_SHARE=F instead caps the worker at a fixed fraction F of the set's seconds.
+    `runner`: the caller IS the suite's runner (the land gate's controller, lib/remote_gate.py),
+    never a test inside it, so the in-suite guard does not apply."""
+    suite = (os.environ.get("GATES_OF_HECK_SUITE_RUNNER") and not runner
+             and not os.environ.get("GOH_REMOTE_HOST"))  # fmt: skip
     if os.environ.get("GOH_LAND_REMOTE", "on") == "off" or suite:  # a test never reaches the host
         return [], list(nodes)
-    safe = listed(root, LINUX_SAFE)  # module names under tests/, never paths: data, not code
+    safe = listed(root, LINUX_SAFE) - unsafe()  # module names, never paths: data, not code
     secs = cost(nodes, fast_tests.load() if durations is None else durations)
     fixed = os.environ.get("GOH_REMOTE_SHARE")
     r = rates or load_rates()
@@ -212,6 +230,16 @@ def begin(root: Path, nodes: list[str], mac_runs: bool = True,
         remote, local = remote[1:], remote[:1]
     if not remote:
         return local, None
+    info(f"pre-land: {len(remote)} Linux-safe tests on the remote worker, beside the Mac's "
+         f"{len(local)}")  # fmt: skip
+    mac_s = before + sum(cost(local, durations).values())
+    return local, launch(root, remote, mac_s)
+
+
+def launch(root: Path, remote: list[str], mac_s: float,
+           env: dict[str, str] | None = None) -> Share:  # fmt: skip
+    """`goh remote-shard --no-local` on `remote`, in the background (its log and junit in goh's
+    temp root); `mac_s`, the Mac's estimated seconds meanwhile, for `measure`."""
     fd, junit = tempfile.mkstemp(prefix="goh-remote-", suffix=".xml", dir=tmp_root.goh_tmp())
     os.close(fd)
     log = Path(junit).with_suffix(".log")
@@ -220,11 +248,8 @@ def begin(root: Path, nodes: list[str], mac_runs: bool = True,
             *remote]  # fmt: skip
     with log.open("wb") as out:
         proc = subprocess.Popen(argv, stdout=out, stderr=subprocess.STDOUT,
-                                stdin=subprocess.DEVNULL)  # fmt: skip
-    info(f"pre-land: {len(remote)} Linux-safe tests on the remote worker, beside the Mac's "
-         f"{len(local)}")  # fmt: skip
-    mac_s = before + sum(cost(local, durations).values())
-    return local, Share(remote, proc, Path(junit), log, time.time(), mac_s)
+                                stdin=subprocess.DEVNULL, env=env)  # fmt: skip
+    return Share(remote, proc, Path(junit), log, time.time(), mac_s)
 
 
 def cancel(share: Share | None) -> None:
