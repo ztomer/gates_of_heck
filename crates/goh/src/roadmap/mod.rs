@@ -189,10 +189,11 @@ fn dead_ids(
         {
             continue;
         }
-        let Some(bytes) = crate::gitutil::content_bytes(root, &rel, staged) else {
-            continue;
-        };
-        for (line, said, id) in cite::citations(&String::from_utf8_lossy(&bytes), &re) {
+        // a file that vanished between the grep and the read has no text, so no citation
+        let text = crate::gitutil::content_bytes(root, &rel, staged)
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .unwrap_or_default();
+        for (line, said, id) in cite::citations(&text, &re) {
             if held.contains(&id) {
                 continue;
             }

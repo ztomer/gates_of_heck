@@ -108,13 +108,12 @@ pub fn citations(text: &str, re: &Regex) -> Vec<(usize, String, String)> {
             continue;
         }
         for c in re.captures_iter(line) {
-            let (Some(all), Some(id)) = (c.get(0), c.get(1)) else {
-                continue;
-            };
-            if id_like(id.as_str()) {
-                let said = all.as_str().replace('`', "");
+            // group 0 is the match and group 1 is not optional in `pattern`: both always exist
+            let (all, id) = (&c[0], &c[1]);
+            if id_like(id) {
+                let said = all.replace('`', "");
                 let said = said.split_whitespace().collect::<Vec<_>>().join(" ");
-                out.push((i + 1, said, id.as_str().to_owned()));
+                out.push((i + 1, said, id.to_owned()));
             }
         }
     }
@@ -141,12 +140,26 @@ pub fn grep_files(
     words: &[&str],
     staged: bool,
 ) -> Result<Vec<String>, String> {
+    grep_with(std::process::Command::new("git"), root, words, staged)
+}
+
+/// [`grep_files`] with the command that runs git given: a test hands one that cannot start.
+///
+/// # Errors
+///
+/// As [`grep_files`], and when `git` cannot be started.
+pub fn grep_with(
+    mut git: std::process::Command,
+    root: &std::path::Path,
+    words: &[&str],
+    staged: bool,
+) -> Result<Vec<String>, String> {
     let mut args = vec!["grep", "-z", "-l", "-I", "-i", "-F"];
     args.push(if staged { "--cached" } else { "--untracked" });
     for w in words {
         args.extend(["-e", w]);
     }
-    let out = std::process::Command::new("git")
+    let out = git
         .arg("-C")
         .arg(root)
         .args(&args)
