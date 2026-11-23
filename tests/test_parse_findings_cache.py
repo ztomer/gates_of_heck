@@ -17,6 +17,7 @@ import subprocess
 from pathlib import Path
 
 import _parse_findings as pf
+from _fast_git import fast_init
 
 FAKE = """#!/usr/bin/env bash
 # a stand-in shellcheck: logs one line per exec and names each file argument that says BAD
@@ -46,7 +47,7 @@ def _repo(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
     (repo / "b.sh").write_text("echo b\n")
     (repo / ".shellcheckrc").write_text("source-path=SCRIPTDIR\n")
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    subprocess.run(["git", "init", "-q", str(repo)], check=True, env=env, stdin=subprocess.DEVNULL)
+    fast_init(repo)
     subprocess.run(
         ["git", "-C", str(repo), "add", "-A"], check=True, env=env, stdin=subprocess.DEVNULL
     )
