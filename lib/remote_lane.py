@@ -270,14 +270,15 @@ def mac_run(root: Path) -> Callable[[list[str]], int]:
 
 
 def end(root: Path, share: Share | None, record: str, merge: Callable[[Path, Path], None],
-        run_local: Callable[[list[str]], int] | None = None) -> int:  # fmt: skip
+        run_local: Callable[[list[str]], int] | None = None,
+        clock: Callable[[], float] = time.time) -> int:  # fmt: skip
     """The pre-step's verdict on the worker's share. Green: its passes join the record. A test that
     failed there is re-run on the Mac, whose verdict stands (a Linux-only failure is named, never a
     red land). A fallback: the Mac runs the whole share. The Mac's runs write their own record
     (`run_local`, pytest.sh), merged into the one before them (`merge`)."""
     if share is None:
         return 0
-    mac_end = time.time()  # the Mac's side is done: its wall ends here
+    mac_end = clock()  # the Mac's side is done: its wall ends here
     rc = share.proc.wait()
     tail = share.log.read_text(errors="replace").splitlines()[-6:]
     sys.stdout.write("".join(f"  remote: {ln}\n" for ln in tail))

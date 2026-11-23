@@ -19,6 +19,7 @@ from pathlib import Path
 from conftest import REPO_ROOT
 
 COV_GATE = REPO_ROOT / "gates" / "coverage_gate.sh"
+TREE_READS = ("gates/", "tools/", "lib/", "checks/", "hooks/", "bin/")  # every shell source there
 
 CTEST = r"""#!/bin/bash
 printf '%s\n' "$LLVM_PROFILE_FILE" > "$SHIM_LOG/profile-pattern"
@@ -102,7 +103,7 @@ def test_no_shell_source_uses_bsd_only_find_perm_plus():
     both."""
     hits = [
         f"{p.relative_to(REPO_ROOT)}:{n}"
-        for top in ("gates", "tools", "lib", "checks", "hooks", "bin")
+        for top in TREE_READS
         for p in sorted((REPO_ROOT / top).rglob("*.sh"))
         for n, line in enumerate(p.read_text(errors="replace").splitlines(), 1)
         if re.search(r"-perm \+", line)

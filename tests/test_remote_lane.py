@@ -102,8 +102,8 @@ def test_a_finished_share_measures_both_sides_for_the_next_split(tree: Path, mon
     share = _share(tree, 0, junit)
     share.started, share.mac_s = 1000.0, 80.0
     os.utime(share.junit, (1030.0, 1030.0))  # the worker's junit landed 30 s after the start
-    monkeypatch.setattr(rl.time, "time", lambda: 1040.0)  # the Mac's side ended 40 s in
-    assert rl.end(tree, share, "", av.merge_records, lambda ns: 0) == 0
+    # the Mac's side ended 40 s in
+    assert rl.end(tree, share, "", av.merge_records, lambda ns: 0, clock=lambda: 1040.0) == 0
     got = rl.load_rates()
     assert got.tests == {"tests/test_a.py::t1": 12.0, "tests/test_a.py::t2": 8.0}
     assert got.worker_width == pytest.approx((2.6 + 20 / 10) / 2)  # smoothed with the default
