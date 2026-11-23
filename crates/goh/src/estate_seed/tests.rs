@@ -400,7 +400,7 @@ fn a_journalled_settle_writes_nothing_until_applied_and_merges_once() {
     }
     let held = std::fs::read_to_string(store.path().join(K.file)).expect("read");
     assert_eq!(held, text, "a journal writes no store");
-    let (code, said) = apply_pending(pending.path());
+    let (code, said) = apply_pending(pending.path(), None);
     assert_eq!(code, 0, "{said}");
     assert_eq!(
         said.matches("a.sh").count(),

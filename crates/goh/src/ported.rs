@@ -117,7 +117,7 @@ pub(crate) fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
             seed,
         }) => paths(exclude, |x| early_pipe(seed, staged, x)),
         Commands::SeedSettle(a) => {
-            let (code, said) = estate_seed::apply_pending(&a.pending);
+            let (code, said) = estate_seed::apply_pending(&a.pending, a.checkout.as_deref());
             estate_seed::print((code, String::new(), said))
         }
         Commands::SeedAdd(a) => {

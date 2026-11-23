@@ -266,4 +266,8 @@ tui-marks --staged`, then `goh seed-settle <dir>`. `tui-marks` journals within t
 pub struct SeedSettleArgs {
     /// The pending directory the checks journalled into (`GOH_SEED_PENDING`).
     pub pending: std::path::PathBuf,
+    /// The checkout the commit is made in: off the branch the store is keyed to (`origin/HEAD`,
+    /// else `main`), each settle is licensed for when the change reaches it (GOH.SEEDBRANCH).
+    #[arg(long)]
+    pub checkout: Option<std::path::PathBuf>,
 }

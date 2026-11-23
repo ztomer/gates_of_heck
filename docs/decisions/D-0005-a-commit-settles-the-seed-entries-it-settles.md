@@ -51,3 +51,8 @@
   `gates/commit_gate.sh`, `crates/goh/src/hookindex/mod.rs`,
   `crates/goh/src/changelog_tags.rs`, `crates/goh/src/gitutil.rs` (`staged_paths`),
   `tests/test_seed_settle.py`, `tests/test_seed_refused.py`
+
+Amended 2026-11-22 (GOH.SEEDBRANCH): the store is keyed by repository, not branch, so a settle
+made off the store's branch (`origin/HEAD`, else `main`) is licensed under `<store>/deferred/`
+and applied by the first full run on that branch that finds the change
+(`crates/goh/src/estate_seed/deferred.rs`, `tests/test_seed_branch.py`).

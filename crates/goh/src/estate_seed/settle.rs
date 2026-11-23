@@ -233,10 +233,18 @@ pub fn judge_settled(
         Settle::default()
     };
     let mut now = settled_seed(seed, repo, &settled);
+    // A lane's licensed settle is read at what is found, and applied on the store's branch
+    // (GOH.SEEDBRANCH).
+    let licensed = match store_dir() {
+        Some(dir) if full && mine => {
+            super::deferred::consume(root, repo, counts, &mut now, (&dir, kind))
+        }
+        _ => String::new(),
+    };
     // GOH.STORECI judges the store entries left once the findings are known (GOH.STORECISTALE).
     let retired = super::store_ci::judge(root, repo, full, counts, &mut now, kind)?;
     let mut v = judge(repo, counts, &now, full, kind);
-    v.retired = retired;
+    v.retired = licensed + &retired;
     if !full {
         v.stale.extend(settled.stale.iter().cloned());
     }
@@ -301,7 +309,13 @@ impl Scope {
 /// An entry this commit left stale is deleted, a lowered one lowered. A failed write is a warning
 /// -- the push's stale check is the backstop -- never a red commit.
 #[must_use]
-pub fn settle_store(repo: &str, kind: Kind, settled: &Settle, tag: &str, item: &str) -> String {
+pub fn settle_store(
+    root: &Path,
+    repo: &str,
+    kind: Kind,
+    settled: &Settle,
+    (tag, item): (&str, &str),
+) -> String {
     use std::fmt::Write as _;
     let mut out = String::new();
     if settled.store.is_empty() {
@@ -314,6 +328,11 @@ pub fn settle_store(repo: &str, kind: Kind, settled: &Settle, tag: &str, item: &
     // later step refusing the commit must leave the store as it was.
     if let Some(pending) = super::pending::dir() {
         return super::pending::journal(&pending, &dir, kind, repo, settled, tag, item);
+    }
+    // Off the branch the store is keyed to, the settle is licensed for when the change reaches it
+    // (GOH.SEEDBRANCH): main still holds the sites, and its runs read this same store.
+    if let Err(branch) = super::deferred::on_store_branch(root) {
+        return super::deferred::license(&dir, kind.file, repo, &settled.store, (&branch, tag));
     }
     let file = dir.join(kind.file);
     if let Err(m) = write_settled(&dir, kind, repo, settled) {

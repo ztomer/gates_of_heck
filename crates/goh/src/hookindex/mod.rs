@@ -140,11 +140,11 @@ fn judge(
     let stale = crate::estate_seed::stale_report(TAG, "GOH.BAREINDEX", &verdict.stale);
     if n == 0 && m == 0 && stale.is_empty() {
         warns.push_str(&crate::estate_seed::settle_store(
+            root,
             &repo,
             seed::KIND,
             &settled,
-            TAG,
-            "GOH.BAREINDEX",
+            (TAG, "GOH.BAREINDEX"),
         ));
         let ok = format!(
             "{OK} {TAG} OK — {} {scope} shell {n_source}, the hook's index read only by goh_bind_hook_index\n",

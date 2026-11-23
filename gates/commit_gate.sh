@@ -143,7 +143,7 @@ if [ -n "$(ls -A "$pending")" ]; then   # every step passed: the settles the che
     goh_resolve_native
     if [ -z "$goh_native" ]; then
         warn "pre-commit: no goh binary to settle the seed (${goh_native_why:-none}); the push will call its entry stale"
-    elif ! "$goh_native" seed-settle "$pending"; then
+    elif ! "$goh_native" seed-settle "$pending" --checkout "$root"; then
         warn "pre-commit: goh seed-settle failed; the push will call its entry stale"
     fi
 fi

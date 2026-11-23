@@ -89,7 +89,7 @@ struct Due {
 /// one check journal the same settle). A failed write is a warning -- the push's stale check is the
 /// backstop -- never a red commit, which has already passed. Each journal is deleted once read.
 #[must_use]
-pub fn apply(pending: &Path) -> (i32, String) {
+pub fn apply(pending: &Path, checkout: Option<&Path>) -> (i32, String) {
     let mut out = String::new();
     let mut due: BTreeMap<(PathBuf, String, String), Due> = BTreeMap::new();
     let mut names: Vec<PathBuf> = match std::fs::read_dir(pending) {
@@ -144,7 +144,19 @@ pub fn apply(pending: &Path) -> (i32, String) {
             *at = (*at).min(n);
         }
     }
+    // A commit off the branch the store is keyed to licenses its settle instead (GOH.SEEDBRANCH).
+    let off = checkout.and_then(|c| super::deferred::on_store_branch(c).err());
     for ((store, file, root), d) in &due {
+        if let Some(branch) = &off {
+            out.push_str(&super::deferred::license(
+                store,
+                file,
+                root,
+                &d.store,
+                (branch, &d.tag),
+            ));
+            continue;
+        }
         match write_store_file(store, file, root, &d.store) {
             Ok(()) => out.push_str(&settled_lines(&d.store, &d.unit, &d.tag, &store.join(file))),
             Err(m) => {

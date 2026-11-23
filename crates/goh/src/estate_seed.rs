@@ -371,7 +371,7 @@ fn verdict_listing(
         }
     }
     if v.red.is_empty() && v.stale.is_empty() {
-        warns.push_str(&settle_store(&repo, kind, &settled, r.tag, r.item));
+        warns.push_str(&settle_store(root, &repo, kind, &settled, (r.tag, r.item)));
         // A pass over seeded sites is not the clean pass: it says the seed is what passed.
         let ok = if v.warn.is_empty() {
             format!("{OK} {} OK — {}\n", r.tag, r.ok)
@@ -463,6 +463,7 @@ pub fn clip(s: &str) -> String {
 }
 
 mod add;
+mod deferred;
 mod parse;
 mod pending;
 mod settle;
