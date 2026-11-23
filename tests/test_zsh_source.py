@@ -26,6 +26,8 @@ from timing_bounds import patience
 from lib import source_closure
 
 ZSH = shutil.which("zsh")
+# What the derived list reads: every shell file goh tracks, and what each sources.
+TREE_READS = ("lib/", "tui/", "gates/", "scripts/", "tools/", "checks/", "hooks/", ".github/")
 
 
 def libraries() -> list[str]:
