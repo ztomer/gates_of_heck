@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 from _fast_git import fast_init
+from _tree_clone import from_template
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -49,8 +50,7 @@ def _commit(repo: Path, msg: str) -> str:
     return _git(repo, "rev-parse", "HEAD")
 
 
-def _fixture(tmp_path: Path, gatesrc: str = "GOH_MAX_LINES=100\n") -> tuple[Path, str]:
-    repo = tmp_path / "repo"
+def _build_tree(repo: Path, gatesrc: str) -> None:
     fast_init(repo)
     (repo / ".gatesrc").write_text(gatesrc)
     _write(repo, "grow.py", 40, "grow")
@@ -58,7 +58,21 @@ def _fixture(tmp_path: Path, gatesrc: str = "GOH_MAX_LINES=100\n") -> tuple[Path
     _write(repo, "small.py", 10)
     _write(repo, "other.py", 40)
     (repo / "notes.md").write_text("x\n" * 40)
-    return repo, _commit(repo, "base")
+    _commit(repo, "base")
+
+
+def _build_capped(repo: Path) -> None:
+    _build_tree(repo, "GOH_MAX_LINES=100\n")
+
+
+def _build_uncapped(repo: Path) -> None:
+    _build_tree(repo, "# no cap\n")
+
+
+def _fixture(factory, tmp_path: Path, build=_build_capped) -> tuple[Path, str]:
+    """The base repo, built once per run and cloned (tests/_tree_clone.py)."""
+    repo = from_template(factory, f"cap-ahead-{build.__name__}", build, tmp_path / "repo")
+    return repo, _git(repo, "rev-parse", "HEAD")
 
 
 def _lane(repo: Path) -> str:
@@ -86,8 +100,10 @@ def _queue(tmp_path: Path) -> list[dict]:
     return json.loads(path.read_text()) if path.exists() else []
 
 
-def test_a_fast_forward_land_files_each_file_it_took_into_the_band(tmp_path, monkeypatch):
-    repo, base = _fixture(tmp_path)
+def test_a_fast_forward_land_files_each_file_it_took_into_the_band(
+    tmp_path, tmp_path_factory, monkeypatch
+):
+    repo, base = _fixture(tmp_path_factory, tmp_path)
     tip = _lane(repo)
     got = _run(tmp_path, monkeypatch, repo, tip, tip, base)
     assert [(c["file"], c["id"], c["said"]) for c in got["cap_items"]] == [
@@ -105,8 +121,8 @@ def test_a_fast_forward_land_files_each_file_it_took_into_the_band(tmp_path, mon
     assert len(_queue(tmp_path)) == 2
 
 
-def test_a_rebased_land_files_only_its_own_files(tmp_path, monkeypatch):
-    repo, base = _fixture(tmp_path)
+def test_a_rebased_land_files_only_its_own_files(tmp_path, tmp_path_factory, monkeypatch):
+    repo, base = _fixture(tmp_path_factory, tmp_path)
     enq = _lane(repo)
     _git(repo, "checkout", "-q", "-b", "main2", base)
     _write(repo, "other.py", 60)  # ANOTHER land on main grew this one
@@ -117,20 +133,22 @@ def test_a_rebased_land_files_only_its_own_files(tmp_path, monkeypatch):
     assert [c["file"] for c in got["cap_items"]] == ["grow.py", "new.py"], got
 
 
-def test_a_red_land_or_a_repo_with_no_cap_files_nothing(tmp_path, monkeypatch):
-    repo, base = _fixture(tmp_path)
+def test_a_red_land_or_a_repo_with_no_cap_files_nothing(tmp_path, tmp_path_factory, monkeypatch):
+    repo, base = _fixture(tmp_path_factory, tmp_path)
     tip = _lane(repo)
     assert _run(tmp_path, monkeypatch, repo, tip, tip, base, state="red") == {}
     nocap = tmp_path / "nocap"
     nocap.mkdir()
-    repo2, base2 = _fixture(nocap, gatesrc="# no cap\n")
+    repo2, base2 = _fixture(tmp_path_factory, nocap, _build_uncapped)
     tip2 = _lane(repo2)
     assert _run(tmp_path, monkeypatch, repo2, tip2, tip2, base2) == {}
     assert _queue(tmp_path) == []
 
 
-def test_the_sweep_files_todays_files_within_25_lines_of_the_cap(tmp_path, monkeypatch):
-    repo, _ = _fixture(tmp_path)
+def test_the_sweep_files_todays_files_within_25_lines_of_the_cap(
+    tmp_path, tmp_path_factory, monkeypatch
+):
+    repo, _ = _fixture(tmp_path_factory, tmp_path)
     _write(repo, "near.py", 80)
     _write(repo, "at.py", 100)
     _commit(repo, "near")
@@ -142,12 +160,12 @@ def test_the_sweep_files_todays_files_within_25_lines_of_the_cap(tmp_path, monke
     assert {i["id"] for i in _queue(tmp_path)} == {"GOH.SPLITAT", "GOH.SPLITNEAR"}
 
 
-def test_the_lander_files_through_land_filers(tmp_path, monkeypatch):
+def test_the_lander_files_through_land_filers(tmp_path, tmp_path_factory, monkeypatch):
     """tools/landq.py's one filing call reaches the cap filer (the wiring, not only the module)."""
     import land_filers
 
     assert "land_filers.file_all(" in (REPO_ROOT / "tools" / "landq.py").read_text()
-    repo, base = _fixture(tmp_path)
+    repo, base = _fixture(tmp_path_factory, tmp_path)
     tip = _lane(repo)
     fake = tmp_path / "loopctl.py"
     fake.write_text(FAKE_LOOPCTL)
