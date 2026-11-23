@@ -417,3 +417,51 @@ def test_an_unreadable_image_is_counted_and_never_guessed(tmp_path: Path) -> Non
 
 def test_image_tokens_per_agent_is_a_judged_metric() -> None:
     assert sw.METRICS["image_tokens_per_agent"]["label"] == "image result tokens per agent"
+
+
+# --- a prediction's baseline names the instrument that took it (GOH.READBASE) --------------------
+
+
+def test_the_read_share_reads_back_a_planted_share(tmp_path: Path) -> None:
+    """Calibration: three agents whose text Reads are planted at exactly 25% of their text results
+    (100 of 400 per agent), each also Reading a large screenshot: the reader gives 0.25, so an image
+    is never Read text (an images-as-bytes reader gives over 99% here)."""
+    for i in range(3):
+        recs = [*_resp(f"m{i}a", _at(1), _usage(9000), _tool(f"r{i}", "Read", file_path="/a")),
+                _result(_at(1, 0.1), f"r{i}", "x" * 100),
+                *_resp(f"m{i}b", _at(1, 1), _usage(9000), _tool(f"b{i}", "Bash", command="ls")),
+                _result(_at(1, 1.1), f"b{i}", "y" * 300),
+                *_resp(f"m{i}c", _at(1, 2), _usage(9000), _tool(f"s{i}", "Read", file_path="/s")),
+                _image_result(_at(1, 2.1), f"s{i}", _png(1568, 1000, pad=250_000)),
+                *_resp(f"m{i}d", _at(1, 3), _usage(9000))]  # fmt: skip
+        _agent(tmp_path, f"p{i}", "general-purpose", recs)
+    m = sw.week(sw.agents(tmp_path, NOW - dt.timedelta(days=14)), NOW - dt.timedelta(days=7), NOW)
+    assert m["read_share"] == 0.25 and m["read_bytes"] == 300
+
+
+def test_a_measured_baseline_outranks_the_prediction_text(tmp_path: Path) -> None:
+    """READCAP's '42% -> under 15%' was predicted against a hand count that took screenshots as
+    bytes; its record now carries the baseline the current reader re-derived. The check uses that,
+    names where it came from, and re-marks an item whose recorded check used the old baseline."""
+    p = tmp_path / "projects"
+    for i in range(3):
+        _worker(p, f"n{i}", 1 + i * 0.1, first=30000, read_text="x" * 100)  # read share 100/500
+    label = sw.METRICS["read_share"]["label"]
+    named = _landed("R", label, "42% -> under 15%", 9) | {
+        "baseline_measured": {
+            "value": 0.043,
+            "instrument": "spend_watch read_share",
+            "window": "W",
+        },
+        "spend_check": {"verdict": "confirmed", "measured": 0.2, "baseline": 0.42, "target": 0.15},
+    }
+    bare = _landed("T", label, "42% -> under 30%", 9)
+    lc = Loopctl(tmp_path)
+    out = _run(tmp_path, [named, bare], loopctl=lc.path)
+    v = {c["id"]: c for c in out["predictions"]}
+    assert v["R"]["baseline"] == 0.043 and v["R"]["verdict"] == "regressed"
+    assert v["R"]["baseline_from"] == "spend_watch read_share over W"
+    assert v["T"]["baseline"] == 0.42 and v["T"]["verdict"] == "confirmed"
+    assert v["T"]["baseline_from"] == "the `predicted` text: no instrument named"
+    sets = {c[1]: json.loads(c[3]) for c in lc.calls() if c[0] == "set"}
+    assert sets["R"]["baseline"] == 0.043 and sets["R"]["baseline_from"].startswith("spend_watch")

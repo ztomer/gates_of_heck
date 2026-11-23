@@ -278,6 +278,12 @@ def check(
         }
     base, target = pred
     sign = 1 if target <= base else -1  # lower is better unless the prediction says otherwise
+    named = item.get("baseline_measured") if isinstance(item.get("baseline_measured"), dict) else {}
+    if isinstance(named.get("value"), (int, float)):  # a re-derived baseline outranks the text's
+        base = float(named["value"])
+        out["baseline_from"] = f"{named.get('instrument', '?')} over {named.get('window', '?')}"
+    else:
+        out["baseline_from"] = "the `predicted` text: no instrument named"
     verdict = ("confirmed" if sign * measured <= sign * target
                else "short" if sign * measured < sign * base else "regressed")  # fmt: skip
     return out | {"verdict": verdict, "measured": measured, "baseline": base, "target": target}
@@ -398,11 +404,10 @@ def run(*, projects: Path, now: dt.datetime, queue: Path | None, loopctl: Path |
         preds.append(c)
         if c["provisional"] or c["verdict"] == "not measured":
             continue
-        mark = {k: c[k] for k in ("verdict", "measured", "baseline", "target")} | {
-            "on": f"{now:%Y-%m-%d}"
-        }
+        keys = ("verdict", "measured", "baseline", "target", "baseline_from")
+        mark = {k: c[k] for k in keys} | {"on": f"{now:%Y-%m-%d}"}
         old = it.get("spend_check") or {}
-        if (old.get("verdict"), old.get("measured")) == (mark["verdict"], mark["measured"]):
+        if all(old.get(k) == mark[k] for k in ("verdict", "measured", "baseline")):
             continue
         _loopctl(loopctl, queue, "set", str(it["id"]), "spend_check", json.dumps(mark), "--json")
         if c["verdict"] == "regressed":

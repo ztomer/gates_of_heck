@@ -501,6 +501,18 @@ to the model's limits before sending: tools-reference.md Read "Images", mcp.md "
 results"; `MAX_MCP_OUTPUT_TOKENS` bounds MCP images); `CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS`
 does not touch them. Nothing further is built: at 1.6% no image lever pays for itself.
 
+**Where READCAP's 42% baseline came from (GOH.READBASE).** Not from an instrument: the
+coordinator's hand count of 2026-11-08 over that session's 118 general-purpose agents took whole-file
+Read results' bytes with screenshots in them as their base64 (122 calls, 112 KB average: a
+screenshot's size; 86 of the 124 Reads of the probe's before-window were images). The instrument,
+`claude_cache_probe.py reads` over the same window (the 7 days to the 17:06:26Z cut), measured text
+Reads at 4.3% of text tool-result bytes, the definition `spend_watch.py`'s `read_share` keeps
+(images excluded; a test plants a 25% share beside screenshots and reads back 0.25). Those
+transcripts are gone (Claude Code's cleanup: the oldest left is 2026-11-14), so 4.3% is the
+re-derived baseline; on the week to 2026-11-23 the same reader gives 1.9%, and a screenshots-as-bytes
+reader 10.8%. A queue item's `baseline_measured` (`value`, `instrument`, `window`) outranks the
+number in its `predicted` text, and the spend check names which it used (`baseline_from`).
+
 ## Runtime / harness
 
 | Key | Default | Meaning |
