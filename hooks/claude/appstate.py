@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""Which of the owner's login-item apps are running -- snapshotted at a subagent's spawn, restored
-at its end (GOH.APPSTATE).
+"""Which of the owner's login-item apps are running -- snapshotted at a subagent's spawn, compared
+at its end (GOH.APPSTATE), and REPORTED, never relaunched (GOH.APPRESTOREOWNER).
 
 Agents that test an app relaunch or quit it, and leave it in the wrong state: on 2026-11-07/08
 a login-item app was left NOT running after two agents' UI tests (one SIGTERMed its own
 instance, having found none running), and Osaurus.app (a login item that serves the local model on
 :1337) was found not running. A note asking agents to put things back is a rule to remember; this
-is the system that does it. `agent_guard.py` calls `snapshot()` at every spawn and `restore()` at
-the agent's SubagentStop: a login-item app running before and not after is relaunched and named on
-the ledger's outcome line and in a message to the session (tests/test_claude_appstate.py).
+is the system that sees it. `agent_guard.py` calls `snapshot()` at every spawn and `gone()` at
+the agent's SubagentStop: a login-item app running before and not after is named on the ledger's
+outcome line and in a message to the session (tests/test_claude_appstate.py).
+
+It never starts one. The guard cannot tell an agent's quit from the owner's, and on 2026-11-23 it
+relaunched apps the owner had just quit from the Dock to free the machine (owner: "if they are not
+needed, don't start them if they are closed"). A lane whose work needs an app starts it and quits
+what it started; this module only says what went missing, so the cause is fixed where it happened.
 
 How the state is read, probed on macOS 27.2 (2026-11-08):
 * the login items: System Events' `path of every login item` (0.2-0.3 s; the BTM records behind
@@ -21,20 +26,19 @@ Seams, so both directions are tested without touching the owner's apps -- each a
 words are split like a shell's, never run through one:
 * GOH_APPSTATE_ITEMS_CMD   prints the login-item app paths, one per line
 * GOH_APPSTATE_RUNNING_CMD prints running executables' paths, one per line
-* GOH_APPSTATE_LAUNCH_CMD  launches one app; its path is appended as the last argument
 * GOH_APPSTATE_INSTALLED_CMD exits 0 when the app (its path appended) is installed; default
   `test -d`; under the suite without it every app counts as installed
-Under goh's own suite (`GATES_OF_HECK_SUITE_REAL_HOME`) the defaults are never used: without all
-three seams the module reads nothing and launches nothing, so no test can reach a real app.
+Under goh's own suite (`GATES_OF_HECK_SUITE_REAL_HOME`) the defaults are never used: without both
+reading seams the module reads nothing, so no test can reach a real app.
 
 An app the OWNER removed while the agent ran -- no longer a login item, or no longer installed --
-is neither relaunched nor reported (GOH.APPCLOSE; owner 2026-11-21: "note that I removed
+is not reported (GOH.APPCLOSE; owner 2026-11-21: "note that I removed
 stenoAi"). Every reading (any agent's spawn or stop) records when each login-item app was last
 seen running (`seen.json`), so a report names the agent and the window the app exited in: last
 seen running at T1, gone by T2.
 
 It fails OPEN: anything it cannot read is `None` (unknown), never "nothing running", so an
-unreadable state relaunches nothing.
+unreadable state reports nothing.
 
 CLI: `appstate.py running` prints the login-item apps running now, one per line.
 """
@@ -53,7 +57,6 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from tui.launch import launch_argv  # the one Python spelling of goh launch-app (GOH.LAUNCHAPPID)
 from tui.lib import noun  # the count meets its noun (GOH.HEDGEOWN)
 
 SUITE_MARKER = "GATES_OF_HECK_SUITE_REAL_HOME"  # tests/suite_home.py MARKER
@@ -66,12 +69,8 @@ ITEMS_SCRIPT = (
 DEFAULTS = {
     "GOH_APPSTATE_ITEMS_CMD": ["osascript", "-e", ITEMS_SCRIPT],
     "GOH_APPSTATE_RUNNING_CMD": ["ps", "-axww", "-o", "comm="],
-    # goh launch-app, never a bare `open`: open hands the app THIS hook's environment, and a
-    # relaunched login item outlives the session (GOH.CLEANOPEN, GOH.GRACEEND).
-    "GOH_APPSTATE_LAUNCH_CMD": launch_argv(background=True),  # the app's path appended
 }
 READ_TIMEOUT_S = 4.0
-LAUNCH_SETTLE_S = 3.0  # how long a relaunched app has to show up in the process table
 STALE_S = (
     2 * 24 * 3600
 )  # a snapshot whose agent never stopped (killed session) is pruned after this
@@ -199,24 +198,12 @@ def snapshot(key: str | None) -> list[str] | None:
     return apps
 
 
-def _launch(app: str) -> bool:
-    cmd = _command("GOH_APPSTATE_LAUNCH_CMD")
-    if cmd is None:
-        return False
-    try:
-        r = subprocess.run([*cmd, app], capture_output=True, text=True, timeout=READ_TIMEOUT_S,
-                           stdin=subprocess.DEVNULL, check=False)  # fmt: skip
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return r.returncode == 0
+def gone(key: str | None) -> dict[str, Any] | None:
+    """Every login-item app the spawn under `key` saw running that is not running now. Never
+    launches one (GOH.APPRESTOREOWNER).
 
-
-def restore(key: str | None, settle_s: float = LAUNCH_SETTLE_S) -> dict[str, Any] | None:
-    """Relaunch every login-item app the spawn under `key` saw running and that is not running now.
-
-    `{"before": [...], "missing": [...], "relaunched": [...], "failed": [...]}`, or None when there
-    was no snapshot or the state cannot be read. An app counts as relaunched only once it is SEEN
-    running again (the launcher's exit status is not the effect)."""
+    `{"before": [...], "missing": [...], "exits": {app: {"last_seen", "gone_by"}}}`, or None when
+    there was no snapshot or the state cannot be read."""
     if not key:
         return None
     path = _state_file(key)
@@ -235,18 +222,7 @@ def restore(key: str | None, settle_s: float = LAUNCH_SETTLE_S) -> dict[str, Any
     # an app the owner took out of the login items, or uninstalled, is the owner's removal
     missing = sorted(a for a in set(before) - set(now) if a in items and _installed(a))
     exits = {a: {"last_seen": seen.get(a), "gone_by": gone_by} for a in missing}
-    launched = [a for a in missing if _launch(a)]
-    up: set[str] = set()
-    end = time.monotonic() + settle_s
-    while launched:
-        seen = running()
-        up = set(launched) & set(seen or [])
-        if up == set(launched) or time.monotonic() >= end:
-            break
-        time.sleep(0.2)  # the next pass re-reads the process table: a poll, not a guess
-    relaunched = sorted(up)
-    return {"before": before, "missing": missing, "relaunched": relaunched,
-            "failed": sorted(set(missing) - up), "exits": exits}  # fmt: skip
+    return {"before": before, "missing": missing, "exits": exits}
 
 
 def describe(result: dict[str, Any] | None, agent: str | None = None) -> str | None:
@@ -257,14 +233,11 @@ def describe(result: dict[str, Any] | None, agent: str | None = None) -> str | N
     for app, w in sorted((result.get("exits") or {}).items()):
         parts.append(f"{Path(app).stem} last seen running {w.get('last_seen') or 'never'}, "
                      f"gone by {w.get('gone_by')}")  # fmt: skip
-    if result["relaunched"]:
-        parts.append(f"relaunched {', '.join(Path(a).stem for a in result['relaunched'])}")
-    if result["failed"]:
-        parts.append(f"could NOT relaunch {', '.join(Path(a).stem for a in result['failed'])}")
     apps = noun(len(result["missing"]), "app")
     who = f"agent {agent}" if agent else "the agent"
     return (f"agent_guard: login-item {apps} running when {who} was spawned were not running "
-            f"when it stopped -- {'; '.join(parts)} (GOH.APPSTATE, GOH.APPCLOSE).")  # fmt: skip
+            f"when it stopped -- {'; '.join(parts)}; not relaunched: a closed app stays closed, "
+            f"and a lane that quit one it needs starts it (GOH.APPRESTOREOWNER).")  # fmt: skip
 
 
 def main(argv: list[str]) -> int:

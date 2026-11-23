@@ -3,12 +3,13 @@
 On 2026-11-07/08 a login-item app was left not running after two agents' UI tests, and
 Osaurus.app (a login item serving the local model on :1337) was found not running.
 `hooks/claude/agent_guard.py` now snapshots which login-item apps run at every spawn
-(`hooks/claude/appstate.py`) and, at the agent's SubagentStop, relaunches each one running before
-and not after, naming it on the ledger's outcome line and in a message to the session.
+(`hooks/claude/appstate.py`) and, at the agent's SubagentStop, names each one running before and
+not after on the ledger's outcome line and in a message to the session. It never relaunches one
+(GOH.APPRESTOREOWNER): the owner quits apps too, and a closed app stays closed.
 
-No test reads or launches a real app: the login items, the process table and the launcher are the
-module's three seams, served here by a fake world in files, and under goh's suite the module
-refuses its real defaults outright (the last test proves it).
+No test reads or launches a real app: the login items and the process table are the module's
+seams (a fake launcher stays as a tripwire that logs any launch), served here by a fake world in
+files, and under goh's suite the module refuses its real defaults outright (a test proves it).
 """
 
 from __future__ import annotations
@@ -33,10 +34,8 @@ NOTION = "/Applications/Notion.app"
 
 LAUNCHER = """\
 #!/bin/bash
-# The fake launcher: logs the launch and, unless told to fail, puts the app in the process table.
+# A tripwire launcher: logs any launch and puts the app in the process table. Nothing may call it.
 printf '%s\\n' "$1" >> "$WORLD/launched"
-[ -e "$WORLD/launch-fails" ] && exit 1
-[ -e "$WORLD/launch-noop" ] && exit 0
 printf '%s\\n' "$1/Contents/MacOS/main" >> "$WORLD/procs"
 """
 
@@ -70,6 +69,7 @@ class World:
         return path.read_text().splitlines() if path.exists() else []
 
     def env(self, **extra: str) -> dict[str, str]:
+        # the old launch seam stays set to the tripwire: if anything still launched, it would log
         seams = {"GOH_APPSTATE_ITEMS_CMD": f"cat {self.root / 'items'}",
                  "GOH_APPSTATE_RUNNING_CMD": f"cat {self.root / 'procs'}",
                  "GOH_APPSTATE_LAUNCH_CMD": str(self.root / "launch.sh")}  # fmt: skip
@@ -105,16 +105,21 @@ def world(tmp_path: Path) -> World:
     return World(tmp_path / "world", [WIDGET, OSAURUS, NOTION], [WIDGET, OSAURUS])
 
 
-def test_an_app_the_agent_left_not_running_is_relaunched_and_named(world: World) -> None:
+def test_an_app_gone_at_stop_is_reported_and_never_launched(world: World) -> None:
+    """Owner 2026-11-23: "if they are not needed, don't start them if they are closed" -- the
+    guard cannot tell an agent's quit from the owner's (it relaunched apps the owner had quit from
+    the Dock), so a gone app is named, never started (GOH.APPRESTOREOWNER)."""
     world.spawn()
-    world.set_running([OSAURUS])  # the agent's UI test quit the app and never put it back
+    world.set_running([OSAURUS])  # Widget gone at stop: the owner's quit or an agent's
     out = world.stop()
-    assert world.launched() == [WIDGET]
-    assert out is not None and "relaunched Widget" in out["systemMessage"], out
+    assert world.launched() == []
+    assert out is not None, out
+    msg = out["systemMessage"]
+    assert "Widget" in msg and "not relaunched" in msg and "relaunched Widget" not in msg, msg
     spawn, outcome = world.ledger()
     assert spawn["apps"] == [OSAURUS, WIDGET]
     assert outcome["apps"]["missing"] == [WIDGET]
-    assert outcome["apps"]["relaunched"] == [WIDGET] and outcome["apps"]["failed"] == []
+    assert "relaunched" not in outcome["apps"] and "failed" not in outcome["apps"]
 
 
 def test_an_app_still_running_and_one_never_running_are_left_alone(world: World) -> None:
@@ -124,17 +129,6 @@ def test_an_app_still_running_and_one_never_running_are_left_alone(world: World)
     assert world.launched() == []
     assert out is None
     assert world.ledger()[-1]["apps"]["missing"] == []
-
-
-def test_a_relaunch_that_never_shows_up_is_named_as_failed(world: World) -> None:
-    """The launcher's exit status is not the effect: an app counts once it is SEEN running."""
-    world.spawn()
-    world.set_running([])
-    (world.root / "launch-noop").write_text("")
-    out = world.stop()
-    assert sorted(world.launched()) == [OSAURUS, WIDGET]
-    assert out is not None and "could NOT relaunch Osaurus, Widget" in out["systemMessage"]
-    assert world.ledger()[-1]["apps"]["failed"] == [OSAURUS, WIDGET]
 
 
 def test_an_unreadable_login_item_list_launches_nothing(world: World) -> None:
@@ -147,13 +141,13 @@ def test_an_unreadable_login_item_list_launches_nothing(world: World) -> None:
 
 
 def test_the_snapshot_is_spent_by_its_stop(world: World) -> None:
-    """A second stop for the same spawn has no snapshot left: it cannot relaunch twice."""
+    """A second stop for the same spawn has no snapshot left: it cannot report twice."""
     world.spawn()
     world.set_running([OSAURUS])
-    world.stop()
+    assert world.stop() is not None
     world.set_running([OSAURUS])
     assert world.stop() is None
-    assert world.launched() == [WIDGET]
+    assert world.launched() == []
 
 
 def test_under_the_suite_the_real_defaults_never_run(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -170,7 +164,6 @@ def test_under_the_suite_the_real_defaults_never_run(monkeypatch: pytest.MonkeyP
     assert not appstate.enabled()
     assert appstate.running() is None
     assert appstate.snapshot("toolu_X") is None
-    assert appstate._launch(WIDGET) is False
 
 
 def test_the_real_reader_is_system_events_and_the_process_table() -> None:
@@ -178,9 +171,9 @@ def test_the_real_reader_is_system_events_and_the_process_table() -> None:
     assert appstate.DEFAULTS["GOH_APPSTATE_ITEMS_CMD"][0] == "osascript"
     assert "path of every login item" in appstate.ITEMS_SCRIPT
     assert appstate.DEFAULTS["GOH_APPSTATE_RUNNING_CMD"] == ["ps", "-axww", "-o", "comm="]
-    launch = appstate.DEFAULTS["GOH_APPSTATE_LAUNCH_CMD"]
-    assert Path(launch[0]).name == "goh"
-    assert launch[1:] == ["launch-app", "--background"]  # the login environment (GOH.CLEANOPEN)
+    # nothing launches: no launch seam, no launcher in the module (GOH.APPRESTOREOWNER)
+    assert "GOH_APPSTATE_LAUNCH_CMD" not in appstate.DEFAULTS
+    assert not hasattr(appstate, "_launch") and not hasattr(appstate, "launch_argv")
 
 
 # --- GOH.APPCLOSE: an app the owner removed is dropped; a report names the agent and the window --

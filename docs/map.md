@@ -660,8 +660,8 @@ Every structural checker is native since Phase N3; the Python checkers they port
   transcript or a sibling subagent's, the only trace a stop after the turn's end leaves), "TaskStop: no such task", or None:
   unknown, never alive. `agent_stalls.py` and `.loop`'s tick read it. Pinned by `test_agent_stalls.py`.
 * `hooks/claude/appstate.py` — the owner's login-item apps, snapshotted at each spawn by `agent_guard.py` and
-  relaunched at SubagentStop when the agent left one not running (GOH.APPSTATE); seams for the item list, the
-  process table and the launcher; inert under goh's suite without them. Pinned by `test_claude_appstate.py`.
+  named at SubagentStop when one ran at spawn and not at stop, never relaunched (GOH.APPSTATE,
+  GOH.APPRESTOREOWNER); seams for the item list and the process table; inert under goh's suite without them. Pinned by `test_claude_appstate.py`.
   An app the owner removed (no longer a login item or installed) is dropped; the message names the agent and the
   exit window from `seen.json` (GOH.APPCLOSE).
 * `hooks/claude/app_quit.py` — a `discard_guard.py` rule (GOH.APPCLOSE): an `osascript` quit of a login-item app (by

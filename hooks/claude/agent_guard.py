@@ -48,9 +48,9 @@ by hand; this hook keeps them structurally (tests/test_claude_agent_guard.py):
 * A direct `gh run watch/view/list` or `gh api .../actions` call the agent ran is named at
   SubagentStop (GOH.GHDOOR, `ci_door.py`): on the outcome line (`ci_direct`) and to the session,
   with loopctl's one CI door to use instead.
-* The owner's apps are put back (GOH.APPSTATE, `appstate.py`): the spawn line records which
-  login-item apps were running; at SubagentStop any of them no longer running is relaunched and
-  named on the outcome line (`apps`) and in a message to the session.
+* The owner's apps are watched (GOH.APPSTATE, `appstate.py`): the spawn line records which
+  login-item apps were running; at SubagentStop any of them no longer running is named on the
+  outcome line (`apps`) and in a message to the session, never relaunched (GOH.APPRESTOREOWNER).
 
 Output shape, proven live on the Claude Code version the rules file's `proven_on` names: a refusal
 is `hookSpecificOutput`
@@ -439,8 +439,9 @@ def _status(report: str) -> str:
 
 
 def on_stop(event: dict[str, Any]) -> list[str]:
-    """Record a finished subagent's outcome, putting back the login-item apps it left not running;
-    the messages for the session (apps relaunched, a ledger not written). Never blocks the stop."""
+    """Record a finished subagent's outcome, naming the login-item apps not running at its stop that
+    ran at its spawn; the messages for the session (apps gone, a ledger not written). Never blocks
+    the stop."""
     raw_path = event.get("agent_transcript_path")
     transcript = Path(raw_path) if isinstance(raw_path, str) and raw_path else None
     tool_use_id = None
@@ -450,7 +451,7 @@ def on_stop(event: dict[str, Any]) -> list[str]:
             tool_use_id = json.loads(meta.read_text(encoding="utf-8")).get("toolUseId")
         except (OSError, ValueError, AttributeError):
             tool_use_id = None
-    apps = appstate.restore(tool_use_id)  # first: a relaunch must not wait on the transcript
+    apps = appstate.gone(tool_use_id)  # read first: the stop's state, before the transcript wait
     report = event.get("last_assistant_message")
     report = report if isinstance(report, str) else ""
     text, settled = settled_transcript(transcript, report) if transcript else (None, False)

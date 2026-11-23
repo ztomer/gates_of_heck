@@ -35,8 +35,7 @@ def items(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def _verdict(listing: Path, command: str) -> str | None:
-    seams = {"GOH_APPSTATE_ITEMS_CMD": f"cat {listing}", "GOH_APPSTATE_RUNNING_CMD": "true",
-             "GOH_APPSTATE_LAUNCH_CMD": "true"}  # fmt: skip
+    seams = {"GOH_APPSTATE_ITEMS_CMD": f"cat {listing}", "GOH_APPSTATE_RUNNING_CMD": "true"}
     event = {"session_id": "s", "hook_event_name": "PreToolUse", "tool_name": "Bash",
              "tool_input": {"command": command}, "cwd": "/"}  # fmt: skip
     r = subprocess.run([sys.executable, str(GUARD)], input=json.dumps(event), capture_output=True,
