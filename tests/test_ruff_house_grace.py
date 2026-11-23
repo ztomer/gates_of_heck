@@ -14,12 +14,11 @@ and name the day.
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 
 import pytest
-from conftest import REPO_ROOT, commit_all, stage, write
+from conftest import REPO_ROOT, commit_all, hermetic_env, stage, write
 from test_py_lint_ceiling import LONG_LINE, MUTABLE_DEFAULT, ONE_RULE
 
 GATE = REPO_ROOT / "gates" / "py_staged.sh"
@@ -31,7 +30,7 @@ pytestmark = pytest.mark.skipif(shutil.which("ruff") is None, reason="ruff not o
 def run(repo, grace: str):
     return subprocess.run(
         ["/bin/bash", str(GATE), str(repo)], capture_output=True, text=True, check=False,
-        stdin=subprocess.DEVNULL, env={**os.environ, "GOH_GRACE": grace},
+        stdin=subprocess.DEVNULL, env=hermetic_env(GOH_GRACE=grace),
     )  # fmt: skip
 
 
