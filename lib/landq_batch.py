@@ -146,11 +146,20 @@ def read(path: Path) -> dict:
     return req if isinstance(req, dict) else {}
 
 
+def alone(req: dict) -> bool:
+    """A `--no-pre` land (GOH.NOPREBATCH): the pre-step's tests never ran on its tree, so it is
+    judged alone, where a red it carries can take down no other land's cycle. GOH.NITS3 was
+    enqueued `--no-pre`, batched with two clean lands, and its clippy finding turned all three
+    red (2026-11-23)."""
+    return bool(req.get("no_pre"))
+
+
 def pick(pending: list[Path]) -> list[Path]:
     """The requests the queue's head runs with: it alone, or (a land) it and the land requests of
-    its repo behind it, in queue order, up to cap(); a push or ship of that repo ends the take."""
+    its repo behind it, in queue order, up to cap(); a push or ship of that repo ends the take, and
+    so does a `--no-pre` land (`alone`), which is never taken with another (GOH.NOPREBATCH)."""
     head = read(pending[0])
-    if head.get("mode") != "land" or cap() == 1:
+    if head.get("mode") != "land" or cap() == 1 or alone(head):
         return pending[:1]
     out = [pending[0]]
     for path in pending[1:]:
@@ -159,7 +168,7 @@ def pick(pending: list[Path]) -> list[Path]:
             break
         if req.get("repo") != head.get("repo"):
             continue
-        if req.get("mode") != "land" or not req.get("worktree"):
+        if req.get("mode") != "land" or not req.get("worktree") or alone(req):
             break
         out.append(path)
     return out

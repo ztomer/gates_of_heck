@@ -99,10 +99,10 @@ def gatesrc(root: Path, key: str) -> str:
     return res.stdout if res.returncode == 0 else ""
 
 
-def steps(root: Path) -> list[str]:
-    """The land gate's cheap steps the tree declares (none declared: none)."""
-    declared = [s for s in gatesrc(root, "GOH_LAND_CHECK_STEPS").split(":") if s.strip()]
-    return declared
+def steps(root: Path, no_pre: bool = False) -> list[str]:
+    """The tree's land-gate cheap steps; NO_PRE adds GOH_LAND_NOPRE_STEPS' lint (GOH.NOPREBATCH)."""
+    keys = ["GOH_LAND_CHECK_STEPS"] + ["GOH_LAND_NOPRE_STEPS"] * no_pre
+    return list(dict.fromkeys(s for k in keys for s in gatesrc(root, k).split(":") if s.strip()))
 
 
 def declared(root: Path) -> list[str]:
@@ -258,12 +258,11 @@ def _run(
     return rc, out, round(time.monotonic() - t0, 1)
 
 
-def run(
-    root: Path, q: Path | None = None, say=print, repo: str = "", tables: bool = False
-) -> list[str]:
+def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=False, no_pre=False):
     """Every guard over ROOT; the refusing guards' names ([] is green). SAY prints a line. TABLES
-    (`goh land --check`) adds every judge the change can break (`judge_tests`) and diff coverage."""
-    env = _env(root)
+    (`goh land --check`) adds every judge the change can break (`judge_tests`) and diff coverage;
+    NO_PRE `steps`' no-pre lint, the Rust gate's coverage (its tests) deferred by name."""
+    env = {**_env(root), **({"GOH_RUST_COVERAGE": "defer"} if no_pre else {})}
     nodes = tests(root, q, repo)
     if tables:
         t0 = time.monotonic()
@@ -273,7 +272,7 @@ def run(
             f"check: {counted(len(extra), 'judge test')} the diff can break, chosen in {took:.1f} s"
         )
         nodes += extra
-    jobs: dict[str, list[str]] = {s: ["bash", "-c", s] for s in steps(root)}
+    jobs: dict[str, list[str]] = {s: ["bash", "-c", s] for s in steps(root, no_pre)}
     serial = ["-n", "0"] if (root / "tests" / "_shard.py").is_file() else []  # goh's xdist
     py = [env["GOH_PY"], "-m", "pytest", "-q", "-p", "no:cacheprovider", *serial]
     parts = shards(nodes, JUDGE_SHARDS if tables else SHARDS)
@@ -344,7 +343,7 @@ def count(q: Path) -> dict[str, int]:
     return dict(sorted(tally.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
-def at_enqueue(q: Path, req: dict, file, record, say=print) -> str:
+def at_enqueue(q: Path, req: dict, file, record, say=print, no_pre: str | None = None) -> str:
     """REQ's guards in its slot before the pre-step: '' green; else the refusal, the request filed
     by FILE under `early/` and recorded red with its guards (lib/landq_early.py settle). The
     stacking check on main runs first: a conflict is red in seconds (GOH.BATCHCONFLICTFIRST)."""
@@ -357,7 +356,9 @@ def at_enqueue(q: Path, req: dict, file, record, say=print) -> str:
     lines: list[str] = []
     main_red.notice(q, req, say)  # main red in the idle suite: said, its nodes to the pre-step
     t0 = time.monotonic()
-    refused = run(Path(req["worktree"]), q, lambda s: (say(s), lines.append(s)), req["repo"])
+    req.update({} if no_pre is None else {"no_pre": no_pre.strip()})  # alone: lib/landq_batch.py
+    refused = run(Path(req["worktree"]), q, lambda s: (say(s), lines.append(s)), req["repo"],
+                  no_pre=no_pre is not None)  # fmt: skip
     req["cov_risk"] = cov_risk.say(req["worktree"], req["repo"], say)  # kept on the land record
     if not refused:
         say(f"check: every guard green in {time.monotonic() - t0:.1f} s")

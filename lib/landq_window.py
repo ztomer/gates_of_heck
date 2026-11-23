@@ -29,6 +29,8 @@ land a whole gate pays for itself whenever it catches one in three. A marker due
 is not waited for at all (GOH.WINDOWDUE: 27 of 35 windows closed on the base bound having caught
 nothing, median 120 s, 58 min in all, each with a marker still in a pre-step due past the cap); one
 with no `at`, whose due is unknown, gets the base bound; a lone land, none at all.
+A `--no-pre` land
+(lib/landq_batch.py `alone`, GOH.NOPREBATCH) never batches, so it waits for none either.
 
 Each wait is one line in lander.log as it starts and one as it ends, naming the markers it waited
 on and the seconds it took. Pinned by tests/test_landq_window.py, on a fake clock.
@@ -151,7 +153,7 @@ def hold(
     the time module, which every thread of the process reads (GOH.LANDQWINFLAKE)."""
     clock, sleep = clock or time.time, sleep or time.sleep
     head, bound, cap = landq_batch.read(pending[0]), window(), landq_batch.cap()
-    if head.get("mode") != "land" or cap == 1 or bound == 0:
+    if head.get("mode") != "land" or cap == 1 or bound == 0 or landq_batch.alone(head):
         return pending
     name, at, start, waited = pending[0].stem, filed(pending[0]), clock(), False
     took = expected(q, head.get("repo"))

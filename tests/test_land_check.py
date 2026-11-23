@@ -138,6 +138,9 @@ def test_every_check_step_is_verbatim_a_land_gate_step():
     steps = land_check.steps(REPO_ROOT)
     assert steps, "goh declares GOH_LAND_CHECK_STEPS"
     assert not [s for s in steps if s not in ci], ci
+    no_pre = land_check.steps(REPO_ROOT, no_pre=True)[len(steps) :]
+    assert no_pre, "goh declares GOH_LAND_NOPRE_STEPS (GOH.NOPREBATCH)"
+    assert not [s for s in no_pre if s not in ci], ci
 
 
 def test_the_guard_tests_are_the_declared_ones_and_the_measured_past_refusers(
@@ -312,6 +315,32 @@ def test_check_and_enqueue_refuse_on_a_guard_and_record_it(repo, tmp_path, env):
         green, "--enqueue", "--foreground", "--land", str(wt), "--item", "T.C", "--no-start"
     )
     assert done.returncode == 0 and len(_pending(tmp_path)) == 1, done.stdout + done.stderr
+
+
+# GOH.NOPREBATCH (2026-11-23): GOH.NITS3 enqueued with `--no-pre`, its new rubyshell.rs reached the
+# lander unlinted, and clippy turned its whole batch red. `--no-pre` waives the pre-step's TESTS for
+# the reason it names, never the cheap lint steps (.gatesrc GOH_LAND_NOPRE_STEPS).
+def test_a_no_pre_enqueue_still_runs_the_lint_steps_and_a_finding_refuses_it(
+    repo,
+    tmp_path,
+    env,  # noqa: F811
+):
+    wt, _ = _land_wt(repo, tmp_path)
+    lint = "echo '✗ [planted_lint] too_long_first_doc_paragraph'; exit 1"
+    env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": "exit 1", "GOH_LAND_CHECK_STEPS": "true",
+           "GOH_LAND_NOPRE_STEPS": lint}  # fmt: skip
+    done = landq(env, "--enqueue", "--foreground", "--land", str(wt), "--item", "T.NP",
+                 "--no-start", "--no-pre", "lane ran the set by hand")  # fmt: skip
+    out = done.stdout + done.stderr
+    assert done.returncode == 1 and "[planted_lint]" in out and "nothing queued" in out, out
+    assert _pending(tmp_path) == []
+    green = {**env, "GOH_LAND_PRE": "true"}  # the pre-step runs: the no-pre steps are not its
+    done = landq(
+        green, "--enqueue", "--foreground", "--land", str(wt), "--item", "T.NP", "--no-start"
+    )
+    out = done.stdout + done.stderr
+    assert done.returncode == 0 and "[planted_lint]" not in out, out
+    assert len(_pending(tmp_path)) == 1
 
 
 # GOH.LANDCHECK2: GOH-TINY's land went red 7 times in 45 min (2026-11-22), each on a different judge

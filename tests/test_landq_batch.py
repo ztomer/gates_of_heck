@@ -72,8 +72,10 @@ def lane(repo: Path, tmp_path: Path, name: str, files: dict[str, str]) -> Path:
 
 def enqueue_all(env: dict[str, str], wts: list[tuple[Path, str]]) -> None:
     for wt, item in wts:
-        done = landq(env, "--enqueue", "--land", str(wt), "--item", item, "--no-start", "--no-pre",
-                     "fixture: the pre-step is not under test")  # fmt: skip
+        # a trivial pre-step, never `--no-pre`: a `--no-pre` land is judged alone (GOH.NOPREBATCH)
+        pre = {**env, "GOH_LAND_PRE": "true"}
+        done = landq(pre, "--enqueue", "--foreground", "--land", str(wt), "--item", item,
+                     "--no-start")  # fmt: skip
         assert done.returncode == 0, done.stdout + done.stderr
 
 

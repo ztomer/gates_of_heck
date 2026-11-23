@@ -326,3 +326,27 @@ def test_the_most_is_the_named_setting_and_never_below_the_base(window, q, monke
     assert window.deadline(T0, marker, 100) == T0 + window.DEFAULT_S  # due +80, base 120 wins
     monkeypatch.setenv(window.MAX_ENV, "soon")
     assert window.most() == window.MAX_S
+
+
+def test_a_no_pre_land_runs_alone_and_never_waits_for_a_batch(window, q):
+    """GOH.NOPREBATCH: a `--no-pre` land's tree went to the lander unchecked by the pre-step, so it
+    never joins a batch whose other lands its red could take down: it is taken alone, and a land
+    ahead of it takes no batch past it."""
+    import landq_batch
+
+    clock, said = Clock(T0), []
+    lone = _file(q, clock.t - 1, "T.NOPRE")
+    landq_state.write(lone, {**landq_state.read(lone), "no_pre": "the set ran by hand"})
+    _file(q, clock.t, "T.TWO")
+    _mark(q, "T.THREE", os.getpid(), clock.t + 3600)
+    pending = sorted((q / "pending").glob("*.json"))
+    assert _hold(window, q, clock, said) == ["T.NOPRE", "T.TWO"]
+    assert (clock.slept, said) == (0.0, [])  # no window held for it
+    assert [p.stem.partition("-")[2] for p in landq_batch.pick(pending)] == ["T.NOPRE"]
+    lone.unlink()
+    first = _file(q, clock.t - 2, "T.ONE")
+    landq_state.write(lone, {**landq_state.read(first), "item": "T.NOPRE", "no_pre": "by hand"})
+    pending = sorted((q / "pending").glob("*.json"))
+    names = [p.stem.partition("-")[2] for p in pending]
+    assert names == ["T.ONE", "T.NOPRE", "T.TWO"], names
+    assert [p.stem.partition("-")[2] for p in landq_batch.pick(pending)] == ["T.ONE"]

@@ -419,7 +419,7 @@ def main(argv: list[str] | None = None) -> int:
             req = land_request(args.land, args.item, qdir())  # in a slot (GOH.LANDSNAPSHOT)
             if args.no_pre is not None and not args.no_pre.strip():
                 raise Refused("--no-pre needs a reason: --no-pre 'why this tip skips the pre-step'")
-            if land_check.at_enqueue(qdir(), req, enqueue, record, info):
+            if land_check.at_enqueue(qdir(), req, enqueue, record, info, args.no_pre):
                 return 1  # recorded red, its guards named (GOH.LANDCHECK)
             if args.no_pre is None:
                 prestep(req)
