@@ -85,6 +85,26 @@ def extend_select() -> str:
     return ",".join(HOUSE)
 
 
+# THE REPO'S OWN CONFIG CARRIES THE SET from this day (GOH.RUFFHOUSESET): an unset or `warn`
+# GOH_RUFF_CONFIG_PARITY reads as `on`, and a repo with no ceilings whose files the set flags is
+# refused. The gate cannot fall behind (it passes the set itself); the repo's copy, which a plain
+# `ruff check` reads, can, so it is judged. A vended base config is not by construction (probed
+# 2026-11-23, ruff 0.17.6): a repo's own `select` replaces a base's `extend-select`, and an
+# `extend = "${GOH_DIR}/..."` fails ruff outright wherever GOH_DIR is unset.
+OVER_DAY = "2026-12-07"
+OVER_FROM = 1_796_601_600  # 2026-12-07T00:00:00Z
+
+
+def over(now: float | None = None) -> bool:
+    """Is the grace over? `GOH_GRACE` over/within decides, as crate::grace's seam; else the day."""
+    seam = os.environ.get("GOH_GRACE")
+    if seam in ("over", "within"):
+        return seam == "over"
+    import time
+
+    return (time.time() if now is None else now) >= OVER_FROM
+
+
 def bump_if_newer(found: str) -> None:
     """A gate met ruff FOUND, not the pin: ask goh's binary for `goh land --ruff-bump --detach`
     (lib/ruff_bump.py, GOH.RUFFBUMPLAND), which lands the bump once when FOUND is the box's newer
@@ -105,6 +125,9 @@ def bump_if_newer(found: str) -> None:
 
 if __name__ == "__main__" and sys.argv[1:2] == ["--bump-if-newer"]:
     bump_if_newer((sys.argv[2:3] or [""])[0])
+    sys.exit(0)
+if __name__ == "__main__" and sys.argv[1:] == ["--over"]:
+    print(f"over {OVER_DAY}" if over() else f"within {OVER_DAY}")
     sys.exit(0)
 if __name__ == "__main__":
     print(RUFF if sys.argv[1:] == ["--pin"] else extend_select())

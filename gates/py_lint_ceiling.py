@@ -52,6 +52,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # the goh root: tu
 from tui.lib import counted, err, measure, ok, warn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # gates/: the house rule set
+import ruff_house
 from ruff_house import extend_select
 
 KEY = "GOH_PY_LINT_CEILINGS"
@@ -183,9 +184,12 @@ def unselected(runner: str, file: str) -> tuple[list[str], str]:
 def _parity(runner: str, files: list[str], mode: str) -> list[str]:
     """GOH_RUFF_CONFIG_PARITY: the repo's ruff config must select the house set itself, so the ruff
     run by hand judges what this gate judges. `on` makes a gap a finding; `warn` (the default until
-    the estate's configs carry the set) names it and passes."""
+    the estate's configs carry the set) names it and passes, and from `ruff_house.OVER_DAY` is `on`
+    too (GOH.RUFFHOUSESET)."""
     if not files:
         return []
+    if ruff_house.over():
+        mode = "on"
     missing, where = unselected(runner, files[0])
     if not missing:
         return []
@@ -199,7 +203,7 @@ def _parity(runner: str, files: list[str], mode: str) -> list[str]:
     )
     if mode == "on":
         return [text]
-    warn(f"{text} ({PARITY}=on refuses this)")
+    warn(f"{text} ({PARITY}=on refuses this; red from {ruff_house.OVER_DAY})")
     return []
 
 

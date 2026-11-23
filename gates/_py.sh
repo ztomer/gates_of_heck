@@ -203,5 +203,13 @@ goh_py_house_unadopted() {
     house="$("$GOH_PY" -S "$_goh_py_here/ruff_house.py")" || die "$GOH_NAME: gates/ruff_house.py did not run"
     n="$("${RUN_ARR[@]}" ruff check --no-cache --exit-zero --extend-select "$house" \
         --output-format concise --quiet "$@" </dev/null 2>/dev/null | grep -c ':[0-9]*:[0-9]*: ' || true)"
-    [ "${n:-0}" -eq 0 ] || warn "house ruff set ($house) not adopted: $(counted "$n" finding) here -- seed GOH_PY_LINT_CEILINGS (gates/py_lint_ceiling.py --seed tools/py_lint_ceilings.json)"
+    [ "${n:-0}" -gt 0 ] || return 0
+    local said grace
+    said="house ruff set ($house) not adopted: $(counted "$n" finding) here -- seed GOH_PY_LINT_CEILINGS (gates/py_lint_ceiling.py --seed tools/py_lint_ceilings.json)"
+    # From the grace's end a refusal (GOH.RUFFHOUSESET, gates/ruff_house.py OVER_DAY).
+    grace="$("$GOH_PY" -S "$_goh_py_here/ruff_house.py" --over)" || die "$GOH_NAME: gates/ruff_house.py --over did not run"
+    case "$grace" in
+        over\ *) die "$GOH_NAME: $said" ;;
+        *) warn "$said (red from ${grace#within })" ;;
+    esac
 }
