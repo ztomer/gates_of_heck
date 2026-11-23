@@ -1,7 +1,6 @@
 {
   "why": "goh's self-walk (tests/test_self_walk.py, GOH.CLASS.SELF, 2026-11-15): every scanner in the registry run over goh itself with no seed, no grace and every opt-in on. `findings` is goh's own debt per scanner, counted as the distinct path:line sites it names; it only shrinks, and done is an empty `findings`. `enable`, `not_run` and `unjudged` are not debt: how the walk turns an opt-in scanner on, a scanner with nothing in goh to judge, and one that ran and said it cannot judge here.",
   "enable": {
-    "no locale variable set by bash itself": {"count": 1, "why": "locale_prefix_seed.json: tests/fixtures/homebrew_tap/Casks/divoom-control.rb, a copy of the tap's cask, its uninstall heredoc read since GOH.LOCALERUBY"},
     "no hard-coded home paths": "GOH_NO_HOME_PATHS=1"
   },
   "not_run": {
@@ -21,6 +20,7 @@
     "no bare open of an app": {"count": 1, "why": "tests/test_launch_app.py, the control arm a bare open must be: the Python shape, in grace until 2026-11-23, is seeded that day (its entry would read stale before it)"},
     "no hand-rolled TUI mark": {"count": 157, "why": "tui_marks_seed.json's 157 sites (GOH.LINTDELTA fixed py_lint_ceiling.py's), every one seeded (GOH.TUIMARKS; GOH.GRACEEND seeded the 6 it once missed: tools/lint.py, changelog_cut.py, build-goh.sh, and swift_toolchain.sh:28, a zsh refusal before any lib can load, from 6c43a02)"},
     "no hard-coded home paths": {"count": 136, "why": "goh never opted into GOH_NO_HOME_PATHS, the rule it ships: its tests, docs and CHANGELOG name home-directory paths"},
+    "no locale variable set by bash itself": {"count": 1, "why": "locale_prefix_seed.json: tests/fixtures/homebrew_tap/Casks/divoom-control.rb, a copy of the tap's cask, its uninstall heredoc read since GOH.LOCALERUBY"},
     "no process kill by name": {"count": 9, "why": "kill_by_name_allow.json, each entry reviewed or unreviewed with its reason"}
   }
 }
