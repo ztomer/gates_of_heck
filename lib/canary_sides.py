@@ -23,6 +23,9 @@ STEP_HEAD = re.compile(r"^· (.+) \(≤\d+s\)$")
 STEP_OK = re.compile(r"^✓ (.+)$")
 STEP_RED = re.compile(r"^✗ structural: (.+) failed \(")
 FOUND = re.compile(r"^✗ \[")
+# A floor a scanner's subject step names as undeclared: `    GOH_<X>_MIN_FILES=N  -- ...`, the key
+# and value the consumer must write (GOH.GRACEWATCH: "naming each KEY=N").
+FLOOR_KEY = re.compile(r"^\s+(GOH_\w+_MIN_FILES=\d+)\s")
 # The house's words for a bound that fired (bounded_run.py, stepcmd.rs, _empty_scope_run.py).
 TIMED_OUT = "TIMED OUT after"
 
@@ -162,6 +165,8 @@ def parse(rc: int, out: str) -> Verdict:
             v.green.add(m.group(1))
         elif FOUND.match(line) and step:
             v.found.setdefault(step, []).append(line[1:].strip())
+        elif (m := FLOOR_KEY.match(line)) and step:
+            v.found.setdefault(step, []).append(m.group(1))
         block.append(line)
     tail = " | ".join(out.strip().splitlines()[-3:])
     if rc not in (0, 1):

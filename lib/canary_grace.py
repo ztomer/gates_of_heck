@@ -23,14 +23,40 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tui.lib import counted, err, info, ok, warn
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from canary_sides import FLOOR_KEY  # lib/, beside this file
+
 CANARY = Path("scripts") / "release_canary.py"  # a repo that ships it is a gates tree
 WINDOW_S = 7 * 86400  # from this long before the grace end, its flips refuse the release
+
+
+GRACE_END = re.compile(r"^pub const OVER_FROM: u64 = ([\d_]+);", re.MULTILINE)
+
+
+def ends(goh: Path) -> list[int]:
+    """Every grace end of the gates tree `goh`: crate::grace's shared one and each scanner's own
+    (`pub const OVER_FROM` in any crates/goh/src file), sorted. The canary's pass reads the shared
+    one alone; a scanner's own (locale-prefix, dead-port) ends on its own day (GOH.GRACEWATCH)."""
+    found = set()
+    for rs in sorted((Path(goh) / "crates" / "goh" / "src").rglob("*.rs")):
+        try:
+            text = rs.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        found.update(int(m.replace("_", "")) for m in GRACE_END.findall(text))
+    return sorted(found)
+
+
+def next_end(goh: Path, now: float) -> int | None:
+    """The first grace end of `goh` still ahead of `now`, or None."""
+    return next((e for e in ends(goh) if e > now), None)
 
 
 def binds(over_from: int | None, now: float) -> bool:
@@ -59,6 +85,27 @@ def grace_pass(mode: str, over_from: int | None, now: float) -> tuple[bool, str]
 
 def day(epoch: int | None) -> str | None:
     return None if epoch is None else dt.datetime.fromtimestamp(epoch, dt.UTC).date().isoformat()
+
+
+def shown(found: list[str]) -> list[str]:
+    """A step's first 3 findings, and every floor KEY=N it names (canary_sides.FLOOR_KEY)."""
+    keys = [f for f in found[3:] if FLOOR_KEY.match(f"  {f} ")]
+    return found[:3] + keys
+
+
+def grace_end(over: str, then, secs: float, now) -> dict:
+    """{turned_red, errors, seconds}: HEAD once more at the grace's end (`then`, a canary_sides
+    Verdict, under the side labelled OVER), against its pass under the day (`now`). A step red only
+    there is NAMED; nothing here refuses the release."""
+    if then.error:
+        return {"turned_red": [], "errors": [f"under {over}: {then.error}"], "seconds": secs}
+    flips = [{"step": s, "found": shown(then.found.get(s, []))} for s in sorted(then.red - now.red)]
+    starved = [
+        f"under {over}: {s} gave no verdict ({why})"
+        for s, why in sorted(then.timed_out.items())
+        if s not in now.red
+    ]
+    return {"turned_red": flips, "errors": starved, "seconds": secs}
 
 
 def empty() -> dict:

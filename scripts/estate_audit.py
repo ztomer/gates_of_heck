@@ -73,7 +73,7 @@ AUDIT_TIMEOUT_S = 300  # cargo-audit's own database lock waits up to 300 s
 LABEL = "com.ztomer.goh-estate-audit"
 RUN_HOUR = 9
 # Keys another writer owns in the same state file (scripts/release_canary.py).
-KEPT_KEYS = ("release_canary",)
+KEPT_KEYS = ("release_canary", "grace_watch")  # grace_watch: scripts/grace_watch.py
 
 
 def default_state() -> Path:
@@ -437,6 +437,11 @@ def main() -> int:
         help="the cargo-deny command a repo's `cargo deny` step runs (a fixture, in tests)",
     )
     ap.add_argument("--install", action="store_true", help="write and load the daily launchd job")
+    ap.add_argument(
+        "--no-grace-watch",
+        action="store_true",
+        help="skip scripts/grace_watch.py after the audit (a fixture estate, in tests)",
+    )
     args = ap.parse_args()
     if args.install:
         return install(args.state)
@@ -474,6 +479,13 @@ def main() -> int:
         warn(f"estate registry: {p}")
     if not result["advisories"] and not result["errors"]:
         ok("no advisory fires anywhere in the estate")
+    # The grace end on this job's schedule, release or not (GOH.GRACEWATCH): its own record and
+    # exit; the audit's verdict stays the audit's.
+    if args.no_grace_watch:
+        return 0
+    watch = [sys.executable, str(Path(__file__).resolve().parent / "grace_watch.py"),
+             "--root", str(args.root.resolve()), "--state", str(args.state)]  # fmt: skip
+    subprocess.run(watch, check=False, stdin=subprocess.DEVNULL)
     return 0
 
 

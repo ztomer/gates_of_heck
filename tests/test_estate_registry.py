@@ -86,6 +86,7 @@ def _audit(root: Path, state: Path, db: Path) -> dict:
             "--db",
             str(db),
             "--no-fetch",
+            "--no-grace-watch",
         ],
         capture_output=True,
         text=True,

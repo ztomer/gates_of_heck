@@ -192,24 +192,11 @@ def remedy(step: str, found: list[str]) -> str:
     return "fix the findings (`goh structural --full --keep-going` in the repo lists them)"
 
 
-def grace_end(over: Side, then: Verdict, secs: float, now: Verdict) -> dict:
-    """{turned_red, errors, seconds}: HEAD once more at the grace's end (`then`), against its pass
-    under the day (`now`). A step red only there is NAMED; nothing here refuses the release."""
-    if then.error:
-        return {"turned_red": [], "errors": [f"under {over.label}: {then.error}"], "seconds": secs}
-    flips = [{"step": s, "found": then.found.get(s, [])[:3]} for s in sorted(then.red - now.red)]
-    starved = [
-        f"under {over.label}: {s} gave no verdict ({why})"
-        for s, why in sorted(then.timed_out.items())
-        if s not in now.red
-    ]
-    return {"turned_red": flips, "errors": starved, "seconds": secs}
-
-
 def judge(repo: Path, base: Side, head: Side, scratch: Path, over: Side | None = None,
           memo: canary_memo.Memo | None = None, where: str = "") -> dict:  # fmt: skip
     """{turned_red: [...], already_red: [...], errors: [...]} for one consumer; with `over`, HEAD
-    at the grace's end too, under `grace` (grace_end). Each side's verdict may be the memo's."""
+    at the grace's end too, under `grace` (canary_grace.grace_end). Each side's verdict may be the
+    memo's."""
     memo = memo or canary_memo.Memo(None, {}, reuse=False)
     runs = canary_memo.Runs(repo, where or str(repo), scratch, memo, structural)
     try:
@@ -243,7 +230,7 @@ def judge(repo: Path, base: Side, head: Side, scratch: Path, over: Side | None =
         out["base_error"] = was.error
     out["head_seconds"] = head_secs
     if over is not None and then is not None:
-        out["grace"] = grace_end(over, *then, now)
+        out["grace"] = canary_grace.grace_end(over.label, *then, now)
     return out
 
 

@@ -46,7 +46,7 @@ def _covered(repo: Path) -> gate_coverage.Coverage:
 def _run(root: Path, state: Path, db: Path, *extra: str) -> dict:
     r = subprocess.run(
         [sys.executable, str(SCRIPT), "--root", str(root), "--state", str(state)]
-        + ["--db", str(db), "--no-fetch", *extra],
+        + ["--db", str(db), "--no-fetch", "--no-grace-watch", *extra],
         capture_output=True,
         text=True,
         check=False,

@@ -163,6 +163,7 @@ def test_the_estate_audit_records_the_stale_hooks(tmp_path):
             "--root",
             str(tmp_path / "estate"),
             "--no-fetch",
+            "--no-grace-watch",
         ],
         capture_output=True,
         text=True,

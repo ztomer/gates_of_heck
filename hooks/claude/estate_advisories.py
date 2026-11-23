@@ -35,6 +35,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import re
 import subprocess
 import sys
 import tomllib
@@ -148,6 +149,37 @@ def _canary(rec: dict) -> list[str]:
     return lines
 
 
+def _detail(found: list[str]) -> str:
+    """Each undeclared floor as the consumer writes it (KEY=N), else the step's first finding."""
+    keys = [f for f in found if re.fullmatch(r"GOH_\w+_MIN_FILES=\d+", f)]
+    return ", ".join(keys) if keys else found[0].strip()
+
+
+def _watch(rec: dict) -> list[str]:
+    """What the scheduled grace-end pass found (scripts/grace_watch.py, GOH.GRACEWATCH): a grace
+    end within 7 days that turns a consumer red, with no release needed for it to happen."""
+    when = rec.get("over_from") or "?"
+    lines = []
+    if rec.get("errors"):
+        lines.append(
+            f"goh grace watch could not judge at the grace end ({when}):"
+            f" {'; '.join(rec['errors'][:3])}{'; ...' if len(rec['errors']) > 3 else ''}"
+        )
+    turned = rec.get("turned_red") or {}
+    if turned:
+        named = [
+            f"{repo} ({f['step']}{': ' + _detail(f.get('found') or []) if f.get('found') else ''})"
+            for repo, flips in sorted(turned.items())
+            for f in flips
+        ]
+        lines.append(
+            f"goh grace watch: the grace end ({when}) turns {counted(len(turned), 'consumer')} red"
+            f" at push, release or not -- seed or fix before then:"
+            f" {'; '.join(named[:MAX_REPOS])}{'; ...' if len(named) > MAX_REPOS else ''}"
+        )
+    return lines
+
+
 def _ahead(repo: Path) -> int:
     """Commits on HEAD its upstream lacks, as git knows it locally; 0 with no upstream, or when git
     does not answer in time. The hook's own git variables are dropped: the repo is named by path."""
@@ -242,6 +274,7 @@ def _audit(state: Path, now: dt.datetime) -> list[str]:
             f"`python3 {SCRIPT} --install`."
         )
     lines += _canary(data.get("release_canary") or {})
+    lines += _watch(data.get("grace_watch") or {})
     advisories, fixed = _recheck(data.get("advisories", {}), data.get("root"))
     new, standing = [], []
     for aid, a in sorted(advisories.items()):
