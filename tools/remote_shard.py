@@ -63,6 +63,7 @@ sys.path.insert(1, str(Path(__file__).resolve().parent.parent / "lib"))
 import gitrun
 from remote_image import build_args, image_tag, manifest_pins, version_drift
 from remote_ssh import Fallback, ssh
+from tmp_root import goh_tmp
 
 from tui.lib import info, ok, warn
 
@@ -367,7 +368,7 @@ def main(argv: list[str]) -> int:
     slot = a.slot or hashlib.sha256(str(tree).encode()).hexdigest()[:10]
     if not slot.replace("-", "").replace("_", "").isalnum():
         ap.error(f"--slot {slot!r}: letters, digits, - and _ only")
-    junit = a.junit or tree / ".goh-remote-shard.xml"
+    junit = a.junit or Path(goh_tmp()) / f"remote-shard-{slot}.xml"  # never the checkout's tree
     times: dict[str, float] = {}
     runs: dict[str, float] = {}
     t0 = time.monotonic()

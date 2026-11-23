@@ -189,6 +189,7 @@ def test_the_plugin_deselects_the_share_and_the_workers_verdict_decides(tree, mo
     the session red, its pass leaves it green, and either way the store's record is not `full`."""
     import _land_remote as lr
     import _land_verdicts as lv
+    import _schedule
     import _whole_run
 
     plan = {"skip": set(), "lines": []}
@@ -200,6 +201,9 @@ def test_the_plugin_deselects_the_share_and_the_workers_verdict_decides(tree, mo
     monkeypatch.setattr(lr, "_table", lambda: tree / "durations.json")  # the top-level run's
     monkeypatch.setattr(lr, "_run_local", lambda files: 1)  # the Mac fails it too: red
     monkeypatch.setenv("GOH_REMOTE_SHADOW", "0")
+    for key in ("GOH_LAND_REMOTE", "GOH_COVERAGE_BIN_DIR", "LLVM_PROFILE_FILE"):
+        monkeypatch.delenv(key, raising=False)  # the run's own: a pre-step's coverage run sets them
+    monkeypatch.setattr(_schedule, "_shard_spec", None)  # nor a hosted CI shard (remote_gate.off)
     monkeypatch.setattr(rg, "start", lambda root, files, mac_s: _share(
         tree, planted, FAILED if planted else JUNIT))  # fmt: skip
     config = _Config()
