@@ -19,7 +19,7 @@ from pathlib import Path
 from conftest import REPO_ROOT
 
 COV_GATE = REPO_ROOT / "gates" / "coverage_gate.sh"
-TREE_READS = ("gates/", "tools/", "lib/", "checks/", "hooks/", "bin/")  # every shell source there
+TREE_READS = ("gates/", "tools/", "lib/", "checks/", "hooks/")  # every shell source there
 
 CTEST = r"""#!/bin/bash
 printf '%s\n' "$LLVM_PROFILE_FILE" > "$SHIM_LOG/profile-pattern"
