@@ -73,3 +73,8 @@ GOH_TEST_DURATIONS
 GOH_SUITE_SHARD
 GOH_FULL
 GOH_LOOP_AGENT
+# Where goh's databases live and how long a write waits (GOH.DBSEAM): never what passes.
+GOH_DB
+GOH_DB_BUSY_MS
+GOH_CACHE_DB
+GOH_CACHE_DB_BUSY_MS

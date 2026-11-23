@@ -83,6 +83,10 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 #   (cargo:crates/*/Cargo.toml); **/Cargo.toml sweeps vendor/ and invents
 #   findings about crates you do not ship.
 # GOH_TAIL=60                     # log lines printed on step failure
+# GOH_DB=/abs/goh.db              # goh's state database (default $XDG_STATE_HOME/goh/goh.db)
+# GOH_DB_BUSY_MS=30000            # ms a goh.db write waits on another writer
+# GOH_CACHE_DB=/abs/goh-cache.db  # goh's cache database (default $XDG_CACHE_HOME/goh/goh-cache.db)
+# GOH_CACHE_DB_BUSY_MS=2000       # ms a goh-cache.db write waits before it is skipped
 
 # Per-step wall-clock CEILINGS, and they are ON by default (GOH_LCI_TIMEOUT 900s for a
 # local_ci step, GOH_STEP_TIMEOUT 1800s for a toolchain gate's goh_step). Both are printed on

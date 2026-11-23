@@ -28,7 +28,8 @@ each record while the logs are fresh, so its history lives in timing/ledger.json
 retry chain (land_e2e's) spans hours. The reuse audit reads its own store (reuse/), not these.
 
 The single append-only files have their own table beside this one (lib/state_files.py FILES,
-GOH.LEDGERBOUND); sweep and unbounded run it too.
+GOH.LEDGERBOUND); sweep and unbounded run it too, and lib/db_bounds.py's for goh.db and
+goh-cache.db (GOH.DBSEAM: each table's TableBound, each file's budget).
 
 Pinned by tests/test_state_bounds.py and tests/test_state_files_bound.py.
 """
@@ -49,12 +50,14 @@ import contextlib
 import math
 import os
 import re
+import sqlite3
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import db_bounds  # goh.db's and goh-cache.db's tables and budgets (GOH.DBSEAM)
 import lock_order  # the one acquire path: a try-lock on a run directory's tree lock
 import prune_kept  # its live-entry probe and its remover, one spelling
 import state_files  # the single files' table and trim (GOH.LEDGERBOUND)
@@ -66,6 +69,9 @@ HISTORY_DAYS = 14  # state_files.HISTORY_DAYS is pinned to it
 LAND_RUNS = math.ceil(LANDS_PER_DAY * RUNS_PER_LAND * HISTORY_DAYS)
 IDLE_S = 3600  # a run that moved within the hour is in flight
 GROWTH = 50  # an unregistered directory holding this many entries is written per run
+
+
+TableBound = db_bounds.TableBound  # a database table's bound: days, rows, bytes, its stamp column
 
 
 @dataclass(frozen=True)
@@ -217,6 +223,10 @@ def sweep(root: Path | None = None, now: float | None = None) -> list[Path]:
             with contextlib.suppress(OSError, RuntimeError):
                 if state_files.trim(frule, root / rel, now):
                     removed.append(root / rel)
+    for seam in db_bounds.under(root, state_root()):  # the databases (GOH.DBSEAM)
+        with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+            if db_bounds.sweep(seam, now):
+                removed.append(db_bounds.db_core.path(seam))
     return removed
 
 
@@ -250,6 +260,11 @@ def unbounded(root: Path | None = None, now: float | None = None) -> list[str]:
     root = state_root() if root is None else root
     now = time.time() if now is None else now
     out: list[str] = state_files.unbounded_in(root, root, now)
+    for seam in db_bounds.under(root, state_root()):  # each table and file budget (GOH.DBSEAM)
+        try:
+            out += db_bounds.unbounded(seam, now)
+        except (OSError, RuntimeError, sqlite3.Error) as e:
+            out.append(f"{seam.file}: unreadable ({e})")
     level = [root / n for n in _children(root)]
     while level:
         nxt = []
