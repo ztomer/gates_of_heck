@@ -32,6 +32,7 @@ pre_deadline = importlib.import_module("pre_deadline")
 killtree = importlib.import_module("killtree")
 land_slot = importlib.import_module("land_slot")
 land_spd = importlib.import_module("land_spd")
+landq_remote = importlib.import_module("landq_remote")
 landq_inflight = importlib.import_module("landq_inflight")
 state_bounds = importlib.import_module("state_bounds")
 terse = importlib.import_module("terse")
@@ -88,19 +89,12 @@ def took_figures(figures: Path, lines: list[str]) -> dict:
     except (OSError, ValueError):
         got = None
     figures.unlink(missing_ok=True)
-    # the worker's share (lib/remote_lane.py note, GOH.REMOTEMUX)
-    remote = Path(f"{figures}.remote")
-    try:
-        share = json.loads(remote.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        share = None
-    remote.unlink(missing_ok=True)
     out = (
         {k: v for k, v in got.items() if k in PRE_RUN_KEYS}
         if isinstance(got, dict)
         else land_spd.pre_run(lines) or {}
     )
-    return {**out, "remote": share} if isinstance(share, dict) else out
+    return landq_remote.took(figures, out)  # the worker's share (GOH.REMOTEMUX)
 
 
 PRE_RUN_KEYS = ("wait_s", "run_s", "limit_s", "workers", "cpu_s")

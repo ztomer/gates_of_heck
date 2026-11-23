@@ -1,12 +1,15 @@
-"""`goh land --report`'s count of the pre-steps' worker shares (GOH.REMOTEMUX), split from
-lib/landq_report.py for its cap: each land record's `pre_run.remote` (lib/remote_lane.py `note`)
-is one share; a row counts the shares, the fallbacks by cause, and the shares that left a broken
-ssh multiplexer for a fresh connection (lib/remote_ssh.py). Pinned by tests/test_landq_report.py.
+"""The pre-steps' worker shares (GOH.REMOTEMUX), split from lib/landq_report.py and
+lib/land_prestep.py for their caps: `took` reads a pre-step's share into its land record's
+`pre_run.remote` (lib/remote_lane.py `note`); `goh land --report` counts them per row, the
+fallbacks by cause, and the shares that left a broken ssh multiplexer for a fresh connection
+(lib/remote_ssh.py). Pinned by tests/test_landq_report.py.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
+from pathlib import Path
 
 
 def of(rec: dict) -> dict | None:
@@ -37,3 +40,15 @@ def line(sh: dict) -> list[str]:
     fell = sum(sh["fallbacks"].values())
     said = f"  remote shares: {sh['shares']}, fell back {fell}{why}, {sh['fresh']} on a fresh ssh"
     return [said + " connection"]
+
+
+def took(figures: Path, out: dict) -> dict:
+    """A pre-step's figures with the worker's share it left beside them (`<figures>.remote`,
+    lib/remote_lane.py `note`) under `remote`, the file removed; `out` unchanged with none."""
+    remote = Path(f"{figures}.remote")
+    try:
+        share = json.loads(remote.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        share = None
+    remote.unlink(missing_ok=True)
+    return {**out, "remote": share} if isinstance(share, dict) else out
