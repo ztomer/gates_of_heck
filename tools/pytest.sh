@@ -248,6 +248,10 @@ if "events" in r:
           sep="\n")' "$GATES_OF_HECK_FS_EVENTS" 2>/dev/null || true)
 fi
 [ "$#" -ne 0 ] || goh_span_record "$suite_kind" goh "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" --field "exit=$rc" "${fs_fields[@]}"
+# A SATURATED fseventsd IS NAMED (GOH.FSEVCHURN): it sat at 6.9 GB after 2 d 18 h (2026-11-23) and
+# the run only read it as slow. A whole run ends with its RSS judged: quiet under 1 GB, else one `✗`
+# line with the restart command (the owner's call). A fault of the machine, not the tree: no exit.
+[ "$#" -ne 0 ] || "$GOH_PY" -S "$GOH/lib/fseventsd_health.py" || true
 if [ "$rc" -eq 0 ]; then
     goh_rm_tree "$PYTEST_DEBUG_TEMPROOT"
 else
