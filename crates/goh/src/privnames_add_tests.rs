@@ -57,3 +57,34 @@ fn a_path_naming_it_is_refused_too() {
     assert_eq!(code, 1, "{out}");
     assert!(out.contains("tests/Acme/x.txt: its path"), "{out}");
 }
+
+#[test]
+fn an_empty_or_commented_name_a_bad_list_dir_and_no_repository_are_refused() {
+    let r = goh_testkit::repo_with(&[("a.rs", "// AcmeTender only\n")]).expect("fixture");
+    let d = tempfile::tempdir().expect("tmp");
+    let list = d.path().join(LIST);
+    let (code, out) = add(r.path(), &list, &names(&["", "x # y"]));
+    assert_eq!(code, 1, "{out}");
+    assert_eq!(out.matches("is no list entry").count(), 2, "{out}");
+    // a word-edge miss on a grep hit is no finding; a list with no last newline gets one
+    std::fs::write(&list, "Old").expect("write");
+    let (code, out) = add(r.path(), &list, &names(&["Acme"]));
+    assert_eq!(code, 0, "{out}");
+    assert_eq!(read_list(&list), Some(names(&["Old", "Acme"])));
+    // the list's directory cannot be made (a file stands there), or the list is a directory
+    std::fs::write(d.path().join("file"), "x").expect("write");
+    let (code, _) = add(
+        r.path(),
+        &d.path().join("file").join(LIST),
+        &names(&["New"]),
+    );
+    assert_eq!(code, 2);
+    std::fs::create_dir(d.path().join("dir.txt")).expect("mkdir");
+    let (code, _) = add(r.path(), &d.path().join("dir.txt"), &names(&["New"]));
+    assert_eq!(code, 2);
+    // outside a repository the tree cannot be read: a refusal, never a clean add
+    let bare = tempfile::tempdir().expect("tmp");
+    let (code, out) = add(bare.path(), &list, &names(&["New"]));
+    assert_eq!(code, 2, "{out}");
+    assert!(super::naming(r.path(), Some("no-such-rev"), "x").is_err());
+}

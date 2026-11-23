@@ -144,3 +144,43 @@ fn the_key_is_on_or_off_and_a_typo_is_named() {
         .unwrap_err()
         .contains("GOH_DECISIONS"));
 }
+
+#[test]
+fn a_record_with_no_heading_and_two_records_with_one_id_are_red() {
+    let repo = ledger(REC);
+    repo.write(
+        "docs/decisions/D-0001-twin.md",
+        &format!("preamble\n{}", REC.replace("blue?", "grey?")),
+    )
+    .expect("write");
+    repo.write("docs/decisions/D-0002-bare.md", "no heading here\n")
+        .expect("write");
+    repo.git(&["add", "-A"]).expect("add");
+    let got = judge(repo.path(), true).expect("judge").1;
+    assert!(got.iter().any(|f| f.contains("is already")), "{got:?}");
+    assert!(got.iter().any(|f| f.contains("no `# D-NNNN")), "{got:?}");
+}
+
+#[test]
+fn the_verdict_outside_a_repository_is_a_refusal_and_the_step_obeys_its_key() {
+    let bare = tempfile::tempdir().expect("tmp");
+    assert_eq!(super::verdict(bare.path(), false).0, 2);
+    let repo = ledger(REC);
+    let mut cfg = crate::gatesrc::Gatesrc::default();
+    assert_eq!(super::step(repo.path(), &cfg, true), None, "unset is off");
+    cfg.decisions = Some("yes".to_owned());
+    assert_eq!(super::step(repo.path(), &cfg, true), Some(2));
+    cfg.decisions = Some("on".to_owned());
+    assert_eq!(
+        super::step(repo.path(), &cfg, true),
+        None,
+        "a whole ledger passes"
+    );
+    repo.write(
+        "docs/decisions/D-0001-a-record.md",
+        &REC.replace("src/sky.rs", "gone.rs"),
+    )
+    .expect("write");
+    repo.git(&["add", "-A"]).expect("add");
+    assert_eq!(super::step(repo.path(), &cfg, true), Some(1));
+}

@@ -1,0 +1,9 @@
+{
+  "entries": [
+    {
+      "file": "crates/goh/src/privnames_add.rs",
+      "text": ".map_err(|e| format!(\"git {}: {e}\", args.first().copied().unwrap_or(\"\")))",
+      "reason": "git could not be spawned at all: no test machine lacks git, and goh's gates need it before this runs"
+    }
+  ]
+}
