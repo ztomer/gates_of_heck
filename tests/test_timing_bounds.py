@@ -3,40 +3,118 @@ no test in tests/ asserts an elapsed time under a literal number."""
 
 from __future__ import annotations
 
-import re
+import ast
 
 import pytest
 import timing_bounds
 from _this_thread import this_thread
 from conftest import REPO_ROOT
 
-# An upper bound on an elapsed time written as a number: `elapsed < 15`, `time.time() - t0 < 5`.
-LITERAL = re.compile(
-    r"assert\b[^\n#]*?(?:\b(?:elapsed|waited|wall|dt|took)\b|\[\"(?:ms|cpu_ms)\"\]|"
-    r"(?:monotonic|time|perf_counter)\(\)\s*-\s*\w+)\s*<=?\s*[0-9]"
-    # ... or a deadline set by a number: `time.monotonic() + 5` (use `GiveUp`) ...
-    r"|(?:monotonic|time|perf_counter)\(\)\s*\+\s*[0-9]"
-    # ... or by the load read once, when the wait began: `time.monotonic() + patience(5)`.
-    r"|(?:monotonic|time|perf_counter)\(\)\s*\+\s*patience\("
-    # ... or an ABSENCE watched with a give-up wait: `assert not wait_until(ran.exists, 2.0)`.
-    # Stretched by the load, its 2 s ran past the literal --wait-max of the child it watched
-    # (x50 at load 38 on 3 slow cores; v0.140.1's CI, GOH.CIRED01401): see the child say it waits.
-    r"|\bassert\s+not\s+[\w.]*\bwait_until\("
-)
+# THE SCAN READS EACH FILE'S AST (GOH.TIMINGDETECT). A text pattern knew a duration by a few names
+# and missed `secs = time.monotonic() - t0` returned from a helper and asserted `secs < 10`
+# (tests/test_release_canary_memo.py). It flags, on the line it starts:
+# * an UPPER bound on a duration by a number in an assert: `elapsed < 15`, `10 > secs`, `row["ms"]
+#   < 3000`, where a duration is a clock's difference (`time.monotonic() - t0`), a name the file
+#   binds to one anywhere, a conventional name (NAMED), or a `["ms"]`/`["cpu_ms"]` field;
+# * a deadline set by a number, or by the load read once when the wait began: `time.monotonic() +
+#   5`, `time.monotonic() + patience(5)` (use `GiveUp`);
+# * an ABSENCE watched with a give-up wait: `assert not wait_until(ran.exists, 2.0)`. Stretched by
+#   the load, its 2 s ran past the literal --wait-max of the child it watched (x50 at load 38 on 3
+#   slow cores; v0.140.1's CI, GOH.CIRED01401): see the child say it waits.
+CLOCKS = {"monotonic", "monotonic_ns", "perf_counter", "perf_counter_ns", "time", "time_ns"}
+NAMED = {"elapsed", "waited", "wall", "dt", "took"}
+KEYS = {"ms", "cpu_ms"}
+# Ten minutes and more is a plausibility window or a hang guard, which no load a test meets reaches:
+# tests/stamp_age.py holds a stamp "just taken" at -5..600 s, ruling out one from another hour.
+HANG_S = 600.0
+
+
+def _called(n: ast.AST) -> str:
+    f = n.func if isinstance(n, ast.Call) else None
+    return f.attr if isinstance(f, ast.Attribute) else f.id if isinstance(f, ast.Name) else ""
+
+
+def _clock(n: ast.AST) -> bool:
+    f = n.func if isinstance(n, ast.Call) else None
+    if isinstance(f, ast.Attribute):
+        return f.attr in CLOCKS and isinstance(f.value, ast.Name) and f.value.id == "time"
+    return isinstance(f, ast.Name) and f.id in CLOCKS - {"time"}
+
+
+def _since(n: ast.AST) -> bool:
+    return isinstance(n, ast.BinOp) and isinstance(n.op, ast.Sub) and _clock(n.left)
+
+
+def _seconds(n: ast.AST) -> float | None:
+    if isinstance(n, ast.UnaryOp) and isinstance(n.op, ast.USub):
+        v = _seconds(n.operand)
+        return None if v is None else -v
+    ok = isinstance(n, ast.Constant) and type(n.value) in (int, float)
+    return float(n.value) if ok else None  # type: ignore[union-attr]
+
+
+def _number(n: ast.AST) -> bool:
+    return _seconds(n) is not None
+
+
+def bounds(src: str) -> list[int]:
+    """The lines of `src` that bound an elapsed time by a literal (above)."""
+    tree = ast.parse(src)
+    names = set(NAMED)
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.Assign, ast.AnnAssign)) and n.value is not None and _since(n.value):
+            targets = n.targets if isinstance(n, ast.Assign) else [n.target]
+            names |= {t.id for t in targets if isinstance(t, ast.Name)}
+
+    def per_second(e: ast.AST) -> float:
+        """How many of `e`'s units make a second; 0 when `e` is no duration."""
+        key = e.slice if isinstance(e, ast.Subscript) else None
+        if isinstance(key, ast.Constant) and key.value in KEYS:
+            return 1000.0
+        return 1.0 if _since(e) or (isinstance(e, ast.Name) and e.id in names) else 0.0
+
+    def tight(d: ast.AST, limit: ast.AST) -> bool:
+        v, unit = _seconds(limit), per_second(d)
+        return bool(unit) and v is not None and v / unit < HANG_S
+
+    found: set[int] = set()
+    for n in ast.walk(tree):
+        deadline = isinstance(n, ast.BinOp) and isinstance(n.op, ast.Add) and _clock(n.left)
+        if deadline and (_number(n.right) or _called(n.right) == "patience"):
+            found.add(n.lineno)
+        if not isinstance(n, ast.Assert):
+            continue
+        test = n.test
+        negated = isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not)
+        if negated and _called(test.operand) == "wait_until":
+            found.add(n.lineno)
+        for c in ast.walk(test):
+            if not isinstance(c, ast.Compare):
+                continue
+            for a, op, b in zip([c.left, *c.comparators[:-1]], c.ops, c.comparators, strict=True):
+                upper = isinstance(op, (ast.Lt, ast.LtE)) and tight(a, b)
+                if upper or (isinstance(op, (ast.Gt, ast.GtE)) and tight(b, a)):
+                    found.add(n.lineno)
+    return sorted(found)
 
 
 def test_no_test_bounds_an_elapsed_time_by_a_literal() -> None:
     found = [
-        f"{p.relative_to(REPO_ROOT)}:{n}: {line.strip()}"
+        f"{p.relative_to(REPO_ROOT)}:{n}: {text.splitlines()[n - 1].strip()}"
         for p in sorted((REPO_ROOT / "tests").glob("*.py"))
-        if p.name != "test_timing_bounds.py"  # its own pattern table
-        for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
-        if LITERAL.search(line)
+        if p.name != "test_timing_bounds.py"  # its own shape table
+        for text in [p.read_text(encoding="utf-8")]
+        for n in bounds(text)
     ]
     assert found == [], (
         "use timing_bounds.assert_sooner, a same-run control, or the child saying it waits:\n"
         + "\n".join(found)
     )
+
+
+def _stmt(line: str) -> str:
+    """One table line as a statement the scan parses (a block header gets its body)."""
+    return line.strip() + (" pass" if line.rstrip().endswith(":") else "")
 
 
 def test_the_pattern_sees_each_shape() -> None:
@@ -51,15 +129,34 @@ def test_the_pattern_sees_each_shape() -> None:
         "    deadline = time.time() + patience(5)",
         '    assert not load_kit.wait_until(ran.exists, 2.0), "ran"',
     ):
-        assert LITERAL.search(line), line
+        assert bounds(_stmt(line)), line
     for line in (
         "    assert wall >= 1.2",
         "    assert elapsed < limit",
         "    assert len(x) < 3",
+        "    assert -5 <= time.time() - t0 <= 600, 'a stamp from another hour'",
+        '    assert row["ms"] < 600_000',
         "        while _alive(pid) and not give_up.passed():",
         "    if not wait_until(done):",
     ):
-        assert not LITERAL.search(line), line
+        assert not bounds(_stmt(line)), line
+
+
+def test_a_duration_named_where_it_was_measured_is_seen_where_it_is_bounded() -> None:
+    """GOH.TIMINGDETECT: tests/test_release_canary_memo.py measured `secs = time.monotonic() - t0`
+    in a helper, returned it, and a test asserted `secs < 10` -- a box-tuned literal the text
+    pattern, which knows durations by a few names, never saw. The scan reads the file's AST: a
+    name bound from a clock's difference anywhere in the file is a duration wherever it is
+    compared against a number."""
+    src = (
+        "import time\n"
+        "def _run():\n    t0 = time.monotonic()\n    secs = time.monotonic() - t0\n"
+        "    return secs\n"
+        "def test_x():\n    secs = _run()\n    assert secs < 10, secs\n"
+        "def test_y():\n    n = len('ab')\n    assert n < 10\n"
+        "def test_z():\n    secs = _run()\n    assert 10 > secs\n"
+    )
+    assert bounds(src) == [8, 14]
 
 
 @pytest.mark.load_sensitive

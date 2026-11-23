@@ -21,6 +21,7 @@ from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
 from _small_store import estate_state
 from conftest import REPO_ROOT, hermetic_env
+from timing_bounds import assert_sooner
 
 SCRIPT = REPO_ROOT / "scripts" / "release_canary.py"
 # Each test runs the canary in child processes, and one bounds its wall clock.
@@ -92,7 +93,7 @@ def test_a_second_land_with_the_same_gates_reuses_the_sweep_and_names_it(tmp_pat
     assert ran2 == [], ran2  # nothing run again
     assert "reused 4 side verdicts over 2 consumers" in out and rec1["ran_at"] in out, out
     assert rec2["memo"]["swept"] == {}, rec2["memo"]
-    assert secs < 10, secs
+    assert_sooner(secs, 1.0, 10, "a second land's memoized canary")  # 0.44 s quiet
 
 
 def test_a_consumer_whose_head_moved_is_swept_alone(tmp_path):
