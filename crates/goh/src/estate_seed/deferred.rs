@@ -194,3 +194,96 @@ pub fn consume(
         ),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::estate_seed::Held;
+
+    const K: Kind = Kind {
+        file: "x_seed.json",
+        unit: "site",
+        name: "x seed",
+    };
+
+    /// A committed fixture on branch `branch`.
+    fn on(branch: &str) -> goh_testkit::Repo {
+        let r = goh_testkit::repo_with(&[("a.sh", "true\n")]).expect("fixture");
+        let head = format!("refs/heads/{branch}");
+        r.git(&["symbolic-ref", "HEAD", &head]).expect("branch");
+        r.git(&["commit", "-qm", "root"]).expect("commit");
+        r
+    }
+
+    fn stored(n: usize) -> Seed {
+        let held = Held {
+            count: n,
+            stored: true,
+        };
+        std::iter::once((("r".to_string(), "a.sh".to_string()), held)).collect()
+    }
+
+    #[test]
+    fn the_store_branch_is_the_one_origin_head_names() {
+        let r = on("trunk");
+        assert_eq!(store_branch(r.path()), "main");
+        assert!(on_store_branch(r.path()).is_err());
+        r.git(&["update-ref", "refs/remotes/origin/trunk", "HEAD"])
+            .expect("ref");
+        r.git(&[
+            "symbolic-ref",
+            "refs/remotes/origin/HEAD",
+            "refs/remotes/origin/trunk",
+        ])
+        .expect("origin/HEAD");
+        assert_eq!(store_branch(r.path()), "trunk");
+        assert_eq!(on_store_branch(r.path()), Ok(()));
+    }
+
+    #[test]
+    fn an_export_with_no_live_checkout_is_never_the_store_branch() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join(".goh-head"), "f00\n").expect("head");
+        assert!(on_store_branch(dir.path()).is_err());
+    }
+
+    #[test]
+    fn a_licence_that_cannot_be_written_says_so() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("deferred"), "a file, not a dir").expect("block");
+        let said = license(
+            dir.path(),
+            K.file,
+            "r",
+            &std::iter::once(("a.sh".to_string(), 0)).collect(),
+            ("main", "[x]"),
+        );
+        assert!(said.contains("could not license"), "{said}");
+    }
+
+    #[test]
+    fn a_licence_whose_entry_is_gone_is_deleted_and_a_failed_write_keeps_it() {
+        let r = on("main");
+        let store = tempfile::tempdir().expect("store");
+        let one = std::iter::once(("a.sh".to_string(), 0)).collect();
+        let _ = license(store.path(), K.file, "r", &one, ("main", "[x]"));
+        let lic = || licensed(store.path(), K.file, "r");
+        assert_eq!(lic().len(), 1);
+        // The entry is held and the change is here, but the store file is missing: kept, said.
+        let mut now = stored(1);
+        let said = consume(r.path(), "r", &BTreeMap::new(), &mut now, (store.path(), K));
+        assert!(said.contains("its licence is kept"), "{said}");
+        assert_eq!(lic().len(), 1);
+        assert!(now.is_empty(), "read at what is found: {now:?}");
+        // No entry for it any more: the licence goes.
+        let mut empty = Seed::new();
+        let said = consume(
+            r.path(),
+            "r",
+            &BTreeMap::new(),
+            &mut empty,
+            (store.path(), K),
+        );
+        assert!(said.is_empty() && lic().is_empty(), "{said}");
+    }
+}
