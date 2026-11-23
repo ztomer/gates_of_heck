@@ -48,11 +48,13 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gitrun  # lib/: git under a deadline, no lock stranded
 import land_cause  # lib/: FAILED node ids and the structural step's line
+import landq_state  # lib/: one writer of every state record
 
 CLASSES = (
     "tip-moved",
@@ -348,6 +350,22 @@ def main(argv: list[str]) -> int:
     else:
         sys.stdout.write("\n".join(render(rep)) + "\n")
     return 0
+
+
+def file_vanished(q: Path, rec: dict, name: str, since: float) -> bool:
+    """REC, the red record of an enqueue that died in its pre-step with nothing filed
+    (lib/landq_inflight.py `died`, GOH.ENQUEUEVANISH), written to Q's done/ as `<ns>-NAME.json`
+    unless a record of the item was written at or after SINCE (the enqueue settled, then exited).
+    True when written; an unwritable queue is no record, never a crash."""
+    done = q / "done"
+    try:
+        if any(p.stat().st_mtime >= since for p in done.glob(f"*-{name}.json")):
+            return False
+        done.mkdir(parents=True, exist_ok=True)
+        landq_state.write(done / f"{time.time_ns():020d}-{name}.json", rec)
+    except OSError:
+        return False
+    return True
 
 
 if __name__ == "__main__":

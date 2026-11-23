@@ -34,6 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import enqueue_witness  # lib/: a signalled enqueue names its sender (GOH.ENQUEUEVANISH)
+import land_reds  # lib/: the land records store, the one door to done/ here (GOH.DBSEAM)
 import landq_state  # lib/, beside this file: one writer and one reader of every state record
 import pid_owner
 
@@ -135,12 +136,6 @@ def died(q: Path, m: dict) -> None:
     GOH.ENQUEUEVANISH). Written once, by the reader that finds it dead; never over a record of the
     item filed after the marker (the enqueue settled, then exited)."""
     item = str(m.get("item") or "")
-    done = q / "done"
-    with contextlib.suppress(OSError):
-        if any(
-            p.stat().st_mtime >= float(m.get("at") or 0) for p in done.glob(f"*-{slug(item)}.json")
-        ):
-            return
     gone = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     how = "overran its bound" if alive(int(m.get("pid") or 0), m.get("pid_stamp")) else "died"
     stamp = m.get("pid_stamp") or "no stamp"
@@ -149,6 +144,4 @@ def died(q: Path, m: dict) -> None:
            "(GOH.ENQUEUEVANISH) -- enqueue again")  # fmt: skip
     rec = {"item": item, "repo": m.get("repo", ""), "mode": "land", "state": "red", "why": why,
            "at": time.time(), "recorded": gone, "sha": ""}  # fmt: skip
-    with contextlib.suppress(OSError):
-        done.mkdir(parents=True, exist_ok=True)
-        landq_state.write(done / f"{time.time_ns():020d}-{slug(item)}.json", rec)
+    land_reds.file_vanished(q, rec, slug(item), since=float(m.get("at") or 0))
