@@ -23,7 +23,7 @@ use goh_tui::{ERR, WARN};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-const TAG: &str = "[private_names]";
+pub(crate) const TAG: &str = "[private_names]";
 /// The list's file name in the private store.
 pub const LIST: &str = "private_names.txt";
 const LABEL: &str = "no private repository named in a public tree";
@@ -116,7 +116,7 @@ pub fn judge(root: &Path, list: &Path, staged: bool) -> (i32, String) {
     let _ = writeln!(
         out,
         "    Describe it instead (\"a private consumer\", \"a nested Cargo workspace\"); the list is \
-         {}",
+         {} (grow it with `goh private-names --add NAME`, which refuses a name a tree still names)",
         list.display()
     );
     (1, out)
@@ -128,9 +128,9 @@ pub fn list_path() -> Option<PathBuf> {
     crate::estate_seed::store_dir().map(|d| d.join(LIST))
 }
 
-/// `goh private-names [--staged]`.
+/// `goh private-names [--staged] [--add NAME]...`.
 #[must_use]
-pub fn run_command(staged: bool) -> i32 {
+pub fn run_command(staged: bool, add: &[String]) -> i32 {
     let Some(root) = crate::gitutil::repo_root().map(PathBuf::from) else {
         goh_tui::eoutln!("{ERR} {TAG} not a git repository");
         return 2;
@@ -139,7 +139,11 @@ pub fn run_command(staged: bool) -> i32 {
         goh_tui::eoutln!("{WARN} {TAG} not judged: no private store (no HOME)");
         return 0;
     };
-    let (code, out) = judge(&root, &list, staged);
+    let (code, out) = if add.is_empty() {
+        judge(&root, &list, staged)
+    } else {
+        crate::privnames_add::add(&root, &list, add)
+    };
     goh_tui::eout(&out);
     code
 }

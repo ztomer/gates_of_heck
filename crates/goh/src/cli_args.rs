@@ -16,6 +16,18 @@ pub struct StagedArgs {
     pub staged: bool,
 }
 
+/// `goh private-names` flags.
+#[derive(Debug, clap::Args)]
+pub struct PrivateNamesArgs {
+    /// Staged blobs (polices the index).
+    #[arg(long)]
+    pub staged: bool,
+    /// Add NAME to the private store's list, refused (nothing written) while the work tree or
+    /// `origin/HEAD` still names it (GOH.PRIVLISTORDER).
+    #[arg(long, value_name = "NAME", conflicts_with = "staged")]
+    pub add: Vec<String>,
+}
+
 /// A check that polices commits and takes the repo's path exemption.
 #[derive(Debug, clap::Args)]
 pub struct ExcludeStagedArgs {

@@ -78,6 +78,7 @@ pub mod pluralhedge;
 pub mod ported;
 pub mod prefetch;
 pub mod privnames;
+pub mod privnames_add;
 pub mod proven;
 pub mod provenance;
 pub mod pyformat;
@@ -382,7 +383,7 @@ fn run_scanners(command: Commands) -> Result<i32, Box<Commands>> {
         Commands::StatusMarkers { exclude, seed } => {
             paths(exclude, |x| statusmark::run_command(seed, x))
         }
-        Commands::PrivateNames(a) => privnames::run_command(a.staged),
+        Commands::PrivateNames(a) => privnames::run_command(a.staged, &a.add),
         Commands::LayerParity(a) => layerparity::run_command(a.staged),
         Commands::Installs => installs::run_command(),
         Commands::ShellCheck => toolshell::run_shell_check(),

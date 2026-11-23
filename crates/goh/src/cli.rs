@@ -314,7 +314,7 @@ pub enum Commands {
     /// Add a sweep's pending entries to a private-store seed file (GOH.GRACEEND).
     SeedAdd(crate::cli_args::SeedAddArgs),
     /// Fail on a private repository's name (the private store's list) in this tracked tree.
-    PrivateNames(StagedArgs),
+    PrivateNames(crate::cli_args::PrivateNamesArgs),
     /// Fail when a language the commit gate lints has no push layer in `tools/gate.sh`.
     LayerParity(StagedArgs),
     /// Fail when the whole changelog and the `v*` tags disagree (GOH.CHANGELOGALL).
