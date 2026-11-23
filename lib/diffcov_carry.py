@@ -41,6 +41,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gitrun  # lib/: git under a deadline, aimed at its repository
+import land_records  # lib/: the land records' one door (GOH.STATEDB)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import counted  # the root, for the tui lib
@@ -126,13 +127,11 @@ def _landed(q: Path, repo: Path, order: dict[str, int]) -> list[dict]:
     """The repo's landed records on ORDER (tag..HEAD), oldest landing first."""
     real = os.path.realpath(repo)
     out = []
-    for path in (q / "done").glob("*.json"):
-        with contextlib.suppress(OSError, ValueError):
-            rec = json.loads(path.read_text())
-            sha = rec.get("landed") or rec.get("sha") or ""
-            mine = sha in order and os.path.realpath(rec.get("repo") or "") == real
-            if mine and rec.get("state") == "landed" and rec.get("mode", "land") == "land":
-                out.append({**rec, "_at": order[sha]})
+    for _, rec in land_records.records(q):
+        sha = rec.get("landed") or rec.get("sha") or ""
+        mine = sha in order and os.path.realpath(rec.get("repo") or "") == real
+        if mine and rec.get("state") == "landed" and rec.get("mode", "land") == "land":
+            out.append({**rec, "_at": order[sha]})
     return sorted(out, key=lambda r: -r["_at"])
 
 

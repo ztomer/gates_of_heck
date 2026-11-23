@@ -70,6 +70,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bin_reach_audit
 import land_e2e
+import land_records  # lib/: the land records' one door (GOH.STATEDB)
 import land_spd
 import timing_ledger
 from land_steps import gate_steps, kept_timings, phases, texts
@@ -98,12 +99,9 @@ def chains(q: Path) -> list[tuple[str, list[tuple[Path, dict]]]]:
     """Every landed item's chain of `land` records, oldest landing first (land_e2e.rows')."""
     open_: dict[str, list[tuple[Path, dict]]] = {}
     out = []
-    for path in sorted((q / "done").glob("*.json")):
-        try:
-            rec = json.loads(path.read_text())
-        except (OSError, ValueError):
-            continue
-        if not isinstance(rec, dict) or rec.get("mode") != "land":
+    for run, rec in land_records.records(q):
+        path = Path(f"{run}.json")  # its name: the stem its logs are read by
+        if rec.get("mode") != "land":
             continue
         item = str(rec.get("item") or path.stem.partition("-")[2])
         open_.setdefault(item, []).append((path, rec))

@@ -23,16 +23,7 @@ ALLOWED: dict[str, set[str]] = {
         # the door's file half: done/ files from before the switch are read, and still written for
         # .loop's readers and old HEAD exports, until wave 3's delete commit removes it
         "lib/land_records.py",
-        "lib/admit_replay.py",
-        "lib/diffcov_carry.py",
         "lib/land_check.py",
-        "lib/land_e2e.py",
-        "lib/land_profile.py",
-        "lib/landq_alone.py",
-        "lib/landq_look.py",
-        "lib/landq_size.py",
-        "lib/landq_window.py",
-        "lib/selection_miss.py",
         "lib/state_bounds.py",
         "lib/state_files.py",
     },

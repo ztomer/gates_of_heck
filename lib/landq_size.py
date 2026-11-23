@@ -31,12 +31,12 @@ Pinned by tests/test_landq_size.py.
 from __future__ import annotations
 
 import itertools
-import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import admission
+import land_records  # the land records' one door (GOH.STATEDB)
 import landq_report
 
 DEFAULT = 3  # the size with no history to read, and GOH.LANDBATCH's fixed one
@@ -126,17 +126,8 @@ def best(p: float, parallel: bool = True, most: int = MOST) -> int:
 def history(q: Path, repo: str, n: int = WINDOW) -> list[bool]:
     """Red (True) or green, the newest N attempts of REPO a gate judged, newest first."""
     out: list[bool] = []
-    for path in sorted((q / "done").glob("*.json"), reverse=True):  # newest enqueued first
-        try:
-            rec = json.loads(path.read_text())
-        except (OSError, ValueError):
-            continue
-        if (
-            isinstance(rec, dict)
-            and rec.get("repo") == repo
-            and rec.get("mode") == "land"
-            and (landq_report.gated(rec))
-        ):
+    for _, rec in land_records.records(q, reverse=True):  # newest enqueued first
+        if rec.get("repo") == repo and rec.get("mode") == "land" and (landq_report.gated(rec)):
             out.append(rec.get("state") != "landed")
             if len(out) == n:
                 break

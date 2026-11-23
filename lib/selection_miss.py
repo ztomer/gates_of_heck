@@ -51,6 +51,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gitrun
+import land_records  # lib/: the land records' one door (GOH.STATEDB)
 from tmp_root import goh_tmp
 
 LEDGER = "selection_misses.jsonl"
@@ -252,15 +253,11 @@ def shadow(q: Path, repo: Path, base: str, sha: str, log: Path) -> str:
 
 
 def replay(q: Path, since: str = "") -> list[dict]:
-    """Judge every red land attempt in done/ from SINCE (a UTC day): main from its reflog at the
-    enqueue, the log the attempt left."""
+    """Judge every red land attempt (lib/land_records.py) from SINCE (a UTC day): main from its
+    reflog at the enqueue, the log the attempt left."""
     out: list[dict] = []
-    for path in sorted((q / "done").glob("*.json")):
-        try:
-            rec = json.loads(path.read_text())
-        except (OSError, ValueError):
-            continue
-        ns, _, item = path.stem.partition("-")
+    for run, rec in land_records.records(q):
+        ns, _, item = run.partition("-")
         day = dt.datetime.fromtimestamp(int(ns) / 1e9, dt.UTC).strftime("%Y-%m-%d")
         logs = attempt_logs(rec)
         if rec.get("state") == "landed" or rec.get("mode") != "land" or day < since:
@@ -271,7 +268,7 @@ def replay(q: Path, since: str = "") -> list[dict]:
         try:
             out += _measure(q, "land", item, Path(rec["repo"]), base, rec["sha"], logs, day)
         except (OSError, subprocess.SubprocessError) as e:
-            print(f"{path.stem}: not judged: {e}", file=sys.stderr)
+            print(f"{run}: not judged: {e}", file=sys.stderr)
     return out
 
 

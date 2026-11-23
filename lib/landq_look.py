@@ -32,6 +32,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+land_records = importlib.import_module("land_records")  # the land records (GOH.STATEDB)
 landq_inflight = importlib.import_module("landq_inflight")
 landq_state = importlib.import_module("landq_state")
 terse = importlib.import_module("terse")
@@ -105,10 +106,8 @@ def status(q: Path) -> int:
                 continue  # moved on, or not whole yet: the next look shows it
             repo, sha = Path(str(r.get("repo") or "-")).name, str(r.get("sha") or "-")[:8]
             info(f"{d}: {r.get('item') or '-'} {repo} @ {sha} ({r.get('mode', '?')})")
-    for f in sorted((q / "done").glob("*.json"))[-10:] if (q / "done").is_dir() else []:
-        if (r := landq_state.read(f)) is None:
-            continue
-        info(f"done: {f.stem} {r.get('state', '?')} @ {str(r.get('sha') or '-')[:8]} "
+    for run, r in land_records.records(q)[-10:]:
+        info(f"done: {run} {r.get('state', '?')} @ {str(r.get('sha') or '-')[:8]} "
              f"{r.get('log', '')}")  # fmt: skip
     return 0
 
@@ -117,13 +116,13 @@ def find_request(q: Path, what: str) -> Path | None:
     """WHAT's newest request, wherever it is now: a request's path or name, else an item ID."""
     name = Path(what).name.removesuffix(".json")
     newest: tuple[str, Path] | None = None
-    for d in ("pending", "running", "done"):
-        for f in (q / d).glob("*.json") if (q / d).is_dir() else []:
-            if f.stem == name:
-                return f
-            mine = f.stem.partition("-")[2] == what.replace("/", "_")  # `<ns>-<item>`, exactly
-            if mine and (not newest or f.name > newest[0]):
-                newest = (f.name, f)
+    queued = [f for d in ("pending", "running") if (q / d).is_dir() for f in (q / d).glob("*.json")]
+    for f in [*queued, *(land_records.file(q, run) for run in land_records.runs(q))]:
+        if f.stem == name:
+            return f
+        mine = f.stem.partition("-")[2] == what.replace("/", "_")  # `<ns>-<item>`, exactly
+        if mine and (not newest or f.name > newest[0]):
+            newest = (f.name, f)
     return newest[1] if newest else None
 
 
@@ -218,8 +217,9 @@ def _wait(q: Path, what: str, timeout: float, nudge: Callable[[], None]) -> tupl
     assert isinstance(found, Path)
     name = found.name
     nudged, was, since, told, gap = 0.0, "", begun, begun, heartbeat
-    while (r := landq_state.read(q / "done" / name)) is None:
-        torn = (q / "done" / name).is_file()  # there, not whole: a torn write, read again
+    run = name.removesuffix(".json")
+    while (r := land_records.get(q, run)) is None:
+        torn = land_records.file(q, run).is_file()  # there, not whole: a torn write, read again
         now = "done, its record not whole yet" if torn else where(q, name)
         tick = time.monotonic()
         if now and now != was:

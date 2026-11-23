@@ -125,9 +125,9 @@ def records(q: Path | None, newest: int | None = None) -> list[dict]:
     if q is None:
         return []
     out: list[dict] = []
-    for path in sorted((q / "done").glob("*.json"), reverse=True)[:newest]:
-        with contextlib.suppress(OSError, ValueError):
-            out.append(json.loads(path.read_text()))
+    from lib import land_records  # the land records' one door (GOH.STATEDB)
+
+    out += [rec for _, rec in land_records.records(q, reverse=True)[:newest]]
     with contextlib.suppress(OSError):
         lines = (q / "guards.jsonl").read_text().splitlines()
         for line in reversed(lines[-newest:] if newest else lines):

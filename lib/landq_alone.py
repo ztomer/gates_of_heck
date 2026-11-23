@@ -20,25 +20,20 @@ Pinned by tests/test_landq_alone.py.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-import landq_state
+import land_records  # the land records' one door (GOH.STATEDB)
 
 # A red record whose why says it judged no code of the item: never a reason to gate alone.
 NOT_ITS_CODE = ("conflict", "tip moved", "timed out", "no verdict", "git failed", "superseded")
 
 
 def red_last(q: Path, item: str) -> str:
-    """ITEM's newest record under Q's `done/` when it is red on the item's own code: its why's first
-    line (or `red`); '' when it landed, judged no code, or there is none."""
-    done = q / "done"
-    want = f"{item.replace('/', '_')}.json"
-    try:
-        names = sorted(n for n in os.listdir(done) if n.partition("-")[2] == want) if item else []
-    except OSError:
-        return ""
-    rec = landq_state.read(done / names[-1]) if names else None
+    """ITEM's newest land record (lib/land_records.py) when it is red on the item's own code: its
+    why's first line (or `red`); '' when it landed, judged no code, or there is none."""
+    want = item.replace("/", "_")
+    names = [r for r in land_records.runs(q) if r.partition("-")[2] == want] if item else []
+    rec = land_records.get(q, names[-1]) if names else None
     why = str((rec or {}).get("why") or "")
     if not rec or rec.get("state") != "red" or any(w in why for w in NOT_ITS_CODE):
         return ""

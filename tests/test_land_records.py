@@ -5,6 +5,7 @@ queue reads only its own rows, and a file with no row still reads (an old HEAD e
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 
@@ -13,6 +14,7 @@ import land_records
 import land_reds
 import landq_report as lr
 import landq_state
+import state_bounds
 from test_landq_report import fixture
 
 
@@ -90,3 +92,57 @@ def test_the_red_causes_are_rows_replaced_whole(tmp_path, monkeypatch):
     land_records.set_causes(q, {"0002-B.json": {"cause": "z"}})
     assert land_records.causes(q) == {"0002-B.json": {"cause": "z"}}
     assert not (q / "red_causes.json").exists()
+
+
+def test_the_sweep_imports_a_done_file_before_its_bound_prunes_it(tmp_path, monkeypatch):
+    """The window's file half: a record only an old HEAD export wrote, past its 14 days, is a row
+    before state_bounds prunes the file (the record is never in neither)."""
+    root = tmp_path / "state"
+    monkeypatch.setenv("GOH_DB", str(root / "goh.db"))
+    q = root / "landq"
+    (q / "done").mkdir(parents=True)
+    old = q / "done" / "01000000000000000000-OLD.json"
+    landq_state.write(old, {"state": "landed", "at": "2026-10-01T00:00:00Z"})
+    then = 1_790_000_000.0  # a fixed clock: the sweep is told its now
+    os.utime(old, (then, then))
+    state_bounds.sweep(root, now=then + 30 * 86400)
+    assert not old.exists(), "pruned past its bound"
+    assert land_records.get(q, old.stem) == {"state": "landed", "at": "2026-10-01T00:00:00Z"}
+
+
+def test_every_reader_reads_a_record_that_is_only_a_row(tmp_path, monkeypatch):
+    """The class: each reader the door replaced sees a record goh.db holds and done/ does not (the
+    state wave 3 leaves), so none of them still globs the directory."""
+    import admit_replay
+    import land_attempts
+    import land_check
+    import land_e2e
+    import land_profile
+    import landq_alone
+    import landq_look
+    import landq_size
+    import landq_window
+
+    gdb.use(monkeypatch, tmp_path)
+    q = tmp_path / "landq"
+    sha = "c" * 40
+    red = {"state": "red", "mode": "land", "repo": "/x/r", "sha": sha, "item": "GOH.A",
+           "why": "exit 1", "guards": ["tests/t.py::test_x"], "pre_s": 42.0, "slot_wait_s": 3.0,
+           "at": "2026-11-23T10:00:00Z"}  # fmt: skip
+    landed = {**red, "state": "landed", "why": "", "guards": [], "at": "2026-11-23T11:00:00Z",
+              "started": "2026-11-23T10:30:00+00:00",
+              "finished": "2026-11-23T11:00:00+00:00"}  # fmt: skip
+    gdb.put(q, "01795400000000000000-GOH.A", red)
+    gdb.put(q, "01795400000000000001-GOH.A", landed)
+    gdb.put(q, "01795400000000000002-GOH.B", {**red, "item": "GOH.B"})
+    shutil.rmtree(land_records.file(q))
+    assert land_attempts.attempt_of(q, "GOH.B") == 2
+    assert admit_replay.landq_slot_waits(q) == {sha[:12]: 3.0}
+    assert [item for item, _ in land_profile.chains(q)] == ["GOH.A"]
+    monkeypatch.setattr(land_e2e, "instrumented", lambda *_: False)  # no logs: a plain land
+    assert [r["item"] for r in land_e2e.rows(q, [])] == ["GOH.A"]
+    assert landq_size.history(q, "/x/r") == [True, False, True]  # red, landed, red: newest first
+    assert landq_window.expected(q, "/x/r") == 42.0
+    assert landq_alone.red_last(q, "GOH.B") == "exit 1"
+    assert landq_look.find_request(q, "GOH.B") == land_records.file(q, "01795400000000000002-GOH.B")
+    assert [r["item"] for r in land_check.records(q)] == ["GOH.B", "GOH.A"]

@@ -44,6 +44,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+import land_records  # the land records' one door (GOH.STATEDB)
 import landq_batch
 import landq_inflight
 
@@ -78,8 +79,7 @@ def most() -> float:
 def expected(q: Path, repo: object) -> float:
     """How long REPO's enqueue pre-steps take: the median `pre_s` of its newest done records."""
     took = []
-    for path in sorted((q / "done").glob("*.json"), reverse=True) if (q / "done").is_dir() else []:
-        rec = landq_batch.read(path)
+    for _, rec in land_records.records(q, reverse=True):
         if rec.get("repo") == repo and isinstance(rec.get("pre_s"), (int, float)):
             took.append(float(rec["pre_s"]))
             if len(took) == NEWEST:

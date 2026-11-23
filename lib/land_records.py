@@ -4,6 +4,7 @@ before the switch still read.
 
     write(q, run, rec)     the record's row, then its done/ file (kept until wave 3's delete commit:
                            .loop's readers and old HEAD exports still read the files)
+    runs(q)                every run with a record, by name only
     records(q)             [(run, rec)] oldest first: every row of this queue, and every done/ file
                            whose run has no row (written by an old HEAD export, or not imported)
     get(q, run)            one record, or None (`goh land --wait` polls it)
@@ -120,6 +121,16 @@ def records(q: Path, reverse: bool = False) -> list[tuple[str, dict]]:
         if run not in out and (rec := landq_state.read(file(q, run))) is not None:
             out[run] = rec
     return sorted(out.items(), reverse=reverse)
+
+
+def runs(q: Path) -> list[str]:
+    """Every run queue Q has a record of, by name only (no record is parsed), oldest first."""
+    have: set[str] = set(_files(q))
+    with _reader() as con:
+        if con is not None:
+            have.update(r[0] for r in con.execute("SELECT run FROM lands WHERE queue = ?",
+                                                  (queue_key(q),)))  # fmt: skip
+    return sorted(have)
 
 
 def get(q: Path, run: str) -> dict | None:

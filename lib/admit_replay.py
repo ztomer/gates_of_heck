@@ -56,6 +56,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import land_records  # lib/: the land records' one door (GOH.STATEDB)
 import timing_ledger
 
 KINDS = ("push", "land")
@@ -206,11 +207,7 @@ def jobs_from(
 def landq_slot_waits(queue: Path) -> dict[str, float]:
     """sha[:12] -> the slot wait the landing queue recorded for that land (none when unrecorded)."""
     out: dict[str, float] = {}
-    for path in sorted((queue / "done").glob("*.json")):
-        try:
-            rec = json.loads(path.read_text())
-        except (OSError, ValueError):
-            continue
+    for _, rec in land_records.records(queue):
         wait = rec.get("slot_wait_s")
         if isinstance(wait, (int, float)) and rec.get("sha"):
             out[str(rec["sha"])[:12]] = float(wait)

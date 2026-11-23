@@ -27,12 +27,12 @@ Pinned by tests/test_land_e2e.py.
 from __future__ import annotations
 
 import datetime as dt
-import json
 import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import land_records  # lib/: the land records' one door (GOH.STATEDB)
 import timing_ledger
 
 PLAIN = "land e2e plain"
@@ -96,12 +96,9 @@ def rows(q: Path, gates: list[dict] | None = None) -> list[dict]:
     """Every landed item's e2e row, oldest landing first; GATES the ledger's `land` rows."""
     chains: dict[str, list[tuple[Path, dict]]] = {}
     out: list[dict] = []
-    for path in sorted((q / "done").glob("*.json")):
-        try:
-            rec = json.loads(path.read_text())
-        except (OSError, ValueError):
-            continue
-        if not isinstance(rec, dict) or rec.get("mode") != "land":
+    for run, rec in land_records.records(q):
+        path = Path(f"{run}.json")  # its name: the stem the filing time and the logs are read by
+        if rec.get("mode") != "land":
             continue
         item = str(rec.get("item") or path.stem.partition("-")[2])
         chain = chains.setdefault(item, [])
