@@ -117,8 +117,35 @@ def live(q: Path, item: str | None = None) -> list[dict]:
         except (ValueError, KeyError, TypeError):
             continue  # being written, or not ours: never a reason to wait, never deleted here
         if not alive(pid, m.get("pid_stamp")) or time.time() > until:
+            if not path.with_suffix(SUPERSEDED).exists():  # a supersede stops it on purpose
+                died(q, m)
             clear(path)
             continue
         if item is None or path.stem.partition("-")[2] == slug(item):
             out.append(m)
     return out
+
+
+def died(q: Path, m: dict) -> None:
+    """A red done record for marker M's enqueue, gone from its pre-step with nothing filed: SIGKILL
+    runs no cleanup, so the land used to vanish (no request, no record, an empty log;
+    GOH.ENQUEUEVANISH). Written once, by the reader that finds it dead; never over a record of the
+    item filed after the marker (the enqueue settled, then exited)."""
+    item = str(m.get("item") or "")
+    done = q / "done"
+    with contextlib.suppress(OSError):
+        if any(
+            p.stat().st_mtime >= float(m.get("at") or 0) for p in done.glob(f"*-{slug(item)}.json")
+        ):
+            return
+    gone = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    how = "overran its bound" if alive(int(m.get("pid") or 0), m.get("pid_stamp")) else "died"
+    stamp = m.get("pid_stamp") or "no stamp"
+    why = (f"enqueue {how} in its pre-step: pid {m.get('pid')} ({stamp}) seen gone by {gone} "
+           "with no verdict and no request filed; its pre-step log may be empty "
+           "(GOH.ENQUEUEVANISH) -- enqueue again")  # fmt: skip
+    rec = {"item": item, "repo": m.get("repo", ""), "mode": "land", "state": "red", "why": why,
+           "at": time.time(), "recorded": gone, "sha": ""}  # fmt: skip
+    with contextlib.suppress(OSError):
+        done.mkdir(parents=True, exist_ok=True)
+        landq_state.write(done / f"{time.time_ns():020d}-{slug(item)}.json", rec)

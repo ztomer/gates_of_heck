@@ -24,6 +24,7 @@ from timing_bounds import GiveUp, assert_sooner, patience
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import idle_suite
 import landq_inflight
+import landq_state
 
 
 @pytest.fixture
@@ -146,3 +147,33 @@ def test_a_dead_enqueues_marker_counts_as_gone(tmp_path):
     assert landq_inflight.live(q, "T/E") and not landq_inflight.live(q, "T.D")
     landq_inflight.clear(mine)
     assert landq_inflight.live(q) == []
+
+
+def test_a_dead_enqueue_leaves_a_red_record_not_nothing(tmp_path):
+    """GOH.ENQUEUEVANISH: an enqueuer killed in its pre-step (SIGKILL runs no cleanup) used to leave
+    no marker, no request and no done record: its land vanished. The reader that finds it dead
+    files a red record naming the death, so `--wait`, the watch and reconcile all see it."""
+    q = tmp_path / "landq"
+    dead = subprocess.run([sys.executable, "-c", "import os; print(os.getpid())"],
+                          capture_output=True, text=True, check=True,
+                          stdin=subprocess.DEVNULL)  # fmt: skip
+    landq_inflight.mark(q, "T.V", pid=int(dead.stdout), repo="/r")
+    assert landq_inflight.live(q) == []
+    records = sorted((q / "done").glob("*-T.V.json"))
+    assert len(records) == 1, records
+    rec = landq_state.read(records[0])
+    assert (rec["item"], rec["repo"], rec["state"]) == ("T.V", "/r", "red"), rec
+    assert "died in its pre-step" in rec["why"] and dead.stdout.strip() in rec["why"], rec
+    assert landq_inflight.live(q) == [] and len(list((q / "done").glob("*.json"))) == 1  # once
+
+
+def test_a_superseded_enqueue_leaves_no_record(tmp_path):
+    """A re-enqueue or --cancel stops the older enqueue on purpose: that is no death to report."""
+    q = tmp_path / "landq"
+    dead = subprocess.run([sys.executable, "-c", "import os; print(os.getpid())"],
+                          capture_output=True, text=True, check=True,
+                          stdin=subprocess.DEVNULL)  # fmt: skip
+    path = landq_inflight.mark(q, "T.S", pid=int(dead.stdout))
+    path.with_suffix(landq_inflight.SUPERSEDED).write_text("1\n")
+    assert landq_inflight.live(q) == []
+    assert not list((q / "done").glob("*.json"))

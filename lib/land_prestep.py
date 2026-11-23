@@ -396,7 +396,7 @@ def run(
         if log is not None:
             with contextlib.suppress(OSError):
                 log.parent.mkdir(parents=True, exist_ok=True)
-                out = sink.enter_context(log.open("w", encoding="utf-8"))
+                out = sink.enter_context(log.open("w", encoding="utf-8", buffering=1))
         stream = stream or out is None
         for line in proc.stdout:  # type: ignore[union-attr]
             lines.append(line)
