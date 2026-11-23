@@ -41,6 +41,11 @@ re-run once in a child pytest before it turns the path off (lib/reuse_audit.py).
 decides once and hands its workers the node list (xdist `workerinput`), so every worker deselects
 alike and the audit counts one use per source.
 
+THE PRE-STEP CARRIES TOO (GOH.READKEYVERDICT): tools/affected_tests.py's recording run names
+REUSE=/dev/null (no same-tree record: `reusable`), so a lane's run after a fix, or an enqueue after
+one, runs only the tests that fix's diff chooses; and a carry refuses each node whose test file was
+seen reading a changed path no rule of the selector declares (tests/_read_audit.py): it runs.
+
 Both keys are set by tools/land.sh for one land and are verdict-free (gates/verdict_free_keys.txt:
 a reused verdict is a verdict on the same tree). A hermetic child drops every GOH_ key, and the
 plugin takes the keys OUT of the environment as it loads (`_take`), so no session a test starts
@@ -58,7 +63,9 @@ from pathlib import Path
 import _carry_shadow  # tests/: the carry rule and its measure (GOH.CARRYBASECODE, GOH.CARRYSHADOW)
 import _cov_claims  # tests/: the non-binary carry and its gate (GOH.COVNONBIN)
 import _land_audit  # tests/, beside this file: the audited `test` and `carry` uses
+import _land_trees  # tests/: the trees carried from, and the land record's own fields
 import _prof_record  # tests/: each test's own profile under coverage (GOH.COVCARRY)
+import _read_audit  # tests/: what each test file read, so a carry refuses an undeclared read
 import _same_tree  # tests/: the fresh instrumented run's own-tree reuse (@tree)
 import _whole_run  # tests/: whether the arguments select the whole suite (GOH.FSCEILINGRED)
 import pytest
@@ -166,6 +173,10 @@ def pytest_configure(config) -> None:
     """The measurement this plugin's coverage rule reads, registered beside it (GOH.COVCARRY)."""
     if not config.pluginmanager.has_plugin("goh-prof-record"):
         config.pluginmanager.register(_prof_record, "goh-prof-record")
+    if not config.pluginmanager.has_plugin("goh-read-audit"):  # GOH.READKEYVERDICT
+        config.pluginmanager.register(_read_audit, "goh-read-audit")
+    if _controller(config) and (_on(RECORD) or _on(REUSE)):  # a run that records: it watches
+        _read_audit.on_controller(config)
 
 
 def _controller(config) -> bool:
@@ -227,7 +238,7 @@ def pytest_sessionfinish(session) -> None:
         tmp, was = Path(f"{path}.{os.getpid()}.tmp"), _state.get("identity")
         # Its identity is the tree the run STARTED and ENDED on (GOH.SUITEONCE, GOH.LANDSNAPSHOT).
         rec = {"identity": was if was == identity() else None, "sha": _state.get("sha"),
-               "passed": passed}  # fmt: skip
+               "passed": passed, "reads": _read_audit.ours(passed)}  # fmt: skip
         tmp.write_text(json.dumps(rec))
         tmp.replace(path)  # atomic: a reader sees a whole record or the old one
     if (shadow := (_state.get("plan") or {}).get("shadow")) and _on(REUSE) != os.devnull:
@@ -255,12 +266,13 @@ def _record_store(session) -> None:
     other = int(plan.get("other", 0))
     judged = (_called - _failed) | (set(plan.get("judged", ())) - _failed)
     with _in_store() as (reuse, _):  # the measurement carried, its claims checked (GOH.COVNONBIN)
-        _cov_claims.record(session, plan, reuse.lookup_suite(REPO_ROOT, *me)[0], passed, measured,
-                           _bin, instrumented())  # fmt: skip
+        old = reuse.lookup_suite(REPO_ROOT, *me)[0]
+        _cov_claims.record(session, plan, old, passed, measured, _bin, instrumented())
         full = _whole(session.config) and session.exitstatus == 0 and not _failed and not other
         by = _same_tree.by(_on(REUSE), _on(RECORD), _whole(session.config))  # what ran
         reuse.record_suite(REPO_ROOT, me[0], me[1], passed, set(_failed), full, by, other,
-                           instrumented(), measured, judged)  # fmt: skip
+                           instrumented(), measured, judged,
+                           _read_audit.ours(passed, plan.get("reads"), old))  # fmt: skip
 
 
 def _shadows() -> None:
@@ -281,6 +293,8 @@ def reusable(path: str, here: str | None, coverage: bool) -> tuple[set[str], str
     identity; under `coverage` a test that ran the native binary is never skipped."""
     if path == _same_tree.SAME:  # this tree's store record, read again (the audit's re-read)
         return _same_tree.nodes(_own_record()), "@tree"
+    if path == os.devnull:  # the pre-step's own run (tools/affected_tests.py): it carries only
+        return set(), "the pre-step's own run, which carries from the store"
     try:
         rec = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
@@ -325,11 +339,12 @@ def _plan(config) -> dict:
     plan = {"lines": lines, "skipped": {}, "other": 0, "shadows": []}
     if same:  # each node one use of the audited `test` path, decided here for every worker
         same = _land_audit.audited(plan, same, identity(), str(config.rootpath), _store_or_none())
-    plan["skipped"] = {n: b for n, b in _file_passed(path).items() if n in same}
+    plan["skipped"] = {n: b for n, b in _land_trees.file_passed(path).items() if n in same}
+    plan["reads"] = _read_audit.of_record(path)  # what the skipped files read, kept on
     plan["judged"] = set(plan["skipped"])  # the pre-step's passes of THIS tree (its identity)
     plan["shadow"] = _carry_shadow.Shadow(plan, path)  # F against what ran (GOH.CARRYSHADOW)
     if path:
-        _carry(plan, _file_sha(path), coverage, Path(config.rootpath), sources(path))
+        _carry(plan, _land_trees.file_sha(path), coverage, Path(config.rootpath), sources(path))
     if coverage:  # a same-tree pass is skipped only when it was measured running no binary
         nobin = plan.get("nobin", set())
         dropped = {n for n in same if n not in nobin}
@@ -356,23 +371,6 @@ def _carry_audited_on() -> bool:
         return True
     with _in_store():
         return _lib("prof_carry").on()
-
-
-def _file_passed(path: str) -> dict[str, bool]:
-    try:
-        rec = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    passed = rec.get("passed") if isinstance(rec, dict) else None
-    return passed if isinstance(passed, dict) else {}
-
-
-def _file_sha(path: str) -> str:
-    try:
-        rec = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return ""
-    return rec["sha"] if isinstance(rec, dict) and isinstance(rec.get("sha"), str) else ""
 
 
 def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path, also: list[str]) -> None:
@@ -420,6 +418,7 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path, also: list[s
                     carried(measured, chosen, True, False, measured)
                 )
                 how = f"{len(changed or [])} paths differ, affected_tests chooses {len(chosen)}"
+                nodes -= _read_audit.undeclared(lines, rec, nodes, changed or [], sha)
             if coverage and (src == tree or not _builds(changed or [])):  # GOH.PROFKEYMISS
                 plan.setdefault("profowed", []).append((src, len(held)))  # owed a match, matched
             nodes -= set(plan["skipped"])
@@ -439,6 +438,7 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path, also: list[s
                              f"audit's shadow ({how})")  # fmt: skip
                 continue
             plan["skipped"].update((n, bool(passed[n])) for n in nodes)
+            _read_audit.keep(plan, rec, nodes)  # what their files read, for the next carry
             shadow.took(nodes)
             if coverage and nodes & held:  # their profiles, where the report reads them
                 _prof_record.take(src, tools, nodes & held)

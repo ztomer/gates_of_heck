@@ -7,6 +7,7 @@ session patches them there (`lv.trees`, `lv.diff`).
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -85,3 +86,22 @@ def carried(passed: dict[str, bool], chosen: set[str], coverage: bool, binary: b
             continue
         out.add(node)
     return out
+
+
+def file_passed(path: str) -> dict[str, bool]:
+    """The `passed` of the land record at PATH; {} for none."""
+    try:
+        rec = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    passed = rec.get("passed") if isinstance(rec, dict) else None
+    return passed if isinstance(passed, dict) else {}
+
+
+def file_sha(path: str) -> str:
+    """The commit the land record at PATH judged; "" for none."""
+    try:
+        rec = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    return rec["sha"] if isinstance(rec, dict) and isinstance(rec.get("sha"), str) else ""

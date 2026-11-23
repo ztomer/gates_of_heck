@@ -109,6 +109,7 @@ tests/_land_verdicts.py	base-code
 tests/_loadgroup.py	base-code
 tests/_prof_record.py	base-code
 tests/_prof_reuse.py	base-code
+tests/_read_audit.py	base-code
 tests/_reused_tmp.py	base-code
 tests/_same_tree.py	base-code
 tests/_schedule.py	base-code

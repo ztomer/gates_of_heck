@@ -386,7 +386,13 @@ def suite(root: Path, record: Path, base: str) -> tuple[bool, str, str]:
         return False, f"nothing carries across the diff: {why}", ""
     mains = {n: bool(b) for n, b in got["passed"].items()}
     carried = lv.carried(mains, chosen, False, lv._builds(changed, root))
-    union = {**{n: mains[n] for n in carried}, **{n: bool(b) for n, b in rec["passed"].items()}}
+    carried -= lv._read_audit.undeclared([], got, carried, changed, base)  # an undeclared read
+    # ... and what the pre-step CARRIED onto this tree: its store record's (GOH.READKEYVERDICT)
+    own = reuse.lookup_suite(root, tree, tools)[0] or {}
+    ran = {n: bool(b) for n, b in rec["passed"].items()}
+    took = {n: bool(b) for n, b in own.get("passed", {}).items() if n not in ran}
+    carried = carried | set(took)
+    union = {**{n: mains[n] for n in carried if n in mains}, **took, **ran}
     if left := sorted(n for n in mains if n not in union and (root / n.split("::")[0]).is_file()):
         more = f" (+{len(left) - 1} more)" if len(left) > 1 else ""
         return False, f"{left[0]}{more} passed on main is neither judged here nor carried", ""
@@ -396,9 +402,12 @@ def suite(root: Path, record: Path, base: str) -> tuple[bool, str, str]:
     # Main's measurement of each node it carries (GOH.COVNONBIN): one that ran no binary there ran
     # none here, so the next instrumented land carries it; the pre-step's own ran plain, unmeasured.
     seen = got.get("measured") if isinstance(got.get("measured"), dict) else {}
+    seen = {**seen, **(own.get("measured") if isinstance(own.get("measured"), dict) else {})}
     measured = dict.fromkeys((n for n in carried if seen.get(n) is False), False)
+    kept = {**(got.get("reads") or {}), **(rec.get("reads") or {})}  # GOH.READKEYVERDICT
     reuse.record_suite(root, tree, tools, union, set(), False, "land gate (suite reused)",
-                       len(carried), measured=measured, judged=set(rec["passed"]))  # fmt: skip
+                       len(carried), measured=measured, judged=set(rec["passed"]),
+                       reads=lv._read_audit.merged(union, {}, kept, own))  # fmt: skip
     vid = f"{str(rec.get('sha') or '')[:12]}:{here[:12]}"
     return True, (f"the pre-step judged this tree ({len(rec['passed'])} tests), main "
                   f"{base[:8]}'s record carries {len(carried)}"), vid  # fmt: skip

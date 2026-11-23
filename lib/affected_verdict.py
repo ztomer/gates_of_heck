@@ -318,11 +318,26 @@ def merge_records(record: Path, first: Path) -> None:
         a, b = None, None
     if a and b and (a.get("identity"), a.get("sha")) == (b.get("identity"), b.get("sha")):
         b["passed"] = {**a.get("passed", {}), **b.get("passed", {})}
+        if "reads" in a or "reads" in b:  # what each file read (tests/_read_audit.py)
+            b["reads"] = {**(a.get("reads") or {}), **(b.get("reads") or {})}
         record.write_text(json.dumps(b))
     elif a and not record.is_file():
         first.replace(record)
         return
     first.unlink(missing_ok=True)
+
+
+def carrying(record: str) -> list[str]:
+    """The words before a recording run's pytest that make its suite CARRY (GOH.READKEYVERDICT):
+    `env GOH_LAND_VERDICTS_REUSE=/dev/null`, the pre-step's own run, which names no same-tree
+    record, so tests/_land_verdicts.py deselects each chosen test that passed on another tree
+    whose diff to this one the selector does not choose it by, nor touches a file it was seen to
+    read (tests/_read_audit.py), as the land gate's suite does: a run after a fix runs only the
+    fix's readers. None for a run with no record, or one a caller already names REUSE for. The
+    plain run only: a Rust change's measured run (lib/land_rustcov.py) runs its set whole."""
+    if not record or record == os.devnull or os.environ.get(REUSE):
+        return []
+    return ["env", f"{REUSE}={os.devnull}"]
 
 
 def ran_nothing(why: str) -> None:

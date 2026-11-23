@@ -415,8 +415,8 @@ def carry_fields(repo: Path, tree: str, tools: str) -> dict[str, str]:
 
 def record_suite(repo: Path, tree: str, tools: str, passed: dict[str, bool], failed: set[str],
                  full: bool, by: str, carried: int = 0, instrumented: bool = False,
-                 measured: dict[str, bool] | None = None,
-                 judged: set[str] | None = None) -> Path:  # fmt: skip
+                 measured: dict[str, bool] | None = None, judged: set[str] | None = None,
+                 reads: dict[str, list[str]] | None = None) -> Path:  # fmt: skip
     """Merge one run's verdicts on `tree` into its record: `passed` ({node: it ran the binary})
     joins the passes, a node in `failed` leaves them. `full`: this run judged every test of the tree
     itself (none carried, nothing failed), so an old pass it neither made nor found judged leaves
@@ -435,7 +435,7 @@ def record_suite(repo: Path, tree: str, tools: str, passed: dict[str, bool], fai
     seen.update((n, bool(b) or seen.get(n, False)) for n, b in (measured or {}).items())
     extra = {"passed": merged, "full": whole, "carried": carried, "full_instrumented": inst,
              "instrumented": instrumented or bool(old.get("instrumented")),
-             "measured": seen, "judged": sorted(mine & set(merged))}  # fmt: skip
+             "measured": seen, "judged": sorted(mine & set(merged)), "reads": reads}  # fmt: skip
     out = record(CARRY, fields, "red" if failed else "green", by, extra)
     prune(CARRY)
     return out

@@ -430,7 +430,7 @@ def run(root: Path, changed: list[str], chosen: dict, base: str | None = None, r
         if not nodes and not (rust and n == 1):  # a Rust change measures its workspace's tests
             continue
         what = "judging the whole tree" if n == 0 else "the diff chose"
-        plain = ["bash", str(root / "tools" / "pytest.sh"), "-q", *nodes]
+        plain = [*av.carrying(record), "bash", str(root / "tools" / "pytest.sh"), "-q", *nodes]
         argv = land_rustcov.argv(root, rust, nodes) if rust and n == 1 else plain
         with pre_cpu.counted():  # the run's tree, for the land record's `pre_run` (GOH.PREWIDTH)
             rc = timed(  # its own row (GOH.RELEASELANDGATE); no cwd: pytest.sh runs in its checkout

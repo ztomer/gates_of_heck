@@ -117,6 +117,19 @@ def test_a_test_main_passed_that_nothing_judged_here_runs_the_suite(land):
     assert not ok and "neither judged" in why and B in why, why
 
 
+def test_a_test_the_pre_step_carried_onto_this_tree_counts_as_carried_not_judged(land):
+    """GOH.READKEYVERDICT: the pre-step's run carries (lib/affected_verdict.py `carrying`), so its
+    record names only what it ran; what it carried is in the store's record of this very tree."""
+    repo, rec, base, _ = land
+    rec.write_text(json.dumps({**json.loads(rec.read_text()), "passed": {}}))
+    tree, tools = git(repo, "rev-parse", "HEAD^{tree}").strip(), gate_identity.suite_tools()
+    reuse.record_suite(repo, tree, tools, {B: False}, set(), False, "pre-land", 1, judged=set())
+    ok, why, _ = pre_reuse.suite(repo, rec, base)
+    assert ok, why
+    got, _ = reuse.lookup_suite(repo, tree, tools)
+    assert set(got["passed"]) == {A, B} and B not in got["judged"] and not got["full"], got
+
+
 def test_a_record_of_no_whole_selection_or_coverage_runs_the_suite(land, monkeypatch):
     repo, rec, base, _ = land
     narrow = {**json.loads(rec.read_text()), "selection": None}
