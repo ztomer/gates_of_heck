@@ -15,7 +15,9 @@
 #      the tests that read the release files when that is all the commit changed, R3): main moves
 #      only through land (.gatesrc GOH_LANDED_ONLY), never a commit in the main checkout and
 #      never GOH_MAIN_COMMIT_OK;
-#   4. push main, then an annotated tag vVERSION whose message is the stanza, then push the tag.
+#   4. push main, then an annotated tag vVERSION whose message is the stanza, then push the tag;
+#   5. the GitHub release of vVERSION from its stanza, after backfilling every earlier tag on origin
+#      with none (tools/release-kit/gh_release.sh, release.sh's own step; GOH.SELFGHRELEASE).
 #
 # With .gatesrc GOH_CHANGELOG_FRAGMENTS=on (goh's own), each change's entry is its own file in
 # changelog/ (tools/release-kit/changelog_fragments.py): the preflight and the cut fold them into
@@ -169,6 +171,33 @@ else
     tail -n 5 "$prebuild_log" | sed 's/^/    /' >&2
 fi
 timed "release: push the tag" git push origin "refs/tags/$TAG"
+# THE GITHUB RELEASE (GOH.SELFGHRELEASE). From GOH.SHIPKIT on this kit pushed the tag and made no
+# release, so v0.96.0.. stood release-less and `gh release list` kept v0.95.0 Latest: the state the
+# consumer kit backfills. The same step as release.sh's (tools/release-kit/gh_release.sh): every
+# earlier release-less tag on origin backfilled with --latest=false, then this tag's release cut
+# from its stanza and read back, so the newest tag is Latest.
+STEP="release" DRY_RUN=0 BACKFILL_NOTES="" NOTES=""
+plan() { info "[dry-run] $*"; }
+fail() { err "release_goh.sh: step '${STEP}' failed: $1 ($TAG is pushed; the next release backfills its GitHub release)"; exit 1; }
+trap '[ -z "$BACKFILL_NOTES" ] || rm -f "$BACKFILL_NOTES"; [ -z "$NOTES" ] || rm -f "$NOTES"
+      [ -z "$prebuild_log" ] || rm -f "$prebuild_log"
+      git -C "$main" worktree remove --force "$wt" 2>/dev/null || true
+      git -C "$main" branch -D "$branch" >/dev/null 2>&1 || true' EXIT
+# shellcheck source=tools/release-kit/gh_release.sh
+. "$GOH/tools/release-kit/gh_release.sh"
+# shellcheck source=tools/release-kit/version_step.sh
+. "$GOH/tools/release-kit/version_step.sh"
+release_backfill_floor   # GOH_RELEASE_BACKFILL_FLOOR -> BACKFILL_FLOOR
+GH_REPO_SLUG="$(github_slug "$(git remote get-url origin 2>/dev/null || true)")"
+[ -n "$GH_REPO_SLUG" ] || GH_REPO_SLUG="$(github_slug "$(git config --get remote.origin.url 2>/dev/null || true)")"
+if ! command -v gh >/dev/null; then
+    warn "release: no GitHub release of $TAG: gh CLI not installed"
+elif [ -z "$GH_REPO_SLUG" ]; then
+    warn "release: no GitHub release of $TAG: origin is not a github.com remote"
+else
+    backfill_releases
+    cut_release
+fi
 ok "released $TAG at $(git rev-parse --short "$TAG^{commit}") (tag $(git rev-parse --short "$TAG"))"
 exit
 } # parse-guard

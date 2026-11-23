@@ -64,4 +64,3 @@ tests/test_required_tools_manifest.py
 tests/test_swift_gate_baseline.py
 tools/load.py
 tools/release-kit/changelog_cut.py
-tools/release-kit/release.sh

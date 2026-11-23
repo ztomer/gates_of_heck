@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 
 from conftest import REPO_ROOT, git, hermetic_env
+from timing_bounds import patience
 
 KIT = REPO_ROOT / "tools" / "release_goh.sh"
 # The macOS /bin/bash is 3.2; the hosted runner and minimal-PATH hooks start the kit with it, so the
@@ -127,3 +128,77 @@ def test_the_release_commit_changes_only_the_changelog(repo: Path, tmp_path: Pat
     assert sorted(seen.read_text().split("\n")) == sorted(
         ["M\tCHANGELOG.md", "D\tchangelog/X.md", ""]
     ), seen.read_text()
+
+
+def _full_run(
+    repo: Path, tmp_path: Path, released: list[str], keep_creates: bool = True
+) -> tuple[subprocess.CompletedProcess[str], Path]:
+    """The kit end to end, nothing stubbed but what leaves the machine: land.sh fast-forwards main
+    to the release commit, origin is a bare repository a github.com URL is rewritten to, and gh
+    records every call and answers `release list`/`view` from what it was told and has made."""
+    origin = tmp_path / "origin.git"
+    git(repo, "clone", "-q", "--bare", str(repo), str(origin))
+    git(repo, "remote", "add", "origin", "https://github.com/o/r")
+    git(repo, "config", f"url.{origin}.insteadOf", "https://github.com/o/r")
+    tools = repo / "tools"
+    tools.mkdir()
+    (tools / "land.sh").write_text(
+        '#!/bin/bash\nb="$(git rev-parse --abbrev-ref HEAD)"\n'
+        'm="$(git worktree list --porcelain | sed -n "1s/^worktree //p")"\n'
+        'git -C "$m" merge -q --ff-only "$b"\n'
+    )
+    (tools / "land.sh").chmod(0o755)
+    made = tmp_path / "gh.made"
+    made.write_text("".join(f"{t}\n" for t in released))
+    log = tmp_path / "gh.log"
+    create = f'echo "$3" >> "{made}"' if keep_creates else ":"
+    fake = tmp_path / "fakebin"
+    fake.mkdir()
+    (fake / "gh").write_text(
+        f'#!/bin/bash\necho "gh $*" >> "{log}"\n'
+        f'case "$1 $2" in\n'
+        f'  "release list") cat "{made}" ;;\n'
+        f'  "release view") grep -qxF "$3" "{made}" ;;\n'
+        f'  "release create") {create} ;;\n'
+        "esac\n"
+    )
+    (fake / "gh").chmod(0o755)
+    git(repo, "add", "tools")
+    _commit(
+        repo,
+        "# CHANGELOG\n\n## Unreleased\n\n* **Three.** c\n\n## v0.2.0 -- second\n\n* **Two.** b\n"
+        "\n## v0.1.0 -- first\n\n* **One.** a\n",
+    )
+    for t in ("v0.1.0", "v0.2.0"):
+        git(repo, "tag", "-a", t, "-m", t)
+    git(repo, "push", "-q", "origin", "HEAD:main", "v0.1.0", "v0.2.0")
+    env = hermetic_env(drop_git=True, GOH_RUN_DIR=str(tmp_path / "run"))
+    env["PATH"] = f"{fake}:{env['PATH']}"
+    r = subprocess.run([BASH, str(KIT), "0.3.0"], cwd=repo, env=env, capture_output=True,
+                       text=True, timeout=patience(120), stdin=subprocess.DEVNULL,
+                       check=False)  # fmt: skip
+    return r, log
+
+
+def test_the_release_makes_the_github_release_after_backfilling_the_tags_with_none(
+    repo: Path, tmp_path: Path
+) -> None:
+    """GOH.SELFGHRELEASE: from GOH.SHIPKIT on, the kit pushed main and the tag and made no GitHub
+    release, so origin held v0.96.0.. with none and `gh release list` kept v0.95.0 Latest. Now it
+    backfills every earlier release-less tag (--latest=false) and then cuts this one, verified."""
+    r, log = _full_run(repo, tmp_path, released=["v0.1.0"])
+    assert r.returncode == 0, r.stdout + r.stderr
+    calls = log.read_text().splitlines() if log.exists() else []
+    creates = [c for c in calls if c.startswith("gh release create ")]
+    assert len(creates) == 2, calls
+    assert creates[0].startswith("gh release create v0.2.0 ") and "--latest=false" in creates[0]
+    assert creates[1].startswith("gh release create v0.3.0 ") and "--verify-tag" in creates[1]
+    assert "--latest=false" not in creates[1], "the release cut now must be Latest"
+    assert "gh release view v0.3.0 --repo o/r" in calls, calls
+
+
+def test_a_release_create_that_leaves_no_release_fails_the_kit(repo: Path, tmp_path: Path) -> None:
+    """Read back, never trusted: a create that returned 0 and left no release is a failure."""
+    r, _ = _full_run(repo, tmp_path, released=["v0.1.0", "v0.2.0"], keep_creates=False)
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert "v0.3.0 cannot be found" in r.stderr, r.stderr
