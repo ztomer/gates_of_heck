@@ -300,6 +300,42 @@ fn the_queue_reads_its_sqlite_store_when_one_exists() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// LOOP.QUEUEARCHIVE: a store with no items is an empty queue (`sqlite3 -json` prints nothing for no
+/// rows), and a row whose status is not a string is an error that names the store, never a guess.
+#[test]
+fn an_empty_store_is_no_items_and_a_null_status_names_the_store() {
+    let dir = std::env::temp_dir().join(format!("goh-roadmap-qempty-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let db = dir.join(super::queue::DB_NAME);
+    let made = std::process::Command::new("sqlite3")
+        .arg(&db)
+        .arg(
+            "PRAGMA user_version = 1; CREATE TABLE items(id TEXT PRIMARY KEY, seq INTEGER, archived INTEGER, status TEXT, body TEXT);",
+        )
+        .status();
+    if !made.is_ok_and(|s| s.success()) {
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            super::queue::load_db(&db).is_err(),
+            "no sqlite3: the store is NOT JUDGED"
+        );
+        return;
+    }
+    let empty = super::queue::load_db(&db).expect("an empty store reads");
+    assert!(empty.is_empty(), "{empty:?}");
+    let added = std::process::Command::new("sqlite3")
+        .arg(&db)
+        .arg("INSERT INTO items VALUES ('A.1', 0, 0, NULL, '{}')")
+        .status();
+    assert!(added.is_ok_and(|s| s.success()));
+    let said = super::queue::load_db(&db).expect_err("a NULL status is no status");
+    assert!(
+        said.contains("is unreadable") && said.contains(super::queue::DB_NAME),
+        "{said}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// GOH.ROADMAPBOLD: `koffee_big`'s roadmap held five bold-paragraph entries with no `Done when:`,
 /// which the reader counted as nothing (7 entries; 12 once they were headings).
 const BOLD_ENTRIES: &str = "# Roadmap\n\n## Phase 1 — now\n\n\
