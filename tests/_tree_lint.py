@@ -13,6 +13,10 @@ a test that lints the tree in place requests it and its gate reads them. A test 
 gate recorded nothing copies the store first (`private_copy`): every worker writes the session's,
 so a verdict another test records during the call would read as this one's (the first land of
 GOH.CIRED01392 went red on "shellchecked 2 files" that way).
+
+The session's records are also KEPT across sessions (tests/_kept_store.py, GOH.SHELLCHECKCACHE):
+`tree_lint` seeds the session's store from the kept one and keeps what a green lint recorded, so a
+session lints only the shell files whose bytes (or sources, tools, rc files) are new.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import _kept_store
 import pytest
 from conftest import REPO_ROOT, hermetic_env
 
@@ -41,13 +46,28 @@ def records(store: Path | None = None) -> set[str]:
 def tree_lint(goh) -> Path:
     store = shell_verdicts()
     store.parent.mkdir(parents=True, exist_ok=True)
+    kept = _kept_store.kept("tree-lint-verdicts")
     with (store.parent / "tree-lint.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)  # one worker lints; the others wait, then read
+        _merge(kept, store)  # an earlier session's verdicts: a record is its whole key's
         r = subprocess.run([str(goh), "shell-lint"], cwd=REPO_ROOT, capture_output=True, text=True,
                            env=hermetic_env(), stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+        if r.returncode == 0:
+            _merge(store, kept)
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
     assert records(), "goh shell-lint recorded no verdict in the session's store"
     return store
+
+
+def _merge(src: Path, dest: Path) -> None:
+    """Every verdict record of SRC that DEST lacks, copied (GOH.SHELLCHECKCACHE). A record is keyed
+    by every input of its verdict (crates/goh/src/shell_lint.rs `judge`), so one kept from an
+    earlier session is the verdict this one would compute: a warm tree lint execs no shellcheck."""
+    for rec in src.rglob("*.json"):
+        to = dest / rec.relative_to(src)
+        if not to.exists():
+            to.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(rec, to)
 
 
 def private_copy(store: Path, dest: Path) -> Path:
