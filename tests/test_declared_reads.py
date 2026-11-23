@@ -160,5 +160,5 @@ def test_every_declared_read_matches_a_file_of_the_tree():
     tracked = source_closure.tree_files(REPO_ROOT)
     scanners = {f"checks/{p.name}": p.read_text() for p in (REPO_ROOT / "checks").glob("*.py")}
     for rel, text in {**_tests(), **scanners}.items():
-        for pattern in dr.declared(text):
+        for pattern in (*dr.declared(text), *dr.declared(text, dr.JUDGE)):
             assert any(dr.matches(pattern, t) for t in tracked), f"{rel}: {pattern} reads nothing"

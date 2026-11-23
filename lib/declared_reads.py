@@ -55,7 +55,8 @@ WHOLE = frozenset({"copytree", "listdir", "walk", "scandir"})
 DYNAMIC = "?"  # a chain with a non-literal part
 # A file with none of these reads nothing either way: it is never parsed (the pre-step's cost).
 MAY_READ = re.compile(
-    r"\.(?:r?glob|iterdir)\(|copytree|listdir|walk\(|scandir|TREE_READS|[A-Z]\w* / (?![\"'])"
+    r"\.(?:r?glob|iterdir)\(|copytree|listdir|walk\(|scandir|TREE_READS|JUDGE_READS"
+    r"|[A-Z]\w* / (?![\"'])"
 )
 
 
@@ -81,12 +82,19 @@ def _parse(text: str) -> ast.Module | None:
         return None
 
 
-def declared(text: str) -> tuple[str, ...]:
-    """The file's module-level TREE_READS patterns (literal strings only)."""
+# A judge's WHOLE read of the tree (GOH.SUITEDIET): every file its tests read, listed or walked,
+# beyond what it imports. Where TREE_READS names what a join reaches, this one vouches for every
+# walk of the file too, so the judge no longer stands at the enqueue (`standing`): it is chosen
+# when a changed path matches, and an unchanged set of matched files keeps the tree's verdict.
+JUDGE = "JUDGE_READS"
+
+
+def declared(text: str, name: str = "TREE_READS") -> tuple[str, ...]:
+    """The file's module-level NAME patterns (literal strings only)."""
     tree = _parse(text)
     for node in tree.body if tree else ():
         target = node.targets[0] if isinstance(node, ast.Assign) and node.targets else None
-        if isinstance(target, ast.Name) and target.id == "TREE_READS":
+        if isinstance(target, ast.Name) and target.id == name:
             try:
                 value = ast.literal_eval(node.value)
             except ValueError:
@@ -156,7 +164,7 @@ def matches(pattern: str, path: str) -> bool:
 def reads(text: str, root: Path) -> tuple[str, ...]:
     if not MAY_READ.search(text):
         return ()
-    return tuple(sorted({*declared(text), *inferred(text, root)}))
+    return tuple(sorted({*declared(text), *declared(text, JUDGE), *inferred(text, root)}))
 
 
 def _root_arg(node: ast.AST) -> bool:
@@ -303,7 +311,10 @@ def standing(graph, test: str, text: str, root: Path, walking: tree_walk.Walking
     walks the tree where no spelling says what (`unexplained`), reaches a tests/ helper's walk of
     the root, joins the root with a non-literal and declares no TREE_READS (gates/
     undeclared_reads.txt), points the root at anything but scanners that declare TREE_READS, or
-    reaches a tests/ helper doing one of these. The land gate runs every tree reader whatever."""
+    reaches a tests/ helper doing one of these -- unless it declares its whole read (JUDGE_READS).
+    The land gate runs every tree reader whatever."""
+    if declared(text, JUDGE):
+        return None
     if lines := unexplained(text, root):
         return f"walks the tree at line {lines[0]}, where no spelling says what"
     if via := tree_walk.reaches(text, walking):

@@ -19,6 +19,9 @@ import subprocess
 from conftest import REPO_ROOT
 
 SCRIPT = REPO_ROOT / "lib" / "goh_version.sh"
+# Its whole read of the tree (lib/declared_reads.py JUDGE_READS): HEAD's crates, the stamp script,
+# and the tracked names an embed in them targets (a new target is a crates/ change).
+JUDGE_READS = ("crates/", "lib/goh_version.sh")
 MACRO = re.compile(r'\binclude(?:_str|_bytes)?!\s*\(\s*"([^"]*)"')
 MODDECL = re.compile(
     r"^((?:[ \t]*#\[[^\]]*\]\s*)*)[ \t]*(?:pub(?:\([^)]*\))?\s+)?mod\s+(\w+)\s*;", re.MULTILINE

@@ -92,6 +92,31 @@ def test_an_undeclared_join_still_judges_every_diff(tmp_path) -> None:
     assert _files(at.affected(root, ["lib/other.py"], enqueue=True)) == {"tests/test_docs.py"}
 
 
+# A judge whose walk no spelling explains, with everything it reads declared (GOH.SUITEDIET): it
+# lists the tracked Python files and reads them, and nothing else of the tree.
+JUDGED = (
+    "import subprocess\nJUDGE_READS = ('*.py',)\n\n"
+    "def test_every_python_file_is_ascii():\n"
+    "    subprocess.run(['git', 'ls-files', '*.py'])\n"
+)
+
+
+def test_a_judge_declaring_all_it_reads_runs_only_for_a_diff_they_cover(tmp_path) -> None:
+    """JUDGE_READS is the file's whole read of the tree: its verdict stands while no file its
+    patterns match changes (the land gate keeps a judge's verdict keyed by those files' bytes:
+    unchanged, it is not chosen, and the tree's carried pass stands for it)."""
+    root = _tree(tmp_path, {"tests/test_judged.py": JUDGED, "lib/other.py": "X = 1\n",
+                            "docs/x.md": "x\n"})  # fmt: skip
+    assert at.affected(root, ["docs/x.md"], enqueue=True) == {}
+    assert _files(at.affected(root, ["lib/other.py"], enqueue=True)) == {"tests/test_judged.py"}
+    # outside the enqueue it judges every diff, as every tree reader does
+    assert _files(at.affected(root, ["docs/x.md"], enqueue=False)) == {"tests/test_judged.py"}
+    # TREE_READS is a join's declaration, never the walk's: the same walk with it still stands
+    joined = JUDGED.replace("JUDGE_READS", "TREE_READS")
+    root2 = _tree(tmp_path / "t2", {"tests/test_judged.py": joined, "docs/x.md": "x\n"})
+    assert _files(at.affected(root2, ["docs/x.md"], enqueue=True)) == {"tests/test_judged.py"}
+
+
 def test_the_enqueue_is_read_from_the_land_pre_step(tmp_path, monkeypatch) -> None:
     """lib/land_prestep.py runs land.sh's pre-step with GOH_LAND_PRE_ONLY=1: that is the enqueue."""
     root = _root(tmp_path)

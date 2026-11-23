@@ -30,6 +30,8 @@ from pathlib import Path
 
 TESTS = Path(__file__).resolve().parent
 SELF = Path(__file__).name  # its calibration cases are dumps, by design
+# Its whole read of the tree (lib/declared_reads.py JUDGE_READS): the suite's own Python files.
+JUDGE_READS = ("tests/*.py",)
 
 _SHELL = re.compile(
     r"(?<![\w.!/-])(?:/usr/bin/)?(?:print)?env\s*(?:>>?|\|(?!\|))"

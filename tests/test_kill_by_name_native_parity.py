@@ -18,6 +18,9 @@ from conftest import REPO_ROOT
 from reference_kit import load_reference
 
 reference = load_reference("check_no_kill_by_name")
+# Its whole read of the tree (lib/declared_reads.py JUDGE_READS): every tracked .py file, compared
+# by the port it judges (the binary's own tests are chosen by its reach).
+JUDGE_READS = ("*.py", "crates/goh/src/killname/")
 
 
 def _py_files() -> list[str]:
