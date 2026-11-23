@@ -41,11 +41,10 @@ pub fn on_store_branch(checkout: &Path) -> Result<(), String> {
     } else {
         Some(checkout.to_path_buf())
     };
-    let Some(live) = live else {
-        return Err("main".to_string());
-    };
-    let want = store_branch(&live);
-    match git(&live, &["symbolic-ref", "-q", "--short", "HEAD"]) {
+    let want = live
+        .as_deref()
+        .map_or_else(|| "main".to_string(), store_branch);
+    match live.and_then(|l| git(&l, &["symbolic-ref", "-q", "--short", "HEAD"])) {
         Some(b) if b == want => Ok(()),
         _ => Err(want),
     }
