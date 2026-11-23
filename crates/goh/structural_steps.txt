@@ -5,6 +5,7 @@ cap-exempt files within their ceilings
 every .gatesrc key is set once
 every changelog fragment is entries only
 every child process names its stdin
+every decision record is whole
 every language linted at commit is gated at push
 every scanner read its declared subject
 every tag has its changelog heading

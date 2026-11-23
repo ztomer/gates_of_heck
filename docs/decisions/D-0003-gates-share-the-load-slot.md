@@ -38,4 +38,4 @@ slot; the shared places, `GOH_LOAD_GATES` and the pending mark are gone.
   held by something else.
 - **Re-open when:** a gate's own budget fails beside two other gates more than once a week, or the
   machine's core count changes (re-measure: `k` at once, two rounds).
-- **Lives in:** `lib/load_slot.py`, `tools/load.py` (the shared places retired by D-0008; their test, `tests/test_load_gate_share.py`, with them)
+- **Lives in:** `lib/load_slot.py`, `tools/load.py` (the shared places retired by D-0008; their test, tests/test_load_gate_share.py, deleted with them in 9a653e3f; the live pins are D-0008's)

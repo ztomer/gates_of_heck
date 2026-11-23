@@ -16,6 +16,13 @@ RC_RULES = (
     b'calls = ["relaunch"]\nmust_call = ["window_placement.verify"]\n'
 )
 
+# A decision record whole in its seven fields, its `Lives in` a tracked file (`goh decisions`).
+DECISION = (
+    "# D-0001 \u2014 a\n- **Question:** blue?\n- **Evidence:** looked.\n"
+    "- **Options priced:** two.\n- **Ruling:** blue.\n- **Falsifier:** grey.\n"
+    "- **Re-open when:** night.\n- **Lives in:** `a.py`\n"
+).encode()
+
 FULL_CASES: dict[str, dict[str, bytes]] = {
     "clean": {".gatesrc": GATESRC, "a.py": b"x = 1\n"},
     "emoji": {".gatesrc": GATESRC, "a.py": f"x = 1  # {chr(0x1F389)}\n".encode()},
@@ -249,6 +256,18 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
         ".gatesrc": GATESRC + b"GOH_ROADMAP=ROADMAP.md\n",
         "ROADMAP.md": b"# Roadmap\n\nWhat shipped is in git.\n\n## Phase 1\n\n- **X1 new.**\n  Done when: a test.\n",
     },
+    # `goh decisions`, opt-in (`GOH_DECISIONS=on`): a record whose Falsifier is gone is red; the
+    # whole record, its `Lives in` a tracked file, is green.
+    "decisions_red": {
+        ".gatesrc": GATESRC + b"GOH_DECISIONS=on\n",
+        "docs/decisions/D-0001-a.md": DECISION.replace(b"- **Falsifier:** grey.\n", b""),
+        "a.py": b"x = 1\n",
+    },
+    "decisions_green": {
+        ".gatesrc": GATESRC + b"GOH_DECISIONS=on\n",
+        "docs/decisions/D-0001-a.md": DECISION,
+        "a.py": b"x = 1\n",
+    },
     # `goh requires-call`, opt-in by naming its rules file: a tool that relaunches must judge.
     "requires_call_red": {
         ".gatesrc": GATESRC + b"GOH_REQUIRES_CALL='rc.toml'\n",
@@ -276,6 +295,8 @@ EXPECTED: dict[str, tuple[int, str | None]] = {
     "busy_loop_red": (1, "no busy loop or busy-wait in a tracked file"),
     "roadmap_green": (0, None),
     "roadmap_red": (1, "one roadmap, open entries only"),
+    "decisions_green": (0, None),
+    "decisions_red": (1, "every decision record is whole"),
     "requires_call_green": (0, None),
     "requires_call_red": (1, "a file that calls X calls Y"),
     "tap_write_green": (0, None),

@@ -34,6 +34,7 @@ pub mod crates_change;
 pub mod credurls;
 pub mod deadexec;
 pub mod deadport;
+pub mod decisions;
 pub mod deps;
 pub mod earlypipe;
 pub mod emoji;
@@ -306,6 +307,7 @@ fn run_core(command: Commands) -> i32 {
         } => commands::run_screen(&paths, scope.as_deref(), staged),
         Commands::Lints { self_test } => commands::run_lints(self_test),
         Commands::JsSyntax => jssyntax::command::run_command(),
+        Commands::Decisions(a) => decisions::run_command(a.staged),
         Commands::Skills(args) => run_skills(&args),
         Commands::Golden {
             a,

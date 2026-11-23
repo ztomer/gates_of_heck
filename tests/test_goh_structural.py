@@ -21,7 +21,7 @@ import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import as_fixture
 from conftest import hermetic_env
-from goh_structural_cases import EXPECTED, FULL_CASES, GATESRC
+from goh_structural_cases import DECISION, EXPECTED, FULL_CASES, GATESRC
 
 ROOT = Path(__file__).resolve().parents[1]
 STRUCTURAL = ROOT / "gates" / "structural.sh"
@@ -136,8 +136,9 @@ INVENTORY_CASE: dict[str, bytes] = {
         b"GOH_LINE_EXCLUDE='big.py'\n"
         b"GOH_LINE_BASELINE='base.txt'\nGOH_REQUIRES_CALL='rc.toml'\n"
         b"GOH_SUBPROCESS_STDIN=on\nGOH_JS_SYNTAX=on\nGOH_NO_PRIVATE_NAMES=on\nGOH_CHANGELOG_FRAGMENTS=on\n"
-        b"GOH_RUN_PATHS=on\n"
+        b"GOH_RUN_PATHS=on\nGOH_DECISIONS=on\n"
     ),
+    "docs/decisions/D-0001-a.md": DECISION,
     "rc.toml": b'[[rule]]\nname = "b"\nwhy = "y"\nfiles = ["b.py"]\nmust_call = ["print"]\n',
     "b.py": b"print(1)\n",
     "app.js": b"const a = 1;\n",

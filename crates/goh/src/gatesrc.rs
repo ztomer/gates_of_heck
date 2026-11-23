@@ -110,6 +110,10 @@ pub struct Gatesrc {
     /// (`crate::changelog_fragments`); unset or `off` leaves the stanza as the repo writes it. Raw,
     /// so a value that is neither is an error naming the key.
     pub changelog_fragments: Option<String>,
+    /// `GOH_DECISIONS`: `on` judges the decision ledger under `docs/decisions/`
+    /// (`crate::decisions`); unset or `off` leaves it unjudged. Raw, so a value that is neither is
+    /// an error naming the key.
+    pub decisions: Option<String>,
 }
 
 /// Parse one right-hand side: single/double-quoted or bare with `#` comment.
@@ -243,6 +247,7 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
         roadmap: pairs.get("GOH_ROADMAP").filter(|v| !v.is_empty()).cloned(),
         installs: pairs.get("GOH_INSTALLS").cloned(),
         changelog_fragments: pairs.get("GOH_CHANGELOG_FRAGMENTS").cloned(),
+        decisions: pairs.get("GOH_DECISIONS").cloned(),
     })
 }
 
@@ -256,7 +261,7 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
 /// keys, so a step that reads one from the environment (`GOH_STEP_TIMEOUT`, and
 /// every child it spawns) sees the file's value, never an inherited one.
 /// Pinned against `docs/config.md` by `tests/test_gate_environment.py`.
-pub const PIPELINE_KEYS: [&str; 55] = [
+pub const PIPELINE_KEYS: [&str; 56] = [
     "GOH_MAX_LINES",
     "GOH_LINE_EXCLUDE",
     "GOH_LINE_BASELINE",
@@ -313,6 +318,7 @@ pub const PIPELINE_KEYS: [&str; 55] = [
     "GOH_ROADMAP",
     "GOH_INSTALLS",
     "GOH_CHANGELOG_FRAGMENTS",
+    "GOH_DECISIONS",
 ];
 
 /// Make the process environment say what `root/.gatesrc` says for every

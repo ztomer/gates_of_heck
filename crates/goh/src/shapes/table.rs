@@ -412,6 +412,10 @@ pub const ROWS: &[Row] = &[
         state: State::Declared(crate::emptyassert::shapes::SHAPES),
     },
     Row {
+        scanner: "every decision record is whole",
+        state: State::Declared(crate::decisions::shapes::SHAPES),
+    },
+    Row {
         scanner: "file length",
         state: State::Declared(crate::length::shapes::SHAPES),
     },

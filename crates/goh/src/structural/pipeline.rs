@@ -238,6 +238,10 @@ pub(super) const PIPELINE: &[Entry] = &[
     Entry::One(&["one roadmap, open entries only"], |c| {
         crate::roadmap::step(c.repo, c.files, c.cfg, c.staged)
     }),
+    // The settled questions: each record whole, each `Lives in` still in the tree (opt-in).
+    Entry::One(&["every decision record is whole"], |c| {
+        crate::decisions::step(c.repo, c.cfg, c.staged)
+    }),
     Entry::One(&["Cargo.lock matches its manifests"], |_| lockver::step()),
     Entry::One(&["python is ruff-formatted"], |c| {
         pyformat::step(c.cfg, c.staged)

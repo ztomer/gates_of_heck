@@ -258,6 +258,9 @@ pub enum Commands {
     /// `check_js_syntax`). The goal is the BROWSER'S: `.js` is a classic script, `.mjs` a
     /// module, `.cjs` node's `CommonJS`; a template is judged by its substituted form.
     JsSyntax,
+    /// Fail on a decision record under `docs/decisions/` missing one of its seven fields, or whose
+    /// `Lives in` names a path or symbol the tree no longer has (opt-in step: `GOH_DECISIONS=on`).
+    Decisions(StagedArgs),
     /// Fail on a process kill by NAME (native port of `check_no_kill_by_name`).
     KillByName(KillByNameArgs),
     /// Fail on an early-exit consumer (`grep -q`, `grep -m`, `head`, awk `exit`, sed `q`) reading
