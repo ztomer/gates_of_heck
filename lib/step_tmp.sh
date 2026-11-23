@@ -11,9 +11,11 @@
 #   step_tmp_prepare            once per run: bound the slots killed or red runs kept, write the
 #                               sccache shim (below) into "$LOGDIR/bin"
 #   step_tmp_claim <i>          before step i runs: STEP_TMP[i], the lowest free
-#                               `$(goh_tmp)/goh-step.slotNN` -- a SLOT, not a fresh name, so every
+#                               `$(goh_tmp)/step.NN` -- a SLOT, not a fresh name, so every
 #                               path a step writes is the path the last run wrote (GOH.FSCHURN:
 #                               fresh names are what fseventsd pays for)
+#                               and SHORT: a socket path is 104 bytes on macOS, and the
+#                               slot adds only `goh.noindex/step.NN/` (20) to a test's
 #   step_tmp_env <i>            inside step i's runner: TMPDIR is that slot
 #   step_tmp_judge <label> <i> <rc>  after step i: green -> every entry left is a LEAK, named, then the
 #                               slot is removed; red -> the slot is KEPT, like the step's log (a red
@@ -54,7 +56,7 @@ step_tmp_prepare() {
     [ "$STEP_TMP_MODE" != off ] || return 0
     local tmp real
     tmp="$(goh_tmp)" || return 1
-    "$GOH_PY" -S "$GOH_ROOT/lib/prune_kept.py" "$tmp" goh-step. 3 3600 --max-bytes 1073741824 2>/dev/null || true
+    "$GOH_PY" -S "$GOH_ROOT/lib/prune_kept.py" "$tmp" step. 3 3600 --max-bytes 1073741824 2>/dev/null || true
     real="$(command -v sccache 2>/dev/null)" || real=""
     if [ -n "$real" ] && ! grep -q "$STEP_TMP_SHIM_MARK" "$real" 2>/dev/null; then
         mkdir -p "$LOGDIR/bin" || return 1
@@ -72,11 +74,11 @@ step_tmp_claim() {
     [ "$STEP_TMP_MODE" != off ] || return 0
     tmp="$(goh_tmp)" || return 1
     while [ "$n" -lt 32 ]; do
-        d="$tmp/goh-step.slot$(printf %02d "$n")"
+        d="$tmp/step.$(printf %02d "$n")"
         if mkdir "$d" 2>/dev/null; then STEP_TMP[i]="$d"; break; fi
         n=$((n + 1))
     done
-    [ -n "${STEP_TMP[i]}" ] || STEP_TMP[i]="$(mktemp -d "$tmp/goh-step.XXXXXX")" || return 1
+    [ -n "${STEP_TMP[i]}" ] || STEP_TMP[i]="$(mktemp -d "$tmp/step.XXXXXX")" || return 1
     # `<pid> <start time>`: lib/prune_kept.py never cuts the slot of a run that is still alive
     printf '%s %s\n' "$$" "$(ps -o lstart= -p "$$" 2>/dev/null)" >"${STEP_TMP[i]}/.goh-owner"
 }

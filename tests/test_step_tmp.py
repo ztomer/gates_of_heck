@@ -33,10 +33,10 @@ def box(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def _top(tmpdir: Path) -> list[str]:
-    """Every entry under TMPDIR but goh's own roots' parent; inside it, only goh-step slots."""
+    """Every entry under TMPDIR but goh's own roots' parent; inside it, only step slots."""
     parent = tmpdir / "goh.noindex"
     inner = (
-        [f"goh.noindex/{p.name}" for p in parent.iterdir() if p.name.startswith("goh-step.")]
+        [f"goh.noindex/{p.name}" for p in parent.iterdir() if p.name.startswith("step.")]
         if parent.is_dir()
         else []
     )
@@ -86,7 +86,9 @@ def test_a_clean_step_is_silent_and_its_slot_is_reused(box) -> None:
         assert r.returncode == 0 and "temp entr" not in out, out
     seen = probe.read_text().split()
     # one path, run after run: a fresh name per step is what fseventsd pays for (GOH.FSCHURN)
-    assert seen == [str(tmpdir / "goh.noindex" / "goh-step.slot00")] * 2, seen
+    assert seen == [str(tmpdir / "goh.noindex" / "step.00")] * 2, seen
+    # a unix socket's path is 104 bytes on macOS: the slot may add no more than this to a test's
+    assert len(seen[0]) - len(str(tmpdir)) <= 20, seen
     assert _top(tmpdir) == []
 
 
@@ -95,7 +97,7 @@ def test_a_red_step_keeps_its_temp_dir_with_its_log(box) -> None:
     r = _ci(repo, tmpdir, f"GOH_CI_STEPS='{LEAK}; false'\n")
     out = r.stdout + r.stderr
     assert r.returncode != 0
-    kept = tmpdir / "goh.noindex" / "goh-step.slot00"
+    kept = tmpdir / "goh.noindex" / "step.00"
     assert f"its temp dir is kept with the log: {kept}" in out, out
     assert (kept / "leaky-test.abc123").is_dir()
 
