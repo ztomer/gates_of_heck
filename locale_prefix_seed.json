@@ -1,0 +1,12 @@
+{
+  "why": "goh locale-prefix (EST.LOCALEPREFIX; Ruby casks read since GOH.LOCALERUBY): bash sets a locale variable itself. THIS repository's own entries only, keyed by its root commit (GOH.SEEDPRIVATE). At or under its count warns; over it, unseeded, or stale is red. Done is an empty list.",
+  "entries": [
+    {
+      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
+      "repo": "gates_of_heck",
+      "path": "tests/fixtures/homebrew_tap/Casks/divoom-control.rb",
+      "count": 1,
+      "reason": "reviewed: a byte copy of homebrew-tap's cask that tests/test_tap_bump_real_shapes.py bumps; it changes with the tap, whose own gate judges the line (GOH.LOCALERUBY)"
+    }
+  ]
+}

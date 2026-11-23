@@ -91,6 +91,7 @@ pub mod requires_call;
 pub mod requires_call_py;
 pub mod revblobs;
 pub mod roadmap;
+pub mod rubyshell;
 pub mod run_path;
 pub mod runpaths;
 pub mod rust_depinfo;

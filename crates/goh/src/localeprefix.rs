@@ -14,8 +14,10 @@
 //! `export`, `local` or plain assignment -- or `unset`s one, unless the assignment is an argument of
 //! `env` (`env LC_ALL=C sort` sets it in the child `env` execs; bash's own locale never moves).
 //! Any of them can run in a forked subshell: a pipeline element, `( )`, `$( )`, `<( )`, a function
-//! called from one. Comments are not read. goh's own tree was pinned by `tests/test_shell_locale.py`
-//! since GOH.PROVENBUILD; this is that rule for every consumer.
+//! called from one. Comments are not read. A Ruby source's shell is read too (`crate::rubyshell`,
+//! GOH.LOCALERUBY): a cask's `uninstall` heredoc run by `/bin/sh -c`, a one-string `system`.
+//! goh's own tree was pinned by `tests/test_shell_locale.py` since GOH.PROVENBUILD; this is that
+//! rule for every consumer.
 //!
 //! WIRING: a structural step in EVERY repo, judged from its own grace's end, `OVER_FROM`
 //! (2026-11-30); before it the scan reads (the floor counts it) and warns. The sites a consumer
@@ -110,9 +112,28 @@ fn is_zsh(rel: &str, text: &str) -> bool {
             .is_some_and(|l| l.starts_with("#!") && l.contains("zsh"))
 }
 
+/// Whether `rel` is a Ruby source, whose shell is only what it hands a shell.
+fn is_ruby(rel: &str) -> bool {
+    Path::new(rel)
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("rb"))
+}
+
+/// The 1-based lines of a Ruby source's shell that set a locale in bash (`crate::rubyshell`).
+fn scan_ruby(text: &str) -> Vec<usize> {
+    crate::rubyshell::shell_lines(text)
+        .into_iter()
+        .filter(|(_, l)| sets_locale(l))
+        .map(|(n, _)| n)
+        .collect()
+}
+
 /// The lines `goh locale-prefix` judges in one file: its findings, through its own selection.
 #[must_use]
 pub fn judged_lines(rel: &str, text: &str) -> Vec<usize> {
+    if is_ruby(rel) {
+        return scan_ruby(text);
+    }
     if !crate::shellsrc::is_shell(rel, text.as_bytes()) || is_zsh(rel, text) {
         Vec::new()
     } else {
@@ -123,16 +144,24 @@ pub fn judged_lines(rel: &str, text: &str) -> Vec<usize> {
 /// The sites in the bash sources among `files`.
 fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<Sites, String> {
     let exclude = crate::steps::compile_exclude(exclude)?;
-    let sources: Vec<(String, String)> =
+    let mut sources: Vec<(String, String)> =
         crate::shellsrc::sources(root, files, exclude.as_ref(), staged)
             .into_iter()
             .filter(|(rel, text)| !is_zsh(rel, text))
             .collect();
+    let ruby = files
+        .iter()
+        .filter(|rel| is_ruby(rel) && !exclude.as_ref().is_some_and(|x| x.is_match(rel)))
+        .filter_map(|rel| {
+            let blob = crate::gitutil::content_bytes(root, rel, staged)?;
+            Some((rel.clone(), String::from_utf8(blob).ok()?))
+        });
+    sources.extend(ruby);
     crate::subject::record(&crate::subject::LOCALE_PREFIX, sources.len());
     let mut out = Sites::new();
     for (rel, text) in &sources {
         let rows: Vec<&str> = text.lines().collect();
-        let found: Vec<String> = scan(text)
+        let found: Vec<String> = judged_lines(rel, text)
             .into_iter()
             .map(|n| {
                 let line = rows.get(n - 1).copied().unwrap_or("");
@@ -264,8 +293,30 @@ pub const SHAPES: crate::shapes::Declared = {
                 fixture: ("a.sh", "# LC_ALL=C is given through env\n"),
             },
             Shape {
+                name: "shell a Ruby source hands to a shell: a heredoc run by -c or system, a one-string system (GOH.LOCALERUBY)",
+                path: r"(?i)\.rb$",
+                line: r"=\S+\s+\S",
+                verdict: Verdict::Covered,
+                fixture: (
+                    "Casks/a.rb",
+                    "  stop = <<~'STOP'\n    live=$(LC_ALL=C ps -p 1)\n  STOP\n  uninstall script: { args: [\"-c\", stop] }\n",
+                ),
+            },
+            Shape {
+                name: "a Ruby heredoc or string no shell runs (GOH.LOCALERUBY)",
+                path: r"(?i)\.rb$",
+                line: "",
+                verdict: Verdict::OutOfScope(
+                    "a caveat, description or data no shell reads: only a heredoc passed after -c or to system, and a one-string system, are shell",
+                ),
+                fixture: (
+                    "Formula/a.rb",
+                    "  def caveats\n    <<~EOS\n      run LC_ALL=C sort\n    EOS\n  end\n",
+                ),
+            },
+            Shape {
                 name: "a language or file the scan does not read",
-                path: r"(?i)\.(md|markdown|txt|rst|html?|rs|py|rb|swift|js|mjs|cjs|ts|ya?ml|toml|json)$",
+                path: r"(?i)\.(md|markdown|txt|rst|html?|rs|py|swift|js|mjs|cjs|ts|ya?ml|toml|json)$",
                 line: "",
                 verdict: Verdict::OutOfScope(
                     "only shell sources are read; elsewhere it is prose, another language's string or a test's data",
@@ -324,6 +375,17 @@ mod tests {
         ] {
             assert!(!sets_locale(ok), "{ok}");
         }
+    }
+
+    #[test]
+    fn a_casks_shell_is_judged_and_its_prose_is_not() {
+        // homebrew-tap Casks/divoom-control.rb's shape (GOH.LOCALERUBY).
+        let cask = "  stop = <<~'STOP'\n    live=$(LC_ALL=C /bin/ps -p 1)\n    \
+                    x=$(env LC_ALL=C /bin/ps)\n  STOP\n  \
+                    uninstall script: { executable: \"/bin/sh\", args: [\"-c\", stop] }\n  \
+                    def caveats\n    <<~EOS\n      LC_ALL=C sort\n    EOS\n  end\n  \
+                    system \"LANG=C make\"\n";
+        assert_eq!(judged_lines("Casks/a.rb", cask), vec![2, 11]);
     }
 
     #[test]

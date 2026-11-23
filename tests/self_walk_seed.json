@@ -1,6 +1,7 @@
 {
   "why": "goh's self-walk (tests/test_self_walk.py, GOH.CLASS.SELF, 2026-11-15): every scanner in the registry run over goh itself with no seed, no grace and every opt-in on. `findings` is goh's own debt per scanner, counted as the distinct path:line sites it names; it only shrinks, and done is an empty `findings`. `enable`, `not_run` and `unjudged` are not debt: how the walk turns an opt-in scanner on, a scanner with nothing in goh to judge, and one that ran and said it cannot judge here.",
   "enable": {
+    "no locale variable set by bash itself": {"count": 1, "why": "locale_prefix_seed.json: tests/fixtures/homebrew_tap/Casks/divoom-control.rb, a copy of the tap's cask, its uninstall heredoc read since GOH.LOCALERUBY"},
     "no hard-coded home paths": "GOH_NO_HOME_PATHS=1"
   },
   "not_run": {
