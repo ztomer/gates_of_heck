@@ -55,17 +55,31 @@ pytestmark = pytest.mark.skipif(
 OPEN = ("todo", "in_progress")
 
 
+def live_queue() -> dict:
+    """The live queue as the loop holds it. LOOP.QUEUEARCHIVE moves it to loop.db: this one read
+    then goes through goh's queue reader (lib/queue_read.py)."""
+    return json.loads((LOOP / "queue.json").read_text())
+
+
 @pytest.fixture
 def live(tmp_path, monkeypatch) -> Path:
     """The real loopctl, on a temp copy of the live queue (never the live one)."""
+    return arm(live_queue(), tmp_path, monkeypatch)
+
+
+def arm(data: dict, tmp_path: Path, monkeypatch) -> Path:
+    """Point goh's filers at the real loopctl over a temp copy of queue DATA."""
     queue = tmp_path / "loop" / "queue.json"
     queue.parent.mkdir()
     # The rules, phases and closed items as they are; the OPEN items out. `loopctl file` refuses an
     # item whose text overlaps an open one (loopdup), so a live open ship-red item ate the test's
     # own synthetic one (2026-11-21: GOH.SHIPRED12163BB1 vs "a red land"): the test passed or
     # failed by what the queue held that day.
-    data = json.loads((LOOP / "queue.json").read_text())
-    data["items"] = [i for i in data["items"] if i.get("status") not in OPEN]
+    data = {**data, "items": [i for i in data["items"] if i.get("status") not in OPEN]}
+    # The rules minus the owner's freezes (GOH.FILERLIVEFREEZE): FRZ.QUEUEDB-GOH froze
+    # gates_of_heck on 2026-11-23, the live rules refused both probes, and every goh gate went
+    # red until it lifted. A freeze is a legitimate state of the queue, never a rules regression.
+    data["rules"] = {k: v for k, v in data.get("rules", {}).items() if k != "freezes"}
     queue.write_text(json.dumps(data))
     monkeypatch.setenv("GOH_LOOPCTL", str(LOOP / "tools" / "loopctl.py"))
     monkeypatch.setenv("GOH_LOOP_QUEUE", str(queue))
@@ -142,6 +156,10 @@ def test_a_spend_regression_files_its_item_through_the_real_queue_rules(live) ->
 
 def test_a_spawn_registers_its_pending_item_through_the_real_queue_rules(live) -> None:
     """hooks/claude/spawn_register.py's `loopctl start`, on the temp queue, of the item it names."""
+    spawn_probe(live)
+
+
+def spawn_probe(live: Path) -> None:
     sys.path.insert(0, str(REPO_ROOT / "hooks" / "claude"))
     import queue_hold
     import spawn_register
@@ -167,6 +185,10 @@ def test_a_spawn_registers_its_pending_item_through_the_real_queue_rules(live) -
 
 def test_a_ship_item_is_asked_of_the_real_queue_rules(live, monkeypatch) -> None:
     """lib/ship_item.py's `loopctl shippable`: an open gates_of_heck item may ship from it."""
+    ship_probe(live, monkeypatch)
+
+
+def ship_probe(live: Path, monkeypatch) -> None:
     monkeypatch.setenv("LOOPCTL_QUEUE", str(live))
     data = json.loads(live.read_text())
     data["items"].append({"id": "GOH.FILERSHIPPROBE", "repo": "gates_of_heck", "phase": "DF",
@@ -178,3 +200,18 @@ def test_a_ship_item_is_asked_of_the_real_queue_rules(live, monkeypatch) -> None
     assert ship_item.item_refusal(REPO_ROOT, loopctl, "GOH.FILERSHIPPROBE", "gates_of_heck") is None
     why = ship_item.item_refusal(REPO_ROOT, loopctl, "GOH.FILERSHIPPROBE", "monitor")
     assert why and "refuses it" in why, why
+
+
+def test_an_owner_freeze_on_gates_of_heck_never_reds_the_probes(tmp_path, monkeypatch) -> None:
+    """GOH.FILERLIVEFREEZE: a freeze on gates_of_heck planted in a copy of the live rules (as
+    FRZ.QUEUEDB-GOH was on 2026-11-23). The probes still pass: the freeze is the owner's, the rules
+    under it are what the filers are checked against."""
+    data = live_queue()
+    rules = data.setdefault("rules", {})
+    rules["freezes"] = [*(rules.get("freezes") or []), {
+        "id": "FRZ.FILERPROBE", "repo": "gates_of_heck", "since": "2026-11-23",
+        "frozen": "every item but a planted one", "owner_words": "a planted freeze",
+        "lift": "never: the test's own copy", "allow_items": ["GOH.NOTAPROBE"]}]  # fmt: skip
+    live = arm(data, tmp_path, monkeypatch)
+    spawn_probe(live)
+    ship_probe(live, monkeypatch)
