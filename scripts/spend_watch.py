@@ -353,6 +353,7 @@ def _item(iid: str, key: str, text: str, predicted: str) -> dict[str, Any]:
     return {"id": iid, "repo": "gates_of_heck", "phase": "EC", "status": "todo", "depends": [],
             "item": text, "metric": METRICS[key]["label"], "predicted": predicted,
             "owner_words": OWNER_WORDS, "source": "coordinator-found (goh spend watch)",
+            "class_of": "none", "class_why": f"`{key}` past tolerance (rules.class_first)",
             "done_state": (f"the cause found and fixed; the spend watch's `{METRICS[key]['label']}` "
                            "back at or under the value named in `predicted` for a full week")}  # fmt: skip
 
