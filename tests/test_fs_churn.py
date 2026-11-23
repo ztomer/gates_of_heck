@@ -69,7 +69,7 @@ def _session(
         if rep.get("unmeasured"):
             assert "unmeasured, no verdict" in r.stdout, r.stdout[-1500:]
             why.append(rep["unmeasured"])
-        elif lost := _short_of_the_plant(body, rep):
+        elif lost := _short_of_the_plant(body, rep, ceiling):
             why.append(lost)
         else:
             return r, rep
@@ -77,11 +77,16 @@ def _session(
     raise AssertionError("unreachable: unmeasured_skip skips")
 
 
-def _short_of_the_plant(body: str, rep: dict) -> str:
+def _short_of_the_plant(body: str, rep: dict, ceiling: dict | None = None) -> str:
     """Why a clean window read less than the planted test made, or "": fseventsd can lose a run of
     records with no drop flag (lib/fs_events.py), and a verdict on such a window judges the loss.
-    The plant is the calibration: CHURNY makes 400 dirs, QUIET one file."""
-    if CHURNY in body and rep["dirs_created"] < 400:
+    The plant is the calibration: CHURNY makes 400 dirs, QUIET one file. A loss only undercounts,
+    so a window that still read the churny test past a per-test ceiling under the plant is a
+    reading of that ceiling: its red is a lower bound over the line (GOH.FSCHURNFLAKE: 354 of 400
+    under load 30-110 refused a ship whose verdict was red all along)."""
+    per_test = (ceiling or {}).get("per_test")  # no literal default: GOH.LOADSENSEGET's lint
+    floor = 400 if per_test is None else min(400, per_test + 1)
+    if CHURNY in body and rep["dirs_created"] < floor:
         return f"the instrument lost events: read {rep['dirs_created']} of the 400 planted dirs"
     if body == QUIET and rep["events"] < 1:
         return "the instrument lost events: read none of the planted write"
@@ -120,8 +125,19 @@ def test_a_planted_churny_test_breaks_the_per_test_ceiling(tmp_path: Path) -> No
     r, rep = _session(tmp_path, CHURNY, {"per_test": 300, "per_test_run": 10_000})
     assert r.returncode == 1, r.stdout[-1500:] + r.stderr[-1500:]
     assert "test_churny made" in r.stdout and "per-test ceiling 300" in r.stdout, r.stdout[-1500:]
-    assert rep["per_test"]["test_churny"] >= 400, rep  # one record per dir at least
-    assert rep["dirs_created"] >= 400 and rep["faults"], rep
+    assert rep["per_test"]["test_churny"] > 300 and rep["dirs_created"] > 300, rep
+    assert rep["faults"], rep
+
+
+def test_a_window_that_lost_events_but_read_past_the_ceiling_is_a_reading() -> None:
+    """The window the v0.150.0 ship's suite read (354 of 400 dirs, load 30-110) judges a 300
+    per-test ceiling: a lower bound over it. One under the ceiling is still no reading, and a
+    ceiling the plant clears only whole still needs the whole plant."""
+    lossy = {"dirs_created": 354, "events": 700}
+    assert _short_of_the_plant(CHURNY, lossy, {"per_test": 300}) == ""
+    assert _short_of_the_plant(CHURNY, {"dirs_created": 290, "events": 580}, {"per_test": 300})
+    assert _short_of_the_plant(CHURNY, lossy, {"per_test": 100_000})
+    assert _short_of_the_plant(CHURNY, lossy)
 
 
 @pytest.mark.load_sensitive
