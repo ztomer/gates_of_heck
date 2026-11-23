@@ -53,5 +53,29 @@ def test_a_suite_child_that_starts_sccache_starts_it_outside_the_suite_tmp():
     )
     suite = os.environ[suite_tmp.MARKER]
     assert tempfile.gettempdir().startswith(suite)
-    assert suite not in text, "the shim hands the server the suite's own temp root"
-    assert suite_tmp.real_tmp() in text
+    baked = suite_tmp.baked_tmpdir(text)
+    assert baked, f"{found} names no TMPDIR"
+    # Under local_ci the step's shim (lib/step_tmp.sh) is found first and names the user's TMPDIR,
+    # not this suite's real_tmp() (the step slot): the invariant is "outside every disposable
+    # root", never "equal to the TMPDIR this suite started in" (GOH.SHIMNESTED).
+    assert not suite_tmp.disposable(baked, suite), (
+        f"the shim hands the server {baked}, a temp root a run removes"
+    )
+
+
+@pytest.mark.parametrize(
+    ("baked", "verdict"),
+    [
+        ("/var/folders/ab/T/", False),
+        ("/var/folders/ab/T/goh.noindex/step.00", True),
+        ("/var/folders/ab/T/goh.noindex/step.02/goh.noindex/goh-pytest.slot00", True),
+        ("/var/folders/ab/T/goh.noindex/goh-suite-tmp.x1y2", True),
+    ],
+)
+def test_a_shim_naming_a_removable_temp_root_is_told_apart(tmp_path, baked, verdict):
+    """The live test's instrument, calibrated both ways: a step slot or a suite root is caught,
+    the user's own temp dir is not (GOH.SHIMNESTED)."""
+    shim = suite_tmp.write_sccache_shim(tmp_path / "bin", "/bin/true", baked, "/Users/u")
+    got = suite_tmp.baked_tmpdir(shim.read_text())
+    assert got == baked
+    assert suite_tmp.disposable(got, str(tmp_path / "suite")) is verdict

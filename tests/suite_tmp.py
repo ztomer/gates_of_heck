@@ -84,6 +84,27 @@ def write_sccache_shim(bin_dir: Path, real: str, tmpdir: str, home: str) -> Path
     return shim
 
 
+def baked_tmpdir(text: str) -> str | None:
+    """The TMPDIR a shim's text hands the real sccache, unquoted; None when it names none."""
+    for line in text.splitlines():
+        if line.startswith("TMPDIR="):
+            words = shlex.split(line)
+            return words[0].removeprefix("TMPDIR=") if words else None
+    return None
+
+
+DISPOSABLE_MARKS = ("/goh.noindex/step.", "/goh-suite-tmp.", "/goh-pytest.")
+
+
+def disposable(path: str, suite: str) -> bool:
+    """A temp root some run removes when it ends: this suite's, a local_ci step slot
+    (lib/step_tmp.sh) or another suite's. A shared server started inside one outlives it."""
+    real = os.path.realpath(path).rstrip("/") + "/"
+    return real.startswith(os.path.realpath(suite).rstrip("/") + "/") or any(
+        mark in real for mark in DISPOSABLE_MARKS
+    )
+
+
 def _is_shim(path: str | None) -> bool:
     try:
         with open(path or "", encoding="utf-8") as handle:
