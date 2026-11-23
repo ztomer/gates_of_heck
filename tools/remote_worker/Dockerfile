@@ -36,6 +36,10 @@ ARG SHELLCHECK_VERSION
 ARG SHELLCHECK_SHA256
 ARG CARGO_LLVM_COV_VERSION
 ARG CARGO_LLVM_COV_SHA256=6272d16a61570f053580272527150135a91e5a2b9e4f0291c66d1e5309b5cacc
+# sccache at the Mac's release; the checksum is the release's own .sha256 asset, which GitHub's
+# asset digest matched (read 2026-11-22).
+ARG SCCACHE_VERSION=0.19.0
+ARG SCCACHE_SHA256=aa73c7270c997894038c0d8f0d297865f57569e1687883322bc431713d4bb9dd
 
 # git: the suite builds throwaway repos. gcc/libc6-dev: cargo links. curl, xz,
 # ca-certificates: the downloads below. Debian's own packages, from the
@@ -75,12 +79,25 @@ RUN curl -fsSLo /tmp/llvmcov.tgz "https://github.com/taiki-e/cargo-llvm-cov/rele
  && tar -xzf /tmp/llvmcov.tgz -C /opt/cargo/bin \
  && rm /tmp/llvmcov.tgz
 
+# sccache (GOH.REMOTEEVICT): the worker's cargo builds reuse compiled crates across runs and lane
+# slots. cargo runs goh's own wrapper ahead of it, as on the Mac (lib/goh-rustc, GOH.SCCACHEENV:
+# cargo's variables out of the key), from the synced tree. Its cache is $HOME/.cache/sccache on the
+# mount, capped by its own LRU at SCCACHE_CACHE_SIZE; lib/worker_evict.py counts it in the
+# worker's 80 GB and never sweeps it.
+RUN curl -fsSLo /tmp/sccache.tgz "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+ && echo "${SCCACHE_SHA256}  /tmp/sccache.tgz" | sha256sum -c - \
+ && tar -xzf /tmp/sccache.tgz -C /tmp \
+ && install -m 0755 "/tmp/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache" /usr/local/bin/sccache \
+ && rm -rf /tmp/sccache.tgz "/tmp/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl"
+ENV RUSTC_WRAPPER=/work/tree/lib/goh-rustc \
+    SCCACHE_CACHE_SIZE=20G
+
 # The toolchain is the pinned one even where a checkout's rust-toolchain.toml says `stable`: that
 # file would send rustup to download a toolchain into a read-only RUSTUP_HOME with no network.
 ENV RUSTUP_TOOLCHAIN=${RUST_VERSION}
 
 # The versions this image claims, for `goh remote-shard`'s parity check.
-RUN { python3 -V; python3 -m pip list --format=freeze; rustc -V; shellcheck -V | sed -n 2p; } > /opt/goh-worker-versions.txt
+RUN { python3 -V; python3 -m pip list --format=freeze; rustc -V; shellcheck -V | sed -n 2p; sccache --version; } > /opt/goh-worker-versions.txt
 
 WORKDIR /work
 CMD ["sleep", "infinity"]

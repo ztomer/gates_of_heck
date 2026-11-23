@@ -304,6 +304,11 @@ def run_remote(c: dict[str, str], tag: str, tests: list[str], workers: int, slot
     # short-lived container with the same limits fills $HOME/.cargo (`cargo fetch --locked`).
     fetch = ["docker", "run", "--rm", "--name", f"{c['container']}-fetch", *limits(c), tag,
              "bash", "-c", f"cd {w}/tree && cargo fetch --locked -q"]  # fmt: skip
+    used = f"{w}/tree/target/.goh-used {w}/cache/home/.cargo/.goh-used"
+    evict = ["docker", "exec", c["container"], "bash", "-c",
+             (f"mkdir -p {w}/tree/target {w}/cache/home/.cargo && touch {used} && "
+              f"exec python3 {w}/tree/lib/worker_evict.py run --root {w} "
+              f"--ceiling-gib {c['ceiling_gb']} --floor-gib {c['floor_gb']}")]  # fmt: skip
     inner = "\n".join([
         (f"if [ -f {q(d)}/tree/Cargo.lock ]; then "
          f"stamp={q(d)}/cache/home/.cargo/goh-fetched.$(sha256sum "
@@ -312,6 +317,10 @@ def run_remote(c: dict[str, str], tag: str, tests: list[str], workers: int, slot
          f"{shlex.join(fetch)} >&2 && touch \"$stamp\"; fi; fi"),
         f"cat > {q(d)}/out/{rid}.args <<'SHARD_ARGS_EOF'", *tests, "SHARD_ARGS_EOF",
         f"{shlex.join(run)} > {q(d)}/out/{rid}.log 2>&1; rc=$?",
+        # The worker's housekeeping (GOH.REMOTEEVICT), never the run's verdict: stamp what this
+        # run used, then goh's evictor under the worker's rules; a week's run files go.
+        f"{shlex.join(evict)} >&2 || echo 'worker evictor failed (the run stands)' >&2",
+        f"find {q(d)}/out -maxdepth 1 -type f -mtime +7 -name '*.*' ! -name run.lock -delete",
         f"grep -h '^GOH-BUILD-MS=' {q(d)}/out/{rid}.log >&2; tail -3 {q(d)}/out/{rid}.log >&2",
         f"echo \"GOH-RC=$rc\"; cat {q(d)}/out/{rid}.xml 2>/dev/null",
     ])  # fmt: skip

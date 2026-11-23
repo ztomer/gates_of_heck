@@ -82,7 +82,7 @@ if a[0] == "exec":
         Path(work, "out", run_id + ".xml").write_text(Path(os.environ["FAKE_JUNIT"]).read_text())
         sys.exit(int(os.environ.get("FAKE_RC", "0")))
     import subprocess
-    sys.exit(subprocess.run([x.replace("/work", work) for x in rest]).returncode)
+    sys.exit(subprocess.run([re.sub(r"/work(?![\w-])", work, x) for x in rest]).returncode)
 if a[0] == "ps":
     sys.exit(0)
 if a[0] == "rm":
@@ -401,3 +401,36 @@ def test_only_new_commits_and_uncommitted_tracked_edits_travel(rig):
     assert (
         "requires" in verify.stdout + verify.stderr and head1[:7] in verify.stdout + verify.stderr
     )
+
+
+def test_every_run_ends_with_the_workers_evictor_under_the_workers_rules(rig):
+    """GOH.REMOTEEVICT: the evictor runs in the container after the shard, at the ceiling and the
+    floor the probe enforces, with what the run used stamped first; it reports, never fails."""
+    copy_closure(rig["tree"], "lib/worker_evict.py")
+    _git(rig["tree"], "add", "-A")
+    _git(rig["tree"], "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "evictor")
+    r = _run(rig, "tests/test_x.py", GOH_REMOTE_CEILING_GB="80", GOH_REMOTE_FREE_FLOOR_GB="0")
+    assert r.returncode == 0, r.stdout + r.stderr
+    line = next(ln for ln in _log(rig).splitlines() if "worker_evict.py run" in ln)
+    assert "--root /work --ceiling-gib 80 --floor-gib 0" in line, line
+    assert "touch /work/tree/target/.goh-used /work/cache/home/.cargo/.goh-used" in line, line
+    assert "worker cache:" in r.stderr, r.stderr
+    assert (rig["remote"] / "cache" / "evict.json").is_file()
+
+
+def test_a_failing_evictor_never_changes_the_runs_verdict(rig):
+    r = _run(rig, "tests/test_x.py")  # the rig's tree carries no lib/worker_evict.py
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "worker evictor failed (the run stands)" in r.stderr
+    assert "3 passed" in r.stdout
+
+
+def test_the_image_carries_sccache_behind_goh_s_wrapper_and_records_its_version():
+    """GOH.REMOTEEVICT: cargo on the worker reuses compiled crates; the version is in the parity
+    record, so a run on an image without it is visible."""
+    text = DOCKERFILE.read_text()
+    assert re.search(r"^ARG SCCACHE_VERSION=\d+\.\d+\.\d+$", text, re.MULTILINE)
+    assert "install -m 0755" in text and "/usr/local/bin/sccache" in text
+    assert re.search(r"RUSTC_WRAPPER=/work/tree/lib/goh-rustc", text)
+    assert re.search(r"SCCACHE_CACHE_SIZE=\d+G", text)
+    assert "sccache --version; } > /opt/goh-worker-versions.txt" in text
