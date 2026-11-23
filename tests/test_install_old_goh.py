@@ -15,11 +15,12 @@ rewrites the consumer's hooks and git config.
 from __future__ import annotations
 
 import hashlib
-import shutil
 import subprocess
 from pathlib import Path
 
 from conftest import REPO_ROOT, git, hermetic_env
+
+from lib import source_closure
 
 # What _goh_copy joins from the tree (lib/declared_reads.py): a change to any re-runs this file.
 TREE_READS = (
@@ -33,15 +34,10 @@ TREE_READS = (
 
 
 def _goh_copy(dest: Path, release: str) -> Path:
-    """A goh checkout copy (what an export holds of install.sh's inputs) at `release`."""
-    for d in ("tui", "hooks"):
-        shutil.copytree(REPO_ROOT / d, dest / d)
-    (dest / "gates").mkdir()
-    shutil.copy2(REPO_ROOT / "gates" / "_hash.sh", dest / "gates" / "_hash.sh")
-    (dest / "lib").mkdir()
-    shutil.copy2(REPO_ROOT / "lib" / "bash5.sh", dest / "lib" / "bash5.sh")
-    for f in ("install.sh", "retired_hooks.sha256"):
-        shutil.copy2(REPO_ROOT / f, dest / f)
+    """A goh checkout copy (what an export holds of install.sh's inputs) at `release`: install.sh
+    and what it sources (source_closure), the stock hooks and the retired list it reads."""
+    hooks = tuple(f"hooks/{p.name}" for p in (REPO_ROOT / "hooks").iterdir() if p.is_file())
+    source_closure.copy_closure(dest, "install.sh", extra=(*hooks, "retired_hooks.sha256"))
     (dest / "CHANGELOG.md").write_text(
         f"# Changelog\n\n## Unreleased\n\n## {release} -- a release\n\n## v0.0.1 -- the first\n"
     )
