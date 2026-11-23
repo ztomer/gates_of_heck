@@ -21,6 +21,16 @@ from pathlib import Path
 
 from conftest import REPO_ROOT, git, hermetic_env
 
+# What _goh_copy joins from the tree (lib/declared_reads.py): a change to any re-runs this file.
+TREE_READS = (
+    "tui/",
+    "hooks/",
+    "gates/_hash.sh",
+    "lib/bash5.sh",
+    "install.sh",
+    "retired_hooks.sha256",
+)
+
 
 def _goh_copy(dest: Path, release: str) -> Path:
     """A goh checkout copy (what an export holds of install.sh's inputs) at `release`."""
