@@ -25,6 +25,10 @@ over GOH_LANE_MIN_FREE_GIB, and memory is not low by mem_admit's own rule. The C
 host's own tick counters (HOST_CPU_LOAD_INFO on macOS, /proc/stat on Linux) sampled twice,
 GOH_CPU_IDLE_WINDOW_S apart (LOOP.FILLIDLE, owner 2026-11-21 "we're at 60% idle cpu"): the load
 average on macOS counts I/O-blocked threads, so it refused at load 63.6 while the CPU was 72% idle.
+Two samples 2 s apart were a coin flip under bursty load (GOH.CAPWINDOW, 2026-11-22: room at 59.6%
+idle, the spawn hook a second later refused at 0.7%), so every reading records its sample in ONE
+state file (GOH_CPU_IDLE_STATE), one self-exiting sampler keeps it warm, and the idle is the mean
+since the newest sample GOH_CPU_IDLE_ROLLING_S (60 s) old; the 2 s sample is the cold fallback.
 The load average is now the SECONDARY signal: it is read and shown, and it judges (the 5-min per
 core over GOH_LANE_LOAD_PER_CORE) only when the idle could not be measured.
 A part that could not be read is listed in `unread`, and a reading with any unread part is judged
@@ -63,6 +67,7 @@ from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import admission
+import cpu_window
 import estate_registry
 import gate_lanes
 import gate_slot
@@ -207,7 +212,9 @@ def cpu_ticks() -> tuple[int, int]:
 
 
 def _cpu_idle() -> dict[str, Any]:
-    """{"idle_pct", "window_s", "source"}: the share of CPU time idle over the sampling window."""
+    """{"idle_pct", "window_s", "source", "samples"}: the share of CPU time idle over the newest
+    window at least GOH_CPU_IDLE_ROLLING_S long the shared state holds (`rolling`), else over a
+    GOH_CPU_IDLE_WINDOW_S sample taken now (`ticks`, the fallback while the state is cold)."""
     seam = os.environ.get("GOH_CPU_IDLE_READING", "").strip()
     if seam:
         try:
@@ -215,18 +222,29 @@ def _cpu_idle() -> dict[str, Any]:
         except ValueError:
             raise ValueError(f"GOH_CPU_IDLE_READING={seam!r} is not a percentage") from None
         return {"idle_pct": pct, "window_s": None, "source": "GOH_CPU_IDLE_READING"}
+    now, (idle1, total1) = time.time(), cpu_ticks()
+    kept, st = cpu_window.record(now, (idle1, total1), reader=True)
+    cpu_window.start_sampler(st, now, __file__)
+    full = [x for x in kept if now - x[0] >= cpu_window.rolling_s()]
+    part = [x for x in kept if now - x[0] >= cpu_window.MIN_PARTIAL_S]
+    base = full[-1] if full else (part[0] if part else None)
+    if base is not None and total1 > base[2]:
+        pct = round(100.0 * (idle1 - base[1]) / (total1 - base[2]), 1)
+        n = sum(1 for x in kept if x[0] >= base[0]) + 1
+        return {"idle_pct": pct, "window_s": round(now - base[0], 1), "source": "rolling",
+                "samples": n}  # fmt: skip
     raw = os.environ.get("GOH_CPU_IDLE_WINDOW_S", "").strip()
     try:
         window = float(raw) if raw else IDLE_WINDOW_S
     except ValueError:
         window = IDLE_WINDOW_S
-    idle0, total0 = cpu_ticks()
     time.sleep(window)
-    idle1, total1 = cpu_ticks()
-    if total1 <= total0:
+    idle2, total2 = cpu_ticks()
+    if total2 <= total1:
         raise OSError("the CPU tick counters did not advance")
-    pct = round(100.0 * (idle1 - idle0) / (total1 - total0), 1)
-    return {"idle_pct": pct, "window_s": window, "source": "ticks"}
+    cpu_window.record(time.time(), (idle2, total2), reader=True)
+    pct = round(100.0 * (idle2 - idle1) / (total2 - total1), 1)
+    return {"idle_pct": pct, "window_s": window, "source": "ticks", "samples": 2}
 
 
 def reading() -> dict[str, Any]:
@@ -290,7 +308,7 @@ def room(r: dict[str, Any], environ: dict[str, str] | None = None) -> dict[str, 
     if idle is not None:  # the measured idle judges; the load average is only shown beside it
         if idle < s["GOH_LANE_MIN_IDLE_PCT"]:
             beside = f" (5-min load {load['avg'][1]:g} on {load['cores']} cores)" if load else ""
-            why.append(f"CPU {idle:g}% idle, under GOH_LANE_MIN_IDLE_PCT="
+            why.append(f"{cpu_window.idle_text(r['cpu'])}, under GOH_LANE_MIN_IDLE_PCT="
                        f"{s['GOH_LANE_MIN_IDLE_PCT']:g}{beside}")  # fmt: skip
     elif load and load["per_core"] > s["GOH_LANE_LOAD_PER_CORE"]:
         why.append(f"5-min load {load['avg'][1]:g} on {load['cores']} cores, "
@@ -313,9 +331,8 @@ def summary(r: dict[str, Any]) -> str:
     """One line of the reading, for a refusal or a warning."""
     s, load, w = r["slots"], r.get("load"), r.get("waiting") or {}
     parts = [f"gate slots {s['held']}/{s['total']} held, {w.get('long', '?')} waiting"]
-    idle = (r.get("cpu") or {}).get("idle_pct")
-    if idle is not None:
-        parts.append(f"CPU {idle:g}% idle")
+    if (r.get("cpu") or {}).get("idle_pct") is not None:
+        parts.append(cpu_window.idle_text(r["cpu"]))
     if load:
         parts.append(f"load {load['avg'][1]:g}/{load['cores']} cores")
     parts.append(f"gates in flight weigh {r['cpu_weight']['in_flight']:g} cores")
@@ -327,7 +344,10 @@ def summary(r: dict[str, Any]) -> str:
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--json", action="store_true", help="the reading as one JSON object")
+    ap.add_argument("--sampler", action="store_true", help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
+    if args.sampler:
+        return cpu_window.sampler(cpu_ticks)
     r = reading()
     verdict = r["room"]
     if args.json:

@@ -239,12 +239,15 @@ def test_low_idle_with_low_load_has_no_room(tmp_path) -> None:
     assert r.returncode == 1 and "CPU 5% idle" in why, why
 
 
-def test_the_idle_is_sampled_from_the_tick_counters_over_a_window(monkeypatch) -> None:
+def test_the_idle_is_sampled_from_the_tick_counters_over_a_window(monkeypatch, tmp_path) -> None:
     samples = iter([(1000, 2000), (1300, 2400)])  # 300 of 400 ticks idle over the window
     monkeypatch.setattr(capacity, "cpu_ticks", lambda: next(samples))
     monkeypatch.delenv("GOH_CPU_IDLE_READING", raising=False)
     monkeypatch.setenv("GOH_CPU_IDLE_WINDOW_S", "0")
-    assert capacity._cpu_idle() == {"idle_pct": 75.0, "window_s": 0.0, "source": "ticks"}
+    monkeypatch.setenv("GOH_CPU_IDLE_STATE", str(tmp_path / "cpu_idle.json"))  # cold: the fallback
+    monkeypatch.setenv("GOH_CPU_SAMPLER", "off")
+    cpu = {"idle_pct": 75.0, "window_s": 0.0, "source": "ticks", "samples": 2}
+    assert capacity._cpu_idle() == cpu
 
 
 def test_an_unmeasured_idle_falls_back_to_the_load_average() -> None:
