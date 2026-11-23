@@ -18,6 +18,7 @@ from test_reuse_audit import fake_loopctl, filed, store  # noqa: F401  (fixtures
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import flakes  # lib/, after its path
+import land_records
 import reuse_audit
 
 STEP = {"repo": "/r/.git", "tree": "t" * 40, "step": "./gates/rust_gate.sh", "closure": "off",
@@ -93,13 +94,16 @@ def test_a_re_enqueue_on_the_same_commit_that_lands_is_a_pass_on_retry(tmp_path)
     (done / "02-GOH.LANE.json").write_text(json.dumps(red))
     landed = {"state": "landed", "mode": "land", "sha": "d" * 40, "enqueued": tip, "attempt": 3,
               "repo": "/p/gates_of_heck", "log": "/q/green.log"}  # fmt: skip
-    got = flakes.land_retry(done.parent, "GOH.LANE", landed)
+    got = flakes.land_retry(land_records.records(done.parent), "GOH.LANE", landed)
     [rec] = _rows(flakes.register())
     assert got == {"flakes": [{"entry": rec["id"], "test": TEST, "filed": ""}]}, got
     assert rec["load"] == 61.5 and rec["log"] == {"first": "/q/red.log", "second": "/q/green.log"}
     [line] = flakes.said({**landed, **got})
     assert f"flake register entry {rec['id']}" in line and "flaky" not in line, line
-    assert flakes.land_retry(done.parent, "GOH.LANE", {**landed, "attempt": 1}) == {}
+    assert (
+        flakes.land_retry(land_records.records(done.parent), "GOH.LANE", {**landed, "attempt": 1})
+        == {}
+    )
 
 
 def test_the_lander_names_the_register_entry_on_the_landing_record(tmp_path, monkeypatch):

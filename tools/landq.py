@@ -242,7 +242,7 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
     outcome.update(land_slot.done(q, req), **landq_report.slot_waits(outcome))
     land_prestep.discard(req, q, land_prestep.conflict_red(outcome))  # LANDLEAKS
     outcome.update(item=named, attempt=land_attempts.attempt_of(q, named))
-    outcome.update(flakes.land_retry(q, named, outcome))  # a re-enqueue's pass, if any
+    outcome.update(flakes.land_retry(land_records.records(q), named, outcome))  # a retry's pass
     outcome.update(land_check.fields(outcome, req))  # its guard; cov_risk (GOH.DIFFCOVLAND)
     outcome.update(land_reds.fields(outcome))  # a red's tests and cause class (GOH.REDREVIEW)
     # A landing that leaves its own uncovered lines files their fix item now (GOH.DIFFCOVCARRY).
