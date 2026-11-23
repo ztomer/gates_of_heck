@@ -48,9 +48,10 @@ from typing import Any
 from tui.lib import counted, err, info, ok, warn
 
 try:
-    from lib import land_cause, landq_remote, selection_miss
+    from lib import land_cause, land_records, landq_remote, selection_miss
 except ImportError:  # run with lib/ itself on the path (tools/landq.py)
     import land_cause  # type: ignore[no-redef]
+    import land_records  # type: ignore[no-redef]
     import landq_remote  # type: ignore[no-redef]
     import selection_miss  # type: ignore[no-redef]
 
@@ -200,14 +201,12 @@ def read_attempts(queue: Path, birth_of: Callable[[Path], float | None] = birth)
     """Every done record as an Attempt; `birth_of` is the log-birth seam (a test sets it)."""
     out: list[Attempt] = []
     recs: list[tuple[Path, dict]] = []
-    for path in sorted((queue / "done").glob("*.json")):
+    for run, rec in land_records.records(queue):  # goh.db, and done/ files with no row (S1)
         try:
-            rec = json.loads(path.read_text())
-            _stem_parts(path.stem)
-        except (OSError, ValueError):
+            _stem_parts(run)
+        except ValueError:
             continue
-        if isinstance(rec, dict):
-            recs.append((path, rec))
+        recs.append((Path(f"{run}.json"), rec))
     users: dict[str, int] = {}
     for _, rec in recs:
         users[str(rec.get("log") or "")] = users.get(str(rec.get("log") or ""), 0) + 1

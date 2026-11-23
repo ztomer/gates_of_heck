@@ -9,8 +9,8 @@ pre-land tests failed` (30), so no cause could be counted. This module is the co
                       the instrument is never the reason a land fails.
     classify(...)     the deterministic rules below over the record, its log and the failing
                       tests' own source at the record's commit; the first rule that applies wins.
-    backfill(q)       classifies every red record in `<q>/done/` already written, read-only over
-                      the records: the answers go to the side file `<q>/red_causes.json`.
+    backfill(q)       classifies every red land record already written, read-only over the
+                      records: the answers go to goh.db's red_causes (lib/land_records.py).
     report(q, last)   `goh land-reds [--last N] [--json] [--backfill]`: the classes by count over
                       the newest N records, each with example records.
 
@@ -54,6 +54,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gitrun  # lib/: git under a deadline, no lock stranded
 import land_cause  # lib/: FAILED node ids and the structural step's line
+import land_records  # lib/: the land records' door (GOH.STATEDB)
 import landq_state  # lib/: one writer of every state record
 
 CLASSES = (
@@ -66,7 +67,6 @@ CLASSES = (
     "real-bug",
     "other",
 )
-SIDE = "red_causes.json"
 FAILING = re.compile(r"failing: ([^)]+)\)")
 TABLE_NAME = re.compile(
     r"::test_(?:every|no)_|_rows?(?:_|$)|table|manifest|allow(?:list|ed)?_|documented|_map_|"
@@ -246,16 +246,8 @@ def fields(outcome: dict) -> dict:
 
 
 def records(q: Path) -> list[tuple[str, dict]]:
-    """`(name, record)` for every done/ record, oldest first."""
-    out = []
-    for path in sorted((q / "done").glob("*.json")):
-        try:
-            rec = json.loads(path.read_text())
-        except (OSError, ValueError):
-            continue
-        if isinstance(rec, dict):
-            out.append((path.name, rec))
-    return out
+    """`(name, record)` for every land record (lib/land_records.py), oldest first."""
+    return [(f"{run}.json", rec) for run, rec in land_records.records(q)]
 
 
 def _item(name: str, rec: dict) -> str:
@@ -278,9 +270,7 @@ def backfill(q: Path) -> int:
             for n, r in later
         )
         side[name] = judge(rec, retried=retried)
-    tmp = q / f".{SIDE}.{os.getpid()}"
-    tmp.write_text(json.dumps(side, indent=1, sort_keys=True) + "\n")
-    tmp.replace(q / SIDE)
+    land_records.set_causes(q, side)
     return len(side)
 
 
@@ -289,10 +279,7 @@ def report(q: Path, last: int = 0) -> dict:
     with up to three example records. A record's own `red_cause` wins over the side file's."""
     recs = records(q)
     recs = recs[-last:] if last else recs
-    try:
-        side = json.loads((q / SIDE).read_text())
-    except (OSError, ValueError):
-        side = {}
+    side = land_records.causes(q)
     classes: dict[str, dict] = {}
     red = 0
     for name, rec in recs:
@@ -337,13 +324,11 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="goh land-reds", description=__doc__.split("\n")[0])
     ap.add_argument("--last", type=int, default=0, help="only the newest N records (default all)")
     ap.add_argument("--json", action="store_true", help="the report as JSON")
-    ap.add_argument(
-        "--backfill", action="store_true", help=f"classify every red record into <landq>/{SIDE}"
-    )
+    ap.add_argument("--backfill", action="store_true", help="classify every red record into goh.db")
     args = ap.parse_args(argv)
     q = qdir()
     if args.backfill:
-        sys.stderr.write(f"{backfill(q)} red records classified into {q / SIDE}\n")
+        sys.stderr.write(f"{backfill(q)} red records classified into goh.db\n")
     rep = report(q, args.last)
     if args.json:
         sys.stdout.write(json.dumps(rep, indent=1) + "\n")

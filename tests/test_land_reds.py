@@ -16,6 +16,8 @@ import pytest
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import _goh_db_fixture as gdb
+import land_records
 import land_reds as lr
 from timing_bounds import patience
 
@@ -203,7 +205,8 @@ def _done(q, name, rec):
     (q / "done" / name).write_text(json.dumps(rec))
 
 
-def test_backfill_writes_only_the_side_file_and_the_report_counts_it(tmp_path):
+def test_backfill_writes_only_the_side_table_and_the_report_counts_it(tmp_path, monkeypatch):
+    gdb.use(monkeypatch, tmp_path)
     q = tmp_path / "landq"
     t = "tests/test_base_table.py::test_every_base_file_has_one_true_row"
     _done(q, "01-GOH.A.json", {"state": "red", "sha": "a1", "item": "GOH.A", "why": PRE.format(t)})
@@ -217,7 +220,7 @@ def test_backfill_writes_only_the_side_file_and_the_report_counts_it(tmp_path):
     before = {p.name: p.read_text() for p in (q / "done").iterdir()}
     assert lr.backfill(q) == 3
     assert {p.name: p.read_text() for p in (q / "done").iterdir()} == before  # read-only
-    side = json.loads((q / lr.SIDE).read_text())
+    side = land_records.causes(q)
     assert side["01-GOH.A.json"]["cause"] == "consistency-table"
     assert side["02-GOH.B.json"]["cause"] == "flake"  # the same commit landed later
     rep = lr.report(q)
@@ -235,7 +238,8 @@ def test_goh_land_reds_prints_the_classes_and_json(tmp_path):
     q = tmp_path / "landq"
     _done(q, "01-GOH.A.json", {"state": "red", "item": "GOH.A", "why": "tip moved after enqueue"})
     _done(q, "02-GOH.B.json", {"state": "landed", "item": "GOH.B"})
-    env = {"GOH_LANDQ_DIR": str(q), "GOH_LIVE": "1", "PATH": "/usr/bin:/bin"}
+    env = {"GOH_LANDQ_DIR": str(q), "GOH_LIVE": "1", "PATH": "/usr/bin:/bin",
+           "GOH_DB": str(tmp_path / "goh.db")}  # fmt: skip
     run = [sys.executable, str(REPO_ROOT / "lib" / "land_reds.py")]
     kw = {"capture_output": True, "text": True, "env": env}
     text = subprocess.run(

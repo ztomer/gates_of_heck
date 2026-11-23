@@ -20,16 +20,17 @@ from conftest import REPO_ROOT
 # store -> the files that name it today (2026-11-23), each removed by the lane that moves the store
 ALLOWED: dict[str, set[str]] = {
     "land records": {  # S1 goh.db 0002 lands
+        # the door's file half: done/ files from before the switch are read, and still written for
+        # .loop's readers and old HEAD exports, until wave 3's delete commit removes it
+        "lib/land_records.py",
         "lib/admit_replay.py",
         "lib/diffcov_carry.py",
         "lib/land_attempts.py",
         "lib/land_check.py",
         "lib/land_e2e.py",
         "lib/land_profile.py",
-        "lib/land_reds.py",
         "lib/landq_alone.py",
         "lib/landq_look.py",
-        "lib/landq_report.py",
         "lib/landq_size.py",
         "lib/landq_window.py",
         "lib/selection_miss.py",
