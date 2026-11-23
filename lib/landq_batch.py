@@ -158,8 +158,9 @@ def alone(req: dict) -> bool:
     """A `--no-pre` land (GOH.NOPREBATCH): the pre-step's tests never ran on its tree, so it is
     judged alone, where a red it carries can take down no other land's cycle. GOH.NITS3 was
     enqueued `--no-pre`, batched with two clean lands, and its clippy finding turned all three
-    red (2026-11-23)."""
-    return bool(req.get("no_pre"))
+    red (2026-11-23). So is a land red on its last attempt, until it lands once (GOH.REDALONE,
+    lib/landq_alone.py, which says where each mark is put)."""
+    return bool(req.get("no_pre") or req.get("red_last"))
 
 
 @dataclass

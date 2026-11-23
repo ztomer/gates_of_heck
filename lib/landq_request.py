@@ -10,6 +10,7 @@ from pathlib import Path
 
 gitrun = importlib.import_module("gitrun")
 land_slot = importlib.import_module("land_slot")
+landq_alone = importlib.import_module("landq_alone")
 
 
 class Refused(Exception):
@@ -78,4 +79,6 @@ def land_request(wt_arg: str, item: str, q: Path | None = None) -> dict:
         except land_slot.Unavailable as e:
             raise Refused(f"no checkout of {sha[:8]} for the land: {e}") from None
         req.update(lane=str(wt), worktree=slot["path"], slot=slot["token"], slot_s=slot["s"])
+        if red := landq_alone.red_last(q, item):  # gates alone until it lands (GOH.REDALONE)
+            req["red_last"] = red
     return req
