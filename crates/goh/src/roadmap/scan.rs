@@ -78,6 +78,8 @@ pub enum Rule {
     QueueDone,
     /// A phase past the fifth.
     Phases,
+    /// A tracked file citing an id the roadmap does not hold (`super::cite`).
+    DeadId,
 }
 
 impl Rule {
@@ -92,6 +94,7 @@ impl Rule {
             Self::Orphan => "orphan-done-when",
             Self::QueueDone => "queue-done",
             Self::Phases => "phases",
+            Self::DeadId => super::cite::KEY,
         }
     }
 }
@@ -216,6 +219,25 @@ fn bold_entry(lines: &[String], i: usize) -> Option<String> {
     }
     let title = BOLD.captures(&lines[i])?.get(1)?.as_str();
     entry_id(title).map(|_| title.to_owned())
+}
+
+/// Every id that opens a heading, list item (any depth), table cell or bold line of `text`: the
+/// ids the roadmap HOLDS, for a citation elsewhere to resolve against (`super::cite`).
+#[must_use]
+pub fn opening_ids(text: &str) -> std::collections::BTreeSet<String> {
+    let mut ids = std::collections::BTreeSet::new();
+    for line in readable(text) {
+        if let Some((_, t)) = heading(&line) {
+            ids.extend(entry_id(t));
+        } else if let Some(c) = ANY_ITEM.captures(&line) {
+            ids.extend(entry_id(c.get(1).map_or("", |m| m.as_str())));
+        } else if line.trim().starts_with('|') {
+            ids.extend(line.split('|').filter_map(|cell| entry_id(cell.trim())));
+        } else if let Some(c) = BOLD.captures(&line) {
+            ids.extend(c.get(1).and_then(|t| entry_id(t.as_str())));
+        }
+    }
+    ids
 }
 
 /// The heading level and text of a line, if it is an ATX heading.

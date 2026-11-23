@@ -257,3 +257,51 @@ def test_a_commit_that_brings_no_plan_is_not_billed_for_the_queue_but_the_push_i
     commit_all(repo)
     r = _structural(repo, queue, "--full")
     assert r.returncode == 1 and "ROADMAP.md:11" in r.stdout + r.stderr, r.stdout + r.stderr
+
+
+# GOH.ROADMAPIDS: a tracked file citing a roadmap id the roadmap no longer holds.
+G6 = "ROADMAP G6"  # roadmap-ok: the fixture's dead citation
+OLD = "backlog 6.2"  # roadmap-ok: the fixture's dead citation, by the plan file's stem
+ALIVE = "roadmap RT.ONE"  # roadmap-ok: held by the fixture's roadmap
+HELD = "ROADMAP.md P0.4, roadmap AU.WAF and `ROADMAP` R1"  # roadmap-ok: all held
+CITING = {
+    ".github/workflows/ci.yml": f"# closes {G6} (dead)\n# see {ALIVE} (alive)\n",
+    "src/a.py": f"# {HELD} are all held\n",
+    "src/b.rs": f"// ({OLD}) dead too: the plan's own stem is read, any case\n",
+    "src/c.py": f"# {G6} roadmap-ok: a fixture quoting it on purpose\n",
+    "CHANGELOG.md": f"- closes {G6}: history keeps the ids it closed\n",
+    "changelog/X.md": f"closes {G6}\n",
+    "vendor/lib.py": f"# {G6} is someone else's roadmap\n",
+}
+
+
+def test_a_dead_roadmap_id_cited_in_a_tracked_file_is_red(repo, queue):
+    fixture(repo, CLEAN, **CITING)
+    write(repo, ".gatesrc", "GOH_ROADMAP=docs/BACKLOG.md\n")
+    write(repo, "docs/BACKLOG.md", CLEAN)
+    git(repo, "rm", "-q", "ROADMAP.md")
+    commit_all(repo)
+    r = roadmap(repo, queue, env_extra={"GOH_GRACE": "over"})
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert f".github/workflows/ci.yml:1: {G6}" in r.stderr, r.stderr
+    assert f"src/b.rs:1: {OLD}" in r.stderr, r.stderr
+    for clean in ("RT.ONE", "src/a.py", "src/c.py", "CHANGELOG", "changelog/", "vendor/"):
+        assert clean not in r.stderr, (clean, r.stderr)
+
+
+def test_a_dead_roadmap_id_is_a_warning_within_its_grace_and_seeds(repo, queue):
+    fixture(repo, CLEAN, **{"ci.yml": f"# closes {G6}\n"})
+    r = roadmap(repo, queue, env_extra={"GOH_GRACE": "within"})
+    out = r.stdout + r.stderr
+    assert r.returncode == 0 and f"ci.yml:1: {G6}" in out, out
+    # the week is the consumer's to seed in: the new key may rise against HEAD's seed
+    assert roadmap(repo, queue, "--seed", env_extra={"GOH_GRACE": "within"}).returncode == 0
+    seed = json.loads((repo / "roadmap_seed.json").read_text())
+    assert seed["entries"] == {"ci.yml#dead-id": 1}, seed
+    stage(repo, "roadmap_seed.json")
+    env = hermetic_env(GOH_ROADMAP_QUEUE=str(queue), GOH_GRACE="within")
+    r = run_goh(repo, "structural", "--staged", env=env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    commit_all(repo)
+    r = roadmap(repo, queue, env_extra={"GOH_GRACE": "over"})
+    assert r.returncode == 0, r.stdout + r.stderr

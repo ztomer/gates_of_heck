@@ -281,3 +281,62 @@ fn within_the_grace_a_bold_paragraph_is_read_as_the_release_read_it() {
         "only the clause anchor saw the entries"
     );
 }
+
+// ── rule 5: a dead roadmap id (GOH.ROADMAPIDS) ─────────────────────────────────────────────────
+
+#[test]
+fn rule_5_a_citation_names_its_words_and_an_id_shaped_id() {
+    use super::cite;
+    let words = cite::words("docs/BACKLOG.md");
+    assert_eq!(words, ["roadmap", "backlog"]);
+    let re = cite::pattern(&words);
+    let text = concat!(
+        "closes ROADMAP G6\n",                       // roadmap-ok: the fixture
+        "(backlog 6.2) and `docs/BACKLOG.md` 4.3\n", // roadmap-ok: the fixture
+        "roadmap item RT.ONE\n",                     // roadmap-ok: the fixture
+        "the roadmap Rule, ROADMAP Phase L\n",
+        "GOH_ROADMAP=docs\nroadmap_seed.json P1\n",
+        "ROADMAP X9 roadmap-ok: quoted on purpose\n", // roadmap-ok: the fixture
+    );
+    let got: Vec<_> = cite::citations(text, &re)
+        .into_iter()
+        .map(|(line, _, id)| (line, id))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            (1, "G6".to_owned()),
+            (2, "6.2".to_owned()),
+            (2, "4.3".to_owned()),
+            (3, "RT.ONE".to_owned())
+        ]
+    );
+}
+
+#[test]
+fn rule_5_a_roadmap_holds_every_id_an_entry_ruling_row_or_bold_line_opens_with() {
+    let held = super::cite::held(CLEAN);
+    for id in ["R1", "RT.WINCLOSE", "P0.4", "AU.WAF", "H1"] {
+        assert!(held.contains(id), "{id}: {held:?}");
+    }
+    assert!(!held.contains("OW.2"), "a queue citation is not an entry");
+    let table = super::cite::held("| G6 | a row |\n|---|---|\n**KB.12 Bold.** text\n");
+    assert!(!table.contains("X9"));
+    assert!(table.contains("G6") && table.contains("KB.12"), "{table:?}");
+}
+
+#[test]
+fn rule_5_reads_no_history_vendor_roadmap_or_seed() {
+    use super::cite::read_here;
+    for skipped in [
+        "docs/BACKLOG.md",
+        "roadmap_seed.json",
+        "CHANGELOG.md",
+        "changelog/GOH.X.md",
+        "vendor/x.py",
+        "a/third_party/b.rs",
+    ] {
+        assert!(!read_here(skipped, "docs/BACKLOG.md"), "{skipped}");
+    }
+    assert!(read_here(".github/workflows/ci.yml", "docs/BACKLOG.md"));
+}

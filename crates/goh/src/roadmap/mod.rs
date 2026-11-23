@@ -13,7 +13,10 @@
 //!      clause outside every entry is a finding (the anchor that keeps the entry grammar honest);
 //!   4. an entry citing `(queue: <ID>)` whose umbrella item is done is a finding (a private Swift
 //!      app's advisory `tools/check_stale_backlog.py`, generalised; the queue is a seam,
-//!      `queue.rs`).
+//!      `queue.rs`);
+//!   5. a tracked file citing a roadmap id the roadmap no longer holds (a workflow closing a
+//!      pruned entry, a comment citing an old backlog number) is a finding, keyed
+//!      `<file>#dead-id` (`cite.rs`, GOH.ROADMAPIDS; judged from its own grace's end).
 //!
 //! Today's findings are DEBT held by `roadmap_seed.json` (`judge.rs`): a count per `<file>#<rule>`
 //! that may only fall. `GOH_ROADMAP` unset is red in every repo and every fixture (GOH.ROADMAPREQ;
@@ -24,6 +27,7 @@
 //! roadmap, its seed, `.gatesrc` or a plan file -- the queue moves under a repo, and a commit
 //! about something else is not the place to bill it; the push (`--full`) judges every rule.
 
+pub mod cite;
 pub mod judge;
 pub mod queue;
 pub mod scan;
@@ -66,13 +70,14 @@ impl Declared {
 /// Read every rule over `tree` (repo-relative, the scope's listing).
 ///
 /// `queue` is asked only when the roadmap cites the queue. `bold`: the bold-paragraph entry shape
-/// is read, judged from `crate::grace::OVER_FROM` (`scan::read_in`).
+/// is read, judged from `crate::grace::OVER_FROM` (`scan::read_in`). `cite`: rule 5 is read
+/// (`cite::over`).
 pub fn gather(
     root: &Path,
     tree: &[String],
     exclude: Option<&crate::pathfilter::PathFilter>,
     declared: &Declared,
-    (staged, bold): (bool, bool),
+    (staged, bold, cite): (bool, bool, bool),
     queue: impl FnOnce() -> Result<BTreeMap<String, String>, String>,
 ) -> Gathered {
     let roadmap = match declared {
@@ -109,7 +114,11 @@ pub fn gather(
         ));
         return g;
     };
-    let read = scan::read_in(&String::from_utf8_lossy(&text), bold);
+    let text = String::from_utf8_lossy(&text);
+    if cite {
+        dead_ids(root, tree, exclude, (&roadmap, &text), staged, &mut g);
+    }
+    let read = scan::read_in(&text, bold);
     g.entries = read.entries.len();
     g.phases = read.phases;
     let mut findings = read.findings;
@@ -150,6 +159,54 @@ pub fn gather(
     g
 }
 
+/// Rule 5 over the tree: every citation of an id the roadmap `text` does not hold.
+fn dead_ids(
+    root: &Path,
+    tree: &[String],
+    exclude: Option<&crate::pathfilter::PathFilter>,
+    (roadmap, text): (&str, &str),
+    staged: bool,
+    g: &mut Gathered,
+) {
+    let words = cite::words(roadmap);
+    let refs: Vec<&str> = words.iter().map(String::as_str).collect();
+    let candidates = match crate::gitutil::grep_files(root, &refs, staged) {
+        Ok(c) => c,
+        Err(m) => {
+            g.hard.push(format!(
+                "rule 5 (a dead roadmap id) cannot list its files: {m}"
+            ));
+            return;
+        }
+    };
+    let listed: std::collections::BTreeSet<&str> = tree.iter().map(String::as_str).collect();
+    let held = cite::held(text);
+    let re = cite::pattern(&words);
+    for rel in candidates {
+        if !listed.contains(rel.as_str())
+            || !cite::read_here(&rel, roadmap)
+            || exclude.is_some_and(|x| x.is_match(&rel))
+        {
+            continue;
+        }
+        let Some(bytes) = crate::gitutil::content_bytes(root, &rel, staged) else {
+            continue;
+        };
+        for (line, said, id) in cite::citations(&String::from_utf8_lossy(&bytes), &re) {
+            if held.contains(&id) {
+                continue;
+            }
+            g.found
+                .entry(format!("{rel}#{}", cite::KEY))
+                .or_default()
+                .push(format!(
+                    "{rel}:{line}: {said}: {roadmap} holds no {id}; cite the entry, ruling or \
+                     commit that holds it now, or drop the citation"
+                ));
+        }
+    }
+}
+
 /// The seed at this scope (the index at `--staged`) and the one HEAD carries.
 type Seeds = (BTreeMap<String, usize>, Option<BTreeMap<String, usize>>);
 
@@ -181,6 +238,22 @@ fn unset_note(tree: &[String]) -> String {
     )
 }
 
+/// `base` with every rule-5 key at least `now`'s count while that rule is within its grace.
+fn graced(
+    mut base: BTreeMap<String, usize>,
+    now: &BTreeMap<String, usize>,
+    over: bool,
+) -> BTreeMap<String, usize> {
+    if !over {
+        let suffix = format!("#{}", cite::KEY);
+        for (key, &n) in now.iter().filter(|(k, _)| k.ends_with(&suffix)) {
+            let was = base.entry(key.clone()).or_default();
+            *was = (*was).max(n);
+        }
+    }
+    base
+}
+
 /// The verdict for a repo: (exit code, report).
 fn verdict(
     root: &Path,
@@ -205,33 +278,35 @@ fn verdict(
         Ok(x) => x,
         Err(m) => return (2, format!("{ERR} {TAG} {m}\n")),
     };
-    let over = crate::grace::over();
+    let (over, cite_over) = (crate::grace::over(), cite::over());
     let mut g = gather(
         root,
         &tree,
         exclude.as_ref(),
         &declared,
-        (staged, over),
+        (staged, over, cite_over),
         || queue::load(queue_flag),
     );
     match seeds(root, staged) {
         Ok((now, head)) => {
-            // Bold-paragraph entries are judged from the grace's end: shown, and a seeded key
-            // held, now (GOH.GRACESHAPES).
+            // Bold-paragraph entries and rule 5 are judged from their graces' ends: shown, and a
+            // seeded key held, now (GOH.GRACESHAPES).
             let mut warn = String::new();
-            if !over {
+            if !(over && cite_over) {
                 let day = gather(
                     root,
                     &tree,
                     exclude.as_ref(),
                     &declared,
-                    (staged, true),
+                    (staged, true, true),
                     || queue::load(queue_flag),
                 );
                 let shown =
                     crate::grace::ahead::shown(TAG, std::mem::take(&mut g.found), &day.found, &now);
                 (g.found, warn) = (shown.held, shown.warn);
             }
+            // Within rule 5's grace its keys are the repo's to seed: they may rise against HEAD.
+            let head = head.map(|h| graced(h, &now, cite_over));
             let (code, text) = judge::judge(&g, &now, head.as_ref());
             (
                 code,
@@ -289,16 +364,22 @@ fn write_seed(root: &Path, cfg: &crate::gatesrc::Gatesrc, queue_flag: Option<&st
             return 2;
         }
     };
+    // A seed is written for the day: rule 5 is read within its grace, the week to seed it in.
     let g = gather(
         root,
         &tree,
         exclude.as_ref(),
         &declared,
-        (false, crate::grace::over()),
+        (false, crate::grace::over(), true),
         || queue::load(queue_flag),
     );
+    let found: BTreeMap<String, usize> =
+        g.found.iter().map(|(k, v)| (k.clone(), v.len())).collect();
     let old = match seeds(root, false) {
-        Ok((now, _)) => root.join(SEED_FILE).exists().then_some(now),
+        Ok((now, _)) => root
+            .join(SEED_FILE)
+            .exists()
+            .then(|| graced(now, &found, cite::over())),
         Err(m) => {
             goh_tui::eoutln!("{ERR} {TAG} {m}");
             return 2;
