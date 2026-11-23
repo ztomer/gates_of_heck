@@ -55,7 +55,7 @@ pub const SHAPES: Declared = Declared {
             name: "a goh action by commit",
             path: r"^\.github/",
             line: r"uses:\s*\S+/gates_of_heck/",
-            verdict: Verdict::Gap("GOH.WFPINACTION"),
+            verdict: Verdict::Covered,
             fixture: (
                 ".github/workflows/ci.yml",
                 "on: push\njobs:\n  g:\n    runs-on: ubuntu-24.04\n    steps:\n      - uses: o/gates_of_heck/.github/actions/goh-floors@274ce50e3d4f820de845cedfe85ac69aa6910a1e # v0.54.1\n",

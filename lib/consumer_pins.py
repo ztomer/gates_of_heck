@@ -85,6 +85,9 @@ class Pin:
     start: int  # the version's span within the line
     end: int
     tag: str
+    # The span is a goh action's COMMIT (`uses: OWNER/gates_of_heck/<action>@<sha> # vX.Y.Z`,
+    # GOH.WFPINACTION), moved to the commit of the release its tag pin beside it moves to.
+    commit: bool = False
 
 
 def rewrite(text: str, moves: list[tuple[Pin, str]]) -> str:

@@ -21,7 +21,9 @@ checkout at no release, and a tag-reading gate job on a shallow clone.
 THE PINS IT READS, in a tracked `.github/workflows/*.yml|yaml` that names goh's repository:
   * `repository: OWNER/gates_of_heck` with `ref: vX.Y.Z` in the same `with:` mapping;
   * `GOH_TAG: vX.Y.Z` (the clone reads "$GOH_TAG");
-  * `git clone ... --branch vX.Y.Z https://github.com/OWNER/gates_of_heck` on one line.
+  * `git clone ... --branch vX.Y.Z https://github.com/OWNER/gates_of_heck` on one line;
+  * `uses: OWNER/gates_of_heck/<action>@vX.Y.Z`, or `@<commit> # vX.Y.Z`, whose commit and tag both
+    move (GOH.WFPINACTION); a goh action at a commit naming no release is UNPINNED.
 A goh checkout or clone with no pin at all is listed as UNPINNED and never rewritten: choosing its
 first pin is the repo's decision. Comments are prose and are not rewritten.
 
@@ -107,8 +109,20 @@ def scan(text: str, slug: str) -> Scan:
     goh_tag = re.compile(rf"^\s*GOH_TAG:\s*['\"]?({TAG})['\"]?\s*(?:#.*)?$")
     clone = re.compile(rf"\bgit clone\b.*github\.com/{s}(?:\.git)?\b")
     branch = re.compile(rf"--branch[ =]['\"]?({TAG})['\"]?")
+    action = re.compile(rf"^\s*(?:-\s+)?uses:\s*['\"]?{s}/[^@\s'\"]+@([^\s'\"]+)['\"]?(.*)$")
+    beside = re.compile(rf"#\s*({TAG})\b")
     for i, line in enumerate(lines):
-        if repo_line.match(line):
+        if m := action.match(line):
+            ref = m.group(1)
+            c = beside.search(line, m.start(2))
+            if re.fullmatch(TAG, ref):
+                pins.append(Pin(i + 1, m.start(1), m.end(1), ref))
+            elif re.fullmatch(r"[0-9a-f]{7,40}", ref) and c:
+                pins.append(Pin(i + 1, m.start(1), m.end(1), c.group(1), commit=True))
+                pins.append(Pin(i + 1, c.start(1), c.end(1), c.group(1)))
+            else:
+                unpinned.append(i + 1)
+        elif repo_line.match(line):
             refs = [j for j in _mapping(lines, i) if any_ref.match(lines[j])
                     and _indent(lines[j]) == _indent(line.replace("- ", "  ", 1))]  # fmt: skip
             m = ref_line.match(lines[refs[0]]) if refs else None
@@ -163,10 +177,19 @@ def stale(repo: Path, slug: str, tag: str) -> tuple[dict[str, list[Pin]], dict[s
     return old, loose
 
 
+def release_commit(goh: Path, tag: str) -> str | None:
+    """The full commit TAG names in goh, what a goh action used by commit is moved to."""
+    out = _git(goh, "rev-parse", "-q", "--verify", f"{tag}^{{commit}}").stdout.strip()
+    return out if re.fullmatch(r"[0-9a-f]{40}", out) else None
+
+
 def bump(repo: Path, old: dict[str, list[Pin]], rold: dict[str, list[Pin]], tag: str,
-         ruff: str) -> tuple[str, str]:  # fmt: skip
+         ruff: str, commit: str | None = None) -> tuple[str, str]:  # fmt: skip
     """Move REPO's stale goh pins (OLD) and ruff pins (ROLD) in one commit, never pushed here (the
-    sweep's): (committed | refused | set_aside, one line saying what happened)."""
+    sweep's): (committed | refused | set_aside, one line saying what happened). A goh action's
+    commit moves to COMMIT, TAG's commit; with none known, that repo is refused, named."""
+    if commit is None and any(p.commit for pins in old.values() for p in pins):
+        return "refused", f"NOT committed: a goh action is pinned by commit; {tag}'s is unknown"
     lock, relock = consumer_pins.relock(repo, sorted(rold), ruff)
     paths = sorted({*old, *rold, *lock})
     if why := estate_commit.set_aside(repo, paths):
@@ -178,7 +201,7 @@ def bump(repo: Path, old: dict[str, list[Pin]], rold: dict[str, list[Pin]], tag:
         def write() -> str | None:
             for rel in sorted({*old, *rold}):
                 p = repo / rel
-                moves = [(q, tag) for q in old.get(rel, [])] + [
+                moves = [(q, commit if q.commit else tag) for q in old.get(rel, [])] + [
                     (q, ruff) for q in rold.get(rel, [])
                 ]
                 p.write_text(consumer_pins.rewrite(p.read_text(encoding="utf-8"), moves),
@@ -241,6 +264,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     kept = {p.expanduser().resolve() for p in a.kept}
     ruff = consumer_pins.ruff_pin()
+    commit = release_commit(GOH, tag)
     n_stale = n_ahead = 0
     jobs: list[tuple[str, Callable[[], tuple[str, str]]]] = []
     record: dict[str, dict[str, str]] = {}
@@ -269,7 +293,7 @@ def main(argv: list[str] | None = None) -> int:
             info(f"{where}: {named}; set aside (--except): left for its owner")
             record[where] = {"status": "kept", "said": "--except: left for its owner"}
         else:
-            jobs.append((where, partial(bump, repo, old, rold, tag, ruff)))
+            jobs.append((where, partial(bump, repo, old, rold, tag, ruff, commit)))
 
     # Each consumer's commit is its own: moved side by side (GOH.SHIPPROFILE).
     def said(where: str, status: str, why: str) -> None:

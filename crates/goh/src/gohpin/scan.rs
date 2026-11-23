@@ -39,6 +39,16 @@ static BRANCH: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?:--branch|-b)[ =]['"]?(v\d+\.\d+\.\d+)['"]?(?:\s|$)"#)
         .unwrap_or_else(|e| unreachable!("a constant pattern: {e}"))
 });
+/// A goh action by reference: `uses: OWNER/gates_of_heck/<path>@<ref>` (GOH.WFPINACTION).
+static GOH_ACTION: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^\s*[\w.-]+/gates_of_heck/[^@\s]+@(\S+)\s*$")
+        .unwrap_or_else(|e| unreachable!("a constant pattern: {e}"))
+});
+/// The release a commit-pinned `uses:` names beside it: `@<sha> # vX.Y.Z`.
+static RELEASE_COMMENT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"#\s*(v\d+\.\d+\.\d+)\b")
+        .unwrap_or_else(|e| unreachable!("a constant pattern: {e}"))
+});
 static MAKE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\bmake\s+(?:-\S+\s+)*([\w.-]+)")
         .unwrap_or_else(|e| unreachable!("a constant pattern: {e}"))
@@ -136,9 +146,46 @@ fn env_pins(node: &MarkedYaml, own: Version, out: &mut Vec<Finding>) {
     }
 }
 
-/// The pins in one step: a checkout of goh (`repository:` + `ref:`) or a `git clone` of it.
+/// A goh action used by reference (GOH.WFPINACTION): a release tag is judged as written; a commit is
+/// judged on the release its line names beside it (`@<sha> # vX.Y.Z`, how every pinned action is
+/// written); a commit naming none, or a branch, is unpinned.
+fn action_pin(step: &MarkedYaml, lines: &[&str], own: Version, out: &mut Vec<Finding>) {
+    let Some(uses) = get(step, "uses") else {
+        return;
+    };
+    let Some(r) = as_str(uses)
+        .and_then(|u| GOH_ACTION.captures(u))
+        .map(|c| c[1].to_owned())
+    else {
+        return;
+    };
+    let line = line_of(uses);
+    let what = "a goh action (`uses:`)";
+    if r.starts_with('v') {
+        out.extend(judge_pin(line, &r, own, what));
+        return;
+    }
+    let beside = lines
+        .get(line - 1)
+        .and_then(|l| RELEASE_COMMENT.captures(l))
+        .map(|c| c[1].to_owned());
+    let hex = r.len() >= 7 && r.bytes().all(|b| b.is_ascii_hexdigit());
+    match beside {
+        Some(tag) if hex => out.extend(judge_pin(line, &tag, own, "a goh action's commit")),
+        _ => out.push(Finding {
+            line,
+            problem: Problem::Unpinned(format!(
+                "{what} at `{r}` names no goh release (`@<commit> # vX.Y.Z` or `@vX.Y.Z`)"
+            )),
+        }),
+    }
+}
+
+/// The pins in one step: a checkout of goh (`repository:` + `ref:`), a goh action by reference, or
+/// a `git clone` of it.
 fn step_pins(step: &MarkedYaml, lines: &[&str], own: Version, out: &mut Vec<Finding>) {
     env_pins(step, own, out);
+    action_pin(step, lines, own, out);
     let with = get(step, "with");
     if let Some(repo) = with.and_then(|w| get(w, "repository")).and_then(as_str) {
         if GOH_REPO.is_match(repo) {
@@ -325,8 +372,8 @@ pub fn findings(
 /// The lines a pin is judged on in `rel` (the shape table's hook, `crate::shapes`).
 ///
 /// Every
-/// `repository: OWNER/gates_of_heck`, `GOH_TAG:` under an `env:`, and `git clone` of goh in a
-/// `run:`, pinned or not. Nothing outside a workflow or composite action.
+/// `repository: OWNER/gates_of_heck`, `uses: OWNER/gates_of_heck/<action>@<ref>`, `GOH_TAG:` under
+/// an `env:`, and `git clone` of goh in a `run:`, pinned or not. Nothing outside a workflow or composite action.
 #[must_use]
 pub fn judged_lines(rel: &str, text: &str) -> Vec<usize> {
     if !crate::checkoutcreds::scan::in_scope(rel) {
@@ -352,6 +399,11 @@ pub fn judged_lines(rel: &str, text: &str) -> Vec<usize> {
         for (_, steps) in step_lists(doc) {
             for step in steps {
                 env(step, &mut out);
+                if let Some(u) =
+                    get(step, "uses").filter(|u| as_str(u).is_some_and(|s| GOH_ACTION.is_match(s)))
+                {
+                    out.push(line_of(u));
+                }
                 let repo = get(step, "with").and_then(|w| get(w, "repository"));
                 if let Some(r) = repo.filter(|r| as_str(r).is_some_and(|s| GOH_REPO.is_match(s))) {
                     out.push(line_of(r));

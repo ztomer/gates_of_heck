@@ -221,3 +221,45 @@ fn a_build_past_a_tag_is_that_tags_release() {
     );
     assert_eq!(super::release_of("unknown"), (0, 0, 0));
 }
+
+const FLOORS: &str = "ztomer/gates_of_heck/.github/actions/goh-floors";
+const SHA: &str = "13d906fb78065e701446a943ceed26e5ce919d6a";
+
+#[test]
+fn a_goh_action_used_by_commit_is_judged_on_its_release_comment() {
+    // GOH.WFPINACTION: homebrew-tap and monitor ran goh-floors at v0.71.0's commit, unjudged.
+    let stale = job(&format!("      - uses: {FLOORS}@{SHA} # v0.71.0\n"));
+    assert_eq!(kinds(&stale), vec![(6, K::Stale)]);
+    let current = job(&format!("      - uses: {FLOORS}@{SHA} # v0.121.0\n"));
+    assert_eq!(kinds(&current), vec![]);
+    let quoted = job(&format!(
+        "      - name: floors\n        uses: \"{FLOORS}@{SHA}\"  # v0.71.0\n"
+    ));
+    assert_eq!(kinds(&quoted), vec![(7, K::Stale)]);
+}
+
+#[test]
+fn a_goh_action_on_a_tag_is_judged_and_on_no_release_is_unpinned() {
+    assert_eq!(
+        kinds(&job(&format!("      - uses: {FLOORS}@v0.71.0\n"))),
+        vec![(6, K::Stale)]
+    );
+    assert_eq!(
+        kinds(&job(&format!("      - uses: {FLOORS}@v0.120.0\n"))),
+        vec![]
+    );
+    assert_eq!(
+        kinds(&job(&format!("      - uses: {FLOORS}@main\n"))),
+        vec![(6, K::Unpinned)]
+    );
+    assert_eq!(
+        kinds(&job(&format!("      - uses: {FLOORS}@{SHA}\n"))),
+        vec![(6, K::Unpinned)],
+        "a commit with no release beside it says nothing a reader can judge"
+    );
+    assert_eq!(
+        kinds(&job("      - uses: ./.github/actions/goh-floors\n")),
+        vec![],
+        "goh's own action, from its own checkout: no pin"
+    );
+}

@@ -17,6 +17,7 @@ from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
+import consumer_pins
 import wf_pin
 
 sys.path.pop(0)
@@ -63,6 +64,19 @@ UNPINNED = """jobs:
           repository: owner/gates_of_heck
           path: goh
       - run: git clone https://github.com/owner/gates_of_heck "$GOH_DIR"
+"""
+
+OLD_SHA = "13d906fb78065e701446a943ceed26e5ce919d6a"
+ACTION = f"""jobs:
+  gate:
+    steps:
+      - name: Meet goh's tool floors
+        uses: owner/gates_of_heck/.github/actions/goh-floors@{OLD_SHA} # v0.71.0
+        with:
+          goh-dir: ${{{{ env.GOH_DIR }}}}
+      - uses: owner/gates_of_heck/.github/actions/goh-floors@v0.96.0
+      - uses: owner/gates_of_heck/.github/actions/goh-floors@{OLD_SHA}
+      - uses: someone/else/.github/actions/x@{OLD_SHA} # v0.1.0
 """
 
 
@@ -162,3 +176,33 @@ def test_goh_ship_runs_the_bump_after_each_goh_release():
     assert "GOH_SHIP_INSTALL='tools/ship_install_goh.sh'" in gatesrc
     body = (REPO_ROOT / "tools" / "ship_install_goh.sh").read_text()
     assert '"$GOH/scripts/wf_pin.py" --bump' in body and "GOH_SHIP_VERSION" in body
+
+
+def test_a_goh_action_pin_is_read_and_its_commit_and_tag_move_together():
+    """GOH.WFPINACTION: homebrew-tap, monitor and four more used goh-floors by commit, v0.54.1 to
+    v0.96.0, and no bump moved them. The commit and the release beside it move as one; a commit
+    naming no release is unpinned, never guessed."""
+    s = wf_pin.scan(ACTION, SLUG)
+    assert [(p.line, p.tag, p.commit) for p in s.pins] == [
+        (5, "v0.71.0", True),
+        (5, "v0.71.0", False),
+        (8, "v0.96.0", False),
+    ], s
+    assert s.unpinned == [9], s
+    new = "a" * 40
+    out = consumer_pins.rewrite(ACTION, [(p, new if p.commit else "v0.118.0") for p in s.pins])
+    assert f"goh-floors@{new} # v0.118.0\n" in out, out
+    assert "goh-floors@v0.118.0\n" in out, out
+    assert f"goh-floors@{OLD_SHA}\n" in out and f"x@{OLD_SHA} # v0.1.0" in out, out
+
+
+def test_the_bump_moves_a_goh_action_to_the_releases_commit(tmp_path):
+    root = tmp_path / "estate"
+    tag = "v0.118.0"
+    sha = _git(REPO_ROOT, "rev-parse", f"{tag}^{{commit}}").strip()
+    stale = _repo(root, "stale", {"ci.yml": ACTION.replace(f"@{OLD_SHA}\n", "@v0.1.0\n")})
+    r = _run(root, tmp_path, "--bump", "--sweep", "none")
+    assert r.returncode == 0, r.stdout + r.stderr
+    text = (stale / ".github/workflows/ci.yml").read_text()
+    assert f"goh-floors@{sha} # {tag}\n" in text, text
+    assert f"goh-floors@{tag}\n" in text, text
