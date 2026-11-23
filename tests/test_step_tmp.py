@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 from _gatesrc_kit import write_gatesrc
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 
 LOCAL_CI = REPO_ROOT / "gates" / "local_ci.sh"
 LEAK = 'mkdir "$TMPDIR/leaky-test.abc123"'
@@ -19,7 +19,7 @@ LEAK = 'mkdir "$TMPDIR/leaky-test.abc123"'
 
 def _ci(repo: Path, tmpdir: Path, gatesrc: str):
     write_gatesrc(repo, gatesrc)
-    env = {**os.environ, "TMPDIR": str(tmpdir)}
+    env = hermetic_env(TMPDIR=str(tmpdir))
     return subprocess.run(["/bin/bash", str(LOCAL_CI)], cwd=repo, capture_output=True, text=True,
                           env=env, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
 
@@ -118,12 +118,7 @@ def test_a_step_starts_sccache_under_the_users_tmpdir(box, tmp_path) -> None:
     (fake / "sccache").chmod(0o755)
     seen = tmp_path / "sccache-saw"
     write_gatesrc(repo, "GOH_CI_STEPS='sccache --start-server'\n")
-    env = {
-        **os.environ,
-        "TMPDIR": str(tmpdir),
-        "SEEN": str(seen),
-        "PATH": f"{fake}:{os.environ['PATH']}",
-    }
+    env = hermetic_env(TMPDIR=str(tmpdir), SEEN=str(seen), PATH=f"{fake}:{os.environ['PATH']}")
     r = subprocess.run(["/bin/bash", str(LOCAL_CI)], cwd=repo, capture_output=True, text=True,
                        env=env, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
