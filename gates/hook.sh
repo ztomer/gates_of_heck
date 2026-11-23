@@ -58,7 +58,7 @@ case "$hook" in
     pre-commit)
         # The loop's one-writer hold first, whoever runs git: a subagent's shell carries its agent
         # id (GOH_LOOP_AGENT, stamped by the Bash guard), a subprocess inherits it (GOH.HOLDSUBPROC).
-        python3 "$goh/lib/commit_hold.py" check || exit 1
+        "$GOH_PY" "$goh/lib/commit_hold.py" check || exit 1
         # The repo's gate in STAGED scope, and structural even when that gate leaves it out.
         exec bash "$goh/gates/commit_gate.sh" "$@" ;;
     pre-push)
