@@ -76,3 +76,21 @@ def test_a_changed_binary_or_an_off_store_asks_again(repo, tmp_path) -> None:
     for _ in range(2):
         assert run_goh(repo, "shell-lint", env=off).returncode == 0
     assert _asked(log) == 2
+
+
+def test_a_shellcheck_that_cannot_start_is_refused_by_name(repo, tmp_path) -> None:
+    """An executable whose interpreter is gone: the version is never asked, and the gate says so
+    (PATH holds no other shellcheck, so the spawn's failure is the answer)."""
+    write(repo, "a.sh", "#!/usr/bin/env bash\necho hi\n")
+    commit_all(repo)
+    bin_ = tmp_path / "broken-sc"
+    bin_.mkdir()
+    sc = bin_ / "shellcheck"
+    sc.write_text("#!/no/such/interpreter\n")
+    sc.chmod(0o755)
+    env = _env(bin_, tmp_path / "verdicts")
+    env["PATH"] = f"{bin_}{os.pathsep}/usr/bin{os.pathsep}/bin"
+    r = run_goh(repo, "shell-lint", env=env)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "shellcheck --version: " in r.stderr, r.stderr
+    assert not list((tmp_path / "verdicts").rglob("*.json")), "a failed probe was kept"
