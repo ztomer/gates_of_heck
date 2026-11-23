@@ -9,8 +9,9 @@
 # `tests/tmp_root_lint.py` refuses a mktemp in gates/, lib/ or tools/ that bypasses this helper.
 # NOT NEEDED UNDER ~/.cache (GOH.CACHENOINDEX, measured 2026-11-23): the push worktrees
 # (~/.cache/goh/push) and HEAD exports (~/.cache/goh/head) live in a dot directory, which Spotlight
-# does not index. A probe file written there and one in ~/Downloads at the same second: after 10 min
-# `mdfind -name` found the Downloads control and not the ~/.cache one. Re-measure that way before
+# does not index. A probe file written there and a control in ~/Downloads at the same second
+# (04:05:53): at 04:18:26 `mdfind -name` found the control and not the ~/.cache one (an earlier
+# pair, checked after 3 min, read the same). Re-measure that way before
 # moving either root; an XDG_CACHE_HOME outside a dot directory would be indexed.
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 goh_tmp() {
