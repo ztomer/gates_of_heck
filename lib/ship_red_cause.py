@@ -10,7 +10,8 @@ file:line, and its worker then bisected the lands since the last ship, a full in
     attribute(...)       per uncovered line, the commit `git blame` names at the tip and the land
                          (lib/ship_full_run.py `lands`) that first carried it: "" when it is older
                          than the last ship
-    failed_tests(log)    the node ids pytest's summary names FAILED: the narrow bisect's set
+    failed_tests(log)    the node ids pytest's summary names FAILED or ERROR, at any indent: the
+                         narrow bisect's set
     probe(wt, ids)       those tests alone, plain, in the ship's worktree: 0 green, 1 red, 2 none
 
 Pinned by tests/test_ship_red_cause.py.
@@ -27,7 +28,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 _HEAD = re.compile(r"\[diff-coverage\] \d+ of \d+ changed executable lines? uncovered")
 _LINE = re.compile(r"^\s{4}(\S+?):(\d+)  (.*)$")
-_FAILED = re.compile(r"^FAILED (\S+::\S+)")
+# pytest's summary line, as tools/pytest.sh prints it (indented under its step: GOH.BISECTRECHECK,
+# the v0.150.0 ship's log named its failing test at 4 spaces and the bisect saw none); an ERROR
+# node (a setup error) is a failing test too.
+_FAILED = re.compile(r"^\s*(?:FAILED|ERROR) (\S+::\S+)")
 GREEN, RED, NO_VERDICT = 0, 1, 2
 
 

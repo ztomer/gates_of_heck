@@ -374,18 +374,18 @@ def worker(result: str, resume: bool = False) -> int:
         res["pid_stamp"] = pid_owner.stamp_line(os.getpid())  # a reused pid is not this worker
         save(res)
         import land_lock  # here, not at the top: tools/ship.py's import ceiling (E402) is spent
+        import ship_full_run  # the same: a red suite run's bisect, a flake's retry
 
         ship_status.quiet_wait(res, resume)  # GOH.SHIPQUIET: bounded, for a quiet host
         queue, who = land_lock.path(Path(res["repo"])), f"goh ship {res['name']} @ {res['sha'][:8]}"
-        asked = time.monotonic()
-        with land_lock.held(queue, who, info):  # lock-order: land, under the ship lock
-            _HELD["at"] = time.monotonic()  # the queue's time ends, the ship's own begins
-            res["land_wait_s"] = round(res.get("land_wait_s", 0.0) + _HELD["at"] - asked, 1)
-            rc = run_steps(res, "verify" if resume else STEPS[0])
-        if rc and not resume:  # a red suite run, bisected with the land lock given back
-            import ship_full_run  # here, not at the top: the import ceiling (E402) is spent
-
-            ship_full_run.after_red(res, save)
+        for retry in (False, True):  # a flake's one retry of the suite step (GOH.BISECTRECHECK)
+            asked = time.monotonic()
+            with land_lock.held(queue, who, info):  # lock-order: land, under the ship lock
+                _HELD["at"] = time.monotonic()  # the queue's time ends, the ship's own begins
+                res["land_wait_s"] = round(res.get("land_wait_s", 0.0) + _HELD["at"] - asked, 1)
+                rc = run_steps(res, "verify" if resume else STEPS[0])
+            if not rc or resume or not ship_full_run.retry_after_red(res, save, retry):
+                return rc  # a red suite run is bisected with the land lock given back
         return rc
 
 

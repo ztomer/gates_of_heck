@@ -195,9 +195,44 @@ def bisect(repo: Path, wt: Path, head: str, argv: list[str] | None = None, tests
     if not cands or hi - lo > 1:
         return {**found, "culprit": "", "fault": "not filed: the bisect reached no single land"}
     culprit, since = cands[hi], cands[lo] if lo >= 0 else base
+    parent = since if lo >= 0 else ""
+    told = (lambda probe: step({**probe, "lands": len(cands)})) if step else None
+    found["confirm"] = confirm(repo, wt, (culprit, parent), (base, argv), tests, runs, told)
+    if [c["verdict"] for c in found["confirm"]] not in (["red", "green"], ["red"]):
+        return {**found, "culprit": "", "candidate": culprit, "flake": True,
+                "fault": f"not filed: a flake -- {culprit[:12]} is not red at its own failing "
+                "tests, or its parent is not green there"}  # fmt: skip
     subject = full_run._git(repo, "log", "-1", "--format=%s", culprit).stdout.strip()
     return {**found, "culprit": culprit, "since": since, "subject": subject,
             "fault": file_fault(repo, culprit, since, base, subject)}  # fmt: skip
+
+
+def confirm(repo: Path, wt: Path, pair: tuple[str, str], judge: tuple[str, list[str] | None],
+            tests: list[str], runs: list[dict],
+            step: Callable[[dict], None] | None = None) -> list[dict]:  # fmt: skip
+    """Before the candidate culprit of PAIR is named (GOH.BISECTRECHECK): the red's failing TESTS
+    run again at it, then at its parent land (PAIR's second, "" when that is the last ship, which
+    released: green). Naming no tests (a floor), a culprit no probe saw red -- the tip, whose red
+    is the run being bisected -- gets one more full run (JUDGE: its base, argv). Each {sha,
+    verdict}; a culprit not red stops there. STEP is told each re-check, as each probe."""
+    out: list[dict] = []
+    for sha, want in zip(pair, (RED, GREEN), strict=True):
+        if not sha:
+            continue
+        if step:
+            step({"n": len(runs) + len(out) + 1, "sha": sha, "recheck": True})
+        if tests:
+            why = full_run.prepare(repo, wt, sha)
+            print(f"ship bisect: re-check {sha[:8]}: {why or ' '.join(tests)}", flush=True)
+            rc = NO_VERDICT if why else ship_red_cause.probe(wt, list(tests), MAX)
+        elif any(r["sha"] == sha and r["verdict"] == ("red", "green")[want == GREEN] for r in runs):
+            rc = want  # the full run already judged it in this bisect
+        else:
+            rc = _judge(repo, wt, sha, *judge)
+        out.append({"sha": sha, "verdict": {GREEN: "green", RED: "red"}.get(rc, "none")})
+        if rc != want:
+            break
+    return out
 
 
 def _parent(repo: Path, sha: str) -> str:
@@ -233,18 +268,19 @@ def file_fault(repo: Path, culprit: str, since: str, base: str, subject: str) ->
     return f"not filed: {said[-200:]}"
 
 
-def after_red(res: dict, save: Callable[[dict], None]) -> None:
+def after_red(res: dict, save: Callable[[dict], None]) -> bool:
     """The ship's worker, its land lock given back, on a suite step that ran RED. A diff coverage
     red names its lines: each is blamed to its land (`diffcov_red`), no bisect. Any other red is
     bisected (`bisect`), on the failing tests it names when it names any, the record saying
-    `bisecting` with its step until the bisect ends (GOH.SHIPBISECTCOV)."""
-    step = next((s for s in res.get("steps", []) if s.get("name") == "suite"), {})
+    `bisecting` with its step until the bisect ends (GOH.SHIPBISECTCOV). True when the bisect
+    found a flake (GOH.BISECTRECHECK): the ship retries its suite step once."""
+    step = next((s for s in reversed(res.get("steps", [])) if s.get("name") == "suite"), {})
     if (
         res.get("failed_step") != "suite"
         or step.get("status") != "failed"
         or step.get("code") != RED
     ):
-        return
+        return False
     repo = Path(res["repo"])
     head = full_run._git(repo, "rev-parse", "HEAD").stdout.strip()
     log = Path(step.get("log") or os.devnull)
@@ -263,7 +299,7 @@ def after_red(res: dict, save: Callable[[dict], None]) -> None:
         save(res)
         for line in said:
             print(f"ship full suite: {line}", flush=True)
-        return
+        return False
     tests = ship_red_cause.failed_tests(text)
     print(f"ship full suite: red on {head[:8]} -- bisecting the lands since the last ship"
           + (f" on its failing tests: {' '.join(tests)}" if tests else ""), flush=True)  # fmt: skip
@@ -285,6 +321,20 @@ def after_red(res: dict, save: Callable[[dict], None]) -> None:
     b = res["bisect"]
     print(f"ship full suite: bisect: {b['culprit'][:12] or 'no single land'} "
           f"({b.get('subject', '')}); fault {b['fault']}", flush=True)  # fmt: skip
+    return bool(b.get("flake"))
+
+
+def retry_after_red(res: dict, save: Callable[[dict], None], retried: bool) -> bool:
+    """tools/ship.py, its suite step red: `after_red`; True when it found a flake and the ship has
+    not RETRIED yet, the record set running again for the suite step's one more run."""
+    if not after_red(res, save) or retried:
+        return False
+    res.update(status="running", retried=res.get("retried", 0) + 1)
+    res.pop("failed_step", None)
+    res.pop("finished", None)
+    save(res)
+    print("ship full suite: the bisect found a flake -- the suite step runs once more", flush=True)
+    return True
 
 
 def main(argv: list[str] | None = None) -> int:
