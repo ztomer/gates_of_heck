@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+## v0.149.5 -- reconcile: SUITEDIET, LINUXCOVPATH
+
+* The rust coverage mode runs on the cargo-llvm-cov its manifest floor names (0.6.24): it calls
+  `show-env --export-prefix`, never the later alias `--sh`, and a refused `show-env` is named in
+  the export log instead of leaving it empty. The coverage fakes link the running Python beside
+  their shims, so they pass where Python is not in /usr/bin (the remote Linux worker).
+
+* `goh remote-shard` ends every remote run with goh's cache evictor inside the worker
+  (`lib/worker_evict.py`, the GOH.CACHEEVICT ranking): the worker dir stays under its 80 GB
+  ceiling and the scratch disk keeps its 100 GB free floor, coldest object first, never the slot
+  that just ran; it reports and never changes the run's verdict. The worker image carries sccache
+  0.19.0 (checksummed) behind goh's rustc wrapper: a second cold build of goh on the worker took
+  16 s against 32 s, 167 of 167 cacheable compiles hit.
+
+* A land's pre-step sends the chosen tests whose module `tests/linux_safe.txt` records to the remote
+  worker AT THE SAME TIME as the Mac runs the rest (`lib/remote_lane.py`), and joins the worker's
+  passes to its verdict record, so the pre-step costs the longer of the two, not their sum. Skip
+  parity is checked against the recorded Mac skip set `tests/mac_skips.txt`. The land never fails
+  because of the worker: unreachable, busy, short of scratch, off-pin, a skip mismatch or an
+  unreadable junit has the Mac run those tests itself and say why, and a test that failed only on
+  the worker is re-run on the Mac, whose verdict stands. `GOH_LAND_REMOTE=off` keeps the pre-step
+  on the Mac. `python3 lib/remote_lane.py record LINUX.xml MAC.xml` rewrites both lists.
+* `goh remote-shard` keeps one tree per lane slot on the worker (`trees/<slot>/`, the slot keyed
+  by the checkout's path, its own lock), so two lanes never queue on one tree; `--no-local` hands
+  a fallback back to the caller (exit 3); `--mac-skips` takes the recorded skip set; a remote junit
+  that does not parse is a fallback, not a crash.
+
+* `goh shell-lint` asks `shellcheck --version` once per binary identity (GOH.SCLINTKEY): the answer is kept in the verdict store under the binary's path, size and mtime, the identity every shell verdict is already keyed on, so a run over a known binary execs no `--version` (every run asked before); a changed binary asks again, and with the store off every run asks. A non-shell file (a `.gatesrc`) is an input of a shell file's verdict only when a source statement names it: 32 of goh's shell files mention `.gatesrc` in a message or comment and 4 source it, so every `.gatesrc` edit re-linted nearly the whole tree.
+
+* goh's suite keeps shellcheck's work across sessions (GOH.SHELLCHECKCACHE): the parse findings of tests/_parse_findings.py are kept per file under a key of shellcheck's identity, the flags, the file, every tracked file its source closure reaches and every .shellcheckrc it could read, and the tree lint's shell-lint verdicts (tests/_tree_lint.py) are seeded from and kept to a store that outlives the run (tests/_kept_store.py, the self-walk's 30-day precedent). An edit to one sourced library re-parses only the files that reach it. Measured: test_shellcheck_follows_every_source_in_this_tree 56.2 s / 126.6 CPU-s cold to 1.7 s / 4.7 CPU-s warm; the tree lint's session setup 86 to 28 CPU-s.
+
+* goh's suite builds the dependency graph of its own tree once per test process (tests/_tree_graph.py, GOH.SUITEDIET): every real-tree selector test of a worker shares it, where each pass built a fresh one (10-13 s to fill, 3 s warm). A ratchet (tests/test_tree_graph.py) refuses a new pass over the real tree with a graph of its own. The five selector test files measured 154 and 147 CPU-s before, 87 and 87 after (two runs each, single process).
+
+* A whole-tree test may declare its whole read of the tree, `JUDGE_READS = ("pattern", ...)` (lib/declared_reads.py, GOH.SUITEDIET): the land's enqueue pre-step then runs it only when a changed path matches, and an unchanged set of matched files keeps the tree's verdict, where before every walker judged every diff. `TREE_READS` stays a join's declaration and never lifts a walk. Three judges declare theirs today (the kill-by-name parity scan, the env-dump census, the stamp-input scan): the enqueue's standing judges went from 125 files / 529 serial test-seconds to 122 / 486 on one durations snapshot.
+
 ## v0.149.4 -- reconcile: REMOTEWORKERS, CANARYMISS
 
 * The release canary refuses a release within 7 days of a floor grace end, and after it, when a consumer would be red at the end (GOH.CANARYMISS). v0.149.2 shipped an hour before the 2026-11-23 00:00 UTC grace end, judged with grace on, and its new scanner (`GOH_LOCALE_PREFIX_MIN_FILES`) then refused pushes in three consumer repositories; the canary's own warning had named 37 consumers and was never acted on. A new scanner is now judged as the grace end will judge it, and the session-start line says REFUSED.
