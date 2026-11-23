@@ -361,12 +361,23 @@ impl Deps {
             .keys()
             .map(|p| (p, p.rsplit('/').next().unwrap_or(p).to_owned()))
             .collect();
+        // A shell file is an edge by MENTION of its name (a source through a variable shows only
+        // that); a non-shell file (a `.gatesrc`) only through a source statement naming it:
+        // shellcheck reads nothing else, and 32 of goh's shell files mention `.gatesrc` in a
+        // message or comment while 4 source it, so every `.gatesrc` edit re-linted the tree
+        // (GOH.SCLINTKEY).
+        let shell: BTreeSet<&str> = shells.iter().map(|f| f.as_str()).collect();
         let mut edges = BTreeMap::new();
         for (path, bytes) in &texts {
             let text = String::from_utf8_lossy(bytes);
+            let sourced: BTreeSet<String> = sources_of(path, &text).into_iter().collect();
             let to: Vec<String> = basenames
                 .iter()
-                .filter(|(p, n)| *p != path && text.contains(n.as_str()))
+                .filter(|(p, n)| {
+                    *p != path
+                        && text.contains(n.as_str())
+                        && (shell.contains(p.as_str()) || sourced.contains(p.as_str()))
+                })
                 .map(|(p, _)| (*p).clone())
                 .collect();
             edges.insert(path.clone(), to);
@@ -398,6 +409,10 @@ impl Deps {
         )
     }
 }
+
+#[cfg(test)]
+#[path = "shell_lint_scope_deps_tests.rs"]
+mod deps_tests;
 
 #[cfg(test)]
 mod tests {

@@ -98,7 +98,8 @@ def test_a_different_shellcheck_rejudges(lint) -> None:
 
 def test_a_corrupt_record_is_a_miss_not_a_verdict(lint) -> None:
     cold, _ = lint()
-    records = list(lint.cache.rglob("*.json"))
+    # the verdicts' own records: the store also keeps shellcheck's --version (GOH.SCLINTKEY)
+    records = list((lint.cache / "shell-lint").rglob("*.json"))
     assert len(records) == 2, records
     for r in records:
         r.write_text("{not json")

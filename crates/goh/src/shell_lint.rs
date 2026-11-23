@@ -16,7 +16,7 @@ use std::process::Command;
 
 type Lines = Vec<(bool, String)>;
 
-fn bounded(cmd: &mut Command) -> Result<crate::bounded::Ran, String> {
+pub(crate) fn bounded(cmd: &mut Command) -> Result<crate::bounded::Ran, String> {
     let ceiling = crate::bounded::step_ceiling();
     let ran = crate::bounded::run(cmd, None, ceiling).map_err(|e| e.to_string())?;
     if ran.timed_out {
@@ -62,9 +62,7 @@ fn at_floor() -> Result<(), String> {
     let Some(floor) = crate::tool_versions::floor("shellcheck") else {
         return Err("gates/required_tools.tsv gives shellcheck no floor".to_owned());
     };
-    let ran = bounded(Command::new("shellcheck").arg("--version"))
-        .map_err(|e| format!("shellcheck --version: {e}"))?;
-    let text = String::from_utf8_lossy(&ran.stdout);
+    let text = crate::shellcheck_version::reported()?;
     let Some(have) = crate::shellcheck_version::reported_version(&text) else {
         return Err(format!(
             "shellcheck --version reported no version, and this gate needs {floor} or newer"
@@ -79,7 +77,7 @@ fn at_floor() -> Result<(), String> {
 }
 
 /// The first executable named `tool` on `PATH` -- the one `Command` runs.
-fn which(tool: &str) -> Option<PathBuf> {
+pub(crate) fn which(tool: &str) -> Option<PathBuf> {
     std::env::split_paths(&std::env::var_os("PATH")?)
         .map(|d| d.join(tool))
         .find(|p| p.is_file())
