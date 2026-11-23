@@ -192,6 +192,12 @@ def _loadavg() -> list[float]:
     return avg
 
 
+# The clock and the pause the CPU idle reads: seams a test replaces on this module alone, never on
+# the time module every thread of a worker shares.
+clock = time.time
+pause = time.sleep
+
+
 def cpu_ticks() -> tuple[int, int]:
     """(idle ticks, total ticks) since boot, summed over every core: macOS's HOST_CPU_LOAD_INFO
     (user, system, idle, nice) or Linux's /proc/stat `cpu` line (idle + iowait as idle)."""
@@ -222,7 +228,7 @@ def _cpu_idle() -> dict[str, Any]:
         except ValueError:
             raise ValueError(f"GOH_CPU_IDLE_READING={seam!r} is not a percentage") from None
         return {"idle_pct": pct, "window_s": None, "source": "GOH_CPU_IDLE_READING"}
-    now, (idle1, total1) = time.time(), cpu_ticks()
+    now, (idle1, total1) = clock(), cpu_ticks()
     kept, st = cpu_window.record(now, (idle1, total1), reader=True)
     cpu_window.start_sampler(st, now, __file__)
     full = [x for x in kept if now - x[0] >= cpu_window.rolling_s()]
@@ -238,11 +244,11 @@ def _cpu_idle() -> dict[str, Any]:
         window = float(raw) if raw else IDLE_WINDOW_S
     except ValueError:
         window = IDLE_WINDOW_S
-    time.sleep(window)
+    pause(window)
     idle2, total2 = cpu_ticks()
     if total2 <= total1:
         raise OSError("the CPU tick counters did not advance")
-    cpu_window.record(time.time(), (idle2, total2), reader=True)
+    cpu_window.record(clock(), (idle2, total2), reader=True)
     pct = round(100.0 * (idle2 - idle1) / (total2 - total1), 1)
     return {"idle_pct": pct, "window_s": window, "source": "ticks", "samples": 2}
 

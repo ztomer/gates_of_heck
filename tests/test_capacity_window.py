@@ -45,8 +45,8 @@ def machine(monkeypatch, tmp_path):
     def install(idle):
         m = Machine(idle)
         monkeypatch.setattr(capacity, "cpu_ticks", m.counters)
-        monkeypatch.setattr(capacity.time, "sleep", m.advance)
-        monkeypatch.setattr(capacity.time, "time", lambda: m.t)
+        monkeypatch.setattr(capacity, "pause", m.advance)
+        monkeypatch.setattr(capacity, "clock", lambda: m.t)
         monkeypatch.setenv("GOH_CPU_IDLE_STATE", str(tmp_path / "cpu_idle.json"))
         monkeypatch.setenv("GOH_CPU_SAMPLER", "off")
         monkeypatch.delenv("GOH_CPU_IDLE_READING", raising=False)
