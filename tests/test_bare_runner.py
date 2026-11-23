@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 import runner_env
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
 BARE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
@@ -35,12 +35,15 @@ def test_probe_bash_is_5_and_cargo_is_found():
 
 
 def test_the_wrapper_env_is_left_alone():
-    env = {"PATH": BARE_PATH, runner_env.RUNNER: "1"}
-    assert runner_env.same_env(env) is None and env["PATH"] == BARE_PATH
+    fake = {"PATH": BARE_PATH, runner_env.RUNNER: "1"}
+    why = runner_env.same_env(fake)
+    path = fake["PATH"]
+    assert why is None and path == BARE_PATH
 
 
 def _bare(tmp_path: Path, **extra: str) -> subprocess.CompletedProcess[str]:
-    env = {k: v for k, v in os.environ.items() if k != runner_env.RUNNER}
+    env = hermetic_env()  # print-safe: pytest prints a failing call's arguments
+    env.pop(runner_env.RUNNER, None)
     env.update(PATH=BARE_PATH, GATES_OF_HECK_SUITE_NESTED_OK="1", **extra)
     node = "tests/test_bare_runner.py::test_probe_bash_is_5_and_cargo_is_found"
     return subprocess.run(
