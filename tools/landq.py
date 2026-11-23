@@ -85,7 +85,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / "lib")]
 bounded_run = importlib.import_module("bounded_run")
-diffcov_carry = importlib.import_module("diffcov_carry")
+land_filers = importlib.import_module("land_filers")  # diffcov carry, cap ahead
 flakes = importlib.import_module("flakes")
 gitrun = importlib.import_module("gitrun")
 idle_suite = importlib.import_module("idle_suite")
@@ -245,7 +245,7 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
     outcome.update(land_check.fields(outcome, req))  # its guard; cov_risk (GOH.DIFFCOVLAND)
     outcome.update(land_reds.fields(outcome))  # a red's tests and cause class (GOH.REDREVIEW)
     # A landing that leaves its own uncovered lines files their fix item now (GOH.DIFFCOVCARRY).
-    outcome.update(diffcov_carry.file_item(outcome, req, str(loopctl()), item))
+    outcome.update(land_filers.file_all(outcome, req, str(loopctl()), item))  # GOH.DIFFCOVCARRY
     if item:
         tool = loopctl()
         if tool.is_file():
