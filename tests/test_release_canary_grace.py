@@ -3,8 +3,13 @@
 `crate::grace` holds a new scanner shape back until 2026-11-23, and the canary judged only under
 the day, so a release could ship a red that appears only when the grace ends: nothing named the
 consumers that would refuse every push on the 23rd. HEAD's pass now runs once more at
-GOH_GRACE=over, and every step red there and not under the day is NAMED -- a warning, never the
-release's refusal before the date -- in the record the ship result carries.
+GOH_GRACE=over, and every step red there and not under the day is NAMED in the record the ship
+result carries.
+
+GOH.CANARYMISS: v0.149.2 shipped an unseeded scanner an hour before the grace ended; the pass named
+37 consumers red at the end, as a warning, and every one of them refused its pushes an hour later.
+Within `WINDOW_S` of the end (and after it) the pass's flips REFUSE the release: it is judged at
+max(now, the grace end), so it cannot pass and strand consumers when the date arrives.
 
 The plant is a shape the grace holds back: `$(open -a ...)`, a bare open inside a command
 substitution (bareopen.rs, GOH.BAREOPEN2), unseeded. The head binary here pins the day's pass to
@@ -88,15 +93,17 @@ def _canary(e: dict, *extra: str) -> tuple[subprocess.CompletedProcess, dict]:
 
 
 @pytest.mark.load_sensitive
-def test_the_grace_end_names_the_consumer_it_turns_red_and_refuses_nothing(tmp_path, goh):
+def test_the_grace_end_names_the_consumer_it_turns_red_and_refuses_within_the_window(tmp_path, goh):
     e = _setup(tmp_path, goh)
     # --fresh: base and head are one binary here, so the memo would answer HEAD from the base run
     r, rec = _canary(e, "--grace", "on", "--fresh")
     out = r.stdout + r.stderr
-    assert r.returncode == 0, out  # named, never the release's refusal before the date
-    assert rec["verdict"] == "clear" and not rec["turned_red"] and not rec["already_red"], rec
+    # The tree's grace end (crates/goh/src/grace.rs) is within the window or past: binding.
+    assert r.returncode == 1, out
+    assert rec["verdict"] == "refused" and not rec["turned_red"] and not rec["already_red"], rec
     g = rec["grace_over"]
-    assert g["ran"] and g["count"] == 1, g
+    assert g["ran"] and g["count"] == 1 and g["binding"] is True, g
+    assert "REFUSED" in out, out
     [(where, flips)] = g["turned_red"].items()
     assert where.endswith("consumers/planted"), g
     assert [f["step"] for f in flips] == ["no bare open of an app"], g
@@ -109,6 +116,7 @@ def test_the_grace_end_names_the_consumer_it_turns_red_and_refuses_nothing(tmp_p
     spec.loader.exec_module(hook)
     said = [ln for ln in hook.report(e["state"], dt.datetime.now(dt.UTC)) if "grace end" in ln]
     assert said and "planted" in said[0] and "no bare open of an app" in said[0], said
+    assert "REFUSED" in said[0], said  # binding: the session start says the refusal too
     # The instrument bites only on the plant: the clean spelling leaves the list empty.
     (e["planted"] / "launch.sh").write_text(CLEAN)
     _git(e["planted"], "commit", "-qam", "clean")
@@ -116,6 +124,38 @@ def test_the_grace_end_names_the_consumer_it_turns_red_and_refuses_nothing(tmp_p
     assert r.returncode == 0, r.stdout + r.stderr
     g = rec["grace_over"]
     assert g["ran"] and g["count"] == 0 and g["turned_red"] == {}, g
+    assert rec["verdict"] == "clear", rec
+
+
+def _grace_mod():
+    spec = importlib.util.spec_from_file_location(
+        "canary_grace", REPO_ROOT / "lib" / "canary_grace.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_the_grace_pass_binds_within_the_window_of_its_end_and_after_it():
+    mod = _grace_mod()
+    end = 10 * mod.WINDOW_S
+    assert mod.binds(end, end - mod.WINDOW_S - 1) is False  # far off: named, the week to seed
+    assert mod.binds(end, end - mod.WINDOW_S) is True  # judged at max(now, the grace end)
+    assert mod.binds(end, end - 3600) is True  # the v0.149.2 hour (GOH.CANARYMISS)
+    assert mod.binds(end, end + 1) is True
+    assert mod.binds(None, end) is False  # no grace: nothing to end
+    assert mod.WINDOW_S == 7 * 86400
+
+
+def test_a_binding_grace_pass_refuses_on_its_flips_or_errors_alone():
+    mod = _grace_mod()
+    flip = {"ran": True, "turned_red": {"x": [{"step": "s", "found": []}]}, "errors": []}
+    assert mod.refuses(flip, binding=True) is True
+    assert mod.refuses(flip, binding=False) is False
+    starved = {"ran": True, "turned_red": {}, "errors": ["x: starved"]}
+    assert mod.refuses(starved, binding=True) is True  # fail closed: no verdict is not clear
+    assert mod.refuses({"ran": True, "turned_red": {}, "errors": []}, binding=True) is False
+    assert mod.refuses({"ran": False, "count": None}, binding=True) is False
 
 
 @pytest.mark.load_sensitive

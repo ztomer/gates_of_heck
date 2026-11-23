@@ -25,8 +25,9 @@ THE GRACE'S END (GOH.CANARYGRACE). `crate::grace` holds a new scanner shape back
 (`OVER_FROM`), and a push judges under the day, so the passes above could clear a release whose red
 appears only when the grace ends. While the grace runs, HEAD's pass runs once more per consumer at
 GOH_GRACE=over -- the same pass, one more side -- and every step red there and not under the day is
-NAMED under `grace_over` in the record (count, repos, steps), never this release's refusal before
-the date; `goh ship` carries it into its result and card (lib/ship_canary.py). From the date the
+NAMED under `grace_over` in the record (count, repos, steps); from a week before the date it is
+the release's REFUSAL (GOH.CANARYMISS, lib/canary_grace.py `binds`); `goh ship` carries it into
+its result and card (lib/ship_canary.py). From the date the
 day's pass judges it, so the extra pass stops (`--grace auto`; `on`/`off` force it).
 
 THE MEMO (GOH.CANARYMEMO). Each side's verdict over a consumer is kept (lib/canary_memo.py) under
@@ -367,7 +368,9 @@ def run(args: argparse.Namespace) -> tuple[dict, int]:
         canary_memo.key_sides((base, head, over), step_tools.over_from)
         rec.update(sweep(repos, args.root, base, head, args.jobs, over, memo))
         rec["grace_over"]["over_from"] = canary_grace.day(when)
-    bad = rec["turned_red"] or rec["errors"]
+        rec["grace_over"]["binding"] = canary_grace.binds(when, time.time())
+    late = canary_grace.refuses(rec["grace_over"], rec["grace_over"]["binding"])
+    bad = rec["turned_red"] or rec["errors"] or late
     rec["verdict"] = "refused" if bad else "clear"
     return rec, 1 if bad else 0
 

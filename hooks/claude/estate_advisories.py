@@ -131,15 +131,18 @@ def _canary(rec: dict) -> list[str]:
             f" too (their own debt): {', '.join(named[:MAX_REPOS])}"
             f"{', ...' if len(named) > MAX_REPOS else ''}"
         )
-    grace = rec.get("grace_over") or {}  # named, never refused before the date (GOH.CANARYGRACE)
+    grace = rec.get("grace_over") or {}  # named; refused within 7 days of it (GOH.CANARYMISS)
     if grace.get("turned_red"):
         named = [
             f"{repo} ({', '.join(f['step'] for f in flips)})"
             for repo, flips in sorted(grace["turned_red"].items())
         ]
+        how = (
+            "REFUSED, it ends within 7 days" if grace.get("binding") else "seed or fix before then"
+        )
         lines.append(
             f"goh release canary: the grace end ({grace.get('over_from') or '?'}) turns"
-            f" {counted(len(named), 'consumer')} red at push -- seed or fix before then:"
+            f" {counted(len(named), 'consumer')} red at push -- {how}:"
             f" {'; '.join(named[:MAX_REPOS])}{'; ...' if len(named) > MAX_REPOS else ''}"
         )
     return lines

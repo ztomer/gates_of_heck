@@ -3,11 +3,17 @@ under `grace_over` and how it says it (scripts/release_canary.py), and what `goh
 that record into its result, its `--status` and its verify card (tools/ship.py, lib/ship_verify.py).
 
 `crate::grace` holds new scanner shapes back until OVER_FROM; the canary runs HEAD's pass once more
-at GOH_GRACE=over while the grace runs and NAMES each consumer the grace's end turns red, never
-refusing the release before the date. The record:
+at GOH_GRACE=over while the grace runs and NAMES each consumer the grace's end turns red.
+
+THE PASS BINDS NEAR THE END (GOH.CANARYMISS). v0.149.2 shipped an unseeded scanner an hour before
+the end; this pass named 37 consumers red at the end, as a warning, and every one refused its
+pushes an hour later. From `WINDOW_S` before the end the release is judged at max(now, the end):
+the pass's flips, or a consumer it could not judge, REFUSE it (`binding` in the record). A refusal
+rather than a filed work item: the canary also runs where no queue exists (CI, a fresh clone), and
+a refusal is the one form nobody has to remember to act on. The record:
 
     grace_over: {ran, count, turned_red: {repo: [{step, found}]}, errors, seconds, head_seconds,
-                 over_from, why}
+                 over_from, why, binding}
 
 `count` is None when no pass ran (`why` says why); `seconds` is the grace pass's runs summed over
 the consumers, `head_seconds` the day's HEAD pass's, so their ratio is the pass's cost.
@@ -21,9 +27,20 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from tui.lib import counted, info, ok, warn
+from tui.lib import counted, err, info, ok, warn
 
 CANARY = Path("scripts") / "release_canary.py"  # a repo that ships it is a gates tree
+WINDOW_S = 7 * 86400  # from this long before the grace end, its flips refuse the release
+
+
+def binds(over_from: int | None, now: float) -> bool:
+    """Whether the grace pass's verdict is the release's: within WINDOW_S of the end, or after."""
+    return over_from is not None and now >= over_from - WINDOW_S
+
+
+def refuses(g: dict, binding: bool) -> bool:
+    """Whether a binding grace record G refuses the release: a flip, or a consumer not judged."""
+    return bool(binding and g.get("ran") and (g.get("turned_red") or g.get("errors")))
 
 
 def grace_pass(mode: str, over_from: int | None, now: float) -> tuple[bool, str]:
@@ -72,20 +89,22 @@ def closed(acc: dict) -> dict:
 
 
 def say(g: dict) -> None:
-    """The canary's lines: named, a warning, never the release's refusal before the date."""
+    """The canary's lines: named, a warning while the end is far off, an error once it binds."""
     if not g.get("ran"):
         return
     when = g.get("over_from") or "its date"
+    say_it = err if g.get("binding") else warn
     for e in g["errors"]:
-        warn(f"release canary could not judge at the grace end: {e}")
+        say_it(f"release canary could not judge at the grace end: {e}")
     if not g["turned_red"]:
         ok(f"release canary: the grace end ({when}) turns no consumer red ({g['seconds']} s)")
         return
     n = counted(g["count"], "consumer")
-    warn(f"release canary: the grace end ({when}) turns {n} red at push (named, not refused):")
+    how = "REFUSED: it ends within 7 days" if g.get("binding") else "named, not refused"
+    say_it(f"release canary: the grace end ({when}) turns {n} red at push ({how}):")
     for where, flips in sorted(g["turned_red"].items()):
         for f in flips:
-            warn(f"  {where}: {f['step']} -- seed or fix it before {when}")
+            say_it(f"  {where}: {f['step']} -- seed or fix it before {when}")
             for line in f["found"]:
                 info(f"      found: {line}")
 
