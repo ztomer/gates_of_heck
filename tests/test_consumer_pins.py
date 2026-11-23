@@ -239,8 +239,12 @@ def test_the_ship_result_carries_each_consumers_outcome(tmp_path):
 
 
 def _stubbed_push(monkeypatch, tmp_path: Path, script: str, timeout: int) -> tuple[str, str]:
-    """push() with its git reads stubbed and its push run as SCRIPT under a TIMEOUT-second bound."""
+    """push() with its git reads stubbed and its push run as SCRIPT under a TIMEOUT-second bound,
+    under a sweep budget started now: the module's own started at its import, which a worker of a
+    long suite made long before this test ran."""
     real = consumer_pins.bounded_run.run_step
+    monkeypatch.setattr(consumer_pins, "_deadline", [0.0])  # its own list, restored after
+    consumer_pins.budget(consumer_pins.BUDGET)
     monkeypatch.setattr(consumer_pins, "ahead", lambda repo, fetch=False: ("o/main", [("a", "s")]))
     monkeypatch.setattr(consumer_pins, "is_pin_commit", lambda *a: True)
     monkeypatch.setattr(consumer_pins.estate_commit, "git",
@@ -260,5 +264,18 @@ def test_a_push_the_budget_killed_is_committed_not_refused(monkeypatch, tmp_path
 
 
 def test_a_push_its_gate_refused_stays_refused_with_its_own_lines(monkeypatch, tmp_path):
+    status, said = _stubbed_push(monkeypatch, tmp_path, "echo 'ruff: 3 errors'; exit 1", 30)
+    assert status == "refused" and "ruff: 3 errors" in said, said
+
+
+def test_a_push_test_owns_its_budget_however_long_ago_its_worker_imported_the_module(
+    monkeypatch, tmp_path
+):
+    """GOH.IDLERED10F2E996: the sweep budget's clock starts when consumer_pins is IMPORTED
+    (`_deadline`), and an xdist worker imports it at collection. The idle full suite on 10f2e996
+    ran 51 min 46 s, past the 45-minute BUDGET, and the refused push above read "the sweep's push
+    budget is spent". A push test starts the budget it means; planted here as a worker whose
+    import-time budget ran out long ago (at the monotonic clock's origin)."""
+    monkeypatch.setattr(consumer_pins, "_deadline", [0.0])
     status, said = _stubbed_push(monkeypatch, tmp_path, "echo 'ruff: 3 errors'; exit 1", 30)
     assert status == "refused" and "ruff: 3 errors" in said, said
