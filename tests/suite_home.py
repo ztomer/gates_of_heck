@@ -43,6 +43,7 @@ from pathlib import Path
 
 import _schedule  # (no HOME/TMPDIR read at import)
 import ci_shape  # (no HOME/TMPDIR read at import)
+import runner_env  # (a bare pytest run: the wrapper's bash 5 and cargo, GOH.BAREPYTEST)
 
 REAL_HOME = os.path.realpath(os.path.expanduser("~"))
 MARKER = "GATES_OF_HECK_SUITE_REAL_HOME"  # not GOH_-prefixed: no env scrub drops it
@@ -321,6 +322,7 @@ def drop_shell_rc(environ: MutableMapping[str, str]) -> None:
 
 
 def _enter() -> None:
+    runner_env.enter()  # first: it reads the real HOME for cargo
     drop_shell_rc(os.environ)
     # The duration table tools/pytest.sh names for its top-level run (GOH.DURATIONSSTALE), POPPED
     # before anything here starts a child: the run it was named for owns it, and no xdist worker or
