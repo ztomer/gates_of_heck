@@ -73,7 +73,6 @@ def _ratchet(found: Counter[str], allowed: dict[str, int], what: str) -> None:
     assert not stale, f"{what} ratchet above its count -- lower or delete the entry: {stale}"
 
 
-@pytest.mark.load_sensitive
 def test_no_new_pool_sized_to_the_machine() -> None:
     found = _count(re.compile(r"cpu_count\(\)"), _tracked("*.py"))
     found = Counter({f: n for f, n in found.items() if not f.startswith("tests/")})

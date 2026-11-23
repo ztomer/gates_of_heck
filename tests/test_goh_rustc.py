@@ -49,7 +49,7 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-@pytest.mark.load_sensitive  # a private sccache server and two real compiles
+@pytest.mark.load_sensitive(reason="a private sccache server and two real compiles")
 def test_an_exported_cargo_term_color_hits_through_the_shim(tmp_path: Path) -> None:
     """The i probe of the design, as a test: one crate built warm, then rebuilt clean with
     CARGO_TERM_COLOR exported. Straight to sccache it misses (the instrument can see a miss);

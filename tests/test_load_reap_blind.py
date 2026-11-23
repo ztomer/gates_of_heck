@@ -105,7 +105,6 @@ def test_a_slow_pgrep_leaves_the_rest_of_the_pass_running(tmp_path, monkeypatch,
     assert "Traceback" not in out.err, out.err
 
 
-@pytest.mark.load_sensitive
 def test_a_slow_process_table_is_a_stated_blind_spot(tmp_path, monkeypatch, capsys) -> None:
     """The two tracebacks: `ps -ax` timed out inside the burning shape."""
     job = _job()
@@ -137,7 +136,6 @@ def test_a_slow_per_pid_read_is_unknown_and_unknown_kills_nothing(tmp_path, monk
         assert reg.read(path)["pids"] == data["pids"]
 
 
-@pytest.mark.load_sensitive
 def test_a_candidate_that_cannot_be_read_back_is_left_alone(monkeypatch) -> None:
     """The house shape's read-back (`ps -p`) timed out: the candidate is unknown, so it is skipped."""
     _slow(monkeypatch, per_pid=True)

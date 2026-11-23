@@ -76,6 +76,31 @@ def test_the_detector_sees_each_signal_and_nothing_else() -> None:
     }, got
 
 
+def test_a_lookup_with_a_default_is_no_wait_and_a_timed_get_still_is() -> None:
+    """GOH.LOADSENSEGET: `seed.get(name, 0)` on a plain dict read as a bounded wait and made
+    tests/test_git_init_ratchet.py::test_every_file_is_at_its_seed red at commit. A get or an
+    acquire waits by its timeout, the keyword or the second argument after a literal block flag
+    (`queue.get(True, 1)`, `lock.acquire(True, 1)`), never by a default value."""
+    src = (
+        "def test_dict_default(seed): seed.get('a', 0)\n"
+        "def test_dict_default_float(seed): seed.get('a', 1.5)\n"
+        "def test_lock_flag(lock): lock.acquire(False)\n"
+        "def test_queue_timeout(q): q.get(timeout=1)\n"
+        "def test_queue_positional(q): q.get(True, 1)\n"
+        "def test_lock_positional(lock): lock.acquire(True, 2)\n"
+        "def test_event_wait(ev): ev.wait(5)\n"
+        "def test_communicate(p): p.communicate(None, 5)\n"
+    )
+    got = {k.split("::")[1]: v for k, v in _census(src).derived().items()}
+    assert got == {
+        "test_queue_timeout": ["tight", "wait"],  # a literal timeout under TIGHT_S is tight too
+        "test_queue_positional": ["wait"],
+        "test_lock_positional": ["wait"],
+        "test_event_wait": ["wait"],
+        "test_communicate": ["wait"],
+    }, got
+
+
 def test_a_helper_a_kit_and_a_fixture_carry_their_signal_to_the_test() -> None:
     src = (
         "import pytest, load_kit\n"

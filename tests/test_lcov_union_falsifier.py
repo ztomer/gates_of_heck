@@ -58,7 +58,6 @@ def _run(*cmd: str, **kw) -> subprocess.CompletedProcess:
                           stdin=subprocess.DEVNULL, **kw)  # fmt: skip
 
 
-@pytest.mark.load_sensitive
 def test_a_zero_count_clone_never_zeroes_a_line_another_instantiation_ran(tmp_path: Path) -> None:
     (tmp_path / "main.rs").write_text(SRC)
     _run("rustc", "--crate-name", "prog", "-C", "instrument-coverage", "-o", "prog", "main.rs",

@@ -159,7 +159,7 @@ def _shared(root: Path, pm_value: int, od_value: int) -> None:
     )
 
 
-@pytest.mark.load_sensitive  # a private sccache server and six small real builds
+@pytest.mark.load_sensitive(reason="a private sccache server and six small real builds")
 @pytest.mark.skipif(sys.platform != "darwin", reason="F2 is macOS-only: ELF proc-macros unverified")
 def test_shared_crates_hit_across_build_dirs_and_miss_when_their_content_changes(
     tmp_path: Path,

@@ -282,7 +282,6 @@ def _machine_sized() -> Counter[str]:
     return found
 
 
-@pytest.mark.load_sensitive
 def test_no_new_machine_sized_pool_in_a_gate_script():
     found = _machine_sized()
     over = {f: n for f, n in found.items() if n > MACHINE_SIZED_SITES.get(f, 0)}

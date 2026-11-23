@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import re
 
-import pytest
 from conftest import REPO_ROOT
 
 GLYPH_LINE = re.compile(r"(?:^|\\n)[→·✓✗⚠] ")
@@ -50,7 +49,6 @@ def hand_spelled(text: str) -> list[str]:
     ]
 
 
-@pytest.mark.load_sensitive
 def test_no_shipped_rust_spells_a_status_glyph() -> None:
     found = {}
     for path in (REPO_ROOT / "crates").rglob("*.rs"):
@@ -67,7 +65,6 @@ def test_no_shipped_rust_spells_a_status_glyph() -> None:
     assert found == {}, f"print through goh_tui's glyphs: {found}"
 
 
-@pytest.mark.load_sensitive
 def test_the_scan_sees_each_shape_it_polices() -> None:
     assert hand_spelled('println!("✓ clean");')
     assert hand_spelled('let s = "→ a\\n✗ b";')

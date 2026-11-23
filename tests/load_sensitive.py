@@ -69,6 +69,20 @@ _CALLS = {
     "alarm": "signal",
 }
 _WAITS = {"wait", "join", "communicate", "get", "acquire"}
+# `get` and `acquire` are also a dict's lookup with a default (`seed.get(name, 0)`,
+# GOH.LOADSENSEGET): a number passed to them positionally is a timeout only after a literal block
+# flag (`queue.get(True, 1)`, `lock.acquire(True, 1)`). Any other wait's literal is its bound.
+_LOOKALIKES = {"get", "acquire"}
+
+
+def _timed_positionally(n: ast.Call, name: str) -> bool:
+    if name not in _LOOKALIKES:
+        return any(_literal(a) is not None for a in n.args)
+    flag = n.args[0] if n.args else None
+    is_flag = isinstance(flag, ast.Constant) and isinstance(flag.value, bool)
+    return is_flag and len(n.args) > 1 and _literal(n.args[1]) is not None
+
+
 _DEADLINE = re.compile(
     r"^--(timeout|stall|grace|deadline|ceiling|wait-max|max-wait|budget)(=|$)"
     r"|^[A-Z0-9_]*(TIMEOUT|DEADLINE|STALL|CEILING|PATIENCE)[A-Z0-9_]*$"
@@ -131,7 +145,7 @@ def direct(fn: ast.AST) -> tuple[set[str], set[str]]:
             if base == "time" and name in ("time", "time_ns"):
                 sig.add("clock")
             timed = any(kw.arg == "timeout" for kw in n.keywords)
-            if name in _WAITS and (timed or any(_literal(a) is not None for a in n.args)):
+            if name in _WAITS and (timed or _timed_positionally(n, name)):
                 sig.add("wait")
             if name == "wait" and base and not n.args and not n.keywords:
                 sig.add("wait")
