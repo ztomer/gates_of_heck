@@ -9,10 +9,13 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 # no test reads is not run again. A missing or unreadable keep is no verdict: the set runs. Both
 # are read here and unset: no child of the pre-step or the gate sees them (a GOH_ key in the
 # gate's environment would vary its proven-step key, gates/verdict_free_keys.txt).
+# GOH_LAND_PRE_CARRY (GOH.CONFLICTKEEPVERDICT, lib/land_prestep.py `carried`): the enqueue's own
+# pre-step reads, likewise, the green verdict its item's conflict red kept.
 land_pre_from() {
     pre_judged="" pre_from="${GOH_LAND_PRE_FROM:-}" pre_keep="${GOH_LAND_PRE_KEEP:-}"
-    unset GOH_LAND_PRE_FROM GOH_LAND_PRE_KEEP
-    if [ -n "$pre" ] && [ -z "${GOH_LAND_PRE_ONLY:-}" ] && [ -n "$pre_from" ]; then
+    [ -z "${GOH_LAND_PRE_ONLY:-}" ] || pre_from="${GOH_LAND_PRE_CARRY:-}"
+    unset GOH_LAND_PRE_FROM GOH_LAND_PRE_KEEP GOH_LAND_PRE_CARRY
+    if [ -n "$pre" ] && [ -n "$pre_from" ]; then
         IFS= read -r pre_judged <"$pre_from" 2>/dev/null || pre_judged=""
         if ! [[ "$pre_judged" =~ ^[0-9a-f]{40}$ ]] || ! git cat-file -e "$pre_judged^{commit}" 2>/dev/null; then
             info "pre-land: no verdict from the enqueue ($pre_from unreadable or names no commit) -- run again"

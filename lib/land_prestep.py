@@ -100,6 +100,68 @@ def keep_path(q: Path, sha: str) -> Path:
 
 SHA = re.compile(r"[0-9a-f]{40}")
 PIN = "refs/goh/pre/"  # a rebased pre-step's judged tip, pinned per keep (GOH.PREONTIP)
+# GOH.CONFLICTKEEPVERDICT: a land red ONLY on a stack conflict keeps its green verdict here, one per
+# item, for that item's next enqueue (`carried`): its pre-step asks lib/pre_reuse.py whether the
+# verdict holds for the rebased tip, as the lander does, instead of running the whole set again
+# (16-20 min a conflict at 2026-11-22's load). Read once; a day old, it is reaped.
+CARRY, CARRY_PIN, CARRY_DAYS = "pre-carry", "carry-", 1
+
+
+def carry_path(q: Path, item: str) -> Path:
+    return q / CARRY / item.replace("/", "_")
+
+
+def conflict_red(outcome: dict) -> bool:
+    """OUTCOME is red on a stack conflict alone: the batch's or the early check's `conflict:`, or
+    land.sh's rebase that conflicted (lib/land_cause.py's `conflict`, read from its log)."""
+    if outcome.get("state") != "red":
+        return False
+    if str(outcome.get("why") or "").startswith("conflict"):
+        return True
+    try:
+        log = Path(str(outcome.get("log") or "")).read_text(errors="replace")
+    except OSError:
+        return False
+    return land_cause.classify(outcome, log) == "conflict"
+
+
+def carried(q: Path, req: dict) -> Path | None:
+    """REQ's item's carried verdict, when one names a commit REPO still has: its path, the judged
+    sha put on REQ (`pre_carry`, which `adopt` accepts as the keep's verdict); else None."""
+    path = carry_path(q, str(req.get("item") or "x/"))
+    if not req.get("item") or not path.is_file():
+        return None
+    with contextlib.suppress(OSError, IndexError):
+        judged = path.read_text().split()[0]
+        held = gitrun.run_reader(("cat-file", "-e", f"{judged}^{{commit}}"), repo=req["repo"],
+                                 timeout=60)  # fmt: skip
+        if SHA.fullmatch(judged) and held.returncode == 0:
+            req["pre_carry"] = judged
+            info(f"pre-step: {req['item']}'s green verdict at {judged[:8]}, kept from its "
+                 "conflict red, is asked first (GOH.CONFLICTKEEPVERDICT)")  # fmt: skip
+            return path
+    return None
+
+
+def _carry(req: dict, keep: Path, q: Path) -> bool:
+    """REQ's keep moved to its item's carry (module CARRY); its pin renamed with it. False when
+    there is nothing to carry or the move failed (then it is discarded as any)."""
+    if not (req.get("item") and keep.is_file()):
+        return False
+    dest = carry_path(q, req["item"])
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        Path(f"{dest}.record").unlink(missing_ok=True)
+        if Path(f"{keep}.record").is_file():
+            os.replace(f"{keep}.record", f"{dest}.record")
+        os.replace(keep, dest)
+    except OSError:
+        return False
+    if req.get("repo") and (judged := (req.get("pre") or {}).get("judged")):
+        with contextlib.suppress(OSError, subprocess.SubprocessError):  # a pin is only a gc root
+            gitrun.run_writer(("update-ref", f"{PIN}{CARRY_PIN}{dest.name}", judged),
+                              repo=req["repo"], deadline_s=60)  # fmt: skip
+    return True
 
 
 def adopt(req: dict, keep: Path) -> None:
@@ -110,6 +172,8 @@ def adopt(req: dict, keep: Path) -> None:
         words = keep.read_text().split()
         if words == [req["sha"]]:
             req["pre"] = {"judged": req["sha"], "keep": str(keep)}
+        elif len(words) == 1 and words[0] == req.get("pre_carry"):  # a carried verdict held
+            req["pre"] = {"judged": words[0], "keep": str(keep)}
         elif req.get("slot") and len(words) == 2 and all(SHA.fullmatch(w) for w in words):
             req["pre"] = {"judged": words[0], "base": words[1], "keep": str(keep)}
 
@@ -130,14 +194,18 @@ def _pins(repo: str | Path) -> list[str]:
     return [ln.removeprefix(PIN) for ln in got.stdout.splitlines() if ln.startswith(PIN)]
 
 
-def discard(req: dict, q: Path | None = None) -> None:
+def discard(req: dict, q: Path | None = None, carry: bool = False) -> None:
     """REQ's kept verdict and its record removed once REQ is recorded: land.sh removes what it
     reads, but a batch item whose gate judged another tree, or a land refused before its pre-step,
     never read its own, and no later land is that enqueue's (GOH.BATCHPREFROM). Given its queue Q,
     every other verdict whose request is gone goes too (`reap`, GOH.LANDLEAKS), and the state root
     Q lives in is bounded: its logs, done records, ship results and run directories
-    (lib/state_bounds.py sweep, GOH.LANDLOGPRUNE), once per recorded land."""
+    (lib/state_bounds.py sweep, GOH.LANDLOGPRUNE), once per recorded land. CARRY (a red on a
+    stack conflict alone): the green verdict goes to the item's carry instead (module CARRY)."""
     if keep := (req.get("pre") or {}).get("keep"):
+        if carry and q is not None and _carry(req, Path(keep), q):
+            info(f"{req['item']}: red on a conflict only -- its green pre-step verdict is kept "
+                 f"for its next enqueue ({carry_path(q, req['item'])})")  # fmt: skip
         for path in (Path(keep), Path(f"{keep}.record")):
             path.unlink(missing_ok=True)
         if req.get("repo"):
@@ -177,8 +245,20 @@ def reap(q: Path, now_ns: int | None = None, repo: str | Path | None = None) -> 
         with contextlib.suppress(OSError):
             path.unlink()
             gone.append(path)
+    stale = (now_ns or time.time_ns()) / 10**9 - CARRY_DAYS * 86400
+    for path in sorted((q / CARRY).iterdir()) if (q / CARRY).is_dir() else []:
+        with contextlib.suppress(OSError):
+            if path.stat().st_mtime < stale:
+                path.unlink()
+                gone.append(path)
+
+    def kept(name: str) -> bool:
+        if name.startswith(CARRY_PIN):
+            return (q / CARRY / name.removeprefix(CARRY_PIN)).is_file()
+        return held(name) or (q / "pre" / name).exists()
+
     if repo:  # a pin goes with its keep; a running land's (land.sh read its keep) is held
-        _unpin(repo, [n for n in _pins(repo) if not held(n) and not (q / "pre" / n).exists()])
+        _unpin(repo, [n for n in _pins(repo) if not kept(n)])
     return gone
 
 
@@ -235,6 +315,8 @@ def run_kept(req: dict, q: Path, script: Path, bindings: tuple[str, ...]) -> flo
     # In goh's slot the pre-step judges the tip rebased onto main (GOH.PREONTIP): never the lane's.
     onto = ["GOH_LAND_PRE_ONTO=1"] if req.get("slot") else []
     onto += main_red.env(req)  # main's idle-suite reds join the set (GOH.MAINREDNOTICE)
+    if carry := carried(q, req):  # its conflict red's green verdict (GOH.CONFLICTKEEPVERDICT)
+        onto.append(f"GOH_LAND_PRE_CARRY={carry}")
     took = run(Path(req["worktree"]), req["sha"], script, bindings, keep,
                [*land_slot.label(req), *onto], noted, did, ran)  # fmt: skip
     # The pre-step's wait, run, limit, workers and cpu_s: the SPD's figures (GOH.LANDPROFILEFIX),
