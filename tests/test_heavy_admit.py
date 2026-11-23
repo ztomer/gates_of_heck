@@ -38,7 +38,7 @@ TAKE = REPO_ROOT / "lib" / "heavy_admit.py"
         ("shellcheck gates/*.sh", "shellcheck"),
         ("git ls-files '*.sh' | xargs shellcheck", "shellcheck"),
         ("ls -la", None),
-        ("shellcheck gates/push_gate.sh", None),  # one file: no burst
+        ("shellcheck one.sh", None),  # one file: no burst
         ("cargo fmt --check", None),
         ("python3 tools/load.py 0 -- cargo test", None),  # already admitted
         ("echo 'cargo build'", None),
@@ -62,7 +62,8 @@ def test_the_guard_rewrites_a_heavy_command_to_take_admission_first(tmp_path):
     assert new["command"].endswith("\ncargo build -p x"), new["command"]
     assert "heavy_admit.py" in new["command"] and "abcdef01" in new["command"], new["command"]
     light = {**event, "tool_input": {"command": "ls"}}
-    assert not run_hook(GUARD, json.dumps(light), hermetic_env(drop_git=True)).stdout.strip()
+    quiet = run_hook(GUARD, json.dumps(light), hermetic_env(drop_git=True)).stdout
+    assert not quiet.strip()
 
 
 def _env(tmp_path: Path) -> dict[str, str]:
@@ -91,13 +92,14 @@ def test_a_second_sessions_heavy_job_waits_and_names_who_holds_the_machine(tmp_p
         assert not give_up.passed() and a.poll() is None, a.communicate()
         time.sleep(0.05)
     b = _session(env, "session bbbb2222: shellcheck", f"touch {tmp_path}/b.ran", patience(30))
-    time.sleep(patience(1.5))  # long enough for an unadmitted job to have run
+    said = b.stderr.readline()  # the child says it waits, and before whom (bounded: max-wait)
+    assert "waiting for a gate slot" in said, said
+    assert "session aaaa1111: cargo build" in said, said  # who held the machine, named
     assert not (tmp_path / "b.ran").exists(), "the second session's job ran at once"
     go.touch()
     _, a_err = a.communicate(timeout=patience(30))
     _, b_err = b.communicate(timeout=patience(30))
     assert (tmp_path / "b.ran").exists() and b.returncode == 0, b_err
-    assert "session aaaa1111: cargo build" in b_err, b_err  # who held the machine, named
     assert a.returncode == 0, a_err
 
 
