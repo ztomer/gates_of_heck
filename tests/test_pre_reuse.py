@@ -7,10 +7,11 @@ tools/land.sh reuses it -- or its own earlier run's -- when the moved paths are 
 (lib/pre_reuse.py, asking tools/affected_tests.py `readers`); a moved path some test reads runs
 those tests alone, and a missing verdict runs the whole set.
 
-Here the tree's reads table is a stand-in (READS below): `read.txt` is read by tests/test_r.py,
-gates/push_gate.sh by tests/test_push.py, checks/cad_bambu.py by tests/test_cad.py, nothing else
-by anything; its graph is the kit's own (lib/test_closure.py), so what the fixture's pre-step code
-(KIT_TREE) reaches is read as the real table reads it. The real table's answers are pinned last.
+Here the tree's reads table is a stand-in (READS in tests/_pre_reuse_kit.py): `read.txt` is read
+by tests/test_r.py, gates/never_run.sh by tests/test_push.py, checks/cad_bambu.py by
+tests/test_cad.py, nothing else by anything; its graph is the kit's own (lib/test_closure.py), so
+what the fixture's pre-step code (KIT_TREE) reaches is read as the real table reads it. The real
+table's answers are pinned last.
 """
 
 from __future__ import annotations
@@ -22,102 +23,12 @@ from pathlib import Path
 
 import _tree_graph
 import pytest
+from _pre_reuse_kit import JUDGED_SET, _history, _judged_set, _land, _with_table
 from conftest import REPO_ROOT, git
-from test_landq import _land_wt, env, landq, recorded  # noqa: F401  -- `env` is the queue's fixture
+from test_landq import env  # noqa: F401  -- `env` is the queue's fixture
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import pre_reuse
-
-READS = """\
-import sys
-sys.path.insert(0, {kit!r})
-from lib.test_closure import Closure  # the kit's graph: what the pre-step's code reaches
-from lib import binary_runners  # the binary's build inputs: what `_built` asks the table
-del sys.path[0]
-try:
-    import sel_helper  # noqa: F401 -- the selection's own lib/ module, when the tree has one
-except ImportError:
-    pass
-READ = {{"read.txt": "tests/test_r.py", "gates/push_gate.sh": "tests/test_push.py",
-        "checks/cad_bambu.py": "tests/test_cad.py", "lib/sel_helper.py": "tests/test_sel.py",
-        "Cargo.lock": "tests/test_bin.py", "crates/goh/src/x.rs": "tests/test_bin.py"}}
-def readers(root, changed, tests=None):
-    return {{READ[p]: "reads " + p for p in changed if p in READ}}
-def affected(root, changed):  # THE SET: a tree reader's node, the readers, what sel_helper names
-    import pathlib, re
-    got = {{"tests/test_walk.py::test_every_x": "a tree reader", **readers(root, changed)}}
-    sel = pathlib.Path(root, "lib", "sel_helper.py")
-    for name in re.findall(r"tests/test_[a-z_]+[.]py", sel.read_text() if sel.is_file() else ""):
-        got[name] = "lib/sel_helper.py chooses it"
-    return dict(sorted(got.items()))
-if __name__ == "__main__":
-    with open({seen!r}, "a") as f:
-        s = "+structural " if "--structural" in sys.argv else ""
-        f.write("narrow " + s + " ".join(sys.argv[sys.argv.index("--changed") + 1 :]) + "\\n")
-"""
-
-
-# The pre-step's own code in small (GOH.PRESTEPMOVED): the structural gates source _common.sh and
-# the binary runs checks/check_*.py; the selection imports lib/sel_helper.py. push_gate.sh and the
-# CAD scanner are gates and checks the pre-step never runs.
-KIT_TREE = {
-    "gates/structural.sh": '. "$(dirname "${BASH_SOURCE[0]}")/_common.sh"\n',
-    "gates/_common.sh": "x=1\n",
-    "gates/push_gate.sh": "echo push\n",
-    "checks/check_x.py": "print(1)\n",
-    "checks/cad_bambu.py": "print(2)\n",
-    "lib/sel_helper.py": "X = 1\n",
-    "tools/pytest.sh": "exit 0\n",
-}
-
-
-def _with_table(repo: Path, tmp_path: Path, kit: bool = False) -> Path:
-    seen = tmp_path / "seen"
-    (repo / "tools").mkdir(exist_ok=True)
-    (repo / "tools" / "affected_tests.py").write_text(
-        READS.format(seen=str(seen), kit=str(REPO_ROOT))
-    )
-    for name in ("read.txt", "CHANGELOG.md", "Cargo.lock"):
-        (repo / name).write_text("main's first\n")
-    for name, text in KIT_TREE.items() if kit else ():
-        (repo / name).parent.mkdir(parents=True, exist_ok=True)
-        (repo / name).write_text(text)
-    git(repo, "add", "-A")
-    git(repo, "commit", "-q", "--no-verify", "-m", "a reads table")
-    return seen
-
-
-def _main_moves(repo: Path, name: str) -> None:
-    (repo / name).write_text("main moved it\n")
-    git(repo, "commit", "-q", "--no-verify", "-am", f"main moves {name}")
-
-
-def _land(
-    repo: Path,
-    tmp_path: Path,
-    env: dict,  # noqa: F811
-    moves: str | None,
-    keep: bool = True,
-    kit: bool = False,
-    record: str = "",
-):
-    seen = _with_table(repo, tmp_path, kit)
-    wt, _ = _land_wt(repo, tmp_path)
-    pre = f"echo full >> {seen}" + (
-        f' && cp {record} "$GOH_LAND_VERDICTS_RECORD"' if record else ""
-    )
-    env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": pre}
-    done = landq(env, "--enqueue", "--foreground", "--land", str(wt), "--item", "T.T", "--no-start")
-    assert done.returncode == 0, done.stdout + done.stderr
-    if moves:
-        _main_moves(repo, moves)
-    if not keep:
-        for kept in (tmp_path / "landq" / "pre").iterdir():
-            kept.unlink()
-    assert landq(env, "--drain").returncode == 0
-    got = recorded(env)["T.T"]
-    assert got["state"] == "landed", Path(got["log"]).read_text()
-    return seen.read_text().splitlines(), Path(got["log"]).read_text()
 
 
 def test_a_main_moved_only_where_no_test_reads_runs_no_second_pre_land(
@@ -160,34 +71,6 @@ def test_a_missing_enqueue_verdict_runs_the_whole_set_again(
     assert "no verdict from the enqueue" in log, log
 
 
-# The decision itself, on a two-commit history: what moved between the judged tip and the new one.
-def _history(
-    repo: Path,
-    tmp_path: Path,
-    judged_adds: str,
-    main_moves: str,
-    kit: bool = False,
-    main_text: str = "main's\n",
-) -> tuple[str, ...]:
-    _with_table(repo, tmp_path, kit)
-    base0 = git(repo, "rev-parse", "HEAD").strip()
-    git(repo, "checkout", "-q", "-b", "lane")
-    (repo / judged_adds).parent.mkdir(parents=True, exist_ok=True)
-    (repo / judged_adds).write_text("the lane's\n")
-    git(repo, "add", "-A")
-    git(repo, "commit", "-q", "--no-verify", "-m", "lane")
-    judged = git(repo, "rev-parse", "HEAD").strip()
-    git(repo, "checkout", "-q", base0)
-    (repo / main_moves).parent.mkdir(parents=True, exist_ok=True)
-    (repo / main_moves).write_text(main_text)
-    git(repo, "add", "-A")
-    git(repo, "commit", "-q", "--no-verify", "-m", "main")
-    base = git(repo, "rev-parse", "HEAD").strip()
-    git(repo, "checkout", "-q", "lane")
-    git(repo, "rebase", "-q", base)
-    return judged, git(repo, "rev-parse", "HEAD").strip(), base
-
-
 def test_a_path_both_sides_change_or_the_pre_steps_code_is_run_again(repo, tmp_path):
     judged, tip, base = _history(repo, tmp_path, "gates/x.sh", "pyproject.toml")
     code, why, _ = pre_reuse.decide(repo, judged, tip, base)
@@ -219,15 +102,15 @@ def test_a_merged_file_a_test_reads_runs_its_readers(repo, tmp_path):
 
 @pytest.mark.parametrize(
     ("gate", "reader"),
-    [("gates/push_gate.sh", "tests/test_push.py"), ("checks/cad_bambu.py", "tests/test_cad.py")],
+    [("gates/never_run.sh", "tests/test_push.py"), ("checks/cad_bambu.py", "tests/test_cad.py")],
 )
 def test_a_gate_or_check_the_pre_step_never_runs_reruns_only_its_readers(
     repo, tmp_path, gate, reader
 ):
     """GOH.PRESTEPMOVED: every gates/ and checks/ path was the pre-step's own code, so main moving
-    gates/push_gate.sh (GOH.COVOFFLAND's land, ~17 min) or checks/cad_bambu.py (GOH.LOADSOURCE's,
-    607 s) ran the whole set again. Neither is reached by what chooses the set or the structural
-    gates it runs: their readers judge them."""
+    a gate it never runs (push gating: GOH.COVOFFLAND's land, ~17 min) or checks/cad_bambu.py
+    (GOH.LOADSOURCE's, 607 s) ran the whole set again. Neither is reached by what chooses the set
+    or the structural gates it runs: their readers judge them."""
     judged, tip, base = _history(repo, tmp_path, "lane.txt", gate, kit=True)
     code, why, nodes = pre_reuse.decide(repo, judged, tip, base)
     assert (code, nodes) == (pre_reuse.NARROW, [reader]), why
@@ -308,16 +191,6 @@ def test_reading_a_tips_table_leaves_the_callers_modules_its_own(repo, tmp_path)
 # THE SELECTION'S OWN CODE (GOH.PRESTEPSELFMOVE): GOH.LANEPRESTEP's land ran its whole set
 # again, 402 s, because main moved lib/binary_runners.py (41f73575, a cache: the same set). What
 # chooses the set is asked again on the tip, against the set the verdict judged (`chosen`).
-JUDGED_SET = ["tests/test_walk.py::test_every_x"]
-
-
-def _judged_set(tmp_path: Path, chosen: list[str] | None) -> Path:
-    record = tmp_path / "judged.json"
-    rec = {"identity": "i", "sha": "s", "passed": {}, "selection": "affected", "base": "b" * 40}
-    record.write_text(json.dumps({**rec, "chosen": chosen} if chosen is not None else rec))
-    return record
-
-
 def test_a_selector_move_whose_tip_set_the_verdict_judged_runs_only_its_readers(repo, tmp_path):
     judged, tip, base = _history(repo, tmp_path, "lane.txt", "lib/sel_helper.py", kit=True)
     record = _judged_set(tmp_path, [*JUDGED_SET, "tests/test_lane.py"])

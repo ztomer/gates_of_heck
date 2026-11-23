@@ -26,8 +26,9 @@ from pathlib import Path
 import _land_verdicts as lv
 import _tree_graph
 import pytest
+from _pre_reuse_kit import _history
 from conftest import REPO_ROOT, hermetic_env
-from test_pre_reuse import _history, pre_reuse
+from test_pre_reuse import pre_reuse
 from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "tools"))

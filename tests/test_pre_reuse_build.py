@@ -14,9 +14,9 @@ from pathlib import Path
 
 import _tree_graph
 import pytest
+from _pre_reuse_kit import _history, _land
 from conftest import REPO_ROOT, git
 from test_landq import env  # noqa: F401  -- the queue's fixture
-from test_pre_reuse import _history, _land
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import pre_reuse

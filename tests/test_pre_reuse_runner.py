@@ -19,9 +19,9 @@ from pathlib import Path
 
 import _tree_graph
 import pytest
+from _pre_reuse_kit import JUDGED_SET, _history, _judged_set, _land, _main_moves  # noqa: F401
 from conftest import REPO_ROOT, git
 from test_landq import env  # noqa: F401  -- the queue's fixture
-from test_pre_reuse import JUDGED_SET, _history, _judged_set, _land, _main_moves  # noqa: F401
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import pre_reuse
@@ -122,13 +122,13 @@ def test_a_land_after_a_selector_move_that_adds_a_test_decides_narrow_and_runs_n
     env: dict,  # noqa: F811 -- the fixture imported above
     monkeypatch,
 ) -> None:
-    import test_pre_reuse
+    import _pre_reuse_kit
 
     def moves(repo: Path, name: str) -> None:
         (repo / name).write_text('EXTRA = "tests/test_extra.py"\n')
         git(repo, "commit", "-q", "--no-verify", "-am", f"main moves {name}")
 
-    monkeypatch.setattr(test_pre_reuse, "_main_moves", moves)
+    monkeypatch.setattr(_pre_reuse_kit, "_main_moves", moves)
     seen, log = _land(repo, tmp_path, env, "lib/sel_helper.py", kit=True,
                       record=str(_judged_set(tmp_path, JUDGED_SET)))  # fmt: skip
     assert seen == ["full"], log  # NARROW decided, never run: the gate's one suite (GOH.LANDONERUN)

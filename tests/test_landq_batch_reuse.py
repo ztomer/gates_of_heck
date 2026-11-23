@@ -19,8 +19,8 @@ import time
 from pathlib import Path
 
 import pytest
+from _pre_reuse_kit import _main_moves, _with_table
 from test_landq_batch import env, landq, lane, recorded  # noqa: F401  -- `env` is a fixture
-from test_pre_reuse import _main_moves, _with_table
 
 from lib import land_prestep
 
