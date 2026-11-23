@@ -3,7 +3,7 @@ run goes to a worker container on another host and its junit comes back. Driven 
 ssh (runs the remote command here) and a FAKE docker (writes the junit the test chose), so every
 property is proven without a host: tracked files only, the container's CPU confinement, an image
 tagged by its Dockerfile's content, and the two refusals -- a worker whose tool versions differ
-from goh's manifest, and a remote run whose skip count differs from the Mac's for the same tests.
+from goh's manifest, and a remote run whose skips differ from the Mac's for the same tests.
 The image's own contract (every version a named release, every download checksummed, the pins
 equal to the manifest) is read from `tools/remote_worker/Dockerfile`."""
 

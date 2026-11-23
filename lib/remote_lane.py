@@ -14,9 +14,14 @@ part, and its verdicts join the Mac's, so the pre-step costs max(Mac, worker), n
 * NEVER THE LAND'S FAILURE. An unreachable or busy worker, short scratch, an off-pin image, a
   skip mismatch or an unreadable junit is exit 3 from the shard (`--no-local`): the Mac then runs
   those tests itself, after its own share, and says why. Only a test that FAILED remotely is red.
-* THE RECORD. The remote passes join the pre-step's verdict record (tests/_land_verdicts.py) as
-  having run the native binary, the conservative mark: they are never carried across a change to
-  the binary's build inputs.
+* THE RECORD. The remote passes are kept in the pre-step's verdict record (tests/_land_verdicts.py)
+  as its `remote` list, apart from `passed` (GOH.REMOTESHARE, ruled: accept the rerun): a record's
+  identity is the Mac's tree AND toolchain, and a Linux pass is another toolchain's verdict, so the
+  land gate's suite (lib/pre_reuse.py `suite`) and the ship rerun those tests on the Mac and say so.
+  The share shortens the land's pre-step, the Mac-bound wait before the lock; it never stands in
+  for the gate.
+* THE SIZE (GOH.REMOTESHARE). Each land measures both sides' pace (`Rates`, `measure`) and the
+  next split balances them (`split`), so the worker takes what it finishes by the time the Mac does.
 
 GOH_LAND_REMOTE=off keeps the whole pre-step on the Mac; a tree with no tests/linux_safe.txt never
 sends anything, and neither does a pre-step inside a running goh suite unless it names its own
@@ -40,9 +45,10 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -79,25 +85,107 @@ def cost(nodes: list[str], durations: dict[str, float]) -> dict[str, float]:
     return {n: durations.get(n) or by_file.get(n) or 1.0 for n in nodes}
 
 
-def split(root: Path, nodes: list[str],
-          durations: dict[str, float] | None = None) -> tuple[list[str], list[str]]:  # fmt: skip
+@dataclass
+class Rates:
+    """Each side's measured pace (GOH.REMOTESHARE), kept beside the duration table
+    (`rates_path`) and smoothed over lands: the Mac's width (its estimated serial seconds over its
+    wall), the worker's (its junit's case seconds over the suite's wall), the worker's fixed
+    overhead (probe, sync, build: its wall less the suite's), its per-test seconds, and the ratio
+    of its seconds to the Mac's for one test (a test it never ran is the Mac's times that). The
+    defaults are the first wired land's (2026-11-22: 57 files the table puts at 364 Mac-serial
+    seconds took 139 s at -n 10, about 2.6 Mac cores, against roughly 8 from the Mac's -n 12)."""
+
+    mac_width: float = 8.0
+    worker_width: float = 2.6
+    overhead_s: float = 20.0
+    ratio: float = 1.0
+    tests: dict[str, float] = field(default_factory=dict)
+
+    def worker_s(self, node: str, mac_s: float) -> float:
+        own = self.tests.get(node)
+        if own is None:
+            mine = [v for k, v in self.tests.items() if k.split("::")[0] == node]
+            own = sum(mine) if mine else None
+        return mac_s * self.ratio if own is None else own
+
+
+SMOOTH = 0.5  # each land's measurement weighs half against the rates before it
+
+
+def rates_path() -> Path:
+    return fast_tests.cache().with_name("remote-rates.json")
+
+
+def load_rates() -> Rates:
+    try:
+        data = json.loads(rates_path().read_text(encoding="utf-8"))
+        return Rates(**{k: data[k] for k in Rates.__dataclass_fields__ if k in data})
+    except (OSError, ValueError, TypeError):
+        return Rates()
+
+
+def split(root: Path, nodes: list[str], durations: dict[str, float] | None = None,
+          rates: Rates | None = None,
+          mac_else: float = 0.0) -> tuple[list[str], list[str]]:  # fmt: skip
     """(the worker's, the Mac's). A node may go when its FILE is recorded Linux-safe; of those,
-    the costliest go first while the worker's seconds stay within its SHARE of the whole set's
-    (GOH_REMOTE_SHARE, default 0.25), so both sides end together. Measured 2026-11-22: 57 Linux-safe
-    files the duration table puts at 364 Mac-serial seconds took 139 s on the worker at -n 10, about
-    2.6 Mac cores, against roughly 8 the Mac's -n 12 gives under a land's load."""
+    the costliest go first while the worker's estimated wall (`Rates`: its overhead plus its
+    seconds over its width) stays within the Mac's remaining wall (its seconds, `mac_else` -- the
+    judges it runs first -- included, over its width), so both sides end together.
+    GOH_REMOTE_SHARE=F instead caps the worker at a fixed fraction F of the set's seconds."""
     suite = os.environ.get("GATES_OF_HECK_SUITE_RUNNER") and not os.environ.get("GOH_REMOTE_HOST")
     if os.environ.get("GOH_LAND_REMOTE", "on") == "off" or suite:  # a test never reaches the host
         return [], list(nodes)
     safe = listed(root, LINUX_SAFE)  # module names under tests/, never paths: data, not code
     secs = cost(nodes, fast_tests.load() if durations is None else durations)
-    room = float(os.environ.get("GOH_REMOTE_SHARE", "0.25")) * sum(secs.values())
+    fixed = os.environ.get("GOH_REMOTE_SHARE")
+    r = rates or load_rates()
+    room = float(fixed or 0) * sum(secs.values())
+    mac_left, wall = mac_else + sum(secs.values()), r.overhead_s
     remote: set[str] = set()
     for n in sorted((n for n in nodes if module(n) in safe), key=lambda n: -secs[n]):
-        if secs[n] <= room:
+        if fixed:
+            if secs[n] <= room:
+                remote.add(n)
+                room -= secs[n]
+            continue
+        took = r.worker_s(n, secs[n]) / r.worker_width
+        if wall + took <= (mac_left - secs[n]) / r.mac_width:
             remote.add(n)
-            room -= secs[n]
+            wall, mac_left = wall + took, mac_left - secs[n]
     return [n for n in nodes if n in remote], [n for n in nodes if n not in remote]
+
+
+def _blend(old: float, new: float) -> float:
+    return old * (1 - SMOOTH) + new * SMOOTH
+
+
+def measure(root: Path, share: Share, junit: str, mac_end: float) -> None:
+    """One land's paces folded into the rates the next split reads (`Rates`)."""
+    try:
+        doc = ET.fromstring(junit)
+        landed = share.junit.stat().st_mtime
+    except (OSError, ET.ParseError):
+        return
+    suite = doc if doc.tag == "testsuite" else doc.find(".//testsuite")
+    took = float(suite.get("time", "0")) if suite is not None else 0.0
+    tests = {node_id(root, tc.get("classname", ""), tc.get("name", "")): float(tc.get("time") or 0)
+             for tc in doc.iter("testcase")}  # fmt: skip
+    old, mac = load_rates(), fast_tests.load()
+    new = Rates(old.mac_width, old.worker_width, old.overhead_s, old.ratio, {**old.tests, **tests})
+    work = sum(tests.values())
+    if took > 0 and work > 0:
+        new.worker_width = _blend(old.worker_width, work / took)
+        new.overhead_s = _blend(old.overhead_s, max(0.0, landed - share.started - took))
+    both = [n for n in tests if mac.get(n)]
+    if both and sum(mac[n] for n in both) > 0:
+        new.ratio = _blend(old.ratio, sum(tests[n] for n in both) / sum(mac[n] for n in both))
+    if share.mac_s > 0 and mac_end > share.started:
+        new.mac_width = _blend(old.mac_width, share.mac_s / (mac_end - share.started))
+    path = rates_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(f".{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(asdict(new)))
+    tmp.replace(path)
 
 
 @dataclass
@@ -106,13 +194,19 @@ class Share:
     proc: subprocess.Popen[bytes]
     junit: Path
     log: Path
+    started: float = 0.0  # time.time() at the start, for both sides' walls (`measure`)
+    mac_s: float = 0.0  # the Mac's estimated serial seconds this pre-step, judges included
 
 
-def begin(root: Path, nodes: list[str], mac_runs: bool = True) -> tuple[list[str], Share | None]:
+def begin(root: Path, nodes: list[str], mac_runs: bool = True,
+          judges: list[str] | None = None) -> tuple[list[str], Share | None]:  # fmt: skip
     """Start the worker's share of `nodes` in the background; (the Mac's nodes, the share).
     `mac_runs` False (no other Mac run this pre-step): one node stays on the Mac, whose pytest
-    writes the verdict record tools/land.sh requires of a green pre-step (GOH.VERDICTCARRY2)."""
-    remote, local = split(root, nodes)
+    writes the verdict record tools/land.sh requires of a green pre-step (GOH.VERDICTCARRY2).
+    `judges`: the Mac's own run before `nodes`, whose seconds the balance counts."""
+    durations = fast_tests.load()
+    before = sum(cost(judges or [], durations).values())
+    remote, local = split(root, nodes, durations, mac_else=before)
     if remote and not local and not mac_runs:
         remote, local = remote[1:], remote[:1]
     if not remote:
@@ -128,7 +222,8 @@ def begin(root: Path, nodes: list[str], mac_runs: bool = True) -> tuple[list[str
                                 stdin=subprocess.DEVNULL)  # fmt: skip
     info(f"pre-land: {len(remote)} Linux-safe tests on the remote worker, beside the Mac's "
          f"{len(local)}")  # fmt: skip
-    return local, Share(remote, proc, Path(junit), log)
+    mac_s = before + sum(cost(local, durations).values())
+    return local, Share(remote, proc, Path(junit), log, time.time(), mac_s)
 
 
 def cancel(share: Share | None) -> None:
@@ -159,11 +254,12 @@ def passed(root: Path, junit: str) -> list[str]:
 
 
 def record_passes(record: str, ids: list[str]) -> None:
-    """The worker's passes, joined into the pre-step's verdict record (module doc)."""
-    if not record or record == os.devnull or not Path(record).is_file():
+    """The worker's passes, kept in the pre-step's verdict record apart from the Mac's (module
+    doc): its `remote` list, which no gate's reuse reads as a pass."""
+    if not record or record == os.devnull or not Path(record).is_file() or not ids:
         return
     data = json.loads(Path(record).read_text())
-    data.setdefault("passed", {}).update(dict.fromkeys(ids, True))
+    data["remote"] = sorted({*data.get("remote", []), *ids})
     Path(record).write_text(json.dumps(data))
 
 
@@ -181,11 +277,15 @@ def end(root: Path, share: Share | None, record: str, merge: Callable[[Path, Pat
     (`run_local`, pytest.sh), merged into the one before them (`merge`)."""
     if share is None:
         return 0
+    mac_end = time.time()  # the Mac's side is done: its wall ends here
     rc = share.proc.wait()
     tail = share.log.read_text(errors="replace").splitlines()[-6:]
     sys.stdout.write("".join(f"  remote: {ln}\n" for ln in tail))
     try:
-        got = kinds(root, share.junit.read_text()) if rc in (0, 1) else {}
+        text = share.junit.read_text() if rc in (0, 1) else ""
+        got = kinds(root, text) if text else {}
+        if got:
+            measure(root, share, text, mac_end)
     except (OSError, ET.ParseError):
         got, rc = {}, FALLBACK
     try:
@@ -231,11 +331,16 @@ def kinds(root: Path, junit: str) -> dict[str, str]:
 
 
 def record(root: Path, linux: dict[str, str], mac: dict[str, str]) -> tuple[list[str], list[str]]:
-    """(the Linux-safe files, the Mac's skips in them), from one full run on each: a file is safe
-    when the worker failed none of its tests and skipped exactly what the Mac skipped there."""
+    """(the Linux-safe files, the Mac's skips in them), from one full run on the worker and a Mac
+    run of any files: a file the Mac ran is safe when the worker failed none of its tests and
+    skipped exactly what the Mac skipped there; a file it did not run, when the worker failed and
+    skipped none (GOH.REMOTESHARE: the Mac need run only the files the worker skipped in)."""
     files: dict[str, list[str]] = {}
     for node in linux.keys() | mac.keys():
         files.setdefault(node.split("::")[0], []).append(node)
+    ran = {n.split("::")[0] for n in mac}
+    mac = {**{n: "passed" if k == "skipped" else k for n, k in linux.items()
+              if n.split("::")[0] not in ran}, **mac}  # fmt: skip
     safe = sorted(f for f, nodes in files.items() if f.endswith(".py") and all(
         n in linux and n in mac and linux[n] != "failed"
         and (linux[n] == "skipped") == (mac[n] == "skipped") for n in nodes))  # fmt: skip
@@ -253,15 +358,14 @@ def junit_name(node: str) -> str:
 
 def main(argv: list[str]) -> int:
     """`python3 lib/remote_lane.py record LINUX.xml [MAC.xml]`, at a checkout's root: rewrite both
-    recorded lists from a full run on each side. With no Mac run, a file the worker skipped anything
-    in is not safe (no Mac skips to compare); the shard's parity check refuses any remote skip."""
+    recorded lists from a full run on the worker and a Mac run of any files (`record`). With no Mac
+    run, a file the worker skipped anything in is not safe (no Mac skips to compare)."""
     if len(argv) not in (2, 3) or argv[0] != "record":
         print("usage: remote_lane.py record LINUX_JUNIT [MAC_JUNIT]", file=sys.stderr)
         return 2
     root = Path.cwd()  # the checkout it is run in, never the HEAD export it runs from
     linux = kinds(root, Path(argv[1]).read_text())
-    mac = (kinds(root, Path(argv[2]).read_text()) if len(argv) == 3
-           else {n: "passed" if k == "skipped" else k for n, k in linux.items()})  # fmt: skip
+    mac = kinds(root, Path(argv[2]).read_text()) if len(argv) == 3 else {}
     safe, skips = record(root, linux, mac)
     how = "LINUX.xml MAC.xml" if len(argv) == 3 else "LINUX.xml (no Mac run)"
     head = f"# GOH.REMOTEWIRE: written by `python3 lib/remote_lane.py record {how}`\n"

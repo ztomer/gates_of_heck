@@ -425,7 +425,7 @@ def run(root: Path, changed: list[str], chosen: dict, base: str | None = None, r
     )
     record = os.environ.get("GOH_LAND_VERDICTS_RECORD", "")
     first = Path(f"{record}.judges") if record and record != os.devnull else None
-    rest, share = (rest, None) if rust else remote_lane.begin(root, rest, bool(judges))
+    rest, share = (rest, None) if rust else remote_lane.begin(root, rest, bool(judges), judges)
     for n, nodes in enumerate((judges, rest)):
         if not nodes and not (rust and n == 1):  # a Rust change measures its workspace's tests
             continue

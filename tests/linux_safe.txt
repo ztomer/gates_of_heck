@@ -1,4 +1,4 @@
-# GOH.REMOTEWIRE: written by `python3 lib/remote_lane.py record LINUX.xml (no Mac run)`
+# GOH.REMOTEWIRE: written by `python3 lib/remote_lane.py record LINUX.xml MAC.xml`
 test_actions_sweep
 test_admit_replay
 test_advisory_db
@@ -113,6 +113,7 @@ test_claude_compact_hooks
 test_claude_discard_guard
 test_claude_hook_registrations
 test_claude_load_guard
+test_claude_skill_hook
 test_commit_class
 test_commit_gate_repo_writes
 test_commit_gate_structural
@@ -325,6 +326,7 @@ test_load_sensitive
 test_load_sources
 test_load_tool
 test_load_why
+test_loadgroup
 test_local_ci
 test_local_ci_consumes_order
 test_local_ci_jobs
@@ -333,6 +335,7 @@ test_lock_nest
 test_lock_order
 test_lock_order_deadlock
 test_lock_version_own_line
+test_long_pole
 test_machine_shape
 test_main_red
 test_mcp_scaffold
@@ -476,6 +479,7 @@ test_self_match_redirect
 test_self_match_wait
 test_sequencer_markers
 test_session_bench
+test_share_grow
 test_shared_checkout_guard
 test_shell_lint_cache_path
 test_shell_lint_follows_sources

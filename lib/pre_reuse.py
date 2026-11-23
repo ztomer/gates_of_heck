@@ -352,6 +352,10 @@ def suite(root: Path, record: Path, base: str) -> tuple[bool, str, str]:
         return False, "a malformed pre-step record", ""
     if rec.get("selection") != "affected" or not isinstance(rec.get("base"), str):
         return False, "the record is not the pre-step's whole selection", ""
+    if remote := rec.get("remote"):  # GOH.REMOTESHARE: a Linux verdict is another toolchain's
+        n = len(remote)
+        return False, (f"{n} test{'s' if n != 1 else ''} passed on the Linux worker "
+                       "(lib/remote_lane.py): the gate runs them on the Mac"), ""  # fmt: skip
     gi, reuse = _kit("gate_identity", "lib"), _kit("reuse", "lib")
     here = gi.suite(root)
     if here is None:

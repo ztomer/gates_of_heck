@@ -30,6 +30,7 @@ JUNIT = (
 def tree(tmp_path: Path, monkeypatch) -> Path:
     monkeypatch.setenv("GOH_REMOTE_HOST", "fakehost")  # inside the suite, only a named host
     monkeypatch.setenv("GOH_REMOTE_SHARE", "1")  # every Linux-safe node may go, unless a test says
+    monkeypatch.setenv("GOH_TEST_DURATIONS", str(tmp_path / "durations.json"))  # rates beside it
     (tmp_path / "tests").mkdir()
     for name in ("test_a.py", "test_b.py", "test_c.py"):
         (tmp_path / "tests" / name).write_text("def test_x(): pass\n")
@@ -64,6 +65,51 @@ def test_the_worker_takes_the_costliest_safe_files_up_to_its_share(tree: Path, m
     monkeypatch.setenv("GOH_REMOTE_SHARE", "0.55")  # 55 s: a (30) then b (25)
     assert rl.split(tree, nodes, durations)[0] == ["tests/test_a.py", "tests/test_b.py"]
     assert rl.cost(["tests/test_d.py"], durations) == {"tests/test_d.py": 1.0}
+
+
+def test_unset_share_balances_both_sides_by_their_measured_rates(tree: Path, monkeypatch):
+    """GOH.REMOTESHARE: with no fixed share, a safe file goes while the worker's estimated wall
+    (its overhead plus its measured seconds over its width) stays within the Mac's remaining wall
+    (the Mac's seconds, the judges' included, over the Mac's measured width)."""
+    monkeypatch.delenv("GOH_REMOTE_SHARE")
+    (tree / rl.LINUX_SAFE).write_text("test_a\ntest_b\n")
+    durations = {"tests/test_a.py::t1": 40.0, "tests/test_b.py::t1": 30.0,
+                 "tests/test_c.py::t1": 30.0}  # fmt: skip
+    nodes = ["tests/test_a.py", "tests/test_b.py", "tests/test_c.py"]
+    rates = rl.Rates(mac_width=4.0, worker_width=2.0, overhead_s=5.0, ratio=1.0,
+                     tests={"tests/test_a.py::t1": 20.0})  # fmt: skip
+    # a: 5 + 20/2 = 15 <= (100 - 40)/4 = 15: goes; b: 15 + 30/2 = 30 > (60 - 30)/4: stays
+    assert rl.split(tree, nodes, durations, rates) == (
+        ["tests/test_a.py"],
+        ["tests/test_b.py", "tests/test_c.py"],
+    )
+    # the judges' 100 Mac seconds leave the Mac longer: b goes too (30 <= (160 - 30)/4)
+    assert rl.split(tree, nodes, durations, rates, mac_else=100.0)[0] == nodes[:2]
+    # a worker never measured on a file takes the Mac's seconds times the measured ratio
+    slow = rl.Rates(mac_width=4.0, worker_width=2.0, overhead_s=5.0, ratio=3.0, tests={})
+    assert rl.split(tree, nodes, durations, slow) == ([], nodes)  # a: 5 + 120/2 > 15
+
+
+def test_a_finished_share_measures_both_sides_for_the_next_split(tree: Path, monkeypatch):
+    """The worker's per-test seconds, its width (case seconds over the suite's wall) and its
+    overhead come from its junit; the Mac's width from its estimated seconds over its wall."""
+    junit = ('<?xml version="1.0"?><testsuites><testsuite name="pytest" time="10">'
+             '<testcase classname="tests.test_a" name="t1" time="12"/>'
+             '<testcase classname="tests.test_a" name="t2" time="8"/>'
+             "</testsuite></testsuites>")  # fmt: skip
+    (tree / "durations.json").write_text(json.dumps({"tests/test_a.py::t1": 6.0,
+                                                     "tests/test_a.py::t2": 4.0}))  # fmt: skip
+    share = _share(tree, 0, junit)
+    share.started, share.mac_s = 1000.0, 80.0
+    os.utime(share.junit, (1030.0, 1030.0))  # the worker's junit landed 30 s after the start
+    monkeypatch.setattr(rl.time, "time", lambda: 1040.0)  # the Mac's side ended 40 s in
+    assert rl.end(tree, share, "", av.merge_records, lambda ns: 0) == 0
+    got = rl.load_rates()
+    assert got.tests == {"tests/test_a.py::t1": 12.0, "tests/test_a.py::t2": 8.0}
+    assert got.worker_width == pytest.approx((2.6 + 20 / 10) / 2)  # smoothed with the default
+    assert got.mac_width == pytest.approx((8.0 + 80 / 40) / 2)
+    assert got.overhead_s == pytest.approx((20.0 + 30 - 10) / 2)
+    assert got.ratio == pytest.approx((1.0 + 20 / 10) / 2)
 
 
 def test_a_junit_case_is_named_by_its_pytest_node_id(tree: Path):
@@ -101,9 +147,11 @@ def test_a_green_worker_joins_its_passes_to_the_record(tree: Path):
     rc = rl.end(tree, _share(tree, 0), str(record), av.merge_records,
                 lambda ns: calls.append(ns) or 0)  # fmt: skip
     assert rc == 0 and calls == []
-    passed = json.loads(record.read_text())["passed"]
-    assert passed == {"tests/test_c.py::test_x": False, "tests/test_a.py::test_one": True,
-                      "tests/test_a.py::TestC::test_two[x]": True}  # fmt: skip
+    got = json.loads(record.read_text())
+    # GOH.REMOTESHARE: a Linux verdict is kept apart from the Mac's passes, so the gate's reuse
+    # (tests/_land_verdicts.py, lib/pre_reuse.py `suite`) runs them on the Mac again
+    assert got["passed"] == {"tests/test_c.py::test_x": False}
+    assert got["remote"] == ["tests/test_a.py::TestC::test_two[x]", "tests/test_a.py::test_one"]
     assert not (tree / "j.xml").exists() and not (tree / "log").exists()
 
 
@@ -149,7 +197,7 @@ def test_an_unreachable_worker_falls_back_and_the_pre_step_still_passes(tmp_path
     monkeypatch.setenv("PATH", f"{fake}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("GOH_REMOTE_HOST", "unreachable.invalid")
     nodes = ["tests/test_remote_lane.py"]
-    monkeypatch.setattr(rl, "split", lambda root, ns: (list(ns), []))
+    monkeypatch.setattr(rl, "split", lambda root, ns, *_a, **_k: (list(ns), []))
     local, share = rl.begin(REPO_ROOT, nodes)
     assert local == [] and share is not None
     ran: list[list[str]] = []
@@ -171,6 +219,26 @@ def test_the_lists_are_recorded_from_one_full_run_on_each_side(tree: Path):
     assert safe == [a]  # b failed on Linux; c skipped there what the Mac ran
     assert skips == [f"{a}::C::t2"]
     assert rl.junit_name(f"{a}::C::t2") == "tests.test_a.C::t2"
+
+
+def test_a_mac_run_of_some_files_judges_those_exactly_and_the_rest_by_no_worker_skip(tree: Path):
+    """GOH.REMOTESHARE: the Mac junit need cover only the files the worker skipped in; a file it
+    does not cover is safe only when the worker skipped nothing there."""
+    a, b, c = "tests/test_a.py", "tests/test_b.py", "tests/test_c.py"
+    linux = {f"{a}::t1": "skipped", f"{b}::t1": "passed", f"{c}::t1": "skipped"}
+    mac = {f"{a}::t1": "skipped"}  # the Mac ran a only
+    assert rl.record(tree, linux, mac) == ([a, b], [f"{a}::t1"])
+
+
+def test_the_gate_s_suite_reuse_refuses_a_record_with_worker_passes(tmp_path: Path):
+    """The ship and the land gate rerun the worker's share on the Mac, and say so."""
+    from lib import pre_reuse
+
+    rec = tmp_path / "rec.json"
+    rec.write_text(json.dumps({"identity": "t", "passed": {}, "selection": "affected",
+                               "base": "b" * 40, "remote": ["tests/test_a.py::t"]}))  # fmt: skip
+    ok, why, _ = pre_reuse.suite(tmp_path, rec, "b" * 40)
+    assert not ok and "1 test passed on the Linux worker" in why
 
 
 def test_goh_s_recorded_lists_name_only_what_exists():

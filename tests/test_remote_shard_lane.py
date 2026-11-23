@@ -76,6 +76,16 @@ def test_the_recorded_mac_skip_set_is_the_parity_reference(rig):
     assert r.returncode == 3 and "tests.test_x::test_d" in r.stdout + r.stderr
 
 
+def test_the_recorded_skip_set_is_exact_not_a_count(rig):
+    """GOH.REMOTESHARE: one recorded skip the worker ran and one it skipped the Mac does not
+    record are equal COUNTS, never the same verdict: both are named and the share goes back."""
+    skips = rig["tmp"] / "mac_skips.txt"
+    skips.write_text("tests.test_x::test_a\n")
+    r = _run(rig, "--no-local", "--mac-skips", str(skips), "tests/test_x.py")
+    said = r.stdout + r.stderr
+    assert r.returncode == 3 and "tests.test_x::test_a" in said and "tests.test_x::test_d" in said
+
+
 def test_a_remote_junit_that_does_not_parse_is_a_fallback_not_a_crash(rig):
     (rig["tmp"] / "junit.xml").write_text("<testsuites><testsuite")
     r = _run(rig, "--no-local", "tests/test_x.py")

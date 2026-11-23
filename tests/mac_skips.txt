@@ -1,1 +1,5 @@
-# GOH.REMOTEWIRE: written by `python3 lib/remote_lane.py record LINUX.xml (no Mac run)`
+# GOH.REMOTEWIRE: written by `python3 lib/remote_lane.py record LINUX.xml MAC.xml`
+tests.test_claude_skill_hook::test_the_installed_settings_point_at_this_hook
+tests.test_loadgroup::test_this_run_groups_me
+tests.test_long_pole::test_no_test_every_enqueue_runs_takes_longer_than_60_s_but_the_allowed
+tests.test_share_grow::test_this_suite_runs_under_its_tokens

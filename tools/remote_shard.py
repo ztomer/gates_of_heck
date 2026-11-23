@@ -301,12 +301,13 @@ def cases(junit: str) -> dict[str, str]:
     return out
 
 
-def skip_drift(remote: dict[str, str], mac: dict[str, str]) -> list[str]:
-    """The tests both ran whose skipped-ness differs, when the skip COUNTS differ."""
+def skip_drift(remote: dict[str, str], mac: dict[str, str], exact: bool = False) -> list[str]:
+    """The tests both ran whose skipped-ness differs: when the skip COUNTS differ, or under
+    `exact` (the recorded Mac skip set, GOH.REMOTESHARE) whenever the SETS do."""
     both = remote.keys() & mac.keys()
     r = {t for t in both if remote[t] == "skipped"}
     m = {t for t in both if mac[t] == "skipped"}
-    return [] if len(r) == len(m) else sorted(r ^ m)
+    return sorted(r ^ m) if exact or len(r) != len(m) else []
 
 
 def summary(kinds: dict[str, str]) -> str:
@@ -370,9 +371,9 @@ def main(argv: list[str]) -> int:
             skips = {ln for ln in a.mac_skips.read_text().splitlines() if ln[:1] not in "#"}
             mac = {t: "skipped" if t in skips else "passed" for t in remote}
         if mac is not None:
-            drift = skip_drift(remote, mac)
+            drift = skip_drift(remote, mac, exact=bool(a.mac_skips))
             if drift:
-                raise Fallback("refused: the remote skip count differs from the Mac's: "
+                raise Fallback("refused: the remote skips differ from the Mac's: "
                                + ", ".join(drift))  # fmt: skip
         if rc not in (0, 1):
             raise Fallback(f"remote pytest exited {rc}")
