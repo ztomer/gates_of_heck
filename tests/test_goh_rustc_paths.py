@@ -241,7 +241,15 @@ def test_shared_crates_hit_across_build_dirs_and_miss_when_their_content_changes
         od_changed = build(str(SHIM), "shim-d")
     finally:
         run(sccache, "--stop-server")
-    assert raw == 0, "straight to sccache a second build dir hit: the probe is blind"
+    # Straight to sccache, a second build dir hits FEWER shared crates than through the shim: that
+    # is both the probe's calibration (it can see a miss) and the shim's reason to exist. The count
+    # is sccache's, not ours: 0 of 3 under 0.19, 1 of 3 under 0.20, which stopped hashing
+    # CARGO_TARGET_DIR (#3050) and hashes proc-macro externs by metadata (#2882) (measured
+    # 2026-11-23). Pinning raw == 0 made the first 0.20 install turn every land red.
+    assert raw < shimmed, (
+        f"straight to sccache a second build dir hit {raw} of 3, as many as the shim ({shimmed}):"
+        " the probe is blind, or sccache now does the shim's job (then retire the shim)"
+    )
     assert shimmed == 3, "through the shim od, usepm and useod should all hit"
     assert pm_changed == 2, "a changed proc-macro: only usepm should miss"
     assert od_changed == 1, "a changed build-script output: od and useod should miss"
