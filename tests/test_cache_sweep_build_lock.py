@@ -78,9 +78,9 @@ def test_a_sweep_during_a_real_cargo_build_leaves_its_build_dir(tmp_path):
         " std::thread::sleep(std::time::Duration::from_millis(50)); } }\n"
     )
     bd = tmp_path / "build" / "cd" / "cd34ef56"
-    env = hermetic_env(CARGO_BUILD_BUILD_DIR=str(bd), RUSTC_WRAPPER="",
-                       CARGO_TARGET_DIR=str(tmp_path / "target"))  # fmt: skip
-    build = subprocess.Popen(["cargo", "build", "-q"], cwd=proj, env=env, text=True,
+    argv = ["cargo", "build", "-q", "--config", f"build.build-dir={json.dumps(str(bd))}",
+            "--target-dir", str(tmp_path / "target")]  # fmt: skip
+    build = subprocess.Popen(argv, cwd=proj, env=hermetic_env(RUSTC_WRAPPER=""), text=True,
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                              stderr=subprocess.PIPE)  # fmt: skip
     try:
