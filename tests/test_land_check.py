@@ -264,14 +264,18 @@ def test_the_check_runs_the_table_tests_the_diff_chooses_and_names_the_table(tmp
         json.dumps(
             {
                 "tests/test_t.py::test_every_script_has_a_row": 0.1,
-                "tests/test_t.py::test_no_slow_table_rows": land_check.TABLE_EACH_S + 1,
+                "tests/test_t.py::test_no_slow_table_rows": land_check.JUDGE_EACH_S + 1,
                 "tests/test_t.py::test_plain_behaviour": 0.1,
             }
         )
     )
     monkeypatch.setenv("GOH_TEST_DURATIONS", str(times))
-    monkeypatch.setattr(land_check, "chosen_by_diff", lambda root: ["tests/test_t.py"])
-    assert land_check.table_tests(tree) == [
+    monkeypatch.setattr(
+        land_check,
+        "chosen_by_diff",
+        lambda root, judges=False: [] if judges else ["tests/test_t.py"],
+    )
+    assert land_check.judge_tests(tree) == [
         "tests/test_t.py::test_every_script_has_a_row",
         "tests/test_t.py::test_no_new_manifest_entry",
     ]
@@ -308,3 +312,54 @@ def test_check_and_enqueue_refuse_on_a_guard_and_record_it(repo, tmp_path, env):
         green, "--enqueue", "--foreground", "--land", str(wt), "--item", "T.C", "--no-start"
     )
     assert done.returncode == 0 and len(_pending(tmp_path)) == 1, done.stdout + done.stderr
+
+
+# GOH.LANDCHECK2: GOH-TINY's land went red 7 times in 45 min (2026-11-22), each on a different judge
+# only the pre-step ran, each attempt naming one. A fixture lane breaking three judges the old check
+# never ran: a table test over the old table cap, a whole-tree judge that is no table test, and the
+# diff coverage judge; its selector is the tree's own tools/affected_tests.py, as goh's is.
+JUDGES = """\
+def test_every_lib_has_a_row():
+    assert False, "lib/x.py has no row in docs/map.md"
+def test_goh_obeys_every_scanner_it_ships():
+    assert False, "self_walk[shell]: 1 finding"
+def test_plain_behaviour(): assert False
+"""
+SELECTOR = """\
+import sys
+if "diff-cov" in sys.argv:
+    print("x [diff-coverage] 2 of 160 changed executable lines uncovered (since main):")
+    print("    crates/goh/src/x.rs:12  let y = 1;")
+    sys.exit(1)
+if "judges" in sys.argv:
+    print("tests/test_j.py::test_goh_obeys_every_scanner_it_ships")
+else:
+    print("tests/test_j.py")
+"""
+
+
+def test_one_check_names_every_judge_a_lane_breaks_with_diff_coverage(tmp_path, monkeypatch):
+    tree = tmp_path / "tree"
+    (tree / "tests").mkdir(parents=True)
+    (tree / "tools").mkdir()
+    (tree / "tests" / "test_j.py").write_text(JUDGES)
+    (tree / "tools" / "affected_tests.py").write_text(SELECTOR.replace("x [", "✗ ["))
+    times = tmp_path / "durations.json"
+    times.write_text(json.dumps({
+        "tests/test_j.py::test_every_lib_has_a_row": 26.0,  # over the old table cap (25 s)
+        "tests/test_j.py::test_goh_obeys_every_scanner_it_ships": 67.0,
+        "tests/test_j.py::test_plain_behaviour": 0.1,
+    }))  # fmt: skip
+    monkeypatch.setenv("GOH_TEST_DURATIONS", str(times))
+    monkeypatch.setenv("GOH_PY", sys.executable)
+    said: list[str] = []
+    refused = land_check.run(tree, None, said.append, "", tables=True)
+    assert sorted(refused) == [
+        "[diff-coverage]",
+        "tests/test_j.py::test_every_lib_has_a_row",
+        "tests/test_j.py::test_goh_obeys_every_scanner_it_ships",
+    ], said
+    assert (
+        "tests/test_j.py::test_plain_behaviour" not in refused
+    )  # the lane's own test: not a judge
+    assert any("diff coverage: REFUSED" in s and "x.rs:12" in s for s in said), said

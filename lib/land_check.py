@@ -22,12 +22,15 @@ THE GUARDS, run in the checkout as the land runs them, side by side:
     guard reads text), the way a commit's source guards run. A pre-step's refusal at enqueue is
     `learn`ed into `<landq>/guards.jsonl`, so the next check runs the test that refused it.
 
-THE TABLES (`goh land --check` only; GOH.TABLESEARLY). 25 of the 48 reds in 100 land records were
-consistency-table tests (lib/land_reds.py's class), each a whole enqueue cycle. The check adds the
-ones the change can affect: the enqueue pre-step's own choice for the diff, cut to the test
-functions land_reds' rule calls table judges (`judges_a_table`, the rule `goh land-reds` counts
-by, never a hand list), under a cost cap; a refusal names the table files its assertions name.
-The enqueue's check leaves them out: its pre-step runs them minutes later anyway.
+THE JUDGES (`goh land --check` only; GOH.TABLESEARLY, GOH.LANDCHECK2). 25 of the 48 reds in 100
+land records were consistency-table tests (lib/land_reds.py's class), and GOH-TINY's land went red
+7 times on judges only the pre-step ran, one per attempt. The check adds every judge the change can
+break (`judge_tests`): the enqueue pre-step's own choice for the diff cut to its whole-tree judges
+(its first run) and the test functions land_reds' rule calls table judges (`judges_a_table`), each
+under JUDGE_EACH_S, over JUDGE_SHARDS runs; and the pre-step's diff coverage judge run alone
+(`diff_cov_job`). Every job runs to its verdict, so one pass names every refusal; a table refusal
+names the table files its assertions name. The enqueue's check leaves them out: its pre-step runs
+them minutes later anyway.
 
 THE RECORD. A refused land names its guard: `guards(text)` reads a land's log for the failing
 test node ids and the failing gate steps, `fields` puts `guard` (the first) and `guards` on the
@@ -56,10 +59,16 @@ from tui.lib import counted  # noqa: E402
 EACH_S = 1.0  # the most a past refuser may cost, by the suite's measurement
 DECLARED_EACH_S = 10.0  # ... and a declared guard: its file chose it
 SHARDS = 3  # the guard tests' pytest runs, side by side, balanced by measured cost
-# The consistency-table tests `cli` adds (GOH.TABLESEARLY): each at most TABLE_EACH_S by the
-# suite's measurement (an unmeasured one costed UNMEASURED_S), cheapest first while the sum stays
-# within TABLE_BUDGET_S, over TABLE_SHARDS runs. 25 of 48 reds in 100 land records were this class.
-TABLE_EACH_S, TABLE_BUDGET_S, TABLE_SHARDS, UNMEASURED_S = 25.0, 150.0, 5, 1.0
+UNMEASURED_S = 1.0  # the cost of a test the suite has not measured yet
+# EVERY JUDGE A DIFF CAN BREAK (GOH.LANDCHECK2). GOH-TINY's land went red 7 times in 45 min on
+# 2026-11-22, each on a different judge only the pre-step ran (an orphan session leader, a reader
+# count, an env dump, self_walk[shell], diff coverage twice), each attempt naming one. The check
+# now runs the pre-step's whole first run -- every whole-tree judge it chooses (affected_tests
+# --only judges) -- at most JUDGE_EACH_S each by the suite's measurement, over JUDGE_SHARDS runs,
+# plus its diff coverage judge (--only diff-cov: the instrumented run of the chosen binary tests,
+# under DIFFCOV_TIMEOUT), side by side, and names every refusal in one pass.
+JUDGE_EACH_S, JUDGE_SHARDS, DIFFCOV_TIMEOUT = 120.0, 8, 1500
+DIFFCOV = "diff coverage"
 SELECT_TIMEOUT = 120
 HISTORY = 400  # the newest done records read for past refusing guards
 STEP_TIMEOUT = 300
@@ -160,14 +169,16 @@ def tests(root: Path, q: Path | None, repo: str = "") -> list[str]:
     return [n for n in every if cost.get(n, 0.0 if n in mine else EACH_S + 1) <= cap.get(n, EACH_S)]
 
 
-def chosen_by_diff(root: Path) -> list[str]:
+def chosen_by_diff(root: Path, judges: bool = False) -> list[str]:
     """What the enqueue's pre-step would choose for ROOT's diff against main: the tree's own
-    tools/affected_tests.py in its enqueue mode; [] for a tree without one, or when it fails."""
+    tools/affected_tests.py in its enqueue mode (JUDGES: its first run alone, the whole-tree
+    judges); [] for a tree without one, or when it fails."""
     tool = root / "tools" / "affected_tests.py"
     if not tool.is_file():
         return []
     env = {**_env(root), "GOH_LAND_PRE_ONLY": "1"}
     argv = [env["GOH_PY"], str(tool), "--root", str(root), "--base", "main"]
+    argv += ["--only", "judges"] if judges else []
     try:
         res = subprocess.run(argv, cwd=root, env=env, capture_output=True, text=True, check=False,
                              stdin=subprocess.DEVNULL, timeout=SELECT_TIMEOUT)  # fmt: skip
@@ -177,19 +188,24 @@ def chosen_by_diff(root: Path) -> list[str]:
     return [ln.strip() for ln in lines if ln.startswith("tests/")]
 
 
-def table_tests(root: Path) -> list[str]:
-    """The consistency-table tests ROOT's change can affect: the pre-step's choice for its diff
-    (`chosen_by_diff`) cut to the test functions lib/land_reds.py's rule calls table judges,
-    cheapest first under TABLE_EACH_S each and TABLE_BUDGET_S in all."""
+def judge_tests(root: Path) -> list[str]:
+    """Every judge ROOT's change can break (GOH.LANDCHECK2): of the pre-step's choice for its diff,
+    its whole-tree judges (`chosen_by_diff` JUDGES) and the test functions lib/land_reds.py's rule
+    calls table judges (GOH.TABLESEARLY), each at most JUDGE_EACH_S by the suite's measurement (an
+    unmeasured one runs); no total budget, the shards spread them."""
     cost = costs()
+    judges = set(fast_tests.units(root, chosen_by_diff(root, judges=True)))
     found = [n for n in fast_tests.units(root, chosen_by_diff(root)) if land_reds.judges_a_table(n)]
-    out, total = [], 0.0
-    for node in sorted(dict.fromkeys(found), key=lambda n: cost.get(n, UNMEASURED_S)):
-        took = cost.get(node, UNMEASURED_S)
-        if took <= TABLE_EACH_S and total + took <= TABLE_BUDGET_S:
-            out.append(node)
-            total += took
-    return sorted(out)
+    return sorted(n for n in judges | set(found) if cost.get(n, UNMEASURED_S) <= JUDGE_EACH_S)
+
+
+def diff_cov_job(root: Path, env: dict[str, str]) -> list[str] | None:
+    """The pre-step's diff coverage judge run alone (tools/affected_tests.py --only diff-cov), or
+    None for a tree whose selector has no such mode."""
+    tool = root / "tools" / "affected_tests.py"
+    if not tool.is_file() or "diff-cov" not in tool.read_text(errors="replace"):
+        return None
+    return [env["GOH_PY"], str(tool), "--root", str(root), "--base", "main", "--only", "diff-cov"]
 
 
 def shards(nodes: list[str], n: int = SHARDS) -> list[list[str]]:
@@ -218,16 +234,19 @@ def _env(root: Path) -> dict[str, str]:
     return env
 
 
-def _run(argv: list[str], root: Path, env: dict[str, str]) -> tuple[int, str, float]:
+def _run(
+    argv: list[str], root: Path, env: dict[str, str], timeout: float | None = None
+) -> tuple[int, str, float]:
     """ARGV in its own session, its output in a file (a child that outlives it holds no pipe), the
-    whole group stopped at STEP_TIMEOUT (lib/killtree.py: TERM, a grace, then KILL)."""
+    whole group stopped at TIMEOUT, else STEP_TIMEOUT (lib/killtree.py: TERM, grace, KILL)."""
     from lib import killtree
 
+    limit = timeout or STEP_TIMEOUT
     t0 = time.monotonic()
     with tempfile.TemporaryFile() as log:
         proc = subprocess.Popen(argv, cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=log,
                                 stderr=subprocess.STDOUT, start_new_session=True)  # fmt: skip
-        rc = proc_deadline.wait(proc, STEP_TIMEOUT)
+        rc = proc_deadline.wait(proc, limit)
         if rc is None:
             killtree.stop_group(killtree.session_pgid(proc), proc=proc)
             proc.wait()
@@ -235,7 +254,7 @@ def _run(argv: list[str], root: Path, env: dict[str, str]) -> tuple[int, str, fl
         log.seek(0)
         out = log.read().decode(errors="replace")
     if rc == 124:
-        out += f"\ntimed out after {STEP_TIMEOUT} s"
+        out += f"\ntimed out after {limit} s"
     return rc, out, round(time.monotonic() - t0, 1)
 
 
@@ -243,26 +262,33 @@ def run(
     root: Path, q: Path | None = None, say=print, repo: str = "", tables: bool = False
 ) -> list[str]:
     """Every guard over ROOT; the refusing guards' names ([] is green). SAY prints a line. TABLES
-    (`goh land --check`) adds the consistency-table tests the change can affect (`table_tests`)."""
+    (`goh land --check`) adds every judge the change can break (`judge_tests`) and diff coverage."""
     env = _env(root)
     nodes = tests(root, q, repo)
     if tables:
         t0 = time.monotonic()
-        extra = [n for n in table_tests(root) if n not in nodes]
+        extra = [n for n in judge_tests(root) if n not in nodes]
         took = time.monotonic() - t0
-        say(f"check: {counted(len(extra), 'consistency-table test')} chosen in {took:.1f} s")
+        say(
+            f"check: {counted(len(extra), 'judge test')} the diff can break, chosen in {took:.1f} s"
+        )
         nodes += extra
     jobs: dict[str, list[str]] = {s: ["bash", "-c", s] for s in steps(root)}
     serial = ["-n", "0"] if (root / "tests" / "_shard.py").is_file() else []  # goh's xdist
     py = [env["GOH_PY"], "-m", "pytest", "-q", "-p", "no:cacheprovider", *serial]
-    parts = shards(nodes, TABLE_SHARDS if tables else SHARDS)
+    parts = shards(nodes, JUDGE_SHARDS if tables else SHARDS)
     for i, part in enumerate(parts, 1):
         jobs[f"guard tests {i}/{len(parts)}"] = [*py, "--", *part]
+    if tables and (cov := diff_cov_job(root, env)):
+        jobs[DIFFCOV] = cov
     if not jobs:
         say("check: no guard declared (GOH_LAND_CHECK_STEPS, # goh-land-guard:) -- nothing to run")
         return []
     with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
-        done = {name: pool.submit(_run, argv, root, env) for name, argv in jobs.items()}
+        done = {
+            name: pool.submit(_run, argv, root, env, DIFFCOV_TIMEOUT if name == DIFFCOV else None)
+            for name, argv in jobs.items()
+        }
         results = {name: f.result() for name, f in done.items()}
     refused: list[str] = []
     for name, (rc, out, took) in results.items():

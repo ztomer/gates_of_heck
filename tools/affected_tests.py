@@ -336,10 +336,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument(
         "--run", action="store_true", help="run the set with the root's tools/pytest.sh"
     )
-    ap.add_argument(
-        "--structural", action="store_true", help="--run: gates/structural.sh --full first"
-    )
+    ap.add_argument("--structural", action="store_true", help="--run: structural.sh --full first")
     ap.add_argument("--rust-cov", action="store_true", help="--run: measure its changed Rust lines")
+    ap.add_argument("--only", choices=("judges", "diff-cov"), help="the judges; the diff cov judge")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     if args.run and (rc := fast_tests.run(root, affected(root, [], enqueue=False))):
@@ -350,6 +349,10 @@ def main(argv: list[str]) -> int:
         if args.readers_only
         else affected(root, changed)
     )
+    if args.only == "diff-cov":  # GOH.LANDCHECK2 (land --check): the diff coverage judge alone
+        return land_rustcov.judge(root, args.base, land_rustcov.selected(root, list(chosen)))
+    if args.only == "judges":  # GOH.LANDCHECK2: the pre-step's first run, its whole-tree judges
+        chosen = {n: chosen[n] for n in phases(root, chosen)[0]}
     if args.run:
         if args.structural and (rc := fast_tests.structural(root)):
             return rc

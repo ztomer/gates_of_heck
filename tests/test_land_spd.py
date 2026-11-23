@@ -168,3 +168,22 @@ def test_the_command_prints_the_last_n_and_the_lands_since_a_commit(spd, tmp_pat
     assert got["spd"][f"since {shas['B']}"]["lands"] == 1  # strictly past B: Z only
     assert got["spd"]["last 5"]["lands"] == 3
     assert dt.timedelta(minutes=30).total_seconds() == got["spd"]["last 5"]["commit_to_landed_s"]
+
+
+def test_a_diff_coverage_red_pre_step_names_diff_coverage_in_its_verdict(tmp_path: Path) -> None:
+    """GOH.LANDCHECK2: GOH-TINY's two diff coverage reds (2026-11-22) said only 'the pre-land
+    tests failed ... (exit 1, see the output above)'; the verdict line names the judge and count."""
+    script = tmp_path / "pre.sh"
+    script.write_text(
+        "printf '\\342\\234\\227 [diff-coverage] 19 of 160 changed executable lines uncovered "
+        "(since abc):\\n    crates/goh/src/x.rs:12  let y = 1;\\n'; exit 1\n"
+    )
+    with pytest.raises(land_prestep.Red) as red:
+        land_prestep.run(tmp_path, "a" * 40, script, ())
+    first = str(red.value).splitlines()[0]
+    assert first.startswith("[diff-coverage] 19 of 160 changed executable lines uncovered on aaaa")
+    assert "crates/goh/src/x.rs:12" in str(red.value)
+    script.write_text("printf 'FAILED tests/test_x.py::test_y - boom\\n'; exit 1\n")
+    with pytest.raises(land_prestep.Red) as red:
+        land_prestep.run(tmp_path, "a" * 40, script, ())
+    assert "the pre-land tests failed" in str(red.value) and "test_x.py::test_y" in str(red.value)

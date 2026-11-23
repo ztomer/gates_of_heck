@@ -48,6 +48,13 @@ class Red(Exception):
 # tools/land.sh's one line for a pre-step that found nothing: a deadline ("no verdict after N s at
 # load L") or a slot wait that expired ("no verdict: waited N s for a gate slot and ran nothing").
 NO_VERDICT = re.compile(r"pre-land: no verdict[: ] ?(.*?) -- the gate decides")
+# The diff coverage judge's own verdict (gates/diff_cov.py TAG): when it is what failed, the land's
+# verdict line names it, not "the pre-land tests failed ... (exit 1)" (GOH.LANDCHECK2: GOH-TINY's
+# two diff coverage reds said only that, 2026-11-22).
+DIFFCOV = re.compile(
+    r"(\[diff-coverage\] (?:\d+ of \d+ changed executable lines? uncovered"
+    r"|\d+ allowlist entr(?:y|ies) stale))"
+)
 
 
 def no_verdict(lines: list[str]) -> dict | None:
@@ -300,6 +307,13 @@ def run(
     named = [ln.split()[1] for ln in lines if ln.startswith("FAILED ") and len(ln.split()) > 1]
     what = f"failing: {', '.join(named)}" if named else f"exit {code}, see the output above"
     detail = land_cause.excerpt("".join(lines))  # the record's log keeps it (GOH.PRESTEPLOG)
+    if not named and (cov := next((m[1] for ln in lines if (m := DIFFCOV.search(ln))), "")):
+        uncovered = "\n".join(ln.rstrip() for ln in lines if ln.startswith("    ") and ":" in ln)
+        raise Red(
+            f"{cov} on {sha[:8]} (the pre-step's diff coverage judge) -- cover each line it "
+            "names, or allowlist an unreachable one with its reason"
+            + (f"\n{uncovered[:2000]}" if uncovered else "")
+        )
     raise Red(
         f"the pre-land tests failed on {sha[:8]} ({what}) -- fix them, or "
         "--no-pre REASON when this tip's set was run another way"
