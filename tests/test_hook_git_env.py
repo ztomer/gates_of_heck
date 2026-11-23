@@ -244,6 +244,7 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
         "crates/goh/src/claims/derive.rs": 1,
         # credential-urls: `git config` / `rev-parse` of THIS repo, the hook's GIT_* honoured
         "crates/goh/src/credurls/mod.rs": 1,
+        "crates/goh/src/estate_seed/deferred.rs": 1,  # symbolic-ref reads: the store's branch
         # shell-lint: ls-files / diff --cached / checkout-index of THIS repo, GIT_* honoured
         "crates/goh/src/shell_lint_scope.rs": 2,
         # tag-version: rev-parse / ls-tree / show of the repo being PUSHED, GIT_* honoured
