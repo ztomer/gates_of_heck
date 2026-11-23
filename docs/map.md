@@ -698,6 +698,11 @@ Every structural checker is native since Phase N3; the Python checkers they port
   reason and lift. Read-only commands run. Pinned by `test_repo_hold.py`.
   For a SUBAGENT it also keeps the loop queue's holds (`lib/queue_hold.py`, LOOP.FOREIGNEDIT) and refuses a direct
   gh CI poll naming `loopctl ci` (`ci_door.calls_in`, LOOP.GHDOOR). Pinned by `test_foreign_edit.py`.
+* `commit_hold.py` (`lib/commit_hold.py`) — the queue hold judged at COMMIT, whoever runs git (GOH.HOLDSUBPROC): `stamp` (called by
+  `hooks/claude/discard_guard.py`, the one Bash rewriter) prefixes a subagent's command with
+  `export GOH_LOOP_AGENT=<agent id>`, which every process it starts inherits; `check`, run by `gates/hook.sh`'s
+  pre-commit before the commit gate, refuses a stamped commit in a repo another agent's item holds. Unstamped and
+  queue-less commits pass. Pinned by `test_commit_hold.py`.
 * `hooks/claude/spawn_register.py` — a Claude Code PostToolUse hook (matcher `Agent|Task`, GOH.SPAWNREGISTER): as a
   spawn returns, the brief's `Item <ID>` still `pending-spawn` in the loop queue is registered to the response's `agentId`
   through `.loop`'s `loopctl start` (one writer). A write racing it is told `registration pending: retry in a few

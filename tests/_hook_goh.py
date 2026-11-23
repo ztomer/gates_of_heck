@@ -17,5 +17,7 @@ sys.path.pop(0)
 
 
 def hook_goh(root: Path) -> Path:
-    source_closure.copy_closure(root, "gates/hook.sh")
+    # hook.sh RUNS the commit hold's check before the commit gate (GOH.HOLDSUBPROC): run, not
+    # sourced, so the closure is told it by name.
+    source_closure.copy_closure(root, "gates/hook.sh", extra=("lib/commit_hold.py", "tui/lib.py"))
     return root
