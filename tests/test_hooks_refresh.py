@@ -14,6 +14,7 @@ The old copy is a real one: the stock pre-commit as committed at OLD_STOCK.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -279,3 +280,49 @@ def test_a_refused_refresh_leaves_status_exactly_as_before(tmp_path):
     assert _status(repo) == before, out
     assert (repo / "tools" / "gate.sh").read_text() == wip, out
     assert (repo / ".githooks" / "pre-commit").read_bytes() == _old_pre_commit()
+
+
+def _tracking_origin(repo: Path, tmp_path: Path) -> None:
+    """REPO's main tracks a bare origin holding its fixture commit."""
+    origin = tmp_path / "origins" / f"{repo.name}.git"
+    _git(repo, "clone", "-q", "--bare", str(repo), str(origin))
+    _git(repo, "remote", "add", "origin", str(origin))
+    _git(repo, "fetch", "-q", "origin")
+    branch = _git(repo, "branch", "--show-current").strip()
+    _git(repo, "branch", "-q", f"--set-upstream-to=origin/{branch}")
+
+
+def _ahead(repo: Path) -> int:
+    return int(_git(repo, "rev-list", "--count", "@{u}..HEAD").strip())
+
+
+def test_a_refresh_pushes_its_commit_and_any_stranded_one(tmp_path):
+    """GOH.HOOKREFRESHPUSH: a refresh committed and pushed none, so six consumers sat ahead of
+    origin with only hook commits (2026-11-15). Now each is pushed through the consumer's own push
+    gate -- a hook commit an earlier refresh stranded included -- and an owner's commit ahead is
+    never pushed by goh: that repo stays as it was, named."""
+    root = tmp_path / "estate"
+    old = _old_pre_commit()
+    fresh = _consumer(root, "fresh", old)
+    stranded = _consumer(root, "stranded", old)
+    owned = _consumer(root, "owned", old)
+    for repo in (fresh, stranded, owned):
+        _tracking_origin(repo, tmp_path)
+    # An earlier refresh's commit, never pushed: only `.githooks`, goh's subject.
+    rec = stranded / ".githooks" / ".goh-installed" / "commit-msg.sha256"
+    rec.parent.mkdir()
+    rec.write_text(hashlib.sha256(STOCK["commit-msg"]).hexdigest() + "\n")
+    _git(stranded, "add", "-A")
+    _git(stranded, "commit", "-q", "--no-verify", "-m",
+         "chore: refresh goh's stock hooks (commit-msg) -- goh hooks --refresh")  # fmt: skip
+    (owned / "notes.txt").write_text("the owner's work\n")
+    _git(owned, "add", "-A")
+    _git(owned, "commit", "-q", "--no-verify", "-m", "the owner's commit")
+
+    r = _run(root, tmp_path, "--refresh")
+    out = r.stdout + r.stderr
+
+    assert _ahead(fresh) == 0, out
+    assert _ahead(stranded) == 0, out
+    assert _ahead(owned) == 2, out  # its own commit and the refresh: left for the owner's push
+    assert "owner's" in out, out

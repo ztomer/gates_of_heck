@@ -13,7 +13,7 @@ none of them chose. A listing that the daily estate audit records (and the sessi
 plus one command run deliberately, refreshes the same hooks with nobody's tree moved under them.
 
     goh hooks                       # list: one line per repo with a stale hook; exit 1 if any
-    goh hooks --refresh             # install.sh each, then commit `.githooks` alone
+    goh hooks --refresh             # install.sh each, commit `.githooks` alone, push it
     goh hooks --refresh --except ~/.claude/skills   # named, listed, never touched
 
 The refresh is install.sh's own (GOH_SKIP_BUILD=1): it overwrites a hook only when it is pristine
@@ -45,6 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tui.lib import counted, err, info, ok, warn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import consumer_pins
 import estate_commit
 import estate_registry
 import hook_currency
@@ -120,8 +121,16 @@ def refresh(repo: Path, hooks: list[str]) -> tuple[bool, str]:
         said = said.removeprefix("NOT committed: ")
         return False, f"NOT refreshed: {said}"
     if said == "nothing to commit":
-        return True, "refreshed (nothing to commit)"
-    return True, f"refreshed {', '.join(hooks)} {said.removeprefix('committed ')}"
+        said = "refreshed (nothing to commit)"
+    else:
+        said = f"refreshed {', '.join(hooks)} {said.removeprefix('committed ')}"
+    # The commit is PUSHED through the consumer's own push gate, as a pin commit is
+    # (GOH.HOOKREFRESHPUSH): a refresh that only committed left six consumers ahead of origin with
+    # nothing but hook commits (2026-11-15). consumer_pins.push pushes goh's own commits only; an
+    # owner's commit ahead, no upstream or a pull owed leaves it committed and says why, and a
+    # refused push is this repo's failure, its gate's lines named.
+    status, said = consumer_pins.push(repo, said)
+    return status != "refused", said
 
 
 def main(argv: list[str] | None = None) -> int:

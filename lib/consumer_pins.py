@@ -182,9 +182,20 @@ def _commits(repo: Path, span: str) -> list[tuple[str, str]]:
     return [(sha, subject) for sha, _, subject in (ln.partition("\t") for ln in out.splitlines())]
 
 
+# A hook refresh's commit (scripts/hooks_refresh.py MESSAGE) is goh's own as well, touching only
+# `.githooks` (GOH.HOOKREFRESHPUSH): `goh hooks --refresh` committed and pushed none, and on
+# 2026-11-15 six consumers sat ahead of origin with nothing but hook commits until a hand sweep.
+# It is pushed by the same door, so a refresh and a pin sweep each carry the other's commits.
+HOOKS_SUBJECT = re.compile(r"^chore: refresh goh's stock hooks \(")
+
+
 def is_pin_commit(repo: Path, sha: str, subject: str) -> bool:
+    """SHA is goh's own commit: a pin commit touching only pin files, or a hook refresh touching
+    only `.githooks`. Only these are ever pushed by goh."""
     files = estate_commit.git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", sha)
     names = [f for f in files.stdout.splitlines() if f]
+    if HOOKS_SUBJECT.match(subject):
+        return bool(names) and all(n.startswith(".githooks/") for n in names)
     return bool(SUBJECT.match(subject) and names and all(map(_pin_file, names)))
 
 
