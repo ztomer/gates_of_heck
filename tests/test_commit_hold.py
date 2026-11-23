@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _tree_clone import from_template
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
@@ -28,11 +29,8 @@ HOLDER, OTHER = "a1111111111111111", "a2222222222222222"
 CHECK = REPO_ROOT / "lib" / "commit_hold.py"
 
 
-@pytest.fixture
-def held(tmp_path: Path) -> tuple[Path, Path]:
-    """A real repo `held` that HOLDER's in-progress item holds; its pre-commit runs the check."""
-    projects = tmp_path / "Projects"
-    repo = projects / "held"
+def _build_held(repo: Path) -> None:
+    """The held repo, built once per run (GOH.GITINITGATE): its pre-commit runs the check."""
     repo.mkdir(parents=True)
     env = hermetic_env(drop_git=True)
     fast_init(repo)
@@ -41,6 +39,14 @@ def held(tmp_path: Path) -> tuple[Path, Path]:
     hook = repo / ".git" / "hooks" / "pre-commit"
     hook.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{CHECK}" check\n')
     hook.chmod(0o755)
+
+
+@pytest.fixture
+def held(tmp_path: Path, tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
+    """A real repo `held` that HOLDER's in-progress item holds; its pre-commit runs the check."""
+    projects = tmp_path / "Projects"
+    projects.mkdir()
+    repo = from_template(tmp_path_factory, "commit-hold", _build_held, projects / "held")
     (projects / ".loop").mkdir()
     queue = projects / ".loop" / "queue.json"
     queue.write_text(json.dumps({"items": [

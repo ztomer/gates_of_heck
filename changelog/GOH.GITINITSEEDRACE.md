@@ -1,0 +1,1 @@
+* GOH.GITINITSEEDRACE: `tests/test_commit_hold.py` builds its held repo once from the shared template, so the git-init ratchet (GOH.GITINITGATE) is green on main again; its seed had been recorded without the test GOH.HOLDSUBPROC landed.
