@@ -271,6 +271,8 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
         # private-names --add: grep / show / ls-files / ls-tree of the repo the name is added
         # over and its origin/HEAD, GIT_* honoured
         "crates/goh/src/privnames_add.rs": 1,
+        # roadmap rule 5: `git grep -I` of THIS repo's index or worktree, GIT_* honoured
+        "crates/goh/src/roadmap/cite.rs": 1,
         # tracked-ignored: ls-files --ignored / check-ignore of THIS repo, GIT_* honoured
         "crates/goh/src/structural/trackedignored.rs": 1,
     }

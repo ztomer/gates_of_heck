@@ -126,3 +126,52 @@ pub fn citations(text: &str, re: &Regex) -> Vec<(usize, String, String)> {
 pub fn held(text: &str) -> BTreeSet<String> {
     super::scan::opening_ids(text)
 }
+
+/// The text files whose content holds any of `words`, any case, as `git grep -I` lists them.
+///
+/// The index at `staged`, else the worktree with its untracked, unignored files (the tree
+/// `crate::gitutil::listed_files` reads at full). No match is an empty list; a git that fails is
+/// an error.
+///
+/// # Errors
+///
+/// As `crate::gitutil::listed_files`: a failing git is loud, never an empty list.
+pub fn grep_files(
+    root: &std::path::Path,
+    words: &[&str],
+    staged: bool,
+) -> Result<Vec<String>, String> {
+    let mut args = vec!["grep", "-z", "-l", "-I", "-i", "-F"];
+    args.push(if staged { "--cached" } else { "--untracked" });
+    for w in words {
+        args.extend(["-e", w]);
+    }
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(&args)
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .output()
+        .map_err(|e| format!("git grep failed: {e}"))?;
+    // exit 1 with nothing said is git grep's "nothing matched"
+    if out.status.code() == Some(1) && out.stderr.is_empty() {
+        return Ok(Vec::new());
+    }
+    if !out.status.success() {
+        return Err(format!(
+            "git grep failed (exit {}): {}",
+            out.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&out.stderr)
+                .trim()
+                .chars()
+                .take(200)
+                .collect::<String>()
+        ));
+    }
+    Ok(out
+        .stdout
+        .split(|b| *b == 0)
+        .filter(|chunk| !chunk.is_empty())
+        .map(|chunk| String::from_utf8_lossy(chunk).into_owned())
+        .collect())
+}

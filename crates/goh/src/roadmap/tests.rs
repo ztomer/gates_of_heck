@@ -340,3 +340,83 @@ fn rule_5_reads_no_history_vendor_roadmap_or_seed() {
     }
     assert!(read_here(".github/workflows/ci.yml", "docs/BACKLOG.md"));
 }
+
+/// A repo whose roadmap holds `RT.ONE` and whose workflow cites it and a pruned id.
+fn citing_repo() -> goh_testkit::Repo {
+    let cite = ["# closes ROADMAP G6\n", "# see roadmap RT.ONE\n"].concat(); // roadmap-ok: fixture
+    let files = [
+        (
+            "ROADMAP.md",
+            "# Roadmap\n\n## Phase 1\n\n- RT.ONE a thing. Done when: a test.\n",
+        ),
+        ("ci.yml", cite.as_str()),
+        ("CHANGELOG.md", "- closes ROADMAP G6\n"), // roadmap-ok: fixture
+        ("bin.dat", "ROADMAP G7\0binary\n"),       // roadmap-ok: fixture
+    ];
+    goh_testkit::repo_with(&files).unwrap_or_else(|e| panic!("fixture: {e}"))
+}
+
+#[test]
+fn rule_5_gathers_a_dead_citation_from_the_tree_at_both_scopes() {
+    let r = citing_repo();
+    let declared = super::Declared::File("ROADMAP.md".to_owned());
+    for staged in [false, true] {
+        let tree = crate::gitutil::listed_files(r.path(), false).unwrap_or_default();
+        let g = super::gather(
+            r.path(),
+            &tree,
+            None,
+            &declared,
+            (staged, true, true),
+            || Ok(BTreeMap::new()),
+        );
+        let keys: Vec<&String> = g.found.keys().collect();
+        assert_eq!(keys, ["ci.yml#dead-id"], "staged={staged}: {:?}", g.found);
+        assert!(g.found["ci.yml#dead-id"][0].starts_with("ci.yml:1: ROADMAP G6:")); // roadmap-ok
+        let off = super::gather(
+            r.path(),
+            &tree,
+            None,
+            &declared,
+            (staged, true, false),
+            || Ok(BTreeMap::new()),
+        );
+        assert!(
+            off.found.is_empty(),
+            "rule 5 off reads nothing: {:?}",
+            off.found
+        );
+    }
+}
+
+#[test]
+fn rule_5_seeds_within_its_grace_above_heads_seed() {
+    let r = citing_repo();
+    let cfg = crate::gatesrc::Gatesrc {
+        roadmap: Some("ROADMAP.md".to_owned()),
+        ..Default::default()
+    };
+    assert_eq!(super::write_seed(r.path(), &cfg, None), 0);
+    let text = std::fs::read_to_string(r.path().join(super::SEED_FILE)).unwrap_or_default();
+    let seed = judge::parse_seed(&text).unwrap_or_default();
+    assert_eq!(seed.get("ci.yml#dead-id"), Some(&1), "{text}");
+    // a seed that exists is written again: the key may stand within the grace, never rise after
+    assert_eq!(super::write_seed(r.path(), &cfg, None), 0);
+}
+
+#[test]
+fn rule_5_keys_may_rise_against_head_only_within_the_grace() {
+    let head = BTreeMap::from([("a.py#no-id".to_owned(), 1)]);
+    let now = BTreeMap::from([
+        ("a.py#no-id".to_owned(), 2),
+        ("ci.yml#dead-id".to_owned(), 3),
+    ]);
+    let within = super::graced(head.clone(), &now, false);
+    assert_eq!(within.get("ci.yml#dead-id"), Some(&3));
+    assert_eq!(
+        within.get("a.py#no-id"),
+        Some(&1),
+        "another rule's key never rises"
+    );
+    assert_eq!(super::graced(head.clone(), &now, true), head);
+}

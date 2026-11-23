@@ -170,7 +170,7 @@ fn dead_ids(
 ) {
     let words = cite::words(roadmap);
     let refs: Vec<&str> = words.iter().map(String::as_str).collect();
-    let candidates = match crate::gitutil::grep_files(root, &refs, staged) {
+    let candidates = match cite::grep_files(root, &refs, staged) {
         Ok(c) => c,
         Err(m) => {
             g.hard.push(format!(
