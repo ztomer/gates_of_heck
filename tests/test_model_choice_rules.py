@@ -1,4 +1,4 @@
-"""The subagent model-choice rules live in ONE file, with the facts they rest on, and are read from it.
+"""The subagent model-choice rules live in ONE file, with the facts they rest on, read from it.
 
 The owner (2026-10-18): "continually improve this approach, otherwise we might get stuck with
 outdated rules". A rule is only as current as the prices, default efforts, aliases and Claude Code
@@ -98,7 +98,8 @@ def _event(model: str, effort: str, decl: str) -> dict[str, Any]:
     prompt = f"Fix it.\nModel-choice: {decl}\nPool: unfit because it needs the repo's tools"
     return {"session_id": "s", "hook_event_name": "PreToolUse", "tool_name": "Agent",
             "tool_use_id": "t", "tool_input": {"description": "d", "prompt": prompt,
-                                               "model": model, "effort": effort, "subagent_type": "repo-worker"}}  # fmt: skip
+                                               "model": model, "effort": effort,
+                                               "subagent_type": "repo-worker"}}  # fmt: skip
 
 
 def test_the_hook_judges_by_the_rules_file_it_is_given(tmp_path: Path) -> None:

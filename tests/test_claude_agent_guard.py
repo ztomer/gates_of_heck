@@ -28,8 +28,8 @@ from conftest import REPO_ROOT, hermetic_env
 
 GUARD = REPO_ROOT / "hooks" / "claude" / "agent_guard.py"
 sys.path.insert(0, str(GUARD.parent))
-import agent_guard
-import model_choice
+import agent_guard  # noqa: E402  # the hook's directory, put on the path just above
+import model_choice  # noqa: E402
 
 RULES = model_choice.load()
 
@@ -58,7 +58,7 @@ def _ledger(cache: Path) -> list[dict[str, Any]]:
     return [json.loads(ln) for ln in path.read_text().splitlines()] if path.exists() else []
 
 
-# A write spawn's type is the lean one goh installs (GOH.LEANAGENT; general-purpose is steered there).
+# A write spawn's type is the lean one goh installs (GOH.LEANAGENT; general-purpose is steered).
 BRIEF = {"description": "fix it", "prompt": "Fix the leak in foo.rs.\nRed test: t_leak.",
          "subagent_type": "repo-worker"}  # fmt: skip
 

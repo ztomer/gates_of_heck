@@ -360,7 +360,8 @@ def unexcused_spinners(text: str) -> list[int]:
 
 
 def unexcused_waits(text: str) -> list[int]:
-    """The lines of the busy-WAITS this text runs that NO marker excuses (G17), foreground or not."""
+    """The lines of the busy-WAITS this text runs that NO marker excuses (G17), in the foreground
+    or not."""
     found = _line_numbers(text, busy_waits(text))
     return [line for line in sorted(found) if excusing_marker(text, line) is None]
 

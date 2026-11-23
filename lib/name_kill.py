@@ -131,13 +131,14 @@ def _pipelines(tokens: list[str]) -> list[list[list[str]]]:
 
 
 def _program(cmd: list[str]) -> tuple[str, list[str]]:
-    """The program a simple command runs, past wrappers (`sudo`, `timeout 5`, `VAR=x`), and its args."""
+    """The program a simple command runs, past wrappers (`sudo`, `timeout 5`, `VAR=x`), with its
+    args."""
     i = 0
     while i < len(cmd):
         word = os.path.basename(cmd[i])
         if word == "timeout":
             i += 2
-        elif word in _WRAPPERS or cmd[i].startswith("-") and i > 0 or re.match(r"^\w+=", cmd[i]):
+        elif word in _WRAPPERS or (cmd[i].startswith("-") and i > 0) or re.match(r"^\w+=", cmd[i]):
             i += 1
         else:
             return word, cmd[i + 1 :]

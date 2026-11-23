@@ -2,8 +2,8 @@
 """A Claude Code hook on subagent spawns: name the model, carry the report contract, keep a ledger.
 
 Subagents spend most of the tokens, so economy is set where a session delegates (owner ruling
-2026-10-18, `~/.claude/CLAUDE.md` "Delegation is where the tokens go"). Its rules 1, 3 and 4 were kept
-by hand; this hook keeps them structurally (tests/test_claude_agent_guard.py):
+2026-10-18, `~/.claude/CLAUDE.md` "Delegation is where the tokens go"). Its rules 1, 3 and 4 were
+kept by hand; this hook keeps them structurally (tests/test_claude_agent_guard.py):
 
 * PreToolUse, matcher `Agent|Task`: a spawn must name its `model` AND `effort` (an unnamed one
   inherits the session's model at Claude Code's `medium`, Sonnet's measured weak spot), and its
@@ -31,9 +31,10 @@ by hand; this hook keeps them structurally (tests/test_claude_agent_guard.py):
   lookup is not steered.
 * Bounded exploration (the rules file's `exploration`): a spawn declared on a cheap tier runs on
   the cheap tier its prompt sha's parity picks, and -- only when the owner turns it on -- a fixed
-  fraction of checkable spawns in the classes `opus_to_cheap.from` names runs on the cheap tier. Either is an
-  `updatedInput` with the new model and effort, and `explored: true` on the ledger line. A spawn
-  without the `checkable` tag is never routed down (tests/test_agent_guard_exploration.py).
+  fraction of checkable spawns in the classes `opus_to_cheap.from` names runs on the cheap tier.
+  Either is an `updatedInput` with the new model and effort, and `explored: true` on the ledger
+  line. A spawn without the `checkable` tag is never routed down
+  (tests/test_agent_guard_exploration.py).
 * Adaptive lanes (GOH.ADAPTLANES, `lane_room.py`): a write spawn asks lib/capacity.py's reading
   (`goh capacity`) whether the machine has room for another lane; GOH_LANE_ADMIT `refuse`
   (default) defers it naming what the reading lacked, `warn` says so and admits, an `Owner-asked:`
@@ -91,9 +92,10 @@ SPAWN_TOOLS = {"Agent", "Task"}  # `Task` is the tool's legacy name
 
 CONTRACT = (
     "Report contract: your final report is at most 15 lines. Its first line is "
-    "`Status: landed|blocked|failed|answered`; then commits (sha + one line each) and how they left you: "
-    "`goh ship` started with its result path (private repos), or pushed and tagged (public repos), "
-    "red->green proof in one sentence, what is left open in one line, then `Faults seen: <each fault you noticed but did not fix "
+    "`Status: landed|blocked|failed|answered`; then commits (sha + one line each) and how they "
+    "left you: `goh ship` started with its result path (private repos), or pushed and tagged "
+    "(public repos), red->green proof in one sentence, what is left open in one line, then "
+    "`Faults seen: <each fault you noticed but did not fix "
     "(pre-existing WARN, error, red check, stale state), ';'-separated, each with where it is; "
     "or none>`. No narrative."
 )
@@ -155,8 +157,8 @@ def judge_type(agent_type: str, declared: str, prompt: str,
     if why:
         return None, why
     return (
-        f"Refused: a write spawn of {agent_type} carries ~70.6k tokens of fixed preamble every turn "
-        f"(every MCP server's tools and lists it never uses; measured 2026-11-08, "
+        f"Refused: a write spawn of {agent_type} carries ~70.6k tokens of fixed preamble every "
+        f"turn (every MCP server's tools and lists it never uses; measured 2026-11-08, "
         f'{rules.path.name} `lean_types`). Spawn subagent_type "{lean["to"]}" instead, or '
         f'"{lean["ui"]}" when the work needs on-screen QA (computer-use, browser, simulator). '
         f"If this session cannot see that type (it started before `python3 "
@@ -369,8 +371,9 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
 
 
 # How long SubagentStop waits for the agent's closing entry to reach its transcript. The event
-# fires BEFORE that entry is written (live, on `proven_on`'s version: the hook saw only the thinking entry; the text
-# entry, with most of the output tokens, landed within 2 s), and the write runs beside the hook.
+# fires BEFORE that entry is written (live, on `proven_on`'s version: the hook saw only the
+# thinking entry; the text entry, with most of the output tokens, landed within 2 s), and the
+# write runs beside the hook.
 SETTLE_S = 5.0
 
 
@@ -418,7 +421,8 @@ def usage(text: str) -> dict[str, int]:
     """Tokens the agent spent: usage summed over its assistant messages, each message ONCE and at
     its largest (a message streamed as several entries carries its usage on each, growing)."""
     keys = {"input": "input_tokens", "output": "output_tokens",
-            "cache_creation": "cache_creation_input_tokens", "cache_read": "cache_read_input_tokens"}  # fmt: skip
+            "cache_creation": "cache_creation_input_tokens",
+            "cache_read": "cache_read_input_tokens"}  # fmt: skip
     per: dict[str, dict[str, int]] = {}
     for i, msg in enumerate(_entries(text)):
         u = msg.get("usage")
