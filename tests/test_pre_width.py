@@ -263,3 +263,19 @@ def test_the_lander_pre_step_passes_the_cpu_file_to_its_run() -> None:
     assert "GOH_LAND_PRE_CPU=" in land
     assert subprocess.run(["bash", "-n", str(REPO_ROOT / "tools" / "land.sh")],
                           check=False, stdin=subprocess.DEVNULL).returncode == 0  # fmt: skip
+
+
+def test_the_enqueue_keeps_the_remote_shares_outcome_beside_the_figures(tmp_path) -> None:
+    """GOH.REMOTEMUX: lib/remote_lane.py writes the share's outcome beside the figures
+    (`$GOH_LAND_PRE_TOOK.remote`); the land record's `pre_run.remote` carries it, both removed."""
+    script = tmp_path / "land.sh"
+    figures = {"wait_s": 0, "run_s": 90, "limit_s": 1500, "workers": 4, "cpu_s": 300.0}
+    remote = {"tests": 40, "outcome": "fallback", "cause": "mux", "fresh": True}
+    script.write_text(f"printf '%s' '{json.dumps(figures)}' >\"$GOH_LAND_PRE_TOOK\"\n"
+                      f"printf '%s' '{json.dumps(remote)}' >\"$GOH_LAND_PRE_TOOK.remote\"\n"
+                      f"echo \"$GOH_LAND_PRE_TOOK\" > {tmp_path / 'named'}\n")  # fmt: skip
+    took: dict = {}
+    land_prestep.run(tmp_path, "0" * 40, script, (), took=took)
+    assert took == {**figures, "remote": remote}, took
+    named = (tmp_path / "named").read_text().strip()
+    assert not Path(named).exists() and not Path(f"{named}.remote").exists()

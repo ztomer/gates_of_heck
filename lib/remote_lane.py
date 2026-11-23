@@ -40,6 +40,7 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
         __import__("_from_head").reexec(__file__)
     del _sys.path[0]
 
+import contextlib
 import json
 import os
 import subprocess
@@ -269,6 +270,42 @@ def mac_run(root: Path) -> Callable[[list[str]], int]:
     return lambda nodes: timed(f"pre-land: {len(nodes)} tests given back", [*pytest, *nodes])
 
 
+# A fallback's cause, from the shard's own words (tools/remote_shard.py): the first that matches.
+CAUSES = (
+    ("mux", ("mux_client", "mm_send_fd")),
+    ("busy", (" busy: load",)),
+    ("off-pin", ("off goh's pins",)),
+    ("skips", ("skips differ",)),
+    ("scratch", ("GB free, under", "GB, over its")),
+    ("in-flight", ("run in flight",)),
+    ("unreachable", ("unreachable (ssh", "did not answer")),
+    ("dropped", ("did not finish",)),
+    ("no-junit", ("wrote no junit", "junit does not parse", "remote pytest exited")),
+    ("start", ("did not start", "did not sync")),
+)
+
+
+def cause(said: str) -> str:
+    """Why a share fell back, as one word (GOH.REMOTEMUX: the land record counts them)."""
+    return next((name for name, marks in CAUSES if any(m in said for m in marks)), "other")
+
+
+def note(share: Share, rc: int, said: str) -> None:
+    """The share's outcome beside the pre-step's figures (`$GOH_LAND_PRE_TOOK.remote`), which
+    lib/land_prestep.py carries into the land record's `pre_run.remote` for --report: the tests
+    sent, `remote` (the worker judged them), `failed` (some failed there) or `fallback` with its
+    `cause`, and whether the run left a broken ssh multiplexer for a fresh connection."""
+    took = os.environ.get("GOH_LAND_PRE_TOOK")
+    if not took:
+        return
+    outcome = "remote" if rc == 0 else "failed" if rc == 1 else "fallback"
+    data = {"tests": len(share.nodes), "outcome": outcome,
+            "cause": cause(said) if outcome == "fallback" else None,
+            "fresh": "a fresh connection instead" in said}  # fmt: skip
+    with contextlib.suppress(OSError):  # the instrument never fails the pre-step
+        Path(f"{took}.remote").write_text(json.dumps(data))
+
+
 def end(root: Path, share: Share | None, record: str, merge: Callable[[Path, Path], None],
         run_local: Callable[[list[str]], int] | None = None,
         clock: Callable[[], float] = time.time) -> int:  # fmt: skip
@@ -280,7 +317,8 @@ def end(root: Path, share: Share | None, record: str, merge: Callable[[Path, Pat
         return 0
     mac_end = clock()  # the Mac's side is done: its wall ends here
     rc = share.proc.wait()
-    tail = share.log.read_text(errors="replace").splitlines()[-6:]
+    said = share.log.read_text(errors="replace")
+    tail = said.splitlines()[-6:]
     sys.stdout.write("".join(f"  remote: {ln}\n" for ln in tail))
     try:
         text = share.junit.read_text() if rc in (0, 1) else ""
@@ -289,6 +327,7 @@ def end(root: Path, share: Share | None, record: str, merge: Callable[[Path, Pat
             measure(root, share, text, mac_end)
     except (OSError, ET.ParseError):
         got, rc = {}, FALLBACK
+    note(share, rc, said)
     try:
         record_passes(record, [n for n, kind in got.items() if kind == "passed"])
         redo = [n for n, kind in got.items() if kind == "failed"] or (share.nodes if rc else [])

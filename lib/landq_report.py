@@ -21,7 +21,9 @@ never summed as a negative or a guess. Rows are per repo and UTC day of the fini
 JSON shape (`--json`; docs/map.md): {"since", "unloaded_s", "rows": [row...], "totals": row,
 "unclassified": [{item, repo, day, log}], "gate_steps": {step: n}}; a row
 is {"repo", "day", "attempts", "landed", "red", "cause", "queue_wait_s", "gate_s", "slot_wait_s",
-"run_s", "load_avg", "gates", "gates_per_landed", "k", "unknown"}. `gates` is the land gates run:
+"run_s", "load_avg", "gates", "gates_per_landed", "k", "unknown", "remote"}; `remote` is the
+worker shares the pre-steps sent (GOH.REMOTEMUX): {"shares", "fallbacks": {cause: n}, "fresh"}.
+`gates` is the land gates run:
 one per attempt a gate judged (`gated`: never an enqueue pre-step's, a check's or a conflict's red),
 but a batch's items (their `batch` {id, gates}, lib/landq_batch.py) share theirs. `k` is the batch
 size the lander chose for each batch or lone land, counted: {k: batches} (GOH.ADAPTBATCH).
@@ -170,6 +172,7 @@ class Attempt:
     batch: tuple[str, int] | None = None  # (batch id, the gate runs it spent): GOH.LANDBATCH
     gated: bool = True  # a gate judged it (`gated`)
     k: int | None = None  # the batch size the lander chose (GOH.ADAPTBATCH)
+    remote: dict | None = None  # its pre-step's worker share, `pre_run.remote`: GOH.REMOTEMUX
 
     @property
     def day(self) -> str:
@@ -247,6 +250,7 @@ def read_attempts(queue: Path, birth_of: Callable[[Path], float | None] = birth)
                 batch=_batch(batch),
                 gated=gated(rec),
                 k=rec.get("k") if isinstance(rec.get("k"), int) else None,
+                remote=_remote(rec),
             )
         )
     return out
@@ -265,6 +269,25 @@ def gated(rec: dict) -> bool:
 def _batch(rec: object) -> tuple[str, int] | None:
     """A record's batch (GOH.LANDBATCH) as (id, gate runs), or None for a land judged alone."""
     return (str(rec.get("id")), int(rec.get("gates") or 0)) if isinstance(rec, dict) else None
+
+
+def _remote(rec: dict) -> dict | None:
+    pre = rec.get("pre_run")
+    share = pre.get("remote") if isinstance(pre, dict) else None
+    return share if isinstance(share, dict) else None
+
+
+def _shares(atts: list[Attempt]) -> dict:
+    """The worker shares sent (GOH.REMOTEMUX): how many, the fallbacks by cause, and how many left
+    a broken ssh multiplexer for a fresh connection."""
+    sent = [a.remote for a in atts if a.remote]
+    falls: dict[str, int] = {}
+    for share in sent:
+        if share.get("outcome") == "fallback":
+            why = str(share.get("cause") or "other")
+            falls[why] = falls.get(why, 0) + 1
+    return {"shares": len(sent), "fallbacks": dict(sorted(falls.items())),
+            "fresh": sum(bool(share.get("fresh")) for share in sent)}  # fmt: skip
 
 
 def _row(repo: str, day: str, atts: list[Attempt]) -> dict:
@@ -291,6 +314,7 @@ def _row(repo: str, day: str, atts: list[Attempt]) -> dict:
         "gates_per_landed": round(gates / landed, 2) if landed else None,
         "k": {k: list(sizes.values()).count(k) for k in sorted(set(sizes.values()))},
         "unknown": len(atts) - len(known),
+        "remote": _shares(atts),
     }
 
 
@@ -365,6 +389,12 @@ def render(rep: dict) -> str:
             lines.append("  batch size k: " + ", ".join(f"{k} x{n}" for k, n in r["k"].items()))
         if causes:
             lines.append("  red by cause: " + ", ".join(f"{k} {v}" for k, v in causes))
+        if (sh := r.get("remote") or {}).get("shares"):
+            falls = sorted(sh["fallbacks"].items(), key=lambda kv: (-kv[1], kv[0]))
+            fell = sum(sh["fallbacks"].values())
+            lines.append(f"  remote shares: {sh['shares']}, fell back {fell}"
+                         + (" (" + ", ".join(f"{k} {v}" for k, v in falls) + ")" if falls else "")
+                         + f", {sh['fresh']} on a fresh ssh connection")  # fmt: skip
         if r is rep["totals"] and r["unknown"]:
             lines.append(
                 f"  {counted(r['unknown'], 'attempt')} with no known start: not in the sums"

@@ -23,7 +23,8 @@ and log). It is a CACHE: wiped, the next run rebuilds it with no manual step -- 
 lived NETWORKED container with the same limits (`cargo fetch --locked`). The probe refuses (local
 fallback) under 100 GB free on that disk (the transcodes' room) or over an 80 GB worker dir.
 
-A RUN, in four ssh calls over one ControlMaster connection (ControlPersist, so no handshake):
+A RUN, in four ssh calls over one ControlMaster connection (ControlPersist, so no handshake; a
+multiplexer that refuses a session costs one fresh connection, never the share: GOH.REMOTEMUX):
   1. probe: load, free space, the container's image and its recorded tool versions;
   2. the tree: a git bundle of only the commits the worker lacks, then the uncommitted TRACKED
      edits as a tar (untracked files never travel; see `sync`);
@@ -61,18 +62,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(1, str(Path(__file__).resolve().parent.parent / "lib"))
 import gitrun
 from remote_image import build_args, image_tag, manifest_pins, version_drift
+from remote_ssh import Fallback, ssh
 
 from tui.lib import info, ok, warn
 
 ROOT = Path(__file__).resolve().parent.parent
 LABEL = "goh.remote-shard=1"
 RUN_TIMEOUT_S = 3600
-SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-o", "ControlMaster=auto",
-            "-o", "ControlPath=~/.ssh/goh-remote-%C", "-o", "ControlPersist=600"]  # fmt: skip
-
-
-class Fallback(Exception):
-    """A reason the shard runs locally instead."""
 
 
 def conf() -> dict[str, str]:
@@ -94,18 +90,6 @@ def conf() -> dict[str, str]:
             "GOH_REMOTE_ADVISORY_DB_URL", "https://github.com/RustSec/advisory-db.git"
         ),
     }
-
-
-def ssh(c: dict[str, str], script: str, stdin: bytes | None = None,
-        timeout: float = 120) -> subprocess.CompletedProcess[bytes]:  # fmt: skip
-    """`script` run by bash on the host (its login shell may be zsh), output captured."""
-    try:
-        return subprocess.run(["ssh", *SSH_OPTS, c["host"], "bash -c " + shlex.quote(script)],
-                              input=stdin, capture_output=True, timeout=timeout,
-                              stdin=None if stdin is not None else subprocess.DEVNULL,
-                              check=False)  # fmt: skip
-    except subprocess.TimeoutExpired as exc:
-        raise Fallback(f"{c['host']} did not answer in {timeout:.0f} s") from exc
 
 
 def limits(c: dict[str, str]) -> list[str]:

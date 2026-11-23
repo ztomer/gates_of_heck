@@ -217,3 +217,26 @@ def test_a_refused_request_still_carries_started_and_finished(tmp_path, qenv):
     rec = json.loads(rec_path.read_text())
     assert rec["why"] == "tip moved after enqueue", rec
     assert {"started", "finished", "slot_wait_s"} <= set(rec), rec
+
+
+def test_the_remote_shares_fallbacks_are_counted_by_cause(tmp_path):
+    """GOH.REMOTEMUX: each land record's `pre_run.remote` (lib/remote_lane.py) is counted: the
+    shares sent, the fallbacks by cause, and the shares that left a broken ssh multiplexer for a
+    fresh connection (the mux fault, now recovered instead of sent back to the Mac)."""
+
+    def pre(outcome: str, cause: str | None = None, fresh: bool = False) -> dict:
+        return {"pre_run": {"run_s": 1, "remote": {"tests": 9, "outcome": outcome,
+                                                   "cause": cause, "fresh": fresh}}}  # fmt: skip
+
+    put(tmp_path, 0, "A", "alpha", "landed", 600, started=iso(10), **pre("remote"))
+    put(tmp_path, 10, "B", "alpha", "landed", 700, started=iso(20), **pre("remote", fresh=True))
+    put(tmp_path, 20, "C", "alpha", "landed", 800, started=iso(30), **pre("fallback", "busy"))
+    put(tmp_path, 30, "D", "alpha", "landed", 900, started=iso(40), **pre("fallback", "busy"))
+    put(tmp_path, 40, "E", "alpha", "landed", 950, started=iso(50), **pre("fallback", "mux", True))
+    put(tmp_path, 50, "F", "alpha", "landed", 990, started=iso(60))  # no share sent
+    rep = lr.build(lr.read_attempts(tmp_path), "")
+    want = {"shares": 5, "fallbacks": {"busy": 2, "mux": 1}, "fresh": 2}
+    assert rep["rows"][0]["remote"] == want and rep["totals"]["remote"] == want
+    assert "remote shares: 5, fell back 3 (busy 2, mux 1), 2 on a fresh ssh connection" in (
+        lr.render(rep)
+    )

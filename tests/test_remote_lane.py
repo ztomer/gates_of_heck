@@ -273,3 +273,42 @@ def test_with_no_other_mac_run_one_node_stays_on_the_mac_for_the_record(tree: Pa
     rl._cleanup(share)
     local, share = rl.begin(tree, ["tests/test_a.py"], mac_runs=False)
     assert local == ["tests/test_a.py"] and share is None
+
+
+@pytest.mark.parametrize(
+    ("said", "cause"),
+    [
+        ("⚠ media-server busy: load 9.62 > 6.0 -- the caller runs the shard locally", "busy"),
+        (("mm_send_fd: sendmsg(2): Message too long\nmux_client_request_session: send fds failed\n"
+          "⚠ the remote run did not finish (ssh exit 255) -- the caller runs"), "mux"),
+        ("⚠ the remote run did not finish (ssh exit 255) -- the caller runs", "dropped"),
+        ("⚠ media-server unreachable (ssh exit 255) -- the caller runs", "unreachable"),
+        ("⚠ refused: the worker is off goh's pins: python 3.14.4 (Mac 3.15.2) -- the", "off-pin"),
+        ("⚠ refused: the remote skips differ from the Mac's: t -- the caller", "skips"),
+        ("⚠ /mnt/x: 12 GB free, under the 100 GB floor the host's transcodes keep", "scratch"),
+        ("⚠ the remote run wrote no junit (pytest exit 4) -- the caller", "no-junit"),
+        ("something else entirely", "other"),
+    ],
+)  # fmt: skip
+def test_a_fallback_is_named_by_its_cause(said: str, cause: str):
+    """GOH.REMOTEMUX: the land record counts fallbacks by cause, so --report tells a busy worker
+    from a broken multiplexer from a worker off goh's pins."""
+    assert rl.cause(said) == cause
+
+
+def test_each_share_s_outcome_reaches_the_land_record(tree: Path, monkeypatch):
+    """The share's outcome is written beside the pre-step's figures (GOH_LAND_PRE_TOOK, which
+    lib/land_prestep.py reads into the land record's `pre_run.remote`)."""
+    took = tree / "took.json"
+    monkeypatch.setenv("GOH_LAND_PRE_TOOK", str(took))
+    share = _share(tree, rl.FALLBACK)
+    share.log.write_text("⚠ media-server busy: load 9.62 > 6.0 -- the caller runs the shard\n")
+    rl.end(tree, share, "", av.merge_records, lambda ns: 0)
+    got = json.loads(Path(f"{took}.remote").read_text())
+    assert got == {"tests": 1, "outcome": "fallback", "cause": "busy", "fresh": False}
+    share = _share(tree, 0)
+    share.log.write_text("⚠ the shared ssh connection failed (mux_client...): a fresh connection "
+                         "instead\n✓ remote fakehost: 2 passed\n")  # fmt: skip
+    rl.end(tree, share, "", av.merge_records, lambda ns: 0)
+    got = json.loads(Path(f"{took}.remote").read_text())
+    assert got == {"tests": 1, "outcome": "remote", "cause": None, "fresh": True}

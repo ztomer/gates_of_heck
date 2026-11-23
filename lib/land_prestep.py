@@ -88,9 +88,19 @@ def took_figures(figures: Path, lines: list[str]) -> dict:
     except (OSError, ValueError):
         got = None
     figures.unlink(missing_ok=True)
-    if isinstance(got, dict):
-        return {k: v for k, v in got.items() if k in PRE_RUN_KEYS}
-    return land_spd.pre_run(lines) or {}
+    # the worker's share (lib/remote_lane.py note, GOH.REMOTEMUX)
+    remote = Path(f"{figures}.remote")
+    try:
+        share = json.loads(remote.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        share = None
+    remote.unlink(missing_ok=True)
+    out = (
+        {k: v for k, v in got.items() if k in PRE_RUN_KEYS}
+        if isinstance(got, dict)
+        else land_spd.pre_run(lines) or {}
+    )
+    return {**out, "remote": share} if isinstance(share, dict) else out
 
 
 PRE_RUN_KEYS = ("wait_s", "run_s", "limit_s", "workers", "cpu_s")

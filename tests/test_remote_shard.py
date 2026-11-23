@@ -31,6 +31,11 @@ PY = sys.executable
 
 FAKE_SSH = """#!/usr/bin/env bash
 # ssh [-o X]... HOST CMD...: run CMD here, as the host's login shell would.
+# FAKE_SSH_MUX_DEAD: the shared ControlMaster is broken, as GOH.REMOTEMUX met it (a fresh
+# connection, ControlMaster=no, still works).
+case " $* " in *ControlMaster=auto*) [ -z "${FAKE_SSH_MUX_DEAD:-}" ] || {
+    echo "mux_client_request_session: send fds failed" >&2; echo "ssh mux-dead" >> "$FAKE_LOG"
+    exit 255; } ;; esac
 while [ "${1:-}" = -o ] || [ "${1:-}" = -T ]; do [ "$1" = -o ] && shift; shift; done
 shift
 echo "ssh $*" >> "$FAKE_LOG"
@@ -317,6 +322,19 @@ def test_an_unreachable_or_busy_host_runs_the_shard_locally_and_says_why(rig, wh
     assert why in said and "locally" in said
     assert 'name="test_a"' in out.read_text()
     assert "docker run" not in (_log(rig) if (rig["tmp"] / "log").exists() else "")
+
+
+def test_a_dead_shared_ssh_mux_takes_a_fresh_connection_not_the_mac(rig):
+    """GOH.REMOTEMUX: `mux_client_request_session: send fds failed` (ssh exit 255) sent a pre-step's
+    share back to the Mac. A broken shared ControlMaster now costs one fresh connection: the shard
+    still runs on the worker, and the run says why it left the multiplexer."""
+    out = rig["tmp"] / "out.xml"
+    r = _run(rig, "--junit", str(out), "tests/test_x.py", FAKE_SSH_MUX_DEAD="1")
+    said = r.stdout + r.stderr
+    assert r.returncode == 0, said
+    assert "locally" not in said, said
+    assert "remote fakehost:" in said and "fresh connection" in said, said
+    assert "ssh mux-dead" in _log(rig)
 
 
 def test_the_worker_stays_up_and_a_container_of_another_image_is_replaced(rig):
