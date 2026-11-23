@@ -158,6 +158,7 @@ def test_the_native_binary_runs_under_a_dead_export(tmp_path):
     assert str(tmp_path / "gone") in r.stderr, r.stderr
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="update_dev installs a macOS .app bundle")
 def test_the_release_kit_launches_the_app_without_its_environment(tmp_path):
     """The escape itself: the kit's `open` handed the app the ship's GOH_DIR, and the app (and
     everything it ran) kept it after the export was pruned. The opener runs with an empty

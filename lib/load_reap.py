@@ -63,7 +63,7 @@ from pathlib import Path
 import busyloop
 import load_registry as reg
 import pid_owner
-from load_reap_code import cpu_seconds, shell_code
+from load_reap_code import cpu_seconds, kernel_cpu_seconds, shell_code
 from load_reap_report import (
     RULE_HAND,
     RULE_HOUSE,
@@ -262,7 +262,8 @@ def _table() -> dict[int, tuple[int, float, str]]:
             parent = int(parts[1])
         except ValueError:
             continue
-        out[pid] = (parent, cpu_seconds(parts[2]), parts[3])
+        kernel = kernel_cpu_seconds(pid)  # finer than procps' whole seconds, where /proc is
+        out[pid] = (parent, cpu_seconds(parts[2]) if kernel is None else kernel, parts[3])
     return out
 
 

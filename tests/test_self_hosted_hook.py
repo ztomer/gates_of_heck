@@ -17,7 +17,11 @@ def _hook_toolchain_env() -> dict[str, str]:
     under `/usr/bin:/bin:/opt/homebrew/bin` the hook resolved Homebrew's python3, which held no ruff
     (the runner installs the suite's tools into its setup-python interpreter), and the python gate
     died "ruff is not available through '/opt/homebrew/bin/python3 -m'"."""
-    env = {k: os.environ[k] for k in ("RUSTUP_HOME", "CARGO_HOME") if k in os.environ}
+    # The toolchain SELECTION too, when the machine makes one: the Linux worker's image pins
+    # RUSTUP_TOOLCHAIN over the checkout's `channel = "stable"`, and without it the hook's rustfmt
+    # proxy synced "stable" into a read-only RUSTUP_HOME with no network (GOH.WORKERFAILS).
+    names = ("RUSTUP_HOME", "CARGO_HOME", "RUSTUP_TOOLCHAIN")
+    env = {k: os.environ[k] for k in names if k in os.environ}
     env["GOH_PY"] = sys.executable
     # Its packages too: the commit runs goh's declared source guard under pytest
     # (gates/staged_guards.sh), and a user-site pytest is found through HOME (tmp_path here).
@@ -154,7 +158,9 @@ def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
             "GOH_DIR": str(copy),
             "GOH_BIN": str(goh),
             "HOME": str(tmp_path),
-            "PATH": f"/usr/bin:/bin:/opt/homebrew/bin:{tools}",
+            # /usr/local/bin is Linux's /opt/homebrew/bin: the worker image's node, swiftlint and
+            # cargo-audit live there (GOH.WORKERFAILS: "no JavaScript engine on this machine").
+            "PATH": f"/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin:{tools}",
             **toolchain_env,
         },
         stdin=subprocess.DEVNULL,

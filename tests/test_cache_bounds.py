@@ -198,6 +198,9 @@ def test_the_push_gate_hands_the_gate_the_pinned_dir(tmp_path) -> None:
     sha = _git(repo, "rev-parse", "HEAD")
     env = hermetic_env()
     env.pop("SCCACHE_DIR", None)
+    # Off macOS the default is XDG's cache when one is named: the suite's (its home slot's) would
+    # be the answer, not this HOME's (GOH.WORKERFAILS, the Linux worker).
+    env.pop("XDG_CACHE_HOME", None)
     env.update(
         HOME=str(home), GATE_REPORT=str(tmp_path / "report.txt"), GOH_DIR=str(REPO_ROOT),
         GOH_PUSH_LOGS=str(tmp_path / "logs"), GOH_PUSH_WORKTREES=str(tmp_path / "exports"),

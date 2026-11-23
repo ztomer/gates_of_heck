@@ -89,7 +89,13 @@ def test_exit_zero_without_goh_done_is_a_failure(tmp_path):
         "if [;broken]\n"  # parse error: bash 3.2 delivers rc=0 to the trap
     )
     assert r.returncode != 0
-    assert "without completing" in r.stderr
+    # The sentinel's own branch, reached on EVERY bash: a plain `exit 0` before goh_done. The parse
+    # error reaches it only where bash hands the trap 0 (3.2); bash 5 hands it the real 2, so the
+    # trap keeps 2 and never prints this (GOH.WORKERFAILS: the Linux worker's bash 5.2).
+    early = _run(f". '{REPO_ROOT}/gates/_common.sh'\ngoh_init demo\nok starting\nexit 0\n")
+    assert early.returncode != 0, early.stdout + early.stderr
+    assert "without completing" in early.stderr
+    assert "without completing" in r.stderr or "syntax error" in r.stderr
 
     # And a gate that DID run goh_done keeps its honest 0.
     ok_case = _run(f". '{REPO_ROOT}/gates/_common.sh'\ngoh_init demo\ntrue\ngoh_done\n")

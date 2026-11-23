@@ -90,6 +90,9 @@ def conf() -> dict[str, str]:
         "container": e("GOH_REMOTE_CONTAINER", "goh-remote-worker"),
         "floor_gb": e("GOH_REMOTE_FREE_FLOOR_GB", "100"),
         "ceiling_gb": e("GOH_REMOTE_CEILING_GB", "80"),
+        "advisory_url": e(
+            "GOH_REMOTE_ADVISORY_DB_URL", "https://github.com/RustSec/advisory-db.git"
+        ),
     }
 
 
@@ -156,7 +159,14 @@ def probe(c: dict[str, str], tree: Path, tsv: Path, times: dict[str, float]) -> 
         # A container of this name that is not this image, or not running, is replaced; others
         # carrying the label (an older name, a crashed run) are reaped too.
         flags = " ".join(f"--build-arg {shlex.quote(a)}" for a in args)
-        b = ssh(c, (f"docker build -q -t {tag} {flags} - >/dev/null && " if build else "")
+        # NEVER UNDER A RUN (GOH.WORKERFAILS): two lanes whose Dockerfiles differ share this one
+        # name, and replacing it killed the other lane's run at 99%. A held run lock (any slot's)
+        # means a run is in flight: this shard runs locally instead.
+        busy = (
+            f'for l in {d}/out/run-*.lock; do [ -e "$l" ] || continue; '
+            'flock -n "$l" true || { echo GOH-IN-FLIGHT; exit 0; }; done; '
+        )
+        b = ssh(c, busy + (f"docker build -q -t {tag} {flags} - >/dev/null && " if build else "")
                 + f"mkdir -p {d}/out {d}/cache/home && "
                 f"ids=$(docker ps -aq --filter label={LABEL}); "
                 "[ -z \"$ids\" ] || docker rm -f $ids >/dev/null; "
@@ -166,6 +176,8 @@ def probe(c: dict[str, str], tree: Path, tsv: Path, times: dict[str, float]) -> 
         if b.returncode != 0:
             raise Fallback(f"the worker did not start: {b.stderr.decode()[-300:]}")
         text = b.stdout.decode(errors="replace")
+        if text.startswith("GOH-IN-FLIGHT"):
+            raise Fallback(f"{name} runs another image with a run in flight: not replaced under it")
         times["build" if build else "start"] = time.monotonic() - t0
     drift = version_drift(text, pins)
     if drift:
@@ -192,21 +204,30 @@ def sync(c: dict[str, str], tree: Path, slot: str) -> None:
     q, name = shlex.quote, c["container"]
     t = f"/work/trees/{slot}"  # this lane slot's own tree (GOH.REMOTEWIRE)
     x = f"docker exec -i {name} git -C {t}"
+    # The TAGS travel too (GOH.WORKERFAILS: tests read the release tags); a tree whose tag set is
+    # not the Mac's (synced before they travelled, or a tag moved) gets one whole bundle.
+    fmt = "%(refname):%(objectname)"
     r = ssh(c, f"docker exec {name} sh -c 'git -C {t} rev-parse -q --verify HEAD "
+               f"2>/dev/null || echo; git -C {t} for-each-ref refs/tags --format=\"{fmt}\" "
                "2>/dev/null || true'")  # fmt: skip
-    have = r.stdout.decode().strip()
+    have, _, their_tags = r.stdout.decode().partition("\n")
+    have = have.strip()
+    tags_differ = (
+        their_tags != git(tree, "for-each-ref", "refs/tags", f"--format={fmt}").stdout.decode()
+    )
     steps = [f"[ -d {q(c['dir'])}/trees/{slot}/.git ] || docker exec {name} git init -q {t}"]
     bundle = b""
-    if have != head:
-        basis = (["--not", have] if have and git(tree, "merge-base", "--is-ancestor", have,
-                                                  "HEAD").returncode == 0 else [])  # fmt: skip
-        made = git(tree, "bundle", "create", "-", "HEAD", *basis)
+    if have != head or tags_differ:
+        basis = (["--not", have] if have and not tags_differ and git(
+            tree, "merge-base", "--is-ancestor", have, "HEAD").returncode == 0 else [])  # fmt: skip
+        made = git(tree, "bundle", "create", "-", "HEAD", "--tags", *basis)
         if made.returncode != 0:
             raise Fallback(f"git bundle failed: {made.stderr.decode()[-200:]}")
         bundle = made.stdout
+        prune = "" if basis else "--prune "
         steps += [
             f"cat > {q(c['dir'])}/out/sync-{slot}.bundle",
-            f"{x} fetch -q /work/out/sync-{slot}.bundle HEAD",
+            f"{x} fetch -q {prune}/work/out/sync-{slot}.bundle HEAD '+refs/tags/*:refs/tags/*'",
             f"{x} checkout -q -f --detach FETCH_HEAD",
         ]
     else:
@@ -221,8 +242,10 @@ def sync(c: dict[str, str], tree: Path, slot: str) -> None:
         return
     present = [f for f in changed if (tree / f).exists()]
     gone = [f for f in changed if not (tree / f).exists()]
-    # macOS tar adds AppleDouble files and xattr headers unless told not to.
-    tar = subprocess.run(["tar", "--no-mac-metadata", "--no-xattrs", "-cf", "-", "-C", str(tree),
+    # macOS tar adds AppleDouble files and xattr headers unless told not to; GNU tar has neither
+    # flag and exits 64 on them (GOH.WORKERFAILS: this tool's own tests, run on the worker).
+    mac = ["--no-mac-metadata", "--no-xattrs"] if sys.platform == "darwin" else []
+    tar = subprocess.run(["tar", *mac, "-cf", "-", "-C", str(tree),
                           "--", *present], capture_output=True, check=True,
                          stdin=subprocess.DEVNULL,
                          env={**os.environ, "COPYFILE_DISABLE": "1"},
@@ -255,6 +278,13 @@ def run_remote(c: dict[str, str], tag: str, tests: list[str], workers: int, slot
     # short-lived container with the same limits fills $HOME/.cargo (`cargo fetch --locked`).
     fetch = ["docker", "run", "--rm", "--name", f"{c['container']}-fetch", *limits(c), tag,
              "bash", "-c", f"cd {t} && cargo fetch --locked -q"]  # fmt: skip
+    # The advisory database too (GOH.WORKERFAILS): the suite's rust-gate audits read a cached one
+    # (`--no-fetch`, seeded from $HOME/.cargo/advisory-db), so a networked container clones it,
+    # shallow (7.6 MB), when absent or a day old; a failed fetch leaves the old copy standing.
+    db, hdb = f"{w}/cache/home/.cargo/advisory-db", f"{q(d)}/cache/home/.cargo/advisory-db"
+    adv = ["docker", "run", "--rm", "--name", f"{c['container']}-advisories", *limits(c), tag,
+           "bash", "-c", (f"rm -rf {db}.new && git clone -q --depth 1 {q(c['advisory_url'])} "
+                          f"{db}.new && rm -rf {db} && mv {db}.new {db}")]  # fmt: skip
     used = f"{t}/target/.goh-used {w}/cache/home/.cargo/.goh-used"
     evict = ["docker", "exec", c["container"], "bash", "-c",
              (f"mkdir -p {t}/target {w}/cache/home/.cargo && touch {used} && "
@@ -266,6 +296,10 @@ def run_remote(c: dict[str, str], tag: str, tests: list[str], workers: int, slot
          f"{ht}/Cargo.lock | cut -c1-16); if [ ! -f \"$stamp\" ]; then "
          "echo 'cold cache: fetching the cargo registry once' >&2; "
          f"{shlex.join(fetch)} >&2 && touch \"$stamp\"; fi; fi"),
+        (f"if [ -z \"$(find {hdb} -maxdepth 0 -mmin -1440 2>/dev/null)\" ]; then "
+         "echo 'the advisory database is absent or a day old: fetching it' >&2; "
+         f"{shlex.join(adv)} >&2 || echo 'advisory database fetch failed (the old copy "
+         "stands)' >&2; fi"),
         f"cat > {q(d)}/out/{rid}.args <<'SHARD_ARGS_EOF'", *tests, "SHARD_ARGS_EOF",
         f"{shlex.join(run)} > {q(d)}/out/{rid}.log 2>&1; rc=$?",
         # The worker's housekeeping (GOH.REMOTEEVICT), never the run's verdict: stamp what this

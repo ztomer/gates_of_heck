@@ -136,6 +136,13 @@ def main(argv: list[str]) -> int:
         tree = os.path.join(os.path.realpath(scratch), "tree")
         head = clone_head(top.stdout.strip(), tree)
         names = spellings(tree)
+        if len(names) < 2:
+            # A host with no alias of its own (Linux: /tmp is no symlink) gets one: a symlink to the
+            # tree is a spelling of it everywhere, so `$PWD` and getcwd() still differ under it
+            # (GOH.WORKERFAILS: on the Linux worker the cwd-keyed gate read as invariant).
+            link = os.path.join(os.path.realpath(scratch), "spelled")
+            os.symlink(tree, link)
+            names.append(link)
         if not os.path.realpath(home_cache).startswith("/private/"):
             try:
                 os.makedirs(home_cache, exist_ok=True)

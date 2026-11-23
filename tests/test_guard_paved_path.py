@@ -74,9 +74,13 @@ def test_a_refused_kill_by_name_names_goh_stop(command: str, tmp_path: Path) -> 
 
 
 @pytest.fixture
-def marked() -> Iterator[tuple[str, int]]:
-    """A live process whose command line carries a marker nothing else does."""
+def marked(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[str, int]]:
+    """A live process whose command line carries a marker nothing else does, started under THIS
+    test's agent session: `goh stop` names only the caller's session's pids (lib/session_owner.py),
+    and a suite run outside any agent (the Linux worker's `docker exec`, GOH.WORKERFAILS) has no
+    session id, so the kill's line named none."""
     mark = f"gohwaitstop{uuid.uuid4().hex}"  # this test's alone, even beside an xdist twin
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", f"suite-{mark}")
     proc = subprocess.Popen([sys.executable, "-c", "import sys; sys.stdin.read()", mark],
                             stdin=subprocess.PIPE)  # fmt: skip
     try:

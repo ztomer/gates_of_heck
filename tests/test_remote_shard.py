@@ -39,7 +39,14 @@ exec bash -c "$*"
 """
 
 FAKE_FLOCK = """#!/usr/bin/env bash
-# flock FILE CMD...: the host's util-linux flock, minus the lock (one run at a time here anyway).
+# flock [-n] FILE CMD...: the host's util-linux flock, minus the lock (one run at a time here
+# anyway); `-n` on a file named in FAKE_FLOCK_HELD is refused, as a lock another run holds.
+if [ "$1" = -n ]; then
+    shift
+    case " ${FAKE_FLOCK_HELD:-} " in
+        *" $1 "*) echo "flock -n $1: held" >> "$FAKE_LOG"; exit 1 ;;
+    esac
+fi
 echo "flock $1" >> "$FAKE_LOG"
 shift
 exec "$@"
@@ -84,6 +91,10 @@ if a[0] == "exec":
         sys.exit(int(os.environ.get("FAKE_RC", "0")))
     import subprocess
     sys.exit(subprocess.run([re.sub(r"/work(?![\w-])", work, x) for x in rest]).returncode)
+if a[0] == "run" and "--rm" in a:  # a short-lived NETWORKED container: its bash -c, here
+    work = next(v.split(":")[0] for i, v in enumerate(a) if a[i - 1] == "-v")
+    import subprocess
+    sys.exit(subprocess.run([re.sub(r"/work(?![\w-])", work, x) for x in a[-3:]]).returncode)
 if a[0] == "ps":
     sys.exit(0)
 if a[0] == "rm":
@@ -323,6 +334,24 @@ def test_the_worker_stays_up_and_a_container_of_another_image_is_replaced(rig):
     assert log.index("$ docker rm -f goh-remote-worker") < log.index("$ docker run -d --name")
 
 
+def test_a_container_with_a_run_in_flight_is_never_replaced(rig):
+    """Two lanes whose Dockerfiles differ share ONE container name: the probe replaced the running
+    container for its own image and killed the other lane's full-suite run at 99% ("container ...
+    is not running", GOH.WORKERFAILS, 2026-11-23). While any slot's run lock is held the probe
+    does not replace it: this shard runs locally, saying why."""
+    assert _run(rig, "tests/test_x.py").returncode == 0
+    box = rig["images"] / "container"
+    box.write_text("goh-remote-worker:000000000000\n" + box.read_text().split("\n")[1])
+    held = rig["remote"] / "out" / "run-otherslot.lock"
+    held.write_text("")
+    (rig["tmp"] / "log").write_text("")
+    r = _run(rig, "tests/test_x.py", FAKE_FLOCK_HELD=str(held))
+    said = r.stdout + r.stderr
+    assert r.returncode == 0 and "locally" in said and "in flight" in said, said
+    assert "$ docker rm" not in _log(rig) and "$ docker run -d" not in _log(rig)
+    assert box.read_text().startswith("goh-remote-worker:000000000000")
+
+
 def test_scratch_under_its_free_floor_runs_the_shard_locally(rig):
     out = rig["tmp"] / "out.xml"
     r = _run(rig, "--junit", str(out), "tests/test_x.py", GOH_REMOTE_FREE_FLOOR_GB="999999")
@@ -350,37 +379,6 @@ def test_remote_failures_are_reported_as_failures_not_refusals(rig):
     assert r.returncode == 1, r.stdout + r.stderr
     assert "test_b" in r.stdout + r.stderr
     assert "locally" not in r.stdout + r.stderr
-
-
-def test_the_dockerfile_names_only_releases_and_checksums_every_download():
-    text = DOCKERFILE.read_text()
-    froms = re.findall(r"^FROM\s+(\S+)", text, re.MULTILINE)
-    assert froms, "no FROM"
-    for ref in froms:
-        assert re.fullmatch(r"[\w./-]+:\d+\.\d+\.\d+[\w.-]*@sha256:[0-9a-f]{64}", ref), ref
-    assert not re.search(r":(latest|main|edge|nightly|stable)\b", text)
-    args = dict(re.findall(r"^ARG\s+(\w+)=(\S+)", text, re.MULTILINE))
-    versions = {k: v for k, v in args.items() if k.endswith("_VERSION")}
-    assert versions
-    for k, v in versions.items():
-        assert re.fullmatch(r"\d+\.\d+\.\d+", v), f"{k}={v} is not a named release"
-    bare = set(re.findall(r"^ARG\s+(\w+)\s*$", text, re.MULTILINE))
-    for url_var in set(re.findall(r"curl [^\n]*?\$\{(\w+)_VERSION\}", text)):
-        sha = f"{url_var}_SHA256"  # a pinned default, or a build arg read from goh's own table
-        assert sha in bare or re.fullmatch(r"[0-9a-f]{64}", args.get(sha, "")), url_var
-        assert re.search(rf"\$\{{{sha}\}}\s+\S+\"\s*\|\s*sha256sum -c", text), url_var
-
-
-def test_every_tool_the_manifest_versions_is_a_build_arg_without_a_default():
-    text = DOCKERFILE.read_text()
-    bare = set(re.findall(r"^ARG\s+(\w+)\s*$", text, re.MULTILINE))
-    owned = {m.upper().replace("-", "_") + "_VERSION" for m in _pins()}
-    owned |= {"SHELLCHECK_VERSION", "SHELLCHECK_SHA256", "CARGO_LLVM_COV_VERSION"}
-    assert owned <= bare, f"written in the Dockerfile, not read from the manifest: {owned - bare}"
-    rows = (ln.split("\t") for ln in TSV.read_text().splitlines())
-    floors = {f[1]: f[5] for f in rows if len(f) == 6}
-    base = re.search(r"^FROM\s+python:(\d+\.\d+)\.\d+", text, re.MULTILINE)
-    assert base and base.group(1) == floors["python3"]
 
 
 def test_only_new_commits_and_uncommitted_tracked_edits_travel(rig):

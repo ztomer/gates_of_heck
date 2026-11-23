@@ -73,8 +73,14 @@ def test_the_ancestry_walk_reaches_the_top_of_the_tree():
 @linux_only
 def test_the_container_s_init_process_is_accepted_as_the_owner(tmp_path):
     """The consequence, on the platform where it happens: the holder takes the watch when the
-    owner is pid 1."""
-    assert 1 in gate_slot.ancestors()
+    owner is the TOP of its tree -- pid 1 in a container's own init tree, and the process under
+    the runtime's shim in a `docker exec` (whose parent is 0, outside the namespace), where pid 1
+    is no ancestor at all (GOH.WORKERFAILS: this test asserted `1 in ancestors()` and failed on
+    the worker)."""
+    chain = gate_slot.ancestors()
+    tops = [p for p in chain if _ppid(p) == 0]
+    assert len(tops) == 1, (chain, tops)
+    owner = tops[0]
     slots = tmp_path / "slots"
     slots.mkdir()
     handshake = tmp_path / "handshake"
@@ -89,7 +95,7 @@ def test_the_container_s_init_process_is_accepted_as_the_owner(tmp_path):
             "--slots",
             "1",
             "--owner",
-            "1",
+            str(owner),
             "--repo",
             "container-init",
             "--handshake",
@@ -161,8 +167,16 @@ def test_the_holder_reports_the_pidfd_branch_and_not_the_poll(tmp_path):
         holder.wait(timeout=30)
 
 
-def _no_pidfd(_pid: int) -> int:
-    """A kernel without pidfd: ENOSYS, an OSError -- not the ProcessLookupError of a dead owner."""
+def _ppid(pid: int) -> int:
+    out = subprocess.run(["ps", "-o", "ppid=", "-p", str(pid)], capture_output=True, text=True,
+                         check=False, stdin=subprocess.DEVNULL).stdout  # fmt: skip
+    return int(out.strip() or -1)
+
+
+def _no_pidfd(_pid: int, _flags: int = 0) -> int:
+    """A kernel without pidfd: ENOSYS, an OSError -- not the ProcessLookupError of a dead owner.
+    The real signature, `(pid, flags=0)`: the patch is the os module's, so subprocess's own wait
+    calls it too (`os.pidfd_open(self.pid, 0)`), and a one-argument fake was a TypeError there."""
     raise OSError(38, "Function not implemented")
 
 

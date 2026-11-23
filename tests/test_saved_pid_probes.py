@@ -85,8 +85,13 @@ def test_a_lock_mark_whose_pid_is_a_stand_ins_names_no_holder() -> None:
     with stand_in() as gone:
         was = pid_owner.stamp(gone.pid)
     assert was is not None
-    born = f"{was.born[0]}.{was.born[1]}"  # lock_order's mark spelling of a birth
     with stand_in() as proc:
+        # Linux's birth is /proc's starttime, in clock ticks (10 ms): a stand-in started in the
+        # gone one's tick has ITS birth, and the mark below was the real holder's on the worker
+        # (GOH.WORKERFAILS). Another's birth is then one tick earlier, which no live pid has.
+        mine = pid_owner.stamp(proc.pid)
+        other = was.born if mine is None or mine.born != was.born else (was.born[0] - 1, 0)
+        born = f"{other[0]}.{other[1]}"  # lock_order's mark spelling of a birth
         for mark in (f"load@{proc.pid}", f"load@{proc.pid}+{born}"):  # no birth; another's birth
             assert lock_order.held({lock_order.ENV: mark}) == [], mark
             assert lock_order.refusal("land", {lock_order.ENV: mark}) is None, mark

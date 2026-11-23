@@ -8,10 +8,17 @@ it needs none of the git/bare-remote fixture the release suite builds.
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT, hermetic_env
+
+# The kit installs a macOS .app (ditto, /usr/bin/xattr's quarantine, codesign, osascript, open): on
+# Linux its build step itself fails at /usr/bin/xattr (GOH.WORKERFAILS, the worker's 14 reds).
+pytestmark = pytest.mark.skipif(
+    sys.platform != "darwin", reason="update_dev installs a macOS .app bundle"
+)
 
 UPDATE_DEV = REPO_ROOT / "tools" / "release-kit" / "update_dev.sh"
 

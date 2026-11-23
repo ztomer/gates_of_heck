@@ -109,7 +109,13 @@ trap 'exit 143' TERM
 label="$label (tools/quiet.sh)"
 elapsed() { awk -v a="$1" -v b="$(date +%s)" 'BEGIN { print b - a }'; }
 over() { awk -v a="$1" -v b="$2" 'BEGIN { exit !(a >= b) }'; }
-busiest() { ps -Ao pcpu,comm -r | head -6 >&2 || true; } # head closes early: ps's SIGPIPE is not the verdict
+# The sort is sort(1)'s, not `ps -r`: BSD ps's sort-by-CPU flag is procps's "running only", and
+# procps refused the line ("unsupported SysV option"; GOH.WORKERFAILS, the Linux worker).
+busiest() {
+    local table
+    table="$(ps -Ao pcpu=,comm= | sort -rn)" || true
+    printf '%%CPU COMMAND\n%s\n' "$(head -n 5 <<< "$table")" >&2
+}
 t0="$(date +%s)"
 while :; do
     if ! bench_lock_exclusive "$label" "$budget"; then                            # 1. our place

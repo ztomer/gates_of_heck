@@ -7,11 +7,14 @@ lib.sh published no _lib_* names, so _common.sh silently used its hardcoded
 plain fallbacks.
 """
 
+import os
 import subprocess
 import textwrap
 from pathlib import Path
 
+import pytest
 from conftest import REPO_ROOT
+from timing_bounds import patience
 
 BASH = "/bin/bash"
 
@@ -147,17 +150,32 @@ def test_no_color_disables_color_everywhere():
 
 
 def _under_pty(script: str) -> str:
-    """Run with a real tty on stdout (macOS BSD script), return raw output."""
-    r = subprocess.run(
-        ["script", "-q", "/dev/null", "/bin/bash", "-c", script],
-        capture_output=True,
-        text=True,
-        stdin=subprocess.DEVNULL,
-        check=False,
-    )
-    return r.stdout
+    """Run with a real tty on stdout, return raw output. A pty of our own, not script(1): BSD
+    `script -q FILE CMD...` is util-linux's `script [FILE]` with `-c CMD`, and on Linux the BSD
+    spelling ran nothing, so the control saw no colour (GOH.WORKERFAILS, the Linux worker)."""
+    import pty
+
+    master, slave = pty.openpty()
+    try:  # read while the child holds the slave: macOS drops what is unread at OUR last close
+        child = subprocess.Popen(["/bin/bash", "-c", script], stdin=subprocess.DEVNULL,
+                                 stdout=slave, stderr=slave)  # fmt: skip
+    finally:
+        os.close(slave)
+    out = b""
+    while True:
+        try:
+            chunk = os.read(master, 4096)
+        except OSError:  # Linux: EIO once the last slave descriptor is closed
+            break
+        if not chunk:
+            break
+        out += chunk
+    os.close(master)
+    child.wait(timeout=patience(30))
+    return out.decode(errors="replace")
 
 
+@pytest.mark.load_sensitive
 def test_no_color_zero_disables_color_no_color_org_spec():
     """ANY non-empty NO_COLOR value disables color — NO_COLOR=0 used to
     RE-enable it. Needs a pty: without a tty the lib degrades anyway and the

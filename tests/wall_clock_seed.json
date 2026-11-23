@@ -108,7 +108,7 @@
   "test_repo_hold.py": 3,
   "test_required_tools.py": 4,
   "test_required_tools_floors.py": 4,
-  "test_required_tools_manifest.py": 7,
+  "test_required_tools_manifest.py": 6,
   "test_retired_shims.py": 3,
   "test_ruff_agree.py": 2,
   "test_ruff_pin.py": 1,

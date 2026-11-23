@@ -11,7 +11,10 @@ goh_sleep_mark() {
         cat "$GOH_SLEEPTIME_FILE" 2>/dev/null
         return 0
     fi
-    sysctl -n kern.sleeptime 2>/dev/null | sed -n 's/^{ sec = \([0-9][0-9]*\),.*/\1/p'
+    # `|| true`: off macOS sysctl has no kern.sleeptime and exits non-zero, and under the callers'
+    # pipefail that failure was the assignment's status, so `set -e` stopped gates/round.sh with 1
+    # and no word (GOH.WORKERFAILS, the Linux worker). Blank there, as documented above.
+    { sysctl -n kern.sleeptime 2>/dev/null || true; } | sed -n 's/^{ sec = \([0-9][0-9]*\),.*/\1/p'
 }
 
 # goh_slept_since <mark> — when a run that took <mark> at its start fails, say so if the machine

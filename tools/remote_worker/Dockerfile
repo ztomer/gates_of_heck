@@ -49,12 +49,23 @@ ARG CARGO_MACHETE_VERSION=0.10.1
 ARG CARGO_MACHETE_SHA256=785d381985140ffa172246d82089adeb7f2eb9c774d961c48f77a4494023afb5
 ARG NODE_VERSION=26.13.1
 ARG NODE_SHA256=5c063e46bab0fbc1c17cc445d7ff129cbdcd0471be6ed83b6ab864f8143bc864
+# cargo-audit (the rust gate refuses without it) and swiftlint (tools/pytest.sh's preflight: goh's
+# own hook, the swift twin; its version is the manifest's, a build arg), each at the Mac's release;
+# the checksums are GitHub's asset digests (swiftlint's for the manifest's release),
+# each matched by a download (read 2026-11-23). swiftlint is the release's statically linked
+# Linux build. The image carries no advisory database: `goh remote-shard` clones one into the
+# worker's HOME, where the suite's offline audits read it.
+ARG CARGO_AUDIT_VERSION=0.23.0
+ARG CARGO_AUDIT_SHA256=4f01c74ed84b2dffd0b1d37012a62cdf2a92c96e25bdf8eec7fcc0d4d3eb7811
+ARG SWIFTLINT_VERSION
+ARG SWIFTLINT_SHA256=caeed6f4a679c35539ffaf124f6c4ab4a8416917f7d8796279dc52b74026059d
 
 # git: the suite builds throwaway repos. gcc/libc6-dev: cargo links. curl, xz,
-# ca-certificates: the downloads below. Debian's own packages, from the
+# ca-certificates: the downloads below. lsof: the hooks' process-table probes (hooks/claude/
+# agent_stalls.py, stdin_hangs.py). Debian's own packages, from the
 # snapshot the pinned base image carries.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git gcc libc6-dev curl xz-utils ca-certificates make jq procps \
+ && apt-get install -y --no-install-recommends git gcc libc6-dev curl xz-utils ca-certificates make jq procps lsof \
  && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip install --no-cache-dir \
@@ -75,6 +86,7 @@ RUN curl -fsSLo /tmp/rustup-init "https://static.rust-lang.org/rustup/archive/${
  && CARGO_HOME=/opt/cargo /tmp/rustup-init -y --no-modify-path --profile minimal \
       --default-toolchain "${RUST_VERSION}" -c rustfmt -c clippy -c llvm-tools \
  && rm /tmp/rustup-init \
+ && ln -s "${RUST_VERSION}-x86_64-unknown-linux-gnu" /opt/rustup/toolchains/stable-x86_64-unknown-linux-gnu \
  && chmod -R a+rX /opt/rustup /opt/cargo
 
 RUN curl -fsSLo /tmp/sc.tar.gz "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.gz" \
@@ -119,6 +131,17 @@ RUN curl -fsSLo /tmp/node.txz "https://nodejs.org/dist/v${NODE_VERSION}/node-v${
  && install -m 0755 "/tmp/node-v${NODE_VERSION}-linux-x64/bin/node" /usr/local/bin/node \
  && rm -rf /tmp/node.txz "/tmp/node-v${NODE_VERSION}-linux-x64"
 
+RUN curl -fsSLo /tmp/audit.tgz "https://github.com/rustsec/rustsec/releases/download/cargo-audit/v${CARGO_AUDIT_VERSION}/cargo-audit-x86_64-unknown-linux-musl-v${CARGO_AUDIT_VERSION}.tgz" \
+ && echo "${CARGO_AUDIT_SHA256}  /tmp/audit.tgz" | sha256sum -c - \
+ && tar -xzf /tmp/audit.tgz -C /tmp \
+ && install -m 0755 "/tmp/cargo-audit-x86_64-unknown-linux-musl-v${CARGO_AUDIT_VERSION}/cargo-audit" /usr/local/bin/cargo-audit \
+ && rm -rf /tmp/audit.tgz "/tmp/cargo-audit-x86_64-unknown-linux-musl-v${CARGO_AUDIT_VERSION}"
+RUN curl -fsSLo /tmp/swiftlint.zip "https://github.com/realm/SwiftLint/releases/download/${SWIFTLINT_VERSION}/swiftlint_linux_amd64.zip" \
+ && echo "${SWIFTLINT_SHA256}  /tmp/swiftlint.zip" | sha256sum -c - \
+ && python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extract("swiftlint-static", "/tmp")' /tmp/swiftlint.zip \
+ && install -m 0755 /tmp/swiftlint-static /usr/local/bin/swiftlint \
+ && rm -f /tmp/swiftlint.zip /tmp/swiftlint-static
+
 # The run's uid has a name and a home (GOH.WORKERFAILS): with no passwd entry, `Path.home()` under a
 # test's dropped HOME raised and pytest's basetemp read `pytest-of-unknown`. HOME is the mount's, as
 # `goh remote-shard` sets it on every run (GOH_REMOTE_USER's default, 1000:1000).
@@ -126,10 +149,14 @@ RUN groupadd -g 1000 goh && useradd -u 1000 -g 1000 -M -d /work/cache/home -s /b
 
 # The toolchain is the pinned one even where a checkout's rust-toolchain.toml says `stable`: that
 # file would send rustup to download a toolchain into a read-only RUSTUP_HOME with no network.
+# The variable alone did not hold: a test that hands its child only PATH and HOME drops it, and
+# the child's rustup "synced channel updates for stable" into a read-only tmp (GOH.WORKERFAILS,
+# test_goh_build_publish). So `stable` is also the pinned toolchain by name: the symlink above,
+# the shape `rustup toolchain link` makes.
 ENV RUSTUP_TOOLCHAIN=${RUST_VERSION}
 
 # The versions this image claims, for `goh remote-shard`'s parity check.
-RUN { python3 -V; python3 -m pip list --format=freeze; rustc -V; shellcheck -V | sed -n 2p; sccache --version; git-cliff --version; echo "cargo-machete $(cargo-machete --version)"; echo "node $(node --version)"; } > /opt/goh-worker-versions.txt
+RUN { python3 -V; python3 -m pip list --format=freeze; rustc -V; shellcheck -V | sed -n 2p; sccache --version; git-cliff --version; echo "cargo-machete $(cargo-machete --version)"; echo "node $(node --version)"; cargo -V; rustfmt -V; cargo-audit -V; echo "swiftlint $(swiftlint --version)"; } > /opt/goh-worker-versions.txt
 
 WORKDIR /work
 CMD ["sleep", "infinity"]

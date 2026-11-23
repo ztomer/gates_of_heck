@@ -1,11 +1,14 @@
 """`goh remote-shard`'s lane-facing half (GOH.REMOTEEVICT, GOH.REMOTEWIRE; split from
 tests/test_remote_shard.py for its line cap): the worker's evictor after every run, sccache in the
-image, one tree per lane slot, `--no-local`, the recorded Mac skip set, an unparsable junit."""
+image, one tree per lane slot, `--no-local`, the recorded Mac skip set, an unparsable junit, the
+tags and the advisory database that travel to the worker (GOH.WORKERFAILS)."""
 
 from __future__ import annotations
 
+import os
 import re
 
+from _fast_git import fast_init
 from source_closure import copy_closure
 from test_remote_shard import DOCKERFILE, TOOL, _git, _log, _run, _slot_tree, rig
 
@@ -109,3 +112,54 @@ def test_the_image_carries_the_tools_and_the_user_the_suite_meets():
     assert f"groupadd -g {gid} " in text and f"useradd -u {uid} -g {gid} " in text
     versions = re.search(r"\{ python3 -V;.*\} > /opt/goh-worker-versions.txt", text)
     assert versions and all(t in versions.group(0) for t in ("git-cliff", "cargo-machete", "node"))
+
+
+def test_the_tags_travel_and_a_tree_synced_without_them_gets_them_whole(rig):
+    """Tests read the checkout's release tags (`every tag has its changelog heading`,
+    tests/test_self_walk.py), and the bundle carried HEAD only, so the worker's tree had none
+    (GOH.WORKERFAILS). Tags travel with their commits, and a tree whose tags are not the Mac's (one
+    synced before they travelled) is sent a whole bundle once."""
+    tree = rig["tree"]
+    _git(tree, "tag", "-a", "v0.1.0", "-m", "one")
+    assert _run(rig, "tests/test_x.py").returncode == 0
+    remote = _slot_tree(rig)
+    assert _git(remote, "tag").stdout.split() == ["v0.1.0"]
+    (tree / "tests" / "test_y.py").write_text("def test_y(): pass\n")
+    _git(tree, "add", "-A")
+    _git(tree, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "two")
+    _git(tree, "tag", "v0.2.0")
+    assert _run(rig, "tests/test_x.py").returncode == 0
+    assert _git(remote, "tag").stdout.split() == ["v0.1.0", "v0.2.0"]
+    for t in ("v0.1.0", "v0.2.0"):
+        _git(remote, "tag", "-d", t)
+    assert _run(rig, "tests/test_x.py").returncode == 0
+    assert _git(remote, "tag").stdout.split() == ["v0.1.0", "v0.2.0"]
+    assert _git(remote, "rev-parse", "HEAD").stdout == _git(tree, "rev-parse", "HEAD").stdout
+
+
+def test_the_advisory_database_is_fetched_once_a_day_by_a_networked_container(rig):
+    """The worker has no network, and the rust gate's audits the suite drives read a cached
+    advisory database (GOH_DEPS_OFFLINE=1: `--no-fetch`, seeded from ~/.cargo/advisory-db): with
+    none, 9 rust-gate tests failed "couldn't fetch advisory database" (GOH.WORKERFAILS). So a
+    networked short-lived container clones it into the worker's HOME, again when it is a day old."""
+    upstream = rig["tmp"] / "advisory-upstream"
+    fast_init(upstream)
+    (upstream / "README.md").write_text("advisories\n")
+    _git(upstream, "add", "-A")
+    _git(upstream, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "db")
+    env = {"GOH_REMOTE_ADVISORY_DB_URL": f"file://{upstream}"}
+    assert _run(rig, "tests/test_x.py", **env).returncode == 0
+    db = rig["remote"] / "cache" / "home" / ".cargo" / "advisory-db"
+    assert (db / "README.md").read_text() == "advisories\n"
+
+    def fetches() -> int:
+        rows = _log(rig).splitlines()
+        return sum(ln.startswith("$ docker run --rm") and "-advisories" in ln for ln in rows)
+
+    assert fetches() == 1
+    assert _run(rig, "tests/test_x.py", **env).returncode == 0
+    assert fetches() == 1, "a fresh copy was fetched again"
+    st = db.stat()
+    os.utime(db, (st.st_atime - 2 * 86400, st.st_mtime - 2 * 86400))
+    assert _run(rig, "tests/test_x.py", **env).returncode == 0
+    assert fetches() == 2, "a two-day-old copy was not refreshed"

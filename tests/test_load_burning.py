@@ -289,3 +289,18 @@ def test_every_file_that_sweeps_or_orphans_runs_on_the_one_worker() -> None:
         and not ON_THE_WORKER.search(text)
     ]
     assert not missing, f"sweeps or orphans outside the load_orphans worker: {missing}"
+
+
+def test_the_kernels_cpu_time_is_read_where_ps_rounds_it_to_whole_seconds(tmp_path: Path) -> None:
+    """procps `ps -o cputime` prints WHOLE seconds (`00:00:00`; BSD ps prints hundredths), so on
+    Linux a spinner at 0.9 s read as 0 and one starved to under a second of CPU in the sweep's 1 s
+    sample read as not growing: the backstop left it (GOH.WORKERFAILS, the Linux worker). Where
+    /proc is, the time is the kernel's utime+stime in clock ticks; a comm with spaces and a `)`
+    does not shift the fields."""
+    proc = tmp_path / "proc"
+    (proc / "4242").mkdir(parents=True)
+    fields = ["S", "1", *["0"] * 9, "157", "43", *["0"] * 30]  # state ppid ... utime stime ...
+    (proc / "4242" / "stat").write_text(f"4242 (sh -c ) x) {' '.join(fields)}\n")
+    assert load_reap_code.kernel_cpu_seconds(4242, proc=proc, ticks=100) == 2.0
+    assert load_reap_code.kernel_cpu_seconds(4243, proc=proc, ticks=100) is None
+    assert load_reap_code.kernel_cpu_seconds(4242, proc=tmp_path / "none", ticks=100) is None

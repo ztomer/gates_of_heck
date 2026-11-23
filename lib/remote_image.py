@@ -40,14 +40,14 @@ def version_drift(text: str, pins: dict[str, str]) -> list[str]:
 
 def build_args(tsv: Path, tree: Path) -> list[str]:
     """`KEY=VALUE` for every Dockerfile arg goh's manifest owns: each pinned pip module, shellcheck
-    (with its linux.x86_64 checksum from the goh-floors table) and cargo-llvm-cov."""
+    (with its linux.x86_64 checksum from the goh-floors table), cargo-llvm-cov and swiftlint."""
     floors: dict[str, str] = {}
     for line in tsv.read_text().splitlines():
         f = line.split("\t")
         if len(f) == 6 and f[5] != "-":
             floors.setdefault(f[1].lower(), f[5].lstrip("="))
     args = {m.upper().replace("-", "_") + "_VERSION": v for m, v in manifest_pins(tsv).items()}
-    for tool in ("shellcheck", "cargo-llvm-cov"):
+    for tool in ("shellcheck", "cargo-llvm-cov", "swiftlint"):
         args[tool.upper().replace("-", "_") + "_VERSION"] = floors[tool]
     table = tree / ".github" / "actions" / "goh-floors" / "shellcheck.sha256"
     for line in table.read_text().splitlines() if table.exists() else []:

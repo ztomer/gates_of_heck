@@ -9,6 +9,7 @@ spawns, signals or decides; lib/load_reap.py does. Pinned by tests/test_load_bur
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 # The shells whose code this rule reads. A process that is not one of these is not running shell
@@ -43,6 +44,29 @@ def cpu_seconds(text: str) -> float:
     for number in numbers:
         seconds = seconds * 60 + number
     return seconds
+
+
+PROC = Path("/proc")
+
+
+def kernel_cpu_seconds(pid: int, proc: Path = PROC, ticks: int | None = None) -> float | None:
+    """The kernel's CPU time for `pid` (utime + stime of `/proc/<pid>/stat`), or None where there
+    is no /proc entry for it (macOS; a gone process).
+
+    procps `ps -o cputime` prints WHOLE seconds, so on Linux the sweep's floor and its "still
+    growing" sample read a sub-second burn as none (GOH.WORKERFAILS); BSD ps prints hundredths.
+    The comm field is parenthesised and may hold spaces and `)`, so fields count from its LAST `)`.
+    """
+    try:
+        text = (proc / str(pid) / "stat").read_text()
+    except OSError:
+        return None
+    rest = text.rpartition(")")[2].split()
+    try:
+        used = int(rest[11]) + int(rest[12])  # fields 14 and 15: utime, stime
+    except (IndexError, ValueError):
+        return None
+    return used / (ticks or os.sysconf("SC_CLK_TCK"))
 
 
 def _words(command: str) -> list[tuple[str, int]]:

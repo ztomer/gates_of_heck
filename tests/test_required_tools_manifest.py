@@ -108,14 +108,9 @@ def test_every_row_says_how_to_install_it():
 
 
 def test_the_cli_lists_a_layer_and_prints_install_commands():
-    out = subprocess.run(
-        [sys.executable, str(CLI), "--layer", "rust", "--layer", "swift", "--install"],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        stdin=subprocess.DEVNULL,
-        check=False,
-    )
+    # The macOS route by its seam: on the Linux worker the brew rows are a presence check
+    # (GOH.WORKERFAILS), tested apart (test_brew_is_printed_only_for_macos).
+    out = _cli("--layer", "rust", "--layer", "swift", "--install", GOH_TOOLS_OS="Darwin")
     assert out.returncode == 0, out.stderr
     # The cargo tools go through a presence guard -- see
     # test_the_cargo_install_survives_a_binary_that_already_exists for why. brew is a plain
@@ -355,7 +350,8 @@ def test_goh_suite_installs_the_tools_its_fixture_gates_run():
     and ships them through tools/ship.py (git-cliff), and the hosted runner had neither, because
     goh's own gates declare no python or ship layer -- 23 test_ship and ~45 Python-gate tests went
     red on a missing tool, not a defect (CI.PUBLIC2). The goh-suite layer installs both."""
-    got = _cli("--layer", "goh-suite", "--install")
+    # brew is the macOS route (off it, the brew rows are a presence check)
+    got = _cli("--layer", "goh-suite", "--install", GOH_TOOLS_OS="Darwin")
     assert got.returncode == 0, got.stderr
     pip = next(ln for ln in got.stdout.splitlines() if "pip install" in ln)
     assert any(w.split("==")[0] == "ruff" for w in pip.split()), pip
