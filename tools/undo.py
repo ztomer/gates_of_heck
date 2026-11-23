@@ -20,6 +20,8 @@ What it refuses, before it changes anything (one refused FILE changes none of th
   * a worktree a landing-queue record (`$GOH_LANDQ_DIR` pending/running/enqueuing) or a loop lane
     claim (`claim.json` beside the worktree) names for another item than yours;
   * a FILE with nothing of yours in it: unchanged against the target.
+  * a FILE the worktree's edit ledger (lib/edit_ledger.py, written by the file-tool guard) shows
+    another item or agent wrote after your own last write of it (GOH.UNDOOWNER).
 
 The replaced text is kept at `<worktree>/.goh-undo/<path>` (`.goh-undo/` ignores itself), one step
 deep: the next undo of the same FILE replaces it, and `--back` swaps the two, so a second `--back`
@@ -38,6 +40,7 @@ from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "lib"))
+import edit_ledger  # noqa: E402  # who edited which file (GOH.UNDOOWNER)
 import repo_hold  # noqa: E402  # the one reading of `goh.hold`
 
 KEEP = ".goh-undo"
@@ -211,14 +214,30 @@ class Keep:
         return (self.root / rel).read_bytes(), int(entry.get("mode") or 0o644)
 
 
+def _check_ledger(wt: Worktree, rel: str, item: str | None) -> None:
+    """Refused when the worktree's edit ledger shows another item or agent wrote REL after the
+    caller's own last write of it (GOH.UNDOOWNER): the caller is ITEM (`--item` / $GOH_ITEM) and
+    the agent the Bash guard stamped on its shell ($GOH_LOOP_AGENT)."""
+    agent = os.environ.get("GOH_LOOP_AGENT") or None
+    other = edit_ledger.foreign_since_mine(wt.top, rel, item, agent)
+    if other:
+        who = ", ".join(other.get("items") or []) or "no item"
+        raise Refused(
+            f"{rel} was last edited by agent {other.get('agent')} ({who}) at {other.get('time')}, "
+            "after your own last write of it (the worktree's edit ledger, GOH.UNDOOWNER): undoing "
+            "it would take their edit. Undo by an inverse edit of your own lines instead."
+        )
+
+
 def plan(
-    wt: Worktree, cwd: str, paths: list[str], to_base: bool
+    wt: Worktree, cwd: str, paths: list[str], to_base: bool, item: str | None = None
 ) -> list[tuple[str, bytes | None, int]]:
     """(rel, bytes, mode) to write for each path, or Refused for the first that is not yours."""
     rev = wt.base if to_base else "HEAD"
     out = []
     for path in paths:
         rel = _rel(wt, cwd, path)
+        _check_ledger(wt, rel, item)
         now = _now(wt, rel)
         target = _at(wt, rev, rel)
         if now[0] == target[0]:
@@ -246,7 +265,7 @@ def main(argv: list[str]) -> int:
         if a.back:
             todo = [(rel, *keep.get(rel)) for rel in (_rel(wt, cwd, p) for p in a.files)]
         else:
-            todo = plan(wt, cwd, a.files, a.base)
+            todo = plan(wt, cwd, a.files, a.base, a.item)
     except Refused as why:
         print(f"goh undo: refused, nothing changed: {why}", file=sys.stderr)
         return 1

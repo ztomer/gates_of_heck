@@ -205,3 +205,9 @@ def _judge(holders: list[_Holder], projects: str, root: str, caller: str) -> Que
                 root, h.item, h.agent or "unrecorded", caller, tuple(x.item for x in mine)
             )
     return None
+
+
+def items_of(agent: str, queue: str | None = None) -> list[str]:
+    """The in-progress items whose recorded agent is AGENT."""
+    holders, _ = _holders(queue or queue_path())
+    return sorted({h.item for h in holders if h.agent == agent})

@@ -60,6 +60,10 @@ try:
     import repo_hold
 except ImportError:  # the shared reader is not there: fail OPEN, and say so
     repo_hold = None
+try:
+    import edit_ledger  # who edited which file, recorded at the write (GOH.UNDOOWNER)
+except ImportError:
+    edit_ledger = None
     print("· hold guard: lib/repo_hold.py is not there -- holds are not enforced", file=sys.stderr)
 try:  # the tools whose input holds a shell command: ONE list, `lib/shell_tools.py`
     from shell_tools import COMMAND_FIELD, SHELL_TOOLS
@@ -355,6 +359,16 @@ def judge_path(path: str, tool: str, cwd: str, agent: str | None = None) -> str 
     return hold.describe(f"{tool} of {path}") if hold else None
 
 
+def record_write(path: str, cwd: str, agent: str) -> None:
+    """A subagent write let through, appended to its worktree's ledger (GOH.UNDOOWNER)."""
+    if edit_ledger is None or queue_hold is None or not path:
+        return
+    full = queue_hold._absolute(path, cwd)
+    top = queue_hold.repo_root(full)
+    if top:
+        edit_ledger.record(top, full, agent, queue_hold.items_of(agent))
+
+
 def judge_ci_poll(command: str, agent: str | None) -> str | None:
     """A subagent's direct gh CI poll, refused naming loopctl's door (LOOP.GHDOOR), or None."""
     if not agent:
@@ -379,6 +393,8 @@ def main() -> int:
     if tool in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
         path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
         reason = judge_path(path, tool, cwd, agent)
+        if not reason and agent:
+            record_write(path, cwd, agent)
     elif tool in SHELL_TOOLS:
         command = tool_input.get(COMMAND_FIELD) or ""
         reason = judge_ci_poll(command, agent) or judge_command(command, cwd, agent)
