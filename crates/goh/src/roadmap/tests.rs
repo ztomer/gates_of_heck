@@ -372,7 +372,7 @@ fn rule_5_gathers_a_dead_citation_from_the_tree_at_both_scopes() {
         );
         let keys: Vec<&String> = g.found.keys().collect();
         assert_eq!(keys, ["ci.yml#dead-id"], "staged={staged}: {:?}", g.found);
-        assert!(g.found["ci.yml#dead-id"][0].starts_with("ci.yml:1: ROADMAP G6:")); // roadmap-ok
+        assert!(g.found["ci.yml#dead-id"][0].starts_with("ci.yml:1: ROADMAP G6:")); // roadmap-ok: fixture
         let off = super::gather(
             r.path(),
             &tree,
