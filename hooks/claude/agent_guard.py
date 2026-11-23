@@ -95,9 +95,8 @@ CONTRACT = (
     "`Status: landed|blocked|failed|answered`; then commits (sha + one line each) and how they "
     "left you: `goh ship` started with its result path (private repos), or pushed and tagged "
     "(public repos), red->green proof in one sentence, what is left open in one line, then "
-    "`Faults seen: <each fault you noticed but did not fix "
-    "(pre-existing WARN, error, red check, stale state), ';'-separated, each with where it is; "
-    "or none>`. No narrative."
+    "`Faults seen: <each fault you noticed but did not fix (pre-existing WARN, error, red "
+    "check, stale state), ';'-separated, each with where it is; or none>`. No narrative."
 )
 STATUSES = ("landed", "blocked", "failed", "answered")
 STATUS_LINE = re.compile(r"\s*status:\s*(\w+)\s*$", re.IGNORECASE)
