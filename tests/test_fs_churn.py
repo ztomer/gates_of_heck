@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -21,7 +21,7 @@ from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import fs_events
-from _fs_churn import verdict
+from _fs_churn import recent_unmeasured, unmeasured_skip, verdict
 
 darwin = pytest.mark.skipif(sys.platform != "darwin", reason="FSEvents is macOS only")
 
@@ -47,21 +47,58 @@ DROPS = (
 )
 
 
+# A window the instrument marks unmeasured (drops, or no delivery through its end) is re-run this
+# many times before the test fails naming the instrument, never the ceiling (GOH.FSDROPVERDICT).
+WINDOWS = 3
+
+
 def _session(
     tmp_path: Path, body: str, ceiling: dict, *args: str, drops: tuple[str, ...] | None = None
 ) -> tuple[subprocess.CompletedProcess, dict]:
     """A session the plugin watches. No `args`: a WHOLE run of the planted directory, the shape
-    tools/pytest.sh counts; `drops` plants a conftest deselecting those tests (a carried run)."""
+    tools/pytest.sh counts; `drops` plants a conftest deselecting those tests (a carried run).
+    A loaded box makes fseventsd drop events; such a window is no reading (GOH.FSDROPVERDICT), so
+    it is run again, up to WINDOWS times, and only then fails, naming the instrument. Each window
+    runs in a directory of its own: fseventsd folds a path's new events into its still-pending old
+    ones, so a window re-made on the last one's paths read d0-d244 of 400 as removals or nothing
+    (2026-11-23)."""
+    why = []
+    for _ in range(WINDOWS):
+        window = Path(tempfile.mkdtemp(prefix="window.", dir=tmp_path))
+        r, rep = _one_session(window, body, ceiling, *args, drops=drops)
+        if rep.get("unmeasured"):
+            assert "unmeasured, no verdict" in r.stdout, r.stdout[-1500:]
+            why.append(rep["unmeasured"])
+        elif lost := _short_of_the_plant(body, rep):
+            why.append(lost)
+        else:
+            return r, rep
+    unmeasured_skip(why)
+    raise AssertionError("unreachable: unmeasured_skip skips")
+
+
+def _short_of_the_plant(body: str, rep: dict) -> str:
+    """Why a clean window read less than the planted test made, or "": fseventsd can lose a run of
+    records with no drop flag (lib/fs_events.py), and a verdict on such a window judges the loss.
+    The plant is the calibration: CHURNY makes 400 dirs, QUIET one file."""
+    if CHURNY in body and rep["dirs_created"] < 400:
+        return f"the instrument lost events: read {rep['dirs_created']} of the 400 planted dirs"
+    if body == QUIET and rep["events"] < 1:
+        return "the instrument lost events: read none of the planted write"
+    return ""
+
+
+def _one_session(
+    tmp_path: Path, body: str, ceiling: dict, *args: str, drops: tuple[str, ...] | None = None
+) -> tuple[subprocess.CompletedProcess, dict]:
     (tmp_path / "pytest.ini").write_text("[pytest]\n")
     (tmp_path / "test_planted.py").write_text(body)
     if drops is not None:
         (tmp_path / "conftest.py").write_text(DROPS.format(names=set(drops)))
     tmp, home = tmp_path / "t", tmp_path / "h"
-    for d in (tmp, home):  # a second session in one tmp_path starts from empty roots
-        shutil.rmtree(d, ignore_errors=True)
+    for d in (tmp, home):  # fresh roots: `tmp_path` is the window's own (`_session`)
         d.mkdir()
     out = tmp_path / "events.json"
-    out.unlink(missing_ok=True)  # never a stale count from the session before
     env = hermetic_env(
         TMPDIR=str(tmp), HOME=str(home), PYTEST_DEBUG_TEMPROOT=str(tmp),
         GATES_OF_HECK_FS_EVENTS=str(out), GATES_OF_HECK_FS_EVENTS_CEILING=json.dumps(ceiling),
@@ -73,9 +110,11 @@ def _session(
         cwd=tmp_path, capture_output=True, text=True, timeout=patience(120), check=False,
         env=env, stdin=subprocess.DEVNULL,
     )  # fmt: skip
+    assert out.is_file(), f"the session wrote no count: {r.stdout[-1500:]}{r.stderr[-1500:]}"
     return r, json.loads(out.read_text())
 
 
+@pytest.mark.load_sensitive
 @darwin
 def test_a_planted_churny_test_breaks_the_per_test_ceiling(tmp_path: Path) -> None:
     r, rep = _session(tmp_path, CHURNY, {"per_test": 300, "per_test_run": 10_000})
@@ -85,6 +124,7 @@ def test_a_planted_churny_test_breaks_the_per_test_ceiling(tmp_path: Path) -> No
     assert rep["dirs_created"] >= 400 and rep["faults"], rep
 
 
+@pytest.mark.load_sensitive
 @darwin
 def test_a_planted_churny_test_breaks_the_per_run_ceiling(tmp_path: Path) -> None:
     r, _ = _session(tmp_path, CHURNY, {"per_test": 100_000, "per_test_run": 200})
@@ -101,6 +141,7 @@ XDIST = (
 CHURNY_AND_QUIET = CHURNY + QUIET
 
 
+@pytest.mark.load_sensitive
 @darwin
 @pytest.mark.parametrize("xdist", [(), XDIST], ids=["plain", "xdist"])
 def test_a_whole_run_over_the_mean_stays_red_with_nothing_deselected(
@@ -117,6 +158,7 @@ def test_a_whole_run_over_the_mean_stays_red_with_nothing_deselected(
     assert rep["whole"] is True and rep["deselected"] == 0 and rep["tests_run"] == 2, rep
 
 
+@pytest.mark.load_sensitive
 @darwin
 @pytest.mark.parametrize("xdist", [(), XDIST], ids=["plain", "xdist"])
 def test_a_carried_run_is_not_judged_by_the_whole_run_mean(
@@ -142,6 +184,7 @@ def test_a_carried_run_is_not_judged_by_the_whole_run_mean(
     assert r.returncode == 1 and "per-test ceiling 300" in r.stdout, r.stdout[-1500:]
 
 
+@pytest.mark.load_sensitive
 @darwin
 @pytest.mark.parametrize("narrow", [("test_planted.py",), ("-k", "churny")], ids=["path", "k"])
 def test_a_narrowed_run_is_not_judged_by_the_whole_run_mean(
@@ -156,6 +199,7 @@ def test_a_narrowed_run_is_not_judged_by_the_whole_run_mean(
     assert rep["whole"] is False and rep["faults"] == [], rep
 
 
+@pytest.mark.load_sensitive
 @darwin
 def test_a_quiet_session_is_green_and_its_count_is_written(tmp_path: Path) -> None:
     r, rep = _session(tmp_path, QUIET, {"per_test": 300, "per_test_run": 200})
@@ -217,3 +261,25 @@ def test_a_head_export_a_test_made_is_counted_as_its_own() -> None:
     assert rep["per_test"] == {"test_spawns_bare": 4}
     assert rep["head_export_per_test"] == {"test_spawns_bare": 3}
     assert rep["head_export_events"] == 3
+
+
+@pytest.mark.load_sensitive
+def test_an_unmeasured_run_skips_with_why_and_is_ledgered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GOH.FSDROPVERDICT ruling: every window unmeasured is a skip naming the instrument, never a
+    pass, and a ledger line the run's summary counts for a day, so it is never silent."""
+    book = tmp_path / "ledger.log"
+    monkeypatch.setenv("GATES_OF_HECK_FS_UNMEASURED_LEDGER", str(book))
+    old = json.dumps({"time": 1.0, "test": "t", "reason": "two days ago and more"})
+    book.write_text(old + "\n")
+    why = ["the instrument dropped events (2 drop records, first /r 0x3): it undercounts"] * 3
+    with pytest.raises(pytest.skip.Exception) as skipped:
+        unmeasured_skip(why)
+    assert str(skipped.value.msg) == (
+        "fs_events unmeasured: the instrument dropped events in 3 windows of 3"
+        f" (fseventsd: {why[0]})"
+    )
+    line = json.loads(book.read_text().splitlines()[-1])
+    assert line["reason"] == skipped.value.msg and "test_an_unmeasured_run" in line["test"], line
+    assert recent_unmeasured() == 1  # the old line is outside the last 24 h

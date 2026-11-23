@@ -26,6 +26,11 @@ collection (counted in every process through pytest's own `pytest_deselected`, e
 telling the controller, which collects nothing). A partial run's count is still written, with
 `whole` and `deselected`, and the per-test ceiling, which holds for any selection, still judges it.
 
+UNMEASURED WINDOWS ARE NO VERDICT (GOH.FSDROPVERDICT). A window whose stream dropped events, or
+did not deliver through the run's end (lib/fs_events.py `Stream.drain`), undercounts: 148 of 400
+planted dirs at load 25-45 read as a verdict and refused lands (2026-11-23). Such a run writes
+`unmeasured` (why) and no count, and is judged by neither ceiling; the line says so.
+
 The ceilings live in tests/fs_events_ceiling.json; GATES_OF_HECK_FS_EVENTS_CEILING (JSON) replaces
 them for a test of this plugin. Off where FSEvents is not (Linux): the file says `unavailable`.
 Not GOH_-prefixed: a hermetic child that drops GOH_* still carries neither; a nested session never
@@ -36,8 +41,10 @@ from __future__ import annotations
 
 import json
 import os
+import pwd
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 _LIB = str(Path(__file__).resolve().parent.parent / "lib")
@@ -50,6 +57,60 @@ import pytest  # noqa: E402
 OUT = "GATES_OF_HECK_FS_EVENTS"
 CEILING_ENV = "GATES_OF_HECK_FS_EVENTS_CEILING"
 CEILING_FILE = Path(__file__).resolve().parent / "fs_events_ceiling.json"
+
+# UNMEASURED RUNS (GOH.FSDROPVERDICT, ruling 2026-11-23): a test whose EVERY window the instrument
+# marked unmeasured is skipped with why, never passed and never a land-blocking red; each such skip
+# is a line in this ledger (the owner's real ~/.cache/goh, not a suite HOME), and every run's
+# summary prints a warning while it holds lines from the last day, so it is never silent.
+LEDGER_ENV = "GATES_OF_HECK_FS_UNMEASURED_LEDGER"
+RECENT_S = 24 * 3600
+
+
+def ledger() -> Path:
+    raw = os.environ.get(LEDGER_ENV)
+    home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+    return Path(raw) if raw else home / ".cache" / "goh" / "fs_events_unmeasured.log"
+
+
+def unmeasured_skip(why: list[str]) -> None:
+    """Skip the calling test: every one of its `why` windows was unmeasured. Ledgered first."""
+    n = len(why)
+    reason = f"fs_events unmeasured: the instrument dropped events in {n} windows of {n}"
+    reason += f" (fseventsd: {why[0] if why else 'no window'})"
+    test = os.environ.get("PYTEST_CURRENT_TEST", "?").split(" ")[0]
+    path = ledger()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps({"time": time.time(), "test": test, "reason": reason})
+    with path.open("a", encoding="utf-8") as f:
+        f.write(line + "\n")
+    pytest.skip(reason)
+
+
+def recent_unmeasured(now: float | None = None) -> int:
+    """The ledger's unmeasured skips from the last RECENT_S seconds."""
+    now = time.time() if now is None else now
+    try:
+        lines = ledger().read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return 0
+    n = 0
+    for raw in lines:
+        try:
+            n += now - float(json.loads(raw)["time"]) <= RECENT_S
+        except (ValueError, KeyError, TypeError):
+            continue
+    return n
+
+
+def pytest_terminal_summary(terminalreporter) -> None:
+    if n := recent_unmeasured():
+        terminalreporter.write_line(
+            f"⚠ file events: {n} fs_events {'test' if n == 1 else 'tests'} skipped"
+            f" unmeasured in the last 24 h"
+            f" ({ledger()}): fseventsd is dropping events; unmeasured three days running is a"
+            f" fault to report (GOH.FSDROPVERDICT)"
+        )
+
 
 _STATE: dict = {}
 DESELECTED_KEY = "gates_of_heck_fs_deselected"  # an xdist worker -> its controller
@@ -131,8 +192,9 @@ def pytest_sessionfinish(session, exitstatus) -> None:
     tally = _STATE.pop("tally", None)
     if tally is None:
         return
-    fs_events.time.sleep(0.5)  # the stream's latency: the last records in
-    _STATE.pop("stream").__exit__(None, None, None)
+    stream = _STATE.pop("stream")
+    stream.drain()  # delivered through the run's end, or the window is unmeasured
+    stream.__exit__(None, None, None)
     rep = tally.report(fs_events.time.monotonic() - _STATE.pop("t0"), TOP)
     ran = _STATE.pop("ran")
     rep["tests_run"] = ran
@@ -140,11 +202,16 @@ def pytest_sessionfinish(session, exitstatus) -> None:
     rep["deselected"] = _DESELECTED[0]
     rep["whole"] = whole = _whole_run.whole(session.config) and not rep["deselected"]
     ceiling = _ceiling()
-    faults = verdict(rep, ran, ceiling, whole)
+    unmeasured = rep.get("unmeasured", "")
+    faults = [] if unmeasured else verdict(rep, ran, ceiling, whole)
     rep["ceiling"], rep["faults"] = ceiling, faults
     Path(_STATE.pop("out")).write_text(json.dumps(rep, indent=1) + "\n")
     tr = session.config.pluginmanager.get_plugin("terminalreporter")
-    if not whole:
+    if unmeasured:
+        (tr.write_line if tr else print)(
+            f"⚠ file events: unmeasured, no verdict: {unmeasured} (tests/_fs_churn.py)"
+        )
+    elif not whole:
         (tr.write_line if tr else print)(
             f"→ file events: a partial run ({ran} ran, {rep['deselected']} deselected): the per-run"
             f" ceiling describes whole runs and is not judged (tests/_fs_churn.py)"
