@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+## v0.149.6 -- reconcile: CAPWINDOW, FRAGMENTATLAND, SEEDBRANCH, BUILDDIRVANISH
+
+* The cache evictor no longer moves or deletes a cargo build dir a running build holds. cargo
+  1.100 locks `<build-dir>/<profile>/.cargo-build-lock`, and the sweep only looked for
+  `.cargo-lock`, so it found no lock and demoted a release's build dir mid-build (rustc:
+  `extern location ... does not exist`). Both lock names are honoured now, and a removed lane
+  worktree's build-dir reap renames each dir away under the same locks, keeping a held one.
+
+* `goh capacity`, the lane-room spawn hook and the loop watch judge CPU idle over one rolling
+  window: every reading records its tick sample in `~/.local/state/goh/cpu_idle.json`
+  (`GOH_CPU_IDLE_STATE`), one self-exiting sampler keeps it warm, and the idle is the mean since
+  the newest sample at least `GOH_CPU_IDLE_ROLLING_S` (60 s) old. The printed line names the
+  window and sample count; the 2 s sample is only the fallback while the state is cold. A machine
+  flapping between busy and idle no longer admits on an idle instant.
+
+* `goh land --check` refuses a range whose commit subjects name an item id (`GOH.X: ...`) with no
+  `changelog/<ID>.md` fragment at the tip, in a repository that keeps changelog/ fragments; a
+  `Changelog: none` trailer exempts work no user sees. The omission is caught at the land, where
+  the lane can add it, instead of at the release.
+
+* A seed settle made on a lane branch no longer edits the machine-wide private seed store: the
+  commit licenses it under `<store>/deferred/`, the lane's own full runs read the licensed entry
+  at what they find, and the first full run on the store's branch (`origin/HEAD`, else `main`)
+  that finds the change applies it. Main's checkout stays green while a lane that fixed its
+  seeded sites is unmerged; an unlicensed stale entry is still red there. `goh seed-settle` takes
+  `--checkout`, which the commit hook passes.
+
 ## v0.149.5 -- reconcile: SUITEDIET, LINUXCOVPATH
 
 * The rust coverage mode runs on the cargo-llvm-cov its manifest floor names (0.6.24): it calls
