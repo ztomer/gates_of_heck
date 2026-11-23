@@ -145,7 +145,7 @@ def test_a_refused_check_guard_prints_a_summary_not_a_25_line_tail(monkeypatch, 
     node = "tests/test_t.py::test_red_0"
     monkeypatch.setattr(land_check, "_env", lambda _r: {"GOH_PY": "python3"})
     monkeypatch.setattr(land_check, "tests", lambda *_a: [node])
-    monkeypatch.setattr(land_check, "steps", lambda _r: [])
+    monkeypatch.setattr(land_check, "steps", lambda *_a: [])
     monkeypatch.setattr(land_check, "_run", lambda *_a: (1, _pytest_log(2), 1.0))
     said: list[str] = []
     assert land_check.run(tmp_path, say=said.append)
