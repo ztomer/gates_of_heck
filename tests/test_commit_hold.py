@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
@@ -34,7 +35,8 @@ def held(tmp_path: Path) -> tuple[Path, Path]:
     repo = projects / "held"
     repo.mkdir(parents=True)
     env = hermetic_env(drop_git=True)
-    for cmd in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "t"]):
+    fast_init(repo)
+    for cmd in (["config", "user.email", "t@t"], ["config", "user.name", "t"]):
         subprocess.run(["git", *cmd], cwd=repo, check=True, env=env, stdin=subprocess.DEVNULL)
     hook = repo / ".git" / "hooks" / "pre-commit"
     hook.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{CHECK}" check\n')
