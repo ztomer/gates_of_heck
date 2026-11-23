@@ -469,7 +469,8 @@ def on_stop(event: dict[str, Any]) -> list[str]:
     })  # fmt: skip
     scratch = scratch_guard.message(loose) if loose else None
     door = ci_door.message(ci) if ci else None
-    return [m for m in (appstate.describe(apps), scratch, door, unread, warning) if m]
+    gone = appstate.describe(apps, event.get("agent_id"))
+    return [m for m in (gone, scratch, door, unread, warning) if m]
 
 
 def main() -> int:

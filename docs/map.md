@@ -661,6 +661,10 @@ Every structural checker is native since Phase N3; the Python checkers they port
 * `hooks/claude/appstate.py` — the owner's login-item apps, snapshotted at each spawn by `agent_guard.py` and
   relaunched at SubagentStop when the agent left one not running (GOH.APPSTATE); seams for the item list, the
   process table and the launcher; inert under goh's suite without them. Pinned by `test_claude_appstate.py`.
+  An app the owner removed (no longer a login item or installed) is dropped; the message names the agent and the
+  exit window from `seen.json` (GOH.APPCLOSE).
+* `hooks/claude/app_quit.py` — a `discard_guard.py` rule (GOH.APPCLOSE): an `osascript` quit of a login-item app (by
+  name or bundle id) is refused; `# quit-ok: <reason>` escapes. Pinned by `test_app_quit.py`.
 * `hooks/claude/model_choice.json` — THE model-choice rules: the tier table, the exempt agent types,
   exploration, the verdict's `min_n`, and the facts they rest on (prices, Claude Code default efforts,
   the Agent tool's aliases and efforts, the Claude Code version), each with its measured date, source

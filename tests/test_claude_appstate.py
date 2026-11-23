@@ -181,3 +181,52 @@ def test_the_real_reader_is_system_events_and_the_process_table() -> None:
     launch = appstate.DEFAULTS["GOH_APPSTATE_LAUNCH_CMD"]
     assert Path(launch[0]).name == "goh"
     assert launch[1:] == ["launch-app", "--background"]  # the login environment (GOH.CLEANOPEN)
+
+
+# --- GOH.APPCLOSE: an app the owner removed is dropped; a report names the agent and the window --
+
+
+def test_an_app_no_longer_a_login_item_is_neither_relaunched_nor_reported(world: World) -> None:
+    """Owner 2026-11-21: "note that I removed stenoAi" -- an app taken out of the login items (or
+    uninstalled) while the agent ran is the owner's removal, not something to put back."""
+    world.spawn()
+    (world.root / "items").write_text(f"{OSAURUS}\n{NOTION}\n")  # the owner removed Widget
+    world.set_running([OSAURUS])
+    assert world.stop() is None
+    assert world.launched() == []
+    assert world.ledger()[-1]["apps"]["missing"] == []
+
+
+def test_an_uninstalled_app_is_neither_relaunched_nor_reported(world: World) -> None:
+    world.spawn()
+    world.set_running([OSAURUS])
+    gone = world.root / "installed.sh"  # Widget is still a login item, but no longer on disk
+    gone.write_text(f'#!/bin/sh\n[ "$1" != "{WIDGET}" ]\n')
+    gone.chmod(0o755)
+    assert world.stop(GOH_APPSTATE_INSTALLED_CMD=str(gone)) is None
+    assert world.launched() == []
+
+
+def test_the_report_names_the_agent_and_when_the_app_was_last_seen(world: World) -> None:
+    world.spawn()
+    world.set_running([OSAURUS])
+    out = world.stop()
+    assert out is not None
+    msg = out["systemMessage"]
+    assert "agent a1" in msg and "Widget last seen running " in msg and "gone by " in msg
+    exits = world.ledger()[-1]["apps"]["exits"]
+    assert set(exits) == {WIDGET}
+    seen, gone = exits[WIDGET]["last_seen"], exits[WIDGET]["gone_by"]
+    assert seen <= gone  # ISO times in UTC: the window the app exited in
+
+
+def test_the_last_sighting_is_shared_across_agents(world: World) -> None:
+    """Another agent's spawn saw Widget running later than this agent's: the window narrows."""
+    world.spawn()
+    appstate_dir = world.cache / "goh" / "appstate"
+    seen = json.loads((appstate_dir / "seen.json").read_text())
+    seen[WIDGET] = "2999-01-01T00:00:00+00:00"  # a later sighting by another agent
+    (appstate_dir / "seen.json").write_text(json.dumps(seen))
+    world.set_running([OSAURUS])
+    world.stop()
+    assert world.ledger()[-1]["apps"]["exits"][WIDGET]["last_seen"] == "2999-01-01T00:00:00+00:00"

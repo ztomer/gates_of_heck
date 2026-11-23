@@ -161,8 +161,9 @@ stdin_reader = _optional("stdin_reader")  # a stdin reader nothing feeds, GOH.ST
 no_verify = _optional("no_verify")  # a git commit/push that skips the hooks, GOH.NOVERIFYGUARD
 harness_grep, wait_deadline = _optional("harness_grep"), _optional("wait_deadline")
 worktree_rm, encrypted_unmount = _optional("worktree_rm"), _optional("encrypted_unmount")
+app_quit = _optional("app_quit")  # an Apple Event quit of an owner's login item, GOH.APPCLOSE
 _RULES = [r for r in (secret_render, name_kill, temp_sweep, stdin_reader, no_verify, harness_grep,
-                      wait_deadline, encrypted_unmount) if r]  # fmt: skip
+                      wait_deadline, encrypted_unmount, app_quit) if r]  # fmt: skip
 undo_hint = _optional("undo_hint")  # a discard refusal names `goh undo <files>`
 heavy_admit = _optional("heavy_admit")  # a heavy job takes a gate slot first, GOH.ADMISSION
 commit_hold = _optional(

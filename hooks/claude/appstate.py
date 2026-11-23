@@ -22,8 +22,16 @@ words are split like a shell's, never run through one:
 * GOH_APPSTATE_ITEMS_CMD   prints the login-item app paths, one per line
 * GOH_APPSTATE_RUNNING_CMD prints running executables' paths, one per line
 * GOH_APPSTATE_LAUNCH_CMD  launches one app; its path is appended as the last argument
+* GOH_APPSTATE_INSTALLED_CMD exits 0 when the app (its path appended) is installed; default
+  `test -d`; under the suite without it every app counts as installed
 Under goh's own suite (`GATES_OF_HECK_SUITE_REAL_HOME`) the defaults are never used: without all
 three seams the module reads nothing and launches nothing, so no test can reach a real app.
+
+An app the OWNER removed while the agent ran -- no longer a login item, or no longer installed --
+is neither relaunched nor reported (GOH.APPCLOSE; owner 2026-11-21: "note that I removed
+stenoAi"). Every reading (any agent's spawn or stop) records when each login-item app was last
+seen running (`seen.json`), so a report names the agent and the window the app exited in: last
+seen running at T1, gone by T2.
 
 It fails OPEN: anything it cannot read is `None` (unknown), never "nothing running", so an
 unreadable state relaunches nothing.
@@ -34,6 +42,7 @@ CLI: `appstate.py running` prints the login-item apps running now, one per line.
 from __future__ import annotations
 
 import contextlib
+import datetime as dt
 import json
 import os
 import shlex
@@ -101,8 +110,9 @@ def _app_path(raw: str) -> str:
     return raw.rstrip("/")
 
 
-def running() -> list[str] | None:
-    """The login-item apps running now, sorted; None when either side cannot be read."""
+def _read() -> tuple[list[str], list[str]] | None:
+    """(the login-item apps, those running now), both sorted; None when either side is unreadable.
+    What runs is recorded as seen now, for every agent's window (`seen.json`)."""
     if not enabled():
         return None
     items = _lines("GOH_APPSTATE_ITEMS_CMD")
@@ -110,7 +120,50 @@ def running() -> list[str] | None:
     if items is None or procs is None:
         return None
     apps = {_app_path(i) for i in items if _app_path(i).endswith(".app")}
-    return sorted(a for a in apps if any(p.startswith(f"{a}/Contents/MacOS/") for p in procs))
+    up = sorted(a for a in apps if any(p.startswith(f"{a}/Contents/MacOS/") for p in procs))
+    _saw(up)
+    return sorted(apps), up
+
+
+def running() -> list[str] | None:
+    """The login-item apps running now, sorted; None when either side cannot be read."""
+    state = _read()
+    return state[1] if state else None
+
+
+def _now_iso() -> str:
+    return dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+
+
+def _seen() -> dict[str, str]:
+    try:
+        d = json.loads((_state_dir() / "seen.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {str(k): str(v) for k, v in d.items()} if isinstance(d, dict) else {}
+
+
+def _saw(apps: list[str]) -> None:
+    """Record APPS as seen running now, keeping a later sighting another agent recorded."""
+    seen, now = _seen(), _now_iso()
+    seen.update({a: max(now, seen.get(a, "")) for a in apps})
+    with contextlib.suppress(OSError):
+        _state_dir().mkdir(parents=True, exist_ok=True)
+        tmp = _state_dir() / f"seen.json.{os.getpid()}"
+        tmp.write_text(json.dumps(seen, sort_keys=True), encoding="utf-8")
+        tmp.replace(_state_dir() / "seen.json")
+
+
+def _installed(app: str) -> bool:
+    raw = os.environ.get("GOH_APPSTATE_INSTALLED_CMD", "").strip()
+    if not raw:
+        return True if os.environ.get(SUITE_MARKER) else os.path.isdir(app)
+    try:
+        r = subprocess.run([*shlex.split(raw), app], capture_output=True, timeout=READ_TIMEOUT_S,
+                           stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+    except (OSError, subprocess.SubprocessError):
+        return True  # unknown is not "removed": the app is still put back
+    return r.returncode == 0
 
 
 def _state_dir() -> Path:
@@ -173,10 +226,15 @@ def restore(key: str | None, settle_s: float = LAUNCH_SETTLE_S) -> dict[str, Any
         return None
     with contextlib.suppress(OSError):
         path.unlink()
-    now = running()
-    if now is None or not isinstance(before, list):
+    seen = _seen()  # read before this reading records its own sightings
+    state = _read()
+    if state is None or not isinstance(before, list):
         return None
-    missing = sorted(set(before) - set(now))
+    items, now = state
+    gone_by = _now_iso()
+    # an app the owner took out of the login items, or uninstalled, is the owner's removal
+    missing = sorted(a for a in set(before) - set(now) if a in items and _installed(a))
+    exits = {a: {"last_seen": seen.get(a), "gone_by": gone_by} for a in missing}
     launched = [a for a in missing if _launch(a)]
     up: set[str] = set()
     end = time.monotonic() + settle_s
@@ -188,21 +246,25 @@ def restore(key: str | None, settle_s: float = LAUNCH_SETTLE_S) -> dict[str, Any
         time.sleep(0.2)  # the next pass re-reads the process table: a poll, not a guess
     relaunched = sorted(up)
     return {"before": before, "missing": missing, "relaunched": relaunched,
-            "failed": sorted(set(missing) - up)}  # fmt: skip
+            "failed": sorted(set(missing) - up), "exits": exits}  # fmt: skip
 
 
-def describe(result: dict[str, Any] | None) -> str | None:
+def describe(result: dict[str, Any] | None, agent: str | None = None) -> str | None:
     """The message for the session, or None when nothing was missing."""
     if not result or not result["missing"]:
         return None
     parts = []
+    for app, w in sorted((result.get("exits") or {}).items()):
+        parts.append(f"{Path(app).stem} last seen running {w.get('last_seen') or 'never'}, "
+                     f"gone by {w.get('gone_by')}")  # fmt: skip
     if result["relaunched"]:
         parts.append(f"relaunched {', '.join(Path(a).stem for a in result['relaunched'])}")
     if result["failed"]:
         parts.append(f"could NOT relaunch {', '.join(Path(a).stem for a in result['failed'])}")
     apps = noun(len(result["missing"]), "app")
-    return (f"agent_guard: login-item {apps} running when the agent was spawned were not running "
-            f"when it stopped -- {'; '.join(parts)} (GOH.APPSTATE).")  # fmt: skip
+    who = f"agent {agent}" if agent else "the agent"
+    return (f"agent_guard: login-item {apps} running when {who} was spawned were not running "
+            f"when it stopped -- {'; '.join(parts)} (GOH.APPSTATE, GOH.APPCLOSE).")  # fmt: skip
 
 
 def main(argv: list[str]) -> int:
