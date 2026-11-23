@@ -376,7 +376,9 @@ def test_a_retired_job_has_no_plist_no_installer_and_cannot_be_installed(
     callers = [p.name for p in (REPO_ROOT / "tools").glob("install_*.sh")
                if label in p.read_text()]  # fmt: skip
     assert callers == []
-    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "LAUNCHAGENTS_DIR": str(tmp_path / "LA")}
+    env = hermetic_env(
+        PATH="/usr/bin:/bin", HOME=str(tmp_path), LAUNCHAGENTS_DIR=str(tmp_path / "LA")
+    )
     r = subprocess.run(["/bin/bash", str(REPO_ROOT / "tools" / "install_launchagent.sh"), label,
                         "install"], capture_output=True, text=True, env=env, check=False,
                        stdin=subprocess.DEVNULL)  # fmt: skip
