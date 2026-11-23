@@ -152,7 +152,8 @@ def hold(
     CLOCK and SLEEP default to time's own; a test passes its fake clock here, never by patching
     the time module, which every thread of the process reads (GOH.LANDQWINFLAKE)."""
     clock, sleep = clock or time.time, sleep or time.sleep
-    head, bound, cap = landq_batch.read(pending[0]), window(), landq_batch.cap()
+    head, bound = landq_batch.read(pending[0]), window()
+    cap = landq_batch.cap(q, head.get("repo"))  # its repo's k (GOH.ADAPTBATCH)
     if head.get("mode") != "land" or cap == 1 or bound == 0 or landq_batch.alone(head):
         return pending
     name, at, start, waited = pending[0].stem, filed(pending[0]), clock(), False

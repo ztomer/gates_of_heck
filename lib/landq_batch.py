@@ -3,8 +3,10 @@
 WHY. The lander gated one land at a time, each rebased on main and gated alone, so with three
 lanes a lane waited about as long in the queue as it spent gated (2026-11-17: 572 agent-minutes
 queued against 711 gated). Merge-queue style, the head of the queue now takes the land requests of
-its repo behind it, in queue order, up to GOH_LANDQ_BATCH (default 3; 1 is the one-by-one queue).
-A push or ship of that repo ends the take: it runs after what was enqueued before it.
+its repo behind it, in queue order, up to k: GOH_LANDQ_BATCH when set (1 is the one-by-one
+queue), else the size lib/landq_size.py derives from the repo's recent red rate at its gate
+(GOH.ADAPTBATCH), logged with why at each pick. A push or ship of that repo ends the take: it runs
+after what was enqueued before it.
 
 THE STACK. Holding the repo's land lock (lib/land_lock.py, so no other land moves main meanwhile),
 the lander rebases each item's branch onto the one below it -- the first onto main -- by the
@@ -62,9 +64,10 @@ import land_lock
 import land_prestep
 import land_slot
 import landq_report
+import landq_size
 import landq_spec
 
-DEFAULT = 3
+DEFAULT = landq_size.DEFAULT
 RETRIES = 3  # passes a git failure may keep a request pending before it is recorded red
 PAUSE = 30.0  # seconds the lander waits before it tries again after one
 READ_PAUSE = 1.0  # seconds between those reads
@@ -129,12 +132,16 @@ def hold(q: Path, path: Path, outcome: dict, fails: dict[str, int], say: Callabl
     return None
 
 
-def cap() -> int:
-    """GOH_LANDQ_BATCH: the most land requests one gate judges; 1 is the one-by-one queue."""
-    try:
-        return max(1, int(os.environ.get("GOH_LANDQ_BATCH") or DEFAULT))
-    except ValueError:
-        return DEFAULT
+def cap(q: Path | None = None, repo: object = None) -> int:
+    """The most land requests of REPO one gate judges (lib/landq_size.py); 1 is one by one."""
+    return sized(q, repo).k
+
+
+def sized(q: Path | None, repo: object) -> landq_size.Size:
+    """REPO's batch size and why: GOH_LANDQ_BATCH, else its gated red rate in Q's done records."""
+    if q is None or not isinstance(repo, str):
+        q, repo = Path(os.devnull), ""  # no history: the env's size or the default
+    return landq_size.size(q, repo)
 
 
 def read(path: Path) -> dict:
@@ -154,24 +161,44 @@ def alone(req: dict) -> bool:
     return bool(req.get("no_pre"))
 
 
-def pick(pending: list[Path]) -> list[Path]:
+@dataclass
+class Picked:
+    paths: list[Path]
+    size: landq_size.Size | None = None  # a land's (GOH.ADAPTBATCH); None for a push or ship
+
+
+def pick(pending: list[Path], say: Callable[[str], None] | None = None) -> Picked:
     """The requests the queue's head runs with: it alone, or (a land) it and the land requests of
-    its repo behind it, in queue order, up to cap(); a push or ship of that repo ends the take, and
-    so does a `--no-pre` land (`alone`), which is never taken with another (GOH.NOPREBATCH)."""
+    its repo behind it, in queue order, up to its k (said, with why); a push or ship of that repo
+    ends the take, and so does a `--no-pre` land (`alone`), which is never taken with another
+    (GOH.NOPREBATCH). PENDING are in the queue's pending/, whose done/ holds the history."""
     head = read(pending[0])
-    if head.get("mode") != "land" or cap() == 1 or alone(head):
-        return pending[:1]
+    if head.get("mode") != "land":
+        return Picked(pending[:1])
+    size = sized(pending[0].parent.parent, head.get("repo"))
+    if say:
+        say(f"{pending[0].stem}: batch size k={size.k}: {size.why} (GOH.ADAPTBATCH)")
+    if alone(head):
+        return Picked(pending[:1], size)
     out = [pending[0]]
     for path in pending[1:]:
         req = read(path)
-        if len(out) == cap():
+        if len(out) >= size.k:
             break
         if req.get("repo") != head.get("repo"):
             continue
         if req.get("mode") != "land" or not req.get("worktree") or alone(req):
             break
         out.append(path)
-    return out
+    return Picked(out, size)
+
+
+def take(pending: list[Path], say: Callable[[str], None] | None = None) -> Picked:
+    """pick()'s requests moved from pending/ to running/, at their new paths."""
+    picked = pick(pending, say)
+    for i, path in enumerate(picked.paths):
+        picked.paths[i] = path.replace(path.parent.parent / "running" / path.name)
+    return picked
 
 
 @dataclass
@@ -400,11 +427,14 @@ class Batch:
         return [{**(it.outcome or {}), "batch": info} for it in self.items]
 
 
-def run(q: Path, paths: list[Path], kit: Kit, run_one: Callable[[Path, Path], dict]) -> list[dict]:
+def run(q: Path, paths: list[Path], kit: Kit, run_one: Callable[[Path, Path], dict],
+        size: landq_size.Size | None = None) -> list[dict]:  # fmt: skip
     """The outcomes of the requests at PATHS (in running/, queue order), one per path: a lone
-    request is RUN_ONE's, as before batches; the batch's items share its start and load."""
+    request is RUN_ONE's, as before batches; the batch's items share its start and load. A land
+    picked at SIZE carries its `k` and `k_why` (GOH.ADAPTBATCH: --report shows k per batch)."""
+    chose = {"k": size.k, "k_why": size.why} if size else {}
     if len(paths) == 1:
-        return [landq_report.timed(run_one, q, paths[0])]
+        return [{**landq_report.timed(run_one, q, paths[0]), **chose}]
     started, load = dt.datetime.now(dt.UTC), landq_report.load1()
     items = [Item(p, json.loads(p.read_text()), q / "logs" / f"{p.stem}.log") for p in paths]
-    return [landq_report.stamped(o, started, load) for o in Batch(q, kit, items).run()]
+    return [{**landq_report.stamped(o, started, load), **chose} for o in Batch(q, kit, items).run()]

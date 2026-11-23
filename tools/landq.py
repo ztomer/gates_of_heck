@@ -42,7 +42,7 @@ THE LANDER is one process holding an flock on `<dir>/lander.lock` (a second exit
 a request to `running/`, runs it under lib/bounded_run.py (GOH_LAND_TIMEOUT, default 3600 s, its
 process group swept on expiry), writes `done/<name>.json` and `logs/<name>.log`, and records
 `loopctl set ID landing {"state": "landed"|"red", "sha", "log", "at"} --json` on the item, which the
-coordinator's tick re-dispatches when red. A land takes up to GOH_LANDQ_BATCH-1 more of its repo,
+coordinator's tick re-dispatches when red. A land takes up to k-1 more of its repo (lib/landq_size),
 stacked, ONE land gate on the tip, a red bisected (GOH.LANDBATCH, lib/landq_batch.py), after lands
 in their pre-step had GOH_LANDQ_WINDOW s to join (lib/landq_window.py). Between requests it reads
 its code's digest (landq.py, land.sh, lib/ at the live checkout's HEAD); changed by a land, it execs
@@ -306,11 +306,10 @@ def drain_held(
     landq_batch.resume(q, warn)  # a dead lander's requests, an enqueue's orphan keep
     fails: dict[str, int] = {}  # passes each request has been left pending by a git failure
     while pending := landq_window.pending(q, info, clock, sleep):  # the window (GOH.BATCHWINDOW)
-        paths = [q / "running" / p.name for p in landq_batch.pick(pending)]  # GOH.LANDBATCH
-        for path in paths:
-            (q / "pending" / path.name).replace(path)
+        picked = landq_batch.take(pending, info)  # GOH.LANDBATCH, k said (GOH.ADAPTBATCH)
+        paths = picked.paths  # in running/ now
         try:
-            outcomes = landq_batch.run(q, paths, batch_kit(), run_one)
+            outcomes = landq_batch.run(q, paths, batch_kit(), run_one, picked.size)
         except Exception as e:  # noqa: BLE001 -- one broken request must not strand the rest
             red = {"sha": "", "repo": "", "state": "red", "why": f"lander: {e}", "log": ""}
             outcomes = [red] * len(paths)

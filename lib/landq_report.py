@@ -21,8 +21,10 @@ never summed as a negative or a guess. Rows are per repo and UTC day of the fini
 JSON shape (`--json`; docs/map.md): {"since", "unloaded_s", "rows": [row...], "totals": row,
 "unclassified": [{item, repo, day, log}], "gate_steps": {step: n}}; a row
 is {"repo", "day", "attempts", "landed", "red", "cause", "queue_wait_s", "gate_s", "slot_wait_s",
-"run_s", "load_avg", "gates", "gates_per_landed", "unknown"}. `gates` is the land gates run: one
-per attempt, but a batch's items (their `batch` {id, gates}, lib/landq_batch.py) share theirs.
+"run_s", "load_avg", "gates", "gates_per_landed", "k", "unknown"}. `gates` is the land gates run:
+one per attempt a gate judged (`gated`: never an enqueue pre-step's, a check's or a conflict's red),
+but a batch's items (their `batch` {id, gates}, lib/landq_batch.py) share theirs. `k` is the batch
+size the lander chose for each batch or lone land, counted: {k: batches} (GOH.ADAPTBATCH).
 `cause` counts the row's reds by cause (lib/land_cause.py, GOH.PREPARITY: the reading the hand
 count was made with). `unloaded_s` is
 the shortest green run in the window: what a gate costs when nothing else is running. `selection`
@@ -166,6 +168,8 @@ class Attempt:
     log: str = ""  # its log's path: an unclassified red is reported with it
     step: str = ""  # a `gate-step` red's failed step (land_cause.detail)
     batch: tuple[str, int] | None = None  # (batch id, the gate runs it spent): GOH.LANDBATCH
+    gated: bool = True  # a gate judged it (`gated`)
+    k: int | None = None  # the batch size the lander chose (GOH.ADAPTBATCH)
 
     @property
     def day(self) -> str:
@@ -241,9 +245,21 @@ def read_attempts(queue: Path, birth_of: Callable[[Path], float | None] = birth)
                 log=str(log or ""),
                 step=step,
                 batch=_batch(batch),
+                gated=gated(rec),
+                k=rec.get("k") if isinstance(rec.get("k"), int) else None,
             )
         )
     return out
+
+
+def gated(rec: dict) -> bool:
+    """Whether a land gate judged the attempt: landed, or red by a gate's exit or timeout. An
+    enqueue pre-step's, a check's or a conflict's red never reached one (GOH.ADAPTBATCH); a red
+    naming no why (a record older than whys) is counted as gated, as it always was."""
+    why = str(rec.get("why") or "")
+    if rec.get("state") == "landed" or not why:
+        return True
+    return why.startswith(("exit ", "timed out")) and not why.startswith("exit 75")
 
 
 def _batch(rec: object) -> tuple[str, int] | None:
@@ -257,7 +273,8 @@ def _row(repo: str, day: str, atts: list[Attempt]) -> dict:
     landed = sum(a.state == "landed" for a in atts)
     # A batch's items share its gate runs (GOH.LANDBATCH): counted once, not once per item.
     shared = dict(a.batch for a in atts if a.batch)
-    gates = sum(a.batch is None for a in atts) + sum(shared.values())
+    gates = sum(a.batch is None and a.gated for a in atts) + sum(shared.values())
+    sizes = {(a.batch[0] if a.batch else a.stem): a.k for a in atts if a.k is not None}
     return {
         "repo": repo,
         "day": day,
@@ -272,6 +289,7 @@ def _row(repo: str, day: str, atts: list[Attempt]) -> dict:
         "load_avg": round(sum(loads) / len(loads), 1) if loads else None,
         "gates": gates,
         "gates_per_landed": round(gates / landed, 2) if landed else None,
+        "k": {k: list(sizes.values()).count(k) for k in sorted(set(sizes.values()))},
         "unknown": len(atts) - len(known),
     }
 
@@ -343,6 +361,8 @@ def render(rep: dict) -> str:
             load, "-" if g is None else f"{g:.1f}",
         )  # fmt: skip
         lines.append(" ".join(f"{c!s:>6}" if i > 1 else f"{c!s:<16}" for i, c in enumerate(cells)))
+        if r["k"]:
+            lines.append("  batch size k: " + ", ".join(f"{k} x{n}" for k, n in r["k"].items()))
         if causes:
             lines.append("  red by cause: " + ", ".join(f"{k} {v}" for k, v in causes))
         if r is rep["totals"] and r["unknown"]:

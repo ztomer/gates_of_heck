@@ -93,7 +93,7 @@ def test_two_lands_filed_within_the_window_go_through_one_gate_run(tmp_path, mon
     clock.at[t0 + 32] = lambda: (_file(q, t0 + 32, "T.TWO"), marker.unlink())
     runs: list[list[str]] = []
 
-    def gate(_q, paths, _kit, _run_one):
+    def gate(_q, paths, _kit, _run_one, _size=None):
         runs.append([json.loads(p.read_text())["item"] for p in paths])
         return [{"state": "landed", "sha": "b" * 40, "repo": REPO, "mode": "land"}] * len(paths)
 
@@ -342,11 +342,11 @@ def test_a_no_pre_land_runs_alone_and_never_waits_for_a_batch(window, q):
     pending = sorted((q / "pending").glob("*.json"))
     assert _hold(window, q, clock, said) == ["T.NOPRE", "T.TWO"]
     assert (clock.slept, said) == (0.0, [])  # no window held for it
-    assert [p.stem.partition("-")[2] for p in landq_batch.pick(pending)] == ["T.NOPRE"]
+    assert [p.stem.partition("-")[2] for p in landq_batch.pick(pending).paths] == ["T.NOPRE"]
     lone.unlink()
     first = _file(q, clock.t - 2, "T.ONE")
     landq_state.write(lone, {**landq_state.read(first), "item": "T.NOPRE", "no_pre": "by hand"})
     pending = sorted((q / "pending").glob("*.json"))
     names = [p.stem.partition("-")[2] for p in pending]
     assert names == ["T.ONE", "T.NOPRE", "T.TWO"], names
-    assert [p.stem.partition("-")[2] for p in landq_batch.pick(pending)] == ["T.ONE"]
+    assert [p.stem.partition("-")[2] for p in landq_batch.pick(pending).paths] == ["T.ONE"]

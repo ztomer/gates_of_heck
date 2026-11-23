@@ -197,11 +197,11 @@ def test_the_lander_retries_a_pending_request_on_its_next_pass(
     calls: list[int] = []
     real = landq_batch.run
 
-    def once_failing(qd, paths, kit, run_one):
+    def once_failing(qd, paths, kit, run_one, size=None):
         calls.append(1)
         if len(calls) == 1:
             return [{"state": "pending", "why": "git: boom", "sha": "s", "log": "", "repo": "r"}]
-        return real(qd, paths, kit, run_one)
+        return real(qd, paths, kit, run_one, size)
 
     monkeypatch.setattr(landq_batch, "run", once_failing)
     assert lq.drain() == 0
