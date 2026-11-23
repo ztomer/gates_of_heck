@@ -19,7 +19,7 @@ import pytest
 import suite_home  # (FIRST: the suite's own HOME and TMPDIR, before anything reads them)
 from _tree_clone import clone_tree, reused_mkdtemp, template  # (no HOME/TMPDIR read at import)
 from env_probe import print_safe  # (no HOME/TMPDIR read: re, shlex)
-from suite_tmp import nested_root  # noqa: F401  (autouse: a nested pytest's own root, GOH.FLAKY2)
+from suite_tmp import live_suite_mark, nested_root  # noqa: F401  (autouse: GOH.FLAKY2, FSCHURN4)
 
 # THE SUITE TESTS THE TREE IT IS IN. Consumers run the gates from an export of HEAD (C4,
 # gates/_from_head.sh); this suite exists to judge the change under test, so it asks for the working

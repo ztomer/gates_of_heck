@@ -98,6 +98,32 @@ goh_export_rev() {
     _goh_export="$dest"
 }
 
+# _goh_suite_ancestor <checkout root> -- 0 when goh's own suite runs in that checkout and is an
+# ancestor of this process (its pid in `<git dir>/goh-suite.live`, written by tests/conftest.py);
+# sets _goh_suite_pid. A consumer's gate run from the same checkout meanwhile is no descendant and
+# is not refused. Costs one `ps` -- only while a mark exists.
+_goh_suite_ancestor() {
+    local gd="$1/.git" line pid p n=0
+    local -A up=()
+    _goh_suite_pid=""
+    if [ -f "$gd" ]; then
+        IFS= read -r line <"$gd" || return 1
+        gd="${line#gitdir: }"
+        case "$gd" in /*) ;; *) gd="$1/$gd" ;; esac
+    fi
+    [ -f "$gd/goh-suite.live" ] || return 1
+    read -r pid _ <"$gd/goh-suite.live" || return 1
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+    while read -r line p; do up[$line]="$p"; done < <(ps -A -o pid=,ppid= 2>/dev/null)
+    p="$BASHPID"
+    while [ -n "$p" ] && [ "$p" -gt 1 ] && [ "$n" -lt 512 ]; do
+        [ "$p" = "$pid" ] && { _goh_suite_pid="$pid"; return 0; }
+        p="${up[$p]:-}"
+        n=$((n + 1))
+    done
+    return 1
+}
+
 _goh_head_dir() {
     local here root rel head cache dest tmp
     _goh_copy=""
@@ -116,9 +142,17 @@ _goh_head_dir() {
     # THIS suite only (tests/conftest.py exports GATES_OF_HECK_SUITE). A consumer's own pytest that
     # runs a gate is a caller like any other and gets the export: keyed on PYTEST_CURRENT_TEST alone,
     # this refused 53 of ztools' 120 tests (2026-10-06), and GOH_LIVE there would run OUR live tree.
-    if [ -n "${PYTEST_CURRENT_TEST:-}" ] && [ -n "${GATES_OF_HECK_SUITE:-}" ]; then
+    # ...and a HAND-BUILT environment (GOH.FSCHURN4): a test's `env={"PATH": ..., "HOME": ...}`
+    # drops both variables with GOH_LIVE, and its gate exported HEAD into the test's HOME and judged
+    # the last commit, saying nothing (the launchagent-fix class). The suite's mark lives in the
+    # checkout's git directory, where no scrub reaches it, and names the suite's pid: a gate that
+    # pid is an ancestor of is the suite's, however its environment was built. A test that means
+    # HEAD says so with GATES_OF_HECK_HEAD_OK=1.
+    if { [ -n "${PYTEST_CURRENT_TEST:-}" ] && [ -n "${GATES_OF_HECK_SUITE:-}" ]; } \
+        || { [ -z "${GATES_OF_HECK_HEAD_OK:-}" ] && _goh_suite_ancestor "$root"; }; then
         echo "✗ gates_of_heck: a test ran $1 without GOH_LIVE=1 -- it would judge HEAD's export," \
-            "not the tree under test. Keep GOH_LIVE in the test's environment." >&2
+            "not the tree under test. Keep GOH_LIVE in the test's environment (a hand-built env" \
+            "drops it: build it from os.environ / hermetic_env)." >&2
         exit 2
     fi
     head="$( (goh_unbind_git; git -C "$root" rev-parse -q --verify HEAD) )" \

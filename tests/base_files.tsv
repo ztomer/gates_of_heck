@@ -127,6 +127,7 @@ tests/real_state_guard.py	base-code
 tests/reference_kit.py	base-code
 tests/runner_env.py	base-code
 tests/suite_home.py	base-code
+tests/suite_live_mark.py	base-code
 tests/suite_tmp.py	base-code
 tests/timing_bounds.py	base-code
 tools/affected_tests.py	base-code

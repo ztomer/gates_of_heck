@@ -132,7 +132,9 @@ def _with_fake_launchctl(tmp_path, mode, loaded):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
-        env={"PATH": f"{fake}:/usr/bin:/bin", "HOME": str(tmp_path)},
+        # GOH_LIVE: the tree under test, never HEAD's export (GOH.FSCHURN4 refuses a hand-built
+        # env without it -- this was the class's own case: it judged the last commit)
+        env={"PATH": f"{fake}:/usr/bin:/bin", "HOME": str(tmp_path), "GOH_LIVE": "1"},
     )
 
 

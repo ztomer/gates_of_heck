@@ -58,6 +58,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from suite_live_mark import live_suite_mark  # noqa: F401  (GOH.FSCHURN4, re-exported to conftest)
 
 MARKER = "GATES_OF_HECK_SUITE_TMP"  # not GOH_-prefixed: no env scrub drops it
 REAL_TMP_MARKER = "GATES_OF_HECK_SUITE_REAL_TMP"
