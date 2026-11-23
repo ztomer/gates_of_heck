@@ -409,8 +409,16 @@ def cli(worktree: str, q: Path) -> int:
     refused_commits = commit_stamp.check(top, info)
     for r in refused_commits:
         err(f"goh land --check: {r}")
+    # An item the range names with no changelog fragment is refused here, where the lane can add
+    # it, not at the ship's release (GOH.FRAGMENTATLAND).
+    from lib import fragment_check
+
+    no_fragment = fragment_check.missing(top)
+    for r in no_fragment:
+        err(f"goh land --check: {r}")
     refused = run(Path(top), q, info, main, tables=True)
     refused += [f"the commit gate on {r.split(' ', 5)[4]}" for r in refused_commits]
+    refused += [f"the changelog fragment of {r.split(' ', 1)[0]}" for r in no_fragment]
     took = f"{time.monotonic() - t0:.1f} s"
     t1 = time.monotonic()
     cov_risk.say(top, main, warn)  # GOH.DIFFCOVLAND: a warning, never this check's verdict
