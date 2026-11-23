@@ -24,19 +24,22 @@ QUEUE = {
 }
 
 
-def write_db(db: Path, q: dict) -> None:
+def write_db(db: Path, q: dict, archived: tuple = ()) -> None:
     """The store as the documented schema in lib/queue_read.py lays it out."""
     con = sqlite3.connect(db)
     con.execute("PRAGMA journal_mode=WAL")
-    con.execute("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT)")
-    con.execute("CREATE TABLE items(id TEXT PRIMARY KEY, seq INTEGER, status TEXT, repo TEXT,"
-                " batch TEXT, priority TEXT, phase TEXT, agent TEXT, body TEXT)")  # fmt: skip
-    con.executemany("INSERT INTO meta VALUES (?, ?)",
-                    [(k, json.dumps(v)) for k, v in q.items() if k != "items"])  # fmt: skip
+    con.execute("PRAGMA user_version = 1")
+    con.execute("CREATE TABLE queue_keys(key TEXT PRIMARY KEY, seq INTEGER, value TEXT)")
+    con.execute("CREATE TABLE items(id TEXT PRIMARY KEY, seq INTEGER, archived INTEGER,"
+                " status TEXT, repo TEXT, batch TEXT, priority TEXT, phase TEXT, agent TEXT,"
+                " sha TEXT, body TEXT)")  # fmt: skip
+    meta = [(k, n, json.dumps(v)) for n, (k, v) in enumerate(q.items()) if k != "items"]
+    con.executemany("INSERT INTO queue_keys VALUES (?, ?, ?)", meta)
+    rows = [(i, 0) for i in q["items"]] + [(i, 1) for i in archived]
     con.executemany(
-        "INSERT INTO items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [(i["id"], n, i.get("status"), i.get("repo"), i.get("batch"), i.get("priority"),
-          i.get("phase"), i.get("agent"), json.dumps(i)) for n, i in enumerate(q["items"])],
+        "INSERT INTO items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [(i["id"], n, arch, i.get("status"), i.get("repo"), i.get("batch"), i.get("priority"),
+          i.get("phase"), i.get("agent"), None, json.dumps(i)) for n, (i, arch) in enumerate(rows)],
     )  # fmt: skip
     con.commit()
     con.close()
@@ -46,7 +49,7 @@ def test_json_and_sqlite_stores_read_the_same(tmp_path: Path) -> None:
     named = tmp_path / "queue.json"
     named.write_text(json.dumps(QUEUE))
     assert queue_read.load(named) == QUEUE
-    write_db(tmp_path / "queue.db", {**QUEUE, "items": QUEUE["items"][::-1]})
+    write_db(tmp_path / "loop.db", {**QUEUE, "items": QUEUE["items"][::-1]})
     got = queue_read.load(named)  # the store wins over the file once it exists
     assert [i["id"] for i in got["items"]] == ["A.2", "A.1"] and got["rules"] == QUEUE["rules"]
     named.unlink()  # after the cutover the name is only a name
@@ -54,8 +57,44 @@ def test_json_and_sqlite_stores_read_the_same(tmp_path: Path) -> None:
     assert [i["id"] for i in queue_read.items(named)] == ["A.2", "A.1"]
 
 
+def test_archive_rows_are_not_the_queues_items(tmp_path: Path) -> None:
+    old = {"id": "Z.9", "status": "done", "repo": "held", "phase": "A", "agent": "a1"}
+    write_db(tmp_path / "loop.db", QUEUE, archived=(old,))
+    assert [i["id"] for i in queue_read.items(tmp_path / "queue.json")] == ["A.1", "A.2"]
+
+
+def test_no_loop_is_an_answer_of_no_queue_never_a_crash(tmp_path: Path, monkeypatch) -> None:
+    """goh is public: where no loop runs (no loop.db, no queue.json) every reader answers
+    "no queue"."""
+    import importlib
+
+    import reuse_fault
+
+    monkeypatch.syspath_prepend(str(ROOT / "hooks" / "claude"))
+    spawn_register = importlib.import_module("spawn_register")
+
+    named = tmp_path / "queue.json"
+    monkeypatch.setenv(queue_read.ENV, str(named))
+    assert queue_hold.find(str(tmp_path / "f.txt"), None, "agent") is None
+    assert queue_hold.holds_below(str(tmp_path), None, "agent") == []
+    assert "names no phase" in reuse_fault.current_phase({"class_of"})
+    assert spawn_register.pending_items("Item A.1", str(named)) == []
+    assert queue_read.items_or_empty(named) == []
+
+
+def test_a_schema_goh_does_not_know_is_no_queue_with_a_reason(tmp_path: Path) -> None:
+    db = tmp_path / "loop.db"
+    write_db(db, QUEUE)
+    con = sqlite3.connect(db)
+    con.execute("PRAGMA user_version = 99")  # a newer loop's file
+    con.close()
+    with pytest.raises(queue_read.NoQueue, match="schema 99, which this goh does not know"):
+        queue_read.load(tmp_path / "queue.json")
+    assert queue_read.items_or_empty(tmp_path / "queue.json") == []  # an answer, never a crash
+
+
 def test_reads_never_write_the_store(tmp_path: Path) -> None:
-    db = tmp_path / "queue.db"
+    db = tmp_path / "loop.db"
     write_db(db, QUEUE)
     before = db.read_bytes()
     queue_read.load(tmp_path / "queue.json")
@@ -68,7 +107,7 @@ def test_absent_is_oserror_unreadable_is_valueerror(tmp_path: Path) -> None:
     (tmp_path / "queue.json").write_text("[]")
     with pytest.raises(ValueError, match="not a JSON object"):
         queue_read.load(tmp_path / "queue.json")
-    (tmp_path / "queue.db").write_text("not a database")
+    (tmp_path / "loop.db").write_text("not a database")
     with pytest.raises(ValueError, match="unreadable"):
         queue_read.load(tmp_path / "queue.json")
     assert queue_read.items_or_empty(tmp_path / "queue.json") == []  # a reader that fails open
@@ -80,7 +119,7 @@ def test_the_hold_guard_reads_the_sqlite_store(tmp_path: Path, monkeypatch) -> N
     (projects / "held" / ".git").mkdir(parents=True)
     loop = projects / "loop"
     loop.mkdir()
-    write_db(loop / "queue.db", QUEUE)
+    write_db(loop / "loop.db", QUEUE)
     monkeypatch.setenv(queue_read.ENV, str(loop / "queue.json"))
     hold = queue_hold.find(str(projects / "held" / "f.txt"), None, "intruder")
     assert hold is not None and hold.item == "A.1", hold

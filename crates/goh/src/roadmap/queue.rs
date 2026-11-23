@@ -6,7 +6,7 @@
 //! crash, and never a silent pass: the caller prints the reason and withholds the seed's
 //! `queue-done` entries, which a blind rule would otherwise read as fixed.
 //!
-//! The path NAMES the queue; its store is the SQLite file `queue.db` beside it when that exists
+//! The path NAMES the queue; its store is the loop's SQLite file `loop.db` beside it when that exists
 //! (LOOP.QUEUEARCHIVE: the layout goh's Python reader, `lib/queue_read.py`, documents), read with
 //! the `sqlite3` CLI in read-only mode, else the JSON file itself. A store `sqlite3` cannot read,
 //! or a machine without `sqlite3`, is NOT JUDGED with the reason, like an absent file.
@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 /// The SQLite store's file name, beside the queue's path.
-pub const DB_NAME: &str = "queue.db";
+pub const DB_NAME: &str = "loop.db";
 
 /// The environment key that names the queue file.
 pub const ENV: &str = "GOH_ROADMAP_QUEUE";
@@ -87,10 +87,41 @@ pub fn load(flag: Option<&str>) -> Result<BTreeMap<String, String>, String> {
 ///
 /// `sqlite3` cannot run, refuses the store, or prints rows that are not `{id, status}` objects.
 pub fn load_db(db: &Path) -> Result<BTreeMap<String, String>, String> {
-    let out = Command::new("sqlite3")
-        .args(["-readonly", "-json"])
+    let schema = sqlite(db, false, "PRAGMA user_version")?;
+    if !KNOWN_SCHEMAS.contains(&schema.trim()) {
+        return Err(format!(
+            "no queue: {} is at schema {}, which this goh does not know; update goh",
+            db.display(),
+            schema.trim()
+        ));
+    }
+    let rows = sqlite(
+        db,
+        true,
+        "SELECT id, status FROM items ORDER BY archived, seq",
+    )?; // archived rows are done items too
+    let rows = if rows.trim().is_empty() {
+        "[]"
+    } else {
+        rows.trim()
+    }; // no rows prints nothing
+    parse(&format!("{{\"items\":{rows}}}"))
+        .map_err(|e| format!("the queue store {} is unreadable: {e}", db.display()))
+}
+
+/// The loop.db `PRAGMA user_version` values this reader understands.
+const KNOWN_SCHEMAS: [&str; 1] = ["1"];
+
+/// `sqlite3 -readonly [-json] DB SQL`'s output, or why it could not run.
+fn sqlite(db: &Path, json: bool, sql: &str) -> Result<String, String> {
+    let mut cmd = Command::new("sqlite3");
+    cmd.arg("-readonly");
+    if json {
+        cmd.arg("-json");
+    }
+    let out = cmd
         .arg(db)
-        .arg("SELECT id, status FROM items ORDER BY seq")
+        .arg(sql)
         .stdin(Stdio::null())
         .output()
         .map_err(|e| {
@@ -107,12 +138,5 @@ pub fn load_db(db: &Path) -> Result<BTreeMap<String, String>, String> {
             why.trim()
         ));
     }
-    let rows = String::from_utf8_lossy(&out.stdout);
-    let rows = if rows.trim().is_empty() {
-        "[]"
-    } else {
-        rows.trim()
-    }; // no rows prints nothing
-    parse(&format!("{{\"items\":{rows}}}"))
-        .map_err(|e| format!("the queue store {} is unreadable: {e}", db.display()))
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }

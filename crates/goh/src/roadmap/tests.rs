@@ -250,7 +250,7 @@ fn the_queue_parses_statuses_and_refuses_a_malformed_file() {
     assert!(super::queue::parse(r#"{"items":[{"id":1}]}"#).is_err());
 }
 
-/// LOOP.QUEUEARCHIVE: once the queue lives in SQLite (`queue.db` beside its path), the statuses come
+/// LOOP.QUEUEARCHIVE: once the queue lives in SQLite (`loop.db` beside its path), the statuses come
 /// from the store, the JSON beside it ignored; a store `sqlite3` refuses is an error, never empty.
 #[test]
 fn the_queue_reads_its_sqlite_store_when_one_exists() {
@@ -270,8 +270,8 @@ fn the_queue_reads_its_sqlite_store_when_one_exists() {
     let made = std::process::Command::new("sqlite3")
         .arg(&db)
         .arg(
-            "CREATE TABLE items(id TEXT PRIMARY KEY, seq INTEGER, status TEXT, body TEXT); \
-              INSERT INTO items VALUES ('A.1', 0, 'done', '{}'), ('B.2', 1, 'todo', '{}');",
+            "PRAGMA user_version = 1; CREATE TABLE items(id TEXT PRIMARY KEY, seq INTEGER, archived INTEGER, status TEXT, body TEXT); \
+              INSERT INTO items VALUES ('A.1', 0, 0, 'done', '{}'), ('B.2', 1, 1, 'todo', '{}');",
         )
         .status();
     if !made.is_ok_and(|s| s.success()) {
@@ -285,6 +285,13 @@ fn the_queue_reads_its_sqlite_store_when_one_exists() {
     let got = super::queue::load(Some(flag)).expect("the store reads");
     assert_eq!(got.get("A.1").map(String::as_str), Some("done"));
     assert_eq!(got.len(), 2);
+    let newer = std::process::Command::new("sqlite3")
+        .arg(&db)
+        .arg("PRAGMA user_version = 99")
+        .status();
+    assert!(newer.is_ok_and(|s| s.success()));
+    let said = super::queue::load(Some(flag)).expect_err("a schema goh does not know is no queue");
+    assert!(said.contains("schema 99"), "{said}");
     std::fs::write(&db, "not a database").expect("corrupt");
     assert!(
         super::queue::load(Some(flag)).is_err(),

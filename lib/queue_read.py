@@ -7,17 +7,27 @@ direct parse of the queue anywhere else in goh.
 
 The queue is NAMED by a path: GOH_LOOP_QUEUE, else the loop's default (`queue_path`). Its STORE is
 
-  * SQLite, `queue.db` in the same directory, when that file exists (WAL mode; opened read-only
-    here, so a reader never blocks the writer):
-        items(id TEXT PRIMARY KEY, seq INTEGER, status, repo, batch, priority, phase, agent TEXT,
-              body TEXT)        -- body: the item as a JSON object; seq: its place in queue order
-        meta(key TEXT PRIMARY KEY, value TEXT)
+  * `loop.db` in the same directory, the loop's own SQLite file, when it exists (WAL; opened
+    read-only here, so a reader never blocks the writer, and goh never writes it):
+        items(id TEXT PRIMARY KEY, seq INTEGER, archived INTEGER, status, repo, batch, priority,
+              phase, agent, sha TEXT, body TEXT)
+                                -- body: the item as a JSON object; seq: its place in queue
+                                   order; archived 1: an archive row, not one of the queue's items
+        queue_keys(key TEXT PRIMARY KEY, seq INTEGER, value TEXT)
                                 -- value: a top-level key's JSON (schema, rules, phases, ...)
-  * else the JSON file at the path itself: {"items": [...], "phases": [...], ...}.
+        PRAGMA user_version     -- the file's schema; one this reader does not know (KNOWN_SCHEMAS)
+                                   is "no queue" with the reason (NoQueue), never a guess
+        meta, schema_version, events: the loop's version record and history, not read here
+  * else, until the loop's cutover, the JSON file at the path itself: {"items": [...], ...}.
 
-`load` returns the same dict from either store. A store that is absent raises OSError, one that
-does not parse ValueError (a SQLite error is re-raised as ValueError), so a caller that fails open
-catches (OSError, ValueError) whichever store it met.
+The database layout (owner ruling 2026-11-23): loop.db is the loop's and private; goh's own files
+are goh.db and goh-cache.db. No database writes into another's file, and a cross-file read
+ATTACHes read-only.
+
+`load` returns the same dict from either store. Neither store present -- a machine where no loop
+runs, which goh, public, must expect -- raises OSError, and one that does not parse ValueError (a
+SQLite error is re-raised as ValueError); every caller catches both and answers "no queue" (no
+hold, no phase, no items), never a crash (tests/test_queue_read.py holds each to it).
 """
 
 from __future__ import annotations
@@ -28,7 +38,7 @@ import sqlite3
 from pathlib import Path
 from urllib.parse import quote
 
-DB_NAME = "queue.db"
+DB_NAME = "loop.db"
 ENV = "GOH_LOOP_QUEUE"
 
 
@@ -42,18 +52,30 @@ def db_path(path: str | os.PathLike | None = None) -> Path:
     return Path(path or queue_path()).with_name(DB_NAME)
 
 
+KNOWN_SCHEMAS = frozenset({1})  # loop.db's PRAGMA user_version values this reader understands
+
+
+class NoQueue(OSError):
+    """No queue goh can read here; the message says why (absent, or a schema goh does not know)."""
+
+
 def _load_db(db: Path) -> dict:
     uri = f"file:{quote(str(db.resolve()))}?mode=ro"
     try:
         con = sqlite3.connect(uri, uri=True, timeout=5)
         try:
-            meta = {k: json.loads(v) for k, v in con.execute("SELECT key, value FROM meta")}
-            rows = con.execute("SELECT body FROM items ORDER BY seq").fetchall()
+            schema = con.execute("PRAGMA user_version").fetchone()[0]
+            if schema not in KNOWN_SCHEMAS:
+                known = ", ".join(map(str, sorted(KNOWN_SCHEMAS)))
+                raise NoQueue(f"no queue: {db} is at schema {schema}, which this goh does not "
+                              f"know ({known}); update goh")  # fmt: skip
+            keys = {k: json.loads(v) for k, v in con.execute("SELECT key, value FROM queue_keys")}
+            rows = con.execute("SELECT body FROM items WHERE archived = 0 ORDER BY seq").fetchall()
         finally:
             con.close()
     except sqlite3.Error as e:
         raise ValueError(f"the queue store {db} is unreadable: {e}") from None
-    return {**meta, "items": [json.loads(b) for (b,) in rows]}
+    return {**keys, "items": [json.loads(b) for (b,) in rows]}
 
 
 def load(path: str | os.PathLike | None = None) -> dict:
