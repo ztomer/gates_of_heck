@@ -31,8 +31,10 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
         pass
     del _sys.path[0]
 
+import glob
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -42,6 +44,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from _gitutil import foreign_repo_env
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+import pid_owner  # a saved pid is the owner only while its birth still matches
 import step_timings  # a row per clone and per spelling (GOH.RELEASELANDGATE)
 from tmp_root import goh_tmp  # never Spotlight-indexed (GOH.TMPNOINDEX)
 
@@ -52,6 +55,46 @@ PRIVATE_ALIASES = ("tmp", "var", "etc")
 DATA_VOLUME = "/System/Volumes/Data"
 # How much of a differing spelling's output to show: its tail, where a tool says why it failed.
 TAIL_LINES = 6
+# Each scratch copy names its owner, and a copy whose owner is gone is swept by the next run: a run
+# killed past its `finally` (SIGKILL, a step ceiling) left 22 MB of copies under ~/.cache/goh
+# (GOH.PATHINVLEAK). A copy with no owner file predates this, and goes once it is this old.
+PREFIX = "goh-path-invariance."
+OWNER = ".owner"
+UNOWNED_STALE_S = 6 * 3600
+
+
+def _stale(path: str, now: float) -> bool:
+    try:
+        with open(os.path.join(path, OWNER), encoding="utf-8") as fh:
+            line = fh.read()
+    except OSError:
+        try:
+            return now - os.stat(path).st_mtime > UNOWNED_STALE_S
+        except OSError:
+            return False
+    return not pid_owner.alive_line(line)  # `<pid> <lstart>`: a reused number is not the owner
+
+
+def sweep(parent: str) -> None:
+    """Remove the scratch copies under `parent` whose run is gone."""
+    now = time.time()
+    for path in glob.glob(os.path.join(glob.escape(parent), PREFIX + "*")):
+        if os.path.isdir(path) and not os.path.islink(path) and _stale(path, now):
+            shutil.rmtree(path, ignore_errors=True)
+
+
+def scratch_dir(parent: str) -> str:
+    """A fresh scratch copy under `parent`, after sweeping the stale ones, naming its owner."""
+    sweep(parent)
+    path = tempfile.mkdtemp(prefix=PREFIX, dir=parent)
+    with open(os.path.join(path, OWNER), "w", encoding="utf-8") as fh:
+        fh.write(f"{pid_owner.stamp_line(os.getpid()) or os.getpid()}\n")
+    return path
+
+
+def _exit_on_signal(signum, _frame):
+    """A TERM or HUP (a step ceiling, a closed terminal) unwinds through `finally`."""
+    raise SystemExit(128 + signum)
 
 
 def spellings(real: str) -> list[str]:
@@ -129,7 +172,9 @@ def main(argv: list[str]) -> int:
     if top.returncode != 0:
         print(f"✗ [{NAME}] not inside a git checkout: {top.stderr.strip()}", file=sys.stderr)
         return 2
-    scratch = tempfile.mkdtemp(dir=goh_tmp(), prefix="goh-path-invariance.")
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, _exit_on_signal)
+    scratch = scratch_dir(goh_tmp())
     home_cache = os.path.expanduser("~/.cache/goh")
     home_scratch = None
     try:
@@ -146,7 +191,7 @@ def main(argv: list[str]) -> int:
         if not os.path.realpath(home_cache).startswith("/private/"):
             try:
                 os.makedirs(home_cache, exist_ok=True)
-                home_scratch = tempfile.mkdtemp(prefix="goh-path-invariance.", dir=home_cache)
+                home_scratch = scratch_dir(home_cache)
                 home_tree = os.path.join(os.path.realpath(home_scratch), "tree")
                 clone_head(top.stdout.strip(), home_tree)
                 names.append(home_tree)
