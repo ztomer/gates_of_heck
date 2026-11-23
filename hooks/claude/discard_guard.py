@@ -162,6 +162,7 @@ no_verify = _optional("no_verify")  # a git commit/push that skips the hooks, GO
 harness_grep, wait_deadline = _optional("harness_grep"), _optional("wait_deadline")
 worktree_rm, encrypted_unmount = _optional("worktree_rm"), _optional("encrypted_unmount")
 app_quit = _optional("app_quit")  # an Apple Event quit of an owner's login item, GOH.APPCLOSE
+escape_line = _optional("escape_line")  # an `# x-ok:` escape swallowing code, GOH.ADMITOKLINE
 _RULES = [r for r in (secret_render, name_kill, temp_sweep, stdin_reader, no_verify, harness_grep,
                       wait_deadline, encrypted_unmount, app_quit) if r]  # fmt: skip
 undo_hint = _optional("undo_hint")  # a discard refusal names `goh undo <files>`
@@ -468,7 +469,8 @@ def main() -> int:
     elif tool in SHELL_TOOLS:
         command, cwd = tool_input.get(COMMAND_FIELD) or "", event.get("cwd") or os.getcwd()
         reason = (
-            judge(command, cwd)
+            (escape_line.judge(command) if escape_line else None)  # first: it judges the escapes
+            or judge(command, cwd)
             or judge_shared(command, cwd)
             or (worktree_rm.judge(command, cwd) if worktree_rm else None)
             or judge_load(command)
