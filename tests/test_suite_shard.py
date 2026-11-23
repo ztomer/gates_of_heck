@@ -248,21 +248,22 @@ def _schedule_readers() -> list[str]:
     )
 
 
-def test_a_test_gives_the_same_verdict_under_every_shard_env(tmp_path):
+@pytest.mark.parametrize("part", ["1/1", "1/2", "2/2"])
+def test_a_test_gives_the_same_verdict_under_every_shard_env(tmp_path, part):
     """GOH.CIRED013913: hosted CI's first sharded run went red in 3 shards on tests/test_schedule.py
     (`SimpleNamespace` has no `get_closest_marker`). The suite's own run had taken GOH_SUITE_SHARD
     into _schedule's module state, so a test that calls the module's collection hook on fakes was
     SHARDED -- a verdict that depended on which machine ran it. Each file that imports the
     scheduler is run here under `1/1` (every test kept, so every test can fail) and under each
-    part of a split, and none may fail."""
+    part of a split, and none may fail. One case per part, so xdist spreads them: as one test the
+    three nested runs took 64.9 s under load, over the enqueue's 60 s long pole."""
     files = _schedule_readers()
     assert "tests/test_schedule.py" in files and "tests/test_prestep_fast.py" in files, files
-    for part in ("1/1", "1/2", "2/2"):
-        env = hermetic_env()  # the suite's own plugins (xdist) stay: these files nest a run
-        env[_shard.ENV] = part
-        r = subprocess.run(
-            [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-q", "-n0", *files],
-            cwd=REPO_ROOT, env=env, capture_output=True,
-            text=True, timeout=patience(300), stdin=subprocess.DEVNULL, check=False,
-        )  # fmt: skip
-        assert r.returncode in (0, 5), f"{part}: {r.stdout[-3000:]}{r.stderr[-1000:]}"
+    env = hermetic_env()  # the suite's own plugins (xdist) stay: these files nest a run
+    env[_shard.ENV] = part
+    r = subprocess.run(
+        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-q", "-n0", *files],
+        cwd=REPO_ROOT, env=env, capture_output=True,
+        text=True, timeout=patience(300), stdin=subprocess.DEVNULL, check=False,
+    )  # fmt: skip
+    assert r.returncode in (0, 5), f"{part}: {r.stdout[-3000:]}{r.stderr[-1000:]}"
