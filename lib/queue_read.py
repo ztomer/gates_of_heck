@@ -13,8 +13,10 @@ The queue is NAMED by a path: GOH_LOOP_QUEUE, else the loop's default (`queue_pa
               phase, agent, sha TEXT, body TEXT)
                                 -- body: the item as a JSON object; seq: its place in queue
                                    order; archived 1: an archive row, not one of the queue's items
+                                   but one of `archive.items`, rebuilt here in seq order
         queue_keys(key TEXT PRIMARY KEY, seq INTEGER, value TEXT)
-                                -- value: a top-level key's JSON (schema, rules, phases, ...)
+                                -- value: a top-level key's JSON (schema, rules, phases, ...);
+                                   the `archive` key's `items` is a null placeholder for its rows
         PRAGMA user_version     -- the file's schema; one this reader does not know (KNOWN_SCHEMAS)
                                    is "no queue" with the reason (NoQueue), never a guess
         meta, schema_version, events: the loop's version record and history, not read here
@@ -55,6 +57,12 @@ def db_path(path: str | os.PathLike | None = None) -> Path:
 KNOWN_SCHEMAS = frozenset({1})  # loop.db's PRAGMA user_version values this reader understands
 
 
+ARCHIVE, ARCHIVE_ITEMS = (
+    "archive",
+    "items",
+)  # queue_keys' archive holds items: null; its rows are archived = 1
+
+
 class NoQueue(OSError):
     """No queue goh can read here; the message says why (absent, or a schema goh does not know)."""
 
@@ -70,12 +78,16 @@ def _load_db(db: Path) -> dict:
                 raise NoQueue(f"no queue: {db} is at schema {schema}, which this goh does not "
                               f"know ({known}); update goh")  # fmt: skip
             keys = {k: json.loads(v) for k, v in con.execute("SELECT key, value FROM queue_keys")}
-            rows = con.execute("SELECT body FROM items WHERE archived = 0 ORDER BY seq").fetchall()
+            rows = con.execute("SELECT archived, body FROM items ORDER BY archived, seq").fetchall()
         finally:
             con.close()
     except sqlite3.Error as e:
         raise ValueError(f"the queue store {db} is unreadable: {e}") from None
-    return {**keys, "items": [json.loads(b) for (b,) in rows]}
+    live = [json.loads(b) for a, b in rows if not a]
+    arch = keys.get(ARCHIVE)
+    if isinstance(arch, dict) and ARCHIVE_ITEMS in arch:  # the loop stores a null in its place
+        keys[ARCHIVE] = {**arch, ARCHIVE_ITEMS: [json.loads(b) for a, b in rows if a]}
+    return {**keys, "items": live}
 
 
 def load(path: str | os.PathLike | None = None) -> dict:

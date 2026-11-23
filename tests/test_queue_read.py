@@ -4,13 +4,16 @@ its SQLite store or its JSON file, read-only, and a gate refusing any other pars
 from __future__ import annotations
 
 import ast
+import importlib
 import json
+import os
 import sqlite3
 from pathlib import Path
 
 import pytest
 import queue_hold
 import queue_read
+import suite_home
 
 ROOT = Path(__file__).resolve().parent.parent
 QUEUE = {
@@ -61,6 +64,37 @@ def test_archive_rows_are_not_the_queues_items(tmp_path: Path) -> None:
     old = {"id": "Z.9", "status": "done", "repo": "held", "phase": "A", "agent": "a1"}
     write_db(tmp_path / "loop.db", QUEUE, archived=(old,))
     assert [i["id"] for i in queue_read.items(tmp_path / "queue.json")] == ["A.1", "A.2"]
+
+
+def test_the_archive_is_its_rows_again(tmp_path: Path) -> None:
+    """GOH.QUEUESCHEMA: the loop stores `archive.items` as a null placeholder in queue_keys and the
+    archived items as rows with archived = 1; the reader returns the list rebuilt in seq order, as
+    the loop's own load does (a None there was a TypeError in the loop's triggers)."""
+    old = [{"id": "Z.9", "status": "done"}, {"id": "Z.1", "status": "done"}]
+    write_db(tmp_path / "loop.db", {**QUEUE, "archive": {"note": "x", "items": None}},
+             archived=tuple(old))  # fmt: skip
+    got = queue_read.load(tmp_path / "queue.json")
+    assert got["archive"] == {"note": "x", "items": old}
+    assert [i["id"] for i in got["items"]] == ["A.1", "A.2"]
+
+
+REAL_LOOP = Path(os.environ.get(suite_home.MARKER) or suite_home.REAL_HOME) / "Projects" / ".loop"
+
+
+@pytest.mark.skipif(not (REAL_LOOP / "tools" / "queue_store.py").is_file(),
+                    reason="no .loop checkout (its writer makes the store)")  # fmt: skip
+def test_a_store_the_loops_writer_made_reads_as_the_loop_reads_it(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """GOH.QUEUESCHEMA: the loop's own writer (queue_store.create) on a temp file, read by goh, is
+    what the loop's own load returns -- the archive included."""
+    monkeypatch.syspath_prepend(str(REAL_LOOP / "tools"))
+    queue_store = importlib.import_module("queue_store")
+    q = {**QUEUE, "archive": {"note": "x", "items": [{"id": "Z.9", "status": "done"},
+                                                     {"id": "Z.1", "status": "done"}]}}  # fmt: skip
+    queue_store.create(tmp_path / "loop.db", q)
+    named = tmp_path / "queue.json"
+    assert queue_read.load(named) == queue_store.load(named) == q
 
 
 def test_no_loop_is_an_answer_of_no_queue_never_a_crash(tmp_path: Path, monkeypatch) -> None:
