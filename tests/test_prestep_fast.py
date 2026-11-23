@@ -15,6 +15,7 @@ import sys
 import time
 from pathlib import Path
 
+import _tree_graph
 import pytest
 from conftest import REPO_ROOT, hermetic_env
 from test_landq import FAKE_LOOPCTL, _pending
@@ -78,7 +79,7 @@ def test_units_are_the_functions_the_file_defines_now(tmp_path) -> None:
 
 def test_goh_s_cheap_structural_judges_are_candidates_on_its_own_tree(tmp_path, monkeypatch):
     """The judges that cost lands in seconds are among the candidates, whatever the diff."""
-    cands = ft.units(REPO_ROOT, list(at.affected(REPO_ROOT, [])))
+    cands = ft.units(REPO_ROOT, list(at.affected(REPO_ROOT, [], graph=_tree_graph.real())))
     for judge in ("tests/test_wiring.py::test_every_script_has_a_row_in_the_map",
                   "tests/test_config_schema.py::test_config_schema_covers_keys"):  # fmt: skip
         assert judge in cands, judge

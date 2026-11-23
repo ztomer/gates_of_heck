@@ -17,6 +17,7 @@ import sys
 from contextlib import redirect_stdout
 from pathlib import Path
 
+import _tree_graph
 import pytest
 from conftest import REPO_ROOT, git
 from test_landq import env  # noqa: F401  -- the queue's fixture
@@ -140,5 +141,5 @@ def test_the_real_tree_judges_a_runner_move_by_its_readers():
     which some tests read; the structural gates do not reach it."""
     table = pre_reuse._table(REPO_ROOT)
     assert pre_reuse.pre_step_code(REPO_ROOT, table, ["lib/reuse.py"]) == ["lib/reuse.py"]
-    assert table.readers(REPO_ROOT, ["lib/reuse.py"])
+    assert table.readers(REPO_ROOT, ["lib/reuse.py"], graph=_tree_graph.real())
     assert pre_reuse.structural(REPO_ROOT, table, ["gates/_common.sh"])

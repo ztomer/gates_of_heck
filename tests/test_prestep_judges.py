@@ -13,6 +13,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import _tree_graph
 import pytest
 from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, git, hermetic_env
@@ -127,7 +128,7 @@ JUDGES = (
 
 
 def test_goh_s_own_judges_run_first_for_any_change() -> None:
-    chosen = at.affected(REPO_ROOT, ["lib/a_new_module.py"])
+    chosen = at.affected(REPO_ROOT, ["lib/a_new_module.py"], graph=_tree_graph.real())
     judges, rest = at.phases(REPO_ROOT, chosen)
     # a judge chosen whole (a test reading a changed directory, lib/declared_reads.py) runs too
     missing = [j for j in JUDGES if j not in judges and j.split("::")[0] not in judges]
@@ -141,7 +142,7 @@ def test_the_judges_are_found_by_what_they_read_and_the_hand_list_only_shrinks()
     them reads as a pre-step with nothing to judge). Raise FLOOR when it rises a lot."""
     floor = 330
     assert len(at.ALWAYS) <= 2, at.ALWAYS
-    judges, _ = at.phases(REPO_ROOT, at.affected(REPO_ROOT, []))
+    judges, _ = at.phases(REPO_ROOT, at.affected(REPO_ROOT, [], graph=_tree_graph.real()))
     assert len(judges) >= floor, (len(judges), floor)
 
 

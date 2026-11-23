@@ -11,6 +11,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import _tree_graph
 import pytest
 from conftest import REPO_ROOT
 
@@ -115,7 +116,7 @@ def test_the_tree_clone_importers_are_judges_only_by_their_own_reads() -> None:
     readers = at.tree_readers(REPO_ROOT)
     assert [r for r, why in readers.items() if "_tree_clone" in why] == []
     assert "tests/test_wall_clock_ratchet.py" in readers
-    nodes = at.affected(REPO_ROOT, [])
+    nodes = at.affected(REPO_ROOT, [], graph=_tree_graph.real())
     assert "tests/test_proven.py" not in _files(nodes)  # it copies gates/ lib/: reads those
 
 

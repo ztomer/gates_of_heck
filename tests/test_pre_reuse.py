@@ -20,6 +20,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import _tree_graph
 import pytest
 from conftest import REPO_ROOT, git
 from test_landq import _land_wt, env, landq, recorded  # noqa: F401  -- `env` is the queue's fixture
@@ -278,7 +279,7 @@ def test_the_real_table_reads_no_release_commits_version_or_fragments():
         sys.path.pop(0)
     gone = "GOH" + ".GONE.md"  # spelled apart: a literal would name it here
     moved = ["VERSION", f"changelog/{gone}", "CHANGELOG.md"]
-    got = affected_tests.readers(REPO_ROOT, moved)
+    got = affected_tests.readers(REPO_ROOT, moved, graph=_tree_graph.real())
     assert set(got) <= {"tests/test_changelog_fragments.py"}, got
     head = ["--judged", "HEAD", "--tip", "HEAD", "--base", "HEAD", "--root", str(REPO_ROOT)]
     out = subprocess.run([sys.executable, str(REPO_ROOT / "lib" / "pre_reuse.py"), *head],

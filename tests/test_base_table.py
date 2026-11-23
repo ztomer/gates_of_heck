@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import _carry_shadow as cs
+import _tree_graph
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -48,7 +49,7 @@ def faults(root: Path, graph) -> list[str]:
 
 
 def test_every_base_file_has_one_true_row() -> None:
-    assert faults(REPO_ROOT, test_closure.Closure(REPO_ROOT)) == []
+    assert faults(REPO_ROOT, _tree_graph.real()) == []
 
 
 class _Graph:

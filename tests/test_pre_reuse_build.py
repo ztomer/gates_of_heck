@@ -12,6 +12,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import _tree_graph
 import pytest
 from conftest import REPO_ROOT, git
 from test_landq import env  # noqa: F401  -- the queue's fixture
@@ -65,7 +66,9 @@ def test_the_real_build_inputs_are_not_the_runners_code_and_their_readers_run_th
     runs the set; the tests they choose are the ones that run the binary."""
     table = pre_reuse._table(REPO_ROOT)
     moved = ["Cargo.lock", "crates/goh/src/length.rs"]
-    graph = table.Closure(REPO_ROOT)
+    graph = _tree_graph.real()
     assert pre_reuse.pre_step_code(REPO_ROOT, table, moved, graph, binary=False) == []
     assert pre_reuse.pre_step_code(REPO_ROOT, table, moved, graph) == moved
-    assert "tests/test_check_moving_tags.py" in table.readers(REPO_ROOT, ["Cargo.lock"])
+    assert "tests/test_check_moving_tags.py" in table.readers(
+        REPO_ROOT, ["Cargo.lock"], graph=_tree_graph.real()
+    )

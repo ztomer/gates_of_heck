@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import sys
 
+import _tree_graph
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "tools"))
@@ -53,12 +54,12 @@ CASES = [
 def test_a_change_to_what_a_test_reads_chooses_it_whole(monkeypatch):
     """Each change ALONE chooses its reader whole; one graph of the tree serves every case (its
     caches are by file, never by the change)."""
-    graph = affected_tests.Closure(REPO_ROOT)
+    graph = _tree_graph.real()
     monkeypatch.setattr(affected_tests, "Closure", lambda root: graph)
     missed = [
         (changed, reader)
         for changed, reader in CASES
-        if reader not in affected_tests.affected(REPO_ROOT, [changed])
+        if reader not in affected_tests.affected(REPO_ROOT, [changed], graph=_tree_graph.real())
     ]
     assert not missed
 
@@ -137,7 +138,7 @@ def test_every_scanner_a_test_points_at_the_root_declares_what_it_scans():
     """A checks/ scanner listing the tracked tree, pointed at the root by a test that is not a
     standing tree reader, declares TREE_READS -- what it scans is the test's reads -- or the pair
     is on gates/undeclared_scanners.txt, today's traced exceptions, which only shrinks."""
-    graph = affected_tests.Closure(REPO_ROOT)
+    graph = _tree_graph.real()
     tests = _tests()
     standing = affected_tests.tree_readers(REPO_ROOT, tests)
     found = {

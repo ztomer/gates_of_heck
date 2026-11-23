@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 import _land_verdicts as lv
+import _tree_graph
 import pytest
 from conftest import REPO_ROOT, commit_all, write
 
@@ -63,7 +64,7 @@ def test_a_planted_include_chooses_each_test_that_runs_the_binary_and_no_other(
 
 def test_the_real_embeds_choose_the_tests_that_run_the_binary() -> None:
     """`tools/affected_tests.py --changed lib/busyloop_shapes.json`, which the four roots missed."""
-    chosen = at.affected(REPO_ROOT, [EMBED])
+    chosen = at.affected(REPO_ROOT, [EMBED], graph=_tree_graph.real())
     assert "tests/test_check_moving_tags.py" in chosen, sorted(chosen)
     assert "goh binary" in chosen["tests/test_check_moving_tags.py"], chosen
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import _tree_graph
 import pytest
 from conftest import REPO_ROOT
 
@@ -193,7 +194,7 @@ def test_on_the_real_tree_a_push_gate_change_chooses_under_100_files() -> None:
     """The metric: 114 test files before (2026-11-20, main 7cb938df), 87 after. The importers that
     stay are those whose names run or copy the gate: tests/test_push_gate_race.py's `_push` runs
     it, tests/test_proven.py's `goh` fixture copies gates/ whole."""
-    got = at.readers(REPO_ROOT, ["gates/push_gate.sh"])
+    got = at.readers(REPO_ROOT, ["gates/push_gate.sh"], graph=_tree_graph.real())
     assert len(got) < 100, len(got)
     for kept in ("tests/test_commit_gate_structural.py", "tests/test_estate_corpus_cache.py"):
         assert kept in got, sorted(got)

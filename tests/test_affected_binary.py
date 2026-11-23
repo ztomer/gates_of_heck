@@ -18,6 +18,7 @@ import re
 import sys
 
 import _land_verdicts as lv
+import _tree_graph
 import pytest
 from conftest import REPO_ROOT
 
@@ -38,7 +39,7 @@ def _tree(tmp_path, files: dict[str, str]):
 
 
 def test_the_scanner_change_that_went_red_in_a_land_gate_chooses_the_test_that_runs_it() -> None:
-    why = at.affected(REPO_ROOT, [SCANNER])
+    why = at.affected(REPO_ROOT, [SCANNER], graph=_tree_graph.real())
     assert INCIDENT in why, sorted(why)
     assert "goh binary" in why[INCIDENT] and SCANNER in why[INCIDENT], why[INCIDENT]
 
@@ -92,7 +93,7 @@ def test_every_test_that_asks_the_binary_by_a_plain_read_is_chosen_on_the_real_t
     main.rs reaches every subcommand; a scanner's chooses only its subcommands' runners
     (GOH.AFFECTEDBINARY2, tests/test_affected_binary_reach.py)."""
     asked = re.compile(r"\b(?:run_goh|native_goh_path|native_goh|GOH_TEST_BIN)\b")
-    chosen = at.affected(REPO_ROOT, ["crates/goh/src/main.rs"])
+    chosen = at.affected(REPO_ROOT, ["crates/goh/src/main.rs"], graph=_tree_graph.real())
     missed = []
     for p in sorted((REPO_ROOT / "tests").glob("test_*.py")):
         text = p.read_text(encoding="utf-8")

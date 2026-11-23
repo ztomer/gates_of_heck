@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 import _land_verdicts as lv
+import _tree_graph
 import pytest
 from conftest import REPO_ROOT, hermetic_env
 from test_pre_reuse import _history, pre_reuse
@@ -88,7 +89,7 @@ def test_each_declared_data_read_is_a_base_file_line_that_names_it():
     """The declaration sits on the code that opens it: every `load-read` comment in the tree is in
     a file of the real base, names a file that exists, and its line names that file, whole or as a
     sibling's quoted name (`with_name("lock_order.tsv")`)."""
-    graph = test_closure.Closure(REPO_ROOT)
+    graph = _tree_graph.real()
     base, declared = graph.base(), graph.load_reads()
     assert {"lib/lock_order.tsv", "tests/shard_weights.json", "tui/stylerc"} <= set(declared)
     for rel, text in graph.texts.items():
@@ -154,7 +155,7 @@ def test_every_data_file_a_real_load_opens_is_in_the_base_and_each_declared_one_
 ):
     """The gate on LOAD_READ: what goh's load opens, read from the processes themselves, is code
     or the base (or a SUITE_WIDE file, read before any plugin), and no entry is stale."""
-    graph = test_closure.Closure(REPO_ROOT)
+    graph = _tree_graph.real()
     opened = _opened_by_a_load(tmp_path)
     assert {"lib/lock_order.tsv", "tui/stylerc"} <= opened, sorted(opened)  # the probe sees opens
     data = {p for p in opened if p not in graph.texts}
@@ -185,6 +186,6 @@ def test_a_base_module_a_test_imports_itself_is_followed(tmp_path):
 
 
 def test_a_binary_runners_change_chooses_its_readers_on_the_real_tree():
-    chosen = at.readers(REPO_ROOT, ["lib/binary_runners.py"])
+    chosen = at.readers(REPO_ROOT, ["lib/binary_runners.py"], graph=_tree_graph.real())
     for rel in ("tests/test_affected_binary.py", "tests/test_affected_binary_reach.py"):
         assert rel in chosen, sorted(chosen)
