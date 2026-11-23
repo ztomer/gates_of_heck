@@ -16,7 +16,11 @@ are judged one by one: under xdist a case is a test of its own. Each entry is `p
 the test's phases: the seconds it would take on a QUIET box, read from one loaded run
 (GOH.LONGPOLELOAD). The wall alone read the machine, not the test: tests/test_self_walk.py's shell
 case read 168.2 s against its 150 s allowance at load ~50, and this file's own real-tree test went
-red the same way, on two lands whose diff touched neither (2026-11-21). A cached id the tree no
+red the same way, on two lands whose diff touched neither (2026-11-21). The correction is one
+stretch sample and cannot fix a wall the load moved across a whole test, so a reading taken above
+QUIET_LOAD is UNMEASURED: the entry stays the last quiet run's, unless the test's CPU outgrew what
+any load adds (`settle`, GOH.LONGPOLEUNMEASURED: one loaded run turned every land after it red,
+2026-11-23). A cached id the tree no
 longer defines is not judged (the table prunes a deleted file, never a deleted function), and an id
 with no parameters beside the same function's parametrized ones is the stale one from before the
 split.
@@ -85,6 +89,42 @@ def pole(wall: float, cpu: float, factor: float) -> float:
     test grown by waiting keeps its whole wall at any load, and one grown by CPU keeps its CPU."""
     stretch = max(1.0, factor)
     return max(wall / stretch, wall - max(0.0, cpu) * (stretch - 1.0))
+
+
+# THE QUIET BOUND (GOH.LONGPOLEUNMEASURED). A reading taken above it is UNMEASURED: kept out of
+# the table and never a verdict. `pole` corrects one stretch sample taken as the phase ended, and
+# assumes waits do not stretch; I/O, lock and child-pipe waits do, and the load swings across a
+# long test. test_self_hosted_hook read 61.9 s at load 47-72 on 16 cores (quiet 21.8-26 s, CPU
+# identical on main and branch), and the table, shared by every land, turned every land after that
+# run red (OLDINSTALL, ROADMAPIDS, NOPREBATCH, 2026-11-23). Runnable threads per core over the
+# phase (tests/_drift_guard.py `run_queue`): at 1.5 a test's wall stretches at most x1.5, which
+# `pole` corrects for its CPU and the 60 s line absorbs for its waits.
+QUIET_LOAD = 1.5
+# CPU seconds are not load-invariant on Apple silicon: more of the same work lands on efficiency
+# cores, +37% at 10x load (calibrate-the-instrument, references/load-invariant-figures.md), and the
+# load only ever ADDS. A loaded reading whose CPU grew past GROWTH x its quiet one grew by its code,
+# at any load: 2x growth always clears it, the load alone never does.
+LOAD_CPU_DRIFT = 1.37
+GROWTH = 1.6
+
+
+def settle(
+    old: tuple[float, float | None] | None, new: tuple[float, float], loaded: bool
+) -> tuple[float, float] | None:
+    """A test's table entry, (quiet seconds, CPU seconds), after a run read `new` from it; None
+    leaves `old` as it is. A quiet reading is the measurement. A loaded one is unmeasured, unless
+    its CPU grew GROWTH x over the quiet entry's: then its quiet seconds grow by the CPU it added
+    over the cores the quiet entry spread it over (CPU over quiet wall, at least one), so a real
+    growth is red at any load while a loaded reading of unchanged code moves nothing."""
+    if not loaded:
+        return new
+    if old is None or old[1] is None or old[1] <= 0:
+        return None
+    (was, was_cpu), cpu = (old[0], old[1]), new[1]
+    if cpu < GROWTH * was_cpu:
+        return None
+    cores = max(1.0, was_cpu / max(was, 1e-9))
+    return (round(was + (cpu - was_cpu) / cores, 3), cpu)
 
 
 def standing(root: Path) -> list[str]:

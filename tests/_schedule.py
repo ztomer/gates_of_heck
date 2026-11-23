@@ -30,7 +30,10 @@ THE LONG-POLE TABLE (GOH.LONGPOLELOAD) rides the same path: beside the duration 
 (lib/fast_tests.py `poles`), written by the same top-level run, read by the same controller and
 handed to every worker the same way. Its entries are each test's quiet seconds, the sum of the
 `goh_pole` its phases' reports carry (tests/_drift_guard.py), which the long-pole ratchet judges
-(lib/long_pole.py). A report without one (a run without the drift guard) adds nothing to it.
+(lib/long_pole.py). A report without one (a run without the drift guard) adds nothing to it. A test
+read under load is UNMEASURED and leaves its entry as it was (GOH.LONGPOLEUNMEASURED): beside the
+table, `fast_tests.pole_cpu` keeps each entry's CPU seconds, and only a CPU growth past what the
+load can add moves a loaded test's entry (lib/long_pole.py `settle`).
 
 PRUNED BY COLLECTED NODE ID (GOH.DURATIONSPRUNE). Both tables drop an entry whose test file is gone,
 and, for every file this run collected WHOLE, each id of that file it did not collect: a test
@@ -91,20 +94,26 @@ def take(environ=os.environ) -> Path | None:
 
 _seen: dict[str, float] = defaultdict(float)
 _poles: dict[str, float] = defaultdict(float)
+_pole_cpu: dict[str, float] = defaultdict(float)
+_pole_loaded: set[str] = set()  # a test with any phase read above lib/long_pole.py QUIET_LOAD
 _collected: set[str] = set()  # node ids this run's collection kept
 _narrowed: set[str] = set()  # files a deselection or a node-id argument cut short
 _COLLECTED_KEY, _NARROWED_KEY = "goh_collected_ids", "goh_narrowed_files"
 
 
-def _poles_path(table: Path) -> Path:
-    """The long-pole table beside `table`: lib/fast_tests.py `poles`, its one spelling."""
-    root = Path(__file__).resolve().parent.parent  # THIS checkout's, never a PYTHONPATH's
+def _lib(name: str):
+    """THIS checkout's lib/`name`, never a PYTHONPATH's."""
+    root = Path(__file__).resolve().parent.parent
     sys.path[:0] = [str(root / "lib"), str(root)]
     try:
-        import fast_tests
+        return importlib.import_module(name)
     finally:
         del sys.path[:2]
-    return fast_tests.poles(table)
+
+
+def _poles_path(table: Path) -> Path:
+    """The long-pole table beside `table`: lib/fast_tests.py `poles`, its one spelling."""
+    return _lib("fast_tests").poles(table)
 
 
 def _scope(item) -> str:
@@ -126,11 +135,11 @@ def judges(root: Path) -> list[str]:
     return sorted(selector.tree_readers(root))
 
 
-def _load(poles: bool = False) -> dict[str, float]:
+def _load(poles: bool = False, path: Path | None = None) -> dict[str, float]:
     if not _table:
         return {}
     try:
-        path = _poles_path(_table[0]) if poles else _table[0]
+        path = path or (_poles_path(_table[0]) if poles else _table[0])
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
@@ -213,6 +222,9 @@ def pytest_runtest_logreport(report) -> None:
     pole = getattr(report, "goh_pole", None)
     if isinstance(pole, (int, float)):
         _poles[report.nodeid] += pole
+        _pole_cpu[report.nodeid] += float(getattr(report, "goh_pole_cpu", 0.0) or 0.0)
+        if getattr(report, "goh_pole_loaded", False):
+            _pole_loaded.add(report.nodeid)
 
 
 def pytest_sessionfinish(session) -> None:
@@ -225,7 +237,25 @@ def pytest_sessionfinish(session) -> None:
     _write(_table[0], _load(), _seen, root, whole)
     poles = _poles_path(_table[0])
     if _poles or poles.is_file():
-        _write(poles, _load(poles=True), _poles, root, whole)
+        cpus = _lib("fast_tests").pole_cpu(_table[0])
+        old, old_cpu = _load(poles=True), _load(path=cpus)
+        settled = _settle(old, old_cpu)
+        _write(poles, old, {k: v[0] for k, v in settled.items()}, root, whole)
+        _write(cpus, old_cpu, {k: v[1] for k, v in settled.items()}, root, whole)
+
+
+def _settle(old: dict[str, float], old_cpu: dict[str, float]) -> dict[str, tuple[float, float]]:
+    """{node id: (quiet seconds, CPU seconds)} this run MEASURED: a test read under load is left
+    out, so its entry stays the last quiet run's (lib/long_pole.py `settle`,
+    GOH.LONGPOLEUNMEASURED)."""
+    settle = _lib("long_pole").settle
+    out = {}
+    for k, seconds in _poles.items():
+        was = (old[k], old_cpu.get(k)) if k in old else None
+        got = settle(was, (seconds, _pole_cpu[k]), k in _pole_loaded)
+        if got is not None:
+            out[k] = got
+    return out
 
 
 def _write(

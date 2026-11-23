@@ -182,7 +182,7 @@ speed_factor()  # the controller's measurement, before any worker or child inher
 
 sys.path.insert(0, str(_ROOT / "lib"))
 try:
-    from long_pole import pole  # a phase's quiet seconds, for the long-pole table
+    from long_pole import QUIET_LOAD, pole  # a phase's quiet seconds, for the long-pole table
     from tool_shim import SHIM_MARK  # the one spelling the identity reads
 finally:
     sys.path.pop(0)
@@ -292,6 +292,11 @@ if _REAL_CARGO:
 # it as they slowed the phase. Taken at a phase's end, and only after one of POLE_PROBE_AFTER_S or
 # more: a shorter phase is its wall (no load makes three of them a long pole), and the probe's
 # ~65 ms would be most of it.
+#
+# UNMEASURED UNDER LOAD (GOH.LONGPOLEUNMEASURED). Every phase also carries its CPU seconds and
+# whether the run queue over it (`run_queue`) passed lib/long_pole.py QUIET_LOAD; the controller
+# keeps a loaded test's entry as the last quiet run read it, unless its CPU outgrew that run's
+# (`settle`): one stretch sample cannot correct a wall the load moved across the whole test.
 _CPU_MARK = pytest.StashKey[float]()
 POLE_PROBE_AFTER_S = 2.0
 POLE_PROBE_SAMPLES = 5
@@ -320,6 +325,12 @@ def pole_stretch() -> float:
     return stretch_of(walls)
 
 
+def run_queue(start: float, stop: float) -> float:
+    """Runnable threads per core over a phase (`load_factor` without the box's speed): the figure
+    a long-pole reading is judged quiet or loaded by (lib/long_pole.py QUIET_LOAD)."""
+    return load_factor(start, stop) / speed_factor()
+
+
 def _cpu_s() -> float:
     """CPU seconds of this process and every child it has waited for."""
     own = resource.getrusage(resource.RUSAGE_SELF)
@@ -344,6 +355,8 @@ def pytest_runtest_makereport(item, call):
     item.stash[_CPU_MARK] = now
     stretch = pole_stretch() if call.duration >= POLE_PROBE_AFTER_S else 1.0
     rep.goh_pole = round(pole(call.duration, cpu, stretch), 3)
+    rep.goh_pole_cpu = round(max(0.0, cpu), 3)
+    rep.goh_pole_loaded = run_queue(call.start, call.stop) > QUIET_LOAD
     if rep.when not in ("setup", "call") or not rep.passed:
         return
     setup = rep.when == "setup"

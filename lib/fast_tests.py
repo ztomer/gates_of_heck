@@ -61,6 +61,14 @@ def poles(table: Path | None = None) -> Path:
     return table.with_name(f"{table.stem}.poles.json")
 
 
+def pole_cpu(table: Path | None = None) -> Path:
+    """The CPU seconds of each long-pole entry's quiet run, beside it: {node id: CPU seconds of the
+    test's process and the children it waited for}. A loaded run's reading is unmeasured unless its
+    CPU outgrew this (lib/long_pole.py `settle`, GOH.LONGPOLEUNMEASURED)."""
+    table = table or cache()
+    return table.with_name(f"{table.stem}.poles-cpu.json")
+
+
 def load(path: Path | None = None) -> dict[str, float]:
     """{node id: seconds} from `path` (`cache()` unless named); {} when there is none or it does
     not parse."""

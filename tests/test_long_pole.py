@@ -157,6 +157,35 @@ def test_the_quiet_estimate_is_within_the_wall_and_the_wall_over_the_factor() ->
     assert lp.pole(40.0, -1.0, 2.0) == 40.0  # a clock that stepped back is no CPU
 
 
+def test_a_reading_taken_under_load_is_unmeasured_and_leaves_the_entry_unchanged() -> None:
+    """GOH.LONGPOLEUNMEASURED: test_self_hosted_hook read 61.9 s at load 47-72 on 16 cores, its
+    quiet pole 21.8-26 s and its CPU identical on main and branch. The table is shared by every
+    land, so that one loaded reading turned every land after it red. A reading taken above the
+    load bound is no measurement: the entry stays what the last quiet run read."""
+    assert lp.settle((25.0, 30.0), (61.9, 33.0), loaded=True) is None
+    assert lp.settle((25.0, 30.0), (61.9, 30.0 * lp.LOAD_CPU_DRIFT), loaded=True) is None
+    assert lp.settle(None, (61.9, 33.0), loaded=True) is None, "a new test waits for a quiet run"
+    assert lp.settle((25.0, None), (61.9, 90.0), loaded=True) is None, "no CPU baseline: no figure"
+    assert lp.judge({"tests/test_self_hosted_hook.py::test_s": 25.0}, {}) == []
+    assert lp.settle((25.0, 30.0), (27.0, 31.0), loaded=False) == (27.0, 31.0), "quiet: measured"
+    assert lp.settle(None, (70.0, 1.0), loaded=False) == (70.0, 1.0)
+
+
+def test_a_real_growth_is_red_at_any_load() -> None:
+    """CPU seconds grow under load on Apple silicon (+37% at 10x load, efficiency cores), never
+    double: a test whose CPU doubled grew, whatever the load. Its quiet seconds grow by the CPU it
+    added over the cores it spread over (calibrate-the-instrument, load-invariant figures)."""
+    one_core = lp.settle((40.0, 40.0), (40.0, 80.0), loaded=True)  # wall pole moot when loaded
+    assert one_core == (80.0, 80.0)
+    assert lp.judge({SLOW: one_core[0]}, {}), "a 40 s CPU test grown to 80 s is red under load"
+    four_cores = lp.settle((40.0, 160.0), (40.0, 320.0), loaded=True)
+    assert four_cores == (80.0, 320.0) and lp.judge({SLOW: four_cores[0]}, {})
+    waiting = lp.settle((25.0, 0.5), (25.0, 1.5), loaded=True)  # a waiting test's CPU tripled
+    assert waiting == (26.0, 1.5) and not lp.judge({SLOW: waiting[0]}, {})
+    assert lp.judge({SLOW: lp.settle((40.0, 40.0), (80.0, 80.0), loaded=False)[0]}, {})
+    assert lp.GROWTH > lp.LOAD_CPU_DRIFT and lp.GROWTH < 2.0
+
+
 FIXTURE = """import time
 
 
@@ -171,12 +200,9 @@ def test_burns():
 """
 
 
-def test_a_run_records_each_tests_quiet_seconds_beside_its_wall(tmp_path: Path) -> None:
+def _child_run(tmp_path: Path, run_queue: float) -> Path:
     """The suite's own wiring (the drift guard's reading, the schedule's table) in a child run,
-    through an xdist worker, at a pinned stretch of 3 above one. Asserts only what no load moves
-    (GOH.LONGPOLEFLAKE: a fraction of the wall such as 0.6 held only while the box's real stretch
-    stayed under the pinned one; under load 1.485 <= 0.6 x 2.286 failed): no estimate exceeds its
-    wall, the waiting test keeps its whole wall, and the burning one reads below its wall."""
+    through an xdist worker, at a pinned stretch of 3 and a pinned run queue; its duration table."""
     (tmp_path / "conftest.py").write_text(
         f"import sys\nsys.path.insert(0, {str(REPO_ROOT / 'tests')!r})\n"
         "import _schedule, _drift_guard\n"
@@ -184,18 +210,28 @@ def test_a_run_records_each_tests_quiet_seconds_beside_its_wall(tmp_path: Path) 
         "_schedule.take()\n"
         "_drift_guard.POLE_PROBE_AFTER_S = 0.2\n"
         "_drift_guard.pole_stretch = lambda: 3.0\n"
+        f"_drift_guard.run_queue = lambda start, stop: {run_queue!r}\n"
         "def pytest_configure(config):\n"
         "    config.pluginmanager.register(_schedule, 'goh-longest-first')\n"
     )
     (tmp_path / "test_x.py").write_text(FIXTURE)
     table = tmp_path / "state" / "test-durations.json"
-    table.parent.mkdir()
+    table.parent.mkdir(exist_ok=True)
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-n", "1", str(tmp_path)],
         capture_output=True, text=True, cwd=tmp_path, check=False, stdin=subprocess.DEVNULL,
         env=hermetic_env(GOH_TEST_DURATIONS=str(table)), timeout=patience(120),
     )  # fmt: skip
     assert r.returncode == 0 and "2 passed" in r.stdout, r.stdout + r.stderr
+    return table
+
+
+def test_a_run_records_each_tests_quiet_seconds_beside_its_wall(tmp_path: Path) -> None:
+    """A quiet run, at a pinned stretch of 3 above one. Asserts only what no load moves
+    (GOH.LONGPOLEFLAKE: a fraction of the wall such as 0.6 held only while the box's real stretch
+    stayed under the pinned one; under load 1.485 <= 0.6 x 2.286 failed): no estimate exceeds its
+    wall, the waiting test keeps its whole wall, and the burning one reads below its wall."""
+    table = _child_run(tmp_path, run_queue=1.0)
     walls = json.loads(table.read_text())
     poles = json.loads(fast_tests.poles(table).read_text())
     waits, burns = "test_x.py::test_waits", "test_x.py::test_burns"
@@ -204,6 +240,26 @@ def test_a_run_records_each_tests_quiet_seconds_beside_its_wall(tmp_path: Path) 
     assert all(poles[t] <= walls[t] for t in (waits, burns)), (poles, walls)
     assert poles[burns] < walls[burns], "a burning test's quiet seconds fall below its wall"
     assert lp.judge({waits: poles[waits]}, {}, limit=0.3), "the wait is judged at its wall"
+    cpus = json.loads(fast_tests.pole_cpu(table).read_text())
+    assert set(cpus) == {waits, burns} and cpus[burns] >= 0.38, cpus
+
+
+def test_a_loaded_run_leaves_the_table_as_the_quiet_run_read_it_but_a_real_growth_moves_it(
+    tmp_path: Path,
+) -> None:
+    """GOH.LONGPOLEUNMEASURED through the suite's own wiring: a run whose run queue is over the
+    quiet bound writes nothing into the long-pole table for a test whose CPU did not grow, and
+    raises the entry of one whose CPU did, by the CPU it added."""
+    waits, burns = "test_x.py::test_waits", "test_x.py::test_burns"
+    table = tmp_path / "state" / "test-durations.json"
+    table.parent.mkdir()
+    fast_tests.poles(table).write_text(json.dumps({waits: 0.5, burns: 0.3}))
+    fast_tests.pole_cpu(table).write_text(json.dumps({waits: 0.5, burns: 0.1}))
+    _child_run(tmp_path, run_queue=lp.QUIET_LOAD * 4)
+    poles = json.loads(fast_tests.poles(table).read_text())
+    cpus = json.loads(fast_tests.pole_cpu(table).read_text())
+    assert poles[waits] == 0.5 and cpus[waits] == 0.5, "a loaded reading is unmeasured"
+    assert cpus[burns] >= 0.38 and poles[burns] == pytest.approx(0.3 + cpus[burns] - 0.1, abs=1e-3)
 
 
 def test_the_stretch_is_the_median_of_the_probes_samples_not_one_of_them() -> None:
