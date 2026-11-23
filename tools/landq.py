@@ -432,7 +432,7 @@ def main(argv: list[str] | None = None) -> int:
             req = request(*args.enqueue, args.item, args.ship, args.summary)
     except Refused as e:
         land_slot.release_req(qdir(), req)
-        err(f"goh land: {e} -- nothing enqueued")
+        land_prestep.terse.say_refused(err, f"goh land: {e}", " -- nothing enqueued")  # TERSEOUT
         landq_background.red(args, req, str(e), qdir(), enqueue, record)
         return 2
     if req["mode"] == "land" and (red := landq_early.at_enqueue(qdir(), req, enqueue, record)):

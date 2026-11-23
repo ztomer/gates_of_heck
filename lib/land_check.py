@@ -53,7 +53,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT)]
-from lib import cov_risk, fast_tests, land_reds, main_red, proc_deadline  # noqa: E402
+from lib import cov_risk, fast_tests, land_reds, main_red, proc_deadline, terse  # noqa: E402
 from tui.lib import counted  # noqa: E402
 
 EACH_S = 1.0  # the most a past refuser may cost, by the suite's measurement
@@ -309,8 +309,8 @@ def run(
         if tabled := [n for n in named if land_reds.judges_a_table(n)]:
             files = ", ".join(land_reds.tables(out)) or "none named (read the test)"
             say(f"check: {counted(len(tabled), 'table test')} refused; the tables named: {files}")
-        tail = "\n".join(out.rstrip().splitlines()[-25:])
-        say(f"check: {name}: REFUSED in {took} s (exit {rc}): {', '.join(named) or name}\n{tail}")
+        head = f"check: {name}: REFUSED in {took} s (exit {rc}): {', '.join(named) or name}"
+        say("\n".join(terse.under(head, out, 8)))  # GOH.TERSEOUT: never a 25-line tail each
     return refused
 
 

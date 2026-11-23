@@ -34,6 +34,7 @@ from pathlib import Path
 
 landq_inflight = importlib.import_module("landq_inflight")
 landq_state = importlib.import_module("landq_state")
+terse = importlib.import_module("terse")
 _tui = importlib.import_module("tui.lib")
 err, info, ok = _tui.err, _tui.info, _tui.ok
 poll = 2.0
@@ -216,18 +217,18 @@ def _wait(q: Path, what: str, timeout: float, nudge: Callable[[], None]) -> tupl
         return 2, f"no request for {what} under {q}, and no enqueue of it running"
     assert isinstance(found, Path)
     name = found.name
-    nudged, was, since, told = 0.0, "", begun, begun
+    nudged, was, since, told, gap = 0.0, "", begun, begun, heartbeat
     while (r := landq_state.read(q / "done" / name)) is None:
         torn = (q / "done" / name).is_file()  # there, not whole: a torn write, read again
         now = "done, its record not whole yet" if torn else where(q, name)
         tick = time.monotonic()
         if now and now != was:
             _say(info, f"goh land --wait: {what} is {now}")  # GOH.LANDWAITSTALE: each change, once
-            was, since, told = now, tick, tick
-        elif now and tick - told >= heartbeat:  # unchanged: again, with how long (GOH.WAITEARLY)
+            was, since, told, gap = now, tick, tick, heartbeat
+        elif now and tick - told >= gap:  # unchanged: again, with how long (GOH.WAITEARLY)
             _say(info, f"goh land --wait: {what} is still {now}, for {_mins(tick - since)} "
                        f"({_age(name)}waited {_mins(tick - begun)})")  # fmt: skip
-            told = tick
+            told, gap = tick, terse.next_gap(gap)  # backs off: a long land is not 60 lines
         if tick > start_by:
             whole = "; its done record is not a whole record" if torn else ""
             return 3, f"{name} has not finished after {timeout:.0f}s{whole}"
@@ -244,8 +245,13 @@ def _wait(q: Path, what: str, timeout: float, nudge: Callable[[], None]) -> tupl
     if state != "red":
         _say(err, line)
         return 3, f"its record's state is {state!r}, neither landed nor red"
-    _say(err, f"{line}: {r.get('why', '')}")
+    why = str(r.get("why") or "")
     log = Path(r.get("log") or "/nonexistent")
-    for tail in log.read_text(errors="replace").splitlines()[-30:] if log.is_file() else []:
-        _say(_eprint, f"  {tail}")
+    text = log.read_text(errors="replace") if log.is_file() else ""
+    if terse.full():  # --full: the record's whole why, then the log whole
+        text = f"{why}\n{text}"
+    first, *said = terse.report(f"{line}: {why.splitlines()[0] if why else ''}", text, str(log))
+    _say(err, first)  # GOH.TERSEOUT: a summary, the failing tests and the log path (lib/terse.py)
+    for tail in said:
+        _say(_eprint, tail)
     return 1, f"red @ {sha[:8]}"

@@ -53,10 +53,13 @@ def add_arguments(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--foreground", action="store_true",
                     help="--enqueue --land: the pre-step here, its verdict the exit")  # fmt: skip
     ap.add_argument("--detached", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--full", action="store_true", help="a red's whole log (GOH_FULL=1, terse.py)")
 
 
 def check(ap: argparse.ArgumentParser, args: argparse.Namespace) -> bool:
     """Refuse a malformed mix (argparse's exit 2); True when this enqueue goes to the background."""
+    if args.full:  # GOH.TERSEOUT: every printer reads it, the detached child's env included
+        os.environ["GOH_FULL"] = "1"
     modes = (args.enqueue is not None, args.drain, args.status, args.ruff_bump, args.report,
              args.check is not None, args.cancel is not None)  # fmt: skip
     if args.wait is not None and any(modes[1:]):

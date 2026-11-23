@@ -32,6 +32,7 @@ land_slot = importlib.import_module("land_slot")
 land_spd = importlib.import_module("land_spd")
 landq_inflight = importlib.import_module("landq_inflight")
 state_bounds = importlib.import_module("state_bounds")
+terse = importlib.import_module("terse")
 tmp_root = importlib.import_module("tmp_root")
 _tui = importlib.import_module("tui.lib")
 info, warn = _tui.info, _tui.warn
@@ -317,8 +318,10 @@ def run_kept(req: dict, q: Path, script: Path, bindings: tuple[str, ...]) -> flo
     onto += main_red.env(req)  # main's idle-suite reds join the set (GOH.MAINREDNOTICE)
     if carry := carried(q, req):  # its conflict red's green verdict (GOH.CONFLICTKEEPVERDICT)
         onto.append(f"GOH_LAND_PRE_CARRY={carry}")
+    slug = landq_inflight.slug(req.get("item") or Path(req["repo"]).name)
+    log = q / "logs" / f"prestep-{time.time_ns():020d}-{slug}.log"  # GOH.TERSEOUT: its output
     took = run(Path(req["worktree"]), req["sha"], script, bindings, keep,
-               [*land_slot.label(req), *onto], noted, did, ran)  # fmt: skip
+               [*land_slot.label(req), *onto], noted, did, ran, log)  # fmt: skip
     # The pre-step's wait, run, limit, workers and cpu_s: the SPD's figures (GOH.LANDPROFILEFIX),
     # always present (GOH.PREWIDTH) -- zeros, and why, when land.sh ran no pre-step at all.
     req["pre_run"] = ran or skipped("land.sh ran no pre-step (the repo declares no GOH_LAND_PRE)")
@@ -340,13 +343,16 @@ def run(
     noted: dict | None = None,
     did: dict | None = None,
     took: dict | None = None,
+    log: Path | None = None,
 ) -> float:
     """Run SCRIPT's pre-step in WT; its seconds, or raise Red unless green or past its deadline. A
     green verdict is KEPT at `keep` (the judged sha; its record at `keep`.record) for the lander's
     tools/land.sh, which reuses it where the tip moved only in paths no test reads
     (GOH.PRELANDTWICE). A pre-step with no verdict fills NOTED (`no_verdict`); a green one's run
     of the set fills DID (lib/affected_verdict.py `outcome`: a kept verdict taken, or why not) and
-    TOOK (`waited W s, ran R s of D s at K workers`, lib/land_spd.py `pre_run`)."""
+    TOOK (`waited W s, ran R s of D s at K workers`, lib/land_spd.py `pre_run`). Its output goes
+    to LOG, which a red names, and reaches stderr only with --full (GOH.TERSEOUT, lib/terse.py):
+    the foreground enqueue streamed every pytest line into the lane's context."""
     kept = [f"GOH_LAND_PRE_KEEP={keep}"] if keep else []
     kept += label or []
     fd, name = tempfile.mkstemp(prefix="goh-land-pretook.", dir=tmp_root.goh_tmp())
@@ -365,12 +371,24 @@ def run(
     landq_inflight.note_child(proc.pid)  # what a re-enqueue or --cancel stops (GOH.REENQUEUECANCEL)
     timer = threading.Timer(timeout, lambda: killtree.stop_group(proc.pid, proc=proc))
     timer.start()
+    stream = terse.full() or log is None  # no log to name: the output is said, as it was
+    sink = contextlib.ExitStack()
     try:
+        out = None
+        if log is not None:
+            with contextlib.suppress(OSError):
+                log.parent.mkdir(parents=True, exist_ok=True)
+                out = sink.enter_context(log.open("w", encoding="utf-8"))
+        stream = stream or out is None
         for line in proc.stdout:  # type: ignore[union-attr]
             lines.append(line)
-            sys.stderr.write(line)
+            if out is not None:
+                out.write(line)
+            if stream:
+                sys.stderr.write(line)
         code = proc.wait()
     finally:
+        sink.close()
         timer.cancel()
         ran = took_figures(figures, lines)
     landq_inflight.bail()  # superseded meanwhile: no verdict, no request (GOH.REENQUEUECANCEL)
@@ -387,7 +405,8 @@ def run(
     if clash := next((ln.strip() for ln in lines if "conflicts with main" in ln), ""):
         raise Red(clash)  # the slot's rebase onto main, before any test (GOH.PREONTIP)
     named = [ln.split()[1] for ln in lines if ln.startswith("FAILED ") and len(ln.split()) > 1]
-    what = f"failing: {', '.join(named)}" if named else f"exit {code}, see the output above"
+    above = "see the output above" if stream else f"its output is {log}"
+    what = f"failing: {', '.join(named)}" if named else f"exit {code}, {above}"
     detail = land_cause.excerpt("".join(lines))  # the record's log keeps it (GOH.PRESTEPLOG)
     if not named and (cov := next((m[1] for ln in lines if (m := DIFFCOV.search(ln))), "")):
         uncovered = "\n".join(ln.rstrip() for ln in lines if ln.startswith("    ") and ":" in ln)
@@ -396,8 +415,11 @@ def run(
             "names, or allowlist an unreachable one with its reason"
             + (f"\n{uncovered[:2000]}" if uncovered else "")
         )
+    named_log = f"; log {log}" if named and not stream else ""
+    if not detail and not stream:  # no pytest section: what the run marked, and its last lines
+        detail = "\n".join(terse.summary("".join(lines), terse.LIMIT - 2))
     raise Red(
         f"the pre-land tests failed on {sha[:8]} ({what}) -- fix them, or "
-        "--no-pre REASON when this tip's set was run another way"
+        f"--no-pre REASON when this tip's set was run another way{named_log}"
         + (f"\n{detail}" if detail else "")
     )
