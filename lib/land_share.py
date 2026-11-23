@@ -108,6 +108,8 @@ def weighted(
     if land == 0:
         return max(1, total // gates)
     rest = max(0, gates - land)
+    if mine not in LAND_PATH and rest == 0:  # the caller is in no held entry (GOH.SHAREZERO)
+        rest, gates = 1, gates + 1
     if land + rest > total:  # more gates than cores: one each, as `divide` always gave
         return 1
     part = max(land, min(total - rest, round(total * frac))) if rest else total

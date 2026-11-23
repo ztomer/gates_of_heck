@@ -308,3 +308,12 @@ def test_a_land_path_load_run_never_execs_under_the_clamp(tmp_path, qos_os) -> N
     got = _load_run(tmp_path, qos_os, GOH_GATE_CLASS="land")
     assert got.returncode == 0, got.stdout + got.stderr
     assert not list(tmp_path.glob("*.argv")), [p.read_text() for p in tmp_path.glob("*.argv")]
+
+
+def test_a_run_off_the_land_path_among_only_land_gates_gets_a_share() -> None:
+    """GOH.SHAREZERO: agent-feed's release gate (class work, nested in a slot, so counted in no held
+    entry) ran while two goh land gates held the slots: weighted() divided by rest == 0."""
+    for total in (1, 2, 16):
+        got = land_share.weighted(total, ["land", "land"], "work")
+        assert got >= 1, (total, got)
+    assert land_share.weighted(16, ["land", "land"], "work") < 16  # it shares, it never takes all
