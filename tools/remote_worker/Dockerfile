@@ -37,9 +37,9 @@ ARG SHELLCHECK_SHA256
 ARG CARGO_LLVM_COV_VERSION
 ARG CARGO_LLVM_COV_SHA256=6272d16a61570f053580272527150135a91e5a2b9e4f0291c66d1e5309b5cacc
 # sccache at the Mac's release; the checksum is the release's own .sha256 asset, which GitHub's
-# asset digest matched (read 2026-11-22).
-ARG SCCACHE_VERSION=0.19.0
-ARG SCCACHE_SHA256=aa73c7270c997894038c0d8f0d297865f57569e1687883322bc431713d4bb9dd
+# asset digest matched (read 2026-11-23, 0.20.0).
+ARG SCCACHE_VERSION=0.20.0
+ARG SCCACHE_SHA256=c3c5db9cd7e3be12b7bab350d8fe8ae7dcfb7269d5432b269e0dffa1a87c6ed2
 # GOH.WORKERFAILS: the tools the suite meets that the manifest names without an exact pin, each at
 # the Mac's release (read 2026-11-23); the checksums are GitHub's asset digests (git-cliff,
 # cargo-machete) and node's SHASUMS256.txt, each matched by a download.

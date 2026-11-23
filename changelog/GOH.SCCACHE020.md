@@ -1,0 +1,1 @@
+* GOH.SCCACHE020: the remote worker image runs sccache 0.20.0 (was 0.19.0), the Mac's release; its checksum is the release's own `.sha256` asset, which GitHub's asset digest matches. 0.20 no longer hashes `CARGO_TARGET_DIR` / `CARGO_BUILD_*`, so a lane slot's build dir stops getting its own cache.
