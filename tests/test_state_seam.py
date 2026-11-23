@@ -25,7 +25,6 @@ ALLOWED: dict[str, set[str]] = {
         "lib/land_records.py",
         "lib/admit_replay.py",
         "lib/diffcov_carry.py",
-        "lib/land_attempts.py",
         "lib/land_check.py",
         "lib/land_e2e.py",
         "lib/land_profile.py",
@@ -36,7 +35,6 @@ ALLOWED: dict[str, set[str]] = {
         "lib/selection_miss.py",
         "lib/state_bounds.py",
         "lib/state_files.py",
-        "tools/landq.py",
     },
     "selection misses": {  # S1 goh.db 0002 selection_misses
         "lib/state_files.py",

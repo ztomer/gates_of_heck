@@ -94,6 +94,7 @@ land_check = importlib.import_module("land_check")
 land_e2e = importlib.import_module("land_e2e")
 lock_order = importlib.import_module("lock_order")
 land_prestep = importlib.import_module("land_prestep")
+land_records = importlib.import_module("land_records")
 land_reds = importlib.import_module("land_reds")
 land_slot = importlib.import_module("land_slot")
 landq_batch = importlib.import_module("landq_batch")
@@ -114,7 +115,7 @@ err, info, ok, warn = _tui.err, _tui.info, _tui.ok, _tui.warn
 
 GRACE, DEFAULT_TIMEOUT, WAIT_TIMEOUT = 5, 3600, 3 * 3600
 LAND_TIMEOUT = 2 * 3600  # land.sh: a 10 min pre-step, a 90 min gate, and a wait for the lock first
-DIRS = ("pending", "running", "done", "logs")
+DIRS = ("pending", "running", "logs")  # done/ is lib/land_records.py's (GOH.STATEDB)
 
 
 def qdir() -> Path:
@@ -233,15 +234,15 @@ def run_one(q: Path, path: Path) -> dict:
 def record(req_path: Path, outcome: dict, item: str) -> None:
     """The outcome to loopctl, done/ and the timing ledger, naming its ITEM and ATTEMPT (a red's
     re-enqueue is attempt n+1, lib/land_attempts.py); each is a `land attempt` row (GATEBUDGET2)."""
-    done_dir = req_path.parent.parent / "done"
+    q = req_path.parent.parent
     named = land_attempts.item_of(req_path, {"item": item})
     outcome = {**outcome, "at": now()}
     req = landq_batch.read(req_path)
     outcome.update(land_e2e.asked(req))  # the e2e's start (GOH.LANDTARGET)
-    outcome.update(land_slot.done(done_dir.parent, req), **landq_report.slot_waits(outcome))
-    land_prestep.discard(req, done_dir.parent, land_prestep.conflict_red(outcome))  # LANDLEAKS
-    outcome.update(item=named, attempt=land_attempts.attempt_of(done_dir, named))
-    outcome.update(flakes.land_retry(done_dir, named, outcome))  # a re-enqueue's pass, if any
+    outcome.update(land_slot.done(q, req), **landq_report.slot_waits(outcome))
+    land_prestep.discard(req, q, land_prestep.conflict_red(outcome))  # LANDLEAKS
+    outcome.update(item=named, attempt=land_attempts.attempt_of(q, named))
+    outcome.update(flakes.land_retry(q, named, outcome))  # a re-enqueue's pass, if any
     outcome.update(land_check.fields(outcome, req))  # its guard; cov_risk (GOH.DIFFCOVLAND)
     outcome.update(land_reds.fields(outcome))  # a red's tests and cause class (GOH.REDREVIEW)
     # A landing that leaves its own uncovered lines files their fix item now (GOH.DIFFCOVCARRY).
@@ -257,14 +258,14 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
                 warn(f"loopctl set {item} landing: exit {done.returncode}: {done.stderr.strip()}")
         else:
             outcome["recorded"] = False
-            warn(f"no loopctl at {tool} (GOH_LOOPCTL): {item}'s outcome is only in done/")
-    landq_state.write(done_dir / req_path.name, outcome)
+            warn(f"no loopctl at {tool} (GOH_LOOPCTL): {item}'s outcome is only in its land record")
+    land_records.write(q, req_path.stem, outcome)  # goh.db's row, then done/ (GOH.STATEDB)
     try:
         land_attempts.record(outcome, req_path.stem)
-        land_e2e.backfill(done_dir.parent)  # GOH.LANDTARGET: the item end to end, once it landed
+        land_e2e.backfill(q)  # GOH.LANDTARGET: the item end to end, once it landed
     except Exception as e:  # noqa: BLE001 -- the instrument is never the reason a land fails
         warn(f"{named}: its timing ledger rows were not written: {e}")
-    if why := selection_miss.record_land(done_dir.parent, outcome, named):  # GOH.SELECTAUDIT
+    if why := selection_miss.record_land(q, outcome, named):  # GOH.SELECTAUDIT
         warn(why)
     landq_report.announce(outcome, item or Path(outcome["repo"]).name)
 

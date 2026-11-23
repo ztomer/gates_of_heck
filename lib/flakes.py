@@ -49,6 +49,7 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
 import sys
 import time
 from collections.abc import Iterator
@@ -230,7 +231,7 @@ def _failing(red: dict) -> list[str]:
     return []
 
 
-def land_retry(done: Path, item: str, outcome: dict) -> dict:
+def land_retry(q: Path, item: str, outcome: dict) -> dict:
     """At a landing that was not its item's first attempt: each red of ITEM since its last landing
     on the SAME enqueued commit was a pass on retry; one record per test it named (UNNAMED when
     its log names none). `{"flakes": [{entry, test, filed}]}`, or {} with none. Never raises."""
@@ -239,16 +240,13 @@ def land_retry(done: Path, item: str, outcome: dict) -> dict:
             or int(outcome.get("attempt") or 1) < 2 or not tip:  # fmt: skip
         return {}
     reds: list[dict] = []
-    with contextlib.suppress(OSError):
-        for path in sorted(done.glob("*.json")):
-            with contextlib.suppress(OSError, ValueError):
-                rec = json.loads(path.read_text())
-                if (
-                    not isinstance(rec, dict)
-                    or str(rec.get("item") or path.stem.partition("-")[2]) != item
-                ):
-                    continue
-                reds = [] if rec.get("state") == "landed" else [*reds, rec]
+    import land_records  # lib/: queue Q's land records, goh.db and done/ (GOH.STATEDB)
+
+    with contextlib.suppress(OSError, sqlite3.Error):
+        for run, rec in land_records.records(q):
+            if str(rec.get("item") or run.partition("-")[2]) != item:
+                continue
+            reds = [] if rec.get("state") == "landed" else [*reds, rec]
     out = []
     for red in reds:
         if red.get("state") != "red" or red.get("sha") != tip:

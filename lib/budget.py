@@ -409,8 +409,8 @@ def main(argv: list[str]) -> int:
     if not a.no_backfill:
         backfill_ships()  # idempotent: the ships that predate the ledger, or finished without it
         cip_history.backfill()  # the CIP lanes' push gates (GOH.GATEBUDGET2)
-        land_attempts.backfill(land_attempts.done_dir())  # the queue's timed attempts
-        land_e2e.backfill(land_attempts.done_dir().parent)  # each landed item end to end
+        land_attempts.backfill(land_attempts.queue_dir())  # the queue's timed attempts
+        land_e2e.backfill(land_attempts.queue_dir())  # each landed item end to end
     snap = snapshot()
     print(json.dumps(snap, ensure_ascii=False, indent=2) if a.json else render(snap))
     return 0

@@ -19,17 +19,21 @@ refuses no ship: the ship's own diff coverage judges it after the suite.
 from __future__ import annotations
 
 import json
+import sqlite3
 import subprocess
 import sys
 import time
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 sys.path.insert(0, str(REPO_ROOT))
+import land_records
+
 from lib import cov_risk, diffcov_carry
 
 A = "crates/goh/src/a.rs"
@@ -295,8 +299,9 @@ def test_the_lander_files_the_item_and_names_it_on_the_landing_record(tmp_path, 
         landq = importlib.util.module_from_spec(spec)
         sys.modules["landq"] = landq
         spec.loader.exec_module(landq)
+    db = gdb.use(monkeypatch, tmp_path)
     q = tmp_path / "landq"
-    for d in ("running", "done", "logs"):
+    for d in ("running", "logs"):
         (q / d).mkdir(parents=True)
     fake = tmp_path / "loopctl.py"
     fake.write_text(FAKE_LOOPCTL)
@@ -310,7 +315,11 @@ def test_the_lander_files_the_item_and_names_it_on_the_landing_record(tmp_path, 
     path.write_text(json.dumps(req))
     outcome = {"sha": req["sha"], "repo": str(tmp_path), "mode": "land", "state": "landed"}
     landq.record(path, outcome, "GOH.LANE")
-    done = json.loads((q / "done" / path.name).read_text())
+    done = json.loads(land_records.file(q, path.stem).read_text())
+    with sqlite3.connect(db) as con:  # the record's row in goh.db (GOH.STATEDB)
+        row = con.execute("SELECT run, item, state, body FROM lands").fetchall()
+    assert [r[:3] for r in row] == [("01-GOH.LANE", "GOH.LANE", "landed")], row
+    assert json.loads(row[0][3]) == done, "the row and the file are one record"
     assert done["diffcov_item"] == {"id": "GOH.DIFFCOVFEDCBA98", "said": "filed"}, done
     calls = [json.loads(x) for x in (tmp_path / "calls").read_text().splitlines()]
     assert any("file" in c for c in calls) and any("set" in c for c in calls), calls

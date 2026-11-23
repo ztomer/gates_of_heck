@@ -5,14 +5,15 @@ OWNER, 2026-11-15: "apply the budget to the land queue retries too". A land's re
 attempt it took: GOH.REUSEAUDIT went red after 537 s and landed on a second attempt, and the ledger
 held only the land that took the lock, so the red one was nobody's cost. Here:
 
-    attempt_of(done, item)   the attempt number a finishing request of ITEM is: one more than the
-                             reds of that item in done/ since its last landed record (a re-enqueue
+    attempt_of(q, item)      the attempt number a finishing request of ITEM is: one more than the
+                             reds of that item in queue Q's land records (lib/land_records.py)
+                             since its last landed record (a re-enqueue
                              after a red is attempt n+1, never a fresh request)
     row_of(outcome, ref)     one `land attempt` row (kind `land attempt`, subject `<repo> land
                              attempt`): the request's started -> finished, ok when it landed, the
                              item, the attempt, the mode and why it went red; written by
                              tools/landq.py as it records each request, failed and timed-out ones
-                             too, and backfilled from done/ records that carry their times
+                             too, and backfilled from the land records that carry their times
     retry_runs(rows)         each item's CHAIN -- its attempts from the first to the one that
                              landed -- as one `land retries` run: wall_s the attempts' summed wall,
                              `attempts` their count. A chain still red at the end is an open run
@@ -24,21 +25,21 @@ Pinned by tests/test_land_attempts.py.
 from __future__ import annotations
 
 import datetime as dt
-import json
 import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import land_records  # the land records' one door (GOH.STATEDB)
 import timing_ledger
 
 KIND = "land attempt"
 RETRIES = "land retries"
 
 
-def done_dir() -> Path:
-    """The landing queue's finished requests (tools/landq.py's GOH_LANDQ_DIR)."""
-    return Path(os.environ.get("GOH_LANDQ_DIR") or Path.home() / ".local/state/goh/landq") / "done"
+def queue_dir() -> Path:
+    """The landing queue (tools/landq.py's GOH_LANDQ_DIR)."""
+    return Path(os.environ.get("GOH_LANDQ_DIR") or Path.home() / ".local/state/goh/landq")
 
 
 def item_of(path: Path, rec: dict) -> str:
@@ -47,15 +48,11 @@ def item_of(path: Path, rec: dict) -> str:
     return str(rec.get("item") or path.stem.partition("-")[2])
 
 
-def attempt_of(done: Path, item: str) -> int:
-    """The attempt number of ITEM's next record in DONE (1 when it has never gone red)."""
+def attempt_of(q: Path, item: str) -> int:
+    """The attempt number of ITEM's next record in queue Q (1 when it has never gone red)."""
     n = 0
-    for path in sorted(done.glob("*.json")):
-        try:
-            rec = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError):
-            continue
-        if isinstance(rec, dict) and item and item_of(path, rec) == item:
+    for run, rec in land_records.records(q):
+        if item and item_of(Path(f"{run}.json"), rec) == item:
             n = 0 if rec.get("state") == "landed" else n + 1
     return n + 1
 
@@ -100,24 +97,18 @@ def record(outcome: dict, ref: str) -> dict | None:
     return row if timing_ledger.append(row) else None
 
 
-def backfill(done: Path) -> int:
-    """Rows for the done/ records that carry their times and have none yet; how many were added.
-    Their attempt numbers are counted in done/'s order, as the lander would have."""
+def backfill(q: Path) -> int:
+    """Rows for queue Q's land records that carry their times and have none yet; how many were
+    added. Their attempt numbers are counted in the records' order, as the lander would have."""
     have = {(r["repo"], r.get("ref")) for r in timing_ledger.read() if r.get("kind") == KIND}
     reds: dict[str, int] = {}
     added = []
-    for path in sorted(done.glob("*.json")):
-        try:
-            rec = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError):
-            continue
-        if not isinstance(rec, dict):
-            continue
+    for run, rec in land_records.records(q):
+        path = Path(f"{run}.json")
         item = item_of(path, rec)
         n = reds.get(item, 0)
         reds[item] = 0 if rec.get("state") == "landed" else n + 1
-        rec = {"item": item, "attempt": n + 1, **rec}
-        row = row_of(rec, path.stem)
+        row = row_of({"item": item, "attempt": n + 1, **rec}, path.stem)
         if row is not None and (row["repo"], path.stem) not in have:
             added.append(row)
     for row in added:

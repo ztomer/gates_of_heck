@@ -60,9 +60,9 @@ def test_the_attempt_number_counts_reds_since_the_items_last_landing(tmp_path: P
         [("GOH.A", "red"), ("GOH.A", "landed"), ("GOH.A", "red"), ("GOH.B", "red")]
     ):
         (done / f"{i:020d}-{item}.json").write_text(json.dumps({"state": state}))
-    assert land_attempts.attempt_of(done, "GOH.A") == 2
-    assert land_attempts.attempt_of(done, "GOH.B") == 2
-    assert land_attempts.attempt_of(done, "GOH.C") == 1
+    assert land_attempts.attempt_of(done.parent, "GOH.A") == 2
+    assert land_attempts.attempt_of(done.parent, "GOH.B") == 2
+    assert land_attempts.attempt_of(done.parent, "GOH.C") == 1
 
 
 def test_a_red_then_green_land_through_the_queue_is_two_rows_and_one_budget_chain(
@@ -94,7 +94,7 @@ def test_a_red_then_green_land_through_the_queue_is_two_rows_and_one_budget_chai
         ("delta land attempt", 2, True),
     ]
     assert all(r["wall_s"] > 0 for r in rows), rows
-    assert land_attempts.backfill(tmp_path / "landq" / "done") == 0  # never doubled
+    assert land_attempts.backfill(tmp_path / "landq") == 0  # never doubled
     snap = budget.snapshot()
     chain = next(s for s in snap["subjects"] if s["subject"] == "delta land retries")
     assert [a[:2] for a in chain["attempts"]] == [[1, "red"], [2, "landed"]], chain
@@ -112,8 +112,8 @@ def test_done_records_with_their_times_are_backfilled_once(tmp_path: Path, monke
     (done / "01-GOH.X.json").write_text(json.dumps({**goh, "state": "red", **times}))
     (done / "02-GOH.X.json").write_text(json.dumps({**goh, "state": "landed", **second}))
     (done / "03-GOH.Y.json").write_text(json.dumps({"repo": "/p/x", "state": "landed"}))  # no times
-    assert land_attempts.backfill(done) == 2
-    assert land_attempts.backfill(done) == 0
+    assert land_attempts.backfill(done.parent) == 2
+    assert land_attempts.backfill(done.parent) == 0
     rows = timing_ledger.read()
     assert [(r["subject"], r["item"], r["attempt"], r["wall_s"]) for r in rows] == [
         ("goh land attempt", "GOH.X", 1, 537.0),
