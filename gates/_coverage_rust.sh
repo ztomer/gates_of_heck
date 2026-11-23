@@ -221,7 +221,7 @@ run_rust() {
             # relative, put back under $PROJ after the report) and the build carries no debug info
             # (`debug=false` below: coverage reads the coverage map, never DWARF; 26 s against 37 s
             # for goh). tests/test_coverage_bin_identity.py.
-            showenv="$(cargo llvm-cov show-env --sh --remap-path-prefix 2>/dev/null)" || exit 1
+            showenv="$(cargo llvm-cov show-env --export-prefix --remap-path-prefix)" || exit 1
             eval "$showenv"
             cargo llvm-cov clean --profraw-only >/dev/null 2>&1 || true
             cov_phase "external: instrumented build" "$part.log"
@@ -345,7 +345,9 @@ PYEOF
         # shellcheck disable=SC2086  # KINDS is a list of flags
         if (
             goh_unbind_git   # the suite is a test run: it never sees git's repository variables (GOH.HOOKGITENV)
-            eval "$(cargo llvm-cov show-env --sh 2>/dev/null)" && [ -n "${LLVM_PROFILE_FILE:-}" ] || exit 1
+            # `--export-prefix`, never its alias `--sh`: the floor (0.6.24) knows only the long
+            # name, and its refusal goes to this log, never 2>/dev/null (GOH.LINUXCOVPATH).
+            eval "$(cargo llvm-cov show-env --export-prefix)" && [ -n "${LLVM_PROFILE_FILE:-}" ] || exit 1
             cargo llvm-cov clean --profraw-only || {
                 echo "could not clear the previous run's profiles -- its counts would be this run's"
                 exit 1

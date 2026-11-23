@@ -493,8 +493,8 @@ def _a_test_leaves_the_directory_it_found():
 
 
 def llvm_cov_shim(bin_: Path) -> None:
-    """The gate requires `cargo-llvm-cov` on PATH up front, at its floor (required_tools.tsv); the
-    fake `cargo` above answers its subcommand, so the binary only has to report a version."""
-    shim = bin_ / "cargo-llvm-cov"
-    shim.write_text('#!/bin/bash\necho "cargo-llvm-cov 99.0.0"\n')
+    """Fake `cargo-llvm-cov` (a version) and `python3`: none in Linux /usr/bin (LINUXCOVPATH)."""
+    (shim := bin_ / "cargo-llvm-cov").write_text('#!/bin/bash\necho "cargo-llvm-cov 99.0.0"\n')
     shim.chmod(shim.stat().st_mode | _stat.S_IEXEC)
+    if not (py := bin_ / "python3").exists():
+        py.symlink_to(sys.executable)
