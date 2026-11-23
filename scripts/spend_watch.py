@@ -8,12 +8,10 @@ are the API price ratios of `claude_cache_probe.PRICE` (input 1, cache read 0.1,
 1h write 2, output 5). An agent belongs to the week its first API turn falls in.
 
 Why not OpenTelemetry or ccusage alone (owner ruling 2026-11-08: consume them, build only the
-specialised part): OTel (`monitoring-usage.md`) exports token counts from the day it is turned on,
-to a collector, and nothing of the past; ccusage (MIT, `ccusage claude daily --json`) totals tokens
-per day and model. Neither sees what a turn DID (a push, a test run, a Read and its size), which
-every metric below but the cost shares needs. So ccusage is the reader's CALIBRATION: each run its
-totals over the window's whole UTC days must equal the reader's over the same transcripts, or the
-section says the instrument disagrees.
+specialised part): OTel exports token counts only from the day it is on; ccusage totals tokens per
+day and model. Neither sees what a turn DID (a push, a test run, a Read and its size). So ccusage
+is the reader's CALIBRATION: its totals over the window's whole UTC days must equal the reader's
+over the same transcripts, or the section says the instrument disagrees.
 
 Metrics: cost-unit shares; median first-turn context per agent type and of write agents (an agent
 that called Edit or Write); share of context spent from the first push/release turn on, by turn
@@ -52,6 +50,7 @@ WRITE_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
 WAIT_TOOLS = {"Monitor", "ScheduleWakeup", "TaskOutput", "TaskStop"}
 READ_TOOLS = {"Read", "Grep", "Glob"}
 OWNER_WORDS = "we also need to make this entire process self-improving"
+WATCH = "~/.cache/goh/model-choice-watch.json"  # the weekly run's record: the reader reads it
 BASH_KINDS = (  # first match wins, in this order
     ("land/release", r"\bgit\s+push\b|land\.sh|\bgh\s+release\b|release\.sh|\bgoh\s+(ship|release)\b|cargo\s+publish"),
     ("tests/builds", (r"pytest|cargo\s+(test|build|clippy|nextest|check)|gate(_profile)?\.sh|\bmake\b|"
@@ -352,6 +351,8 @@ def _file(loopctl: Path | None, queue: Path | None, item: dict[str, Any]) -> dic
 def _item(iid: str, key: str, text: str, predicted: str) -> dict[str, Any]:
     return {"id": iid, "repo": "gates_of_heck", "phase": "EC", "status": "todo", "depends": [],
             "item": text, "metric": METRICS[key]["label"], "predicted": predicted,
+            "verify_after": {"lands": 60, "reader": f"cmd: jq .spend.current.{key} {WATCH}"},
+            "not_dup_of": {iid.replace(key.upper(), m.upper()): "its own metric" for m in METRICS},
             "owner_words": OWNER_WORDS, "source": "coordinator-found (goh spend watch)",
             "class_of": "none", "class_why": f"`{key}` past tolerance (rules.class_first)",
             "done_state": (f"the cause found and fixed; the spend watch's `{METRICS[key]['label']}` "
