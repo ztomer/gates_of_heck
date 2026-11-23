@@ -55,7 +55,7 @@ die() { err "local_ci: $*"; exit "${2:-2}"; }
 # shellcheck source=lib/bench_lock.sh
 . "$GOH_ROOT/lib/bench_lock.sh"
 # shellcheck source=lib/gate_slot.sh
-. "$GOH_ROOT/lib/gate_slot.sh"; . "$GOH_ROOT/lib/pid_owner.sh"  # goh_pid_stamp/goh_pid_kill
+. "$GOH_ROOT/lib/gate_slot.sh"; . "$GOH_ROOT/lib/pid_owner.sh"; . "$GOH_ROOT/lib/step_tmp.sh"  # goh_pid_stamp/goh_pid_kill; step_tmp_* (EST.TMPLEAK)
 bench_lock_join "local ci" # a measurement (tools/quiet.sh) waits for this run to finish
 # Resolved ONCE, exported: every step runs under `goh canary` (below), and any gate a step runs
 # (rust_gate, structural) takes the same answer instead of resolving again.
@@ -116,7 +116,7 @@ ROOT="$(pwd)"
 # every local_ci its test suite started concurrent, and an order test went red -- the parent's
 # budget had become every nested repo's. GOH_CI_STEPS leaked the same way; --step and --jobs are
 # how a caller says what it means.
-unset GOH_CI_STEPS GOH_CI_JOBS 2>/dev/null || true
+unset GOH_CI_STEPS GOH_CI_JOBS GOH_TMP_LEAKS GOH_TMP_LEAK_ALLOW 2>/dev/null || true
 if [ -f "$ROOT/.gatesrc" ]; then
     # shellcheck source=/dev/null # the gated repo's config, unknown when this is linted (GOH.SHX2)
     . "$ROOT/.gatesrc"
@@ -190,7 +190,7 @@ gate_slot_acquire "$(basename "$ROOT")"
 # own `goh-*` entries untouched for 12 hours. Every gate's own files are removed at its exit
 # (goh_cleanup_add, tests/test_gate_temp_leaks.py); this bounds the rest.
 "$GOH_PY" -S "$GOH_ROOT/lib/prune_kept.py" "${TMPDIR:-/tmp}" --backstop 2>/dev/null || true
-LOGDIR=$(mktemp -d "$(goh_tmp)/goh-local-ci.XXXXXX")
+LOGDIR=$(mktemp -d "$(goh_tmp)/goh-local-ci.XXXXXX"); step_tmp_prepare || exit 2
 FAILED=0
 FAILED_NAMES=""
 PROVEN_SKIPPED=0
@@ -226,7 +226,7 @@ run_step() {
     # JOBS STEPS AT ONCE SHARE ONE GATE'S WIDTH (GOH.POOLSHARE): each runs on 1/JOBS of the share its
     # admission exported, never the whole of it -- four cargo steps each sized to the gate were four
     # gates' worth of threads under one slot.
-    [ "$JOBS" -le 1 ] || goh_workers_export --split "$JOBS" || exit 1
+    { [ "$JOBS" -le 1 ] || goh_workers_export --split "$JOBS" || exit 1; } && step_tmp_env "$idx"   # + its own TMPDIR slot (lib/step_tmp.sh)
     if [ -x "${GOH_RESOLVED_BIN:-}" ]; then
         exec "$GOH_RESOLVED_BIN" canary "${args[@]}" -- bash -c -- "$cmd" </dev/null
     fi
@@ -351,7 +351,7 @@ _start() {
             NOTE[i]="$why -- re-run"  # GOH.PROOFKEY: what moved since this tree last passed
         fi
     fi
-    HIT[i]=""; STATE[i]=running; RUNNING=$((RUNNING + 1)); _live_steps
+    HIT[i]=""; STATE[i]=running; RUNNING=$((RUNNING + 1)); _live_steps; step_tmp_claim "$i" </dev/null
     HELD="${HELD}${TAGS[i]#,}"; [ -z "${PKEY[i]}" ] || { proven_ignored >"$LOGDIR/ignored-$i"; [ "$PROVEN_FRESH" = 0 ] || : >"$LOGDIR/stamp-$i"; } </dev/null  # proven_made
     # Command strings from the repo's own .gatesrc / CLI — shell semantics are the feature
     # (pipelines, env prefixes); the source is repo-local config, the same trust level as every
@@ -393,7 +393,8 @@ _report() { # _report <i>
     _rec=0; [ "$rc" -ne 0 ] || "$GOH_PY" -S "$GOH_ROOT/lib/xexit.py" --say "[$i/$_n]" "$logf" </dev/null || { rc=1; RC[i]=1; }  # ✗ at exit 0 is red (GOH.XEXIT)
     [ "${AUDIT[i]:-}" != shadow ] || PROVEN_AUDIT_LOGS="$logf $LOGDIR/step-$i.again.log" proven_audit_judge "${PKEY[i]}" "${PTREE[i]}" "$cmd" "$rc" _again "$i" \
         || err "[$i/$_n] the proven record said green, this run says otherwise (reuse_audit.py report)"
-    if [ "$rc" -eq 0 ] && [ -n "${PKEY[i]}" ]; then
+    step_tmp_judge "[$i/$_n]" "$i" "$rc" </dev/null || _rec=4   # a red repo's temp leak: failed, never recorded
+    if [ "$rc" -eq 0 ] && [ "$_rec" -eq 0 ] && [ -n "${PKEY[i]}" ]; then
         # Recorded only if the tree and the gates did not move, and the kept-rewrite ratchet is green.
         _moved=0; [ "$(proven_key "$cmd" </dev/null)" = "${PKEY[i]} ${PTREE[i]}" ] || _moved=1
         [ "$_moved" = 0 ] || step "$(proven_what_moved "${PTREE[i]}" "${PLIVE[i]}" </dev/null) moved while the step ran — not recorded as proven"
@@ -407,10 +408,10 @@ _report() { # _report <i>
             [ "$_rec" -eq 0 ] || [ "$_rec" -eq 2 ] || warn "[$i/$_n] could not write the proven record"
         fi
     fi
-    if [ "$_rec" -eq 3 ]; then  # green, and the kept-rewrite ratchet is red (named above)
+    if [ "$_rec" -eq 3 ] || [ "$_rec" -eq 4 ]; then  # green, and the kept-rewrite ratchet or the leak check is red (named above)
         err "[$i/$_n] FAILED: $cmd"; FAILED=$((FAILED + 1))
         FAILED_NAMES="$FAILED_NAMES
-  $cmd (kept-rewrite)"
+  $cmd ($([ "$_rec" -eq 3 ] && echo kept-rewrite || echo temp leak))"
     elif [ "$_rec" -eq 2 ]; then
         # The step DECLARED an artifact and it is not there (named above): a step that succeeded
         # without the artifact it produces, or consumes, proves nothing -- and the cache must not
@@ -477,7 +478,7 @@ while [ "$NEXT" -le "$n" ]; do
     _launch
 done
 exec 3>&-
-
+step_tmp_stale "$([ "$PROVEN_SKIPPED$FAILED" = 00 ] && echo 1)" || { FAILED=$((FAILED + 1)); FAILED_NAMES+=$'\n  GOH_TMP_LEAK_ALLOW (stale entry)'; }
 section "result"
 if [ "$FAILED" -eq 0 ]; then
     [ "$NOT_HERE" -eq 0 ] || warn "$NOT_HERE of $(counted "$_n" step) NOT APPLICABLE on this hosted runner (named above)"
