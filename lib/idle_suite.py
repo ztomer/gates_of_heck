@@ -87,7 +87,7 @@ def default_argv() -> list[str]:
 
 
 def log_of(q: Path, sha: str) -> Path:
-    return q / "logs" / f"idle-suite-{sha[:12]}.log"
+    return main_red.log_of(q, sha)  # the one path, so the notice reads the log this run wrote
 
 
 def pending(q: Path) -> bool:

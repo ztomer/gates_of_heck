@@ -7,8 +7,13 @@ whole land cycle, on a fault none of them made.
     carry(last, sha, outcome)  the idle record's `red`: the newest red verdict's tip, kept across a
                                deferred, yielded or failed run, cleared by a green one (a run that
                                is no verdict must not forget that main is red)
-    red(q, repo)               that verdict, when REPO's main still holds its tip: {sha, at, nodes},
-                               the nodes the run's log names FAILED; None when main is green
+    red(q, repo)               that verdict, when REPO's main still holds its tip: {sha, at, nodes,
+                               cause}, the nodes the run's log names FAILED or ERROR, and when it
+                               names none the non-test cause (no log, or its last line: a
+                               collection error, a deadline); None when main is green
+    log_of(q, sha)             the run's log, the one lib/idle_suite.py writes (GOH.MAINREDUNNAMED:
+                               this read `idle-suite-<full sha>.log` while the writer wrote
+                               `<sha[:12]>`, so every notice said "no failing test named")
     notice(q, req, say)        at the enqueue, before its pre-step (lib/land_check.py at_enqueue):
                                says it and keeps the nodes on the request (`main_red`)
     env(req)                   the pre-step's variable naming them (ENV), for land.sh's set
@@ -24,6 +29,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Callable
@@ -34,6 +40,33 @@ import land_cause  # lib/: FAILED node ids from a log
 
 ENV = "GOH_LAND_PRE_MAIN_RED"
 MOST = 50  # nodes carried; a suite red in more than this is read in its log
+ERRORED = re.compile(r"(?:^|\s)ERROR (tests/[^\s:]+\.py(?:::[^\s]+)?)", re.MULTILINE)
+NOISE = ("load: ",)  # lines load.py prints after any run, red or green: no cause
+
+
+def log_of(q: Path, sha: str) -> Path:
+    """The idle run's log for SHA (lib/idle_suite.py writes it here)."""
+    return q / "logs" / f"idle-suite-{sha[:12]}.log"
+
+
+def nodes_of(log: str) -> list[str]:
+    """The test ids LOG names FAILED, then those it names ERROR (a setup or collection error)."""
+    out = land_cause.failed_tests(log)
+    out += [n for n in dict.fromkeys(m.rstrip(" -") for m in ERRORED.findall(log)) if n not in out]
+    return out
+
+
+def cause_of(log: str | None, path: Path) -> str:
+    """Why a red run names no test: its log is missing, or the last thing it said."""
+    if log is None:
+        return f"its log {path} is missing"
+    lines = [ln.strip() for ln in log.splitlines() if ln.strip()]
+    last = next((ln for ln in reversed(lines) if not ln.startswith(NOISE)), "")
+    return (
+        f"no failing test in its log ({path}); its last line: {last[:200]!r}"
+        if last
+        else (f"its log {path} is empty")
+    )
 
 
 def carry(last: dict, sha: str, outcome: str) -> str:
@@ -61,13 +94,15 @@ def red(q: Path, repo: str) -> dict | None:
     )  # fmt: skip
     if held.returncode != 0:
         return None  # another repo's tip, or one main no longer holds
+    path = log_of(q, sha)
     try:
-        log = (q / "logs" / f"idle-suite-{sha}.log").read_text(errors="replace")
+        log: str | None = path.read_text(errors="replace")
     except OSError:
-        log = ""
+        log = None
     at = str(last.get("at") or "") if last.get("sha") == sha else ""  # a later run's time is not it
-    return {"sha": sha, "at": at,
-            "nodes": land_cause.failed_tests(log)[:MOST]}  # fmt: skip
+    nodes = nodes_of(log or "")[:MOST]
+    return {"sha": sha, "at": at, "nodes": nodes,
+            "cause": "" if nodes else cause_of(log, path)}  # fmt: skip
 
 
 def notice(q: Path, req: dict, say: Callable[[str], None]) -> list[str]:
@@ -82,8 +117,7 @@ def notice(q: Path, req: dict, say: Callable[[str], None]) -> list[str]:
     named = ", ".join(nodes[:3]) + (f" and {len(nodes) - 3} more" if len(nodes) > 3 else "")
     say(
         f"main {found['sha'][:8]} is red in the idle full suite ({found['at'] or 'time unknown'}): "
-        f"{named or 'no failing test named in its log'} -- "
-        + ("they join this pre-step's set" if nodes else "read its log")
+        + (f"{named} -- they join this pre-step's set" if nodes else found["cause"])
     )
     req["main_red"] = {"sha": found["sha"], "nodes": nodes}
     return nodes
