@@ -19,7 +19,6 @@ from pathlib import Path
 from conftest import REPO_ROOT
 
 COV_GATE = REPO_ROOT / "gates" / "coverage_gate.sh"
-TREE_READS = ("gates/", "tools/", "lib/", "checks/", "hooks/")  # every shell source there
 
 CTEST = r"""#!/bin/bash
 printf '%s\n' "$LLVM_PROFILE_FILE" > "$SHIM_LOG/profile-pattern"
@@ -97,15 +96,10 @@ def test_a_build_path_with_a_space_merges_whole(tmp_path: Path) -> None:
     assert all(Path(p).is_file() for p in listed), listed
 
 
-def test_no_shell_source_uses_bsd_only_find_perm_plus():
+def test_the_cpp_engine_uses_no_bsd_only_find_perm_plus():
     """GOH.WORKERFAILS: `find -perm +111` is BSD's spelling; GNU find refuses it ("invalid mode
     '+111'"), so the cpp engine found no test binary on Linux. `-perm -u+x` means one thing to
-    both."""
-    hits = [
-        f"{p.relative_to(REPO_ROOT)}:{n}"
-        for top in TREE_READS
-        for p in sorted((REPO_ROOT / top).rglob("*.sh"))
-        for n, line in enumerate(p.read_text(errors="replace").splitlines(), 1)
-        if re.search(r"-perm \+", line)
-    ]
-    assert hits == []
+    both. (Only this gate: a scan of every shell source would make this file a reader of all of
+    gates/, chosen by every change there; no other source spells `-perm +` today.)"""
+    lines = COV_GATE.read_text().splitlines()
+    assert [n for n, line in enumerate(lines, 1) if re.search(r"-perm \+", line)] == []
