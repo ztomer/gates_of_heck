@@ -48,8 +48,7 @@ GOH_SHIP_CHANGELOG declares), then `.gatesrc` GOH_SHIP_PREFLIGHT ({version} subs
 repo under the ship's bound with GOH_SHIP_VERSION/SUMMARY/ITEM set; a non-zero exit refuses, nothing
 pushed. A new check is a line in the repo's preflight, never a case here (ship_preflight_audit).
 Before those, what the LAST steps refused (lib/ship_item.py, GOH.SHIPITEM): an --item loopctl
-refuses for this repo (unknown, done, another repo's), and an OLDER stock hook in the repo.
-And lines a land left uncovered, unless --allow-diffcov REASON (lib/diffcov_carry.py).
+refuses here, an OLDER stock hook, uncovered land lines unless --allow-diffcov (diffcov_carry).
 
 Started without --wait it validates, writes the result JSON (status `running`), detaches a worker
 in its own session and prints one line naming the result; the worker prints a ✓/✗/· line per step
@@ -395,6 +394,7 @@ def start(args: argparse.Namespace) -> int:
     except Refused as e:
         err(f"goh ship: {e} -- nothing started")
         return 2
+    ship_status.settle_all(Path(res["result"]).parent, say=info)  # dead workers' records
     save(res)
     if args.wait:
         return worker(res["result"])

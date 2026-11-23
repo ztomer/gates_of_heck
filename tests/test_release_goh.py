@@ -202,3 +202,62 @@ def test_a_release_create_that_leaves_no_release_fails_the_kit(repo: Path, tmp_p
     r, _ = _full_run(repo, tmp_path, released=["v0.1.0", "v0.2.0"], keep_creates=False)
     assert r.returncode != 0, r.stdout + r.stderr
     assert "v0.3.0 cannot be found" in r.stderr, r.stderr
+
+
+def _preflight_fixture(repo: Path, tmp_path: Path, structural_exit: int) -> Path:
+    """A repo whose structural gate exits STRUCTURAL_EXIT and whose land.sh records that it ran."""
+    landed = tmp_path / "landed.txt"
+    (repo / "gates").mkdir()
+    (repo / "gates" / "structural.sh").write_text(f"#!/bin/bash\nexit {structural_exit}\n")
+    (repo / "tools").mkdir()
+    (repo / "tools" / "land.sh").write_text(f'#!/bin/bash\ntouch "{landed}"\n')
+    for f in (repo / "gates" / "structural.sh", repo / "tools" / "land.sh"):
+        f.chmod(0o755)
+    git(repo, "add", "gates", "tools")
+    _commit(
+        repo, "# CHANGELOG\n\n## Unreleased\n\n* **Two.** b\n\n## v0.1.0 -- first\n\n* **One.** a\n"
+    )
+    return landed
+
+
+def _preflight(repo: Path, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+    env = hermetic_env(drop_git=True, GOH_RUN_DIR=str(tmp_path / "run"))
+    return subprocess.run([BASH, str(KIT), "--preflight", "0.2.0"], cwd=repo, env=env,
+                          capture_output=True, text=True, timeout=patience(120),
+                          stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+
+
+def test_ship_asks_the_release_commit_of_its_gate_before_the_suite() -> None:
+    """GOH.SHIPEARLY: `goh ship` runs GOH_SHIP_PREFLIGHT before its suite (tools/ship.py plan)."""
+    rc = (REPO_ROOT / ".gatesrc").read_text()
+    assert "GOH_SHIP_PREFLIGHT='tools/release_goh.sh --preflight {version}'" in rc
+
+
+def test_a_release_commit_its_gate_refuses_is_refused_by_the_preflight(
+    repo: Path, tmp_path: Path
+) -> None:
+    """v0.140.3 refused its release text 1019 s in, after the suite; the preflight makes the same
+    commit off HEAD and runs the release land's gate over it, and nothing moves."""
+    landed = _preflight_fixture(repo, tmp_path, structural_exit=1)
+    head = git(repo, "rev-parse", "HEAD")
+    r = _preflight(repo, tmp_path)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "fails its land's gate" in r.stderr, r.stderr
+    assert git(repo, "rev-parse", "HEAD") == head
+    assert git(repo, "worktree", "list").count("\n") == 1, git(repo, "worktree", "list")
+    assert "release-preflight" not in git(repo, "branch", "--list"), "the preflight left its branch"
+    assert not landed.exists(), "the preflight landed"
+
+
+def test_a_release_commit_its_gate_passes_clears_the_preflight_and_lands_nothing(
+    repo: Path, tmp_path: Path
+) -> None:
+    landed = _preflight_fixture(repo, tmp_path, structural_exit=0)
+    head = git(repo, "rev-parse", "HEAD")
+    r = _preflight(repo, tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "passes its land's gate" in r.stdout + r.stderr
+    assert git(repo, "rev-parse", "HEAD") == head
+    assert git(repo, "tag", "--list") == "", "the preflight tagged"
+    assert "release-preflight" not in git(repo, "branch", "--list"), "the preflight left its branch"
+    assert not landed.exists(), "the preflight landed"

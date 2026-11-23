@@ -83,6 +83,47 @@ def tail(log: Path) -> list[str]:
         return []
 
 
+ABANDONED = "abandoned"  # the failed_step of a result whose worker died saying running
+
+
+def _gone(res: dict) -> bool:
+    """True for a result that says running (or bisecting) whose worker is gone, by its start time
+    (GOH.STRAYSIGNAL2: a worker's pid reused since reads as gone)."""
+    if not isinstance(res, dict) or res.get("status") not in ("running", "bisecting"):
+        return False
+    pid = res.get("pid")
+    return bool(pid) and not pid_owner.alive_line(str(res.get("pid_stamp") or pid))
+
+
+def settle(path: Path) -> bool:
+    """Write the terminal record a killed worker could not (GOH.SHIPEARLY): a result that says
+    running while its worker is gone becomes `failed` at ABANDONED, naming the pid, so no record
+    stays status-less or running forever (two Finance_zinc ships of 2026-11-17 said running six
+    days after their workers died). True when it rewrote PATH."""
+    try:
+        res = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if not _gone(res):
+        return False
+    done = [s["name"] for s in res.get("steps", []) if isinstance(s, dict) and "name" in s]
+    said = (f"the worker (pid {res['pid']}) is gone and the result said running; "
+            f"steps done: {', '.join(done) or 'none'}")  # fmt: skip
+    res.update(status="failed", failed_step=ABANDONED, tail=[said])
+    res["result"] = str(path)
+    save(res)
+    return True
+
+
+def settle_all(directory: Path, say=None) -> list[Path]:
+    """`settle` over every ship result in DIRECTORY (a repo's ship records): the ones rewritten,
+    each said through SAY when given."""
+    done = [p for p in sorted(directory.glob("*.json")) if settle(p)]
+    for p in done if say else ():
+        say(f"goh ship: an earlier ship's worker is gone; recorded it as failed: {p}")
+    return done
+
+
 def status(result: str) -> int:
     """Print the marks a result holds. 0 shipped, 1 failed, 2 unreadable, 3 running, 4 the worker
     is gone (killed, or the machine slept through a reboot) while the result still says running."""
@@ -108,5 +149,7 @@ def status(result: str) -> int:
             info(f"running: {result}")
             return 3
         err(f"the worker (pid {pid}) is gone and the result says running: {result}")
+        if settle(Path(result)):
+            info(f"recorded it as failed at {ABANDONED}: {result}")
         return 4
     return 0 if res["status"] == "ok" else 1

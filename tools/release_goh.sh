@@ -35,10 +35,18 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # shellcheck source=lib/run_path.sh
 . "$GOH/lib/run_path.sh" || exit 1
 
+# --preflight VERSION (GOH.SHIPEARLY; .gatesrc GOH_SHIP_PREFLIGHT, which `goh ship` asks before its
+# suite): every check below that needs no suite verdict and no built goh, then the release commit
+# itself, made in a scratch worktree off HEAD and judged by the release land's own gate
+# (lib/release_gate.py run). Its green is recorded for that tree (`relset`), so the release land of
+# the same tree reuses it rather than running it again; its red refuses the ship before the suite,
+# where it used to refuse after it (v0.140.3: a heading the structural gate refused, 1019 s in).
+PREFLIGHT=0
+if [ "${1:-}" = --preflight ]; then PREFLIGHT=1; shift; fi
 VERSION="${1:-}"
 VERSION="${VERSION#v}"
 if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    err "release_goh.sh: usage: tools/release_goh.sh X.Y.Z (got '${1:-}')"
+    err "release_goh.sh: usage: tools/release_goh.sh [--preflight] X.Y.Z (got '${1:-}')"
     exit 2
 fi
 TAG="v$VERSION"
@@ -55,7 +63,7 @@ fi
 # every test here itself, against the INSTRUMENTED binary (lib/reuse.py full-suite; GOH.COVCARRY,
 # the owner's term 2); the idle lander makes it off the ship's path (lib/idle_suite.py).
 full_on="$(bash -c 'unset GOH_SHIP_FULL_SUITE; [ -f .gatesrc ] && . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_SHIP_FULL_SUITE-}"')"
-if [ "$full_on" = on ] && ! "$GOH_PY" "$GOH/lib/reuse.py" full-suite --repo "$main" --sha "$(git rev-parse HEAD)" >/dev/null; then
+if [ "$PREFLIGHT" = 0 ] && [ "$full_on" = on ] && ! "$GOH_PY" "$GOH/lib/reuse.py" full-suite --repo "$main" --sha "$(git rev-parse HEAD)" >/dev/null; then
     err "release_goh.sh: no full suite run judged $(git rev-parse --short HEAD)'s tree (above): goh ship's suite step makes one under the land lock (lib/ship_full_run.py; the idle lander's lib/idle_suite.py INSTRUMENTED, run with GOH_LAND_VERDICTS_RECORD=/dev/null in a clean checkout of it) -- nothing moved"
     exit 1
 fi
@@ -80,10 +88,17 @@ fi
 
 # The worktree is the checkout's `release` directory under the run root: outside its work tree (as
 # build/release-vX it was a second checkout inside the first), and ONE stable path, so the land
-# gate's cargo build-dir (keyed by workspace path) is the last release's, built incrementally.
+# gate's cargo build-dir (keyed by workspace path) is the last release's, built incrementally. The
+# preflight's is its own (`release-preflight`), so a preflight never touches a release's.
 wt="$(goh_run_dir "$main")/release"
 branch="release-$TAG"
-section "release $TAG from ${main}"
+if [ "$PREFLIGHT" = 1 ]; then
+    wt="$(goh_run_dir "$main")/release-preflight"
+    branch="release-preflight-$TAG"
+    section "release preflight $TAG from ${main}"
+else
+    section "release $TAG from ${main}"
+fi
 if [ -e "$wt" ]; then  # a release killed before its trap ran
     git worktree remove --force "$wt" 2>/dev/null || true
     git worktree prune
@@ -92,6 +107,7 @@ if [ -e "$wt" ]; then  # a release killed before its trap ran
         exit 1
     fi
 fi
+git branch -D "$branch" >/dev/null 2>&1 || true   # a killed run's branch, never anything else's
 tip="$(git rev-parse HEAD)"   # the land-gated tip the release is cut from: its release gate's base
 git worktree add -q -b "$branch" "$wt" "$tip"
 # The worktree and its branch go on every exit: landed, main holds the commit; refused, nothing moved.
@@ -121,6 +137,23 @@ release: ${heading#\#\# }
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 MSG
 )
+# The land's gate (GOH.SHIPRELREUSE R3): this commit changes only release files, so it runs the
+# structural gate and the tests that read them (lib/release_gate.py); a diff since the tip with
+# anything else in it -- main moved and land rebased -- runs the full gate land would have run.
+full="$(bash -c 'unset GOH_LAND_GATE; [ -f .gatesrc ] && . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_GATE-}"')"
+[ -n "$full" ] || full="$GOH/tools/gate_profile.sh ."
+if [ "$PREFLIGHT" = 1 ]; then
+    # The same gate over the same tree, with the same base; a commit that is not release files
+    # only (it cannot be, cut from HEAD) is refused here, never handed the full gate before the suite.
+    (cd "$wt" && GOH_LAND_GATE="" timed "release preflight: the release gate" \
+        "$GOH_PY" "$GOH/lib/release_gate.py" run --base "$tip" \
+        --full "echo 'release_goh.sh: the release commit changes more than release files' >&2; exit 1") || {
+        err "release_goh.sh: the release commit of $TAG fails its land's gate (above) -- refused before the suite, nothing moved"
+        exit 1
+    }
+    ok "release preflight: $TAG's release commit passes its land's gate (recorded for that tree)"
+    exit 0
+fi
 # THE TAGGED BUILD, BESIDE THE LAND AND THE PUSH (GOH.TAGPUSHGATE). A tagged commit's
 # stamp names its tag, so its goh is a build of its own; the first gate to ask for it was the tag
 # push's tag check, which rebuilt goh there: 98.6 s of v0.125.0's ship at load 190, on the critical
@@ -138,11 +171,7 @@ info "release: building goh as $TAG beside the land (pid $prebuild)"
     # No loaded verdict is read (GOH.LOADEDDROP): the post-land loaded run caught nothing in 13
     # runs and cost every ship its wait; tests/test_load_sensitive.py and the wall-clock ratchet
     # keep the static guard, at commit.
-    # The land's gate (GOH.SHIPRELREUSE R3): this commit changes only release files, so it runs the
-    # structural gate and the tests that read them (lib/release_gate.py); a diff since the tip with
-    # anything else in it -- main moved and land rebased -- runs the full gate land would have run.
-    full="$(bash -c 'unset GOH_LAND_GATE; [ -f .gatesrc ] && . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_GATE-}"')"
-    [ -n "$full" ] || full="$GOH/tools/gate_profile.sh ."
+    # The land's gate: `full` above, the release set when this commit is release files only.
     release_gate="$(printf '%q ' "$GOH_PY" "$GOH/lib/release_gate.py" run --base "$tip" --full "$full")"
     # NO PRE-STEP (GOH.RELEASELANDGATE): .gatesrc's GOH_LAND_PRE is a lane's fail-fast before its
     # full gate; here the gate IS the short one, and the pre-step ran 925 tree-reader tests over the
