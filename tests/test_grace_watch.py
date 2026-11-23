@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _tree_clone import from_template
 from conftest import REPO_ROOT, hermetic_env
 
 SCRIPT = REPO_ROOT / "scripts" / "grace_watch.py"
@@ -35,15 +36,21 @@ def _git(d: Path, *args: str) -> None:
                    stdin=subprocess.DEVNULL)  # fmt: skip
 
 
-def _setup(tmp_path: Path, goh: Path) -> dict:
+def _build_consumer(path: Path) -> None:
+    """A consumer that declares no scanner floor, one commit; built once per run."""
+    fast_init(path)
+    write_gatesrc(path, "GOH_MAX_LINES=500\nGOH_ROADMAP=none\n")  # no GOH_*_MIN_FILES
+    (path / "run.sh").write_text("#!/usr/bin/env bash\necho hi\n")
+    _git(path, "add", "-A")
+    _git(path, "commit", "-qm", "first")
+
+
+def _setup(tmp_path: Path, goh: Path, factory) -> dict:
     env = hermetic_env(GOH_VERDICT_DIR=str(tmp_path / "verdicts"),
                        GOH_SEED_DIR=str(tmp_path / "no-seeds"))  # fmt: skip
     consumer = tmp_path / "consumers" / "unfloored"
-    fast_init(consumer)
-    write_gatesrc(consumer, "GOH_MAX_LINES=500\nGOH_ROADMAP=none\n")  # no GOH_*_MIN_FILES
-    (consumer / "run.sh").write_text("#!/usr/bin/env bash\necho hi\n")
-    _git(consumer, "add", "-A")
-    _git(consumer, "commit", "-qm", "first")
+    consumer.parent.mkdir()
+    from_template(factory, "grace-consumer", _build_consumer, consumer)
     state = tmp_path / "state" / "estate_audit.json"
     state.parent.mkdir()
     (state.parent / "installed_repos").write_text(f"{consumer}\n")
@@ -64,8 +71,8 @@ def _watch(e: dict, over_from: int) -> tuple[subprocess.CompletedProcess, dict]:
 
 
 @pytest.mark.load_sensitive
-def test_a_grace_end_in_three_days_is_red_with_no_release(tmp_path, goh):
-    e = _setup(tmp_path, goh)
+def test_a_grace_end_in_three_days_is_red_with_no_release(tmp_path, goh, tmp_path_factory):
+    e = _setup(tmp_path, goh, tmp_path_factory)
     r, rec = _watch(e, int(time.time()) + 3 * DAY)
     out = r.stdout + r.stderr
     assert r.returncode == 1, out
@@ -84,8 +91,8 @@ def test_a_grace_end_in_three_days_is_red_with_no_release(tmp_path, goh):
 
 
 @pytest.mark.load_sensitive
-def test_an_end_beyond_the_window_sweeps_nothing(tmp_path, goh):
-    e = _setup(tmp_path, goh)
+def test_an_end_beyond_the_window_sweeps_nothing(tmp_path, goh, tmp_path_factory):
+    e = _setup(tmp_path, goh, tmp_path_factory)
     r, rec = _watch(e, int(time.time()) + 10 * DAY)
     assert r.returncode == 0, r.stdout + r.stderr
     assert rec["ran"] is False and "within 7 days" in rec["why"], rec
