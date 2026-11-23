@@ -558,3 +558,19 @@ immutable export of its HEAD (`gates/_from_head.sh`).
 | `GOH_HEAD_CACHE` | `~/.cache/goh/head` | Where the HEAD exports live, one immutable directory per commit; exports of other commits untouched for 7 days are pruned. |
 | `GOH_LIVE_TARGET_DIR` | `<checkout>/target/goh-live` | Under `GOH_LIVE`, when the working tree's Rust (crates/, Cargo.toml, Cargo.lock, rust-toolchain.toml) differs from HEAD, `_goh_bin.sh` builds THAT `goh` here, once per (HEAD Rust stamp, diff) pair, and runs it -- a moved HEAD is a rebuild, never the old binary -- `bin/goh` is HEAD's (C3) and would answer for code the run is not testing. |
 | `GOH_LIVE_ROOT` | internal (Not a setting) | Set by `_from_head.sh` for the export's children: the live checkout, where `bin/goh` and its stamp-keyed store `bin/by-stamp/` (not in git) are found. Honoured only for an export (`lib/goh_root.sh` `goh_live_root_for`): a plain checkout that inherits it ignores it. Not user config. |
+
+## Remote test worker (`goh remote-shard`, `tools/remote_shard.py`, GOH.REMOTEWORKERS)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `GOH_REMOTE_HOST` | `media-server` | The ssh alias of the host that runs the worker container. |
+| `GOH_REMOTE_DIR` | `/mnt/scratch/goh-worker` | The host directory that is the container's only mount: `tree/`, `cache/`, `out/`, `images/`. A cache: wiped, the next run rebuilds it ("cold cache"). |
+| `GOH_REMOTE_CPUSET` | `4-15` | `--cpuset-cpus`: the six physical cores the owner gave the worker (cores 0-1 stay the host's). |
+| `GOH_REMOTE_CPU_SHARES` | `128` | `--cpu-shares`: the worker's low CPU weight, so the host's own processes win on the same cpus. No `--cpus` cap. |
+| `GOH_REMOTE_MEMORY` | `10g` | `--memory` and `--memory-swap`: an OOM kills the worker, never a host service. |
+| `GOH_REMOTE_MAX_LOAD` | `6.0` | The host 1-minute load above which the shard runs locally instead, saying why. |
+| `GOH_REMOTE_LOADAVG` | `/proc/loadavg` | The file the probe reads the host's load from (a seam for the tests). |
+| `GOH_REMOTE_USER` | `1000:1000` | `--user`: the non-root uid:gid the container runs as. |
+| `GOH_REMOTE_CONTAINER` | `goh-remote-worker` | The long-lived worker container's name (`--restart unless-stopped`); each shard is a `docker exec` into it. A container of this name on another image is replaced. |
+| `GOH_REMOTE_FREE_FLOOR_GB` | `100` | The free space the host's scratch disk keeps for its transcodes: below it the shard runs locally, saying why. |
+| `GOH_REMOTE_CEILING_GB` | `80` | The worker directory's size ceiling: above it the shard runs locally, saying why. |
