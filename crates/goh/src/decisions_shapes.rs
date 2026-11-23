@@ -5,7 +5,6 @@
 //! line, `- **Name:**`: the record's grammar, so a field-shaped line outside the ledger shows up
 //! beside the ones it judges.
 
-use crate::shapes::table::DOCS;
 use crate::shapes::{Declared, Shape, Verdict};
 
 /// Is `rel` a record the ledger reads?
@@ -47,14 +46,14 @@ pub const SHAPES: Declared = Declared {
             fixture: ("docs/decisions/D-0001-a.md", "- **Ruling:** blue.\n"),
         },
         Shape {
-            name: "a bold field line in any other doc",
-            path: DOCS,
+            name: "a field-shaped line in any other file: prose, a source string, a fixture",
+            path: "",
             line: "",
             verdict: Verdict::OutOfScope(
                 "only docs/decisions/D-NNNN-<slug>.md is the ledger; a field-shaped line elsewhere \
-                 is prose with a bold lead",
+                 is prose with a bold lead, or a test's planted record",
             ),
-            fixture: ("docs/notes.md", "- **Ruling:** blue.\n"),
+            fixture: ("crates/goh/src/a_tests.rs", "- **Ruling:** blue.\n"),
         },
     ],
 };
