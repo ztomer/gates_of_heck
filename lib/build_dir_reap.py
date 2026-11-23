@@ -6,7 +6,8 @@ behind: an orphan only a reclaimer's sweep found, hours later (~/.cargo/build 17
 2026-11-17). A checkout's own build dirs are the ones cargo names for it (gates/_push_build_dirs.py,
 asked while it exists), less any the main checkout also uses (a repo that names one fixed build dir
 shares it) and any inside the tree (they go with it). `owned` is asked BEFORE the removal, cargo
-cannot name a missing path's; `remove` after it.
+cannot name a missing path's; `remove` after it, and never one a running cargo holds: it renames
+each away under its cargo locks, as the evictor does (GOH.BUILDDIRVANISH).
 """
 
 from __future__ import annotations
@@ -20,6 +21,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from _push_build_dirs import build_dirs
 
 del sys.path[0]
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cache_evict  # noqa: E402
 
 
 def owned(tree: Path, main: Path) -> list[Path]:
@@ -31,7 +34,18 @@ def owned(tree: Path, main: Path) -> list[Path]:
     return [d for d in mine if d not in shared and not d.is_relative_to(inside)]
 
 
-def remove(dirs: list[Path]) -> None:
-    """Each of DIRS gone (a missing one is fine)."""
+def remove(dirs: list[Path]) -> list[Path]:
+    """Each of DIRS gone (a missing one is fine), except those a running cargo holds: returned."""
+    kept = []
     for d in dirs:
-        shutil.rmtree(d, ignore_errors=True)
+        tomb = d.parent / f".evict-{d.name}-{os.getpid()}"
+        try:
+            with cache_evict.locks_held(str(d)):
+                os.rename(d, tomb)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            kept.append(d)
+            continue
+        shutil.rmtree(tomb, ignore_errors=True)
+    return kept

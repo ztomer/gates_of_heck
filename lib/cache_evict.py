@@ -18,9 +18,10 @@ Ranking: GreedyDual-Size-Frequency (Cao & Irani, USITS 1997; Cherkasova, HPL-98-
 * l(o): the inflation clock L as it stood at the object's last use. L rises to the H of each object
   evicted, so an object nobody uses falls behind the clock and goes, with no TTL.
 
-Never evicted: an object a live build holds (`held`: a cargo `.cargo-lock` flock taken, a live pid
-in an llvm-cov `.goh-running` marker, or a use within GRACE_S), and the sccache directory while its
-server lives (its bytes count in the budget; its own LRU, capped by `sccache_cap`, is the backstop).
+Never evicted: an object a live build holds (`held`: a cargo `.cargo-build-lock` or `.cargo-lock`
+flock taken, a live pid in an llvm-cov `.goh-running` marker, or a use within GRACE_S), and the
+sccache directory while its server lives (its bytes count in the budget; its own LRU, capped by
+`sccache_cap`, is the backstop).
 
 Budget, internal disk: B = min(0.5 x (held + free), held + free - floor - RESERVE_GIB), the floor
 GOH_LANE_MIN_FREE_GIB (lib/capacity.py, the lanes' one floor). With the removable tier present the
@@ -219,10 +220,33 @@ def _flock_taken(path: str) -> bool:
     return False
 
 
+# The lock a running cargo holds in a dir: `.cargo-build-lock` in a separate build-dir (cargo
+# 1.100, probed 2026-11-22), `.cargo-lock` in a target dir. Only the first was missed, and the
+# sweep demoted a release's build dir mid-build (GOH.BUILDDIRVANISH).
+CARGO_LOCK_NAMES = (".cargo-build-lock", ".cargo-lock")
+
+
+@contextlib.contextmanager
+def locks_held(path: str):
+    """Every cargo lock under `path`, taken without waiting; BlockingIOError if one is held. Every
+    goh removal of a build dir renames it away inside this (lib/cache_sweep.py, build_dir_reap)."""
+    fds = []
+    try:
+        for lock in cargo_locks(path):
+            fd = os.open(lock, os.O_RDONLY)
+            fds.append(fd)
+            lock_order.flock(fd, "cargo_build", wait=False)
+        yield
+    finally:
+        for fd in fds:
+            os.close(fd)
+
+
 def cargo_locks(path: str) -> list[str]:
-    """`<build-dir>/<profile>/.cargo-lock` and `<build-dir>/<target>/<profile>/.cargo-lock`."""
-    return glob.glob(os.path.join(glob.escape(path), "*", ".cargo-lock")) + glob.glob(
-        os.path.join(glob.escape(path), "*", "*", ".cargo-lock"))  # fmt: skip
+    """Every CARGO_LOCK_NAMES file at `<dir>/<profile>/` and `<dir>/<target>/<profile>/`."""
+    base = glob.escape(path)
+    return [p for name in CARGO_LOCK_NAMES for depth in (("*",), ("*", "*"))
+            for p in glob.glob(os.path.join(base, *depth, name))]  # fmt: skip
 
 
 def _cov_running(path: str) -> bool:

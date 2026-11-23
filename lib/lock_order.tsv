@@ -23,7 +23,7 @@ container	70	no	machine	lib/container_runtime.sh	the container runtime's lease t
 desktop	80	no	machine	lib/desktop_lock/desktop_lock.py,lib/desktop_lock/desktop_lock.sh	the one screen
 gpu	85	no	machine	lib/gpu_lock/gpu_lock.py,lib/gpu_lock/gpu_lock.sh	the GPU
 flake_test	88	no	machine	lib/flakes.py	one test's flake record and its 2-in-14-days filing, <flake register>/by-test/.<key>.flake.lock (GOH.FLAKEREGISTER): held around the read, the loopctl file and the appends (state_file, above it)
-cargo_build	89	no	machine	lib/cache_evict.py,lib/cache_sweep.py	cargo's own `<build-dir>/<profile>/.cargo-lock`, which cargo holds for a whole build: the evictor only ever try-locks it (taken: a live build holds the dir) and holds it across a demotion's copy or a delete's rename
+cargo_build	89	no	machine	lib/cache_evict.py	cargo's own `<build-dir>/<profile>/.cargo-build-lock` (`.cargo-lock` in a target dir), which cargo holds for a whole build: the evictor only ever try-locks it (taken: a live build holds the dir) and holds it across a demotion's copy or a delete's rename (the sweep's and lib/build_dir_reap.py's)
 load_registry	90	yes	machine	lib/load_registry.py	the load registry's own critical section (re-entrant within one process)
 estate_registry	91	no	machine	lib/estate_registry.py	the estate registry file's read-modify-write
 advisory_db	92	no	machine	lib/advisory_db.py	the cargo advisory database copy (shared to read, exclusive to refresh)

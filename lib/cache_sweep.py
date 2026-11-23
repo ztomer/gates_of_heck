@@ -171,19 +171,7 @@ def discover(roots: Roots, root: str, root_fd: int | None, now: float) -> list[c
     return objs + demoted_objs(root, root_fd, roots, now)
 
 
-@contextlib.contextmanager
-def _locks_held(path: str):
-    """Every cargo lock under `path`, taken without waiting; BlockingIOError if one is held."""
-    fds = []
-    try:
-        for lock in ce.cargo_locks(path):
-            fd = os.open(lock, os.O_RDONLY)
-            fds.append(fd)
-            lock_order.flock(fd, "cargo_build", wait=False)
-        yield
-    finally:
-        for fd in fds:
-            os.close(fd)
+_locks_held = ce.locks_held  # the one taker, shared with lib/build_dir_reap.py
 
 
 def _delete_internal(o: ce.Obj) -> bool:
