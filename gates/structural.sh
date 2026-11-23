@@ -263,11 +263,16 @@ fi
 . "$HERE/_hook_currency.sh"  # one reading, shared with goh ship's preflight (GOH.SHIPITEM)
 _goh_unread() { err "could not read which hooks are stale (lib/hook_currency.py)"; exit 1; }
 _goh_stale="$(goh_stale_hooks)" || _goh_unread
+# The install.sh named is the LIVE checkout's, never a HEAD export's: a session that kept an export's
+# GOH_DIR past the release it was cut from ran the one printed here and wrote an old goh into the
+# repo (GOH.OLDINSTALL; install.sh now refuses that too).
+_goh_inst="$(goh_live_root_for "$GOH_ROOT")"
+_goh_inst="${_goh_inst:-$GOH_ROOT}/install.sh"
 if [ -n "$_goh_stale" ]; then
     while IFS= read -r _goh_h; do
         err "$_goh_h is an OLDER stock hook: the gate it runs is not today's"
     done <<<"$_goh_stale"
-    err "  update the hooks, then commit them:  $GOH_ROOT/install.sh \"$PWD\""
+    err "  update the hooks, then commit them:  $_goh_inst \"$PWD\""
     err "  (every estate repo at once: goh hooks --refresh)"
     exit 1
 fi
@@ -278,9 +283,9 @@ if [ -n "$_goh_aging" ]; then
     while IFS= read -r _goh_h; do
         warn "$_goh_h is an older stock hook; it delegates, so today's gate runs -- refresh it"
     done <<<"$_goh_aging"
-    warn "  every estate repo at once: goh hooks --refresh  (this repo: $GOH_ROOT/install.sh \"$PWD\")"
+    warn "  every estate repo at once: goh hooks --refresh  (this repo: $_goh_inst \"$PWD\")"
 fi
-unset _goh_h _goh_aging
+unset _goh_h _goh_aging _goh_inst
 
 # ── A consumer's `tools/gate.sh --full` takes the gate slot HERE (lib/gate_slot.sh, v0.39.0). ──
 # The consumer copies written before v0.37.0 run this script first and then their own heavy layers,

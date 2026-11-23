@@ -373,3 +373,29 @@ def test_a_script_that_sources_tui_lib_keeps_its_own_goh_dir(gates: Path, tmp_pa
         "/caller/py",
         str(gates),
     )
+
+
+def test_the_stale_hook_fix_names_the_live_install_not_the_exports(
+    gates: Path, consumer: Path, tmp_path
+) -> None:
+    """GOH.OLDINSTALL: the gate runs from a HEAD export, and its stale-hook fix printed the
+    EXPORT's install.sh. A session that kept that path past the release it was cut from ran it
+    and wrote an old goh into the consumer, so the fix names the live checkout the export was cut
+    from."""
+    old = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "cat-file", "-p", "73391f0:hooks/pre-push"],
+        capture_output=True,
+        check=True,
+        stdin=subprocess.DEVNULL,
+    ).stdout
+    (consumer / ".githooks").mkdir()
+    (consumer / ".githooks" / "pre-push").write_bytes(old)
+    subprocess.run(
+        ["git", "-C", str(consumer), "config", "core.hooksPath", ".githooks"],
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
+    r = _structural(gates, consumer, _env(tmp_path))
+    assert "OLDER stock hook" in r.stderr, r.stderr
+    assert f"{gates}/install.sh" in r.stderr, r.stderr
+    assert str(tmp_path / "head-cache") not in r.stderr, "the fix named a HEAD export's install.sh"

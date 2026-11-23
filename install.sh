@@ -101,6 +101,29 @@ if [ -n "$foreign" ]; then
     warn "install: --replace-hooks: these stop running:$foreign"
 fi
 
+# AN OLDER GOH NEVER WRITES A CONSUMER A NEWER ONE INSTALLED (GOH.OLDINSTALL). The goh_dir_repair
+# block GOH.CLASS.ROLLOUT removed kept coming back into consumers' tools/gate.sh (2026-11-14/15):
+# a session holding GOH_DIR at a HEAD export cut before the rollout, under an agent HOME whose cache
+# nobody pruned, ran that export's install.sh -- which a newer goh's refusal cannot reach, since it
+# is old code. So every install records its release in the consumer's own git config
+# (goh.installedRelease: untracked, so it adds no commit, and it survives a scratch HOME), and an
+# install.sh whose release (its CHANGELOG.md's newest `## vX.Y.Z`) is OLDER than the recorded one
+# refuses before the first write, naming the newer release. tests/test_install_old_goh.py
+goh_own_release() {
+    [ -f "$HERE/CHANGELOG.md" ] || return 0   # a copy of the gates with no changelog has no release
+    awk 'match($0, /^## v[0-9]+\.[0-9]+\.[0-9]+/) { print substr($0, 4, RLENGTH - 3); exit }' \
+        "$HERE/CHANGELOG.md"
+}
+own_release="$(goh_own_release)"
+recorded_release="$(git -C "$target" config --get goh.installedRelease 2>/dev/null || true)"
+if [ -n "$own_release" ] && [ -n "$recorded_release" ] && [ "$own_release" != "$recorded_release" ] \
+   && [ "$(printf '%s\n%s\n' "$own_release" "$recorded_release" | sort -V | tail -n 1)" = "$recorded_release" ]; then
+    err "install: this goh ($HERE) is $own_release, older than $recorded_release, which last installed into $target -- nothing written"
+    err "  an old goh would undo what the newer one installed; run $recorded_release's (or newer) install.sh: the live checkout, not a HEAD export"
+    err "  (a deliberate downgrade: git -C \"$target\" config --unset goh.installedRelease, then re-run)"
+    exit 1
+fi
+
 # shellcheck source=gates/_hash.sh
 . "$HERE/gates/_hash.sh"
 
@@ -178,6 +201,9 @@ for h in "${install_hooks[@]}"; do
 done
 
 git -C "$target" config core.hooksPath .githooks
+# The release an older install.sh is refused against (above); never lowered, since an older one
+# refused before reaching here.
+[ -z "$own_release" ] || git -C "$target" config goh.installedRelease "$own_release"
 
 # A CONSUMER'S tools/gate.sh IS ITS OWN (GOH.CLASS.ROLLOUT). The starter below is written once,
 # when there is none, and NOTHING here edits one that exists: a block install.sh inserted into it
