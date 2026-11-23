@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.149.4 -- reconcile: REMOTEWORKERS, CANARYMISS
+
+* The release canary refuses a release within 7 days of a floor grace end, and after it, when a consumer would be red at the end (GOH.CANARYMISS). v0.149.2 shipped an hour before the 2026-11-23 00:00 UTC grace end, judged with grace on, and its new scanner (`GOH_LOCALE_PREFIX_MIN_FILES`) then refused pushes in three consumer repositories; the canary's own warning had named 37 consumers and was never acted on. A new scanner is now judged as the grace end will judge it, and the session-start line says REFUSED.
+
+* `goh remote-shard` runs a Linux-safe test shard in a pinned worker container on another host over ssh, and falls back to the local run, saying why, when the host is unreachable, busy, short of scratch space, or its tool versions or skip counts differ from this machine's (GOH.REMOTEWORKERS). The image (`tools/remote_worker/Dockerfile`) pins every tool to a named release with a checked digest, mirrored from `gates/required_tools.tsv`; the container is long-lived, CPU-pinned at low weight, memory- and pid-capped, non-root, with no network and only its scratch directory mounted. Measured on a 197-test shard: 46.0 s warm (about 4.4 s of overhead) against 117.8 s locally at load 35. Not yet wired into land or ship.
+
 ## v0.149.3 -- reconcile: IDLESUITERETIRE, LANDCHECK2
 
 * The idle lander's full run no longer races the ship's (GOH.IDLESUITERETIRE). On v0.149.2 both judged one tree at once and the ship's release land waited 388 s for the slot the idle run held. The idle run now makes the ship's own judgement (`lib/full_run.py` `judge_env`: diff coverage based at the last version tag, the `@tree` reuse key), starts none while a ship of the repository is in flight and stops at once when one starts (`shipping`), and a ship adopts a finished green idle run of its tip and base instead of re-making it (`ship full suite on X: green, adopted`). A starved lane or work gate ticket now goes ahead of every other background ticket but never ahead of a land or a ship (`lib/gate_lanes.py` `PROMOTED_BACKGROUND`).
