@@ -724,8 +724,9 @@ Every structural checker is native since Phase N3; the Python checkers they port
 * `scripts/spend_watch.py` — the weekly watch's SPEND section (GOH.SPENDWATCH): per week, from the
   subagent transcripts (read by `claude_cache_probe.api_turns`, one usage per `message.id`), cost-unit
   shares, first-turn context per agent type and of write agents, context share from the first
-  push/release on by turn kind, idle-gap cache writes, Read bytes and share, repeated calls, turns per
-  agent, CLAUDE.md bytes; deltas against the week before. ccusage (`npx -y ccusage@20.0.48`, MIT)
+  push/release on by turn kind, idle-gap cache writes, Read bytes and share of text results, image
+  results by tool and image tokens per agent (`scripts/image_cost.py`: width * height / 750 from the
+  image header, never its bytes; GOH.IMGREAD), repeated calls, turns per agent, CLAUDE.md bytes; deltas against the week before. ccusage (`npx -y ccusage@20.0.48`, MIT)
   calibrates the reader each run (token totals over the window's whole UTC days must agree). A worse
   week, and a landed `EC` item whose `metric` is a `METRICS` label and whose measurement is no better
   than its `predicted` baseline, are filed with `loopctl --queue <the queue it read> file`; the verdict

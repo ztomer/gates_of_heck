@@ -18,7 +18,9 @@ section says the instrument disagrees.
 Metrics: cost-unit shares; median first-turn context per agent type and of write agents (an agent
 that called Edit or Write); share of context spent from the first push/release turn on, by turn
 kind; cache writes after an idle gap over 5 min, share of cost; Read result bytes and their share
-of tool-result bytes; repeated tool calls; turns per agent; and ~/.claude/CLAUDE.md bytes.
+of TEXT tool-result bytes; image results by tool and their tokens per agent; repeated tool calls;
+turns per agent; and ~/.claude/CLAUDE.md bytes. Images are costed by
+`image_cost.image_tokens` from their pixels, never their bytes (GOH.IMGREAD).
 
 The loop: a metric worse than the week before (both weeks with MIN_AGENTS agents, past its
 tolerance) is FILED as a queue item through `loopctl file`; a landed efficiency item whose `metric`
@@ -41,6 +43,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import claude_cache_probe as probe
+from image_cost import image_tokens
 
 CCUSAGE = "npx -y ccusage@20.0.48"  # a named release (house rule: never a moving tag)
 MIN_AGENTS = 3
@@ -72,6 +75,7 @@ METRICS: dict[str, dict[str, Any]] = {
     "post_push_share": {"label": "share of agent context spent from first push/release on", "tol": (0.05, 0)},
     "gap_write_share": {"label": "cache writes after a >5 min gap, share of agent cost", "tol": (0.02, 0)},
     "read_share": {"label": "Read share of tool-result bytes", "tol": (0.05, 0)},
+    "image_tokens_per_agent": {"label": "image result tokens per agent", "tol": (200, 0.2)},
     "repeated_share": {"label": "share of tool calls repeating an earlier identical call", "tol": (0.03, 0)},
     "turns_per_agent": {"label": "median API turns per agent", "tol": (3, 0.2)},
     "claude_md_bytes": {"label": "global CLAUDE.md bytes / agent first-turn tokens", "tol": (200, 0.05)},
@@ -99,6 +103,7 @@ def _agent(path: Path) -> dict[str, Any] | None:
     names: dict[str, str] = {}
     calls: dict[str, str] = {}
     results: list[tuple[str, int]] = []
+    images: list[tuple[str, int | None]] = []
     for d in recs:
         m = d.get("message") or {}
         content = m.get("content")
@@ -116,6 +121,10 @@ def _agent(path: Path) -> dict[str, Any] | None:
                     calls[uid] = f"{b.get('name')} {json.dumps(inp, sort_keys=True)}"
             elif b.get("type") == "tool_result":
                 text = probe._text(b.get("content"))
+                inner = b.get("content") if isinstance(b.get("content"), list) else []
+                tool = names.get(str(b.get("tool_use_id")), "")
+                pics = [x for x in inner if isinstance(x, dict) and x.get("type") == "image"]
+                images += [(tool, image_tokens(x)) for x in pics]
                 if text is not None:
                     results.append((names.get(str(b.get("tool_use_id")), ""), len(text.encode())))
     rows = probe.api_turns(recs)
@@ -139,6 +148,7 @@ def _agent(path: Path) -> dict[str, Any] | None:
         kind = "unknown"
     seq = list(calls.values())
     return {"type": kind, "start": turns[0]["at"], "turns": turns, "results": results,
+            "images": images,
             "writes": any(n in WRITE_TOOLS for n in names.values()),
             "calls": len(seq), "repeated": len(seq) - len(set(seq))}  # fmt: skip
 
@@ -180,6 +190,14 @@ def week(all_agents: list[dict[str, Any]], lo: dt.datetime, hi: dt.datetime) -> 
     res = [r for a in ags for r in a["results"]]
     read = sum(n for name, n in res if name == "Read")
     calls = sum(a["calls"] for a in ags)
+    by_tool: dict[str, dict[str, int]] = {}
+    for name, tok in (i for a in ags for i in a["images"]):
+        row = by_tool.setdefault(name, {"count": 0, "tokens": 0})
+        row["count"] += 1
+        row["tokens"] += tok or 0
+        if tok is None:
+            row["unsized"] = row.get("unsized", 0) + 1
+    image_total = sum(r["tokens"] for r in by_tool.values())
     med = lambda xs: statistics.median(xs) if xs else None
     out = {"agents": len(ags), "turns": len(turns), "calls": calls,
             "cost_units": round(sum(cost.values())),
@@ -190,6 +208,8 @@ def week(all_agents: list[dict[str, Any]], lo: dt.datetime, hi: dt.datetime) -> 
             "post_push_by_kind": {k: _r(v / ctx) for k, v in sorted(post.items())},
             "gap_write_share": _r(sum(t["gap_write"] for t in turns) / total),
             "read_bytes": read, "read_share": _r(read / (sum(n for _, n in res) or 1)),
+            "image_results": dict(sorted(by_tool.items())),
+            "image_tokens_per_agent": round(image_total / (len(ags) or 1), 1),
             "repeated_share": _r(sum(a["repeated"] for a in ags) / (calls or 1)),
             "turns_per_agent": med([len(a["turns"]) for a in ags])}  # fmt: skip
     if not ags:  # an empty week is no value, never 0%
@@ -439,7 +459,8 @@ def render(spend: dict[str, Any]) -> list[str]:
     lines += ["", f"- cost-unit shares read/write/output: {share(prev)} -> {share(cur)}",
               f"- first-turn context by agent type: {cur['first_turn']}",
               f"- post-push context by turn kind: {cur['post_push_by_kind']}",
-              f"- Read result bytes: {prev['read_bytes']} -> {cur['read_bytes']}", "",
+              f"- Read result bytes: {prev['read_bytes']} -> {cur['read_bytes']}",
+              f"- image results by tool (count, tokens): {cur.get('image_results', {})}", "",
               "### Landed efficiency items against their prediction", ""]  # fmt: skip
     for p in spend["predictions"]:
         tail = (
