@@ -406,7 +406,7 @@ def test_a_workspace_under_home_is_not_mistaken_for_one_naming_its_build_dir() -
         shutil.rmtree(ws, ignore_errors=True)
 
 
-def test_the_controller_resolves_the_binary_every_gate_will_ask_for(tmp_path):
+def test_the_controller_resolves_the_binary_every_gate_will_ask_for(tmp_path, monkeypatch):
     """G2c: a checkout whose bin/goh is not HEAD's build (a fresh worktree, a commit whose crates
     moved) made the FIRST gate a test spawned build goh -- and the drift guard refuses a build behind
     the session's back, so every gate step that runs goh failed (9 of test_rust_gate.py, in any new
@@ -424,5 +424,10 @@ def test_the_controller_resolves_the_binary_every_gate_will_ask_for(tmp_path):
     class _Config:  # the controller: no workerinput
         pass
 
+    # The controller's own environment, stated: a suite under GOH_LIVE and not a commit's source
+    # guard. Inherited, the land check's guard run (GOH_STAGED_GUARD_RUN, or no GOH_LIVE) made
+    # prebuild_live return before resolving, and this test red there while green in a plain run.
+    monkeypatch.setenv("GOH_LIVE", "1")
+    monkeypatch.delenv("GOH_STAGED_GUARD_RUN", raising=False)
     _drift_guard.prebuild_live(_Config(), root=tmp_path)
     assert called.exists(), "the controller left the first gate to build goh behind the session"
