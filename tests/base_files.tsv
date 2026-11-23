@@ -125,7 +125,6 @@ tests/load_kit.py	base-code
 tests/ps_table.py	base-code
 tests/real_state_guard.py	base-code
 tests/reference_kit.py	base-code
-tests/shard_weights.json	load-read
 tests/runner_env.py	base-code
 tests/suite_home.py	base-code
 tests/suite_tmp.py	base-code

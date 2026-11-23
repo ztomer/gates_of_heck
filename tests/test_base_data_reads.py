@@ -92,7 +92,7 @@ def test_each_declared_data_read_is_a_base_file_line_that_names_it():
     sibling's quoted name (`with_name("lock_order.tsv")`)."""
     graph = _tree_graph.real()
     base, declared = graph.base(), graph.load_reads()
-    assert {"lib/lock_order.tsv", "tests/shard_weights.json", "tui/stylerc"} <= set(declared)
+    assert {"lib/lock_order.tsv", "tui/stylerc"} <= set(declared)
     for rel, text in graph.texts.items():
         for m in test_closure.LOAD_READ.finditer(text):
             data, line, name = m.group(1), m.group(0), Path(m.group(1)).name
@@ -160,9 +160,9 @@ def test_every_data_file_a_real_load_opens_is_in_the_base_and_each_declared_one_
     opened = _opened_by_a_load(tmp_path)
     assert {"lib/lock_order.tsv", "tui/stylerc"} <= opened, sorted(opened)  # the probe sees opens
     data = {p for p in opened if p not in graph.texts}
-    missing = sorted(data - graph.base() - set(lv.SUITE_WIDE))
+    missing = sorted(data - graph.base() - set(lv.SUITE_WIDE) - set(graph.load_orders()))
     assert not missing, f"opened while pytest loads, no `load-read` declares it: {missing}"
-    stale = sorted(set(graph.load_reads()) - opened)
+    stale = sorted({*graph.load_reads(), *graph.load_orders()} - opened)
     assert not stale, f"declared `load-read`, never opened by a load: {stale}"
 
 
@@ -190,3 +190,14 @@ def test_a_binary_runners_change_chooses_its_readers_on_the_real_tree():
     chosen = at.readers(REPO_ROOT, ["lib/binary_runners.py"], graph=_tree_graph.real())
     for rel in ("tests/test_affected_binary.py", "tests/test_affected_binary_reach.py"):
         assert rel in chosen, sorted(chosen)
+
+
+def test_data_the_load_opens_only_to_deal_shards_is_not_base():
+    """GOH.SHARDNOTWIDE: tests/shard_weights.json only deals tests to CI shards, and a land's
+    verdict run refuses GOH_SUITE_SHARD (tools/pytest.sh), so it moves no verdict. Declared
+    `load-order`, it is outside the base: a diff touching it carries, where `load-read` voided
+    every carry and ran the whole suite (4109 tests on GOH.FSDROPVERDICT's land, 2026-11-23)."""
+    graph = _tree_graph.real()
+    assert "tests/shard_weights.json" not in graph.base()
+    assert "tests/shard_weights.json" not in graph.load_reads()
+    assert graph.load_orders() == {"tests/shard_weights.json": "tests/_shard.py"}

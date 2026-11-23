@@ -53,6 +53,11 @@ ENTRY_READS = (
 # real pooled, sharded load opens, both ways, by tests/test_base_data_reads.py. A comment, not a
 # table here: a path in this file's code is a named edge of every step closure that reaches it.
 LOAD_READ = re.compile(r"^[ \t]*[^#\s][^#\n]*#\s*load-read:\s*([\w./-]+)[ \t]*$", re.MULTILINE)
+# DATA the load opens only to SCHEDULE tests -- tests/_shard.py's CI shard weights -- declared
+# `load-order` (GOH.SHARDNOTWIDE): it decides which worker runs a test, never its verdict, and a
+# land's verdict run refuses a shard (tools/pytest.sh), so it is not base and voids no carry; a
+# change chooses its own readers. tests/test_base_data_reads.py checks it against a real load too.
+LOAD_ORDER = re.compile(r"^[ \t]*[^#\s][^#\n]*#\s*load-order:\s*([\w./-]+)[ \t]*$", re.MULTILINE)
 ENTRY = "tests/conftest.py"  # what pytest loads before every test; the base is what it reaches
 # Tests whose reads are not all known (lib/declared_reads.py's ratchet: a REPO_ROOT joined with a
 # non-literal). Such a test reaches every test module it imports whole, never as a slice, and
@@ -267,6 +272,16 @@ class Closure:
                 if (self.root / data).is_file()
             }
         return self._loaded
+
+    def load_orders(self) -> dict[str, str]:
+        """{data file: its opener} for each LOAD_ORDER a base file declares: opened as pytest loads,
+        but only to deal tests to shards, so outside the base (GOH.SHARDNOTWIDE)."""
+        return {
+            data: opener
+            for opener in sorted(self.base())
+            for data in LOAD_ORDER.findall(self.texts.get(opener, ""))
+            if (self.root / data).is_file()
+        }
 
     def base_reach(self, test: str) -> dict[str, tuple[str, ...]]:
         """{base file: the chain to it} for what `test` IMPORTS of the base itself, not through
