@@ -23,7 +23,7 @@ p = os.environ["FAKE_STATE"]
 s = json.load(open(p))
 arg = sys.argv[1]
 s["calls"].append([arg, os.environ.get("SCCACHE_DIR"), os.getcwd(),
-                   "SCCACHE_BASEDIRS" in os.environ, "SCCACHE_CACHE_SIZE" in os.environ])
+                   "SCCACHE_BASEDIRS" in os.environ, os.environ.get("SCCACHE_CACHE_SIZE")])
 if arg == "--show-stats":
     if not s["running"]:
         s["running"], s["dir"] = True, os.environ.get("SCCACHE_DIR")
@@ -65,7 +65,11 @@ def test_drive_arrives_the_server_moves_to_it_from_cwd_root(tmp_path):
     assert sr.repoint(env, ext, idle_s=30, timeout_s=600) == "repointed"
     calls = _calls(state)
     start = [c for c in calls if c[0] == "--start-server"]
-    assert start == [["--start-server", ext, "/", False, False]]
+    # SCCACHE_DIR in the environment makes sccache build its disk config from the environment,
+    # which replaces the config file's [cache.disk] section: without SCCACHE_CACHE_SIZE the cap
+    # falls to sccache's 10 GiB default (seen live 2026-11-23). The start carries goh's one cap,
+    # never the caller's own value (the base env's "1G").
+    assert start == [["--start-server", ext, "/", False, f"{sr.sccache_cap.CAP_GIB}G"]]
     assert [c[0] for c in calls].index("--stop-server") < [c[0] for c in calls].index(
         "--start-server")  # fmt: skip
     assert json.loads(state.read_text())["dir"] == ext

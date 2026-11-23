@@ -1,0 +1,1 @@
+* GOH.REPOINTSIZE: `lib/sccache_repoint.py` starts the server with `SCCACHE_CACHE_SIZE` at `lib/sccache_cap.py`'s cap whenever it sets `SCCACHE_DIR`. An environment `SCCACHE_DIR` makes sccache build its disk config from the environment, replacing the config file's `[cache.disk]` section, so the repointed server had run at sccache's 10 GiB default instead of 40 GiB.

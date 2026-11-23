@@ -7,8 +7,9 @@ sccache reads SCCACHE_DIR once, at server start, and 0.19 chains one disk level 
 which a missing drive would turn into a squatted mount point. When the server's `cache_location`
 differs from the resolver's answer this waits for sccache to go idle (compile_requests unchanged
 for --idle seconds and no rustc running), stops the server, and starts it again on the new root
-from cwd `/` (so the server never holds the drive as its cwd), with no SCCACHE_CACHE_SIZE (the
-config file's cap, lib/sccache_cap.py) and never SCCACHE_BASEDIRS (false hits for Rust and, with
+from cwd `/` (so the server never holds the drive as its cwd), with SCCACHE_CACHE_SIZE set to
+lib/sccache_cap.py's cap (an environment SCCACHE_DIR replaces the config file's disk section, cap
+included: GOH.REPOINTSIZE) and never SCCACHE_BASEDIRS (false hits for Rust and, with
 preprocessor cache mode, for C: design.md section 3). Clients run with
 SCCACHE_IGNORE_SERVER_IO_ERROR=1, so a build caught by the restart compiles locally.
 
@@ -45,6 +46,7 @@ from dataclasses import dataclass, field
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cache_tier  # lib/, beside this file
+import sccache_cap  # lib/, beside this file: the one disk cap
 
 SUBDIR = "sccache"
 IDLE_S = 30.0
@@ -92,6 +94,11 @@ class Env:
         env = {k: v for k, v in self.base.items() if k not in DROP}
         if sccache_dir:
             env["SCCACHE_DIR"] = sccache_dir
+            # SCCACHE_DIR makes sccache build its disk config from the environment, which replaces
+            # the config file's [cache.disk] section, cap included: without this the server ran at
+            # the 10 GiB default (GOH.REPOINTSIZE, seen live 2026-11-23). goh's one cap, never the
+            # caller's own SCCACHE_CACHE_SIZE (dropped above).
+            env["SCCACHE_CACHE_SIZE"] = f"{sccache_cap.CAP_GIB}G"
         return subprocess.run([self.sccache, *args], env=env, cwd=cwd, capture_output=True,
                               text=True, check=False, timeout=120,
                               stdin=subprocess.DEVNULL)  # fmt: skip
