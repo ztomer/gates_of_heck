@@ -71,6 +71,7 @@ lib/pre_reuse.py	base-code
 lib/proc_deadline.py	base-code
 lib/proc_table.py	base-code
 lib/prune_kept.py	base-code
+lib/remote_lane.py	base-code
 lib/reuse.py	base-code
 lib/reuse_audit.py	base-code
 lib/reuse_fault.py	base-code

@@ -564,7 +564,7 @@ immutable export of its HEAD (`gates/_from_head.sh`).
 | Key | Default | Meaning |
 |---|---|---|
 | `GOH_REMOTE_HOST` | `media-server` | The ssh alias of the host that runs the worker container. |
-| `GOH_REMOTE_DIR` | `/mnt/scratch/goh-worker` | The host directory that is the container's only mount: `tree/`, `cache/`, `out/`, `images/`. A cache: wiped, the next run rebuilds it ("cold cache"). |
+| `GOH_REMOTE_DIR` | `/mnt/scratch/goh-worker` | The host directory that is the container's only mount: `trees/<slot>/` (one checkout per lane slot, keyed by the Mac checkout's path), `cache/`, `out/`. A cache: wiped, the next run rebuilds it ("cold cache"). |
 | `GOH_REMOTE_CPUSET` | `4-15` | `--cpuset-cpus`: the six physical cores the owner gave the worker (cores 0-1 stay the host's). |
 | `GOH_REMOTE_CPU_SHARES` | `128` | `--cpu-shares`: the worker's low CPU weight, so the host's own processes win on the same cpus. No `--cpus` cap. |
 | `GOH_REMOTE_MEMORY` | `10g` | `--memory` and `--memory-swap`: an OOM kills the worker, never a host service. |
@@ -572,5 +572,7 @@ immutable export of its HEAD (`gates/_from_head.sh`).
 | `GOH_REMOTE_LOADAVG` | `/proc/loadavg` | The file the probe reads the host's load from (a seam for the tests). |
 | `GOH_REMOTE_USER` | `1000:1000` | `--user`: the non-root uid:gid the container runs as. |
 | `GOH_REMOTE_CONTAINER` | `goh-remote-worker` | The long-lived worker container's name (`--restart unless-stopped`); each shard is a `docker exec` into it. A container of this name on another image is replaced. |
-| `GOH_REMOTE_FREE_FLOOR_GB` | `100` | The free space the host's scratch disk keeps for its transcodes: below it the shard runs locally, saying why. |
-| `GOH_REMOTE_CEILING_GB` | `80` | The worker directory's size ceiling: above it the shard runs locally, saying why. |
+| `GOH_REMOTE_FREE_FLOOR_GB` | `100` | The free space the host's scratch disk keeps for its transcodes: below it the shard runs locally, saying why; after every run `lib/worker_evict.py` evicts the worker's caches coldest first back above it. |
+| `GOH_REMOTE_CEILING_GB` | `80` | The worker directory's size ceiling: above it the shard runs locally, saying why; the evictor after every run keeps the caches under it. |
+| `GOH_LAND_REMOTE` | `on` | `off` keeps the land pre-step wholly on the Mac. On, the chosen tests whose module `tests/linux_safe.txt` records run on the worker beside the Mac's share (`lib/remote_lane.py`), skip parity against `tests/mac_skips.txt`; any fallback runs them on the Mac, saying why. |
+| `GOH_REMOTE_SHARE` | `0.25` | The worker's share of a land pre-step's estimated seconds (the duration table): the costliest Linux-safe files go first up to it, so both sides end together. Measured 2026-11-22: the worker at `-n 10` gives about 2.6 Mac cores (364 Mac-serial seconds in 139 s) against roughly 8 from the Mac's `-n 12` under load; the ten-land measurement tunes it. |

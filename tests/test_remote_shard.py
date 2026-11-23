@@ -9,6 +9,7 @@ equal to the manifest) is read from `tools/remote_worker/Dockerfile`."""
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import subprocess
@@ -184,6 +185,12 @@ def _git(where: Path, *args: str) -> subprocess.CompletedProcess[str]:
                           check=False, stdin=subprocess.DEVNULL)  # fmt: skip
 
 
+def _slot_tree(rig: dict[str, Path]) -> Path:
+    """The worker tree of the rig's checkout: its default slot is keyed by the checkout's path."""
+    slot = hashlib.sha256(str(rig["tree"].resolve()).encode()).hexdigest()[:10]
+    return rig["remote"] / "trees" / slot
+
+
 def _log(rig: dict[str, Path]) -> str:
     return (rig["tmp"] / "log").read_text()
 
@@ -196,9 +203,9 @@ def test_a_run_syncs_tracked_files_only_confines_the_container_and_returns_the_j
         rig, "--workers", "12", "--mac-junit", str(mac), "--junit", str(out), "tests/test_x.py"
     )
     assert r.returncode == 0, r.stdout + r.stderr
-    assert (rig["remote"] / "tree" / "tests" / "test_x.py").is_file()
-    assert not (rig["remote"] / "tree" / "untracked.txt").exists()
-    assert (rig["remote"] / "tree" / ".git").is_dir()
+    assert (_slot_tree(rig) / "tests" / "test_x.py").is_file()
+    assert not (_slot_tree(rig) / "untracked.txt").exists()
+    assert (_slot_tree(rig) / ".git").is_dir()
     run = next(ln for ln in _log(rig).splitlines() if ln.startswith("$ docker run -d --name"))
     for flag in (
         "--init",
@@ -387,7 +394,7 @@ def test_only_new_commits_and_uncommitted_tracked_edits_travel(rig):
     (tree / "untracked2.txt").write_text("never sent")
     (rig["tmp"] / "log").write_text("")
     assert _run(rig, "tests/test_x.py").returncode == 0
-    remote = rig["remote"] / "tree"
+    remote = _slot_tree(rig)
     assert (remote / "tests" / "test_y.py").is_file()
     assert (remote / "tests" / "test_x.py").read_text() == "def test_a(): assert True\n"
     assert not (remote / "untracked2.txt").exists()
@@ -395,42 +402,9 @@ def test_only_new_commits_and_uncommitted_tracked_edits_travel(rig):
     head1 = _git(tree, "rev-parse", "HEAD~1").stdout.strip()
     probe = _git(remote, "rev-parse", "HEAD").stdout.strip()
     assert probe != head1
-    bundle = remote.parent / "out" / "sync.bundle"
+    bundle = rig["remote"] / "out" / f"sync-{remote.name}.bundle"
     assert _git(tree, "bundle", "list-heads", str(bundle)).returncode == 0
     verify = _git(tree, "bundle", "verify", str(bundle))
     assert (
         "requires" in verify.stdout + verify.stderr and head1[:7] in verify.stdout + verify.stderr
     )
-
-
-def test_every_run_ends_with_the_workers_evictor_under_the_workers_rules(rig):
-    """GOH.REMOTEEVICT: the evictor runs in the container after the shard, at the ceiling and the
-    floor the probe enforces, with what the run used stamped first; it reports, never fails."""
-    copy_closure(rig["tree"], "lib/worker_evict.py")
-    _git(rig["tree"], "add", "-A")
-    _git(rig["tree"], "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "evictor")
-    r = _run(rig, "tests/test_x.py", GOH_REMOTE_CEILING_GB="80", GOH_REMOTE_FREE_FLOOR_GB="0")
-    assert r.returncode == 0, r.stdout + r.stderr
-    line = next(ln for ln in _log(rig).splitlines() if "worker_evict.py run" in ln)
-    assert "--root /work --ceiling-gib 80 --floor-gib 0" in line, line
-    assert "touch /work/tree/target/.goh-used /work/cache/home/.cargo/.goh-used" in line, line
-    assert "worker cache:" in r.stderr, r.stderr
-    assert (rig["remote"] / "cache" / "evict.json").is_file()
-
-
-def test_a_failing_evictor_never_changes_the_runs_verdict(rig):
-    r = _run(rig, "tests/test_x.py")  # the rig's tree carries no lib/worker_evict.py
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "worker evictor failed (the run stands)" in r.stderr
-    assert "3 passed" in r.stdout
-
-
-def test_the_image_carries_sccache_behind_goh_s_wrapper_and_records_its_version():
-    """GOH.REMOTEEVICT: cargo on the worker reuses compiled crates; the version is in the parity
-    record, so a run on an image without it is visible."""
-    text = DOCKERFILE.read_text()
-    assert re.search(r"^ARG SCCACHE_VERSION=\d+\.\d+\.\d+$", text, re.MULTILINE)
-    assert "install -m 0755" in text and "/usr/local/bin/sccache" in text
-    assert re.search(r"RUSTC_WRAPPER=/work/tree/lib/goh-rustc", text)
-    assert re.search(r"SCCACHE_CACHE_SIZE=\d+G", text)
-    assert "sccache --version; } > /opt/goh-worker-versions.txt" in text

@@ -15,7 +15,8 @@ work dir is its own SSD (and on this cgroup-v2 host `--blkio-weight 100` writes 
 ABOVE the default 100). It is not a service of the host's compose project.
 
 THE ONE MOUNT (GOH_REMOTE_DIR, default /mnt/scratch/goh-worker: the host's transcode-scratch SSD,
-apart from the media pool) holds `tree/` (a git checkout, its cargo target/ inside), `cache/`
+apart from the media pool) holds `trees/<slot>/` (one git checkout per lane slot, its cargo
+target/ inside, so two lands never queue on one tree; GOH.REMOTEWIRE), `cache/`
 (HOME, so CARGO_HOME is $HOME/.cargo; one pytest cache per lane slot) and `out/` (each run's junit
 and log). It is a CACHE: wiped, the next run rebuilds it with no manual step -- the probe says
 "cold", the commits travel whole once, and the registry is fetched once per Cargo.lock by a short-
@@ -26,7 +27,7 @@ A RUN, in four ssh calls over one ControlMaster connection (ControlPersist, so n
   1. probe: load, free space, the container's image and its recorded tool versions;
   2. the tree: a git bundle of only the commits the worker lacks, then the uncommitted TRACKED
      edits as a tar (untracked files never travel; see `sync`);
-  3. under `flock out/run.lock` (one tree, one run at a time): build bin/goh incrementally in the
+  3. under `flock out/run-<slot>.lock` (one run per slot's tree): build bin/goh incrementally in the
      tree's own target/ (`git clean` spares ignored output), then pytest under
      `timeout`; the junit comes back on the same call.
 COMPRESSION IS OFF, by measurement (2026-11-22, this LAN): a 10.2 MB full bundle took 0.36 s plain
@@ -39,7 +40,8 @@ and a remote run whose SKIP count differs from the Mac's for the same tests (`--
 print why and run the shard LOCALLY instead. A skip is how a missing tool hides; a remote green
 that skipped what the Mac ran is not the same verdict.
 
-Exit: 0 the shard passed (remote or local), 1 a test failed, 2 usage.
+Exit: 0 the shard passed (remote or local), 1 a test failed, 2 usage, 3 (`--no-local`) a
+fallback the caller runs (tools/affected_tests.py, lib/remote_lane.py).
 """
 
 from __future__ import annotations
@@ -58,6 +60,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(1, str(Path(__file__).resolve().parent.parent / "lib"))
 import gitrun
+from remote_image import build_args, image_tag, manifest_pins, version_drift
 
 from tui.lib import info, ok, warn
 
@@ -102,60 +105,6 @@ def ssh(c: dict[str, str], script: str, stdin: bytes | None = None,
         raise Fallback(f"{c['host']} did not answer in {timeout:.0f} s") from exc
 
 
-def manifest_pins(tsv: Path) -> dict[str, str]:
-    """The suite's pip modules and their exact pins (`=X.Y.Z` rows of the goh-suite layer)."""
-    pins: dict[str, str] = {}
-    for line in tsv.read_text().splitlines():
-        f = line.split("\t")
-        if len(f) == 6 and f[0] == "goh-suite" and f[2] == "pip" and f[5].startswith("="):
-            pins[f[1].lower()] = f[5][1:]
-    return pins
-
-
-def version_drift(text: str, pins: dict[str, str]) -> list[str]:
-    """Each way the worker's recorded versions differ from the manifest and the Mac's Python."""
-    have: dict[str, str] = {}
-    python = ""
-    for line in text.splitlines():
-        if line.startswith("Python "):
-            python = line.split()[1]
-        elif "==" in line:
-            name, ver = line.split("==", 1)
-            have[name.strip().lower().replace("_", "-")] = ver.strip()
-    mac = ".".join(map(str, sys.version_info[:3]))
-    out = [] if python == mac else [f"python {python or 'absent'} (Mac {mac})"]
-    out += [
-        f"{m} {have.get(m, 'absent')} (manifest {v})" for m, v in pins.items() if have.get(m) != v
-    ]
-    return out
-
-
-def build_args(tsv: Path, tree: Path) -> list[str]:
-    """`KEY=VALUE` for every Dockerfile arg goh's manifest owns: each pinned pip module, shellcheck
-    (with its linux.x86_64 checksum from the goh-floors table) and cargo-llvm-cov."""
-    floors: dict[str, str] = {}
-    for line in tsv.read_text().splitlines():
-        f = line.split("\t")
-        if len(f) == 6 and f[5] != "-":
-            floors.setdefault(f[1].lower(), f[5].lstrip("="))
-    args = {m.upper().replace("-", "_") + "_VERSION": v for m, v in manifest_pins(tsv).items()}
-    for tool in ("shellcheck", "cargo-llvm-cov"):
-        args[tool.upper().replace("-", "_") + "_VERSION"] = floors[tool]
-    table = tree / ".github" / "actions" / "goh-floors" / "shellcheck.sha256"
-    for line in table.read_text().splitlines() if table.exists() else []:
-        f = line.split("\t")
-        if len(f) == 4 and f[1] == floors["shellcheck"] and f[2] == "linux.x86_64":
-            args["SHELLCHECK_SHA256"] = f[3]
-    return [f"{k}={v}" for k, v in sorted(args.items())]
-
-
-def image_tag(tree: Path, args: list[str]) -> tuple[str, Path]:
-    """The image's tag: its Dockerfile's content AND the build args, so a raised pin is new."""
-    dockerfile = tree / "tools" / "remote_worker" / "Dockerfile"
-    digest = hashlib.sha256(dockerfile.read_bytes() + "\n".join(args).encode()).hexdigest()
-    return f"goh-remote-worker:{digest[:12]}", dockerfile
-
-
 def limits(c: dict[str, str]) -> list[str]:
     """The confinement every worker container carries (module doc), its one mount included."""
     w = "/work"
@@ -163,7 +112,7 @@ def limits(c: dict[str, str]) -> list[str]:
             "--memory", c["memory"], "--memory-swap", c["memory"], "--pids-limit", "4096",
             "--user", c["uid"], "--security-opt", "no-new-privileges", "--cap-drop", "ALL",
             "-v", f"{c['dir']}:{w}", "-e", f"HOME={w}/cache/home",
-            "-e", f"GOH_DIR={w}/tree", "-e", "PYTHONDONTWRITEBYTECODE=1"]  # fmt: skip
+            "-e", "PYTHONDONTWRITEBYTECODE=1"]  # fmt: skip
 
 
 def probe(c: dict[str, str], tree: Path, tsv: Path, times: dict[str, float]) -> str:
@@ -231,7 +180,7 @@ def git(tree: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
                           timeout=120)  # fmt: skip
 
 
-def sync(c: dict[str, str], tree: Path) -> None:
+def sync(c: dict[str, str], tree: Path, slot: str) -> None:
     """Make the worker's `tree/` a checkout of the Mac's HEAD plus its uncommitted TRACKED edits:
     only the commits the worker lacks travel (a git bundle against the commit it has; packs are
     already compressed), then the edited tracked files as a tar, deleted ones removed. Untracked
@@ -241,11 +190,12 @@ def sync(c: dict[str, str], tree: Path) -> None:
     if not head:
         raise Fallback(f"{tree} has no HEAD to send")
     q, name = shlex.quote, c["container"]
-    x = f"docker exec -i {name} git -C /work/tree"
-    r = ssh(c, f"docker exec {name} sh -c 'git -C /work/tree rev-parse -q --verify HEAD "
+    t = f"/work/trees/{slot}"  # this lane slot's own tree (GOH.REMOTEWIRE)
+    x = f"docker exec -i {name} git -C {t}"
+    r = ssh(c, f"docker exec {name} sh -c 'git -C {t} rev-parse -q --verify HEAD "
                "2>/dev/null || true'")  # fmt: skip
     have = r.stdout.decode().strip()
-    steps = [f"[ -d {q(c['dir'])}/tree/.git ] || docker exec {name} git init -q /work/tree"]
+    steps = [f"[ -d {q(c['dir'])}/trees/{slot}/.git ] || docker exec {name} git init -q {t}"]
     bundle = b""
     if have != head:
         basis = (["--not", have] if have and git(tree, "merge-base", "--is-ancestor", have,
@@ -255,8 +205,8 @@ def sync(c: dict[str, str], tree: Path) -> None:
             raise Fallback(f"git bundle failed: {made.stderr.decode()[-200:]}")
         bundle = made.stdout
         steps += [
-            f"cat > {q(c['dir'])}/out/sync.bundle",
-            f"{x} fetch -q /work/out/sync.bundle HEAD",
+            f"cat > {q(c['dir'])}/out/sync-{slot}.bundle",
+            f"{x} fetch -q /work/out/sync-{slot}.bundle HEAD",
             f"{x} checkout -q -f --detach FETCH_HEAD",
         ]
     else:
@@ -277,9 +227,9 @@ def sync(c: dict[str, str], tree: Path) -> None:
                          stdin=subprocess.DEVNULL,
                          env={**os.environ, "COPYFILE_DISABLE": "1"},
                          ).stdout if present else b""  # fmt: skip
-    cmd = f"docker exec -i {name} tar -xf - -C /work/tree" if present else "true"
+    cmd = f"docker exec -i {name} tar -xf - -C {t}" if present else "true"
     if gone:
-        cmd += f" && docker exec {name} rm -f -- " + " ".join(q("/work/tree/" + f) for f in gone)
+        cmd += f" && docker exec {name} rm -f -- " + " ".join(q(f"{t}/{f}") for f in gone)
     r = ssh(c, cmd, stdin=tar, timeout=600)
     if r.returncode != 0:
         raise Fallback(f"the uncommitted edits did not sync: {r.stderr.decode()[-300:]}")
@@ -290,29 +240,30 @@ def run_remote(c: dict[str, str], tag: str, tests: list[str], workers: int, slot
     """The shard as one `docker exec` into the running worker; (pytest's exit code, the junit)."""
     rid = f"{time.strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}"
     q, d, w = shlex.quote, c["dir"], "/work"
+    t, ht = f"{w}/trees/{slot}", f"{q(d)}/trees/{slot}"  # the slot's tree, in and outside
     # goh's binary first: the tree is no checkout (no stamp), so build-goh.sh builds bin/goh from
     # the synced source, incrementally in the slot's warm target dir, offline.
-    pytest = (f"cd {w}/tree && t0=$(date +%s%N) && if [ -f scripts/build-goh.sh ]; then "
+    pytest = (f"cd {t} && t0=$(date +%s%N) && if [ -f scripts/build-goh.sh ]; then "
               "bash scripts/build-goh.sh >&2 || exit 97; fi && "
               "echo GOH-BUILD-MS=$(( ($(date +%s%N) - t0) / 1000000 )) && "
               f"exec timeout {RUN_TIMEOUT_S} python3 -m pytest -q "
               f"-o cache_dir={w}/cache/pytest-{slot} -n {workers} --junitxml={w}/out/{rid}.xml "
               f"@{w}/out/{rid}.args")  # fmt: skip
-    run = ["docker", "exec", c["container"],
-           "bash", "-c", pytest]  # fmt: skip
+    run = ["docker", "exec", "-e", f"GOH_DIR={t}", "-e", f"RUSTC_WRAPPER={t}/lib/goh-rustc",
+           c["container"], "bash", "-c", pytest]  # fmt: skip
     # The registry needs the network the worker has not: once per Cargo.lock, a networked
     # short-lived container with the same limits fills $HOME/.cargo (`cargo fetch --locked`).
     fetch = ["docker", "run", "--rm", "--name", f"{c['container']}-fetch", *limits(c), tag,
-             "bash", "-c", f"cd {w}/tree && cargo fetch --locked -q"]  # fmt: skip
-    used = f"{w}/tree/target/.goh-used {w}/cache/home/.cargo/.goh-used"
+             "bash", "-c", f"cd {t} && cargo fetch --locked -q"]  # fmt: skip
+    used = f"{t}/target/.goh-used {w}/cache/home/.cargo/.goh-used"
     evict = ["docker", "exec", c["container"], "bash", "-c",
-             (f"mkdir -p {w}/tree/target {w}/cache/home/.cargo && touch {used} && "
-              f"exec python3 {w}/tree/lib/worker_evict.py run --root {w} "
+             (f"mkdir -p {t}/target {w}/cache/home/.cargo && touch {used} && "
+              f"exec env GOH_LIVE=1 python3 {t}/lib/worker_evict.py run --root {w} "
               f"--ceiling-gib {c['ceiling_gb']} --floor-gib {c['floor_gb']}")]  # fmt: skip
     inner = "\n".join([
-        (f"if [ -f {q(d)}/tree/Cargo.lock ]; then "
+        (f"if [ -f {ht}/Cargo.lock ]; then "
          f"stamp={q(d)}/cache/home/.cargo/goh-fetched.$(sha256sum "
-         f"{q(d)}/tree/Cargo.lock | cut -c1-16); if [ ! -f \"$stamp\" ]; then "
+         f"{ht}/Cargo.lock | cut -c1-16); if [ ! -f \"$stamp\" ]; then "
          "echo 'cold cache: fetching the cargo registry once' >&2; "
          f"{shlex.join(fetch)} >&2 && touch \"$stamp\"; fi; fi"),
         f"cat > {q(d)}/out/{rid}.args <<'SHARD_ARGS_EOF'", *tests, "SHARD_ARGS_EOF",
@@ -320,11 +271,11 @@ def run_remote(c: dict[str, str], tag: str, tests: list[str], workers: int, slot
         # The worker's housekeeping (GOH.REMOTEEVICT), never the run's verdict: stamp what this
         # run used, then goh's evictor under the worker's rules; a week's run files go.
         f"{shlex.join(evict)} >&2 || echo 'worker evictor failed (the run stands)' >&2",
-        f"find {q(d)}/out -maxdepth 1 -type f -mtime +7 -name '*.*' ! -name run.lock -delete",
+        f"find {q(d)}/out -maxdepth 1 -type f -mtime +7 -name '*.*' ! -name '*.lock' -delete",
         f"grep -h '^GOH-BUILD-MS=' {q(d)}/out/{rid}.log >&2; tail -3 {q(d)}/out/{rid}.log >&2",
         f"echo \"GOH-RC=$rc\"; cat {q(d)}/out/{rid}.xml 2>/dev/null",
     ])  # fmt: skip
-    r = ssh(c, f"exec flock {q(d)}/out/run.lock bash -c {q(inner)}",
+    r = ssh(c, f"exec flock {q(d)}/out/run-{slot}.lock bash -c {q(inner)}",
             timeout=RUN_TIMEOUT_S + 120)  # fmt: skip
     err = r.stderr.decode(errors="replace")
     sys.stderr.write(err)
@@ -386,12 +337,17 @@ def main(argv: list[str]) -> int:
     ap.add_argument(
         "--mac-junit", type=Path, help="the Mac's junit for the same tests: skip parity"
     )
-    ap.add_argument(
-        "--slot", default="0", help="the lane slot: one cargo target and pytest cache each"
-    )
+    ap.add_argument("--slot", help="the lane slot: its own tree, target and pytest cache "
+                    "(default: from the checkout's path, a stable identity)")  # fmt: skip
+    ap.add_argument("--mac-skips", type=Path, help="the recorded Mac skip set: skip parity")
+    ap.add_argument("--no-local", action="store_true",
+                    help="on a fallback, exit 3: the caller runs the shard")  # fmt: skip
     ap.add_argument("--manifest", type=Path, default=ROOT / "gates" / "required_tools.tsv")
     a = ap.parse_args(argv)
     c, tree = conf(), a.tree.resolve()
+    slot = a.slot or hashlib.sha256(str(tree).encode()).hexdigest()[:10]
+    if not slot.replace("-", "").replace("_", "").isalnum():
+        ap.error(f"--slot {slot!r}: letters, digits, - and _ only")
     junit = a.junit or tree / ".goh-remote-shard.xml"
     times: dict[str, float] = {}
     runs: dict[str, float] = {}
@@ -399,21 +355,31 @@ def main(argv: list[str]) -> int:
     try:
         tag = probe(c, tree, a.manifest, times)
         t1 = time.monotonic()
-        sync(c, tree)
+        sync(c, tree, slot)
         t2 = time.monotonic()
-        rc, text = run_remote(c, tag, a.tests, a.workers, a.slot, runs)
+        rc, text = run_remote(c, tag, a.tests, a.workers, slot, runs)
         t3 = time.monotonic()
         if not text.strip():
             raise Fallback(f"the remote run wrote no junit (pytest exit {rc})")
-        remote = cases(text)
-        if a.mac_junit:
-            drift = skip_drift(remote, cases(a.mac_junit.read_text()))
+        try:
+            remote = cases(text)
+        except ET.ParseError as exc:
+            raise Fallback(f"the remote junit does not parse ({exc})") from exc
+        mac = cases(a.mac_junit.read_text()) if a.mac_junit else None
+        if a.mac_skips:  # the recorded set: a node the Mac skips is in it (GOH.REMOTEWIRE)
+            skips = {ln for ln in a.mac_skips.read_text().splitlines() if ln[:1] not in "#"}
+            mac = {t: "skipped" if t in skips else "passed" for t in remote}
+        if mac is not None:
+            drift = skip_drift(remote, mac)
             if drift:
                 raise Fallback("refused: the remote skip count differs from the Mac's: "
                                + ", ".join(drift))  # fmt: skip
         if rc not in (0, 1):
             raise Fallback(f"remote pytest exited {rc}")
     except Fallback as why:
+        if a.no_local:
+            warn(f"{why} -- the caller runs the shard locally")
+            return 3
         warn(f"{why} -- running the shard locally")
         rc = run_local(tree, a.tests, a.local_workers, junit)
         info(f"local: {summary(cases(junit.read_text())) if junit.exists() else 'no junit'}")

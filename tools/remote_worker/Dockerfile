@@ -81,7 +81,8 @@ RUN curl -fsSLo /tmp/llvmcov.tgz "https://github.com/taiki-e/cargo-llvm-cov/rele
 
 # sccache (GOH.REMOTEEVICT): the worker's cargo builds reuse compiled crates across runs and lane
 # slots. cargo runs goh's own wrapper ahead of it, as on the Mac (lib/goh-rustc, GOH.SCCACHEENV:
-# cargo's variables out of the key), from the synced tree. Its cache is $HOME/.cache/sccache on the
+# cargo's variables out of the key), from the slot's synced tree: `goh remote-shard` sets
+# RUSTC_WRAPPER on each run's `docker exec`. Its cache is $HOME/.cache/sccache on the
 # mount, capped by its own LRU at SCCACHE_CACHE_SIZE; lib/worker_evict.py counts it in the
 # worker's 80 GB and never sweeps it.
 RUN curl -fsSLo /tmp/sccache.tgz "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
@@ -89,8 +90,7 @@ RUN curl -fsSLo /tmp/sccache.tgz "https://github.com/mozilla/sccache/releases/do
  && tar -xzf /tmp/sccache.tgz -C /tmp \
  && install -m 0755 "/tmp/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache" /usr/local/bin/sccache \
  && rm -rf /tmp/sccache.tgz "/tmp/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl"
-ENV RUSTC_WRAPPER=/work/tree/lib/goh-rustc \
-    SCCACHE_CACHE_SIZE=20G
+ENV SCCACHE_CACHE_SIZE=20G
 
 # The toolchain is the pinned one even where a checkout's rust-toolchain.toml says `stable`: that
 # file would send rustup to download a toolchain into a read-only RUSTUP_HOME with no network.

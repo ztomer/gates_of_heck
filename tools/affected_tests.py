@@ -77,6 +77,7 @@ from lib import (
     main_red,
     pre_cpu,  # GOH.PREWIDTH: the pytest tree's CPU, for the land record's pre_run
     pre_reuse,
+    remote_lane,  # GOH.REMOTEWIRE: the Linux-safe share on the remote worker, concurrently
     source_closure,
     test_closure,
     test_slice,
@@ -394,13 +395,11 @@ def phases(root: Path, chosen: dict[str, str]) -> tuple[list[str], list[str]]:
 
 def run(root: Path, changed: list[str], chosen: dict, base: str | None = None, rust=None) -> int:
     """tools/pytest.sh over the set: the JUDGES first, in a run of their own, then the rest
-    (GOH.PREPARITY: one run of both reached the 600 s deadline at load 175 with no verdict, and
-    two judges it held went red in the land 444 s later; ADAPTLANES). A red judge is a red
-    verdict before the slow tests start; the two runs' records are one (`_merge`). An EMPTY set
-    runs nothing: pytest.sh with no file runs the whole suite, which is the full gate's job, never
-    the pre-step's. Inside a running goh suite (a fixture land of a goh copy) it runs nothing
-    either and says so: pytest.sh refuses a nested suite, and the suite around it runs these.
-    RUST (a Rust change, lib/land_rustcov.py): the binary's tests run second, measured."""
+    (GOH.PREPARITY: one run of both hit the 600 s deadline at load 175, and two judges it held went
+    red in the land 444 s later; ADAPTLANES); a red judge is red before the slow tests start, and
+    the runs' records are one (`_merge`). An EMPTY set, or one inside a running goh suite, runs
+    nothing and says so (pytest.sh with no file is the full gate's job; a nested suite is refused).
+    RUST (lib/land_rustcov.py): the binary's tests second, measured. GOH.REMOTEWIRE: the worker."""
     if rc := fast_tests.collects(root, changed):
         return rc
     if not chosen:
@@ -426,6 +425,7 @@ def run(root: Path, changed: list[str], chosen: dict, base: str | None = None, r
     )
     record = os.environ.get("GOH_LAND_VERDICTS_RECORD", "")
     first = Path(f"{record}.judges") if record and record != os.devnull else None
+    rest, share = (rest, None) if rust else remote_lane.begin(root, rest, bool(judges))
     for n, nodes in enumerate((judges, rest)):
         if not nodes and not (rust and n == 1):  # a Rust change measures its workspace's tests
             continue
@@ -437,13 +437,13 @@ def run(root: Path, changed: list[str], chosen: dict, base: str | None = None, r
                 f"pre-land: {len(nodes)} tests {what}", argv
             )
         if rc:
-            return rc
-        if first and n == 0 and rest and Path(record).is_file():
+            return remote_lane.cancel(share) or rc
+        if first and n == 0 and (rest or share) and Path(record).is_file():
             Path(record).replace(first)  # the rest's run writes its own; _merge joins them
     if first and first.is_file():
         _merge(Path(record), first)
-    pre_reuse.stamp(record, base, list(chosen))
-    return bin_reach_audit.after(root, changed, list(SKIPPED))  # GOH.BINREACH, 1 in 10
+    rc = remote_lane.end(root, share, record, _merge) or pre_reuse.stamp(record, base, list(chosen))
+    return rc or bin_reach_audit.after(root, changed, list(SKIPPED))  # GOH.BINREACH, 1 in 10
 
 
 if __name__ == "__main__":
