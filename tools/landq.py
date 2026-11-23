@@ -103,7 +103,6 @@ landq_report = importlib.import_module("landq_report")
 landq_request = importlib.import_module("landq_request")
 landq_look = importlib.import_module("landq_look")
 landq_inflight = importlib.import_module("landq_inflight")
-enqueue_witness = importlib.import_module("enqueue_witness")  # a signalled death names its sender
 landq_background = importlib.import_module("landq_background")
 landq_state = importlib.import_module("landq_state")
 ruff_bump = importlib.import_module("ruff_bump")
@@ -139,7 +138,6 @@ def prestep(req: dict) -> None:
     """GOH.ENQUEUEPRE (lib/land_prestep.py): the pre-step first, then the queue."""
     wt = Path(req["worktree"])
     landq_inflight.mark(qdir(), req["item"] or Path(req["repo"]).name, repo=req["repo"], slot=req)
-    enqueue_witness.install()  # GOH.ENQUEUEVANISH: who sent it, in the log
     try:  # its seconds: the e2e's pre-step share (lib/land_e2e.py)
         req["pre_s"] = land_prestep.run_kept(req, qdir(), land_script(wt), git_bindings())
     except land_prestep.Red as e:

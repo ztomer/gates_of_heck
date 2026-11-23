@@ -33,6 +33,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import enqueue_witness  # lib/: a signalled enqueue names its sender (GOH.ENQUEUEVANISH)
 import landq_state  # lib/, beside this file: one writer and one reader of every state record
 import pid_owner
 
@@ -76,6 +77,8 @@ def mark(q: Path, item: str, pid: int | None = None, repo: str = "", slot: dict 
 def note_child(pid: int) -> None:
     """The pre-step this process just spawned in its own session (PID leads its group), stamped
     onto this process's markers: what a superseding enqueue stops, by birth, never by name."""
+    if _MINE:  # an enqueuer, mid pre-step: a signal that ends it says who sent it
+        enqueue_witness.install()
     got = pid_owner.stamp(pid)
     for path in _MINE if got else ():
         if m := landq_state.read(path):

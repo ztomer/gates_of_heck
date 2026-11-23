@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT, hermetic_env
+from orphan_kit import adopt
 from timing_bounds import patience
 
 CHILD = (
@@ -28,10 +29,10 @@ CHILD = (
 def test_a_signalled_enqueue_names_its_signal_and_the_sender(tmp_path: Path) -> None:
     log = tmp_path / "enqueue.log"
     with log.open("w") as err:
-        child = subprocess.Popen([sys.executable, "-c", CHILD, str(REPO_ROOT / "lib")],
-                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=err,
-                                 text=True, env=hermetic_env(tmp_path),
-                                 start_new_session=True)  # fmt: skip
+        child = adopt(subprocess.Popen([sys.executable, "-c", CHILD, str(REPO_ROOT / "lib")],
+                                       stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                       stderr=err, text=True, env=hermetic_env(tmp_path),
+                                       start_new_session=True))  # fmt: skip
         assert child.stdout is not None
         assert child.stdout.readline().strip() == "ready"
         marker = "witness-sender-0b7d"  # the sender's own command line carries it; `; true`
