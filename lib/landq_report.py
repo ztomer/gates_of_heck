@@ -18,7 +18,8 @@ A birth time is no start when the log was born BEFORE the request (a log a later
 or AFTER the finish: that attempt's queue wait, gate and run are UNKNOWN, counted in `unknown`,
 never summed as a negative or a guess. Rows are per repo and UTC day of the finish.
 
-JSON shape (`--json`; docs/map.md): {"since", "unloaded_s", "rows": [row...], "totals": row}; a row
+JSON shape (`--json`; docs/map.md): {"since", "unloaded_s", "rows": [row...], "totals": row,
+"unclassified": [{item, repo, day, log}], "gate_steps": {step: n}}; a row
 is {"repo", "day", "attempts", "landed", "red", "cause", "queue_wait_s", "gate_s", "slot_wait_s",
 "run_s", "load_avg", "gates", "gates_per_landed", "unknown"}. `gates` is the land gates run: one
 per attempt, but a batch's items (their `batch` {id, gates}, lib/landq_batch.py) share theirs.
@@ -162,6 +163,8 @@ class Attempt:
     slot_s: float | None = None
     load: float | None = None
     cause: str | None = None  # a red attempt's (lib/land_cause.py)
+    log: str = ""  # its log's path: an unclassified red is reported with it
+    step: str = ""  # a `gate-step` red's failed step (land_cause.detail)
     batch: tuple[str, int] | None = None  # (batch id, the gate runs it spent): GOH.LANDBATCH
 
     @property
@@ -218,10 +221,11 @@ def read_attempts(queue: Path, birth_of: Callable[[Path], float | None] = birth)
         if slot is None and start is not None and log is not None and log.is_file():
             slot = slot_wait_s(log.read_text(errors="replace"))
         load = rec.get("load_start")
-        cause, batch = None, rec.get("batch")
+        cause, batch, step = None, rec.get("batch"), ""
         if rec.get("state") != "landed":
             text = log.read_text(errors="replace") if log is not None and log.is_file() else ""
             cause = land_cause.classify(rec, text)
+            step = land_cause.detail(text) if cause == "gate-step" else ""
         out.append(
             Attempt(
                 stem=path.stem,
@@ -234,6 +238,8 @@ def read_attempts(queue: Path, birth_of: Callable[[Path], float | None] = birth)
                 slot_s=float(slot) if isinstance(slot, int | float) else None,
                 load=float(load) if isinstance(load, int | float) else None,
                 cause=cause,
+                log=str(log or ""),
+                step=step,
                 batch=_batch(batch),
             )
         )
@@ -274,7 +280,7 @@ def _causes(atts: list[Attempt]) -> dict[str, int]:
     out: dict[str, int] = {}
     for a in atts:
         if a.state != "landed":
-            out[a.cause or "other"] = out.get(a.cause or "other", 0) + 1
+            out[a.cause or "unclassified"] = out.get(a.cause or "unclassified", 0) + 1
     return out
 
 
@@ -287,11 +293,22 @@ def build(attempts: Iterable[Attempt], since: str = "") -> dict:
         groups.setdefault((a.day, a.repo), []).append(a)
     rows = [_row(repo, day, atts) for (day, repo), atts in sorted(groups.items())]
     green = [a.run_s for a in window if a.state == "landed" and a.run_s]
+    steps: dict[str, int] = {}
+    for a in window:
+        if a.step:
+            name = a.step.split(": ", 1)[0]
+            steps[name] = steps.get(name, 0) + 1
     return {
         "since": since,
         "unloaded_s": round(min(green), 1) if green else None,
         "rows": rows,
         "totals": _row("all", "all", window),
+        "unclassified": [  # a fault of lib/land_cause.py: each is named with the log to read
+            {"item": a.item, "repo": a.repo, "day": a.day, "log": a.log}
+            for a in sorted(window, key=lambda a: a.finished)
+            if a.state != "landed" and a.cause == "unclassified"
+        ],
+        "gate_steps": steps,
     }
 
 
@@ -332,6 +349,12 @@ def render(rep: dict) -> str:
             lines.append(
                 f"  {counted(r['unknown'], 'attempt')} with no known start: not in the sums"
             )
+    if rep.get("gate_steps"):
+        lines.append("gate steps: " + ", ".join(f"{k} {v}" for k, v in rep["gate_steps"].items()))
+    lines += [
+        f"⚠ unclassified red {u['item']} ({u['repo']} {u['day']}): read {u['log'] or 'no log'}"
+        for u in rep.get("unclassified") or []
+    ]
     lines += _selection_lines(rep.get("selection") or {})
     ref = rep["unloaded_s"]
     lines.append(

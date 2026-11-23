@@ -93,7 +93,27 @@ def test_the_report_reproduces_the_hand_computed_table(tmp_path):
         670, 3300, 400, 2900,
     )  # fmt: skip
     assert rep["unloaded_s"] == 300  # the shortest green run: C
-    assert alpha["cause"] == {"other": 1}  # B's log says nothing of why (lib/land_cause.py)
+    assert alpha["cause"] == {"unclassified": 1}  # B's log says nothing of why (lib/land_cause.py)
+
+
+def test_a_red_no_rule_reads_is_a_reported_fault_of_the_classifier_naming_its_log(tmp_path):
+    """GOH.REDOTHER: `unclassified` is not a bucket; the report lists each one with its log, and
+    a gate step with no test names its step."""
+    planted = put(tmp_path, 0, "P", "alpha", "red", 300, log="something no rule has seen\n")
+    step = (
+        "✗ [1/10] FAILED (exit status 1): ./gates/rust_gate.sh\n✗ land.sh: the gate failed on a\n"
+    )
+    put(tmp_path, 400, "S", "alpha", "red", 700, log=step)
+    rep = lr.build(lr.read_attempts(tmp_path), "2026-11-17")
+    assert rep["totals"]["cause"] == {"unclassified": 1, "gate-step": 1}
+    assert rep["unclassified"] == [{"item": "P", "repo": "alpha", "day": "2026-11-17",
+                                    "log": str(planted)}]  # fmt: skip
+    assert rep["gate_steps"] == {"./gates/rust_gate.sh": 1}
+    text = lr.render(rep)
+    assert f"⚠ unclassified red P (alpha 2026-11-17): read {planted}" in text, text
+    assert "gate steps: ./gates/rust_gate.sh 1" in text, text
+    clean = lr.render(lr.build(lr.read_attempts(tmp_path / "none"), ""))
+    assert "unclassified" not in clean and "gate steps" not in clean
 
 
 def test_no_run_time_is_ever_negative_and_a_reused_log_is_unknown(tmp_path):

@@ -54,7 +54,96 @@ CASES = [
         GATE_RED + "41:    FAILED tests/test_ps_table_unbounded.py::test_a_ps_slow\n",
         "gate-test",
     ),
-    ({"why": "exit 1"}, "", "other"),
+    ({"why": "exit 1"}, "", "unclassified"),
+    # GOH.REDOTHER: the 2026-11-20..23 reds that fell to `other`, each cut from its real record.
+    (
+        {
+            "why": "enqueue pre-step: the pre-land tests failed on 9d97162d (failing: "
+            "tests/test_long_pole.py::test_no_test_every_enqueue_runs_takes_longer, "
+            "tests/test_self_walk.py::test_goh_obeys_every_scanner[shell]) -- fix them"
+        },
+        "",
+        "ratchet",
+    ),
+    (
+        {
+            "why": "enqueue pre-step: the pre-land tests failed on 2cebda6b (failing: "
+            "tests/test_suite_shard.py::test_a_test_gives_the_same_verdict) -- fix them"
+        },
+        "",
+        "pre-test",
+    ),
+    (
+        {
+            "why": "check: tests/test_cap_headroom.py::test_no_new_file_crosses_the_headroom_line "
+            "refused 32408bb2 (and 1 more)"
+        },
+        (
+            "check: guard tests 2/3: REFUSED in 19.1 s (exit 1): "
+            "tests/test_cap_headroom.py::test_no_new_file_crosses_the_headroom_line, "
+            "tests/test_suite_drift.py::test_a_plain_test\n"
+        ),
+        "pre-test",
+    ),
+    (
+        {"why": "check: [saved_pid_kill] refused e6e1eb54 (and 2 more)"},
+        'check: "$GOH_PY" ./checks/check_saved_pid_kill.py .: REFUSED in 6.0 s (exit 1): [x]\n',
+        "structural",
+    ),
+    (
+        {
+            "why": "enqueue pre-step: the pre-land tests failed on 5692de9f (exit -15, its output "
+            "is /tmp/none.log) -- fix them"
+        },
+        "",
+        "killed",
+    ),
+    (
+        {
+            "why": "enqueue pre-step: the pre-land tests failed on b8be8966 (exit 1, see the "
+            "output above) -- fix them"
+        },
+        "the pre-land tests failed on b8be8966 (exit 1, see the output above) -- fix them\n",
+        "pre-test",
+    ),
+    (
+        {
+            "why": "enqueue pre-step: [diff-coverage] 2 of 328 changed executable lines uncovered "
+            "on c8f73167 (the pre-step's diff coverage judge) -- cover each line it names"
+        },
+        "",
+        "diff-cov",
+    ),
+    (
+        {"why": "exit 1"},
+        "✗ land.sh: main is at e7bf6d43 after the merge, not the gated e7bf6d43 -- nothing landed",
+        "main-moved",
+    ),
+    (
+        {"why": "exit 1"},
+        (
+            "39:FAILED tests/test_filer_live_rules.py::test_a_red_ship - AssertionError\n"
+            "✗ land.sh: the gate failed on da8fef63 under main c58986b0's gates -- nothing landed\n"
+        ),
+        "gate-test",
+    ),
+    (
+        {"why": "exit 1"},
+        (
+            "✗ [1/10] FAILED (exit status 1): ./gates/rust_gate.sh\n"
+            "✗ rust: clippy (-D warnings) failed (exit status 101; command: cargo clippy)\n"
+            "✗ land.sh: the gate failed on 43919c8a under main 499c3572's gates -- nothing landed\n"
+        ),
+        "gate-step",
+    ),
+    (
+        {"why": "exit 1"},
+        (
+            "  ✗ structural: file length <= 500 failed (native)\n"
+            'check: "$GOH_PY" ./checks/check_x.py: green in 1 s\n'
+        ),
+        "structural",
+    ),
 ]
 
 
@@ -62,6 +151,31 @@ CASES = [
                                                               enumerate(CASES)])  # fmt: skip
 def test_each_cause_is_read_from_the_lines_a_real_log_prints(rec, log, cause) -> None:
     assert lc.classify(rec, log) == cause
+
+
+def test_a_pre_steps_own_log_is_read_when_the_record_only_points_at_it(tmp_path) -> None:
+    """`exit 1, its output is PATH`: the failing nodes are in that log, not in the record."""
+    path = tmp_path / "prestep.log"
+    why = f"enqueue pre-step: the pre-land tests failed on d3dee048 (exit 1, its output is {path})"
+    path.write_text("    FAILED tests/test_a.py::test_every_x - E\nERROR tests/test_b.py::t - E\n")
+    assert lc.classify({"why": why}, "") == "pre-test"  # test_b's ERROR is not a ratchet
+    path.write_text("    FAILED tests/test_a.py::test_every_x - E\n")
+    assert lc.classify({"why": why}, "") == "ratchet"
+    path.unlink()
+    assert lc.classify({"why": why}, "") == "pre-test"  # the pre-land tests failed: said, unnamed
+
+
+def test_a_gate_step_red_names_its_step_and_the_first_line_that_says_why() -> None:
+    log = (
+        "✗ [5/10] printed 1 ✗ line above and exited 0\n"
+        "✗ [1/10] FAILED (exit status 1): ./gates/rust_gate.sh\n"
+        "47:✗ rust: clippy (-D warnings) failed (exit status 101; command: cargo clippy)\n"
+    )
+    assert lc.detail(log) == (
+        "./gates/rust_gate.sh: ✗ rust: clippy (-D warnings) failed (exit status 101; "
+        "command: cargo clippy)"
+    )
+    assert lc.detail("nothing of a step\n") == ""
 
 
 def test_every_cause_has_a_case_and_every_case_a_cause() -> None:
