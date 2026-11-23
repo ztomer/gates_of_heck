@@ -154,10 +154,9 @@ pub fn add(root: &Path, list: &Path, names: &[String]) -> (i32, String) {
         let _ = writeln!(text, "{name}");
         let _ = writeln!(report, "{OK} {TAG} `{name}` added: no tree here names it");
     }
-    if let Some(dir) = list.parent() {
-        if let Err(e) = std::fs::create_dir_all(dir) {
-            return (2, format!("{report}{ERR} {TAG} {}: {e}\n", dir.display()));
-        }
+    let dir = list.parent().unwrap_or_else(|| Path::new("."));
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        return (2, format!("{report}{ERR} {TAG} {}: {e}\n", dir.display()));
     }
     // Whole or not at all: a reader (every gate on the machine) never sees half a list.
     let next = list.with_extension(format!("new.{}", std::process::id()));

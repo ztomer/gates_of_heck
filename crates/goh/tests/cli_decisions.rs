@@ -57,5 +57,8 @@ fn private_names_add_refuses_a_named_name_and_adds_a_clean_one() -> Result<(), S
     let list = std::fs::read_to_string(store.path().join("private_names.txt"))
         .map_err(|e| e.to_string())?;
     assert!(list.lines().any(|l| l == "Other"), "{list}");
+    // the gate itself, over the grown list: the tree names Acme, which is not listed
+    let out = goh(&r, &["private-names"], &env)?;
+    assert!(out.status.success(), "{}", out.text());
     Ok(())
 }
