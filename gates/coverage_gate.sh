@@ -358,7 +358,7 @@ run_cpp() {
     bin="${GOH_CPP_TEST_BIN:-}"
     if [ -z "$bin" ]; then
         local found
-        found=$(find "$PROJ/$build_dir" -maxdepth 1 -type f -perm +111 -iname '*test*' ! -name '*.sh' || true)
+        found=$(find "$PROJ/$build_dir" -maxdepth 1 -type f -perm -u+x -iname '*test*' ! -name '*.sh' || true)
         case "$(printf '%s\n' "$found" | grep -c . )" in
             0) die "no test executable in $build_dir — set GOH_CPP_TEST_BIN" ;;
             1) bin="$found" ;;

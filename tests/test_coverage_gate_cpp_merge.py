@@ -94,3 +94,17 @@ def test_a_build_path_with_a_space_merges_whole(tmp_path: Path) -> None:
     listed = (log / "merge-list").read_text().splitlines()
     assert len(listed) > 0
     assert all(Path(p).is_file() for p in listed), listed
+
+
+def test_no_shell_source_uses_bsd_only_find_perm_plus():
+    """GOH.WORKERFAILS: `find -perm +111` is BSD's spelling; GNU find refuses it ("invalid mode
+    '+111'"), so the cpp engine found no test binary on Linux. `-perm -u+x` means one thing to
+    both."""
+    hits = [
+        f"{p.relative_to(REPO_ROOT)}:{n}"
+        for top in ("gates", "tools", "lib", "checks", "hooks", "bin")
+        for p in sorted((REPO_ROOT / top).rglob("*.sh"))
+        for n, line in enumerate(p.read_text(errors="replace").splitlines(), 1)
+        if re.search(r"-perm \+", line)
+    ]
+    assert hits == []

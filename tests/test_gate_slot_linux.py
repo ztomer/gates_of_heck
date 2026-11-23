@@ -53,8 +53,20 @@ def test_the_ancestry_walk_reaches_the_top_of_the_tree():
     command), and the holder asks "is the owner still my ancestor?". With pid 1 excluded the
     answer was no, the holder exited 3, the shell said "the slot holder exited without a slot",
     and the consumer's own gate.sh FAILED -- in every container, for every consumer.
+
+    The top is the process whose parent is 0, which is pid 1 only when the tree reaches init: a
+    `docker exec`'s processes have the runtime's shim, outside the namespace, as their parent
+    (ppid 0), so pid 1 is no ancestor there (GOH.WORKERFAILS: the worker's full suite). The walk is
+    checked against an independent one, a `ps` per level.
     """
-    assert 1 in gate_slot.ancestors()
+    chain, pid = set(), os.getppid()
+    while pid > 0:
+        chain.add(pid)
+        out = subprocess.run(["ps", "-o", "ppid=", "-p", str(pid)], capture_output=True,
+                             text=True, check=False, stdin=subprocess.DEVNULL).stdout  # fmt: skip
+        pid = int(out.strip() or 0)
+    assert gate_slot.ancestors() == chain
+    assert 1 in chain or sys.platform == "linux", chain  # a host's tree reaches launchd/init
 
 
 @pytest.mark.load_sensitive

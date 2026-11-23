@@ -9,6 +9,8 @@ import re
 from source_closure import copy_closure
 from test_remote_shard import DOCKERFILE, TOOL, _git, _log, _run, _slot_tree, rig
 
+TOOL_UID = "1000:1000"  # tools/remote_shard.py `conf`'s GOH_REMOTE_USER default
+
 __all__ = ["rig"]  # the fixture, shared with tests/test_remote_shard.py
 
 
@@ -44,7 +46,7 @@ def test_the_image_carries_sccache_behind_goh_s_wrapper_and_records_its_version(
     # cargo's wrapper is the slot tree's lib/goh-rustc, set on each run's `docker exec`
     assert "RUSTC_WRAPPER={t}/lib/goh-rustc" in TOOL.read_text()
     assert re.search(r"SCCACHE_CACHE_SIZE=\d+G", text)
-    assert "sccache --version; } > /opt/goh-worker-versions.txt" in text
+    assert re.search(r"sccache --version;[^\n]*\} > /opt/goh-worker-versions.txt", text)
 
 
 def test_each_slot_has_its_own_tree_and_lock_so_two_lands_never_queue_on_one(rig):
@@ -91,3 +93,19 @@ def test_a_remote_junit_that_does_not_parse_is_a_fallback_not_a_crash(rig):
     r = _run(rig, "--no-local", "tests/test_x.py")
     assert r.returncode == 3, r.stdout + r.stderr
     assert "does not parse" in r.stdout + r.stderr and "Traceback" not in r.stderr
+
+
+def test_the_image_carries_the_tools_and_the_user_the_suite_meets():
+    """GOH.WORKERFAILS: 172 failed and 74 errors in the worker's full suite (2026-11-22) were
+    largely the image: no git-cliff (tools/pytest.sh, goh ship), no cargo-machete (the rust gate),
+    no node (check_js_syntax), and no passwd entry for the run's uid (`Path.home()` with HOME
+    dropped raised, pytest's basetemp said `pytest-of-unknown`). Each at the Mac's release, its
+    version in the parity record."""
+    text = DOCKERFILE.read_text()
+    for tool in ("git-cliff", "cargo-machete", "node"):
+        assert f"/usr/local/bin/{tool}" in text, tool
+    assert f'e("GOH_REMOTE_USER", "{TOOL_UID}")' in TOOL.read_text()
+    uid, gid = TOOL_UID.split(":")
+    assert f"groupadd -g {gid} " in text and f"useradd -u {uid} -g {gid} " in text
+    versions = re.search(r"\{ python3 -V;.*\} > /opt/goh-worker-versions.txt", text)
+    assert versions and all(t in versions.group(0) for t in ("git-cliff", "cargo-machete", "node"))

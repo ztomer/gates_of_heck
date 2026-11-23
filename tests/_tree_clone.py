@@ -45,9 +45,13 @@ _CLONEFILE = _clonefile()
 
 
 def copytree_clone(src: Path | str, dst: Path | str) -> None:
-    """The portable copy: what `clone_tree` does where clonefile(2) is not available."""
+    """The portable copy: what `clone_tree` does where clonefile(2) is not available. A FILE is
+    copied as one, as clonefile(2) does (GOH.WORKERFAILS: test_ship's template holds one)."""
     if os.path.lexists(dst):
         raise FileExistsError(errno.EEXIST, "clone target exists", str(dst))
+    if not os.path.isdir(src) or os.path.islink(src):
+        shutil.copy2(src, dst, follow_symlinks=False)
+        return
     shutil.copytree(src, dst, symlinks=True)
     _unseal_clone(src, dst)
 

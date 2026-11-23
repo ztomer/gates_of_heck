@@ -576,7 +576,7 @@ immutable export of its HEAD (`gates/_from_head.sh`).
 | `GOH_REMOTE_MEMORY` | `10g` | `--memory` and `--memory-swap`: an OOM kills the worker, never a host service. |
 | `GOH_REMOTE_MAX_LOAD` | `6.0` | The host 1-minute load above which the shard runs locally instead, saying why. |
 | `GOH_REMOTE_LOADAVG` | `/proc/loadavg` | The file the probe reads the host's load from (a seam for the tests). |
-| `GOH_REMOTE_USER` | `1000:1000` | `--user`: the non-root uid:gid the container runs as. |
+| `GOH_REMOTE_USER` | `1000:1000` | `--user`: the non-root uid:gid the container runs as. The image names it (`goh`, home `/work/cache/home`): with no passwd entry `Path.home()` under a test's dropped HOME raised (GOH.WORKERFAILS); another uid here has no name in the image. |
 | `GOH_REMOTE_CONTAINER` | `goh-remote-worker` | The long-lived worker container's name (`--restart unless-stopped`); each shard is a `docker exec` into it. A container of this name on another image is replaced. |
 | `GOH_REMOTE_FREE_FLOOR_GB` | `100` | The free space the host's scratch disk keeps for its transcodes: below it the shard runs locally, saying why; after every run `lib/worker_evict.py` evicts the worker's caches coldest first back above it. |
 | `GOH_REMOTE_CEILING_GB` | `80` | The worker directory's size ceiling: above it the shard runs locally, saying why; the evictor after every run keeps the caches under it. |

@@ -115,6 +115,22 @@ def test_a_clone_onto_an_existing_path_is_refused(tmp_path: Path) -> None:
         clone_tree(src, tmp_path / "dst")
 
 
+@pytest.mark.parametrize("clonefile", ["platform", "none"])
+def test_a_single_file_clones_on_either_path(tmp_path: Path, monkeypatch, clonefile) -> None:
+    """GOH.WORKERFAILS: a template part may be a FILE (test_ship's `loopctl.py`); clonefile(2)
+    copies one, and the portable path must too (Linux: 70 test_ship* setups died
+    NotADirectoryError in copytree)."""
+    if clonefile == "none":
+        monkeypatch.setattr(_tree_clone, "_CLONEFILE", None)
+    (tmp_path / "f.py").write_text("x = 1\n")
+    (tmp_path / "f.py").chmod(0o755)
+    clone_tree(tmp_path / "f.py", tmp_path / "g.py")
+    assert (tmp_path / "g.py").read_text() == "x = 1\n"
+    assert (tmp_path / "g.py").stat().st_mode & 0o777 == 0o755
+    (tmp_path / "g.py").write_text("x = 2\n")
+    assert (tmp_path / "f.py").read_text() == "x = 1\n"
+
+
 def test_the_clone_of_a_committed_template_is_a_working_repository(
     _repo_template: Path, tmp_path: Path
 ) -> None:

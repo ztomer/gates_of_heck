@@ -40,6 +40,15 @@ ARG CARGO_LLVM_COV_SHA256=6272d16a61570f053580272527150135a91e5a2b9e4f0291c66d1e
 # asset digest matched (read 2026-11-22).
 ARG SCCACHE_VERSION=0.19.0
 ARG SCCACHE_SHA256=aa73c7270c997894038c0d8f0d297865f57569e1687883322bc431713d4bb9dd
+# GOH.WORKERFAILS: the tools the suite meets that the manifest names without an exact pin, each at
+# the Mac's release (read 2026-11-23); the checksums are GitHub's asset digests (git-cliff,
+# cargo-machete) and node's SHASUMS256.txt, each matched by a download.
+ARG GIT_CLIFF_VERSION=2.14.2
+ARG GIT_CLIFF_SHA256=fa21e2fc70046fcfd0e43e5e4613873ab799aff3d9dc8559c00d31b270e417d0
+ARG CARGO_MACHETE_VERSION=0.10.1
+ARG CARGO_MACHETE_SHA256=785d381985140ffa172246d82089adeb7f2eb9c774d961c48f77a4494023afb5
+ARG NODE_VERSION=26.13.1
+ARG NODE_SHA256=5c063e46bab0fbc1c17cc445d7ff129cbdcd0471be6ed83b6ab864f8143bc864
 
 # git: the suite builds throwaway repos. gcc/libc6-dev: cargo links. curl, xz,
 # ca-certificates: the downloads below. Debian's own packages, from the
@@ -92,12 +101,35 @@ RUN curl -fsSLo /tmp/sccache.tgz "https://github.com/mozilla/sccache/releases/do
  && rm -rf /tmp/sccache.tgz "/tmp/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl"
 ENV SCCACHE_CACHE_SIZE=20G
 
+# git-cliff (tools/pytest.sh's preflight, goh ship's next version), cargo-machete (the rust gate's
+# unused-dependency step) and node (checks/check_js_syntax.py's engine): GOH.WORKERFAILS.
+RUN curl -fsSLo /tmp/cliff.tgz "https://github.com/orhun/git-cliff/releases/download/v${GIT_CLIFF_VERSION}/git-cliff-${GIT_CLIFF_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+ && echo "${GIT_CLIFF_SHA256}  /tmp/cliff.tgz" | sha256sum -c - \
+ && tar -xzf /tmp/cliff.tgz -C /tmp \
+ && install -m 0755 "/tmp/git-cliff-${GIT_CLIFF_VERSION}/git-cliff" /usr/local/bin/git-cliff \
+ && rm -rf /tmp/cliff.tgz "/tmp/git-cliff-${GIT_CLIFF_VERSION}"
+RUN curl -fsSLo /tmp/machete.tgz "https://github.com/bnjbvr/cargo-machete/releases/download/v${CARGO_MACHETE_VERSION}/cargo-machete-v${CARGO_MACHETE_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+ && echo "${CARGO_MACHETE_SHA256}  /tmp/machete.tgz" | sha256sum -c - \
+ && tar -xzf /tmp/machete.tgz -C /tmp \
+ && install -m 0755 "/tmp/cargo-machete-v${CARGO_MACHETE_VERSION}-x86_64-unknown-linux-musl/cargo-machete" /usr/local/bin/cargo-machete \
+ && rm -rf /tmp/machete.tgz "/tmp/cargo-machete-v${CARGO_MACHETE_VERSION}-x86_64-unknown-linux-musl"
+RUN curl -fsSLo /tmp/node.txz "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
+ && echo "${NODE_SHA256}  /tmp/node.txz" | sha256sum -c - \
+ && tar -xJf /tmp/node.txz -C /tmp "node-v${NODE_VERSION}-linux-x64/bin/node" \
+ && install -m 0755 "/tmp/node-v${NODE_VERSION}-linux-x64/bin/node" /usr/local/bin/node \
+ && rm -rf /tmp/node.txz "/tmp/node-v${NODE_VERSION}-linux-x64"
+
+# The run's uid has a name and a home (GOH.WORKERFAILS): with no passwd entry, `Path.home()` under a
+# test's dropped HOME raised and pytest's basetemp read `pytest-of-unknown`. HOME is the mount's, as
+# `goh remote-shard` sets it on every run (GOH_REMOTE_USER's default, 1000:1000).
+RUN groupadd -g 1000 goh && useradd -u 1000 -g 1000 -M -d /work/cache/home -s /bin/bash goh
+
 # The toolchain is the pinned one even where a checkout's rust-toolchain.toml says `stable`: that
 # file would send rustup to download a toolchain into a read-only RUSTUP_HOME with no network.
 ENV RUSTUP_TOOLCHAIN=${RUST_VERSION}
 
 # The versions this image claims, for `goh remote-shard`'s parity check.
-RUN { python3 -V; python3 -m pip list --format=freeze; rustc -V; shellcheck -V | sed -n 2p; sccache --version; } > /opt/goh-worker-versions.txt
+RUN { python3 -V; python3 -m pip list --format=freeze; rustc -V; shellcheck -V | sed -n 2p; sccache --version; git-cliff --version; echo "cargo-machete $(cargo-machete --version)"; echo "node $(node --version)"; } > /opt/goh-worker-versions.txt
 
 WORKDIR /work
 CMD ["sleep", "infinity"]
