@@ -15,10 +15,11 @@ safe was a feeling. Here every judged red is read against the selection its diff
     shadow(...)       lib/idle_suite.py, after each idle full run on main: the selection for the
                       diff since the last full run, against that run's failures. A measure, never
                       a skip: the full suite still runs every test
-    replay(...)       the done/ records' red attempts, base from main's reflog at the enqueue
+    replay(...)       the land records' red attempts, base from main's reflog at the enqueue
                       (`python3 lib/selection_miss.py --replay --since DAY`)
 
-Ledger: `<landq>/selection_misses.jsonl`; `goh land --report` shows misses per day (summary()).
+Ledger: goh.db's selection_misses (lib/land_records.py; the file `<landq>/selection_misses.jsonl`
+before GOH.STATEDB); `goh land --report` shows misses per day (summary()).
 A red gate STEP (no failed test: GOH.PYTESTPIN's canary) writes a `step` row: the step, whether the
 pre-step ran it (PRE_RAN), the changed files; one the pre-step never ran is a miss, counted in
 summary()'s `missed` and `steps` (GOH.MISSLEDGERGATE). A test the selection chose is never a miss,
@@ -54,7 +55,6 @@ import gitrun
 import land_records  # lib/: the land records' one door (GOH.STATEDB)
 from tmp_root import goh_tmp
 
-LEDGER = "selection_misses.jsonl"
 FAILED = re.compile(r"^(?:\d+:)?[ \t]*FAILED (tests/[^\s@]+)", re.MULTILINE)
 SELECTOR = "tools/affected_tests.py"
 # A gate step's red line, the gate's failure-lines copy included (gates/local_ci.sh: `✗ [9/9]
@@ -151,16 +151,12 @@ def selection(repo: Path, sha: str, paths: list[str]) -> list[str] | None:
 
 
 def append(q: Path, rows: list[dict]) -> int:
-    """Append ROWS to the ledger, each (kind, source, item, sha, test) once; the count written."""
-    path = q / LEDGER
+    """Append ROWS to the ledger (goh.db's selection_misses, lib/land_records.py), each (kind,
+    source, item, sha, test) once; the count written."""
     have = {_key(r) for r in read(q)}
     new = [r for r in rows if _key(r) not in have]
     if new:
-        import state_append  # the lock lib/state_bounds.py trims under (GOH.LEDGERBOUND)
-
-        state_append.append(
-            path, "".join(json.dumps(r, sort_keys=True) + "\n" for r in new).encode()
-        )
+        land_records.append(q, "misses", new)
     return len(new)
 
 
@@ -169,19 +165,7 @@ def _key(row: dict) -> tuple:
 
 
 def read(q: Path) -> list[dict]:
-    try:
-        lines = (q / LEDGER).read_text().splitlines()
-    except OSError:
-        return []
-    out = []
-    for line in lines:
-        try:
-            row = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(row, dict):
-            out.append(row)
-    return out
+    return land_records.ledger(q, "misses")
 
 
 def _measure(q: Path, source: str, item: str, repo: Path, base: str, sha: str,

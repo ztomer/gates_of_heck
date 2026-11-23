@@ -9,12 +9,16 @@ before the switch still read.
                            whose run has no row (written by an old HEAD export, or not imported)
     get(q, run)            one record, or None (`goh land --wait` polls it)
     causes(q) / set_causes(q, {run: cause})     the red classes (was `<q>/red_causes.json`)
-    import_done(q)         every done/ file and red_causes.json into the tables, INSERT OR IGNORE
-                           (a re-run is harmless), one `imports` row per run that added rows
+    ledger(q, name)        a ledger's rows oldest first: "guards" (land_guards, was guards.jsonl:
+                           the pre-step refusals land --check learns) or "misses" (selection_misses,
+                           was selection_misses.jsonl); a line of the file with no row reads too
+    append(q, name, rows)  rows onto a ledger, each body once per queue; how many were new
+    import_done(q)         every done/ file, red_causes.json and both ledger files into the tables,
+                           INSERT OR IGNORE (a re-run is harmless), one `imports` row per store
 
-A ROW IS KEYED BY (queue, run): `queue` is the land queue's realpath, so a test's queue under
-tmp_path never reads the lander's rows, nor another test's. No goh.db yet, or one an older goh
-wrote without the tables, reads as no rows: the files answer.
+A ROW IS KEYED BY (queue, run), a ledger row by (queue, body): `queue` is the land queue's
+realpath, so a test's queue under tmp_path never reads the lander's rows, nor another test's. No
+goh.db yet, or one an older goh wrote without the tables, reads as no rows: the files answer.
 """
 
 from __future__ import annotations
@@ -179,6 +183,66 @@ def set_causes(q: Path, side: dict[str, dict]) -> None:
         )  # fmt: skip
 
 
+# a ledger: its table, its file from before the switch, and the column a row's key fills
+LEDGERS = {"guards": ("land_guards", "guards.jsonl", "test"),
+           "misses": ("selection_misses", "selection_misses.jsonl", "day")}  # fmt: skip
+
+
+def _body(row: dict) -> str:
+    return json.dumps(row, sort_keys=True)
+
+
+def _ledger_row(key: str, name: str, row: dict) -> tuple:
+    col = LEDGERS[name][2]
+    val = row.get("guard") if col == "test" else row.get("day")
+    at = epoch({"at": f"{val}T00:00:00Z"}) if col == "day" and val else epoch(row)
+    return (key, at, None if val is None else str(val), _body(row))
+
+
+def _ledger_file(q: Path, name: str) -> list[dict]:
+    try:
+        lines = (q / LEDGERS[name][1]).read_text().splitlines()
+    except OSError:
+        return []
+    out = []
+    for line in lines:
+        with contextlib.suppress(ValueError):
+            row = json.loads(line)
+            if isinstance(row, dict):
+                out.append(row)
+    return out
+
+
+def ledger(q: Path, name: str) -> list[dict]:
+    """Ledger NAME of queue Q, oldest first: the file's lines no row holds (written before the
+    switch, or by an old HEAD export), then the rows in the order they were appended."""
+    table, bodies = LEDGERS[name][0], []
+    with _reader() as con:
+        if con is not None:
+            sql = f"SELECT body FROM {table} WHERE queue = ? ORDER BY n"
+            bodies = [b for (b,) in con.execute(sql, (queue_key(q),))]
+    have = set(bodies)
+    out = [r for r in _ledger_file(q, name) if _body(r) not in have]
+    for body in bodies:
+        with contextlib.suppress(ValueError):
+            out.append(json.loads(body))
+    return out
+
+
+def _insert(con: sqlite3.Connection, key: str, name: str, rows: list[dict]) -> int:
+    table, _, col = LEDGERS[name]
+    before = con.total_changes
+    sql = f"INSERT OR IGNORE INTO {table} (queue, at, {col}, body) VALUES (?, ?, ?, ?)"
+    con.executemany(sql, [_ledger_row(key, name, r) for r in rows])
+    return con.total_changes - before
+
+
+def append(q: Path, name: str, rows: list[dict]) -> int:
+    """ROWS onto ledger NAME of queue Q, each body once; how many were new."""
+    with goh_db.transaction() as con:
+        return _insert(con, queue_key(q), name, rows)
+
+
 def import_done(q: Path) -> dict[str, int]:
     """Every done/ file and the red_causes.json side file of queue Q into goh.db, INSERT OR IGNORE
     on (queue, run); the rows each added. The files stay (wave 3 deletes them)."""
@@ -212,4 +276,12 @@ def import_done(q: Path) -> dict[str, int]:
             con.execute("INSERT OR IGNORE INTO imports VALUES (?, ?, ?, ?, ?)",
                         ("lands", str(file(q)), digest.hexdigest(), lands + reds,
                          time.time()))  # fmt: skip
-    return {"lands": lands, "red_causes": reds}
+        got = {"lands": lands, "red_causes": reds}
+        for name, (table, fname, _) in LEDGERS.items():
+            rows = _ledger_file(q, name)
+            got[table] = _insert(con, key, name, rows)
+            if got[table]:
+                sha = hashlib.sha256("".join(map(_body, rows)).encode()).hexdigest()
+                con.execute("INSERT OR IGNORE INTO imports VALUES (?, ?, ?, ?, ?)",
+                            (table, str(q / fname), sha, got[table], time.time()))  # fmt: skip
+    return got

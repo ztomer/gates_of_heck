@@ -36,8 +36,15 @@ def test_the_report_from_the_imported_table_is_the_report_from_the_files(
     files = {p.stem: json.loads(p.read_text()) for p in (q / "done").glob("*.json")}
     before = _report(q, born, capsys)
     assert not db.exists(), "no goh.db: the files answered"
-    assert land_records.import_done(q) == {"lands": 6, "red_causes": 1}
-    assert land_records.import_done(q) == {"lands": 0, "red_causes": 0}, "a re-run adds nothing"
+    assert land_records.import_done(q) == {
+        "lands": 6,
+        "red_causes": 1,
+        "land_guards": 0,
+        "selection_misses": 0,
+    }
+    assert land_records.import_done(q) == dict.fromkeys(
+        ("lands", "red_causes", "land_guards", "selection_misses"), 0
+    )
     with sqlite3.connect(db) as con:
         assert con.execute("SELECT COUNT(*) FROM imports WHERE store='lands'").fetchone() == (1,)
     shutil.rmtree(q / "done")
@@ -146,3 +153,36 @@ def test_every_reader_reads_a_record_that_is_only_a_row(tmp_path, monkeypatch):
     assert landq_alone.red_last(q, "GOH.B") == "exit 1"
     assert landq_look.find_request(q, "GOH.B") == land_records.file(q, "01795400000000000002-GOH.B")
     assert [r["item"] for r in land_check.records(q)] == ["GOH.B", "GOH.A"]
+
+
+def test_the_ledgers_import_once_and_learn_writes_a_row_not_the_file(tmp_path, monkeypatch):
+    import land_check
+    import selection_miss
+
+    db = gdb.use(monkeypatch, tmp_path)
+    q = tmp_path / "landq"
+    q.mkdir()
+    g1 = {"state": "red", "guard": "tests/a.py::test_a", "guards": ["tests/a.py::test_a"],
+          "repo": "/x/r", "at": "2026-11-20T10:00:00Z"}  # fmt: skip
+    g2 = {**g1, "at": "2026-11-21T10:00:00Z"}
+    miss = {"kind": "judged", "day": "2026-11-19", "item": "GOH.A", "sha": "a", "test": "t"}
+    (q / "guards.jsonl").write_text(f"{json.dumps(g1)}\n{json.dumps(g2)}\n")
+    (q / "selection_misses.jsonl").write_text(json.dumps(miss) + "\n")
+    before = (land_records.ledger(q, "guards"), selection_miss.read(q))
+    assert before == ([g1, g2], [miss]), "no goh.db: the files answer"
+    got = land_records.import_done(q)
+    assert (got["land_guards"], got["selection_misses"]) == (2, 1)
+    again = land_records.import_done(q)
+    assert (again["land_guards"], again["selection_misses"]) == (0, 0)
+    (q / "guards.jsonl").unlink()
+    (q / "selection_misses.jsonl").unlink()
+    assert (land_records.ledger(q, "guards"), selection_miss.read(q)) == before
+    assert selection_miss.append(q, [miss]) == 0, "each row once"
+    land_check.learn(q, {"repo": "/x/r", "item": "GOH.B", "sha": "b"},
+                     "refused (failing: tests/b.py::test_b)")  # fmt: skip
+    assert not (q / "guards.jsonl").exists(), "the ledger is goh.db's"
+    assert [r["guard"] for r in land_check.records(q)][:1] == ["tests/b.py::test_b"]
+    with sqlite3.connect(db) as con:
+        assert con.execute("SELECT test FROM land_guards ORDER BY n DESC").fetchone() == (
+            "tests/b.py::test_b",
+        )

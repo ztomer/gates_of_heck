@@ -41,9 +41,9 @@ done record, and `goh land-profile --guards` counts refusals by guard. The enque
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -53,7 +53,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT)]
-from lib import cov_risk, fast_tests, land_reds, main_red, proc_deadline, terse  # noqa: E402
+from lib import cov_risk, fast_tests, land_records, land_reds, main_red, proc_deadline, terse  # noqa: E402
 from tui.lib import counted  # noqa: E402
 
 EACH_S = 1.0  # the most a past refuser may cost, by the suite's measurement
@@ -120,19 +120,14 @@ def declared(root: Path) -> list[str]:
 
 
 def records(q: Path | None, newest: int | None = None) -> list[dict]:
-    """The red records naming guards: done/ (the NEWEST that many, newest first) and the
-    pre-step refusals `learn` kept."""
+    """The red records naming guards: the land records (the NEWEST that many, newest first) and
+    the pre-step refusals `learn` kept (lib/land_records.py, GOH.STATEDB)."""
     if q is None:
         return []
     out: list[dict] = []
-    from lib import land_records  # the land records' one door (GOH.STATEDB)
-
     out += [rec for _, rec in land_records.records(q, reverse=True)[:newest]]
-    with contextlib.suppress(OSError):
-        lines = (q / "guards.jsonl").read_text().splitlines()
-        for line in reversed(lines[-newest:] if newest else lines):
-            with contextlib.suppress(ValueError):
-                out.append(json.loads(line))
+    learned = land_records.ledger(q, "guards")
+    out += reversed(learned[-newest:] if newest else learned)
     named = [r for r in out if isinstance(r, dict) and r.get("state") == "red"]
     return [
         {**r, "guard": r.get("guard") or r["guards"][0]}
@@ -436,15 +431,12 @@ NODE = re.compile(r"tests/[^\s:,()]+\.py::[^\s,()]+")
 
 def learn(q: Path, req: dict, refusal: str) -> None:
     """A pre-step's refusal at enqueue, which files no land record: the test nodes it names, in
-    `<landq>/guards.jsonl` for `history` and `count` (never a reason the refusal is not said)."""
+    goh.db's land_guards for `history` and `count` (never a reason the refusal is not said)."""
     found = list(dict.fromkeys(map(fast_tests._base, NODE.findall(refusal))))[:10]
     if not found:
         return
     row = {"repo": req.get("repo", ""), "item": req.get("item", ""), "sha": req.get("sha", ""),
            "stage": "pre", "state": "red", "guard": found[0], "guards": found,
            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}  # fmt: skip
-    with contextlib.suppress(OSError):
-        q.mkdir(parents=True, exist_ok=True)
-        import state_append  # the lock lib/state_files.py trims under (GOH.GUARDSBOUND)
-
-        state_append.append(q / "guards.jsonl", (json.dumps(row) + "\n").encode())
+    with contextlib.suppress(OSError, sqlite3.Error):
+        land_records.append(q, "guards", [row])

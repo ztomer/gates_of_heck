@@ -19,16 +19,15 @@ from conftest import REPO_ROOT
 
 # store -> the files that name it today (2026-11-23), each removed by the lane that moves the store
 ALLOWED: dict[str, set[str]] = {
-    "land records": {  # S1 goh.db 0002 lands
+    "land records": {  # S1 goh.db 0002 lands: what is left is the files' window, until wave 3
         # the door's file half: done/ files from before the switch are read, and still written for
         # .loop's readers and old HEAD exports, until wave 3's delete commit removes it
         "lib/land_records.py",
-        "lib/land_check.py",
-        "lib/state_bounds.py",
-        "lib/state_files.py",
+        "lib/state_bounds.py",  # the done/ files' 14-day bound, while the door still writes them
+        "lib/state_files.py",  # guards.jsonl's bound: the pre-switch file, until wave 3
     },
     "selection misses": {  # S1 goh.db 0002 selection_misses
-        "lib/state_files.py",
+        "lib/state_files.py",  # the pre-switch ledger file's bound, until wave 3
     },
     "ship records": {  # S2 goh.db 0003 ships: moved (lib/ship_records.py, GOH.STATEDBS2)
         "lib/ship_records.py",  # LEFT: ship_dir(), where the step logs stay (handover plan (e))

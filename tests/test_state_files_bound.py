@@ -62,14 +62,11 @@ def test_a_writer_holding_the_lock_is_never_trimmed_under(tmp_path) -> None:
 
 
 def test_every_writer_appends_through_the_lock(tmp_path, monkeypatch) -> None:
-    import selection_miss
     import timing_ledger
 
     target = tmp_path / "ledger.jsonl"
     assert timing_ledger.append({"v": 1, "subject": "s"}, target)
     assert state_append.lock_path(target).exists()
-    selection_miss.append(tmp_path, [{"kind": "judged", "day": "2026-11-19"}])
-    assert state_append.lock_path(tmp_path / selection_miss.LEDGER).exists()
     sys.path.insert(0, str(REPO_ROOT / "hooks" / "claude"))
     import lane_room
 
@@ -111,13 +108,22 @@ def test_each_bound_keeps_what_its_readers_need() -> None:
         assert rule.why, rel
 
 
-def test_the_guard_log_is_bounded_and_its_writer_appends_through_the_lock(tmp_path) -> None:
+def test_the_guard_log_is_bounded_and_its_writer_appends_through_the_lock(
+    tmp_path, monkeypatch
+) -> None:
     # GOH.GUARDSBOUND: landq/guards.jsonl (lib/land_check.py learn) was the one unlisted file.
+    # GOH.STATEDB: learn writes goh.db's land_guards (a table bound); the file's bound stays for
+    # the pre-switch file until wave 3 deletes it.
     import land_check
+    import land_records
 
+    monkeypatch.setenv("GOH_DB", str(tmp_path / "goh.db"))
     q = tmp_path / "landq"
+    q.mkdir()
     land_check.learn(q, {"item": "T.G"}, "refused: tests/test_x.py::test_y failed")
-    assert state_append.lock_path(q / "guards.jsonl").exists()
+    assert [r["guard"] for r in land_records.ledger(q, "guards")] == ["tests/test_x.py::test_y"]
+    assert not (q / "guards.jsonl").exists()
+    (q / "guards.jsonl").write_text('{"at": "2026-11-20T00:00:00Z"}\n')  # a pre-switch file
     assert not sb.unbounded(tmp_path, NOW), sb.unbounded(tmp_path, NOW)
     rule = sf.FILES["landq/guards.jsonl"]
     assert isinstance(rule, sf.FileBound) and rule.stamp == "at" and rule.lock == "state_file"

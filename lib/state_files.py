@@ -65,16 +65,16 @@ FILES: dict[str, FileBound | FileKept] = {
         20000,
         "day",
         "state_file",
-        "lib/selection_miss.py; goh land --report per day, and replay() from logs/ (HISTORY_DAYS) "
-        "dedupes against it",
+        "the pre-GOH.STATEDB file: lib/selection_miss.py now writes goh.db's selection_misses "
+        "(lib/land_records.py) and reads this file's lines no row holds, until wave 3 deletes it",
     ),
     "landq/guards.jsonl": FileBound(
         HISTORY_DAYS,
         5000,
         "at",
         "state_file",
-        "lib/land_check.py learn, one row per pre-step refusal naming a test; read by land "
-        "--check's history and count beside done/ (HISTORY_DAYS)",
+        "the pre-GOH.STATEDB file: lib/land_check.py learn now writes goh.db's land_guards "
+        "(lib/land_records.py) and reads this file's lines no row holds, until wave 3 deletes it",
     ),
     "commit-gated.jsonl": FileBound(
         LEDGER_DAYS,

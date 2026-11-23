@@ -3,6 +3,8 @@
 -- `queue` is the land queue's directory (its realpath), so a test's queue under tmp_path and the
 -- lander's own never share a row; `run` is the request stem (`01795463637285577000-ITEM`).
 -- `at` is the record's epoch seconds (its `at`, else `finished`), the column the bounds read.
+-- A ledger row's body is its JSON with sorted keys, once per queue: an import re-run, or a line an
+-- old HEAD export appended to the file, adds no second row.
 -- lands keeps every summary row (plan decision 6): past its bytes the oldest move to
 -- goh-archive-YYYY.db, never away.
 -- bound: lands bytes=128MB stamp=at
@@ -36,7 +38,8 @@ CREATE TABLE land_guards(
   at REAL NOT NULL,
   run TEXT,
   test TEXT,
-  body TEXT NOT NULL
+  body TEXT NOT NULL,
+  UNIQUE (queue, body)
 );
 CREATE INDEX land_guards_queue ON land_guards(queue, n);
 -- bound: red_causes days=400 rows=20000 bytes=16MB stamp=at
@@ -55,7 +58,8 @@ CREATE TABLE selection_misses(
   day TEXT,
   at REAL NOT NULL,
   run TEXT,
-  body TEXT NOT NULL
+  body TEXT NOT NULL,
+  UNIQUE (queue, body)
 );
 CREATE INDEX selection_misses_queue ON selection_misses(queue, n);
 -- The interface other readers use (handover plan (d)): changed only by adding lands_v2 beside it.
