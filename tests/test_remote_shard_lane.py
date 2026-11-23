@@ -9,6 +9,7 @@ import os
 import re
 
 from _fast_git import fast_init
+from _tree_clone import from_template
 from source_closure import copy_closure
 from test_remote_shard import DOCKERFILE, TOOL, _git, _log, _run, _slot_tree, rig
 
@@ -137,16 +138,27 @@ def test_the_tags_travel_and_a_tree_synced_without_them_gets_them_whole(rig):
     assert _git(remote, "rev-parse", "HEAD").stdout == _git(tree, "rev-parse", "HEAD").stdout
 
 
-def test_the_advisory_database_is_fetched_once_a_day_by_a_networked_container(rig):
+def _build_advisory_upstream(path):
+    """The advisory database's upstream: one commit, built once per run (never written in)."""
+    fast_init(path)
+    (path / "README.md").write_text("advisories\n")
+    _git(path, "add", "-A")
+    _git(path, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "db")
+
+
+def test_the_advisory_database_is_fetched_once_a_day_by_a_networked_container(
+    rig, tmp_path_factory
+):
     """The worker has no network, and the rust gate's audits the suite drives read a cached
     advisory database (GOH_DEPS_OFFLINE=1: `--no-fetch`, seeded from ~/.cargo/advisory-db): with
     none, 9 rust-gate tests failed "couldn't fetch advisory database" (GOH.WORKERFAILS). So a
     networked short-lived container clones it into the worker's HOME, again when it is a day old."""
-    upstream = rig["tmp"] / "advisory-upstream"
-    fast_init(upstream)
-    (upstream / "README.md").write_text("advisories\n")
-    _git(upstream, "add", "-A")
-    _git(upstream, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "db")
+    upstream = from_template(
+        tmp_path_factory,
+        "advisory-upstream",
+        _build_advisory_upstream,
+        rig["tmp"] / "advisory-upstream",
+    )
     env = {"GOH_REMOTE_ADVISORY_DB_URL": f"file://{upstream}"}
     assert _run(rig, "tests/test_x.py", **env).returncode == 0
     db = rig["remote"] / "cache" / "home" / ".cargo" / "advisory-db"
