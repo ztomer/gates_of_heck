@@ -22,44 +22,8 @@ from env_probe import probe_sh, read_probe
 
 TESTS = REPO_ROOT / "tests"
 
-# A test repo made by `git init` costs ~30 ms of git start-up per fixture; tests/_fast_git.py's
-# `fast_init` copies a template `.git` instead. These remaining sites test init itself, build a
-# repo `fast_init` cannot (bare, a hook's own environment), or are strings in a fixture's script.
-GIT_INIT_SITES = {
-    "conftest.py": 2,  # the templates fast_init and the `repo` fixture copy
-    "test_hook_git_env.py": 7,  # init under a hook's GIT_* environment is the subject
-    "test_commit_hook_git_env.py": 2,  # the scratch suite's init under a real hook; a bare repo
-    "test_cwd_and_py_gate.py": 3,
-    "test_skills_corpus_external.py": 2,
-    "test_required_tools_manifest.py": 2,
-    "test_release_kit.py": 2,
-    "test_release_hardening.py": 2,
-    "test_install.py": 1,
-    "test_goh_git_spawns.py": 2,
-    "test_estate_corpus.py": 2,
-    "test_binary_currency.py": 1,
-    "test_tree_stamp.py": 1,
-    "test_swift_gate_project_selection.py": 1,
-    "test_session_bench.py": 1,
-    "test_rust_lint_configs.py": 1,
-    "test_rust_gate.py": 1,
-    "test_rust_each_crate.py": 1,
-    "test_required_tools.py": 1,
-    "test_line_cap_off.py": 1,
-    "test_hook_currency.py": 1,
-    "test_goh_prefetch.py": 1,
-    "test_goh_bin_once.py": 1,
-    "test_gitutil_paths.py": 1,
-    "test_gates_from_head.py": 1,
-    "test_gate_runtime_path.py": 1,
-    "test_gate_calibration.py": 1,
-    "test_estate_corpus_cache.py": 1,
-    "test_check_swift_warnings.py": 1,
-    "test_check_probes_pass.py": 1,
-    "test_check_no_home_paths.py": 1,
-    "test_binary_source_identity.py": 1,
-    "test_round.py": 1,  # a BARE remote, which the template cannot be
-}
+# Per-test `git init` and goh-tree copies are tests/test_git_init_ratchet.py's (GOH.GITINITGATE):
+# it reads `fast_init` too, the spelling 134 files use, which the regex ratchet here never saw.
 
 # A pool sized to the machine runs inside every one of the suite's workers at once: 12 workers x
 # cpu_count threads, each spawning processes. New pools take an explicit bound.
@@ -78,8 +42,6 @@ CPU_COUNT_POOLS = {
     # load per core (GOH.ADAPTLANES).
     "lib/capacity.py": 1,
 }
-
-_INIT = re.compile(r'"init"|git init')
 
 
 def _tracked(*specs: str) -> list[str]:
@@ -109,15 +71,6 @@ def _ratchet(found: Counter[str], allowed: dict[str, int], what: str) -> None:
     stale = {f: (allowed[f], found.get(f, 0)) for f in allowed if found.get(f, 0) < allowed[f]}
     assert not over, f"new {what} (tests/test_suite_drift.py): {over}"
     assert not stale, f"{what} ratchet above its count -- lower or delete the entry: {stale}"
-
-
-@pytest.mark.load_sensitive
-def test_no_new_git_init_in_tests() -> None:
-    # The template's home, and the two files that police the pattern (they name it, never run it).
-    own = ("_fast_git.py", "_drift_guard.py", "test_suite_drift.py")
-    paths = [p for p in _tracked("tests/*.py") if not p.endswith(own)]
-    found = _count(_INIT, paths)
-    _ratchet(Counter({Path(f).name: n for f, n in found.items()}), GIT_INIT_SITES, "git init site")
 
 
 @pytest.mark.load_sensitive

@@ -134,7 +134,6 @@
  "test_step_budget.py": 1,
  "test_structural_keep_going.py": 1,
  "test_suite_cache_isolation.py": 2,
- "test_suite_drift.py": 2,
  "test_swift_gate_project_selection.py": 1,
  "test_swift_gate_tests_warnings.py": 1,
  "test_tag_version_unpushed.py": 1,
