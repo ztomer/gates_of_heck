@@ -147,6 +147,7 @@ DECLARED = {
     "gates/push_gate.sh: $worktree/tools/gate.sh": "the pushed commit's export of the gated repo",
     "gates/hook.sh: $fix/gates/hook.sh": "a repaired GOH_DIR's hook, re-entered by a git hook only",
     "install.sh: $target/tools/gate.sh": "the installed repo's gate, written here and never run",
+    "gates/structural.sh: $_goh_inst/install.sh": "the live installer, only printed in a message",
 }
 # A path after a variable (`${GOH_DIR:-$GOH_ROOT}/x` reads its first name) or the own directory.
 ROOTED = re.compile(
