@@ -9,7 +9,8 @@ here, measured), and the files are judged in parallel, one shellcheck per chunk:
 belongs to the file being read, so how the files are split cannot change which ones are named.
 
 KEPT BY WHAT SHELLCHECK COULD READ (GOH.SHELLCHECKCACHE). Inside a git checkout and under goh's
-suite (tests/_kept_store.py, a store that outlives the run; CACHE_ENV names another), each file's
+suite (goh-cache.db's `kept` rows, which tests/_kept_store.py keeps past the run; CACHE_ENV names
+a directory whose goh-cache.db holds them instead), each file's
 lines are kept under sha256 of: shellcheck's resolved path, size and mtime; the flags; the file's
 path and bytes; every tracked file its source closure can reach (a tracked file whose name a
 reached shell file's text mentions, followed out of shell files: an over-wide closure only misses
@@ -38,6 +39,7 @@ import suite_home
 
 FLAGS = ("-x", "--extended-analysis=false", "--format=gcc")
 CACHE_ENV = "GATES_OF_HECK_PARSE_FINDINGS_STORE"  # a test's own store (not GOH_: never scrubbed)
+STORE = "parse-findings"  # its rows' `kept.store`
 FORMAT = "parse-findings 1"
 # What shellcheck may source and so must be followed: shell files, and extension-less ones
 # (`.gatesrc`, a `lib/env` file).
@@ -81,14 +83,15 @@ def _run(files: list[str], cwd: Path, extra: tuple[str, ...]) -> dict[str, list[
     return by
 
 
-def _store() -> str:
-    """Where the records live: CACHE_ENV's directory, else under goh's suite its kept store; ""
-    (nothing kept) outside the suite."""
+def _store() -> Path | None:
+    """The goh-cache.db the records live in (its `kept` rows, GOH.VERDICTDB): the one in CACHE_ENV's
+    directory, else under goh's suite the suite's own (tests/_kept_store.py merges it into the
+    real file once); None (nothing kept) outside the suite."""
     if named := os.environ.get(CACHE_ENV, ""):
-        return named
+        return Path(named) / "goh-cache.db"
     if os.environ.get(CACHE_ENV + "_OFF") or not os.environ.get(suite_home.MARKER):
-        return ""
-    return str(_kept_store.kept("parse-findings"))
+        return None
+    return _kept_store._cache().path()
 
 
 def _tool() -> str | None:
@@ -176,21 +179,16 @@ def findings(files: list[str], cwd: Path, *extra: str) -> list[str]:
         by = _run(files, cwd, extra)
         return [line for f in by for line in by[f]] if by else []
     keys = _Keys(cwd, tracked, "|".join([FORMAT, tool, *FLAGS, *extra]))
-    home = Path(store)
     kept: dict[str, list[str]] = {}
     want = {f: keys.key(f) for f in files}
+    rows = _kept_store.get(STORE, sorted(set(want.values())), store)
     for f, k in want.items():
-        with contextlib.suppress(OSError, ValueError):
-            kept[f] = json.loads((home / k[:2] / f"{k}.json").read_text())
+        with contextlib.suppress(KeyError, ValueError):
+            kept[f] = json.loads(rows[k])
     misses = [f for f in files if f not in kept]
     fresh = _run(misses, cwd, extra) if misses else {}
-    if fresh and "" not in fresh:
-        for f, lines in fresh.items():
-            dest = home / want[f][:2] / f"{want[f]}.json"
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            tmp = dest.with_suffix(f".{os.getpid()}.tmp")
-            tmp.write_text(json.dumps(lines))
-            os.replace(tmp, dest)
+    if fresh and "" not in fresh:  # one write for the batch: workers share the suite's file
+        _kept_store.put(STORE, {want[f]: json.dumps(lines) for f, lines in fresh.items()}, store)
     out = {**kept, **(fresh or {})}
     return [line for f in [*files, ""] for line in out.get(f, [])]
 

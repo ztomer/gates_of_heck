@@ -56,8 +56,7 @@ ALLOWED: dict[str, set[str]] = {
         "lib/state_bounds.py",
         "lib/state_files.py",
     },
-    "kept stores": {  # V1 goh-cache.db 0002 kept
-        "tests/_parse_findings.py",
+    "kept stores": {  # V1 goh-cache.db 0002 kept: parse-findings moved (tests/_parse_findings.py)
         "tests/_self_walk.py",
         "tests/_tree_lint.py",
     },

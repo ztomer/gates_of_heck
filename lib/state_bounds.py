@@ -132,6 +132,11 @@ REGISTRY: dict[str, Bound | Kept | Container] = {
     "reuse/relset": Kept("pruned by TTL at each write (lib/release_gate.py reuse.prune)"),
     "reuse/profstore": Kept("the newest keys only (lib/prof_store.py prune)"),
     "reuse/audit": Kept("one record per reuse path (lib/reuse_audit.py)"),
+    # The suite's kept stores (tests/_kept_store.py, GOH.VERDICTBOUND): the two shell-lint ones are
+    # files the goh binary reads until V2 moves them into goh-cache.db; parse-findings is rows now.
+    "self-walk-verdicts": Kept("each record dropped after 30 days, every suite session"),
+    "tree-lint-verdicts": Kept("each record dropped after 30 days, every suite session"),
+    "parse-findings": Kept("no longer written: goh-cache.db `kept` rows (GOH.VERDICTDB)"),
     "load_sources": Kept("one file per day, pruned at write (lib/load_sources.py prune)"),
     "compact_nudge": Kept("one marker per session, pruned (hooks/claude/compact_nudge.py)"),
     "seeds": Kept("fixed names, one per seed"),

@@ -172,6 +172,15 @@ def _land_store() -> None:
     os.environ.setdefault("GOH_LAND_VERDICTS_CACHE", cache)
 
 
+def _kept_db() -> None:
+    """The real goh-cache.db the kept stores merge into at the session's end (tests/_kept_store.py,
+    GOH.VERDICTDB): the caller's GOH_CACHE_DB, else its XDG cache's, resolved before HOME moves."""
+    cache, xdg = os.environ.get("GOH_CACHE_DB", ""), os.environ.get("XDG_CACHE_HOME", "")
+    base = Path(xdg) if xdg.startswith("/") else Path(REAL_HOME) / ".cache"
+    os.environ["GATES_OF_HECK_SUITE_KEPT_DB"] = cache if cache.startswith("/") else str(
+        base / "goh" / "goh-cache.db")  # fmt: skip
+
+
 def _drop_ship_inputs() -> None:
     for name in [k for k in os.environ if k.startswith(SHIP_PREFIX)]:
         del os.environ[name]
@@ -347,6 +356,7 @@ def _enter() -> None:
     ):  # a nested run (an xdist worker, a suite a test starts) keeps its own
         return
     _land_store()
+    _kept_db()
     ci = shape() == "ci"
     if ci:
         _shape_ci()
