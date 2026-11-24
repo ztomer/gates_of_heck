@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
+from _small_store import estate_state
 from conftest import REPO_ROOT, hermetic_env
 from test_consumer_pins import SCRIPT, TAG, WF, _ahead, _consumer
 from timing_bounds import GiveUp, patience
@@ -265,7 +266,7 @@ def _two_sweeps(tmp_path: Path, repos: dict[str, Path], ship: Path) -> None:
 
 
 def pin_sweep_unpushed(tmp_path: Path) -> dict:
-    return _read(tmp_path / "state" / "pin_push.json").get("repos") or {}
+    return estate_state(tmp_path / "state" / "pin_push.json").get("repos") or {}
 
 
 def test_a_sweep_that_never_got_its_supervisor_holds_no_newer_sweep_back(tmp_path, monkeypatch):

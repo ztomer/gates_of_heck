@@ -139,3 +139,13 @@ def test_no_file_and_no_database_reads_as_nothing(tmp_path, monkeypatch) -> None
     assert small_stores.gated(d / "commit-gated.jsonl") == []
     assert small_stores.flakes(d / "flakes") == []
     assert not d.exists()  # a read never creates the database
+
+
+def test_the_estate_state_is_written_to_goh_db_and_its_file_left_as_it_was(state) -> None:
+    import estate_registry
+
+    p = state / "estate_audit.json"
+    was = p.read_text()
+    new = estate_registry.update_state(p, lambda old: {**old, "grace_watch": {"ran": True}})
+    assert p.read_text() == was, "the file stays until wave 3's delete commit, unwritten"
+    assert estate_registry.read_state(p) == new == {**json.loads(was), "grace_watch": {"ran": True}}

@@ -15,12 +15,12 @@ The old copy is a real one: the stock pre-commit as committed at OLD_STOCK.
 from __future__ import annotations
 
 import hashlib
-import json
 import subprocess
 from pathlib import Path
 
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _small_store import estate_state
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
 
 OLD_STOCK = "18330c7"  # a retired stock pre-commit (retired_hooks.sha256)
@@ -174,7 +174,7 @@ def test_the_estate_audit_records_the_stale_hooks(tmp_path):
         stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
-    recorded = json.loads(state.read_text())["stale_hooks"]
+    recorded = estate_state(state)["stale_hooks"]
     assert recorded == {"kept": ["pre-commit"], "stale": ["pre-commit"]}, recorded
     assert str(e["stale"]) not in recorded  # named relative to the root, like every audit entry
 

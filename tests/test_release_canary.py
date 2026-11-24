@@ -24,6 +24,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _small_store import estate_state
 from conftest import REPO_ROOT, hermetic_env
 
 SCRIPT = REPO_ROOT / "scripts" / "release_canary.py"
@@ -127,7 +128,7 @@ def _canary(e: dict, *extra: str, head: Path | None = None) -> subprocess.Comple
 
 
 def _record(e: dict) -> dict:
-    return json.loads(e["state"].read_text())["release_canary"]
+    return estate_state(e["state"])["release_canary"]
 
 
 def _hook():
@@ -239,7 +240,7 @@ def test_the_estate_audit_keeps_the_canary_record(estate, monkeypatch):
     spec.loader.exec_module(audit)
     (estate["state"].parent / "installed_repos").write_text("")
     audit.run(estate["root"], estate["state"], db=None, fetch=False)
-    data = json.loads(estate["state"].read_text())
+    data = estate_state(estate["state"])
     assert data["release_canary"]["verdict"] == "refused"
     assert "ran_at" in data and data["advisories"] == {}
 
@@ -344,7 +345,7 @@ def test_a_staged_seed_store_is_what_the_canary_judges_by(tmp_path, goh):
         env={**env, "GOH_SEED_DIR": str(staged)},
     )
     out = r.stdout + r.stderr
-    rec = json.loads(state.read_text())["release_canary"]
+    rec = estate_state(state)["release_canary"]
     assert r.returncode == 0, out
     assert rec["verdict"] == "clear" and not rec["turned_red"] and not rec["already_red"], rec
     assert not (live / "goh" / "seeds").exists(), "the live store was written"
@@ -357,7 +358,7 @@ def test_a_staged_seed_store_is_what_the_canary_judges_by(tmp_path, goh):
         stdin=subprocess.DEVNULL,
         env={k: v for k, v in env.items() if k != "GOH_SEED_DIR"},
     )
-    rec = json.loads(state.read_text())["release_canary"]
+    rec = estate_state(state)["release_canary"]
     assert r.returncode == 1, r.stdout + r.stderr
     assert [f["step"] for f in next(iter(rec["turned_red"].values()))] == [
         "no bare open of an app"

@@ -52,6 +52,13 @@ STORE = "small stores"  # the imports ledger's store
 # the pin push ledger's and the sweep registry's dir is GOH_ESTATE_STATE's)
 KV_NAMES = ("estate_audit", "pin_push", "pin_sweeps", "cache-evict", "wf_pin.pins")
 KV_FILES = {name: f"{name}.json" for name in KV_NAMES}
+
+
+def named(beside: Path | str, name: str) -> Path:
+    """The file kv NAME was, beside BESIDE: the path its readers and writers name it by."""
+    return Path(beside).with_name(KV_FILES[name])
+
+
 GATED_FILE = "commit-gated.jsonl"
 FLAKE_DIR = "flakes"
 

@@ -28,16 +28,15 @@ gets its own registry, and the machine's registry is never a test's business.
 
 from __future__ import annotations
 
-import json
 import os
-import tempfile
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
 try:  # the one acquire path (lib/lock_order.py, GOH.LOCKORDER), imported as `X` or as `lib.X`
     import lock_order
+    import small_stores  # the estate's state in goh.db (GOH.STATEDBS3)
 except ImportError:
-    from lib import lock_order
+    from lib import lock_order, small_stores
 
 REGISTRY_NAME = "installed_repos"
 SKIP_DIRS = {"node_modules", "target", ".build", ".venv", "venv"}
@@ -51,33 +50,35 @@ def state_file() -> Path:
     if env:
         return Path(env).expanduser()
     base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
-    return Path(base).expanduser() / "goh" / "estate_audit.json"
+    return Path(base).expanduser() / "goh" / small_stores.KV_FILES["estate_audit"]
 
 
 def update_state(state: Path, change: Callable[[dict], dict]) -> dict:
-    """Rewrite the estate state file through `change(old) -> new`, whole and under a lock.
+    """Rewrite the estate state `state` names through `change(old) -> new`, whole, under a lock.
 
-    TWO writers share the one file the SessionStart hook reads: the daily audit
+    TWO writers share the one record the SessionStart hook reads: the daily audit
     (`scripts/estate_audit.py`) and the release canary (`scripts/release_canary.py`), each owning
-    its own keys. A writer that dumped its own result over the file erased the other's -- so each
-    reads what is there, keeps what is not its own, and replaces the file atomically while it
-    holds `<state>.lock`. A file that cannot be read is treated as empty, never as a crash.
+    its own keys. A writer that dumped its own result over the record erased the other's -- so each
+    reads what is there, keeps what is not its own, and writes it back while it holds
+    `<state>.lock`. The record is goh.db's `kv` row named for the file (lib/small_stores.py,
+    GOH.STATEDBS3): the file is read until it is imported. One that cannot be read is empty.
+    The lock is taken first and the write is its own short transaction: a CHANGE may read files
+    or ask for a pid's owner, which no transaction spans.
     """
     state = Path(state)
     state.parent.mkdir(parents=True, exist_ok=True)
     with open(state.with_name(state.name + ".lock"), "w", encoding="utf-8") as lock:
         lock_order.flock(lock, "estate_registry")  # released when the file closes
-        try:
-            old = json.loads(state.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            old = {}
-        new = change(old if isinstance(old, dict) else {})
-        with tempfile.NamedTemporaryFile(
-            "w", dir=state.parent, delete=False, suffix=".tmp", encoding="utf-8"
-        ) as f:
-            json.dump(new, f, indent=2, sort_keys=True)
-        os.replace(f.name, state)
+        new = change(read_state(state))
+        small_stores.put(state, new)
     return new
+
+
+def read_state(state: Path) -> dict:
+    """The estate state `state` names (goh.db's row, else its file before the import); {} for none
+    or an unreadable one."""
+    got = small_stores.get(state)
+    return got if isinstance(got, dict) else {}
 
 
 def registry_path(state: Path | None = None) -> Path:

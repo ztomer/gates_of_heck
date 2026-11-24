@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import datetime as dt
 import importlib.util
-import json
 import subprocess
 import sys
 import time
@@ -22,6 +21,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _small_store import estate_state
 from _tree_clone import from_template
 from conftest import REPO_ROOT, hermetic_env
 
@@ -67,7 +67,7 @@ def _watch(e: dict, over_from: int) -> tuple[subprocess.CompletedProcess, dict]:
             "--over-from", str(over_from)]  # fmt: skip
     r = subprocess.run(argv, capture_output=True, text=True, check=False,
                        stdin=subprocess.DEVNULL, env=e["env"])  # fmt: skip
-    return r, json.loads(e["state"].read_text())["grace_watch"]
+    return r, estate_state(e["state"])["grace_watch"]
 
 
 @pytest.mark.load_sensitive

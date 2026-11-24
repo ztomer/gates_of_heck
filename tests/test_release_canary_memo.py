@@ -11,7 +11,6 @@ the count of runs is the measure, not the wall clock alone.
 
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 import time
@@ -20,6 +19,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _small_store import estate_state
 from conftest import REPO_ROOT, hermetic_env
 
 SCRIPT = REPO_ROOT / "scripts" / "release_canary.py"
@@ -77,7 +77,7 @@ def _canary(e: dict, *extra: str) -> tuple[subprocess.CompletedProcess, dict, li
     r = subprocess.run(argv, capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
                        env=hermetic_env(GOH_SEED_DIR=str(e["root"] / "seeds")))  # fmt: skip
     secs = time.monotonic() - t0
-    rec = json.loads(e["state"].read_text())["release_canary"]
+    rec = estate_state(e["state"])["release_canary"]
     return r, rec, e["log"].read_text().splitlines()[len(before) :], secs
 
 

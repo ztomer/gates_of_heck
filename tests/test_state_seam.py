@@ -34,11 +34,8 @@ ALLOWED: dict[str, set[str]] = {
         "lib/state_bounds.py",  # LEFT: ship/* prunes the step logs and the window's record files
     },
     "ship pins": set(),  # S2 goh.db 0003 ship_pins: moved (lib/ship_records.py, GOH.STATEDBS2)
-    "small stores": {  # S3 goh.db 0004 kv
-        "hooks/claude/estate_advisories.py",
+    "small stores": {  # S3 goh.db 0004 kv (the estate state and pin ledgers: lib/small_stores.py)
         "lib/cache_evict.py",
-        "lib/estate_registry.py",
-        "lib/pin_sweep.py",
     },
     "commit gated": {  # S3 goh.db 0004 commit_gated
         "lib/commit_stamp.py",

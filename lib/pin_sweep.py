@@ -74,6 +74,7 @@ import killtree
 import pid_owner
 import proc_deadline
 import ship_records
+import small_stores
 import step_timings
 
 from tui.lib import counted, err, info, ok, step
@@ -106,7 +107,7 @@ def log_dir(sweep: Path | str) -> Path:
 def ledger_path() -> Path:
     """Every repo whose pin commit a sweep left unpushed, with why and its log; beside the estate
     audit's state, so a test's GOH_ESTATE_STATE is its own ledger too."""
-    return estate_registry.state_file().with_name("pin_push.json")
+    return small_stores.named(estate_registry.state_file(), "pin_push")
 
 
 def read(path: Path | str) -> dict:
@@ -135,7 +136,7 @@ def update(path: Path, change: Callable[[dict], object]) -> dict:
 
 def registry_path() -> Path:
     """Every sweep started and not yet done, in the order started (GOH.LOADSOURCE)."""
-    return estate_registry.state_file().with_name("pin_sweeps.json")
+    return small_stores.named(estate_registry.state_file(), "pin_sweeps")
 
 
 def _active(rec: dict) -> bool:
@@ -169,7 +170,8 @@ def register(path: Path, repos: list[str]) -> None:
 
 def _around(path: Path) -> tuple[list[dict], list[dict]]:
     """(the registered sweeps before PATH, those after it); both empty when it is not registered."""
-    rows = [r for r in (read(registry_path()).get("sweeps") or []) if isinstance(r, dict)]
+    rows = [r for r in (estate_registry.read_state(registry_path()).get("sweeps") or [])
+            if isinstance(r, dict)]  # fmt: skip
     keys = [r.get("path") for r in rows]
     if str(path) not in keys:
         return [], []
@@ -205,7 +207,9 @@ def ledger(repo: str, where: str, entry: dict | None) -> None:
 
 def unpushed(repo: Path) -> dict | None:
     """The ledger's line for REPO, or None."""
-    return (read(ledger_path()).get("repos") or {}).get(str(Path(repo).resolve()))
+    return (estate_registry.read_state(ledger_path()).get("repos") or {}).get(
+        str(Path(repo).resolve())
+    )
 
 
 def start(result: Path | str, repos: dict[str, Path], budget: float, wait: bool = False) -> Path:

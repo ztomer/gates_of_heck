@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import datetime as dt
 import importlib.util
-import json
 import re
 import subprocess
 import sys
@@ -29,6 +28,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _small_store import estate_state
 from conftest import REPO_ROOT, hermetic_env
 
 SCRIPT = REPO_ROOT / "scripts" / "release_canary.py"
@@ -89,7 +89,7 @@ def _canary(e: dict, *extra: str) -> tuple[subprocess.CompletedProcess, dict]:
             "--goh", str(REPO_ROOT), *extra]  # fmt: skip
     r = subprocess.run(argv, capture_output=True, text=True, check=False,
                        stdin=subprocess.DEVNULL, env=e["env"])  # fmt: skip
-    return r, json.loads(e["state"].read_text())["release_canary"]
+    return r, estate_state(e["state"])["release_canary"]
 
 
 @pytest.mark.load_sensitive

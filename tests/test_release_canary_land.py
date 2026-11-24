@@ -10,7 +10,6 @@ which is the proof that it went on). Not at a land -> it sweeps as before.
 
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -18,6 +17,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _small_store import estate_state
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
@@ -64,7 +64,7 @@ def _canary(tmp: Path, goh: Path, state: Path, base: str, **env: str) -> tuple[s
     argv += ["--goh", str(goh), "--base", base, "--grace", "off"]
     r = subprocess.run(argv, capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
                        env=hermetic_env(**env), timeout=patience(120))  # fmt: skip
-    return r.stdout + r.stderr, json.loads(state.read_text())["release_canary"]
+    return r.stdout + r.stderr, estate_state(state)["release_canary"]
 
 
 def test_a_land_no_consumer_reads_sweeps_nothing_and_says_why(tmp_path: Path) -> None:

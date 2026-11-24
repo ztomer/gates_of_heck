@@ -32,6 +32,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _small_store import estate_state
 from conftest import REPO_ROOT, hermetic_env
 from test_estate_audit import LOCK, PLANTED, _db, _git
 
@@ -95,7 +96,7 @@ def _audit(root: Path, state: Path, db: Path) -> dict:
         env=hermetic_env(),
     )
     assert r.returncode == 0, r.stdout + r.stderr
-    return json.loads(state.read_text())
+    return estate_state(state)
 
 
 @needs_cargo_audit

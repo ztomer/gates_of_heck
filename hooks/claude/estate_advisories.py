@@ -63,9 +63,8 @@ AHEAD_WORKERS = 16
 
 
 def state_path() -> Path:
-    env = os.environ.get("GOH_ESTATE_STATE")
-    base = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state"))
-    return Path(env) if env else base / "goh" / "estate_audit.json"
+    """The estate state's name (lib/estate_registry.py `state_file`): its record is goh.db's."""
+    return estate_registry.state_file()
 
 
 def _age_h(stamp: str, now: dt.datetime) -> float | None:
@@ -257,14 +256,13 @@ def report(state: Path, now: dt.datetime) -> list[str]:
 
 
 def _audit(state: Path, now: dt.datetime) -> list[str]:
-    if not state.exists():
+    data = estate_registry.read_state(state)  # goh.db's row, else the file before its import
+    if not data and state.is_file():  # no row, and a file that read as nothing
+        return [f"goh estate audit: {state} is unreadable; re-run `python3 {SCRIPT}`."]
+    if not data:
         return [
             f"goh estate audit has never run here: `python3 {SCRIPT} --install` schedules it daily."
         ]
-    try:
-        data = json.loads(state.read_text())
-    except (OSError, ValueError) as e:
-        return [f"goh estate audit: {state} is unreadable ({e}); re-run `python3 {SCRIPT}`."]
     lines = []
     age = _age_h(data.get("ran_at"), now)
     if age is None or age > STALE_AFTER_H:

@@ -22,7 +22,6 @@ the consumers, `head_seconds` the day's HEAD pass's, so their ratio is the pass'
 from __future__ import annotations
 
 import datetime as dt
-import json
 import re
 import sys
 from pathlib import Path
@@ -161,14 +160,12 @@ def carry(res: dict, state: Path | None = None) -> None:
     into the ship result RES as `grace_over` {count, repos, over_from, canary_sha}. A gates tree
     with no record for either commit gets an honest `count: None` and why; any other repo, nothing.
     A finding already carried is kept: the release step's record beats the push step's absence."""
-    if state is None:
-        import estate_registry  # lib/'s: the file the canary writes (GOH_ESTATE_STATE)
+    import estate_registry  # lib/'s: the estate state in goh.db (GOH.STATEDBS3)
 
-        state = estate_registry.state_file()
-    try:
-        rec = json.loads(state.read_text(encoding="utf-8")).get("release_canary") or {}
-    except (OSError, ValueError, AttributeError):
-        rec = {}
+    if state is None:
+        state = estate_registry.state_file()  # the record the canary writes (GOH_ESTATE_STATE)
+    rec = estate_registry.read_state(state).get("release_canary") or {}
+    rec = rec if isinstance(rec, dict) else {}
     shas = {res.get("sha"), res.get("handoff_sha")} - {None, ""}
     g = rec.get("grace_over") or {}
     if rec.get("head_sha") in shas and g:

@@ -287,10 +287,7 @@ def run(
     # its findings carry no first_seen and the session hook does not call them NEW. "First" is the
     # first AUDIT, not the file's first write: the release canary records into this file too
     # (scripts/release_canary.py), and a file it made holds no audit to compare with.
-    try:
-        old = json.loads(state.read_text())
-    except (OSError, ValueError):
-        old = {}
+    old = estate_registry.read_state(state)  # goh.db's row, else the file before its import
     baseline = not isinstance(old, dict) or "ran_at" not in old
     previous = {} if baseline else old.get("advisories", {})
     cargo_deny = cargo_deny or ["cargo", "deny"]

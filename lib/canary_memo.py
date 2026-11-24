@@ -27,7 +27,6 @@ held the file): GOH.CANARYMEMO2 registers it there.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import subprocess
 import sys
@@ -218,9 +217,11 @@ class Runs:
 
 def records(state: Path, entry: str) -> dict:
     """The memo's records, as the last canary left them in the state file's `entry`."""
+    import estate_registry  # lib/'s: the estate state in goh.db (GOH.STATEDBS3)
+
     try:
-        got = json.loads(state.read_text(encoding="utf-8")).get(entry, {}).get("memo_records")
-    except (OSError, ValueError, AttributeError):
+        got = estate_registry.read_state(state).get(entry, {}).get("memo_records")
+    except AttributeError:
         return {}
     return got if isinstance(got, dict) else {}
 

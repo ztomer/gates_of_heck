@@ -38,6 +38,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 import check_empty_scope as ces
 import pgid_cpu
 import source_closure
+from _small_store import estate_state
 
 SCRIPT = REPO_ROOT / "scripts" / "release_canary.py"
 LABEL = "gates refuse to pass over an empty tree"
@@ -191,7 +192,7 @@ def test_a_starved_consumer_refuses_the_land_as_a_timeout(tmp_path, starved, mon
     r = subprocess.run(argv, capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL)
     out = r.stdout + r.stderr
     assert r.returncode == 1, out
-    rec = json.loads(state.read_text())["release_canary"]
+    rec = estate_state(state)["release_canary"]
     assert rec["turned_red"] == {}, rec
     assert any("TIMED OUT after" in e and "no verdict" in e for e in rec["errors"]), rec
     assert "fix the findings" not in out, out
