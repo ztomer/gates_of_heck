@@ -127,6 +127,17 @@ def _read(db: Path, named: bool) -> Iterator[sqlite3.Connection | None]:
         yield con
 
 
+# A `pole` entry read at no more than the wall its own run read (GOH.LONGPOLECOLD): a quiet time
+# above the wall the same run of the test took is no quiet time at all (load only adds to a wall),
+# and the 72.1 s entry of 2026-11-24, settled from a cold store's CPU over 28.06 s of wall, turned
+# every land red until a quiet run replaced it. lib/long_pole.py `settle` no longer writes one.
+OWN_WALL = (
+    "SELECT d.node, MIN(d.seconds, COALESCE((SELECT r.seconds FROM readings AS r WHERE r.kind='dur'"
+    " AND r.node=d.node AND r.run=d.run ORDER BY r.n DESC LIMIT 1), d.seconds)) "
+    "FROM durations AS d WHERE d.kind=?"
+)
+
+
 def load(kind: str = "dur", db: Path | None = None, named: bool = False) -> dict[str, float]:
     """{node id: seconds} of KIND: the view, over the JSON file not yet imported; {} for none."""
     db, named = _where(db, named)
@@ -137,8 +148,25 @@ def load(kind: str = "dur", db: Path | None = None, named: bool = False) -> dict
         if base:
             gone = {r[0] for r in con.execute("SELECT node FROM pruned WHERE kind=?", (kind,))}
             base = {k: v for k, v in base.items() if k not in gone}
-        rows = con.execute("SELECT node, seconds FROM durations WHERE kind=?", (kind,))
+        rows = con.execute(OWN_WALL if kind == "pole" else
+                           "SELECT node, seconds FROM durations WHERE kind=?", (kind,))  # fmt: skip
         return {**base, **{k: float(v) for k, v in rows}}
+
+
+def newest(node: str, db: Path | None = None) -> dict[str, dict[str, object]]:
+    """{kind: its newest reading of NODE} as {seconds, load, loaded, run, at}: what a run read and
+    under what load (lib/long_pole.py `remeasure`); {} for none."""
+    db, named = _where(db, False)
+    out: dict[str, dict[str, object]] = {}
+    with _read(db, named) as con:
+        if con is None:
+            return out
+        for kind, seconds, load, loaded, run, at in con.execute(
+            "SELECT kind, seconds, load, loaded, run, at FROM readings WHERE node=? "
+            "ORDER BY at, n", (node,)):  # fmt: skip
+            out[kind] = {"seconds": seconds, "load": load, "loaded": bool(loaded), "run": run,
+                         "at": at}  # fmt: skip
+    return out
 
 
 def get(key: str, db: Path | None = None) -> object:
@@ -196,16 +224,21 @@ def record(
     loaded: frozenset[str] | set[str] = frozenset(),
     db: Path | None = None,
     named: bool = False,
+    loads: Mapping[str, float] | None = None,
 ) -> None:
     """One run's readings, {kind: {node id: seconds}}, written in ONE transaction with its prunes:
     every node of the view KEEP refuses gets a `pruned` row, and each (kind, node) keeps its
-    newest KEEP readings. A failed write costs the next run its order, never its verdict."""
+    newest KEEP readings. LOADS, {node id: runnable threads per core over the test}, fills each
+    reading's `load` (GOH.LONGPOLECOLD: a reading is judged by the load it was taken at). A failed
+    write costs the next run its order, never its verdict."""
     (db, named), now, run = _where(db, named), time.time(), run_id()
+    loads = loads or {}
     with contextlib.suppress(OSError, sqlite3.Error), goh_db.transaction(db, named) as con:
         _import(con, db, now)
         con.executemany(
-            "INSERT INTO readings(run, node, kind, seconds, loaded, at) VALUES (?, ?, ?, ?, ?, ?)",
-            [(run, k, kind, round(v, 3), int(k in loaded), now)
+            "INSERT INTO readings(run, node, kind, seconds, load, loaded, at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [(run, k, kind, round(v, 3), loads.get(k), int(k in loaded), now)
              for kind, got in seen.items() for k, v in got.items()],
         )  # fmt: skip
         if keep is not None:

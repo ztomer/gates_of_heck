@@ -53,3 +53,13 @@ def test_a_top_level_run_is_named_the_table_and_a_nested_run_none(tmp_path: Path
                      GATES_OF_HECK_SUITE_NESTED_OK="1",
                      GOH_TEST_DURATIONS="/inherited.json")  # fmt: skip
     assert nested == "unset"
+
+
+def test_a_top_level_run_under_a_named_goh_db_writes_that_file_not_the_real_one(tmp_path) -> None:
+    """GOH.LONGPOLECOLD: the 72.1 s reading reached the real goh.db at 04:55:56; it was the real
+    lander's gate run (a probe batch's external coverage suite, 330 passed, 1 failed), not a check
+    run with GOH_DB at a scratch dir. Pinned both ways: the runner names GOH_DB's file when GOH_DB
+    is set, so no top-level run under a scratch GOH_DB writes the real table."""
+    scratch = tmp_path / "scratch" / "goh.db"
+    assert _handed(tmp_path / "named", GOH_DB=str(scratch)) == str(scratch)
+    assert _handed(tmp_path / "unnamed") != str(scratch)

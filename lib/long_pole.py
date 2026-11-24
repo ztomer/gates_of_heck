@@ -1,6 +1,7 @@
 """lib/long_pole.py -- the longest test every enqueue runs (GOH.PRELONGPOLE).
 
     long_pole.py [--root DIR] [--limit S] [--check]    # the longest test, the sum, the offenders
+    long_pole.py --remeasure NODE                      # one test's entry read afresh, its load said
 
 THE STANDING SET is what `goh land --enqueue`'s pre-step chooses for an EMPTY diff
 (`tools/affected_tests.py` `affected(root, [], enqueue=True)`): the judges whose reads are not
@@ -50,6 +51,7 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -109,22 +111,39 @@ GROWTH = 1.6
 
 
 def settle(
-    old: tuple[float, float | None] | None, new: tuple[float, float], loaded: bool
+    old: tuple[float, float | None] | None,
+    new: tuple[float, float],
+    loaded: bool,
+    wall: float | None = None,
+    cold: bool = False,
 ) -> tuple[float, float] | None:
-    """A test's table entry, (quiet seconds, CPU seconds), after a run read `new` from it; None
-    leaves `old` as it is. A quiet reading is the measurement. A loaded one is unmeasured, unless
-    its CPU grew GROWTH x over the quiet entry's: then its quiet seconds grow by the CPU it added
-    over the cores the quiet entry spread it over (CPU over quiet wall, at least one), so a real
-    growth is red at any load while a loaded reading of unchanged code moves nothing."""
+    """A test's table entry, (quiet seconds, CPU seconds), after a run read `new` from it, its
+    `wall` seconds beside (None: not known) and `cold`, whether it missed a store it keeps across
+    sessions (tests/_kept_store.py); None leaves `old` as it is.
+
+    A quiet reading is the measurement. A loaded one is unmeasured, unless its CPU grew GROWTH x
+    over the quiet entry's: then its quiet seconds grow by the CPU it added over the cores it ran
+    on, the entry's or the reading's own (CPU over wall), whichever is more, so a real growth is
+    red at any load while a loaded reading of unchanged code moves nothing (GOH.LONGPOLEUNMEASURED).
+
+    NO READING THE CODE DID NOT MAKE (GOH.LONGPOLECOLD). A cold store's reading never RAISES an
+    entry: its CPU is the cache refilling, not the code. On 2026-11-24 04:55:56 a run that missed
+    the kept parse findings read 75.0 s of CPU over 28.1 s of wall for a 2.6 s test, scaling by
+    the entry's one core wrote 72.1 s, and every land after it went red. And no estimate exceeds
+    the reading's own wall, which load only adds to; a loaded reading whose wall is below the
+    entry lowers it to that wall, so a wrong entry heals on its next run at any load."""
     if not loaded:
-        return new
-    if old is None or old[1] is None or old[1] <= 0:
+        return None if cold and old is not None and new[0] > old[0] else new
+    if old is not None and wall is not None and wall < old[0]:
+        return (round(wall, 3), new[1])
+    if cold or old is None or old[1] is None or old[1] <= 0:
         return None
     (was, was_cpu), cpu = (old[0], old[1]), new[1]
     if cpu < GROWTH * was_cpu:
         return None
-    cores = max(1.0, was_cpu / max(was, 1e-9))
-    return (round(was + (cpu - was_cpu) / cores, 3), cpu)
+    cores = max(1.0, was_cpu / max(was, 1e-9), cpu / wall if wall else 0.0)
+    grown = was + (cpu - was_cpu) / cores
+    return (round(grown if wall is None else min(grown, wall), 3), cpu)
 
 
 def standing(root: Path) -> list[str]:
@@ -237,13 +256,45 @@ def report(
     return lines
 
 
+def _entry(node: str) -> str:
+    """NODE's long-pole entry as the ratchet reads it, and the readings behind it."""
+    dur = _fast()._durations()
+    pole = dur.load("pole").get(node)
+    rows = dur.newest(node)
+
+    def one(kind: str) -> str:
+        r = rows.get(kind)
+        if r is None:
+            return f"{kind} none"
+        load = "load unknown" if r["load"] is None else f"run queue {r['load']:.2f}/core"
+        return f"{kind} {r['seconds']:.3f} s ({load}{', loaded' if r['loaded'] else ''})"
+
+    head = "no entry" if pole is None else f"entry {pole:.3f} s"
+    return f"{head}; newest readings: {one('dur')}, {one('pole')}, {one('pole_cpu')} CPU"
+
+
+def remeasure(node: str, root: Path = ROOT, run=subprocess.run, say=print) -> int:
+    """A fresh reading of NODE by the suite's own runner (tools/pytest.sh, a top-level run: it
+    writes the table, each reading with its load and CPU), its entry said before and after. The
+    one way an entry is corrected (GOH.LONGPOLECOLD): never a hand edit of goh.db, and a loaded
+    reading lowers an entry above its own wall (`settle`), so it works at any load."""
+    say(f"before: {_entry(node)}")
+    rc = run(["bash", str(root / "tools" / "pytest.sh"), node], cwd=root, check=False,
+             stdin=subprocess.DEVNULL).returncode  # fmt: skip
+    say(f"after:  {_entry(node)}")
+    return rc
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--root", default=str(ROOT))
     ap.add_argument("--limit", type=float, default=LIMIT_S, help="the target `report` lists over")
     ap.add_argument("--check", action="store_true", help="the ratchet: exit 1 on any red")
+    ap.add_argument("--remeasure", metavar="NODE", help="a fresh reading of one test's entry")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    if args.remeasure:
+        return remeasure(args.remeasure, root)
     chosen = standing(root)
     cases = measured(root, chosen, poles())
     allow = load_allow(root / "tests" / ALLOW.name)

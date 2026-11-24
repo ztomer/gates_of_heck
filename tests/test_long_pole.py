@@ -17,6 +17,7 @@ state, written by every top-level suite run.
 from __future__ import annotations
 
 import json
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -186,6 +187,57 @@ def test_a_real_growth_is_red_at_any_load() -> None:
     assert lp.GROWTH > lp.LOAD_CPU_DRIFT and lp.GROWTH < 2.0
 
 
+def test_a_cold_cache_spike_is_no_growth_and_never_raises_the_entry() -> None:
+    """GOH.LONGPOLECOLD, the reading of 2026-11-24 04:55:56: test_shellcheck_follows_every_source_
+    in_this_tree, entry 2.6 s on 2.7 s of CPU, read 28.1 s of wall and 75.0 s of CPU at load 27/16
+    with its kept parse findings missed (a cold store re-ran shellcheck over every file, spread
+    over cores). `settle` scaled the 72 s of added CPU by the entry's one core and wrote 72.1 s,
+    above the reading's own wall, and every land after it went red. A cold store's reading never
+    raises an entry, and no reading settles above its own wall: load only ever adds to it."""
+    entry, wall = (2.616, 2.722), 28.06
+    assert lp.settle(entry, (14.0, 75.03), loaded=True, wall=wall, cold=True) is None
+    blind = lp.settle(entry, (14.0, 75.03), loaded=True, wall=wall)  # a store the guard cannot see
+    assert blind is not None and blind[0] <= wall and not lp.judge({SLOW: blind[0]}, {})
+    assert lp.settle(entry, (14.07, 72.3), loaded=False, cold=True) is None, "quiet, cold: no rise"
+    assert lp.settle(entry, (2.5, 2.6), loaded=False, cold=True) == (2.5, 2.6), "a cold run lowers"
+    assert lp.settle(None, (14.07, 72.3), loaded=False, cold=True) == (14.07, 72.3), "first entry"
+
+
+def test_a_warm_growth_still_raises_the_entry_under_load_and_cold_ones_wait() -> None:
+    """The other way: a warm reading whose CPU grew raises the entry, by the CPU it added over the
+    cores the reading itself spread it over, and a real growth past the line is red at any load,
+    since its wall under load is at least its quiet seconds."""
+    grown = lp.settle((40.0, 40.0), (40.0, 80.0), loaded=True, wall=95.0)
+    assert grown == (80.0, 80.0) and lp.judge({SLOW: grown[0]}, {})
+    spread = lp.settle((2.6, 2.7), (20.0, 75.0), loaded=True, wall=70.0)  # 4 cores: 72 s / 1.07
+    assert spread is not None and 60.0 < spread[0] <= 70.0 and lp.judge({SLOW: spread[0]}, {})
+    assert lp.settle((40.0, 40.0), (40.0, 80.0), loaded=True, wall=95.0, cold=True) is None
+
+
+def test_a_loaded_reading_lowers_an_entry_above_its_own_wall() -> None:
+    """The 72.1 s entry heals itself: a run of the test, at any load, that took less wall than
+    the entry proves the entry too high (a quiet box is never slower), so it falls to that wall."""
+    assert lp.settle((72.108, 75.03), (2.5, 2.7), loaded=True, wall=3.1) == (3.1, 2.7)
+    assert lp.settle((25.0, 30.0), (20.0, 31.0), loaded=True, wall=30.0) is None, "wall above it"
+
+
+def test_the_pole_table_reads_no_entry_above_its_own_runs_wall(tmp_path: Path) -> None:
+    """An entry settled above the wall its own run read is no quiet time any run could have had;
+    the view the ratchet judges reads it at that wall (the 72.1 s entry read 28.06 s of wall)."""
+    db = tmp_path / "goh.db"
+    node = "tests/test_s.py::test_w"
+    durations.record(
+        {"pole": {node: 2.616}, "pole_cpu": {node: 2.722}, "dur": {node: 3.064}}, db=db
+    )
+    durations.record({"pole": {node: 72.108}, "pole_cpu": {node: 75.03}, "dur": {node: 28.06}},
+                     loaded={node}, db=db)  # fmt: skip
+    assert fast_tests.load("pole", db) == {node: 28.06}
+    durations.record({"dur": {node: 2.5}}, db=db)  # a later run's wall: not the entry's own run
+    assert fast_tests.load("pole", db) == {node: 28.06}
+    durations.record({"pole": {node: 2.5}, "pole_cpu": {node: 2.4}, "dur": {node: 2.6}}, db=db)
+    assert fast_tests.load("pole", db) == {node: 2.5}, "a pole under its wall reads as written"
+
+
 FIXTURE = """import time
 
 
@@ -200,7 +252,7 @@ def test_burns():
 """
 
 
-def _child_run(tmp_path: Path, run_queue: float) -> Path:
+def _child_run(tmp_path: Path, run_queue: float, fixture: str = FIXTURE) -> Path:
     """The suite's own wiring (the drift guard's reading, the schedule's table) in a child run,
     through an xdist worker, at a pinned stretch of 3 and a pinned run queue; its duration table."""
     (tmp_path / "conftest.py").write_text(
@@ -214,14 +266,15 @@ def _child_run(tmp_path: Path, run_queue: float) -> Path:
         "def pytest_configure(config):\n"
         "    config.pluginmanager.register(_schedule, 'goh-longest-first')\n"
     )
-    (tmp_path / "test_x.py").write_text(FIXTURE)
+    (tmp_path / "test_x.py").write_text(fixture)
     table = tmp_path / "state" / "goh.db"
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-n", "1", str(tmp_path)],
         capture_output=True, text=True, cwd=tmp_path, check=False, stdin=subprocess.DEVNULL,
         env=hermetic_env(GOH_TEST_DURATIONS=str(table)), timeout=patience(120),
     )  # fmt: skip
-    assert r.returncode == 0 and "2 passed" in r.stdout, r.stdout + r.stderr
+    ok = r.returncode == 0 and " passed" in r.stdout and "failed" not in r.stdout
+    assert ok, r.stdout + r.stderr
     return table
 
 
@@ -251,13 +304,76 @@ def test_a_loaded_run_leaves_the_table_as_the_quiet_run_read_it_but_a_real_growt
     raises the entry of one whose CPU did, by the CPU it added."""
     waits, burns = "test_x.py::test_waits", "test_x.py::test_burns"
     table = tmp_path / "state" / "goh.db"
-    durations.record({"pole": {waits: 0.5, burns: 0.3}, "pole_cpu": {waits: 0.5, burns: 0.1}},
+    # The waiting test's entry sits under the 0.4 s it sleeps: one above a run's wall is lowered
+    # to it at any load (GOH.LONGPOLECOLD), which is not what this test pins.
+    durations.record({"pole": {waits: 0.35, burns: 0.3}, "pole_cpu": {waits: 0.5, burns: 0.1}},
                      db=table)  # fmt: skip
     _child_run(tmp_path, run_queue=lp.QUIET_LOAD * 4)
     poles = fast_tests.load("pole", table)
     cpus = fast_tests.load("pole_cpu", table)
-    assert poles[waits] == 0.5 and cpus[waits] == 0.5, "a loaded reading is unmeasured"
-    assert cpus[burns] >= 0.38 and poles[burns] == pytest.approx(0.3 + cpus[burns] - 0.1, abs=1e-3)
+    walls = fast_tests.load(db=table)
+    assert poles[waits] == 0.35 and cpus[waits] == 0.5, "a loaded reading is unmeasured"
+    cores = max(1.0, cpus[burns] / walls[burns])  # the reading's own spread, the sampler's CPU in
+    grown = min(0.3 + (cpus[burns] - 0.1) / cores, walls[burns])  # never above the wall it read
+    assert cpus[burns] >= 0.38 and poles[burns] == pytest.approx(grown, abs=1e-3)
+    with sqlite3.connect(table) as con:
+        loads = {r[0] for r in con.execute("SELECT load FROM readings WHERE node=?", (burns,))}
+    assert loads >= {lp.QUIET_LOAD * 4}, "each reading carries the load it was taken at"
+
+
+COLD = (
+    FIXTURE
+    + """
+
+def test_cold():
+    import sys, types  # a kept store this phase missed (tests/_kept_store.py `missed`)
+    store = sys.modules.setdefault("_kept_store", types.ModuleType("_kept_store"))
+    store.n = getattr(store, "n", 0) + 1
+    store.missed = lambda: store.n
+    start = time.process_time()
+    while time.process_time() - start < 0.4:
+        pass
+"""
+)
+
+
+def test_a_loaded_run_that_missed_a_kept_store_leaves_the_entry_where_a_warm_one_raises_it(
+    tmp_path: Path,
+) -> None:
+    """GOH.LONGPOLECOLD through the suite's own wiring: the same CPU growth under the same load
+    raises the warm test's entry and leaves the cold one's, whose phase missed a kept store."""
+    burns, cold = "test_x.py::test_burns", "test_x.py::test_cold"
+    table = tmp_path / "state" / "goh.db"
+    durations.record({"pole": {burns: 0.3, cold: 0.3}, "pole_cpu": {burns: 0.1, cold: 0.1}},
+                     db=table)  # fmt: skip
+    _child_run(tmp_path, run_queue=lp.QUIET_LOAD * 4, fixture=COLD)
+    poles = fast_tests.load("pole", table)
+    assert poles[cold] == 0.3, "a cold reading is no growth"
+    assert poles[burns] > 0.3, "the warm one's growth still moves its entry"
+
+
+def test_remeasure_corrects_an_entry_through_the_suites_runner_and_says_its_reading(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """`long_pole.py --remeasure NODE` is the one way to correct an entry: the suite's own runner
+    reads the test afresh and writes it with its load and CPU; the entry said before and after."""
+    db, node = tmp_path / "goh.db", "tests/test_s.py::test_w"
+    monkeypatch.setenv(durations.ENV, str(db))
+    durations.record({"pole": {node: 72.108}, "pole_cpu": {node: 75.03}, "dur": {node: 72.5}},
+                     loaded={node}, db=db)  # fmt: skip
+    ran: list[list[str]] = []
+
+    def runner(argv, **kw):
+        ran.append(argv)
+        durations.record({"pole": {node: 2.9}, "pole_cpu": {node: 2.7}, "dur": {node: 3.1}},
+                         loaded={node}, loads={node: 1.8}, db=db)  # fmt: skip
+        return subprocess.CompletedProcess(argv, 0)
+
+    said: list[str] = []
+    assert lp.remeasure(node, REPO_ROOT, run=runner, say=said.append) == 0
+    assert ran == [["bash", str(REPO_ROOT / "tools" / "pytest.sh"), node]]
+    assert said[0].startswith("before: entry 72.108 s") and said[1].startswith("after:  entry 2.9")
+    assert "run queue 1.80/core, loaded" in said[1] and "pole_cpu 2.700 s" in said[1], said
 
 
 def test_the_stretch_is_the_median_of_the_probes_samples_not_one_of_them() -> None:

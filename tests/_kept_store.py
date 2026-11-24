@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -66,18 +67,32 @@ def kept(name: str) -> Path:
     return store
 
 
+_MISSED = [0]  # keys asked of a store and not found, in this process (`missed`)
+
+
+def missed() -> int:
+    """How many keys this process asked of its kept stores and did not find: the drift guard reads
+    it around each test phase, so a reading taken while a store refilled is COLD, never growth
+    (lib/long_pole.py `settle`, GOH.LONGPOLECOLD)."""
+    return _MISSED[0]
+
+
 def get(store: str, keys: list[str], db: Path | None = None) -> dict[str, str]:
     """{key: body} of STORE's rows among KEYS in DB (the suite's own goh-cache.db by default)."""
     gcd, out = _cache(), {}
     p = db or gcd.path()
-    if not keys or not p.is_file():
+    try:
+        if not keys or not p.is_file():
+            return out
+        with gcd.missable(f"kept {store}"), gcd.ro(p) as con:
+            for i in range(0, len(keys), 500):
+                part = keys[i : i + 500]
+                marks = ",".join("?" * len(part))
+                sql = f"SELECT key, body FROM kept WHERE store=? AND key IN ({marks})"
+                out.update(con.execute(sql, [store, *part]))
         return out
-    with gcd.missable(f"kept {store}"), gcd.ro(p) as con:
-        for i in range(0, len(keys), 500):
-            part = keys[i : i + 500]
-            out.update(con.execute(f"SELECT key, body FROM kept WHERE store=? AND key IN "
-                                   f"({','.join('?' * len(part))})", [store, *part]))  # fmt: skip
-    return out
+    finally:
+        _MISSED[0] += len(set(keys) - set(out))
 
 
 def put(store: str, rows: dict[str, str], db: Path | None = None) -> None:
@@ -99,12 +114,32 @@ def merge(src: Path, dest: Path, named: bool) -> int:
     with gcd.missable("kept stores"), gcd.ro(src, named) as con:
         rows = con.execute(f"SELECT store, key, body, at FROM kept WHERE at >= {cut}").fetchall()
     new = 0
-    with gcd.missable("kept stores"), gcd.transaction(dest, named) as con:
-        before = con.total_changes
-        con.executemany("INSERT OR IGNORE INTO kept(store, key, body, at) VALUES (?,?,?,?)", rows)
-        new = con.total_changes - before
-        con.execute(f"DELETE FROM kept WHERE at < {cut}")
+    with gcd.missable("kept stores"):
+        try:
+            with gcd.transaction(dest, named) as con:
+                before = con.total_changes
+                sql = "INSERT OR IGNORE INTO kept(store, key, body, at) VALUES (?,?,?,?)"
+                con.executemany(sql, rows)
+                new = con.total_changes - before
+                con.execute(f"DELETE FROM kept WHERE at < {cut}")
+        except gcd.db_core.NewerFile as e:  # missable keeps a refusal silent; here it costs one
+            _say_cold(rows, dest, named, e)
     return new
+
+
+def _say_cold(rows: list, dest: Path, named: bool, why: Exception) -> None:
+    """A refused merge, said aloud with what it lost (GOH.LONGPOLECOLD): a lane copy that ships a
+    goh-cache.db migration the real file lacks may not write it (lib/db_record.py), so this
+    session's verdicts are not kept and the next session of these tests runs cold."""
+    gcd, have = _cache(), set()
+    with contextlib.suppress(OSError, sqlite3.Error), gcd.ro(dest, named) as con:
+        have = set(con.execute("SELECT store, key FROM kept"))
+    lost = sum((store, key) not in have for store, key, _, _ in rows)
+    if lost:
+        gcd.db_core.warn(
+            f"kept stores: {lost} kept row{'s' * (lost != 1)} of this session not merged into "
+            f"{dest} ({why}): the next session of the tests that read them runs cold"
+        )
 
 
 def _controller(config) -> bool:

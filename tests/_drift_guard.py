@@ -297,7 +297,21 @@ if _REAL_CARGO:
 # whether the run queue over it (`run_queue`) passed lib/long_pole.py QUIET_LOAD; the controller
 # keeps a loaded test's entry as the last quiet run read it, unless its CPU outgrew that run's
 # (`settle`): one stretch sample cannot correct a wall the load moved across the whole test.
+# A phase also carries its run queue (`goh_pole_load`, written to the reading's `load`) and whether
+# it missed a kept store (`goh_pole_cold`, `kept_misses`): a cold store's CPU is the store
+# refilling, never the test's growth (GOH.LONGPOLECOLD).
 _CPU_MARK = pytest.StashKey[float]()
+_MISS_MARK = pytest.StashKey[int]()
+
+
+def kept_misses() -> int:
+    """Keys this process's kept stores missed so far (tests/_kept_store.py `missed`), 0 when none
+    was loaded: a phase that missed one read COLD (GOH.LONGPOLECOLD), its CPU the store refilling,
+    which lib/long_pole.py `settle` never takes for the test's growth."""
+    kept = sys.modules.get("_kept_store")
+    return int(kept.missed()) if kept is not None and hasattr(kept, "missed") else 0
+
+
 POLE_PROBE_AFTER_S = 2.0
 POLE_PROBE_SAMPLES = 5
 
@@ -342,6 +356,7 @@ def _cpu_s() -> float:
 def pytest_runtest_setup(item):
     """Start the load sampler before the first fixture: a setup is judged by the load it ran in."""
     item.stash[_CPU_MARK] = _cpu_s()
+    item.stash[_MISS_MARK] = kept_misses()
     _start_sampler()
 
 
@@ -353,10 +368,15 @@ def pytest_runtest_makereport(item, call):
     now = _cpu_s()
     cpu = now - item.stash.get(_CPU_MARK, now)
     item.stash[_CPU_MARK] = now
+    missed = kept_misses()
+    rep.goh_pole_cold = missed > item.stash.get(_MISS_MARK, missed)
+    item.stash[_MISS_MARK] = missed
     stretch = pole_stretch() if call.duration >= POLE_PROBE_AFTER_S else 1.0
     rep.goh_pole = round(pole(call.duration, cpu, stretch), 3)
     rep.goh_pole_cpu = round(max(0.0, cpu), 3)
-    rep.goh_pole_loaded = run_queue(call.start, call.stop) > QUIET_LOAD
+    queue = run_queue(call.start, call.stop)
+    rep.goh_pole_load = round(queue, 3)
+    rep.goh_pole_loaded = queue > QUIET_LOAD
     if rep.when not in ("setup", "call") or not rep.passed:
         return
     setup = rep.when == "setup"

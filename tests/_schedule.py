@@ -99,6 +99,8 @@ _seen: dict[str, float] = defaultdict(float)
 _poles: dict[str, float] = defaultdict(float)
 _pole_cpu: dict[str, float] = defaultdict(float)
 _pole_loaded: set[str] = set()  # a test with any phase read above lib/long_pole.py QUIET_LOAD
+_pole_cold: set[str] = set()  # a test with any phase that missed a kept store (GOH.LONGPOLECOLD)
+_pole_load: dict[str, float] = {}  # the highest run queue over any of a test's phases
 _collected: set[str] = set()  # node ids this run's collection kept
 _narrowed: set[str] = set()  # files a deselection or a node-id argument cut short
 _COLLECTED_KEY, _NARROWED_KEY = "goh_collected_ids", "goh_narrowed_files"
@@ -219,6 +221,11 @@ def pytest_runtest_logreport(report) -> None:
         _pole_cpu[report.nodeid] += float(getattr(report, "goh_pole_cpu", 0.0) or 0.0)
         if getattr(report, "goh_pole_loaded", False):
             _pole_loaded.add(report.nodeid)
+        if getattr(report, "goh_pole_cold", False):
+            _pole_cold.add(report.nodeid)
+        queue = getattr(report, "goh_pole_load", None)
+        if isinstance(queue, (int, float)):
+            _pole_load[report.nodeid] = max(queue, _pole_load.get(report.nodeid, 0.0))
 
 
 def pytest_sessionfinish(session) -> None:
@@ -234,18 +241,20 @@ def pytest_sessionfinish(session) -> None:
         "pole": {k: v[0] for k, v in settled.items()},
         "pole_cpu": {k: v[1] for k, v in settled.items()},
     }
-    _write(_table[0], seen, root, whole, frozenset(_pole_loaded))
+    _write(_table[0], seen, root, whole, frozenset(_pole_loaded), dict(_pole_load))
 
 
 def _settle(old: dict[str, float], old_cpu: dict[str, float]) -> dict[str, tuple[float, float]]:
     """{node id: (quiet seconds, CPU seconds)} this run MEASURED: a test read under load is left
     out, so its entry stays the last quiet run's (lib/long_pole.py `settle`,
-    GOH.LONGPOLEUNMEASURED)."""
+    GOH.LONGPOLEUNMEASURED), and so is one that missed a kept store and would raise it, its CPU the
+    store refilling; no entry settles above the wall the run read (GOH.LONGPOLECOLD)."""
     settle = _lib("long_pole").settle
     out = {}
     for k, seconds in _poles.items():
         was = (old[k], old_cpu.get(k)) if k in old else None
-        got = settle(was, (seconds, _pole_cpu[k]), k in _pole_loaded)
+        got = settle(was, (seconds, _pole_cpu[k]), k in _pole_loaded, wall=_seen.get(k),
+                     cold=k in _pole_cold)  # fmt: skip
         if got is not None:
             out[k] = got
     return out
@@ -257,6 +266,7 @@ def _write(
     root: Path,
     whole: set[str],
     loaded: frozenset[str] = frozenset(),
+    loads: dict[str, float] | None = None,
 ) -> None:
     """`seen` ({kind: {node id: seconds}}) recorded into `db` in ONE transaction (lib/durations.py
     `record`: a row per reading, so a run ending beside another loses none of its own), every
@@ -267,4 +277,4 @@ def _write(
         f = k.split("::")[0]
         return (root / f).is_file() and (f not in whole or k in _collected)
 
-    _lib("durations").record(seen, keep, loaded, db, named=True)
+    _lib("durations").record(seen, keep, loaded, db, named=True, loads=loads)

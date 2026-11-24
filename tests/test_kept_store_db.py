@@ -69,3 +69,39 @@ def test_goh_state_names_no_kept_store_as_unbounded(tmp_path) -> None:
         for n in range(state_bounds.GROWTH + 1):
             (tmp_path / name / f"{n:02x}").mkdir(parents=True)
     assert state_bounds.unbounded(tmp_path) == []
+
+
+def test_a_lookup_counts_the_keys_it_missed(tmp_path) -> None:
+    """The drift guard reads `missed` around each phase: a phase that missed is a cold reading,
+    never a test's growth (lib/long_pole.py `settle`, GOH.LONGPOLECOLD)."""
+    db = tmp_path / "goh-cache.db"
+    ks.put(pf.STORE, {"k1": "[]"}, db)
+    before = ks.missed()
+    ks.get(pf.STORE, ["k1", "k2", "k3"], db)
+    assert ks.missed() - before == 2
+    ks.get(pf.STORE, ["k1"], db)
+    assert ks.missed() - before == 2, "a hit is no miss"
+    ks.get(pf.STORE, ["k1"], tmp_path / "absent.db")
+    assert ks.missed() - before == 3, "no file: every key missed"
+
+
+def test_a_refused_merge_into_the_real_file_says_the_next_session_runs_cold(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """A lane copy shipping a goh-cache.db migration the real file lacks may not write it
+    (lib/db_record.py): the session's kept rows were dropped without a word, and the next run of
+    the shell-lint tests started cold and read as 72 s of growth (GOH.LONGPOLECOLD). The refusal
+    is said, with what was lost."""
+    suite, real = tmp_path / "suite.db", tmp_path / "real.db"
+    ks.put(pf.STORE, {"a": "1", "b": "2"}, suite)
+    ks.put(pf.STORE, {"a": "1"}, real)
+    gcd = ks._cache()
+
+    def refused(at=None, named=False):
+        raise gcd.Refused(f"{at}: lacks 0003 and this copy is not the code of record")
+
+    monkeypatch.setattr(gcd, "transaction", refused)
+    assert ks.merge(suite, real, True) == 0
+    said = capsys.readouterr().err
+    assert "1 kept row" in said and "cold" in said and str(real) in said, said
+    assert _rows(real) == [(pf.STORE, "a", "1")]
