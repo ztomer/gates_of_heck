@@ -271,7 +271,7 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=Fal
     from lib import land_waive  # its reds that are main's or a newer rule's (GOH.MAINREDWAIVE)
 
     env.update(w.split("=", 1) for w in land_waive.words(reqs))
-    nodes = tests(root, q, repo, rules=rules or tables)
+    nodes = tests(root, q, repo, rules or tables)  # positional: a test's fake takes *args
     if tables:
         t0 = time.monotonic()
         extra = [n for n in judge_tests(root) if n not in nodes]
