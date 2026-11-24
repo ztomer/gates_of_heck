@@ -171,8 +171,9 @@ def read_ledger(path: str) -> dict:
     import small_stores  # lib/: goh.db's kv (GOH.STATEDBS3); a worker's own ledger is a file
 
     data = small_stores.get(path)
-    return data if isinstance(data, dict) and isinstance(data.get("objs"), dict) else load(
-        os.devnull)  # fmt: skip
+    if isinstance(data, dict) and isinstance(data.get("objs"), dict):
+        return data
+    return {"L": 0.0, "objs": {}}
 
 
 def write_ledger(path: str, data: dict) -> None:

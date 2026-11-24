@@ -13,3 +13,8 @@ import estate_registry  # lib/, on the path from the line above
 def estate_state(state: Path) -> dict:
     """The estate state STATE names, as every reader sees it ({} for none)."""
     return estate_registry.read_state(Path(state))
+
+
+def put_estate_state(state: Path, data: dict) -> None:
+    """Replace the estate state STATE names, as a writer would (a test's edit of the record)."""
+    estate_registry.small_stores.put(Path(state), data)

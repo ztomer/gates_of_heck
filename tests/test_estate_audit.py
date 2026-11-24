@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _small_store import estate_state, put_estate_state
 from _tree_clone import from_template
 from conftest import REPO_ROOT
 
@@ -123,7 +124,7 @@ def _audit(root: Path, state: Path, db: Path) -> dict:
         stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
-    return json.loads(state.read_text())
+    return estate_state(state)
 
 
 def _hook(state: Path) -> str:
@@ -176,10 +177,10 @@ def test_a_new_advisory_is_reported_by_the_next_run_and_at_session_start(tmp_pat
 def test_first_seen_survives_the_next_run(tmp_path, estate):
     state, db = tmp_path / "state.json", _db(tmp_path, planted=True)
     first = _audit(estate, state, db)["advisories"][PLANTED]["first_seen"]
-    data = json.loads(state.read_text())
+    data = estate_state(state)
     old = (dt.datetime.now(dt.UTC) - dt.timedelta(days=5)).isoformat(timespec="seconds")
     data["advisories"][PLANTED]["first_seen"] = old
-    state.write_text(json.dumps(data))
+    put_estate_state(state, data)
     again = _audit(estate, state, db)["advisories"][PLANTED]["first_seen"]
     assert again == old != first
     out = _hook(state)
@@ -292,9 +293,9 @@ def _fixed_since(state: Path, estate: Path, *, new: bool) -> None:
     """The run named the planted crate in hit/Cargo.lock; then the lock moved on (GOH.EA3): a private consumer's
     pulldown-cmark 0.13.4 -> 0.13.6 landed after the daily run, and the hook still said red."""
     if new:
-        data = json.loads(state.read_text())
+        data = estate_state(state)
         data["advisories"][PLANTED]["first_seen"] = dt.datetime.now(dt.UTC).isoformat()
-        state.write_text(json.dumps(data))
+        put_estate_state(state, data)
     lock = estate / "hit" / "Cargo.lock"
     lock.write_text(lock.read_text().replace('version = "1.0.0"', 'version = "1.0.1"'))
 
@@ -317,9 +318,9 @@ def test_a_lock_fixed_since_the_run_is_not_reported_red(tmp_path, estate, new):
 def test_a_lock_that_cannot_be_reread_is_never_reported_fixed(tmp_path, estate):
     state = tmp_path / "state.json"
     _audit(estate, state, _db(tmp_path, planted=True))
-    data = json.loads(state.read_text())
+    data = estate_state(state)
     data["advisories"][PLANTED]["first_seen"] = dt.datetime.now(dt.UTC).isoformat()
-    state.write_text(json.dumps(data))
+    put_estate_state(state, data)
     (estate / "hit" / "Cargo.lock").unlink()
     (estate / "group" / "clean" / "nested" / "Cargo.lock").write_text("[[package\nnot toml")
     out = _hook(state)

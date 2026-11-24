@@ -21,6 +21,7 @@ from test_estate_audit import GATED, LOCK, PLANTED, SCRIPT, _db, _git, _hook, _r
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import gate_coverage
+from _small_store import estate_state
 
 needs_audit = pytest.mark.skipif(
     shutil.which("cargo-audit") is None, reason="cargo-audit not installed"
@@ -53,7 +54,7 @@ def _run(root: Path, state: Path, db: Path, *extra: str) -> dict:
         stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
-    return json.loads(state.read_text())
+    return estate_state(state)
 
 
 # ── the verdicts, end to end ─────────────────────────────────────────────────────────────────
