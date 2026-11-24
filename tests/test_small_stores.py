@@ -171,3 +171,17 @@ def test_the_evictors_ledger_the_commit_stamps_and_the_flakes_write_goh_db(
     assert {"t0", "t1", "t2", "t-new"} == commit_stamp.stamped()
     assert rec["id"] == f"{flakes.key(TEST)}.3", rec  # after the file's two records of TEST
     assert [r["id"] for r in flakes.recorded(TEST)][-1] == rec["id"]
+
+
+def test_wf_pins_own_record_is_goh_dbs(state) -> None:
+    """`goh wf-pin` run by no ship records into goh.db's kv `wf_pin.pins` (beside the pin ledger),
+    no sidecar file; a ship's record is lib/ship_records.py's (GOH.STATEDBS2)."""
+    import consumer_pins
+
+    where = state / "wf_pin.json"
+    (state / "wf_pin.pins.json").unlink()
+    consumer_pins.write_record(str(where), "v9.9.9", "0.1", {"/p/a": {"commit": "ok"}}, ship=False)
+    assert not (state / "wf_pin.pins.json").exists()
+    assert small_stores.get(state / "wf_pin.pins.json") == {
+        "schema": 2, "tag": "v9.9.9", "ruff": "0.1", "repos": {"/p/a": {"commit": "ok"}},
+        "sweep": None}  # fmt: skip

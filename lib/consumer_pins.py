@@ -44,6 +44,7 @@ import gate_slot
 import land_lock
 import lock_order
 import ship_records
+import small_stores
 import step_timings
 from tmp_root import goh_tmp  # every temp root under $TMPDIR/goh.noindex (GOH.TMPNOINDEX)
 
@@ -356,11 +357,14 @@ def record_path(result: Path | str) -> Path:
 def write_record(result: str, tag: str, ruff: str, repos: dict[str, dict[str, str]],
                  sweep: str | None = None, ship: bool = True) -> None:  # fmt: skip
     """The install's record: a SHIP result's goh.db `ship_pins` row (lib/ship_records.py), and
-    until the database plan's wave-3 delete commit the sidecar file beside the result too (wf-pin's
-    own record, SHIP false, is a file: GOH.STATEDB S3's)."""
+    until the database plan's wave-3 delete commit the sidecar file beside the result too; wf-pin's
+    own record (SHIP false) is goh.db's `kv` row named for its sidecar, `wf_pin.pins`, and no file
+    (lib/small_stores.py, GOH.STATEDBS3)."""
     body = {"schema": 2, "tag": tag, "ruff": ruff, "repos": repos, "sweep": sweep}
-    if ship:
-        ship_records.put_pins(result, body)
+    if not ship:
+        small_stores.put(record_path(result), body)
+        return
+    ship_records.put_pins(result, body)
     path = record_path(result)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(body, indent=1) + "\n", encoding="utf-8")
