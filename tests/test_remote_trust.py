@@ -68,3 +68,40 @@ def test_the_post_merge_mac_sweep_reclassifies_a_planted_linux_only_pass(tree: P
     assert not ok and "macos_only" in why
     assert rl.split(tree, ["tests/test_a.py::test_x"])[0] == []  # nor is it sent again
     assert idle_red.sweep(tree, "c" * 40, log) == ""  # once: it is macos_only already
+
+
+def test_a_worker_failure_keeps_the_worker_s_passes_in_the_record(tree: Path):
+    """A share with one failure there: the Mac re-runs that test and writes its own record, which
+    is merged into the one before it. The worker's other passes stay in `remote`, so the gate can
+    take them; lost, they were 'passed on main is neither judged here nor carried' (5 of the 20
+    lander runs to 2026-11-24, every first-named test a Linux-safe module)."""
+    from lib import affected_verdict as av
+
+    junit = (
+        '<?xml version="1.0"?><testsuites><testsuite name="pytest" time="1">'
+        '<testcase classname="tests.test_a" name="test_x" time="0.1"/>'
+        '<testcase classname="tests.test_b" name="test_x" time="0.1">'
+        '<failure message="linux only"/></testcase></testsuite></testsuites>'
+    )
+    (tree / "log").write_text("")
+    (tree / "j.xml").write_text(junit)
+
+    class Done:
+        def wait(self) -> int:
+            return 1
+
+    share = rl.Share(["tests/test_a.py", "tests/test_b.py"], Done(), tree / "j.xml", tree / "log")
+    record = tree / "record.json"
+    record.write_text(
+        json.dumps({"identity": "t", "sha": "s", "passed": {"tests/test_c.py::t": False}})
+    )
+
+    def mac(nodes: list[str]) -> int:  # the Mac's pytest writes its record whole
+        record.write_text(json.dumps({"identity": "t", "sha": "s",
+                                      "passed": dict.fromkeys(nodes, False)}))  # fmt: skip
+        return 0
+
+    assert rl.end(tree, share, str(record), av.merge_records, mac) == 0
+    got = json.loads(record.read_text())
+    assert got["remote"] == ["tests/test_a.py::test_x"], got
+    assert set(got["passed"]) == {"tests/test_c.py::t", "tests/test_b.py::test_x"}

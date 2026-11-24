@@ -320,6 +320,8 @@ def merge_records(record: Path, first: Path) -> None:
         b["passed"] = {**a.get("passed", {}), **b.get("passed", {})}
         if "reads" in a or "reads" in b:  # what each file read (tests/_read_audit.py)
             b["reads"] = {**(a.get("reads") or {}), **(b.get("reads") or {})}
+        if "remote" in a or "remote" in b:  # the worker's passes (GOH.REMOTETRUST), never dropped
+            b["remote"] = sorted({*a.get("remote", []), *b.get("remote", [])} - set(b["passed"]))
         record.write_text(json.dumps(b))
     elif a and not record.is_file():
         first.replace(record)
