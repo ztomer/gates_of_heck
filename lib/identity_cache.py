@@ -14,8 +14,9 @@ few things this module reads WITHOUT a spawn, so it is kept in a file keyed on a
                  the commit id (read from the refs by hand) and the script's own bytes. Replace
                  refs or a reftable store make the commit id no key: no cache then.
 
-Anything unreadable makes the key None and the caller spawns as before. The store is
-$GOH_IDENTITY_CACHE, default ~/.cache/goh/identity, at most KEEP entries (oldest dropped).
+Anything unreadable makes the key None and the caller spawns as before. The memo is goh-cache.db's
+`memo` table (GOH.VERDICTDB; the goh-cache.db in $GOH_IDENTITY_CACHE when a caller names one), at
+most KEEP rows per kind (oldest dropped); a database error is a miss or a skipped write.
 Pinned by tests/test_identity_cache.py.
 """
 
@@ -26,19 +27,25 @@ import json
 import os
 import re
 import subprocess
+import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import goh_cache_db  # lib/, beside this file: the memo is goh-cache.db's `memo` (GOH.VERDICTDB)
 
 KEEP = 512
 _CFG_PATH = re.compile(r"^\s*(?:excludesfile|path)\s*=\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
 
 
-def _dir() -> Path:
+def _db() -> Path:
+    """GOH_CACHE_DB, else the goh-cache.db in GOH_IDENTITY_CACHE when a caller names one (a test's;
+    lib/cpu_window.py's rule), else goh-cache.db's own."""
     d = os.environ.get("GOH_IDENTITY_CACHE")
-    if d:
-        return Path(d)
-    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-    return Path(base) / "goh" / "identity"
+    if d and not os.environ.get(goh_cache_db.SEAM.env):
+        return Path(d) / goh_cache_db.SEAM.file
+    return goh_cache_db.path()
 
 
 def _sig(p: Path | str) -> str:
@@ -159,36 +166,25 @@ def inputs_key(root: Path, scripts: list[Path]) -> str | None:
 
 
 def get(kind: str, key: str | None) -> list[str] | None:
-    if key is None:
+    if key is None or not (db := _db()).is_file():
         return None
-    try:
-        got = json.loads((_dir() / f"{kind}-{key}.json").read_text())
-    except (OSError, ValueError):
-        return None
+    got = None
+    with goh_cache_db.missable("identity memo"), goh_cache_db.ro(db) as con:
+        row = con.execute("SELECT value FROM memo WHERE kind=? AND key=?", (kind, key)).fetchone()
+        got = json.loads(row[0]) if row else None
     return got if isinstance(got, list) else None
 
 
 def put(kind: str, key: str | None, value: list[str]) -> None:
+    """Keep VALUE, then only the newest KEEP of KIND (a database error: a skipped write)."""
     if key is None:
         return
-    d = _dir()
-    try:
-        d.mkdir(parents=True, exist_ok=True)
-        tmp = d / f".{kind}-{key}.{os.getpid()}.tmp"
-        tmp.write_text(json.dumps(value))
-        os.replace(tmp, d / f"{kind}-{key}.json")
-        entries = sorted(d.glob("*.json"), key=_mtime)
-        for old in entries[:-KEEP]:
-            old.unlink(missing_ok=True)
-    except OSError:
-        return
-
-
-def _mtime(p: Path) -> float:
-    try:
-        return p.stat().st_mtime
-    except OSError:
-        return 0.0
+    with goh_cache_db.missable("identity memo"), goh_cache_db.transaction(_db()) as con:
+        con.execute("INSERT INTO memo(kind, key, value, at) VALUES (?, ?, ?, ?) ON CONFLICT(kind, "
+                    "key) DO UPDATE SET value=excluded.value, at=excluded.at",
+                    (kind, key, json.dumps(value), time.time()))  # fmt: skip
+        con.execute("DELETE FROM memo WHERE kind=? AND key NOT IN (SELECT key FROM memo WHERE "
+                    "kind=? ORDER BY at DESC LIMIT ?)", (kind, kind, KEEP))  # fmt: skip
 
 
 def _under(part: str, parts: tuple[str, ...], files: tuple[str, ...]) -> bool:

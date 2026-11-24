@@ -122,3 +122,32 @@ def test_build_inputs_follow_the_commit(checkout: Path) -> None:
         check=True, stdin=subprocess.DEVNULL).stdout.strip()  # fmt: skip
     _git(checkout, "checkout", "-q", "--detach", "HEAD~1")
     assert gate_identity.build_inputs(checkout)[-1] == "rust-toolchain.toml"
+
+
+def _memo(db: Path) -> list[tuple]:
+    import sqlite3
+
+    with sqlite3.connect(db) as con:
+        out = con.execute("SELECT kind, key, value FROM memo ORDER BY at").fetchall()
+    con.close()
+    return out
+
+
+def test_the_memo_is_goh_cache_db_rows_kept_per_kind(tmp_path, monkeypatch) -> None:
+    """GOH.VERDICTDB: the memo was 512 files under ~/.cache/goh/identity; it is goh-cache.db's
+    `memo` table, KEEP rows per kind, and a deleted cache is a miss (a spawn), never an error."""
+    cache = tmp_path / "cache"
+    monkeypatch.setenv("GOH_IDENTITY_CACHE", str(cache))
+    monkeypatch.delenv("GOH_CACHE_DB", raising=False)
+    monkeypatch.setattr(identity_cache, "KEEP", 2)
+    for n in range(3):
+        identity_cache.put("ls", f"k{n}", [f"f{n}"])
+    identity_cache.put("inputs", "k0", ["i"])
+    db = cache / "goh-cache.db"  # beside the named store, as lib/cpu_window.py's rule
+    assert [r[:2] for r in _memo(db)] == [("ls", "k1"), ("ls", "k2"), ("inputs", "k0")]
+    assert not list(cache.glob("*.json"))  # no memo file
+    assert identity_cache.get("ls", "k2") == ["f2"] and identity_cache.get("ls", "k0") is None
+    db.unlink()
+    assert identity_cache.get("ls", "k2") is None  # a deleted cache: a miss
+    identity_cache.put("ls", "k3", ["f3"])
+    assert identity_cache.get("ls", "k3") == ["f3"]
