@@ -24,6 +24,8 @@ down (`NewerFile` on a write).
 HERMETIC. With GATES_OF_HECK_SUITE_REAL_HOME set (tests/suite_home.py), opening a file that lives
 directly in the real home's goh state or cache directory raises `RealHomeOpen`: no test writes
 the real goh.db, and tests/real_state_guard.py cannot diff a file the lander writes during suites.
+The one exception is a file the suite's runner NAMED for its top-level run (`named=True`: the
+duration table tools/pytest.sh hands its run in GOH_TEST_DURATIONS, lib/durations.py).
 
 RULES FOR CALLERS. Open per operation, never at module level (subprocesses fork). A transaction
 never spans a subprocess, an flock wait or a network call: both databases are the innermost locks
@@ -248,10 +250,15 @@ def statements(sql: str) -> list[str]:
 
 
 @contextlib.contextmanager
-def connect(seam: Seam) -> Iterator[sqlite3.Connection]:
-    """The seam's file, opened read-write and migrated; a newer goh's file read-only (says so)."""
-    p = path(seam)
-    guard(p)
+def connect(
+    seam: Seam, at: Path | None = None, named: bool = False
+) -> Iterator[sqlite3.Connection]:
+    """The seam's file (AT when a caller names one), opened read-write and migrated; a newer goh's
+    file read-only (says so). NAMED: the suite's runner named AT in an input it hands its
+    top-level run (GOH_TEST_DURATIONS), the one file a suite may open in the real home."""
+    p = at or path(seam)
+    if not named:
+        guard(p)
     p.parent.mkdir(parents=True, exist_ok=True)
     fresh = not p.exists() or p.stat().st_size == 0
     con = sqlite3.connect(p, isolation_level=None, timeout=busy_ms(seam) / 1000)
@@ -269,10 +276,11 @@ def connect(seam: Seam) -> Iterator[sqlite3.Connection]:
 
 
 @contextlib.contextmanager
-def ro(seam: Seam) -> Iterator[sqlite3.Connection]:
-    """The seam's file read-only; a missing file is OSError, never created."""
-    p = path(seam)
-    guard(p)
+def ro(seam: Seam, at: Path | None = None, named: bool = False) -> Iterator[sqlite3.Connection]:
+    """The seam's file (AT when named) read-only; a missing file is OSError, never created."""
+    p = at or path(seam)
+    if not named:
+        guard(p)
     con = _ro(p, seam)
     try:
         yield con
@@ -282,12 +290,15 @@ def ro(seam: Seam) -> Iterator[sqlite3.Connection]:
 
 @contextlib.contextmanager
 def transaction(
-    seam: Seam, check: Callable[[], None] = lambda: None
+    seam: Seam,
+    check: Callable[[], None] = lambda: None,
+    at: Path | None = None,
+    named: bool = False,
 ) -> Iterator[sqlite3.Connection]:
     """One write: BEGIN IMMEDIATE (its wait appended to $GOH_TIMINGS), COMMIT, ROLLBACK on a raise.
     CHECK runs first: the seam's lock-order check (a wait on an innermost lock)."""
     check()
-    with connect(seam) as con:
+    with connect(seam, at, named) as con:
         if con.execute("PRAGMA query_only").fetchone()[0] or newer(con, seam):
             raise NewerFile(newer(con, seam) or f"{seam.file} is open read-only")
         t0 = time.monotonic()

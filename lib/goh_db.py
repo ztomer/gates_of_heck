@@ -50,12 +50,16 @@ def path() -> Path:
     return db_core.path(SEAM)
 
 
-def connect() -> contextlib.AbstractContextManager[sqlite3.Connection]:
-    return db_core.connect(SEAM)
+def connect(
+    at: Path | None = None, named: bool = False
+) -> contextlib.AbstractContextManager[sqlite3.Connection]:
+    return db_core.connect(SEAM, at, named)
 
 
-def ro() -> contextlib.AbstractContextManager[sqlite3.Connection]:
-    return db_core.ro(SEAM)
+def ro(
+    at: Path | None = None, named: bool = False
+) -> contextlib.AbstractContextManager[sqlite3.Connection]:
+    return db_core.ro(SEAM, at, named)
 
 
 def migrate(con: sqlite3.Connection) -> set[int]:
@@ -67,8 +71,9 @@ def _order() -> None:
 
 
 @contextlib.contextmanager
-def transaction() -> Iterator[sqlite3.Connection]:
-    with db_core.transaction(SEAM, _order) as con:
+def transaction(at: Path | None = None, named: bool = False) -> Iterator[sqlite3.Connection]:
+    """One write to goh.db (AT: a file a caller names, e.g. lib/durations.py's)."""
+    with db_core.transaction(SEAM, _order, at, named) as con:
         yield con
 
 
