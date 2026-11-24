@@ -48,7 +48,7 @@ pkg_dir="${2:-$PWD}"
 # spelling that differs in CASE from the on-disk path scopes every measured file out
 # of the report — silently, because the files are still executed. Measured 2026-10-08
 # from scripts/: a shell whose PWD said `~/projects/scripts` for the repo at
-# `~/Projects/scripts` produced `--cov=/Users/ztomer/projects/scripts`, and
+# `~/Projects/scripts` produced `--cov=/Users/.../projects/scripts`, and
 # `[run] patch = subprocess` dropped every CHILD's data with it — 8 shell suites
 # reported "ran but its children measured none of" their modules and the floor came
 # back 0.00% with 251 tests passing.

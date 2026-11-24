@@ -144,18 +144,21 @@ use clap::{CommandFactory, FromArgMatches};
 use cli::{Cli, Commands};
 use ported::{declared, paths};
 
+/// goh's checkout (`goh_dir::root_from`): `GOH_DIR`, else the checkout this binary sits in; a
+/// binary that finds neither stops here, naming why, rather than guess a home directory.
 pub(crate) fn goh_root() -> PathBuf {
-    std::env::var("GOH_DIR")
-        .or_else(|_| std::env::var("GOH"))
-        .map_or_else(
-            |_| {
-                std::env::var("HOME").map_or_else(
-                    |_| PathBuf::from("/Users/ztomer/Projects/gates_of_heck"),
-                    |home| PathBuf::from(home).join("Projects/gates_of_heck"),
-                )
-            },
-            PathBuf::from,
-        )
+    let exe = std::env::current_exe()
+        .ok()
+        .map(|p| p.canonicalize().unwrap_or(p));
+    goh_dir::root_from(
+        &|k| std::env::var_os(k),
+        exe.as_deref(),
+        std::path::Path::is_dir,
+    )
+    .unwrap_or_else(|why| {
+        goh_tui::eoutln!("{ERR} {why}");
+        std::process::exit(2)
+    })
 }
 
 /// A plain `goh` says it ran (GOH.PLAINBINMARK): when the directory `LLVM_PROFILE_FILE` names

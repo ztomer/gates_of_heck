@@ -61,6 +61,42 @@ fn repaired(
         .find(|c| is_dir(&c.join("gates")))
 }
 
+/// Where goh's checkout is (GOH.HOMEPATHHARD): `GOH_DIR` (or its older name `GOH`), else the
+/// checkout this binary sits in -- the nearest directory above `exe` holding `gates/`, the marker
+/// [`repaired`] reads -- else an error naming both. Never a guessed location: goh is public, and a
+/// literal home path is right on one machine only.
+///
+/// # Errors
+/// The message `goh_root` prints when neither names a checkout.
+pub fn root_from(
+    env: &dyn Fn(&str) -> Option<std::ffi::OsString>,
+    exe: Option<&Path>,
+    is_dir: impl Fn(&Path) -> bool,
+) -> Result<PathBuf, String> {
+    if let Some(dir) = ["GOH_DIR", "GOH"]
+        .iter()
+        .find_map(|k| env(k).filter(|v| !v.is_empty()))
+    {
+        return Ok(PathBuf::from(dir));
+    }
+    let exe = exe.ok_or_else(|| {
+        "goh: GOH_DIR is unset and this binary cannot read its own path: set GOH_DIR to the \
+         gates_of_heck checkout"
+            .to_owned()
+    })?;
+    exe.ancestors()
+        .skip(1)
+        .find(|dir| is_dir(&dir.join("gates")))
+        .map(Path::to_path_buf)
+        .ok_or_else(|| {
+            format!(
+                "goh: GOH_DIR is unset and {} sits in no gates_of_heck checkout (no gates/ above \
+                 it): set GOH_DIR to the checkout",
+                exe.display()
+            )
+        })
+}
+
 /// Re-runs this binary with `GOH_DIR` repaired when it names a removed export.
 ///
 /// So every path it resolves AND every process it starts sees the live goh. Returns only when
@@ -103,7 +139,7 @@ pub fn repair() {
 
 #[cfg(test)]
 mod goh_dir_tests {
-    use super::{head_cache, is_export_in, repaired};
+    use super::{head_cache, is_export_in, repaired, root_from};
     use std::ffi::{OsStr, OsString};
     use std::path::{Path, PathBuf};
 
@@ -173,5 +209,44 @@ mod goh_dir_tests {
             at(&env(&[("HOME", "/h")])),
             PathBuf::from("/h/.cache/goh/head")
         );
+    }
+
+    #[test]
+    fn the_root_is_goh_dir_then_the_checkout_the_binary_sits_in_then_an_error() {
+        let env = |pairs: &'static [(&'static str, &'static str)]| {
+            move |k: &str| {
+                pairs
+                    .iter()
+                    .find(|(n, _)| *n == k)
+                    .map(|(_, v)| OsString::from(v))
+            }
+        };
+        let exe = Path::new("/c/goh/bin/by-stamp/abc/goh");
+        let checkout = dirs(&["/c/goh/gates", "/h/Projects/gates_of_heck/gates"]);
+        let at =
+            |e: &dyn Fn(&str) -> Option<OsString>, x: Option<&Path>| root_from(e, x, &checkout);
+        assert_eq!(
+            at(&env(&[("GOH_DIR", "/g"), ("HOME", "/h")]), Some(exe)),
+            Ok(PathBuf::from("/g"))
+        );
+        assert_eq!(
+            at(&env(&[("GOH_DIR", ""), ("GOH", "/o")]), Some(exe)),
+            Ok(PathBuf::from("/o"))
+        );
+        assert_eq!(
+            at(&env(&[("GOH_DIR", ""), ("HOME", "/h")]), Some(exe)),
+            Ok(PathBuf::from("/c/goh"))
+        );
+        // Outside any checkout, with a home that has one where the owner keeps it: no guess.
+        let lost = at(
+            &env(&[("HOME", "/h")]),
+            Some(Path::new("/usr/local/bin/goh")),
+        );
+        let why = lost.expect_err("a binary outside a checkout with no GOH_DIR has no root");
+        assert!(
+            why.contains("GOH_DIR") && why.contains("/usr/local/bin/goh"),
+            "{why}"
+        );
+        assert!(at(&env(&[]), None).is_err());
     }
 }

@@ -33,7 +33,7 @@ def test_clean_tree_passes(repo):
 
 def test_each_shape_is_red_and_named(repo):
     shapes = {
-        "a.swift": '"/Users/ztomer/.cache/cargo-target/release/lib.dylib"',
+        "a.swift": '"/Users/someone/.cache/cargo-target/release/lib.dylib"',
         "b.sh": 'FFI="$HOME/Projects/private/app/_rescued_ffi"',
         "c.sh": 'FFI="${HOME}/Projects/x"',
         "d.md": "calls the binary with `--config-dir ~/Projects/private-cli`",
