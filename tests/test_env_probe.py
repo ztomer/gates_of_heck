@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import hermetic_env
 from env_probe import REDACTED, print_safe, probe_sh, read_probe, redacted
 
 SECRET = "not-a-real-secret-0b5e"  # a stand-in value; the assertions name it, never print it
@@ -54,3 +55,23 @@ def test_an_inherited_name_that_is_not_a_shell_name_prints_redacted_not_raises()
     env = print_safe({"SENTRY-TRACE": SECRET, "KEPT": "v"}, keep=("SENTRY-TRACE", "KEPT"))
     assert env["SENTRY-TRACE"] == SECRET, "the child still gets it"
     assert SECRET not in repr(env) and "'KEPT': 'v'" in repr(env)
+
+
+def test_redacted_takes_an_inherited_name_that_is_not_a_shell_name() -> None:
+    """GOH.HYPHENENV, print_safe's sibling: `redacted` builds a dict and writes no shell line, so a
+    kept `SENTRY-TRACE` is redacted like any unkept name, never raised on."""
+    got = redacted({"SENTRY-TRACE": SECRET, "KEPT": "v"}, keep=("SENTRY-TRACE", "KEPT"))
+    assert got == {"SENTRY-TRACE": REDACTED, "KEPT": "v"}
+
+
+def test_hermetic_env_takes_a_whole_inherited_environment_with_a_hyphenated_name(
+    monkeypatch,
+) -> None:
+    """GOH.HYPHENENV: an agent's shell exports SENTRY-TRACE, and tests that hand hermetic_env their
+    whole environment as overrides (tests/test_land_prewait.py) went red at every pre-step enqueued
+    from such a shell. The child still gets the variable (print_safe's test pins how it prints)."""
+    monkeypatch.setenv("SENTRY-TRACE", SECRET)
+    env = hermetic_env(**hermetic_env())  # the whole inherited environment, as overrides
+    got = subprocess.run(["/usr/bin/printenv", "SENTRY-TRACE"], env=env, capture_output=True,
+                         text=True, check=False, stdin=subprocess.DEVNULL)  # fmt: skip
+    assert got.returncode == 0 and got.stdout.strip() == SECRET, "the child gets it"

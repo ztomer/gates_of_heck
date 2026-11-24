@@ -60,9 +60,16 @@ def read_probe(out: Path) -> dict[str, str]:
     return seen
 
 
+def _shown(keep: Iterable[str]) -> frozenset[str]:
+    """The kept names whose values a printed form may show: a name that is no shell name (an
+    inherited `SENTRY-TRACE`, GOH.HYPHENENV) stays redacted, never raised on -- only probe_sh,
+    which writes names into a shell line, refuses one (`_names`)."""
+    return frozenset(n for n in keep if _NAME.match(n))
+
+
 def redacted(env: Mapping[str, str], keep: Iterable[str] = ()) -> dict[str, str]:
     """`env` with every value but those of `keep` replaced by REDACTED."""
-    kept = set(_names(keep))
+    kept = _shown(keep)
     return {k: (v if k in kept else REDACTED) for k, v in env.items()}
 
 
@@ -87,5 +94,5 @@ def print_safe(env: Mapping[str, str], keep: Iterable[str] = ()) -> PrintSafeEnv
     that is no shell name (an inherited `SENTRY-TRACE`) is shown without its value, never raised
     on: probe_sh, which writes names into a shell line, still refuses one."""
     out = PrintSafeEnv(env)
-    out.keep = frozenset(n for n in keep if _NAME.match(n))
+    out.keep = _shown(keep)
     return out
