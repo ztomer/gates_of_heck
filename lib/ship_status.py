@@ -91,7 +91,12 @@ def tail(log: Path) -> list[str]:
         return []
 
 
-record = ship_records.get  # a result's record: its goh.db row, else its file
+def record(result: str) -> dict:
+    """RESULT's record (its goh.db row, else its file); a result with neither exits 2, said."""
+    if (res := ship_records.get(result)) is None:
+        err(f"goh ship: no record of {result} in goh.db or on disk")
+        raise SystemExit(2)
+    return res
 
 
 def import_records(say=None) -> None:
@@ -139,7 +144,8 @@ def settle(path: Path, res: dict | None = None) -> bool:
 
 def settle_all(directory: Path, say=None) -> list[Path]:
     """`settle` over every ship result in DIRECTORY (a repo's ship records): the ones rewritten,
-    each said through SAY when given."""
+    each said through SAY when given; the files no row holds are imported first."""
+    import_records(say)
     done = [p for p, rec in ship_records.in_dir(directory) if settle(p, rec)]
     for p in done if say else ():
         say(f"goh ship: an earlier ship's worker is gone; recorded it as failed: {p}")

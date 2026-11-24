@@ -129,7 +129,6 @@ from tui.lib import err, info, ok, step
 
 STEPS = ("suite", "push", "release", "install", "verify", "done")
 save, tail = ship_status.save, ship_status.tail  # the record (goh.db row + file), a step log
-record = ship_status.record  # a result's record: its goh.db row, else its file (GOH.STATEDB S2)
 GRACE, DEFAULT_TIMEOUT = 5, 3600
 _HELD: dict[str, float] = {}  # "at": time.monotonic() when this worker took the land lock
 KEYS = ("GOH_SHIP_RELEASE", "GOH_SHIP_INSTALL", "GOH_SHIP_TIMEOUT", "GOH_SHIP_RELEASE_PUSHES",
@@ -356,10 +355,7 @@ def own_run(res: dict) -> None:
 
 def worker(result: str, resume: bool = False) -> int:
     """The pipeline under the repo's ship lock; RESUME: a ship failed at verify, from verify."""
-    res = record(result)
-    if res is None:
-        err(f"goh ship: no record of {result} in goh.db or on disk")
-        return 2
+    res = ship_status.record(result)  # its goh.db row, else its file (GOH.STATEDB S2)
     lock = Path(res["result"]).parent / ".ship.lock"
     import ship_lock  # here, not at the top: tools/ship.py's import ceiling (E402) is spent
 
@@ -398,8 +394,7 @@ def start(args: argparse.Namespace) -> int:
     except Refused as e:
         err(f"goh ship: {e} -- nothing started")
         return 2
-    ship_status.import_records(say=info)  # files from before the switch, or an old goh's
-    ship_status.settle_all(Path(res["result"]).parent, say=info)  # dead workers' records
+    ship_status.settle_all(Path(res["result"]).parent, say=info)  # imports, then dead workers
     save(res)
     if args.wait:
         return worker(res["result"])
@@ -441,7 +436,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--verify", metavar="RESULT", help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
     if args.verify:  # a re-run of a ship failed at verify resumes it there (GOH.SHIPREVERIFY)
-        if ship_verify.reopen(record(args.verify) or {}, dry=True):
+        if ship_verify.reopen(ship_status.record(args.verify), dry=True):
             return worker(args.verify, resume=True)
         return ship_verify.verify(args.verify)
     if args.worker:
