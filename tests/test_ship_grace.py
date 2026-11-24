@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from conftest import git
+from conftest import REPO_ROOT, git
 from test_ship import SHIP, _env, _result, _ship, make_shipped
 
 RECORD = """\
@@ -23,7 +23,9 @@ sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=Tru
                      stdin=subprocess.DEVNULL, check=True).stdout.strip()
 grace = {"ran": True, "count": 1, "over_from": "2026-11-23", "errors": [], "seconds": 9.0,
          "turned_red": {"games/planted": [{"step": "no bare open of an app", "found": []}]}}
-json.dump({"release_canary": {"head_sha": sha, "grace_over": grace}}, open(sys.argv[1], "w"))
+sys.path.insert(0, sys.argv[2])
+import small_stores  # the canary's record is goh.db's kv, as scripts/release_canary.py writes it
+small_stores.put(sys.argv[1], {"release_canary": {"head_sha": sha, "grace_over": grace}})
 """
 TAG = 'git tag "v$GOH_SHIP_VERSION" && git push -q origin "v$GOH_SHIP_VERSION"'
 
@@ -44,7 +46,7 @@ def _gates_tree(repo: Path) -> None:
 def test_the_result_and_the_card_carry_the_grace_end_count_and_names(shipped, tmp_path):
     state = tmp_path / "estate_audit.json"
     (tmp_path / "record.py").write_text(RECORD)
-    kit = f"{sys.executable} {tmp_path / 'record.py'} {state} && {TAG}"
+    kit = f"{sys.executable} {tmp_path / 'record.py'} {state} {REPO_ROOT / 'lib'} && {TAG}"
     r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_RELEASE=kit, GOH_ESTATE_STATE=str(state))
     assert r.returncode == 0, r.stdout + r.stderr
     res = _result(tmp_path)
