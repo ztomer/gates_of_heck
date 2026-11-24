@@ -37,6 +37,7 @@ tests/test_suite_drift.py.
 from __future__ import annotations
 
 import atexit
+import importlib.util
 import os
 import resource
 import shutil
@@ -99,21 +100,11 @@ SPEED_ENV = "GATES_OF_HECK_SUITE_SPEED"  # not GOH_-prefixed: no env scrub drops
 SPEED_CAP = 4.0
 
 
-def _load_spin():
-    """lib/proc_deadline.py's fixed loop, by its file: one loop for this probe and the land check's
-    deadline (GOH.CHECKGIVEUP300), with no `lib` put on a planted tree's path."""
-    import importlib.util
-
-    path = _ROOT / "lib" / "proc_deadline.py"
-    spec = importlib.util.spec_from_file_location("_goh_proc_deadline", path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-_DEADLINE = _load_spin()
-_loop = _DEADLINE.spin  # REFERENCE_CPU_S of one core of the owner's box
-REFERENCE_CPU_S = _DEADLINE.REFERENCE_CPU_S
+# lib/proc_deadline.py's fixed loop, loaded by its file (no `lib` on a planted tree's path): one
+# loop for this probe and the land check's deadline (GOH.CHECKGIVEUP300).
+_SPEC = importlib.util.spec_from_file_location("_goh_pd", _ROOT / "lib" / "proc_deadline.py")
+_SPEC.loader.exec_module(_DEADLINE := importlib.util.module_from_spec(_SPEC))
+_loop, REFERENCE_CPU_S = _DEADLINE.spin, _DEADLINE.REFERENCE_CPU_S
 
 
 def _probe_cpu_s() -> float:

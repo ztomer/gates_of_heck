@@ -14,7 +14,8 @@ from pathlib import Path
 
 import pytest
 import timing_bounds
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, git, write
+from test_landq import _land_wt, _pending, env, landq  # noqa: F401 -- `env` is a fixture
 
 sys.path.insert(0, str(REPO_ROOT))
 from lib import land_check, proc_deadline
@@ -65,3 +66,29 @@ def test_the_stretch_probe_reads_a_quiet_thread_as_one_and_a_slow_one_as_slow(mo
     assert proc_deadline.stretch() == 3.0
     walls = iter([proc_deadline.REFERENCE_CPU_S / 2] * 5)
     assert proc_deadline.stretch() == 1.0, "never below a quiet core"
+
+
+# THE ENQUEUE RUNS EVERY RULE (GOH.RULESLEFT). The enqueue's own check ran the declared guards and
+# the learned refusers only: a rule test of the tree's shape (lib/rule_tests.py) that no file
+# declared reached the lander, and the lane met it as a red land. With the clamp-stretched bound the
+# rule set (230 tests, 30.5 s over 8 runs) runs at enqueue too, and a broken rule refuses there.
+PLANTED_RULE = (
+    "def test_no_planted_violation():\n    assert False, 'planted: a rule the tree breaks'\n"
+)
+
+
+def test_the_enqueue_check_runs_an_undeclared_rule_test_and_refuses_on_it(
+    repo,
+    tmp_path,
+    env,  # noqa: F811
+):
+    wt, _ = _land_wt(repo, tmp_path)
+    write(wt, "tests/test_rule.py", PLANTED_RULE)
+    git(wt, "add", "tests/test_rule.py")
+    git(wt, "commit", "-q", "--no-verify", "-m", "a planted rule")
+    env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": "true", "GOH_LAND_CHECK_STEPS": "true"}
+    done = landq(env, "--enqueue", "--foreground", "--land", str(wt), "--item", "T.R", "--no-start")
+    out = done.stdout + done.stderr
+    assert done.returncode == 1 and "nothing queued" in out, out
+    assert "tests/test_rule.py::test_no_planted_violation" in out, out
+    assert _pending(tmp_path) == []

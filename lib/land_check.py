@@ -378,8 +378,11 @@ def at_enqueue(q: Path, req: dict, file, record, say=print, no_pre: str | None =
     main_red.notice(q, req, say)  # main red in the idle suite: said, its nodes to the pre-step
     t0 = time.monotonic()
     req.update({} if no_pre is None else {"no_pre": no_pre.strip()})  # alone: lib/landq_batch.py
+    # Every rule test by its shape too (GOH.RULESLEFT): 230 of them ran in 30.5 s over 8 runs, and a
+    # rule no file declares no longer reaches the lander unjudged; a job past its clamp-stretched
+    # deadline is red by its name (GOH.CHECKGIVEUP300), never a pass.
     refused = run(Path(req["worktree"]), q, lambda s: (say(s), lines.append(s)), req["repo"],
-                  no_pre=no_pre is not None, reqs=[req])  # fmt: skip
+                  no_pre=no_pre is not None, reqs=[req], rules=True)  # fmt: skip
     req["cov_risk"] = cov_risk.say(req["worktree"], req["repo"], say)  # kept on the land record
     if not refused:
         say(f"check: every guard green in {time.monotonic() - t0:.1f} s")
