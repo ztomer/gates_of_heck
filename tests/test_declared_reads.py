@@ -124,12 +124,23 @@ def _tests() -> dict[str, str]:
     }
 
 
+def test_a_join_is_declared_by_its_tree_reads_or_by_its_whole_read():
+    """`REPO_ROOT / rel` asks for a declaration; TREE_READS answers it, and so does JUDGE_READS, the
+    whole read `standing` already honours (GOH.TIMINGDETECT's land went red on a test declaring
+    `JUDGE_READS = ("*",)` and no TREE_READS)."""
+    join = "from conftest import REPO_ROOT\n\ndef f(rel):\n    return REPO_ROOT / rel\n"
+    assert dr.undeclared_join(join)
+    assert not dr.undeclared_join('TREE_READS = ("lib/",)\n' + join)
+    assert not dr.undeclared_join('JUDGE_READS = ("*",)\n' + join)
+    assert not dr.undeclared_join("from conftest import REPO_ROOT\nX = REPO_ROOT / 'lib'\n")
+
+
 def test_every_test_joining_a_path_it_does_not_spell_declares_its_reads():
     """A test joining REPO_ROOT with a variable (`REPO_ROOT / rel`) reads what no spelling gives
     away: it declares TREE_READS, or is on gates/undeclared_reads.txt -- the list of the 70 found on
     2026-11-17, which only shrinks (a listed file that declares, or joins no more, is stale)."""
     pending = set(PENDING.read_text().split())
-    found = {rel for rel, text in _tests().items() if dr.dynamic(text) and not dr.declared(text)}
+    found = {rel for rel, text in _tests().items() if dr.undeclared_join(text)}
     assert not found - pending, f"declare TREE_READS = (...) in: {sorted(found - pending)}"
     assert not pending - found, f"stale on {PENDING.name}, delete: {sorted(pending - found)}"
 

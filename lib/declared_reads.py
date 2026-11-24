@@ -154,6 +154,12 @@ def dynamic(text: str) -> bool:
     )
 
 
+def undeclared_join(text: str) -> bool:
+    """Whether the file joins a root with a non-literal part and declares neither what the join
+    reaches (TREE_READS) nor its whole read (JUDGE_READS, which `standing` honours too)."""
+    return dynamic(text) and not declared(text) and not declared(text, JUDGE)
+
+
 def matches(pattern: str, path: str) -> bool:
     if pattern.endswith("/"):
         return path.startswith(pattern)

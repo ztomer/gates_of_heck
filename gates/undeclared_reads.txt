@@ -15,7 +15,6 @@ tests/test_gate_slot_handshake.py
 tests/test_git_deadline_class.py
 tests/test_hold_gates.py
 tests/test_install_atomic.py
-tests/test_kill_by_name_native_parity.py
 tests/test_killtree.py
 tests/test_loaded_drop.py
 tests/test_lock_order.py
