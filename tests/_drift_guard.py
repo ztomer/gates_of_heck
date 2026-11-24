@@ -96,16 +96,24 @@ SLOW: dict[str, float] = {  # nodeid -> its own ceiling, each with its reason
 # 1 (the owner's box is the reference), never above SPEED_CAP (a probe that misread a pathological
 # box must not switch the ceilings off).
 SPEED_ENV = "GATES_OF_HECK_SUITE_SPEED"  # not GOH_-prefixed: no env scrub drops it
-REFERENCE_CPU_S = 0.016
 SPEED_CAP = 4.0
 
 
-def _loop() -> int:
-    """The fixed loop both probes time: REFERENCE_CPU_S of one core of the owner's box."""
-    x = 0
-    for i in range(400_000):
-        x += i * i % 7
-    return x
+def _load_spin():
+    """lib/proc_deadline.py's fixed loop, by its file: one loop for this probe and the land check's
+    deadline (GOH.CHECKGIVEUP300), with no `lib` put on a planted tree's path."""
+    import importlib.util
+
+    path = _ROOT / "lib" / "proc_deadline.py"
+    spec = importlib.util.spec_from_file_location("_goh_proc_deadline", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_DEADLINE = _load_spin()
+_loop = _DEADLINE.spin  # REFERENCE_CPU_S of one core of the owner's box
+REFERENCE_CPU_S = _DEADLINE.REFERENCE_CPU_S
 
 
 def _probe_cpu_s() -> float:

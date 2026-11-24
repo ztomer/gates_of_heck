@@ -306,7 +306,8 @@ def test_check_and_enqueue_refuse_on_a_guard_and_record_it(repo, tmp_path, env):
     assert told == rec["guard"]
     slow = {**red, "GOH_LAND_CHECK_STEPS": "exit 124"}  # a step past its deadline: no verdict
     checked = landq(slow, "--check", str(wt))
-    assert checked.returncode == 0 and "no verdict" in checked.stdout + checked.stderr, checked
+    said = checked.stdout + checked.stderr
+    assert checked.returncode == 1 and "exit 124 (no verdict" in said, said  # GOH.CHECKGIVEUP300
     green = {**red, "GOH_LAND_CHECK_STEPS": "true"}
     checked = landq(green, "--check", str(wt))
     assert checked.returncode == 0, checked.stdout + checked.stderr

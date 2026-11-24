@@ -14,8 +14,6 @@ from pathlib import Path
 
 from lib import land_check
 
-NO_VERDICT_SAID = ": no verdict in "  # what land_check.run says of a job past its deadline
-
 
 def cli(worktree: str, q: Path, rules: bool = False) -> int:
     """`goh land --check [--rules] WORKTREE`: its committed tip's guards; 0 green, 1 refused, 2
@@ -54,15 +52,9 @@ def cli(worktree: str, q: Path, rules: bool = False) -> int:
     no_fragment = fragment_check.missing(top)
     for r in no_fragment:
         err(f"goh land --check: {r}")
-    # A job past its deadline is no verdict (land_check.NO_VERDICT): the summary never calls a
-    # check green that judged nothing (2026-11-24: 8 of 8 guard shards timed out, "every guard
-    # green in 331.8 s").
-    blind: list[str] = []
-
-    def say(line: str) -> None:
-        if NO_VERDICT_SAID in line:
-            blind.append(line.removeprefix("check: ").split(":", 1)[0])
-        info(line)
+    # A job past its deadline is a refusal by its name (land_check.NO_VERDICT, GOH.CHECKGIVEUP300):
+    # 2026-11-24, 8 of 8 guard shards timed out and the check said "every guard green in 331.8 s".
+    say = info
 
     refused = land_check.run(Path(top), None if rules else q, say, main, tables=not rules,
                              rules=rules)  # fmt: skip
@@ -76,10 +68,5 @@ def cli(worktree: str, q: Path, rules: bool = False) -> int:
     if refused:
         err(f"goh land --check: refused in {took} by {', '.join(refused)}")
         return 1
-    if blind:
-        warn(f"goh land --check: nothing refused in {took}, but {', '.join(blind)} gave no "
-             "verdict: the land's own run judges them; `goh land --check --rules` is the fast "
-             "door")  # fmt: skip
-        return 0
     ok(f"goh land --check: every guard green in {took}")
     return 0

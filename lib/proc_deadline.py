@@ -41,3 +41,33 @@ def expired(max_s: float, data: dict, pid: int) -> str:
         f"(waited {data.get('waited_s', 0):.0f} s for the slot): the command (pid {pid}), its "
         "process tree and the spinners were killed; pass --max to give it longer"
     )
+
+
+# THE CLAMP A DEADLINE STRETCHES BY (GOH.CHECKGIVEUP300). A lane or work gate runs under
+# `taskpolicy -c utility` (GOH.LANDSHARE), which the run queue cannot see: x25-35 on a clamped
+# thread where the load average said x3.2 (GOH.SUITEDRIFTBUILD). `goh land --check`'s guard
+# jobs gave up at a fixed 300 s under it. `stretch` times one fixed loop (REFERENCE_CPU_S of one
+# core of the owner's box; tests/_drift_guard.py's probe is this same loop) on the caller's
+# thread, the median of STRETCH_SAMPLES, never below 1: what the clamp and the run queue cost now.
+REFERENCE_CPU_S = 0.016
+STRETCH_SAMPLES = 5
+
+
+def spin() -> int:
+    """The fixed loop both probes time: REFERENCE_CPU_S of one core of the owner's box."""
+    x = 0
+    for i in range(400_000):
+        x += i * i % 7
+    return x
+
+
+def _timed_spin() -> float:
+    t0 = time.perf_counter()
+    spin()
+    return time.perf_counter() - t0
+
+
+def stretch() -> float:
+    """How many times longer than a quiet core of the owner's box this thread runs CPU work now."""
+    walls = sorted(_timed_spin() for _ in range(STRETCH_SAMPLES))
+    return max(1.0, walls[len(walls) // 2] / REFERENCE_CPU_S)

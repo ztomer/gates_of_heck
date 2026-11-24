@@ -72,9 +72,21 @@ DIFFCOV = "diff coverage"
 SELECT_TIMEOUT = 120
 HISTORY = 400  # the newest done records read for past refusing guards
 STEP_TIMEOUT = 300
-# Exits that are no verdict on the tree: a step past STEP_TIMEOUT (124); pytest interrupted (3),
-# misused (4: a node it cannot find) or given no test (5). The land's own run judges those.
+# Exits that are no verdict on the tree: a step past its deadline (124); pytest interrupted (3),
+# misused (4: a node it cannot find) or given no test (5). A check that judged nothing is never
+# green (GOH.CHECKGIVEUP300): under the lane clamp every guard shard gave up at a fixed 300 s, the
+# check said green, and GOH.SUITEDRIFTBUILD's land went red on 2 guards it had not judged. So each
+# job's deadline stretches by the clamp measured on this thread (lib/proc_deadline.py `stretch`),
+# at most STRETCH_CAP_S, and a job past it REFUSES, by its name, here and at enqueue.
 NO_VERDICT = {"steps": {124}, "guard tests": {3, 4, 5, 124}}
+STRETCH_CAP_S = 1500  # the check's longest bound already (DIFFCOV_TIMEOUT)
+
+
+def deadline(quiet_s: float, stretch: float) -> float:
+    """QUIET_S stretched by STRETCH, never below it, never over STRETCH_CAP_S."""
+    return max(quiet_s, min(STRETCH_CAP_S, quiet_s * stretch))
+
+
 GUARD = re.compile(r"^# goh-land-guard:(.*)$", re.MULTILINE)
 STAGED = re.compile(r"^# goh-reads-staged:", re.MULTILINE)
 FAILED = re.compile(r"^(?:E\s+)?(?:FAILED|ERROR) (tests/[^\s:]+\.py::[^\s]+)", re.MULTILINE)
@@ -289,9 +301,11 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=Fal
     if not jobs:
         say("check: no guard declared (GOH_LAND_CHECK_STEPS, # goh-land-guard:) -- nothing to run")
         return []
+    limit = deadline(STEP_TIMEOUT, slow := proc_deadline.stretch())  # before the jobs load it
+    say(f"check: each job's deadline {limit:.0f} s (this thread runs x{slow:.1f} a quiet core)")
     with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
         done = {
-            name: pool.submit(_run, argv, root, env, DIFFCOV_TIMEOUT if name == DIFFCOV else None)
+            name: pool.submit(_run, argv, root, env, DIFFCOV_TIMEOUT if name == DIFFCOV else limit)
             for name, argv in jobs.items()
         }
         results = {name: f.result() for name, f in done.items()}
@@ -302,7 +316,8 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=Fal
             continue
         pytest = name.startswith("guard tests")
         if rc in NO_VERDICT["guard tests" if pytest else "steps"]:
-            say(f"check: {name}: no verdict in {took} s (exit {rc}) -- the land's own run decides")
+            refused.append(f"{name} (no verdict in {took} s, exit {rc})")
+            say(f"check: {name}: NO VERDICT in {took} s (exit {rc}) -- red: it judged nothing")
             continue
         subgates = dict.fromkeys(map("".join, SUBGATE.findall(out)))
         named = (

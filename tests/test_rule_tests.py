@@ -77,7 +77,8 @@ def test_check_rules_runs_no_judge_and_a_blind_job_is_never_called_green(
     repo, monkeypatch, capsys
 ) -> None:
     """2026-11-24: all 8 guard shards of a `goh land --check` timed out, and it said "every guard
-    green in 331.8 s". `--rules` runs no judge and no learned refuser; no verdict is said so."""
+    green in 331.8 s". `--rules` runs no judge and no learned refuser; a blind job is red, by
+    name, and the check exits 1 (GOH.CHECKGIVEUP300)."""
     from lib import commit_stamp, fragment_check
 
     for k in [k for k in __import__("os").environ if k.startswith("GIT_")]:
@@ -86,15 +87,13 @@ def test_check_rules_runs_no_judge_and_a_blind_job_is_never_called_green(
 
     def fake_run(root, q, say, main, **kw):
         seen.update(q=q, **kw)
-        say(
-            "check: guard tests 1/8: no verdict in 300.0 s (exit 124) -- the land's own run decides"
-        )
-        return []
+        say("check: guard tests 1/8: NO VERDICT in 300.0 s (exit 124) -- red")
+        return ["guard tests 1/8 (no verdict in 300.0 s, exit 124)"]
 
     monkeypatch.setattr(land_check, "run", fake_run)
     monkeypatch.setattr(commit_stamp, "check", lambda *a, **k: [])
     monkeypatch.setattr(fragment_check, "missing", lambda *a, **k: [])
-    assert land_check.cli(str(repo), repo / "q", rules=True) == 0
+    assert land_check.cli(str(repo), repo / "q", rules=True) == 1
     assert seen == {"q": None, "tables": False, "rules": True}, seen
     said = "".join(capsys.readouterr())
-    assert "every guard green" not in said and "guard tests 1/8 gave no verdict" in said, said
+    assert "every guard green" not in said and "by guard tests 1/8 (no verdict" in said, said
