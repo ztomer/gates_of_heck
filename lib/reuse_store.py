@@ -59,6 +59,11 @@ def root() -> Path:
     return base / "goh" / "reuse"
 
 
+def root_named() -> bool:
+    """A caller named the reuse root (GOH_REUSE_DIR: a test's, or a land suite's controller's)."""
+    return bool(os.environ.get("GOH_REUSE_DIR"))
+
+
 def db() -> Path:
     if NAMED is not None:
         return NAMED

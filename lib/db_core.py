@@ -59,6 +59,8 @@ from tui.lib import warn  # noqa: E402 -- the root, on the path from the line ab
 
 sys.path.insert(0, str(ROOT / "lib"))
 import db_record  # noqa: E402 -- lib/, on the path from the line above
+import db_waits  # noqa: E402 -- lib/: the lock-wait instrument's rows
+from db_waits import WAITS_ENV  # noqa: E402, F401 -- its env name, read by tests/test_db_core.py
 
 BOOT = """
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -398,30 +400,9 @@ def transaction(
         con.execute("COMMIT")
 
 
-# The same rows for a measurement across a suite (GOH.VERDICTDB step 5): the suite drops GOH_TIMINGS
-# from every worker and gate child (tests/conftest.py), and hermetic_env every GOH_ key; this name
-# survives both, so the waits of workers sharing one suite home's file are seen.
-WAITS_ENV = "GATES_OF_HECK_DB_WAITS"
-
-
 def timed(seam: Seam, wait_s: float, busy: bool = False) -> None:
-    """The lock-wait instrument: one $GOH_TIMINGS (and $GATES_OF_HECK_DB_WAITS) line per BEGIN
-    IMMEDIATE, `busy` when it gave up at its busy timeout (a failed write is dropped; the
-    instrument never changes an outcome)."""
-    outs = [o for o in (os.environ.get("GOH_TIMINGS"), os.environ.get(WAITS_ENV)) if o]
-    if not outs:
-        return
-    row = {"label": f"db wait {seam.name}", "ms": round(wait_s * 1000, 1), "rc": int(busy),
-           "tier": "db", "parent": os.environ.get("GOH_TIMINGS_PARENT", "")[:300],
-           "t": round(time.time(), 3), "db": seam.name, "pid": os.getpid(),
-           "wait_s": round(wait_s, 6), **({"busy": True} if busy else {})}  # fmt: skip
-    for out in outs:
-        with contextlib.suppress(OSError):
-            fd = os.open(out, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
-            try:
-                os.write(fd, (json.dumps(row) + "\n").encode())
-            finally:
-                os.close(fd)
+    """The lock-wait instrument (lib/db_waits.py): one row per BEGIN IMMEDIATE."""
+    db_waits.row(seam.name, wait_s, busy)
 
 
 def main(seam: Seam, argv: list[str]) -> int:

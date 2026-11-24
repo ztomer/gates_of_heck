@@ -63,7 +63,7 @@ SHADOW = "shadow.jsonl"
 def db() -> Path:
     if NAMED is not None:
         return NAMED
-    if os.environ.get("GOH_REUSE_DIR"):
+    if reuse_store.root_named():
         return reuse_store.root() / goh_db.SEAM.file
     return goh_db.path()
 
