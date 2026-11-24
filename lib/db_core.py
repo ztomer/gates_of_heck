@@ -19,7 +19,20 @@ carries it twice: PRAGMA user_version (in the header, read with no table parse) 
 number whose every lower number is applied; the `meta` table holds db, schema_version,
 created_by, last_migrated_by (the goh that wrote it) and created_at. A file holding a number this
 code does not ship was written by a newer goh: it opens READ-ONLY and says so, and never migrates
-down (`NewerFile` on a write).
+down (`NewerFile` on a write, naming the migration it does not ship).
+
+ONLY THE CODE OF RECORD MIGRATES A SHARED FILE (GOH.LANEMIGRATE). On 2026-11-23 `goh land --check`
+run from lane worktrees opened the real goh.db with the lane's code and applied migrations main did
+not have yet; main's goh then refused every write (NewerFile) until those lanes landed. The code of
+record is the PRIMARY checkout (`.git` a directory: the one GOH_DIR names) or an install with no
+git; a linked worktree (`.git` a file: a lane, a landq slot running a land's pre-step, the idle
+suite's tree) is not, whoever runs it. A shared file is one in the account's goh state or cache
+directory (from the passwd home, not HOME; or the XDG home set outside a suite). A copy that is not
+of record writes a shared file only when the file already holds every migration the copy ships; a
+file lacking one (the lane's own, or main's newest before main has run) opens READ-ONLY and says
+which (`NotOfRecord` on a write), and a missing one is never created. A pre-step never migrates:
+after the land main ships the migration, and main's next run applies it. Any other file (a test's
+tmp_path) migrates from any copy.
 
 HERMETIC. With GATES_OF_HECK_SUITE_REAL_HOME set (tests/suite_home.py), opening a file that lives
 directly in the real home's goh state or cache directory raises `RealHomeOpen`: no test writes
@@ -37,6 +50,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import pwd
 import re
 import sqlite3
 import subprocess
@@ -66,7 +80,12 @@ class RealHomeOpen(RuntimeError):
 
 
 class NewerFile(sqlite3.OperationalError):
-    """A write to a file a newer goh wrote: this code opened it read-only."""
+    """A write to a file this code opened read-only: one a newer goh wrote."""
+
+
+class NotOfRecord(NewerFile):
+    """A write from a copy that is not the code of record to a shared file it would have to
+    migrate or create: only the primary checkout does that."""
 
 
 @dataclass(frozen=True)
@@ -131,6 +150,29 @@ def guard(p: Path, env: Mapping[str, str] | None = None) -> None:
                                "tests point GOH_DB / GOH_CACHE_DB at tmp_path")  # fmt: skip
 
 
+def of_record(root: Path = ROOT) -> bool:
+    """ROOT is the code of record: a primary checkout (`.git` a directory) or an install with no
+    git. A linked worktree's `.git` is a file (a lane, a landq slot, the idle suite's tree)."""
+    return not (root / ".git").is_file()
+
+
+def shared_dirs(env: Mapping[str, str] | None = None) -> list[Path]:
+    """The goh directories the code of record's runs use: the account's (its passwd home, so a
+    child with a scratch HOME is not counted), the real home's under a suite, and an XDG home set
+    outside one."""
+    env = os.environ if env is None else env
+    account = Path(pwd.getpwuid(os.getuid()).pw_dir)
+    dirs = [account / ".local" / "state" / "goh", account / ".cache" / "goh", *real_dirs(env)]
+    if not env.get(REAL_HOME_ENV):
+        dirs += [Path(env[x], "goh") for x in ("XDG_STATE_HOME", "XDG_CACHE_HOME")
+                 if os.path.isabs(env.get(x) or "")]  # fmt: skip
+    return [Path(os.path.realpath(d)) for d in dirs]
+
+
+def shared(p: Path, env: Mapping[str, str] | None = None) -> bool:
+    return Path(os.path.realpath(p)).parent in shared_dirs(env)
+
+
 def writer() -> str:
     """The goh that writes: `goh <git describe>` of this checkout, `goh unknown` without git."""
     try:
@@ -178,11 +220,26 @@ def newer(con: sqlite3.Connection, seam: Seam) -> str | None:
     """Why the file is a newer goh's (a number this code does not ship), or None."""
     known = migrations(seam)
     v = version(con)
-    unknown = sorted(set(v["applied"]) - set(known))
-    if v["user_version"] > max(known, default=0) or unknown:
-        return (f"{seam.file} is version {v['user_version']} (applied {unknown or v['applied']}),"
-                f" newer than this goh's {max(known, default=0)}: opened read-only, never "
+    if unknown := sorted(set(v["applied"]) - set(known)):
+        rows = dict(con.execute(
+            f"SELECT version, name || ' (by ' || writer || ')' FROM schema_version WHERE version IN"
+            f" ({','.join('?' * len(unknown))})", unknown))  # fmt: skip
+        return (f"{seam.file} holds migration {', '.join(rows[n] for n in unknown)}, which this "
+                f"goh ({ROOT}) does not ship (it ships {sorted(known)}): opened read-only, never "
                 "migrated down")  # fmt: skip
+    if v["user_version"] > max(known, default=0):
+        return (f"{seam.file} is version {v['user_version']}, newer than this goh's "
+                f"{max(known, default=0)}: opened read-only, never migrated down")  # fmt: skip
+    return None
+
+
+def not_of_record(con: sqlite3.Connection, seam: Seam) -> str | None:
+    """Why this copy may not write a shared file (it lacks a migration the copy ships), or None."""
+    known = migrations(seam)
+    if lacking := sorted(set(known) - set(version(con)["applied"])):
+        return (f"{seam.file} lacks migration {', '.join(known[n].stem for n in lacking)}, and "
+                f"{ROOT} is not the code of record (a linked worktree): only the primary "
+                "checkout migrates the shared file; opened read-only")  # fmt: skip
     return None
 
 
@@ -250,29 +307,50 @@ def statements(sql: str) -> list[str]:
 
 
 @contextlib.contextmanager
+def _opened(
+    seam: Seam, at: Path | None, named: bool
+) -> Iterator[tuple[sqlite3.Connection, NewerFile | None]]:
+    """connect()'s connection and, when it is read-only, the refusal a write raises."""
+    p = at or path(seam)
+    if not named:
+        guard(p)
+    record = of_record() or not shared(p)
+    fresh = not p.exists() or p.stat().st_size == 0
+    if fresh and not record:
+        raise NotOfRecord(
+            f"{p}: no {seam.file} yet, and {ROOT} is not the code of record (a "
+            "linked worktree): only the primary checkout creates the shared file"
+        )
+    p.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(p, isolation_level=None, timeout=busy_ms(seam) / 1000)
+    refusal: NewerFile | None = None
+    try:
+        _settings(con, seam, fresh)
+        if why := newer(con, seam):
+            refusal = NewerFile(why)
+        elif not record and (why := not_of_record(con, seam)):
+            refusal = NotOfRecord(why)
+        if refusal:
+            con.close()
+            warn(str(refusal))
+            con = _ro(p, seam)
+        elif record:
+            migrate(con, seam)
+        yield con, refusal
+    finally:
+        con.close()
+
+
+@contextlib.contextmanager
 def connect(
     seam: Seam, at: Path | None = None, named: bool = False
 ) -> Iterator[sqlite3.Connection]:
     """The seam's file (AT when a caller names one), opened read-write and migrated; a newer goh's
-    file read-only (says so). NAMED: the suite's runner named AT in an input it hands its
-    top-level run (GOH_TEST_DURATIONS), the one file a suite may open in the real home."""
-    p = at or path(seam)
-    if not named:
-        guard(p)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    fresh = not p.exists() or p.stat().st_size == 0
-    con = sqlite3.connect(p, isolation_level=None, timeout=busy_ms(seam) / 1000)
-    try:
-        _settings(con, seam, fresh)
-        if why := newer(con, seam):
-            con.close()
-            warn(why)
-            con = _ro(p, seam)
-        else:
-            migrate(con, seam)
+    file, or a shared one this copy may not migrate, read-only (says so). NAMED: the suite's
+    runner named AT in an input it hands its top-level run (GOH_TEST_DURATIONS), the one file a
+    suite may open in the real home."""
+    with _opened(seam, at, named) as (con, _):
         yield con
-    finally:
-        con.close()
 
 
 @contextlib.contextmanager
@@ -298,9 +376,11 @@ def transaction(
     """One write: BEGIN IMMEDIATE (its wait appended to $GOH_TIMINGS), COMMIT, ROLLBACK on a raise.
     CHECK runs first: the seam's lock-order check (a wait on an innermost lock)."""
     check()
-    with connect(seam, at, named) as con:
-        if con.execute("PRAGMA query_only").fetchone()[0] or newer(con, seam):
-            raise NewerFile(newer(con, seam) or f"{seam.file} is open read-only")
+    with _opened(seam, at, named) as (con, refusal):
+        if refusal:
+            raise refusal
+        if con.execute("PRAGMA query_only").fetchone()[0]:
+            raise NewerFile(f"{seam.file} is open read-only")
         t0 = time.monotonic()
         try:
             con.execute("BEGIN IMMEDIATE")

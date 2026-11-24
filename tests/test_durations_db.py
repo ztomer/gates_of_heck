@@ -130,6 +130,9 @@ def test_only_the_runners_named_table_opens_in_the_real_home(tmp_path: Path, mon
     db = real / ".local" / "state" / "goh" / "goh.db"
     monkeypatch.setenv("GATES_OF_HECK_SUITE_REAL_HOME", str(real))
     monkeypatch.delenv("GATES_OF_HECK_SUITE_REAL_XDG_STATE_HOME", raising=False)
+    # The guard is this test's subject, from any checkout: a lane's or a slot's copy is not the code
+    # of record and never creates the shared file (tests/test_db_record.py).
+    monkeypatch.setattr(db_core, "of_record", lambda root=db_core.ROOT: True)
     with pytest.raises(db_core.RealHomeOpen):
         durations.record({"dur": {"t.py::a": 1.0}}, db=db)
     durations.record({"dur": {"t.py::a": 1.0}}, db=db, named=True)

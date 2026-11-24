@@ -73,7 +73,8 @@ def test_an_older_goh_opens_a_newer_file_read_only(tmp_path, monkeypatch, capsys
         assert con.execute("SELECT COUNT(*) FROM t2").fetchone()[0] == 0  # it reads
         with pytest.raises(sqlite3.OperationalError):
             con.execute("INSERT INTO t1 VALUES (1, 0)")
-    assert "newer than this goh's 1: opened read-only" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "holds migration 0002_b (by goh " in err and "ships [1]): opened read-only" in err, err
     with pytest.raises(db_core.NewerFile), db_core.transaction(older) as con:
         con.execute("INSERT INTO t1 VALUES (1, 0)")
     with db_core.connect(newer) as con:
@@ -93,6 +94,19 @@ def test_a_number_the_code_does_not_ship_is_newer_too(tmp_path, monkeypatch) -> 
         assert con.execute("PRAGMA query_only").fetchone()[0] == 0  # mode=ro, not a pragma
         with pytest.raises(sqlite3.OperationalError):
             con.execute("INSERT INTO t1 VALUES (1, 0)")
+
+
+def test_newer_names_the_migration_it_does_not_ship(tmp_path, monkeypatch) -> None:
+    """2026-11-23 it read "version 4 (applied [4]), newer than this goh's 6": a lane's 0004 on a
+    file main (shipping up to 6, without 4) opened. It names the migration and who applied it."""
+    lane = seam(tmp_path, monkeypatch, "0001_a", "0004_small", name="lane")
+    with db_core.connect(lane):
+        pass
+    main = seam(tmp_path, monkeypatch, "0001_a", "0006_d", name="main")
+    with db_core.connect(main) as con:
+        why = db_core.newer(con, main)
+    assert why and "holds migration 0004_small (by goh " in why and "ships [1, 6])" in why, why
+    assert "newer than" not in why
 
 
 def test_a_real_home_open_raises(tmp_path, monkeypatch) -> None:
