@@ -124,25 +124,14 @@ def free(repo: Path | None, newest: int = RECORDS) -> frozenset[str]:
     if repo is None:
         return frozenset()
     rid = reuse.repo_id(repo)
-    recs = sorted((reuse.root() / "carry").glob("*/*.json"), key=_mtime)[-newest:]
+    recs = sorted(reuse.records(reuse.CARRY), key=lambda r: (r[2] >= 0, -r[2]))[-newest:]
     no, yes = set(), set()
-    for f in recs:
-        try:
-            rec = json.loads(f.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if not isinstance(rec, dict) or (rec.get("fields") or {}).get("repo") != rid:
+    for _, rec, _ in recs:  # the newest last (the smallest age; no epoch: oldest)
+        if (rec.get("fields") or {}).get("repo") != rid:
             continue
         for n, ran in (rec.get("measured") or {}).items():
             (yes if ran else no).add(n)
     return frozenset(no - yes)
-
-
-def _mtime(f: Path) -> float:
-    try:
-        return f.stat().st_mtime
-    except OSError:
-        return 0.0
 
 
 def _by_node(key_dir: Path, by_stem: dict[str, list[str]]) -> dict[str, list[str]]:

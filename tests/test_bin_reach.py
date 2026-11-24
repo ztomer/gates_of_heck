@@ -218,3 +218,17 @@ def test_one_tree_in_ten_is_audited_and_every_re_land_of_it_alike(monkeypatch) -
     due = [t for t in trees if bin_reach_audit.audit_due(t)]
     assert 20 <= len(due) <= 60, len(due)
     assert all(bin_reach_audit.audit_due(t) for t in due)
+
+
+def test_free_reads_the_newest_carry_records_through_the_reuse_api(tmp_path, monkeypatch):
+    """The carry records are goh-cache.db rows (GOH.VERDICTDB): a reader globbing their old files
+    saw none, and every measured-free test was chosen again."""
+    monkeypatch.setenv("GOH_REUSE_DIR", str(tmp_path / "reuse"))
+    monkeypatch.delenv("GOH_CACHE_DB", raising=False)
+    monkeypatch.setattr(bin_reach.reuse, "repo_id", lambda repo: "/r/.git")
+    for n, (node, ran) in enumerate([("a", False), ("b", False), ("b", True), ("c", False)]):
+        monkeypatch.setenv("GOH_REUSE_NOW", str(2_000_000_000 + n))
+        bin_reach.reuse.record(bin_reach.reuse.CARRY, {"repo": "/r/.git", "tree": str(n) * 40,
+                               "tools": "t"}, "green", extra={"measured": {node: ran}})  # fmt: skip
+    assert bin_reach.free(tmp_path) == {"a", "c"}  # b ran a goh once: never free
+    assert bin_reach.free(tmp_path, newest=1) == {"c"}  # the newest record alone
