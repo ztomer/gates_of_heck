@@ -121,6 +121,61 @@ def test_a_red_ci_verdict_fails_the_ship_at_verify(shipped, tmp_path):
     assert ["done", "X.ONE", "--shipped", str(tmp_path / "ship.json")] not in _calls(tmp_path)
 
 
+# ── GOH.SHIPVERIFYCI: a hosted run that never got a runner is no verdict on the commit ────────────
+# token-pool's v0.16.0 ship (2026-11-23) stopped at verify on "job test failed at step (no step: the
+# job died before or after its steps)", log 404: the Actions quota was spent, no step ever ran.
+NO_RUNNER = ("why: job 'test' failed at step (no step: the job died before or after its steps)|"
+             "why: its log could not be read (HTTP 404)")  # fmt: skip
+RAN_RED = "why: job 'test' failed at step Run tests|--- log tail of 'Run tests' ---|E boom"
+MIXED = f"{NO_RUNNER}|why: job 'lint' failed at step ruff"
+
+
+def test_a_red_run_that_never_got_a_runner_is_hosted_ci_unavailable_and_the_ship_finishes(
+    shipped, tmp_path
+):
+    """rules.ci_advisory: items close on the local gate. A run whose every failed job died before
+    or after its steps judged nothing, so verify says `hosted CI unavailable`, the card's CI line
+    with it, and the ship finishes ok and records the item."""
+    _on_github(shipped)
+    release = _push_gated(shipped)
+    card = {"FAKE_VERIFY_RC": "1", "FAKE_CARD_ERR": "CI: red for abc"}
+    r = _ship(shipped, tmp_path, "--wait", "--item", "X.ONE", **_ci_env(tmp_path, "red"),
+              FAKE_CI_WHY=NO_RUNNER, **card, **release)  # fmt: skip
+    assert r.returncode == 0, r.stdout + r.stderr
+    res = _result(tmp_path)
+    assert res["status"] == "ok", res
+    log = Path(next(s for s in res["steps"] if s["name"] == "verify")["log"]).read_text()
+    assert "hosted CI unavailable" in log and "advisory" in log, log
+    assert "no step" in log, log  # loopctl ci's own explanation still reaches the step log
+    assert ["done", "X.ONE", "--shipped", str(tmp_path / "ship.json")] in _calls(tmp_path)
+
+
+@pytest.mark.parametrize("why", [RAN_RED, MIXED], ids=["ran-and-failed", "one-job-ran"])
+def test_a_red_run_that_ran_a_step_still_fails_the_ship_at_verify(shipped, tmp_path, why):
+    """The other way: a run that DID run a step and failed it is a verdict on the commit (one job
+    that ran is enough), so verify still stops the ship, as before."""
+    _on_github(shipped)
+    release = _push_gated(shipped)
+    r = _ship(shipped, tmp_path, "--wait", "--item", "X.ONE", **_ci_env(tmp_path, "red"),
+              FAKE_CI_WHY=why, **release)  # fmt: skip
+    assert r.returncode == 1, r.stdout + r.stderr
+    res = _result(tmp_path)
+    assert res["failed_step"] == "verify", res
+    assert any("CI red" in ln for ln in res["tail"]), res["tail"]
+    assert not any("unavailable" in ln for ln in res["tail"]), res["tail"]
+
+
+def test_an_unrunnable_run_without_the_push_gate_still_fails_naming_it(shipped, tmp_path):
+    """Advisory only over the push gate, as a pending run: with no gate of record nothing local
+    judged the commit, so a run that judged nothing either fails the ship, naming the push gate."""
+    _on_github(shipped)
+    r = _ship(shipped, tmp_path, "--wait", **_ci_env(tmp_path, "red"), FAKE_CI_WHY=NO_RUNNER)
+    assert r.returncode == 1, r.stdout + r.stderr
+    res = _result(tmp_path)
+    assert res["failed_step"] == "verify", res
+    assert any("unavailable" in ln and "push gate" in ln for ln in res["tail"]), res["tail"]
+
+
 def test_no_ship_path_waits_on_hosted_ci():
     """The class, not the instance: neither the ship nor the release kit it runs polls hosted CI
     (GOH.CIWAIT named ship.py's ci_wait and ci_step.sh's ci_watch; a third would be a new sleep)."""

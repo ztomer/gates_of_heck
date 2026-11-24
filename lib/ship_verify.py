@@ -7,8 +7,11 @@ while the run is queued or running and records it, and `loopctl tick` re-reads i
 one.
 The ship matches it: red (or unread) fails here, a finding; green or no verdict passes; pending or
 throttled passes ADVISORY when the checkout's pre-push hook is goh's push gate, and fails at once
-without one (done would refuse it the same way). The card reads the same pending run, so with an
-advisory CI its CI line is the one failing line it may carry. Pinned by tests/test_ship.py.
+without one (done would refuse it the same way). A red run whose every failed job died before or
+after its steps never got a runner and judged nothing: `hosted CI unavailable`, advisory the same
+way (GOH.SHIPVERIFYCI); one job that ran a step and failed keeps the red a finding. The card
+reads the same run, so with an advisory CI its CI line is the one failing line it may carry.
+Pinned by tests/test_ship.py and tests/test_ship_ciwait.py.
 """
 
 from __future__ import annotations
@@ -33,6 +36,18 @@ from tui.lib import err, step
 CI_GREEN, CI_RED, CI_PENDING, CI_NONE, CI_THROTTLED = 0, 1, 3, 4, 75
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 GITHUB = re.compile(r"github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?/?$")
+# A red's explanation, as `loopctl ci` prints it (.loop tools/loopcilog.py explain): one line per
+# failed job naming its failed steps, or NO_STEP when it has none -- the job died before or after
+# its steps, so the run never got a runner (Actions quota spent, no runner, cancelled before a
+# step) and judged nothing (GOH.SHIPVERIFYCI: token-pool's v0.16.0 ship stopped on one, log 404).
+FAILED_JOB = re.compile(r"why: job .* failed at step (.*)$")
+NO_STEP = "(no step:"
+
+
+def unrunnable(text: str) -> bool:
+    """TEXT (a red `loopctl ci` read) names failed jobs and every one died before a step ran."""
+    steps = [m.group(1) for ln in text.splitlines() if (m := FAILED_JOB.search(ANSI.sub("", ln)))]
+    return bool(steps) and all(s.startswith(NO_STEP) for s in steps)
 
 
 def git(repo: Path, *args: str) -> str:
@@ -54,23 +69,29 @@ def ci_read(repo: Path, remote: str, loopctl_py: str, sha: str = "") -> tuple[bo
         return True, "CI: the remote is not GitHub's; no CI verdict to read"
     sha = sha or git(repo, "rev-parse", "HEAD")
     argv = [sys.executable, loopctl_py, "ci", sha, "--repo", slug]
-    code = subprocess.run(argv, cwd=repo, env=gitrun.repo_env(), stdin=subprocess.DEVNULL,
-                          check=False).returncode  # fmt: skip
+    read = subprocess.run(argv, cwd=repo, env=gitrun.repo_env(), stdin=subprocess.DEVNULL,
+                          capture_output=True, text=True, check=False)  # fmt: skip
+    sys.stdout.write(read.stdout)  # the read stays the step log's, as when it was inherited
+    sys.stderr.write(read.stderr)
+    code = read.returncode
     if code in (CI_GREEN, CI_NONE):
         return True, ""
-    if code not in (CI_PENDING, CI_THROTTLED):
+    gone = code == CI_RED and unrunnable(read.stdout + read.stderr)
+    if code not in (CI_PENDING, CI_THROTTLED) and not gone:
         what = "CI red" if code == CI_RED else f"loopctl ci failed (exit {code})"
         return False, f"{what} for {sha[:8]} on {slug}: the ship stops at verify"
-    state = "pending" if code == CI_PENDING else "throttled"
+    state = ("hosted CI unavailable (its run got no runner: no failed job ran a step)" if gone
+             else "CI pending" if code == CI_PENDING else "CI throttled")  # fmt: skip
     hook = gated.push_gated(repo)
     if not hook:
         return False, (
-            f"CI {state} for {sha[:8]} on {slug}, and {repo.name}'s pre-push hook is not goh's "
+            f"{state} for {sha[:8]} on {slug}, and {repo.name}'s pre-push hook is not goh's "
             "push gate, so nothing local says the commit was gated: hosted CI is advisory only "
             "over the push gate (re-ship once it is green)"
         )
-    return True, (f"CI: advisory -- {state} for {sha[:8]} on {slug}, closed on the local push gate "
-                  f"({hook}); loopctl done records the run and tick re-reads it")  # fmt: skip
+    return True, (f"CI: advisory -- {state.removeprefix('CI ')} for {sha[:8]} on {slug}, closed "
+                  f"on the local push gate ({hook}); loopctl done records the run and tick "
+                  "re-reads it")  # fmt: skip
 
 
 def reopen(res: dict, dry: bool = False) -> bool:

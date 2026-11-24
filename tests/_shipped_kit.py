@@ -31,6 +31,11 @@ if sys.argv[1] == "ci":  # $FAKE_CI: the verdicts in order (the last repeats), c
     open(n_file, "w").write(str(n + 1))
     state = states[min(n, len(states) - 1)]
     print(f"CI {state}: fake verdict {n + 1}")
+    if os.environ.get("FAKE_CI_WHY"):  # a red's why lines, `|`-separated, as loopctl's step()
+        sys.path.insert(0, os.environ["FAKE_GOH_ROOT"])
+        from tui.lib import step
+        for line in os.environ["FAKE_CI_WHY"].split("|"):
+            step(line)
     sys.exit({"green": 0, "red": 1, "pending": 3, "none": 4, "throttled": 75}[state])
 """
 
