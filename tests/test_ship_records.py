@@ -20,11 +20,12 @@ def db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path / "goh.db"
 
 
-def _rec(base: Path, repo: str, stem: str, **kw) -> Path:
-    p = base / repo / f"{stem}.json"
+def _rec(base: Path, name: str, stem: str, **kw) -> Path:
+    p = base / name / f"{stem}.json"
     p.parent.mkdir(parents=True, exist_ok=True)
-    body = {"schema": 1, "repo": f"/r/{repo}", "name": repo, "item": "X.ONE", "sha": "a" * 40,
+    body = {"schema": 1, "repo": f"/r/{name}", "name": name, "item": "X.ONE", "sha": "a" * 40,
             "status": "ok", "started": "2026-11-20T00:00:00+00:00", "version": "1.0.0",
+            "finished": "2026-11-20T00:10:00+00:00",
             "steps": [{"name": "push", "status": "ok", "log": str(p.with_suffix(".push.log"))}],
             "result": str(p), **kw}  # fmt: skip
     p.write_text(json.dumps(body, indent=1) + "\n")
@@ -127,3 +128,42 @@ def test_the_install_writes_its_pins_row(db: Path, tmp_path: Path) -> None:
     consumer_pins.record_path(result).unlink()  # the row alone carries it into the result
     consumer_pins.carry(res)
     assert res["consumer_pins"]["committed"] == ["one"]
+
+
+def test_the_readers_answer_the_same_from_the_rows_alone(
+    db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The plan's red first: `goh ship verdict`, the ships in flight, the budget's backfill rows
+    and its unmeasured repos read the same before the import (files) and after it with the files
+    gone (rows)."""
+    import os
+
+    import budget
+    import budget_ships
+    import full_run
+    import ship_verdict
+
+    base = tmp_path / "ship"
+    _estate(base)
+    live = _rec(base, "alpha", "20261122T000000Z-cccccccc", status="running", pid=os.getpid(),
+                repo=str(tmp_path / "alpha"), finished=None)  # fmt: skip
+    (tmp_path / "alpha").mkdir()
+    monkeypatch.setattr(ship_verdict.reuse, "lookup_gate", lambda repo, sha: ({"how": "full"}, ""))
+    monkeypatch.setattr(budget_ships.timing_ledger, "read", list)
+    rows: list[dict] = []
+    monkeypatch.setattr(budget_ships.timing_ledger, "append", rows.append)
+
+    def answers() -> tuple:
+        rows.clear()
+        budget_ships.backfill_ships()
+        verdict = ship_verdict.verdict(tmp_path / "alpha", "a" * 40)
+        ledger = [(r["kind"], r["repo"], r["ref"]) for r in rows]
+        return verdict, full_run.ships_in_flight("alpha"), ledger, budget.unmeasured(set())
+
+    before = answers()
+    assert before[0] == (live, "") and before[1] == [live.name], before
+    assert len(before[2]) == 3 and before[3], before  # three finished ships, two repos unmeasured
+    ship_records.import_files(base)
+    for p in base.glob("*/*.json"):
+        p.unlink()
+    assert answers() == before

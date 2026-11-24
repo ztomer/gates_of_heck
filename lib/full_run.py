@@ -20,6 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gitrun
 import pid_owner
+import ship_records
 
 MAX = "90m"  # a land gate's own bound
 # The tree's own passes of tests measured running no binary are not run again (tests/_same_tree.py):
@@ -131,10 +132,6 @@ def adoptable(sha: str, base: str, q: Path | None = None) -> tuple[Path | None, 
     return state / "wt", ""
 
 
-def ship_dir() -> Path:
-    return Path(os.environ.get("GOH_SHIP_DIR") or Path.home() / ".local/state/goh/ship")
-
-
 def _alive(rec: dict) -> bool:
     """The ship's worker still runs, by the start time beside its pid (GOH.STRAYSIGNAL2): a pid
     handed to another process once the worker ended reads as gone."""
@@ -145,12 +142,8 @@ def ships_in_flight(repo: str) -> list[str]:
     """The ship results of REPO still running: status `running` and their worker alive (one that
     has not said its pid yet counts as running)."""
     out = []
-    for p in sorted((ship_dir() / repo).glob("*.json")):
+    for p, rec in ship_records.in_dir(ship_records.ship_dir() / repo):
         if not SHIP_NAME.match(p.name):
-            continue
-        try:
-            rec = json.loads(p.read_text())
-        except (OSError, json.JSONDecodeError):
             continue
         if rec.get("status") in ("running", "bisecting") and (not rec.get("pid") or _alive(rec)):
             out.append(p.name)

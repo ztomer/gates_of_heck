@@ -73,6 +73,7 @@ import estate_registry
 import killtree
 import pid_owner
 import proc_deadline
+import ship_records
 import step_timings
 
 from tui.lib import counted, err, info, ok, step
@@ -212,7 +213,7 @@ def start(result: Path | str, repos: dict[str, Path], budget: float, wait: bool 
     session (the ship's way), or WAIT: in the foreground, for a hand run and the tests."""
     path = sweep_path(result)
     path.parent.mkdir(parents=True, exist_ok=True)
-    starter = read(result)
+    starter = ship_records.get(result) or {}
     running = starter.get("status") == "running"
     _write(path, {
         "schema": 1, "status": "pending", "created": now(), "budget": budget,
@@ -241,7 +242,10 @@ def start(result: Path | str, repos: dict[str, Path], budget: float, wait: bool 
 
 
 def _ship_running(rec: dict) -> bool:
-    if not rec.get("waits_on") or read(rec["waits_on"]).get("status") != "running":
+    if (
+        not rec.get("waits_on")
+        or (ship_records.get(rec["waits_on"]) or {}).get("status") != "running"
+    ):
         return False
     try:
         pid = int(rec.get("waits_on_pid") or 0)

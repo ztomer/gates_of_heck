@@ -12,12 +12,12 @@ lib/budget.py re-exports each. Pinned by tests/test_budget.py.
 from __future__ import annotations
 
 import datetime as dt
-import json
 import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ship_records
 import timing_ledger
 
 
@@ -82,20 +82,12 @@ def record_ship(res: dict) -> None:
             timing_ledger.append(row)
 
 
-def ship_dir() -> Path:
-    return Path(os.environ.get("GOH_SHIP_DIR") or Path.home() / ".local/state/goh/ship")
-
-
 def backfill_ships() -> int:
     """Ledger rows for every finished ship result on disk that has none; how many were added. A
     ship that predates the ledger is its first row, with the box's load unknown (not 'now')."""
     have = {(r["kind"], r["repo"], r["ref"]) for r in timing_ledger.read() if r.get("ref")}
     added = []
-    for path in sorted(ship_dir().glob("*/*.json")):
-        try:
-            res = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
+    for _, res in ship_records.every():
         if isinstance(res, dict):
             added += [r for r in ship_rows(res) if (r["kind"], r["repo"], r["ref"]) not in have]
     for row in sorted(added, key=lambda r: r["epoch"]):

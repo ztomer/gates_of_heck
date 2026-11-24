@@ -55,6 +55,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / "lib"), str(ROOT / "gates")]
+import ship_records  # noqa: E402 -- lib/, on the path from the line above
+
 from lib import gitrun  # noqa: E402
 from tui.lib import counted  # noqa: E402
 
@@ -66,12 +68,9 @@ SHOWN = 12  # files named in the warning; the record keeps them all
 NEW = "new since the last ship's profile"  # the why of a line no profile measured
 
 
-def ship_dir() -> Path:
-    return Path(os.environ.get("GOH_SHIP_DIR") or Path.home() / ".local/state/goh/ship")
-
-
 def summary_path(repo: str | Path) -> Path:
-    return ship_dir() / Path(repo).name / NAME
+    """The coverage summary beside a repo's ship records: a file, no record (GOH.STATEDB S2)."""
+    return ship_records.ship_dir() / Path(repo).name / NAME
 
 
 def _git(top: str | Path, *args: str) -> str | None:

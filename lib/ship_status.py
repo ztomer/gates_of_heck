@@ -91,6 +91,23 @@ def tail(log: Path) -> list[str]:
         return []
 
 
+record = ship_records.get  # a result's record: its goh.db row, else its file
+
+
+def import_records(say=None) -> None:
+    """The record and pin files no row holds yet into goh.db (lib/ship_records.py import_files),
+    at each ship's start: harmless to repeat, never fatal to the ship."""
+    try:
+        got = ship_records.import_files()
+    except (sqlite3.Error, OSError) as e:
+        err(f"goh ship: the ship records were not imported into goh.db: {e}")
+        return
+    if say and any(got.values()):
+        say(
+            f"goh ship: imported {got['ships']} ship and {got['ship_pins']} pin records into goh.db"
+        )
+
+
 ABANDONED = "abandoned"  # the failed_step of a result whose worker died saying running
 
 
@@ -108,11 +125,8 @@ def settle(path: Path) -> bool:
     running while its worker is gone becomes `failed` at ABANDONED, naming the pid, so no record
     stays status-less or running forever (two Finance_zinc ships of 2026-11-17 said running six
     days after their workers died). True when it rewrote PATH."""
-    try:
-        res = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return False
-    if not _gone(res):
+    res = ship_records.get(path)
+    if res is None or not _gone(res):
         return False
     done = [s["name"] for s in res.get("steps", []) if isinstance(s, dict) and "name" in s]
     said = (f"the worker (pid {res['pid']}) is gone and the result said running; "
@@ -126,7 +140,7 @@ def settle(path: Path) -> bool:
 def settle_all(directory: Path, say=None) -> list[Path]:
     """`settle` over every ship result in DIRECTORY (a repo's ship records): the ones rewritten,
     each said through SAY when given."""
-    done = [p for p in sorted(directory.glob("*.json")) if settle(p)]
+    done = [p for p, _ in ship_records.in_dir(directory) if settle(p)]
     for p in done if say else ():
         say(f"goh ship: an earlier ship's worker is gone; recorded it as failed: {p}")
     return done
@@ -135,10 +149,9 @@ def settle_all(directory: Path, say=None) -> list[Path]:
 def status(result: str) -> int:
     """Print the marks a result holds. 0 shipped, 1 failed, 2 unreadable, 3 running, 4 the worker
     is gone (killed, or the machine slept through a reboot) while the result still says running."""
-    try:
-        res = json.loads(Path(result).read_text(encoding="utf-8"))
-    except (OSError, ValueError) as e:
-        err(f"goh ship: cannot read {result}: {e}")
+    res = ship_records.get(result)
+    if res is None:
+        err(f"goh ship: cannot read {result}: no goh.db row and no readable file")
         return 2
     for s in res["steps"]:
         mark = {"ok": ok, "skipped": step}.get(s["status"], err)

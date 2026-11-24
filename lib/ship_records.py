@@ -45,6 +45,12 @@ def ship_dir() -> Path:
     return Path(os.environ.get("GOH_SHIP_DIR") or Path.home() / ".local/state/goh/ship")
 
 
+def pins_path(result: Path | str) -> Path:
+    """The pin record's file beside RESULT (the window's copy of a ship's `ship_pins` row, and
+    wf-pin's own record when no ship runs it)."""
+    return Path(result).with_suffix(PINS)
+
+
 def is_record_name(name: str) -> bool:
     return name.endswith(".json") and not NOT_RECORD.search(name) and not name.startswith(".")
 
@@ -103,7 +109,7 @@ def get_pins(result: Path | str) -> dict | None:
     with _read() as con:
         row = con and con.execute("SELECT body FROM ship_pins WHERE result=?",
                                   (str(result),)).fetchone()  # fmt: skip
-    return json.loads(row[0]) if row else _file(Path(result).with_suffix(PINS))
+    return json.loads(row[0]) if row else _file(pins_path(result))
 
 
 def in_dir(directory: Path) -> list[tuple[Path, dict]]:
@@ -124,15 +130,20 @@ def in_dir(directory: Path) -> list[tuple[Path, dict]]:
     return [(Path(k), out[k]) for k in sorted(out)]
 
 
-def every(base: Path | None = None) -> list[tuple[Path, dict]]:
-    """Every record under BASE (the ship directory), each repo's in turn."""
+def repo_dirs(base: Path | None = None) -> list[Path]:
+    """Each repo's ship directory under BASE: the ones on disk and the ones rows name."""
     base = base or ship_dir()
     dirs = {p for p in base.iterdir() if p.is_dir()} if base.is_dir() else set()
     with _read() as con:
         for (result,) in con.execute("SELECT result FROM ships") if con else ():
             if Path(result).parent.parent == base:
                 dirs.add(Path(result).parent)
-    return [rec for d in sorted(dirs) for rec in in_dir(d)]
+    return sorted(dirs)
+
+
+def every(base: Path | None = None) -> list[tuple[Path, dict]]:
+    """Every record under BASE (the ship directory), each repo's in turn."""
+    return [rec for d in repo_dirs(base) for rec in in_dir(d)]
 
 
 def _files(base: Path) -> Iterator[tuple[str, Path]]:

@@ -13,7 +13,6 @@ advisory CI its CI line is the one failing line it may carry. Pinned by tests/te
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import subprocess
@@ -25,6 +24,7 @@ import consumer_pins
 import gitrun  # tools/ship.py, the one importer, puts goh's root and lib/ on sys.path
 import push_gated as gated  # the ONE reading of "this hook runs goh's push gate"
 import ship_export
+import ship_records
 
 from tui.lib import err, step
 
@@ -99,7 +99,10 @@ def failing_lines(text: str) -> list[str]:
 def verify(result: str) -> int:
     """The verify step: HEAD's CI read once (ci_read), then the claim card. With an advisory CI the
     card's own CI line (it reads the same pending run) is the one failing line it may carry."""
-    res = json.loads(Path(result).read_text(encoding="utf-8"))
+    res = ship_records.get(result)
+    if res is None:
+        err(f"goh ship: cannot read {result}: no goh.db row and no readable file")
+        return 2
     repo = Path(res["repo"])
     passes, why = ci_read(repo, res["remote"], res["loopctl"], res["sha"])
     if not passes:

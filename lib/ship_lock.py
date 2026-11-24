@@ -11,13 +11,13 @@ Pinned by tests/test_ship_red_cause.py.
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
 from pathlib import Path
 from typing import IO
 
 import lock_order
+import ship_records
 
 
 def claim(held: IO[str], result: str) -> None:
@@ -59,9 +59,7 @@ def state(said: str) -> str:
     except ValueError:
         return "a holder that names no record (an older goh ship)"
     result = str(who.get("result", ""))
-    rec: dict = {}
-    with contextlib.suppress(OSError, ValueError):
-        rec = json.loads(Path(result).read_text(encoding="utf-8"))
+    rec: dict = ship_records.get(result) or {} if result else {}
     status = rec.get("status", "no record")
     line = f"{result} (pid {who.get('pid')}, {status}"
     if probe := rec.get("bisect_step"):

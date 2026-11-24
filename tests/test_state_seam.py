@@ -40,18 +40,11 @@ ALLOWED: dict[str, set[str]] = {
     "selection misses": {  # S1 goh.db 0002 selection_misses
         "lib/state_files.py",
     },
-    "ship records": {  # S2 goh.db 0003 ships
-        "lib/budget_ships.py",
-        "lib/cov_risk.py",
-        "lib/full_run.py",
-        "lib/ship_records.py",  # LEFT: ship_dir(), the step logs' directory (handover plan (e))
-        "lib/ship_verdict.py",
-        "lib/state_bounds.py",
-        "tools/ship.py",
+    "ship records": {  # S2 goh.db 0003 ships: moved (lib/ship_records.py, GOH.STATEDBS2)
+        "lib/ship_records.py",  # LEFT: ship_dir(), where the step logs stay (handover plan (e))
+        "lib/state_bounds.py",  # LEFT: ship/* prunes the step logs and the window's record files
     },
-    "ship pins": {  # S2 goh.db 0003 ship_pins
-        "lib/consumer_pins.py",
-    },
+    "ship pins": set(),  # S2 goh.db 0003 ship_pins: moved (lib/ship_records.py, GOH.STATEDBS2)
     "small stores": {  # S3 goh.db 0004 kv
         "hooks/claude/estate_advisories.py",
         "lib/cache_evict.py",

@@ -128,7 +128,8 @@ from ship_version import (
 from tui.lib import err, info, ok, step
 
 STEPS = ("suite", "push", "release", "install", "verify", "done")
-save, tail = ship_status.save, ship_status.tail  # the result file, a step log (ship_status)
+save, tail = ship_status.save, ship_status.tail  # the record (goh.db row + file), a step log
+record = ship_status.record  # a result's record: its goh.db row, else its file (GOH.STATEDB S2)
 GRACE, DEFAULT_TIMEOUT = 5, 3600
 _HELD: dict[str, float] = {}  # "at": time.monotonic() when this worker took the land lock
 KEYS = ("GOH_SHIP_RELEASE", "GOH_SHIP_INSTALL", "GOH_SHIP_TIMEOUT", "GOH_SHIP_RELEASE_PUSHES",
@@ -155,7 +156,7 @@ def config(repo: Path) -> dict[str, str]:
 
 
 def default_out(name: str, sha: str) -> Path:
-    base = Path(os.environ.get("GOH_SHIP_DIR") or Path.home() / ".local/state/goh/ship")
+    base = ship_status.ship_records.ship_dir()  # the step logs stay files there
     stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
     return base / name.replace("/", "_") / f"{stamp}-{sha[:8]}.json"
 
@@ -355,7 +356,10 @@ def own_run(res: dict) -> None:
 
 def worker(result: str, resume: bool = False) -> int:
     """The pipeline under the repo's ship lock; RESUME: a ship failed at verify, from verify."""
-    res = json.loads(Path(result).read_text(encoding="utf-8"))
+    res = record(result)
+    if res is None:
+        err(f"goh ship: no record of {result} in goh.db or on disk")
+        return 2
     lock = Path(res["result"]).parent / ".ship.lock"
     import ship_lock  # here, not at the top: tools/ship.py's import ceiling (E402) is spent
 
@@ -394,6 +398,7 @@ def start(args: argparse.Namespace) -> int:
     except Refused as e:
         err(f"goh ship: {e} -- nothing started")
         return 2
+    ship_status.import_records(say=info)  # files from before the switch, or an old goh's
     ship_status.settle_all(Path(res["result"]).parent, say=info)  # dead workers' records
     save(res)
     if args.wait:
@@ -436,7 +441,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--verify", metavar="RESULT", help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
     if args.verify:  # a re-run of a ship failed at verify resumes it there (GOH.SHIPREVERIFY)
-        if ship_verify.reopen(json.loads(Path(args.verify).read_text(encoding="utf-8")), dry=True):
+        if ship_verify.reopen(record(args.verify) or {}, dry=True):
             return worker(args.verify, resume=True)
         return ship_verify.verify(args.verify)
     if args.worker:

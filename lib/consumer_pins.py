@@ -350,7 +350,7 @@ def land_held(repo: Path):
 
 def record_path(result: Path | str) -> Path:
     """The sweep's record beside a goh ship result (GOH_SHIP_RESULT)."""
-    return Path(result).with_suffix(".pins.json")
+    return ship_records.pins_path(result)
 
 
 def write_record(result: str, tag: str, ruff: str, repos: dict[str, dict[str, str]],

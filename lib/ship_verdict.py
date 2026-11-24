@@ -22,7 +22,6 @@ tests/test_ship_verdict.py.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import subprocess
 import sys
@@ -30,10 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import reuse  # lib/, beside this file: the one verdict store (GOH.ONEVERDICT)
-
-
-def ship_dir() -> Path:
-    return Path(os.environ.get("GOH_SHIP_DIR") or Path.home() / ".local/state/goh/ship")
+import ship_records  # the ship records in goh.db (GOH.STATEDB S2)
 
 
 def ancestors(pid: int) -> set[int]:
@@ -56,12 +52,8 @@ def verdict(repo: Path, sha: str, caller: int | None = None) -> tuple[Path | Non
     repo = repo.resolve()
     live = ancestors(os.getpid() if caller is None else caller)
     why = f"no running ship of {repo.name} is above this process"
-    for path in sorted((ship_dir() / repo.name).glob("*.json")):
-        try:
-            rec = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if not isinstance(rec, dict) or Path(str(rec.get("repo", ""))).resolve() != repo:
+    for path, rec in ship_records.in_dir(ship_records.ship_dir() / repo.name):
+        if Path(str(rec.get("repo", ""))).resolve() != repo:
             continue
         if rec.get("status") != "running" or rec.get("pid") not in live:
             continue

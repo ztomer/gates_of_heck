@@ -72,6 +72,7 @@ import gate_times  # lib/: `goh budget gates`, each estate repo's last push gate
 import land_attempts  # lib/: each land attempt a row, an item's retries one run (GOH.GATEBUDGET2)
 import land_e2e  # lib/: a land end to end, request to main, one run per item (GOH.LANDTARGET)
 import reuse_audit  # lib/: each reuse path's counts (GOH.REUSEAUDIT2)
+import ship_records  # the ship records in goh.db (GOH.STATEDB S2)
 import timing_ledger
 
 MIN = 60
@@ -311,13 +312,11 @@ def unmeasured(seen: set[str]) -> list[dict]:
     out += [
         {"subject": k, "why": "no landed run recorded"} for k in land_e2e.KINDS if k not in kinds
     ]
-    base = ship_dir()
-    if base.is_dir():
-        for d in sorted(p for p in base.iterdir() if p.is_dir()):
-            for kind in ("ship", "release"):
-                name = timing_ledger.subject_of(timing_ledger.repo_name(d.name), kind)
-                if name not in seen:
-                    out.append({"subject": name, "why": "no finished run recorded"})
+    for d in ship_records.repo_dirs():
+        for kind in ("ship", "release"):
+            name = timing_ledger.subject_of(timing_ledger.repo_name(d.name), kind)
+            if name not in seen:
+                out.append({"subject": name, "why": "no finished run recorded"})
     return out
 
 
@@ -349,7 +348,7 @@ def snapshot() -> dict:
 
 _min = budget_breach.minutes
 ship_rows, record_ship = budget_ships.ship_rows, budget_ships.record_ship
-ship_dir, backfill_ships = budget_ships.ship_dir, budget_ships.backfill_ships
+ship_dir, backfill_ships = ship_records.ship_dir, budget_ships.backfill_ships
 
 
 GLYPH = {ARMED: "✓", CLEARED: "✓", BREACHED: "✗", UNARMED: "·"}
