@@ -28,6 +28,7 @@ SEAM = {
     "lib/state_retire_ships.py",  # its ship records' half (GOH.STATEDB S2)
     "lib/state_retire_verdicts.py",  # ... GOH.VERDICTDB's stores, split out at its line cap
     "lib/state_retire_lands.py",  # its land records' half (GOH.STATEDB S1)
+    "lib/state_retire_landq.py",  # its land queue requests' half (GOH.LANDQDB)
     "tests/_state_seam_scan.py",
 }  # and this scanner, whose table names every store
 

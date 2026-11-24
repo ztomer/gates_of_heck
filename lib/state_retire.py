@@ -356,6 +356,7 @@ STORES: dict[str, Store] = {
         check=_hook_check,
     ),
     **{n: Store(**kw) for n, kw in state_retire_verdicts.STORES.items()},
+    "landq": Store(**__import__("state_retire_landq").STORE),  # GOH.LANDQDB, beside this one
 }
 GROUPS = dict([state_retire_verdicts.GROUP])  # a name for several stores
 
