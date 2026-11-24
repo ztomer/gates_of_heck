@@ -31,7 +31,86 @@ def test_probe_bash_is_5_and_cargo_is_found():
         stdin=subprocess.DEVNULL,
     )
     assert int(r.stdout.strip()) >= 5, r
-    assert shutil.which("cargo"), os.environ["PATH"]
+    # ...and the suite's cargo shim leads (tests/_drift_guard.py): a bare run lost it, and every
+    # test of the shim, and every throwaway crate's build dir, was a false red (GOH.RULESLEFT).
+    import _drift_guard
+
+    cargo = shutil.which("cargo")
+    assert cargo and cargo.startswith(_drift_guard._shim_dir), (cargo, os.environ["PATH"])
+
+
+def _tool(where: Path, name: str, body: str = "exit 0") -> Path:
+    where.mkdir(exist_ok=True)
+    path = where / name
+    path.write_text(f"#!/bin/sh\n{body}\n")
+    path.chmod(0o755)
+    return path
+
+
+def test_a_path_whose_bash_is_5_already_is_left_alone(tmp_path, monkeypatch):
+    """The wrapper changes no PATH; a bare run led it with bash 5's directory, and Homebrew's
+    cargo and rustc there took the place of the ones the caller's PATH names first."""
+    _tool(tmp_path / "rust", "cargo")
+    bash = _tool(tmp_path / "brew", "bash")
+    _tool(tmp_path / "brew", "cargo")
+    monkeypatch.setattr(runner_env, "bash5", lambda environ: (str(bash), ""))
+    fake = {"PATH": f"{tmp_path / 'rust'}:{tmp_path / 'brew'}:/usr/bin"}
+    before = fake["PATH"]
+    why = runner_env.same_env(fake)
+    path = fake["PATH"]
+    assert why is None and path == before
+
+
+def test_the_bash_that_leads_never_takes_cargos_place(tmp_path, monkeypatch):
+    _tool(tmp_path / "old", "bash")
+    _tool(tmp_path / "rust", "cargo")
+    bash = _tool(tmp_path / "brew", "bash")
+    _tool(tmp_path / "brew", "cargo")
+    monkeypatch.setattr(runner_env, "bash5", lambda environ: (str(bash), ""))
+    fake = {"PATH": f"{tmp_path / 'old'}:{tmp_path / 'rust'}:{tmp_path / 'brew'}"}
+    why = runner_env.same_env(fake)
+    path = fake["PATH"]
+    assert why is None
+    cargo = shutil.which("cargo", path=path)
+    assert shutil.which("bash", path=path) == str(bash)
+    assert cargo == str(tmp_path / "rust" / "cargo")
+
+
+def test_what_the_bash_probe_puts_on_the_path_is_kept(tmp_path, monkeypatch):
+    """The probe's own imports may lead PATH (the cargo shim did): read after it, never before."""
+    bash = _tool(tmp_path / "brew", "bash")
+    _tool(tmp_path / "old", "bash")
+    fake = {"PATH": str(tmp_path / "old")}
+
+    def probe(environ):
+        environ["PATH"] = f"{tmp_path / 'shim'}:{environ['PATH']}"
+        return str(bash), ""
+
+    monkeypatch.setattr(runner_env, "bash5", probe)
+    why = runner_env.same_env(fake)
+    assert why is None
+    path = fake["PATH"].split(":")
+    assert str(tmp_path / "shim") in path, path
+
+
+def test_the_bash_probe_loads_no_drift_guard():
+    """It runs before the suite has its own HOME and TMPDIR; the guard makes its shim then."""
+    code = (
+        "import os, sys; sys.path.insert(0, 'tests'); import runner_env; "
+        "runner_env.bash5(os.environ); sys.exit('_drift_guard' in sys.modules)"
+    )
+    env = hermetic_env()
+    r = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=REPO_ROOT,
+        env=env,
+        check=False,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=patience(60),
+    )
+    assert r.returncode == 0, r.stderr[-2000:]
 
 
 def test_the_wrapper_env_is_left_alone():
