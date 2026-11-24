@@ -21,11 +21,14 @@ import sys
 from pathlib import Path
 
 import db_core
+from _tree_clone import from_template
 from conftest import REPO_ROOT, git, hermetic_env
 from timing_bounds import patience
 
 COPY = ("lib/db_core.py", "lib/goh_db.py", "lib/lock_order.py", "lib/lock_order.tsv",
         "lib/pid_owner.py", "lib/goh_db_schema", "tui/lib.py", "tui/stylerc")  # fmt: skip
+TREE_READS = ("lib/db_core.py", "lib/goh_db.py", "lib/lock_order.py", "lib/lock_order.tsv",
+              "lib/pid_owner.py", "lib/goh_db_schema/", "tui/lib.py", "tui/stylerc")  # fmt: skip
 
 DRIVER = """
 import sys
@@ -41,15 +44,18 @@ except db_core.NewerFile as e:
 """
 
 
-def _main_copy(tmp_path: Path) -> Path:
-    main = tmp_path / "main"
+def _build_main(main: Path) -> None:
+    """The stand-in main checkout: goh.db's seam, committed (built once per run)."""
     for rel in COPY:
         src, dst = REPO_ROOT / rel, main / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         (shutil.copytree if src.is_dir() else shutil.copy2)(src, dst)
     git(main, "init", "-q", "-b", "main")
     _commit(main, "goh.db's seam")
-    return main
+
+
+def _main_copy(tmp_path_factory, tmp_path: Path) -> Path:
+    return from_template(tmp_path_factory, "db-record-main", _build_main, tmp_path / "main")
 
 
 def _commit(where: Path, msg: str) -> None:
@@ -83,8 +89,8 @@ def _file(tmp_path: Path) -> tuple[list[int], str | None]:
         con.close()
 
 
-def test_only_the_code_of_record_migrates_the_shared_file(tmp_path) -> None:
-    main = _main_copy(tmp_path)
+def test_only_the_code_of_record_migrates_the_shared_file(tmp_path_factory, tmp_path) -> None:
+    main = _main_copy(tmp_path_factory, tmp_path)
     shipped = sorted(int(p.name[:4]) for p in (main / "lib" / "goh_db_schema").glob("*.sql"))
     assert _write(tmp_path, main, "m1") == "wrote"  # main creates and migrates it
     assert _file(tmp_path) == (shipped, "m1")
@@ -111,8 +117,8 @@ def test_only_the_code_of_record_migrates_the_shared_file(tmp_path) -> None:
     assert _file(tmp_path) == ([*shipped, 98], "m3")
 
 
-def test_a_copy_never_creates_the_shared_file(tmp_path) -> None:
-    main = _main_copy(tmp_path)
+def test_a_copy_never_creates_the_shared_file(tmp_path_factory, tmp_path) -> None:
+    main = _main_copy(tmp_path_factory, tmp_path)
     lane = tmp_path / "lane"
     git(main, "worktree", "add", "-q", "-b", "lane", str(lane))
     got = _write(tmp_path, lane, "l1")
