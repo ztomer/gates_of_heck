@@ -48,12 +48,16 @@ def path() -> Path:
     return db_core.path(SEAM)
 
 
-def connect(at: Path | None = None) -> contextlib.AbstractContextManager[sqlite3.Connection]:
-    return db_core.connect(SEAM, at)
+def connect(
+    at: Path | None = None, named: bool = False
+) -> contextlib.AbstractContextManager[sqlite3.Connection]:
+    return db_core.connect(SEAM, at, named)
 
 
-def ro(at: Path | None = None) -> contextlib.AbstractContextManager[sqlite3.Connection]:
-    return db_core.ro(SEAM, at)
+def ro(
+    at: Path | None = None, named: bool = False
+) -> contextlib.AbstractContextManager[sqlite3.Connection]:
+    return db_core.ro(SEAM, at, named)
 
 
 def migrate(con: sqlite3.Connection) -> set[int]:
@@ -64,21 +68,41 @@ def _order() -> None:
     lock_order.check("goh_cache_db")  # innermost: nothing is waited on while a write holds it
 
 
+_REFUSED: set[Path] = set()  # files a write was refused on in this process (read-only to it)
+
+
+class Refused(db_core.NewerFile):
+    """A write to a file this process was already refused on: a silent skipped write."""
+
+
 @contextlib.contextmanager
-def transaction(at: Path | None = None) -> Iterator[sqlite3.Connection]:
-    """One write to goh-cache.db (AT: a file a caller names, e.g. lib/cpu_window.py's)."""
-    with db_core.transaction(SEAM, _order, at) as con:
-        yield con
+def transaction(at: Path | None = None, named: bool = False) -> Iterator[sqlite3.Connection]:
+    """One write to goh-cache.db (AT: a file a caller names, e.g. lib/cpu_window.py's; NAMED: the
+    suite's runner named it, the one real-home file a suite may open, db_core.connect)."""
+    p = Path(at or path())
+    if p in _REFUSED:  # said once: a hot writer (the identity memo) must not say it per write
+        raise Refused(f"{p}: refused earlier in this process")
+    try:
+        with db_core.transaction(SEAM, _order, at, named) as con:
+            yield con
+    except db_core.NewerFile as e:  # db_core said why at the open
+        _REFUSED.add(p)
+        raise Refused(str(e)) from e
 
 
 @contextlib.contextmanager
 def missable(what: str = "goh-cache.db") -> Iterator[None]:
     """A cache error inside the block is a miss (or a skipped write): one stderr line, never a
-    raise. The caller's result keeps the value it had before the block."""
+    raise. The caller's result keeps the value it had before the block. A table the file does not
+    have yet is a silent miss: a lane's copy reads the shared file before main has migrated it
+    (lib/db_core.py, GOH.LANEMIGRATE), and a hot path (the identity memo) would say so per ask."""
     try:
         yield
+    except Refused:
+        pass
     except (sqlite3.Error, OSError) as e:
-        db_core.warn(f"{what}: {e} (a miss)")
+        if not str(e).startswith("no such table"):
+            db_core.warn(f"{what}: {e} (a miss)")
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ tree, a changed gate, a partial key, an old record, a record under another key.
 from __future__ import annotations
 
 import json
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -57,31 +58,46 @@ def test_a_partial_or_unregistered_key_is_refused(store):
         reuse.register("gate", ("tree",), 1, "a second gate path")
 
 
+def _body(loc: str, body: str | None = None) -> dict:
+    """The record at LOC (reuse_store's `<db>#<path>/<key>`), its body replaced by BODY first."""
+    db, _, rest = loc.partition("#")
+    path, _, key = rest.partition("/")
+    with sqlite3.connect(db) as con:
+        if body is not None:
+            con.execute("UPDATE verdicts SET body=? WHERE path=? AND key=?", (body, path, key))
+        row = con.execute("SELECT body FROM verdicts WHERE path=? AND key=?", (path, key))
+        row = row.fetchone()
+    con.close()
+    return json.loads(row[0]) if row and body is None else {}
+
+
 def test_an_old_or_foreign_record_misses(store, monkeypatch):
-    path = reuse.record("gate", FIELDS, "green")
-    monkeypatch.setenv("GOH_REUSE_NOW", str(int(json.loads(path.read_text())["epoch"]) + 86400))
+    loc = reuse.record("gate", FIELDS, "green")
+    monkeypatch.setenv("GOH_REUSE_NOW", str(int(_body(loc)["epoch"]) + 86400))
     assert "outside" in reuse.lookup("gate", FIELDS)[1]  # a day old: the TTL
     monkeypatch.delenv("GOH_REUSE_NOW")
-    rec = json.loads(path.read_text())
+    rec = _body(loc)
     rec["key"] = "0" * 64
-    path.write_text(json.dumps(rec))
+    _body(loc, json.dumps(rec))
     assert "not this key's" in reuse.lookup("gate", FIELDS)[1]  # a record in the wrong slot
-    path.write_text("{")
+    _body(loc, "{")
     assert "unreadable" in reuse.lookup("gate", FIELDS)[1]
 
 
 def test_a_record_older_than_its_ttl_is_pruned(store, monkeypatch):
     old = reuse.record("gate", FIELDS, "green")
     young = {**FIELDS, "tree": "u" * 40}
-    monkeypatch.setenv("GOH_REUSE_NOW", str(int(json.loads(old.read_text())["epoch"]) + 86400))
+    monkeypatch.setenv("GOH_REUSE_NOW", str(int(_body(old)["epoch"]) + 86400))
     kept = reuse.record("gate", young, "green")
     assert reuse.prune("gate") == 1
-    assert not old.exists() and kept.exists()
+    assert not _body(old) and _body(kept)
 
 
 def recorded_hows(store: Path, sha: str) -> list[str]:
     """How each `gate` record of sha in the store was gated (a push gate test's view of it)."""
-    recs = [json.loads(f.read_text()) for f in (store / "gate").glob("*/*.json")]
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("GOH_REUSE_DIR", str(store))
+        recs = [rec for _, rec, _ in reuse.records("gate")]
     return sorted(r["how"] for r in recs if r.get("sha") == sha and r.get("verdict") == "green")
 
 

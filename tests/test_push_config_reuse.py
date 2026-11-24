@@ -13,13 +13,13 @@ the real one, so a floor the tree cannot meet goes red on the short path too.
 
 from __future__ import annotations
 
-import json
 import subprocess
 from pathlib import Path
 
+import pytest
 from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, git, hermetic_env
-from test_reuse import recorded_hows
+from test_reuse import recorded_hows, reuse
 from timing_bounds import patience
 
 PUSH_GATE = REPO_ROOT / "gates" / "push_gate.sh"
@@ -58,8 +58,10 @@ def _push(repo: Path, tmp_path: Path, remote_sha: str) -> tuple[int, list[str], 
 
 
 def _pushed(tmp_path: Path) -> list[str]:
-    """The shas the store's `pushed` path holds green (lib/reuse.py)."""
-    recs = [json.loads(f.read_text()) for f in (tmp_path / "reuse" / "pushed").glob("*/*.json")]
+    """The shas the store's `pushed` path holds green (lib/reuse.py, its rows in goh-cache.db)."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("GOH_REUSE_DIR", str(tmp_path / "reuse"))
+        recs = [rec for _, rec, _ in reuse.records("pushed")]
     return [r["sha"] for r in recs if r.get("verdict") == "green"]
 
 

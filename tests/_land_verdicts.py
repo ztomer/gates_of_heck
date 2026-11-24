@@ -98,6 +98,7 @@ def identity(root: Path = REPO_ROOT) -> str | None:
 
 
 STORE = "GOH_LAND_VERDICTS_STORE"  # the caller's store root (tests/suite_home.py `_land_store`)
+CACHE = "GOH_LAND_VERDICTS_CACHE"  # ... and its records' goh-cache.db (lib/reuse_store.py)
 
 
 def _take() -> dict[str, str]:
@@ -110,10 +111,10 @@ def _take() -> dict[str, str]:
     (GOH.VERDICTCARRY3). A session a test starts now sees only the keys that test names. The store
     is GOH_REUSE_DIR when one is named, else the caller's that suite_home resolved."""
     got = {k: os.environ.pop(k) for k in (RECORD, REUSE) if k in os.environ}
-    store = os.environ.get("GOH_REUSE_DIR") or os.environ.pop(STORE, "")
+    named = os.environ.get("GOH_REUSE_DIR")
+    store, cache = named or os.environ.pop(STORE, ""), os.environ.pop(CACHE, "")
     os.environ.pop(STORE, None)
-    if store:
-        got[STORE] = store
+    got.update({STORE: store, CACHE: "" if named else cache} if store else {})
     return got
 
 
@@ -135,9 +136,11 @@ def _in_store():
     for good, a test's child inherited the land's store (GOH.VERDICTCARRY3)."""
     was = os.environ.get("GOH_REUSE_DIR")
     os.environ["GOH_REUSE_DIR"] = _store()
+    _lib("reuse_store").NAMED = Path(_on(CACHE)) if _on(CACHE) else None  # in-process only
     try:
         yield _lib("reuse"), _lib("reuse_audit")
     finally:
+        _lib("reuse_store").NAMED = None
         if was is None:
             os.environ.pop("GOH_REUSE_DIR", None)
         else:
@@ -278,14 +281,12 @@ def _record_store(session) -> None:
 def _shadows() -> None:
     """Each sampled source's carried nodes, each sampled same-tree node, ran: a failure among
     them is a disagreement, re-run in a child pytest first (tests/_land_audit.py)."""
-    _land_audit.shadows(
-        _state.get("plan") or {},
-        _in_store,
-        _called,
-        _failed,
-        (RECORD, REUSE, STORE, "GOH_REUSE_DIR"),
-        lambda n: n in reusable(_on(REUSE), identity(), instrumented())[0],
-    )
+    _land_audit.shadows(_state.get("plan") or {}, _in_store, _called, _failed,
+                        (RECORD, REUSE, STORE, CACHE, "GOH_REUSE_DIR"), _reusable)  # fmt: skip
+
+
+def _reusable(n: str) -> bool:
+    return n in reusable(_on(REUSE), identity(), instrumented())[0]
 
 
 def reusable(path: str, here: str | None, coverage: bool) -> tuple[set[str], str]:
@@ -414,9 +415,8 @@ def _carry(plan: dict, pre_sha: str, coverage: bool, rootdir: Path, also: list[s
                     lines.append(f"land verdicts: nothing carried from {sha[:8]}: {why}")
                     continue
                 nodes = carried(passed, chosen, coverage, bld, measured, held)
-                plan.setdefault("nobin", set()).update(
-                    carried(measured, chosen, True, False, measured)
-                )
+                plan.setdefault("nobin", set()).update(carried(measured, chosen, True, False,
+                                                               measured))  # fmt: skip
                 how = f"{len(changed or [])} paths differ, affected_tests chooses {len(chosen)}"
                 nodes -= _read_audit.undeclared(lines, rec, nodes, changed or [], sha)
             if coverage and (src == tree or not _builds(changed or [])):  # GOH.PROFKEYMISS

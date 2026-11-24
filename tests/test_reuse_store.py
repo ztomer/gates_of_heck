@@ -17,7 +17,7 @@ import subprocess
 
 from conftest import REPO_ROOT
 
-API = "lib/reuse.py"
+API = ("lib/reuse.py", "lib/reuse_store.py")  # the one API, and where its records live
 # A store's path or setting, as code names it: the whole word (`goh-proven-stamp` is a temp name).
 STORES = ("goh/reuse", "GOH_REUSE_DIR", "goh-landed", "goh-pushed", "goh-proven", "goh/verdicts",
           "GOH_VERDICT_DIR")  # fmt: skip
@@ -57,7 +57,7 @@ def found() -> set[tuple[str, str]]:
                             stdin=subprocess.DEVNULL).stdout.split()  # fmt: skip
     out = set()
     for rel in listed:
-        if rel == API or not rel.endswith((".py", ".sh", ".rs")) or not (REPO_ROOT / rel).is_file():
+        if rel in API or not rel.endswith((".py", ".sh", ".rs")) or not (REPO_ROOT / rel).is_file():
             continue
         text = (REPO_ROOT / rel).read_text(encoding="utf-8", errors="replace")
         out |= {(rel, s) for s in _named(rel, text)}

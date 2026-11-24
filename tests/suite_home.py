@@ -139,6 +139,8 @@ CALLER_INPUTS = (
     "GOH_LAND_VERDICTS_REUSE",
     # ... and the CALLER's verdict store, resolved before this home replaces HOME (`_land_store`).
     "GOH_LAND_VERDICTS_STORE",
+    # ... and its goh-cache.db, where those verdicts live (lib/reuse_store.py, GOH.VERDICTDB).
+    "GOH_LAND_VERDICTS_CACHE",
     # The ship's file for its reused and fresh binary tests (tests/_prof_reuse.py): dropped here,
     # no ship record named them (GOH.COVPROFILEREUSE's first measured run).
     "GOH_PROF_REUSE_OUT",
@@ -160,6 +162,14 @@ def _land_store() -> None:
     base = Path(state) if state.startswith("/") else Path(REAL_HOME) / ".local" / "state"
     store = named if named.startswith("/") else str(base / "goh" / "reuse")
     os.environ.setdefault("GOH_LAND_VERDICTS_STORE", store)
+    # Its records' goh-cache.db, by lib/reuse_store.py `db`'s rule: GOH_CACHE_DB, else beside a
+    # named root, else the caller's XDG cache (GOH.VERDICTDB).
+    cache, xdg = os.environ.get("GOH_CACHE_DB", ""), os.environ.get("XDG_CACHE_HOME", "")
+    if not cache.startswith("/"):
+        cache_base = Path(xdg) if xdg.startswith("/") else Path(REAL_HOME) / ".cache"
+        cache = str(Path(named, "goh-cache.db") if named.startswith("/") else
+                    cache_base / "goh" / "goh-cache.db")  # fmt: skip
+    os.environ.setdefault("GOH_LAND_VERDICTS_CACHE", cache)
 
 
 def _drop_ship_inputs() -> None:

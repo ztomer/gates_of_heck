@@ -44,9 +44,10 @@ THE AUDIT. Every reuse in goh is a registered path here, wherever its records li
 lib/reuse_audit.py samples, compares and switches off (GOH.REUSEAUDIT); tests/test_reuse_audit.py
 refuses a reuse site no path names.
 
-The store's root: GOH_REUSE_DIR (absolute), else $XDG_STATE_HOME/goh/reuse, else
-~/.local/state/goh/reuse. Nothing else reads or writes under it, nor the legacy record files named
-in LEGACY (tests/test_reuse_store.py). Pinned by tests/test_reuse.py.
+The records live in goh-cache.db's `verdicts` table, through lib/reuse_store.py alone
+(GOH.VERDICTDB; its root, GOH_REUSE_DIR, holds the profile store and the audit). Nothing else reads
+or writes them, nor the legacy record files named in LEGACY (tests/test_reuse_store.py). Pinned by
+tests/test_reuse.py.
 """
 
 from __future__ import annotations
@@ -66,7 +67,6 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -74,6 +74,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gate_identity  # lib/, beside this file: the one identity (GOH.VERDICTKEY)
+import reuse_store  # ... and where its records live (goh-cache.db, GOH.VERDICTDB)
 
 FORMAT = "reuse v1"
 DAY_S = 86400
@@ -213,15 +214,7 @@ register(
 )  # fmt: skip
 
 
-def root() -> Path:
-    named = os.environ.get("GOH_REUSE_DIR", "")
-    if named:
-        if not named.startswith("/"):
-            raise ValueError(f"GOH_REUSE_DIR must be an absolute path: {named!r}")
-        return Path(named)
-    state = os.environ.get("XDG_STATE_HOME", "")
-    base = Path(state) if state.startswith("/") else Path.home() / ".local" / "state"
-    return base / "goh" / "reuse"
+root = reuse_store.root  # the reuse root: the profile store and the audit live under it
 
 
 def _path(path: str | ReusePath) -> ReusePath:
@@ -244,10 +237,6 @@ def key(path: str | ReusePath, fields: dict[str, str]) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def _file(p: ReusePath, k: str) -> Path:
-    return root() / p.name / k[:2] / f"{k}.json"
-
-
 def ttl(p: ReusePath) -> int:
     raw = os.environ.get("GOH_REUSE_TTL_S", "")
     return int(raw) if raw.isdigit() else p.ttl_s
@@ -260,60 +249,44 @@ def now() -> int:
 
 
 def record(path: str | ReusePath, fields: dict[str, str], verdict: str, by: str = "",
-           extra: dict[str, str] | None = None) -> Path:  # fmt: skip
-    """Write the verdict for these fields whole (a temp file renamed into place)."""
+           extra: dict[str, str] | None = None) -> str:  # fmt: skip
+    """Write the verdict for these fields whole (lib/reuse_store.py); its locator."""
     p = _path(path)
-    dest = _file(p, k := key(p, fields))
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    rec = {"format": FORMAT, "path": p.name, "key": k, "fields": fields, "verdict": verdict,
-           "by": by, "epoch": now(), **(extra or {})}  # fmt: skip
-    fd, tmp = tempfile.mkstemp(dir=dest.parent, prefix=".tmp.")
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        json.dump(rec, fh, sort_keys=True)
-    os.replace(tmp, dest)
-    return dest
+    rec = {"format": FORMAT, "path": p.name, "key": (k := key(p, fields)), "fields": fields,
+           "verdict": verdict, "by": by, "epoch": now(), **(extra or {})}  # fmt: skip
+    return reuse_store.put(p.name, k, rec)
 
 
 def lookup(path: str | ReusePath, fields: dict[str, str]) -> tuple[dict | None, str]:
     """(record, "") for a live record of these fields, else (None, why it missed)."""
     p = _path(path)
-    f = _file(p, k := key(p, fields))
-    try:
-        rec = json.loads(f.read_text(encoding="utf-8"))
-    except FileNotFoundError:
+    rec, f, bad = reuse_store.get(p.name, k := key(p, fields))
+    if bad:
+        return None, f"the {p.name} record {f} is unreadable ({bad})"
+    if rec is None:
         return None, f"no {p.name} verdict for this key"
-    except (OSError, ValueError) as e:
-        return None, f"the {p.name} record {f} is unreadable ({e})"
-    if not isinstance(rec, dict) or rec.get("key") != k or rec.get("fields") != fields:
+    if rec.get("key") != k or rec.get("fields") != fields:
         return None, f"the {p.name} record {f} is not this key's"
     epoch = rec.get("epoch")
     age = now() - epoch if isinstance(epoch, int) else -1
     if not 0 <= age < ttl(p):
         return None, f"the {p.name} verdict is {age} s old, outside its {ttl(p)} s"
-    rec["file"] = str(f)
+    rec["file"] = f
     return rec, ""
 
 
-def records(path: str | ReusePath) -> Iterator[tuple[Path, dict, int]]:
-    """Each record file of PATH, its record ({}: unreadable) and its age in s (-1: no epoch)."""
-    for f in (root() / _path(path).name).glob("*/*.json"):
-        try:
-            rec = json.loads(f.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            rec = {}
-        rec = rec if isinstance(rec, dict) else {}
+def records(path: str | ReusePath) -> Iterator[tuple[str, dict, int]]:
+    """Each record of PATH (its locator), the record ({}: unreadable) and its age (-1: no epoch)."""
+    for f, rec in reuse_store.rows(_path(path).name):
         yield f, rec, now() - rec["epoch"] if isinstance(rec.get("epoch"), int) else -1
 
 
 def prune(path: str | ReusePath) -> int:
-    """Delete the path's records older than its TTL (and unreadable ones); the count removed. A
-    writer calls it once per write batch, so the store stays the size of one TTL of verdicts."""
-    p, gone = _path(path), 0
-    for f, _, age in records(p):
-        if not 0 <= age < ttl(p):
-            f.unlink(missing_ok=True)
-            gone += 1
-    return gone
+    """Delete the path's records older than its TTL (and unreadable ones), then past its row cap;
+    the count removed. A writer calls it once per write batch, so the store stays one TTL big."""
+    p = _path(path)
+    old = [f for f, _, age in records(p) if not 0 <= age < ttl(p)]
+    return reuse_store.drop(p.name, old) + reuse_store.cap(p.name)
 
 
 # --- the `gate` path ---------------------------------------------------------------------------
@@ -338,7 +311,7 @@ def gate_fields(repo: Path, sha: str, how: str = "full") -> dict[str, str] | Non
     return {"repo": rid, "tree": tree, "identity": gate_identity.key(how)} if tree and rid else None
 
 
-def record_gate(repo: Path, shas: list[str], by: str) -> list[Path]:
+def record_gate(repo: Path, shas: list[str], by: str) -> list[str]:
     """Each `SHA[:HOW]` green under the gate identity of HOW (empty: full)."""
     out = []
     identity: dict[str, str] = {}
@@ -416,7 +389,7 @@ def carry_fields(repo: Path, tree: str, tools: str) -> dict[str, str]:
 def record_suite(repo: Path, tree: str, tools: str, passed: dict[str, bool], failed: set[str],
                  full: bool, by: str, carried: int = 0, instrumented: bool = False,
                  measured: dict[str, bool] | None = None, judged: set[str] | None = None,
-                 reads: dict[str, list[str]] | None = None) -> Path:  # fmt: skip
+                 reads: dict[str, list[str]] | None = None) -> str:  # fmt: skip
     """Merge one run's verdicts on `tree` into its record: `passed` ({node: it ran the binary})
     joins the passes, a node in `failed` leaves them. `full`: this run judged every test of the tree
     itself (none carried, nothing failed), so an old pass it neither made nor found judged leaves

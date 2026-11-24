@@ -45,8 +45,8 @@ ALLOWED: dict[str, set[str]] = {
         "lib/hook_ledgers.py",
     },
     "durations": set(),  # DUR goh.db 0006 readings: moved (lib/durations.py, GOH.DURATIONSDB)
-    "reuse records": {  # V1 goh-cache.db 0002 verdicts
-        "lib/reuse.py",
+    "reuse records": {  # V1 goh-cache.db 0002 verdicts (lib/reuse_store.py, GOH.VERDICTDB)
+        "lib/reuse_store.py",  # LEFT: the files' window (read, copied in, pruned), until wave 3
         "lib/state_bounds.py",
         "lib/state_files.py",
     },

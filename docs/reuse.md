@@ -156,8 +156,12 @@ what every test loads (conftest.py, this item's own) makes the pre-step the whol
 
 ## The one store
 
-`lib/reuse.py`. Root `GOH_REUSE_DIR`, else `$XDG_STATE_HOME/goh/reuse`, else
-`~/.local/state/goh/reuse`; a record at `<root>/<path>/<key[:2]>/<key>.json`.
+`lib/reuse.py`, its bytes in `lib/reuse_store.py`: a record is one row of goh-cache.db's
+`verdicts` table (cache migration 0002, GOH.VERDICTDB), keyed (path, key). The file is
+`GOH_CACHE_DB`, else `<GOH_REUSE_DIR>/goh-cache.db` when a caller names the root, else goh-cache.db's
+own; a database error is a miss or a skipped write (the cache is disposable). Record files from
+before the switch (`<root>/<path>/<key[:2]>/<key>.json`) are read when no row exists, copied in, and
+pruned at their TTL. `prune` keeps each path inside its TTL and its newest `reuse_store.CAP` rows.
 
 * A reuse PATH registers its name, its key fields and its TTL (`register`, one table in the
   module). The key is sha256 over the path and every registered field in order. A lookup names
