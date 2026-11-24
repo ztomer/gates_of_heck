@@ -20,6 +20,8 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 import state_bounds  # lib/, after its path
 
 DIRS = ("lib", "scripts", "tools", "gates", "hooks", "checks")
+# the scan reads every module there (lib/declared_reads.py)
+TREE_READS = ("lib/", "scripts/", "tools/", "gates/", "hooks/", "checks/")
 NAMED = re.compile(r'\b(?:reuse|reuse_store)\.root\(\) / "([A-Za-z0-9_.-]+)"')
 
 
