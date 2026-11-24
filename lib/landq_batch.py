@@ -436,7 +436,8 @@ def run(q: Path, paths: list[Path], kit: Kit, run_one: Callable[[Path, Path], di
     picked at SIZE carries its `k` and `k_why` (GOH.ADAPTBATCH: --report shows k per batch)."""
     chose = {"k": size.k, "k_why": size.why} if size else {}
     if paths and (head := read(paths[0])).get("mode") == "land" and head.get("repo"):
-        main_reading.ensure(q, head["repo"], kit.say)  # main's reds read at its tip (MAINREDWAIVE)
+        say = kit.say if kit else print  # a lone land may come with no kit
+        main_reading.ensure(q, head["repo"], say)  # main's reds read at its tip (MAINREDWAIVE)
     if len(paths) == 1:
         return [{**landq_report.timed(run_one, q, paths[0]), **chose}]
     started, load = dt.datetime.now(dt.UTC), landq_report.load1()

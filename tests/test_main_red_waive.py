@@ -170,3 +170,16 @@ def test_land_check_waives_main_red_guards_by_a_reading(tmp_path, monkeypatch):
     assert land_check.run(wt, None, said.append, str(m)) != []
     main_reading.record(m, base, "idle-suite", "*", [SHARED])
     assert land_check.run(wt, None, said.append, str(m)) == [], said
+
+
+def test_the_lander_reads_main_before_a_lone_land_and_a_batch(tmp_path, monkeypatch):
+    import landq_batch
+    import landq_size
+    from test_landq_size import pend
+
+    seen: list[str] = []
+    monkeypatch.setattr(main_reading, "ensure", lambda _q, repo, _say: seen.append(repo))
+    path = pend(tmp_path, 1)[0]
+    got = landq_batch.run(tmp_path, [path], None, lambda _q, _p: {"log": "", "state": "landed"},
+                          landq_size.Size(1, "why"))  # fmt: skip
+    assert got[0]["state"] == "landed" and seen == [landq_batch.read(path)["repo"]]
