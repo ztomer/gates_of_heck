@@ -1,7 +1,7 @@
 """A planted main and lane for the waiver's tests (tests/test_main_red_waive.py,
 tests/test_rule_inflight.py): a main checkout whose suite loads tests/_land_waive.py, a lane
 worktree beside it, and a nested pytest run of the lane's tree under a GOH_LAND_WAIVE the lander's
-own code (lib/land_waive.py `env`) computed."""
+own code (lib/land_waive.py `words`) computed."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def lane(m: Path, at: str, name: str = "lane") -> Path:
 
 
 def suite(wt: Path, waive: list[str], *extra: str) -> subprocess.CompletedProcess:
-    """The lane tree's pytest under the lander's GOH_LAND_WAIVE (WAIVE: `env`'s words)."""
+    """The lane tree's pytest under the lander's GOH_LAND_WAIVE (WAIVE: `words`' output)."""
     env = hermetic_env(**dict(w.split("=", 1) for w in waive))
     return subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
                            "-p", "no:randomly", *extra, "tests"], cwd=wt, env=env,

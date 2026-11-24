@@ -254,12 +254,19 @@ def _run(
 
 
 def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=False, no_pre=False,
-        cov=True):  # fmt: skip
+        cov=True, reqs: list[dict] | None = None):  # fmt: skip
     """Every guard over ROOT; the refusing guards' names ([] is green). SAY prints a line. TABLES
     (`goh land --check`) adds every judge the change can break (`judge_tests`) and, unless not COV
     (a batch's ratchet phase, lib/landq_ratchet.py), diff coverage; NO_PRE `steps`' no-pre lint,
-    the Rust gate's coverage (its tests) deferred by name."""
+    the Rust gate's coverage (its tests) deferred by name. REQS (a batch's stack; else ROOT's HEAD
+    as enqueued) name what its reds may waive: main's own, a newer rule (lib/land_waive.py)."""
     env = {**_env(root), **({"GOH_RUST_COVERAGE": "defer"} if no_pre else {})}
+    at = ["git", "rev-parse", "HEAD"]
+    rc, head, _ = _run(at, root, env, 60) if repo and not reqs else (1, "", 0)
+    reqs = reqs or [{"repo": repo, "sha": head.strip()}] * (rc == 0)
+    from lib import land_waive  # its reds that are main's or a newer rule's (GOH.MAINREDWAIVE)
+
+    env.update(w.split("=", 1) for w in land_waive.words(reqs))
     nodes = tests(root, q, repo)
     if tables:
         t0 = time.monotonic()
@@ -353,7 +360,7 @@ def at_enqueue(q: Path, req: dict, file, record, say=print, no_pre: str | None =
     t0 = time.monotonic()
     req.update({} if no_pre is None else {"no_pre": no_pre.strip()})  # alone: lib/landq_batch.py
     refused = run(Path(req["worktree"]), q, lambda s: (say(s), lines.append(s)), req["repo"],
-                  no_pre=no_pre is not None)  # fmt: skip
+                  no_pre=no_pre is not None, reqs=[req])  # fmt: skip
     req["cov_risk"] = cov_risk.say(req["worktree"], req["repo"], say)  # kept on the land record
     if not refused:
         say(f"check: every guard green in {time.monotonic() - t0:.1f} s")

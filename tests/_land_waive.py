@@ -1,7 +1,7 @@
 """A land's waived reds: main's own, and a rule newer than the item (GOH.MAINREDWAIVE,
 GOH.RULEINFLIGHT; lib/land_waive.py decides what may be waived, this applies it).
 
-GOH_LAND_WAIVE (the lander's, lib/land_waive.py `env`) is JSON: main's red nodes per sha, each by
+GOH_LAND_WAIVE (the lander's, lib/land_waive.py `words`) is JSON: main's red nodes per sha, each by
 the id of the reading on main that saw it red, and the rules main gained after every item of the
 land forked. The controller resolves it ONCE against the base this run's tree really has --
 `git merge-base HEAD <main's HEAD>` -- and hands the result to its workers (xdist `workerinput`):
@@ -36,10 +36,9 @@ _waived: dict[str, dict] = {}
 
 def _git(cwd: str, *args: str) -> str:
     try:
-        r = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True,
-                           timeout=patience(60),
-                           stdin=subprocess.DEVNULL, check=False,
-                           env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})  # fmt: skip
+        r = subprocess.run(["git", "--no-optional-locks", "-C", cwd, *args], capture_output=True,
+                           text=True, timeout=patience(60), stdin=subprocess.DEVNULL,
+                           check=False)  # fmt: skip
     except (OSError, subprocess.SubprocessError):
         return ""
     return r.stdout.strip() if r.returncode == 0 else ""

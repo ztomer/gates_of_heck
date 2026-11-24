@@ -20,7 +20,7 @@ in 24 h, 2.94 attempts per item):
                      head (main's tip), main: {sha: {node: reading id}} at main's tip and at each
                      item's fork from it, rules: {node: {commit, why}}, items}; computed outside
                      the suite, where goh.db and git are the lander's
-    env(reqs)        `GOH_LAND_WAIVE=<that JSON>` for tools/land.sh's runs ([] when nothing
+    words(reqs)      `GOH_LAND_WAIVE=<that JSON>` for tools/land.sh's runs ([] when nothing
                      is waivable); the suite's plugin (tests/_land_waive.py) applies it to the base
                      the run's tree really has (`git merge-base HEAD <main>`), so a reading at
                      another sha never waives anything
@@ -147,7 +147,7 @@ def excuses(reqs: list[dict]) -> dict:
     return {"repo": repo, "head": head, "main": main, "rules": rules, "items": items}
 
 
-def env(reqs: list[dict]) -> list[str]:
+def words(reqs: list[dict]) -> list[str]:
     """`GOH_LAND_WAIVE=<excuses>` for land.sh's runs of REQS; [] when nothing is waivable."""
     try:
         got = excuses([r for r in reqs if r])

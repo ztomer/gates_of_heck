@@ -2,9 +2,8 @@
 
 It is land.sh's own pre-step: GOH_LAND_PRE_ONLY=1 stops the script before the land lock, so the
 set (GOH_LAND_PRE), the short lane and the deadline (GOH_LAND_PRE_MAX) are the lander's. A red
-set raises Red naming the failing tests, its later lines each failing test's bounded traceback
-(lib/land_cause.py `excerpt`, GOH.PRESTEPLOG); a deadline is no verdict (GOH.PRESTEPDEADLINE),
-so the tip queues and a line says so. Pinned by tests/test_landq.py.
+set raises Red naming the failing tests with bounded tracebacks (lib/land_cause.py `excerpt`,
+GOH.PRESTEPLOG); a deadline is no verdict: the tip queues (PRESTEPDEADLINE). tests/test_landq.py
 """
 
 from __future__ import annotations
@@ -28,6 +27,7 @@ gates_in_flight = importlib.import_module("gates_in_flight")
 gitrun = importlib.import_module("gitrun")
 land_cause = importlib.import_module("land_cause")
 main_red = importlib.import_module("main_red")
+land_waive = importlib.import_module("land_waive")  # GOH.MAINREDWAIVE: what a run may waive
 pre_deadline = importlib.import_module("pre_deadline")
 killtree = importlib.import_module("killtree")
 land_slot = importlib.import_module("land_slot")
@@ -292,7 +292,7 @@ def lander_env(req: dict, keep: Path | str | None = None, also: list[dict] | Non
     kept = [f"GOH_LAND_PRE_FROM={keep or req['pre']['keep']}"] if req.get("pre") else []
     shas = [j for r in also or () if SHA.fullmatch(j := str((r.get("pre") or {}).get("judged")))]
     kept += [f"GOH_LAND_PRE_ALSO={' '.join(shas)}"] if shas else []
-    return [*kept, *land_slot.label(req), *main_red.waive([req, *(also or ())])]  # MAINREDWAIVE
+    return [*kept, *land_slot.label(req), *land_waive.words([req, *(also or ())])]
 
 
 @contextlib.contextmanager
@@ -328,7 +328,7 @@ def run_kept(req: dict, q: Path, script: Path, bindings: tuple[str, ...]) -> flo
     ran: dict = {}
     # In goh's slot the pre-step judges the tip rebased onto main (GOH.PREONTIP): never the lane's.
     onto = ["GOH_LAND_PRE_ONTO=1"] if req.get("slot") else []
-    onto += main_red.env(req)  # main's idle-suite reds join the set (GOH.MAINREDNOTICE)
+    onto += main_red.env(req) + land_waive.words([req])  # MAINREDNOTICE, MAINREDWAIVE
     if carry := carried(q, req):  # its conflict red's green verdict (GOH.CONFLICTKEEPVERDICT)
         onto.append(f"GOH_LAND_PRE_CARRY={carry}")
     slug = landq_inflight.slug(req.get("item") or Path(req["repo"]).name)

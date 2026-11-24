@@ -52,8 +52,9 @@ def first(b: Batch, live: list[Item]) -> list[Item]:
             return stacked
         top, said = stacked[-1], []
         t0 = time.monotonic()
+        reqs = [it.req for it in stacked]  # what its reds may waive (GOH.RULEINFLIGHT)
         refused = land_check.run(Path(top.req["worktree"]), b.q, said.append, top.req["repo"],
-                                 tables=True, cov=False)  # fmt: skip
+                                 tables=True, cov=False, reqs=reqs)  # fmt: skip
         took = f"{time.monotonic() - t0:.0f} s"
         if not refused:
             if not any(NO_GUARD in line for line in said):

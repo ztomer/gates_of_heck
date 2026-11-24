@@ -313,7 +313,7 @@ class Batch:
             named = (  # the waiver rides either way (GOH.MAINREDWAIVE, lib/land_waive.py)
                 land_prestep.lander_env(top.req, copy, also)
                 if copy
-                else [*land_slot.label(top.req), *land_prestep.main_red.waive([top.req, *also])]
+                else [*land_slot.label(top.req), *land_prestep.land_waive.words([top.req, *also])]
             )
             argv = ["env", *self.kit.unset, *named, *land_prestep.timings_keep(log),
                     "bash", "-c",
