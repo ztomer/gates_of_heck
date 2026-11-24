@@ -48,6 +48,7 @@ from types import ModuleType
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, on the path from the line above
+import state_retire_lands as lands  # the land records' half (GOH.STATEDB S1)
 import state_retire_ships  # the ship records' half (GOH.STATEDB S2), beside this file
 import state_retire_verdicts  # GOH.VERDICTDB's stores, beside this one in the seam
 
@@ -336,6 +337,7 @@ def _existing(*paths: Path) -> list[Path]:
 
 
 STORES: dict[str, Store] = {
+    "lands": Store(lands.files, lands.load, lands.check, lands.keep),
     "ships": Store(
         files=state_retire_ships.files,
         load=state_retire_ships.load,
