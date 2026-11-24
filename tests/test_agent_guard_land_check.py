@@ -18,7 +18,7 @@ from test_claude_agent_guard import DECL, GOOD, POOL, _allowed, _reason, _run, _
     "ask",
     [
         'Land: run `goh land --enqueue --land "$PWD" --item X.Y`.',
-        "Then ~/Projects/gates_of_heck/bin/goh land --enqueue --land . --item X.Y and stop.",
+        "Then $GOH_DIR/bin/goh land --enqueue --land . --item X.Y and stop.",
         'env -u SENTRY-TRACE goh land --enqueue --land "$PWD"',
     ],
 )
