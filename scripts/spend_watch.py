@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import re
 import shlex
 import statistics
@@ -43,6 +44,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import claude_cache_probe as probe
 import queue_read  # lib/: the loop queue's one reader (LOOP.QUEUEARCHIVE)
+import reuse_fault  # lib/: the one `loopctl file` funnel (GOH.FILERSTAMP)
 from image_cost import image_tokens
 
 CCUSAGE = "npx -y ccusage@20.0.48"  # a named release (house rule: never a moving tag)
@@ -323,28 +325,27 @@ def calibrate(projects: Path, now: dt.datetime, ccusage: str | None) -> dict[str
 
 
 def _ccusage_env(projects: Path) -> dict[str, str]:
-    import os
-
     return dict(os.environ, CLAUDE_CONFIG_DIR=str(projects.parent))
 
 
 def _loopctl(loopctl: Path | None, queue: Path | None, *args: str) -> tuple[bool, str]:
     """One loopctl edit OF `queue`, named explicitly: loopctl's own default is the live queue, so an
     unnamed edit from a run that read a scratch queue would land in the owner's (2026-11-08)."""
-    if loopctl is None:
-        return False, "no loopctl"
-    if queue is None:
-        return False, "no queue"
+    if loopctl is None or queue is None:
+        return False, "no loopctl" if loopctl is None else "no queue"
     r = subprocess.run([sys.executable, str(loopctl), "--queue", str(queue), *args], capture_output=True, text=True,
                        check=False, timeout=120, stdin=subprocess.DEVNULL)  # fmt: skip
     return r.returncode == 0, (r.stdout + r.stderr).strip()
 
 
 def _file(loopctl: Path | None, queue: Path | None, item: dict[str, Any]) -> dict[str, Any]:
-    done, said = _loopctl(loopctl, queue, "file", "--json", json.dumps(item))
+    # the one funnel (GOH.FILERSTAMP); a spend regression is a worse metric, not a regression item
+    gone = f"no {'loopctl' if loopctl is None else 'queue'}"
+    code, said = (1, gone) if None in (loopctl, queue) else \
+        reuse_fault._file(str(loopctl), {"regression": False, **item}, str(queue))  # fmt: skip
     outcome = (
         "filed"
-        if done
+        if code == 0
         else ("already filed" if "already exists" in said else f"not filed: {said[-200:]}")
     )
     return {"id": item["id"], "outcome": outcome}

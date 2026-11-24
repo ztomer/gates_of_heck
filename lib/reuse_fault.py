@@ -24,6 +24,9 @@ import reuse_audit_store  # lib/: the audit's records, goh.db rows (GOH.VERDICTD
 
 # When the loop re-measures a goh prediction (triggers.verify_problems: {"lands"|"ships": N}).
 VERIFY_AFTER = {"lands": 5}
+STAMP_ENV = (
+    "LOOPCTL_STAMP_PACKAGE"  # the queue tool then files an item under its repo's open ship package
+)
 FILE_TRIES = 20  # ids GOH.REUSEOFF<PATH>, then <PATH>2 .. <PATH>20: one per off of the path
 
 
@@ -101,7 +104,11 @@ def current_phase(fields: set[str]) -> str:
     return f"no open phase in {path} takes an item with {sorted(fields)}"
 
 
-def _file(loopctl: str, item: dict) -> tuple[int, str]:
+def _file(loopctl: str, item: dict, queue: str = "") -> tuple[int, str]:
+    # The ONE `loopctl file` of goh's machine filers (GOH.FILERSTAMP): the queue tool refuses an
+    # item with no ship package, and no filer names one, so the child runs with STAMP_ENV set and
+    # the tool files it under the repo's current open package; one naming `package` keeps its own.
+    # QUEUE names the queue file the caller read (GOH_LOOP_QUEUE when empty).
     # Everything goh files here is a fault (a reuse path off, a red ship bisect): a regression.
     # LOOP.SPDEARN refuses an SPD item with neither `saves_land_s` nor `regression` (GOH.COVREALON).
     # A prediction (`metric` and `predicted`) the loop re-measures only with `verify_after`
@@ -109,12 +116,13 @@ def _file(loopctl: str, item: dict) -> tuple[int, str]:
     predicts = item.get("metric") and item.get("predicted")
     va = {"verify_after": dict(VERIFY_AFTER)} if predicts else {}
     item = {"regression": True, **va, **item}
-    queue = os.environ.get("GOH_LOOP_QUEUE", "")
+    queue = queue or os.environ.get("GOH_LOOP_QUEUE", "")
     argv = [sys.executable, loopctl, *(["--queue", queue] if queue else []), "file", "--json",
             json.dumps(item)]  # fmt: skip
     try:
         r = subprocess.run(argv, capture_output=True, text=True, check=False, timeout=120,
-                           stdin=subprocess.DEVNULL)  # fmt: skip
+                           stdin=subprocess.DEVNULL,
+                           env={**os.environ, STAMP_ENV: "1"})  # fmt: skip
     except (OSError, subprocess.TimeoutExpired) as e:
         return 1, str(e)
     return r.returncode, (r.stdout + r.stderr).strip()

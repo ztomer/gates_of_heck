@@ -47,6 +47,9 @@ BAND = 50  # the band: the last BAND lines under the cap (goh's 450 headroom at 
 NEAR = 25  # the sweep: files at or within NEAR lines of the cap
 SHOWN = 12  # responsibilities named
 TRIES = 80  # `loopctl file` repeats answered: each names one open split item the text overlaps
+SPLIT_PACKAGE = (
+    3  # the ship package "File splits under the line cap" (GOH.FILERSTAMP); loopctl wants one named
+)
 DUP = re.compile(r"repeats open item (\S+) ")
 ASKED = re.compile(r'"([A-Z][\w-]*\.[\w.-]+)": "<why it differs>"')
 GENERIC = {"tests", "mod", "lib", "main", "init", "util", "utils"}  # stems a parent disambiguates
@@ -149,7 +152,7 @@ def _file_one(loopctl: str, fields: dict) -> str:
     each it names is answered as not a duplicate, as `loopctl file` asks, and filed again."""
     import reuse_fault  # lib/: `loopctl file --json` under GOH_LOOP_QUEUE (one funnel)
 
-    fields = {**fields, "regression": False}
+    fields = {"package": SPLIT_PACKAGE, **fields, "regression": False}
     rel = fields["item"].split(":", 1)[0].removeprefix("Split ")
     for _ in range(TRIES):
         code, said = reuse_fault._file(loopctl, fields)
