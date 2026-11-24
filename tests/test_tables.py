@@ -164,3 +164,25 @@ def test_the_command_line_checks_and_exits_red_on_a_stale_table() -> None:
         argv, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=False
     )
     assert done.returncode == 0 and "docs/map.md" in done.stdout, done
+
+
+def test_with_no_root_named_the_command_judges_the_checkout_its_export_runs_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`python3 lib/tables.py --write` (the fix every table refusal names) runs HEAD's export
+    (gates/_from_head.py): with no ROOT named it judged and wrote the export, whose `git ls-files`
+    fails, instead of the checkout GOH_LIVE_ROOT names."""
+    export, live = tmp_path / "export", tmp_path / "live"
+    export.mkdir()
+    live.mkdir()
+    (export / ".goh-head").write_text("")
+    monkeypatch.setattr(tables, "ROOT", export)
+    monkeypatch.setenv("GOH_LIVE_ROOT", str(live))
+    seen: list[Path] = []
+    monkeypatch.setattr(tables, "check", lambda root, *a: seen.append(root) or [])
+    monkeypatch.setattr(tables, "write", lambda root, *a: seen.append(root) or [])
+    assert tables.main(["--write"]) == 0
+    assert seen == [live, live], seen
+    seen.clear()
+    monkeypatch.delenv("GOH_LIVE_ROOT")
+    assert tables.main(["--check"]) == 0 and seen == [export], seen  # no live root: its own

@@ -194,7 +194,9 @@ def write(root: Path, tables: Iterable[Table] = TABLES) -> list[str]:
 
 def main(argv: list[str]) -> int:
     args = [a for a in argv if not a.startswith("--")]
-    root = Path(args[0]).resolve() if args else ROOT
+    from lib import goh_root  # an export judges the checkout it runs for (gates/_from_head.py)
+
+    root = Path(args[0]).resolve() if args else Path(goh_root.live_root_for(str(ROOT)) or ROOT)
     if "--list" in argv:
         for t in TABLES:
             print(f"{t.path}\tgenerated: {t.name}")
