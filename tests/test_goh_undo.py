@@ -17,6 +17,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import landq_state
 import pytest
 from _hook_inproc import run_hook
 from conftest import REPO_ROOT, git, hermetic_env
@@ -112,9 +113,8 @@ def test_a_held_repo_is_refused(repo: Path, lane: Path) -> None:
 
 def test_a_worktree_another_item_lands_from_is_refused(lane: Path, tmp_path: Path) -> None:
     landq = tmp_path / "landq"
-    (landq / "running").mkdir(parents=True)
     record = {"lane": str(lane), "item": "GOH.THEIRS", "repo": "x", "sha": "0" * 40}
-    (landq / "running" / "1-GOH.THEIRS.json").write_text(json.dumps(record))
+    landq_state.put(landq, "1-GOH.THEIRS", record, "running")  # a goh.db row (GOH.LANDQDB)
     (lane / "README.md").write_text(MINE)
     r = _undo(lane, "--item", "GOH.MINE", "README.md", landq=landq)
     assert r.returncode != 0 and "GOH.THEIRS" in r.stderr, r.stderr

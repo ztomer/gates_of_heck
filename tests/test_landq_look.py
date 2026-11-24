@@ -31,10 +31,9 @@ import landq_state  # the lander's one writer: a copy that truncated tore a read
 
 def _req(q: Path, d: str, name: str, item: str) -> Path:
     assert d != "done", "a done record carries its outcome: the lander files it whole, once"
-    (q / d).mkdir(parents=True, exist_ok=True)
-    path = q / d / f"{name}.json"
-    landq_state.write(path, {"item": item, "repo": "/r", "sha": "a" * 40, "mode": "land"})
-    return path
+    return landq_state.put(
+        q, name, {"item": item, "repo": "/r", "sha": "a" * 40, "mode": "land"}, d
+    )  # a goh.db row (GOH.LANDQDB)
 
 
 @pytest.mark.load_sensitive
@@ -70,17 +69,18 @@ def test_wait_follows_the_request_through_every_state_once(tmp_path, monkeypatch
         mine = _req(q, "pending", "01-T.S", "T.S")
         landq_inflight.clear(marker)
         after("queued behind T.AHEAD")
-        (q / "running").mkdir()  # one rename moves T.AHEAD: never in both dirs at once
-        (q / "pending" / "00-T.AHEAD.json").replace(q / "running" / "00-T.AHEAD.json")
-        mine.replace(q / "running" / mine.name)
+        landq_state.move(q / "pending" / "00-T.AHEAD.json", "running")  # one state at a time
+        mine = landq_state.move(mine, "running")
         after("stacking of a batch of 2")  # both running, no gate log yet: a state of its own
-        (q / "logs").mkdir()
+        (q / "logs").mkdir(parents=True)  # the queue dir: no state dir made it (GOH.LANDQDB)
         (q / "logs" / "00-T.AHEAD.gate1.log").write_text("")
         after("gate 1 of a batch of 2")
         (q / "logs" / "00-T.AHEAD.gate2.log").write_text("")
         after("gate 2 of a batch of 2")
-        (q / "running" / mine.name).unlink()
-        (q / "done").mkdir()  # ONE record, its outcome in it, as tools/landq.py record() files it
+        landq_state.drop(mine)
+        (q / "done").mkdir(
+            exist_ok=True
+        )  # ONE record, its outcome in it, as tools/landq.py record() files it
         outcome = {"item": "T.S", "mode": "land", "state": "landed", "sha": "b" * 40}
         landq_state.write(q / "done" / mine.name, {**outcome, "landed": "c" * 40})
 
@@ -105,15 +105,14 @@ def test_where_reads_a_request_moving_on_mid_look_once_and_never_as_its_own(tmp_
     q = tmp_path / "landq"
     ahead = _req(q, "pending", "00-T.AHEAD", "T.AHEAD")
     _req(q, "pending", "01-T.S", "T.S")
-    (q / "running").mkdir()
-    real_read = landq_state.read
+    real_get = landq_state.get
 
     def lander_moves_it_now(path: Path) -> dict | None:
-        if path == ahead and ahead.exists():
-            ahead.replace(q / "running" / ahead.name)  # the lander takes it, mid-look
-        return real_read(path)
+        if path == ahead and real_get(ahead) is not None:
+            landq_state.move(ahead, "running")  # the lander takes it, mid-look
+        return real_get(path)
 
-    monkeypatch.setattr(landq_state, "read", lander_moves_it_now)
+    monkeypatch.setattr(landq_state, "get", lander_moves_it_now)
     assert landq_look.where(q, "01-T.S.json") == "queued behind T.AHEAD"
     assert landq_look.where(q, "01-T.S.json") == "queued behind T.AHEAD"
 

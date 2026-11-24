@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import dataclasses
 import importlib.util
-import json
 import os
 import subprocess
 import sys
@@ -26,6 +25,7 @@ from test_landq_batch import FAKE_LOOPCTL, GATE, enqueue_all, gate_runs, lane
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import gitrun
 import landq_batch
+import landq_state
 
 LANDQ = REPO_ROOT / "tools" / "landq.py"
 TREE = "HEAD^{tree}"
@@ -85,9 +85,8 @@ def enqueue_three(repo: Path, tmp_path: Path, env: dict[str, str], middle: dict[
     enqueue_all(env, wts)
     q = Path(env["GOH_LANDQ_DIR"])
     paths = []
-    for p in sorted((q / "pending").glob("*.json")):
-        (q / "running").mkdir(exist_ok=True)
-        paths.append(p.replace(q / "running" / p.name))
+    for p in landq_state.listing(q, "pending"):
+        paths.append(landq_state.move(p, "running"))
     return q, wts, paths
 
 
@@ -108,7 +107,7 @@ def test_a_failed_tree_read_leaves_the_stack_pending_and_never_gates_a_guess(
     assert any("injected git failure" in line for line in say), say  # loud in the lander log
     assert "injected git failure" in Path(outs[0]["log"]).read_text()  # and in the item's own log
     assert gate_runs(env) == [], gate_runs(env)  # no gate judged a tree nobody could name
-    enqueued = [json.loads(p.read_text())["sha"] for p in paths]
+    enqueued = [landq_state.request(p)["sha"] for p in paths]
     got = [git(wt, "rev-parse", "HEAD").strip() for wt, _ in wts]
     assert got == enqueued, got  # each lane's branch is back at its enqueued commit
 
@@ -144,7 +143,7 @@ def test_a_stack_landed_with_an_unreadable_main_is_never_recorded_with_an_empty_
     outs = run_batch(lq, q, paths, [])
     assert len(seen) == landq_batch.READ_TRIES, seen  # main's HEAD was read again before giving up
     assert all(o["state"] == "red" and "main's HEAD is unreadable" in o["why"] for o in outs), outs
-    assert all(o["sha"] and o["sha"] == json.loads(p.read_text())["sha"]
+    assert all(o["sha"] and o["sha"] == landq_state.request(p)["sha"]
                for o, p in zip(outs, paths, strict=True)), outs  # fmt: skip
     assert "injected git failure" in outs[0]["why"]
 
@@ -155,7 +154,7 @@ def test_a_single_land_with_an_unreadable_main_is_never_recorded_with_an_empty_s
     q, _, paths = enqueue_three(repo, tmp_path, env, {"two.txt": "2\n"})
     only = paths[0]
     for other in paths[1:]:
-        other.unlink()
+        landq_state.drop(other)
     gate_log = Path(env["GATE_LOG"])
     fail_when(
         monkeypatch,
@@ -168,20 +167,17 @@ def test_a_single_land_with_an_unreadable_main_is_never_recorded_with_an_empty_s
 
 def test_a_request_a_git_failure_left_pending_is_tried_again_then_recorded_red(tmp_path):
     q = tmp_path / "landq"
-    for d in ("pending", "running"):
-        (q / d).mkdir(parents=True)
-    path = q / "running" / "r1.json"
-    path.write_text("{}")
+    path = landq_state.put(q, "r1", {}, "running")
     pending = {"state": "pending", "why": "git rev-parse: boom", "sha": "abc", "log": ""}
     fails: dict[str, int] = {}
     say: list[str] = []
     for _ in range(landq_batch.RETRIES - 1):
         assert landq_batch.hold(q, path, pending, fails, say.append) is None
-        assert (q / "pending" / "r1.json").is_file() and not path.exists()
-        (q / "pending" / "r1.json").replace(path)
+        assert landq_state.state_of(q, "r1") == "pending"
+        landq_state.move(q / "pending" / "r1.json", "running")
     final = landq_batch.hold(q, path, pending, fails, say.append)
     assert final and final["state"] == "red" and "boom" in final["why"], final
-    assert fails == {} and path.exists()  # recorded: the lander unlinks it, not hold
+    assert fails == {} and landq_state.get(path) == {}  # recorded: its record finishes it, not hold
     assert any("boom" in line for line in say), say
     done = {"state": "landed", "sha": "abc", "log": ""}
     assert landq_batch.hold(q, path, done, {"r1": 2}, say.append) == done  # a verdict resets it
@@ -206,5 +202,5 @@ def test_the_lander_retries_a_pending_request_on_its_next_pass(
     monkeypatch.setattr(landq_batch, "run", once_failing)
     assert lq.drain() == 0
     assert len(calls) == 2, calls  # tried again in the same drain, not stranded
-    assert not list((q / "pending").glob("*.json")) and not list((q / "running").glob("*.json"))
+    assert not landq_state.any_in(q, "pending", "running")
     assert gate_runs(env) == ["one"]

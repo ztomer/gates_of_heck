@@ -50,7 +50,6 @@ Pinned by tests/test_landq_batch.py and tests/test_landq_batch_git.py.
 from __future__ import annotations
 
 import datetime as dt
-import json
 import os
 import subprocess
 import time
@@ -67,6 +66,7 @@ import landq_ratchet
 import landq_report
 import landq_size
 import landq_spec
+import landq_state
 
 DEFAULT = landq_size.DEFAULT
 RETRIES = 3  # passes a git failure may keep a request pending before it is recorded red
@@ -111,8 +111,10 @@ def resume(q: Path, say: Callable[[str], None]) -> None:
     """What a lander finds at its start: a request a dead lander was running goes back to the front
     (its name keeps its place), and a kept verdict nothing names is reaped (GOH.PRELANDBATCH: an
     enqueue killed before its request left one until the next recorded land)."""
-    for stale in sorted((q / "running").glob("*.json")):
-        stale.replace(q / "pending" / stale.name)
+    landq_state.import_files(q)  # an older goh's request files, under lander.lock (GOH.LANDQDB)
+    land_slot.import_owners(q)  # and its slot owner files
+    for stale in landq_state.listing(q, "running"):
+        landq_state.move(stale, "pending")
         say(f"{stale.name}: its lander died mid-request -- running it again")
     land_prestep.reap(q)
 
@@ -129,7 +131,7 @@ def hold(q: Path, path: Path, outcome: dict, fails: dict[str, int], say: Callabl
         say(f"{path.stem}: git failed {n} passes in a row -- recorded red")
         return {**outcome, "state": "red", "why": f"git failed {n} passes: {outcome['why']}"}
     say(f"{path.stem}: git failed ({outcome['why']}) -- pending again, pass {n} of {RETRIES}")
-    path.replace(q / "pending" / path.name)
+    landq_state.move(path, "pending")
     return None
 
 
@@ -146,12 +148,8 @@ def sized(q: Path | None, repo: object) -> landq_size.Size:
 
 
 def read(path: Path) -> dict:
-    """A request, or {} when it is no JSON object (one broken file never stops the take)."""
-    try:
-        req = json.loads(path.read_text())
-    except (OSError, ValueError):
-        return {}
-    return req if isinstance(req, dict) else {}
+    """The request PATH names (lib/landq_state.py), or {} once it is gone."""
+    return landq_state.request(path)
 
 
 def alone(req: dict) -> bool:
@@ -199,7 +197,7 @@ def take(pending: list[Path], say: Callable[[str], None] | None = None) -> Picke
     """pick()'s requests moved from pending/ to running/, at their new paths."""
     picked = pick(pending, say)
     for i, path in enumerate(picked.paths):
-        picked.paths[i] = path.replace(path.parent.parent / "running" / path.name)
+        picked.paths[i] = landq_state.move(path, "running")
     return picked
 
 
@@ -438,5 +436,5 @@ def run(q: Path, paths: list[Path], kit: Kit, run_one: Callable[[Path, Path], di
     if len(paths) == 1:
         return [{**landq_report.timed(run_one, q, paths[0]), **chose}]
     started, load = dt.datetime.now(dt.UTC), landq_report.load1()
-    items = [Item(p, json.loads(p.read_text()), q / "logs" / f"{p.stem}.log") for p in paths]
+    items = [Item(p, read(p), q / "logs" / f"{p.stem}.log") for p in paths]
     return [{**landq_report.stamped(o, started, load), **chose} for o in Batch(q, kit, items).run()]

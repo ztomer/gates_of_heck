@@ -15,6 +15,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import landq_state
 import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT, git, hermetic_env
@@ -56,8 +57,7 @@ def test_a_verdict_whose_request_is_gone_is_reaped_a_live_one_kept(tmp_path: Pat
     orphan = _keep(q, "a" * 40, NOW_NS - 3 * HOUR_NS)
     filed = _keep(q, "b" * 40, NOW_NS - 3 * HOUR_NS)
     young = _keep(q, "c" * 40, NOW_NS - 5 * 10**9)  # an enqueue in its pre-step: no request yet
-    (q / "running").mkdir(parents=True)
-    (q / "running" / "1-T.B.json").write_text(json.dumps({"pre": {"keep": str(filed)}}))
+    landq_state.put(q, "1-T.B", {"pre": {"keep": str(filed)}}, "running")
     stray = q / "pre" / f"{'d' * 40}-1.record"  # a record whose verdict is already gone
     stray.write_text("{}\n")
     gone = land_prestep.reap(q, NOW_NS)

@@ -10,8 +10,9 @@
     goh land --status       # what is pending, running, and how each finished
     goh land --ruff-bump [--detach]  # a ruff newer than goh's pin: its bump-only land, once
 
-THE REQUEST is one JSON file under `<dir>/pending/` (GOH_LANDQ_DIR, default
-~/.local/state/goh/landq), named by enqueue time so a listing is the order. It names the repo, the
+THE REQUEST is one row of goh.db's `requests` (GOH.LANDQDB, lib/landq_state.py), named
+`<dir>/pending/<ns>-<item>.json` (GOH_LANDQ_DIR, default ~/.local/state/goh/landq) by enqueue time,
+so a listing is the order; every move between states is one transaction. It names the repo, the
 SHA, the remote and branch the checkout tracks, the item, and the mode:
     push  `git push REMOTE SHA:refs/heads/BRANCH` -- exactly the enqueued commit, through the repo's
           pre-push gate (which takes the machine-wide gate slot itself, lib/gate_slot.sh)
@@ -39,8 +40,9 @@ newest request is done, exits 0 landed, 1 red, 3 else (a timeout, a signal: GOH.
 last line names it); a pending request with no lander starts one: no wait sits on an idle queue.
 
 THE LANDER is one process holding an flock on `<dir>/lander.lock` (a second exits at once). It moves
-a request to `running/`, runs it under lib/bounded_run.py (GOH_LAND_TIMEOUT, default 3600 s, its
-process group swept on expiry), writes `done/<name>.json` and `logs/<name>.log`, and records
+a request to `running`, runs it under lib/bounded_run.py (GOH_LAND_TIMEOUT, default 3600 s, its
+process group swept on expiry), writes its land record (the request deleted in the same
+transaction) and `logs/<name>.log`, and records
 `loopctl set ID landing {"state": "landed"|"red", "sha", "log", "at"} --json` on the item, which the
 coordinator's tick re-dispatches when red. A land takes up to k-1 more of its repo (lib/landq_size),
 stacked, ONE land gate on the tip, a red bisected (GOH.LANDBATCH, lib/landq_batch.py), after lands
@@ -54,7 +56,8 @@ GOH.RUFFBUMPLAND); `--ruff-bump` is that look on demand, started by a consumer g
 
 WHERE IT RUNS, AND A REBOOT (D-0006, docs/decisions/). No launchd agent: `--enqueue` starts a
 detached lander when none holds the lock, and the coordinator's tick may run `--drain`. A request
-is a file, so it survives a reboot: one a dead lander left in `running/` runs again first.
+is a row of goh.db (synchronous=FULL), so it survives a reboot: one a dead lander left running
+runs again first.
 
 Pinned by tests/test_landq.py (batches: tests/test_landq_batch.py); `--report`: lib/landq_report.py.
 """
@@ -115,7 +118,7 @@ err, info, ok, warn = _tui.err, _tui.info, _tui.ok, _tui.warn
 
 GRACE, DEFAULT_TIMEOUT, WAIT_TIMEOUT = 5, 3600, 3 * 3600
 LAND_TIMEOUT = 2 * 3600  # land.sh: a 10 min pre-step, a 90 min gate, and a wait for the lock first
-DIRS = ("pending", "running", "logs")  # done/ is lib/land_records.py's (GOH.STATEDB)
+DIRS = ("logs",)  # requests are goh.db rows (GOH.LANDQDB); done/ is lib/land_records.py's
 
 
 def qdir() -> Path:
@@ -149,12 +152,12 @@ def prestep(req: dict) -> None:
 def enqueue(req: dict, into: str = "pending") -> Path:
     landq_inflight.bail()  # superseded: never a request for the replaced sha (GOH.REENQUEUECANCEL)
     q = qdir()
-    for d in (*DIRS, into):
+    for d in DIRS:
         (q / d).mkdir(parents=True, exist_ok=True)
     slug = (req["item"] or Path(req["repo"]).name).replace("/", "_")
-    path = q / into / f"{time.time_ns():020d}-{slug}.json"
-    landq_state.write(path, req)  # one rename: never half a request
-    return path
+    # one transaction: the request filed and this enqueue's pre-step marker gone, never both
+    return landq_state.put(q, f"{time.time_ns():020d}-{slug}", req, into,
+                           replaces=landq_inflight.mine(q))  # fmt: skip
 
 
 def start_lander() -> None:
@@ -198,7 +201,7 @@ def batch_kit() -> landq_batch.Kit:
 
 def run_one(q: Path, path: Path) -> dict:
     """Run one request already in running/; return its outcome."""
-    req = json.loads(path.read_text())
+    req = landq_batch.read(path)
     log = q / "logs" / f"{path.stem}.log"
     outcome = {"sha": req["sha"], "repo": req["repo"], "mode": req["mode"], "log": str(log)}
     land = req["mode"] == "land"
@@ -259,7 +262,8 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
         else:
             outcome["recorded"] = False
             warn(f"no loopctl at {tool} (GOH_LOOPCTL): {item}'s outcome is only in its land record")
-    land_records.write(q, req_path.stem, outcome)  # goh.db's row, then done/ (GOH.STATEDB)
+    # goh.db's row and the request gone, one transaction (GOH.LANDQDB), then done/ (GOH.STATEDB)
+    land_records.write(q, req_path.stem, outcome, request=req_path)
     try:
         land_attempts.record(outcome, req_path.stem)
         land_e2e.backfill(q)  # GOH.LANDTARGET: the item end to end, once it landed
@@ -320,7 +324,6 @@ def drain_held(
                 held = True
                 continue
             record(path, outcome, landq_batch.read(path).get("item", ""))
-            path.unlink(missing_ok=True)
         landq_early.sweep(q, record, info)  # GOH.EARLYCONFLICT: red now, not at its turn
         if held:
             (sleep or time.sleep)(landq_batch.PAUSE)  # the git failure may be load: no hot retry
@@ -367,7 +370,7 @@ def drain() -> int:
             os.execve(sys.executable, [sys.executable, str(fresh), "--drain"], env)
         # Idle (none enqueued since the last look): main's full suite record, so no ship waits on
         # a hand run (lib/idle_suite.py); lockless, it yields to the next request, then drains.
-        idle = not any((q / "pending").glob("*.json"))
+        idle = not landq_state.any_in(q, "pending")
         if idle and ruff_bump.run(q, live_root(), info) == "enqueued":
             continue  # the bump's own request (GOH.RUFFBUMPLAND): drain it, or its lander does
         if idle and idle_suite.run(q, live_root(), info) != "yielded":

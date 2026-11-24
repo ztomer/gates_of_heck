@@ -21,6 +21,7 @@ from conftest import REPO_ROOT, git, write
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import landq_early
+import landq_state
 from timing_bounds import patience
 
 env = batch.env  # the queue fixture (a fake loopctl, a planted-file gate), by its own name
@@ -77,7 +78,7 @@ def test_an_enqueue_that_conflicts_with_main_is_red_at_once_and_never_queued(rep
                  "fixture: the pre-step is not under test")  # fmt: skip
     assert done.returncode == 1 and "conflicts with main" in done.stderr, done.stdout + done.stderr
     q = Path(env["GOH_LANDQ_DIR"])
-    assert not list((q / "pending").glob("*.json")), list((q / "pending").iterdir())
+    assert not landq_state.listing(q, "pending")
     assert recorded(env)["T.LATE"]["why"].startswith("conflict: did not stack on")
     waited = landq(env, "--wait", "T.LATE", "--timeout", str(patience(30)))
     assert waited.returncode == 1 and "T.EARLIER landed" in waited.stderr, waited.stderr
@@ -141,4 +142,4 @@ def test_an_enqueue_that_does_not_stack_is_red_before_its_guards_and_pre_step(re
     assert done.returncode == 1 and "conflicts with main" in out, out
     assert "check: true" not in out and "pre-step before queueing" not in out, out
     assert recorded(env)["T.LATE"]["why"].startswith("conflict: did not stack on"), out
-    assert not list((Path(env["GOH_LANDQ_DIR"]) / "pending").glob("*.json"))
+    assert not landq_state.listing(Path(env["GOH_LANDQ_DIR"]), "pending")

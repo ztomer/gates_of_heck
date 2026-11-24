@@ -101,9 +101,7 @@ def _age(name: str) -> str:
 
 def status(q: Path) -> int:
     for d in ("pending", "running"):
-        for f in sorted((q / d).glob("*.json")) if (q / d).is_dir() else []:
-            if (r := landq_state.read(f)) is None:
-                continue  # moved on, or not whole yet: the next look shows it
+        for _, r in landq_state.rows(q, d):  # one read per state (GOH.LANDQDB)
             repo, sha = Path(str(r.get("repo") or "-")).name, str(r.get("sha") or "-")[:8]
             info(f"{d}: {r.get('item') or '-'} {repo} @ {sha} ({r.get('mode', '?')})")
     for run, r in land_records.records(q)[-10:]:
@@ -116,7 +114,7 @@ def find_request(q: Path, what: str) -> Path | None:
     """WHAT's newest request, wherever it is now: a request's path or name, else an item ID."""
     name = Path(what).name.removesuffix(".json")
     newest: tuple[str, Path] | None = None
-    queued = [f for d in ("pending", "running") if (q / d).is_dir() for f in (q / d).glob("*.json")]
+    queued = [f for d in ("pending", "running") for f in landq_state.listing(q, d)]
     for f in [*queued, *(land_records.file(q, run) for run in land_records.runs(q))]:
         if f.stem == name:
             return f
@@ -152,15 +150,16 @@ def unfiled(q: Path, what: str, start_by: float) -> Path | int | None:
     return found
 
 
-def _names(d: Path) -> list[str]:
-    return sorted(f.name for f in d.glob("*.json")) if d.is_dir() else []
+def _names(q: Path, state: str) -> list[str]:
+    """The names of queue Q's requests in STATE, oldest first."""
+    return [f.name for f in landq_state.listing(q, state)]
 
 
-def _items(d: Path, names: list[str]) -> dict[str, str]:
-    """Each of NAMES in D that is still there and whole, by name: its item."""
+def _items(q: Path, state: str, names: list[str]) -> dict[str, str]:
+    """Each of NAMES still in STATE, by name: its item."""
     out = {}
     for n in names:
-        if (r := landq_state.read(d / n)) is not None:  # else moved or not whole: read next tick
+        if (r := landq_state.get(landq_state.name(q, state, n.removesuffix(".json")))) is not None:
             out[n] = r.get("item") or n.removesuffix(".json")
     return out
 
@@ -170,13 +169,13 @@ def where(q: Path, name: str) -> str:
     Who is ahead comes from ONE listing of pending, read before running's: a request the lander
     moves on meanwhile is read in running, by name once, and NAME is never ahead of itself
     (GOH.FLAKY2: a second listing shifted the slice, "queued behind T.AHEAD, T.S")."""
-    pend = _names(q / "pending")
+    pend = _names(q, "pending")
     if name in pend:
-        queued = _items(q / "pending", pend[: pend.index(name)])
-        running = _items(q / "running", [n for n in _names(q / "running") if n != name])
+        queued = _items(q, "pending", pend[: pend.index(name)])
+        running = _items(q, "running", [n for n in _names(q, "running") if n != name])
         ahead = list({**running, **queued}.values())
         return f"queued behind {', '.join(ahead)}" if ahead else "queued, next"
-    run = sorted((q / "running").glob("*.json")) if (q / "running").is_dir() else []
+    run = landq_state.listing(q, "running")
     if not any(f.name == name for f in run):
         return ""
     gates = (
@@ -232,7 +231,7 @@ def _wait(q: Path, what: str, timeout: float, nudge: Callable[[], None]) -> tupl
         if tick > start_by:
             whole = "; its done record is not a whole record" if torn else ""
             return 3, f"{name} has not finished after {timeout:.0f}s{whole}"
-        if (q / "pending" / name).is_file() and time.monotonic() - nudged > 30:
+        if landq_state.state_of(q, run) == "pending" and time.monotonic() - nudged > 30:
             nudge()  # nobody drains: start the lander
             nudged = time.monotonic()
         time.sleep(poll)

@@ -9,7 +9,6 @@ second gate. Here a land is pending while another's enqueue is still in its pre-
 from __future__ import annotations
 
 import importlib.util
-import json
 import os
 import sys
 from pathlib import Path
@@ -44,24 +43,22 @@ class Clock:
 
 def _dirs(tmp_path: Path) -> Path:
     q = tmp_path / "landq"
-    for d in ("pending", "running", "done", "logs", "enqueuing"):
+    for d in ("done", "logs"):  # the requests are goh.db rows (GOH.LANDQDB)
         (q / d).mkdir(parents=True)
     return q
 
 
 def _file(q: Path, at: float, item: str, mode: str = "land", repo: str = REPO) -> Path:
     """A request as tools/landq.py enqueue files it: named by its filing time."""
-    path = q / "pending" / f"{int(at * 1e9):020d}-{item}.json"
-    landq_state.write(path, {"mode": mode, "repo": repo, "sha": "a" * 40, "item": item,
-                             "worktree": f"/nowhere/wt-{item}"})  # fmt: skip
-    return path
+    return landq_state.put(q, f"{int(at * 1e9):020d}-{item}",
+                           {"mode": mode, "repo": repo, "sha": "a" * 40, "item": item,
+                            "worktree": f"/nowhere/wt-{item}"})  # fmt: skip
 
 
 def _mark(q: Path, item: str, pid: int, until: float, repo: str = REPO) -> Path:
     """An enqueue's pre-step marker, as lib/landq_inflight.py mark writes it."""
-    path = q / "enqueuing" / f"{pid}-{item}.json"
-    landq_state.write(path, {"pid": pid, "item": item, "repo": repo, "until": until}, indent=None)
-    return path
+    return landq_state.put(q, f"{pid}-{item}", {"pid": pid, "item": item, "repo": repo,
+                                                "until": until}, "enqueuing")  # fmt: skip
 
 
 def _dead_pid() -> int:
@@ -90,11 +87,11 @@ def test_two_lands_filed_within_the_window_go_through_one_gate_run(tmp_path, mon
     t0 = clock.t
     _file(q, t0, "T.ONE")
     marker = _mark(q, "T.TWO", os.getpid(), t0 + 3600)
-    clock.at[t0 + 32] = lambda: (_file(q, t0 + 32, "T.TWO"), marker.unlink())
+    clock.at[t0 + 32] = lambda: (_file(q, t0 + 32, "T.TWO"), landq_state.drop(marker))
     runs: list[list[str]] = []
 
     def gate(_q, paths, _kit, _run_one, _size=None):
-        runs.append([json.loads(p.read_text())["item"] for p in paths])
+        runs.append([landq_state.request(p)["item"] for p in paths])
         return [{"state": "landed", "sha": "b" * 40, "repo": REPO, "mode": "land"}] * len(paths)
 
     monkeypatch.setattr(lq.landq_batch, "run", gate)
@@ -124,13 +121,13 @@ def test_a_land_that_files_and_exits_between_the_two_reads_joins_the_batch(tmp_p
     real = landq_inflight.live
 
     def live(qq, item=None):  # TWO files and exits just as the lander reads the markers
-        if marker.exists():
+        if landq_state.get(marker) is not None:
             _file(q, clock.t + 1, "T.TWO")
-            marker.unlink()
+            landq_state.drop(marker)
         return real(qq, item)
 
     monkeypatch.setattr(landq_inflight, "live", live)
-    listed = sorted((q / "pending").glob("*.json"))
+    listed = landq_state.listing(q, "pending")
     out = landq_window.hold(q, listed, said.append, clock.time, clock.sleep)
     assert [p.stem.partition("-")[2] for p in out] == ["T.ONE", "T.TWO"], out
     assert (clock.slept, said) == (0.0, [])
@@ -152,7 +149,7 @@ def q(tmp_path, monkeypatch) -> Path:
 
 
 def _hold(window, q: Path, clock: Clock, said: list[str]) -> list[str]:
-    pending = sorted((q / "pending").glob("*.json"))
+    pending = landq_state.listing(q, "pending")
     out = window.hold(q, pending, said.append, clock.time, clock.sleep)
     return [p.stem.partition("-")[2] for p in out]
 
@@ -227,11 +224,11 @@ def test_a_full_batch_a_ship_head_and_a_one_by_one_queue_do_not_wait(window, q, 
     one, two = _file(q, clock.t, "T.ONE"), _file(q, clock.t + 1, "T.TWO")
     _mark(q, "T.THREE", os.getpid(), clock.t + 3600)
     assert _hold(window, q, clock, said) == ["T.ONE", "T.TWO"]
-    two.unlink()
+    landq_state.drop(two)
     monkeypatch.setenv("GOH_LANDQ_BATCH", "1")
     assert _hold(window, q, clock, said) == ["T.ONE"]
     monkeypatch.delenv("GOH_LANDQ_BATCH")
-    one.unlink()
+    landq_state.drop(one)
     _file(q, clock.t, "T.SHIP", mode="ship")
     assert _hold(window, q, clock, said) == ["T.SHIP"]
     assert (clock.slept, said) == (0.0, [])
@@ -241,7 +238,7 @@ def test_a_request_gone_while_the_batch_waits_ends_the_wait(window, q):
     clock, said = Clock(T0), []
     head = _file(q, clock.t, "T.ONE")
     _mark(q, "T.TWO", os.getpid(), clock.t + 3600)
-    clock.at[clock.t + 4] = head.unlink
+    clock.at[clock.t + 4] = lambda: landq_state.drop(head)
     assert _hold(window, q, clock, said) == []
     assert "left pending/" in said[-1], said
     assert clock.slept == pytest.approx(4)
@@ -265,7 +262,7 @@ def _done(q: Path, pre_s: list[float], repo: str = REPO) -> None:
 
 def _started(q: Path, item: str, at: float) -> Path:
     path = _mark(q, item, os.getpid(), at + 3600)
-    landq_state.write(path, {**json.loads(path.read_text()), "at": at}, indent=None)
+    landq_state.update(path, {**landq_state.get(path), "at": at})
     return path
 
 
@@ -275,7 +272,7 @@ def test_a_pre_step_due_soon_after_the_base_bound_is_waited_for(window, q):
     _done(q, [300.0, 290.0, 310.0, 5000.0, 1.0])  # median 300: the bound is no average
     _file(q, clock.t, "T.ONE")
     marker = _started(q, "T.TWO", clock.t - 200)  # due at +130 (200 s in, 300 s typical, 30 slack)
-    clock.at[clock.t + 125] = lambda: (_file(q, T0 + 125, "T.TWO"), marker.unlink())
+    clock.at[clock.t + 125] = lambda: (_file(q, T0 + 125, "T.TWO"), landq_state.drop(marker))
     assert _hold(window, q, clock, said) == ["T.ONE", "T.TWO"]
     assert 125 <= clock.slept < 127.5, clock.slept
     assert "its pre-steps take 300s" in said[0], said
@@ -336,17 +333,18 @@ def test_a_no_pre_land_runs_alone_and_never_waits_for_a_batch(window, q):
 
     clock, said = Clock(T0), []
     lone = _file(q, clock.t - 1, "T.NOPRE")
-    landq_state.write(lone, {**landq_state.read(lone), "no_pre": "the set ran by hand"})
+    landq_state.update(lone, {**landq_state.get(lone), "no_pre": "the set ran by hand"})
     _file(q, clock.t, "T.TWO")
     _mark(q, "T.THREE", os.getpid(), clock.t + 3600)
-    pending = sorted((q / "pending").glob("*.json"))
+    pending = landq_state.listing(q, "pending")
     assert _hold(window, q, clock, said) == ["T.NOPRE", "T.TWO"]
     assert (clock.slept, said) == (0.0, [])  # no window held for it
     assert [p.stem.partition("-")[2] for p in landq_batch.pick(pending).paths] == ["T.NOPRE"]
-    lone.unlink()
+    landq_state.drop(lone)
     first = _file(q, clock.t - 2, "T.ONE")
-    landq_state.write(lone, {**landq_state.read(first), "item": "T.NOPRE", "no_pre": "by hand"})
-    pending = sorted((q / "pending").glob("*.json"))
+    by_hand = {**landq_state.get(first), "item": "T.NOPRE", "no_pre": "by hand"}
+    landq_state.put(q, lone.stem, by_hand)
+    pending = landq_state.listing(q, "pending")
     names = [p.stem.partition("-")[2] for p in pending]
     assert names == ["T.ONE", "T.NOPRE", "T.TWO"], names
     assert [p.stem.partition("-")[2] for p in landq_batch.pick(pending).paths] == ["T.ONE"]

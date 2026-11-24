@@ -32,14 +32,12 @@ import landq_state
 
 
 def _running(q: Path, name: str = "01-T.S") -> Path:
-    (q / "running").mkdir(parents=True, exist_ok=True)
-    path = q / "running" / f"{name}.json"
-    landq_state.write(path, {"item": "T.S", "repo": "/r", "sha": "a" * 40, "mode": "land"})
-    return path
+    return landq_state.put(q, name, {"item": "T.S", "repo": "/r", "sha": "a" * 40, "mode": "land"},
+                           "running")  # fmt: skip
 
 
 def _land(q: Path, name: str = "01-T.S", state: str = "landed") -> None:
-    (q / "running" / f"{name}.json").unlink(missing_ok=True)
+    landq_state.drop(q / "running" / f"{name}.json")
     (q / "done").mkdir(exist_ok=True)
     landq_state.write(q / "done" / f"{name}.json",
                       {"item": "T.S", "mode": "land", "state": state, "sha": "b" * 40})  # fmt: skip

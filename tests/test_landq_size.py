@@ -11,7 +11,6 @@ k and why, each record carries it, and --report shows it per batch.
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -113,13 +112,11 @@ def test_an_explicit_batch_size_still_wins(tmp_path, monkeypatch):
 
 
 def pend(q: Path, n: int) -> list[Path]:
-    (q / "pending").mkdir(parents=True, exist_ok=True)
-    out = []
-    for i in range(n):
-        path = q / "pending" / f"{9 * 10**18 + i:020d}-T.L{i}.json"
-        landq_state.write(path, {"mode": "land", "repo": REPO, "worktree": f"/wt/{i}"})
-        out.append(path)
-    return out
+    for i in range(n):  # filed again: the newer request replaces the one of that name
+        landq_state.drop(q / "pending" / f"{9 * 10**18 + i:020d}-T.L{i}.json")
+    return [landq_state.put(q, f"{9 * 10**18 + i:020d}-T.L{i}",
+                            {"mode": "land", "repo": REPO, "worktree": f"/wt/{i}"})
+            for i in range(n)]  # fmt: skip
 
 
 def test_the_pick_takes_k_lands_and_says_k_and_why(tmp_path):
@@ -159,7 +156,7 @@ def test_the_lander_gates_each_land_alone_after_a_red_history(repo, tmp_path, en
     wts = [(lane(repo, tmp_path, n, {f"{n}.txt": "1\n"}), f"T.{n.upper()}") for n in ("one", "two")]
     enqueue_all(env, wts)
     q = Path(env["GOH_LANDQ_DIR"])
-    head = json.loads(min((q / "pending").glob("*.json")).read_text())
+    head = landq_state.request(landq_state.listing(q, "pending")[0])
     plant(q, 20, "red", repo=head["repo"])  # the repo's newest 20 gated lands: all red
     done = landq(env, "--drain")
     assert done.returncode == 0, done.stdout + done.stderr

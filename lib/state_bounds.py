@@ -101,9 +101,10 @@ REGISTRY: dict[str, Bound | Kept | Container] = {
         "a land's log, its batch gate's logs and their timings",
     ),
     "landq/done": Bound(HISTORY_DAYS, LAND_RUNS, r"^\d{10,}-.+\.json$", "one record per attempt"),
-    "landq/pending": Kept("requests the lander drains into running/ and done/"),
-    "landq/running": Kept("the request in flight, moved to done/ when recorded"),
-    "landq/enqueuing": Kept("an enqueue in flight, filed into pending/"),
+    # an older goh's request files: goh.db rows since GOH.LANDQDB, imported by the next lander
+    "landq/pending": Kept("an older goh's requests, imported into goh.db by the lander"),
+    "landq/running": Kept("an older goh's request in flight, imported into goh.db by the lander"),
+    "landq/enqueuing": Kept("an older goh's enqueue marker, imported into goh.db by the lander"),
     "landq/pre": Kept("kept verdicts, reaped per record (lib/land_prestep.py reap)"),
     "landq/slots": Kept("one checkout per repo, reused (lib/land_slot.py)"),
     "landq/idle-suite": Kept("one worktree and last.json, reused (lib/idle_suite.py)"),

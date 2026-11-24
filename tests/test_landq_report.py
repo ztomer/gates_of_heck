@@ -208,10 +208,8 @@ def test_the_lander_writes_started_finished_slot_wait_and_load_into_each_done_re
 
 def test_a_refused_request_still_carries_started_and_finished(tmp_path, qenv):
     repo, _, _ = make_repo(tmp_path, "theta")
-    pending = tmp_path / "landq" / "pending"
-    pending.mkdir(parents=True)
     req = {"mode": "land", "repo": str(repo), "worktree": str(repo), "sha": "0" * 40, "item": ""}
-    landq_state.write(pending / f"{int(T0 * 1e9):020d}-T.S.json", req)
+    landq_state.put(tmp_path / "landq", f"{int(T0 * 1e9):020d}-T.S", req)
     landq(qenv, "--drain")
     (rec_path,) = (tmp_path / "landq" / "done").glob("*-T.S.json")
     rec = json.loads(rec_path.read_text())

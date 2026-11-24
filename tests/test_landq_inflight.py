@@ -71,7 +71,7 @@ def test_an_enqueue_pre_step_stops_the_idle_suite_within_its_poll(repo, tmp_path
     pre, started, go = _blocking_pre(tmp_path)
     env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": pre}
     q = Path(env["GOH_LANDQ_DIR"])
-    (q / "pending").mkdir(parents=True)
+    q.mkdir(parents=True)
     suite_up, release = tmp_path / "suite-up", tmp_path / "suite-release"
     slow = [sys.executable, "-c",
             (f"open({str(suite_up)!r}, 'w').close()\n" + wait_for_file_py(release))]  # fmt: skip
@@ -104,7 +104,7 @@ def test_an_enqueue_pre_step_stops_the_idle_suite_within_its_poll(repo, tmp_path
     assert outcome == "deferred", outcome  # stopped for the pre-step, not judged
     assert_sooner(stopped - stamps["pre"], 5, 600, "an enqueue's pre-step stops the idle suite")
     assert procs[0].returncode == 0
-    assert len(list((q / "pending").glob("*.json"))) == 1
+    assert len(landq_state.listing(q, "pending")) == 1
     assert landq_inflight.live(q) == []  # the enqueue exited: its marker went with it
 
 
@@ -145,7 +145,7 @@ def test_a_dead_enqueues_marker_counts_as_gone(tmp_path):
     path = landq_inflight.mark(q, "T.D", pid=int(dead.stdout))
     mine = landq_inflight.mark(q, "T/E")
     assert [m["item"] for m in landq_inflight.live(q)] == ["T/E"]
-    assert not path.exists()  # a reader removes it
+    assert landq_state.get(path) is None  # a reader removes it
     assert landq_inflight.live(q, "T/E") and not landq_inflight.live(q, "T.D")
     landq_inflight.clear(mine)
     assert landq_inflight.live(q) == []
@@ -203,6 +203,6 @@ def test_a_superseded_enqueue_leaves_no_record(tmp_path):
                           capture_output=True, text=True, check=True,
                           stdin=subprocess.DEVNULL)  # fmt: skip
     path = landq_inflight.mark(q, "T.S", pid=int(dead.stdout))
-    path.with_suffix(landq_inflight.SUPERSEDED).write_text("1\n")
+    assert landq_inflight.supersede_mark(path)
     assert landq_inflight.live(q) == []
     assert not list((q / "done").glob("*.json"))

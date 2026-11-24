@@ -35,7 +35,6 @@ the minutes an item waits in the queue. Pinned by tests/test_landq_early.py.
 
 from __future__ import annotations
 
-import json
 import os
 import shlex
 import subprocess
@@ -44,6 +43,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import gitrun
+import landq_state
 
 ROWS = Path(__file__).resolve().parent / "row_merge.py"
 IDENT = {"GIT_AUTHOR_NAME": "goh", "GIT_AUTHOR_EMAIL": "goh@localhost",
@@ -125,12 +125,9 @@ def text(repo: Path, req: dict, span: tuple[str, str], files: list[str]) -> str:
 def lands(q: Path, dirs: tuple[str, ...]) -> dict[str, list[tuple[Path, dict]]]:
     """The land requests under Q's DIRS, by repo, in queue order (a request's name is its time)."""
     out: dict[str, list[tuple[Path, dict]]] = {}
-    for path in sorted((p for d in dirs for p in (q / d).glob("*.json")), key=lambda p: p.name):
-        try:
-            req = json.loads(path.read_text())
-        except (OSError, ValueError):
-            continue
-        if isinstance(req, dict) and req.get("mode") == "land" and req.get("sha"):
+    rows = sorted((row for d in dirs for row in landq_state.rows(q, d)), key=lambda r: r[0].name)
+    for path, req in rows:
+        if req.get("mode") == "land" and req.get("sha"):
             out.setdefault(str(req.get("repo")), []).append((path, req))
     return out
 
@@ -141,8 +138,8 @@ def settle(q: Path, path: Path, red: dict, log: str, record: Record) -> None:
     logged.parent.mkdir(parents=True, exist_ok=True)
     with logged.open("a") as f:
         f.write(log)
-    record(path, {**red, "log": str(logged)}, json.loads(path.read_text()).get("item", ""))
-    path.unlink(missing_ok=True)
+    # the record and the request gone in one transaction (tools/landq.py record, GOH.LANDQDB)
+    record(path, {**red, "log": str(logged)}, landq_state.request(path).get("item", ""))
 
 
 def sweep(q: Path, record: Record, say: Callable[[str], None]) -> int:
@@ -155,8 +152,10 @@ def sweep(q: Path, record: Record, say: Callable[[str], None]) -> int:
             say(f"early conflict check of {repo}: {e} -- no verdict, left to the batch")
             continue
         for path, red, log in reds:
-            claimed = q / "running" / path.name  # a dead lander puts it back in pending/
-            path.replace(claimed)
+            try:  # a dead lander puts it back in pending
+                claimed = landq_state.move(path, "running")
+            except FileNotFoundError:
+                continue  # gone meanwhile: a cancel, another lander's take
             say(f"{path.stem}: {red['why']} -- red now, before its turn (GOH.EARLYCONFLICT)")
             settle(q, claimed, red, log, record)
             n += 1
@@ -167,7 +166,7 @@ def at_enqueue(q: Path, req: dict, file: Callable[[dict, str], Path], record: Re
     """REQ judged before it is filed: '' when it stacks (or no verdict); else its red log, the
     request filed by FILE under `early/` and recorded red, so the lander never sees it."""
     try:
-        reds = judge(Path(req["repo"]), [(q / "pending" / f"~{req['sha']}", req)])
+        reds = judge(Path(req["repo"]), [(landq_state.name(q, "pending", f"~{req['sha']}"), req)])
     except Unread:
         return ""
     if not reds:

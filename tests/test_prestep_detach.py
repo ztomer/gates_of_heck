@@ -25,6 +25,7 @@ import sys
 import time
 from pathlib import Path
 
+import landq_state
 import pytest
 from conftest import REPO_ROOT, hermetic_env
 from test_landq import FAKE_LOOPCTL, LANDQ, _land_wt, enq, landq, recorded
@@ -47,8 +48,7 @@ def env(tmp_path: Path) -> dict[str, str]:
 
 
 def _pending(tmp_path: Path) -> list[Path]:
-    pending = tmp_path / "landq" / "pending"
-    return list(pending.iterdir()) if pending.exists() else []
+    return landq_state.listing(tmp_path / "landq", "pending")  # goh.db rows (GOH.LANDQDB)
 
 
 @pytest.mark.load_sensitive  # the pre-step's few seconds and the wait are bounded by patience

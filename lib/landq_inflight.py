@@ -6,15 +6,17 @@ BEFORE it files a request, so for those minutes the queue held nothing: the idle
 (lib/idle_suite.py) kept running beside three lanes' pre-steps at load 49-57 (2026-11-17 22:59),
 and a `--wait ID` started beside its own enqueue exited 2, "no request".
 
-    mark(q, item)   at the pre-step's start: `<q>/enqueuing/<pid>-<item>.json`, removed when the
-                    enqueuing process exits (after the request is filed, so a reader sees one or
-                    the other, never neither)
+    mark(q, item)   at the pre-step's start: a goh.db `requests` row in state enqueuing, named
+                    `<q>/enqueuing/<pid>-<item>.json` (GOH.LANDQDB); the request the enqueue
+                    files replaces it in one transaction (`mine`, tools/landq.py enqueue), so a
+                    reader sees one or the other, never both and never neither; removed when the
+                    enqueuing process exits without filing
     live(q, item)   the markers whose enqueue is still running; ITEM narrows it to one item
 
 SUPERSEDED (GOH.REENQUEUECANCEL, lib/landq_supersede.py). A marker names what stops its enqueue:
 the enqueuer's pid and start (`pid_stamp`), the pre-step's process group as it was stamped at its
 spawn (`pre`, `note_child`), and the checkout slot it claimed (`slot`). A newer enqueue of the item,
-or `goh land --cancel`, puts `<pid>-<item>.superseded` beside the marker before it stops them;
+or `goh land --cancel`, marks the marker superseded (`supersede_mark`) before it stops them;
 `bail` ends an enqueuer that finds its own before it files anything.
 
 STALE-SAFE. A marker counts only while its pid is alive and it is younger than its own `until`
@@ -28,6 +30,7 @@ from __future__ import annotations
 import atexit
 import contextlib
 import os
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -41,7 +44,6 @@ import pid_owner
 DIR = "enqueuing"
 MARGIN_S = 600  # past the pre-step's own bound: the enqueue files or refuses well within it
 PRE_TIMEOUT_S = 45 * 60  # lib/land_prestep.py TIMEOUT, pinned equal (GOH_ENQUEUE_PRE_TIMEOUT: both)
-SUPERSEDED = ".superseded"  # beside a marker: a newer enqueue (or --cancel) stops this one
 _MINE: list[Path] = []  # the markers this process wrote
 
 
@@ -57,8 +59,7 @@ def mark(q: Path, item: str, pid: int | None = None, repo: str = "", slot: dict 
     SLOT, the request: the checkout slot it claimed (`worktree`, `slot`), freed when superseded."""
     pid = pid or os.getpid()
     bound = int(os.environ.get("GOH_ENQUEUE_PRE_TIMEOUT") or PRE_TIMEOUT_S) + MARGIN_S
-    (q / DIR).mkdir(parents=True, exist_ok=True)
-    path = q / DIR / f"{pid}-{slug(item)}.json"
+    run = f"{pid}-{slug(item)}"
     marker = {
         "pid": pid,
         "pid_stamp": pid_owner.stamp_line(pid),
@@ -69,7 +70,8 @@ def mark(q: Path, item: str, pid: int | None = None, repo: str = "", slot: dict 
     }
     if slot and slot.get("slot"):
         marker["slot"] = {"worktree": slot["worktree"], "token": slot["slot"]}
-    landq_state.write(path, marker, indent=None)
+    landq_state.drop(path := landq_state.name(q, DIR, run))  # a marker this pid left before
+    path = landq_state.put(q, run, marker, DIR)
     atexit.register(clear, path)
     _MINE.append(path)
     return path
@@ -82,25 +84,42 @@ def note_child(pid: int) -> None:
         enqueue_witness.install()
     got = pid_owner.stamp(pid)
     for path in _MINE if got else ():
-        if m := landq_state.read(path):
+        if m := landq_state.get(path):
             m["pre"] = {"number": got.number, "born": list(got.born), "group": got.group}
-            landq_state.write(path, m, indent=None)
+            landq_state.update(path, m)
 
 
 def bail() -> None:
     """End this enqueue, filing nothing, when a newer enqueue of its item (or --cancel) superseded
     it: the stop signal may not have landed yet, and a request for the replaced sha must never be
     filed (GOH.BINREACH's c36145ad)."""
-    if any(p.with_suffix(SUPERSEDED).exists() for p in _MINE):
+    if any(superseded(p) for p in _MINE):
         sys.stderr.write("goh land: superseded by a newer enqueue (or --cancel): nothing filed\n")
         raise SystemExit(3)
 
 
+def mine(q: Path) -> str | None:
+    """The run of this process's marker in queue Q, which the request it files replaces."""
+    for path in _MINE:
+        if landq_state.queue_key(path.parent.parent) == landq_state.queue_key(q):
+            return path.stem
+    return None
+
+
+def superseded(path: Path) -> bool:
+    """A newer enqueue (or --cancel) stops the enqueue whose marker PATH names."""
+    return bool((landq_state.get(path) or {}).get("superseded"))
+
+
+def supersede_mark(path: Path) -> bool:
+    """The marker PATH superseded, by this process: its enqueue must file nothing (`bail`)."""
+    m = landq_state.get(path)
+    return m is not None and landq_state.update(path, {**m, "superseded": os.getpid()})
+
+
 def clear(path: Path) -> None:
-    with contextlib.suppress(OSError):
-        path.unlink()
-    with contextlib.suppress(OSError):
-        path.with_suffix(SUPERSEDED).unlink()
+    with contextlib.suppress(OSError, sqlite3.Error):
+        landq_state.drop(path)
 
 
 def alive(pid: int, stamp: str | None = None) -> bool:
@@ -113,15 +132,13 @@ def alive(pid: int, stamp: str | None = None) -> bool:
 def live(q: Path, item: str | None = None) -> list[dict]:
     """The enqueues still in their pre-step (all, or ITEM's); a stale marker is deleted."""
     out: list[dict] = []
-    d = q / DIR
-    for path in sorted(d.glob("*.json")) if d.is_dir() else []:
-        m = landq_state.read(path) or {}
+    for path, m in landq_state.rows(q, DIR):
         try:
             pid, until = int(m["pid"]), float(m["until"])
         except (ValueError, KeyError, TypeError):
             continue  # being written, or not ours: never a reason to wait, never deleted here
         if not alive(pid, m.get("pid_stamp")) or time.time() > until:
-            if not path.with_suffix(SUPERSEDED).exists():  # a supersede stops it on purpose
+            if not m.get("superseded"):  # a supersede stops it on purpose
                 died(q, m)
             clear(path)
             continue

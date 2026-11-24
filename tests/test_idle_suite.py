@@ -22,6 +22,7 @@ from timing_bounds import GiveUp, assert_sooner
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import idle_suite
+import landq_state
 
 
 @pytest.fixture
@@ -201,8 +202,7 @@ def test_a_pending_land_stops_the_suite_at_once(main, tmp_path) -> None:
         while not started.exists() and not over.is_set() and not give_up.passed():
             time.sleep(0.05)
         # Where an enqueue's own lander has already moved it: running/, not pending/.
-        (q / "running").mkdir(exist_ok=True)
-        (q / "running" / "0001-T.LAND.json").write_text("{}")
+        landq_state.put(q, "0001-T.LAND", {}, "running")  # a goh.db row (GOH.LANDQDB)
 
     t = threading.Thread(target=arrive)
     t.start()

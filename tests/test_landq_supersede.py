@@ -14,6 +14,8 @@ import json
 import time
 from pathlib import Path
 
+import land_slot
+import landq_state
 import pid_owner
 import pytest
 from conftest import git, hermetic_env, write
@@ -55,14 +57,15 @@ def _pre_pids(env: dict[str, str]) -> list[int]:
 
 
 def _markers(env: dict[str, str]) -> list[dict]:
-    d = Path(env["GOH_LANDQ_DIR"]) / "enqueuing"
-    return [json.loads(p.read_text()) for p in sorted(d.glob("*.json"))] if d.is_dir() else []
+    return [m for _, m in landq_state.rows(Path(env["GOH_LANDQ_DIR"]), "enqueuing")]
 
 
 def _requests(env: dict[str, str]) -> list[dict]:
     q = Path(env["GOH_LANDQ_DIR"])
-    return [json.loads(p.read_text()) for d in ("pending", "running", "done")
-            for p in sorted((q / d).glob("*.json"))]  # fmt: skip
+    return [
+        *(r for d in ("pending", "running") for _, r in landq_state.rows(q, d)),
+        *(json.loads(p.read_text()) for p in sorted((q / "done").glob("*.json"))),
+    ]
 
 
 def _first_running(env: dict[str, str], wt: Path, item: str):
@@ -118,7 +121,7 @@ def test_cancel_stops_the_pre_step_frees_its_slot_and_files_nothing(repo, tmp_pa
     wt, _ = _land_wt(repo, tmp_path)
     env = _slow(env, tmp_path)
     pre, enqueuer = _first_running(env, wt, "T.CX")
-    owners = list((Path(env["GOH_LANDQ_DIR"]) / "slots").glob("*/*.owner"))
+    owners = land_slot.owners(Path(env["GOH_LANDQ_DIR"]))  # goh.db rows (GOH.LANDQDB)
     assert len(owners) == 1, owners
     done = landq(env, "--cancel", "T.CX")
     out = done.stdout + done.stderr
@@ -126,7 +129,7 @@ def test_cancel_stops_the_pre_step_frees_its_slot_and_files_nothing(repo, tmp_pa
         assert done.returncode == 0, out
         assert "T.CX" in out and "cancel" in out, out
         assert pid_owner.gone(pre) and pid_owner.gone(enqueuer)
-        assert not owners[0].exists()  # its checkout slot free again
+        assert not land_slot.owners(Path(env["GOH_LANDQ_DIR"]))  # its checkout slot free again
     finally:
         Path(env["GO"]).touch()
     assert _requests(env) == []

@@ -1,6 +1,7 @@
 """lib/goh_db.py -- the seam for goh.db, goh's durable state (GOH.DBSEAM).
 
     goh_db.py path | migrate | version | dump TABLE [--json] | check
+    goh_db.py landq-export [--queue Q] [--to DIR]   the queue's rows as files (lib/landq_export.py)
 
 The one door to goh.db: `path()`, `connect()`, `ro()`, `migrate(con)` and `transaction()` are
 lib/db_core.py's, bound to this file. Its migrations are lib/goh_db_schema/NNNN_name.sql, one
@@ -99,4 +100,6 @@ def refusable() -> Iterator[None]:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["landq-export"]:  # GOH.LANDQDB's way back (lib/landq_export.py)
+        sys.exit(__import__("landq_export").main(sys.argv[2:]))
     sys.exit(db_core.main(SEAM, sys.argv[1:]))

@@ -72,11 +72,9 @@ def test_wait_names_a_done_record_that_never_becomes_whole(tmp_path, monkeypatch
 
 def test_status_skips_a_torn_request_and_reads_the_rest(tmp_path, monkeypatch):
     q = tmp_path / "landq"
-    for d in ("pending", "done"):
-        (q / d).mkdir(parents=True)
-    (q / "pending" / "00-T.TORN.json").write_text("")
+    (q / "done").mkdir(parents=True)
     ok = {"item": "T.OK", "repo": "/r/x", "sha": "a" * 40, "mode": "land"}
-    landq_state.write(q / "pending" / "01-T.OK.json", ok)
+    landq_state.put(q, "01-T.OK", ok)  # a request is a goh.db row (GOH.LANDQDB): never torn
     (q / "done" / "00-T.HALF.json").write_text('{"state"')
     said: list[str] = []
     monkeypatch.setattr(landq_look, "info", said.append)

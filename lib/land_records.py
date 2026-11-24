@@ -73,14 +73,21 @@ INSERT = (f"INTO lands (queue, run, {', '.join(COLS)}, at, body) VALUES "
           f"({', '.join('?' * (len(COLS) + 4))})")  # fmt: skip
 
 
-def write(q: Path, run: str, rec: dict) -> None:
-    """RUN's record: its row (replacing one before it), then `done/<run>.json`. A row that could
-    not be written is said, and the file still holds the record for every reader."""
+def write(q: Path, run: str, rec: dict, request: Path | None = None) -> None:
+    """RUN's record: its row (replacing one before it), then `done/<run>.json`. REQUEST, the
+    request it finishes (lib/landq_state.py), leaves the queue in the same transaction: a kill
+    leaves it queued or done, never both (GOH.LANDQDB). A row that could not be written is said,
+    and the file still holds the record for every reader."""
     try:
         with goh_db.transaction() as con:
             con.execute(f"INSERT OR REPLACE {INSERT}", _row(queue_key(q), run, rec))
+            if request is not None:
+                landq_state.finish(con, request)
     except (OSError, sqlite3.Error) as e:
         sys.stderr.write(f"land_records: {run}: no goh.db row ({e}); done/ holds it\n")
+        if request is not None:
+            with contextlib.suppress(OSError, sqlite3.Error):
+                landq_state.drop(request)  # the record is in done/: never run it again
     file(q).mkdir(parents=True, exist_ok=True)
     landq_state.write(file(q, run), rec)
 

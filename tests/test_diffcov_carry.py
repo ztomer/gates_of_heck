@@ -26,6 +26,7 @@ import time
 from pathlib import Path
 
 import _goh_db_fixture as gdb
+import landq_state
 import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT
@@ -301,8 +302,7 @@ def test_the_lander_files_the_item_and_names_it_on_the_landing_record(tmp_path, 
         spec.loader.exec_module(landq)
     db = gdb.use(monkeypatch, tmp_path)
     q = tmp_path / "landq"
-    for d in ("running", "logs"):
-        (q / d).mkdir(parents=True)
+    (q / "logs").mkdir(parents=True)
     fake = tmp_path / "loopctl.py"
     fake.write_text(FAKE_LOOPCTL)
     monkeypatch.setenv("GOH_LOOPCTL", str(fake))
@@ -311,8 +311,7 @@ def test_the_lander_files_the_item_and_names_it_on_the_landing_record(tmp_path, 
     carried = {"carry": [{"file": PROBE, "line": 4, "text": LINE, "own": True, "why": "new"}]}
     req = {"sha": "fedcba9876543210", "repo": str(tmp_path), "mode": "land", "item": "GOH.LANE",
            "worktree": str(tmp_path), "cov_risk": carried}  # fmt: skip
-    path = q / "running" / "01-GOH.LANE.json"
-    path.write_text(json.dumps(req))
+    path = landq_state.put(q, "01-GOH.LANE", req, "running")  # a goh.db row (GOH.LANDQDB)
     outcome = {"sha": req["sha"], "repo": str(tmp_path), "mode": "land", "state": "landed"}
     landq.record(path, outcome, "GOH.LANE")
     done = json.loads(land_records.file(q, path.stem).read_text())

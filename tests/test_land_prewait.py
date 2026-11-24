@@ -10,7 +10,6 @@ test can drop) and the wait is GOH_LAND_PRE_WAIT / GOH_LAND_GATE_WAIT, tiny.
 from __future__ import annotations
 
 import fcntl
-import json
 import os
 import subprocess
 import sys
@@ -19,6 +18,7 @@ from pathlib import Path
 
 import gate_lanes
 import gate_slot
+import landq_state
 from conftest import REPO_ROOT, git, hermetic_env
 from orphan_kit import adopt
 from test_affected_tests import _declare
@@ -133,7 +133,7 @@ def test_the_request_records_that_the_pre_step_had_no_verdict_and_why(
         holder.release()
     out = done.stdout + done.stderr
     assert done.returncode == 0 and "the pre-land tests failed" not in out, out
-    (path,) = list((tmp_path / "landq" / "pending").iterdir())
-    verdict = json.loads(path.read_text())["pre_verdict"]
+    (path,) = landq_state.listing(tmp_path / "landq", "pending")
+    verdict = landq_state.request(path)["pre_verdict"]
     assert verdict["state"] == "none" and verdict["kind"] == "slot-wait", verdict
     assert "gate slot" in verdict["why"] and "ran nothing" in verdict["why"], verdict

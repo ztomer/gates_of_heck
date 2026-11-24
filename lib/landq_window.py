@@ -47,6 +47,7 @@ from pathlib import Path
 import land_records  # the land records' one door (GOH.STATEDB)
 import landq_batch
 import landq_inflight
+import landq_state
 
 from tui.lib import counted
 
@@ -165,7 +166,7 @@ def hold(
         # the window closed on "no enqueue left" with a list that lacked it, and it went through
         # a second gate run of its own.
         markers = landq_inflight.live(q)
-        if not (pending := sorted((q / "pending").glob("*.json"))):
+        if not (pending := landq_state.listing(q, "pending")):
             if waited:
                 say(f"{name}: left pending/ while the batch waited -- {clock() - start:.0f}s")
             return pending
@@ -199,5 +200,5 @@ def pending(
 ) -> list[Path]:
     """The lander's pending requests in queue order, once the batch window closed (its one call);
     CLOCK and SLEEP as `hold` takes them (a test's fake clock, never a patch of the time module)."""
-    listed = sorted((q / "pending").glob("*.json"))
+    listed = landq_state.listing(q, "pending")
     return hold(q, listed, say, clock, sleep) if listed else listed

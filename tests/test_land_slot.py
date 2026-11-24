@@ -19,7 +19,9 @@ from pathlib import Path
 from conftest import REPO_ROOT, git, hermetic_env, write
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import goh_db
 import land_slot
+import landq_state
 from timing_bounds import patience
 
 LANDQ = REPO_ROOT / "tools" / "landq.py"
@@ -148,10 +150,10 @@ def test_a_slot_is_released_after_its_land_and_its_checkout_seconds_are_recorded
     got = recorded(env)["T.REL"]
     assert got["state"] == "landed" and isinstance(got.get("slot_s"), float), got
     base = land_slot.root(tmp_path / "landq", repo)
-    assert not list(base.glob("*.owner")), "the slot was never released"
+    assert not land_slot.owners(tmp_path / "landq"), "the slot was never released"
     commit(wt, "again", "again\n")
     enqueue(env, wt, "T.AGAIN")  # the same slot, reused
-    (req,) = [json.loads(p.read_text()) for p in (tmp_path / "landq" / "pending").glob("*.json")]
+    (req,) = [r for _, r in landq_state.rows(tmp_path / "landq", "pending")]
     assert Path(req["worktree"]) == base / "0", req
     assert Path(req["lane"]).resolve() == wt.resolve(), req
 
@@ -165,9 +167,24 @@ def test_claims_never_share_a_slot_and_a_stale_owner_is_reclaimed(repo, tmp_path
     assert git(Path(b["path"]), "rev-parse", "HEAD").strip() == sha
     land_slot.release(q, repo, a["path"], a["token"])
     assert land_slot.claim(q, repo, sha)["path"] == a["path"]  # free again: reused
-    owner = Path(b["path"]).with_name("1.owner")
-    owner.write_text(json.dumps({"pid": 2**22, "token": "x"}))  # past any pid: nobody alive
+    with goh_db.transaction() as con:  # past any pid: nobody alive
+        con.execute("UPDATE slot_owners SET pid = ?, pid_stamp = NULL, token = 'x' WHERE n = 1",
+                    (2**22,))  # fmt: skip
     assert land_slot.claim(q, repo, sha)["path"] == b["path"]  # nobody alive, nothing queued
+
+
+def test_an_older_gohs_owner_file_is_imported_and_still_holds_its_slot(repo, tmp_path):
+    """GOH.LANDQDB: a `<n>.owner` file a lander before the switch made is a row after the import;
+    a queued request naming its token keeps the slot held although its pid is gone."""
+    q, sha = tmp_path / "q", git(repo, "rev-parse", "HEAD").strip()
+    base = land_slot.root(q, repo)
+    base.mkdir(parents=True)
+    (base / "0.owner").write_text(json.dumps({"pid": 2**22, "token": "old"}))
+    landq_state.put(q, "01-T.OLD", {"slot": "old", "item": "T.OLD"})
+    assert land_slot.import_owners(q) == 1
+    assert not (base / "0.owner").exists()  # read back, then deleted
+    assert [o["token"] for o in land_slot.owners(q)] == ["old"]
+    assert land_slot.claim(q, repo, sha)["path"] == str(base / "1")  # 0 is still the request's
 
 
 def test_a_slot_past_keep_is_removed_when_released(repo, tmp_path, monkeypatch):

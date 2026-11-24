@@ -34,6 +34,7 @@ land_slot = importlib.import_module("land_slot")
 land_spd = importlib.import_module("land_spd")
 landq_remote = importlib.import_module("landq_remote")
 landq_inflight = importlib.import_module("landq_inflight")
+landq_state = importlib.import_module("landq_state")
 state_bounds = importlib.import_module("state_bounds")
 terse = importlib.import_module("terse")
 tmp_root = importlib.import_module("tmp_root")
@@ -239,9 +240,9 @@ def reap(q: Path, now_ns: int | None = None, repo: str | Path | None = None) -> 
     (GOH.PREONTIP)."""
     named: set[str] = set()
     for d in ("pending", "running"):
-        for path in (q / d).glob("*.json") if (q / d).is_dir() else []:
-            with contextlib.suppress(OSError, ValueError, AttributeError, TypeError):
-                if keep := (json.loads(path.read_text()).get("pre") or {}).get("keep"):
+        for _, req in landq_state.rows(q, d):
+            with contextlib.suppress(AttributeError, TypeError):
+                if keep := (req.get("pre") or {}).get("keep"):
                     named.add(Path(keep).name)
     bound = int(os.environ.get("GOH_ENQUEUE_PRE_TIMEOUT") or landq_inflight.PRE_TIMEOUT_S)
     oldest = (now_ns or time.time_ns()) - (bound + landq_inflight.MARGIN_S) * 10**9

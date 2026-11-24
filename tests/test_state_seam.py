@@ -63,13 +63,8 @@ ALLOWED: dict[str, set[str]] = {
     },
     "identity memo": set(),  # V1 goh-cache.db 0002 memo: moved (lib/identity_cache.py)
     "cpu idle": set(),  # S3 goh-cache.db kv: moved (lib/cpu_window.py, GOH.STATEDBS3)
-    "land queue": {  # LANDQ goh.db 0007 requests
-        "lib/landq_batch.py",
-        "lib/landq_early.py",
-        "lib/landq_look.py",
-        "lib/landq_window.py",
-        "lib/state_bounds.py",
-        "tools/landq.py",
+    "land queue": {  # LANDQ goh.db 0007 requests: moved (lib/landq_state.py, GOH.LANDQDB); the
+        "lib/state_bounds.py",  # bounds keep naming an older goh's dirs until the delete commit
     },
     "shell verdicts": {  # V2 goh-cache.db 0003 shell_verdicts
         "crates/goh/src/verdict_cache.rs",

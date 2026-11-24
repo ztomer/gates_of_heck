@@ -15,6 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import landq_state
 import pytest
 from conftest import REPO_ROOT, git
 from test_ruff_currency import GATE, NEXT, PIN, _box, _goh_tree
@@ -92,10 +93,9 @@ def test_one_release_is_bumped_once_even_after_a_failure(repo, tmp_path, box) ->
 
 def test_a_land_or_a_ship_in_flight_leaves_it_to_the_next_look(repo, tmp_path, box) -> None:
     q, seen = tmp_path / "landq", []
-    (q / "pending").mkdir(parents=True)
-    (q / "pending" / "1-X.json").write_text("{}")
+    filed = landq_state.put(q, "1-X", {})
     assert ruff_bump.run(q, repo, say=lambda _: None, enqueue=_fake_enqueue(seen)) == "busy"
-    (q / "pending" / "1-X.json").unlink()
+    landq_state.drop(filed)
     ships = tmp_path / "ships" / repo.name
     ships.mkdir(parents=True)
     rec = {"status": "running", "pid": os.getpid()}

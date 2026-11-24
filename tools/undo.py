@@ -41,6 +41,7 @@ from pathlib import Path
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "lib"))
 import edit_ledger  # noqa: E402  # who edited which file (GOH.UNDOOWNER)
+import landq_state  # noqa: E402  # the land queue's requests (GOH.LANDQDB)
 import repo_hold  # noqa: E402  # the one reading of `goh.hold`
 
 KEEP = ".goh-undo"
@@ -111,11 +112,7 @@ def lane_items(top: str) -> dict[str, str]:
     """Each item goh's lane records give this worktree, with the record that says so."""
     found: dict[str, str] = {}
     for state in LANDQ_STATES:
-        for rec in sorted((_landq_dir() / state).glob("*.json")):
-            try:
-                data = json.loads(rec.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
+        for rec, data in landq_state.rows(_landq_dir(), state):  # goh.db rows (GOH.LANDQDB)
             lanes = {data.get("lane"), data.get("worktree")}
             if any(p and os.path.realpath(p) == top for p in lanes) and data.get("item"):
                 found.setdefault(str(data["item"]), str(rec))

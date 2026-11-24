@@ -17,11 +17,13 @@ import sys
 import time
 from pathlib import Path
 
+import _goh_db_fixture
 import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT, commit_all, git, hermetic_env, write
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import landq_state
 import source_closure as sc
 from timing_bounds import GiveUp, patience
 
@@ -63,12 +65,19 @@ def make_repo(tmp_path: Path, name: str, rc: int = 0) -> tuple[Path, Path, str]:
     return repo, remote, git(repo, "rev-parse", "HEAD").strip()
 
 
+def queued(tmp_path: Path, state: str = "pending") -> list[Path]:
+    """The requests of the test's queue in STATE (goh.db rows, GOH.LANDQDB)."""
+    return landq_state.listing(tmp_path / "landq", state)
+
+
 @pytest.fixture
-def env(tmp_path: Path) -> dict[str, str]:
+def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     fake = tmp_path / "loopctl.py"
     fake.write_text(FAKE_LOOPCTL)
+    db = _goh_db_fixture.use(monkeypatch, tmp_path)  # the CLI's queue and this test's one file
     return hermetic_env(
         drop_git=True,
+        GOH_DB=str(db),
         GOH_LANDQ_DIR=str(tmp_path / "landq"),
         GOH_LOOPCTL=str(fake),
         FAKE_LOOPCTL_LOG=str(tmp_path / "loopctl.log"),
@@ -133,7 +142,7 @@ def test_two_enqueued_pushes_run_serially_and_both_outcomes_land_in_the_queue(tm
     assert got["T.B"]["state"] == "landed" and got["T.B"]["sha"] == b_sha, got
     assert git(a_remote, "rev-parse", "main").strip() == a_sha
     assert git(b_remote, "rev-parse", "main").strip() == b_sha
-    assert not list((tmp_path / "landq" / "pending").iterdir())
+    assert not queued(tmp_path)
 
 
 def test_a_red_gate_records_its_log_and_pushes_nothing(tmp_path, env):
@@ -154,19 +163,15 @@ def test_enqueue_refuses_a_sha_the_checkout_does_not_have(tmp_path, env):
     done = landq(env, "--enqueue", str(repo), "0" * 40, "--item", "T.D", "--no-start")
     assert done.returncode != 0
     assert "0000000" in done.stdout + done.stderr
-    assert not (tmp_path / "landq" / "pending").exists() or not list(
-        (tmp_path / "landq" / "pending").iterdir()
-    )
+    assert not queued(tmp_path)
 
 
 def test_a_request_a_dead_lander_was_running_is_run_again(tmp_path, env):
     """A reboot (or a SIGKILL) mid-push leaves the request in running/: the next lander runs it."""
     repo, remote, sha = make_repo(tmp_path, "eps")
     assert landq(env, "--enqueue", str(repo), sha, "--item", "T.E", "--no-start").returncode == 0
-    q = tmp_path / "landq"
-    (q / "running").mkdir(parents=True, exist_ok=True)
-    for f in (q / "pending").iterdir():
-        f.rename(q / "running" / f.name)  # what a lander killed mid-request leaves
+    for f in queued(tmp_path):
+        landq_state.move(f, "running")  # what a lander killed mid-request leaves
     landq(env, "--drain")
     assert recorded(env)["T.E"]["state"] == "landed"
     assert git(remote, "rev-parse", "main").strip() == sha
@@ -197,7 +202,7 @@ def test_the_goh_binary_dispatches_land(goh, tmp_path, env):
         timeout=60,
     )
     assert done.returncode == 0, done.stdout + done.stderr
-    assert len(list((tmp_path / "landq" / "pending").iterdir())) == 1
+    assert len(queued(tmp_path)) == 1
     assert os.environ.get("GOH_LANDQ_DIR") != env["GOH_LANDQ_DIR"]
 
 
@@ -278,8 +283,7 @@ def test_enqueue_land_refuses_the_main_checkout_and_a_dirty_tree(repo, tmp_path,
     write(wt, "f.txt", "uncommitted\n")
     done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.N", "--no-start")
     assert done.returncode == 2 and "uncommitted" in done.stdout + done.stderr, done.stdout
-    pending = tmp_path / "landq" / "pending"
-    assert not pending.exists() or not list(pending.iterdir())
+    assert not queued(tmp_path)
 
 
 @pytest.mark.load_sensitive
@@ -398,8 +402,7 @@ def test_a_land_that_changes_the_lander_is_honoured_by_the_next_request(tmp_path
 # queue (GOH.REUSEAUDIT's land held it 537 s, then went red on three of them). The lander's own
 # pre-step stays the authority after a rebase.
 def _pending(tmp_path: Path) -> list[Path]:
-    pending = tmp_path / "landq" / "pending"
-    return list(pending.iterdir()) if pending.exists() else []
+    return queued(tmp_path)
 
 
 def test_enqueue_refuses_a_tip_whose_pre_step_fails_and_names_the_test(repo, tmp_path, env):

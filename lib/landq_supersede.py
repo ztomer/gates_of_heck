@@ -63,7 +63,7 @@ def _stop_group(pre: dict | None) -> bool:
 
 def _stop(q: Path, path: Path, m: dict) -> bool:
     """One enqueue stopped and its slot freed; False when part of it would not stop."""
-    path.with_suffix(landq_inflight.SUPERSEDED).write_text(f"{os.getpid()}\n")
+    landq_inflight.supersede_mark(path)
     enqueuer = pid_owner.from_line(str(m.get("pid_stamp") or m["pid"]))
     pid_owner.signal(enqueuer, signal.SIGTERM)  # first: a pre-step killed under it reads as red
     group_gone = _stop_group(m.get("pre"))
@@ -83,12 +83,12 @@ def supersede(q: Path, item: str) -> list[dict]:
     """Every live earlier enqueue of ITEM stopped (module doc); the markers of those stopped."""
     if not item:
         return []  # no item, no identity: two lanes of one repo are not one enqueue
-    d, me = q / landq_inflight.DIR, os.getpid()
+    me = os.getpid()
     out = []
     for m in landq_inflight.live(q, item):
         if int(m["pid"]) == me:
             continue
-        path = d / f"{m['pid']}-{landq_inflight.slug(item)}.json"
+        path = landq_state.name(q, landq_inflight.DIR, f"{m['pid']}-{landq_inflight.slug(item)}")
         what = f"{item}'s earlier enqueue (pid {m['pid']})"
         info(f"goh land: superseding {what}: its pre-step stopped, its slot freed, nothing filed")
         if _stop(q, path, m):

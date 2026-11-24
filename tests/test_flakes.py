@@ -12,6 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import landq_state
 import pytest
 from conftest import REPO_ROOT
 from test_reuse_audit import fake_loopctl, filed, store  # noqa: F401  (fixtures)
@@ -116,7 +117,7 @@ def test_the_lander_names_the_register_entry_on_the_landing_record(tmp_path, mon
     landq = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(landq)
     q = tmp_path / "landq"
-    for d in ("running", "done", "logs"):
+    for d in ("done", "logs"):
         (q / d).mkdir(parents=True)
     fake = tmp_path / "loopctl.py"
     fake.write_text(FAKE_LOOPCTL)
@@ -134,8 +135,7 @@ def test_the_lander_names_the_register_entry_on_the_landing_record(tmp_path, mon
     (q / "done" / "00-GOH.LANE.json").write_text(json.dumps(red))
     req = {"sha": tip, "repo": str(tmp_path), "mode": "land", "item": "GOH.LANE",
            "worktree": str(tmp_path)}  # fmt: skip
-    path = q / "running" / "01-GOH.LANE.json"
-    path.write_text(json.dumps(req))
+    path = landq_state.put(q, "01-GOH.LANE", req, "running")  # a goh.db row (GOH.LANDQDB)
     outcome = {"sha": "0" * 16, "enqueued": tip, "repo": str(tmp_path), "mode": "land",
                "state": "landed"}  # fmt: skip
     landq.record(path, outcome, "GOH.LANE")

@@ -23,9 +23,13 @@ reused slot is a warm one; slot numbers past KEEP are removed when released, so 
 bounded by the lands in flight. Measured on gates_of_heck (1431 files, 2026-11-18): a new slot
 0.2-0.4 s, a reused one 0.05-0.15 s.
 
-OWNERSHIP is `<n>.owner` beside the slot: {pid, token}, made with one link(2), so two claimers never
-take one slot. An owner is stale -- its slot free -- when its pid is gone and no request in pending/
-or running/ names its token: an enqueue killed mid-pre-step, a lander that died after the record.
+OWNERSHIP is a goh.db `slot_owners` row (GOH.LANDQDB), named by `<n>.owner` beside the slot:
+{token, pid, pid_stamp}. A claim is one transaction that reads the owner and the queue's `requests`
+and writes the row, so two claimers never take one slot (the row's key is the slot). An owner is
+stale -- its slot free -- when its pid is gone and no request pending or running names its token:
+an enqueue killed mid-pre-step, a lander that died after the record. Whether the pid is alive is
+read before the transaction (a process listing is never waited on inside one), and the claim
+replaces only the owner it read (its token), so a claim made meanwhile is never taken over.
 The reuse paths (SUITEONCE's suite_reused, verdict carry, the enqueue's kept verdict) are keyed on
 tree and sha, never on the checkout's path, so they hold across the slot as they did in the lane.
 Pinned by tests/test_land_slot.py.
@@ -38,12 +42,15 @@ import hashlib
 import json
 import os
 import shutil
+import sqlite3
 import time
 import uuid
 from pathlib import Path
 
 import build_dir_reap
 import full_run
+import goh_db
+import landq_state
 import pid_owner
 
 KEEP = 4  # slot numbers below this stay checked out between lands (warm build output)
@@ -60,59 +67,103 @@ def root(q: Path, main: Path) -> Path:
     return q / "slots" / f"{Path(resolved).name}-{key}"
 
 
-def _queued(q: Path, token: str) -> bool:
-    """A request in pending/ or running/ names TOKEN as its slot."""
-    for d in ("pending", "running"):
-        for path in (q / d).glob("*.json"):
-            with contextlib.suppress(OSError, ValueError):
-                if json.loads(path.read_text()).get("slot") == token:
-                    return True
+def _slot(owner: Path) -> tuple[str, int]:
+    """(repo key, slot number) of an owner's name `<root>/<n>.owner`."""
+    return os.path.realpath(owner.parent), int(owner.name.removesuffix(".owner"))
+
+
+def _queued(con: sqlite3.Connection, q: Path, token: str) -> bool:
+    """A request pending or running names TOKEN as its slot (read in the claim's transaction)."""
+    got = con.execute("SELECT body FROM requests WHERE queue = ? AND state IN ('pending', "
+                      "'running')", (landq_state.queue_key(q),))  # fmt: skip
+    for (body,) in got:
+        with contextlib.suppress(ValueError, AttributeError):
+            if json.loads(body).get("slot") == token:
+                return True
     return False
 
 
-def _owner(path: Path) -> dict:
+def _owner(owner: Path) -> dict:
+    """The slot's owner row {token, pid, pid_stamp}, {} when it has none."""
+    key, n = _slot(owner)
     try:
-        got = json.loads(path.read_text())
-    except (OSError, ValueError):
+        with goh_db.ro() as con:
+            got = con.execute("SELECT token, pid, pid_stamp FROM slot_owners WHERE repo_key = ? "
+                              "AND n = ?", (key, n)).fetchone()  # fmt: skip
+    except (OSError, sqlite3.Error):
         return {}
-    return got if isinstance(got, dict) else {}
+    return dict(zip(("token", "pid", "pid_stamp"), got, strict=True)) if got else {}
 
 
-def _stale(q: Path, owner: Path) -> bool:
-    got = _owner(owner)
-    if not got:  # unreadable: a claim is one link(2) of a whole file, so this is no live claim
-        return True
+def _alive(got: dict) -> bool:
+    """By the start time beside the pid (GOH.STRAYSIGNAL2): a claimer's pid handed to another
+    process once it ended is no live claim. A claim of a bare pid (an older goh) is judged as is."""
     pid = got.get("pid")
-    # By the start time beside the pid (GOH.STRAYSIGNAL2): a claimer's pid handed to another
-    # process once it ended is no live claim. A claim of a bare pid (an older goh) is judged as is.
-    if isinstance(pid, int) and pid_owner.alive_line(str(got.get("pid_stamp") or pid)):
-        return False
-    return not _queued(q, str(got.get("token", "")))
+    return isinstance(pid, int) and pid_owner.alive_line(str(got.get("pid_stamp") or pid))
 
 
 def _take(q: Path, owner: Path, token: str) -> bool:
-    """Claim OWNER for TOKEN: one link(2) of a whole file; a stale owner is moved aside first."""
-    tmp = owner.with_name(f".{owner.name}.{token}")
+    """Claim OWNER for TOKEN in one transaction: an empty slot, or one whose owner (the one read
+    here, its pid gone) no queued request names."""
+    key, n = _slot(owner)
     me = os.getpid()
-    claim = {"pid": me, "pid_stamp": pid_owner.stamp_line(me), "token": token}
-    tmp.write_text(json.dumps(claim) + "\n")
+    stamp = pid_owner.stamp_line(me)
+    was = _owner(owner)
+    alive = bool(was) and _alive(was)  # read before the transaction: no `ps` is waited on in one
+    with goh_db.transaction() as con:
+        got = con.execute("SELECT token FROM slot_owners WHERE repo_key = ? AND n = ?",
+                          (key, n)).fetchone()  # fmt: skip
+        if got and (got[0] != was.get("token") or alive or _queued(con, q, got[0])):
+            return False  # held: live, queued, or claimed by another since the read
+        con.execute("INSERT OR REPLACE INTO slot_owners (repo_key, n, token, pid, pid_stamp, at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (key, n, token, me, stamp, time.time()))  # fmt: skip
+    return True
+
+
+def _free(owner: Path, token: str) -> None:
+    key, n = _slot(owner)
+    with goh_db.transaction() as con:
+        con.execute("DELETE FROM slot_owners WHERE repo_key = ? AND n = ? AND token = ?",
+                    (key, n, token))  # fmt: skip
+
+
+def owners(q: Path) -> list[dict]:
+    """Every slot owner row under queue Q: {repo_key, n, token, pid, pid_stamp, at, alive}."""
+    base = os.path.realpath(q / "slots")
     try:
-        for _ in range(2):
-            try:
-                os.link(tmp, owner)
-                return True
-            except FileExistsError:
-                if not _stale(q, owner):
-                    return False
-                aside = owner.with_name(f".{owner.name}.stale.{token}")
-                try:
-                    os.rename(owner, aside)  # one claimer wins the stale owner
-                except FileNotFoundError:
-                    continue
-                aside.unlink(missing_ok=True)
-        return False
-    finally:
-        tmp.unlink(missing_ok=True)
+        with goh_db.ro() as con:
+            rows = con.execute("SELECT repo_key, n, token, pid, pid_stamp, at FROM slot_owners "
+                               "WHERE repo_key LIKE ? ORDER BY repo_key, n",
+                               (base + os.sep + "%",)).fetchall()  # fmt: skip
+    except (OSError, sqlite3.Error):
+        return []
+    cols = ("repo_key", "n", "token", "pid", "pid_stamp", "at")
+    return [{**(r := dict(zip(cols, row, strict=True))), "alive": _alive(r)} for row in rows]
+
+
+def import_owners(q: Path) -> int:
+    """Every `slots/<repo>/<n>.owner` file an older goh made, into a row (INSERT OR IGNORE), the
+    file deleted once its row reads back. Under lander.lock (GOH.LANDQDB)."""
+    files = sorted(Path(q / "slots").glob("*/*.owner"))
+    rows = []
+    for f in files:
+        with contextlib.suppress(OSError, ValueError, AttributeError):
+            got = json.loads(f.read_text())
+            if got.get("token") and f.name.removesuffix(".owner").isdigit():
+                rows.append((f, (*_slot(f), str(got["token"]), got.get("pid"), got.get("pid_stamp"),
+                                 f.stat().st_mtime)))  # fmt: skip
+    if not rows:
+        return 0
+    with goh_db.transaction() as con:
+        before = con.total_changes
+        con.executemany("INSERT OR IGNORE INTO slot_owners (repo_key, n, token, pid, pid_stamp, "
+                        "at) VALUES (?, ?, ?, ?, ?, ?)", [r for _, r in rows])  # fmt: skip
+        added = con.total_changes - before
+    for f, _ in rows:
+        if _owner(f):
+            f.unlink(missing_ok=True)
+    return added
 
 
 def _drop(main: Path, wt: Path, reap: bool = False) -> None:
@@ -181,7 +232,7 @@ def release(q: Path, main: Path, wt: str, token: str) -> None:
     with contextlib.suppress(ValueError):
         if int(Path(wt).name) >= KEEP:
             _drop(main, Path(wt), reap=True)
-    owner.unlink(missing_ok=True)
+    _free(owner, token)
 
 
 def label(req: dict) -> list[str]:

@@ -59,6 +59,7 @@ import full_run  # lib/: shared, lock-free
 import idle_red
 import killtree
 import landq_inflight
+import landq_state
 import lock_order
 import main_red
 import selection_miss
@@ -92,8 +93,8 @@ def log_of(q: Path, sha: str) -> Path:
 
 def pending(q: Path) -> bool:
     """A request is waiting or already running: an enqueue starts a lander of its own, which moves
-    the request to running/ within milliseconds, so pending/ alone would miss it."""
-    return any(any((q / d).glob("*.json")) for d in ("pending", "running"))
+    the request to running within milliseconds, so pending alone would miss it."""
+    return landq_state.any_in(q, "pending", "running")
 
 
 def enqueuing(q: Path) -> bool:
