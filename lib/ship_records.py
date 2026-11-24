@@ -50,8 +50,9 @@ def _row(res: dict, result: str, now: float) -> tuple:
 
 
 def put(res: dict) -> None:
-    """Write RES (a whole ship record) as its result's row."""
-    with goh_db.refusable(), goh_db.transaction() as con:
+    """Write RES (a whole ship record) as its result's row; a file this copy may not write is
+    raised, never skipped (the ship's one record is no side record: lib/ship_status.py save)."""
+    with goh_db.transaction() as con:
         con.execute("INSERT OR REPLACE INTO ships VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                     _row(res, str(res["result"]), time.time()))  # fmt: skip
 

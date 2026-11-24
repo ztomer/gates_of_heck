@@ -34,7 +34,8 @@ import contextlib
 import os
 import sqlite3
 import sys
-from collections.abc import Iterator
+import time
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -113,6 +114,26 @@ def refusable() -> Iterator[None]:
         yield
     except db_core.NewerFile as e:
         refused(e)
+
+
+RETRY_S = 1.0  # a record's one retry waits this long (a lock past busy_timeout, a full disk freed)
+
+
+def must(write: Callable[[], object], what: str) -> None:
+    """WRITE, a record with no other home (a land's, a ship's), tried once more after RETRY_S; a
+    second failure is said and raised, so a land or a ship never ends without its record
+    (GOH.STATEDB S1; the class of GOH.SHIPNORECORD: both once said "no goh.db row" and went on)."""
+    try:
+        write()
+        return
+    except (OSError, sqlite3.Error) as e:
+        db_core.warn(f"goh.db: {what}: not written ({e}); trying once more")
+    time.sleep(RETRY_S)
+    try:
+        write()
+    except (OSError, sqlite3.Error) as e:
+        db_core.warn(f"goh.db: {what}: not written twice ({e}): it has no record")
+        raise
 
 
 if __name__ == "__main__":

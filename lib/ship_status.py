@@ -4,7 +4,6 @@ log's tail (split from tools/ship.py at its 500-line cap)."""
 from __future__ import annotations
 
 import os
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -64,12 +63,10 @@ def record_ship_timing(res: dict) -> None:
 def save(res: dict) -> None:
     """Write RES whole: its goh.db row (lib/ship_records.py, the one record of a ship since the
     database plan's wave 3; readers outside goh read the `ships_v2` view), its directory made for
-    the step logs and the lock. A row that cannot be written is said, never fatal to the ship."""
+    the step logs and the lock. A row that cannot be written is tried once more, then said and
+    raised (goh_db.must): the ship fails loudly rather than end with no record."""
     Path(res["result"]).parent.mkdir(parents=True, exist_ok=True)  # its step logs and lock
-    try:
-        ship_records.put(res)
-    except (sqlite3.Error, OSError) as e:
-        err(f"goh ship: the record's goh.db row was not written ({e}): {res['result']}")
+    goh_db.must(lambda: ship_records.put(res), f"the ship record {res['result']}")
 
 
 def carry(res: dict) -> None:

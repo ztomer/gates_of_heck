@@ -6,9 +6,10 @@ release_canary.py, which records its result in goh.db's kv through lib/estate_re
 it after the canary had judged: every land not carrying 0009 went red on a record write.
 
 Here goh.db is a stand-in at tmp_path holding a migration this goh does not ship. Every store
-writer (a side record: the estate state, a commit stamp, a flake, a land ledger, a ship row) says
-the write was refused on one line and returns; the release canary exits on its verdict, not on the
-record.
+writer (a side record: the estate state, a commit stamp, a flake, a land ledger, a ship's pins)
+says the write was refused on one line and returns; the release canary exits on its verdict, not
+on the record. A land's or a ship's OWN record is no side record: it has no other home, so its
+write is raised (tests/test_record_must.py, GOH.STATEDB S1).
 """
 
 from __future__ import annotations
@@ -53,7 +54,6 @@ WRITERS = {
     "small_stores.flake_add": lambda d: small_stores.flake_add(d / "flakes", "t", {"epoch": 1.0}),
     "land_records.append": lambda d: land_records.append(d / "q", "misses", [{"a": 1}]),
     "land_records.set_causes": lambda d: land_records.set_causes(d / "q", {"r.json": {}}),
-    "ship_records.put": lambda d: ship_records.put({"result": str(d / "r.json")}),
     "ship_records.put_pins": lambda d: ship_records.put_pins(d / "r.json", {}),
 }
 
