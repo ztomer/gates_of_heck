@@ -80,8 +80,7 @@ def test_a_record_older_than_14_days_files_nothing(register, fake_loopctl) -> No
 
 
 def test_a_re_enqueue_on_the_same_commit_that_lands_is_a_pass_on_retry(tmp_path) -> None:
-    done = tmp_path / "done"
-    done.mkdir()
+    lq = tmp_path
     tip = "e" * 40
     red = {
         "state": "red",
@@ -92,20 +91,17 @@ def test_a_re_enqueue_on_the_same_commit_that_lands_is_a_pass_on_retry(tmp_path)
         "why": f"enqueue pre-step: the pre-land tests failed on {tip[:8]} (failing: {TEST}) --",
     }
     other = {**red, "sha": "f" * 40, "why": "exit 1"}  # another commit: a fix, not a retry
-    (done / "01-GOH.LANE.json").write_text(json.dumps(other))
-    (done / "02-GOH.LANE.json").write_text(json.dumps(red))
+    land_records.write(lq, "01-GOH.LANE", other)
+    land_records.write(lq, "02-GOH.LANE", red)
     landed = {"state": "landed", "mode": "land", "sha": "d" * 40, "enqueued": tip, "attempt": 3,
               "repo": "/p/gates_of_heck", "log": "/q/green.log"}  # fmt: skip
-    got = flakes.land_retry(land_records.records(done.parent), "GOH.LANE", landed)
+    got = flakes.land_retry(land_records.records(lq), "GOH.LANE", landed)
     [rec] = _rows(flakes.register())
     assert got == {"flakes": [{"entry": rec["id"], "test": TEST, "filed": ""}]}, got
     assert rec["load"] == 61.5 and rec["log"] == {"first": "/q/red.log", "second": "/q/green.log"}
     [line] = flakes.said({**landed, **got})
     assert f"flake register entry {rec['id']}" in line and "flaky" not in line, line
-    assert (
-        flakes.land_retry(land_records.records(done.parent), "GOH.LANE", {**landed, "attempt": 1})
-        == {}
-    )
+    assert flakes.land_retry(land_records.records(lq), "GOH.LANE", {**landed, "attempt": 1}) == {}
 
 
 def test_the_lander_names_the_register_entry_on_the_landing_record(tmp_path, monkeypatch):
@@ -117,7 +113,7 @@ def test_the_lander_names_the_register_entry_on_the_landing_record(tmp_path, mon
     landq = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(landq)
     q = tmp_path / "landq"
-    for d in ("done", "logs"):
+    for d in ("logs",):
         (q / d).mkdir(parents=True)
     fake = tmp_path / "loopctl.py"
     fake.write_text(FAKE_LOOPCTL)
@@ -132,14 +128,14 @@ def test_the_lander_names_the_register_entry_on_the_landing_record(tmp_path, mon
         "mode": "land",
         "why": f"the pre-land tests failed on {tip[:8]} (failing: {TEST}) -- fix them",
     }
-    (q / "done" / "00-GOH.LANE.json").write_text(json.dumps(red))
+    land_records.write(q, "00-GOH.LANE", red)
     req = {"sha": tip, "repo": str(tmp_path), "mode": "land", "item": "GOH.LANE",
            "worktree": str(tmp_path)}  # fmt: skip
     path = landq_state.put(q, "01-GOH.LANE", req, "running")  # a goh.db row (GOH.LANDQDB)
     outcome = {"sha": "0" * 16, "enqueued": tip, "repo": str(tmp_path), "mode": "land",
                "state": "landed"}  # fmt: skip
     landq.record(path, outcome, "GOH.LANE")
-    done = json.loads((q / "done" / path.name).read_text())
+    done = land_records.get(q, path.stem)
     assert [f["test"] for f in done["flakes"]] == [TEST], done
 
 

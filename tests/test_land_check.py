@@ -11,7 +11,6 @@ declared and the measured ones, a red land's record names its guard, and the enq
 
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 import time
@@ -23,7 +22,7 @@ from test_landq import _land_wt, _pending, env, landq, recorded  # noqa: F401 --
 from timing_bounds import assert_sooner, patience
 
 sys.path.insert(0, str(REPO_ROOT))
-from lib import durations, land_check
+from lib import durations, land_check, land_records
 
 TREE_READS = ("docs/map.md", "tests/", ".gatesrc")  # a clone of the whole tree, planted
 
@@ -158,16 +157,14 @@ def test_the_guard_tests_are_the_declared_ones_and_the_measured_past_refusers(
         "def test_fast(): pass\ndef test_slow(): pass\ndef test_new(): pass\n"
     )
     (tests / "test_d.py").write_text("# goh-land-guard:\ndef test_all(): pass\n")
-    done = tmp_path / "q" / "done"
-    done.mkdir(parents=True)
     guards = [
         "tests/test_c.py::test_fast",
         "tests/test_c.py::test_slow[1]@g",
         "tests/test_c.py::test_new",
     ]
-    (done / "1.json").write_text(json.dumps({"state": "red", "repo": "/r", "guards": guards}))
+    land_records.write(tmp_path / "q", "1", {"state": "red", "repo": "/r", "guards": guards})
     other = {"state": "red", "repo": "/other", "guards": ["tests/test_c.py::test_other"]}
-    (done / "2.json").write_text(json.dumps(other))  # another repo's guard is not this one's
+    land_records.write(tmp_path / "q", "2", other)  # another repo's guard is not this one's
     times = tmp_path / "goh.db"
     durations.record(
         {
@@ -215,11 +212,9 @@ def test_a_red_lands_record_names_the_guard_its_log_shows(tmp_path):
     assert land_check.fields(red) == {"guard": "gate exit 1", "guards": ["gate exit 1"]}
     assert land_check.fields({**red, "state": "landed"}) == {}
     assert land_check.fields({**red, "guards": ["kept"]}) == {}
-    done = tmp_path / "q" / "done"
-    done.mkdir(parents=True)
     for n, g in enumerate(["a", "b", "a"]):
-        (done / f"{n}.json").write_text(json.dumps({"state": "red", "guard": g}))
-    (done / "9.json").write_text(json.dumps({"state": "landed"}))
+        land_records.write(tmp_path / "q", f"{n}", {"state": "red", "guard": g})
+    land_records.write(tmp_path / "q", "9", {"state": "landed"})
     assert land_check.count(tmp_path / "q") == {"a": 2, "b": 1}
     # a pre-step's refusal at enqueue files no land record: it is learned, counted and run next
     refusal = (
@@ -302,7 +297,7 @@ def test_check_and_enqueue_refuse_on_a_guard_and_record_it(repo, tmp_path, env):
     out = done.stdout + done.stderr
     assert done.returncode == 1 and "nothing queued" in out and "[planted_guard]" in out, out
     assert _pending(tmp_path) == []
-    (rec,) = [json.loads(p.read_text()) for p in (tmp_path / "landq" / "done").glob("*.json")]
+    (rec,) = [r for _, r in land_records.records(tmp_path / "landq")]
     assert (rec["state"], rec["stage"], rec["sha"]) == ("red", "check", tip), rec
     assert rec["guard"] == "[planted_guard]", rec
     told = recorded(red)["T.C"]["guard"]  # what loopctl was told

@@ -1,35 +1,31 @@
 """lib/land_records.py -- the land records' one door (GOH.STATEDB S1): goh.db's `lands` and
-`red_causes` tables (lib/goh_db_schema/0002_lands.sql), with the `<landq>/done/*.json` files from
-before the switch still read.
+`red_causes` tables (lib/goh_db_schema/0002_lands.sql) and the `land_guards` and
+`selection_misses` ledgers. The `<landq>/done/*.json` files they were are read by nothing since the
+database plan's wave 3 (`goh state retire lands`, lib/state_retire_lands.py, archives them).
 
-    write(q, run, rec)     the record's row, then its done/ file (kept until wave 3's delete commit:
-                           .loop's readers and old HEAD exports still read the files)
+    write(q, run, rec)     the record's row (the request it finishes leaves the queue with it)
     runs(q)                every run with a record, by name only
-    records(q)             [(run, rec)] oldest first: every row of this queue, and every done/ file
-                           whose run has no row (written by an old HEAD export, or not imported)
+    records(q)             [(run, rec)] oldest first
     get(q, run)            one record, or None (`goh land --wait` polls it)
-    causes(q) / set_causes(q, {run: cause})     the red classes (was `<q>/red_causes.json`)
-    ledger(q, name)        a ledger's rows oldest first: "guards" (land_guards, was guards.jsonl:
-                           the pre-step refusals land --check learns) or "misses" (selection_misses,
-                           was selection_misses.jsonl); a line of the file with no row reads too
+    ref(q, run)            a record's reference: a path no file is at (lib/landq_look.py's)
+    causes(q) / set_causes(q, {run: cause})     the red classes
+    ledger(q, name)        a ledger's rows oldest first: "guards" (land_guards: the pre-step
+                           refusals land --check learns) or "misses" (selection_misses)
     append(q, name, rows)  rows onto a ledger, each body once per queue; how many were new
-    import_done(q)         every done/ file, red_causes.json and both ledger files into the tables,
-                           INSERT OR IGNORE (a re-run is harmless), one `imports` row per store
 
 A ROW IS KEYED BY (queue, run), a ledger row by (queue, body): `queue` is the land queue's
 realpath, so a test's queue under tmp_path never reads the lander's rows, nor another test's. No
-goh.db yet, or one an older goh wrote without the tables, reads as no rows: the files answer.
+goh.db yet, or one an older goh wrote without the tables, reads as no rows; `known()` says
+whether there is a goh.db at all (a report says "unknown" without one, never zero).
 """
 
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import json
 import os
 import sqlite3
 import sys
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -45,11 +41,18 @@ def queue_key(q: Path) -> str:
     return os.path.realpath(q)
 
 
-def file(q: Path, run: str = "") -> Path:
-    """Queue Q's done/ directory, or RUN's file in it: the files from before the switch, read and
-    still written until wave 3's delete commit (the one place this module names them)."""
-    d = q / "done"
-    return d / f"{run}.json" if run else d
+REF = "lands"  # the table a record's reference names
+
+
+def ref(q: Path, run: str) -> Path:
+    """RUN's record's reference beside queue Q's requests: `<q>/lands/<run>.json`, a path no file
+    is at (lib/landq_look.py tells a record from a request by its parent's name)."""
+    return q / REF / f"{run}.json"
+
+
+def known() -> bool:
+    """Whether goh.db exists: without it the lands are unknown, never none (handover plan (d))."""
+    return goh_db.path().exists()
 
 
 def epoch(rec: dict, run: str = "") -> float:
@@ -74,7 +77,7 @@ INSERT = (f"INTO lands (queue, run, {', '.join(COLS)}, at, body) VALUES "
 
 
 def write(q: Path, run: str, rec: dict, request: Path | None = None) -> None:
-    """RUN's record: its row (replacing one before it), then `done/<run>.json`. REQUEST, the
+    """RUN's record: its row, replacing one before it (its one home since wave 3). REQUEST, the
     request it finishes (lib/landq_state.py), leaves the queue in the same transaction: a kill
     leaves it queued or done, never both (GOH.LANDQDB). A row that cannot be written is tried once
     more, then said and raised (goh_db.must): the request stays queued for the next lander."""
@@ -86,8 +89,6 @@ def write(q: Path, run: str, rec: dict, request: Path | None = None) -> None:
                 landq_state.finish(con, request)
 
     goh_db.must(put, f"the land record {run}")  # raised after one retry: never a land unrecorded
-    file(q).mkdir(parents=True, exist_ok=True)
-    landq_state.write(file(q, run), rec)
 
 
 @contextlib.contextmanager
@@ -115,26 +116,14 @@ def _rows(q: Path) -> dict[str, dict]:
     return out
 
 
-def _files(q: Path) -> list[str]:
-    try:
-        names = os.listdir(file(q))
-    except OSError:
-        return []
-    return [n[:-5] for n in names if n.endswith(".json") and not n.startswith(".")]
-
-
 def records(q: Path, reverse: bool = False) -> list[tuple[str, dict]]:
     """`(run, record)` for every land of queue Q, oldest first (newest first with REVERSE)."""
-    out = _rows(q)
-    for run in _files(q):
-        if run not in out and (rec := landq_state.read(file(q, run))) is not None:
-            out[run] = rec
-    return sorted(out.items(), reverse=reverse)
+    return sorted(_rows(q).items(), reverse=reverse)
 
 
 def runs(q: Path) -> list[str]:
     """Every run queue Q has a record of, by name only (no record is parsed), oldest first."""
-    have: set[str] = set(_files(q))
+    have: set[str] = set()
     with _reader() as con:
         if con is not None:
             have.update(r[0] for r in con.execute("SELECT run FROM lands WHERE queue = ?",
@@ -153,19 +142,12 @@ def get(q: Path, run: str) -> dict | None:
                     rec = json.loads(got[0])
                     if isinstance(rec, dict):
                         return rec
-    return landq_state.read(file(q, run))
-
-
-SIDE = "red_causes.json"
+    return None
 
 
 def causes(q: Path) -> dict[str, dict]:
-    """{`<run>.json`: cause} for queue Q: the rows, then the side file's names they lack."""
+    """{`<run>.json`: cause} for queue Q."""
     out: dict[str, dict] = {}
-    with contextlib.suppress(OSError, ValueError):
-        side = json.loads((q / SIDE).read_text())
-        if isinstance(side, dict):
-            out.update(side)
     with _reader() as con:
         if con is not None:
             for run, body in con.execute("SELECT run, body FROM red_causes WHERE queue = ?",
@@ -188,9 +170,8 @@ def set_causes(q: Path, side: dict[str, dict]) -> None:
         )  # fmt: skip
 
 
-# a ledger: its table, its file from before the switch, and the column a row's key fills
-LEDGERS = {"guards": ("land_guards", "guards.jsonl", "test"),
-           "misses": ("selection_misses", "selection_misses.jsonl", "day")}  # fmt: skip
+# a ledger: its table and the column a row's key fills
+LEDGERS = {"guards": ("land_guards", "test"), "misses": ("selection_misses", "day")}
 
 
 def _body(row: dict) -> str:
@@ -198,44 +179,29 @@ def _body(row: dict) -> str:
 
 
 def _ledger_row(key: str, name: str, row: dict) -> tuple:
-    col = LEDGERS[name][2]
+    col = LEDGERS[name][1]
     val = row.get("guard") if col == "test" else row.get("day")
     at = epoch({"at": f"{val}T00:00:00Z"}) if col == "day" and val else epoch(row)
     return (key, at, None if val is None else str(val), _body(row))
 
 
-def _ledger_file(q: Path, name: str) -> list[dict]:
-    try:
-        lines = (q / LEDGERS[name][1]).read_text().splitlines()
-    except OSError:
-        return []
-    out = []
-    for line in lines:
-        with contextlib.suppress(ValueError):
-            row = json.loads(line)
-            if isinstance(row, dict):
-                out.append(row)
-    return out
-
-
 def ledger(q: Path, name: str) -> list[dict]:
-    """Ledger NAME of queue Q, oldest first: the file's lines no row holds (written before the
-    switch, or by an old HEAD export), then the rows in the order they were appended."""
+    """Ledger NAME of queue Q, in the order its rows were appended."""
     table, bodies = LEDGERS[name][0], []
     with _reader() as con:
         if con is not None:
             sql = f"SELECT body FROM {table} WHERE queue = ? ORDER BY n"
             bodies = [b for (b,) in con.execute(sql, (queue_key(q),))]
-    have = set(bodies)
-    out = [r for r in _ledger_file(q, name) if _body(r) not in have]
+    out = []
     for body in bodies:
         with contextlib.suppress(ValueError):
             out.append(json.loads(body))
     return out
 
 
-def _insert(con: sqlite3.Connection, key: str, name: str, rows: list[dict]) -> int:
-    table, _, col = LEDGERS[name]
+def insert(con: sqlite3.Connection, key: str, name: str, rows: list[dict]) -> int:
+    """ROWS onto ledger NAME of queue KEY in CON's transaction, each body once; how many new."""
+    table, col = LEDGERS[name]
     before = con.total_changes
     sql = f"INSERT OR IGNORE INTO {table} (queue, at, {col}, body) VALUES (?, ?, ?, ?)"
     con.executemany(sql, [_ledger_row(key, name, r) for r in rows])
@@ -246,49 +212,5 @@ def append(q: Path, name: str, rows: list[dict]) -> int:
     """ROWS onto ledger NAME of queue Q, each body once; how many were new (0 when this copy may
     not write goh.db, said)."""
     with goh_db.refusable(), goh_db.transaction() as con:
-        return _insert(con, queue_key(q), name, rows)
+        return insert(con, queue_key(q), name, rows)
     return 0
-
-
-def import_done(q: Path) -> dict[str, int]:
-    """Every done/ file and the red_causes.json side file of queue Q into goh.db, INSERT OR IGNORE
-    on (queue, run); the rows each added. The files stay (wave 3 deletes them)."""
-    key, digest, rows = queue_key(q), hashlib.sha256(), []
-    for run in sorted(_files(q)):
-        p = file(q, run)
-        with contextlib.suppress(OSError):
-            raw = p.read_bytes()
-            with contextlib.suppress(ValueError):
-                rec = json.loads(raw)
-                if isinstance(rec, dict):
-                    rows.append(_row(key, run, rec))
-                    digest.update(run.encode() + b"\0" + raw)
-    side: dict = {}
-    with contextlib.suppress(OSError, ValueError):
-        side = json.loads((q / SIDE).read_text())
-    side = side if isinstance(side, dict) else {}
-    with goh_db.transaction() as con:
-        before = con.total_changes
-        con.executemany(f"INSERT OR IGNORE {INSERT}", rows)
-        lands = con.total_changes - before
-        before = con.total_changes
-        con.executemany(
-            "INSERT OR IGNORE INTO red_causes (queue, run, cause, at, body) VALUES (?, ?, ?, ?, ?)",
-            [(key, n.removesuffix(".json"), str(c.get("cause") or "") if isinstance(c, dict)
-              else "", epoch({}, n.removesuffix(".json")), json.dumps(c))
-             for n, c in sorted(side.items())],
-        )  # fmt: skip
-        reds = con.total_changes - before
-        if lands or reds:
-            con.execute("INSERT OR IGNORE INTO imports VALUES (?, ?, ?, ?, ?)",
-                        ("lands", str(file(q)), digest.hexdigest(), lands + reds,
-                         time.time()))  # fmt: skip
-        got = {"lands": lands, "red_causes": reds}
-        for name, (table, fname, _) in LEDGERS.items():
-            rows = _ledger_file(q, name)
-            got[table] = _insert(con, key, name, rows)
-            if got[table]:
-                sha = hashlib.sha256("".join(map(_body, rows)).encode()).hexdigest()
-                con.execute("INSERT OR IGNORE INTO imports VALUES (?, ?, ?, ?, ?)",
-                            (table, str(q / fname), sha, got[table], time.time()))  # fmt: skip
-    return got

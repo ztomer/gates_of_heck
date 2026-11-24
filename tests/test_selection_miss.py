@@ -141,10 +141,8 @@ def test_the_full_runs_shadow_judges_the_diff_since_the_last_run(tmp_path):
 
 
 def test_goh_land_report_shows_the_selection_misses_per_day(tmp_path, capsys):
-    (tmp_path / "done").mkdir()
     rows = _replayed()
-    # a ledger file from before GOH.STATEDB: read beside goh.db's rows until wave 3 deletes it
-    (tmp_path / "selection_misses.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    assert sm.append(tmp_path, rows) == len(rows)  # goh.db's selection_misses rows
     assert landq_report.run(tmp_path, "", False) == 0
     assert (
         f"selection misses {DAY}: 2 of 19 red lands judged (11%), 11 tests not chosen; "

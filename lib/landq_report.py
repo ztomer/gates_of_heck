@@ -1,12 +1,12 @@
 """lib/landq_report.py: `goh land --report`, where the queue's wall time goes (GOH.LANDREPORT).
 
 OWNER, 2026-11-17: "most of our wall time seems to be taken by gating and lanes stepping on each
-other toes, is this correct?" The answer was measured by hand from the done/ records; this module
-is that measurement as a command, read from `$GOH_LANDQ_DIR/done/*.json` and their logs.
+other toes, is this correct?" The answer was measured by hand from the land records; this module
+is that measurement as a command, read from goh.db's `lands` (lib/land_records.py) and the logs.
 
 ONE ATTEMPT is one done record. Its times:
 
-    enqueued   the nanosecond prefix of the file name (`<ns>-<ITEM>.json`)
+    enqueued   the nanosecond prefix of the run (`<ns>-<ITEM>`)
     started    the record's `started` (written by the lander since GOH.LANDREPORT); an OLDER
                record falls back to its log's birth time
     finished   the record's `finished`, else its `at`
@@ -29,9 +29,7 @@ conflict's red), but a batch's items (their `batch` {id, gates}, lib/landq_batch
 reading the hand count was made with). `unloaded_s` is the shortest green run in the window: what a
 gate costs when nothing else is running. `selection` is the selection-miss ledger by day
 (lib/selection_miss.py, GOH.SELECTAUDIT): {day: {judged, missed, tests, steps, full, full_missed}},
-a red attempt judged against its diff's selection.
-
-Pinned by tests/test_landq_report.py.
+a red attempt judged against its diff's selection. Pinned by tests/test_landq_report.py.
 """
 
 from __future__ import annotations
@@ -201,7 +199,7 @@ def read_attempts(queue: Path, birth_of: Callable[[Path], float | None] = birth)
     """Every done record as an Attempt; `birth_of` is the log-birth seam (a test sets it)."""
     out: list[Attempt] = []
     recs: list[tuple[Path, dict]] = []
-    for run, rec in land_records.records(queue):  # goh.db, and done/ files with no row (S1)
+    for run, rec in land_records.records(queue):  # goh.db's lands (S1)
         try:
             _stem_parts(run)
         except ValueError:
@@ -439,6 +437,8 @@ def add_arguments(mode: Any, ap: Any) -> None:
 
 
 def run(queue: Path, since: str, as_json: bool) -> int:
+    if not land_records.known():  # no goh.db: the lands are unknown, never zero (plan (d))
+        return err("goh land --report: the lands are unknown: there is no goh.db") or 2
     rep = build(read_attempts(queue), since)
     rep["selection"] = selection_miss.summary(selection_miss.read(queue), since)
     print(json.dumps(rep, indent=1) if as_json else render(rep))

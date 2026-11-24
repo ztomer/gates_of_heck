@@ -1,5 +1,6 @@
 """The landing queue's state files are written by one rename and read without crashing on a file
-that is gone or not whole (lib/landq_state.py, GOH.CIRED01310).
+that is gone or not whole (lib/landq_state.py, GOH.CIRED01310); the queue's requests and records
+are goh.db rows since GOH.LANDQDB and GOH.STATEDB, whole or absent.
 
 v0.139.10's hosted CI, under coverage on a 3-core runner: tests/test_landq_look.py's mover wrote
 the done record with `write_text` (truncate, then write) and the live `goh land --wait` read it in
@@ -21,6 +22,7 @@ from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 sys.path.insert(0, str(REPO_ROOT))
+import land_records
 import landq_look
 import landq_state
 
@@ -28,54 +30,41 @@ DONE = {"state": "landed", "sha": "b" * 40, "landed": "c" * 40, "mode": "land"}
 
 
 @pytest.mark.load_sensitive
-def test_wait_rereads_a_torn_done_record_until_it_is_whole(tmp_path, monkeypatch):
+def test_wait_reads_again_until_the_record_row_is_there(tmp_path, monkeypatch):
+    """A done record is a goh.db row (GOH.STATEDB wave 3): whole or absent, never torn. The wait
+    reads it again each tick while it is absent and returns the record the lander writes."""
     q = tmp_path / "landq"
-    (q / "done").mkdir(parents=True)
-    done = q / "done" / "01-T.S.json"
-    done.write_text("")  # the gap a truncating writer leaves: there, and empty
+    req = landq_state.put(q, "01-T.S", {"item": "T.S", "repo": "/r/x", "sha": "b" * 40},
+                          "running")  # fmt: skip
     said: list[str] = []
     monkeypatch.setattr(landq_look, "ok", said.append)
     monkeypatch.setattr(landq_look, "poll", 0.01)
-    seen_torn = threading.Event()
-    real_read = landq_state.read
+    seen_absent = threading.Event()
+    real_get = land_records.get
 
-    def watched(path: Path) -> dict | None:
-        rec = real_read(path)
-        if rec is None and path == done:
-            seen_torn.set()
+    def watched(qq: Path, run: str) -> dict | None:
+        rec = real_get(qq, run)
+        if rec is None and run == "01-T.S":
+            seen_absent.set()
         return rec
 
-    monkeypatch.setattr(landq_state, "read", watched)
+    monkeypatch.setattr(land_records, "get", watched)
 
     def finish() -> None:
-        assert seen_torn.wait(patience(30)), "the wait never read the torn record"
-        landq_state.write(done, DONE)
+        assert seen_absent.wait(patience(30)), "the wait never read the absent record"
+        land_records.write(q, "01-T.S", DONE, request=req)
 
     t = threading.Thread(target=finish)
     t.start()
     assert landq_look.wait(q, "T.S", patience(60), lambda: None) == 0
     t.join()
-    assert seen_torn.is_set() and "cccccccc" in said[-1], said
-
-
-@pytest.mark.load_sensitive
-def test_wait_names_a_done_record_that_never_becomes_whole(tmp_path, monkeypatch):
-    q = tmp_path / "landq"
-    (q / "done").mkdir(parents=True)
-    (q / "done" / "01-T.S.json").write_text('{"state": "lan')
-    said: list[str] = []
-    monkeypatch.setattr(landq_look, "err", said.append)
-    monkeypatch.setattr(landq_look, "poll", 0.01)
-    assert landq_look.wait(q, "T.S", 0.05, lambda: None) == 3
-    assert "not a whole record" in said[-1], said
+    assert seen_absent.is_set() and "cccccccc" in said[-1], said
 
 
 def test_status_skips_a_torn_request_and_reads_the_rest(tmp_path, monkeypatch):
     q = tmp_path / "landq"
-    (q / "done").mkdir(parents=True)
     ok = {"item": "T.OK", "repo": "/r/x", "sha": "a" * 40, "mode": "land"}
     landq_state.put(q, "01-T.OK", ok)  # a request is a goh.db row (GOH.LANDQDB): never torn
-    (q / "done" / "00-T.HALF.json").write_text('{"state"')
     said: list[str] = []
     monkeypatch.setattr(landq_look, "info", said.append)
     assert landq_look.status(q) == 0

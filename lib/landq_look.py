@@ -6,9 +6,10 @@ attempt's, never returned (GOH.WAITSTALE): the enqueue is marked in flight from 
 not its pre-step's, and a wait past --timeout before it files says "pre-step running", exit 3
 (GOH.WAITSTALE2). Each tick re-reads where the request is and says so
 once per change: queued behind whom, running (a batch's gate N), done (GOH.LANDWAITSTALE).
-Every record is read through lib/landq_state.py: one moved or not whole is read again next
-tick, never a crash (GOH.CIRED01310). Pinned by tests/test_landq.py, tests/test_landq_inflight.py,
-tests/test_landq_look.py, tests/test_landq_state.py.
+Every request is read through lib/landq_state.py and every record through lib/land_records.py,
+goh.db rows both: one moved is read again next tick, never a crash (GOH.CIRED01310). Pinned
+by tests/test_landq.py, tests/test_landq_inflight.py, tests/test_landq_look.py,
+tests/test_landq_state.py.
 
 THE EXIT IS THE RECORD'S (GOH.WAITEARLY, 2026-11-21): 0 only when the done record says landed, 1
 only when it says red, 3 on every other way out -- past --timeout, a SIGTERM, SIGINT or SIGHUP
@@ -115,7 +116,7 @@ def find_request(q: Path, what: str) -> Path | None:
     name = Path(what).name.removesuffix(".json")
     newest: tuple[str, Path] | None = None
     queued = [f for d in ("pending", "running") for f in landq_state.listing(q, d)]
-    for f in [*queued, *(land_records.file(q, run) for run in land_records.runs(q))]:
+    for f in [*queued, *(land_records.ref(q, run) for run in land_records.runs(q))]:
         if f.stem == name:
             return f
         mine = f.stem.partition("-")[2] == what.replace("/", "_")  # `<ns>-<item>`, exactly
@@ -129,7 +130,7 @@ def _current(q: Path, what: str) -> Path | None:
     pre-step: that record is the PREVIOUS attempt's, and the enqueue files the one to wait for
     (GOH.WAITSTALE: a re-enqueue's wait returned try 2's red)."""
     found = find_request(q, what)
-    if found is not None and found.parent.name == "done" and landq_inflight.live(q, what):
+    if found is not None and found.parent.name == land_records.REF and landq_inflight.live(q, what):
         return None
     return found
 
@@ -218,8 +219,7 @@ def _wait(q: Path, what: str, timeout: float, nudge: Callable[[], None]) -> tupl
     nudged, was, since, told, gap = 0.0, "", begun, begun, heartbeat
     run = name.removesuffix(".json")
     while (r := land_records.get(q, run)) is None:
-        torn = land_records.file(q, run).is_file()  # there, not whole: a torn write, read again
-        now = "done, its record not whole yet" if torn else where(q, name)
+        now = where(q, name)  # a record is a goh.db row: whole or absent, never torn
         tick = time.monotonic()
         if now and now != was:
             _say(info, f"goh land --wait: {what} is {now}")  # GOH.LANDWAITSTALE: each change, once
@@ -229,8 +229,7 @@ def _wait(q: Path, what: str, timeout: float, nudge: Callable[[], None]) -> tupl
                        f"({_age(name)}waited {_mins(tick - begun)})")  # fmt: skip
             told, gap = tick, terse.next_gap(gap)  # backs off: a long land is not 60 lines
         if tick > start_by:
-            whole = "; its done record is not a whole record" if torn else ""
-            return 3, f"{name} has not finished after {timeout:.0f}s{whole}"
+            return 3, f"{name} has not finished after {timeout:.0f}s"
         if landq_state.state_of(q, run) == "pending" and time.monotonic() - nudged > 30:
             nudge()  # nobody drains: start the lander
             nudged = time.monotonic()

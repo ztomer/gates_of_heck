@@ -10,10 +10,10 @@ it, so a pre-step that was not stopped is seen to run on, and to file once relea
 
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 
+import land_records
 import land_slot
 import landq_state
 import pid_owner
@@ -64,7 +64,7 @@ def _requests(env: dict[str, str]) -> list[dict]:
     q = Path(env["GOH_LANDQ_DIR"])
     return [
         *(r for d in ("pending", "running") for _, r in landq_state.rows(q, d)),
-        *(json.loads(p.read_text()) for p in sorted((q / "done").glob("*.json"))),
+        *(r for _, r in land_records.records(q)),
     ]
 
 

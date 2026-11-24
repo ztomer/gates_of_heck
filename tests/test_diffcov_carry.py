@@ -97,9 +97,7 @@ def _landed(q: Path, main: Path, wt: Path, rec: dict, item: str, filed: str = ""
     out = {"sha": sha, "enqueued": sha, "landed": sha, "repo": str(main), "mode": "land",
            "state": "landed", "item": item, "cov_risk": rec,
            **({"diffcov_item": {"id": filed, "said": "filed"}} if filed else {})}  # fmt: skip
-    (q / "done").mkdir(parents=True, exist_ok=True)
-    n = len(list((q / "done").iterdir()))
-    (q / "done" / f"{n:04d}-{item}.json").write_text(json.dumps(out))
+    gdb.land(q, f"{len(land_records.runs(q)):04d}-{item}", out)
     return out
 
 
@@ -172,7 +170,7 @@ def test_a_carried_line_since_deleted_or_judged_covered_no_longer_counts(tmp_pat
     _landed(q, main, wt, judged, "GOH.LATER")
     assert diffcov_carry.refusal(main, "v0.1.0", _git(main, "rev-parse", "HEAD"), q) is None
     # without that judgment it counts; once the line is deleted it does not
-    (q / "done" / max(p.name for p in (q / "done").iterdir())).unlink()
+    gdb.unland(q, max(land_records.runs(q)))
     head = _git(main, "rev-parse", "HEAD")
     assert diffcov_carry.refusal(main, "v0.1.0", head, q)
     _git(main, "tag", "v0.2.0")  # a land before the base tag was the last ship's
@@ -210,8 +208,8 @@ def test_an_unmeasured_carry_files_no_item_and_refuses_no_ship(tmp_path, monkeyp
     head = _git(main, "rev-parse", "HEAD")
     assert diffcov_carry.refusal(main, "v0.1.0", head, q) is None
     old = {**rec, "carry": [{k: v for k, v in c.items() if k != "measured"} for c in rec["carry"]]}
-    rec_path = next((q / "done").iterdir())
-    rec_path.write_text(json.dumps({**json.loads(rec_path.read_text()), "cov_risk": old}))
+    ((run, was),) = land_records.records(q)
+    gdb.land(q, run, {**was, "cov_risk": old})
     assert diffcov_carry.refusal(main, "v0.1.0", head, q) is None
 
 
@@ -234,8 +232,7 @@ def test_goh_ship_refuses_in_preflight_unless_allowed(tmp_path, tmp_path_factory
         "cov_risk": {"head": head, "base": "v1.0.0", "carry": [carried]},
     }
     q = tmp_path / "landq"
-    (q / "done").mkdir(parents=True)
-    (q / "done" / "1-GOH.LANE.json").write_text(json.dumps(rec))
+    gdb.land(q, "1-GOH.LANE", rec)
     t0 = time.monotonic()
     r = _ship(repo, tmp_path, "--wait", GOH_LANDQ_DIR=str(q))
     assert_sooner(time.monotonic() - t0, 4, 961, "goh ship's diff coverage preflight")
@@ -260,8 +257,7 @@ def test_goh_ship_starts_on_an_unmeasured_only_carry(tmp_path, tmp_path_factory)
     rec = {"sha": head, "landed": head, "repo": str(repo), "mode": "land", "state": "landed",
            "item": "GOH.LANE", "cov_risk": risk}  # fmt: skip
     q = tmp_path / "landq"
-    (q / "done").mkdir(parents=True)
-    (q / "done" / "1-GOH.LANE.json").write_text(json.dumps(rec))
+    gdb.land(q, "1-GOH.LANE", rec)
     r = _ship(repo, tmp_path, "--wait", GOH_LANDQ_DIR=str(q))
     assert r.returncode == 0, "an unmeasured-only carry starts the ship: " + r.stdout + r.stderr
 
@@ -314,7 +310,7 @@ def test_the_lander_files_the_item_and_names_it_on_the_landing_record(tmp_path, 
     path = landq_state.put(q, "01-GOH.LANE", req, "running")  # a goh.db row (GOH.LANDQDB)
     outcome = {"sha": req["sha"], "repo": str(tmp_path), "mode": "land", "state": "landed"}
     landq.record(path, outcome, "GOH.LANE")
-    done = json.loads(land_records.file(q, path.stem).read_text())
+    done = land_records.get(q, path.stem)
     with sqlite3.connect(db) as con:  # the record's row in goh.db (GOH.STATEDB)
         row = con.execute("SELECT run, item, state, body FROM lands").fetchall()
     assert [r[:3] for r in row] == [("01-GOH.LANE", "GOH.LANE", "landed")], row

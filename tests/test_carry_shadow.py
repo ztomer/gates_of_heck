@@ -25,6 +25,7 @@ from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import land_profile
+import land_records
 import reuse
 
 # -- the rule's choice -----------------------------------------------------------------------------
@@ -215,7 +216,7 @@ def _put(q: Path, filed: float, item: str, state: str, started: float, finished:
     rec = {"repo": "/p/gates_of_heck", "mode": "land", "state": state, "item": item,
            "started": _at(started).isoformat(), "finished": _at(finished).isoformat(),
            "log": str(q / "logs" / f"{stem}.log")}  # fmt: skip
-    (q / "done" / f"{stem}.json").write_text(json.dumps(rec))
+    land_records.write(q, f"{stem}", rec)
     (q / "logs" / f"{stem}.log").write_text("✓ pre-land green in 60 s\n")
 
 
@@ -231,7 +232,7 @@ def test_land_profile_prints_shadowed_lands_f_against_run_and_reds_outside_f(
     """OUT: red once outside F, then landed. IN: red once inside F, then landed with the suite
     reused (0 of 0). NONE: no shadow recorded (no kept record). Each red attempt is a gate run."""
     q = tmp_path / "q"
-    for d in ("done", "logs"):
+    for d in ("logs",):
         (q / d).mkdir(parents=True)
     _put(q, 0, "GOH.OUT", "red", 1, 3)
     _put(q, 4, "GOH.OUT", "landed", 5, 10)

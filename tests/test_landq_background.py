@@ -19,7 +19,8 @@ from test_landq import FAKE_LOOPCTL, LANDQ, _land_wt, landq, recorded
 from timing_bounds import GiveUp, assert_sooner, patience
 
 sys.path.insert(0, str(LANDQ.parent.parent / "lib"))
-import land_reds  # lib/, on the path above
+import land_records  # lib/, on the path above
+import land_reds
 import landq_state
 
 
@@ -106,10 +107,9 @@ def test_a_wait_beside_an_enqueue_says_pre_step_running_and_never_the_last_red(r
     the item's PREVIOUS red; and a wait past --timeout in the pre-step said "filed nothing". The
     enqueue is held in its guards, then in its pre-step, by release files: events, not clocks."""
     wt, _ = _land_wt(repo, tmp_path)
-    done = tmp_path / "landq" / "done"
-    done.mkdir(parents=True)
+    lq = tmp_path / "landq"
     old = {"item": "T.WS", "state": "red", "sha": "b" * 40, "mode": "land", "why": "try 1"}
-    landq_state.write(done / "1000000001-T.WS.json", old)
+    land_records.write(lq, "1000000001-T.WS", old)
     at = {k: tmp_path / k for k in ("in-check", "go-check", "in-pre", "go-pre")}
     hold = {k: f"touch {at['in-' + k]}; {wait_for_file(at['go-' + k])}" for k in ("check", "pre")}
     env = {**env, "GOH_LAND_CHECK_STEPS": hold["check"], "GOH_LAND_PRE": hold["pre"]}

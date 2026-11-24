@@ -24,6 +24,7 @@ from timing_bounds import GiveUp, patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 sys.path.insert(0, str(REPO_ROOT))
+import land_records
 import landq_inflight
 import landq_look
 import landq_state  # the lander's one writer: a copy that truncated tore a read (GOH.CIRED01310)
@@ -44,14 +45,13 @@ def test_wait_follows_the_request_through_every_state_once(tmp_path, monkeypatch
     where unheld it did so only when a loaded box read it in a microsecond gap (GOH.FLAKYGITDIR)."""
     q = tmp_path / "landq"
     said: list[str] = []
-    real_write = landq_state.write
+    real_write = land_records.write
 
-    def dwelling_write(path: Path, data: dict, indent: int | None = 1) -> None:
-        real_write(path, data, indent)
-        if path.parent.name == "done":
-            time.sleep(dwell_s)
+    def dwelling_write(qq: Path, run: str, rec: dict, request: Path | None = None) -> None:
+        real_write(qq, run, rec, request)
+        time.sleep(dwell_s)
 
-    monkeypatch.setattr(landq_state, "write", dwelling_write)
+    monkeypatch.setattr(land_records, "write", dwelling_write)
     monkeypatch.setattr(landq_look, "info", said.append)
     monkeypatch.setattr(landq_look, "ok", said.append)
     monkeypatch.setattr(landq_look, "poll", 0.01)
@@ -77,12 +77,9 @@ def test_wait_follows_the_request_through_every_state_once(tmp_path, monkeypatch
         after("gate 1 of a batch of 2")
         (q / "logs" / "00-T.AHEAD.gate2.log").write_text("")
         after("gate 2 of a batch of 2")
-        landq_state.drop(mine)
-        (q / "done").mkdir(
-            exist_ok=True
-        )  # ONE record, its outcome in it, as tools/landq.py record() files it
+        # ONE record, its outcome in it, the request gone with it: tools/landq.py record()
         outcome = {"item": "T.S", "mode": "land", "state": "landed", "sha": "b" * 40}
-        landq_state.write(q / "done" / mine.name, {**outcome, "landed": "c" * 40})
+        land_records.write(q, mine.stem, {**outcome, "landed": "c" * 40}, request=mine)
 
     t = threading.Thread(target=mover)
     t.start()
@@ -123,8 +120,7 @@ def test_wait_after_a_re_enqueue_waits_for_that_attempt_not_the_last_red(tmp_pat
     # done/ and its re-enqueue is still in its pre-step; the wait returned try 2's red at once.
     monkeypatch.setattr(landq_look, "poll", 0.01)
     q = tmp_path / "q"
-    (q / "done").mkdir(parents=True)
-    landq_state.write(q / "done" / "1000000001-T.S.json",
+    land_records.write(q, "1000000001-T.S",
                       {"item": "T.S", "state": "red", "sha": "b" * 40, "why": "try 2"})  # fmt: skip
     marker = landq_inflight.mark(q, "T.S")
     out: list[int] = []
@@ -134,7 +130,7 @@ def test_wait_after_a_re_enqueue_waits_for_that_attempt_not_the_last_red(tmp_pat
     t.start()
     t.join(patience(0.5))  # the old wait returned at its first look, well within this
     assert not out, "the wait returned the previous attempt's record"
-    landq_state.write(q / "done" / "1000000002-T.S.json",
+    land_records.write(q, "1000000002-T.S",
                       {"item": "T.S", "state": "landed", "sha": "c" * 40})  # fmt: skip
     landq_inflight.clear(marker)
     t.join(patience(30))

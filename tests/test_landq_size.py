@@ -19,6 +19,7 @@ from conftest import REPO_ROOT
 from test_landq_batch import enqueue_all, env, gate_runs, landq, lane, recorded  # noqa: F401
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import land_records
 import landq_batch
 import landq_report
 import landq_size
@@ -29,13 +30,12 @@ REPO = "/x/alpha"
 
 def plant(q: Path, n: int, state: str, repo: str = REPO, why: str = "exit 1", at: int = 1) -> None:
     """N done records of REPO in Q, each `state` (a red one with WHY; a landed one picked at 3)."""
-    (q / "done").mkdir(parents=True, exist_ok=True)
     for i in range(n):
         rec = {"repo": repo, "mode": "land", "state": state, "log": "",
                "at": "2026-11-23T10:00:00Z"}  # fmt: skip
         rec.update({"k": 3} if state == "landed" else {"why": why})
         stem = f"{at * 10**15 + i:020d}-T.P{at}N{i}"
-        landq_state.write(q / "done" / f"{stem}.json", rec)
+        land_records.write(q, f"{stem}", rec)
 
 
 @pytest.fixture(autouse=True)
@@ -144,7 +144,7 @@ def test_the_report_counts_no_gate_for_an_enqueue_red_and_shows_k_per_batch(tmp_
     rec = {"repo": REPO, "mode": "land", "state": "landed", "log": "", "k": 6,
            "at": "2026-11-23T10:00:00Z", "batch": {"id": "B", "items": 2, "gates": 1}}  # fmt: skip
     for i in (0, 1):
-        landq_state.write(tmp_path / "done" / f"{3 * 10**15 + i:020d}-T.B{i}.json", rec)
+        land_records.write(tmp_path, f"{3 * 10**15 + i:020d}-T.B{i}", rec)
     (row,) = landq_report.build(landq_report.read_attempts(tmp_path))["rows"]
     assert (row["landed"], row["red"], row["gates"]) == (4, 3, 3), row  # 2 lone + 1 batch gate
     assert row["k"] == {3: 2, 6: 1}, row  # two lone lands at 3, one batch of two at 6

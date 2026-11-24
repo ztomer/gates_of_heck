@@ -17,7 +17,6 @@ unless its caller declared another class. Pinned here:
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -30,6 +29,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 import gate_lanes
 import land_attempts
 import land_profile
+import land_records
 
 LOAD = REPO_ROOT / "tools" / "load.py"
 
@@ -144,15 +144,13 @@ def test_a_load_admission_in_a_lane_worktree_says_lane(tmp_path: Path) -> None:
 
 def test_the_land_profile_shows_a_lanes_wait(tmp_path: Path) -> None:
     q = tmp_path / "q"
-    for d in ("done", "logs"):
+    for d in ("logs",):
         (q / d).mkdir(parents=True)
     rec = {"repo": "/p/gates_of_heck", "mode": "land", "state": "landed", "item": "GOH.X",
            "started": "2026-11-21T10:05:00+00:00", "finished": "2026-11-21T10:20:00+00:00",
            "log": str(q / "logs" / "1-GOH.X.log"), "slot_wait_s": 95.0,
            "slot_wait_by_class": {"land": 5.0, "lane": 90.0}}  # fmt: skip
-    (q / "done" / "01795255200000000000-GOH.X.json").write_text(
-        os.linesep.join([__import__("json").dumps(rec)])
-    )
+    land_records.write(q, "01795255200000000000-GOH.X", rec)
     (q / "logs" / "1-GOH.X.log").write_text("")
     rows = land_profile.lands(q, [])
     assert rows[0]["stages"]["      slot wait lane"][0] == 90.0

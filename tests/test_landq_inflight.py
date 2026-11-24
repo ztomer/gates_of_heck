@@ -161,12 +161,12 @@ def test_a_dead_enqueue_leaves_a_red_record_not_nothing(tmp_path):
                           stdin=subprocess.DEVNULL)  # fmt: skip
     landq_inflight.mark(q, "T.V", pid=int(dead.stdout), repo="/r")
     assert landq_inflight.live(q) == []
-    records = sorted((q / "done").glob("*-T.V.json"))
+    records = [rec for run, rec in land_records.records(q) if run.endswith("-T.V")]
     assert len(records) == 1, records
-    rec = landq_state.read(records[0])
+    rec = records[0]
     assert (rec["item"], rec["repo"], rec["state"]) == ("T.V", "/r", "red"), rec
     assert "died in its pre-step" in rec["why"] and dead.stdout.strip() in rec["why"], rec
-    assert landq_inflight.live(q) == [] and len(list((q / "done").glob("*.json"))) == 1  # once
+    assert landq_inflight.live(q) == [] and len(land_records.runs(q)) == 1  # once
 
 
 @pytest.mark.load_sensitive
@@ -182,14 +182,9 @@ def test_a_dead_enqueues_record_goes_through_the_land_records_door(tmp_path, mon
     landq_inflight.mark(q, "T.V", pid=int(dead.stdout), repo="/r")
     landq_inflight.mark(q, "T.W", pid=int(dead.stdout), repo="/r")
     settled = f"{time.time_ns():020d}-T.W"
-    _goh_db_fixture.put(q, settled, {"item": "T.W", "state": "landed"})  # stamped after the mark
-    land_records.file(q, settled).unlink()  # the row alone holds it
+    _goh_db_fixture.land(q, settled, {"item": "T.W", "state": "landed"})  # stamped after the mark
     assert landq_inflight.live(q) == []
-    filed = sorted(f.name.rpartition("-")[2] for f in land_records.file(q).glob("*.json"))
-    assert filed == ["T.V.json"], filed  # T.W settled by its row: no death filed over it
-    for f in land_records.file(q).glob("*.json"):
-        f.unlink()  # the rows alone: every record below is read from goh.db
-    got = land_records.records(q)
+    got = land_records.records(q)  # T.W settled by its row: no death filed over it
     assert [r.rpartition("-")[2] for r, _ in got] == ["T.W", "T.V"], got
     rec = got[1][1]
     assert (rec["item"], rec["repo"], rec["state"]) == ("T.V", "/r", "red"), rec
@@ -205,4 +200,4 @@ def test_a_superseded_enqueue_leaves_no_record(tmp_path):
     path = landq_inflight.mark(q, "T.S", pid=int(dead.stdout))
     assert landq_inflight.supersede_mark(path)
     assert landq_inflight.live(q) == []
-    assert not list((q / "done").glob("*.json"))
+    assert land_records.runs(q) == []

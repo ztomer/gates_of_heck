@@ -27,6 +27,7 @@ from timing_bounds import GiveUp, patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 sys.path.insert(0, str(REPO_ROOT))
+import land_records
 import landq_look
 import landq_state
 
@@ -38,9 +39,8 @@ def _running(q: Path, name: str = "01-T.S") -> Path:
 
 def _land(q: Path, name: str = "01-T.S", state: str = "landed") -> None:
     landq_state.drop(q / "running" / f"{name}.json")
-    (q / "done").mkdir(exist_ok=True)
-    landq_state.write(q / "done" / f"{name}.json",
-                      {"item": "T.S", "mode": "land", "state": state, "sha": "b" * 40})  # fmt: skip
+    rec = {"item": "T.S", "mode": "land", "state": state, "sha": "b" * 40}
+    land_records.write(q, name, rec)
 
 
 def test_a_record_in_no_known_state_exits_3_not_red(tmp_path, monkeypatch, capsys):

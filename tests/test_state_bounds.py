@@ -110,9 +110,8 @@ def test_recording_a_land_runs_the_sweep(tmp_path) -> None:
     now = NOW
     q = tmp_path / "landq"
     gone = _file(q / "logs" / "01700000000000000000-GOH.OLD.log", 30 * DAY, now)
-    rec = _file(q / "done" / "01700000000000000000-GOH.OLD.json", 30 * DAY, now)
     land_prestep.discard({}, q)
-    assert not gone.exists() and not rec.exists()
+    assert not gone.exists()  # its record is a goh.db row since wave 3 (GOH.STATEDB S1)
 
 
 def test_session_start_names_an_unbounded_state_directory(tmp_path, monkeypatch) -> None:

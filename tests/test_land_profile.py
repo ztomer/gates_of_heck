@@ -17,6 +17,7 @@ from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import land_profile
+import land_records
 
 T0 = dt.datetime(2026, 11, 18, 15, 0, tzinfo=dt.UTC)
 REPO = "/p/gates_of_heck"
@@ -28,13 +29,13 @@ def at(minutes: float) -> dt.datetime:
 
 def put(q: Path, filed: float, item: str, state: str, started: float, finished: float,
         log: str = "", **extra: object) -> str:  # fmt: skip
-    for d in ("done", "logs"):
+    for d in ("logs",):
         (q / d).mkdir(parents=True, exist_ok=True)
     stem = f"{int(at(filed).timestamp() * 1e9):020d}-{item}"
     rec = {"repo": REPO, "mode": "land", "state": state, "item": item,
            "started": at(started).isoformat(), "finished": at(finished).isoformat(),
            "log": str(q / "logs" / f"{stem}.log"), **extra}  # fmt: skip
-    (q / "done" / f"{stem}.json").write_text(json.dumps(rec))
+    land_records.write(q, f"{stem}", rec)
     (q / "logs" / f"{stem}.log").write_text(log)
     return stem
 

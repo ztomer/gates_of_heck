@@ -201,8 +201,7 @@ def test_fields_judge_only_a_red_and_never_raise(tmp_path):
 
 
 def _done(q, name, rec):
-    (q / "done").mkdir(parents=True, exist_ok=True)
-    (q / "done" / name).write_text(json.dumps(rec))
+    gdb.land(q, name.removesuffix(".json"), rec)
 
 
 def test_backfill_writes_only_the_side_table_and_the_report_counts_it(tmp_path, monkeypatch):
@@ -217,9 +216,9 @@ def test_backfill_writes_only_the_side_table_and_the_report_counts_it(tmp_path, 
     _done(
         q, "04-GOH.C.json", {"state": "red", "why": "tip moved", "item": "GOH.C", "red_cause": kept}
     )
-    before = {p.name: p.read_text() for p in (q / "done").iterdir()}
+    before = land_records.records(q)
     assert lr.backfill(q) == 3
-    assert {p.name: p.read_text() for p in (q / "done").iterdir()} == before  # read-only
+    assert land_records.records(q) == before  # read-only
     side = land_records.causes(q)
     assert side["01-GOH.A.json"]["cause"] == "consistency-table"
     assert side["02-GOH.B.json"]["cause"] == "flake"  # the same commit landed later
@@ -234,7 +233,8 @@ def test_backfill_writes_only_the_side_table_and_the_report_counts_it(tmp_path, 
     assert rep["classes"]["consistency-table"]["examples"][0]["tests"] == [t]
 
 
-def test_goh_land_reds_prints_the_classes_and_json(tmp_path):
+def test_goh_land_reds_prints_the_classes_and_json(tmp_path, monkeypatch):
+    gdb.use(monkeypatch, tmp_path)  # the CLI below reads the same goh.db
     q = tmp_path / "landq"
     _done(q, "01-GOH.A.json", {"state": "red", "item": "GOH.A", "why": "tip moved after enqueue"})
     _done(q, "02-GOH.B.json", {"state": "landed", "item": "GOH.B"})

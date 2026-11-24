@@ -1,10 +1,13 @@
 """The land records' fixture side (GOH.STATEDB S1): a test's own goh.db, and a done record put
-the way the lander puts it (lib/land_records.py: the row, then the done/ file).
+the way the lander puts it (lib/land_records.py: its goh.db row).
 
     use(monkeypatch, tmp_path)   GOH_DB at tmp_path/goh.db (never the suite's, never the real one)
     made(monkeypatch, tmp_path)  use(), and the file made: a goh.db holding no record (a missing one
                                  is unknown, never empty: goh_db.Unknown)
-    put(q, run, rec)             RUN's record in queue Q, row and file
+    land(q, run, rec)            RUN's record in queue Q, its row as the lander writes it; its
+                                 reference (land_records.ref: a name, no file is there)
+    landed(q, run)               RUN's record in queue Q (None when it has none)
+    unland(q, run)               RUN's record in queue Q gone (a test's "without that record")
     ledger(db, table)            a hook ledger's rows in a test's goh.db (GOH.STATEDBS4)
     ship(result, rec)            a ship record's row at RESULT, as goh ship's save writes it (S2)
     shipped(result)              RESULT's ship row (None when it has none)
@@ -43,9 +46,20 @@ def made(monkeypatch, tmp_path: Path) -> Path:
     return db
 
 
-def put(q: Path, run: str, rec: dict) -> Path:
+def land(q: Path, run: str, rec: dict) -> Path:
     land_records.write(q, run, rec)
-    return land_records.file(q, run)
+    return land_records.ref(q, run)
+
+
+def landed(q: Path, run: str) -> dict | None:
+    return land_records.get(q, run)
+
+
+def unland(q: Path, run: str) -> None:
+    with goh_db.transaction() as con:
+        con.execute(
+            "DELETE FROM lands WHERE queue = ? AND run = ?", (land_records.queue_key(q), run)
+        )
 
 
 def ledger(db: Path, table: str = "agent_spawns") -> list[dict]:

@@ -17,8 +17,8 @@ from conftest import REPO_ROOT, hermetic_env
 from test_landq_batch import FAKE_LOOPCTL, GATE, gate_runs, landq, lane, recorded
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import land_records
 import landq_alone
-import landq_state
 
 _SEQ = itertools.count(1)  # the records' names, in the order planted: as the lander's ns stamps
 
@@ -43,9 +43,8 @@ def _enqueue(env: dict[str, str], wt: Path, item: str, *extra: str) -> None:
 
 def _record(env: dict[str, str], item: str, state: str, why: str) -> None:
     """A past attempt of ITEM in the queue's records, as the lander files one."""
-    done = Path(env["GOH_LANDQ_DIR"]) / "done"
-    done.mkdir(parents=True, exist_ok=True)
-    landq_state.write(done / f"{next(_SEQ):020d}-{item}.json", {"state": state, "why": why})
+    lq = Path(env["GOH_LANDQ_DIR"])
+    land_records.write(lq, f"{next(_SEQ):020d}-{item}", {"state": state, "why": why})
 
 
 def _three(repo: Path, tmp_path: Path, env: dict[str, str], *middle: str) -> list[str]:

@@ -94,21 +94,18 @@ def test_the_check_names_an_unlisted_growing_file_and_a_file_past_its_bound(tmp_
 def test_each_bound_keeps_what_its_readers_need() -> None:
     # land_attempts/budget_ships/cip_history/land_e2e backfill from landq/done and ship/*,
     # deduping on the ledger's refs: a row must outlive its source, or the backfill writes it again.
-    for rel in ("timing/ledger.jsonl", "landq/selection_misses.jsonl"):
-        rule = sf.FILES[rel]
-        assert isinstance(rule, sf.FileBound) and rule.days > sb.HISTORY_DAYS + 1, rel
+    rule = sf.FILES["timing/ledger.jsonl"]
+    assert isinstance(rule, sf.FileBound) and rule.days > sb.HISTORY_DAYS + 1
     assert sf.HISTORY_DAYS == sb.HISTORY_DAYS
     assert sf.FILES["timing/ledger.jsonl"].days >= 28  # the weekly usage review's month
     for rel, rule in sf.FILES.items():
         assert rule.why, rel
 
 
-def test_the_guard_log_is_bounded_and_its_writer_appends_through_the_lock(
-    tmp_path, monkeypatch
-) -> None:
+def test_the_guard_ledger_is_rows_and_a_left_file_is_unbounded(tmp_path, monkeypatch) -> None:
     # GOH.GUARDSBOUND: landq/guards.jsonl (lib/land_check.py learn) was the one unlisted file.
-    # GOH.STATEDB: learn writes goh.db's land_guards (a table bound); the file's bound stays for
-    # the pre-switch file until wave 3 deletes it.
+    # GOH.STATEDB wave 3: learn writes goh.db's land_guards (a table bound) and the file's bound
+    # is gone with it: a guards.jsonl still on disk is named, and `goh state retire lands` takes it.
     import land_check
     import land_records
 
@@ -117,10 +114,6 @@ def test_the_guard_log_is_bounded_and_its_writer_appends_through_the_lock(
     q.mkdir()
     land_check.learn(q, {"item": "T.G"}, "refused: tests/test_x.py::test_y failed")
     assert [r["guard"] for r in land_records.ledger(q, "guards")] == ["tests/test_x.py::test_y"]
-    assert not (q / "guards.jsonl").exists()
-    (q / "guards.jsonl").write_text('{"at": "2026-11-20T00:00:00Z"}\n')  # a pre-switch file
-    assert not sb.unbounded(tmp_path, NOW), sb.unbounded(tmp_path, NOW)
-    rule = sf.FILES["landq/guards.jsonl"]
-    assert isinstance(rule, sf.FileBound) and rule.stamp == "at" and rule.lock == "state_file"
-    (q / "unlisted.jsonl").write_text("{}\n")  # the check still bites beside it
-    assert sb.unbounded(tmp_path, NOW) == ["landq/unlisted.jsonl: an append-only file and no bound"]
+    assert not (q / "guards.jsonl").exists() and "landq/guards.jsonl" not in sf.FILES
+    (q / "guards.jsonl").write_text('{"at": "2026-11-20T00:00:00Z"}\n')  # an old goh's file
+    assert sb.unbounded(tmp_path, NOW) == ["landq/guards.jsonl: an append-only file and no bound"]

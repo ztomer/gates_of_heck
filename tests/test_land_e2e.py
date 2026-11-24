@@ -9,7 +9,6 @@ one gate and is N runs. The two subjects judge the median of their last five run
 from __future__ import annotations
 
 import datetime as dt
-import json
 import sys
 from pathlib import Path
 
@@ -19,6 +18,7 @@ from conftest import REPO_ROOT
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import budget
 import land_e2e
+import land_records
 import timing_ledger
 
 MIN = 60.0
@@ -38,13 +38,13 @@ def ns(minutes: float) -> str:
 def put(q: Path, filed: float, item: str, state: str, started: float, finished: float,
         log: str = PLAIN_LINE, **extra: object) -> str:  # fmt: skip
     """A done record and its log, filed at minute FILED, run STARTED..FINISHED (minutes)."""
-    for d in ("done", "logs"):
+    for d in ("logs",):
         (q / d).mkdir(parents=True, exist_ok=True)
     stem = f"{ns(filed)}-{item}"
     rec = {"repo": "/p/gates_of_heck", "mode": "land", "state": state, "item": item,
            "started": iso(started), "finished": iso(finished),
            "log": str(q / "logs" / f"{stem}.log"), **extra}  # fmt: skip
-    (q / "done" / f"{stem}.json").write_text(json.dumps(rec))
+    land_records.write(q, f"{stem}", rec)
     (q / "logs" / f"{stem}.log").write_text(log)
     return stem
 
@@ -158,9 +158,9 @@ def test_a_red_chain_a_push_and_a_record_without_times_are_no_e2e(ledger: Path) 
     put(ledger, 0.0, "GOH.A", "red", 1.0, 3.0)
     put(ledger, 0.0, "GOH.P", "landed", 1.0, 3.0, mode="push")
     stem = put(ledger, 0.0, "GOH.N", "landed", 1.0, 3.0)
-    rec = json.loads((ledger / "done" / f"{stem}.json").read_text())
+    rec = land_records.get(ledger, stem)
     del rec["finished"]
-    (ledger / "done" / f"{stem}.json").write_text(json.dumps(rec))
+    land_records.write(ledger, f"{stem}", rec)
     assert land_e2e.rows(ledger) == []
 
 

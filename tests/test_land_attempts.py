@@ -9,7 +9,6 @@ numbered 1 and 2, and `goh budget` shows the item's chain as one `land retries` 
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -19,6 +18,7 @@ from test_landq import env, landq, make_repo  # noqa: F401 -- `env` is the queue
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import budget
 import land_attempts
+import land_records
 import timing_ledger
 
 FAIL = "#!/bin/sh\nsleep 0.2\nexit 1\n"
@@ -54,15 +54,14 @@ def test_a_chain_still_red_is_an_open_failed_run() -> None:
 
 
 def test_the_attempt_number_counts_reds_since_the_items_last_landing(tmp_path: Path) -> None:
-    done = tmp_path / "done"
-    done.mkdir()
+    lq = tmp_path
     for i, (item, state) in enumerate(
         [("GOH.A", "red"), ("GOH.A", "landed"), ("GOH.A", "red"), ("GOH.B", "red")]
     ):
-        (done / f"{i:020d}-{item}.json").write_text(json.dumps({"state": state}))
-    assert land_attempts.attempt_of(done.parent, "GOH.A") == 2
-    assert land_attempts.attempt_of(done.parent, "GOH.B") == 2
-    assert land_attempts.attempt_of(done.parent, "GOH.C") == 1
+        land_records.write(lq, f"{i:020d}-{item}", {"state": state})
+    assert land_attempts.attempt_of(lq, "GOH.A") == 2
+    assert land_attempts.attempt_of(lq, "GOH.B") == 2
+    assert land_attempts.attempt_of(lq, "GOH.C") == 1
 
 
 def test_a_red_then_green_land_through_the_queue_is_two_rows_and_one_budget_chain(
@@ -81,7 +80,7 @@ def test_a_red_then_green_land_through_the_queue_is_two_rows_and_one_budget_chai
         done = landq(env, "--drain")
         assert done.returncode == 0, done.stdout + done.stderr
     assert git(remote, "rev-parse", "main").strip() == sha
-    records = [json.loads(p.read_text()) for p in sorted((tmp_path / "landq/done").glob("*.json"))]
+    records = [r for _, r in land_records.records(tmp_path / "landq")]
     assert [(r["item"], r["attempt"], r["state"]) for r in records] == [
         ("T.RETRY", 1, "red"),
         ("T.RETRY", 2, "landed"),
@@ -104,16 +103,15 @@ def test_a_red_then_green_land_through_the_queue_is_two_rows_and_one_budget_chai
 
 def test_done_records_with_their_times_are_backfilled_once(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("GOH_TIMING_DIR", str(tmp_path / "t"))
-    done = tmp_path / "done"
-    done.mkdir()
+    lq = tmp_path
     times = {"started": "2026-11-17T10:00:00+00:00", "finished": "2026-11-17T10:08:57+00:00"}
     second = {"started": "2026-11-17T10:10:00+00:00", "finished": "2026-11-17T10:15:00+00:00"}
     goh = {"repo": "/p/gates_of_heck"}
-    (done / "01-GOH.X.json").write_text(json.dumps({**goh, "state": "red", **times}))
-    (done / "02-GOH.X.json").write_text(json.dumps({**goh, "state": "landed", **second}))
-    (done / "03-GOH.Y.json").write_text(json.dumps({"repo": "/p/x", "state": "landed"}))  # no times
-    assert land_attempts.backfill(done.parent) == 2
-    assert land_attempts.backfill(done.parent) == 0
+    land_records.write(lq, "01-GOH.X", {**goh, "state": "red", **times})
+    land_records.write(lq, "02-GOH.X", {**goh, "state": "landed", **second})
+    land_records.write(lq, "03-GOH.Y", {"repo": "/p/x", "state": "landed"})  # no times
+    assert land_attempts.backfill(lq) == 2
+    assert land_attempts.backfill(lq) == 0
     rows = timing_ledger.read()
     assert [(r["subject"], r["item"], r["attempt"], r["wall_s"]) for r in rows] == [
         ("goh land attempt", "GOH.X", 1, 537.0),

@@ -100,7 +100,6 @@ REGISTRY: dict[str, Bound | Kept | Container] = {
         r"^(\d{10,}-|idle-suite-[0-9a-f]+)",
         "a land's log, its batch gate's logs and their timings",
     ),
-    "landq/done": Bound(HISTORY_DAYS, LAND_RUNS, r"^\d{10,}-.+\.json$", "one record per attempt"),
     # an older goh's request files: goh.db rows since GOH.LANDQDB, imported by the next lander
     "landq/pending": Kept("an older goh's requests, imported into goh.db by the lander"),
     "landq/running": Kept("an older goh's request in flight, imported into goh.db by the lander"),
@@ -219,11 +218,6 @@ def sweep(root: Path | None = None, now: float | None = None) -> list[Path]:
     Housekeeping: never raises."""
     root = state_root() if root is None else root
     removed: list[Path] = []
-    if any(s.name == "goh" for s in db_bounds.under(root, state_root())):
-        import land_records  # GOH.STATEDB: a done/ file is a row before its bound prunes it
-
-        with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
-            land_records.import_done(root / "landq")
     for rel, rule in REGISTRY.items():
         if isinstance(rule, Bound):
             for d in _dirs(root, rel):

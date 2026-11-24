@@ -59,22 +59,6 @@ FILES: dict[str, FileBound | FileKept] = {
         "(a week either side), and the backfills (land_e2e, land_attempts, budget_ships, "
         "cip_history) deduping on refs whose sources live HISTORY_DAYS",
     ),
-    "landq/selection_misses.jsonl": FileBound(
-        LEDGER_DAYS,
-        20000,
-        "day",
-        "state_file",
-        "the pre-GOH.STATEDB file: lib/selection_miss.py now writes goh.db's selection_misses "
-        "(lib/land_records.py) and reads this file's lines no row holds, until wave 3 deletes it",
-    ),
-    "landq/guards.jsonl": FileBound(
-        HISTORY_DAYS,
-        5000,
-        "at",
-        "state_file",
-        "the pre-GOH.STATEDB file: lib/land_check.py learn now writes goh.db's land_guards "
-        "(lib/land_records.py) and reads this file's lines no row holds, until wave 3 deletes it",
-    ),
     "landq/lander.log": FileBound(
         None,
         20000,

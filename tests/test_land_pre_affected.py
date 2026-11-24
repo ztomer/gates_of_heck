@@ -10,9 +10,9 @@ per tree before the land gate, is counted from the records (24 lands measured fr
 
 from __future__ import annotations
 
-import json
 import shlex
 
+import land_records
 import landq_state
 import pytest
 from test_landq import _land_wt, _pending, env, landq  # noqa: F401  -- `env` is the queue's fixture
@@ -53,5 +53,5 @@ def test_the_request_and_its_done_record_say_what_the_pre_step_did_with_the_lane
     assert landq_state.get(path).get("pre_affected") == want  # a goh.db row (GOH.LANDQDB)
     drained = landq(env, "--drain")
     assert drained.returncode == 0, drained.stdout + drained.stderr
-    (rec,) = (tmp_path / "landq" / "done").glob("*-T.A.json")
-    assert json.loads(rec.read_text()).get("pre_affected") == want
+    (rec,) = [r for run, r in land_records.records(tmp_path / "landq") if run.endswith("-T.A")]
+    assert rec.get("pre_affected") == want

@@ -20,6 +20,7 @@ from test_landq import FAKE_LOOPCTL, LANDQ, landq, make_repo
 from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import land_records
 import landq_report as lr
 import landq_state
 
@@ -38,9 +39,7 @@ def put(q: Path, enq: float, item: str, repo: str, state: str, fin: float, **ext
     log.write_text(extra.pop("log", ""))
     rec = {"repo": f"/x/{repo}", "state": state, "log": str(log), "at": iso(fin)[:19] + "Z"}
     rec.update(extra)
-    (q / "done").mkdir(parents=True, exist_ok=True)
-    out = q / "done" / f"{stem}.json"
-    landq_state.write(out, rec)
+    land_records.write(q, stem, rec)  # its goh.db row, as the lander writes it
     return log
 
 
@@ -55,6 +54,12 @@ def fixture(q: Path, *, new_only: bool) -> dict[Path, float]:
     alpha 11-16: E (outside --since 2026-11-17)
     """
     born: dict[Path, float] = {}
+    if new_only:  # the records B, D and F (and their logs' births) are not filed
+        put(q, 0, "A", "alpha", "landed", 660, started=iso(60), slot_wait_s=100, load_start=4.0)
+        put(q, 2000, "C", "alpha", "landed", 2300, started=iso(2000), slot_wait_s=0,
+            load_start=8.0)  # fmt: skip
+        put(q, -86400, "E", "alpha", "landed", -86000, started=iso(-86300), slot_wait_s=0)
+        return born
     put(q, 0, "A", "alpha", "landed", 660, started=iso(60), slot_wait_s=100, load_start=4.0)
     put(q, 2000, "C", "alpha", "landed", 2300, started=iso(2000), slot_wait_s=0, load_start=8.0)
     put(q, -86400, "E", "alpha", "landed", -86000, started=iso(-86300), slot_wait_s=0)
@@ -65,9 +70,6 @@ def fixture(q: Path, *, new_only: bool) -> dict[Path, float]:
     log = put(q, 10, "F", "beta", "red", 1220, log="waited 1m 00s for a gate slot; still held:\n"
               "waited 4m 30s for a gate slot; still held:\n")  # fmt: skip
     born[log] = T0 + 20
-    if new_only:
-        for p in (q / "done").glob("*-[BDF].json"):
-            p.unlink()
     return born
 
 
@@ -130,9 +132,9 @@ def test_no_run_time_is_ever_negative_and_a_reused_log_is_unknown(tmp_path):
 
 def test_two_records_sharing_one_log_are_both_unknown(tmp_path):
     first = put(tmp_path, 0, "G", "alpha", "red", 400)
-    second = tmp_path / "done" / f"{int((T0 + 500) * 1e9):020d}-G.json"
-    landq_state.write(second, {"repo": "/x/alpha", "state": "landed", "log": str(first),
-                               "at": iso(900)[:19] + "Z"})  # fmt: skip
+    land_records.write(tmp_path, f"{int((T0 + 500) * 1e9):020d}-G",
+                       {"repo": "/x/alpha", "state": "landed", "log": str(first),
+                        "at": iso(900)[:19] + "Z"})  # fmt: skip
     atts = lr.read_attempts(tmp_path, birth_of=lambda p: T0 + 50)
     assert all(a.gate_s is None for a in atts), atts
 
@@ -196,8 +198,7 @@ def test_the_lander_writes_started_finished_slot_wait_and_load_into_each_done_re
     hook.write_text(hook.read_text().replace("sleep 0.4", taken))
     assert landq(qenv, "--enqueue", str(repo), sha, "--item", "T.R", "--no-start").returncode == 0
     landq(qenv, "--drain")
-    (rec_path,) = (tmp_path / "landq" / "done").glob("*-T.R.json")
-    rec = json.loads(rec_path.read_text())
+    ((_, rec),) = [x for x in land_records.records(tmp_path / "landq") if x[0].endswith("-T.R")]
     assert rec["state"] == "landed" and rec["slot_wait_s"] == 7, rec
     started, finished = (dt.datetime.fromisoformat(rec[k]) for k in ("started", "finished"))
     assert started <= finished and (finished - started).total_seconds() >= 0.4, rec
@@ -211,8 +212,7 @@ def test_a_refused_request_still_carries_started_and_finished(tmp_path, qenv):
     req = {"mode": "land", "repo": str(repo), "worktree": str(repo), "sha": "0" * 40, "item": ""}
     landq_state.put(tmp_path / "landq", f"{int(T0 * 1e9):020d}-T.S", req)
     landq(qenv, "--drain")
-    (rec_path,) = (tmp_path / "landq" / "done").glob("*-T.S.json")
-    rec = json.loads(rec_path.read_text())
+    ((_, rec),) = [x for x in land_records.records(tmp_path / "landq") if x[0].endswith("-T.S")]
     assert rec["why"] == "tip moved after enqueue", rec
     assert {"started", "finished", "slot_wait_s"} <= set(rec), rec
 

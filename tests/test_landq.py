@@ -23,6 +23,7 @@ from _fast_git import fast_init
 from conftest import REPO_ROOT, commit_all, git, hermetic_env, write
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import land_records
 import landq_state
 import source_closure as sc
 from timing_bounds import GiveUp, patience
@@ -237,7 +238,7 @@ def test_a_landed_request_carries_its_request_time_and_is_one_e2e_row(repo, tmp_
     env = {**env, "GOH_LAND_GATE": "true", "GOH_TIMING_DIR": str(tmp_path / "timing")}
     assert enq(env, "--land", str(wt), "--item", "T.E", "--no-start").returncode == 0
     assert landq(env, "--drain").returncode == 0
-    (rec,) = [json.loads(p.read_text()) for p in (tmp_path / "landq" / "done").glob("*.json")]
+    (rec,) = [r for _, r in land_records.records(tmp_path / "landq")]
     assert rec["requested"].endswith("Z") and isinstance(rec["pre_s"], float), rec
     rows = [
         json.loads(ln) for ln in (tmp_path / "timing" / "ledger.jsonl").read_text().splitlines()

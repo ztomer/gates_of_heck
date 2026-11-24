@@ -15,7 +15,6 @@ past `GOH_GATE_SLOT_STARVE_MIN` goes ahead of every class. Pinned here:
 
 from __future__ import annotations
 
-import json
 import sys
 import time
 from pathlib import Path
@@ -26,6 +25,8 @@ from conftest import REPO_ROOT
 from test_gate_slot_fair import Waiter, _cleanup
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import land_records
+
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 import gate_lanes
 import land_attempts
@@ -184,13 +185,13 @@ def test_the_slot_wait_is_read_per_class_from_a_lands_log(tmp_path: Path) -> Non
 def test_the_land_profile_and_the_ledger_row_show_each_class(tmp_path: Path) -> None:
     """The record's per-class waits are stages under `slot wait`, in rank order."""
     q = tmp_path / "q"
-    for d in ("done", "logs"):
+    for d in ("logs",):
         (q / d).mkdir(parents=True)
     rec = {"repo": "/p/gates_of_heck", "mode": "land", "state": "landed", "item": "GOH.X",
            "started": "2026-11-21T10:05:00+00:00", "finished": "2026-11-21T10:20:00+00:00",
            "log": str(q / "logs" / "1-GOH.X.log"), "slot_wait_s": 201.0,
            "slot_wait_by_class": {"land": 161.0, "short": 40.0}}  # fmt: skip
-    (q / "done" / "01795255200000000000-GOH.X.json").write_text(json.dumps(rec))
+    land_records.write(q, "01795255200000000000-GOH.X", rec)
     (q / "logs" / "1-GOH.X.log").write_text(LOG)
     rows = land_profile.lands(q, [])
     assert len(rows) == 1, rows

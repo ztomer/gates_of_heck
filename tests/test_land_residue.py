@@ -11,10 +11,10 @@ Found by GOH.BATCHPREFROM on 2026-11-19, three kinds of residue:
 
 from __future__ import annotations
 
-import json
 import subprocess
 from pathlib import Path
 
+import land_records
 import landq_state
 import pytest
 from _fast_git import fast_init
@@ -109,8 +109,8 @@ def test_a_finished_land_leaves_no_files_of_its_own_and_keeps_its_timings(
     assert all(got[f"T.{n.upper()}"]["state"] == "landed" for n in names), got
     assert list((q / "pre").iterdir()) == []
     assert [n for n in _goh_left(tmpdir) if n.startswith("goh-land")] == []
-    for path in sorted((q / "done").glob("*.json")):
-        rec = json.loads(path.read_text())
+    for run, rec in land_records.records(q):
+        path = land_records.ref(q, run)
         kept = land_steps.kept_timings(q, path, rec)
         assert any(p.is_file() for p in kept), (
             kept,

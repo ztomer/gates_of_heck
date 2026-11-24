@@ -20,8 +20,8 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 sys.path.insert(0, str(REPO_ROOT))
 import land_check
 import land_prestep
+import land_records
 import landq_look
-import landq_state
 import terse
 
 
@@ -70,10 +70,9 @@ def test_full_prints_the_whole_log(monkeypatch):
 
 def _red_done(q: Path, log: Path) -> None:
     (q / "running").mkdir(parents=True)
-    (q / "done").mkdir()
     rec = {"item": "T.T", "mode": "land", "state": "red", "sha": "c" * 40, "log": str(log),
            "why": "the pre-land tests failed on cccccccc\n" + "excerpt line\n" * 200}  # fmt: skip
-    landq_state.write(q / "done" / "01-T.T.json", rec)
+    land_records.write(q, "01-T.T", rec)
 
 
 def test_a_red_wait_prints_a_summary_under_30_lines(tmp_path, monkeypatch, capsys):

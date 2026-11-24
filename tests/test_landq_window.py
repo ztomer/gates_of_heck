@@ -17,6 +17,7 @@ import pytest
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import land_records
 import landq_state  # lib/, after its path
 
 LANDQ = REPO_ROOT / "tools" / "landq.py"
@@ -43,7 +44,7 @@ class Clock:
 
 def _dirs(tmp_path: Path) -> Path:
     q = tmp_path / "landq"
-    for d in ("done", "logs"):  # the requests are goh.db rows (GOH.LANDQDB)
+    for d in ("logs",):  # the requests are goh.db rows (GOH.LANDQDB)
         (q / d).mkdir(parents=True)
     return q
 
@@ -257,7 +258,7 @@ def test_a_name_that_is_no_filing_time_is_read_by_its_mtime(window, tmp_path):
 # done records how long its repo's pre-steps take; the window stretches to the latest one due.
 def _done(q: Path, pre_s: list[float], repo: str = REPO) -> None:
     for n, s in enumerate(pre_s):
-        landq_state.write(q / "done" / f"{n:020d}-T.D{n}.json", {"repo": repo, "pre_s": s})
+        land_records.write(q, f"{n:020d}-T.D{n}", {"repo": repo, "pre_s": s})
 
 
 def _started(q: Path, item: str, at: float) -> Path:

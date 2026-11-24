@@ -24,6 +24,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 import land_e2e
 import land_prestep
 import land_profile
+import land_records
 import land_spd
 
 COVERAGE = "  100.00 s 300.00 s cpu  rc=0   wt   coverage (floor 93.1%)\n"
@@ -73,8 +74,7 @@ def test_the_e2e_starts_at_the_first_enqueue_attempt_red_ones_included(tmp_path:
     for item in ("GOH.E1", "GOH.E2"):
         red = {"repo": REPO, "mode": "land", "state": "red", "item": item, "requested": iso(-2),
                "why": "enqueue pre-step: the pre-land tests failed"}  # fmt: skip
-        (q / "done").mkdir(exist_ok=True)
-        (q / "done" / f"{ns(-1)}-{item}.json").write_text(json.dumps(red))
+        land_records.write(q, f"{ns(-1)}-{item}", red)
         put(q, 4, item, "landed", 5, 20, COVERAGE, requested=iso(3))
     e1, e2 = land_profile.lands(q, [])
     assert e1["stages"]["e2e"][0] == 25 * 60  # from the enqueue log, never from the request at 3
