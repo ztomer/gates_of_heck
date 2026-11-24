@@ -81,3 +81,5 @@ GOH_DB
 GOH_DB_BUSY_MS
 GOH_CACHE_DB
 GOH_CACHE_DB_BUSY_MS
+# Which SCCACHE_DIR goh pinned (GOH.SCCACHEROOTFOLLOW): where compiles are cached, never what passes.
+GOH_SCCACHE_PINNED

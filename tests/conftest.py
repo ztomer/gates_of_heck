@@ -26,9 +26,9 @@ from suite_tmp import live_suite_mark, nested_root  # noqa: F401  (autouse: GOH.
 # tree on purpose -- and a gate started under pytest WITHOUT it refuses rather than quietly
 # judging HEAD. A test that builds its environment by dropping GOH_* must keep this one.
 os.environ["GOH_LIVE"] = "1"
-# ...and the refusal is THIS suite's: the marker says so, and is not GOH_-prefixed so hermetic_env
-# keeps it. A consumer's pytest has no marker and gets the export like any other caller.
-os.environ["GATES_OF_HECK_SUITE"] = "1"
+# ...and the refusal is THIS suite's: the marker (not GOH_-prefixed: hermetic_env keeps it) says so;
+# a consumer's pytest has none. And no child starts the machine's sccache (suite_home.CACHE_TIER).
+os.environ.update(GATES_OF_HECK_SUITE="1", GOH_SCCACHE_UP="off")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

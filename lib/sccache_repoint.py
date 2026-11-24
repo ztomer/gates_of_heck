@@ -10,17 +10,20 @@ for --idle seconds and no rustc running), stops the server, and starts it again 
 from cwd `/` (so the server never holds the drive as its cwd), with SCCACHE_CACHE_SIZE set to
 lib/sccache_cap.py's cap (an environment SCCACHE_DIR replaces the config file's disk section, cap
 included: GOH.REPOINTSIZE) and never SCCACHE_BASEDIRS (false hits for Rust and, with
-preprocessor cache mode, for C: design.md section 3). Clients run with
-SCCACHE_IGNORE_SERVER_IO_ERROR=1, so a build caught by the restart compiles locally.
+preprocessor cache mode, for C: design.md section 3). lib/goh-rustc
+exports SCCACHE_IGNORE_SERVER_IO_ERROR=1, so a build caught by the restart compiles locally.
 
 An unplug mid-build costs compiles, never a red gate (probed: 12 cache write errors, exit 0); this
 restores caching after it. Stats reset with each restart.
 
-The half-hourly evictor sweep (lib/cache_sweep.py) calls `follow` every run, so a drive that comes
-or goes is followed within one sweep with no call from anyone (GOH.CACHEEVICT2).
+The half-hourly evictor sweep (lib/cache_sweep.py) calls `follow` every run: any difference, a
+drive that came or went or a server somebody started on the default dir, is applied within one
+sweep (GOH.CACHEEVICT2, GOH.SCCACHEROOTFOLLOW). `start` starts a MISSING server on the resolver's
+root: lib/goh-rustc, and the gates' entry through it, call it when none answers.
 
 usage: sccache_repoint.py check                  exit 1 (and the command to run) when it differs
        sccache_repoint.py apply [--idle S] [--timeout S]
+       sccache_repoint.py start [INTERNAL]    start a missing server; INTERNAL is the fallback dir
 """
 
 from __future__ import annotations
@@ -38,7 +41,9 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 import contextlib
 import json
 import os
+import pwd
 import re
+import stat
 import subprocess
 import sys
 import time
@@ -52,6 +57,7 @@ SUBDIR = "sccache"
 IDLE_S = 30.0
 TIMEOUT_S = 1800.0
 POLL_S = 5.0
+RESTARTS = 3
 DROP = ("SCCACHE_CACHE_SIZE", "SCCACHE_BASEDIRS", "SCCACHE_DIR")
 _LOC = re.compile(r'^Local disk: "(.*)"$')
 
@@ -149,59 +155,131 @@ def wait_idle(env: Env, want: str, idle_s: float, timeout_s: float) -> bool:
     return False
 
 
-def repoint(env: Env, want: str, idle_s: float = IDLE_S, timeout_s: float = TIMEOUT_S) -> str:
-    """'already', 'repointed', 'busy' (never went idle) or 'failed: <why>'."""
+def repoint(env: Env, want: str, idle_s: float = IDLE_S, timeout_s: float = TIMEOUT_S,
+            force: bool = False) -> str:  # fmt: skip
+    """'already', 'repointed', 'busy' (never went idle; FORCE restarts it then) or 'failed: <why>'.
+    A plain client can start a server on its own dir between the stop and the start: retried."""
     st = stats(env, want)
     if location(st) == os.path.normpath(want):
         return "already"
-    if not wait_idle(env, want, idle_s, timeout_s):
+    if not wait_idle(env, want, idle_s, timeout_s) and not force:
         return "busy"
-    env.run("--stop-server")
-    started = env.run("--start-server", sccache_dir=want, cwd="/")
-    got = location(stats(env, want))
-    if got != os.path.normpath(want):
-        return f"failed: serving {got} after the restart ({started.stderr.strip()[:200]})"
-    return "repointed"
+    for _try in range(RESTARTS):
+        env.run("--stop-server")
+        started = env.run("--start-server", sccache_dir=want, cwd="/")
+        got = location(stats(env, want))
+        if got == os.path.normpath(want):
+            return "repointed"
+    return f"failed: serving {got} after the restart ({started.stderr.strip()[:200]})"
 
 
 FOLLOW_TIMEOUT_S = 300.0  # a sweep waits this long for quiet, then retries at the next sweep
+FORCE_AFTER_S = 3600.0  # owed this long with no idle window: the restart waits no more
+
+
+def served(env: Env, want: str) -> str | None:
+    """The dir a RUNNING server serves; None with no server (the stats call would start one)."""
+    return location(stats(env, want)) if env.alive() else None
 
 
 def follow(
     env: Env,
     want: str,
-    last: str | None,
     internal: str,
+    now: float,
+    owed: float | None,
+    hold: dict | None,
     idle_s: float = IDLE_S,
     timeout_s: float = FOLLOW_TIMEOUT_S,
     act: bool = True,
-) -> tuple[str, str | None]:
-    """One sweep's step (GOH.CACHEEVICT2): (status, the root to record as the last answer).
+) -> tuple[str, float | None]:
+    """One sweep's step (GOH.SCCACHEROOTFOLLOW): (status, since when a move is owed).
 
-    Re-points only when the resolver's answer CHANGED since the last sweep (`last`: the drive came
-    or went) or the server serves a root that is neither `internal` nor `want` (a drive that left
-    between two sweeps it was recorded in). A mismatch already standing at the last sweep is left:
-    it is a choice (a hit-rate window, which a restart's stats reset would void), and `apply` moves
-    it. The first sweep only records. A server that is not running is never started here (the
-    stats call starts one). With no server, or a busy one, the OLD answer stays recorded, so the
-    next sweep that finds a server idle makes the move."""
-    if last is None:
-        return "recorded", want
-    if not env.alive():
-        return "no server", last  # the change is still owed to the server that starts next
-    got = location(stats(env, want))
-    if got == os.path.normpath(want):
-        return "already", want
-    lost = got is not None and got not in (os.path.normpath(internal), os.path.normpath(want))
-    if os.path.normpath(last) == os.path.normpath(want) and not lost:
-        return (
-            f"differs: serving {got}, the resolver wants {want} (standing; `apply` moves it)",
-            want,
-        )
+    ANY difference between the root served and `want` is applied once the server is idle, and past
+    FORCE_AFTER_S of no idle window without one: continuous builds cannot hold it off for ever.
+    `hold` ({"until", "why"}, `cache_sweep.py hold`) leaves a difference until it expires (a
+    hit-rate window, which a restart's stats reset would void); a server on a root that is neither
+    `internal` nor `want` (the drive left) comes home regardless. A server that is not running is
+    never started here: the next compile starts it on the resolver's root (`start`)."""
+    got = served(env, want)
+    if got is None:
+        return "no server", None
+    home, there = os.path.normpath(internal), os.path.normpath(want)
+    if got == there:
+        return "already", None
+    if hold and now < hold["until"] and got == home:
+        left = (hold["until"] - now) / 3600
+        return f"held {left:.1f} h more ({hold['why']}): serving {got}, not {want}", None
+    owed = now if owed is None else owed
     if not act:
-        return f"would re-point: serving {got}, the resolver wants {want}", last
-    verdict_s = repoint(env, want, idle_s, timeout_s)
-    return verdict_s, (want if verdict_s in ("already", "repointed") else last)
+        return f"would re-point: serving {got}, the resolver wants {want}", owed
+    said = repoint(env, want, idle_s, timeout_s, force=now - owed >= FORCE_AFTER_S)
+    return said, (None if said in ("already", "repointed") else owed)
+
+
+def fallback_dir(named: str, home: str | None = None) -> str:
+    """The internal dir `start` falls back to: NAMED (the gate's pin), but never one under a
+    sandbox's HOME, which the server would keep for its life (GOH.CACHEBOUND)."""
+    home = home or pwd.getpwuid(os.getuid()).pw_dir
+    if named and (sys.platform != "darwin" or named.startswith(home.rstrip("/") + "/")):
+        return named
+    return internal_dir({**os.environ, "HOME": home})
+
+
+def start(env: Env, verdict: cache_tier.Verdict, internal: str) -> str:
+    """A missing server started on the resolver's root, `internal` when the drive cannot hold it;
+    the line that says where it is and why."""
+    want, why = internal, verdict.reason
+    if verdict.external:
+        try:
+            want = want_dir(verdict)
+        except OSError as e:
+            why = f"{verdict.root} left: {e}"
+    out = env.run("--start-server", sccache_dir=want, cwd="/")
+    got = location(stats(env, want))
+    if got is None and want != internal:
+        why = f"no server on {want}: {out.stderr.strip()[:200]}"
+        env.run("--start-server", sccache_dir=internal, cwd="/")
+        got = location(stats(env, internal))
+    tier = "external" if want != internal and got == os.path.normpath(want) else "internal"
+    return f"sccache: server started, serving {got} ({tier}: {why})"
+
+
+LOG_MAX = 64 << 10
+
+
+def say(line: str) -> None:
+    """LINE printed, and kept in the start log: the wrapper's own output is the crate's to cargo."""
+    print(line)
+    path = os.environ.get("GOH_SCCACHE_LOG") or os.path.expanduser(
+        "~/.local/state/goh/sccache-start.log")  # fmt: skip
+    with contextlib.suppress(OSError):
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        big = os.path.exists(path) and os.path.getsize(path) > LOG_MAX
+        with open(path, "w" if big else "a", encoding="utf-8") as log:
+            log.write(f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} {line}\n")
+
+
+def trim(path: str, cap: int) -> int:
+    """The least recently used files of the sccache dir PATH deleted until it holds CAP bytes; the
+    bytes freed. Only for a dir no server serves (a live one's LRU is the server's)."""
+    if os.path.islink(path):
+        return 0
+    found = []
+    for base, _dirs, names in os.walk(path):  # follows no symlink
+        for name in names:
+            with contextlib.suppress(OSError):
+                st = os.lstat(os.path.join(base, name))
+                if stat.S_ISREG(st.st_mode):
+                    found.append((max(st.st_mtime, st.st_atime), st.st_size, base, name))
+    total, freed = sum(f[1] for f in found), 0
+    for _used, size, base, name in sorted(found):
+        if total - freed <= cap:
+            break
+        with contextlib.suppress(OSError):
+            os.unlink(os.path.join(base, name))
+            freed += size
+    return freed
 
 
 def main(argv: list[str]) -> int:
@@ -210,6 +288,12 @@ def main(argv: list[str]) -> int:
         return 0
     verdict = cache_tier.resolve(cache_tier.internal_root())
     env = Env()
+    if argv[:1] == ["start"]:
+        named = os.environ.get("GOH_RUSTC_NEXT", "")
+        if os.path.basename(named) == "sccache":
+            env.sccache = named  # the sccache the wrapper is about to run
+        say(start(env, verdict, fallback_dir(argv[1] if len(argv) > 1 else "")))
+        return 0
     want = want_dir(verdict) if argv[:1] == ["apply"] else (
         os.path.join(verdict.root, SUBDIR) if verdict.external else internal_dir())  # fmt: skip
     tier = "external" if verdict.external else "internal"

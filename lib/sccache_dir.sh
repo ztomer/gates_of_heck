@@ -20,5 +20,8 @@ if [ -z "${SCCACHE_DIR:-}" ]; then
         *) SCCACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/sccache" ;;
     esac
     export SCCACHE_DIR
+    export GOH_SCCACHE_PINNED="$SCCACHE_DIR"   # goh's word, not the user's choice: lib/goh-rustc reads it
 fi
 unset SCCACHE_CACHE_SIZE
+# The pin is only the fallback: a missing server is started HERE, on the resolver's root.
+"${BASH_SOURCE[0]%/*}/goh-rustc" --goh-server >&2 || :

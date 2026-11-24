@@ -25,6 +25,37 @@
 # SCCACHE_BASEDIRS is C-only and gives false hits with the preprocessor cache: never set it).
 #
 # GOH_RUSTC_NEXT names what runs next (default: sccache on PATH); GOH_RUSTC_OS overrides `uname -s`.
+#
+# A MISSING sccache server is started on the root lib/cache_tier.py chooses NOW, never on the client's
+# default dir (GOH.SCCACHEROOTFOLLOW): an app relaunch killed the server on 2026-11-23 and 24, the next
+# compile started one on the internal disk, and it served 0.55 % hits beside a warm 25 GB on the drive.
+# No fork while a server answers: the probe is bash's /dev/tcp, which macOS's /bin/sh has; a shell
+# without it (dash: Linux, where there is no removable tier) asks nothing. Left alone: a caller with a
+# port, socket or dir of its own (a private server), a next step that is not sccache, and
+# GOH_SCCACHE_UP=off. Never fails its caller: the client then starts a server as before.
+# `goh-rustc --goh-server` does this alone and says what the starter says (lib/sccache_dir.sh).
+goh_sccache_up() {
+    [ -n "${BASH_VERSION:-}" ] && [ "${GOH_SCCACHE_UP:-}" != off ] || return 0
+    [ -z "${SCCACHE_SERVER_PORT:-}${SCCACHE_SERVER_UDS:-}" ] || return 0
+    case ${GOH_RUSTC_NEXT:-sccache} in sccache | */sccache) ;; *) return 0 ;; esac
+    case ${SCCACHE_DIR:-} in
+        '' | "${GOH_SCCACHE_PINNED:-}") ;;
+        "$HOME/Library/Caches/Mozilla.sccache" | "${XDG_CACHE_HOME:-$HOME/.cache}/sccache") ;;
+        *) return 0 ;;
+    esac
+    if { { :; } 3<>"/dev/tcp/127.0.0.1/${GOH_SCCACHE_PORT:-4226}"; } 2>/dev/null; then return 0; fi
+    command -v "${GOH_RUSTC_NEXT:-sccache}" >/dev/null 2>&1 || return 0
+    if [ -n "${GOH_SCCACHE_STARTER:-}" ]; then
+        "$GOH_SCCACHE_STARTER" "${SCCACHE_DIR:-}" </dev/null 2>/dev/null || :
+    else
+        python3 "${0%/*}/sccache_repoint.py" start "${SCCACHE_DIR:-}" </dev/null 2>/dev/null || :
+    fi
+}
+if [ "${1:-}" = --goh-server ]; then
+    goh_sccache_up
+    exit 0
+fi
+
 store=${GOH_OUTDIR_STORE:-${XDG_CACHE_HOME:-$HOME/.cache}/goh/outdir}
 unset CARGO_TARGET_DIR CARGO_HOME CARGO_INCREMENTAL
 for v in $(env | awk -F= '/^CARGO_(BUILD|TERM)_[A-Za-z0-9_]*=/ { print $1 }'); do
@@ -64,4 +95,9 @@ if [ -n "${OUT_DIR:-}" ] && [ -d "$OUT_DIR" ] && dst=$(cas); then
     OUT_DIR=$dst
     export OUT_DIR
 fi
+
+# Quiet: cargo takes a wrapper's stderr for the crate's (lib/sccache_repoint.py `say` keeps the log).
+goh_sccache_up >/dev/null 2>&1
+# A server the sweep re-points mid-build costs a local compile, never a red one.
+export SCCACHE_IGNORE_SERVER_IO_ERROR="${SCCACHE_IGNORE_SERVER_IO_ERROR:-1}"
 exec "${GOH_RUSTC_NEXT:-sccache}" "$@"

@@ -177,7 +177,7 @@ def test_plug_and_unplug_re_point_sccache_within_one_sweep(tmp_path):
 
     (tmp_path / "cov").mkdir()
     (tmp_path / "sccache").mkdir()
-    assert one_sweep()["sccache"] == "recorded"  # drive absent: the first sweep records
+    assert one_sweep()["sccache"] == "already"  # drive absent, the server at home
     present[0] = True  # plug
     assert one_sweep()["sccache"] == "repointed"
     on_drive = str(mount / "cache.noindex" / "sccache")
@@ -199,13 +199,144 @@ def test_a_plan_never_re_points(tmp_path):
     ledger = str(tmp_path / "ledger.json")
     (tmp_path / "cov").mkdir()
     (tmp_path / "sccache").mkdir()
-    ce.write_ledger(ledger, {"objs": {}, "L": 0.0, "sccache_root": internal})
+    ce.write_ledger(ledger, {"objs": {}, "L": 0.0})
     verdict = cache_tier.resolve(str(tmp_path / "int"), {}, sysm)
     opener = lambda v: os.open(v.root, os.O_RDONLY | os.O_DIRECTORY)  # noqa: E731
     r = cache_sweep.sweep(_roots_again(tmp_path), verdict, ledger, NOW, False, opener,
                           sccache_env=env, sccache_internal=internal)  # fmt: skip
     assert r["sccache"].startswith("would re-point")
     assert json.loads(state.read_text())["dir"] == internal
+
+
+# GOH.SCCACHEROOTFOLLOW: a server on the default dir is moved by the next sweep with no drive
+# change, and the dir it left is swept.
+def _standing_sweep(tmp_path, serving="sccache", **ledger):
+    from test_sccache_repoint import _fake
+
+    _mount, present, sysm = _fake_mount(tmp_path)
+    internal = tmp_path / "sccache"
+    (tmp_path / "fake").mkdir()
+    (tmp_path / "cov").mkdir()
+    internal.mkdir()
+    env, state, _t = _fake(tmp_path / "fake", str(tmp_path / serving))
+    env.alive = lambda: json.loads(state.read_text())["running"]
+    path = str(tmp_path / "ledger.json")
+    ce.write_ledger(path, {"objs": {}, "L": 0.0, **ledger})
+    opener = lambda v: os.open(v.root, os.O_RDONLY | os.O_DIRECTORY)  # noqa: E731
+
+    def one(execute=True, roots=None):
+        verdict = cache_tier.resolve(str(tmp_path / "int"), {}, sysm)
+        return cache_sweep.sweep(roots or _roots_again(tmp_path), verdict, path, NOW, execute,
+                                 opener, sccache_env=env,
+                                 sccache_internal=str(internal))  # fmt: skip
+
+    return one, internal, state, path, present
+
+
+def test_a_planted_server_on_the_default_dir_is_moved_by_the_next_sweep(tmp_path):
+    one, internal, state, path, _ = _standing_sweep(tmp_path)
+    assert one()["sccache"] == "repointed"
+    assert json.loads(state.read_text())["dir"] != str(internal)
+    assert "sccache_owed" not in ce.read_ledger(path)
+
+
+def test_the_busy_deadline_counts_across_sweeps(tmp_path):
+    one, internal, state, path, _ = _standing_sweep(tmp_path)
+    s = json.loads(state.read_text())
+    state.write_text(json.dumps({**s, "requests_seq": list(range(101, 5000))}))
+    assert one()["sccache"] == "busy"
+    assert ce.read_ledger(path)["sccache_owed"] == NOW
+    data = ce.read_ledger(path)
+    ce.write_ledger(path, {**data, "sccache_owed": NOW - 86400})
+    assert one()["sccache"] == "repointed"
+    assert json.loads(state.read_text())["dir"] != str(internal)
+
+
+def test_a_hold_is_explicit_and_expires(tmp_path):
+    one, internal, state, path, _ = _standing_sweep(tmp_path)
+    cache_sweep.hold(path, 2.0, "hit-rate window", NOW)
+    assert one()["sccache"].startswith("held")
+    assert json.loads(state.read_text())["dir"] == str(internal)
+    cache_sweep.hold(path, 2.0, "hit-rate window", NOW - 3 * 3600)
+    assert one()["sccache"] == "repointed"
+    assert "sccache_hold" not in ce.read_ledger(path), "an expired hold stayed"
+
+
+def test_a_hold_has_a_reason_and_a_bound(tmp_path):
+    import pytest
+
+    path = str(tmp_path / "ledger.json")
+    for hours, why in ((cache_sweep.HOLD_MAX_H + 1, "w"), (0, "w"), (1, " ")):
+        with pytest.raises(ValueError):
+            cache_sweep.hold(path, hours, why, NOW)
+    cache_sweep.hold(path, 1, "w", NOW)
+    cache_sweep.hold(path, None, "", NOW)
+    assert "sccache_hold" not in ce.read_ledger(path)
+
+
+def _sized(tmp_path):
+    """Roots whose sccache dir reads its real file bytes."""
+    r = _roots_again(tmp_path)
+    r.size = lambda p: sum(f.stat().st_size for f in tmp_path.joinpath(p).rglob("*")
+                           if f.is_file())  # fmt: skip
+    return r
+
+
+def test_the_left_default_dir_is_swept_to_its_cap(tmp_path, monkeypatch):
+    from test_sccache_repoint import _entries
+
+    one, internal, _state, _path, _ = _standing_sweep(tmp_path)
+    files = _entries(internal, 8)
+    monkeypatch.setattr(cache_sweep.sccache_cap, "CAP_BYTES", 3 * 4096)
+    roots = _sized(tmp_path)
+    assert one(False, roots)["swept"] == 0  # a plan deletes nothing
+    assert one(True, roots)["swept"] == 5 * 4096
+    assert [f.exists() for f in files] == [False] * 5 + [True] * 3
+
+
+def test_a_default_dir_still_served_or_with_no_server_is_never_swept(tmp_path, monkeypatch):
+    from test_sccache_repoint import _entries
+
+    one, internal, state, _path, present = _standing_sweep(tmp_path)
+    present[0] = False  # no drive: the server belongs on the default dir
+    files = _entries(internal, 4)
+    monkeypatch.setattr(cache_sweep.sccache_cap, "CAP_BYTES", 0)
+    assert one(True, _sized(tmp_path))["swept"] == 0
+    s = json.loads(state.read_text())
+    state.write_text(json.dumps({**s, "running": False}))
+    present[0] = True
+    assert one(True, _sized(tmp_path))["swept"] == 0
+    assert all(f.exists() for f in files)
+
+
+def test_dead_sccache_bytes_go_before_a_live_build_dir(tmp_path, monkeypatch):
+    """Over the internal budget, the dir nobody serves gives way first: nothing is demoted."""
+    from test_sccache_repoint import _entries
+
+    one, internal, _state, _path, _ = _standing_sweep(tmp_path)
+    files = _entries(internal, 8)
+    cold = _bd(tmp_path, "aa11", 72)
+    roots = _sized(tmp_path)
+    real = cache_sweep.discover
+
+    def two_devices(*args):  # tmp is one device: the planted drive's test reads both as external
+        objs = real(*args)
+        for o in objs:
+            o.tier = "internal" if o.key == str(internal) else o.tier
+        return objs
+
+    monkeypatch.setattr(cache_sweep, "discover", two_devices)
+    monkeypatch.setattr(ce, "HOT_GIB", (5 * 4096 + 100) / GIB)
+    r = one(True, roots)
+    assert r["swept"] == 3 * 4096 and r["actions"] == []
+    assert cold.exists() and sum(f.exists() for f in files) == 5
+
+
+def test_a_sweep_given_no_sccache_asks_none(tmp_path):
+    """A sweep over planted roots never reaches the machine's own server."""
+    v = cache_tier.Verdict(str(tmp_path / "int"), False, "absent")
+    r = cache_sweep.sweep(_roots(tmp_path), v, str(tmp_path / "s.json"), NOW, True)
+    assert r["sccache"] == "not asked" and r["swept"] == 0
 
 
 # GOH.CACHEEVICT2 (2): a use the evictor could not see. Cargo 1.100's build-dir layout keeps each

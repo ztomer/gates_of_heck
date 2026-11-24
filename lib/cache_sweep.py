@@ -14,8 +14,12 @@ writes none of them, so goh's rust gate stamps the dir at its start (lib/cache_m
 `stamp-for`). Named deviation: a Fresh build outside goh is not seen as a use until something
 stamps it.
 
-Each run also lets sccache follow the drive (lib/sccache_repoint.py `follow`): a drive that came
-or went since the last sweep re-points the server within this sweep (GOH.CACHEEVICT2).
+Each run also lets sccache follow the resolver (lib/sccache_repoint.py `follow`): a server on
+another root than the resolver's is re-pointed within this sweep, whatever put it there, unless a
+`hold` with a reason and an end says to leave it. The internal default dir, once a server serves
+another root, is swept oldest-first to sccache's cap, and below it while the internal tier is over
+its budget: bytes nobody serves go before a live build dir (GOH.CACHEEVICT2,
+GOH.SCCACHEROOTFOLLOW).
 
 Acting: a delete renames the object away first (under the cargo locks it holds, or the llvm-cov
 marker lock via gates/_head_cache.py's `_evict`), so no build starts in a directory being removed;
@@ -24,6 +28,8 @@ One sweep at a time (a lock beside the ledger); a second exits 0 at once.
 
 usage: cache_sweep.py [plan|run] [--json]     plan (default) prints, run acts
        cache_sweep.py stamp PATH              mark PATH used now
+       cache_sweep.py hold HOURS WHY          leave sccache on the root it serves, for HOURS (<=72)
+       cache_sweep.py hold off
 """
 
 from __future__ import annotations
@@ -55,6 +61,7 @@ import cache_evict as ce  # noqa: E402
 import cache_move  # noqa: E402
 import cache_tier  # noqa: E402
 import lock_order  # noqa: E402
+import sccache_cap  # noqa: E402
 import sccache_repoint  # noqa: E402
 
 STAMP = cache_move.STAMP
@@ -254,6 +261,35 @@ def _sccache_want(verdict: cache_tier.Verdict, root_fd: int | None, internal: st
     return os.path.join(verdict.root, sccache_repoint.SUBDIR)
 
 
+def _sweep_left(internal: str, objs: list[ce.Obj], over: int) -> int:
+    """The default dir no server serves, trimmed to the cap and by what the internal tier is over
+    its budget; its object's bytes follow."""
+    own = [o for o in objs if o.kind == "sccache" and o.key == internal]
+    size = sum(o.bytes for o in own)
+    cap = sccache_cap.CAP_BYTES
+    if over > 0:
+        cap = min(cap, max(0, size - over))
+    freed = sccache_repoint.trim(internal, cap)
+    for o in own:
+        o.bytes = max(0, o.bytes - freed)
+    return freed
+
+
+HOLD_MAX_H = 72.0
+
+
+def hold(state: str, hours: float | None, why: str, now: float) -> None:
+    """The next sweeps leave sccache on the root it serves for HOURS, because WHY (a hit-rate
+    window); None ends it. Never open-ended."""
+    data = ce.read_ledger(state)
+    data.pop("sccache_hold", None)
+    if hours is not None:
+        if not 0 < hours <= HOLD_MAX_H or not why.strip():
+            raise ValueError(f"a hold needs 0 < hours <= {HOLD_MAX_H:g} and a reason")
+        data["sccache_hold"] = {"until": now + hours * 3600, "why": why}
+    ce.write_ledger(state, data)
+
+
 def sweep(roots: Roots, verdict: cache_tier.Verdict, state: str, now: float, execute: bool,
           opener=cache_tier.open_root, sccache_env: sccache_repoint.Env | None = None,
           sccache_internal: str | None = None) -> dict:  # fmt: skip
@@ -262,6 +298,19 @@ def sweep(roots: Roots, verdict: cache_tier.Verdict, state: str, now: float, exe
         if execute:
             reap_leftovers(roots.build, root_fd)
         data = ce.read_ledger(state)
+        # SCCACHE FOLLOWS THE RESOLVER within this sweep, no call from anyone (GOH.CACHEEVICT2,
+        # GOH.SCCACHEROOTFOLLOW); no `sccache_env`: the server is not this sweep's to ask.
+        internal = sccache_internal or sccache_repoint.internal_dir()
+        followed, owed, left = "not asked", data.get("sccache_owed"), False
+        if sccache_env is not None:
+            want = _sccache_want(verdict, root_fd, internal, execute)
+            held = data.get("sccache_hold")
+            followed, owed = sccache_repoint.follow(sccache_env, want, internal, now, owed, held,
+                                                    act=execute)  # fmt: skip
+            got = sccache_repoint.served(sccache_env, want)
+            left = got is not None and os.path.realpath(got) != os.path.realpath(internal)
+            if execute and held and now >= held["until"]:
+                data.pop("sccache_hold", None)
         objs = discover(roots, verdict.root, root_fd, now)
         ce.observe(data, objs)
         held_in = sum(o.bytes for o in objs if o.tier == "internal")
@@ -271,21 +320,18 @@ def sweep(roots: Roots, verdict: cache_tier.Verdict, state: str, now: float, exe
         if root_fd is not None:
             b_in = min(b_in, int(ce.HOT_GIB * ce.GIB))
             b_ex = ce.ext_budget(held_ex, verdict.free, cache_tier.floor_bytes(verdict.total))
+        swept = _sweep_left(internal, objs, held_in - b_in) if execute and left else 0
+        held_in = sum(o.bytes for o in objs if o.tier == "internal")
         acts, clock = ce.plan(objs, b_in, b_ex, float(data.get("L", 0.0)), now)
         done = act(acts, root_fd) if execute else []
-        # THE DRIVE CAME OR WENT: sccache follows within this sweep, no call from anyone
-        # (GOH.CACHEEVICT2; lib/sccache_repoint.py `follow` says when a mismatch is left alone).
-        internal = sccache_internal or sccache_repoint.internal_dir()
-        want = _sccache_want(verdict, root_fd, internal, execute)
-        followed, record = sccache_repoint.follow(sccache_env or sccache_repoint.Env(), want,
-                                                  data.get("sccache_root"), internal,
-                                                  act=execute)  # fmt: skip
         if execute:
             data["L"] = clock
-            if record is not None:
-                data["sccache_root"] = record
+            data.pop("sccache_root", None)  # the last answer an older goh recorded
+            data.pop("sccache_owed", None)
+            if owed is not None:
+                data["sccache_owed"] = owed
             ce.write_ledger(state, data)
-        return {"tier": verdict.reason, "sccache": followed,
+        return {"tier": verdict.reason, "sccache": followed, "swept": swept,
                 "internal": {"held": held_in, "budget": b_in},
                 "external": {"held": held_ex, "budget": b_ex}, "clock": clock,
                 "actions": [{"verb": a.verb, "key": a.obj.key, "kind": a.obj.kind,
@@ -307,6 +353,17 @@ def _gib(n: int | None) -> str:
     return "-" if n is None else f"{n / ce.GIB:.1f} GiB"
 
 
+def _hold_cli(args: list[str], state: str) -> int:
+    try:
+        off = args[:1] == ["off"]
+        hold(state, None if off else float(args[0]), " ".join(args[1:]), ce.now())
+    except (IndexError, ValueError) as e:
+        print(f"cache sweep: hold HOURS WHY, or hold off ({e})", file=sys.stderr)
+        return 2
+    print("cache sweep: sccache " + ("follows the resolver" if off else f"held {args[0]} h"))
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if "--help" in argv or "-h" in argv:
         print(__doc__.rsplit("usage: ", 1)[1].strip())
@@ -319,17 +376,23 @@ def main(argv: list[str]) -> int:
     os.makedirs(os.path.dirname(state), exist_ok=True)
     with open(state + ".lock", "a", encoding="ascii") as lock:
         try:
-            lock_order.flock(lock, "cache_sweep", wait=False)
+            lock_order.flock(lock, "cache_sweep", wait=argv[:1] == ["hold"])
         except BlockingIOError:
             print("cache sweep: another sweep runs")
             return 0
+        if argv[:1] == ["hold"]:
+            return _hold_cli(argv[1:], state)
         verdict = cache_tier.resolve(cache_tier.internal_root())
-        report = sweep(default_roots(), verdict, state, ce.now(), verb == "run")
+        # the suite's switch (tests/suite_home.py): a sweep a test runs asks no real server
+        env = None if os.environ.get("GOH_SCCACHE_UP") == "off" else sccache_repoint.Env()
+        report = sweep(default_roots(), verdict, state, ce.now(), verb == "run", sccache_env=env)
     if "--json" in argv:
         print(json.dumps(report, indent=1))
         return 0
     print(f"tier: {report['tier']}")
     print(f"sccache: {report['sccache']}")
+    if report["swept"]:
+        print(f"sccache: {_gib(report['swept'])} swept from the default dir no server serves")
     for tier in ("internal", "external"):
         t = report[tier]
         print(f"{tier}: {_gib(t['held'])} held, budget {_gib(t['budget'])}")
