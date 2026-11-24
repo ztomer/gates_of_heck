@@ -39,6 +39,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 import gate_lanes
 import land_prestep
 import land_share
+import landq_state
 import pre_cpu
 import proc_table
 import worker_share
@@ -253,7 +254,7 @@ def test_an_enqueue_with_no_pre_step_records_zero_figures_and_why(repo, tmp_path
     done = enq(env, "--land", str(wt), "--item", "T.X", "--no-start", "--no-pre", "by hand")
     assert done.returncode == 0, done.stdout + done.stderr
     (pending,) = _pending(tmp_path)
-    got = json.loads(pending.read_text())["pre_run"]
+    got = landq_state.get(pending)["pre_run"]  # a goh.db row, not a file (GOH.LANDQDB)
     assert got == {"wait_s": 0, "run_s": 0, "limit_s": 0, "workers": 0, "cpu_s": 0,
                    "skipped": "by hand"}, got  # fmt: skip
 

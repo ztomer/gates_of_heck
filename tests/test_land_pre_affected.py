@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import shlex
 
+import landq_state
 import pytest
 from test_landq import _land_wt, _pending, env, landq  # noqa: F401  -- `env` is the queue's fixture
 
@@ -49,7 +50,7 @@ def test_the_request_and_its_done_record_say_what_the_pre_step_did_with_the_lane
     done = landq(env, "--enqueue", "--foreground", "--land", str(wt), "--item", "T.A", "--no-start")
     assert done.returncode == 0, done.stdout + done.stderr
     (path,) = _pending(tmp_path)
-    assert json.loads(path.read_text()).get("pre_affected") == want
+    assert landq_state.get(path).get("pre_affected") == want  # a goh.db row (GOH.LANDQDB)
     drained = landq(env, "--drain")
     assert drained.returncode == 0, drained.stdout + drained.stderr
     (rec,) = (tmp_path / "landq" / "done").glob("*-T.A.json")
