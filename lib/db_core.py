@@ -21,23 +21,8 @@ created_by, last_migrated_by (the goh that wrote it) and created_at. A file hold
 code does not ship was written by a newer goh: it opens READ-ONLY and says so, and never migrates
 down (`NewerFile` on a write, naming the migration it does not ship).
 
-ONLY THE CODE OF RECORD MIGRATES A SHARED FILE (GOH.LANEMIGRATE). On 2026-11-23 `goh land --check`
-run from lane worktrees opened the real goh.db with the lane's code and applied migrations main did
-not have yet; main's goh then refused every write (NewerFile) until those lanes landed. The code of
-record is decided by its COMMIT (GOH.HEADCOPYRECORD, `why_not_of_record`): the primary checkout on
-main, or an export (`.goh-head`, ~/.cache/goh/head/<sha>) of a commit on main's tip. A linked
-worktree (`.git` a file: a lane, a landq slot running a land's pre-step, the idle suite's tree), an
-export of a lane's commit or of a staged tree (a goh commit's pre-commit, GOH.SELFGATE), and a copy
-with no git that names no commit are not, whoever runs them. On 2026-11-24 a lane's pre-commit ran
-lib/commit_stamp.py from its staged tree's export, which the rule then read as "an install", and
-0009 reached the real goh.db before main had it. The answer costs a few file reads (one `git
-merge-base` for an export of an older main commit) and is kept per process. A shared file is one in
-the account's goh state or cache directory (from the passwd home, not HOME; or the XDG home set
-outside a suite). A copy that is not of record writes a shared file only when the file already holds
-every migration the copy ships; a file lacking one (the lane's own, or main's newest before main has
-run) opens READ-ONLY and says which (`NotOfRecord` on a write), and a missing one is never created.
-A pre-step never migrates: after the land main ships the migration, and main's next run applies it.
-Any other file (a test's tmp_path) migrates from any copy.
+ONLY THE CODE OF RECORD MIGRATES A SHARED FILE (GOH.LANEMIGRATE, GOH.HEADCOPYRECORD): which copy
+that is, and what a copy that is not may do, is lib/db_record.py's docstring.
 
 HERMETIC. With GATES_OF_HECK_SUITE_REAL_HOME set (tests/suite_home.py), opening a file that lives
 directly in the real home's goh state or cache directory raises `RealHomeOpen`: no test writes

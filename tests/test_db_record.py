@@ -211,7 +211,8 @@ def test_the_record_is_a_commit_on_main(tmp_path) -> None:
     (tmp_path / ".git").write_text("gitdir: /x/.git/worktrees/w\n")
     assert "linked worktree" in str(why())
     (tmp_path / ".git").unlink()
-    git(tmp_path, "init", "-q", "-b", "main")
+    (tmp_path / ".git").mkdir()  # a primary checkout as the rule reads it: its HEAD file
+    (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
     assert why() is None
-    git(tmp_path, "checkout", "-q", "-b", "lane")
+    (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/lane\n")
     assert "not main" in str(why())  # a primary checkout on another branch with no commit yet
