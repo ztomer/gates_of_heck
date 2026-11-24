@@ -10,6 +10,8 @@ fallback when the state holds nothing usable. A fake clock and a fake tick sourc
 
 from __future__ import annotations
 
+import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -106,3 +108,17 @@ def test_a_cold_state_falls_back_to_the_short_sample(machine) -> None:
     machine(lambda t: 0.4)
     cpu = capacity._cpu_idle()
     assert cpu["source"] == "ticks" and cpu["window_s"] == capacity.IDLE_WINDOW_S, cpu
+
+
+def test_the_window_lives_in_goh_cache_db_and_writes_no_file(machine, tmp_path) -> None:
+    """GOH.STATEDBS3: the samples are goh-cache.db's `kv` row `cpu_idle` (disposable, so the
+    cache file), beside GOH_CPU_IDLE_STATE's name; the state file is never written."""
+    m = machine(lambda _t: 0.5)
+    for _ in range(3):
+        capacity._cpu_idle()
+        m.advance(30)
+    assert not (tmp_path / "cpu_idle.json").exists()
+    with sqlite3.connect(tmp_path / "goh-cache.db") as con:
+        (body,) = con.execute("SELECT body FROM kv WHERE name='cpu_idle'").fetchone()
+    assert len(json.loads(body)["samples"]) >= 3
+    assert capacity._cpu_idle()["source"] == "rolling"

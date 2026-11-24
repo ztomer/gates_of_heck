@@ -65,9 +65,7 @@ ALLOWED: dict[str, set[str]] = {
     "identity memo": {  # V1 goh-cache.db 0002 memo
         "lib/identity_cache.py",
     },
-    "cpu idle": {  # S3 goh-cache.db kv
-        "lib/cpu_window.py",
-    },
+    "cpu idle": set(),  # S3 goh-cache.db kv: moved (lib/cpu_window.py, GOH.STATEDBS3)
     "land queue": {  # LANDQ goh.db 0007 requests
         "lib/landq_batch.py",
         "lib/landq_early.py",
