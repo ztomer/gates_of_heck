@@ -34,15 +34,10 @@ ALLOWED: dict[str, set[str]] = {
         "lib/state_bounds.py",  # LEFT: ship/* prunes the step logs and the window's record files
     },
     "ship pins": set(),  # S2 goh.db 0003 ship_pins: moved (lib/ship_records.py, GOH.STATEDBS2)
-    "small stores": {  # S3 goh.db 0004 kv (the estate state and pin ledgers: lib/small_stores.py)
-        "lib/cache_evict.py",
-    },
-    "commit gated": {  # S3 goh.db 0004 commit_gated
-        "lib/commit_stamp.py",
-    },
-    "flakes": {  # S3 goh.db 0004 flakes
-        "lib/flakes.py",
-        "lib/state_files.py",
+    "small stores": set(),  # S3 goh.db 0004 kv: moved (lib/small_stores.py, GOH.STATEDBS3)
+    "commit gated": set(),  # S3 goh.db 0004 commit_gated: moved (lib/small_stores.py)
+    "flakes": {  # S3 goh.db 0004 flakes: moved (lib/small_stores.py)
+        "lib/state_files.py",  # bounds the legacy files until wave 3's delete commit removes them
     },
     "hook ledgers": {  # S4 goh.db 0005
         "hooks/claude/agent_guard.py",

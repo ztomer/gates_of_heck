@@ -182,7 +182,7 @@ budget per tier.
 | `GOH_CACHE_VOLUME_UUID` | unset | Pins the removable cache volume: its marker's `volume_uuid=` must equal this as well as the volume's own UUID. Unset, any mounted volume whose marker names its own UUID qualifies. |
 | `GOH_CACHE_VOLUMES` | `/Volumes` | Where the resolver looks for mounted volumes. The suite points it at a path that does not exist (`tests/suite_home.py` CACHE_TIER), so no test reaches a real drive. |
 | `GOH_CACHE_INTERNAL` | `~/.cache/goh` | The internal root `goh cache-root` answers when the large tier does not qualify. |
-| `GOH_CACHE_EVICT_STATE` | `~/.local/state/goh/cache-evict.json` | The evictor's ledger: uses, last use and clock per object, keyed by path, and the clock L. Point it elsewhere only to isolate a test. |
+| `GOH_CACHE_EVICT_STATE` | `~/.local/state/goh/cache-evict.json` | The evictor's ledger: uses, last use and clock per object, keyed by path, and the clock L. Its record is goh.db's `kv` row `cache-evict` in the goh.db beside it (`GOH_DB` when set; GOH.STATEDBS3); the file is read only until its import. Point it elsewhere only to isolate a test. |
 
 ## Python (`gates/py_gate.sh`)
 
@@ -358,7 +358,7 @@ the key fields it registers (`reuse.py paths`). The map of every store onto it: 
 
 | Key | Default | Meaning |
 |---|---|---|
-| `GOH_FLAKE_DIR` | `$XDG_STATE_HOME/goh/flakes`, else `~/.local/state/goh/flakes` | The flake register's root (`lib/flakes.py`, GOH.FLAKEREGISTER): `register.jsonl` and `by-test/`; a test points it at a temp dir. |
+| `GOH_FLAKE_DIR` | `$XDG_STATE_HOME/goh/flakes`, else `~/.local/state/goh/flakes` | The flake register's root (`lib/flakes.py`, GOH.FLAKEREGISTER): its rows are goh.db's `flakes` table in the goh.db beside it (`GOH_DB` when set; GOH.STATEDBS3); its `register.jsonl` and `by-test/` files are read only until their import, and the per-test locks stay in `by-test/`. A test points it at a temp dir. |
 | `GOH_FSEVENTSD_RSS_KB`, `GOH_FSEVENTSD_LIMIT_KB` | the daemon's own RSS (`ps`); `1048576` (1 GB) | `lib/fseventsd_health.py` (GOH.FSEVCHURN), asked after a whole suite: the RSS reading (a number, or `none` for no daemon -- a test seam) and the bound over which a saturated fseventsd is named with its restart. Not consumer config. |
 | `GOH_REUSE_DIR` | `$XDG_STATE_HOME/goh/reuse`, else `~/.local/state/goh/reuse` | The store's root; a relative path is refused. |
 | `GOH_REUSE_TTL_S` | the path's own (`gate`: `86400`) | Record lifetime in seconds; an older record is a miss. |

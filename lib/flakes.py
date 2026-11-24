@@ -18,17 +18,18 @@ THE RETRY SITES, each calling `record` when the first run was red and the retry 
 No other goh runner retries a test: tools/pytest.sh loads no rerun plugin and goh passes nextest
 no `--retries` (nor declares a nextest profile with retries).
 
-THE REGISTER, $GOH_FLAKE_DIR (default ~/.local/state/goh/flakes, under XDG_STATE_HOME when set):
-    register.jsonl        one record per pass-on-retry: {id, test, repo, sha, load, first, second,
-                          log: {first, second}, site, at, epoch}; one O_APPEND write, never a
-                          rewrite (lib/state_append.py; bounded by lib/state_files.py)
-    by-test/<key>.jsonl   the test's own {id, epoch} lines and {filed, epoch} when its item was
-                          filed. `key` is sha1(test id)[:8]; a record's id is `<key>.<n>`.
-The 2-in-14-days rule reads only by-test/<key>.jsonl, never the register: a record costs two
-appends and one small read. Records since the test's last filing that are at most DAYS old, two
-or more, file `GOH.FLAKE<KEY>` through `loopctl file --json` (lib/reuse_fault.py `_file`: the
-GOH_LOOPCTL and GOH_LOOP_QUEUE seams) carrying them, and the filing is marked, so one test files
-one item. `goh flakes` lists the register. Pinned by tests/test_flakes.py.
+THE REGISTER is goh.db's `flakes` table (lib/small_stores.py, GOH.STATEDBS3), in the goh.db beside
+$GOH_FLAKE_DIR (default ~/.local/state/goh/flakes, under XDG_STATE_HOME when set), whose
+register.jsonl and by-test/<key>.jsonl it was (read until their import):
+    a record              one row per pass-on-retry: {id, test, repo, sha, load, first, second,
+                          log: {first, second}, site, at, epoch}
+    a filing              {filed, epoch} when the test's item was filed, a row of that test
+`key` is sha1(test id)[:8]; a record's id is `<key>.<n>`. The 2-in-14-days rule reads only the
+test's own rows (the index on test): a record costs one insert and one small read. Records
+since the test's last filing that are at most DAYS old, two or more, file `GOH.FLAKE<KEY>`
+through `loopctl file --json` (lib/reuse_fault.py `_file`: the GOH_LOOPCTL and GOH_LOOP_QUEUE
+seams) carrying them, and the filing is marked, so one test files one item. `goh flakes` lists
+the register. Pinned by tests/test_flakes.py.
 """
 
 from __future__ import annotations
@@ -56,7 +57,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lock_order  # the one acquire path
-import state_append  # the ledgers' one append
+import small_stores  # goh.db's flakes table (GOH.STATEDBS3)
 
 DAYS = 14
 FILE_AT = 2  # records in DAYS that file the test's item
@@ -69,7 +70,7 @@ def root() -> Path:
     if seam := os.environ.get("GOH_FLAKE_DIR"):
         return Path(seam)
     state = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local/state")
-    return Path(state) / "goh" / "flakes"
+    return Path(state) / "goh" / small_stores.FLAKE_DIR
 
 
 def register() -> Path:
@@ -95,17 +96,14 @@ def _lines(path: Path) -> list[dict]:
 
 
 @contextlib.contextmanager
-def _test_lock(k: str) -> Iterator[Path]:
-    """The test's by-test file, its read-decide-file held alone against a concurrent record."""
-    path = root() / "by-test" / f"{k}.jsonl"
+def _test_lock(k: str) -> Iterator[None]:
+    """The test's read-decide-file held alone against a concurrent record: the filing runs
+    loopctl, which no database transaction spans."""
+    path = root() / "by-test" / f".{k}.flake.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path.with_name(f".{k}.flake.lock"), "a") as fh:
+    with open(path, "a") as fh:
         lock_order.flock(fh, "flake_test")  # released when the file closes
-        yield path
-
-
-def _append(path: Path, row: dict) -> None:
-    state_append.append(path, (json.dumps(row, sort_keys=True) + "\n").encode())
+        yield
 
 
 def record(test: str, repo: str, sha: str, site: str, logs: tuple[str, str] = ("", ""),
@@ -126,15 +124,14 @@ def _record(test: str, repo: str, sha: str, site: str, logs: tuple[str, str],
             load = round(os.getloadavg()[0], 2)
     now = time.time()
     k = key(test)
-    with _test_lock(k) as mine:
-        rows = _lines(mine)
+    with _test_lock(k):
+        rows = small_stores.flakes(root(), test)
         n = sum(1 for r in rows if "id" in r) + 1
         rec = {"id": f"{k}.{n}", "test": test, "repo": repo, "sha": sha, "load": load,
                "first": first, "second": second, "log": {"first": logs[0], "second": logs[1]},
                "site": site, "at": dt.datetime.fromtimestamp(now, dt.UTC).isoformat(
                    timespec="seconds"), "epoch": round(now, 3)}  # fmt: skip
-        _append(register(), rec)
-        _append(mine, {"id": rec["id"], "epoch": rec["epoch"]})
+        small_stores.flake_add(root(), test, rec)
         since = 0
         for i, r in enumerate(rows):
             if "filed" in r:
@@ -144,13 +141,15 @@ def _record(test: str, repo: str, sha: str, site: str, logs: tuple[str, str],
             said = _file(test, [*_by_ids({r["id"] for r in recent}), rec])
             rec["filed"] = said
             if said.startswith(("filed ", "already filed ")):
-                _append(mine, {"filed": item_id(test), "epoch": rec["epoch"]})
+                small_stores.flake_add(
+                    root(), test, {"filed": item_id(test), "epoch": rec["epoch"]}
+                )
     return rec
 
 
 def _by_ids(ids: set[str]) -> list[dict]:
     """The register's records named IDS (read only when an item is filed, never per record)."""
-    return [r for r in _lines(register()) if r.get("id") in ids]
+    return [r for r in small_stores.flakes(root()) if r.get("id") in ids]
 
 
 def _log(rec: dict, which: str) -> str:
@@ -216,7 +215,7 @@ def _file(test: str, recs: list[dict]) -> str:
 
 def recorded(test: str) -> list[dict]:
     """TEST's by-test lines (cheap: one small file), for a red land naming its earlier flakes."""
-    return [r for r in _lines(root() / "by-test" / f"{key(test)}.jsonl") if "id" in r]
+    return [r for r in small_stores.flakes(root(), test) if "id" in r]
 
 
 def _failing(red: dict) -> list[str]:
@@ -291,7 +290,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--json", action="store_true", help="the records, one JSON object per line")
     a = ap.parse_args(argv)
     now = time.time()
-    recs = [r for r in _lines(register()) if "test" in r
+    recs = [r for r in small_stores.flakes(root()) if "test" in r
             and (a.days is None or now - float(r.get("epoch") or 0) <= a.days * 86400)]  # fmt: skip
     if a.json:
         for r in recs:

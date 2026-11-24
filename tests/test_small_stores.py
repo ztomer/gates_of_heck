@@ -149,3 +149,25 @@ def test_the_estate_state_is_written_to_goh_db_and_its_file_left_as_it_was(state
     new = estate_registry.update_state(p, lambda old: {**old, "grace_watch": {"ran": True}})
     assert p.read_text() == was, "the file stays until wave 3's delete commit, unwritten"
     assert estate_registry.read_state(p) == new == {**json.loads(was), "grace_watch": {"ran": True}}
+
+
+def test_the_evictors_ledger_the_commit_stamps_and_the_flakes_write_goh_db(
+    state, monkeypatch
+) -> None:
+    import cache_evict
+    import commit_stamp
+    import flakes
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(state.parent))
+    monkeypatch.setenv("GOH_FLAKE_DIR", str(state / "flakes"))
+    files = {p: p.read_bytes() for p in state.rglob("*") if p.is_file()}
+    ledger = str(state / "cache-evict.json")
+    cache_evict.write_ledger(ledger, {"L": 3.0, "objs": {}})
+    commit_stamp.record("t-new", "/p/c")
+    rec = flakes.record(TEST, "/p/a", "c" * 40, "site", load=1.0)
+    assert {p: p.read_bytes() for p in state.rglob("*") if p.is_file() and p.suffix != ".lock"
+            and not p.name.startswith("goh.db")} == files, "no store file is written"  # fmt: skip
+    assert cache_evict.read_ledger(ledger) == {"L": 3.0, "objs": {}}
+    assert {"t0", "t1", "t2", "t-new"} == commit_stamp.stamped()
+    assert rec["id"] == f"{flakes.key(TEST)}.3", rec  # after the file's two records of TEST
+    assert [r["id"] for r in flakes.recorded(TEST)][-1] == rec["id"]

@@ -20,6 +20,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 import flakes  # lib/, after its path
 import land_records
 import reuse_audit
+import small_stores
 
 STEP = {"repo": "/r/.git", "tree": "t" * 40, "step": "./gates/rust_gate.sh", "closure": "off",
         "identity": "i" * 64, "env": ""}  # fmt: skip
@@ -34,7 +35,8 @@ def register(tmp_path, monkeypatch) -> Path:
 
 
 def _rows(path: Path) -> list[dict]:
-    return [json.loads(x) for x in path.read_text().splitlines()] if path.exists() else []
+    """The register's records (goh.db's flakes rows beside its directory, GOH.STATEDBS3)."""
+    return [r for r in small_stores.flakes(path.parent) if "test" in r]
 
 
 def test_a_forced_fail_then_pass_at_a_retry_site_writes_one_record(register) -> None:
@@ -69,9 +71,8 @@ def test_two_in_14_days_files_exactly_one_item(register, fake_loopctl) -> None: 
 
 def test_a_record_older_than_14_days_files_nothing(register, fake_loopctl) -> None:  # noqa: F811
     """A record of 1970 (an epoch, not a clock read) and one now: one in 14 days, nothing filed."""
-    mine = register.parent / "by-test" / f"{flakes.key(TEST)}.jsonl"
-    mine.parent.mkdir(parents=True)
-    mine.write_text(json.dumps({"id": f"{flakes.key(TEST)}.1", "epoch": 1.0}) + "\n")
+    small_stores.flake_add(register.parent, TEST, {"id": f"{flakes.key(TEST)}.1", "epoch": 1.0,
+                                                   "test": TEST})  # fmt: skip
     assert flakes.record(TEST, "/p/r", "b" * 40, "site")["id"] == f"{flakes.key(TEST)}.2"
     flakes.record("tests/test_y.py::test_other", "/p/r", "b" * 40, "site")
     assert filed(fake_loopctl) == []

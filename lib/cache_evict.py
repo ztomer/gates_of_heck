@@ -159,8 +159,26 @@ def plan(objs: list[Obj], internal: int, external: int | None, clock: float,
 
 
 def state_path() -> str:
-    return os.environ.get("GOH_CACHE_EVICT_STATE") or os.path.expanduser(
-        "~/.local/state/goh/cache-evict.json")  # fmt: skip
+    """The ledger's name; its record is goh.db's `kv` row beside it (read_ledger, GOH.STATEDBS3)."""
+    import small_stores  # lib/: the database beside the ledger's name
+
+    return os.environ.get("GOH_CACHE_EVICT_STATE") or os.path.join(
+        os.path.expanduser("~/.local/state/goh"), small_stores.KV_FILES["cache-evict"])  # fmt: skip
+
+
+def read_ledger(path: str) -> dict:
+    """The ledger PATH names: goh.db's row beside it (the file before its import), as `load`."""
+    import small_stores  # lib/: goh.db's kv (GOH.STATEDBS3); a worker's own ledger is a file
+
+    data = small_stores.get(path)
+    return data if isinstance(data, dict) and isinstance(data.get("objs"), dict) else load(
+        os.devnull)  # fmt: skip
+
+
+def write_ledger(path: str, data: dict) -> None:
+    import small_stores
+
+    small_stores.put(path, data)
 
 
 def load(path: str) -> dict:

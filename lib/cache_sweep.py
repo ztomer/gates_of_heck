@@ -261,7 +261,7 @@ def sweep(roots: Roots, verdict: cache_tier.Verdict, state: str, now: float, exe
     try:
         if execute:
             reap_leftovers(roots.build, root_fd)
-        data = ce.load(state)
+        data = ce.read_ledger(state)
         objs = discover(roots, verdict.root, root_fd, now)
         ce.observe(data, objs)
         held_in = sum(o.bytes for o in objs if o.tier == "internal")
@@ -284,7 +284,7 @@ def sweep(roots: Roots, verdict: cache_tier.Verdict, state: str, now: float, exe
             data["L"] = clock
             if record is not None:
                 data["sccache_root"] = record
-            ce.save(state, data)
+            ce.write_ledger(state, data)
         return {"tier": verdict.reason, "sccache": followed,
                 "internal": {"held": held_in, "budget": b_in},
                 "external": {"held": held_ex, "budget": b_ex}, "clock": clock,

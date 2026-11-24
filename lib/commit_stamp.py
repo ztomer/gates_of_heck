@@ -8,7 +8,8 @@ into a GOH-TINY lane and caught only at land, a whole enqueue cycle later.
 
 THE STAMP. gates/commit_gate.sh, when every step passed, records the TREE it judged (the index being
 committed, its tree by lib/run_path.py's index_tree, the hook's carried index included) in
-`$XDG_STATE_HOME/goh/commit-gated.jsonl` (lib/state_files.py bounds it). A commit whose tree is
+goh.db's `commit_gated` table (lib/small_stores.py, GOH.STATEDBS3; the database beside the
+ledger's old file, `$XDG_STATE_HOME/goh/`, read until its import). A commit whose tree is
 there was judged as it stands; a cherry-pick onto another base, or any commit made around the
 hook, has a tree nobody judged.
 
@@ -34,9 +35,9 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
     del _sys.path[0]
 
 import contextlib
-import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -53,8 +54,11 @@ GATE_ARGV = ["bash", str(GATE)]  # the gate a commit's pre-commit runs (a test's
 
 
 def ledger() -> Path:
+    """The ledger's name: its rows are goh.db's `commit_gated`, in the goh.db beside it."""
+    import small_stores  # lib/, on the path above
+
     base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
-    return Path(base) / "goh" / "commit-gated.jsonl"
+    return Path(base) / "goh" / small_stores.GATED_FILE
 
 
 def _git(repo: str | Path, *args: str, env: dict | None = None) -> subprocess.CompletedProcess:
@@ -64,26 +68,20 @@ def _git(repo: str | Path, *args: str, env: dict | None = None) -> subprocess.Co
 
 def record(tree: str, repo: str = "") -> None:
     """Stamp TREE as judged by a commit gate (raises OSError when the ledger cannot be written)."""
-    sys.path.insert(0, str(ROOT / "lib"))
-    import state_append  # the lock lib/state_files.py trims under
+    import small_stores  # lib/: goh.db's commit_gated (GOH.STATEDBS3)
 
     row = {"tree": tree, "repo": repo, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    state_append.append(ledger(), (json.dumps(row, sort_keys=True) + "\n").encode())
+    try:
+        small_stores.gated_add(ledger(), row)
+    except sqlite3.Error as e:
+        raise OSError(f"commit-gated: {e}") from e
 
 
 def stamped() -> set[str]:
     """Every tree a commit gate passed."""
-    try:
-        text = ledger().read_text(encoding="utf-8")
-    except OSError:
-        return set()
-    out = set()
-    for line in text.splitlines():
-        try:
-            out.add(json.loads(line)["tree"])
-        except (ValueError, KeyError, TypeError):
-            continue
-    return out
+    import small_stores
+
+    return {str(r.get("tree")) for r in small_stores.gated(ledger()) if r.get("tree")}
 
 
 def unstamped(top: str | Path, base: str = "main") -> list[tuple[str, str, str]]:

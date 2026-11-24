@@ -58,7 +58,7 @@ def test_with_the_large_tier_cold_dirs_demote_and_the_hot_one_stays(tmp_path):
     assert [(d["verb"], d["key"], d["ok"]) for d in report["done"]] == [("demote", str(cold), True)]
     assert hot.exists() and not cold.exists()
     assert (root / "demoted" / "build" / cache_move.slot(str(cold)) / "debug").is_dir()
-    assert ce.load(state)["L"] > 0
+    assert ce.read_ledger(state)["L"] > 0
     again = cache_sweep.sweep(_roots_again(tmp_path), v, state, NOW, False, opener)
     keys = {(o["key"], o["verb"]) for o in again["actions"]}
     assert (str(cold), "demote") not in keys  # the copy is external now, counted there
@@ -199,7 +199,7 @@ def test_a_plan_never_re_points(tmp_path):
     ledger = str(tmp_path / "ledger.json")
     (tmp_path / "cov").mkdir()
     (tmp_path / "sccache").mkdir()
-    ce.save(ledger, {"objs": {}, "L": 0.0, "sccache_root": internal})
+    ce.write_ledger(ledger, {"objs": {}, "L": 0.0, "sccache_root": internal})
     verdict = cache_tier.resolve(str(tmp_path / "int"), {}, sysm)
     opener = lambda v: os.open(v.root, os.O_RDONLY | os.O_DIRECTORY)  # noqa: E731
     r = cache_sweep.sweep(_roots_again(tmp_path), verdict, ledger, NOW, False, opener,
