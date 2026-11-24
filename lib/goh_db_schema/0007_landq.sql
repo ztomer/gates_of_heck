@@ -49,5 +49,5 @@ CREATE TABLE early(
 -- The interface other readers use (handover plan (d)): what is in flight, by state. The loop's
 -- in-flight reading (.loop tools/goh_view.py in_flight) counts an enqueuing row only while its
 -- pid (by pid_stamp) is alive and `until` has not passed, as goh's own lib/landq_inflight.py does.
-CREATE VIEW queue_v1 AS
+CREATE VIEW landq_v1 AS
   SELECT queue, run, item, repo, sha, mode, state, pid, pid_stamp, until, filed_at FROM requests;

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import signal
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -27,6 +28,7 @@ from test_landq import FAKE_LOOPCTL, LANDQ, make_repo
 from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import goh_db
 import land_records
 import landq_export
 import landq_inflight
@@ -146,3 +148,20 @@ def test_a_move_is_one_state_and_a_second_mover_loses(tmp_path, monkeypatch):
     land_records.write(q, running.stem, {"item": "T.M", "state": "landed"}, request=running)
     assert landq_state.state_of(q, running.stem) is None
     assert land_records.get(q, running.stem) == {"item": "T.M", "state": "landed"}
+
+
+def test_the_landq_v1_view_is_the_queue_other_readers_read(tmp_path, monkeypatch):
+    """The interface .loop reads (handover plan (d)): named landq_v1, never queue_v1, which names
+    loop.db's own queue beside it once goh.db is attached; an enqueuing row carries what its
+    liveness rule needs (pid, pid_stamp, until)."""
+    _goh_db_fixture.use(monkeypatch, tmp_path)
+    q = tmp_path / "landq"
+    landq_state.put(q, "77-T.V", {"item": "T.V", "pid": 77, "pid_stamp": "77 x", "until": 9.5},
+                    "enqueuing")  # fmt: skip
+    with goh_db.ro() as con:
+        con.row_factory = sqlite3.Row
+        rows = [dict(r) for r in con.execute("SELECT * FROM landq_v1")]
+        views = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='view'")}
+    assert "queue_v1" not in views
+    assert [(r["run"], r["state"], r["pid"], r["pid_stamp"], r["until"]) for r in rows] == [
+        ("77-T.V", "enqueuing", 77, "77 x", 9.5)]  # fmt: skip
