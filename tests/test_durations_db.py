@@ -1,5 +1,5 @@
 """lib/durations.py, the suite's timing tables in goh.db (GOH.DURATIONSDB, goh.db 0006): two runs
-ending together keep both runs' readings, the JSON files import once and read the same, a prune is
+ending together keep both runs' readings, the JSON files retire read back equal, a prune is
 a row a later reading lifts, and each (kind, node) keeps its newest KEEP readings."""
 
 from __future__ import annotations
@@ -50,18 +50,30 @@ def test_two_runs_ending_together_keep_both_readings(tmp_path: Path) -> None:
     assert durations.load(db=db) == {"t.py::a": 1.0, "t.py::b": 1.0}
 
 
-def test_the_json_files_import_once_and_read_the_same(tmp_path: Path) -> None:
-    """Before the first write a reader reads each JSON file; the write imports it (by sha256, once)
-    under its own readings, and the view equals the file's entries plus the run's."""
-    db = tmp_path / "goh.db"
+def test_the_json_files_are_read_by_nothing_and_retire_read_back_equal(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Since wave 3 a reader never reads a JSON file beside the database; `goh state retire
+    durations` imports each (by sha256, once), reads every reading back and archives the files,
+    and a run's later reading supersedes an imported one."""
+    import state_retire
+
+    state = tmp_path / "goh"
+    state.mkdir()
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    monkeypatch.delenv("GOH_TEST_DURATIONS", raising=False)
+    db = state / "goh.db"
+    monkeypatch.setenv("GOH_DB", str(db))
     table = {"t.py::test_a": 3.0, "t.py::test_b": 0.25, "bad": "x"}
-    (tmp_path / "test-durations.json").write_text(json.dumps(table))
-    (tmp_path / "test-durations.poles.json").write_text(json.dumps({"t.py::test_a": 2.0}))
-    (tmp_path / "linux-unsafe.json").write_text(json.dumps({"test_m": "why"}))
-    assert durations.load(db=db) == {"t.py::test_a": 3.0, "t.py::test_b": 0.25}
-    assert durations.get("linux_unsafe", db=db) == {"test_m": "why"}
-    durations.record({"dur": {"t.py::test_c": 1.5}}, db=db)
-    durations.record({"dur": {"t.py::test_c": 1.25}}, db=db)  # a second write imports nothing
+    (state / "test-durations.json").write_text(json.dumps(table))
+    (state / "test-durations.poles.json").write_text(json.dumps({"t.py::test_a": 2.0}))
+    (state / "linux-unsafe.json").write_text(json.dumps({"test_m": "why"}))
+    assert durations.load(db=db) == {}  # the files are read by nothing
+    assert durations.get("linux_unsafe", db=db) is None
+    said: list[str] = []
+    assert state_retire.retire("durations", day="d", say=said.append) is True, said
+    assert sorted(p.name for p in state.glob("*.json")) == []
+    assert (state / "retired" / "d" / "durations" / "state" / "test-durations.json").is_file()
     with goh_db.ro(db) as con:
         assert con.execute(
             "SELECT store, source, rows FROM imports ORDER BY source"
@@ -70,14 +82,11 @@ def test_the_json_files_import_once_and_read_the_same(tmp_path: Path) -> None:
             ("durations", "test-durations.json", 2),
             ("durations", "test-durations.poles.json", 1),
         ]
-        assert con.execute("PRAGMA user_version").fetchone()[0] >= 1
-    assert durations.load(db=db) == {
-        "t.py::test_a": 3.0,
-        "t.py::test_b": 0.25,
-        "t.py::test_c": 1.25,
-    }
+    assert durations.load(db=db) == {"t.py::test_a": 3.0, "t.py::test_b": 0.25}
     assert durations.load("pole", db=db) == {"t.py::test_a": 2.0}
     assert durations.get("linux_unsafe", db=db) == {"test_m": "why"}
+    durations.record({"dur": {"t.py::test_a": 1.25}}, db=db)
+    assert durations.load(db=db)["t.py::test_a"] == 1.25
 
 
 def test_a_prune_is_a_row_a_later_reading_lifts(tmp_path: Path) -> None:

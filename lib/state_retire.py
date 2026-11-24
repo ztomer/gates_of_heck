@@ -253,6 +253,74 @@ def _small_check(con: sqlite3.Connection, p: Path) -> str | None:
     return f"{len(miss)} of its lines have no {table} row" if miss else None
 
 
+# -- durations (GOH.DURATIONSDB, goh.db 0006) -----------------------------------------------------
+
+DUR_FILES = {"dur": "test-durations.json", "pole": "test-durations.poles.json",
+             "pole_cpu": "test-durations.poles-cpu.json", "remote_rates": "remote-rates.json",
+             "linux_unsafe": "linux-unsafe.json"}  # fmt: skip
+
+
+def _dur_what(p: Path) -> str:
+    return next(w for w, n in DUR_FILES.items() if n == p.name)
+
+
+def _numbers(data: object) -> dict[str, float]:
+    if not isinstance(data, dict):
+        return {}
+    return {k: float(v) for k, v in data.items() if isinstance(v, (int, float))}
+
+
+def _dur_load(con: sqlite3.Connection, files: list[Path]) -> None:
+    """As lib/durations.py's first write once took them: a table file's entries as readings at
+    its mtime under the run `import:<sha12>`, a kv file's value unless the key has one; once per
+    file's bytes (the imports ledger, source the bare file name)."""
+    for p in files:
+        what, raw = _dur_what(p), p.read_bytes()
+        sha = hashlib.sha256(raw).hexdigest()
+        if con.execute("SELECT 1 FROM imports WHERE store='durations' AND source=? AND sha256=?",
+                       (p.name, sha)).fetchone():  # fmt: skip
+            continue
+        data, at = _json(p), p.stat().st_mtime
+        if what in ("dur", "pole", "pole_cpu"):
+            got = _numbers(data)
+            run = f"import:{sha[:12]}"
+            con.executemany("INSERT INTO readings(run, node, kind, seconds, loaded, at) "
+                            "VALUES (?, ?, ?, ?, 0, ?)",
+                            [(run, k, what, v, at) for k, v in got.items()])  # fmt: skip
+            n = len(got)
+        else:
+            n = 0 if data is None else con.execute(
+                "INSERT OR IGNORE INTO duration_kv VALUES (?, ?, ?)",
+                (what, json.dumps(data), at)).rowcount  # fmt: skip
+        con.execute("INSERT OR IGNORE INTO imports VALUES (?, ?, ?, ?, ?)",
+                    ("durations", p.name, sha, n, time.time()))  # fmt: skip
+
+
+def _dur_check(con: sqlite3.Connection, p: Path) -> str | None:
+    """A kv file's value is its row's, or the row is newer; a table file's every reading is its
+    import's row, or its node has a newer reading or a prune (the table moved on: KEEP)."""
+    what, at = _dur_what(p), p.stat().st_mtime
+    if what not in ("dur", "pole", "pole_cpu"):
+        row = con.execute("SELECT value, at FROM duration_kv WHERE key=?", (what,)).fetchone()
+        if row is None:
+            return f"no duration_kv row {what}"
+        same = json.loads(row[0]) == _json(p) or float(row[1] or 0) > at
+        return None if same else f"duration_kv {what} differs and is older than the file"
+    run = f"import:{hashlib.sha256(p.read_bytes()).hexdigest()[:12]}"
+    miss = 0
+    for node, v in _numbers(_json(p)).items():
+        got = con.execute("SELECT seconds FROM readings WHERE kind=? AND node=? AND run=?",
+                          (what, node, run)).fetchone()  # fmt: skip
+        if got is not None and abs(float(got[0]) - v) < 1e-9:
+            continue
+        if con.execute("SELECT 1 FROM readings WHERE kind=? AND node=? AND at>=? UNION ALL "
+                       "SELECT 1 FROM pruned WHERE kind=? AND node=?",
+                       (what, node, at, what, node)).fetchone():  # fmt: skip
+            continue
+        miss += 1
+    return f"{miss} readings read back from no row" if miss else None
+
+
 # -- the stores -----------------------------------------------------------------------------------
 
 
@@ -261,6 +329,11 @@ def _existing(*paths: Path) -> list[Path]:
 
 
 STORES: dict[str, Store] = {
+    "durations": Store(
+        files=lambda: _existing(*(state_dir() / n for n in DUR_FILES.values())),
+        load=_dur_load,
+        check=_dur_check,
+    ),
     "small-stores": Store(files=_small_files, load=_small_load, check=_small_check),
     "hook-ledgers": Store(
         files=lambda: _existing(*(_hook_file(t) for t in HOOK_FILES)),
