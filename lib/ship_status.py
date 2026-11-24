@@ -3,7 +3,6 @@ log's tail (split from tools/ship.py at its 500-line cap)."""
 
 from __future__ import annotations
 
-import json
 import os
 import sqlite3
 import sys
@@ -12,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import canary_grace  # tools/ship.py, the one importer, puts lib/ on sys.path
 import consumer_pins
+import goh_db
 import pid_owner
 import pin_sweep
 import ship_profile
@@ -62,18 +62,13 @@ def record_ship_timing(res: dict) -> None:
 
 
 def save(res: dict) -> None:
-    """Write RES whole: its goh.db row (lib/ship_records.py, the record goh reads), then, until the
-    database plan's wave-3 delete commit, its result file (a temp file renamed over it) for the
-    readers outside goh. A row that cannot be written is said, never fatal to the ship."""
+    """Write RES whole: its goh.db row (lib/ship_records.py, the one record of a ship since the
+    database plan's wave 3; readers outside goh read the `ships_v2` view). A row that cannot be
+    written is said, never fatal to the ship."""
     try:
         ship_records.put(res)
     except (sqlite3.Error, OSError) as e:
         err(f"goh ship: the record's goh.db row was not written ({e}): {res['result']}")
-    path = Path(res["result"])
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(json.dumps(res, indent=1) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
 
 
 def carry(res: dict) -> None:
@@ -94,23 +89,9 @@ def tail(log: Path) -> list[str]:
 def record(result: str) -> dict:
     """RESULT's record (its goh.db row, else its file); a result with neither exits 2, said."""
     if (res := ship_records.get(result)) is None:
-        err(f"goh ship: no record of {result} in goh.db or on disk")
+        err(f"goh ship: no record of {result} in goh.db")
         raise SystemExit(2)
     return res
-
-
-def import_records(say=None) -> None:
-    """The record and pin files no row holds yet into goh.db (lib/ship_records.py import_files),
-    at each ship's start: harmless to repeat, never fatal to the ship."""
-    try:
-        got = ship_records.import_files()
-    except (sqlite3.Error, OSError) as e:
-        err(f"goh ship: the ship records were not imported into goh.db: {e}")
-        return
-    if say and any(got.values()):
-        say(
-            f"goh ship: imported {got['ships']} ship and {got['ship_pins']} pin records into goh.db"
-        )
 
 
 ABANDONED = "abandoned"  # the failed_step of a result whose worker died saying running
@@ -133,20 +114,30 @@ def settle(path: Path, res: dict | None = None) -> bool:
     res = ship_records.get(path) if res is None else res
     if res is None or not _gone(res):
         return False
+    save(abandoned(res, path))
+    return True
+
+
+def abandoned(res: dict, path: Path | str) -> dict:
+    """RES, whose worker is gone, as the terminal record it could not write: `failed` at
+    ABANDONED, naming the pid and the steps it finished (also lib/state_retire_ships.py's)."""
     done = [s["name"] for s in res.get("steps", []) if isinstance(s, dict) and "name" in s]
     said = (f"the worker (pid {res['pid']}) is gone and the result said running; "
             f"steps done: {', '.join(done) or 'none'}")  # fmt: skip
     res.update(status="failed", failed_step=ABANDONED, tail=[said])
     res["result"] = str(path)
-    save(res)
-    return True
+    return res
 
 
-def settle_all(directory: Path, say=None) -> list[Path]:
-    """`settle` over every ship result in DIRECTORY (a repo's ship records): the ones rewritten,
-    each said through SAY when given; the files no row holds are imported first."""
-    import_records(say)
-    done = [p for p, rec in ship_records.in_dir(directory) if settle(p, rec)]
+def settle_all(say=None) -> list[Path]:
+    """`settle` over every ship result of EVERY repo that still says running (a dead worker of one
+    repo's ship was left running forever while only the shipped repo's were settled): the ones
+    rewritten, each said through SAY when given. No goh.db: nothing to settle."""
+    try:
+        live = ship_records.live()
+    except goh_db.Unknown:
+        return []
+    done = [p for p, rec in live if settle(p, rec)]
     for p in done if say else ():
         say(f"goh ship: an earlier ship's worker is gone; recorded it as failed: {p}")
     return done
@@ -157,7 +148,7 @@ def status(result: str) -> int:
     is gone (killed, or the machine slept through a reboot) while the result still says running."""
     res = ship_records.get(result)
     if res is None:
-        err(f"goh ship: cannot read {result}: no goh.db row and no readable file")
+        err(f"goh ship: cannot read {result}: no goh.db row")
         return 2
     for s in res["steps"]:
         mark = {"ok": ok, "skipped": step}.get(s["status"], err)

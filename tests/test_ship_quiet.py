@@ -10,11 +10,11 @@ idle over its own run, so a slow ship under load is not read as a code regressio
 
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import pytest
 from _shipped_kit import shipped_clone
 from conftest import REPO_ROOT
@@ -125,7 +125,7 @@ def _ship(repo: Path, tmp_path: Path, **env: str) -> dict:
     r = subprocess.run(argv, env=_env(tmp_path, **env), capture_output=True, text=True,
                        timeout=patience(120), stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
-    return json.loads((tmp_path / "ship.json").read_text())
+    return gdb.shipped(tmp_path / "ship.json")
 
 
 def test_a_ship_on_a_busy_host_waits_its_bound_and_records_the_wait_and_load(

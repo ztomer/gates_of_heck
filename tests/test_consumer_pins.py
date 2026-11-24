@@ -21,6 +21,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
@@ -172,7 +173,7 @@ def test_one_bump_leaves_no_consumer_stale_and_none_ahead_with_a_pin_commit(tmp_
     assert r.returncode == 0, out
     ruffy, wfy, busy, stranded = (repos[k] for k in ("ruffy", "wfy", "busy", "stranded"))
     # The ruff pin: the pyproject's, the lock and the venv all moved, in one commit, pushed.
-    sweep = json.loads(consumer_pins.record_path(record).read_text())["sweep"]
+    sweep = gdb.pinned(record)["sweep"]
     assert f'"ruff=={RUFF}"' in (ruffy / "pyproject.toml").read_text()
     assert "ruff==0.0.2 in a comment" in (ruffy / "pyproject.toml").read_text()  # prose kept
     assert f'name = "ruff"\nversion = "{RUFF}"' in (ruffy / "uv.lock").read_text()
@@ -190,7 +191,7 @@ def test_one_bump_leaves_no_consumer_stale_and_none_ahead_with_a_pin_commit(tmp_
     # an owner's unpushed commit is never pushed by goh: the pin is committed and the refusal NAMED.
     assert f"--branch {TAG}" in (busy / ".github/workflows/ci.yml").read_text()
     assert _ahead(busy) == 2, out
-    rec = json.loads(consumer_pins.record_path(record).read_text())
+    rec = gdb.pinned(record)
     assert rec["tag"] == TAG and rec["ruff"] == RUFF, rec
     status = {k: v["status"] for k, v in rec["repos"].items()}  # the install: commits only
     assert status == dict.fromkeys(("ruffy", "wfy", "busy"), "committed"), rec
@@ -201,7 +202,7 @@ def test_one_bump_leaves_no_consumer_stale_and_none_ahead_with_a_pin_commit(tmp_
     assert "not pushed" in pushes["repos"]["busy"]["said"], pushes
     assert "the owner's work" in pushes["repos"]["busy"]["said"], pushes
     again = _bump(tmp_path, record)
-    rec = json.loads(consumer_pins.record_path(record).read_text())
+    rec = gdb.pinned(record)
     pushes = json.loads(Path(rec["sweep"]).read_text())
     assert again.returncode == 0 and not rec["repos"], again.stdout + again.stderr
     assert set(pushes["repos"]) == {"busy"}, pushes
@@ -211,7 +212,7 @@ def test_one_bump_leaves_no_consumer_stale_and_none_ahead_with_a_pin_commit(tmp_
 def test_a_spent_push_budget_commits_and_names_what_the_next_sweep_pushes(tmp_path):
     repos = _estate(tmp_path)
     r = _bump(tmp_path, tmp_path / "ship.json", "--budget", "0")
-    rec = json.loads(consumer_pins.record_path(tmp_path / "ship.json").read_text())
+    rec = gdb.pinned(tmp_path / "ship.json")
     rec = json.loads(Path(rec["sweep"]).read_text())
     assert r.returncode == 0 and rec["repos"]["wfy"]["status"] == "committed", r.stdout + r.stderr
     assert "budget is spent" in rec["repos"]["wfy"]["said"], rec
@@ -224,11 +225,11 @@ def test_the_ship_result_carries_each_consumers_outcome(tmp_path):
 
     sys.path.pop(0)
     res = {"result": str(tmp_path / "ship.json"), "repo": str(tmp_path), "sha": "a" * 40}
-    consumer_pins.record_path(Path(res["result"])).write_text(json.dumps({
+    gdb.pins(res["result"], {
         "schema": 2, "tag": TAG, "ruff": RUFF, "sweep": str(tmp_path / "ship.sweep.json"),
         "repos": {"ruffy": {"status": "committed", "said": "pinned in abc"},
                   "busy": {"status": "set_aside", "said": "set aside: on hold"}},
-    }))  # fmt: skip
+    })  # fmt: skip
     ship_status.carry(res)
     c = res["consumer_pins"]
     assert c["committed"] == ["ruffy"] and c["not_committed"] == {"busy": "set aside: on hold"}

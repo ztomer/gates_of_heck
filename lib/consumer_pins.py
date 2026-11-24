@@ -26,7 +26,6 @@ pin commit then waits on it, named.
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import re
 import subprocess
@@ -350,24 +349,20 @@ def land_held(repo: Path):
 
 
 def record_path(result: Path | str) -> Path:
-    """The sweep's record beside a goh ship result (GOH_SHIP_RESULT)."""
+    """The name of the pin record beside a goh ship result (GOH_SHIP_RESULT): wf-pin's kv key."""
     return ship_records.pins_path(result)
 
 
 def write_record(result: str, tag: str, ruff: str, repos: dict[str, dict[str, str]],
                  sweep: str | None = None, ship: bool = True) -> None:  # fmt: skip
-    """The install's record: a SHIP result's goh.db `ship_pins` row (lib/ship_records.py), and
-    until the database plan's wave-3 delete commit the sidecar file beside the result too; wf-pin's
-    own record (SHIP false) is goh.db's `kv` row named for its sidecar, `wf_pin.pins`, and no file
-    (lib/small_stores.py, GOH.STATEDBS3)."""
+    """The install's record: a SHIP result's goh.db `ship_pins` row (lib/ship_records.py); wf-pin's
+    own record (SHIP false) is goh.db's `kv` row named for its old sidecar, `wf_pin.pins`
+    (lib/small_stores.py, GOH.STATEDBS3). No file either way."""
     body = {"schema": 2, "tag": tag, "ruff": ruff, "repos": repos, "sweep": sweep}
     if not ship:
         small_stores.put(record_path(result), body)
         return
     ship_records.put_pins(result, body)
-    path = record_path(result)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(body, indent=1) + "\n", encoding="utf-8")
 
 
 def carry(res: dict) -> None:

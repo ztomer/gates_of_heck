@@ -24,6 +24,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 from conftest import REPO_ROOT, hermetic_env
 from test_consumer_pins import SCRIPT, TAG, WF, _consumer
 from test_ship import _result, _ship, make_shipped
@@ -104,7 +105,7 @@ def test_the_sweep_pushes_its_consumers_one_after_another_each_profiled(tmp_path
                        stdin=subprocess.DEVNULL)  # fmt: skip
     out = r.stdout + r.stderr
     assert r.returncode == 0, out
-    rec = json.loads((tmp_path / "ship.pins.json").read_text())
+    rec = gdb.pinned(tmp_path / "ship.json")
     assert {k: v["status"] for k, v in rec["repos"].items()} == dict.fromkeys(names, "committed")
     rec = json.loads(Path(rec["sweep"]).read_text())
     assert {k: v["status"] for k, v in rec["repos"].items()} == dict.fromkeys(names, "pushed"), rec

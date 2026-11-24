@@ -15,6 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import landq_state
 import pytest
 from conftest import REPO_ROOT, git
@@ -44,6 +45,7 @@ def box(repo: Path, tmp_path: Path, monkeypatch) -> dict[str, str]:
                GOH_LOOPCTL=str(tmp_path / "loopctl.py"), GOH_SHIP_DIR=str(tmp_path / "ships"),
                GOH_LAND_GATE=GATE, GOH_LAND_TIMEOUT="120")  # fmt: skip
     env["GOH_LOOP_QUEUE"] = str(tmp_path / "queue.json")  # never the real queue
+    env["GOH_DB"] = str(gdb.made(monkeypatch, tmp_path))  # no ship row: none in flight (S2)
     for k in ("GOH_PY", "PATH", "GOH_SHIP_DIR", "GOH_LOOPCTL", "GOH_LOOP_QUEUE"):
         monkeypatch.setenv(k, env[k])
     return env
@@ -97,11 +99,10 @@ def test_a_land_or_a_ship_in_flight_leaves_it_to_the_next_look(repo, tmp_path, b
     assert ruff_bump.run(q, repo, say=lambda _: None, enqueue=_fake_enqueue(seen)) == "busy"
     landq_state.drop(filed)
     ships = tmp_path / "ships" / repo.name
-    ships.mkdir(parents=True)
     rec = {"status": "running", "pid": os.getpid()}
-    (ships / "20261120T000000Z-abcdef12.json").write_text(json.dumps(rec))
+    gdb.ship(ships / "20261120T000000Z-abcdef12.json", rec)
     assert ruff_bump.run(q, repo, say=lambda _: None, enqueue=_fake_enqueue(seen)) == "busy"
-    (ships / "20261120T000000Z-abcdef12.json").write_text(json.dumps({**rec, "status": "ok"}))
+    gdb.ship(ships / "20261120T000000Z-abcdef12.json", {**rec, "status": "ok"})
     assert ruff_bump.run(q, repo, say=lambda _: None, enqueue=_fake_enqueue(seen)) == "enqueued"
     assert seen == [(f"{ITEM}: ruff {NEXT} is the house pin", ITEM)]
     assert not (q / "ruff-bump" / f"{NEXT}.json").read_text().count("failed")

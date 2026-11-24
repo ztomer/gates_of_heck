@@ -10,6 +10,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import pytest
 from conftest import REPO_ROOT, git
 from test_ship import FAKE_LOOPCTL, _calls, _result, _ship, make_shipped
@@ -184,4 +185,4 @@ def test_bump_none_past_the_newest_tag_is_refused_naming_the_flag(shipped, tmp_p
     assert r.returncode == 2, r.stdout + r.stderr
     assert "--version X.Y.Z" in r.stderr and "v1.0.0" in r.stderr, r.stderr
     assert "nothing started" in r.stderr
-    assert not (tmp_path / "ship.json").exists()
+    assert gdb.shipped(tmp_path / "ship.json") is None

@@ -240,7 +240,7 @@ def test_goh_ship_refuses_in_preflight_unless_allowed(tmp_path, tmp_path_factory
     r = _ship(repo, tmp_path, "--wait", GOH_LANDQ_DIR=str(q))
     assert_sooner(time.monotonic() - t0, 4, 961, "goh ship's diff coverage preflight")
     assert r.returncode == 2, r.stdout + r.stderr
-    assert "f.txt:1  change" in r.stderr and not (tmp_path / "ship.json").exists(), r.stderr
+    assert "f.txt:1  change" in r.stderr and gdb.shipped(tmp_path / "ship.json") is None, r.stderr
     r = _ship(repo, tmp_path, "--wait", "--allow-diffcov", " ", GOH_LANDQ_DIR=str(q))
     assert r.returncode == 2 and "needs a REASON" in r.stderr, r.stderr
     r = _ship(repo, tmp_path, "--wait", "--allow-diffcov", "covered by hand", GOH_LANDQ_DIR=str(q))

@@ -28,6 +28,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import goh_db  # a missing goh.db: the ships are unknown (goh_db.Unknown)
 import reuse  # lib/, beside this file: the one verdict store (GOH.ONEVERDICT)
 import ship_records  # the ship records in goh.db (GOH.STATEDB S2)
 
@@ -52,7 +53,11 @@ def verdict(repo: Path, sha: str, caller: int | None = None) -> tuple[Path | Non
     repo = repo.resolve()
     live = ancestors(os.getpid() if caller is None else caller)
     why = f"no running ship of {repo.name} is above this process"
-    for path, rec in ship_records.in_dir(ship_records.ship_dir() / repo.name):
+    try:
+        recs = ship_records.in_dir(ship_records.ship_dir() / repo.name)
+    except goh_db.Unknown as e:
+        return None, f"the ships are unknown: {e}"
+    for path, rec in recs:
         if Path(str(rec.get("repo", ""))).resolve() != repo:
             continue
         if rec.get("status") != "running" or rec.get("pid") not in live:

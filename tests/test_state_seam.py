@@ -29,11 +29,11 @@ ALLOWED: dict[str, set[str]] = {
     "selection misses": {  # S1 goh.db 0002 selection_misses
         "lib/state_files.py",  # the pre-switch ledger file's bound, until wave 3
     },
-    "ship records": {  # S2 goh.db 0003 ships: moved (lib/ship_records.py, GOH.STATEDBS2)
+    "ship records": {  # S2 goh.db 0003 ships: moved; the files retired (lib/state_retire_ships.py)
         "lib/ship_records.py",  # LEFT: ship_dir(), where the step logs stay (handover plan (e))
-        "lib/state_bounds.py",  # LEFT: ship/* prunes the step logs and the window's record files
+        "lib/state_bounds.py",  # LEFT: ship/* bounds the step logs (handover plan (e))
     },
-    "ship pins": set(),  # S2 goh.db 0003 ship_pins: moved (lib/ship_records.py, GOH.STATEDBS2)
+    "ship pins": set(),  # S2 goh.db 0003 ship_pins: moved; the files retired (state_retire_ships)
     "small stores": set(),  # S3 goh.db 0004 kv: moved (lib/small_stores.py, GOH.STATEDBS3)
     "commit gated": set(),  # S3 goh.db 0004 commit_gated: moved (lib/small_stores.py)
     "flakes": set(),  # S3 goh.db 0004 flakes: moved; the files retired (lib/state_retire.py)

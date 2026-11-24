@@ -13,12 +13,12 @@ land queue had pushed first was never green to the ship (koffee_big ship
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env
@@ -69,9 +69,7 @@ def test_a_red_push_gate_records_nothing(tmp_path):
 
 def _record(tmp_path: Path, repo: Path, *, pid: int, status: str = "running") -> Path:
     path = tmp_path / "ships" / repo.name / "20261114T000000Z-x.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"repo": str(repo), "status": status, "pid": pid}))
-    return path
+    return gdb.ship(path, {"repo": str(repo), "status": status, "pid": pid})
 
 
 def _gated(tmp_path: Path, repo: Path, sha: str) -> None:

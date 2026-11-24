@@ -17,6 +17,7 @@ import json
 import sys
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import test_ship_starve
 from conftest import REPO_ROOT, commit_all, git, write
 from test_ship import _calls
@@ -71,7 +72,7 @@ def _ship(repo: Path, tmp_path: Path) -> tuple[int, str, dict]:
             str(tmp_path / "ship.json"), "--wait"]  # fmt: skip
     r = subprocess.run(argv, env=env, capture_output=True, text=True, timeout=patience(240),
                        stdin=subprocess.DEVNULL, check=False)  # fmt: skip
-    return r.returncode, r.stdout + r.stderr, json.loads((tmp_path / "ship.json").read_text())
+    return r.returncode, r.stdout + r.stderr, gdb.shipped(tmp_path / "ship.json")
 
 
 def _bases(tmp_path: Path) -> set[str]:

@@ -12,6 +12,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import test_ship
 from conftest import REPO_ROOT, git
 from test_ship import FAKE_LOOPCTL, _calls, _ship
@@ -42,7 +43,7 @@ def test_an_item_of_another_repo_is_refused_before_anything_runs(shipped, tmp_pa
     assert "RM.MONITOR's repo is monitor" in r.stderr and "nothing started" in r.stderr, r.stderr
     assert [c[0] for c in _calls(tmp_path)] == ["shippable"], _calls(tmp_path)
     assert git(shipped, "ls-remote", "origin", "main").split()[0] == before
-    assert not (tmp_path / "ship.json").exists()
+    assert gdb.shipped(tmp_path / "ship.json") is None
 
 
 def test_the_items_repo_is_asked_by_the_name_ship_records(shipped, tmp_path):

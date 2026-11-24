@@ -19,6 +19,7 @@ import sys
 import time
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import pytest
 from _shipped_kit import FAKE_LOOPCTL, make_shipped, shipped_clone  # noqa: F401  (re-exported)
 from conftest import REPO_ROOT, git, hermetic_env, native_goh_path, run_goh
@@ -54,7 +55,10 @@ def _ship(repo: Path, tmp_path: Path, *args: str, **env: str) -> subprocess.Comp
 
 
 def _result(tmp_path: Path) -> dict:
-    return json.loads((tmp_path / "ship.json").read_text())
+    """The ship's record: its goh.db row (GOH.STATEDB S2: no result file is written)."""
+    rec = gdb.shipped(tmp_path / "ship.json")
+    assert rec is not None, f"no ship row for {tmp_path / 'ship.json'}"
+    return rec
 
 
 def _calls(tmp_path: Path) -> list[list[str]]:
@@ -165,7 +169,7 @@ def test_a_repo_that_tags_but_declares_no_release_is_refused_before_it_starts(sh
     r = _ship(shipped, tmp_path, GOH_SHIP_RELEASE="")
     assert r.returncode == 2
     assert "GOH_SHIP_RELEASE" in r.stderr
-    assert not (tmp_path / "ship.json").exists()
+    assert gdb.shipped(tmp_path / "ship.json") is None
 
 
 def test_a_dirty_tree_is_refused_before_it_starts(shipped, tmp_path):
@@ -359,7 +363,7 @@ def test_an_empty_unreleased_is_refused_before_the_push(shipped, tmp_path, args)
     assert r.returncode == 2, r.stdout + r.stderr
     assert "Unreleased" in r.stderr and "CHANGELOG.md" in r.stderr, r.stderr
     assert git(shipped, "ls-remote", "origin", "refs/heads/main") == before
-    assert not (tmp_path / "ship.json").exists()
+    assert gdb.shipped(tmp_path / "ship.json") is None
 
 
 def test_an_empty_unreleased_is_not_refused_when_no_release_runs(shipped, tmp_path):
@@ -390,7 +394,7 @@ def test_a_failing_preflight_refuses_with_its_reason_and_leaves_origin_untouched
     assert f"the done ledger has no row for v{version}" in r.stderr, r.stderr
     assert "GOH_SHIP_PREFLIGHT" in r.stderr, r.stderr
     assert git(shipped, "ls-remote", "origin") == before
-    assert not (tmp_path / "ship.json").exists()
+    assert gdb.shipped(tmp_path / "ship.json") is None
     assert [c for c in _calls(tmp_path) if c[0] != "shippable"] == []  # only the read-only item ask
 
 

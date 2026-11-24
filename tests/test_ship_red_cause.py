@@ -21,6 +21,7 @@ import json
 import sys
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import test_ship_cov_bisect
 from conftest import REPO_ROOT, commit_all, git, write
 from test_ship import _calls
@@ -46,18 +47,23 @@ if [ -e cov.fail ]; then echo "FAILED tests/t_mark.py::test_mark - AssertionErro
     + _RECORD
 )
 # The test a failing-test red names, red while the tree has `cov.fail`: the narrow bisect's probe.
-# It copies the ship's record as it stands at that moment beside the dummy's log.
-MARK_TEST = """import os, shutil, subprocess
+# It copies the ship's record as it stands at that moment (its goh.db row, GOH.STATEDB S2) beside
+# the dummy's log.
+MARK_TEST = """import json, os, subprocess, sys
 from pathlib import Path
+
+sys.path.insert(0, "@LIB@")
+import ship_records
 
 
 def test_mark():
     out = Path(os.environ["STAND_IN_LOG"]).parent / "probe-records"
     out.mkdir(exist_ok=True)
     head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout
-    shutil.copy(os.environ["GOH_SHIP_RESULT"], out / f"{head.strip()}.json")
+    rec = ship_records.get(os.environ["GOH_SHIP_RESULT"])
+    (out / f"{head.strip()}.json").write_text(json.dumps(rec))
     assert not Path("cov.fail").exists()
-"""
+""".replace("@LIB@", str(REPO_ROOT / "lib"))
 
 
 def _declare_dummy(repo: Path) -> None:
@@ -131,7 +137,7 @@ def test_a_second_ship_finding_the_lock_held_names_the_holder_and_its_state(
 
     holder = tmp_path / "20261122T021940Z-84cbc55f.json"
     probe = {"n": 2, "lands": 3, "sha": "da695d93" * 5}
-    holder.write_text(json.dumps({"status": "bisecting", "pid": 77558, "bisect_step": probe}))
+    gdb.ship(holder, {"status": "bisecting", "pid": 77558, "bisect_step": probe})
     with (tmp_path / ".ship.lock").open("a+") as held:
         fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
         held.write(json.dumps({"result": str(holder), "pid": 77558}))
@@ -145,4 +151,4 @@ def test_a_second_ship_finding_the_lock_held_names_the_holder_and_its_state(
     assert r.returncode == 2, said
     assert str(holder) in said and "pid 77558" in said, said
     assert "bisecting" in said and "bisect step 2" in said and "da695d93" in said, said
-    assert not (tmp_path / "ship.json").exists(), "a refused ship left a record"
+    assert gdb.shipped(tmp_path / "ship.json") is None, "a refused ship left a record"

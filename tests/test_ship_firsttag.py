@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import pytest
 from conftest import git
 from test_ship import _result, _ship
@@ -45,7 +46,7 @@ def test_a_first_ship_without_a_version_is_refused_naming_version(tagless, tmp_p
     assert r.returncode == 2, out
     assert "--version X.Y.Z" in out and "no v-tag" in out, out
     assert not saw.exists(), f"the release ran with version {saw.read_text()!r}"
-    assert not (tmp_path / "ship.json").exists(), "a refused ship started"
+    assert gdb.shipped(tmp_path / "ship.json") is None, "a refused ship started"
 
 
 def test_a_first_ship_with_a_version_releases_it(tagless, tmp_path):

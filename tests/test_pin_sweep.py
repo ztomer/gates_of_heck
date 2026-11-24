@@ -18,6 +18,7 @@ import sys
 import time
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
 from _small_store import estate_state
@@ -83,12 +84,12 @@ def _read(path: Path) -> dict:
 def test_the_install_commits_and_returns_before_any_consumer_push_gate_runs(tmp_path):
     repos = _consumers(tmp_path, {"one": "exit 0", "two": "exit 0"})
     ship = tmp_path / "ship.json"  # the ship that runs the install: still running while it does
-    ship.write_text(json.dumps({"status": "running", "pid": os.getpid()}))
+    gdb.ship(ship, {"status": "running", "pid": os.getpid()})
     r = _wf_pin(tmp_path, "--bump", GOH_SHIP_RESULT=str(ship))
     out = r.stdout + r.stderr
     assert r.returncode == 0, out
     assert not (tmp_path / "gates.log").exists(), out  # no push gate ran inside the install
-    pins = _read(tmp_path / "ship.pins.json")
+    pins = gdb.pinned(ship) or {}
     assert {k: v["status"] for k, v in pins["repos"].items()} == {
         "one": "committed",
         "two": "committed",
@@ -98,7 +99,7 @@ def test_the_install_commits_and_returns_before_any_consumer_push_gate_runs(tmp_
     said = sweep.with_suffix(".log")  # the sweep is detached and waiting for the ship to return
     assert _until(lambda: said.exists() and "waiting for the ship" in said.read_text(), 60), out
     assert not (tmp_path / "gates.log").exists() and _read(sweep)["status"] == "pending", out
-    ship.write_text(json.dumps({"status": "ok", "pid": os.getpid()}))  # the ship returns
+    gdb.ship(ship, {"status": "ok", "pid": os.getpid()})  # the ship returns
     rec = _until(lambda: (b := _read(sweep)).get("status") == "done" and b, 120)
     assert rec, _read(sweep)
     assert _until(lambda: not _alive(rec), 30), rec  # the supervisor ends with its sweep
@@ -145,16 +146,16 @@ def test_ship_status_shows_the_install_row_and_the_sweeps_rows_apart(tmp_path):
     install_t.write_text(json.dumps({"label": "commit good", "ms": 900.0, "load1": 3.0}) + "\n")
     sweep_t = tmp_path / "ship.sweep.timings.jsonl"
     sweep_t.write_text(json.dumps({"label": "push good", "ms": 400000.0, "load1": 9.5}) + "\n")
-    result.write_text(json.dumps({
+    gdb.ship(result, {
         "result": str(result), "status": "ok", "repo": str(tmp_path), "sha": "a" * 40,
         "steps": [{"name": "install", "status": "ok", "seconds": 4.1,
                    "timings": str(install_t)}],
-    }))  # fmt: skip
-    (tmp_path / "ship.pins.json").write_text(json.dumps({
+    })  # fmt: skip
+    gdb.pins(result, {
         "schema": 2, "tag": TAG, "ruff": "0.0.9", "sweep": str(sweep),
         "repos": {"good": {"status": "committed", "said": "pinned"},
                   "bad": {"status": "committed", "said": "pinned"}},
-    }))  # fmt: skip
+    })  # fmt: skip
     sweep.write_text(json.dumps({
         "status": "done", "started": "s", "finished": "f", "repos": {
             "good": {"status": "pushed", "said": "pushed 1 pin commit to origin/main"},
@@ -165,7 +166,7 @@ def test_ship_status_shows_the_install_row_and_the_sweeps_rows_apart(tmp_path):
     import ship_status
 
     sys.path.pop(0)
-    res = json.loads(result.read_text())
+    res = gdb.shipped(result)
     ship_status.carry(res)  # what the ship's install step does once it ends
     ship_status.save(res)
     st = subprocess.run([sys.executable, str(REPO_ROOT / "tools" / "ship.py"), "--status",
@@ -235,11 +236,11 @@ def test_a_newer_sweep_takes_over_an_older_ones_unstarted_pushes_and_waits_for_i
     # only once the older has ended: one sweep at a time, whatever the release rate.
     repos = _consumers(tmp_path, {"one": "exit 0", "two": "exit 0"})
     ship = tmp_path / "old.json"  # the older release's ship, still running: its sweep waits
-    ship.write_text(json.dumps({"status": "running", "pid": os.getpid()}))
+    gdb.ship(ship, {"status": "running", "pid": os.getpid()})
     try:
         _two_sweeps(tmp_path, repos, ship)
     finally:  # a red run never leaves the older supervisor waiting an hour on this test's pid
-        ship.write_text(json.dumps({"status": "ok", "pid": os.getpid()}))
+        gdb.ship(ship, {"status": "ok", "pid": os.getpid()})
 
 
 def _two_sweeps(tmp_path: Path, repos: dict[str, Path], ship: Path) -> None:
@@ -253,7 +254,7 @@ def _two_sweeps(tmp_path: Path, repos: dict[str, Path], ship: Path) -> None:
     said = newer.with_suffix(".log")
     assert _until(lambda: said.exists() and "waiting for the older sweep" in said.read_text(), 60)
     assert not (tmp_path / "gates.log").exists(), said.read_text()  # no gate while the older lives
-    ship.write_text(json.dumps({"status": "ok", "pid": os.getpid()}))  # the older ship returns
+    gdb.ship(ship, {"status": "ok", "pid": os.getpid()})  # the older ship returns
     old = _until(lambda: (b := _read(older)).get("status") == "done" and b, 120)
     assert {v["status"] for v in old["repos"].values()} == {"superseded"}, old
     assert all(str(newer) in v["said"] for v in old["repos"].values()), old

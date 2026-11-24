@@ -18,6 +18,7 @@ import sys
 import time
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import pytest
 import test_ship
 from conftest import REPO_ROOT, commit_all, git, write
@@ -119,7 +120,7 @@ def test_lands_keep_arriving_and_the_ship_still_releases_a_tip_with_its_run(
         time.sleep(0.3)
         fcntl.flock(held, fcntl.LOCK_UN)
     out, _ = p.communicate(timeout=patience(120))
-    res = json.loads((tmp_path / "ship.json").read_text())
+    res = gdb.shipped(tmp_path / "ship.json")
     tip = git(shipped, "rev-parse", "HEAD").strip()
     assert p.returncode == 0, f"{out}\n{res.get('tail')}"
     assert git(shipped, "rev-parse", "v1.1.0^{commit}").strip() == tip  # the tip released
@@ -140,7 +141,7 @@ def test_a_tip_with_the_idle_landers_run_is_still_judged_by_the_ship(
     _record_run(shipped, tmp_path / "store")
     p = _ship(shipped, tmp_path)
     out, _ = p.communicate(timeout=patience(120))
-    res = json.loads((tmp_path / "ship.json").read_text())
+    res = gdb.shipped(tmp_path / "ship.json")
     assert p.returncode == 0, f"{out}\n{res.get('tail')}"
     suite = res["steps"][0]
     assert (suite["name"], suite["status"]) == ("suite", "ok"), res["steps"]

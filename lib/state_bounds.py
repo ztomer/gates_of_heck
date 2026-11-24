@@ -113,7 +113,7 @@ REGISTRY: dict[str, Bound | Kept | Container] = {
         HISTORY_DAYS,
         SHIPS_PER_DAY * HISTORY_DAYS,
         r"^(\d{8}T\d{6}Z-[0-9a-f]+|v\d+\.\d+\.\d+)",
-        "a ship's result and its step logs; suite-wt is reused",
+        "a ship's step logs (its record is a goh.db row since wave 3); suite-wt is reused",
     ),
     "run": Bound(
         3,

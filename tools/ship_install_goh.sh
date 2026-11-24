@@ -6,7 +6,7 @@
 # manifest, lib/consumer_pins.py PINS: the workflow's goh tag, the ruff pin + uv.lock), so this step
 # moves them to the release just pushed (scripts/wf_pin.py --bump, GOH.WFPIN, GOH.PINPROPAGATE):
 # one commit per repo through its own hooks, or set aside and named in the ship's record
-# (GOH_SHIP_RESULT's .pins.json, carried into the result as consumer_pins). It only COMMITS: the
+# (GOH_SHIP_RESULT's goh.db ship_pins row, carried in as consumer_pins). It only COMMITS: the
 # pushes, each through that consumer's full push gate, run in a detached, bounded sweep after the
 # ship returns (lib/pin_sweep.py, GOH.PINPUSHGATE; `goh ship --status` prints its rows apart). A
 # repo that refuses does not fail the ship; the records and the next listing name it.

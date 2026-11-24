@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import goh_db
 import ship_records
 import timing_ledger
 
@@ -87,7 +88,11 @@ def backfill_ships() -> int:
     ship that predates the ledger is its first row, with the box's load unknown (not 'now')."""
     have = {(r["kind"], r["repo"], r["ref"]) for r in timing_ledger.read() if r.get("ref")}
     added = []
-    for _, res in ship_records.every():
+    try:
+        recs = ship_records.every()
+    except goh_db.Unknown:  # no goh.db: the ships are unknown, so nothing is backfilled
+        return 0
+    for _, res in recs:
         if isinstance(res, dict):
             added += [r for r in ship_rows(res) if (r["kind"], r["repo"], r["ref"]) not in have]
     for row in sorted(added, key=lambda r: r["epoch"]):

@@ -27,6 +27,7 @@ import sys
 import time
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import pytest
 from conftest import git
 from test_gate_environment import _clean_checkout_of_todays_gates
@@ -101,10 +102,10 @@ def test_a_ship_finishes_with_its_own_goh_when_the_live_checkout_renames_a_step_
 
     (tmp_path / "kit.go").touch()
     give_up = GiveUp(120)
-    while json.loads(out.read_text())["status"] == "running":
-        assert not give_up.passed(), out.read_text()
+    while (gdb.shipped(out) or {"status": "running"})["status"] == "running":
+        assert not give_up.passed(), gdb.shipped(out)
         time.sleep(0.2)
-    res = json.loads(out.read_text())
+    res = gdb.shipped(out)
     assert res["status"] == "ok", json.dumps(res, indent=1)
     assert [(s["name"], s["status"]) for s in res["steps"]] == [
         ("suite", "skipped"), ("push", "ok"), ("release", "ok"), ("install", "skipped"),

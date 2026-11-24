@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import pytest
 from conftest import git
 from test_ship import _calls, _changelog, _ship, shipped_clone
@@ -33,7 +34,7 @@ def test_a_changelog_the_declared_kit_will_refuse_is_refused_before_any_step(
     assert r.returncode == 2, r.stdout + r.stderr
     assert "Unreleased" in r.stderr and "v1.1.0" in r.stderr, r.stderr
     assert git(shipped, "ls-remote", "origin") == before
-    assert not (tmp_path / "ship.json").exists() and not (tmp_path / "pf").exists()
+    assert gdb.shipped(tmp_path / "ship.json") is None and not (tmp_path / "pf").exists()
     assert [c for c in _calls(tmp_path) if c[0] != "shippable"] == []  # only the read-only item ask
 
 
@@ -72,7 +73,7 @@ def test_a_changelog_with_no_declared_or_a_bad_contract_is_refused(shipped, tmp_
     r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_CHANGELOG=value)
     assert r.returncode == 2, r.stdout + r.stderr
     assert "GOH_SHIP_CHANGELOG" in r.stderr, r.stderr
-    assert not (tmp_path / "ship.json").exists()
+    assert gdb.shipped(tmp_path / "ship.json") is None
 
 
 def test_no_changelog_and_no_contract_ships(shipped, tmp_path):
@@ -104,7 +105,7 @@ def test_a_docs_changelog_the_kit_will_refuse_is_refused_at_ship_start(shipped, 
     assert r.returncode == 2, r.stdout + r.stderr
     assert "docs/CHANGELOG.md" in r.stderr and "Unreleased" in r.stderr, r.stderr
     assert git(shipped, "ls-remote", "origin") == before
-    assert not (tmp_path / "ship.json").exists()
+    assert gdb.shipped(tmp_path / "ship.json") is None
 
 
 @pytest.mark.parametrize("contract", ["unreleased", "cut"])

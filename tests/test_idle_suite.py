@@ -15,6 +15,7 @@ import threading
 import time
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT, commit_all, git, write
@@ -32,7 +33,8 @@ def main(tmp_path: Path, monkeypatch) -> Path:
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv(
         "GOH_SHIP_DIR", str(tmp_path / "ship")
-    )  # no ship in flight (GOH.IDLESUITERETIRE)
+    )  # no ship in flight (GOH.IDLESUITERETIRE): a goh.db with no ship row
+    gdb.made(monkeypatch, tmp_path)
     repo = tmp_path / "main"
     fast_init(repo, "main")
     git(repo, "config", "user.email", "t@example.invalid")
@@ -82,9 +84,7 @@ def ships(main, tmp_path: Path) -> Path:
 
 
 def _ship_running(ships: Path, repo: Path) -> None:
-    (ships / repo.name).mkdir(parents=True, exist_ok=True)
-    (ships / repo.name / "20261122T174900Z-ae63e2b2.json").write_text(
-        json.dumps({"status": "running"}))  # fmt: skip
+    gdb.ship(ships / repo.name / "20261122T174900Z-ae63e2b2.json", {"status": "running"})
 
 
 def test_the_idle_run_judges_as_the_ship_does_and_records_its_base(main, tmp_path, ships) -> None:

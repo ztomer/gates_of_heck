@@ -12,11 +12,11 @@ failing while a transient file exists.
 
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import test_ship
 from test_ship import FAKE_LOOPCTL, SHIP, _calls, _env, _result, _ship
 
@@ -96,8 +96,8 @@ def test_a_result_that_failed_elsewhere_is_only_read(shipped, tmp_path):
     released, and a card read over it records nothing."""
     r = _ship(shipped, tmp_path, "--wait", "--item", "X.ONE", GOH_SHIP_RELEASE="exit 3")
     assert r.returncode == 1, r.stdout + r.stderr
-    before = (tmp_path / "ship.json").read_text()
+    before = gdb.shipped(tmp_path / "ship.json")
     _reverify(tmp_path)
-    assert (tmp_path / "ship.json").read_text() == before
-    assert json.loads(before)["failed_step"] == "release"
+    assert gdb.shipped(tmp_path / "ship.json") == before
+    assert before["failed_step"] == "release"
     assert not [c for c in _calls(tmp_path) if c[0] in ("done", "progress")]

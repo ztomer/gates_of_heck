@@ -11,7 +11,7 @@ own command line (`lib/self_match.py`). A wait names the THING it waits on, neve
   goh wait json PATH KEY=VALUE[,..]  PATH is whole JSON whose dotted KEYs hold the VALUEs (a string
                                      compares as written, anything else as its JSON: rc=0 ok=true)
   goh wait land ITEM                 ITEM's land finished (`goh land --wait`, its exit passed on)
-  goh wait ship RECORD               the ship result RECORD is no longer running (its marks printed)
+  goh wait ship RECORD               the ship result RECORD (its goh.db row) is no longer running
 
 Every kind takes `--timeout S` (default 7200: no agent outlives about two hours).
 Exit: 0 met; 1 the land or ship finished red; 2 usage or an unreadable target; 3 timed out;
@@ -41,6 +41,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(1, str(Path(__file__).resolve().parent.parent))
 import pid_owner
+import ship_records
 
 from tui.lib import err, ok
 
@@ -114,9 +115,8 @@ def ship_finished(record: Path) -> Callable[[], bool]:
     """True once the ship RECORD says anything but running, or says running with its worker gone."""
 
     def check() -> bool:
-        try:
-            res = json.loads(record.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        res = ship_records.get(record)  # its goh.db row: the one record (GOH.STATEDB S2)
+        if res is None:
             return False
         if res.get("status") not in ("running", "bisecting"):  # a bisecting worker runs on
             return True
@@ -162,8 +162,8 @@ def run(kind: str, args: list[str], timeout: float, given: bool) -> int:
     if kind == "ship":
         if len(args) != 1:
             raise Usage("ship takes one RECORD")
-        if not Path(args[0]).is_file():
-            raise Usage(f"no ship record at {args[0]}")
+        if ship_records.get(args[0]) is None:
+            raise Usage(f"no ship record of {args[0]} in goh.db")
         rc = until(ship_finished(Path(args[0])), timeout, f"the ship {args[0]} finished")
         if rc:
             return rc

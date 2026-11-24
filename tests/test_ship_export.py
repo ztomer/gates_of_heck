@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import test_ship
 from conftest import git
 from test_ship import FAKE_LOOPCTL, _ship
@@ -49,7 +50,7 @@ def test_a_stray_in_the_live_checkout_does_not_fail_the_card(shipped: Path, tmp_
     seen_at = tmp_path / "card.json"
     r = _ship(shipped, tmp_path, "--wait", "--item", "X.ONE", GOH_SHIP_INSTALL=install,
               CARD_SEEN=str(seen_at))  # fmt: skip
-    res = json.loads((tmp_path / "ship.json").read_text())
+    res = gdb.shipped(tmp_path / "ship.json")
     assert r.returncode == 0, r.stdout + r.stderr + str(res.get("tail"))
     assert (shipped / STRAY).is_file()  # the live tree is still dirty: the card never read it
     seen = json.loads(seen_at.read_text())

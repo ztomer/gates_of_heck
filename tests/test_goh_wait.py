@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import pytest
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
@@ -93,24 +94,28 @@ def test_json_reads_a_torn_or_missing_file_as_not_yet(tmp_path: Path) -> None:
 
 
 def _ship(tmp_path: Path, status: str, pid: int | None = None) -> Path:
-    rec = tmp_path / "ship.json"
-    rec.write_text(json.dumps({"status": status, "steps": [], "pid": pid, "result": str(rec)}),
-                   encoding="utf-8")  # fmt: skip
-    return rec
+    """The ship record's goh.db row (GOH.STATEDB S2: no result file is read)."""
+    return gdb.ship(tmp_path / "ship.json", {"status": status, "steps": [], "pid": pid})
 
 
 @pytest.mark.parametrize(("status", "rc"), [("ok", 0), ("failed", 1)])
-def test_ship_ends_with_the_records_verdict(status: str, rc: int, tmp_path: Path) -> None:
-    assert _wait("ship", str(_ship(tmp_path, status)), "--timeout", "5").returncode == rc
+def test_ship_ends_with_the_records_verdict(
+    status: str, rc: int, tmp_path: Path, monkeypatch
+) -> None:
+    db = str(gdb.made(monkeypatch, tmp_path))
+    assert _wait("ship", str(_ship(tmp_path, status)), "--timeout", "5", GOH_DB=db).returncode == rc
 
 
-def test_ship_running_with_a_live_worker_times_out_and_a_gone_one_is_4(tmp_path: Path) -> None:
+def test_ship_running_with_a_live_worker_times_out_and_a_gone_one_is_4(
+    tmp_path: Path, monkeypatch
+) -> None:
+    db = str(gdb.made(monkeypatch, tmp_path))  # its own: a ship start elsewhere settles the dead
     rec = _ship(tmp_path, "running", subprocess.os.getpid())
-    assert _wait("ship", str(rec), "--timeout", "0.5").returncode == 3
+    assert _wait("ship", str(rec), "--timeout", "0.5", GOH_DB=db).returncode == 3
     dead = subprocess.Popen([sys.executable, "-c", "pass"], stdin=subprocess.DEVNULL)
     dead.wait(timeout=patience(30))
     rec = _ship(tmp_path, "running", dead.pid)
-    assert _wait("ship", str(rec), "--timeout", "5").returncode == 4
+    assert _wait("ship", str(rec), "--timeout", "5", GOH_DB=db).returncode == 4
 
 
 def test_land_passes_on_goh_land_waits_exit(tmp_path: Path) -> None:

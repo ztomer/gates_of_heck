@@ -31,7 +31,7 @@ THE BUMP writes and commits through lib/estate_commit.py, the one door into anot
 files alone (and the uv.lock a ruff move relocks), in one commit through the repo's own hooks, or
 nothing (set aside, named: on hold, off its default branch, a land holding its lock, pin files
 uncommitted), and each repo's outcome goes to the ship's record (GOH_SHIP_RESULT,
-consumer_pins.record_path), which goh ship carries into its result. Then it hands every pin commit
+its goh.db ship_pins row), which goh ship carries into its result. Then it hands every pin commit
 ahead of its upstream -- this bump's, and any an earlier one left (GOH.PINPROPAGATE: after v0.121.0
 seventeen repos sat ahead of origin with one) -- to lib/pin_sweep.py, which pushes each through the
 repo's own FULL push gate in a detached, bounded sweep after the ship returns (GOH.PINPUSHGATE: the

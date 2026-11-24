@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gitrun
+import goh_db
 import pid_owner
 import ship_records
 
@@ -142,7 +143,11 @@ def ships_in_flight(repo: str) -> list[str]:
     """The ship results of REPO still running: status `running` and their worker alive (one that
     has not said its pid yet counts as running)."""
     out = []
-    for p, rec in ship_records.in_dir(ship_records.ship_dir() / repo):
+    try:
+        recs = ship_records.in_dir(ship_records.ship_dir() / repo)
+    except goh_db.Unknown:  # unknown ships: a run beside one is never started (said as one)
+        return ["unknown (no goh.db)"]
+    for p, rec in recs:
         if not SHIP_NAME.match(p.name):
             continue
         if rec.get("status") in ("running", "bisecting") and (not rec.get("pid") or _alive(rec)):

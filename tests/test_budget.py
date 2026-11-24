@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 from unittest import mock
 
+import _goh_db_fixture as gdb
 import pytest
 from conftest import REPO_ROOT, git, hermetic_env
 from timing_bounds import patience
@@ -245,15 +246,14 @@ def test_ships_that_predate_the_ledger_are_its_first_rows_and_never_doubled(
 ) -> None:
     monkeypatch.setenv("GOH_TIMING_DIR", str(tmp_path / "t"))
     monkeypatch.setenv("GOH_SHIP_DIR", str(tmp_path / "ships"))
+    gdb.made(monkeypatch, tmp_path)
     d = tmp_path / "ships" / "gates_of_heck"
-    d.mkdir(parents=True)
     res = ship_result(
         "gates_of_heck", "2026-11-17T01:13:48+00:00", "2026-11-17T01:21:59+00:00", 214.9
     )
-    res["result"] = str(d / "20261117T011348Z-002e818d.json")
-    (d / "20261117T011348Z-002e818d.json").write_text(json.dumps(res))
-    (d / "junk.json").write_text("{not json")
-    (d / "sweep.json").write_text(json.dumps({"schema": 1, "status": "done"}))  # not a ship result
+    gdb.ship(d / "20261117T011348Z-002e818d.json", res)
+    (d / "junk.json").write_text("{not json")  # files beside it are read by nothing (S2)
+    (d / "20261117T000000Z-0000000a.json").write_text(json.dumps(res))
     assert budget.backfill_ships() == 2 and budget.backfill_ships() == 0
     first = timing_ledger.read()[0]
     assert first["ref"] == "20261117T011348Z-002e818d" and "load_end" not in first  # not 'now'
@@ -264,6 +264,7 @@ def test_a_repo_that_ships_with_no_row_is_listed_unmeasured_never_absent(
 ) -> None:
     monkeypatch.setenv("GOH_TIMING_DIR", str(tmp_path / "t"))
     monkeypatch.setenv("GOH_SHIP_DIR", str(tmp_path / "ships"))
+    gdb.made(monkeypatch, tmp_path)
     (tmp_path / "ships" / "koffee_big").mkdir(parents=True)
     names = {u["subject"] for u in budget.snapshot()["unmeasured"]}
     assert {"koffee_big ship", "koffee_big release", "commit", "gate slot wait"} <= names

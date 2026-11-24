@@ -69,6 +69,7 @@ import budget_breach  # lib/: a BREACHED subject named for the coordinator (GOH.
 import budget_ships  # lib/: a ship result's rows (split for the headroom, GOH.LANDTARGET)
 import cip_history  # lib/: the CIP lanes' push gates, the ledger's first rows (GOH.GATEBUDGET2)
 import gate_times  # lib/: `goh budget gates`, each estate repo's last push gate (CLS.CIPROFILE)
+import goh_db  # a missing goh.db: the ships are unknown (goh_db.Unknown)
 import land_attempts  # lib/: each land attempt a row, an item's retries one run (GOH.GATEBUDGET2)
 import land_e2e  # lib/: a land end to end, request to main, one run per item (GOH.LANDTARGET)
 import reuse_audit  # lib/: each reuse path's counts (GOH.REUSEAUDIT2)
@@ -312,7 +313,11 @@ def unmeasured(seen: set[str]) -> list[dict]:
     out += [
         {"subject": k, "why": "no landed run recorded"} for k in land_e2e.KINDS if k not in kinds
     ]
-    for d in ship_records.repo_dirs():
+    try:
+        dirs = ship_records.repo_dirs()
+    except goh_db.Unknown as e:  # the ships are unknown, never none
+        return [*out, {"subject": "ship", "why": f"unknown: {e}"}]
+    for d in dirs:
         for kind in ("ship", "release"):
             name = timing_ledger.subject_of(timing_ledger.repo_name(d.name), kind)
             if name not in seen:
