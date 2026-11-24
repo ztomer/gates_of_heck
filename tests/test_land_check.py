@@ -30,13 +30,14 @@ TREE_READS = ("docs/map.md", "tests/", ".gatesrc")  # a clone of the whole tree,
 # name, and the plants that break it (file, the fix's text, the text before the fix). The three
 # refusals together were one 67 s test (a pre-step's floor at every enqueue); each alone is a
 # clone, five cheap steps and the guard tests, which xdist spreads over the workers.
+TABLES = "tests/test_tables.py::test_every_generated_table_is_as_its_generator_writes_it"
 REFUSALS = {
-    "map-row": (
-        "tests/test_wiring.py::test_every_script_has_a_row_in_the_map",
+    "map-row": (  # the table generator's check refuses the map too (GOH.TABLEGEN)
+        ("tests/test_wiring.py::test_every_script_has_a_row_in_the_map", TABLES),
         (("docs/map.md", "| `load_reap_code.py` |", ""),),  # the whole row
     ),
     "headroom": (
-        "tests/test_cap_headroom.py::test_stale_entries_fail",
+        ("tests/test_cap_headroom.py::test_stale_entries_fail", TABLES),
         (
             (
                 "tests/cap_headroom_allow.txt",
@@ -127,7 +128,8 @@ def test_the_check_names_each_of_straysignal3s_three_refusals_in_seconds(
     t0 = time.monotonic()
     refused = land_check.run(clone, None, said.append)
     took = time.monotonic() - t0
-    assert refused == [refused_guard], "\n".join(said)
+    want = [refused_guard] if isinstance(refused_guard, str) else list(refused_guard)
+    assert sorted(refused) == sorted(want), "\n".join(said)
     assert_sooner(took, 30, 200, "goh land --check over STRAYSIGNAL3's planted tries")
 
 
