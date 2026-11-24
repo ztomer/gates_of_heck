@@ -18,6 +18,9 @@ from conftest import REPO_ROOT
 #   binds to one anywhere, a conventional name (NAMED), or a `["ms"]`/`["cpu_ms"]` field;
 # * a deadline set by a number, or by the load read once when the wait began: `time.monotonic() +
 #   5`, `time.monotonic() + patience(5)` (use `GiveUp`);
+# * an upper bound by a number times `load_factor()` ALONE: the run queue cannot see a lane's QoS
+#   clamp (GOH.SUITEDRIFTBUILD); `timing_bounds.stretch`, `bound`, `patience` and `assert_sooner`
+#   stretch by the clamp measured on the thread too, and are the correct bound;
 # * an ABSENCE watched with a give-up wait: `assert not wait_until(ran.exists, 2.0)`. Stretched by
 #   the load, its 2 s ran past the literal --wait-max of the child it watched (x50 at load 38 on 3
 #   slow cores; v0.140.1's CI, GOH.CIRED01401): see the child say it waits.
@@ -57,6 +60,17 @@ def _number(n: ast.AST) -> bool:
     return _seconds(n) is not None
 
 
+def _run_queue_only(n: ast.AST) -> float | None:
+    """The seconds of `number * load_factor()` (either order), else None: a limit stretched by
+    the run queue alone, blind to the QoS clamp; `stretch()` and its kin are not it."""
+    if not (isinstance(n, ast.BinOp) and isinstance(n.op, ast.Mult)):
+        return None
+    for num, scale in ((n.left, n.right), (n.right, n.left)):
+        if _called(scale) == "load_factor" and (v := _seconds(num)) is not None:
+            return v
+    return None
+
+
 def bounds(src: str) -> list[int]:
     """The lines of `src` that bound an elapsed time by a literal (above)."""
     tree = ast.parse(src)
@@ -75,6 +89,7 @@ def bounds(src: str) -> list[int]:
 
     def tight(d: ast.AST, limit: ast.AST) -> bool:
         v, unit = _seconds(limit), per_second(d)
+        v = _run_queue_only(limit) if v is None else v
         return bool(unit) and v is not None and v / unit < HANG_S
 
     found: set[int] = set()
@@ -157,6 +172,30 @@ def test_a_duration_named_where_it_was_measured_is_seen_where_it_is_bounded() ->
         "def test_z():\n    secs = _run()\n    assert 10 > secs\n"
     )
     assert bounds(src) == [8, 14]
+
+
+def test_the_clamp_aware_stretch_is_a_bound_and_the_run_queue_alone_is_not() -> None:
+    """GOH.TIMINGDETECT over GOH.SUITEDRIFTBUILD: a bound stretched by `timing_bounds.stretch`
+    (the larger of the run queue and the clamp measured on the thread, `thread_stretch`), placed by
+    `bound` or `assert_sooner`, or judged by `_drift_guard.judged_s`, is correct; a literal times
+    `load_factor()` alone is the run queue's reading, which cannot see `taskpolicy -c utility` (x3.2
+    where a clamped thread ran x25-35), and is flagged as a literal is."""
+    for line in (
+        "    assert elapsed < 5 * load_factor()",
+        "    assert time.monotonic() - t0 < load_factor() * 2.5",
+        "    assert waited <= 10 * _drift_guard.load_factor()",
+    ):
+        assert bounds(_stmt(line)), line
+    for line in (
+        "    assert elapsed < 5 * stretch()",
+        "    assert elapsed < 5 * timing_bounds.stretch()",
+        "    assert elapsed < 5 * max(load_factor(), thread_stretch())",
+        "    assert elapsed < bound(2, 60)",
+        "    assert waited < patience(5)",
+        "    assert judged_s(wall, factor, pole_s) <= 20",
+        "    timing_bounds.assert_sooner(secs, 0.44, 10, 'canary')",
+    ):
+        assert not bounds(_stmt(line)), line
 
 
 @pytest.mark.load_sensitive

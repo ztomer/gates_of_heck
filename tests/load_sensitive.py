@@ -48,26 +48,28 @@ MARK = "load_sensitive"
 TIGHT_S = 30.0
 SIGNALS = ("sleep", "clock", "poll", "spawn", "thread", "signal", "wait", "deadline", "tight")
 
-_CALLS = {
-    "sleep": "sleep",
-    "monotonic": "clock",
-    "monotonic_ns": "clock",
-    "perf_counter": "clock",
-    "perf_counter_ns": "clock",
-    "assert_sooner": "clock",
-    "GiveUp": "poll",
-    "Popen": "spawn",
-    "fork": "spawn",
-    "Thread": "thread",
-    "Process": "thread",
-    "Event": "thread",
-    "Timer": "thread",
-    "kill": "signal",
-    "killpg": "signal",
-    "send_signal": "signal",
-    "terminate": "signal",
-    "alarm": "signal",
+# A wait, sleep or spawn is a call to a KNOWN API (GOH.TIMINGDETECT), never a name alone: a module's
+# function is known by the module it is called on or imported from (`time.sleep`, `from time import
+# sleep`, `import subprocess as sp; sp.Popen`), so `psutil.Process(pid)`, a fake clock's
+# `clock.sleep(5)` and a fixture's `fake.monotonic()` wait for nothing. A method on an object is
+# known by its name and its arguments (below); the house's own timing APIs by their names.
+_MODULE_API = {
+    "time": {
+        "sleep": "sleep",
+        **dict.fromkeys(
+            ("monotonic", "monotonic_ns", "perf_counter", "perf_counter_ns", "time", "time_ns"),
+            "clock",
+        ),
+    },
+    "asyncio": {"sleep": "sleep", "Event": "thread"},
+    "subprocess": {"Popen": "spawn"},
+    "os": {"fork": "spawn", "kill": "signal", "killpg": "signal"},
+    "signal": {"alarm": "signal"},
+    "threading": {"Thread": "thread", "Event": "thread", "Timer": "thread"},
+    "multiprocessing": {"Process": "thread", "Event": "thread"},
 }
+_HOUSE_API = {"assert_sooner": "clock", "GiveUp": "poll"}  # tests/timing_bounds.py
+_METHODS = {"kill": "signal", "send_signal": "signal", "terminate": "signal"}  # Popen's, a handle's
 _WAITS = {"wait", "join", "communicate", "get", "acquire"}
 # `get` and `acquire` are also a dict's lookup with a default (`seed.get(name, 0)`,
 # GOH.LOADSENSEGET): a number passed to them positionally is a timeout only after a literal block
@@ -116,6 +118,41 @@ def _call_name(call: ast.Call) -> tuple[str, str]:
     return (f.id, "") if isinstance(f, ast.Name) else ("", "")
 
 
+def origins(tree: ast.AST) -> dict[str, tuple[str, str]]:
+    """Every name the source imports, anywhere in it -> (module, attribute or "" for a module)."""
+    out: dict[str, tuple[str, str]] = {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ImportFrom) and n.module:
+            out |= {a.asname or a.name: (n.module, a.name) for a in n.names}
+        elif isinstance(n, ast.Import):
+            for a in n.names:
+                head = a.name.split(".")[0]
+                out[a.asname or head] = (a.name if a.asname else head, "")
+    return out
+
+
+def _api(call: ast.Call, imported: dict[str, tuple[str, str]]) -> str | None:
+    """The signal of the known API `call` reaches, if it reaches one (above)."""
+    f = call.func
+    if isinstance(f, ast.Name):
+        module, attr = imported.get(f.id, ("", ""))
+        if attr:
+            return _MODULE_API.get(module, {}).get(attr) or _HOUSE_API.get(attr)
+        return None if module else _HOUSE_API.get(f.id)
+    if not isinstance(f, ast.Attribute):
+        return None
+    if f.attr in _HOUSE_API:
+        return _HOUSE_API[f.attr]
+    base = f.value
+    if isinstance(base, ast.Name):
+        module, attr = imported.get(base.id, (base.id if base.id in _MODULE_API else "", ""))
+        if module and not attr:  # called on a module: its own API, or none
+            return _MODULE_API.get(module, {}).get(f.attr)
+    elif isinstance(base, ast.Attribute) and base.attr in _MODULE_API:  # `timing_bounds.time.x`
+        return _MODULE_API[base.attr].get(f.attr)
+    return _METHODS.get(f.attr)
+
+
 def _bounds_time(fn: ast.AST, param: str) -> bool:
     """`param` bounds a wait in `fn`: a `timeout=` keyword, an argument to a wait, or arithmetic
     (`time.time() + timeout`) -- not data, such as a hook's `{"timeout": timeout}`."""
@@ -133,17 +170,19 @@ def _bounds_time(fn: ast.AST, param: str) -> bool:
     return False
 
 
-def direct(fn: ast.AST) -> tuple[set[str], set[str]]:
-    """(signals the body shows itself, names it refers to) for one function."""
+def direct(
+    fn: ast.AST, imported: dict[str, tuple[str, str]] | None = None
+) -> tuple[set[str], set[str]]:
+    """(signals the body shows itself, names it refers to) for one function; `imported` is its
+    module's `origins`."""
+    imported = origins(fn) if imported is None else imported
     sig: set[str] = set()
     names: set[str] = set()
     for n in ast.walk(fn):
         if isinstance(n, ast.Call):
             name, base = _call_name(n)
-            if name in _CALLS:
-                sig.add(_CALLS[name])
-            if base == "time" and name in ("time", "time_ns"):
-                sig.add("clock")
+            if api := _api(n, imported):
+                sig.add(api)
             timed = any(kw.arg == "timeout" for kw in n.keywords)
             if name in _WAITS and (timed or _timed_positionally(n, name)):
                 sig.add("wait")
@@ -200,9 +239,10 @@ class Module:
 def parse(source: str) -> Module:
     tree = ast.parse(source)
     mod = Module()
+    imported = origins(tree)
 
     def add(qual: str, node: ast.FunctionDef | ast.AsyncFunctionDef, owner: str) -> None:
-        sig, names = direct(node)
+        sig, names = direct(node, imported)
         if owner:  # self.helper inside a class is Class.helper
             names |= {f"{owner}.{n.split('.', 1)[1]}" for n in names if n.startswith("self.")}
         mod.funcs[qual] = (sig, names, [a.arg for a in node.args.args])

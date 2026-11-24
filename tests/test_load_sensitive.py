@@ -101,6 +101,33 @@ def test_a_lookup_with_a_default_is_no_wait_and_a_timed_get_still_is() -> None:
     }, got
 
 
+def test_a_module_api_is_known_by_its_module_not_its_name() -> None:
+    """GOH.TIMINGDETECT: a wait, sleep or spawn is a call to a KNOWN API. A module's function is
+    known by the module it is called on or imported from (`time.sleep`, `from time import sleep`,
+    `import subprocess as sp; sp.Popen`), so `psutil.Process(pid)` (a handle, no thread), a fake
+    clock's `clock.sleep(5)` and a fixture's `fake.monotonic()` wait for nothing."""
+    src = (
+        "import psutil, time, subprocess as sp\n"
+        "from time import sleep as nap\n"
+        "from psutil import Process\n"
+        "def test_a_handle(): psutil.Process(1)\n"
+        "def test_a_handle_imported(): Process(1)\n"
+        "def test_a_fake_sleep(clock): clock.sleep(5)\n"
+        "def test_a_fake_clock(fake): fake.monotonic()\n"
+        "def test_a_real_sleep(): nap(1)\n"
+        "def test_an_aliased_spawn(): sp.Popen(['x'])\n"
+        "def test_a_patched_clock(): timing_bounds.time.monotonic()\n"
+        "def test_a_method_signal(proc): proc.terminate()\n"
+    )
+    got = {k.split("::")[1]: v for k, v in _census(src).derived().items()}
+    assert got == {
+        "test_a_real_sleep": ["sleep"],
+        "test_an_aliased_spawn": ["spawn"],
+        "test_a_patched_clock": ["clock"],
+        "test_a_method_signal": ["signal"],
+    }, got
+
+
 def test_a_helper_a_kit_and_a_fixture_carry_their_signal_to_the_test() -> None:
     src = (
         "import pytest, load_kit\n"
