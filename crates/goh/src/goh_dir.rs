@@ -61,10 +61,11 @@ fn repaired(
         .find(|c| is_dir(&c.join("gates")))
 }
 
-/// Where goh's checkout is (GOH.HOMEPATHHARD): `GOH_DIR` (or its older name `GOH`), else the
-/// checkout this binary sits in -- the nearest directory above `exe` holding `gates/`, the marker
-/// [`repaired`] reads -- else an error naming both. Never a guessed location: goh is public, and a
-/// literal home path is right on one machine only.
+/// Where goh's checkout is (GOH.HOMEPATHHARD): `GOH_DIR`, else the binary's own checkout.
+///
+/// `GOH_DIR` (or its older name `GOH`), else the nearest directory above `exe` holding `gates/`,
+/// the marker [`repaired`] reads, else an error naming both. Never a guessed location: goh is
+/// public, and a literal home path is right on one machine only.
 ///
 /// # Errors
 /// The message `goh_root` prints when neither names a checkout.

@@ -144,21 +144,27 @@ use clap::{CommandFactory, FromArgMatches};
 use cli::{Cli, Commands};
 use ported::{declared, paths};
 
-/// goh's checkout (`goh_dir::root_from`): `GOH_DIR`, else the checkout this binary sits in; a
-/// binary that finds neither stops here, naming why, rather than guess a home directory.
-pub(crate) fn goh_root() -> PathBuf {
-    let exe = std::env::current_exe()
-        .ok()
-        .map(|p| p.canonicalize().unwrap_or(p));
-    goh_dir::root_from(
-        &|k| std::env::var_os(k),
-        exe.as_deref(),
-        std::path::Path::is_dir,
-    )
-    .unwrap_or_else(|why| {
-        goh_tui::eoutln!("{ERR} {why}");
-        std::process::exit(2)
+static ROOT: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
+
+/// goh's checkout (`goh_dir::root_from`), resolved once: `GOH_DIR`, else the checkout this binary
+/// sits in, else why neither names one.
+fn resolved_root() -> &'static Result<PathBuf, String> {
+    ROOT.get_or_init(|| {
+        let exe = std::env::current_exe()
+            .ok()
+            .map(|p| p.canonicalize().unwrap_or(p));
+        goh_dir::root_from(
+            &|k| std::env::var_os(k),
+            exe.as_deref(),
+            std::path::Path::is_dir,
+        )
     })
+}
+
+/// goh's checkout. `main` refuses to run without one (exit 2, naming why), so in the binary this
+/// is always the resolved checkout, never a guessed home directory.
+pub(crate) fn goh_root() -> PathBuf {
+    resolved_root().clone().unwrap_or_default()
 }
 
 /// A plain `goh` says it ran (GOH.PLAINBINMARK): when the directory `LLVM_PROFILE_FILE` names
@@ -203,6 +209,10 @@ fn main() {
     name_stray_profile();
     leave_run_mark();
     goh_dir::repair();
+    if let Err(why) = resolved_root() {
+        goh_tui::eoutln!("{ERR} {why}");
+        std::process::exit(2);
+    }
     let (os, arch) = platform::current();
     if let Err(reason) = platform::check(&os, &arch) {
         goh_tui::eoutln!("{ERR} {reason}");
