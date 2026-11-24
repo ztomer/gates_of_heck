@@ -17,10 +17,11 @@ THE GUARDS, run in the checkout as the land runs them, side by side:
     no name meaning every function of the file), and every rule test by its shape
     (lib/rule_tests.py, GOH.RULESLEFT) -- each kept only while the suite's own measurement
     (lib/fast_tests.py `load`) costs it at most DECLARED_EACH_S, so a guard that grows slow
-    leaves by its own number. Run by plain pytest in up to SHARDS serial runs balanced by that
-    cost, with GOH_STAGED_GUARD_RUN=1 (no binary: a guard reads text), the way a commit's source
-    guards run. The list once LEARNED from reds (a test a past refusal named) is retired: a rule
-    entered it only after it had failed someone; now it is in the check the moment it exists.
+    leaves by its own number. Run in up to SHARDS serial runs balanced by that cost, by the
+    tree's own tools/pytest.sh, as its gate runs them (`suite_argv`; plain pytest for a tree with
+    none); a run its runner stopped before pytest is no verdict, by its reason (`unrun`). The
+    list once LEARNED from reds is retired: a rule entered it only after it had failed someone;
+    now it is in the check the moment it exists.
 
 THE JUDGES (`goh land --check` only; GOH.TABLESEARLY, GOH.LANDCHECK2). 25 of the 48 reds in 100
 land records were consistency-table tests (lib/land_reds.py's class), and GOH-TINY's land went red
@@ -104,6 +105,7 @@ GUARD = re.compile(r"^# goh-land-guard:(.*)$", re.MULTILINE)
 STAGED = re.compile(r"^# goh-reads-staged:", re.MULTILINE)
 FAILED = re.compile(r"^(?:E\s+)?(?:FAILED|ERROR) (tests/[^\s:]+\.py::[^\s]+)", re.MULTILINE)
 SUBGATE = re.compile(r"^✗ (?:\[([a-z][\w-]*)\]|structural: (.+?) failed\b)", re.MULTILINE)
+PYTEST_SAID = re.compile(r"^(?:FAILED|ERROR) |\b\d+ (?:passed|failed|errors?)\b", re.MULTILINE)
 STEP_RED = re.compile(r"✗ \[\d+/\d+\] FAILED \([^)]*\): (.+)$", re.MULTILINE)
 
 
@@ -209,6 +211,27 @@ def _env(root: Path) -> dict[str, str]:
     return env
 
 
+def suite_argv(root: Path, env: dict[str, str]) -> list[str]:
+    """What runs ROOT's test nodes (`--` and the nodes follow) as its gate runs them: the tree's
+    own tools/pytest.sh, one serial worker, its binary built (never GOH_STAGED_GUARD_RUN's none);
+    plain pytest for a tree with no runner. Plain pytest in goh's own tree was another environment:
+    7 tests red here and green in the gate (GOH.RULESLEFT)."""
+    serial = ["-n", "0"] if (root / "tests" / "_shard.py").is_file() else []  # goh's xdist
+    runner = root / "tools" / "pytest.sh"
+    if not runner.is_file():
+        return [env["GOH_PY"], "-m", "pytest", "-q", "-p", "no:cacheprovider", *serial]
+    return ["env", "-u", "GOH_STAGED_GUARD_RUN", "GOH_SUITE_CORES=1", "bash", str(runner),
+            "-p", "no:cacheprovider", *serial]  # fmt: skip
+
+
+def unrun(rc: int, out: str) -> str:
+    """Why a test run that exited RC judged no test: its runner stopped before pytest (a tool it
+    needs is missing here) and OUT holds no verdict of pytest's; '' for a run that judged."""
+    if rc in (0, *NO_VERDICT["guard tests"]) or PYTEST_SAID.search(out):
+        return ""
+    return next((ln for ln in out.splitlines() if ln.startswith("✗ ")), "it said nothing")
+
+
 def _run(
     argv: list[str],
     root: Path,
@@ -268,12 +291,11 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=Fal
             dear = sum(land_judges.costs().get(n, land_judges.UNMEASURED_S) for n in left)
             budget = land_judges.JUDGE_BUDGET_S
             say(f"check: {counted(len(left), 'judge test')} ({dear:.0f} s measured) past the "
-                f"check's {budget:.0f} s budget -- left to the enqueue's pre-step, which runs "
-                "every one")  # fmt: skip
+                f"check's {budget:.0f} s budget -- left to the enqueue's pre-step, which judges "
+                "every one, run or carried")  # fmt: skip
         nodes += extra
     jobs: dict[str, list[str]] = {s: ["bash", "-c", s] for s in steps(root, no_pre)}
-    serial = ["-n", "0"] if (root / "tests" / "_shard.py").is_file() else []  # goh's xdist
-    py = [env["GOH_PY"], "-m", "pytest", "-q", "-p", "no:cacheprovider", *serial]
+    py = suite_argv(root, env)
     parts = shards(nodes, JUDGE_SHARDS if tables or rules else SHARDS)  # RULES: --check --rules
     for i, part in enumerate(parts, 1):
         jobs[f"guard tests {i}/{len(parts)}"] = [*py, "--", *part]
@@ -302,9 +324,11 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=Fal
             say(f"check: {name}: green in {took} s")
             continue
         pytest = name.startswith("guard tests")
-        if rc in NO_VERDICT["guard tests" if pytest else "steps"]:
+        why = unrun(rc, out) if pytest else ""
+        if why or rc in NO_VERDICT["guard tests" if pytest else "steps"]:
             refused.append(f"{name}{BLIND}{took} s, exit {rc})")
-            say(f"check: {name}: NO VERDICT in {took} s (exit {rc}) -- red: it judged nothing")
+            say(f"check: {name}: NO VERDICT in {took} s (exit {rc}) -- red: it judged nothing"
+                + (f": {why}" if why else ""))  # fmt: skip
             continue
         subgates = dict.fromkeys(map("".join, SUBGATE.findall(out)))
         named = (

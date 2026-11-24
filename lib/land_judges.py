@@ -9,7 +9,8 @@ readers reach chooses most of the suite's judges -- GOH.RULESLEFT's own 11 files
 all 8 shards ran past their 538 s deadline at load 65-88. Scoping to the diff is already the
 choice and bounds nothing for such a diff, so the check runs them up to JUDGE_BUDGET_S measured
 seconds, the table judges first (the most frequent red class), then the cheapest; the rest it
-names by count, left to the enqueue's pre-step, which runs every one. 60 s a shard over 8: the
+names by count, left to the enqueue's pre-step, which judges every one (run, or
+carried from main's verdicts). 60 s a shard over 8: the
 quiet deadline (land_check.STEP_TIMEOUT, 300 s) holds five times a shard's measured share.
 """
 

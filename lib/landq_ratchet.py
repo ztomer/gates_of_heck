@@ -100,14 +100,13 @@ def red_on(root: Path, refused: list[str]) -> bool | None:
         not n.startswith("tests/") for n in refused
     )
     if nodes:
-        serial = ["-n", "0"] if (root / "tests" / "_shard.py").is_file() else []
-        jobs.append([env["GOH_PY"], "-m", "pytest", "-q", "-p", "no:cacheprovider", *serial,
-                     "--", *nodes])  # fmt: skip
+        jobs.append([*land_check.suite_argv(root, env), "--", *nodes])
     red = False
     for argv in jobs:
-        rc, _, _ = land_check._run(argv, root, env, PROBE_TIMEOUT)
-        kind = "guard tests" if "pytest" in argv else "steps"
-        if rc in land_check.NO_VERDICT[kind]:
+        rc, out, _ = land_check._run(argv, root, env, PROBE_TIMEOUT)
+        ran = "--" in argv  # a run of the nodes; else a step, `bash -c`
+        kind = "guard tests" if ran else "steps"
+        if rc in land_check.NO_VERDICT[kind] or (ran and land_check.unrun(rc, out)):
             return None
         red = red or rc != 0
     return red

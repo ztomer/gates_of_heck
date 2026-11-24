@@ -123,8 +123,7 @@ def _pytest(wt: Path, nodes: list[str]) -> tuple[int, str]:
     import land_check  # lib/: a step in its own session under a deadline
 
     env = land_check._env(wt)
-    serial = ["-n", "0"] if (wt / "tests" / "_shard.py").is_file() else []
-    argv = [env["GOH_PY"], "-m", "pytest", "-q", "-p", "no:cacheprovider", *serial, "--", *nodes]
+    argv = [*land_check.suite_argv(wt, env), "--", *nodes]
     rc, out, _ = land_check._run(argv, wt, env, PROBE_TIMEOUT)
     return rc, out
 
