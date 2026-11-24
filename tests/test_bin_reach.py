@@ -232,3 +232,52 @@ def test_free_reads_the_newest_carry_records_through_the_reuse_api(tmp_path, mon
                                "tools": "t"}, "green", extra={"measured": {node: ran}})  # fmt: skip
     assert bin_reach.free(tmp_path) == {"a", "c"}  # b ran a goh once: never free
     assert bin_reach.free(tmp_path, newest=1) == {"c"}  # the newest record alone
+
+
+def test_a_run_audits_only_what_its_own_choice_left_out(tmp_path, monkeypatch) -> None:
+    """GOH.LANDEREXIT1's land red (tree 8c721dc2, one audited in ten): test_land_rustcov's `run`
+    over the real checkout audited the ids THIS file's fixture choice had left out (`at.SKIPPED`,
+    kept by the process), and pytest was handed tests/test_go.py, which that tree has not. A run
+    audits the reach of the choice made for its own root and change, else nothing."""
+    root = _tree(tmp_path, monkeypatch)
+    changed = ["crates/goh/src/limits.rs"]
+    chosen = at.affected(root, changed, enqueue=True)
+    assert f"{GO}::test_only_the_entry" in at.SKIPPED, at.SKIPPED
+    audited: list[tuple] = []
+    monkeypatch.setattr(at, "timed", lambda _label, _argv: 0)
+    monkeypatch.setattr(at.fast_tests, "collects", lambda *_a: 0)
+    monkeypatch.setattr(
+        at.bin_reach_audit, "audit", lambda r, c, s, _: audited.append((r, s)) or (0, "")
+    )
+    monkeypatch.setattr(at.pre_reuse, "stamp", lambda *_a: 0)
+    monkeypatch.setattr(at.remote_lane, "begin", lambda _r, rest, *_a: (rest, None))
+    monkeypatch.setattr(at.remote_lane, "end", lambda *_a: 0)
+    monkeypatch.setenv("GATES_OF_HECK_SUITE_NESTED_OK", "1")
+    monkeypatch.delenv("GOH_LAND_VERDICTS_RECORD", raising=False)
+    other = tmp_path / "other"
+    other.mkdir()
+    assert at.run(other, ["crates/goh/src/main.rs"], {"tests/test_x.py": "changed"}) == 0
+    assert audited == [(other, [])], audited  # another root's choice is not this run's
+    audited.clear()
+    assert at.run(root, changed, chosen) == 0
+    assert audited and f"{GO}::test_only_the_entry" in audited[0][1], audited
+
+
+def test_an_audited_id_the_tree_has_not_is_named_red_and_the_rest_still_run(
+    tmp_path, monkeypatch
+) -> None:
+    """pytest handed one id whose file is absent collects nothing at all (exit 4, `file or
+    directory not found`): the audit said only `exited 4 naming no failed test`. The absent id is
+    named red, and the ids the tree has still run."""
+    root = _tree(tmp_path, monkeypatch)
+    monkeypatch.setenv("GOH_LOOPCTL", str(tmp_path / "no-loopctl.py"))
+    monkeypatch.setattr(bin_reach_audit, "tree_of", lambda root: "t" * 40)
+    monkeypatch.setenv("GOH_BINREACH_AUDIT", "always")
+    gone = "tests/test_gone.py::test_x"
+    ran: list[list[str]] = []
+    rc, said = bin_reach_audit.audit(
+        root, ["x.rs"], [f"{GO}::test_only_the_entry", gone],
+        lambda nodes, junit: ran.append(nodes) or _junit(junit, []) or 0,
+    )  # fmt: skip
+    assert ran == [[f"{GO}::test_only_the_entry"]], ran
+    assert rc == 1 and gone in said and "not in this tree" in said, said

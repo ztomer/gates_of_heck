@@ -160,14 +160,18 @@ def audit(
         return 0, ""
     tmp = Path(tempfile.mkdtemp(prefix="goh-binreach-", dir=goh_tmp()))
     saved = {k: os.environ.pop(k) for k in DROP if k in os.environ}
+    # an id whose file this tree has not would fail pytest's whole collection (exit 4): named red
+    absent = [n for n in skipped if not (root / n.split("::")[0]).is_file()]
+    present = [n for n in skipped if n not in absent]
     try:
-        rc = runner(skipped, tmp / "audit.xml")
+        rc = runner(present, tmp / "audit.xml") if present else 0
         red = red_nodes(tmp / "audit.xml", root)
     finally:
         os.environ.update(saved)
         shutil.rmtree(tmp, ignore_errors=True)
     if rc and not red:
         red = [f"(the audit run exited {rc} naming no failed test)"]
+    red += [f"{n} (not in this tree)" for n in absent]
     record_audit(tree, changed, skipped, red)
     filed = [file_fault(tree, n, changed) for n in red]
     said = (f"binary reach audit: {len(skipped)} tests the reach left out ran; "
@@ -177,9 +181,15 @@ def audit(
     return (1 if red else 0), said
 
 
-def after(root: Path, changed: list[str], skipped: list[str]) -> int:
+def after(
+    root: Path, changed: list[str], skipped: list[str], chosen_for: list | None = None
+) -> int:
     """tools/affected_tests.py `run`, after its verdict: the audit when due, SKIPPED run with the
-    tree's tools/pytest.sh as a timed row of its own; 1 on a disagreement, said."""
+    tree's tools/pytest.sh as a timed row of its own; 1 on a disagreement, said. CHOSEN_FOR: the
+    (root, change) the choice that left SKIPPED out was made for; a run over another audits none
+    of it (GOH.LANDEREXIT1: a test's run over the checkout audited a fixture tree's ids)."""
+    if chosen_for is not None and chosen_for != [(Path(root).resolve(), tuple(changed))]:
+        skipped = []
     from lib.step_timings import timed
     from tui.lib import err, info
 

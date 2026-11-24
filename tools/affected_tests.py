@@ -93,6 +93,7 @@ ALWAYS = ("tests/test_self_walk.py", "tests/test_python_from_head.py")
 # release set left the self-walk out, and v0.140.3's changelog heading broke its home-path count).
 TEXT_JUDGES = ("tests/test_self_walk.py",)
 SKIPPED: list[str] = []  # what the last enqueue choice's binary reach left out (GOH.BINREACH)
+CHOSEN_FOR: list[tuple] = []  # the (root, change) SKIPPED was chosen for: `run` audits no other
 TREE_NAMED = re.compile(r"^\s*def (test_every_|test_no_)", re.MULTILINE)
 # ... or that RUNS a tool over the whole checkout, `cwd=REPO_ROOT` (tests/test_gate_temp_leaks.py
 # runs `structural.sh --full` there; GOH.PREPARITY: red in two lands no pre-step chose it for).
@@ -253,12 +254,11 @@ def readers(root: Path, changed: list[str], tests: dict[str, str] | None = None,
             reach: bool = False) -> dict[str, str]:  # fmt: skip
     """{test file: why} for the tests that READ a path in `changed` -- every rule of THE SET but
     the tree readers' standing run: the one notion of "a test reads this path", which the land's
-    verdict reuse asks too (lib/pre_reuse.py, GOH.PRELANDTWICE). REACH (the enqueue's,
-    GOH.BINREACH): a Rust change's binary tests by their stored profiles' reach; what that left
-    out is SKIPPED's, for the audit."""
+    verdict reuse asks too (lib/pre_reuse.py, GOH.PRELANDTWICE). REACH (the enqueue's, BINREACH):
+    a Rust change's binary tests by their profiles' reach; what that left out is SKIPPED's."""
     tests = _tests(root) if tests is None else tests
     chosen: dict[str, str] = {}
-    SKIPPED[:] = []
+    SKIPPED[:], CHOSEN_FOR[:] = [], [(Path(root).resolve(), tuple(changed))]
     for path in changed:
         if path.startswith("tests/test_") and path.endswith(".py") and path in tests:
             chosen.setdefault(path, "changed")
@@ -443,7 +443,7 @@ def run(root: Path, changed: list[str], chosen: dict, base: str | None = None, r
     if first and first.is_file():
         _merge(Path(record), first)
     rc = remote_lane.end(root, share, record, _merge) or pre_reuse.stamp(record, base, list(chosen))
-    return rc or bin_reach_audit.after(root, changed, list(SKIPPED))  # GOH.BINREACH, 1 in 10
+    return rc or bin_reach_audit.after(root, changed, list(SKIPPED), CHOSEN_FOR)  # 1 in 10
 
 
 if __name__ == "__main__":
