@@ -12,10 +12,13 @@ one worktree both land; and the slots are released and reused, the checkout's se
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
+import _goh_db_fixture
+import pytest
 from conftest import REPO_ROOT, git, hermetic_env, write
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -34,6 +37,13 @@ with open(os.environ["FAKE_LOOPCTL_LOG"], "a") as f:
 GATE = 'pwd -P >>"$GATE_LOG"; ! [ -e bad.txt ] && ! grep -q bad f.txt'
 
 
+@pytest.fixture(autouse=True)
+def _own_goh_db(monkeypatch, tmp_path):
+    """Every test here owns its goh.db, and so do its children (`_env`), GOH.SLOTKEEPRED: in the
+    suite home's one, a test's owner write reached another worker's slot."""
+    _goh_db_fixture.use(monkeypatch, tmp_path)
+
+
 def _env(tmp_path: Path, **extra: str) -> dict[str, str]:
     fake = tmp_path / "loopctl.py"
     fake.write_text(FAKE_LOOPCTL)
@@ -45,6 +55,7 @@ def _env(tmp_path: Path, **extra: str) -> dict[str, str]:
         GOH_LAND_TIMEOUT="120",
         GOH_LAND_GATE=GATE,
         GATE_LOG=str(tmp_path / "gate.log"),
+        GOH_DB=os.environ["GOH_DB"],  # the test's own (`_own_goh_db`), which it reads in-process
         **extra,
     )
 
@@ -167,10 +178,32 @@ def test_claims_never_share_a_slot_and_a_stale_owner_is_reclaimed(repo, tmp_path
     assert git(Path(b["path"]), "rev-parse", "HEAD").strip() == sha
     land_slot.release(q, repo, a["path"], a["token"])
     assert land_slot.claim(q, repo, sha)["path"] == a["path"]  # free again: reused
-    with goh_db.transaction() as con:  # past any pid: nobody alive
-        con.execute("UPDATE slot_owners SET pid = ?, pid_stamp = NULL, token = 'x' WHERE n = 1",
-                    (2**22,))  # fmt: skip
+    _orphan(q, repo, 1)
     assert land_slot.claim(q, repo, sha)["path"] == b["path"]  # nobody alive, nothing queued
+
+
+def _orphan(q: Path, repo: Path, n: int) -> None:
+    """Slot N of Q's REPO owned by nobody alive: a pid past any, a token no request names. Only
+    that slot's row: unscoped, it rewrote every slot N in the file, another test's too."""
+    key = os.path.realpath(land_slot.root(q, repo))
+    with goh_db.transaction() as con:
+        con.execute("UPDATE slot_owners SET pid = ?, pid_stamp = NULL, token = 'x' WHERE "
+                    "repo_key = ? AND n = ?", (2**22, key, n))  # fmt: skip
+
+
+def test_another_tests_stale_owner_never_takes_this_tests_slot(repo, tmp_path, monkeypatch):
+    """GOH.SLOTKEEPRED: two tests on two xdist workers shared the suite home's goh.db, and the
+    stale-owner step above rewrote EVERY slot 1's owner, so the other test's release read token
+    'x', not its own, and left its slot past KEEP on disk (a land red twice on 2026-11-24)."""
+    monkeypatch.setattr(land_slot, "KEEP", 1)
+    sha = git(repo, "rev-parse", "HEAD").strip()
+    mine, theirs = tmp_path / "q", tmp_path / "q-other"  # two tests' queues in one goh.db
+    extra = [land_slot.claim(mine, repo, sha) for _ in range(2)][1]
+    for _ in range(2):
+        land_slot.claim(theirs, repo, sha)
+    _orphan(theirs, repo, 1)  # the other test's step, while this one holds its slot 1
+    land_slot.release(mine, repo, extra["path"], extra["token"])
+    assert not Path(extra["path"]).exists(), "another test's owner write kept this slot"
 
 
 def test_an_older_gohs_owner_file_is_imported_and_still_holds_its_slot(repo, tmp_path):
