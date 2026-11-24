@@ -244,7 +244,7 @@ def fields(outcome: dict) -> dict:
     if outcome.get("state") != "red":
         return waived
     try:
-        return {"red_cause": judge(outcome), **waived}
+        return {"red_cause": judge(outcome), **land_cause.explain(outcome), **waived}
     except Exception as e:  # noqa: BLE001 -- never the reason a land fails
         return {"red_cause": {"cause": "other", "rule": f"not judged: {e}", "tests": []}, **waived}
 

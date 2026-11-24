@@ -55,6 +55,8 @@ CASES = [
         "gate-test",
     ),
     ({"why": "exit 1"}, "", "unclassified"),
+    # GOH.LANDEREXIT1: a shell's 128+N is a signal's exit (GOH.ENQUEUEVANISH's `exit 143`).
+    ({"why": "exit 143"}, "", "killed"),
     # GOH.REDOTHER: the 2026-11-20..23 reds that fell to `other`, each cut from its real record.
     (
         {
@@ -220,3 +222,43 @@ def test_a_param_id_with_spaces_is_named_whole() -> None:
         "tests/t.py::C::test_y[a-b]",
         "tests/u.py::test_z",
     ]
+
+
+def test_a_blank_cross_line_is_never_a_steps_why() -> None:
+    """GOH.LANDEREXIT1: a step that died in a traceback leaves `✗ ` lines with nothing after them
+    in the digest (GOH.STATEDBS4's canary); the step is named alone, never as `step: ✗ `."""
+    step = '"$GOH_PY" ./scripts/release_canary.py'
+    log = f"✗ [10/10] FAILED (exit status 1): {step}\n76:✗ 1 of 10 steps failed:\n77:✗ \n"
+    assert lc.detail(log) == step
+
+
+@pytest.mark.parametrize(
+    ("why", "log", "cause", "said"),
+    [
+        ("exit 1", GATE_RED + "29:FAILED tests/test_a.py::test_b - Assert\n", "gate-test",
+         "exit 1: gate-test, tests/test_a.py::test_b"),
+        ("exit 1", "✗ [1/9] FAILED (exit status 1): ./gates/x.sh\n✗ x: clippy failed\n",
+         "gate-step", "exit 1: gate-step, ./gates/x.sh: ✗ x: clippy failed"),
+        ("exit 1", "lander: the worktree is gone\n\n", "lander",
+         "exit 1: lander, lander: the worktree is gone"),
+        ("exit 143", "", "killed", "exit 143: killed"),
+        ("timed out after 3600s", "", "lander", "timed out after 3600s: lander"),
+    ],
+    ids=["gate-test", "gate-step", "lander", "killed", "timeout"],
+)  # fmt: skip
+def test_a_bare_exit_red_is_named_by_its_cause(tmp_path, why, log, cause, said) -> None:
+    """GOH.LANDEREXIT1: 91 red records of 2026-11-17..24 said only `exit 1`. The record names its
+    cause class and what says so; a red nothing reads is the lander's own (`lander`), never none."""
+    path = tmp_path / "land.log"
+    path.write_text(log)
+    got = lc.explain({"state": "red", "why": why, "log": str(path)})
+    assert (got["cause"], got["why"]) == (cause, said)
+    assert got["cause"] in lc.NAMED and "unclassified" not in lc.NAMED
+
+
+def test_a_named_why_is_kept_and_a_landed_record_has_no_cause(tmp_path) -> None:
+    why = "conflict: did not stack on 8484d05e"
+    assert lc.explain({"state": "red", "why": why, "log": str(tmp_path / "none")}) == {
+        "cause": "conflict", "cause_detail": ""}  # fmt: skip
+    assert lc.classify({"why": "HEAD moved"}, "") == "tip-moved"  # a ship's enqueued sha moved
+    assert lc.explain({"state": "landed", "why": "exit 1"}) == {}

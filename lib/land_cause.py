@@ -27,6 +27,14 @@ made with, so `goh land --report`'s `cause` column (lib/landq_report.py) is the 
     unclassified none of the above: a FAULT OF THIS CLASSIFIER, never a bucket. `goh land --report`
                 names each one's log (GOH.REDOTHER)
 
+A RED RECORD NAMES ITS CAUSE (GOH.LANDEREXIT1). 91 red records of 2026-11-17..24 said only
+`exit 1`. `explain` is the record's reading, at the moment it is written (lib/land_reds.py
+`fields`, lib/land_records.py `write`, which refuses a red whose cause is not in NAMED): the
+class above, what says so (`cause_detail`: the first failing node or the failed step), and a bare
+`exit N` why extended by both. What this reader cannot name is `lander` there, never `unclassified`:
+the lander's own run went red and said nothing a reader can read, a fault of the lander to fix,
+named by its log's last line.
+
 The first that applies wins, in that order. The enqueue-stage reds (a pre-step or a guard check)
 leave their failing nodes only in the record's `why`, or in the pre-step's own log it points at;
 both are read with the same node rules as a gate log (GOH.REDOTHER). Telling a defect from a
@@ -53,6 +61,7 @@ GUARD_REFUSED = re.compile(r"^check: guard tests \d+/\d+: REFUSED in [^:]*: (.+)
 ERRORED = re.compile(r"^\s*ERROR (tests/[^\s:]+\.py(?:::[^\s]+)?)", re.MULTILINE)
 PRESTEP_LOG = re.compile(r"its output is (\S+\.log)")
 KILLED = re.compile(r"\(exit -\d+[,)]")
+SIGNALLED = re.compile(r"^exit (?:-\d+|129|1[3-5]\d)\b")  # a shell's 128+N is a signal's
 MAIN_MOVED = re.compile(r"main is at \w+ after the merge, not the gated")
 GATE_FAILED = re.compile(r"the gate (?:failed on|went red)")
 # A structural step, read as an indented line too (the guard check prints it under a `check:`),
@@ -84,6 +93,9 @@ CAUSES = (
     "gate-step",
     "unclassified",
 )
+LANDER = "lander"  # `explain`'s name for what `classify` cannot read: the lander said nothing
+NAMED = (*(c for c in CAUSES if c != "unclassified"), LANDER)
+BARE = re.compile(r"^(?:exit -?\d+|timed out after \d+s)$")  # a why that names no cause
 
 
 def failed_tests(log: str) -> list[str]:
@@ -156,7 +168,11 @@ def detail(log: str) -> str:
         return ""
     lines = (re.sub(r"^\d+:", "", ln) for ln in log.splitlines())  # the digest numbers its lines
     why = next(
-        (ln[:160] for ln in lines if ln.startswith("✗ ") and not NOT_WHY.search(ln)),
+        (
+            ln[:160]
+            for ln in lines  # a `✗ ` and nothing after it says no why (GOH.LANDEREXIT1)
+            if ln.startswith("✗ ") and ln[2:].strip() and not NOT_WHY.search(ln)
+        ),
         "",
     )
     return f"{steps[0]}: {why}" if why else steps[0]
@@ -165,17 +181,17 @@ def detail(log: str) -> str:
 def classify(rec: dict, log: str) -> str:
     """The cause of one red attempt (CAUSES); a landed one has none and is never asked."""
     why = str(rec.get("why") or "")
-    if "tip moved" in why:
+    if "tip moved" in why or why == "HEAD moved":
         return "tip-moved"
     if MAIN_MOVED.search(log):
         return "main-moved"
-    if "conflicts with main" in log:
+    if "conflicts with main" in log or why.startswith("conflict"):
         return "conflict"
     if "release canary" in log and "REFUSED" in log:
         return "canary"
     if "the gate never ran" in log:
         return "no-verdict"
-    if KILLED.search(why) or KILLED.search(log):
+    if KILLED.search(why) or KILLED.search(log) or SIGNALLED.search(why):
         return "killed"
     pre_red = "the pre-land tests failed" in log or "the pre-land tests failed" in why
     tests = nodes(rec, log)
@@ -197,3 +213,25 @@ def classify(rec: dict, log: str) -> str:
     if detail(log):
         return "gate-step"
     return "unclassified"
+
+
+def explain(rec: dict) -> dict:
+    """A red record's cause, read from it and its log (module doc, GOH.LANDEREXIT1):
+    `{"cause", "cause_detail"}`, and `why` too when the record's says no more than `exit N`;
+    {} for any record that is not red."""
+    if rec.get("state") != "red":
+        return {}
+    try:
+        log = Path(str(rec["log"])).read_text(errors="replace") if rec.get("log") else ""
+    except OSError:
+        log = ""
+    cause = classify(rec, log)
+    said = next(iter(nodes(rec, log)), "") or detail(log)
+    if cause == "unclassified":
+        cause = LANDER
+        said = said or next((ln for ln in reversed(log.splitlines()) if ln.strip()), "")
+    out = {"cause": cause, "cause_detail": said.strip()[:WIDE]}
+    why = str(rec.get("why") or "").strip()
+    if BARE.match(why):
+        out["why"] = f"{why}: {cause}" + (f", {out['cause_detail']}" if said.strip() else "")
+    return out

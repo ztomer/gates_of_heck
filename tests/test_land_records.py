@@ -47,7 +47,8 @@ def test_a_queue_reads_only_its_own_rows_and_never_a_done_file(tmp_path, monkeyp
     assert land_records.records(a) == [("0001-A", {"state": "landed"})]
     assert land_records.runs(a) == ["0001-A"]
     assert land_records.get(a, "0002-OLD") is None, "a done/ file is read by nothing"
-    assert land_records.records(b, reverse=True) == [("0001-A", {"state": "red"})]
+    named = {"state": "red", "cause": "lander", "cause_detail": ""}  # named at write: LANDEREXIT1
+    assert land_records.records(b, reverse=True) == [("0001-A", named)]
 
 
 def test_no_goh_db_is_unknown_and_creates_none(tmp_path, monkeypatch, capsys):
@@ -104,7 +105,7 @@ def test_every_reader_reads_a_record_that_is_only_a_row(tmp_path, monkeypatch):
     assert [r["item"] for r in land_e2e.rows(q, [])] == ["GOH.A"]
     assert landq_size.history(q, "/x/r") == [True, False, True]  # red, landed, red: newest first
     assert landq_window.expected(q, "/x/r") == 42.0
-    assert landq_alone.red_last(q, "GOH.B") == "exit 1"
+    assert landq_alone.red_last(q, "GOH.B") == "exit 1: lander"  # named at write: LANDEREXIT1
     assert landq_look.find_request(q, "GOH.B") == land_records.ref(q, "01795400000000000002-GOH.B")
     assert [r["item"] for r in land_check.records(q)] == ["GOH.B", "GOH.A"]
 
@@ -134,3 +135,24 @@ def test_the_ledgers_are_rows_and_their_files_are_read_by_nothing(tmp_path, monk
         assert con.execute("SELECT test FROM land_guards ORDER BY n DESC").fetchone() == (
             "tests/b.py::test_b",
         )
+
+
+def test_a_red_row_carries_its_cause_class_or_is_refused(tmp_path, monkeypatch):
+    """GOH.LANDEREXIT1: the class is 'a red the record cannot explain', closed at this door. A red
+    written with no cause is named here, from its log (lib/land_cause.py `explain`); one written
+    with a cause that is no class (`unclassified`, `other`, none) is refused and no row is left."""
+    import land_cause
+    import pytest
+
+    db = gdb.use(monkeypatch, tmp_path)
+    q, log = tmp_path / "landq", tmp_path / "land.log"
+    log.write_text("✓ pre-land green in 9 s\n29:FAILED tests/test_a.py::test_b - AssertionError\n")
+    gdb.land(q, "0001-A", {"state": "red", "why": "exit 1", "log": str(log)})
+    got = land_records.get(q, "0001-A")
+    assert (got["cause"], got["why"]) == ("gate-test", "exit 1: gate-test, tests/test_a.py::test_b")
+    for bad in ("unclassified", "other", ""):
+        with pytest.raises(land_records.Unexplained, match="no cause class"):
+            land_records.write(q, f"0002-{bad}", {"state": "red", "why": "exit 1", "cause": bad})
+    with sqlite3.connect(db) as con:
+        assert con.execute("SELECT run FROM lands").fetchall() == [("0001-A",)]
+    assert land_cause.explain({"state": "landed"}) == {}

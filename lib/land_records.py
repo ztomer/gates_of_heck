@@ -13,6 +13,10 @@ database plan's wave 3 (`goh state retire lands`, lib/state_retire_lands.py, arc
                            refusals land --check learns) or "misses" (selection_misses)
     append(q, name, rows)  rows onto a ledger, each body once per queue; how many were new
 
+A RED ROW NAMES ITS CAUSE (GOH.LANDEREXIT1): `write` gives a red record that has none its cause
+class from its log (lib/land_cause.py `explain`) and refuses one whose `cause` is no class
+(Unexplained): no red row says only `exit 1`.
+
 A ROW IS KEYED BY (queue, run), a ledger row by (queue, body): `queue` is the land queue's
 realpath, so a test's queue under tmp_path never reads the lander's rows, nor another test's. No
 goh.db yet, or one an older goh wrote without the tables, reads as no rows; `known()` says
@@ -31,6 +35,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, on the path from the line above
+import land_cause
 import landq_state
 
 COLS = ("item", "sha", "enqueued", "repo", "mode", "state", "attempt", "requested", "started",
@@ -76,11 +81,28 @@ INSERT = (f"INTO lands (queue, run, {', '.join(COLS)}, at, body) VALUES "
           f"({', '.join('?' * (len(COLS) + 4))})")  # fmt: skip
 
 
+class Unexplained(ValueError):
+    """A red record whose `cause` is no class of lib/land_cause.py's NAMED."""
+
+
+def explained(rec: dict) -> dict:
+    """REC with its cause named when it is red and names none; Unexplained when its cause is no
+    class (module doc, GOH.LANDEREXIT1)."""
+    if rec.get("state") != "red":
+        return rec
+    rec = rec if "cause" in rec else {**rec, **land_cause.explain(rec)}
+    if rec.get("cause") not in land_cause.NAMED:
+        raise Unexplained(f"a red land record with no cause class: {rec.get('cause')!r} "
+                          f"(why: {str(rec.get('why'))[:120]})")  # fmt: skip
+    return rec
+
+
 def write(q: Path, run: str, rec: dict, request: Path | None = None) -> None:
     """RUN's record: its row, replacing one before it (its one home since wave 3). REQUEST, the
     request it finishes (lib/landq_state.py), leaves the queue in the same transaction: a kill
     leaves it queued or done, never both (GOH.LANDQDB). A row that cannot be written is tried once
     more, then said and raised (goh_db.must): the request stays queued for the next lander."""
+    rec = explained(rec)
 
     def put() -> None:
         with goh_db.transaction() as con:
