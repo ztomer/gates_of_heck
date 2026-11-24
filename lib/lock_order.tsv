@@ -9,7 +9,7 @@
 # A `repo` lock of repository R is ordered only against the held locks taken in R (or in no known
 # repository): a fixture repo's land lock inside another repo's gate is not that gate's lock
 # (GOH.LOCKNEST, lib/lock_order.py's "SCOPE").
-lander	5	no	repo	tools/landq.py	the lands queue's one drainer, <landq>/lander.lock (never waits: a second drainer exits)
+lander	5	no	repo	tools/landq.py,lib/state_retire_landq.py	the lands queue's one drainer, <landq>/lander.lock (never waits: a second drainer exits)
 idle_suite	6	no	machine	lib/idle_suite.py	the idle lander's full suite on main's tip, <landq>/idle-suite/lock (never waits: a second idle run is skipped; the lander's own lock is released first)
 ruff_bump	7	no	machine	lib/ruff_bump.py	the bump-only land of a ruff newer than goh's pin, <landq>/ruff-bump/lock (never waits: a second look while one bumps is busy; held across the bump's enqueue, whose pre-step waits only on higher ranks)
 cache_sweep	8	no	machine	lib/cache_sweep.py	the one cache evictor's sweep, `<GOH_CACHE_EVICT_STATE>.lock` (GOH.CACHEEVICT; never waits: a second sweep exits 0), held while it try-locks cargo_build and head_cache

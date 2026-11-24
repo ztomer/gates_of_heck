@@ -55,7 +55,6 @@ lib/killtree.py	base-code
 lib/land_cause.py	base-code
 lib/land_rustcov.py	base-code
 lib/land_share.py	base-code
-lib/landq_state.py	base-code
 lib/load_live.py	base-code
 lib/load_locks.py	base-code
 lib/load_priority.py	base-code
