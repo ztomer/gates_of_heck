@@ -14,13 +14,13 @@ THE GUARDS, run in the checkout as the land runs them, side by side:
     seeds, lint as the gate runs it, the lock order, the saved-pid probes); none declared, none;
   * the GUARD TESTS: every test function of a file declaring itself a source guard
     (`# goh-reads-staged:`, gates/staged_guards.sh) or a land guard (`# goh-land-guard: NAME...`,
-    no name meaning every function of the file), plus every test a past land's record names as
-    its refusing guard (`guards` in `<landq>/done/*.json`, below) -- each kept only while the
-    suite's own measurement (lib/fast_tests.py `load`) costs it at most EACH_S (a declared one
-    DECLARED_EACH_S), so a guard that grows slow leaves by its own number. Run by plain pytest in
-    up to SHARDS serial runs balanced by that cost, with GOH_STAGED_GUARD_RUN=1 (no binary: a
-    guard reads text), the way a commit's source guards run. A pre-step's refusal at enqueue is
-    `learn`ed into `<landq>/guards.jsonl`, so the next check runs the test that refused it.
+    no name meaning every function of the file), and every rule test by its shape
+    (lib/rule_tests.py, GOH.RULESLEFT) -- each kept only while the suite's own measurement
+    (lib/fast_tests.py `load`) costs it at most DECLARED_EACH_S, so a guard that grows slow
+    leaves by its own number. Run by plain pytest in up to SHARDS serial runs balanced by that
+    cost, with GOH_STAGED_GUARD_RUN=1 (no binary: a guard reads text), the way a commit's source
+    guards run. The list once LEARNED from reds (a test a past refusal named) is retired: a rule
+    entered it only after it had failed someone; now it is in the check the moment it exists.
 
 THE JUDGES (`goh land --check` only; GOH.TABLESEARLY, GOH.LANDCHECK2). 25 of the 48 reds in 100
 land records were consistency-table tests (lib/land_reds.py's class), and GOH-TINY's land went red
@@ -56,8 +56,7 @@ sys.path[:0] = [str(ROOT)]
 from lib import cov_risk, fast_tests, land_records, land_reds, main_red, proc_deadline, terse  # noqa: E402
 from tui.lib import counted  # noqa: E402
 
-EACH_S = 1.0  # the most a past refuser may cost, by the suite's measurement
-DECLARED_EACH_S = 10.0  # ... and a declared guard: its file chose it
+DECLARED_EACH_S = 10.0  # the most a declared guard or rule test may cost, by measurement
 SHARDS = 3  # the guard tests' pytest runs, side by side, balanced by measured cost
 UNMEASURED_S = 1.0  # the cost of a test the suite has not measured yet
 # EVERY JUDGE A DIFF CAN BREAK (GOH.LANDCHECK2). GOH-TINY's land went red 7 times in 45 min on
@@ -70,7 +69,6 @@ UNMEASURED_S = 1.0  # the cost of a test the suite has not measured yet
 JUDGE_EACH_S, JUDGE_SHARDS, DIFFCOV_TIMEOUT = 120.0, 8, 1500
 DIFFCOV = "diff coverage"
 SELECT_TIMEOUT = 120
-HISTORY = 400  # the newest done records read for past refusing guards
 STEP_TIMEOUT = 300
 # Exits that are no verdict on the tree: a step past its deadline (124); pytest interrupted (3),
 # misused (4: a node it cannot find) or given no test (5). A check that judged nothing is never
@@ -154,15 +152,6 @@ def records(q: Path | None, newest: int | None = None) -> list[dict]:
     ]
 
 
-def history(q: Path | None, repo: str = "") -> list[str]:
-    """The test nodes past refusals of REPO (any, when empty) name as their guards, newest first."""
-    out: list[str] = []
-    for rec in records(q, HISTORY):
-        if not repo or rec.get("repo") == repo:
-            out += [g for g in rec.get("guards") or [] if isinstance(g, str) and "::" in g]
-    return list(dict.fromkeys(out))
-
-
 def costs() -> dict[str, float]:
     """The suite's measured seconds per test function (its parameters and groups summed)."""
     cost: dict[str, float] = {}
@@ -172,18 +161,16 @@ def costs() -> dict[str, float]:
 
 
 def tests(root: Path, q: Path | None, repo: str = "", rules: bool = False) -> list[str]:
-    """The guard test functions the tree defines now: a declared one measured at most
-    DECLARED_EACH_S (one the suite has not timed yet is run), a past refuser at most EACH_S; RULES
-    (`goh land --check`, `--rules`) declares every rule test by its shape (lib/rule_tests.py)."""
+    """The guard test functions the tree defines now, each measured at most DECLARED_EACH_S (one
+    the suite has not timed yet is run): the declared ones and, RULES (`goh land --check`,
+    `--rules`, the enqueue), every rule test by its shape (lib/rule_tests.py). Q and REPO are
+    the record's, which no longer chooses a guard (the learned list is retired, GOH.RULESLEFT)."""
     cost = costs()
     from lib import rule_tests  # RULES: every rule test by its shape too (GOH.RULESLEFT)
 
     found = rule_tests.rules(root) if rules else []
-    mine = set(fast_tests.units(root, [*declared(root), *found]))
-    past = [fast_tests._base(g) for g in history(q, repo)]
-    every = list(dict.fromkeys([*sorted(mine), *fast_tests.units(root, past)]))
-    cap = dict.fromkeys(mine, DECLARED_EACH_S)
-    return [n for n in every if cost.get(n, 0.0 if n in mine else EACH_S + 1) <= cap.get(n, EACH_S)]
+    mine = fast_tests.units(root, [*declared(root), *found])
+    return [n for n in sorted(set(mine)) if cost.get(n, 0.0) <= DECLARED_EACH_S]
 
 
 def chosen_by_diff(root: Path, judges: bool = False) -> list[str]:
@@ -428,7 +415,7 @@ NODE = re.compile(r"tests/[^\s:,()]+\.py::[^\s,()]+")
 
 def learn(q: Path, req: dict, refusal: str) -> None:
     """A pre-step's refusal at enqueue, which files no land record: the test nodes it names, in
-    goh.db's land_guards for `history` and `count` (never a reason the refusal is not said)."""
+    goh.db's land_guards for `count` (never a reason the refusal is not said)."""
     found = list(dict.fromkeys(map(fast_tests._base, NODE.findall(refusal))))[:10]
     if not found:
         return

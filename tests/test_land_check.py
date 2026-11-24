@@ -144,9 +144,7 @@ def test_every_check_step_is_verbatim_a_land_gate_step():
     assert not [s for s in no_pre if s not in ci], ci
 
 
-def test_the_guard_tests_are_the_declared_ones_and_the_measured_past_refusers(
-    tmp_path, monkeypatch
-):
+def test_the_guard_tests_are_the_declared_ones_and_never_a_learned_refuser(tmp_path, monkeypatch):
     tests = tmp_path / "tree" / "tests"
     tests.mkdir(parents=True)
     (tests / "test_a.py").write_text(
@@ -183,12 +181,12 @@ def test_the_guard_tests_are_the_declared_ones_and_the_measured_past_refusers(
     (tests / "test_c.py").write_text((tests / "test_c.py").read_text() + "def test_other(): pass\n")
     durations.record({"dur": {"tests/test_c.py::test_other": 0.1}}, db=times)
     got = land_check.tests(tmp_path / "tree", tmp_path / "q", "/r")
-    # declared: run unless measured slow; past refusers: only when measured cheap
+    # declared: run unless measured slow; a past refuser is no guard by its record alone: the
+    # learned list is retired, every rule is found by its name (GOH.RULESLEFT)
     assert got == [
         "tests/test_a.py::test_x",
         "tests/test_b.py::test_p",
         "tests/test_d.py::test_all",
-        "tests/test_c.py::test_fast",
     ], got
 
 
@@ -218,15 +216,14 @@ def test_a_red_lands_record_names_the_guard_its_log_shows(tmp_path):
         land_records.write(tmp_path / "q", f"{n}", {"state": "red", "guard": g})
     land_records.write(tmp_path / "q", "9", {"state": "landed"})
     assert land_check.count(tmp_path / "q") == {"a": 2, "b": 1}
-    # a pre-step's refusal at enqueue files no land record: it is learned, counted and run next
+    # a pre-step's refusal at enqueue files no land record: it is recorded and counted
     refusal = (
         "the pre-land tests failed on 1234 (failing: tests/test_e.py::test_dump[x], tests/z.py)"
     )
     land_check.learn(tmp_path / "q", {"repo": "/r", "item": "T", "sha": "1234"}, refusal)
     land_check.learn(tmp_path / "q", {"repo": "/r"}, "no node named here")
     assert land_check.count(tmp_path / "q") == {"a": 2, "b": 1, "tests/test_e.py::test_dump": 1}
-    assert land_check.history(tmp_path / "q", "/r") == ["tests/test_e.py::test_dump"]
-    assert land_check.history(tmp_path / "q", "/elsewhere") == []
+    assert not hasattr(land_check, "history"), "no check selects from the record"
 
 
 def test_the_guard_tests_split_into_runs_of_near_equal_cost(tmp_path, monkeypatch):
