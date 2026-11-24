@@ -315,6 +315,37 @@ def test_a_run_whose_every_node_is_reused_exits_green_and_an_empty_one_does_not(
     assert empty.returncode == 5, empty.stdout + empty.stderr
 
 
+# A plugin that drops a node it was handed, silently (no deselect hook): the run's shape when a
+# group's ids collect nothing and its carried nodes make pytest's "no tests ran" (GOH.CARRYEXIT5).
+DROPS = (
+    "\ndef pytest_collection_modifyitems(items):\n    items[:] = [i for i in items if "
+    "'gone' not in i.nodeid]\n"
+)
+
+
+@pytest.mark.parametrize("workers", [[], ["-n", "2"]], ids=["serial", "xdist"])
+def test_a_carried_run_handed_ids_it_never_ran_is_red_naming_them(
+    tmp_path: Path, workers: list[str]
+) -> None:
+    """GOH.CARRYEXIT5: GOH.SHAREZERO's carried pre-step group exited 5 and counted green without
+    running a test. Ids handed to a run that none ran nor carried are red, each named; ids all
+    carried stay green, and a run handed no ids is GOH.CARRYALL's (the test above)."""
+    (tmp_path / "conftest.py").write_text(SESSION_CONFTEST + DROPS)
+    (tmp_path / "test_s.py").write_text(
+        "def test_pass():\n    pass\n\ndef test_gone():\n    pass\n"
+    )
+    rec = tmp_path / "rec.json"
+    assert _session(tmp_path, GOH_LAND_VERDICTS_RECORD=str(rec)).returncode == 0
+    env = {"GOH_LAND_VERDICTS_REUSE": str(rec)}
+    lost = _session(tmp_path, *workers, "test_s.py::test_pass", "test_s.py::test_gone", **env)
+    said = lost.stdout + lost.stderr
+    assert lost.returncode == 1, said[-1500:]
+    assert "ERROR test_s.py::test_gone - handed to this run, neither run nor carried" in said
+    assert "test_s.py::test_pass -" not in said, said[-1500:]
+    held = _session(tmp_path, *workers, "test_s.py::test_pass", **env)
+    assert held.returncode == 0, (held.stdout + held.stderr)[-1500:]
+
+
 def test_a_test_asking_for_the_binary_is_marked(goh, request) -> None:
     assert (lv.BIN_MARK, True) in request.node.user_properties
 

@@ -228,14 +228,13 @@ def pytest_sessionfinish(session) -> None:
         return
     # Every node reused or carried is a green run, not "no tests ran" (GOH.CARRYALL: the v0.130.0
     # release gate deselected all 5812 and pytest's exit 5 failed the land). An empty collection
-    # with nothing deselected stays 5. Mapped before the store reads exitstatus: a whole run
+    # with nothing deselected stays 5, and so does a run HANDED ids it neither ran nor carried,
+    # red naming them (GOH.CARRYEXIT5). Mapped before the store reads exitstatus: a whole run
     # records `full`, so the next tree can carry from it.
-    if (
-        session.exitstatus == pytest.ExitCode.NO_TESTS_COLLECTED
-        and _state.get("dropped")
-        and not _failed
-    ):
-        session.exitstatus = pytest.ExitCode.OK
+    if session.exitstatus == pytest.ExitCode.NO_TESTS_COLLECTED and _state.get("dropped"):
+        lost = _whole_run.unrun(session.config, _seen | set(_plan(session.config)["skip"]))
+        if not _failed:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED if lost else pytest.ExitCode.OK
     path = _on(RECORD)
     if path and path != os.devnull:  # /dev/null: the store's record alone (a full run by hand)
         passed = {n: n in _bin for n in sorted(_called - _failed)}
