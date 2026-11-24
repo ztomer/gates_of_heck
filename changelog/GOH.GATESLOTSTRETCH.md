@@ -1,0 +1,1 @@
+* GOH.GATESLOTSTRETCH: `tests/test_gate_slot.py`'s finish-wait test plants `timing_bounds.stretch`, not the run queue alone: a bound stretches by the larger of the run queue and the clamp the thread measured, so its exact 300 s read 302.4 in a loaded land gate. A test that plants `load_factor` without `thread_stretch` now fails `tests/test_timing_bounds.py`.

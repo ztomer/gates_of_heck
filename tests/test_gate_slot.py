@@ -496,5 +496,5 @@ def test_a_gates_finish_wait_stretches_with_the_load(tmp_path, monkeypatch):
 
     gate = Gate.__new__(Gate)
     gate.release, gate.proc = tmp_path / "release", Proc()
-    monkeypatch.setattr(timing_bounds, "load_factor", lambda: 5.0)
+    monkeypatch.setattr(timing_bounds, "stretch", lambda: 5.0)  # not the host's (GATESLOTSTRETCH)
     assert gate.finish() == 0 and waited == [300.0]

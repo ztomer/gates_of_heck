@@ -94,6 +94,34 @@ def test_a_clamped_thread_stretches_a_bound_past_the_run_queue(monkeypatch) -> N
     assert timing_bounds.patience(10) == 30.0
 
 
+def test_no_test_plants_the_run_queue_and_leaves_the_clamp_to_the_host() -> None:
+    """GOH.GATESLOTSTRETCH: a bound stretches by the larger of `load_factor` and `thread_stretch`,
+    so a test planting the run queue alone reads its host's measured clamp: test_gate_slot planted
+    x5, expected 300 s and read 302.4 in a land gate whose thread had measured x5.04. A test plants
+    `stretch`, or both of its inputs."""
+    import ast
+
+    found = []
+    for p in sorted((REPO_ROOT / "tests").glob("*.py")):
+        tree = ast.parse(p.read_text(encoding="utf-8"))
+        for fn in ast.walk(tree):
+            if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            planted = {
+                c.args[1].value
+                for c in ast.walk(fn)
+                if isinstance(c, ast.Call)
+                and isinstance(c.func, ast.Attribute)
+                and c.func.attr == "setattr"
+                and len(c.args) >= 2
+                and isinstance(c.args[1], ast.Constant)
+                and ast.unparse(c.args[0]).endswith("timing_bounds")
+            }
+            if "load_factor" in planted and "thread_stretch" not in planted:
+                found.append(f"{p.relative_to(REPO_ROOT)}:{fn.lineno}: {fn.name}")
+    assert found == [], "plant timing_bounds.stretch (or thread_stretch too):\n" + "\n".join(found)
+
+
 def test_a_failure_not_clear_of_its_pass_is_a_design_error() -> None:
     with pytest.raises(ValueError, match="lengthen"):
         timing_bounds.bound(2, 5)
