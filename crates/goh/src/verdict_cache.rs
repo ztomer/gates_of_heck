@@ -120,8 +120,8 @@ fn shipped() -> Option<Vec<i64>> {
 /// Why the open file is a newer goh's (it holds a migration the checkout does not ship), or
 /// `None`. A checkout whose schema directory cannot be read ships nothing to compare: the
 /// table's shape is then the only guard, and a write to a reshaped table fails as a skipped write.
-fn newer(con: &Connection) -> Option<String> {
-    let known = shipped()?;
+fn newer(con: &Connection, known: Option<&[i64]>) -> Option<String> {
+    let known = known?;
     let mut stmt = con.prepare("SELECT version FROM schema_version").ok()?;
     let applied: Vec<i64> = stmt
         .query_map([], |r| r.get(0))
@@ -172,20 +172,8 @@ impl Cache {
         let by_row: HashMap<String, &str> = keys.iter().map(|k| (row_key(k), *k)).collect();
         let rows: Vec<&String> = by_row.keys().collect();
         for part in rows.chunks(CHUNK) {
-            let sql = format!(
-                "SELECT key, record FROM {TABLE} WHERE checker=?1 AND key IN ({})",
-                vec!["?"; part.len()].join(",")
-            );
-            let Ok(mut stmt) = con.prepare(&sql) else {
-                return out;
-            };
-            let params = std::iter::once(&self.checker).chain(part.iter().copied());
-            let Ok(found) = stmt.query_map(rusqlite::params_from_iter(params), |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-            }) else {
-                return out;
-            };
-            for (row, record) in found.filter_map(Result::ok) {
+            // A query that fails is a miss for its keys, as every other error here.
+            for (row, record) in self.fetch(&con, part).unwrap_or_default() {
                 let verdict = serde_json::from_str::<serde_json::Value>(&record).ok();
                 if let (Some(key), Some(v)) = (by_row.get(&row), verdict) {
                     out.insert((*key).to_owned(), v);
@@ -193,6 +181,22 @@ impl Cache {
             }
         }
         out
+    }
+
+    /// `(row key, record)` of this checker's rows among `part`.
+    fn fetch(&self, con: &Connection, part: &[&String]) -> rusqlite::Result<Vec<(String, String)>> {
+        let sql = format!(
+            "SELECT key, record FROM {TABLE} WHERE checker=?1 AND key IN ({})",
+            vec!["?"; part.len()].join(",")
+        );
+        let mut stmt = con.prepare(&sql)?;
+        let params = std::iter::once(&self.checker).chain(part.iter().copied());
+        let found = stmt
+            .query_map(rusqlite::params_from_iter(params), |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })?
+            .collect();
+        found
     }
 
     /// The recorded verdict for `key`, or `None` (a miss).
@@ -205,18 +209,17 @@ impl Cache {
     fn migrate(&self) {
         // The house interpreter (G2d): PATH's first python3 may be below the floor. None at all is
         // a skipped write, as every other failure here.
-        let Ok(py) = crate::house_python::path() else {
-            return;
-        };
-        let seam = crate::goh_root().join("lib").join("goh_cache_db.py");
-        let _ = std::process::Command::new(py)
-            .arg(seam)
-            .arg("migrate")
-            .env("GOH_CACHE_DB", &self.db)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
+        if let Ok(py) = crate::house_python::path() {
+            let seam = crate::goh_root().join("lib").join("goh_cache_db.py");
+            let _ = std::process::Command::new(py)
+                .arg(seam)
+                .arg("migrate")
+                .env("GOH_CACHE_DB", &self.db)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+        }
     }
 
     /// Record every `(key, verdict)` in one transaction. Best effort: a cache that cannot be
@@ -231,32 +234,42 @@ impl Cache {
         if !has {
             self.migrate();
         }
-        let Some(mut con) = self.connect(OpenFlags::SQLITE_OPEN_READ_WRITE) else {
-            return;
-        };
-        if !has_table(&con) {
+        if let Some(mut con) = self.connect(OpenFlags::SQLITE_OPEN_READ_WRITE) {
+            self.write(&mut con, rows, shipped().as_deref());
+        }
+    }
+
+    /// `rows` into the open file, unless it has no table or holds a migration outside `known`
+    /// (a newer goh's file, said once): one IMMEDIATE transaction, rolled back on any failure.
+    fn write(
+        &self,
+        con: &mut Connection,
+        rows: &[(&str, serde_json::Value)],
+        known: Option<&[i64]>,
+    ) {
+        if !has_table(con) {
             return;
         }
-        if let Some(why) = newer(&con) {
+        if let Some(why) = newer(con, known) {
             eprintln!("goh: {why}");
             return;
         }
-        let Ok(tx) = con.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) else {
-            return;
-        };
         let sql = format!(
             "INSERT OR REPLACE INTO {TABLE}(checker, key, record, at) VALUES \
              (?1, ?2, ?3, (julianday('now') - 2440587.5) * 86400.0)"
         );
-        let wrote = tx.prepare(&sql).is_ok_and(|mut stmt| {
-            rows.iter().all(|(k, v)| {
-                stmt.execute((&self.checker, row_key(k), v.to_string()))
-                    .is_ok()
-            })
-        });
-        if wrote {
-            let _ = tx.commit();
-        }
+        let done = con
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .and_then(|tx| {
+                {
+                    let mut stmt = tx.prepare(&sql)?;
+                    for (k, v) in rows {
+                        stmt.execute((&self.checker, row_key(k), v.to_string()))?;
+                    }
+                }
+                tx.commit()
+            });
+        drop(done); // a failed write is a skipped one: the next run judges those files again
     }
 
     /// Record `verdict` for `key` (`put_many` of one).
@@ -300,12 +313,69 @@ mod tests {
         }
     }
 
+    fn table(db: &std::path::Path, applied: &[i64]) -> rusqlite::Connection {
+        let con = rusqlite::Connection::open(db).unwrap_or_else(|e| panic!("open: {e}"));
+        let ddl = "CREATE TABLE schema_version(version INTEGER PRIMARY KEY); \
+                   CREATE TABLE shell_verdicts(checker TEXT, key TEXT, record TEXT, at REAL, \
+                   PRIMARY KEY(checker, key));";
+        assert!(con.execute_batch(ddl).is_ok(), "the test's schema");
+        for n in applied {
+            assert!(
+                con.execute("INSERT INTO schema_version VALUES (?1)", [n])
+                    .is_ok(),
+                "{n}"
+            );
+        }
+        con
+    }
+
+    fn count(con: &rusqlite::Connection) -> i64 {
+        con.query_row("SELECT count(*) FROM shell_verdicts", [], |r| r.get(0))
+            .unwrap_or(-1)
+    }
+
+    #[test]
+    fn a_newer_goh_s_file_is_never_written_and_a_known_one_is() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let db = dir.path().join("goh-cache.db");
+        let mut con = table(&db, &[1, 2, 3, 9999]);
+        let c = cache(db);
+        let rows = [("k", serde_json::json!([1]))];
+        c.write(&mut con, &rows, Some(&[1, 2, 3]));
+        assert_eq!(
+            count(&con),
+            0,
+            "a file holding 9999 was written by a goh shipping 1-3"
+        );
+        c.write(&mut con, &rows, Some(&[1, 2, 3, 9999]));
+        assert_eq!(count(&con), 1);
+        assert_eq!(c.get("k"), Some(serde_json::json!([1])));
+    }
+
+    #[test]
+    fn a_file_without_the_table_and_an_empty_batch_are_skipped_writes() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let db = dir.path().join("goh-cache.db");
+        let mut con = rusqlite::Connection::open(&db).unwrap_or_else(|e| panic!("open: {e}"));
+        let c = cache(db);
+        c.write(&mut con, &[("k", serde_json::json!([1]))], None);
+        assert_eq!(c.get("k"), None);
+        let none = cache(dir.path().join("none.db"));
+        none.put_many(&[]);
+        assert!(
+            !dir.path().join("none.db").exists(),
+            "an empty batch created the file"
+        );
+    }
+
     #[test]
     fn a_file_that_is_no_database_is_every_key_a_miss_and_a_skipped_write() {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
         let db = dir.path().join("goh-cache.db");
-        std::fs::write(&db, b"not SQLite at all, not SQLite at all")
-            .unwrap_or_else(|e| panic!("{e}"));
+        assert!(
+            std::fs::write(&db, b"not SQLite at all, not SQLite at all").is_ok(),
+            "plant"
+        );
         let c = cache(db.clone());
         c.put("k", &serde_json::json!([1]));
         assert_eq!(c.get_many(&["k", "j"]), std::collections::HashMap::new());
