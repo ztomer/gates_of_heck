@@ -20,6 +20,7 @@ stop	lib/proc_stop.py	Stop processes YOU started, by pid or stamp, TERM then KIL
 undo	tools/undo.py	Put back only your own edits in your own worktree, keeping a copy for `--back` (`tools/undo.py`)
 brief	hooks/claude/brief.py	The header lines and Agent call a subagent spawn needs, from the active model-choice profile (`hooks/claude/brief.py`)
 flakes	lib/flakes.py	The flake register: every test that went red and passed on a retry, by test (`lib/flakes.py`)
-state	lib/state_retire.py	Retire the files of a store that moved into goh.db: `retire [STORE...] [--dry-run]` (imported, read back equal, archived, deleted), `stray`, or `test-ships [--delete]` (`lib/state_retire.py`)
+state	lib/state_retire.py	Retire the files of a store that moved into goh.db: `retire [STORE...] [--dry-run]` (imported, read back equal, archived, deleted) or `stray` (`lib/state_retire.py`)
+test-ships	lib/ship_test_rows.py	The ship rows a test left in goh.db (a result under a temp root), listed; `--delete` removes them (`lib/ship_test_rows.py`)
 land-reds	lib/land_reds.py	Every red land record's cause class by count, with example records: `--last N`, `--json`, `--backfill` (`lib/land_reds.py`)
 remote-shard	tools/remote_shard.py	Run a Linux-safe test shard in the worker container on another host, local fallback with the reason (`tools/remote_shard.py`)

@@ -1,6 +1,7 @@
-"""`goh state test-ships` (lib/ship_records.py test_rows, GOH.FAKESHIPROWS): the ship rows a test
-left in a live goh.db -- a result path under the system's temp roots -- are listed, and only with
---delete removed; a row anywhere else, or in the ship directory itself, is never one.
+"""`goh test-ships` (lib/ship_test_rows.py over ship_records.test_rows, GOH.FAKESHIPROWS): the
+ship rows a test left in a live goh.db -- a result path under the system's temp roots -- are
+listed, and only with --delete removed; a row anywhere else, or in the ship directory itself, is
+never one.
 
 Before .loop's test_ship_done was made hermetic it wrote 30+ ship rows (item A.0, results under
 pytest's tmp paths) into the live goh.db, where every ship statistic counted them.
@@ -17,7 +18,7 @@ from conftest import REPO_ROOT
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import goh_db
 import ship_records
-import state_retire as sr
+import ship_test_rows as st
 
 sys.path.pop(0)
 
@@ -48,11 +49,11 @@ def test_a_row_under_a_temp_root_is_listed_and_only_deleted_with_delete(db, caps
     other = _row("/tmp/pytest-of-u/pytest-1/t0/ship.json")
     ship_records.put_pins(fake, {"schema": 2, "tag": "v1", "repos": {}})
     assert ship_records.test_rows(TMP_ROOTS) == sorted([fake, other])
-    assert sr.main(["test-ships"]) == 0
+    assert st.main([]) == 0
     out = capsys.readouterr().out
     assert fake in out and "2 test ship rows" in out and "none deleted" in out, out
     assert _results() == sorted([fake, other])  # the listing deleted nothing
-    assert sr.main(["test-ships", "--delete"]) == 0
+    assert st.main(["--delete"]) == 0
     assert _results() == []
     assert ship_records.get_pins(fake) is None  # its pin row went with it
     assert "2 test ship rows deleted" in capsys.readouterr().out
