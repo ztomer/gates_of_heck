@@ -106,13 +106,14 @@ def test_the_store_refuses_the_users_shared_store(tmp_path: Path) -> None:
 
 
 def test_agent_guard_refuses_the_users_spawn_ledger(tmp_path: Path) -> None:
-    real, env = _as_if_real(tmp_path)
+    """The spawn ledger is goh.db's (GOH.STATEDBS4): under the suite, the real home's is refused."""
+    real, env = _as_if_real(tmp_path, "XDG_STATE_HOME", "GOH_DB")
     code = (f"import sys; sys.path.insert(0, {str(REPO_ROOT / 'hooks' / 'claude')!r}); "
             "import agent_guard; print(agent_guard._append({'event': 't'}))")  # fmt: skip
     proc = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,
                           timeout=60, check=False, stdin=subprocess.DEVNULL)  # fmt: skip
-    assert proc.returncode != 0 and "user's ledger" in proc.stderr, proc.stdout + proc.stderr
-    assert not (real / ".cache" / "goh" / "agent-spawns.jsonl").exists()
+    assert proc.returncode != 0 and "RealHomeOpen" in proc.stderr, proc.stdout + proc.stderr
+    assert not (real / ".local" / "state" / "goh").exists()
 
 
 # The toolchain a scrubbed environment reaches (queue GOH.EA2, item 2). The suite keeps CARGO_HOME,

@@ -7,7 +7,7 @@ session (GOH_LANE_ADMIT: `refuse`, the default since GOH.ADAPTLANES2, defers it 
 `warn` says so and admits, `off` asks nothing), never on a read-only one, admits an `Owner-asked:`
 spawn only while there is room (with none it is deferred; above the hard ceiling, refused) and, with
 a warning, any spawn whose reading fails, and records every judged spawn in
-`$XDG_STATE_HOME/goh/lane-starts.jsonl` for the weekly review.
+goh.db's `lane_starts` for the weekly review (GOH.STATEDBS4).
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from _goh_db_fixture import ledger
 from _hook_inproc import run_hook
 from conftest import hermetic_env
 from test_capacity import CORES, Planted
@@ -27,15 +28,15 @@ READ_ONLY = {"description": "look", "subagent_type": "Explore", "prompt": "Where
 def _run(event: Any, tmp: Path, env: dict[str, str]) -> dict[str, Any] | None:
     r = run_hook(
         GUARD, json.dumps(event),
-        hermetic_env(XDG_CACHE_HOME=str(tmp / "cache"), XDG_STATE_HOME=str(tmp / "state"), **env),
+        hermetic_env(XDG_CACHE_HOME=str(tmp / "cache"), XDG_STATE_HOME=str(tmp / "state"),
+                     GOH_DB=str(tmp / "goh.db"), **env),
     )  # fmt: skip
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout) if r.stdout.strip() else None
 
 
 def _lanes(tmp: Path) -> list[dict[str, Any]]:
-    path = tmp / "state" / "goh" / "lane-starts.jsonl"
-    return [json.loads(ln) for ln in path.read_text().splitlines()] if path.exists() else []
+    return ledger(tmp / "goh.db", "lane_starts")
 
 
 def _judge(tmp: Path, mode: str, *, room: bool, ti: dict[str, Any] = GOOD, **extra: str):

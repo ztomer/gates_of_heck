@@ -43,10 +43,6 @@ ALLOWED: dict[str, set[str]] = {
         # LEFT: the door's file half (GOH.STATEDBS4): the legacy files are imported in line order
         # and their pending lines read, until wave 3's delete commit removes them
         "lib/hook_ledgers.py",
-        "hooks/claude/agent_guard.py",
-        "hooks/claude/lane_room.py",
-        "scripts/model_choice_watch.py",
-        "scripts/spend_watch.py",
     },
     "durations": set(),  # DUR goh.db 0006 readings: moved (lib/durations.py, GOH.DURATIONSDB)
     "reuse records": {  # V1 goh-cache.db 0002 verdicts

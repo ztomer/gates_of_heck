@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from _goh_db_fixture import ledger
 from _hook_inproc import run_hook
 from conftest import REPO_ROOT, hermetic_env
 
@@ -74,7 +75,7 @@ class World:
                  "GOH_APPSTATE_RUNNING_CMD": f"cat {self.root / 'procs'}",
                  "GOH_APPSTATE_LAUNCH_CMD": str(self.root / "launch.sh")}  # fmt: skip
         return hermetic_env(XDG_CACHE_HOME=str(self.cache), WORLD=str(self.root),
-                            **{**seams, **extra})  # fmt: skip
+                            GOH_DB=str(self.cache / "goh.db"), **{**seams, **extra})  # fmt: skip
 
     def hook(self, event: dict[str, Any], **extra: str) -> dict[str, Any] | None:
         r = run_hook(GUARD, json.dumps(event), self.env(**extra))
@@ -96,8 +97,7 @@ class World:
                           "agent_transcript_path": str(sub / "agent-a1.jsonl")}, **extra)  # fmt: skip
 
     def ledger(self) -> list[dict[str, Any]]:
-        path = self.cache / "goh" / "agent-spawns.jsonl"
-        return [json.loads(ln) for ln in path.read_text().splitlines()]
+        return ledger(self.cache / "goh.db")
 
 
 @pytest.fixture

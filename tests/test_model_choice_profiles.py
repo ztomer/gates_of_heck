@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import _goh_db_fixture
 import pytest
 from _hook_inproc import run_hook
 from conftest import REPO_ROOT, hermetic_env
@@ -80,6 +81,7 @@ def guard(tmp: Path, model: str, effort: str, because: str, *, pool: bool = Fals
     r = run_hook(
         GUARD, json.dumps(event),
         hermetic_env(XDG_CACHE_HOME=str(tmp / "cache"), POOL_STATE_DIR=str(pool_dir),
+                     GOH_DB=str(tmp / "goh.db"),
                      GOH_MODEL_CHOICE=str(rules_file(tmp, declared))),
     )  # fmt: skip
     assert r.returncode == 0, r.stderr
@@ -92,8 +94,7 @@ def denied(out: dict[str, Any] | None) -> str | None:
 
 
 def ledger(tmp: Path) -> list[dict[str, Any]]:
-    path = tmp / "cache" / "goh" / "agent-spawns.jsonl"
-    return [json.loads(x) for x in path.read_text().splitlines()] if path.exists() else []
+    return _goh_db_fixture.ledger(tmp / "goh.db")
 
 
 # --- the file ----------------------------------------------------------------------------------

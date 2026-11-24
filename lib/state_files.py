@@ -89,7 +89,8 @@ FILES: dict[str, FileBound | FileKept] = {
         20000,
         "at",
         "state_file",
-        "hooks/claude/lane_room.py; read by the weekly usage review only",
+        "the pre-GOH.STATEDBS4 file: hooks/claude/lane_room.py now writes goh.db's lane_starts "
+        "(lib/hook_ledgers.py), which imports its lines, until wave 3 deletes it",
     ),
     "flakes/register.jsonl": FileBound(
         LEDGER_DAYS,

@@ -20,6 +20,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from _goh_db_fixture import ledger
 from _hook_inproc import run_hook
 from conftest import REPO_ROOT, hermetic_env
 
@@ -33,7 +34,8 @@ def _run(tool_input: dict[str, Any], cache: Path, rules: Path = RULES_FILE) -> d
              "tool_use_id": "t", "tool_input": tool_input}  # fmt: skip
     r = run_hook(
         GUARD, json.dumps(event),
-        hermetic_env(XDG_CACHE_HOME=str(cache), GOH_MODEL_CHOICE=str(rules)),
+        hermetic_env(XDG_CACHE_HOME=str(cache), GOH_MODEL_CHOICE=str(rules),
+                     GOH_DB=str(cache / "goh.db")),
     )  # fmt: skip
     assert r.returncode == 0, r.stderr
     out = json.loads(r.stdout)
@@ -42,8 +44,7 @@ def _run(tool_input: dict[str, Any], cache: Path, rules: Path = RULES_FILE) -> d
 
 
 def _last_spawn(cache: Path) -> dict[str, Any]:
-    lines = (cache / "goh" / "agent-spawns.jsonl").read_text().splitlines()
-    return json.loads(lines[-1])
+    return ledger(cache / "goh.db")[-1]
 
 
 def _prompt(decl: str, want: int, mod: int = 2, shift: int = 0) -> str:

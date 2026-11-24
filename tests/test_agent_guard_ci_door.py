@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _goh_db_fixture import ledger
 from _hook_inproc import run_hook
 from conftest import REPO_ROOT, hermetic_env
 
@@ -82,13 +83,12 @@ def test_a_planted_gh_run_watch_reaches_the_session_and_the_ledger(tmp_path: Pat
              "agent_type": "repo-worker", "last_assistant_message": report,
              "agent_transcript_path": str(t)}  # fmt: skip
     cache = tmp_path / "cache"
-    r = run_hook(GUARD, json.dumps(event), hermetic_env(XDG_CACHE_HOME=str(cache)))
+    env = hermetic_env(XDG_CACHE_HOME=str(cache), GOH_DB=str(cache / "goh.db"))
+    r = run_hook(GUARD, json.dumps(event), env)
     assert r.returncode == 0, r.stderr
     msg = json.loads(r.stdout)["systemMessage"]
     assert "gh run watch 123456" in msg and "loopctl.py ci" in msg, msg
-    (line,) = [
-        json.loads(x) for x in (cache / "goh" / "agent-spawns.jsonl").read_text().splitlines()
-    ]
+    (line,) = ledger(cache / "goh.db")
     assert line["ci_direct"] == ["gh run watch 123456 --exit-status"]
 
 

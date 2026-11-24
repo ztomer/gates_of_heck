@@ -258,21 +258,25 @@ def append(table: str, row: dict) -> str | None:
 
 
 @contextlib.contextmanager
-def _read() -> Iterator[sqlite3.Connection | None]:
-    """goh.db read-only, or None when there is none (or it predates 0005)."""
+def _read(db: Path | None = None) -> Iterator[sqlite3.Connection | None]:
+    """goh.db (DB when named) read-only, or None when there is none (or it predates 0005)."""
     with contextlib.ExitStack() as stack:
         try:
-            con = stack.enter_context(goh_db.ro())
+            con = stack.enter_context(goh_db.ro(db))
             con.execute("SELECT 1 FROM agent_spawns LIMIT 1")
         except (OSError, sqlite3.Error):
             con = None
         yield con
 
 
-def rows(table: str) -> list[dict]:
+def rows(table: str, db: Path | None = None) -> list[dict]:
     """TABLE's rows (SPAWNS or LANES) in the order written: its legacy file's lines no import took
     yet (before the table's when the file was never imported, after them when appended since), the
-    table's, then the spill's."""
+    table's, then the spill's. DB: that file's rows alone (a run's own goh.db, the live proof's)."""
+    if db is not None:
+        with _read(db) as con:
+            q = f"SELECT body FROM {table} ORDER BY n"
+            return [] if con is None else [json.loads(b) for (b,) in con.execute(q)]
     p = LEGACY[table]()
     with _read() as con:
         if con is None:
@@ -289,8 +293,8 @@ def rows(table: str) -> list[dict]:
     return base + got + [r for t, r in _spilled(spill_file()) if t == table]
 
 
-def spawns() -> list[dict]:
-    return rows(SPAWNS)
+def spawns(db: Path | None = None) -> list[dict]:
+    return rows(SPAWNS, db)
 
 
 def lanes() -> list[dict]:

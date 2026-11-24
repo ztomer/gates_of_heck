@@ -47,12 +47,13 @@ if (here / "proof-fails").exists():
     sys.exit(0)
 print(json.dumps({{"type": "user", "message": {{"content": [{{"type": "tool_result",
       "content": "Refused: this general-purpose spawn -- it names no model"}}]}}}}))
-led = pathlib.Path(os.environ["XDG_CACHE_HOME"]) / "goh" / "agent-spawns.jsonl"
-led.parent.mkdir(parents=True, exist_ok=True)
+sys.path.insert(0, {lib!r})  # the hook's own writer, into the goh.db the watch named (GOH_DB)
+import hook_ledgers
 rows = [{{"event": "spawn", "session_id": "p", "tool_use_id": "t", "model": "haiku",
           "effort": "low", "description": "goh live proof allow"}},
         {{"event": "outcome", "session_id": "p", "tool_use_id": "t", "status": "answered"}}]
-led.write_text("".join(json.dumps(r) + "\\n" for r in rows))
+for r in rows:
+    assert hook_ledgers.append(hook_ledgers.SPAWNS, r) is None
 """
 SCHEMA = ('model:W(["sonnet","opus","haiku","fable"]).optional().describe(`Optional model override '
           'for this agent. effort:W(Mc).optional().describe("Reasoning effort for this agent. '
@@ -112,6 +113,7 @@ class World:
         claude = t / "bin" / "claude"
         claude.parent.mkdir(exist_ok=True)
         claude.write_text(FAKE_CLAUDE.format(python=sys.executable, schema=self.schema,
+                                             lib=str(REPO_ROOT / "lib"),
                                              version=self.version))  # fmt: skip
         claude.chmod(0o755)
         (t / "settings.json").write_text(json.dumps(self.settings))

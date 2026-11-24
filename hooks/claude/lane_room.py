@@ -27,11 +27,11 @@ numbers. The marker must open its own line, so a brief that merely quotes it is 
 coordinator's caps on agents and lanes are not this rule's: it only ever adds a refusal.
 
 A reading that cannot be taken, or has an unread part, ADMITS with a warning in every mode
-(probe-first: the instrument is never the reason work stops). Each judged spawn is one line of
-`$XDG_STATE_HOME/goh/lane-starts.jsonl` (default `~/.local/state/goh/`): the verdict (`room`,
-`warned`, `refused`, `owner`, `owner-deferred`, `owner-refused`, `unread`), the reasons, the mode,
-the queue item the prompt names (`Queue item <ID>`, so the weekly review joins a spawn to its land
-without the transcript) and the whole reading.
+(probe-first: the instrument is never the reason work stops). Each judged spawn is one row of
+goh.db's `lane_starts` (lib/hook_ledgers.py, GOH.STATEDBS4: a 5 s wait, then spilled): the verdict
+(`room`, `warned`, `refused`, `owner`, `owner-deferred`, `owner-refused`, `unread`), the reasons,
+the mode, the queue item the prompt names (`Queue item <ID>`, so the weekly review joins a spawn
+to its land without the transcript) and the whole reading.
 Pinned by tests/test_agent_guard_lanes.py.
 """
 
@@ -51,7 +51,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
 MODES = ("warn", "refuse", "off")
 DEFAULT_MODE = "refuse"
 WARN = "warn"  # what an unknown mode word reads as
-MAX_LINE = 4000  # under PIPE_BUF: one O_APPEND write stays whole
+MAX_LINE = 4000  # a row's bytes: past it the reading's slot holders are dropped, never the verdict
 OWNER = re.compile(r"^Owner-asked:[ \t]*(\S.*?)[ \t]*$", re.MULTILINE)
 HARD_LOAD_PER_CORE = 4  # load1 over this many per core: no spawn starts, owner-asked or not
 HARD_MIN_IDLE_PCT = 5  # CPU idle under this: the same
@@ -65,24 +65,17 @@ class Verdict:
     record: dict[str, Any] | None = None  # the ledger line's lane fields
 
 
-def ledger_path() -> Path:
-    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
-    return Path(base) / "goh" / "lane-starts.jsonl"
-
-
 def _append(line: dict[str, Any]) -> str | None:
+    """One lane_starts row (lib/hook_ledgers.py); the warning to show when it was not written."""
     data = json.dumps(line, sort_keys=True, separators=(",", ":"))
     if len(data) >= MAX_LINE:  # the holders go first, never the verdict
         line = dict(line, reading={k: v for k, v in line["reading"].items() if k != "slots"})
-        data = json.dumps(line, sort_keys=True, separators=(",", ":"))
     try:
-        path = ledger_path()
-        import state_append  # lib/: the lock lib/state_bounds.py trims under (GOH.LEDGERBOUND)
+        import hook_ledgers  # lib/: goh.db's hook ledgers (GOH.STATEDBS4)
 
-        state_append.append(path, (data + "\n").encode())
+        return hook_ledgers.append(hook_ledgers.LANES, line)
     except (OSError, RuntimeError) as e:  # RuntimeError: lib/lock_order.py's refusal
         return f"agent_guard: the lane ledger was not written ({e})."
-    return None
 
 
 def is_write(tier: str | None, read_only_tiers: list[str]) -> bool:

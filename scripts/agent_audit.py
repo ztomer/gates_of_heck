@@ -32,6 +32,7 @@ tests/test_agent_audit_verify.py.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import shutil
@@ -49,7 +50,10 @@ sys.path.insert(0, str(ROOT / "lib"))
 import estate_registry
 import landed_verify
 import model_choice
-from agent_guard import ledger_path
+
+hook_ledgers = importlib.import_module(
+    "hook_ledgers"
+)  # lib/: goh.db's spawn ledger (GOH.STATEDBS4)
 
 NOT_LANDED = {"blocked", "failed"}
 Key = tuple[Any, Any]
@@ -71,6 +75,14 @@ def read(path: Path) -> tuple[list[dict[str, Any]], int]:
     return records, bad
 
 
+def records(ledger: Path | None) -> tuple[list[dict[str, Any]], int]:
+    """The spawn ledger's records (goh.db's, lib/hook_ledgers.py; a named LEDGER file's) and how
+    many lines could not be read."""
+    if ledger is None:
+        return hook_ledgers.spawns(), 0
+    return read(ledger) if ledger.exists() else ([], 0)
+
+
 def _tokens(outcome: dict[str, Any] | None) -> int | None:
     tokens = (outcome or {}).get("tokens")
     total = tokens.get("total") if isinstance(tokens, dict) else None
@@ -82,7 +94,7 @@ def _key(rec: dict[str, Any]) -> Key:
 
 
 def _cache_path() -> Path:
-    return ledger_path().with_name("agent-verify.json")
+    return hook_ledgers.cache_dir() / "agent-verify.json"
 
 
 def verify_landed(
@@ -301,15 +313,17 @@ def gh_command(offline: bool) -> landed_verify.Gh | None:
     return landed_verify.Gh(cmd) if cmd else None
 
 
-def run(ledger: Path, root: Path, offline: bool, min_n: int | None = None) -> dict[str, Any] | None:
-    """The report over `ledger` (None when there is no ledger yet)."""
-    if not ledger.exists():
+def run(
+    ledger: Path | None, root: Path, offline: bool, min_n: int | None = None
+) -> dict[str, Any] | None:
+    """The report over the spawn ledger (LEDGER: a file's), None when it has no record yet."""
+    recs, bad = records(ledger)
+    if not recs and not bad:
         return None
     rules = model_choice.load()
-    records, bad = read(ledger)
-    landed = verify_landed(records, root, gh_command(offline))
+    landed = verify_landed(recs, root, gh_command(offline))
     n = min_n if min_n is not None else int(rules.verdict["min_n"])
-    return audit(records, rules, n, landed) | {"unreadable_lines": bad, "min_n": n}
+    return audit(recs, rules, n, landed) | {"unreadable_lines": bad, "min_n": n}
 
 
 def fault_rows(records: list[dict[str, Any]], since: str | None) -> list[dict[str, Any]]:
@@ -329,7 +343,7 @@ def fault_rows(records: list[dict[str, Any]], since: str | None) -> list[dict[st
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--ledger", type=Path, default=None, help="default: the hook's ledger")
+    ap.add_argument("--ledger", type=Path, default=None, help="a ledger file; default goh.db's")
     ap.add_argument("--root", type=Path,
                     default=Path(os.environ.get("GOH_ESTATE_ROOT", Path.home() / "Projects")),
                     help="where the repos a landed sha may be in live")  # fmt: skip
@@ -341,9 +355,8 @@ def main(argv: list[str] | None = None) -> int:
         "--since", default=None, help="with --faults: outcomes at or after this ISO time"
     )
     args = ap.parse_args(argv)
-    path = args.ledger or ledger_path()
     if args.faults:
-        rows = fault_rows(read(path)[0], args.since) if path.exists() else []
+        rows = fault_rows(records(args.ledger)[0], args.since)
         if args.json:
             json.dump(rows, sys.stdout, indent=1)
             print()
@@ -357,9 +370,10 @@ def main(argv: list[str] | None = None) -> int:
             for f in r["faults"]:
                 info(f)
         return 0
-    report = run(path, args.root, args.offline, args.min_n)
+    report = run(args.ledger, args.root, args.offline, args.min_n)
     if report is None:
-        info(f"no spawn ledger at {path} yet: agent_guard writes it on the first spawn")
+        where = args.ledger or "goh.db's agent_spawns"
+        info(f"no spawn ledger rows in {where} yet: agent_guard writes them on the first spawn")
         return 0
     if args.json:
         json.dump(report, sys.stdout, indent=1)

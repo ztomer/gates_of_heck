@@ -617,7 +617,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 * `hooks/claude/agent_guard.py` — a Claude Code PreToolUse hook (matcher `Agent|Task`) and SubagentStop
   hook: a spawn must name model AND effort and declare them (`Model-choice: <model>@<effort> because
   <tags>`) as the rules file's `tiers` accept, else it is denied with the table; an allowed one gets the
-  report contract (`Status:` first) appended once and a line in `~/.cache/goh/agent-spawns.jsonl`
+  report contract (`Status:` first) appended once and a row in goh.db's `agent_spawns` (`hook_ledgers.py`)
   (a spawn on a tier the active profile's `pool_first` names -- every tier under max and pro, lookups only
   under ultra -- must also carry `Pool: tried <...>` or `Pool: unfit because <...>`: token-pool's `ask`
   before a Claude subagent), which
@@ -633,7 +633,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
   (default, GOH.ADAPTLANES2) defers it naming what the reading lacked, `warn` admits and says why not, `off` asks nothing;
   an `Owner-asked:` prompt line is deferred the same way (refused above the hard ceiling: load1 over
   4x the cores or idle under 5%, GOH.OWNERASKCAP) and a reading that fails admits with a warning. Each judged spawn is a line of
-  `~/.local/state/goh/lane-starts.jsonl` (verdict, reasons, queue item, the reading).
+  goh.db's `lane_starts` (verdict, reasons, queue item, the reading; `hook_ledgers.py`).
   Pinned by `test_agent_guard_lanes.py`.
 * `scripts/usage_review.py` — the weekly usage review `model_choice_watch.py` runs: the week's spawns,
   pool lines, redo, escalation and spend per class, the Claude meter's minimum and the load when agents
@@ -750,8 +750,8 @@ Every structural checker is native since Phase N3; the Python checkers they port
   one and its tiers `re-research`; on a new Claude Code version re-runs the hook's live proof once (one
   capped haiku `claude -p`); a canary goes red when spawns stopped reaching the ledger or settings.json's
   goh hooks differ from `registrations.json`; runs the audit and the SPEND section
-  (`scripts/spend_watch.py`). Writes `~/.cache/goh/model-choice-findings.md` (and
-  `fault-candidates.jsonl` beside it), prints the spend table and one summary line. `--install` loads
+  (`scripts/spend_watch.py`). Writes `~/.cache/goh/model-choice-findings.md`, and its record and fault
+  candidates to goh.db (`kv` `model-choice-watch`, `fault_candidates`; `hook_ledgers.py`), prints the spend table and one summary line. `--install` loads
   the weekly launchd job. Pinned by `test_model_choice_watch.py`.
 * `scripts/spend_watch.py` — the weekly watch's SPEND section (GOH.SPENDWATCH): per week, from the
   subagent transcripts (read by `claude_cache_probe.api_turns`, one usage per `message.id`), cost-unit

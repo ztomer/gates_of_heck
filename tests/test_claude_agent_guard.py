@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from _goh_db_fixture import ledger
 from _hook_inproc import run_hook, start_hook
 from conftest import REPO_ROOT, hermetic_env
 
@@ -40,7 +41,7 @@ def _run(event: Any, cache: Path, raw: str | None = None) -> dict[str, Any] | No
     """The hook's JSON output for `event` (None when it prints nothing). It always exits 0."""
     r = run_hook(
         GUARD, raw if raw is not None else json.dumps(event),
-        hermetic_env(XDG_CACHE_HOME=str(cache)),
+        hermetic_env(XDG_CACHE_HOME=str(cache), GOH_DB=str(cache / "goh.db")),
     )  # fmt: skip
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout) if r.stdout.strip() else None
@@ -54,8 +55,8 @@ def _spawn(tool_input: dict[str, Any], tool_name: str = "Agent") -> dict[str, An
 
 
 def _ledger(cache: Path) -> list[dict[str, Any]]:
-    path = cache / "goh" / "agent-spawns.jsonl"
-    return [json.loads(ln) for ln in path.read_text().splitlines()] if path.exists() else []
+    """The spawn ledger's rows in the test's goh.db (GOH_DB beside its cache, GOH.STATEDBS4)."""
+    return ledger(cache / "goh.db")
 
 
 # A write spawn's type is the lean one goh installs (GOH.LEANAGENT; general-purpose is steered).
@@ -88,7 +89,7 @@ def _allowed(out: dict[str, Any] | None) -> dict[str, Any]:
 def test_the_real_entry_point_judges_a_spawn_on_stdin_and_exits_zero(tmp_path: Path) -> None:
     """The ONE subprocess start (GOH.HOOKINPROC): every other test here calls `main()` in process,
     so the shebang line, `__main__`, the import path and a real exit code are pinned only here."""
-    env = hermetic_env(XDG_CACHE_HOME=str(tmp_path))
+    env = hermetic_env(XDG_CACHE_HOME=str(tmp_path), GOH_DB=str(tmp_path / "goh.db"))
     ti = {k: v for k, v in GOOD.items() if k != "model"}
     r = start_hook(GUARD, json.dumps(_spawn(ti)), env)
     assert r.returncode == 0, r.stderr
@@ -476,6 +477,7 @@ def test_the_contract_asks_for_the_faults_seen_line() -> None:
 
 def test_the_outcome_record_carries_faults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setenv("GOH_DB", str(tmp_path / "goh.db"))
     agent_guard.on_stop(
         {
             "session_id": "s",
@@ -483,7 +485,7 @@ def test_the_outcome_record_carries_faults(tmp_path: Path, monkeypatch: pytest.M
             "last_assistant_message": "Status: answered\nFaults seen: red CI on x",
         }
     )
-    rec = json.loads(agent_guard.ledger_path().read_text().splitlines()[-1])
+    rec = _ledger(tmp_path)[-1]
     assert rec["faults"] == ["red CI on x"]
 
 

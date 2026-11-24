@@ -61,18 +61,13 @@ def test_a_writer_holding_the_lock_is_never_trimmed_under(tmp_path) -> None:
     assert len(ledger.read_text().splitlines()) == 2
 
 
-def test_every_writer_appends_through_the_lock(tmp_path, monkeypatch) -> None:
+def test_every_writer_appends_through_the_lock(tmp_path) -> None:
     import timing_ledger
 
     target = tmp_path / "ledger.jsonl"
     assert timing_ledger.append({"v": 1, "subject": "s"}, target)
     assert state_append.lock_path(target).exists()
-    sys.path.insert(0, str(REPO_ROOT / "hooks" / "claude"))
-    import lane_room
-
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg"))
-    assert lane_room._append({"at": "2026-11-19T00:00:00+00:00", "reading": {}}) is None
-    assert state_append.lock_path(lane_room.ledger_path()).exists()
+    # lane_room's ledger is goh.db's lane_starts since GOH.STATEDBS4 (tests/test_hook_ledgers.py)
 
 
 def test_the_check_names_an_unlisted_growing_file_and_a_file_past_its_bound(tmp_path) -> None:

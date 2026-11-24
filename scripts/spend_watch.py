@@ -52,7 +52,7 @@ WRITE_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
 WAIT_TOOLS = {"Monitor", "ScheduleWakeup", "TaskOutput", "TaskStop"}
 READ_TOOLS = {"Read", "Grep", "Glob"}
 OWNER_WORDS = "we also need to make this entire process self-improving"
-WATCH = "~/.cache/goh/model-choice-watch.json"  # the weekly run's record: the reader reads it
+WATCH = "python3 ~/Projects/gates_of_heck/lib/hook_ledgers.py watch"  # the weekly record (goh.db)
 BASH_KINDS = (  # first match wins, in this order
     ("land/release", r"\bgit\s+push\b|land\.sh|\bgh\s+release\b|release\.sh|\bgoh\s+(ship|release)\b|cargo\s+publish"),
     ("tests/builds", (r"pytest|cargo\s+(test|build|clippy|nextest|check)|gate(_profile)?\.sh|\bmake\b|"
@@ -353,7 +353,7 @@ def _file(loopctl: Path | None, queue: Path | None, item: dict[str, Any]) -> dic
 def _item(iid: str, key: str, text: str, predicted: str) -> dict[str, Any]:
     return {"id": iid, "repo": "gates_of_heck", "phase": "EC", "status": "todo", "depends": [],
             "item": text, "metric": METRICS[key]["label"], "predicted": predicted,
-            "verify_after": {"lands": 60, "reader": f"cmd: jq .spend.current.{key} {WATCH}"},
+            "verify_after": {"lands": 60, "reader": f"cmd: {WATCH} | jq .spend.current.{key}"},
             "not_dup_of": {iid.replace(key.upper(), m.upper()): "its own metric" for m in METRICS},
             "owner_words": OWNER_WORDS, "source": "coordinator-found (goh spend watch)",
             "class_of": "none", "class_why": f"`{key}` past tolerance (rules.class_first)",

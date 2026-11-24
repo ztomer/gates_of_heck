@@ -39,9 +39,9 @@ kept by hand; this hook keeps them structurally (tests/test_claude_agent_guard.p
   (`goh capacity`) whether the machine has room for another lane; GOH_LANE_ADMIT `refuse`
   (default) defers it naming what the reading lacked, `warn` says so and admits, an `Owner-asked:`
   line is deferred too (admitted in warn mode) and refused above the hard ceiling (GOH.OWNERASKCAP),
-  a failed reading admits; `lane-starts.jsonl`.
-* Every allowed spawn is one line in `$XDG_CACHE_HOME/goh/agent-spawns.jsonl`; SubagentStop adds
-  the outcome line -- tokens summed from the agent's transcript, the report's `Status:` and the
+  a failed reading admits; goh.db's `lane_starts`.
+* Every allowed spawn is one row of goh.db's `agent_spawns` (lib/hook_ledgers.py); SubagentStop
+  adds the outcome row -- tokens summed from the agent's transcript, the report's `Status:` and the
   report itself (the audit checks its shas) -- so a wrong choice either way is visible as data.
 * A fixed-name file the agent wrote straight into the shared scratchpad root is named at
   SubagentStop (GOH.AGENTSCRATCH, `scratch_guard.py`): on the outcome line (`scratch_loose`) and
@@ -75,10 +75,12 @@ import time
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))  # hook_ledgers (STATEDBS4)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # its siblings, whoever imports it
 import appstate  # the owner's login-item apps, put back after an agent (GOH.APPSTATE)
 import brief  # the corrected header a refusal carries (GOH.BRIEFHEADER)
 import ci_door  # a direct gh CI read past loopctl's door (GOH.GHDOOR)
+import hook_ledgers  # lib/: goh.db's hook ledgers, the spawn ledger's one door
 import lane_room  # a write spawn starts only while the machine has room (GOH.ADAPTLANES)
 import model_choice  # the rules file's one reader, beside this script
 import scratch_guard  # a fixed-name file in the shared scratchpad root (GOH.AGENTSCRATCH)
@@ -213,32 +215,10 @@ def judge_choice(
     return None, info
 
 
-def ledger_path() -> Path:
-    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-    path = Path(base) / "goh" / "agent-spawns.jsonl"
-    # Under goh's own suite a ledger row in the USER's cache corrupts the model-choice audit (G12):
-    # refused loudly (not an OSError, so _append does not swallow it). lib/suite_cache_guard.sh.
-    real = os.environ.get("GATES_OF_HECK_SUITE_REAL_HOME")
-    if real:  # set by goh's tests/suite_home.py alone
-        user = f"{real}/.cache/goh/"
-        if f"{path}/".startswith(user) and not str(path).startswith(f"{user}suite/"):
-            raise RuntimeError(
-                f"agent_guard under goh's suite would write the user's ledger: {path}"
-            )
-    return path
-
-
 def _append(record: dict[str, Any]) -> str | None:
-    """Append one ledger line; the warning to show when it could not be written, else None."""
-    try:
-        path = ledger_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        line = json.dumps(record, sort_keys=True) + "\n"
-        with path.open("a", encoding="utf-8") as f:  # one write: O_APPEND keeps lines whole
-            f.write(line)
-    except OSError as e:
-        return f"agent_guard: the spawn ledger was not written ({e}); the spawn is not blocked."
-    return None
+    """One spawn ledger row in goh.db (lib/hook_ledgers.py: a 5 s wait, then spilled and counted);
+    the warning to show when goh.db did not take it, else None. Never blocks the spawn."""
+    return hook_ledgers.append(hook_ledgers.SPAWNS, record)
 
 
 def _now() -> str:

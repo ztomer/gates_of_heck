@@ -61,10 +61,11 @@ import agent_audit
 import apply_claude_hooks
 import model_choice
 import spend_watch
-from agent_guard import STATUSES, ledger_path
 
 usage_review = importlib.import_module("usage_review")  # scripts/, on sys.path above
 queue_read = importlib.import_module("queue_read")  # lib/: the loop queue's one reader
+hook_ledgers = importlib.import_module("hook_ledgers")  # lib/: goh.db's ledgers (STATEDBS4)
+STATUSES = importlib.import_module("agent_guard").STATUSES  # hooks/claude/, on sys.path above
 
 LABEL = "com.ztomer.goh-model-choice-watch"
 LOOP = Path.home() / "Projects" / ".loop"
@@ -88,7 +89,7 @@ ENUM = {
 
 
 def _cache_dir() -> Path:
-    return ledger_path().parent
+    return hook_ledgers.cache_dir()
 
 
 def _norm(text: str) -> str:
@@ -199,7 +200,7 @@ def check_facts(rules: model_choice.Rules, claude: str | None) -> list[dict[str,
 def live_proof(claude: str) -> tuple[bool, str]:
     """The hook, live, on this Claude Code: refuses, allows with the contract, ledgers both ends."""
     with tempfile.TemporaryDirectory(prefix="goh-live-proof.") as tmp:
-        env = dict(os.environ, XDG_CACHE_HOME=tmp)
+        env = dict(os.environ, XDG_CACHE_HOME=tmp, GOH_DB=str(Path(tmp) / "goh.db"))
         cmd = [claude, "-p", PROOF_PROMPT, "--model", "haiku", "--effort", "low",
                "--output-format", "stream-json", "--verbose", "--allowedTools", "Agent",
                "--max-budget-usd", "0.25"]  # fmt: skip
@@ -208,8 +209,7 @@ def live_proof(claude: str) -> tuple[bool, str]:
                                stdin=subprocess.DEVNULL, check=False)  # fmt: skip
         except (OSError, subprocess.TimeoutExpired) as e:
             return False, f"claude -p did not finish ({e})"
-        led = Path(tmp) / "goh" / "agent-spawns.jsonl"
-        rows = agent_audit.read(led)[0] if led.exists() else []
+        rows = hook_ledgers.spawns(Path(tmp) / "goh.db")  # its own goh.db, never the real one
     denied = "Refused: this general-purpose spawn" in r.stdout
     spawn = next((x for x in rows if x.get("event") == "spawn"
                   and x.get("description") == PROOF_DESC), None)  # fmt: skip
@@ -224,13 +224,12 @@ def live_proof(claude: str) -> tuple[bool, str]:
     )
 
 
-def canary(ledger: Path, projects: Path, days: int) -> dict[str, Any]:
+def canary(ledger: Path | None, projects: Path, days: int) -> dict[str, Any]:
     since = dt.datetime.now(dt.UTC) - dt.timedelta(days=days)
     spawns = 0
-    if ledger.exists():
-        for rec in agent_audit.read(ledger)[0]:
-            if rec.get("event") == "spawn" and _when(rec.get("time")) >= since:
-                spawns += 1
+    for rec in agent_audit.records(ledger)[0]:
+        if rec.get("event") == "spawn" and _when(rec.get("time")) >= since:
+            spawns += 1
     uses = 0
     for path in projects.glob("**/*.jsonl"):
         try:
@@ -404,8 +403,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     cache = _cache_dir()
     ap.add_argument("--findings", type=Path, default=cache / "model-choice-findings.md")
-    ap.add_argument("--state", type=Path, default=cache / "model-choice-watch.json")
-    ap.add_argument("--ledger", type=Path, default=ledger_path())
+    ap.add_argument("--state", type=Path, default=None, help="a record file; default goh.db's kv")
+    ap.add_argument("--ledger", type=Path, default=None, help="a ledger file; default goh.db's")
     ap.add_argument("--settings", type=Path, default=Path.home() / ".claude" / "settings.json")
     ap.add_argument("--projects", type=Path, default=Path.home() / ".claude" / "projects")
     ap.add_argument("--claude", default=shutil.which("claude"), help="the Claude Code CLI")
@@ -432,9 +431,10 @@ def main(argv: list[str] | None = None) -> int:
         return install()
     rules = model_choice.load()
     try:
-        prior = json.loads(args.state.read_text(encoding="utf-8"))
+        prior = json.loads(args.state.read_text("utf-8")) if args.state else hook_ledgers.watch()
     except (OSError, ValueError):
-        prior = {}
+        prior = None
+    prior = prior if isinstance(prior, dict) else {}
     facts = check_facts(rules, args.claude)
     version = claude_version(args.claude) if args.claude else None
     changed = any(
@@ -456,7 +456,7 @@ def main(argv: list[str] | None = None) -> int:
         "settings": settings_drift(args.settings, ROOT / "hooks" / "claude" / "registrations.json"),
         "audit": agent_audit.run(args.ledger, args.root, args.offline_audit),
     }  # fmt: skip
-    records = agent_audit.read(args.ledger)[0] if args.ledger.exists() else []
+    records = agent_audit.records(args.ledger)[0]
     state["usage_review"] = usage_review.run(records, rules, args.days)
     if not args.no_spend:
         state["spend"] = spend_watch.run(
@@ -467,7 +467,7 @@ def main(argv: list[str] | None = None) -> int:
         rows = agent_audit.fault_rows(records, since)
         items = queue_read.items_or_empty(args.queue)
         state["fault_candidates"] = spend_watch.fault_candidates(rows, items)
-        state["candidates_file"] = str(args.findings.with_name("fault-candidates.jsonl"))
+        state["candidates_file"] = "goh.db fault_candidates (lib/hook_ledgers.py export)"
     red = (
         state["canary"]["red"]
         or state["settings"]["red"]
@@ -479,15 +479,15 @@ def main(argv: list[str] | None = None) -> int:
     summary = (f"model-choice watch: {'RED' if red else 'green'}, {n_re} re-research, {n_unv} unverified, "
                f"{counted(len(audit['proposals']), 'proposal')}, "
                f"{counted(len(audit['verification']['silent_failure']), 'silent failure')} -> {args.findings}")  # fmt: skip
+    if args.state is None:  # the record and the candidates: goh.db (GOH.STATEDBS4)
+        cands = state.get("fault_candidates") if state.get("spend") else None
+        hook_ledgers.record_watch(json.loads(json.dumps(state, default=str)), cands)
     for path, text in ((args.state, json.dumps(state, indent=1, default=str) + "\n"),
                        (args.findings, _findings(state, summary))):  # fmt: skip
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        if path is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
     if state.get("spend"):
-        cands = state["fault_candidates"]
-        Path(state["candidates_file"]).write_text(
-            "".join(json.dumps(c, ensure_ascii=False) + "\n" for c in cands), encoding="utf-8"
-        )
         sys.stdout.write("\n".join(spend_watch.render(state["spend"])) + "\n")
     usage_review.post(state["usage_review"], args.notify, args.findings)
     print(summary)
