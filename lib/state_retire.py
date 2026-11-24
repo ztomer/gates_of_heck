@@ -172,6 +172,87 @@ def _hook_check(con: sqlite3.Connection, p: Path) -> str | None:
     return _subset(con, table, p)
 
 
+# -- small stores (GOH.STATEDBS3, goh.db 0004) ---------------------------------------------------
+
+SMALL_KV = ("estate_audit", "pin_push", "pin_sweeps", "cache-evict", "wf_pin.pins")
+
+
+def _small_files() -> list[Path]:
+    st = state_dir()
+    flakes = sorted((st / "flakes" / "by-test").glob("*.jsonl"))
+    return _existing(*(st / f"{n}.json" for n in SMALL_KV), st / "commit-gated.jsonl",
+                     st / "flakes" / "register.jsonl", *flakes)  # fmt: skip
+
+
+def _flake_tests() -> dict[str, str]:
+    """{record id stem: test} from the register (a by-test file is named by its test's stem)."""
+    recs = _lines(state_dir() / "flakes" / "register.jsonl")
+    return {r["id"].partition(".")[0]: r["test"] for r in recs
+            if isinstance(r.get("id"), str) and "test" in r}  # fmt: skip
+
+
+def _small_rows(p: Path) -> tuple[str, list[tuple[float, str, dict]]]:
+    """P's table and its rows as (epoch, key, row): the tree for commit_gated, the test for flakes
+    (a by-test file's filings only: its id lines index the register's records)."""
+    if p.name == "commit-gated.jsonl":
+        return "commit_gated", [(_epoch(r.get("at")), str(r.get("tree") or ""), r)
+                                for r in _lines(p) if r.get("tree")]  # fmt: skip
+    if p.name == "register.jsonl":
+        return "flakes", [(float(r.get("epoch") or 0), str(r["test"]), r)
+                          for r in _lines(p) if "test" in r]  # fmt: skip
+    test = _flake_tests().get(p.stem, "")
+    return "flakes", [(float(r.get("epoch") or 0), test, r)
+                      for r in _lines(p) if "filed" in r and test]  # fmt: skip
+
+
+def _epoch(at: object) -> float:
+    if isinstance(at, (int, float)):
+        return float(at)
+    import calendar
+
+    try:
+        return float(calendar.timegm(time.strptime(str(at)[:19], "%Y-%m-%dT%H:%M:%S")))
+    except ValueError:
+        return 0.0
+
+
+def _small_key(table: str) -> str:
+    return "tree" if table == "commit_gated" else "test"
+
+
+def _small_load(con: sqlite3.Connection, files: list[Path]) -> None:
+    for p in files:
+        if p.suffix == ".json":
+            if (doc := _json(p)) is not None:
+                name = p.name.removesuffix(".json")
+                con.execute("INSERT OR IGNORE INTO kv VALUES (?, ?, ?)",
+                            (name, _dump(doc), p.stat().st_mtime))  # fmt: skip
+            continue
+        table, rows = _small_rows(p)
+        key, at = _small_key(table), "at" if table == "commit_gated" else "epoch"
+        n = 0
+        for epoch, k, r in sorted(rows, key=lambda t: t[0]):
+            if not con.execute(f"SELECT 1 FROM {table} WHERE {key}=? AND body=?",
+                               (k, _dump(r))).fetchone():  # fmt: skip
+                con.execute(f"INSERT INTO {table}({at}, {key}, body) VALUES (?, ?, ?)",
+                            (epoch, k, _dump(r)))  # fmt: skip
+                n += 1
+        _ledger(con, "small stores", p, n)
+
+
+def _small_check(con: sqlite3.Connection, p: Path) -> str | None:
+    if p.suffix == ".json":
+        return _kv_equal(con, p.name.removesuffix(".json"), p)
+    table, rows = _small_rows(p)
+    key = _small_key(table)
+    miss = [r for _, k, r in rows if not con.execute(
+        f"SELECT 1 FROM {table} WHERE {key}=? AND body=?", (k, _dump(r))).fetchone()]  # fmt: skip
+    if p.parent.name == "by-test":  # an id line names a record the register holds
+        ids = {json.loads(b).get("id") for (b,) in con.execute("SELECT body FROM flakes")}
+        miss += [r for r in _lines(p) if "id" in r and "filed" not in r and r["id"] not in ids]
+    return f"{len(miss)} of its lines have no {table} row" if miss else None
+
+
 # -- the stores -----------------------------------------------------------------------------------
 
 
@@ -180,6 +261,7 @@ def _existing(*paths: Path) -> list[Path]:
 
 
 STORES: dict[str, Store] = {
+    "small-stores": Store(files=_small_files, load=_small_load, check=_small_check),
     "hook-ledgers": Store(
         files=lambda: _existing(*(_hook_file(t) for t in HOOK_FILES)),
         load=_hook_load,

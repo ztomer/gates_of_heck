@@ -1,11 +1,10 @@
-"""goh's small stores in goh.db 0004 (GOH.STATEDBS3): every store's file, imported, reads back equal
-from its table (handover plan (b) step 3), a re-import adds nothing, a file not yet imported is
-read under the database's rows, and a store's rows live in the goh.db beside its file."""
+"""goh's small stores in goh.db 0004 (GOH.STATEDBS3): every store's file, retired (`goh state
+retire small-stores`, wave 3), reads back equal from its table and is archived; no store reads its
+file after that; and a store's rows live in the goh.db beside its path."""
 
 from __future__ import annotations
 
 import json
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -68,25 +67,26 @@ def state(tmp_path, monkeypatch) -> Path:
     return _state(tmp_path / "goh")
 
 
-def test_every_store_reads_back_equal_after_its_import(state) -> None:
-    before = small_stores.export(state)  # no database yet: the files, as their readers saw them
-    assert not (state / "goh.db").exists()
-    got = small_stores.import_all(state)
-    assert got == {
-        "estate_audit": 1,
-        "pin_push": 1,
-        "pin_sweeps": 1,
-        "cache-evict": 1,
-        "wf_pin.pins": 1,
-        "commit_gated": 3,
-        "flakes": 3,
-    }, got
-    for f in state.glob("*.json*"):
-        f.unlink()  # the rows alone, no file under them
-    import shutil
+def test_every_store_retired_reads_back_equal_and_its_files_are_archived(
+    state, monkeypatch
+) -> None:
+    import state_retire
 
-    shutil.rmtree(state / "flakes")
-    assert small_stores.export(state) == before
+    monkeypatch.setenv("XDG_STATE_HOME", str(state.parent))
+    want = {f.name: json.loads(f.read_text()) for f in state.glob("*.json")}
+    said: list[str] = []
+    assert state_retire.retire("small-stores", day="d", say=said.append) is True, said
+    left = [p for p in state.rglob("*") if p.is_file() and not p.name.startswith("goh.db")]
+    to = state / "retired" / "d" / "small-stores" / "state"
+    assert sorted(p.relative_to(to) for p in left) == sorted(
+        p.relative_to(to) for p in to.rglob("*") if p.is_file()
+    ), left  # every file archived, none left in place
+    assert (to / "flakes" / "register.jsonl").is_file() and not (
+        state / "flakes" / "register.jsonl"
+    ).exists()
+    got = small_stores.export(state)
+    assert {f"{k}.json": v for k, v in got.items() if k in small_stores.KV_NAMES} == want
+    assert [r["tree"] for r in got["commit_gated"]] == ["t0", "t1", "t2"]
     assert [r.get("filed") for r in small_stores.flakes(state / "flakes", TEST)] == [
         None,
         None,
@@ -94,32 +94,13 @@ def test_every_store_reads_back_equal_after_its_import(state) -> None:
     ]
 
 
-def test_a_reimport_adds_nothing_and_a_grown_file_adds_its_new_lines(state) -> None:
-    small_stores.import_all(state)
-    assert set(small_stores.import_all(state).values()) == {0}
-    with (state / "commit-gated.jsonl").open("a") as f:  # an old HEAD export still appending
-        f.write(json.dumps({"at": "2026-11-23T00:00:00Z", "repo": "/p/b", "tree": "t9"}) + "\n")
-    assert small_stores.import_all(state)["commit_gated"] == 1
-    trees = [r["tree"] for r in small_stores.gated(state / "commit-gated.jsonl")]
-    assert trees == ["t0", "t1", "t2", "t9"], trees
-
-
-def test_a_file_not_yet_imported_reads_under_the_rows(state) -> None:
-    small_stores.gated_add(state / "commit-gated.jsonl", {"at": 5, "repo": "/p", "tree": "new"})
-    with (state / "commit-gated.jsonl").open("a") as f:
-        f.write(json.dumps({"at": "2026-11-23T00:00:00Z", "repo": "/p/b", "tree": "late"}) + "\n")
-    trees = [r["tree"] for r in small_stores.gated(state / "commit-gated.jsonl")]
-    assert trees == ["late", "t0", "t1", "t2", "new"], trees
-
-
-def test_a_kv_write_wins_over_its_file_and_is_read_alone(state) -> None:
+def test_a_store_never_reads_its_file(state) -> None:
     p = state / "pin_push.json"
-    small_stores.update(p, lambda old: {**old, "repos": {}})
-    p.write_text(json.dumps({"schema": 1, "repos": {"/stale": {}}}))  # an old writer, after
-    assert small_stores.get(p) == {"schema": 1, "repos": {}}
-    with sqlite3.connect(state / "goh.db") as con:
-        names = sorted(r[0] for r in con.execute("SELECT name FROM kv"))
-    assert names == ["pin_push"]  # a write imports its own file only
+    assert small_stores.get(p) is None  # the file is there, and read by nothing
+    assert small_stores.gated(state / "commit-gated.jsonl") == []
+    assert small_stores.flakes(state / "flakes") == []
+    small_stores.update(p, lambda old: {"was": old})
+    assert small_stores.get(p) == {"was": None}
 
 
 def test_the_database_is_beside_the_store_unless_goh_db_names_one(
@@ -141,14 +122,14 @@ def test_no_file_and_no_database_reads_as_nothing(tmp_path, monkeypatch) -> None
     assert not d.exists()  # a read never creates the database
 
 
-def test_the_estate_state_is_written_to_goh_db_and_its_file_left_as_it_was(state) -> None:
+def test_the_estate_state_is_written_to_goh_db_and_its_file_left_alone(state) -> None:
     import estate_registry
 
     p = state / "estate_audit.json"
     was = p.read_text()
-    new = estate_registry.update_state(p, lambda old: {**old, "grace_watch": {"ran": True}})
-    assert p.read_text() == was, "the file stays until wave 3's delete commit, unwritten"
-    assert estate_registry.read_state(p) == new == {**json.loads(was), "grace_watch": {"ran": True}}
+    new = estate_registry.update_state(p, lambda old: {**(old or {}), "grace_watch": {"ran": True}})
+    assert p.read_text() == was, "the file is neither read nor written"
+    assert estate_registry.read_state(p) == new == {"grace_watch": {"ran": True}}
 
 
 def test_the_evictors_ledger_the_commit_stamps_and_the_flakes_write_goh_db(
@@ -168,8 +149,8 @@ def test_the_evictors_ledger_the_commit_stamps_and_the_flakes_write_goh_db(
     assert {p: p.read_bytes() for p in state.rglob("*") if p.is_file() and p.suffix != ".lock"
             and not p.name.startswith("goh.db")} == files, "no store file is written"  # fmt: skip
     assert cache_evict.read_ledger(ledger) == {"L": 3.0, "objs": {}}
-    assert {"t0", "t1", "t2", "t-new"} == commit_stamp.stamped()
-    assert rec["id"] == f"{flakes.key(TEST)}.3", rec  # after the file's two records of TEST
+    assert {"t-new"} == commit_stamp.stamped()  # the file's trees are read by nothing
+    assert rec["id"] == f"{flakes.key(TEST)}.1", rec
     assert [r["id"] for r in flakes.recorded(TEST)][-1] == rec["id"]
 
 

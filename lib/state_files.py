@@ -76,29 +76,6 @@ FILES: dict[str, FileBound | FileKept] = {
         "the pre-GOH.STATEDB file: lib/land_check.py learn now writes goh.db's land_guards "
         "(lib/land_records.py) and reads this file's lines no row holds, until wave 3 deletes it",
     ),
-    "commit-gated.jsonl": FileBound(
-        LEDGER_DAYS,
-        20000,
-        "at",
-        "state_file",
-        "lib/commit_stamp.py record, one row per tree a commit gate passed; read by goh land "
-        "--check, which runs the gate on a commit whose tree is not there",
-    ),
-    "flakes/register.jsonl": FileBound(
-        LEDGER_DAYS,
-        20000,
-        "epoch",
-        "state_file",
-        "lib/flakes.py record, one row per pass-on-retry; read by goh flakes and by a test's "
-        "filing (its records of the last 14 days)",
-    ),
-    "flakes/by-test/*": FileBound(
-        LEDGER_DAYS,
-        500,
-        "epoch",
-        "state_file",
-        "lib/flakes.py record, one test's record ids and filings; read by its 2-in-14-days rule",
-    ),
     "reuse/audit/shadow.jsonl": FileBound(
         14,
         30000,

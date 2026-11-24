@@ -8,7 +8,6 @@ holding one planted advisory, read with --no-fetch, so nothing touches the netwo
 """
 
 import datetime as dt
-import json
 import shutil
 import subprocess
 import sys
@@ -224,7 +223,7 @@ def test_a_job_that_never_ran_is_reported(tmp_path):
 def test_a_job_that_stopped_is_reported_as_stale(tmp_path):
     state = tmp_path / "state.json"
     old = (dt.datetime.now(dt.UTC) - dt.timedelta(hours=40)).isoformat(timespec="seconds")
-    state.write_text(json.dumps({"ran_at": old, "advisories": {}, "errors": []}))
+    put_estate_state(state, {"ran_at": old, "advisories": {}, "errors": []})
     assert "STALE" in _hook(state)
 
 

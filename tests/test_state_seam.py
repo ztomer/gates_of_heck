@@ -36,9 +36,7 @@ ALLOWED: dict[str, set[str]] = {
     "ship pins": set(),  # S2 goh.db 0003 ship_pins: moved (lib/ship_records.py, GOH.STATEDBS2)
     "small stores": set(),  # S3 goh.db 0004 kv: moved (lib/small_stores.py, GOH.STATEDBS3)
     "commit gated": set(),  # S3 goh.db 0004 commit_gated: moved (lib/small_stores.py)
-    "flakes": {  # S3 goh.db 0004 flakes: moved (lib/small_stores.py)
-        "lib/state_files.py",  # bounds the legacy files until wave 3's delete commit removes them
-    },
+    "flakes": set(),  # S3 goh.db 0004 flakes: moved; the files retired (lib/state_retire.py)
     "hook ledgers": set(),  # S4 goh.db 0005: moved; the files retired (lib/state_retire.py)
     "durations": set(),  # DUR goh.db 0006 readings: moved (lib/durations.py, GOH.DURATIONSDB)
     "reuse records": {  # V1 goh-cache.db 0002 verdicts (lib/reuse_store.py, GOH.VERDICTDB)
