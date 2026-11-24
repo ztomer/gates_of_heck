@@ -23,7 +23,7 @@ from test_landq import _land_wt, _pending, env, landq, recorded  # noqa: F401 --
 from timing_bounds import assert_sooner, patience
 
 sys.path.insert(0, str(REPO_ROOT))
-from lib import land_check
+from lib import durations, land_check
 
 TREE_READS = ("docs/map.md", "tests/", ".gatesrc")  # a clone of the whole tree, planted
 
@@ -168,22 +168,21 @@ def test_the_guard_tests_are_the_declared_ones_and_the_measured_past_refusers(
     (done / "1.json").write_text(json.dumps({"state": "red", "repo": "/r", "guards": guards}))
     other = {"state": "red", "repo": "/other", "guards": ["tests/test_c.py::test_other"]}
     (done / "2.json").write_text(json.dumps(other))  # another repo's guard is not this one's
-    times = tmp_path / "durations.json"
-    times.write_text(
-        json.dumps(
-            {
+    times = tmp_path / "goh.db"
+    durations.record(
+        {
+            "dur": {
                 "tests/test_c.py::test_fast": 0.1,
                 "tests/test_c.py::test_slow[1]": 0.6,
                 "tests/test_c.py::test_slow[2]": 0.6,
                 "tests/test_b.py::test_q": 12.0,
             }
-        )
+        },
+        db=times,
     )
     monkeypatch.setenv("GOH_TEST_DURATIONS", str(times))
     (tests / "test_c.py").write_text((tests / "test_c.py").read_text() + "def test_other(): pass\n")
-    times.write_text(
-        json.dumps({**json.loads(times.read_text()), "tests/test_c.py::test_other": 0.1})
-    )
+    durations.record({"dur": {"tests/test_c.py::test_other": 0.1}}, db=times)
     got = land_check.tests(tmp_path / "tree", tmp_path / "q", "/r")
     # declared: run unless measured slow; past refusers: only when measured cheap
     assert got == [
@@ -234,8 +233,10 @@ def test_a_red_lands_record_names_the_guard_its_log_shows(tmp_path):
 
 
 def test_the_guard_tests_split_into_runs_of_near_equal_cost(tmp_path, monkeypatch):
-    times = tmp_path / "durations.json"
-    times.write_text(json.dumps({"t.py::a": 6.0, "t.py::b": 3.0, "t.py::c": 3.0, "t.py::d": 0.5}))
+    times = tmp_path / "goh.db"
+    durations.record(
+        {"dur": {"t.py::a": 6.0, "t.py::b": 3.0, "t.py::c": 3.0, "t.py::d": 0.5}}, db=times
+    )
     monkeypatch.setenv("GOH_TEST_DURATIONS", str(times))
     assert land_check.shards(["t.py::a", "t.py::b", "t.py::c", "t.py::d"], 2) == [
         ["t.py::a", "t.py::d"],
@@ -262,15 +263,16 @@ def test_the_check_runs_the_table_tests_the_diff_chooses_and_names_the_table(tmp
     tree = tmp_path / "tree"
     (tree / "tests").mkdir(parents=True)
     (tree / "tests" / "test_t.py").write_text(TABLE_TESTS)
-    times = tmp_path / "durations.json"
-    times.write_text(
-        json.dumps(
-            {
+    times = tmp_path / "goh.db"
+    durations.record(
+        {
+            "dur": {
                 "tests/test_t.py::test_every_script_has_a_row": 0.1,
                 "tests/test_t.py::test_no_slow_table_rows": land_check.JUDGE_EACH_S + 1,
                 "tests/test_t.py::test_plain_behaviour": 0.1,
             }
-        )
+        },
+        db=times,
     )
     monkeypatch.setenv("GOH_TEST_DURATIONS", str(times))
     monkeypatch.setattr(
@@ -373,12 +375,12 @@ def test_one_check_names_every_judge_a_lane_breaks_with_diff_coverage(tmp_path, 
     (tree / "tools").mkdir()
     (tree / "tests" / "test_j.py").write_text(JUDGES)
     (tree / "tools" / "affected_tests.py").write_text(SELECTOR.replace("x [", "✗ ["))
-    times = tmp_path / "durations.json"
-    times.write_text(json.dumps({
+    times = tmp_path / "goh.db"
+    durations.record({"dur": {
         "tests/test_j.py::test_every_lib_has_a_row": 26.0,  # over the old table cap (25 s)
         "tests/test_j.py::test_goh_obeys_every_scanner_it_ships": 67.0,
         "tests/test_j.py::test_plain_behaviour": 0.1,
-    }))  # fmt: skip
+    }}, db=times)  # fmt: skip
     monkeypatch.setenv("GOH_TEST_DURATIONS", str(times))
     monkeypatch.setenv("GOH_PY", sys.executable)
     said: list[str] = []

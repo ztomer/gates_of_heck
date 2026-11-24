@@ -5,9 +5,11 @@ THE TAIL. Summed test time over 12 workers is ~51 s, and the suite ran 62-67 s o
 the others are nearly done and the run waits for it alone. Ordering the longest first is the
 classic LPT schedule -- the long ones start at once and the short ones fill in around them.
 
-The order comes from the last run's own measurement, never from a list someone keeps: the
-controller records every test's call+setup+teardown at session end to goh's own state OUTSIDE the
-tree (the tree guard forbids writing in it), MERGED into what is there.
+The order comes from the last run's own measurement, never from a list someone keeps: the controller
+records every test's call+setup+teardown at session end to goh's own state OUTSIDE the tree (the
+tree guard forbids writing in it): one goh.db row per reading (lib/durations.py, goh.db 0006,
+GOH.DURATIONSDB), so a run ending beside another keeps both runs' readings, where the whole-file
+JSON it replaced (read, merge, replace, no lock) kept one.
 
 ONLY THE TOP-LEVEL RUN WRITES IT, AND READS IT (GOH.DURATIONSSTALE). tools/pytest.sh names the table
 in GOH_TEST_DURATIONS (lib/fast_tests.py `cache()`, the one spelling of the path: the land
@@ -26,23 +28,24 @@ as UNKNOWN_S. An xdist_group is one unit of work, so its members move together, 
 group is read from the marks (tests/_loadgroup.py `group`), never from a node id.
 Ordering cannot change a verdict: the suite already runs in any order under xdist.
 
-THE LONG-POLE TABLE (GOH.LONGPOLELOAD) rides the same path: beside the duration table
-(lib/fast_tests.py `poles`), written by the same top-level run, read by the same controller and
-handed to every worker the same way. Its entries are each test's quiet seconds, the sum of the
-`goh_pole` its phases' reports carry (tests/_drift_guard.py), which the long-pole ratchet judges
-(lib/long_pole.py). A report without one (a run without the drift guard) adds nothing to it. A test
-read under load is UNMEASURED and leaves its entry as it was (GOH.LONGPOLEUNMEASURED): beside the
-table, `fast_tests.pole_cpu` keeps each entry's CPU seconds, and only a CPU growth past what the
-load can add moves a loaded test's entry (lib/long_pole.py `settle`).
+THE LONG-POLE TABLE (GOH.LONGPOLELOAD) rides the same path: the readings of kind `pole` beside the
+duration table's `dur` (lib/durations.py KINDS), written by the same top-level run, read by the same
+controller and handed to every worker the same way. Its entries are each test's quiet seconds, the
+sum of the `goh_pole` its phases' reports carry (tests/_drift_guard.py), which the long-pole ratchet
+judges (lib/long_pole.py). A report without one (a run without the drift guard) adds nothing to it.
+A test read under load is UNMEASURED and leaves its entry as it was (GOH.LONGPOLEUNMEASURED): beside
+the table, kind `pole_cpu` keeps each entry's CPU seconds, and only a CPU growth past what the load
+can add moves a loaded test's entry (lib/long_pole.py `settle`).
 
-PRUNED BY COLLECTED NODE ID (GOH.DURATIONSPRUNE). Both tables drop an entry whose test file is gone,
-and, for every file this run collected WHOLE, each id of that file it did not collect: a test
-renamed or parametrized left its old id behind (a stale 61 s test_land_check skewed the order and
-the ratchet) while only the file was checked. A file is whole when it yielded at least one item,
-no argument named a node inside it (`f.py::t`), and nothing deselected one of its items (-k, -m,
---deselect, --lf, a shard, a carried run: every plugin's deselection goes through pytest's own
-`pytest_deselected`). Whoever collects records it (an xdist worker hands it to the controller in
-`workeroutput`; every worker collects the same set, so the controller takes the union).
+PRUNED BY COLLECTED NODE ID (GOH.DURATIONSPRUNE). Every table drops an entry (a `pruned` row in the
+run's own transaction, lifted by a later reading) whose test file is gone, and, for every file this
+run collected WHOLE, each id of that file it did not collect: a test renamed or parametrized left
+its old id behind (a stale 61 s test_land_check skewed the order and the ratchet) while only the
+file was checked. A file is whole when it yielded at least one item, no argument named a node inside
+it (`f.py::t`), and nothing deselected one of its items (-k, -m, --deselect, --lf, a shard, a
+carried run: every plugin's deselection goes through pytest's own `pytest_deselected`). Whoever
+collects records it (an xdist worker hands it to the controller in `workeroutput`; every worker
+collects the same set, so the controller takes the union).
 
 JUDGES FIRST IN A LAND'S ONE RUN (GOH.LANDONERUN). The lander runs one pytest, the gate's suite
 (the pre-land beside it is gone, lib/land_par.sh), and tools/pytest.sh names it
@@ -59,8 +62,8 @@ It registers tests/_loadgroup.py in turn, so every run that orders by group also
 from __future__ import annotations
 
 import contextlib
+import importlib
 import importlib.util
-import json
 import os
 import sys
 from collections import defaultdict
@@ -111,11 +114,6 @@ def _lib(name: str):
         del sys.path[:2]
 
 
-def _poles_path(table: Path) -> Path:
-    """The long-pole table beside `table`: lib/fast_tests.py `poles`, its one spelling."""
-    return _lib("fast_tests").poles(table)
-
-
 def _scope(item) -> str:
     """xdist loadgroup's unit: the test's group (tests/_loadgroup.py `group`, the name the
     scheduler is handed), else the test itself. Node ids carry no `@group` suffix: xdist 3.8.0's
@@ -135,22 +133,18 @@ def judges(root: Path) -> list[str]:
     return sorted(selector.tree_readers(root))
 
 
-def _load(poles: bool = False, path: Path | None = None) -> dict[str, float]:
+def _load(kind: str = "dur") -> dict[str, float]:
+    """The table KIND of this run's database (lib/durations.py), {} for a run that owns none."""
     if not _table:
         return {}
-    try:
-        path = path or (_poles_path(_table[0]) if poles else _table[0])
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return {k: float(v) for k, v in data.items() if isinstance(v, (int, float))}
+    return _lib("durations").load(kind, _table[0], named=True)
 
 
 def pytest_configure(config) -> None:
     """A worker takes the controller's read; the controller (or a run without xdist) reads now."""
     worker = getattr(config, "workerinput", None)
     _read[_KEY] = worker.get(_KEY, {}) if worker is not None else _load()
-    _read[_POLE_KEY] = worker.get(_POLE_KEY, {}) if worker is not None else _load(poles=True)
+    _read[_POLE_KEY] = worker.get(_POLE_KEY, {}) if worker is not None else _load("pole")
     if worker is not None:
         _shard_spec[:] = [worker[_SHARD_KEY]] if worker.get(_SHARD_KEY) else []
         _read[_JUDGE_KEY] = worker.get(_JUDGE_KEY, [])
@@ -228,20 +222,19 @@ def pytest_runtest_logreport(report) -> None:
 
 
 def pytest_sessionfinish(session) -> None:
-    """Controller only. A partial run (`-k`, one file) MERGES what it measured; an entry whose test
+    """Controller only. A partial run (`-k`, one file) adds what it measured; an entry whose test
     file is gone is pruned, and one a whole-file collection did not contain."""
     if hasattr(session.config, "workerinput") or not _seen or not _table:
         return
     root = Path(str(session.config.rootpath))
     whole = {k.split("::")[0] for k in _collected} - _narrowed
-    _write(_table[0], _load(), _seen, root, whole)
-    poles = _poles_path(_table[0])
-    if _poles or poles.is_file():
-        cpus = _lib("fast_tests").pole_cpu(_table[0])
-        old, old_cpu = _load(poles=True), _load(path=cpus)
-        settled = _settle(old, old_cpu)
-        _write(poles, old, {k: v[0] for k, v in settled.items()}, root, whole)
-        _write(cpus, old_cpu, {k: v[1] for k, v in settled.items()}, root, whole)
+    settled = _settle(_load("pole"), _load("pole_cpu"))
+    seen = {
+        "dur": dict(_seen),
+        "pole": {k: v[0] for k, v in settled.items()},
+        "pole_cpu": {k: v[1] for k, v in settled.items()},
+    }
+    _write(_table[0], seen, root, whole, frozenset(_pole_loaded))
 
 
 def _settle(old: dict[str, float], old_cpu: dict[str, float]) -> dict[str, tuple[float, float]]:
@@ -259,21 +252,19 @@ def _settle(old: dict[str, float], old_cpu: dict[str, float]) -> dict[str, tuple
 
 
 def _write(
-    cache: Path, old: dict[str, float], seen: dict[str, float], root: Path, whole: set[str]
+    db: Path,
+    seen: dict[str, dict[str, float]],
+    root: Path,
+    whole: set[str],
+    loaded: frozenset[str] = frozenset(),
 ) -> None:
-    """`seen` merged over `old` into `cache`, every entry whose test file is gone pruned, and every
-    id of a file in `whole` that this run did not collect."""
+    """`seen` ({kind: {node id: seconds}}) recorded into `db` in ONE transaction (lib/durations.py
+    `record`: a row per reading, so a run ending beside another loses none of its own), every
+    entry whose test file is gone pruned, and every id of a file in `whole` that this run did not
+    collect. An unwritable table costs the next run its order, never its verdict."""
 
     def keep(k: str) -> bool:
         f = k.split("::")[0]
         return (root / f).is_file() and (f not in whole or k in _collected)
 
-    merged = {**old, **{k: round(v, 3) for k, v in seen.items()}}
-    merged = {k: v for k, v in merged.items() if keep(k)}
-    try:
-        cache.parent.mkdir(parents=True, exist_ok=True)
-        tmp = cache.with_suffix(f".{os.getpid()}.tmp")
-        tmp.write_text(json.dumps(merged, sort_keys=True), encoding="utf-8")
-        tmp.replace(cache)
-    except OSError:
-        pass  # an unwritable table costs the next run its order, never its verdict
+    _lib("durations").record(seen, keep, loaded, db, named=True)

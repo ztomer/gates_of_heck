@@ -7,14 +7,14 @@ fail tests/test_wiring.py::test_every_script_has_a_row_in_the_map, a lib file wi
 docs/map.md row; CRATEFLOOR and PRELANDTWICE went red late the same day on causes as cheap.
 
 THE SET is the judges of an empty diff (`affected_tests.affected(root, [])`, the tree readers'
-reading tests -- what runs on every land whatever it changes), cut to test functions, each
-costed by the suite's own measurement: the duration table tests/_schedule.py merges at the end
-of every top-level run (`cache()`, goh's state, outside the tree), summed over a function's
+reading tests -- what runs on every land whatever it changes), cut to test functions, each costed by
+the suite's own measurement: the duration table tests/_schedule.py records at the end of every
+top-level run (`cache()`, goh.db's `durations` view, outside the tree), summed over a function's
 parametrized ids. Taken cheapest first while each costs at most EACH_S and the sum stays within
 BUDGET_S. Never a hand list: a judge that grows slow leaves the set by its own measurement, a new
-one joins once a top-level suite has timed it. An unmeasured test, or a cached id whose function
-the file no longer defines (the table prunes by FILE only), is not chosen: a nodeid pytest cannot
-find is a usage error, not a red.
+one joins once a top-level suite has timed it. An unmeasured test, or a cached id whose function the
+file no longer defines (the table prunes by FILE only), is not chosen: a nodeid pytest cannot find
+is a usage error, not a red.
 
 The pre-step's other cheap phases live here too: `structural` (gates/structural.sh --full) and
 `collects` (the whole suite collected when base code changes, GOH.BASECODESELECT).
@@ -23,7 +23,6 @@ The pre-step's other cheap phases live here too: `structural` (gates/structural.
 from __future__ import annotations
 
 import ast
-import json
 import os
 import subprocess
 from pathlib import Path
@@ -39,46 +38,29 @@ BUDGET_S = 4.0
 EACH_S = 0.5
 
 
-def cache() -> Path:
-    """The suite's duration table, keyed by pytest node id: GOH_TEST_DURATIONS when a caller names
-    one, else goh's own state, `$XDG_STATE_HOME/goh/test-durations.json` (~/.local/state when
-    unset). The ONE spelling of the path: tools/pytest.sh asks it here and hands it to its
-    top-level run, the only writer (tests/_schedule.py `take`, GOH.DURATIONSSTALE)."""
-    named = os.environ.get("GOH_TEST_DURATIONS")
-    if named:
-        return Path(named)
-    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
-    return Path(base) / "goh" / "test-durations.json"
-
-
-def poles(table: Path | None = None) -> Path:
-    """The long-pole table beside a duration table (`cache()` unless named): {node id: the seconds
-    the test would take on a quiet box}, read from each phase's wall, CPU and load factor
-    (tests/_drift_guard.py records, tests/_schedule.py merges, lib/long_pole.py judges;
-    GOH.LONGPOLELOAD). Its own file: a checkout on older code still writes the duration table,
-    and would drop keys it does not know."""
-    table = table or cache()
-    return table.with_name(f"{table.stem}.poles.json")
-
-
-def pole_cpu(table: Path | None = None) -> Path:
-    """The CPU seconds of each long-pole entry's quiet run, beside it: {node id: CPU seconds of the
-    test's process and the children it waited for}. A loaded run's reading is unmeasured unless its
-    CPU outgrew this (lib/long_pole.py `settle`, GOH.LONGPOLEUNMEASURED)."""
-    table = table or cache()
-    return table.with_name(f"{table.stem}.poles-cpu.json")
-
-
-def load(path: Path | None = None) -> dict[str, float]:
-    """{node id: seconds} from `path` (`cache()` unless named); {} when there is none or it does
-    not parse."""
+def _durations():
+    """lib/durations.py, imported when first asked: this module is base code (every pytest run
+    loads it), the database seam is not."""
     try:
-        data = json.loads((path or cache()).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    if not isinstance(data, dict):
-        return {}
-    return {k: float(v) for k, v in data.items() if isinstance(v, (int, float))}
+        from lib import durations
+    except ImportError:  # imported as `fast_tests`, with lib/ itself on the path
+        import durations  # type: ignore[no-redef]
+    return durations
+
+
+def cache() -> Path:
+    """The suite's duration table: goh.db (GOH.DURATIONSDB, lib/durations.py), the file
+    GOH_TEST_DURATIONS names when a caller names one, else lib/goh_db.py `path()`. The ONE
+    spelling of it: tools/pytest.sh asks it here and hands it to its top-level run, the only
+    writer (tests/_schedule.py `take`, GOH.DURATIONSSTALE)."""
+    return _durations().path()
+
+
+def load(kind: str = "dur", db: Path | None = None) -> dict[str, float]:
+    """{node id: seconds} of the table KIND (lib/durations.py KINDS: `dur` the duration table,
+    `pole` the long-pole table, each test's quiet seconds, GOH.LONGPOLELOAD, `pole_cpu` their CPU
+    seconds, GOH.LONGPOLEUNMEASURED) from `db` (`cache()` unless named); {} when there is none."""
+    return _durations().load(kind, db)
 
 
 def functions(text: str) -> list[str]:

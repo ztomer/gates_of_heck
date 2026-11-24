@@ -27,7 +27,7 @@ import pytest
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
-from lib import fast_tests
+from lib import durations, fast_tests
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import long_pole as lp
@@ -215,8 +215,7 @@ def _child_run(tmp_path: Path, run_queue: float) -> Path:
         "    config.pluginmanager.register(_schedule, 'goh-longest-first')\n"
     )
     (tmp_path / "test_x.py").write_text(FIXTURE)
-    table = tmp_path / "state" / "test-durations.json"
-    table.parent.mkdir(exist_ok=True)
+    table = tmp_path / "state" / "goh.db"
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-n", "1", str(tmp_path)],
         capture_output=True, text=True, cwd=tmp_path, check=False, stdin=subprocess.DEVNULL,
@@ -232,15 +231,15 @@ def test_a_run_records_each_tests_quiet_seconds_beside_its_wall(tmp_path: Path) 
     stayed under the pinned one; under load 1.485 <= 0.6 x 2.286 failed): no estimate exceeds its
     wall, the waiting test keeps its whole wall, and the burning one reads below its wall."""
     table = _child_run(tmp_path, run_queue=1.0)
-    walls = json.loads(table.read_text())
-    poles = json.loads(fast_tests.poles(table).read_text())
+    walls = fast_tests.load(db=table)
+    poles = fast_tests.load("pole", table)
     waits, burns = "test_x.py::test_waits", "test_x.py::test_burns"
     assert set(poles) == {waits, burns}, poles
     assert poles[waits] >= 0.38 and poles[waits] >= 0.95 * walls[waits], (poles, walls)
     assert all(poles[t] <= walls[t] for t in (waits, burns)), (poles, walls)
     assert poles[burns] < walls[burns], "a burning test's quiet seconds fall below its wall"
     assert lp.judge({waits: poles[waits]}, {}, limit=0.3), "the wait is judged at its wall"
-    cpus = json.loads(fast_tests.pole_cpu(table).read_text())
+    cpus = fast_tests.load("pole_cpu", table)
     assert set(cpus) == {waits, burns} and cpus[burns] >= 0.38, cpus
 
 
@@ -251,13 +250,12 @@ def test_a_loaded_run_leaves_the_table_as_the_quiet_run_read_it_but_a_real_growt
     quiet bound writes nothing into the long-pole table for a test whose CPU did not grow, and
     raises the entry of one whose CPU did, by the CPU it added."""
     waits, burns = "test_x.py::test_waits", "test_x.py::test_burns"
-    table = tmp_path / "state" / "test-durations.json"
-    table.parent.mkdir()
-    fast_tests.poles(table).write_text(json.dumps({waits: 0.5, burns: 0.3}))
-    fast_tests.pole_cpu(table).write_text(json.dumps({waits: 0.5, burns: 0.1}))
+    table = tmp_path / "state" / "goh.db"
+    durations.record({"pole": {waits: 0.5, burns: 0.3}, "pole_cpu": {waits: 0.5, burns: 0.1}},
+                     db=table)  # fmt: skip
     _child_run(tmp_path, run_queue=lp.QUIET_LOAD * 4)
-    poles = json.loads(fast_tests.poles(table).read_text())
-    cpus = json.loads(fast_tests.pole_cpu(table).read_text())
+    poles = fast_tests.load("pole", table)
+    cpus = fast_tests.load("pole_cpu", table)
     assert poles[waits] == 0.5 and cpus[waits] == 0.5, "a loaded reading is unmeasured"
     assert cpus[burns] >= 0.38 and poles[burns] == pytest.approx(0.3 + cpus[burns] - 0.1, abs=1e-3)
 

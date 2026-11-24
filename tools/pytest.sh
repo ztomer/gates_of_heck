@@ -105,8 +105,9 @@ if [ -z "${GATES_OF_HECK_SUITE_RUNNER:-}" ] && [ -z "${GATES_OF_HECK_SUITE_NESTE
     # taken above asked memory first.
     [ -n "${GOH_GATE_SLOT:-}" ] || "$GOH_PY" "$GOH/lib/mem_admit.py" wait --what "the goh suite"
     # THE DURATION TABLE (GOH.DURATIONSSTALE): a top-level run, and only one, is named goh's state
-    # file (lib/fast_tests.py `cache()`, its one spelling), and tests/suite_home.py pops it, so no
-    # worker or fixture run under this one writes it. A run nested on purpose is named none.
+    # database, goh.db (lib/fast_tests.py `cache()`, its one spelling; GOH.DURATIONSDB), and
+    # tests/suite_home.py pops it, so no worker or fixture run under this one writes it. A run
+    # nested on purpose is named none.
     GOH_TEST_DURATIONS="$(PYTHONPATH="$GOH" "$GOH_PY" -c 'from lib.fast_tests import cache; print(cache())')" \
         || die "cannot resolve the suite's duration table (lib/fast_tests.py cache())" 2
     export GOH_TEST_DURATIONS

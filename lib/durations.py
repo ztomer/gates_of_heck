@@ -59,6 +59,15 @@ def path(environ: Mapping[str, str] | None = None) -> Path:
     return Path(named) if named else goh_db.path()
 
 
+def _where(db: Path | None, named: bool) -> tuple[Path, bool]:
+    """(the file, whether its runner named it): no DB is `path()`, and a file GOH_TEST_DURATIONS
+    names is the runner's by contract (tools/pytest.sh names it for its top-level run; the
+    controller hands it back for a call, lib/remote_gate.py `table`)."""
+    if db is not None:
+        return Path(db), named
+    return path(), named or bool(os.environ.get(ENV))
+
+
 def legacy(db: Path, what: str) -> Path:
     return db.with_name(LEGACY[what])
 
@@ -97,11 +106,11 @@ def _numbers(data: object) -> dict[str, float]:
 
 
 @contextlib.contextmanager
-def _read(db: Path | None, named: bool) -> Iterator[sqlite3.Connection | None]:
+def _read(db: Path, named: bool) -> Iterator[sqlite3.Connection | None]:
     """The database read-only, or None when there is none (or it predates 0006)."""
     with contextlib.ExitStack() as stack:
         try:
-            con = stack.enter_context(goh_db.ro(db or path(), named))
+            con = stack.enter_context(goh_db.ro(db, named))
             con.execute("SELECT 1 FROM durations LIMIT 1")
         except (OSError, sqlite3.Error):
             con = None
@@ -110,7 +119,7 @@ def _read(db: Path | None, named: bool) -> Iterator[sqlite3.Connection | None]:
 
 def load(kind: str = "dur", db: Path | None = None, named: bool = False) -> dict[str, float]:
     """{node id: seconds} of KIND: the view, over the JSON file not yet imported; {} for none."""
-    db = db or path()
+    db, named = _where(db, named)
     with _read(db, named) as con:
         if con is None:
             return _numbers(_json(legacy(db, kind)))
@@ -124,8 +133,8 @@ def load(kind: str = "dur", db: Path | None = None, named: bool = False) -> dict
 
 def get(key: str, db: Path | None = None) -> object:
     """duration_kv's KEY (remote_rates | linux_unsafe), else its JSON file's, else None."""
-    db = db or path()
-    with _read(db, False) as con:
+    db, named = _where(db, False)
+    with _read(db, named) as con:
         if con is not None:
             row = con.execute("SELECT value FROM duration_kv WHERE key=?", (key,)).fetchone()
             if row is not None:
@@ -162,8 +171,8 @@ def _import(con: sqlite3.Connection, db: Path, now: float) -> int:
 
 def import_files(db: Path | None = None) -> int:
     """The JSON files' rows into DB (`durations.py import`); how many were read in."""
-    db = db or path()
-    with goh_db.transaction(db) as con:
+    db, named = _where(db, False)
+    with goh_db.transaction(db, named) as con:
         return _import(con, db, time.time())
 
 
@@ -181,7 +190,7 @@ def record(
     """One run's readings, {kind: {node id: seconds}}, written in ONE transaction with its prunes:
     every node of the view KEEP refuses gets a `pruned` row, and each (kind, node) keeps its
     newest KEEP readings. A failed write costs the next run its order, never its verdict."""
-    db, now, run = db or path(), time.time(), run_id()
+    (db, named), now, run = _where(db, named), time.time(), run_id()
     with contextlib.suppress(OSError, sqlite3.Error), goh_db.transaction(db, named) as con:
         _import(con, db, now)
         con.executemany(
@@ -206,8 +215,8 @@ def record(
 def update(key: str, change: Callable[[object], object], db: Path | None = None) -> None:
     """duration_kv's KEY read, CHANGEd and written in one transaction (no lost update): CHANGE is
     pure, handed the value (None for none) and returning the new one."""
-    db = db or path()
-    with goh_db.transaction(db) as con:
+    db, named = _where(db, False)
+    with goh_db.transaction(db, named) as con:
         _import(con, db, time.time())
         row = con.execute("SELECT value FROM duration_kv WHERE key=?", (key,)).fetchone()
         new = change(json.loads(row[0]) if row else None)

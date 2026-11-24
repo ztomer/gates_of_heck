@@ -13,7 +13,7 @@ import pytest
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT))
-from lib import affected_verdict as av, remote_lane as rl
+from lib import affected_verdict as av, durations, remote_lane as rl
 
 TREE_READS = ("tests/linux_safe.txt", "tests/mac_skips.txt")  # goh's own recorded lists
 
@@ -30,7 +30,7 @@ JUNIT = (
 def tree(tmp_path: Path, monkeypatch) -> Path:
     monkeypatch.setenv("GOH_REMOTE_HOST", "fakehost")  # inside the suite, only a named host
     monkeypatch.setenv("GOH_REMOTE_SHARE", "1")  # every Linux-safe node may go, unless a test says
-    monkeypatch.setenv("GOH_TEST_DURATIONS", str(tmp_path / "durations.json"))  # rates beside it
+    monkeypatch.setenv("GOH_TEST_DURATIONS", str(tmp_path / "goh.db"))  # the rates beside it
     (tmp_path / "tests").mkdir()
     for name in ("test_a.py", "test_b.py", "test_c.py"):
         (tmp_path / "tests" / name).write_text("def test_x(): pass\n")
@@ -97,8 +97,7 @@ def test_a_finished_share_measures_both_sides_for_the_next_split(tree: Path, mon
              '<testcase classname="tests.test_a" name="t1" time="12"/>'
              '<testcase classname="tests.test_a" name="t2" time="8"/>'
              "</testsuite></testsuites>")  # fmt: skip
-    (tree / "durations.json").write_text(json.dumps({"tests/test_a.py::t1": 6.0,
-                                                     "tests/test_a.py::t2": 4.0}))  # fmt: skip
+    durations.record({"dur": {"tests/test_a.py::t1": 6.0, "tests/test_a.py::t2": 4.0}})
     share = _share(tree, 0, junit)
     share.started, share.mac_s = 1000.0, 80.0
     os.utime(share.junit, (1030.0, 1030.0))  # the worker's junit landed 30 s after the start

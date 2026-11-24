@@ -10,20 +10,20 @@ two whole-tree walks were 147 s, tests/test_land_check.py's replay 98 s, on 2026
 10-minute land plan needs each of them short, or its reads declared so a diff that cannot move
 them does not run them (lib/declared_reads.py).
 
-THE TABLE is the suite's long-pole table (`fast_tests.poles()`, beside the duration table, written
-by the same top-level runs), keyed by node id with its parameters, so a parametrized test's cases
-are judged one by one: under xdist a case is a test of its own. Each entry is `pole()` summed over
-the test's phases: the seconds it would take on a QUIET box, read from one loaded run
-(GOH.LONGPOLELOAD). The wall alone read the machine, not the test: tests/test_self_walk.py's shell
-case read 168.2 s against its 150 s allowance at load ~50, and this file's own real-tree test went
-red the same way, on two lands whose diff touched neither (2026-11-21). The correction is one
-stretch sample and cannot fix a wall the load moved across a whole test, so a reading taken above
-QUIET_LOAD is UNMEASURED: the entry stays the last quiet run's, unless the test's CPU outgrew what
-any load adds (`settle`, GOH.LONGPOLEUNMEASURED: one loaded run turned every land after it red,
-2026-11-23). A cached id the tree no
-longer defines is not judged (the table prunes a deleted file, never a deleted function), and an id
-with no parameters beside the same function's parametrized ones is the stale one from before the
-split.
+THE TABLE is the suite's long-pole table (`fast_tests.load("pole")`, goh.db's readings of kind
+`pole` beside the duration table's, GOH.DURATIONSDB, written by the same top-level runs), keyed by
+node id with its parameters, so a parametrized test's cases are judged one by one: under xdist a
+case is a test of its own. Each entry is `pole()` summed over the test's phases: the seconds it
+would take on a QUIET box, read from one loaded run (GOH.LONGPOLELOAD). The wall alone read the
+machine, not the test: tests/test_self_walk.py's shell case read 168.2 s against its 150 s allowance
+at load ~50, and this file's own real-tree test went red the same way, on two lands whose diff
+touched neither (2026-11-21). The correction is one stretch sample and cannot fix a wall the load
+moved across a whole test, so a reading taken above QUIET_LOAD is UNMEASURED: the entry stays the
+last quiet run's, unless the test's CPU outgrew what any load adds (`settle`,
+GOH.LONGPOLEUNMEASURED: one loaded run turned every land after it red, 2026-11-23). A cached id the
+tree no longer defines is not judged (the table prunes a deleted file, never a deleted function),
+and an id with no parameters beside the same function's parametrized ones is the stale one from
+before the split.
 
 THE RATCHET is `tests/long_pole_allow.json`: file -> {"limit_s", "why"}, today's tests over RED_S
 that could not be cut yet (the ones over LIMIT_S, the target, are `report`'s). It only shrinks
@@ -202,7 +202,7 @@ def judge(
 
 def poles() -> dict[str, float]:
     """The long-pole table, {node id: quiet seconds}; {} on a machine that has measured nothing."""
-    return _fast().load(_fast().poles())
+    return _fast().load("pole")
 
 
 def check(root: Path = ROOT, table: dict[str, float] | None = None) -> list[str]:

@@ -9,7 +9,6 @@ there is refused in seconds, naming the test.
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 import time
@@ -25,7 +24,7 @@ from timing_bounds import assert_sooner
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 import affected_tests as at
 
-from lib import fast_tests as ft
+from lib import durations, fast_tests as ft
 
 
 @pytest.fixture
@@ -89,11 +88,11 @@ def test_goh_s_cheap_structural_judges_are_candidates_on_its_own_tree(tmp_path, 
 def test_a_red_cheap_judge_is_refused_before_a_slow_judge_finishes(repo, tmp_path, env) -> None:
     """The map judge is measured at 5 ms, the slow judge at 60 s: both are judges, so before
     GOH.PRESTEPFAILFAST one run held both and its verdict came after the sleep."""
-    table = tmp_path / "test-durations.json"
-    table.write_text(json.dumps({
+    table = tmp_path / "goh.db"
+    durations.record({"dur": {
         "tests/test_wiring.py::test_every_script_has_a_row_in_the_map": 0.005,
         "tests/test_slow_judge.py::test_every_thing_slowly": 60.0,
-    }))  # fmt: skip
+    }}, db=table)  # fmt: skip
     files = {"docs/map.md": "| `old.py` | a row |\n", "lib/old.py": "", "lib/new.py": "",
              "tools/pytest.sh": PYTEST, "tests/test_wiring.py": MAP_JUDGE,
              "tests/test_slow_judge.py": SLOW_JUDGE}  # fmt: skip
@@ -110,20 +109,22 @@ def test_a_red_cheap_judge_is_refused_before_a_slow_judge_finishes(repo, tmp_pat
 
 
 def test_the_set_reads_the_table_the_suite_writes(tmp_path, monkeypatch) -> None:
-    """goh's state holds it (GOH.DURATIONSSTALE: a cache path was the suite home's, gone at exit);
-    tests/_schedule.py reads the path it is handed, so it stays importable without lib/."""
+    """goh's state holds it (GOH.DURATIONSSTALE: a cache path was the suite home's, gone at exit),
+    in goh.db since GOH.DURATIONSDB; tests/_schedule.py reads the database it is handed."""
     import _schedule
 
     monkeypatch.delenv("GOH_TEST_DURATIONS", raising=False)
+    monkeypatch.delenv("GOH_DB", raising=False)
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
-    assert ft.cache() == tmp_path / "goh" / "test-durations.json"
-    named = tmp_path / "named.json"
+    assert ft.cache() == tmp_path / "goh" / "goh.db"
+    named = tmp_path / "named.db"
     monkeypatch.setenv("GOH_TEST_DURATIONS", str(named))
     assert ft.cache() == named
+    assert ft.load() == {}  # no database yet, and the read made none
+    assert not named.exists()
     monkeypatch.setattr(_schedule, "_table", [])
     assert _schedule.take() == named and os.environ.get("GOH_TEST_DURATIONS") is None  # popped
     monkeypatch.setenv("GOH_TEST_DURATIONS", str(named))
-    ft.cache().write_text(json.dumps({"t.py::test_a": 0.25, "bad": "x"}))
+    durations.record({"dur": {"t.py::test_a": 0.25}, "pole": {"t.py::test_a": 0.2}})
     assert ft.load() == _schedule._load() == {"t.py::test_a": 0.25}
-    ft.cache().write_text("[1]")
-    assert ft.load() == {}
+    assert ft.load("pole") == _schedule._load("pole") == {"t.py::test_a": 0.2}

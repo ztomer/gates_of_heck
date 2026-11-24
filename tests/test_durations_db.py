@@ -21,20 +21,22 @@ from timing_bounds import patience
 WRITER = textwrap.dedent("""
     import sys, time
     from pathlib import Path
-    sys.path[:0] = [sys.argv[1] + "/lib"]
-    import durations
+    sys.path[:0] = [sys.argv[1] + "/tests"]
+    import _schedule
     db, me, gate = Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4])
+    (db.parent / "t.py").touch()
     (gate / me).touch()
     while len(list(gate.iterdir())) < 2:
         time.sleep(0.005)
-    durations.record({"dur": {f"t.py::{me}": 1.0}}, keep=lambda k: True, db=db)
+    _schedule._write(db, {"dur": {f"t.py::{me}": 1.0}}, db.parent, set())
 """)
 
 
 @pytest.mark.load_sensitive
 def test_two_runs_ending_together_keep_both_readings(tmp_path: Path) -> None:
-    """The lost update the JSON merge had (read, merge, replace with no lock: one of two runs
-    ending together kept only its own node): on goh.db each run INSERTs, and both rows survive."""
+    """The lost update the JSON merge had: two processes running tests/_schedule.py `_write` (read,
+    merge, replace with no lock) after one barrier kept one of the two readings. On goh.db each
+    run INSERTs its rows, and both survive."""
     db, gate = tmp_path / "goh.db", tmp_path / "gate"
     gate.mkdir()
     procs = [

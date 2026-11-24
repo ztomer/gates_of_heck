@@ -22,7 +22,7 @@ from conftest import REPO_ROOT
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 import affected_tests as at
 
-from lib import bin_reach, bin_reach_audit, land_profile, v0_home
+from lib import bin_reach, bin_reach_audit, durations, land_profile, v0_home
 
 MAIN = """mod cli;
 mod limits;
@@ -79,10 +79,10 @@ def _tree(tmp_path, monkeypatch, measured_free: bool = True):
             reach[bin_reach.node_hash(node)] = homes
     (store / "profreach").mkdir()
     (store / "profreach" / "k1.json").write_text(json.dumps({"n": len(reach), "reach": reach}))
-    durations = tmp_path / "durations.json"
-    durations.write_text(json.dumps(dict.fromkeys(NODES, 1.0)))
+    table = tmp_path / "goh.db"
+    durations.record({"dur": dict.fromkeys(NODES, 1.0)}, db=table)
     monkeypatch.setenv("GOH_REUSE_DIR", str(store))
-    monkeypatch.setenv("GOH_TEST_DURATIONS", str(durations))
+    monkeypatch.setenv("GOH_TEST_DURATIONS", str(table))
     monkeypatch.delenv("GOH_BINREACH", raising=False)
     free = frozenset({f"{GO}::test_starts_no_goh"} if measured_free else ())
     monkeypatch.setattr(bin_reach, "free", lambda repo, newest=0: free)

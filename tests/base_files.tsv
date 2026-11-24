@@ -29,7 +29,10 @@ lib/binary_runners.py	base-code
 lib/consumer_reads.py	base-code
 lib/cov_env.py	base-code
 lib/crate_reach.py	base-code
+lib/db_bounds.py	base-code
+lib/db_core.py	base-code
 lib/declared_reads.py	base-code
+lib/durations.py	base-code
 lib/estate_registry.py	base-code
 lib/fast_tests.py	base-code
 lib/flakes.py	base-code
@@ -39,6 +42,8 @@ lib/gate_slot.py	base-code
 lib/gate_slot.sh	base-code
 lib/gates_in_flight.py	base-code
 lib/gitrun.py	base-code
+lib/goh_cache_db.py	base-code
+lib/goh_db.py	base-code
 lib/goh_root.py	base-code
 lib/goh_root.sh	base-code
 lib/goh_version.sh	base-code

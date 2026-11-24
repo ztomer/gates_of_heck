@@ -2,11 +2,11 @@
 never measured is UNKNOWN_S, and no table means collection order is left alone. Only the run the
 runner names the table for writes it, merging (GOH.DURATIONSSTALE)."""
 
-import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import _schedule
+import durations
 
 
 def _items(*ids):
@@ -28,10 +28,10 @@ def _fresh(monkeypatch) -> None:
     monkeypatch.setattr(_schedule, "_read", {})
 
 
-def _table(tmp_path, monkeypatch, durations):
+def _table(tmp_path, monkeypatch, times):
     _fresh(monkeypatch)
-    table = tmp_path / "test-durations.json"
-    table.write_text(json.dumps(durations))
+    table = tmp_path / "goh.db"
+    durations.record({"dur": times}, db=table)
     monkeypatch.setattr(_schedule, "_table", [table])
 
 
@@ -50,7 +50,7 @@ def test_the_longest_runs_first_and_a_group_moves_as_one(tmp_path, monkeypatch) 
 
 def test_no_table_leaves_collection_order_alone(tmp_path, monkeypatch) -> None:
     _fresh(monkeypatch)
-    monkeypatch.setattr(_schedule, "_table", [tmp_path / "none.json"])
+    monkeypatch.setattr(_schedule, "_table", [tmp_path / "none.db"])
     items = _items("t.py::z", "t.py::a")
     _schedule.pytest_collection_modifyitems(CONFIG, items)
     assert [i.nodeid for i in items] == ["t.py::z", "t.py::a"]
@@ -68,9 +68,10 @@ def test_every_worker_sorts_by_the_controllers_one_read(tmp_path) -> None:
     from conftest import REPO_ROOT, hermetic_env
 
     (tmp_path / "conftest.py").write_text(
-        "import json, os, sys\n"
+        "import os, sys\n"
         f"sys.path.insert(0, {str(REPO_ROOT / 'tests')!r})\n"
-        "import _schedule\n"
+        f"sys.path.insert(0, {str(REPO_ROOT / 'lib')!r})\n"
+        "import _schedule, durations\n"
         "_schedule.take()\n"
         "def pytest_configure(config):\n"
         "    wid = getattr(config, 'workerinput', {}).get('workerid')\n"
@@ -78,8 +79,7 @@ def test_every_worker_sorts_by_the_controllers_one_read(tmp_path) -> None:
         "        flip = wid == 'gw1'\n"
         "        table = {f'test_x.py::test_{n}': (i if flip else -i) + 50\n"
         "                 for i, n in enumerate('abcdefgh')}\n"
-        f"        with open({str(tmp_path / 'goh' / 'test-durations.json')!r}, 'w') as f:\n"
-        "            json.dump(table, f)\n"
+        f"        durations.record({{'dur': table}}, db={str(tmp_path / 'goh' / 'goh.db')!r})\n"
         "    config.pluginmanager.register(_schedule, 'goh-longest-first')\n"
         "import pytest\n"
         "@pytest.hookimpl(trylast=True)\n"
@@ -91,13 +91,13 @@ def test_every_worker_sorts_by_the_controllers_one_read(tmp_path) -> None:
     (tmp_path / "test_x.py").write_text("".join(f"def test_{n}():\n    pass\n" for n in "abcdefgh"))
     (tmp_path / "goh").mkdir()
     controllers = {"test_x.py::test_c": 9, "test_x.py::test_f": 5}
-    (tmp_path / "goh" / "test-durations.json").write_text(json.dumps(controllers))
+    durations.record({"dur": controllers}, db=tmp_path / "goh" / "goh.db")
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-n", "2", str(tmp_path)],
         capture_output=True,
         text=True,
         cwd=tmp_path,
-        env=hermetic_env(GOH_TEST_DURATIONS=str(tmp_path / "goh" / "test-durations.json")),
+        env=hermetic_env(GOH_TEST_DURATIONS=str(tmp_path / "goh" / "goh.db")),
         timeout=120,
         check=False,
         stdin=subprocess.DEVNULL,
@@ -151,9 +151,8 @@ def test_only_the_named_run_writes_the_table_and_it_merges(tmp_path) -> None:
         (d / "conftest.py").write_text(wiring)
     (inner / "test_y.py").write_text(INNER)
     (outer / "test_x.py").write_text(OUTER.replace("INNER]", f"{str(inner)!r}]"))
-    table = tmp_path / "state" / "test-durations.json"
-    table.parent.mkdir()
-    table.write_text(json.dumps({"test_x.py::test_old": 7.0, "gone.py::test_z": 1.0}))
+    table = tmp_path / "state" / "goh.db"
+    durations.record({"dur": {"test_x.py::test_old": 7.0, "gone.py::test_z": 1.0}}, db=table)
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-n", "2",
          "-k", "not test_old", str(outer)],
@@ -161,7 +160,7 @@ def test_only_the_named_run_writes_the_table_and_it_merges(tmp_path) -> None:
         env=hermetic_env(GOH_TEST_DURATIONS=str(table)), timeout=patience(120),
     )  # fmt: skip
     assert r.returncode == 0 and "2 passed" in r.stdout, r.stdout + r.stderr
-    got = json.loads(table.read_text())
+    got = durations.load(db=table)
     assert sorted(got) == ["test_x.py::test_a_fixture_run_inside", "test_x.py::test_b",
                            "test_x.py::test_old"], got  # fmt: skip
     assert got["test_x.py::test_old"] == 7.0  # merged, not replaced; gone.py's entry pruned
@@ -211,12 +210,9 @@ def test_an_id_a_whole_file_run_did_not_collect_is_pruned_and_a_partial_run_prun
     (tmp_path / "conftest.py").write_text(wiring)
     (tmp_path / "test_x.py").write_text(RENAMED)
     (tmp_path / "test_y.py").write_text("def test_y():\n    pass\n")
-    table = tmp_path / "state" / "test-durations.json"
-    table.parent.mkdir()
+    table = tmp_path / "state" / "goh.db"
     stale = {"test_x.py::test_old": 61.0, "test_y.py::test_gone": 3.0}
-    table.write_text(json.dumps(stale))
-    poles = _schedule._poles_path(table)
-    poles.write_text(json.dumps(stale))
+    durations.record({"dur": stale, "pole": stale}, db=table)
 
     def run(*args: str) -> dict:
         r = subprocess.run(
@@ -225,7 +221,7 @@ def test_an_id_a_whole_file_run_did_not_collect_is_pruned_and_a_partial_run_prun
             env=hermetic_env(GOH_TEST_DURATIONS=str(table)), timeout=patience(120),
         )  # fmt: skip
         assert r.returncode == 0, r.stdout + r.stderr
-        return json.loads(table.read_text())
+        return durations.load(db=table)
 
     got = run("-n", "2", "test_x.py::test_new", "-k", "not test_y")  # partial: prunes nothing
     assert got["test_x.py::test_old"] == 61.0 and got["test_y.py::test_gone"] == 3.0, got
@@ -233,7 +229,7 @@ def test_an_id_a_whole_file_run_did_not_collect_is_pruned_and_a_partial_run_prun
     assert "test_x.py::test_old" in got and "test_y.py::test_gone" not in got, got
     got = run("-n", "2", "test_x.py")  # whole, through xdist workers
     assert sorted(got) == ["test_x.py::test_b", "test_x.py::test_new", "test_y.py::test_y"], got
-    assert sorted(json.loads(poles.read_text())) == [], "the long-pole table kept a stale id"
+    assert durations.load("pole", db=table) == {}, "the long-pole table kept a stale id"
 
 
 def test_a_lands_one_run_hands_out_its_judges_first_a_group_whole(tmp_path, monkeypatch) -> None:

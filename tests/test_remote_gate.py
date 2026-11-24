@@ -5,7 +5,6 @@ disagree takes the module out of tests/linux_safe.txt by itself."""
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from typing import ClassVar
@@ -16,7 +15,7 @@ from conftest import REPO_ROOT
 sys.path.insert(0, str(REPO_ROOT))
 import _suite_plugins
 
-from lib import remote_gate as rg, remote_lane as rl
+from lib import durations, remote_gate as rg, remote_lane as rl
 
 JUNIT = (
     '<?xml version="1.0"?><testsuites><testsuite name="pytest" time="1">'
@@ -34,7 +33,7 @@ FAILED = JUNIT.replace(
 def tree(tmp_path: Path, monkeypatch) -> Path:
     monkeypatch.setenv("GOH_REMOTE_HOST", "fakehost")  # inside the suite, only a named host
     monkeypatch.setenv("GOH_REMOTE_SHARE", "1")  # every Linux-safe file may go
-    monkeypatch.setenv("GOH_TEST_DURATIONS", str(tmp_path / "durations.json"))  # ledger beside
+    monkeypatch.setenv("GOH_TEST_DURATIONS", str(tmp_path / "goh.db"))  # the ledger beside
     (tmp_path / "tests").mkdir()
     for name in ("test_a.py", "test_b.py", "test_c.py"):
         (tmp_path / "tests" / name).write_text("def test_x(): pass\n")
@@ -79,7 +78,7 @@ def test_a_planted_remote_failure_is_red_and_named(tree: Path):
 def test_a_linux_only_failure_leaves_the_list_and_the_macs_green_stands(tree: Path):
     green, lines = rg.finish(tree, _share(tree, 1, FAILED), False, {}, lambda fs: 0)
     assert green and "failed only on the Linux worker" in lines[0], lines
-    assert json.loads(rl.unsafe_path().read_text()).keys() == {"test_a"}
+    assert durations.get("linux_unsafe").keys() == {"test_a"}
 
 
 def test_the_workers_passes_count_for_the_land(tree: Path):
@@ -106,14 +105,14 @@ def test_a_shadow_disagreement_takes_the_module_out_of_linux_safe(tree: Path):
     green, lines = rg.finish(tree, _share(tree, 0), True, mac, _never)
     assert green and "test_a leaves tests/linux_safe.txt" in lines[0], lines
     assert "passed on Linux" in lines[0]
-    assert json.loads(rl.unsafe_path().read_text()).keys() == {"test_a"}
+    assert durations.get("linux_unsafe").keys() == {"test_a"}
     assert rl.split(tree, nodes) == (["tests/test_b.py"], ["tests/test_a.py"])
 
 
 def test_an_agreeing_shadow_leaves_the_list_alone(tree: Path):
     mac = {"tests/test_a.py::test_one": True, "tests/test_b.py::test_two": True}
     green, lines = rg.finish(tree, _share(tree, 0), True, mac, _never)
-    assert green and "agree" in lines[0] and not rl.unsafe_path().exists()
+    assert green and "agree" in lines[0] and durations.get("linux_unsafe") is None
 
 
 def test_the_gate_sends_safe_files_with_work_left_after_the_carry(tree: Path, monkeypatch):

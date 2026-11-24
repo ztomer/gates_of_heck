@@ -70,10 +70,7 @@ ALLOWED: dict[str, set[str]] = {
         "scripts/model_choice_watch.py",
         "scripts/spend_watch.py",
     },
-    "durations": {  # DUR goh.db 0006 readings
-        "lib/fast_tests.py",
-        "lib/remote_lane.py",
-    },
+    "durations": set(),  # DUR goh.db 0006 readings: moved (lib/durations.py, GOH.DURATIONSDB)
     "reuse records": {  # V1 goh-cache.db 0002 verdicts
         "lib/reuse.py",
         "lib/state_bounds.py",

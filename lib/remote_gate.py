@@ -25,8 +25,9 @@ at load 0.7 on 16 cores while the Mac sat at 72 on 16). Only the land PRE-STEP s
   on the Mac before any tag. A land's verdict may be Linux's; a release's never is.
 * THE SHADOW. One gate in SHADOW_EVERY (GOH_REMOTE_SHADOW=1 always, 0 never) deselects nothing:
   the Mac runs the share's files too, its verdict stands, and each node whose pass or fail differs
-  between the two platforms puts its module in the disagreement ledger (lib/remote_lane.py
-  `unsafe_path`), which takes it out of tests/linux_safe.txt for every later split, by itself.
+  between the two platforms puts its module in the disagreement ledger (goh.db's `linux_unsafe`,
+  lib/remote_lane.py `unsafe`), which takes it out of tests/linux_safe.txt for every later split,
+  by itself.
 * WHEN. Only the land gate's whole run (the carry's GOH_LAND_VERDICTS_REUSE named, no narrowing),
   never the coverage step's instrumented run (a remote test leaves no Mac profile), never one shard
   of hosted CI's suite, never under GOH_LAND_REMOTE=off. The glue is tests/_land_remote.py.
@@ -35,7 +36,6 @@ at load 0.7 on 16 cores while the Mac sat at 72 on 16). Only the land PRE-STEP s
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import pwd
 import random
@@ -44,7 +44,7 @@ import xml.etree.ElementTree as ET
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
-from lib import proc_deadline
+from lib import durations, proc_deadline
 from lib.remote_lane import (
     FALLBACK,
     LINUX_SAFE,
@@ -58,7 +58,6 @@ from lib.remote_lane import (
     measure,
     module,
     split,
-    unsafe_path,
 )
 
 SHADOW_EVERY = 10
@@ -93,7 +92,8 @@ def shadowed(draw: Callable[[int], int] = random.randrange) -> bool:
 @contextlib.contextmanager
 def table(path: Path | None) -> Iterator[None]:
     """The suite's real duration table for the call (the session popped it, tests/_schedule.py
-    `take`), so the balance reads, and `measure` writes, the rates beside it."""
+    `take`, the goh.db GOH_TEST_DURATIONS names), so the balance reads, and `measure` writes, the
+    rates beside it (lib/durations.py `duration_kv`)."""
     was = os.environ.get("GOH_TEST_DURATIONS")
     if path is not None:
         os.environ["GOH_TEST_DURATIONS"] = str(path)
@@ -175,18 +175,13 @@ def disagreements(mac: dict[str, bool], linux: dict[str, str]) -> dict[str, str]
 
 
 def record_unsafe(found: dict[str, str]) -> None:
-    """The disagreeing modules join the ledger `split` reads (lib/remote_lane.py `unsafe`)."""
-    path = unsafe_path()
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        data = {}
-    data = data if isinstance(data, dict) else {}
-    data.update(found)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(f".{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(data, indent=1, sort_keys=True))
-    tmp.replace(path)
+    """The disagreeing modules join the ledger `split` reads (lib/remote_lane.py `unsafe`), in one
+    goh.db transaction (lib/durations.py `update`): two shadows ending together keep both."""
+
+    def add(was: object) -> dict:
+        return {**(was if isinstance(was, dict) else {}), **found}
+
+    durations.update("linux_unsafe", add)
 
 
 def finish(root: Path, share: Share, shadow: bool, mac: dict[str, bool],

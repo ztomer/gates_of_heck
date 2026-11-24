@@ -43,6 +43,7 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 import contextlib
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -53,7 +54,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from lib import fast_tests, tmp_root
+from lib import durations as duration_db, fast_tests, tmp_root
 from lib.step_timings import timed
 from tui.lib import info, warn
 
@@ -88,13 +89,14 @@ def cost(nodes: list[str], durations: dict[str, float]) -> dict[str, float]:
 
 @dataclass
 class Rates:
-    """Each side's measured pace (GOH.REMOTESHARE), kept beside the duration table
-    (`rates_path`) and smoothed over lands: the Mac's width (its estimated serial seconds over its
-    wall), the worker's (its junit's case seconds over the suite's wall), the worker's fixed
-    overhead (probe, sync, build: its wall less the suite's), its per-test seconds, and the ratio
-    of its seconds to the Mac's for one test (a test it never ran is the Mac's times that). The
-    defaults are the first wired land's (2026-11-22: 57 files the table puts at 364 Mac-serial
-    seconds took 139 s at -n 10, about 2.6 Mac cores, against roughly 8 from the Mac's -n 12)."""
+    """Each side's measured pace (GOH.REMOTESHARE), kept beside the duration table (goh.db
+    `remote_rates`, `load_rates`) and smoothed over lands: the Mac's width (its estimated serial
+    seconds over its wall), the worker's (its junit's case seconds over the suite's wall), the
+    worker's fixed overhead (probe, sync, build: its wall less the suite's), its per-test seconds,
+    and the ratio of its seconds to the Mac's for one test (a test it never ran is the Mac's times
+    that). The defaults are the first wired land's (2026-11-22: 57 files the table puts at 364
+    Mac-serial seconds took 139 s at -n 10, about 2.6 Mac cores, against roughly 8 from the Mac's -n
+    12)."""
 
     mac_width: float = 8.0
     worker_width: float = 2.6
@@ -113,30 +115,26 @@ class Rates:
 SMOOTH = 0.5  # each land's measurement weighs half against the rates before it
 
 
-def rates_path() -> Path:
-    return fast_tests.cache().with_name("remote-rates.json")
-
-
 def load_rates() -> Rates:
+    """The rates the next split reads: goh.db's `remote_rates` (lib/durations.py, beside the
+    duration table, GOH.DURATIONSDB), the defaults when there are none."""
+    return _rates(duration_db.get("remote_rates"))
+
+
+def _rates(data: object) -> Rates:
+    if not isinstance(data, dict):
+        return Rates()
     try:
-        data = json.loads(rates_path().read_text(encoding="utf-8"))
         return Rates(**{k: data[k] for k in Rates.__dataclass_fields__ if k in data})
-    except (OSError, ValueError, TypeError):
+    except TypeError:
         return Rates()
 
 
-def unsafe_path() -> Path:
-    """The modules a sampled shadow saw disagree between the Mac and the worker (GOH.REMOTEGATE,
-    lib/remote_gate.py): {module: why}, beside the rates. Each leaves tests/linux_safe.txt by
-    itself: `split` sends none of them again."""
-    return fast_tests.cache().with_name("linux-unsafe.json")
-
-
 def unsafe() -> set[str]:
-    try:
-        data = json.loads(unsafe_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return set()
+    """The modules a sampled shadow saw disagree between the Mac and the worker (GOH.REMOTEGATE,
+    lib/remote_gate.py): goh.db's `linux_unsafe`, {module: why}, beside the rates. Each leaves
+    tests/linux_safe.txt by itself: `split` sends none of them again."""
+    data = duration_db.get("linux_unsafe")
     return set(data) if isinstance(data, dict) else set()
 
 
@@ -189,22 +187,25 @@ def measure(root: Path, share: Share, junit: str, mac_end: float) -> None:
     took = float(suite.get("time", "0")) if suite is not None else 0.0
     tests = {node_id(root, tc.get("classname", ""), tc.get("name", "")): float(tc.get("time") or 0)
              for tc in doc.iter("testcase")}  # fmt: skip
-    old, mac = load_rates(), fast_tests.load()
-    new = Rates(old.mac_width, old.worker_width, old.overhead_s, old.ratio, {**old.tests, **tests})
-    work = sum(tests.values())
-    if took > 0 and work > 0:
-        new.worker_width = _blend(old.worker_width, work / took)
-        new.overhead_s = _blend(old.overhead_s, max(0.0, landed - share.started - took))
-    both = [n for n in tests if mac.get(n)]
-    if both and sum(mac[n] for n in both) > 0:
-        new.ratio = _blend(old.ratio, sum(tests[n] for n in both) / sum(mac[n] for n in both))
-    if share.mac_s > 0 and mac_end > share.started:
-        new.mac_width = _blend(old.mac_width, share.mac_s / (mac_end - share.started))
-    path = rates_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(f".{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(asdict(new)))
-    tmp.replace(path)
+    mac = fast_tests.load()
+
+    def fold(was: object) -> dict:
+        old = _rates(was)
+        new = Rates(old.mac_width, old.worker_width, old.overhead_s, old.ratio,
+                    {**old.tests, **tests})  # fmt: skip
+        work = sum(tests.values())
+        if took > 0 and work > 0:
+            new.worker_width = _blend(old.worker_width, work / took)
+            new.overhead_s = _blend(old.overhead_s, max(0.0, landed - share.started - took))
+        both = [n for n in tests if mac.get(n)]
+        if both and sum(mac[n] for n in both) > 0:
+            new.ratio = _blend(old.ratio, sum(tests[n] for n in both) / sum(mac[n] for n in both))
+        if share.mac_s > 0 and mac_end > share.started:
+            new.mac_width = _blend(old.mac_width, share.mac_s / (mac_end - share.started))
+        return asdict(new)
+
+    with contextlib.suppress(OSError, sqlite3.Error):  # a lost fold costs the next split its pace
+        duration_db.update("remote_rates", fold)
 
 
 @dataclass
