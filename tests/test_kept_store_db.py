@@ -51,7 +51,7 @@ def test_a_merge_adds_only_what_the_target_lacks_and_drops_the_month_old(tmp_pat
 def test_only_the_top_level_controller_merges_and_no_child_inherits_the_name(tmp_path) -> None:
     """The real file's name leaves the environment when the plugin loads: a session a test starts
     (a worker, a fixture pytest) has none, so it can neither seed from nor write the real file."""
-    assert ks.KEPT_ENV not in os.environ
+    assert os.environ.get(ks.KEPT_ENV) is None
     code = "import os, sys; sys.path.insert(0, 'tests'); import _kept_store as k; print(k._REAL)"
     out = subprocess.run([sys.executable, "-c", code], cwd=REPO_ROOT, capture_output=True,
                          text=True, check=True, stdin=subprocess.DEVNULL, timeout=patience(60),
