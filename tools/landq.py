@@ -10,10 +10,9 @@
     goh land --status       # what is pending, running, and how each finished
     goh land --ruff-bump [--detach]  # a ruff newer than goh's pin: its bump-only land, once
 
-THE REQUEST is one row of goh.db's `requests` (GOH.LANDQDB, lib/landq_state.py), named
-`<dir>/pending/<ns>-<item>.json` (GOH_LANDQ_DIR, default ~/.local/state/goh/landq) by enqueue time,
-so a listing is the order; every move between states is one transaction. It names the repo, the
-SHA, the remote and branch the checkout tracks, the item, and the mode:
+THE REQUEST is a goh.db row (GOH.LANDQDB, lib/landq_state.py) named `<dir>/pending/<ns>-<item>.json`
+(GOH_LANDQ_DIR, default ~/.local/state/goh/landq) by enqueue time, so a listing is the order. It
+names the repo, the SHA, the remote and branch the checkout tracks, the item, and the mode:
     push  `git push REMOTE SHA:refs/heads/BRANCH` -- exactly the enqueued commit, through the repo's
           pre-push gate (which takes the machine-wide gate slot itself, lib/gate_slot.sh)
     ship  `tools/ship.py --wait --repo REPO --item ID` (push, release, install, verify, done); the
@@ -56,8 +55,7 @@ GOH.RUFFBUMPLAND); `--ruff-bump` is that look on demand, started by a consumer g
 
 WHERE IT RUNS, AND A REBOOT (D-0006, docs/decisions/). No launchd agent: `--enqueue` starts a
 detached lander when none holds the lock, and the coordinator's tick may run `--drain`. A request
-is a row of goh.db (synchronous=FULL), so it survives a reboot: one a dead lander left running
-runs again first.
+is a goh.db row, so it survives a reboot: one a dead lander left running runs again first.
 
 Pinned by tests/test_landq.py (batches: tests/test_landq_batch.py); `--report`: lib/landq_report.py.
 """
@@ -156,8 +154,7 @@ def enqueue(req: dict, into: str = "pending") -> Path:
         (q / d).mkdir(parents=True, exist_ok=True)
     slug = (req["item"] or Path(req["repo"]).name).replace("/", "_")
     # one transaction: the request filed and this enqueue's pre-step marker gone, never both
-    return landq_state.put(q, f"{time.time_ns():020d}-{slug}", req, into,
-                           replaces=landq_inflight.mine(q))  # fmt: skip
+    return landq_state.put(q, f"{time.time_ns():020d}-{slug}", req, into, landq_inflight.mine(q))
 
 
 def start_lander() -> None:

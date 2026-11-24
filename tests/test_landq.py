@@ -354,6 +354,10 @@ def test_a_land_that_changes_the_lander_is_honoured_by_the_next_request(tmp_path
     named += ("lib/land_e2e.py", "lib/land_slot.py", "lib/full_run.py")
     named += ("lib/idle_suite.py", "lib/landq_inflight.py")
     named += ("checks/_gitutil.py", "tools/land.sh")
+    named += tuple(  # goh.db's migrations: the requests are its rows (GOH.LANDQDB)
+        str(p.relative_to(REPO_ROOT))
+        for p in sorted((REPO_ROOT / "lib" / "goh_db_schema").glob("*"))
+    )
     sc.copy_closure(
         code,
         "tools/landq.py",

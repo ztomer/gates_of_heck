@@ -23,6 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, on the path from the line above
+import landq_state  # its `write`, older than GOH.LANDQDB: the revert keeps it
 
 STATES = ("enqueuing", "pending", "running")
 
@@ -35,9 +36,7 @@ def _put(path: Path, data: dict, indent: int | None) -> bool:
     if path.exists():
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(json.dumps(data, indent=indent) + "\n")
-    tmp.replace(path)
+    landq_state.write(path, data, indent)  # one rename, as the lander before the switch wrote it
     return True
 
 
