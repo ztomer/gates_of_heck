@@ -254,8 +254,12 @@ def launch(root: Path, remote: list[str], mac_s: float,
 
 
 def cancel(share: Share | None) -> None:
-    """The Mac's share went red first: the worker's verdict is not needed."""
+    """The Mac's share went red first: the worker's verdict is not needed, and the log says so
+    (GOH.REMOTEREDSILENT: a red whose log never said what became of the remote leg)."""
     if share is not None:
+        n = len(share.nodes)
+        info(f"pre-land: the remote share of {n} test{'s' * (n != 1)} stopped: the Mac's run went "
+             "red first, and its verdict stands")  # fmt: skip
         share.proc.kill()
         share.proc.wait()
         _cleanup(share)
@@ -353,17 +357,23 @@ def end(root: Path, share: Share | None, record: str, merge: Callable[[Path, Pat
             measure(root, share, text, mac_end)
     except (OSError, ET.ParseError):
         got, rc = {}, FALLBACK
-    note(share, rc, said)
+    broke = rc == 1 and "failed" not in got.values()  # the shard's own exit 1, no test's
+    note(share, FALLBACK if broke else rc, said)
     try:
         record_passes(record, [n for n, kind in got.items() if kind == "passed"])
-        redo = [n for n, kind in got.items() if kind == "failed"] or (share.nodes if rc else [])
+        failed = [n for n, kind in got.items() if kind == "failed"]
+        redo = failed or (share.nodes if rc else [])
         if not redo:
             return 0
-        why = (
-            f"{len(redo)} failed on the worker"
-            if rc == 1
-            else f"the remote share fell back (exit {rc})"
-        )
+        # Each red names its leg and nodes (GOH.REMOTEREDSILENT): an exit 1 whose junit names no
+        # failed case is the shard's own failure (its last lines above), never "N failed".
+        if failed:
+            named = ", ".join(failed[:10]) + (f" and {len(failed) - 10} more" * (len(failed) > 10))
+            why = f"{len(failed)} failed on the worker: {named}"
+        elif broke:
+            why = "the remote shard exited 1 naming no failed test (its last lines above)"
+        else:
+            why = f"the remote share fell back (exit {rc})"
         info(f"pre-land: {why}: the Mac runs them now, its verdict stands")
         aside = Path(f"{record}.mac") if record and record != os.devnull else None
         if aside and Path(record).is_file():
@@ -371,8 +381,8 @@ def end(root: Path, share: Share | None, record: str, merge: Callable[[Path, Pat
         mac = (run_local or mac_run(root))(redo)
         if aside and aside.is_file():
             merge(Path(record), aside)
-        if mac == 0 and rc == 1:
-            named = ", ".join(redo[:10])
+        if mac == 0 and failed:
+            named = ", ".join(failed[:10])
             warn(f"pre-land: failed only on the worker (Linux), green on the Mac: {named} -- "
                  f"a Linux defect, or drop the file from {LINUX_SAFE}")  # fmt: skip
         return mac

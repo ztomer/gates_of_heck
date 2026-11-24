@@ -152,3 +152,27 @@ def test_a_refused_check_guard_prints_a_summary_not_a_25_line_tail(monkeypatch, 
     text = "\n".join(said)
     assert len(text.splitlines()) < 30 and "frame" not in text, text
     assert "test_red_1: AssertionError: planted 1" in text, text
+
+
+def test_a_red_whose_run_named_no_test_carries_the_worker_s_own_words(tmp_path, monkeypatch):
+    """GOH.REMOTEREDSILENT: the record of a pre-step whose xdist run collected nothing carries what
+    tests/_xdist_usage.py said, not only `exit 1`."""
+    monkeypatch.delenv("GOH_FULL", raising=False)
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    out = tmp_path / "pytest.out"
+    out.write_text(
+        "".join(f"✗ by hand line {i}\n" for i in range(12))
+        + "bringing up nodes...\nbringing up nodes...\n\n"
+        "✗ an xdist worker's collection failed: not found: tests/t.py::test_x\n"
+        "(no match in any of [<Module t.py>])\n"
+        "✗ land.sh: the pre-land tests failed on aaaaaaaa in 120 s -- nothing landed\n"
+    )
+    script = tmp_path / "land.sh"
+    script.write_text(f"cat {out}; exit 1\n")
+    try:
+        land_prestep.run(tmp_path, "a" * 40, script, (), log=tmp_path / "pre.log")
+    except land_prestep.Red as e:
+        red = str(e)
+    else:
+        raise AssertionError("a red pre-step returned")
+    assert "collection failed: not found: tests/t.py::test_x" in red, red

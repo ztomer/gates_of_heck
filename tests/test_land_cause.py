@@ -205,3 +205,18 @@ def test_the_excerpt_keeps_each_failing_sections_last_lines_and_the_failed_lines
     assert "test_3" not in " ".join(got[:-3]) and "1 more failing" in got[-3], got
     assert got[-2:] == ["FAILED tests/test_a.py::test_0 - x", "ERROR tests/test_a.py::test_9 - y"]
     assert "noise" not in got and lc.excerpt("nothing failed\n") == ""
+
+
+def test_a_param_id_with_spaces_is_named_whole() -> None:
+    """GOH.REMOTEREDSILENT: `[some other source]` was cut at the space, `...taken[some` joined a
+    pre-step's set as main's red, and no xdist worker found it. A list that already cut it (an
+    unclosed bracket) gives the test's base name, which pytest finds."""
+    log = (
+        "FAILED tests/t.py::test_x[some other source] - AssertionError: [a b]\n"
+        "FAILED tests/t.py::C::test_y[a-b]\n    FAILED tests/u.py::test_z[some\n"
+    )
+    assert lc.failed_tests(log) == [
+        "tests/t.py::test_x[some other source]",
+        "tests/t.py::C::test_y[a-b]",
+        "tests/u.py::test_z",
+    ]

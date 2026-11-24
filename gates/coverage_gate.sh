@@ -120,7 +120,7 @@ export_failed() {
     # from a hosted runner whose log was gone by the time anyone read it).
     if grep -qE '^(FAILED|ERROR) [^ ]+::' "$2"; then
         err "$1: TESTS FAILED under coverage ($(grep -cE '^(FAILED|ERROR) [^ ]+::' "$2") red):"
-        sed -nE 's/^(FAILED|ERROR) ([^ ]+::[^ ]*).*/    \1 \2/p' "$2" | sort -u >&2
+        sed -nE 's/^(FAILED|ERROR) ([^ []+::[^ []*(\[[^]]*\])?).*/    \1 \2/p' "$2" | sort -u >&2
         named=1
     fi
     if [ "${3:-}" = tests ] && [ "$named" = 0 ]; then
@@ -129,7 +129,7 @@ export_failed() {
     # The step's headline (goh_step's GOH_STEP_HEADLINE, GOH.COVHEADLINE): the cause, not the floor.
     if [ "${3:-}" = tests ] && [ -n "${GOH_STEP_HEADLINE:-}" ] && [ ! -s "$GOH_STEP_HEADLINE" ]; then
         local names n first
-        names="$({ sed -n 's/^test \(.*\) \.\.\. FAILED$/\1/p' "$2"; sed -nE 's/^(FAILED|ERROR) ([^ ]+::[^ ]*).*/\2/p' "$2"; } | sort -u)"
+        names="$({ sed -n 's/^test \(.*\) \.\.\. FAILED$/\1/p' "$2"; sed -nE 's/^(FAILED|ERROR) ([^ []+::[^ []*(\[[^]]*\])?).*/\2/p' "$2"; } | sort -u)"
         n="$(printf '%s' "$names" | grep -c . || true)"   # grep -c exits 1 on a count of 0
         first="$(printf '%s\n' "$names" | sed -n 1p)"
         if [ "$n" -gt 0 ]; then

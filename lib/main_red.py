@@ -40,7 +40,7 @@ import land_cause  # lib/: FAILED node ids from a log
 
 ENV = "GOH_LAND_PRE_MAIN_RED"
 MOST = 50  # nodes carried; a suite red in more than this is read in its log
-ERRORED = re.compile(r"(?:^|\s)ERROR (tests/[^\s:]+\.py(?:::[^\s]+)?)", re.MULTILINE)
+ERRORED = re.compile(rf"(?:^|\s)ERROR ({land_cause.NODE_ID})", re.MULTILINE)
 NOISE = ("load: ",)  # lines load.py prints after any run, red or green: no cause
 
 

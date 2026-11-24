@@ -39,7 +39,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-FAILED = re.compile(r"(?:^|[\s:])FAILED (tests/[^\s:]+\.py(?:::[^\s]+)?)", re.MULTILINE)
+# A node id: its path, its `::` parts, and a param id kept WHOLE, spaces and all (`t[some other
+# source]`, GOH.REMOTEREDSILENT); an id a list already cut (no closing bracket) gives its base.
+NODE_ID = r"tests/[^\s:]+\.py(?:::[^\s\[:]+)*(?:\[[^\]\n]*\](?=\s|$))?"
+FAILED = re.compile(rf"(?:^|[\s:])FAILED ({NODE_ID})", re.MULTILINE)
 # The judges that read the whole tree, by name (tools/affected_tests.py TREE_NAMED and ALWAYS).
 RATCHET_NAME = re.compile(r"::(?:test_every_|test_no_)")
 RATCHET_FILES = ("tests/test_self_walk.py", "tests/test_gate_temp_leaks.py")

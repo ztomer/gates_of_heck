@@ -75,3 +75,12 @@ def test_the_export_log_tail_is_goh_tail_long_and_says_what_it_dropped(tmp_path)
     cut = _export_failed_env(log, "")
     assert "    line 0\n" not in cut and "    line 299\n" in cut, cut
     assert "275 earlier lines not shown" in cut, cut
+
+
+def test_a_param_id_with_spaces_is_named_whole(tmp_path):
+    """GOH.REMOTEREDSILENT: the list cut `[some other source]` at the space, and main's idle-suite
+    red handed `...taken[some` to every pre-step, a node no xdist worker found."""
+    log = tmp_path / "part.log"
+    log.write_text("FAILED tests/test_a.py::test_x[some other source] - AssertionError: [a b]\n")
+    said = _export_failed(log)
+    assert "    FAILED tests/test_a.py::test_x[some other source]\n" in said, said

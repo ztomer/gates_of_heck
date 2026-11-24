@@ -101,3 +101,16 @@ def test_the_notice_names_failed_and_errored_nodes_or_the_non_test_cause(repo, t
     said.clear()
     main_red.notice(q, {"repo": str(repo)}, said.append)
     assert f"its log {idle_suite.log_of(q, tip)} is missing" in said[0], said
+
+
+def test_a_node_whose_param_id_has_spaces_is_kept_whole():
+    """GOH.REMOTEREDSILENT: `ERROR`/`FAILED` lines cut `[some other source]` at the space, and the
+    cut id joined every pre-step's set as main's red: a node no xdist worker found."""
+    log = (
+        "    FAILED tests/t.py::test_x[some other source] - AssertionError\n"
+        "    ERROR tests/t.py::test_y[a b] - setup took 90.8 s\n"
+    )
+    assert main_red.nodes_of(log) == [
+        "tests/t.py::test_x[some other source]",
+        "tests/t.py::test_y[a b]",
+    ]

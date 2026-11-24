@@ -311,3 +311,30 @@ def test_each_share_s_outcome_reaches_the_land_record(tree: Path, monkeypatch):
     rl.end(tree, share, "", av.merge_records, lambda ns: 0)
     got = json.loads(Path(f"{took}.remote").read_text())
     assert got == {"tests": 1, "outcome": "remote", "cause": None, "fresh": True}
+
+
+@pytest.mark.parametrize("mac_rc", [0, 1])
+def test_a_planted_failing_shard_names_its_nodes_in_the_pre_step_log(tree: Path, capsys, mac_rc):
+    """GOH.REMOTEREDSILENT: the worker's failures are named where the pre-step's log reads them,
+    whatever the Mac's re-run says."""
+    rl.end(tree, _share(tree, 1, FAILED), "", av.merge_records, lambda ns: mac_rc)
+    got = capsys.readouterr()
+    assert "1 failed on the worker: tests/test_a.py::test_one" in got.out + got.err
+
+
+def test_a_shard_that_exits_1_naming_no_failure_says_so(tree: Path, capsys):
+    """An exit 1 with no failed case in its junit (the shard itself broke) is no test failure:
+    it is said as the shard's own exit, its last lines above, and the Mac runs the share."""
+    ran: list[list[str]] = []
+    assert (
+        rl.end(tree, _share(tree, 1, ""), "", av.merge_records, lambda ns: ran.append(ns) or 0) == 0
+    )
+    out = capsys.readouterr().out
+    assert ran == [["tests/test_a.py"]] and "failed on the worker" not in out, out
+    assert "the remote shard exited 1 naming no failed test" in out, out
+
+
+def test_a_share_stopped_by_the_mac_s_red_says_so(tree: Path, capsys):
+    """The Mac's run went red first: the share is stopped, and the log says what became of it."""
+    rl.cancel(_share(tree, 0))
+    assert "remote share of 1 test stopped: the Mac's run went red first" in capsys.readouterr().out

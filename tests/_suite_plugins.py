@@ -7,6 +7,7 @@ here, not there.
 * `_share_tokens`: the live worker share (GOH.SHAREGROW).
 * `_fs_churn`: the run's file events, counted and held under a ceiling (GOH.FSCHURN2).
 * `_land_remote`: the land gate's remote share (GOH.REMOTEGATE, lib/remote_gate.py).
+* `_xdist_usage`: a worker's collection error is the run's (GOH.REMOTEREDSILENT).
 * here: a `process_template` is the RUN's inside a session (tests/_tree_clone.py, GOH.FSCHURN3).
 """
 
@@ -15,7 +16,7 @@ from pathlib import Path
 
 from _tree_clone import run_wide
 
-pytest_plugins = ["_share_tokens", "_fs_churn", "_land_remote"]
+pytest_plugins = ["_share_tokens", "_fs_churn", "_land_remote", "_xdist_usage"]
 
 
 def pytest_configure(config) -> None:
