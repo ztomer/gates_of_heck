@@ -312,13 +312,23 @@ fn judge(scope: &crate::shell_lint_scope::Scope, severity: &str) -> Result<Judge
             ))
         })
         .collect();
+    // One read of every key and one write of every fresh verdict (GOH.VERDICTDB V2).
+    let mut kept = cache
+        .as_ref()
+        .map_or_else(std::collections::HashMap::new, |c| {
+            c.get_many(
+                &keys
+                    .iter()
+                    .flatten()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>(),
+            )
+        });
     let mut verdicts: Vec<Option<Verdict>> = keys
         .iter()
         .map(|k| {
-            cache
-                .as_ref()
-                .zip(k.as_ref())
-                .and_then(|(c, k)| c.get(k))
+            k.as_ref()
+                .and_then(|k| kept.remove(k))
                 .and_then(|v| Verdict::from_json(&v))
         })
         .collect();
@@ -328,11 +338,15 @@ fn judge(scope: &crate::shell_lint_scope::Scope, severity: &str) -> Result<Judge
     if !misses.is_empty() {
         let entries: Vec<&(String, PathBuf)> = misses.iter().map(|i| &files[*i]).collect();
         let (fresh, attributable) = check_misses(&entries, severity, &scope.base)?;
+        let mut rows = Vec::new();
         for (i, v) in misses.iter().zip(fresh) {
-            if let (Some(c), Some(k), true) = (cache.as_ref(), keys[*i].as_ref(), attributable) {
-                c.put(k, &v.to_json());
+            if let (Some(k), true) = (keys[*i].as_ref(), attributable) {
+                rows.push((k.as_str(), v.to_json()));
             }
             verdicts[*i] = Some(v);
+        }
+        if let Some(c) = cache.as_ref() {
+            c.put_many(&rows);
         }
     }
     let verdicts: Vec<Verdict> = verdicts

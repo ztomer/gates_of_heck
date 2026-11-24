@@ -29,9 +29,6 @@ TODAY = {
     ("gates/_push_refusals.sh", "goh-landed"),  # GOH_LANDED_ONLY's refusal reads it by sha
     ("gates/_proven.sh", "goh-proven"),  # the proven-step cache, shell face
     ("crates/goh/src/proven.rs", "goh-proven"),  # ... and its Rust face
-    ("crates/goh/src/verdict_cache.rs", "goh/verdicts"),  # the per-file checker cache
-    ("crates/goh/src/verdict_cache.rs", "GOH_VERDICT_DIR"),
-    ("scripts/release_canary.py", "GOH_VERDICT_DIR"),  # the canary's child keeps the suite's cache
 }
 
 

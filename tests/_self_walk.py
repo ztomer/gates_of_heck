@@ -154,17 +154,17 @@ def walked_tree(dest: Path, seed: dict, plants: dict[str, str] | None = None) ->
 
 
 def verdict_store() -> Path:
-    """The shell-lint verdicts the walk reads and writes, kept ACROSS sessions in goh's real state
-    (GOH.SELFWALKFILTER), each record dropped after STORE_DAYS.
+    """The goh-cache.db the walk's shell-lint verdicts are read from and written to: the suite's
+    own, whose rows are kept ACROSS sessions (tests/_kept_store.py merges them into the real file
+    once, GOH.SELFWALKFILTER, GOH.VERDICTDB V2), each dropped after STORE_DAYS.
 
     A verdict is keyed by everything it depends on -- the file's bytes, its sources, shellcheck's
     identity and the flags (`crates/goh/src/shell_lint.rs`, `verdict_cache.rs`) -- so one recorded
     in an earlier session is the verdict this one would compute. A store per session paid a cold
     lint of every shell file in goh once a session, in one case: 20 s on a quiet box and 91-113 s
     in a loaded pre-step, over the 60 s line on its own (2026-11-21). Kept, a session lints only
-    the shell files whose bytes are new to it. The same precedent as a land's verdict store
-    (`GOH_LAND_VERDICTS_STORE`, under the same state directory)."""
-    return _kept_store.kept("self-walk-verdicts")  # tests/_kept_store.py, STORE_DAYS there
+    the shell files whose bytes are new to it."""
+    return _kept_store._cache().path()
 
 
 def walk_env(base: dict[str, str], place: Path) -> dict[str, str]:

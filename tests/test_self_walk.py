@@ -17,10 +17,9 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import _kept_store
 import _self_walk as w
 import pytest
-import real_state_guard
-import suite_home
 from _self_walk import Result
 from conftest import hermetic_env
 
@@ -236,7 +235,7 @@ def trees(native_goh: Path, tmp_path_factory) -> dict:
         tmp.write_text(text)
         tmp.chmod(0o755)
         tmp.replace(shim / "shellcheck")
-    env = hermetic_env(GOH_VERDICT_DIR=str(store), SELF_WALK_SC_LOG=str(log),
+    env = hermetic_env(GOH_CACHE_DB=str(store), SELF_WALK_SC_LOG=str(log),
                        PATH=f"{shim}{os.pathsep}{os.environ.get('PATH', '')}")  # fmt: skip
     built = {}
     for name, planted in (("goh", {}), ("planted", plants)):
@@ -261,14 +260,12 @@ def test_the_parts_hold_every_scanner_once_and_name_no_other(trees) -> None:
     )
 
 
-def test_the_verdict_store_outlives_the_session() -> None:
-    """The store is the machine's, not the session's: under an xdist worker the suite's HOME is
-    its own, and a store keyed off it died with the session (the first cut did: the shell part
-    linted every file cold, 130 s, 2026-11-22)."""
-    store = os.path.realpath(w.verdict_store())
-    real_home = os.environ.get(suite_home.MARKER) or suite_home.REAL_HOME
-    scratch = [*real_state_guard.scratch_roots(real_home), os.path.realpath(Path.home())]
-    assert not any(store == r or store.startswith(r.rstrip("/") + "/") for r in scratch), store
+def test_the_verdict_store_is_the_suite_s_and_outlives_it_by_the_kept_merge() -> None:
+    """The walk writes the suite's own goh-cache.db, never the real one, and its rows outlive the
+    session through the controller's one merge (tests/_kept_store.py, GOH.VERDICTDB V2). A store
+    that died with the session linted every file cold, 130 s (the first cut, 2026-11-22)."""
+    assert w.verdict_store() == _kept_store._cache().path()
+    assert "shell_verdicts" in {table for table, *_ in _kept_store.TABLES}
 
 
 def test_every_seed_entry_names_a_scanner(trees) -> None:

@@ -5,10 +5,10 @@ temp dir, every one from a gate that had finished. Two causes, both here: the EX
 logs with an unquoted `for`, so a gate named `python (staged)` split its own log name on the space
 and removed nothing; and the rust gate's scope file was registered with no cleanup at all. Every
 gate now registers what it creates with ONE helper (`goh_cleanup_add`), read back line by line.
-Each test runs a real gate under a private TMPDIR and asserts it ends EMPTY.
+Each test runs a real gate under a private TMPDIR and asserts it ends EMPTY; the structural one
+lints against a private copy of the session's goh-cache.db (GOH.VERDICTDB V2).
 """
 
-import json
 import os
 import shutil
 import subprocess
@@ -62,13 +62,11 @@ def test_structural_full_leaves_nothing_in_tmpdir(tmp_path, tree_lint) -> None:
     tmpdir.mkdir()
     own = private_copy(tree_lint, tmp_path / "verdicts")  # no other test writes this one
     before = records(own)
-    env = {**os.environ, "TMPDIR": str(tmpdir) + "/", "GOH_VERDICT_DIR": str(own.parent)}
+    env = {**os.environ, "TMPDIR": str(tmpdir) + "/", "GOH_CACHE_DB": str(own)}
     r = subprocess.run(["bash", str(REPO_ROOT / "gates" / "structural.sh"), "--full"],
                        cwd=REPO_ROOT, capture_output=True, text=True, timeout=600,
                        env=env, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
     assert _left(tmpdir) == []
     ran = records(own) - before
-    assert not ran, f"the gate shellchecked {len(ran)} files inside the test's call:\n" + "\n".join(
-        json.loads(p.read_text())["key"] for p in own.rglob("*.json") if p.name in ran
-    )
+    assert not ran, f"the gate shellchecked {len(ran)} files inside the test's call: {sorted(ran)}"

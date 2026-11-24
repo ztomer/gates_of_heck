@@ -449,7 +449,7 @@ def test_a_severity_shellcheck_has_no_such_level_for_is_refused_naming_the_key(r
 
 def test_the_verdict_cache_is_keyed_on_the_severity(repo, tmp_path):
     # A clean verdict recorded at `error` must not answer for `warning`: same file, same bytes.
-    env = dict(os.environ, GOH_VERDICT_DIR=str(tmp_path / "cache"))
+    env = dict(os.environ, GOH_CACHE_DB=str(tmp_path / "cache" / "goh-cache.db"))
     write(repo, ".gatesrc", "GOH_SHELL_LINT_SEVERITY=error\n")
     write(repo, "warn.sh", WARN)
     stage(repo, "warn.sh")

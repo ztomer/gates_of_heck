@@ -95,7 +95,7 @@ NOT_GATE_INPUTS = (":(exclude)docs", ":(exclude)tests", ":(exclude)*.md")
 KEEP_ENV = {
     "GOH_BIN_STORE",
     "GOH_HEAD_CACHE",
-    "GOH_VERDICT_DIR",
+    "GOH_CACHE_DB",
     "GOH_VERDICT_CACHE",
     "GOH_LIVE",
     "GOH_SEED_DIR",

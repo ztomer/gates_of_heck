@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sqlite3
 import subprocess
 from pathlib import Path
 
@@ -39,7 +40,10 @@ def lint(repo: Path, tmp_path: Path, goh: Path):
     def run(**extra: str):
         log.write_text("")
         env = {k: v for k, v in os.environ.items() if k != "SHELLCHECK_OPTS"}
-        env.update(PATH=f"{bindir}:{os.environ['PATH']}", GOH_VERDICT_DIR=str(tmp_path / "cache"))
+        env.update(
+            PATH=f"{bindir}:{os.environ['PATH']}",
+            GOH_CACHE_DB=str(tmp_path / "cache" / "goh-cache.db"),
+        )
         env.update(extra)
         r = subprocess.run(
             [str(goh), "shell-lint"],
@@ -54,7 +58,7 @@ def lint(repo: Path, tmp_path: Path, goh: Path):
         return (r.returncode, r.stdout, r.stderr), asked
 
     run.fake = fake
-    run.cache = tmp_path / "cache"
+    run.cache = tmp_path / "cache" / "goh-cache.db"
     return run
 
 
@@ -98,11 +102,11 @@ def test_a_different_shellcheck_rejudges(lint) -> None:
 
 def test_a_corrupt_record_is_a_miss_not_a_verdict(lint) -> None:
     cold, _ = lint()
-    # the verdicts' own records: the store also keeps shellcheck's --version (GOH.SCLINTKEY)
-    records = list((lint.cache / "shell-lint").rglob("*.json"))
-    assert len(records) == 2, records
-    for r in records:
-        r.write_text("{not json")
+    # the verdicts' own rows: the store also keeps shellcheck's --version (GOH.SCLINTKEY)
+    with sqlite3.connect(lint.cache) as con:
+        n = con.execute("UPDATE shell_verdicts SET record='{not json' WHERE checker='shell-lint'")
+        assert n.rowcount == 2, n.rowcount
+    con.close()
     again, asked = lint()
     assert asked == {"a.sh", "b.sh"} and again == cold, (asked, again)
 
@@ -113,13 +117,13 @@ def test_the_cache_off_runs_everything(lint) -> None:
     assert asked == {"a.sh", "b.sh"}, asked
 
 
-@pytest.mark.parametrize("extra", [{"GOH_VERDICT_DIR": "rel"}, {"GOH_VERDICT_DIR": "0"}])
-def test_a_relative_verdict_dir_writes_nothing_into_the_tree(lint, repo: Path, extra) -> None:
-    """A relative cache root names whatever directory the gate runs in: the estate cache committed
+@pytest.mark.parametrize("extra", [{"GOH_CACHE_DB": "rel"}, {"GOH_CACHE_DB": "0"}])
+def test_a_relative_cache_db_writes_nothing_into_the_tree(lint, repo: Path, extra) -> None:
+    """A relative cache path names whatever directory the gate runs in: the estate cache committed
     eight verdicts under `0/` that way. It is refused, and the run lints as if uncached."""
     first, asked = lint(**extra)
     assert first[0] == 1 and asked == {"a.sh", "b.sh"}, first
-    assert not (repo / extra["GOH_VERDICT_DIR"]).exists()
+    assert not (repo / extra["GOH_CACHE_DB"]).exists()
     _, asked = lint(**extra)
     assert asked == {"a.sh", "b.sh"}, asked
 

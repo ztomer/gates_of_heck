@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 
 from _tool_versions import floor
+from _tree_lint import records
 from conftest import commit_all, run_goh, write
 
 SC_FLOOR = floor("shellcheck")
@@ -41,7 +42,9 @@ def _asked(log: Path) -> int:
 
 def _env(bin_: Path, store: Path, **extra: str) -> dict[str, str]:
     env = {k: v for k, v in os.environ.items() if k != "SHELLCHECK_OPTS"}
-    env.update(GOH_VERDICT_DIR=str(store), PATH=f"{bin_}{os.pathsep}{env['PATH']}", **extra)
+    env.update(
+        GOH_CACHE_DB=str(store / "goh-cache.db"), PATH=f"{bin_}{os.pathsep}{env['PATH']}", **extra
+    )
     return env
 
 
@@ -93,4 +96,6 @@ def test_a_shellcheck_that_cannot_start_is_refused_by_name(repo, tmp_path) -> No
     r = run_goh(repo, "shell-lint", env=env)
     assert r.returncode == 1, r.stdout + r.stderr
     assert "shellcheck --version: " in r.stderr, r.stderr
-    assert not list((tmp_path / "verdicts").rglob("*.json")), "a failed probe was kept"
+    assert not records(tmp_path / "verdicts" / "goh-cache.db", "shellcheck-version"), (
+        "a failed probe was kept"
+    )

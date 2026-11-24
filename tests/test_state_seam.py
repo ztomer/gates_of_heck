@@ -51,20 +51,13 @@ ALLOWED: dict[str, set[str]] = {
         "lib/state_bounds.py",
         "lib/state_files.py",
     },
-    "kept stores": {  # V1 goh-cache.db 0002 kept: parse-findings moved (tests/_parse_findings.py)
-        "tests/_self_walk.py",
-        "tests/_tree_lint.py",
-    },
+    "kept stores": set(),  # V1/V2 goh-cache.db kept + shell_verdicts rows (tests/_kept_store.py)
     "identity memo": set(),  # V1 goh-cache.db 0002 memo: moved (lib/identity_cache.py)
     "cpu idle": set(),  # S3 goh-cache.db kv: moved (lib/cpu_window.py, GOH.STATEDBS3)
     "land queue": {  # LANDQ goh.db 0007 requests: moved (lib/landq_state.py, GOH.LANDQDB); the
         "lib/state_bounds.py",  # bounds keep naming an older goh's dirs until the delete commit
     },
-    "shell verdicts": {  # V2 goh-cache.db 0003 shell_verdicts
-        "crates/goh/src/verdict_cache.rs",
-        "lib/reuse.py",
-        "tests/_tree_lint.py",
-    },
+    "shell verdicts": set(),  # V2 goh-cache.db 0003 shell_verdicts: moved (verdict_cache.rs)
 }
 
 

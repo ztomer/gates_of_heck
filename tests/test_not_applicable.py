@@ -77,7 +77,7 @@ def test_the_release_canary_without_an_estate(tmp_path, hosted):
     state.parent.mkdir()
     argv = [sys.executable, str(CANARY), "--root", str(root), "--state", str(state)]
     argv += ["--base-bin", "/bin/true", "--head-bin", "/bin/true", "--goh", str(REPO_ROOT)]
-    rc, out = _run(argv, _env(hosted, GOH_VERDICT_DIR=str(tmp_path / "v")))
+    rc, out = _run(argv, _env(hosted, GOH_CACHE_DB=str(tmp_path / "v" / "goh-cache.db")))
     if hosted:
         assert rc == not_applicable.EXIT and not_applicable.MARK in out, out
     else:
@@ -93,7 +93,7 @@ def test_an_existing_but_empty_registry_is_never_not_applicable(tmp_path, hosted
     (state.parent / "installed_repos").write_text("")
     argv = [sys.executable, str(CANARY), "--root", str(root), "--state", str(state)]
     argv += ["--base-bin", "/bin/true", "--head-bin", "/bin/true", "--goh", str(REPO_ROOT)]
-    rc, out = _run(argv, _env(hosted, GOH_VERDICT_DIR=str(tmp_path / "v")))
+    rc, out = _run(argv, _env(hosted, GOH_CACHE_DB=str(tmp_path / "v" / "goh-cache.db")))
     assert rc == 1 and not_applicable.MARK not in out, out
 
 

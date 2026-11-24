@@ -68,7 +68,7 @@ def _consumer(at: Path, launch: str, goh: Path, env: dict) -> Path:
 
 
 def _setup(tmp_path: Path, goh: Path) -> dict:
-    env = hermetic_env(GOH_VERDICT_DIR=str(tmp_path / "verdicts"),
+    env = hermetic_env(GOH_CACHE_DB=str(tmp_path / "verdicts" / "goh-cache.db"),
                        GOH_SEED_DIR=str(tmp_path / "no-seeds"))  # fmt: skip
     planted = _consumer(tmp_path / "consumers" / "planted", PLANTED, goh, env)
     clean = _consumer(tmp_path / "consumers" / "clean", CLEAN, goh, env)

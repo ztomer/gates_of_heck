@@ -46,7 +46,7 @@ def _build_consumer(path: Path) -> None:
 
 
 def _setup(tmp_path: Path, goh: Path, factory) -> dict:
-    env = hermetic_env(GOH_VERDICT_DIR=str(tmp_path / "verdicts"),
+    env = hermetic_env(GOH_CACHE_DB=str(tmp_path / "verdicts" / "goh-cache.db"),
                        GOH_SEED_DIR=str(tmp_path / "no-seeds"))  # fmt: skip
     consumer = tmp_path / "consumers" / "unfloored"
     consumer.parent.mkdir()

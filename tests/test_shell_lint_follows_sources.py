@@ -35,7 +35,7 @@ def _lint(repo: Path, *args: str, cache: Path | None = None):
     if cache is None:
         env["GOH_VERDICT_CACHE"] = "0"
     else:
-        env["GOH_VERDICT_DIR"] = str(cache)
+        env["GOH_CACHE_DB"] = str(cache / "goh-cache.db")
     r = run_goh(repo, "shell-lint", *args, env=env)
     return r.returncode, r.stdout + r.stderr
 

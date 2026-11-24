@@ -123,7 +123,7 @@ def _canary(e: dict, *extra: str, head: Path | None = None) -> subprocess.Comple
         text=True,
         check=False,
         stdin=subprocess.DEVNULL,
-        env=hermetic_env(GOH_VERDICT_DIR=str(e["root"].parent / "verdicts")),
+        env=hermetic_env(GOH_CACHE_DB=str(e["root"].parent / "verdicts" / "goh-cache.db")),
     )
 
 
@@ -334,7 +334,9 @@ def test_a_staged_seed_store_is_what_the_canary_judges_by(tmp_path, goh):
     live = tmp_path / "live-state"
     argv = [sys.executable, str(SCRIPT), "--root", str(tmp_path / "estate"), "--state", str(state)]
     argv += ["--base-bin", str(base), "--head-bin", str(goh), "--goh", str(REPO_ROOT)]
-    env = hermetic_env(GOH_VERDICT_DIR=str(tmp_path / "verdicts"), XDG_STATE_HOME=str(live))
+    env = hermetic_env(
+        GOH_CACHE_DB=str(tmp_path / "verdicts" / "goh-cache.db"), XDG_STATE_HOME=str(live)
+    )
     (tmp_path / "estate").mkdir()
     r = subprocess.run(
         argv,

@@ -147,10 +147,10 @@ REGISTRY: dict[str, Bound | Kept | Container] = {
         "the pre-switch records and the audit's flock: goh.db reuse_audit rows now "
         "(lib/reuse_audit_store.py), read until wave 3 deletes them"
     ),
-    # The suite's kept stores (tests/_kept_store.py, GOH.VERDICTBOUND): the two shell-lint ones are
-    # files the goh binary reads until V2 moves them into goh-cache.db; parse-findings is rows now.
-    "self-walk-verdicts": Kept("each record dropped after 30 days, every suite session"),
-    "tree-lint-verdicts": Kept("each record dropped after 30 days, every suite session"),
+    # The suite's kept stores (tests/_kept_store.py, GOH.VERDICTBOUND): all rows of goh-cache.db
+    # now (`kept`, and the two shell-lint ones `shell_verdicts`, GOH.VERDICTDB V2).
+    "self-walk-verdicts": Kept("no longer written: goh-cache.db `shell_verdicts` rows (V2)"),
+    "tree-lint-verdicts": Kept("no longer written: goh-cache.db `shell_verdicts` rows (V2)"),
     "parse-findings": Kept("no longer written: goh-cache.db `kept` rows (GOH.VERDICTDB)"),
     "load_sources": Kept("one file per day, pruned at write (lib/load_sources.py prune)"),
     "compact_nudge": Kept("one marker per session, pruned (hooks/claude/compact_nudge.py)"),

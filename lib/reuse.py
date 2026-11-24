@@ -207,7 +207,7 @@ register(
 register(
     "file", ("checker", "key"), 30 * DAY_S,
     "a per-file checker verdict (shell-lint's cache)",
-    store="~/.cache/goh/verdicts", sites=("crates/goh/src/verdict_cache.rs",),
+    store="goh-cache.db shell_verdicts", sites=("crates/goh/src/verdict_cache.rs",),
     unsampled="the per-file hot path inside the goh binary, thousands of hits a gate at "
     "microseconds each against a ~60 ms ask of lib/reuse_audit.py: it needs the audit's counter "
     "in Rust",
