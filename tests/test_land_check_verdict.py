@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import timing_bounds
@@ -92,3 +93,22 @@ def test_the_enqueue_check_runs_an_undeclared_rule_test_and_refuses_on_it(
     assert done.returncode == 1 and "nothing queued" in out, out
     assert "tests/test_rule.py::test_no_planted_violation" in out, out
     assert _pending(tmp_path) == []
+
+
+# THE BATCH'S RATCHET PHASE (lib/landq_ratchet.py) runs the same check on the stacked tree. A job
+# with no verdict there used to refuse nothing; as a named refusal it must not evict an item: no
+# node to re-run names a culprit, so the steps alone would find every lower item green and evict
+# the top one for a job that judged nothing. A blind job leaves the stack to the gate.
+def test_a_blind_job_in_the_ratchet_phase_evicts_no_item(tmp_path, monkeypatch):
+    import landq_ratchet
+
+    blind = "guard tests 2/8 (no verdict in 1500.0 s, exit 124)"
+    assert land_check.blind(blind) and not land_check.blind("tests/test_x.py::test_no_y")
+    monkeypatch.setattr(landq_ratchet.land_check, "run", lambda *a, **k: [blind])
+    monkeypatch.setattr(landq_ratchet, "find", lambda *a: pytest.fail("a blind job named no one"))
+    said: list[str] = []
+    kit = SimpleNamespace(say=said.append)
+    batch = SimpleNamespace(id="B", q=tmp_path, kit=kit, stack=lambda live: live)
+    items = [SimpleNamespace(req={"worktree": str(tmp_path), "repo": "/r"}, tip=t) for t in "ab"]
+    assert landq_ratchet.first(batch, items) == items
+    assert any("no verdict" in s and "the gate decides" in s for s in said), said

@@ -80,6 +80,12 @@ STEP_TIMEOUT = 300
 # at most STRETCH_CAP_S, and a job past it REFUSES, by its name, here and at enqueue.
 NO_VERDICT = {"steps": {124}, "guard tests": {3, 4, 5, 124}}
 STRETCH_CAP_S = 1500  # the check's longest bound already (DIFFCOV_TIMEOUT)
+BLIND = " (no verdict in "  # in the name `run` refuses a job with no verdict by
+
+
+def blind(refusal: str) -> bool:
+    """REFUSAL is a job that judged nothing, not a guard that refused: it names no culprit."""
+    return BLIND in refusal
 
 
 def deadline(quiet_s: float, stretch: float) -> float:
@@ -316,7 +322,7 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=Fal
             continue
         pytest = name.startswith("guard tests")
         if rc in NO_VERDICT["guard tests" if pytest else "steps"]:
-            refused.append(f"{name} (no verdict in {took} s, exit {rc})")
+            refused.append(f"{name}{BLIND}{took} s, exit {rc})")
             say(f"check: {name}: NO VERDICT in {took} s (exit {rc}) -- red: it judged nothing")
             continue
         subgates = dict.fromkeys(map("".join, SUBGATE.findall(out)))

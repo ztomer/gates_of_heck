@@ -60,6 +60,13 @@ def first(b: Batch, live: list[Item]) -> list[Item]:
             if not any(NO_GUARD in line for line in said):
                 b.kit.say(f"batch {b.id}: ratchet phase green on {top.tip[:8]} in {took}")
             return stacked
+        if blinds := [r for r in refused if land_check.blind(r)]:  # GOH.CHECKGIVEUP300
+            names = ", ".join(blinds[:3])
+            b.kit.say(f"batch {b.id}: ratchet phase on {top.tip[:8]}: no verdict in {took} "
+                      f"from {names} -- it names no item; the gate decides")  # fmt: skip
+            refused = [r for r in refused if not land_check.blind(r)]
+            if not refused:
+                return stacked
         b.kit.say(f"batch {b.id}: ratchet phase red on {top.tip[:8]} in {took}: "
                   f"{', '.join(refused[:3])}")  # fmt: skip
         culprit = find(b, stacked, refused)
