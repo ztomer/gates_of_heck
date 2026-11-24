@@ -13,8 +13,10 @@ THE WINDOW. Until the delete commit of the plan's wave 3 (after the loop's reade
 ships_v1 view), `save` also writes the file, and every reader here reads the database first and a
 file only for a result with no row (one written before the switch, or by an old HEAD export still
 running old code). `import_files` puts those files in: INSERT OR IGNORE on the result, each file's
-bytes in the `imports` ledger, so a re-run is harmless and never overwrites a newer row. Nothing
-here deletes a file. Pinned by tests/test_ship_records.py.
+bytes in the `imports` ledger, so a re-run is harmless and never overwrites a newer row; a record
+still running is left to its file until it ends (an older goh's worker rewrites it across the
+switch, and a frozen row would outrank it). Nothing here deletes a file. Pinned by
+tests/test_ship_records.py.
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ import goh_db  # lib/, beside this file: the one door to goh.db
 PINS = ".pins.json"
 # The siblings that are no record: the sweep's record, the suite's profiles, the coverage summary.
 NOT_RECORD = re.compile(r"(\.pins|\.sweep|\.profiles)\.json$|^covsrc\.json$")
+LIVE = ("running", "bisecting")  # a record its worker still rewrites
 COLUMNS = ("item", "sha", "status", "started", "finished", "version")
 
 
@@ -159,7 +162,11 @@ def import_files(base: Path | None = None) -> dict[str, int]:
     row the writer already has is newer than its file). {table: rows added}."""
     base, now, added = base or ship_dir(), time.time(), {"ships": 0, "ship_pins": 0}
     with goh_db.transaction() as con:
+        have = {t: {r[0] for r in con.execute(f"SELECT result FROM {t}")} for t in added}
         for table, p in _files(base):
+            key = str(p)[: -len(PINS)] + ".json" if table == "ship_pins" else str(p)
+            if key in have[table]:
+                continue  # its row is in (the writer's, or this file's import): never re-read
             try:
                 raw = p.read_bytes()
                 body = json.loads(raw)
@@ -174,12 +181,13 @@ def import_files(base: Path | None = None) -> dict[str, int]:
                 ).fetchone()
             ):
                 continue
+            if table == "ships" and body.get("status") in LIVE:
+                continue  # its worker (an older goh's) still rewrites the file: imported once done
             if table == "ships":
                 row = _row(body, str(p), p.stat().st_mtime)
                 cur = con.execute("INSERT OR IGNORE INTO ships VALUES (?,?,?,?,?,?,?,?,?,?,?)", row)
             else:
-                result = str(p)[: -len(PINS)] + ".json"
-                pin = (result, Path(result).stem, raw.decode(), p.stat().st_mtime)
+                pin = (key, Path(key).stem, raw.decode(), p.stat().st_mtime)
                 cur = con.execute("INSERT OR IGNORE INTO ship_pins VALUES (?,?,?,?)", pin)
             added[table] += cur.rowcount
             con.execute("INSERT OR IGNORE INTO imports VALUES (?,?,?,?,?)",

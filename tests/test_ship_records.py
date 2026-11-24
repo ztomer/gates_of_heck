@@ -147,6 +147,7 @@ def test_the_readers_answer_the_same_from_the_rows_alone(
     _estate(base)
     live = _rec(base, "alpha", "20261122T000000Z-cccccccc", status="running", pid=os.getpid(),
                 repo=str(tmp_path / "alpha"), finished=None)  # fmt: skip
+    ship_records.put(json.loads(live.read_text()))  # the running ship's own writer: a row
     (tmp_path / "alpha").mkdir()
     monkeypatch.setattr(ship_verdict.reuse, "lookup_gate", lambda repo, sha: ({"how": "full"}, ""))
     monkeypatch.setattr(budget_ships.timing_ledger, "read", list)
@@ -167,3 +168,14 @@ def test_the_readers_answer_the_same_from_the_rows_alone(
     for p in base.glob("*/*.json"):
         p.unlink()
     assert answers() == before
+
+
+def test_a_running_record_is_imported_only_once_it_ends(db: Path, tmp_path: Path) -> None:
+    """A ship an older goh runs across the switch rewrites its FILE at each step: imported while
+    running, its row would freeze and outrank the file. It is read from the file until it ends."""
+    base = tmp_path / "ship"
+    p = _rec(base, "alpha", "20261120T000000Z-aaaaaaaa", status="running")
+    assert ship_records.import_files(base) == {"ships": 0, "ship_pins": 0}
+    _rec(base, "alpha", "20261120T000000Z-aaaaaaaa", status="ok")  # the old worker's last step
+    assert ship_records.import_files(base) == {"ships": 1, "ship_pins": 0}
+    assert ship_records.get(p)["status"] == "ok"
