@@ -127,7 +127,7 @@ def test_the_hook_busy_timeout_is_restored_after_the_write(home: Path, monkeypat
     assert os.environ["GOH_DB_BUSY_MS"] == "30000"
     monkeypatch.delenv("GOH_DB_BUSY_MS")
     assert hl.append(hl.LANES, _lane(2)) is None
-    assert "GOH_DB_BUSY_MS" not in os.environ
+    assert os.environ.get("GOH_DB_BUSY_MS") is None
 
 
 def test_the_weekly_record_and_the_newest_runs_candidates(home: Path) -> None:
@@ -149,3 +149,22 @@ def test_the_cli_exports_each_store_as_the_file_it_was(home: Path, tmp_path: Pat
     got = [json.loads(ln) for ln in (out / "agent-spawns.jsonl").read_text().splitlines()]
     assert got == [_spawn(1), _outcome(1)]
     assert (out / "lane-starts.jsonl").read_text() == ""
+
+
+def test_a_lock_order_refusal_lets_the_spawn_through_spilled(home: Path) -> None:
+    """An ancestor holding goh.db's lock (GOH_HELD_LOCKS) makes the write a lock-order refusal: the
+    hook fails open, the row spilled and drained by the next write, never an unjudged spawn."""
+    import goh_db
+    import lock_order
+
+    def refuse() -> None:
+        raise lock_order.OrderError("goh_db is held by an ancestor")
+
+    order, goh_db._order = goh_db._order, refuse
+    try:
+        warning = hl.append(hl.SPAWNS, _spawn(1))
+    finally:
+        goh_db._order = order
+    assert warning is not None and "spilled, counted" in warning, warning
+    assert hl.append(hl.SPAWNS, _spawn(2)) is None
+    assert hl.spawns() == [_spawn(1), _spawn(2)]

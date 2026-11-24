@@ -51,6 +51,7 @@ from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # the lib directory, on the path from the line above
+import lock_order
 
 STORE = "hook ledgers"  # the imports ledger's store
 SPAWNS, LANES, CANDIDATES = "agent_spawns", "lane_starts", "fault_candidates"
@@ -239,7 +240,7 @@ def append(table: str, row: dict) -> str | None:
             _import(con, table, LEGACY[table]())
             _drain(con, claimed)
             _insert(con, table, row)
-    except (sqlite3.Error, OSError) as e:
+    except (sqlite3.Error, OSError, lock_order.OrderError) as e:  # an ancestor holding goh.db: open
         for mine in claimed:  # rolled back: its rows go back to the spill
             for t, r in _spilled(mine):
                 _spill(t, r)

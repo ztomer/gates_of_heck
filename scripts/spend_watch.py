@@ -52,7 +52,7 @@ WRITE_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
 WAIT_TOOLS = {"Monitor", "ScheduleWakeup", "TaskOutput", "TaskStop"}
 READ_TOOLS = {"Read", "Grep", "Glob"}
 OWNER_WORDS = "we also need to make this entire process self-improving"
-WATCH = "python3 ~/Projects/gates_of_heck/lib/hook_ledgers.py watch"  # the weekly record (goh.db)
+WATCH = 'python3 "$GOH_DIR/lib/hook_ledgers.py" watch'  # the weekly record (goh.db)
 BASH_KINDS = (  # first match wins, in this order
     ("land/release", r"\bgit\s+push\b|land\.sh|\bgh\s+release\b|release\.sh|\bgoh\s+(ship|release)\b|cargo\s+publish"),
     ("tests/builds", (r"pytest|cargo\s+(test|build|clippy|nextest|check)|gate(_profile)?\.sh|\bmake\b|"
