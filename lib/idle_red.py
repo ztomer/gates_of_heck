@@ -64,6 +64,24 @@ def item(main: Path, green: str, sha: str, log: Path) -> dict:
             "class_of": "none", "class_why": "one red full run on main"}  # fmt: skip
 
 
+def sweep(main: Path, sha: str, log: Path) -> str:
+    """THE POST-MERGE MAC SWEEP (GOH.REMOTETRUST, lib/remote_trust.py `reclassify`): a test this
+    full Mac run failed in a platform_agnostic module takes the module to macos_only, so the land
+    gate never trusts its Linux pass again; "" when none was agnostic."""
+    try:
+        import remote_trust  # lib/, on the path above
+
+        failed = selection_miss.failed_tests(log.read_text(errors="replace"))
+        moved = remote_trust.reclassify(main, failed, f"the full run on {sha[:8]}")
+    except Exception as e:  # noqa: BLE001 -- the sweep's report never breaks the lander
+        return f"macos_only sweep not run: {e.__class__.__name__}: {e}"
+    return (
+        f"now macos_only (failed on the Mac, its Linux pass trusted no more): {', '.join(moved)}"
+        if moved
+        else ""
+    )
+
+
 def file_red(main: Path, green: str, sha: str, log: Path) -> str:
     try:
         loopctl = os.environ.get("GOH_LOOPCTL") or str(

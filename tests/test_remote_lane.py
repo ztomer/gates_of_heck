@@ -230,7 +230,8 @@ def test_a_mac_run_of_some_files_judges_those_exactly_and_the_rest_by_no_worker_
 
 
 def test_the_gate_s_suite_reuse_refuses_a_record_with_worker_passes(tmp_path: Path, monkeypatch):
-    """The ship and the land gate rerun the worker's share on the Mac, and say so."""
+    """A worker pass of a macos_only test (no tests/linux_safe.txt here: every test is) sends the
+    gate's suite to the Mac, and says so (GOH.REMOTETRUST: tests/test_remote_trust.py)."""
     from lib import pre_reuse
 
     # Run under the coverage step's instrumented suite, suite() refuses for that reason first.
@@ -241,7 +242,7 @@ def test_the_gate_s_suite_reuse_refuses_a_record_with_worker_passes(tmp_path: Pa
     rec.write_text(json.dumps({"identity": "t", "passed": {}, "selection": "affected",
                                "base": "b" * 40, "remote": ["tests/test_a.py::t"]}))  # fmt: skip
     ok, why, _ = pre_reuse.suite(tmp_path, rec, "b" * 40)
-    assert not ok and "1 test passed on the Linux worker" in why
+    assert not ok and "macos_only tests passed on the Linux worker: 1," in why
 
 
 def test_goh_s_recorded_lists_name_only_what_exists():

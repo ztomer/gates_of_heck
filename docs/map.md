@@ -488,6 +488,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 | `land_check_cli.py` | `goh land --check [--rules] WORKTREE`, split from lib/land_check.py at its line cap (GOH.RULESLEFT). | `lib/land_check.py` | `test_rule_tests.py`, `test_land_check_commits.py` |
 | `rule_tests.py` | goh's rule tests, found by their shape (GOH.RULESLEFT). | `lib/land_check.py`, `lib/land_check_cli.py` | `test_rule_tests.py` |
 | `remote_saved.py` | what the Linux worker saved, per share and per land (GOH.REMOTESAVED). | `lib/land_gate.sh`, `lib/landq_remote.py`, `lib/remote_gate.py`, `lib/remote_lane.py` and 1 more | `test_remote_saved.py` |
+| `remote_trust.py` | which tests' Linux verdicts count at the land gate (GOH.REMOTETRUST). | `lib/idle_red.py`, `lib/pre_reuse.py`, `lib/remote_lane.py` | `test_remote_trust.py` |
 
 ## Tools
 

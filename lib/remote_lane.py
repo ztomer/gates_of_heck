@@ -15,9 +15,9 @@ part, and its verdicts join the Mac's, so the pre-step costs max(Mac, worker), n
   skip mismatch or an unreadable junit is exit 3 from the shard (`--no-local`): the Mac then runs
   those tests itself, after its own share, and says why. Only a test that FAILED remotely is red.
 * THE RECORD. The remote passes are kept in the pre-step's verdict record (tests/_land_verdicts.py)
-  as its `remote` list, apart from `passed` (GOH.REMOTESHARE, ruled: accept the rerun): a record's
-  identity is the Mac's tree AND toolchain, and a Linux pass is another toolchain's verdict, so the
-  land gate's suite (lib/pre_reuse.py `suite`) and the ship rerun those tests on the Mac and say so.
+  as its `remote` list, apart from `passed`: the land gate's suite (lib/pre_reuse.py `suite`) takes
+  them for platform_agnostic tests and reruns the suite on the Mac for a macos_only one
+  (GOH.REMOTETRUST, lib/remote_trust.py, replacing GOH.REMOTESHARE's "accept the rerun").
   The share shortens the land's pre-step, the Mac-bound wait before the lock. The GATE's suite has
   its own share since GOH.REMOTEGATE (lib/remote_gate.py), on this module's split and launcher.
 * THE SIZE (GOH.REMOTESHARE). Each land measures both sides' pace (`Rates`, `measure`) and the
