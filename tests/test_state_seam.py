@@ -44,6 +44,7 @@ ALLOWED: dict[str, set[str]] = {
         "lib/budget_ships.py",
         "lib/cov_risk.py",
         "lib/full_run.py",
+        "lib/ship_records.py",  # LEFT: ship_dir(), the step logs' directory (handover plan (e))
         "lib/ship_verdict.py",
         "lib/state_bounds.py",
         "tools/ship.py",
