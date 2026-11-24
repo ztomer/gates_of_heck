@@ -333,7 +333,8 @@ def handoff(a: argparse.Namespace, repos: list[Path], root: Path, kept: set[Path
     ahead = {estate_registry_rel(r, root): r for r in mine if stranded(r)}
     where = a.record or str(pin_sweep.ledger_path().with_name("wf_pin.json"))
     sweep = str(pin_sweep.sweep_path(where)) if ahead and a.sweep != "none" else None
-    consumer_pins.write_record(where, tag, ruff, dict(sorted(record.items())), sweep)
+    consumer_pins.write_record(where, tag, ruff, dict(sorted(record.items())), sweep,
+                               ship=a.record is not None)  # fmt: skip
     if not ahead:
         return
     if a.sweep == "none":

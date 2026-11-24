@@ -96,3 +96,34 @@ def test_the_writer_row_wins_over_its_file(db: Path, tmp_path: Path) -> None:
     p = _rec(tmp_path / "ship", "alpha", "20261120T000000Z-aaaaaaaa", status="running")
     ship_records.put({**json.loads(p.read_text()), "status": "failed"})
     assert [r["status"] for _, r in ship_records.in_dir(p.parent)] == ["failed"]
+
+
+def test_a_ship_step_writes_its_row_and_its_file(db: Path, tmp_path: Path) -> None:
+    """The writer (lib/ship_status.py save, at each step) puts the row first; until wave 3's
+    delete commit the file is written beside it for the readers outside goh."""
+    import ship_status
+
+    res = json.loads(_rec(tmp_path / "ship", "alpha", "20261120T000000Z-aaaaaaaa").read_text())
+    res["status"] = "running"
+    ship_status.save(res)
+    with goh_db.ro() as con:
+        row = con.execute("SELECT status, body FROM ships WHERE result=?", (res["result"],))
+        status, body = row.fetchone()
+    assert status == "running" and json.loads(body) == res
+    assert json.loads(Path(res["result"]).read_text()) == res
+
+
+def test_the_install_writes_its_pins_row(db: Path, tmp_path: Path) -> None:
+    import consumer_pins
+
+    result = tmp_path / "ship" / "alpha" / "20261120T000000Z-aaaaaaaa.json"
+    consumer_pins.write_record(str(result), "v1", "0.1", {"one": {"status": "committed"}})
+    with goh_db.ro() as con:
+        (body,) = con.execute(
+            "SELECT body FROM ship_pins WHERE result=?", (str(result),)
+        ).fetchone()
+    assert json.loads(body)["repos"] == {"one": {"status": "committed"}}
+    res = {"result": str(result)}
+    consumer_pins.record_path(result).unlink()  # the row alone carries it into the result
+    consumer_pins.carry(res)
+    assert res["consumer_pins"]["committed"] == ["one"]

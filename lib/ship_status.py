@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -15,6 +16,7 @@ import pid_owner
 import pin_sweep
 import ship_profile
 import ship_quiet
+import ship_records
 
 from tui.lib import err, info, ok, step
 
@@ -60,7 +62,13 @@ def record_ship_timing(res: dict) -> None:
 
 
 def save(res: dict) -> None:
-    """Write RES to its result path whole (a temp file renamed over it)."""
+    """Write RES whole: its goh.db row (lib/ship_records.py, the record goh reads), then, until the
+    database plan's wave-3 delete commit, its result file (a temp file renamed over it) for the
+    readers outside goh. A row that cannot be written is said, never fatal to the ship."""
+    try:
+        ship_records.put(res)
+    except (sqlite3.Error, OSError) as e:
+        err(f"goh ship: the record's goh.db row was not written ({e}): {res['result']}")
     path = Path(res["result"])
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.tmp")

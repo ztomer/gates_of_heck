@@ -43,6 +43,7 @@ import estate_commit
 import gate_slot
 import land_lock
 import lock_order
+import ship_records
 import step_timings
 from tmp_root import goh_tmp  # every temp root under $TMPDIR/goh.noindex (GOH.TMPNOINDEX)
 
@@ -353,19 +354,23 @@ def record_path(result: Path | str) -> Path:
 
 
 def write_record(result: str, tag: str, ruff: str, repos: dict[str, dict[str, str]],
-                 sweep: str | None = None) -> None:  # fmt: skip
+                 sweep: str | None = None, ship: bool = True) -> None:  # fmt: skip
+    """The install's record: a SHIP result's goh.db `ship_pins` row (lib/ship_records.py), and
+    until the database plan's wave-3 delete commit the sidecar file beside the result too (wf-pin's
+    own record, SHIP false, is a file: GOH.STATEDB S3's)."""
+    body = {"schema": 2, "tag": tag, "ruff": ruff, "repos": repos, "sweep": sweep}
+    if ship:
+        ship_records.put_pins(result, body)
     path = record_path(result)
     path.parent.mkdir(parents=True, exist_ok=True)
-    body = {"schema": 2, "tag": tag, "ruff": ruff, "repos": repos, "sweep": sweep}
     path.write_text(json.dumps(body, indent=1) + "\n", encoding="utf-8")
 
 
 def carry(res: dict) -> None:
     """The install's record into the ship result RES as `consumer_pins`, once the install step wrote
     it: the repos it committed in, every other one with why not, and the push sweep's record."""
-    try:
-        rec = json.loads(record_path(res["result"]).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    rec = ship_records.get_pins(res["result"])
+    if rec is None:
         return
     repos = rec.get("repos") or {}
     res["consumer_pins"] = {
