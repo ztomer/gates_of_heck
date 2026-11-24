@@ -14,7 +14,6 @@ On the database each step is one transaction, so the same kill leaves exactly on
 
 from __future__ import annotations
 
-import json
 import signal
 import sqlite3
 import subprocess
@@ -30,7 +29,7 @@ from timing_bounds import patience
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import goh_db
 import land_records
-import landq_export
+import landq_batch
 import landq_inflight
 import landq_state
 
@@ -106,31 +105,21 @@ def test_a_kill_after_the_enqueue_filed_leaves_the_request_pending_only(tmp_path
     assert held(q, "T.KILL") == ["pending"]
 
 
-def test_the_import_of_leftover_files_is_the_files_and_exports_them_back_equal(
-    tmp_path, monkeypatch
-):
+def test_a_lander_reads_no_request_file_an_older_goh_left(tmp_path, monkeypatch):
+    """The lander imported them at its start until the delete commit; they are `goh state retire
+    landq`'s now (lib/state_retire_landq.py), so the lander's start leaves them as they are."""
     _goh_db_fixture.use(monkeypatch, tmp_path)
     q = tmp_path / "landq"
-    before: dict[str, dict] = {}
-    for state, run, req in (("pending", "01795000000000000001-T.A", {"item": "T.A", "sha": "a"}),
-                            ("pending", "01795000000000000002-T.B", {"item": "T.B", "sha": "b"}),
-                            ("running", "01795000000000000000-T.C", {"item": "T.C"}),
-                            ("enqueuing", "4242-T.D", {"pid": 4242, "item": "T.D",
-                                                       "until": 1.5e9})):  # fmt: skip
+    left = []
+    for state, run in (("pending", "01795000000000000001-T.A"), ("running", "02-T.C"),
+                       ("enqueuing", "4242-T.D"), ("early", "03-T.E")):  # fmt: skip
         (q / state).mkdir(parents=True, exist_ok=True)
-        landq_state.write(q / state / f"{run}.json", req)
-        before[f"{state}/{run}.json"] = req
-    (q / "pending" / ".torn.json.tmp").write_text("{")  # a writer's temp: never a request
-    got = landq_state.import_files(q)
-    assert got == {"enqueuing": 1, "pending": 2, "running": 1}
-    assert not [p for s in STATES for p in (q / s).glob("*.json")]  # each deleted once read back
-    assert landq_state.import_files(q) == {}  # a re-run is harmless
-    assert [p.name for p in landq_state.listing(q, "pending")] == [
-        "01795000000000000001-T.A.json", "01795000000000000002-T.B.json"]  # fmt: skip
-    out = tmp_path / "export"
-    assert landq_export.export(q, out) == {"enqueuing": 1, "pending": 2, "running": 1}
-    after = {str(p.relative_to(out)): json.loads(p.read_text()) for p in out.rglob("*.json")}
-    assert after == before
+        landq_state.write(q / state / f"{run}.json", {"item": run.partition("-")[2]})
+        left.append(q / state / f"{run}.json")
+    landq_batch.resume(q, lambda _s: None)
+    assert all(p.is_file() for p in left), "a file is no request: the lander leaves it alone"
+    assert not any(landq_state.listing(q, s) for s in STATES), "no file became a row"
+    assert not hasattr(landq_state, "import_files"), "the retire command is the one import"
 
 
 def test_a_move_is_one_state_and_a_second_mover_loses(tmp_path, monkeypatch):

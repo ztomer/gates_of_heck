@@ -111,8 +111,7 @@ def resume(q: Path, say: Callable[[str], None]) -> None:
     """What a lander finds at its start: a request a dead lander was running goes back to the front
     (its name keeps its place), and a kept verdict nothing names is reaped (GOH.PRELANDBATCH: an
     enqueue killed before its request left one until the next recorded land)."""
-    landq_state.import_files(q)  # an older goh's request files, under lander.lock (GOH.LANDQDB)
-    land_slot.import_owners(q)  # and its slot owner files
+    land_slot.import_owners(q)  # an older goh's slot owner files, under lander.lock (GOH.LANDQDB)
     for stale in landq_state.listing(q, "running"):
         landq_state.move(stale, "pending")
         say(f"{stale.name}: its lander died mid-request -- running it again")

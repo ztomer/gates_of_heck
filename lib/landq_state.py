@@ -14,9 +14,8 @@ passes around), but the name is a key, never a file: (the queue's realpath, the 
     update(path, req)          its body rewritten in place, same state
     drop(path)                 the row gone; False when it was not there
     finish(path, outcome)      DELETE the request and INSERT its land record, ONE transaction
-    import_files(q)            leftover `<q>/<state>/*.json` files into rows (a file is deleted
-                               after its row reads back); run under lander.lock
-    (the way back, the rows as these files again: lib/landq_export.py, `goh_db.py landq-export`)
+    (an older goh's request files are no request: `goh state retire landq` imports them,
+    lib/state_retire_landq.py)
 
 Every state change is one transaction, so a SIGKILL anywhere leaves a request in exactly one
 state: two renames (running/ to done/, then the unlink) left it in two (tests/test_landq_db.py).
@@ -243,34 +242,3 @@ def finish(con: sqlite3.Connection, path: Path) -> None:
 def request(path: Path) -> dict:
     """The request named PATH ({} once it is gone): a queue state's or an early one's row."""
     return get(path) or {}
-
-
-def _files(q: Path, state: str) -> list[Path]:
-    d = q / state
-    try:
-        names = sorted(os.listdir(d))
-    except OSError:
-        return []
-    return [d / n for n in names if n.endswith(".json") and not n.startswith(".")]
-
-
-def import_files(q: Path) -> dict[str, int]:
-    """Every `<q>/<state>/*.json` request file into a row, INSERT OR IGNORE on (queue, run): the
-    files an older goh (an old HEAD export) filed. A file is deleted once its row reads back; a
-    file not whole is left for the next look. Run under lander.lock. {state: rows added}."""
-    queue, got = queue_key(q), {}
-    for state in STATES:
-        files = [(p, rec) for p in _files(q, state) if (rec := read(p)) is not None]
-        if not files:
-            continue
-        with goh_db.transaction() as con:
-            got[state] = sum(_insert(con, queue, p.stem, rec, state, "OR IGNORE")
-                             for p, rec in files)  # fmt: skip
-            if got[state]:
-                con.execute("INSERT OR IGNORE INTO imports VALUES (?, ?, ?, ?, ?)",
-                            ("requests", str(q / state), f"{time.time_ns()}", got[state],
-                             time.time()))  # fmt: skip
-        for p, _ in files:
-            if state_of(q, p.stem) is not None:  # read back: the row holds it
-                p.unlink(missing_ok=True)
-    return got

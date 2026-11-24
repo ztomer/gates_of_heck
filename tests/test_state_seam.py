@@ -43,9 +43,8 @@ ALLOWED: dict[str, set[str]] = {
     "kept stores": set(),  # V1/V2 goh-cache.db kept + shell_verdicts rows (tests/_kept_store.py)
     "identity memo": set(),  # V1 goh-cache.db 0002 memo: moved (lib/identity_cache.py)
     "cpu idle": set(),  # S3 goh-cache.db kv: moved (lib/cpu_window.py, GOH.STATEDBS3)
-    "land queue": {  # LANDQ goh.db 0007 requests: moved (lib/landq_state.py, GOH.LANDQDB); the
-        "lib/state_bounds.py",  # bounds keep naming an older goh's dirs until the delete commit
-    },
+    "land queue": set(),  # LANDQ goh.db 0007 requests: moved (lib/landq_state.py, GOH.LANDQDB); an
+    # older goh's files retired (lib/state_retire_landq.py)
     "shell verdicts": set(),  # V2 goh-cache.db 0003 shell_verdicts: moved (verdict_cache.rs)
 }
 

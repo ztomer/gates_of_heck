@@ -100,10 +100,6 @@ REGISTRY: dict[str, Bound | Kept | Container] = {
         r"^(\d{10,}-|idle-suite-[0-9a-f]+)",
         "a land's log, its batch gate's logs and their timings",
     ),
-    # an older goh's request files: goh.db rows since GOH.LANDQDB, imported by the next lander
-    "landq/pending": Kept("an older goh's requests, imported into goh.db by the lander"),
-    "landq/running": Kept("an older goh's request in flight, imported into goh.db by the lander"),
-    "landq/enqueuing": Kept("an older goh's enqueue marker, imported into goh.db by the lander"),
     "landq/pre": Kept("kept verdicts, reaped per record (lib/land_prestep.py reap)"),
     "landq/slots": Kept("one checkout per repo, reused (lib/land_slot.py)"),
     "landq/idle-suite": Kept("one worktree and last.json, reused (lib/idle_suite.py)"),

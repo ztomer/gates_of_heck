@@ -69,7 +69,7 @@ def test_full_prints_the_whole_log(monkeypatch):
 
 
 def _red_done(q: Path, log: Path) -> None:
-    (q / "running").mkdir(parents=True)
+    q.mkdir(parents=True)
     rec = {"item": "T.T", "mode": "land", "state": "red", "sha": "c" * 40, "log": str(log),
            "why": "the pre-land tests failed on cccccccc\n" + "excerpt line\n" * 200}  # fmt: skip
     land_records.write(q, "01-T.T", rec)
