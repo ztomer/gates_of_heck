@@ -168,6 +168,27 @@ def test_a_transaction_commits_rolls_back_and_times_its_wait(tmp_path, monkeypat
     assert all(r["wait_s"] >= 0 and r["label"] == "db wait goh" and "ms" in r for r in rows)
 
 
+def test_the_instrument_reaches_a_suite_child_and_counts_a_busy_timeout(tmp_path, monkeypatch):
+    """GOH.VERDICTDB step 5's instrument: a suite drops GOH_TIMINGS from every worker and gate
+    child (tests/conftest.py), so the waits that matter -- workers sharing the suite home's
+    goh-cache.db -- were never seen. GATES_OF_HECK_DB_WAITS (no GOH_ prefix: hermetic_env keeps
+    it) receives the same rows; a write that gave up at its busy timeout is a row too, `busy`."""
+    s = seam(tmp_path, monkeypatch, "0001_a")
+    monkeypatch.delenv("GOH_TIMINGS", raising=False)
+    waits = tmp_path / "w.jsonl"
+    monkeypatch.setenv(db_core.WAITS_ENV, str(waits))
+    with db_core.transaction(s) as con:
+        con.execute("INSERT INTO t1 VALUES (1, 0)")
+    monkeypatch.setenv(s.busy_env, "50")
+    with db_core.transaction(s) as con:
+        con.execute("INSERT INTO t1 VALUES (2, 0)")
+        with pytest.raises(sqlite3.OperationalError, match="locked"), db_core.transaction(s):
+            pass
+    rows = [json.loads(ln) for ln in waits.read_text().splitlines()]
+    assert [r.get("busy", False) for r in rows] == [False, False, True], rows
+    assert rows[2]["wait_s"] >= 0.04 and rows[2]["db"] == "goh", rows
+
+
 def test_the_seams_take_their_innermost_locks(tmp_path, monkeypatch) -> None:
     """goh_db's transaction waits on lock `goh_db`: the table ranks it above every other lock, so
     it may be taken under any of them, and a write already holding it refuses a nested wait."""
