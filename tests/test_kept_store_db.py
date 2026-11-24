@@ -17,7 +17,7 @@ import sys
 
 import _kept_store as ks
 import _parse_findings as pf
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
 
@@ -55,7 +55,7 @@ def test_only_the_top_level_controller_merges_and_no_child_inherits_the_name(tmp
     code = "import os, sys; sys.path.insert(0, 'tests'); import _kept_store as k; print(k._REAL)"
     out = subprocess.run([sys.executable, "-c", code], cwd=REPO_ROOT, capture_output=True,
                          text=True, check=True, stdin=subprocess.DEVNULL, timeout=patience(60),
-                         env={**os.environ, ks.KEPT_ENV: str(tmp_path / "r.db")})  # fmt: skip
+                         env=hermetic_env(**{ks.KEPT_ENV: str(tmp_path / "r.db")}))  # fmt: skip
     assert out.stdout.strip() == str(tmp_path / "r.db")  # read once, at import
 
 
