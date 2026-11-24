@@ -3,6 +3,7 @@ goh.db, imported, read back equal, archived and deleted (the database plan's wav
 
     goh state retire [STORE...] [--dry-run]   each STORE (default: every one) retired
     goh state stray                           every retired store's file still on disk
+    goh state test-ships [--delete]           the ship rows a test left (GOH.FAKESHIPROWS)
 
 WHY. Each store was a set of files under goh's state or cache directory; its readers and writers
 now go through goh.db alone (lib/goh_db.py), so a file left behind is read by nothing. This is
@@ -48,6 +49,7 @@ from types import ModuleType
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, on the path from the line above
+import ship_records  # the ship rows a test left (GOH.FAKESHIPROWS)
 import state_retire_lands as lands  # the land records' half (GOH.STATEDB S1)
 import state_retire_ships  # the ship records' half (GOH.STATEDB S2), beside this file
 import state_retire_verdicts  # GOH.VERDICTDB's stores, beside this one in the seam
@@ -422,6 +424,19 @@ def stray() -> list[Path]:
     return [p for s in STORES.values() for p in s.files()]
 
 
+def test_ships(delete: bool) -> int:
+    """`goh state test-ships [--delete]`: the ship rows a test left in goh.db (GOH.FAKESHIPROWS),
+    listed; with DELETE removed, through the one door, never by hand."""
+    rows = ship_records.test_rows()
+    for r in rows:
+        print(f"test ship row: {r}")
+    if delete:
+        print(f"{ship_records.drop_test_rows()} test ship rows deleted")
+    else:
+        print(f"{len(rows)} test ship rows (dry run: none deleted; --delete removes them)")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="goh state", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -430,7 +445,11 @@ def main(argv: list[str]) -> int:
                    "every one)")  # fmt: skip
     r.add_argument("--dry-run", action="store_true")
     sub.add_parser("stray", help="every retired store's file still on disk")
+    t = sub.add_parser("test-ships", help="the ship rows a test left (result under a temp root)")
+    t.add_argument("--delete", action="store_true", help="delete them (default: list only)")
     a = ap.parse_args(argv)
+    if a.cmd == "test-ships":
+        return test_ships(a.delete)
     a.store = [s for n in getattr(a, "store", []) for s in GROUPS.get(n, (n,))]
     if a.cmd == "retire" and (unknown := set(a.store) - set(STORES)):
         ap.error(f"no such store: {', '.join(sorted(unknown))} (stores: {', '.join(STORES)})")

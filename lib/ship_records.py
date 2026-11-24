@@ -20,6 +20,7 @@ import json
 import os
 import sqlite3
 import sys
+import tempfile
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -134,3 +135,42 @@ def repo_dirs(base: Path | None = None) -> list[Path]:
 def every(base: Path | None = None) -> list[tuple[Path, dict]]:
     """Every record under BASE (the ship directory), each repo's in turn."""
     return [rec for d in repo_dirs(base) for rec in in_dir(d)]
+
+
+# A TEST'S SHIP ROW (GOH.FAKESHIPROWS). A test that ran goh ship against the live goh.db left its
+# row there (.loop's test_ship_done wrote 30+, item A.0, before it was made hermetic), and every
+# ship statistic counted it. Such a row's result sits under the system's temp roots; a real ship's
+# under the ship directory (ship_dir()), which is never a test's, wherever it is.
+TEMP_ROOTS = ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")
+
+
+def temp_roots() -> tuple[str, ...]:
+    """The roots a test's result path sits under: the platform's and the temp dir this process
+    names, as named and resolved."""
+    here = tempfile.gettempdir()
+    return tuple(dict.fromkeys((*TEMP_ROOTS, here, str(Path(here).resolve()))))
+
+
+def _under(path: str, root: str) -> bool:
+    root = root.rstrip(os.sep)
+    return path == root or path.startswith(root + os.sep)
+
+
+def test_rows(roots: tuple[str, ...] | None = None) -> list[str]:
+    """Every ship row's result path under one of ROOTS (temp_roots()), none in the ship
+    directory: the rows a test left behind, sorted."""
+    roots = roots or temp_roots()
+    keep = (str(ship_dir()), str(ship_dir().resolve()))
+    with _read() as con:
+        rows = con.execute("SELECT result FROM ships").fetchall() if con else []
+    return sorted(r for (r,) in rows if any(_under(r, t) for t in roots)
+                  and not any(_under(r, k) for k in keep))  # fmt: skip
+
+
+def drop_test_rows(roots: tuple[str, ...] | None = None) -> int:
+    """test_rows(ROOTS) deleted with their pin rows, in one write; how many."""
+    gone = test_rows(roots)
+    with goh_db.transaction() as con:
+        for table in ("ships", "ship_pins"):
+            con.executemany(f"DELETE FROM {table} WHERE result=?", [(r,) for r in gone])
+    return len(gone)
