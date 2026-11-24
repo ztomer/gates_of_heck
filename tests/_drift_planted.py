@@ -28,7 +28,8 @@ def planted(
     STRETCH pins what the guard's probe measures on the test's thread (`pole_stretch`), for every
     phase however short: the QoS clamp's reading, which the run queue never shows."""
     (tmp_path / "conftest.py").write_text(
-        f"import sys\nsys.path.insert(0, {str(TESTS)!r})\n"
+        f"import os, sys\nsys.path.insert(0, {str(TESTS)!r})\n"
+        f"os.environ[{_drift_guard.SPEED_ENV!r}] = '1'\n"
         "import _drift_guard\n"
         "from _drift_guard import pytest_runtest_makereport, pytest_runtest_setup  # noqa: F401\n"
         f"_drift_guard.CEILING_S = {ceiling}\n"
@@ -45,7 +46,7 @@ def planted(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "no:xdist",
          str(tmp_path)],
         capture_output=True, text=True, cwd=tmp_path, timeout=patience(60), check=False,
-        env=dict(os.environ, **{_drift_guard.SPEED_ENV: "1"}), stdin=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
     )  # fmt: skip
 
 

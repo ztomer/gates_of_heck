@@ -357,15 +357,10 @@ def run_queue(start: float, stop: float) -> float:
 
 
 # THE QOS CLAMP (GOH.SUITEDRIFTBUILD). A lane or work gate runs under `taskpolicy -c utility`
-# (lib/land_share.py, GOH.LANDSHARE), and the run queue cannot see it: at 3.2 runnable threads per
-# core (2026-11-24) the speed probe's loop took x25-35 its quiet wall on a clamped thread, x0.9 on
-# a free one. Stretched by the run queue alone, the idle suite (class `work`) judged CPU-bound tests
-# at a tenth of their real stretch: test_declared_reads 192 s, the scanner reach test 263.7 s at
-# x2.5, the Rust floor test 191.4 s at x2.8. A phase is judged by the SMALLER of two readings of its
-# quiet seconds: its wall over the run queue's stretch (blind to the clamp), and `pole` -- its CPU
-# with the stretch MEASURED on its own thread, which sees the clamp (taken at a phase of
-# POLE_PROBE_AFTER_S or more, so at every ceiling). A wait spends no CPU, so `pole` keeps it whole:
-# a leaked child holding a pipe is judged as it always was, by the run queue's reading.
+# (GOH.LANDSHARE), which the run queue cannot see: a clamped thread ran the speed loop x25-35 where
+# the run queue said x3.2 (2026-11-24), and CPU-bound tests went red at a tenth of their stretch. A
+# phase is judged by the SMALLER of its wall over the run queue and `pole` (its CPU at the stretch
+# measured on its own thread); a wait spends no CPU, so a leaked child is judged as before.
 def judged_s(wall: float, factor: float, pole_s: float) -> float:
     """A phase's seconds against its ceiling: the run queue's reading or the measured one,
     whichever is less."""
