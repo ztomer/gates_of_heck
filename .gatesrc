@@ -107,6 +107,12 @@ GOH_COV_FLOOR_RUST=93.1
 # The second cfg goh ships (house rule 3: macOS arm64 and Linux x86_64); its std is in
 # rust-toolchain.toml. Measured 2026-11-11: 11.7 s, clean (GOH.LANDGAPS).
 GOH_RUST_LINT_CONFIGS='--target x86_64-unknown-linux-gnu'
+# The cargo that cross-lints it (GOH.VERDICTDB V2). goh's own crates carry C since rusqlite's
+# `bundled` SQLite: a --target clippy runs libsqlite3-sys's build script, which compiles
+# sqlite3.c FOR LINUX, and this Mac's cc has no Linux libc headers ("'stdio.h' file not found",
+# measured 2026-11-24, exit 101). zig cc brings glibc's, so the Linux half is still checked, the
+# same clippy over the same cfg, and its C is compiled for Linux too. Measured: 13 s, clean.
+GOH_RUST_LINT_CARGO=cargo-zigbuild
 # The native checks' behaviour suite is the pytest suite (Phase N3: it drives `goh` from outside
 # cargo test), so the coverage gate also runs it against the INSTRUMENTED binary and counts it.
 # Without it the crate read 62.5% (2026-10-06) for code the suite covers. GOH_COV_GOH: a test
