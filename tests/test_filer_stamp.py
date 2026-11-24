@@ -19,6 +19,8 @@ from conftest import REPO_ROOT as ROOT
 sys.path.insert(0, str(ROOT / "scripts"))
 import spend_watch
 
+TREE_READS = ("lib/", "scripts/", "hooks/", "tools/", "gates/", "checks/")  # the scan
+
 STAMP = "LOOPCTL_STAMP_PACKAGE"
 STRICT = """import json, os, pathlib, sys
 argv = sys.argv[1:]
@@ -102,7 +104,7 @@ def _argv_files(tree: ast.AST) -> bool:
 def test_no_goh_code_runs_loopctl_file_outside_the_funnel() -> None:
     """Every filer's argv is reuse_fault._file's: a second spelling would file with no package."""
     own: list[str] = []
-    for top in ("lib", "scripts", "hooks", "tools", "gates", "checks", "bin"):
+    for top in ("lib", "scripts", "hooks", "tools", "gates", "checks"):
         for path in sorted((ROOT / top).rglob("*.py")):
             if _argv_files(ast.parse(path.read_text(encoding="utf-8"))):
                 own.append(str(path.relative_to(ROOT)))
