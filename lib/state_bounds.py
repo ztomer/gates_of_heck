@@ -156,6 +156,7 @@ REGISTRY: dict[str, Bound | Kept | Container] = {
     "compact_nudge": Kept("one marker per session, pruned (hooks/claude/compact_nudge.py)"),
     "seeds": Kept("fixed names, one per seed"),
     "timing": Kept("one ledger file (lib/timing_ledger.py), bounded in FILES"),
+    "retired": Kept("the moved stores' files, one dated archive per `goh state retire` run"),
 }
 
 

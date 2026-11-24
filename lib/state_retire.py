@@ -1,0 +1,263 @@
+"""lib/state_retire.py -- `goh state retire [STORE...]`: the files of a store that moved into
+goh.db, imported, read back equal, archived and deleted (the database plan's wave 3, GOH.STATEDB).
+
+    goh state retire [STORE...] [--dry-run]   each STORE (default: every one) retired
+    goh state stray                           every retired store's file still on disk
+
+WHY. Each store was a set of files under goh's state or cache directory; its readers and writers
+now go through goh.db alone (lib/goh_db.py), so a file left behind is read by nothing. This is
+the one module that still names those files (tests/_state_seam_scan.py lists it in the seam):
+it imports what a file holds that no row does (INSERT OR IGNORE, as each store's lane did), then
+compares every record of every file with what goh.db reads back. Only when every one is equal
+(or its row is newer than its file: the store was written since) are the files copied under
+`<state>/retired/<YYYY-MM-DD>/<store>/{state,cache}/<path>`, each copy byte-compared, and the
+originals deleted. One unequal record keeps every file of its store, said, and exits 1.
+
+A file a store must keep for now (a ship whose worker still runs) is named and left; a ship
+result that says running while its worker is gone is first settled as lib/ship_status.py settles
+one (failed at `abandoned`), so no record is left behind as running forever.
+"""
+
+from __future__ import annotations
+
+if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)
+    import contextlib as _contextlib
+    import os as _os
+    import sys as _sys
+
+    _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "gates"))
+    with _contextlib.suppress(ModuleNotFoundError):  # outside any checkout: nothing to re-run from
+        __import__("_from_head").reexec(__file__)
+    del _sys.path[0]
+
+import argparse
+import contextlib
+import filecmp
+import hashlib
+import json
+import os
+import shutil
+import sqlite3
+import sys
+import time
+from collections import Counter
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import goh_db  # lib/, on the path from the line above
+
+
+def state_dir() -> Path:
+    """$XDG_STATE_HOME/goh, else ~/.local/state/goh."""
+    base = os.environ.get("XDG_STATE_HOME", "")
+    return (Path(base) if base.startswith("/") else Path.home() / ".local" / "state") / "goh"
+
+
+def cache_dir() -> Path:
+    """$XDG_CACHE_HOME/goh, else ~/.cache/goh."""
+    base = os.environ.get("XDG_CACHE_HOME", "")
+    return (Path(base) if base.startswith("/") else Path.home() / ".cache") / "goh"
+
+
+@dataclass(frozen=True)
+class Store:
+    """A moved store: its files on disk, how they go in, and how each is judged read back."""
+
+    files: Callable[[], list[Path]]  # the store's files still on disk
+    load: Callable[[sqlite3.Connection, list[Path]], None]  # their records in (INSERT OR IGNORE)
+    check: Callable[[sqlite3.Connection, Path], str | None]  # why P does not read back equal
+    keep: Callable[[Path], str | None] = lambda p: None  # why P must stay for now
+
+
+def _dump(row: object) -> str:
+    return json.dumps(row, sort_keys=True)
+
+
+def _json(p: Path) -> object:
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _lines(p: Path) -> list[dict]:
+    """P's whole lines that are JSON objects (a torn last line and a bad line are no record)."""
+    try:
+        data = p.read_bytes()
+    except OSError:
+        return []
+    out = []
+    for line in data[: data.rfind(b"\n") + 1].decode("utf-8", errors="replace").splitlines():
+        with contextlib.suppress(ValueError):
+            if isinstance(row := json.loads(line), dict):
+                out.append(row)
+    return out
+
+
+def _ledger(con: sqlite3.Connection, store: str, p: Path, rows: int) -> None:
+    sha = hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else ""
+    con.execute("INSERT OR IGNORE INTO imports VALUES (?, ?, ?, ?, ?)",
+                (store, str(p), sha, rows, time.time()))  # fmt: skip
+
+
+def _subset(con: sqlite3.Connection, table: str, p: Path, body=_dump) -> str | None:
+    """Every line of P is a row of TABLE (as many times as P holds it), else why not."""
+    have = Counter(b for (b,) in con.execute(f"SELECT body FROM {table}"))
+    want = Counter(body(r) for r in _lines(p))
+    short = sum((want - have).values())
+    return f"{short} of {sum(want.values())} lines have no {table} row" if short else None
+
+
+def _kv_equal(con: sqlite3.Connection, name: str, p: Path) -> str | None:
+    """P's whole document is kv NAME's body, or NAME was written after P was (it moved on)."""
+    row = con.execute("SELECT body, at FROM kv WHERE name=?", (name,)).fetchone()
+    if row is None:
+        return f"no kv row {name}"
+    if json.loads(row[0]) == _json(p) or float(row[1] or 0) > p.stat().st_mtime:
+        return None
+    return f"kv {name} differs and is older than the file"
+
+
+# -- hook ledgers (GOH.STATEDBS4, goh.db 0005) ----------------------------------------------------
+
+HOOK_FILES = {"agent_spawns": ("cache", "agent-spawns.jsonl"),
+              "lane_starts": ("state", "lane-starts.jsonl"),
+              "fault_candidates": ("cache", "fault-candidates.jsonl"),
+              "model-choice-watch": ("cache", "model-choice-watch.json")}  # fmt: skip
+
+
+def _root(where: str) -> Path:
+    return state_dir() if where == "state" else cache_dir()
+
+
+def _hook_file(table: str) -> Path:
+    where, name = HOOK_FILES[table]
+    return _root(where) / name
+
+
+def _hook_table(p: Path) -> str:
+    return next(t for t in HOOK_FILES if _hook_file(t) == p)
+
+
+def _hook_load(con: sqlite3.Connection, files: list[Path]) -> None:
+    import hook_ledgers
+
+    for p in files:
+        table = _hook_table(p)
+        if table == "model-choice-watch":
+            if (doc := _json(p)) is not None:
+                con.execute("INSERT OR IGNORE INTO kv VALUES (?, ?, ?)",
+                            (table, _dump(doc), p.stat().st_mtime))  # fmt: skip
+            continue
+        have, added = Counter(b for (b,) in con.execute(f"SELECT body FROM {table}")), 0
+        for r in _lines(p):  # in line order; a line the table already holds is taken once
+            if have[_dump(r)] > 0:
+                have[_dump(r)] -= 1
+            elif table == "fault_candidates":
+                con.execute("INSERT INTO fault_candidates(at, body) VALUES (?, ?)",
+                            (p.stat().st_mtime, _dump(r)))  # fmt: skip
+                added += 1
+            else:
+                hook_ledgers.insert(con, table, r)
+                added += 1
+        _ledger(con, "hook ledgers", p, added)
+
+
+def _hook_check(con: sqlite3.Connection, p: Path) -> str | None:
+    table = _hook_table(p)
+    if table == "model-choice-watch":
+        return _kv_equal(con, table, p)
+    return _subset(con, table, p)
+
+
+# -- the stores -----------------------------------------------------------------------------------
+
+
+def _existing(*paths: Path) -> list[Path]:
+    return [p for p in paths if p.is_file()]
+
+
+STORES: dict[str, Store] = {
+    "hook-ledgers": Store(
+        files=lambda: _existing(*(_hook_file(t) for t in HOOK_FILES)),
+        load=_hook_load,
+        check=_hook_check,
+    ),
+}
+
+
+def archive_dir(day: str | None = None) -> Path:
+    return state_dir() / "retired" / (day or time.strftime("%Y-%m-%d"))
+
+
+def _archived(p: Path, to: Path) -> Path:
+    for where, root in (("state", state_dir()), ("cache", cache_dir())):
+        with contextlib.suppress(ValueError):
+            return to / where / p.relative_to(root)
+    return to / "elsewhere" / p.name
+
+
+def retire(name: str, dry: bool = False, day: str | None = None, say=print) -> bool:
+    """Store NAME's files imported, read back, archived and deleted; False when one stays unequal
+    (then nothing of the store is deleted)."""
+    store = STORES[name]
+    kept = {p: why for p in store.files() if (why := store.keep(p))}
+    for p, why in kept.items():
+        say(f"{name}: kept {p}: {why}")
+    files = [p for p in store.files() if p not in kept]
+    if not files:
+        say(f"{name}: no file left to retire")
+        return True
+    with goh_db.transaction() as con:
+        store.load(con, files)
+    with goh_db.ro() as con:
+        bad = [f"{p}: {why}" for p in files if (why := store.check(con, p))]
+    if bad:
+        for line in bad:
+            say(f"{name}: NOT retired: {line}")
+        return False
+    if dry:
+        say(f"{name}: {len(files)} files read back equal (dry run: none moved)")
+        return True
+    to = archive_dir(day) / name
+    for p in files:
+        dest = _archived(p, to)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(p, dest)
+        if not filecmp.cmp(p, dest, shallow=False):
+            say(f"{name}: NOT retired: the copy of {p} differs")
+            return False
+    for p in files:
+        p.unlink()
+    say(f"{name}: {len(files)} files read back equal, archived under {to} and deleted")
+    return True
+
+
+def stray() -> list[Path]:
+    """Every retired store's file still on disk (read by nothing since its delete commit)."""
+    return [p for s in STORES.values() for p in s.files()]
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="goh state", description=__doc__.split("\n\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("retire", help="archive and delete the moved stores' files")
+    r.add_argument("store", nargs="*", help=f"one of {', '.join(STORES)} (default: every one)")
+    r.add_argument("--dry-run", action="store_true")
+    sub.add_parser("stray", help="every retired store's file still on disk")
+    a = ap.parse_args(argv)
+    if a.cmd == "retire" and (unknown := set(a.store) - set(STORES)):
+        ap.error(f"no such store: {', '.join(sorted(unknown))} (stores: {', '.join(STORES)})")
+    if a.cmd == "stray":
+        found = stray()
+        for p in found:
+            print(f"stray: {p} (its store lives in goh.db; `goh state retire` archives it)")
+        return 1 if found else 0
+    ok = [retire(n, a.dry_run) for n in (a.store or list(STORES))]
+    return 0 if all(ok) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

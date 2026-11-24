@@ -1,13 +1,10 @@
-"""The hook and cache ledgers in goh.db 0005 (GOH.STATEDBS4): each ledger's file, imported, reads
-back equal from its table in line order (handover plan (b) step 3); a re-import adds nothing; a
-line an old HEAD export appends later is imported once by the next write, before that write's row;
-a file trimmed under its offset gives only the lines no row holds; a file not yet imported is read
-under the table's rows; and a write goh.db does not take within its busy timeout lets the spawn
-through, spilled and counted, drained in order by the next write."""
+"""The hook and cache ledgers in goh.db 0005 (GOH.STATEDBS4): goh.db alone since wave 3 (the files'
+import and round trip: tests/test_state_retire.py); a write goh.db does not take within its busy
+timeout lets the spawn through, spilled and counted, drained in order by the next write; and no
+goh.db reads as unknown, never as an empty ledger."""
 
 from __future__ import annotations
 
-import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -43,62 +40,8 @@ def home(monkeypatch, tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _write(p: Path, rows: list[dict], tail: str = "", compact: bool = False) -> None:
-    sep = (",", ":") if compact else None
-    p.write_text("".join(json.dumps(r, separators=sep) + "\n" for r in rows) + tail)
-
-
 def _db(home: Path) -> sqlite3.Connection:
     return sqlite3.connect(home / "state" / "goh" / "goh.db")
-
-
-def test_every_ledger_imported_reads_back_equal_in_line_order(home: Path) -> None:
-    spawns = [_spawn(1), _outcome(1), _spawn(2, "fix it"), _outcome(2), _spawn(3)]
-    _write(hl.spawns_file(), spawns, tail="not json\n" + '{"torn": ')  # a bad line, a torn write
-    lanes = [_lane(i) for i in range(4)]
-    _write(hl.lanes_file(), lanes, compact=True)
-    cands = [{"id": "FAULTS.a", "faults": ["x"]}, {"id": "FAULTS.b", "faults": ["y"]}]
-    _write(hl.candidates_file(), cands)
-    hl.watch_file().write_text(json.dumps({"ran_at": "2026-11-23", "spend": {"current": {"a": 1}}}))
-    assert hl.import_all() == {"agent_spawns": 5, "lane_starts": 4, "docs": 3}
-    got = hl.export()
-    assert got == {"agent-spawns.jsonl": spawns, "lane-starts.jsonl": lanes,
-                   "fault-candidates.jsonl": cands,
-                   "model-choice-watch.json": json.loads(hl.watch_file().read_text())}  # fmt: skip
-    con = _db(home)
-    assert [r[0] for r in con.execute("SELECT n FROM agent_spawns ORDER BY n")] == [1, 2, 3, 4, 5]
-    assert con.execute("SELECT event, agent, item FROM agent_spawns ORDER BY n").fetchall() == [
-        ("spawn", None, "GOH.STATEDBS4"), ("outcome", "a1", None), ("spawn", None, None),
-        ("outcome", "a2", None), ("spawn", None, "GOH.STATEDBS4")]  # fmt: skip
-    assert hl.import_all() == {"agent_spawns": 0, "lane_starts": 0, "docs": 0}  # re-run: harmless
-    assert hl.spawns() == spawns
-
-
-def test_a_line_appended_after_the_import_is_taken_once_before_the_next_row(home: Path) -> None:
-    _write(hl.spawns_file(), [_spawn(1)])
-    assert hl.append(hl.SPAWNS, _outcome(1)) is None  # the first write imports the file first
-    with hl.spawns_file().open("a") as f:  # an old HEAD export still appending to the file
-        f.write(json.dumps(_spawn(2)) + "\n")
-    assert hl.spawns() == [_spawn(1), _outcome(1), _spawn(2)]  # pending, read under the rows
-    assert hl.append(hl.SPAWNS, _outcome(2)) is None
-    assert hl.append(hl.SPAWNS, _spawn(3)) is None
-    assert hl.spawns() == [_spawn(1), _outcome(1), _spawn(2), _outcome(2), _spawn(3)]
-    assert _db(home).execute("SELECT COUNT(*) FROM agent_spawns").fetchone() == (5,)
-
-
-def test_a_file_trimmed_under_its_offset_gives_only_the_lines_no_row_holds(home: Path) -> None:
-    _write(hl.lanes_file(), [_lane(i) for i in range(4)])
-    assert hl.append(hl.LANES, _lane(4)) is None
-    _write(hl.lanes_file(), [_lane(2), _lane(3), _lane(7)])  # lib/state_bounds.py's trim, then
-    assert hl.append(hl.LANES, _lane(5)) is None  # a line no row holds
-    assert hl.lanes() == [_lane(i) for i in (0, 1, 2, 3, 4, 7, 5)]
-
-
-def test_a_file_not_yet_imported_is_read_with_no_database(home: Path) -> None:
-    _write(hl.spawns_file(), [_spawn(1), _outcome(1)])
-    assert not (home / "state" / "goh" / "goh.db").exists()
-    assert hl.spawns() == [_spawn(1), _outcome(1)]
-    assert not (home / "state" / "goh" / "goh.db").exists()  # a read never creates it
 
 
 def test_a_busy_database_lets_the_spawn_through_spilled_and_counted(
@@ -130,25 +73,30 @@ def test_the_hook_busy_timeout_is_restored_after_the_write(home: Path, monkeypat
     assert os.environ.get("GOH_DB_BUSY_MS") is None
 
 
+def test_no_goh_db_is_unknown_never_an_empty_ledger(home: Path) -> None:
+    """Handover plan (d): with no goh.db every reader raises Unknown (a missing database never
+    reads as zero spawns), and a read creates no file; the audit says so and exits 2."""
+    import goh_db
+
+    for read in (hl.spawns, hl.lanes, hl.watch, hl.candidates):
+        with pytest.raises(goh_db.Unknown):
+            read()
+    assert hl.busy() == {"count": 0}
+    assert not (home / "state" / "goh" / "goh.db").exists()  # a read never creates it
+    assert hl.main(["watch"]) == 2
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import agent_audit
+
+    assert agent_audit.main(["--offline"]) == 2
+
+
 def test_the_weekly_record_and_the_newest_runs_candidates(home: Path) -> None:
-    _write(hl.candidates_file(), [{"id": "FAULTS.old"}])
-    assert hl.candidates() == [{"id": "FAULTS.old"}]  # the file, before any run on goh.db
     hl.record_watch({"ran_at": "r1"}, [{"id": "FAULTS.a"}, {"id": "FAULTS.b"}])
     assert hl.watch() == {"ran_at": "r1"}
     assert hl.candidates() == [{"id": "FAULTS.a"}, {"id": "FAULTS.b"}]
     hl.record_watch({"ran_at": "r2"}, None)  # no SPEND section: the candidates stand
     assert hl.watch() == {"ran_at": "r2"}
     assert hl.candidates() == [{"id": "FAULTS.a"}, {"id": "FAULTS.b"}]
-
-
-def test_the_cli_exports_each_store_as_the_file_it_was(home: Path, tmp_path: Path) -> None:
-    _write(hl.spawns_file(), [_spawn(1), _outcome(1)])
-    assert hl.main(["import"]) == 0
-    out = tmp_path / "export"
-    assert hl.main(["export", "--to", str(out)]) == 0
-    got = [json.loads(ln) for ln in (out / "agent-spawns.jsonl").read_text().splitlines()]
-    assert got == [_spawn(1), _outcome(1)]
-    assert (out / "lane-starts.jsonl").read_text() == ""
 
 
 def test_a_lock_order_refusal_lets_the_spawn_through_spilled(home: Path) -> None:

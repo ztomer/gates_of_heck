@@ -209,7 +209,8 @@ def live_proof(claude: str) -> tuple[bool, str]:
                                stdin=subprocess.DEVNULL, check=False)  # fmt: skip
         except (OSError, subprocess.TimeoutExpired) as e:
             return False, f"claude -p did not finish ({e})"
-        rows = hook_ledgers.spawns(Path(tmp) / "goh.db")  # its own goh.db, never the real one
+        db = Path(tmp) / "goh.db"  # its own goh.db, never the real one; none: nothing ledgered
+        rows = hook_ledgers.spawns(db) if db.exists() else []
     denied = "Refused: this general-purpose spawn" in r.stdout
     spawn = next((x for x in rows if x.get("event") == "spawn"
                   and x.get("description") == PROOF_DESC), None)  # fmt: skip
@@ -467,7 +468,7 @@ def main(argv: list[str] | None = None) -> int:
         rows = agent_audit.fault_rows(records, since)
         items = queue_read.items_or_empty(args.queue)
         state["fault_candidates"] = spend_watch.fault_candidates(rows, items)
-        state["candidates_file"] = "goh.db fault_candidates (lib/hook_ledgers.py export)"
+        state["candidates_file"] = "goh.db fault_candidates (lib/hook_ledgers.py)"
     red = (
         state["canary"]["red"]
         or state["settings"]["red"]

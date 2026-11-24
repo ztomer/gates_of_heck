@@ -355,6 +355,14 @@ def main(argv: list[str] | None = None) -> int:
         "--since", default=None, help="with --faults: outcomes at or after this ISO time"
     )
     args = ap.parse_args(argv)
+    try:
+        return _main(args)
+    except hook_ledgers.goh_db.Unknown as e:  # no goh.db: the spawns are unknown, never none
+        warn(f"the spawn ledger is unknown: {e}")
+        return 2
+
+
+def _main(args: argparse.Namespace) -> int:
     if args.faults:
         rows = fault_rows(records(args.ledger)[0], args.since)
         if args.json:

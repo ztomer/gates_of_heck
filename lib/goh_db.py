@@ -10,7 +10,8 @@ by a `-- bound:` header (lib/db_bounds.py): past it, the oldest rows move to goh
 
     file      GOH_DB (absolute), else $XDG_STATE_HOME/goh/goh.db, else ~/.local/state/goh/goh.db
     waits     busy_timeout 30 s (GOH_DB_BUSY_MS); synchronous=FULL: it holds the land queue
-    missing   a read is OSError; a corrupt file fails loudly and is never recreated
+    missing   a read is OSError (`known()`: Unknown, never zero); a corrupt file fails loudly and
+              is never recreated
     budget    256 MB for the whole file (owner 2026-11-23: "need also size limit")
 
 VIEWS ARE THE INTERFACE to other readers (handover plan (d)): goh publishes versioned views
@@ -75,6 +76,21 @@ def _order() -> None:
 def transaction(at: Path | None = None, named: bool = False) -> Iterator[sqlite3.Connection]:
     """One write to goh.db (AT: a file a caller names, e.g. lib/durations.py's)."""
     with db_core.transaction(SEAM, _order, at, named) as con:
+        yield con
+
+
+class Unknown(FileNotFoundError):
+    """There is no goh.db: a moved store's records are unknown, never none (handover plan (d))."""
+
+
+@contextlib.contextmanager
+def known(at: Path | None = None) -> Iterator[sqlite3.Connection]:
+    """goh.db read-only for a moved store's reader: `Unknown` when there is no file, so a missing
+    database never reads as zero lands, ships or spawns (its files are gone since wave 3)."""
+    p = at or path()
+    if not p.exists():
+        raise Unknown(f"no goh.db at {p}: its records are unknown, not none")
+    with ro(at) as con:
         yield con
 
 

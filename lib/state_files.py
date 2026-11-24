@@ -84,14 +84,6 @@ FILES: dict[str, FileBound | FileKept] = {
         "lib/commit_stamp.py record, one row per tree a commit gate passed; read by goh land "
         "--check, which runs the gate on a commit whose tree is not there",
     ),
-    "lane-starts.jsonl": FileBound(
-        28,
-        20000,
-        "at",
-        "state_file",
-        "the pre-GOH.STATEDBS4 file: hooks/claude/lane_room.py now writes goh.db's lane_starts "
-        "(lib/hook_ledgers.py), which imports its lines, until wave 3 deletes it",
-    ),
     "flakes/register.jsonl": FileBound(
         LEDGER_DAYS,
         20000,

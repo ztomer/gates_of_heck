@@ -39,11 +39,7 @@ ALLOWED: dict[str, set[str]] = {
     "flakes": {  # S3 goh.db 0004 flakes: moved (lib/small_stores.py)
         "lib/state_files.py",  # bounds the legacy files until wave 3's delete commit removes them
     },
-    "hook ledgers": {  # S4 goh.db 0005
-        # LEFT: the door's file half (GOH.STATEDBS4): the legacy files are imported in line order
-        # and their pending lines read, until wave 3's delete commit removes them
-        "lib/hook_ledgers.py",
-    },
+    "hook ledgers": set(),  # S4 goh.db 0005: moved; the files retired (lib/state_retire.py)
     "durations": set(),  # DUR goh.db 0006 readings: moved (lib/durations.py, GOH.DURATIONSDB)
     "reuse records": {  # V1 goh-cache.db 0002 verdicts (lib/reuse_store.py, GOH.VERDICTDB)
         "lib/reuse_store.py",  # LEFT: the files' window (read, copied in, pruned), until wave 3
