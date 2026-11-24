@@ -25,12 +25,16 @@ import affected_tests as at
 PRE = f'"$GOH_PY" {REPO_ROOT}/tools/affected_tests.py --run --structural --base "$1"'
 PYTEST = '#!/usr/bin/env bash\nexec "$GOH_PY" -m pytest -q -p no:cacheprovider "$@"\n'
 SLOW = "import time\n\n\ndef test_slow():  # names lib/new.py\n    time.sleep(60)\n"
+# The planted judges take `tmp_path`: the enqueue's own check runs every plain rule by its shape
+# (lib/rule_tests.py, GOH.RULESLEFT) and refuses a plain one before any pre-step, which
+# test_a_plain_rules_red_is_refused_by_the_check_before_any_pre_step pins. A judge the check cannot
+# see by its shape is the pre-step's to find, and these tests are the pre-step's.
 MAP_JUDGE = """from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def test_every_script_has_a_row_in_the_map():
+def test_every_script_has_a_row_in_the_map(tmp_path):
     text = (REPO_ROOT / "docs" / "map.md").read_text()
     missing = [p.name for p in (REPO_ROOT / "lib").glob("*.py") if f"`{p.name}`" not in text]
     assert not missing, f"no row in docs/map.md for: {missing}"
@@ -82,7 +86,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def test_every_internal_key_is_on_the_list():
+def test_every_internal_key_is_on_the_list(tmp_path):
     listed = (REPO_ROOT / "docs" / "internal_keys.txt").read_text().split()
     texts = [p.read_text() for p in (REPO_ROOT / "lib").glob("*.py")]
     keys = {k for t in texts for k in re.findall(r"GOH_[A-Z_]+", t)}
@@ -112,6 +116,27 @@ def test_a_judge_s_red_is_refused_at_enqueue_though_the_rest_reaches_its_deadlin
     out = done.stdout + done.stderr
     assert done.returncode == 2 and says in out and "nothing enqueued" in out, out
     assert f"{judge}::test_every_" in out, out
+    assert _pending(tmp_path) == []
+
+
+@pytest.mark.parametrize("case", sorted(PLANTED))
+def test_a_plain_rules_red_is_refused_by_the_check_before_any_pre_step(
+    repo, tmp_path, env, case
+) -> None:
+    """The same judge as a plain function is a rule by its shape: the enqueue's check refuses it
+    (exit 1, recorded red, nothing queued) and no pre-step starts."""
+    judge, text, planted, says = PLANTED[case]
+    plain = text.replace("(tmp_path):", "():")
+    assert plain != text
+    files = {**planted, "tools/pytest.sh": PYTEST, judge: plain}
+    files["lib/new.py"] = 'K = "GOH_UNDOCUMENTED"\n' if case == "internal-key" else ""
+    wt = _branch(repo, tmp_path, files)
+    started = tmp_path / "pre-step-started"
+    done = _enqueue(env, wt, GOH_LAND_PRE=f"touch {started}")
+    out = done.stdout + done.stderr
+    assert done.returncode == 1 and says in out and "nothing queued" in out, out
+    assert f"{judge}::test_every_" in out, out
+    assert not started.exists()
     assert _pending(tmp_path) == []
 
 
