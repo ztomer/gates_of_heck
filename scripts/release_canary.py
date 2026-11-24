@@ -70,6 +70,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import canary_grace
 import canary_memo
 import consumer_reads
+import db_core  # NewerFile: a goh.db this copy may not write (GOH.LANEMIGRATE)
 import estate_registry
 import killtree
 import not_applicable
@@ -427,7 +428,10 @@ def main() -> int:
     rec, rc = run(args)
     if "memo_records" not in rec:  # nothing swept: the records stay for the next land
         rec["memo_records"] = canary_memo.records(args.state, KEY)
-    estate_registry.update_state(args.state, lambda old: {**old, KEY: rec})
+    try:
+        estate_registry.update_state(args.state, lambda old: {**old, KEY: rec})
+    except db_core.NewerFile as e:  # a land's push worktree ahead of goh.db: the verdict stands
+        warn(f"release canary: its record was not written ({e}); the exit code is the verdict")
     say(rec)
     return rc
 
