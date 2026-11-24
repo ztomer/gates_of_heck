@@ -83,7 +83,9 @@ class PrintSafeEnv(dict):
 
 
 def print_safe(env: Mapping[str, str], keep: Iterable[str] = ()) -> PrintSafeEnv:
-    """`env` as a PrintSafeEnv showing the values of `keep` only."""
+    """`env` as a PrintSafeEnv showing the values of `keep` only. It only prints, so a kept name
+    that is no shell name (an inherited `SENTRY-TRACE`) is shown without its value, never raised
+    on: probe_sh, which writes names into a shell line, still refuses one."""
     out = PrintSafeEnv(env)
-    out.keep = frozenset(_names(keep))
+    out.keep = frozenset(n for n in keep if _NAME.match(n))
     return out

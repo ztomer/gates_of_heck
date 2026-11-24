@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from env_probe import REDACTED, probe_sh, read_probe, redacted
+from env_probe import REDACTED, print_safe, probe_sh, read_probe, redacted
 
 SECRET = "not-a-real-secret-0b5e"  # a stand-in value; the assertions name it, never print it
 
@@ -45,3 +45,12 @@ def test_redacted_keeps_names_and_the_asked_for_values() -> None:
 def test_a_kept_name_that_is_not_a_name_is_refused(tmp_path: Path, bad: str) -> None:
     with pytest.raises(ValueError):
         probe_sh(tmp_path / "x", keep=(bad,))
+
+
+def test_an_inherited_name_that_is_not_a_shell_name_prints_redacted_not_raises() -> None:
+    """A parent may export `SENTRY-TRACE` (a Claude Code agent's shell does): a test that passes
+    its whole environment as overrides kept it, and print_safe raised, so every such test went red
+    in that shell alone. It only prints, so the name shows with no value."""
+    env = print_safe({"SENTRY-TRACE": SECRET, "KEPT": "v"}, keep=("SENTRY-TRACE", "KEPT"))
+    assert env["SENTRY-TRACE"] == SECRET, "the child still gets it"
+    assert SECRET not in repr(env) and "'KEPT': 'v'" in repr(env)
