@@ -23,6 +23,7 @@ import sys
 from pathlib import Path
 
 import _drift_guard
+import _kept_store
 import _schedule
 import pytest
 from conftest import REPO_ROOT, hermetic_env
@@ -252,11 +253,13 @@ def test_burns():
 """
 
 
-def _child_run(tmp_path: Path, run_queue: float, fixture: str = FIXTURE) -> Path:
+def _child_run(
+    tmp_path: Path, run_queue: float, fixture: str = FIXTURE, conftest: str = "", **env: str
+) -> Path:
     """The suite's own wiring (the drift guard's reading, the schedule's table) in a child run,
     through an xdist worker, at a pinned stretch of 3 and a pinned run queue; its duration table."""
     (tmp_path / "conftest.py").write_text(
-        f"import sys\nsys.path.insert(0, {str(REPO_ROOT / 'tests')!r})\n"
+        f"import sys\nsys.path.insert(0, {str(REPO_ROOT / 'tests')!r})\n{conftest}"
         "import _schedule, _drift_guard\n"
         "from _drift_guard import pytest_runtest_makereport, pytest_runtest_setup  # noqa: F401\n"
         "_schedule.take()\n"
@@ -271,7 +274,7 @@ def _child_run(tmp_path: Path, run_queue: float, fixture: str = FIXTURE) -> Path
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-n", "1", str(tmp_path)],
         capture_output=True, text=True, cwd=tmp_path, check=False, stdin=subprocess.DEVNULL,
-        env=hermetic_env(GOH_TEST_DURATIONS=str(table)), timeout=patience(120),
+        env=hermetic_env(GOH_TEST_DURATIONS=str(table), **env), timeout=patience(120),
     )  # fmt: skip
     ok = r.returncode == 0 and " passed" in r.stdout and "failed" not in r.stdout
     assert ok, r.stdout + r.stderr
@@ -349,6 +352,39 @@ def test_a_loaded_run_that_missed_a_kept_store_leaves_the_entry_where_a_warm_one
     _child_run(tmp_path, run_queue=lp.QUIET_LOAD * 4, fixture=COLD)
     poles = fast_tests.load("pole", table)
     assert poles[cold] == 0.3, "a cold reading is no growth"
+    assert poles[burns] > 0.3, "the warm one's growth still moves its entry"
+
+
+COLD_SHELL = (
+    FIXTURE
+    + """
+
+def test_cold():
+    import sys  # the goh binary missed its shell verdicts: it wrote them back, as it does
+    store = sys.modules["_kept_store"]  # (crates/goh/src/verdict_cache.rs put_many)
+    store.put_shell(store._cache().path(), [("shell-lint", "k", "{}")])
+    start = time.process_time()
+    while time.process_time() - start < 0.4:
+        pass
+"""
+)
+
+
+def test_a_run_whose_binary_missed_its_shell_verdicts_is_read_cold(tmp_path: Path) -> None:
+    """GOH.COLDRUSTMISS: the goh binary's shell-verdict lookups (V2, in-process in Rust) are a kept
+    store a phase can miss too: its misses are the rows it writes back into the kept file, so a
+    phase that refilled `shell_verdicts` reads cold and leaves its entry where a warm one moves."""
+    burns, cold = "test_x.py::test_burns", "test_x.py::test_cold"
+    table, kept = tmp_path / "state" / "goh.db", tmp_path / "cache" / "goh-cache.db"
+    durations.record({"pole": {burns: 0.3, cold: 0.3}, "pole_cpu": {burns: 0.1, cold: 0.1}},
+                     db=table)  # fmt: skip
+    kept.parent.mkdir(parents=True)
+    _kept_store.put_shell(kept, [])  # a planted cold table: migrated, no verdict in it
+    conftest = "import _kept_store  # noqa: F401  (the suite loads it as a plugin)\n"
+    _child_run(tmp_path, run_queue=lp.QUIET_LOAD * 4, fixture=COLD_SHELL, GOH_CACHE_DB=str(kept),
+               conftest=conftest)  # fmt: skip
+    poles = fast_tests.load("pole", table)
+    assert poles[cold] == 0.3, "a phase whose binary refilled its verdicts is no growth"
     assert poles[burns] > 0.3, "the warm one's growth still moves its entry"
 
 

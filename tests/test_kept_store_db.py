@@ -105,3 +105,19 @@ def test_a_refused_merge_into_the_real_file_says_the_next_session_runs_cold(
     said = capsys.readouterr().err
     assert "1 kept row" in said and "cold" in said and str(real) in said, said
     assert _rows(real) == [(pf.STORE, "a", "1")]
+
+
+def test_rows_any_process_wrote_since_this_one_began_count_as_misses(tmp_path, monkeypatch) -> None:
+    """GOH.COLDRUSTMISS: the binary's shell-verdict misses are the rows it writes back; `written`
+    counts them in the kept file, every kept table, and none while there is no file or table."""
+    db = tmp_path / "goh-cache.db"
+    monkeypatch.setenv("GOH_CACHE_DB", str(db))
+    monkeypatch.setattr(ks, "_WRITTEN", {"seen": None, "rows": 0})
+    assert ks.written() == 0, "no file: nothing written"
+    sqlite3.connect(db).close()  # a file no migration has reached: no table to count
+    assert ks.written() == 0
+    db.unlink()
+    before = ks.missed()
+    ks.put_shell(db, [("shell-lint", "a", "{}"), ("shell-lint", "b", "{}")])
+    ks.put("parse-findings", {"c": "[]"}, db)
+    assert ks.written() == 3 and ks.missed() == before + 3

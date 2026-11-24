@@ -47,13 +47,41 @@ def _cache():
 
 
 _MISSED = [0]  # keys asked of a store and not found, in this process (`missed`)
+_SINCE = sqlite3.connect(":memory:").execute(f"SELECT {NOW}").fetchone()[0]  # this process's start
+_WRITTEN: dict[str, object] = {"seen": None, "rows": 0}  # the kept file's stamp, its rows since
 
 
 def missed() -> int:
-    """How many keys this process asked of its kept stores and did not find: the drift guard reads
+    """How many keys this process's kept stores missed, as far as it can tell: the drift guard reads
     it around each test phase, so a reading taken while a store refilled is COLD, never growth
-    (lib/long_pole.py `settle`, GOH.LONGPOLECOLD)."""
-    return _MISSED[0]
+    (lib/long_pole.py `settle`, GOH.LONGPOLECOLD). Only its change is read, so over-counting is
+    harmless: the keys Python asked and did not find, plus every row any process wrote into the
+    kept file's tables (TABLES) since this one began (`written`)."""
+    return _MISSED[0] + written()
+
+
+def written() -> int:
+    """Rows of every kept table (TABLES) written into this process's kept file since it began: the
+    misses of a store read in ANOTHER process or language, which no counter here sees. The goh
+    binary's shell verdicts (crates/goh/src/verdict_cache.rs) are one: it looks them up in-process
+    and writes back each one it missed, so its misses are its new rows (GOH.COLDRUSTMISS). A row
+    another worker sharing the file wrote reads this phase cold too: it is then not taken for
+    growth, never the reverse. Asked again only when the file or its WAL moved."""
+    p = _cache().path()
+    seen = []
+    for f in (p, p.with_name(p.name + "-wal")):
+        with contextlib.suppress(OSError):
+            st = f.stat()
+            seen.append((st.st_size, st.st_mtime_ns))
+    if seen and seen != _WRITTEN["seen"]:
+        rows, refused = 0, _cache().db_core.RealHomeOpen  # a suite never reads the real file
+        with contextlib.suppress(OSError, sqlite3.Error, refused), _cache().ro(p) as con:
+            for table, _, _, at in TABLES:
+                with contextlib.suppress(sqlite3.Error):  # a table a migration has not made yet
+                    sql = f"SELECT count(*) FROM {table} WHERE {at} >= ?"
+                    rows += con.execute(sql, (_SINCE,)).fetchone()[0]
+        _WRITTEN.update(seen=seen, rows=rows)
+    return int(_WRITTEN["rows"])  # type: ignore[call-overload]
 
 
 def get(store: str, keys: list[str], db: Path | None = None) -> dict[str, str]:
