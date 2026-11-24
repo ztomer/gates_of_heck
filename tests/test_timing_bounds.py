@@ -63,20 +63,35 @@ def test_the_pattern_sees_each_shape() -> None:
 
 
 def test_a_quiet_box_bounds_at_slack_times_the_pass(monkeypatch) -> None:
+    monkeypatch.setattr(timing_bounds, "thread_stretch", lambda: 1.0)
     monkeypatch.setattr(timing_bounds, "load_factor", lambda: 1.0)
     assert timing_bounds.bound(2, 60) == 6.0
 
 
 def test_a_loaded_box_stretches_it_but_never_toward_the_failure(monkeypatch) -> None:
+    monkeypatch.setattr(timing_bounds, "thread_stretch", lambda: 1.0)
     monkeypatch.setattr(timing_bounds, "load_factor", lambda: 4.0)
     assert timing_bounds.bound(2, 60) == 24.0
+    monkeypatch.setattr(timing_bounds, "thread_stretch", lambda: 1.0)
     monkeypatch.setattr(timing_bounds, "load_factor", lambda: 40.0)
     assert timing_bounds.bound(2, 60) == 45.0
 
 
 def test_patience_stretches_a_give_up_deadline_by_the_load(monkeypatch) -> None:
+    monkeypatch.setattr(timing_bounds, "thread_stretch", lambda: 1.0)
     monkeypatch.setattr(timing_bounds, "load_factor", lambda: 7.0)
     assert timing_bounds.patience(10) == 70.0
+
+
+def test_a_clamped_thread_stretches_a_bound_past_the_run_queue(monkeypatch) -> None:
+    """GOH.SUITEDRIFTBUILD: under the lane clamp the run queue read x3.2 where a clamped thread
+    ran x25-35; a give-up deadline stretched by the run queue alone expired at a tenth of it."""
+    monkeypatch.setattr(timing_bounds, "load_factor", lambda: 3.0)
+    monkeypatch.setattr(timing_bounds, "thread_stretch", lambda: 12.0)
+    assert timing_bounds.patience(10) == 120.0
+    assert timing_bounds.bound(2, 60) == 45.0  # never toward the failure
+    monkeypatch.setattr(timing_bounds, "thread_stretch", lambda: 1.0)
+    assert timing_bounds.patience(10) == 30.0
 
 
 def test_a_failure_not_clear_of_its_pass_is_a_design_error() -> None:
@@ -90,10 +105,12 @@ def test_a_give_up_deadline_rereads_the_load_while_it_waits(monkeypatch) -> None
     clock = [100.0]
     real = timing_bounds.time.monotonic
     monkeypatch.setattr(timing_bounds.time, "monotonic", this_thread(lambda: clock[0], real))
+    monkeypatch.setattr(timing_bounds, "thread_stretch", lambda: 1.0)
     monkeypatch.setattr(timing_bounds, "load_factor", lambda: 1.0)
     wait = timing_bounds.GiveUp(10)
     clock[0] += 15
     assert wait.passed()
+    monkeypatch.setattr(timing_bounds, "thread_stretch", lambda: 1.0)
     monkeypatch.setattr(timing_bounds, "load_factor", lambda: 4.0)
     assert not wait.passed(), "the load rose during the wait, so the wait stretched"
 

@@ -137,7 +137,7 @@ def test_the_coverage_gate_marks_its_build_as_running_and_prunes_the_idle(tmp_pa
     r = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "coverage_gate.sh"), "--lang", "rust",
          "--floor", "0", str(crate)],
-        cwd=crate, capture_output=True, text=True, timeout=600, stdin=subprocess.DEVNULL,
+        cwd=crate, capture_output=True, text=True, timeout=patience(600), stdin=subprocess.DEVNULL,
         env=hermetic_env(GOH_COV_CACHE=str(cache), GOH_COV_CACHE_MAX_GIB="0.001"), check=False,
     )  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
@@ -208,7 +208,7 @@ def test_the_push_gate_hands_the_gate_the_pinned_dir(tmp_path) -> None:
     got = subprocess.run(
         ["bash", str(REPO_ROOT / "gates" / "push_gate.sh")], cwd=repo, env=env, text=True,
         input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n", capture_output=True,
-        timeout=60, check=False,
+        timeout=patience(60), check=False,
     )  # fmt: skip
     assert got.returncode == 0, got.stdout + got.stderr
     report = (tmp_path / "report.txt").read_text()

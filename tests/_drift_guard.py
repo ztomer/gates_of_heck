@@ -329,6 +329,9 @@ def stretch_of(walls: list[float]) -> float:
     return max(1.0, mid / (REFERENCE_CPU_S * speed_factor()))
 
 
+_MEASURED: list[float] = []  # the stretch the last probe on this process measured
+
+
 def pole_stretch() -> float:
     """How many times longer than on a quiet core of this box this thread runs CPU work now."""
     walls = []
@@ -336,7 +339,15 @@ def pole_stretch() -> float:
         t0 = time.perf_counter()
         _loop()
         walls.append(time.perf_counter() - t0)
-    return stretch_of(walls)
+    _MEASURED[:] = [stretch_of(walls)]
+    return _MEASURED[0]
+
+
+def thread_stretch() -> float:
+    """The stretch the last probe measured on this process, times the box's speed (as
+    `load_factor` reads a box): what the QoS clamp costs a thread, which the run queue never shows
+    (`judged_s`). 1 before any phase of POLE_PROBE_AFTER_S or more was probed."""
+    return (_MEASURED[0] if _MEASURED else 1.0) * speed_factor()
 
 
 def run_queue(start: float, stop: float) -> float:

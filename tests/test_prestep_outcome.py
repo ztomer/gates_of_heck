@@ -57,6 +57,14 @@ WINDOWED = textwrap.dedent(
 )
 
 
+def _ends_late() -> tuple[int, int]:
+    """A run of 2 s under a 3 s deadline on a quiet box -- it ends after more than half of it, the
+    stdlib's fault -- both stretched by the box (GOH.SUITEDRIFTBUILD): under a lane's QoS clamp the
+    interpreter and bash starts ate the fixed 1 s margin, and the deadline fired first."""
+    k = max(1, round(patience(1)))
+    return 2 * k, 3 * k
+
+
 def _windowed(tmp_path: Path, argv: list[str], **env: str) -> subprocess.CompletedProcess[str]:
     driver = tmp_path / "windowed.py"
     driver.write_text(WINDOWED, encoding="utf-8")
@@ -71,16 +79,19 @@ def test_a_wrapped_command_that_ends_in_the_exiting_window_keeps_its_own_status(
 ) -> None:
     """`sleep 2` under a 3 s deadline ends after more than half of it: the stdlib wait read the
     exiting window as the deadline. Its exit 7 is the pre-step's verdict, never 124."""
+    run, deadline = _ends_late()
     r = _windowed(tmp_path, [str(PRE_DEADLINE), "run", "--mark", str(tmp_path / "mark"),
-                             "--floor", "3s", "--ceiling", "3s", "--",
-                             "bash", "-c", "sleep 2; exit 7"])  # fmt: skip
+                             "--floor", f"{deadline}s", "--ceiling", f"{deadline}s", "--",
+                             "bash", "-c", f"sleep {run}; exit 7"])  # fmt: skip
     assert r.returncode == 7, r.stderr
     assert "expired" not in r.stderr, r.stderr
 
 
+@pytest.mark.load_sensitive(reason="hands load.py a deadline as --max, which the derivation misses")
 def test_load_keeps_a_commands_status_when_it_ends_in_the_exiting_window(tmp_path: Path) -> None:
-    r = _windowed(tmp_path, [str(LOAD), "--background-ok", "test", "--max", "3", "0", "--",
-                             "bash", "-c", "sleep 2; exit 7"])  # fmt: skip
+    run, deadline = _ends_late()
+    r = _windowed(tmp_path, [str(LOAD), "--background-ok", "test", "--max", str(deadline), "0",
+                             "--", "bash", "-c", f"sleep {run}; exit 7"])  # fmt: skip
     assert r.returncode == 7, r.stdout + r.stderr
     assert "deadline of" not in r.stdout + r.stderr, r.stdout + r.stderr
 

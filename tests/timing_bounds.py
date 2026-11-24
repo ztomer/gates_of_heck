@@ -25,7 +25,18 @@ from __future__ import annotations
 
 import time
 
-from _drift_guard import load_factor
+from _drift_guard import load_factor, thread_stretch
+
+# THE QOS CLAMP (GOH.SUITEDRIFTBUILD). A lane or work gate's suite runs under `taskpolicy -c
+# utility`, which the run queue cannot see: x25-35 on a clamped thread where `load_factor` said
+# x3.2. Every bound here stretches by the larger of the run queue and the stretch last measured on
+# this process's own thread (`thread_stretch`); a bound toward a failure stays capped below it.
+
+
+def stretch() -> float:
+    """How much slower than quiet this box runs this process now: run queue or measured clamp."""
+    return max(load_factor(), thread_stretch())
+
 
 SLACK = 3.0
 FAILURE_SHARE = 0.75
@@ -37,20 +48,20 @@ def bound(expected_s: float, failure_s: float) -> float:
         raise ValueError(
             f"a {failure_s:g} s failure is not clear of a {expected_s:g} s pass: lengthen it"
         )
-    return min(expected_s * SLACK * load_factor(), FAILURE_SHARE * failure_s)
+    return min(expected_s * SLACK * stretch(), FAILURE_SHARE * failure_s)
 
 
 def assert_sooner(elapsed: float, expected_s: float, failure_s: float, what: str) -> None:
     limit = bound(expected_s, failure_s)
     assert elapsed < limit, (
         f"{what}: took {elapsed:.1f} s against {limit:.1f} s (a {expected_s:g} s pass x"
-        f"{SLACK:g} x{load_factor():.2g} for the box's load; the failure takes {failure_s:g} s)"
+        f"{SLACK:g} x{stretch():.2g} for the box's load; the failure takes {failure_s:g} s)"
     )
 
 
 def patience(seconds: float) -> float:
     """How long a wait whose failure is "never" gives up after, on this box now."""
-    return seconds * load_factor()
+    return seconds * stretch()
 
 
 class GiveUp:

@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from test_push_gate import GATE, PUSH_GATE, REPO_ROOT, _git, _repo
+from timing_bounds import patience
 
 LITTER_GATE = GATE.replace("exit 0\n", 'printf x > "../$(basename "$PWD").out"\nexit 0\n')
 
@@ -43,7 +44,7 @@ def _push(repo: Path, tmp_path: Path, export_root: Path) -> subprocess.Completed
         text=True,
         input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n",
         capture_output=True,
-        timeout=60,
+        timeout=patience(60),
         check=False,
     )
 
