@@ -174,6 +174,7 @@ def _enter() -> None:
     # An xdist worker inherits the controller's; a suite a test starts with a TMPDIR of its own
     # (test_temp_claimable.py's sweep) enters afresh, with that TMPDIR as its real one.
     if os.environ.get(MARKER) and os.environ.get(MARKER) == os.environ.get("TMPDIR"):
+        _INHERITED.append(True)  # its root is the run's: `own_root` gives a nested session its own
         return
     real = tempfile.gettempdir()
     root = os.environ.get("PYTEST_DEBUG_TEMPROOT")
@@ -191,6 +192,32 @@ def _enter() -> None:
     os.environ[MARKER] = str(tmp)
     os.environ["TMPDIR"] = str(tmp)
     tempfile.tempdir = None  # gettempdir() caches; the next call reads TMPDIR again
+
+
+_INHERITED: list[bool] = []  # this process entered the root it inherited (`_enter`)
+
+
+def own_root(config) -> None:
+    """A pytest a test starts numbers its `pytest-N` in a root no sibling had (GOH.NESTEDBASETEMP):
+    `session-K` under the one it inherited, the first K free. A green session under
+    `tmp_path_retention_policy=failed` (gates/_pytest_root.sh) removes its `pytest-N`, so the next
+    pytest the same worker started took that number and every tmp_path of the one before, while
+    the suite's home -- goh.db with them -- outlived both: a land queue's rows, keyed by its path,
+    were read by the next session's queue at that path. Called from tests/_suite_plugins.py's
+    configure, before anything asks for the basetemp; an xdist worker's is its controller's."""
+    root = os.environ.get("PYTEST_DEBUG_TEMPROOT", "")
+    if not _INHERITED or hasattr(config, "workerinput") or not os.path.isdir(root):
+        return
+    k = 0
+    while True:
+        mine = Path(root) / f"session-{k}"
+        try:
+            mine.mkdir()
+        except FileExistsError:
+            k += 1
+            continue
+        os.environ["PYTEST_DEBUG_TEMPROOT"] = str(mine)
+        return
 
 
 @pytest.fixture(scope="session", autouse=True)
