@@ -85,7 +85,7 @@ def test_the_check_names_a_per_run_directory_with_no_bound(tmp_path) -> None:
     for i in range(sb.GROWTH):
         _file(tmp_path / "newthing" / f"run-{i}.log", 0, now)
     for i in range(sb.GROWTH + 5):  # registered Kept: a store bounded at its writer
-        _file(tmp_path / "reuse" / "carry" / f"k{i}", 0, now)
+        _file(tmp_path / "reuse" / "profstore" / f"k{i}", 0, now)
     _file(tmp_path / "landq" / "logs" / "01700000000000000000-GOH.X.log", 30 * DAY, now)
     _file(tmp_path / "few" / "a.log", 0, now)
     found = sb.unbounded(tmp_path, now)
@@ -132,17 +132,11 @@ def test_session_start_names_an_unbounded_state_directory(tmp_path, monkeypatch)
     assert lines == [want]
 
 
-def test_every_reuse_path_stored_under_reuse_has_its_bound_row() -> None:
-    # GOH.AFFECTEDBOUND: reuse/affected (pruned by TTL in lib/affected_verdict.py) had no row,
-    # so the session-start audit called it unbounded at 58 entries. A path whose records live
-    # in the verdict store (`store` lib/reuse.py) writes reuse/<name> and needs its row.
+def test_no_reuse_path_keeps_a_directory_of_record_files() -> None:
+    # GOH.AFFECTEDBOUND once gave every reuse path stored under reuse/<name> its row here; since
+    # GOH.VERDICTDB its records are goh-cache.db rows (lib/reuse_store.py, bounded by
+    # lib/db_bounds.py), so a row for reuse/<name> would excuse a directory nothing writes.
     import reuse
 
-    missing = [
-        n
-        for n, p in reuse.PATHS.items()
-        if p.store == "lib/reuse.py" and f"reuse/{n}" not in sb.REGISTRY
-    ]
-    assert not missing, (
-        f"reuse paths stored under reuse/ with no lib/state_bounds.py row: {missing}"
-    )
+    stale = [f"reuse/{n}" for n in reuse.PATHS if f"reuse/{n}" in sb.REGISTRY]
+    assert not stale, f"reuse paths whose record files are retired, still registered: {stale}"

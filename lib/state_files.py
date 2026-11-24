@@ -27,7 +27,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import lock_order  # the one acquire path
 import state_append  # a ledger's writers' lock, the one a trim holds
 
 HISTORY_DAYS = 14  # lib/state_bounds.py's: how long the land and ship sources live
@@ -41,7 +40,7 @@ class FileBound:
     days: float | None  # a row older than this goes (by STAMP); None: by count only
     lines: int  # the newest LINES stay
     stamp: str  # the JSON field dating a row: epoch seconds, ISO time or YYYY-MM-DD; '': a text log
-    lock: str  # "state_file" (lib/state_append.py), "reuse_audit" (its writer's), "" (in place)
+    lock: str  # "state_file" (lib/state_append.py), "" (in place)
     why: str  # its writer, and the readers whose window it keeps
 
 
@@ -75,14 +74,6 @@ FILES: dict[str, FileBound | FileKept] = {
         "state_file",
         "the pre-GOH.STATEDB file: lib/land_check.py learn now writes goh.db's land_guards "
         "(lib/land_records.py) and reads this file's lines no row holds, until wave 3 deletes it",
-    ),
-    "reuse/audit/shadow.jsonl": FileBound(
-        14,
-        30000,
-        "epoch",
-        "reuse_audit",
-        "the pre-switch file: lib/reuse_audit.py compare writes goh.db's reuse_shadow now "
-        "(GOH.VERDICTDB, lib/reuse_audit_store.py), which imports it, until wave 3 deletes it",
     ),
     "landq/lander.log": FileBound(
         None,
@@ -157,13 +148,6 @@ def trim(rule: FileBound, path: Path, now: float | None = None) -> int:
     if rule.lock == "state_file":
         with state_append.trimming(path) as got:
             return _rewrite(rule, path, now) if got else 0
-    if rule.lock == "reuse_audit":
-        with open(path.parent / ".lock", "a") as lk:
-            try:
-                lock_order.flock(lk, "reuse_audit", wait=False)
-            except OSError:
-                return 0
-            return _rewrite(rule, path, now)
     try:
         with open(path, "r+b") as fh:
             lines = fh.read().splitlines(keepends=True)

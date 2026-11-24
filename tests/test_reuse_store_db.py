@@ -2,9 +2,10 @@
 
 ~12k small files under ~/.local/state/goh/reuse, 200 MB of them verdicts, moved into the cache
 file's `verdicts` table (migration 0002). Each calibration below is the move's own risk: a record
-still written as a file, a file from before the switch no longer read (a year of `pushed` bases
-lost at the land), a deleted cache that costs a verdict instead of a re-run, a path that grows
-without bound, a database error that raises into a gate, and a suite that writes the real file.
+still written as a file, a file from before the switch read after its window closed (wave 3:
+`goh state retire` imports them), a deleted cache that costs a verdict instead of a re-run, a path
+that grows without bound, a database error that raises into a gate, and a suite that writes the
+real file.
 """
 
 from __future__ import annotations
@@ -56,21 +57,22 @@ def test_goh_cache_db_wins_over_the_named_root(store, tmp_path, monkeypatch):
     assert _rows(tmp_path / "c.db") and not (store / "goh-cache.db").exists()
 
 
-def test_a_file_from_before_the_switch_is_read_copied_in_and_pruned(store, monkeypatch):
+def test_a_file_from_before_the_switch_is_no_record_any_more(store):
+    """Wave 3's delete commit: the files' window is closed. A record file left under the root is
+    read by nothing (`goh state retire reuse-records` imports and removes them; lib/state_retire.py)
+    and pruned by nothing: no lookup, no `records`, no prune sees it."""
     k = reuse.key("pushed", F2 := {"repo": "/r/.git", "tree": "t" * 40})
     old = store / "pushed" / k[:2] / f"{k}.json"
     old.parent.mkdir(parents=True)
     rec = {"format": reuse.FORMAT, "path": "pushed", "key": k, "fields": F2, "verdict": "green",
            "by": "push", "epoch": reuse.now()}  # fmt: skip
     old.write_text(json.dumps(rec))
-    got, why = reuse.lookup("pushed", F2)
-    assert got is not None and got["verdict"] == "green", why  # a year-long base is not lost
-    assert ("pushed", k, "green") in _rows(store / "goh-cache.db")  # ... and now a row
+    got, _ = reuse.lookup("pushed", F2)
+    assert got is None and not (store / "goh-cache.db").exists()  # never read, never copied in
     stale = store / "gate" / "ab" / ("ab" + "0" * 62 + ".json")
     stale.parent.mkdir(parents=True)
     stale.write_text(json.dumps({"epoch": reuse.now() - 2 * reuse.DAY_S}))
-    assert [f for f, _, _ in reuse.records("gate")] == [str(stale)]
-    assert reuse.prune("gate") == 1 and not stale.exists()
+    assert list(reuse.records("gate")) == [] and reuse.prune("gate") == 0 and stale.exists()
 
 
 def test_a_deleted_cache_is_a_miss_then_a_new_file(store):

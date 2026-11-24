@@ -20,10 +20,8 @@ costs a re-run, never a verdict. A lane's copy (a linked worktree, a landq slot)
 file read-only until main has applied 0002 (lib/db_core.py, GOH.LANEMIGRATE): its writes are
 skipped until then.
 
-THE FILES FROM BEFORE THE SWITCH. A record file still under root() is read when the database has
-no row for its key, and copied in; `prune` deletes the old ones as before, so the directory empties
-within each path's TTL. Old HEAD exports (gates/_from_head.py) keep writing files for hours after
-the land; they are read the same way.
+THE FILES FROM BEFORE THE SWITCH are read by nothing (wave 3's delete commit): `goh state retire
+reuse-records` imports each into its row, reads it back and removes them (lib/state_retire.py).
 
 NAMED. A suite's controller records its land's verdicts into the CALLER's store
 (tests/_land_verdicts.py `_in_store`): the runner names that file, and the controller sets `NAMED`
@@ -79,10 +77,6 @@ def where(path: str, key: str) -> str:
     return f"{db()}#{path}/{key}"
 
 
-def _legacy(path: str, key: str) -> Path:
-    return root() / path / key[:2] / f"{key}.json"
-
-
 def _named() -> bool:
     return NAMED is not None
 
@@ -120,59 +114,35 @@ def _parse(body: str) -> dict:
 
 def get(path: str, key: str) -> tuple[dict | None, str, str]:
     """(PATH's record KEY or None, its locator, why it is unreadable or ""). None with no why: no
-    record. A file from before the switch is read when the database has no row, and copied in."""
+    record."""
     got = _query("SELECT body FROM verdicts WHERE path=? AND key=?", (path, key))
     body = got[0][0] if got else None
     if body is None:
-        return _old(path, key)
+        return None, where(path, key), ""
     try:
         return _parse(body), where(path, key), ""
     except ValueError as e:
         return None, where(path, key), str(e)
 
 
-def _old(path: str, key: str) -> tuple[dict | None, str, str]:
-    f = _legacy(path, key)
-    try:
-        rec = _parse(f.read_text(encoding="utf-8"))
-    except (FileNotFoundError, NotADirectoryError):
-        return None, where(path, key), ""
-    except (OSError, ValueError) as e:
-        return None, str(f), str(e)
-    put(path, key, rec)
-    return rec, where(path, key), ""
-
-
 def rows(path: str) -> Iterator[tuple[str, dict]]:
-    """Every record of PATH ({}: unreadable), the database's and any file's from before it."""
-    seen: set[str] = set()
+    """Every record of PATH ({}: unreadable)."""
     for key, body in _query("SELECT key, body FROM verdicts WHERE path=?", (path,)):
-        seen.add(key)
         try:
             yield where(path, key), _parse(body)
         except ValueError:
             yield where(path, key), {}
-    for f in (root() / path).glob("*/*.json"):
-        if f.stem in seen:
-            continue
-        try:
-            yield str(f), _parse(f.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            yield str(f), {}
 
 
 def drop(path: str, locators: list[str]) -> int:
-    """Delete these records of PATH (database rows and files from before it); how many."""
+    """Delete these records of PATH (their locators); how many."""
     keys = [loc.rpartition("/")[2] for loc in locators if "#" in loc]
-    files = [Path(loc) for loc in locators if "#" not in loc]
-    for f in files:
-        f.unlink(missing_ok=True)
     if keys:
         with goh_cache_db.missable(f"reuse {path} prune"), \
                 goh_cache_db.transaction(db(), _named()) as con:  # fmt: skip
             con.executemany("DELETE FROM verdicts WHERE path=? AND key=?",
                             [(path, k) for k in keys])  # fmt: skip
-    return len(keys) + len(files)
+    return len(keys)
 
 
 def cap(path: str, keep: int | None = None) -> int:

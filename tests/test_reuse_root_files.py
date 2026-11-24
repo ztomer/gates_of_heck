@@ -25,19 +25,27 @@ TREE_READS = ("lib/", "scripts/", "tools/", "gates/", "hooks/", "checks/")
 NAMED = re.compile(r'\b(?:reuse|reuse_store)\.root\(\) / "([A-Za-z0-9_.-]+)"')
 
 
+# lib/state_retire_verdicts.py names the retired directories, to archive and remove them
+RETIRE = {"lib/state_retire.py", "lib/state_retire_verdicts.py"}
+
+
 def kept_dirs() -> dict[str, set[str]]:
-    """{directory under the reuse root: the files that name it}."""
+    """{directory under the reuse root: the files that name it}; a lock file is no directory."""
     out: dict[str, set[str]] = {}
     for top in DIRS:
         for f in sorted((REPO_ROOT / top).rglob("*.py")):
+            if f.relative_to(REPO_ROOT).as_posix() in RETIRE:
+                continue
             for seg in NAMED.findall(f.read_text(encoding="utf-8")):
+                if seg.endswith(".lock"):
+                    continue
                 out.setdefault(seg, set()).add(f.relative_to(REPO_ROOT).as_posix())
     return out
 
 
 def test_every_directory_kept_under_the_reuse_root_is_registered() -> None:
     found = kept_dirs()
-    assert {"profstore", "profreach", "binreach", "audit"} <= set(found), found  # the scan sees
+    assert {"profstore", "profreach", "binreach"} <= set(found), found  # the scan sees
     kept = {k for k, v in state_bounds.REGISTRY.items() if isinstance(v, state_bounds.Kept)}
     bad = {seg: sorted(files) for seg, files in found.items() if f"reuse/{seg}" not in kept}
     assert bad == {}, f"unregistered under the reuse root (lib/state_bounds.py REGISTRY): {bad}"

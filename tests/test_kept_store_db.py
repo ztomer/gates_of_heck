@@ -59,16 +59,19 @@ def test_only_the_top_level_controller_merges_and_no_child_inherits_the_name(tmp
     assert out.stdout.strip() == str(tmp_path / "r.db")  # read once, at import
 
 
-def test_goh_state_names_no_kept_store_as_unbounded(tmp_path) -> None:
-    """GOH.VERDICTBOUND: `goh state` said "parse-findings: 257 entries and no bound" and the same of
-    tree-lint-verdicts; each kept store is registered with its bound."""
+def test_a_retired_kept_store_left_on_disk_is_named_never_excused(tmp_path) -> None:
+    """GOH.VERDICTBOUND registered the kept stores' directories while they were files; they are rows
+    now and their files retired (`goh state retire parse-findings shell-verdicts`), so a directory
+    left behind is named by `goh state` until it is, never excused by a stale registration."""
     sys.path.insert(0, str(REPO_ROOT / "lib"))
     import state_bounds
 
-    for name in ("parse-findings", "tree-lint-verdicts", "self-walk-verdicts"):
+    names = ("parse-findings", "self-walk-verdicts", "tree-lint-verdicts")
+    for name in names:
         for n in range(state_bounds.GROWTH + 1):
             (tmp_path / name / f"{n:02x}").mkdir(parents=True)
-    assert state_bounds.unbounded(tmp_path) == []
+    got = state_bounds.unbounded(tmp_path)
+    assert sorted(line.split(":")[0] for line in got) == list(names), got
 
 
 def test_a_lookup_counts_the_keys_it_missed(tmp_path) -> None:

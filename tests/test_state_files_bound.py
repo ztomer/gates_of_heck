@@ -74,14 +74,14 @@ def test_the_check_names_an_unlisted_growing_file_and_a_file_past_its_bound(tmp_
     (tmp_path / "landq").mkdir()
     (tmp_path / "new-ledger.jsonl").write_text("{}\n")
     (tmp_path / "landq" / "other.log").write_text("x\n")
-    (tmp_path / "reuse" / "audit").mkdir(parents=True)
-    (tmp_path / "reuse" / "audit" / "growing.jsonl").write_text("{}\n")
+    (tmp_path / "reuse" / "binreach").mkdir(parents=True)
+    (tmp_path / "reuse" / "binreach" / "growing.jsonl").write_text("{}\n")
     _rows(tmp_path / "timing" / "ledger.jsonl", [400])
     _rows(
         tmp_path / "reuse" / "profstore" / "ledger.jsonl", [400]
     )  # excused: bounded at its writer
     found = sb.unbounded(tmp_path, NOW)
-    for rel in ("new-ledger.jsonl", "landq/other.log", "reuse/audit/growing.jsonl"):
+    for rel in ("new-ledger.jsonl", "landq/other.log", "reuse/binreach/growing.jsonl"):
         assert any(line.startswith(f"{rel}: an append-only file and no bound") for line in found), (
             found
         )

@@ -3,9 +3,10 @@ reuse_audit_store.py).
 
 The audit is durable: a path's record that says OFF, lost, turns a wrong reuse back on (handover
 plan (0) 4), so it moves into goh.db, not the disposable cache. Each calibration is the move's own
-risk: a record or a sample still written as a file, an OFF recorded in a file before the switch no
-longer read (the path silently back on), an import that loses or doubles a line, a test's audit
-leaking into another's, and SessionStart's reader still reading the file.
+risk: a record or a sample still written as a file, a file from before the switch still read after
+wave 3 (its import, read-back and archive are `goh state retire reuse-audit`'s, tests/
+test_state_retire_verdicts.py), a test's audit leaking into another's, and SessionStart's reader
+still reading the file.
 """
 
 from __future__ import annotations
@@ -63,55 +64,17 @@ def test_a_record_and_a_sample_are_goh_db_rows_and_no_file(store, monkeypatch):
     assert 8 in {v for (v,) in _q(db, "SELECT version FROM schema_version")}
 
 
-def test_an_off_from_before_the_switch_stays_off_and_is_imported_by_its_write(store):
-    """The calibration that matters: a path a file says is off reads off, never on again."""
+def test_a_file_from_before_the_switch_is_no_record_any_more(store):
+    """Wave 3's delete commit: only goh.db rows are read. A record file left under reuse/audit is
+    `goh state retire reuse-audit`'s to import, read back and archive (lib/state_retire.py), and
+    the audit's flock is reuse/audit.lock, beside the directory that goes."""
     legacy = store / "audit"
     legacy.mkdir(parents=True)
-    rec = {"path": "carry", "state": "off", "cause": "disagree", "why": "w", "fault": "filed X",
-           "window": reuse_audit._fresh_window(reuse.now()), "closed": []}  # fmt: skip
-    (legacy / "carry.json").write_text(json.dumps(rec))
-    assert reuse_audit.use("carry", dict.fromkeys(reuse.PATHS["carry"].fields, "x")) == "off"
-    got = store_mod.get("carry")
-    assert got is not None and got["state"] == "off" and got["cause"] == "disagree"
-    assert _q(store / "goh.db", "SELECT path FROM reuse_audit") == [("carry",)]
-
-
-def test_import_then_export_is_the_files_round_trip(store, tmp_path):
-    legacy = store / "audit"
-    legacy.mkdir(parents=True)
-    recs = {
-        n: {"path": n, "state": s, "window": {"start": 1, "uses": i}, "closed": []}
-        for i, (n, s) in enumerate((("carry", "off"), ("gate", "on"), ("fullrun", "on")))
-    }
-    for n, r in recs.items():
-        (legacy / f"{n}.json").write_text(json.dumps(r, sort_keys=True, indent=1))
-    lines = [{"path": "carry", "epoch": 10 + i, "outcome": "agreed", "key": f"k{i}"}
-             for i in range(5)]  # fmt: skip
-    (legacy / "shadow.jsonl").write_text("".join(json.dumps(r, sort_keys=True) + "\n"
-                                                 for r in lines))  # fmt: skip
-    before = store_mod.export()  # the files read under an empty database: the readers' view
-    assert store_mod.import_all() == {"carry": 1, "gate": 1, "fullrun": 1, "shadow": 5}
-    assert store_mod.import_all() == {}  # a re-run reads nothing twice (the imports ledger)
-    after = store_mod.export()
-    assert after == before == {"records": recs, "shadow": lines}
-    out = tmp_path / "out"
-    store_mod.write(after["records"], after["shadow"], out)
-    for f in legacy.iterdir():  # byte-equal, as lib/reuse_audit.py wrote each file
-        assert (out / f.name).read_text() == f.read_text(), f.name
-    assert len(_q(store / "goh.db", "SELECT n FROM reuse_shadow")) == 5
-
-
-def test_a_shadow_line_appended_after_the_import_is_read_once(store):
-    legacy = store / "audit"
-    legacy.mkdir(parents=True)
-    one = {"path": "carry", "epoch": 1, "outcome": "agreed"}
-    (legacy / "shadow.jsonl").write_text(json.dumps(one, sort_keys=True) + "\n")
-    store_mod.import_all()
-    two = {"path": "carry", "epoch": 2, "outcome": "flakes"}  # an old HEAD export's append
-    with (legacy / "shadow.jsonl").open("a") as fh:
-        fh.write(json.dumps(two, sort_keys=True) + "\n")
-    assert store_mod.shadow() == [one, two]
-    assert store_mod.import_all() == {"shadow": 1} and store_mod.shadow() == [one, two]
+    (legacy / "carry.json").write_text(json.dumps({"path": "carry", "state": "off"}))
+    (legacy / "shadow.jsonl").write_text(json.dumps({"path": "carry", "epoch": 1}) + "\n")
+    assert store_mod.get("carry") is None and store_mod.shadow() == []
+    assert store_mod.lock_path() == store / "audit.lock"
+    assert not hasattr(store_mod, "legacy_dir") and not hasattr(store_mod, "import_all")
 
 
 def test_each_named_root_is_its_own_audit(tmp_path, monkeypatch):

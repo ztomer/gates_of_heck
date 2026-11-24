@@ -39,18 +39,15 @@ ALLOWED: dict[str, set[str]] = {
     "flakes": set(),  # S3 goh.db 0004 flakes: moved; the files retired (lib/state_retire.py)
     "hook ledgers": set(),  # S4 goh.db 0005: moved; the files retired (lib/state_retire.py)
     "durations": set(),  # DUR goh.db 0006 readings: moved (lib/durations.py, GOH.DURATIONSDB)
-    "reuse records": {  # V1 goh-cache.db 0002 verdicts (lib/reuse_store.py, GOH.VERDICTDB)
-        "lib/reuse_store.py",  # LEFT: the files' window (read, copied in, pruned), until wave 3
-        "lib/state_bounds.py",
-        "lib/state_files.py",
+    "reuse records": {  # V1 goh-cache.db 0002 verdicts: moved; the files retired (GOH.VERDICTDB,
+        # lib/state_retire_verdicts.py). LEFT, each naming the reuse ROOT, not a record file: the
+        # root stays for the files kept there by decision (profstore, profreach, binreach;
+        # handover plan (e), tests/test_reuse_root_files.py)
+        "lib/reuse_store.py",  # root(): GOH_REUSE_DIR, else <state>/goh/reuse
+        "lib/state_bounds.py",  # the root's Container and its decided directories' rows
+        "lib/state_files.py",  # reuse/profstore/ledger.jsonl, bounded at its writer
     },
-    "reuse audit": {  # V1 goh.db 0008 reuse_audit, reuse_shadow (lib/reuse_audit_store.py)
-        # LEFT: the files' window (a record file read when no row holds its path; shadow.jsonl's
-        # lines not yet imported) and the flock beside them, until wave 3's delete commit
-        "lib/reuse_audit_store.py",
-        "lib/state_bounds.py",
-        "lib/state_files.py",
-    },
+    "reuse audit": set(),  # V1 goh.db 0008 reuse_audit: moved; the files retired (wave 3)
     "kept stores": set(),  # V1/V2 goh-cache.db kept + shell_verdicts rows (tests/_kept_store.py)
     "identity memo": set(),  # V1 goh-cache.db 0002 memo: moved (lib/identity_cache.py)
     "cpu idle": set(),  # S3 goh-cache.db kv: moved (lib/cpu_window.py, GOH.STATEDBS3)

@@ -44,10 +44,12 @@ from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, on the path from the line above
 import state_retire_ships  # the ship records' half (GOH.STATEDB S2), beside this file
+import state_retire_verdicts  # GOH.VERDICTDB's stores, beside this one in the seam
 
 
 def state_dir() -> Path:
@@ -70,6 +72,10 @@ class Store:
     load: Callable[[sqlite3.Connection, list[Path]], None]  # their records in (INSERT OR IGNORE)
     check: Callable[[sqlite3.Connection, Path], str | None]  # why P does not read back equal
     keep: Callable[[Path], str | None] = lambda p: None  # why P must stay for now
+    db: ModuleType = goh_db  # the seam its rows live in (goh_db, or goh_cache_db for a cache)
+    drop: str = ""  # why its files go with no archive (a cache its rows rebuild); "": archived
+    dirs: Callable[[], list[Path]] = list  # its directories, removed once emptied
+    unread: bool = False  # its files go unread: a cache whose readers left it (`drop` says why)
 
 
 def _dump(row: object) -> str:
@@ -347,7 +353,9 @@ STORES: dict[str, Store] = {
         load=_hook_load,
         check=_hook_check,
     ),
+    **{n: Store(**kw) for n, kw in state_retire_verdicts.STORES.items()},
 }
+GROUPS = dict([state_retire_verdicts.GROUP])  # a name for several stores
 
 
 def archive_dir(day: str | None = None) -> Path:
@@ -374,19 +382,23 @@ def retire(name: str, dry: bool = False, day: str | None = None, say=print) -> b
         say(f"{name}: kept {p}: {why}")
     files = [p for p in store.files() if p not in kept]
     if not files:
+        state_retire_verdicts.prune_dirs(store.dirs())
         say(f"{name}: no file left to retire")
         return True
-    with goh_db.transaction() as con:
+    with store.db.transaction() as con:
         store.load(con, files)
-    with goh_db.ro() as con:
+    with store.db.ro() as con:
         bad = [f"{p}: {why}" for p in files if (why := store.check(con, p))]
     if bad:
         for line in bad:
             say(f"{name}: NOT retired: {line}")
         return False
     if dry:
-        say(f"{name}: {len(files)} files read back equal (dry run: none moved)")
+        how = "to drop unread" if store.unread else "read back equal"
+        say(f"{name}: {len(files)} files {how} (dry run: none moved)")
         return True
+    if store.drop:
+        return state_retire_verdicts.drop(name, store, files, say)
     to = archive_dir(day) / name
     for p in files:
         dest = _archived(p, to)
@@ -397,6 +409,7 @@ def retire(name: str, dry: bool = False, day: str | None = None, say=print) -> b
             return False
     for p in files:
         p.unlink()
+    state_retire_verdicts.left(name, store, say)
     say(f"{name}: {len(files)} files read back equal, archived under {to} and deleted")
     return True
 
@@ -410,10 +423,12 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="goh state", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("retire", help="archive and delete the moved stores' files")
-    r.add_argument("store", nargs="*", help=f"one of {', '.join(STORES)} (default: every one)")
+    r.add_argument("store", nargs="*", help=f"one of {', '.join([*STORES, *GROUPS])} (default: "
+                   "every one)")  # fmt: skip
     r.add_argument("--dry-run", action="store_true")
     sub.add_parser("stray", help="every retired store's file still on disk")
     a = ap.parse_args(argv)
+    a.store = [s for n in getattr(a, "store", []) for s in GROUPS.get(n, (n,))]
     if a.cmd == "retire" and (unknown := set(a.store) - set(STORES)):
         ap.error(f"no such store: {', '.join(sorted(unknown))} (stores: {', '.join(STORES)})")
     if a.cmd == "stray":

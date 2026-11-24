@@ -122,15 +122,9 @@ REGISTRY: dict[str, Bound | Kept | Container] = {
         "one directory per tree (lib/run_path.py): locks and staging, live while a run holds "
         "them; 506 made on 11-18",
     ),
-    "reuse": Container("the verdict store (lib/reuse.py)"),
-    "reuse/affected": Kept(
-        "pruned by TTL at each write batch (lib/affected_verdict.py reuse.prune)"
-    ),
-    "reuse/carry": Kept("pruned by TTL at each write batch (lib/reuse.py prune)"),
-    "reuse/gate": Kept("pruned by TTL at each write batch (lib/reuse.py prune)"),
-    "reuse/pushed": Kept("pruned by TTL at each write batch (lib/reuse.py prune)"),
-    "reuse/profcarry": Kept("pruned by TTL at each write batch (lib/reuse.py prune)"),
-    "reuse/relset": Kept("pruned by TTL at each write (lib/release_gate.py reuse.prune)"),
+    # The reuse root's verdict records and audit are goh-cache.db and goh.db rows (GOH.VERDICTDB;
+    # their files retired by lib/state_retire.py); what stays under it are files by decision.
+    "reuse": Container("the reuse root (lib/reuse_store.py root): the profile store's files"),
     "reuse/profstore": Kept("the newest keys only (lib/prof_store.py prune)"),
     # Decided files (GOH.VERDICTDB V1 step 2; tests/test_reuse_root_files.py): neither is many
     # small files nor written concurrently, the two costs the move into the databases removes.
@@ -143,15 +137,6 @@ REGISTRY: dict[str, Bound | Kept | Container] = {
         "stays a file (GOH.VERDICTDB): the reach audit's ledger, 200 rows (lib/bin_reach_audit.py "
         "ROWS), one writer (an audited land's pre-step); its disagreements are fault items"
     ),
-    "reuse/audit": Kept(
-        "the pre-switch records and the audit's flock: goh.db reuse_audit rows now "
-        "(lib/reuse_audit_store.py), read until wave 3 deletes them"
-    ),
-    # The suite's kept stores (tests/_kept_store.py, GOH.VERDICTBOUND): all rows of goh-cache.db
-    # now (`kept`, and the two shell-lint ones `shell_verdicts`, GOH.VERDICTDB V2).
-    "self-walk-verdicts": Kept("no longer written: goh-cache.db `shell_verdicts` rows (V2)"),
-    "tree-lint-verdicts": Kept("no longer written: goh-cache.db `shell_verdicts` rows (V2)"),
-    "parse-findings": Kept("no longer written: goh-cache.db `kept` rows (GOH.VERDICTDB)"),
     "load_sources": Kept("one file per day, pruned at write (lib/load_sources.py prune)"),
     "compact_nudge": Kept("one marker per session, pruned (hooks/claude/compact_nudge.py)"),
     "seeds": Kept("fixed names, one per seed"),
