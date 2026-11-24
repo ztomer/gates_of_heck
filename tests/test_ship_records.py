@@ -110,7 +110,8 @@ def test_a_ship_step_writes_its_row_and_no_file(db: Path, tmp_path: Path) -> Non
         row = con.execute("SELECT status, body FROM ships WHERE result=?", (res["result"],))
         status, body = row.fetchone()
     assert status == "running" and json.loads(body) == res
-    assert not Path(res["result"]).exists() and not (tmp_path / "ship").exists()
+    assert not Path(res["result"]).exists()  # its directory is made: the step logs live there
+    assert [p.name for p in Path(res["result"]).parent.iterdir()] == []
 
 
 def test_the_install_writes_its_pins_row_and_no_sidecar(db: Path, tmp_path: Path) -> None:

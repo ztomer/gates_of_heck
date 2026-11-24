@@ -395,7 +395,6 @@ def start(args: argparse.Namespace) -> int:
         err(f"goh ship: {e} -- nothing started")
         return 2
     ship_status.settle_all(say=info)  # every repo's ship whose worker is dead
-    Path(res["result"]).parent.mkdir(parents=True, exist_ok=True)  # its logs and lock live there
     save(res)
     if args.wait:
         return worker(res["result"])

@@ -63,8 +63,9 @@ def record_ship_timing(res: dict) -> None:
 
 def save(res: dict) -> None:
     """Write RES whole: its goh.db row (lib/ship_records.py, the one record of a ship since the
-    database plan's wave 3; readers outside goh read the `ships_v2` view). A row that cannot be
-    written is said, never fatal to the ship."""
+    database plan's wave 3; readers outside goh read the `ships_v2` view), its directory made for
+    the step logs and the lock. A row that cannot be written is said, never fatal to the ship."""
+    Path(res["result"]).parent.mkdir(parents=True, exist_ok=True)  # its step logs and lock
     try:
         ship_records.put(res)
     except (sqlite3.Error, OSError) as e:
