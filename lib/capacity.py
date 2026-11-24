@@ -29,6 +29,14 @@ Two samples 2 s apart were a coin flip under bursty load (GOH.CAPWINDOW, 2026-11
 idle, the spawn hook a second later refused at 0.7%), so every reading records its sample in ONE
 state file (GOH_CPU_IDLE_STATE), one self-exiting sampler keeps it warm, and the idle is the mean
 since the newest sample GOH_CPU_IDLE_ROLLING_S (60 s) old; the 2 s sample is the cold fallback.
+THE PRE-STEPS (GOH.CAPPRESTEP, 2026-11-23: "0 gates in flight" at load 23/16 while a pre-step ran
+pytest -n 12 and a cargo build): the pre lane's held slots, each weighed by its repo's recorded
+pre-steps (`prestep_weight`, a land record's `pre_run`) into the CPU weight in flight; the enqueues
+in their pre-step (lib/land_slot.py `presteps`); and every checkout slot owner whose pid is dead
+and whose token no queued request names, reaped (`reap`). THE CAP (GOH.LOADCAP): another write
+lane has no room while more pre-steps are in flight than lib/load_cap.py's cap, the peak of the
+measured curve of landed items per hour against pre-steps in flight (owner 2026-11-23: "choose
+the value that will give us the most overall throughput"; 1 on 2026-11-24).
 The load average is now the SECONDARY signal: it is read and shown, and it judges (the 5-min per
 core over GOH_LANE_LOAD_PER_CORE) only when the idle could not be measured.
 A part that could not be read is listed in `unread`, and a reading with any unread part is judged
@@ -59,6 +67,7 @@ import datetime as dt
 import json
 import os
 import shutil
+import sqlite3
 import statistics
 import sys
 import time
@@ -71,6 +80,9 @@ import cpu_window
 import estate_registry
 import gate_lanes
 import gate_slot
+import land_records
+import land_slot
+import load_cap
 import lock_order
 import mem_admit
 import timing_ledger
@@ -139,29 +151,89 @@ def holder_repo(label: str, key: str, known: dict[str, str]) -> str:
     return known.get(key) or label.split(":")[0].strip()
 
 
+def _holders(directory: str, count: int, lane: str) -> list[dict[str, Any]]:
+    """The held slots of LANE (its first COUNT slot files): slot, pid, repo, since."""
+    holders = []
+    known: dict[str, str] | None = None  # read once, and only when a holder has a key
+    for i in range(count):
+        path = gate_slot.slot_path(directory, i, lane)
+        if not os.path.exists(path) or not gate_slot.held(path):
+            continue
+        rec = gate_slot.record_scoped(path)
+        pid, label, since, key = rec if rec else (None, "", None, "")
+        if key and known is None:
+            known = repos_by_key()
+        holders.append({"slot": os.path.basename(path), "pid": pid,
+                        "repo": holder_repo(label, key, known or {}),
+                        "since": since})  # fmt: skip
+    return holders
+
+
 def _slots(unread: list[str]) -> dict[str, Any]:
     try:
         directory, total = admission.configured()
     except ValueError as e:
         unread.append(f"gate slots: {e}")
         return {"dir": None, "total": None, "held": None, "free": None, "holders": []}
-    holders = []
-    known: dict[str, str] | None = None  # read once, and only when a holder has a key
-    if total and os.path.isdir(directory):
-        for i in range(total):
-            path = gate_slot.slot_path(directory, i)
-            if not os.path.exists(path) or not gate_slot.held(path):
-                continue
-            rec = gate_slot.record_scoped(path)
-            pid, label, since, key = rec if rec else (None, "", None, "")
-            if key and known is None:
-                known = repos_by_key()
-            holders.append({"slot": os.path.basename(path), "pid": pid,
-                            "repo": holder_repo(label, key, known or {}),
-                            "since": since})  # fmt: skip
+    holders = _holders(directory, total, "long") if total and os.path.isdir(directory) else []
     free = None if not total else total - len(holders)
     return {"dir": directory, "total": total, "held": len(holders), "free": free,
             "holders": holders}  # fmt: skip
+
+
+def landq_dir() -> Path:
+    return Path(os.environ.get("GOH_LANDQ_DIR") or Path.home() / ".local/state/goh/landq")
+
+
+def prestep_weight(repo: str, records: list[dict]) -> tuple[float | None, str]:
+    """(cores one pre-step of `repo` burns, where that came from): the median CPU-s per run-s of
+    the newest WEIGHT_RUNS recorded pre-steps (a land record's `pre_run`) of the repo, else of
+    every repo's, else (None, "no pre-steps")."""
+
+    def ratios(rs: list[dict]) -> list[float]:
+        out = []
+        for r in rs:
+            run = r.get("pre_run") if isinstance(r.get("pre_run"), dict) else {}
+            cpu, wall = run.get("cpu_s"), run.get("run_s")
+            if isinstance(cpu, (int, float)) and isinstance(wall, (int, float)) and wall > 0 < cpu:
+                out.append(cpu / wall)
+        return out[-WEIGHT_RUNS:]
+
+    own = ratios([r for r in records if timing_ledger.repo_name(str(r.get("repo", ""))) == repo])
+    if own:
+        return round(statistics.median(own), 2), repo
+    every = ratios(records)
+    if every:
+        return round(statistics.median(every), 2), "all repos"
+    return None, "no pre-steps"
+
+
+def _slot_repo(repo_key: str) -> str:
+    """The repo a checkout slot root `<q>/slots/<name>-<hash>` is of (lib/land_slot.py root)."""
+    return timing_ledger.repo_name(os.path.basename(repo_key).rsplit("-", 1)[0])
+
+
+def _presteps(slots: dict[str, Any], unread: list[str]) -> dict[str, Any]:
+    """The land pre-steps (GOH.CAPPRESTEP): the pre lane's held slots, each weighed; the enqueues
+    in their pre-step (a checkout slot whose claimer lives, its request not yet filed), whose
+    count is judged against the cap (lib/load_cap.py); and the dead owners reaped."""
+    q = landq_dir()
+    records = [r for _, r in land_records.records(q)]
+    width = gate_lanes.lane_slots("pre", slots["total"]) if slots["total"] else 0
+    directory = slots["dir"]
+    holders = _holders(directory, width, "pre") if width and os.path.isdir(directory) else []
+    for h in holders:
+        h["weight"], h["weight_from"] = prestep_weight(h["repo"], records)
+    try:
+        live = [{"repo": _slot_repo(o["repo_key"]), "n": o["n"], "pid": o["pid"], "since": o["at"]}
+                for o in land_slot.presteps(q)]  # fmt: skip
+        reaped = [{"repo": _slot_repo(o["repo_key"]), "n": o["n"], "pid": o["pid"]}
+                  for o in land_slot.reap(q)]  # fmt: skip
+    except (OSError, sqlite3.Error) as e:
+        unread.append(f"pre-step slots: {e}")
+        live, reaped = [], []
+    return {"total": width, "held": len(holders), "holders": holders, "live": live,
+            "in_flight": len(live), "reaped": reaped, "cap": load_cap.cap(records)}  # fmt: skip
 
 
 def _waiting(directory: str | None) -> dict[str, int]:
@@ -292,7 +364,9 @@ def reading() -> dict[str, Any]:
     rows = timing_ledger.read() if out["slots"]["holders"] else []
     for h in out["slots"]["holders"]:
         h["weight"], h["weight_from"] = gate_weight(h["repo"], rows)
-    weights = [h["weight"] for h in out["slots"]["holders"] if h["weight"] is not None]
+    out["presteps"] = _presteps(out["slots"], unread)
+    held = [*out["slots"]["holders"], *out["presteps"]["holders"]]
+    weights = [h["weight"] for h in held if h["weight"] is not None]
     out["cpu_weight"] = {"in_flight": round(sum(weights), 2),
                          "per_core": round(sum(weights) / cores, 2)}  # fmt: skip
     out["unread"] = unread
@@ -321,6 +395,11 @@ def room(r: dict[str, Any], environ: dict[str, str] | None = None) -> dict[str, 
                    f"{load['per_core']:.2f} per core, over "
                    f"GOH_LANE_LOAD_PER_CORE={s['GOH_LANE_LOAD_PER_CORE']:g} "
                    f"(CPU idle unmeasured)")  # fmt: skip
+    pre = r.get("presteps") or {}
+    cap = (pre.get("cap") or {}).get("value")
+    if cap and pre.get("in_flight", 0) > cap:
+        why.append(f"{counted(pre['in_flight'], 'pre-step')} in flight, over the cap of {cap} "
+                   f"({pre['cap']['from']}, lib/load_cap.py)")  # fmt: skip
     disk = r.get("disk")
     if disk and disk["free_gib"] < s["GOH_LANE_MIN_FREE_GIB"]:
         why.append(f"{disk['free_gib']:g} GiB free at {disk['path']}, under "
@@ -341,7 +420,12 @@ def summary(r: dict[str, Any]) -> str:
         parts.append(cpu_window.idle_text(r["cpu"]))
     if load:
         parts.append(f"load {load['avg'][1]:g}/{load['cores']} cores")
-    parts.append(f"gates in flight weigh {r['cpu_weight']['in_flight']:g} cores")
+    pre = r.get("presteps")
+    if pre:
+        cap = (pre.get("cap") or {}).get("value")
+        parts.append(f"pre-steps: {pre['held']}/{pre['total']} pre slots held, "
+                     f"{pre['in_flight']} in flight (cap {cap})")  # fmt: skip
+    parts.append(f"gates and pre-steps in flight weigh {r['cpu_weight']['in_flight']:g} cores")
     if r.get("disk"):
         parts.append(f"{r['disk']['free_gib']:g} GiB free")
     return "; ".join(parts)

@@ -144,6 +144,39 @@ def owners(q: Path) -> list[dict]:
     return [{**(r := dict(zip(cols, row, strict=True))), "alive": _alive(r)} for row in rows]
 
 
+def presteps(q: Path) -> list[dict]:
+    """The owner rows of enqueues still in their pre-step: the claimer lives and no request names
+    its token yet (an enqueue that files and then `--wait`s lives on, its request queued)."""
+    live = [o for o in owners(q) if o["alive"]]
+    if not live:
+        return []
+    try:
+        with goh_db.ro() as con:
+            return [o for o in live if not _queued(con, q, o["token"])]
+    except (OSError, sqlite3.Error):
+        return live
+
+
+def reap(q: Path) -> list[dict]:
+    """Every owner row under queue Q that is stale by `_take`'s rule -- its pid gone and no request
+    pending or running names its token -- deleted; the rows deleted (GOH.CAPPRESTEP: slot 5's
+    dead pid 27042 sat in goh.db a day). The row is re-read in the transaction and deleted only
+    while it is still the token read, so a claim made meanwhile stays."""
+    gone = []
+    for o in owners(q):
+        if o["alive"]:
+            continue
+        with goh_db.transaction() as con:
+            got = con.execute("SELECT token FROM slot_owners WHERE repo_key = ? AND n = ?",
+                              (o["repo_key"], o["n"])).fetchone()  # fmt: skip
+            if not got or got[0] != o["token"] or _queued(con, q, o["token"]):
+                continue
+            con.execute("DELETE FROM slot_owners WHERE repo_key = ? AND n = ? AND token = ?",
+                        (o["repo_key"], o["n"], o["token"]))  # fmt: skip
+        gone.append(o)
+    return gone
+
+
 def import_owners(q: Path) -> int:
     """Every `slots/<repo>/<n>.owner` file an older goh made, into a row (INSERT OR IGNORE), the
     file deleted once its row reads back. Under lander.lock (GOH.LANDQDB)."""
