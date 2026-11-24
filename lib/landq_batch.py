@@ -67,6 +67,7 @@ import landq_report
 import landq_size
 import landq_spec
 import landq_state
+import main_reading
 
 DEFAULT = landq_size.DEFAULT
 RETRIES = 3  # passes a git failure may keep a request pending before it is recorded red
@@ -309,8 +310,10 @@ class Batch:
         self.kit.say(f"batch {self.id}: gate {self.gates} on {top.tip[:8]}, {size} stacked")
         with land_prestep.gate_copy(self.q, top.req) as copy:
             also = [it.req for it in below or ()]
-            named = (
-                land_prestep.lander_env(top.req, copy, also) if copy else land_slot.label(top.req)
+            named = (  # the waiver rides either way (GOH.MAINREDWAIVE, lib/land_waive.py)
+                land_prestep.lander_env(top.req, copy, also)
+                if copy
+                else [*land_slot.label(top.req), *land_prestep.main_red.waive([top.req, *also])]
             )
             argv = ["env", *self.kit.unset, *named, *land_prestep.timings_keep(log),
                     "bash", "-c",
@@ -432,6 +435,8 @@ def run(q: Path, paths: list[Path], kit: Kit, run_one: Callable[[Path, Path], di
     request is RUN_ONE's, as before batches; the batch's items share its start and load. A land
     picked at SIZE carries its `k` and `k_why` (GOH.ADAPTBATCH: --report shows k per batch)."""
     chose = {"k": size.k, "k_why": size.why} if size else {}
+    if paths and (head := read(paths[0])).get("mode") == "land" and head.get("repo"):
+        main_reading.ensure(q, head["repo"], kit.say)  # main's reds read at its tip (MAINREDWAIVE)
     if len(paths) == 1:
         return [{**landq_report.timed(run_one, q, paths[0]), **chose}]
     started, load = dt.datetime.now(dt.UTC), landq_report.load1()

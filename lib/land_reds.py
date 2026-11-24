@@ -235,13 +235,18 @@ def judge(rec: dict, retried: bool = False) -> dict:
 
 
 def fields(outcome: dict) -> dict:
-    """`{"red_cause": ...}` for a red OUTCOME; {} otherwise or when it cannot be judged."""
+    """`{"red_cause": ...}` for a red OUTCOME, and for any outcome the tests its run WAIVED as not
+    its own (`waived`, lib/land_waive.py: main's reds by a reading's id, rules in flight); {}
+    otherwise or when it cannot be judged."""
+    import land_waive  # lib/: the waived reds its log names (GOH.MAINREDWAIVE)
+
+    waived = land_waive.fields(outcome)
     if outcome.get("state") != "red":
-        return {}
+        return waived
     try:
-        return {"red_cause": judge(outcome)}
+        return {"red_cause": judge(outcome), **waived}
     except Exception as e:  # noqa: BLE001 -- never the reason a land fails
-        return {"red_cause": {"cause": "other", "rule": f"not judged: {e}", "tests": []}}
+        return {"red_cause": {"cause": "other", "rule": f"not judged: {e}", "tests": []}, **waived}
 
 
 def records(q: Path) -> list[tuple[str, dict]]:

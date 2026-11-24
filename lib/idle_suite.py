@@ -41,6 +41,9 @@ run and the ship's full run are where a fault only an unchosen test sees turns r
 a fault item naming the lands since the last green full run (lib/idle_red.py; `last.json` keeps
 `green`, the tip of the last green run), and the shadow records the tests F missed.
 
+A READING OF MAIN (GOH.MAINREDWAIVE). Each green or red run is kept in goh.db as a reading of main
+at its tip (`reading`, lib/main_reading.py): the only evidence a land may waive a red by.
+
 Pinned by tests/test_idle_suite.py.
 """
 
@@ -61,6 +64,7 @@ import killtree
 import landq_inflight
 import landq_state
 import lock_order
+import main_reading
 import main_red
 import selection_miss
 import ship_suite
@@ -149,6 +153,8 @@ def run(
         if outcome == "red":  # the backstop of a base-code change: its fault item
             filed = idle_red.file_red(main, green, sha, log_of(q, sha))
             say(f"idle full suite on {sha[:8]}: {filed}")
+        if outcome in ("green", "red"):  # main's reading at SHA, a land's waiver's evidence
+            say(reading(main, sha, outcome, log_of(q, sha)))
     finally:
         os.close(fd)
     record = {
@@ -163,6 +169,19 @@ def run(
     tmp.write_text(json.dumps(record) + "\n")
     tmp.replace(last_path)
     return outcome
+
+
+def reading(main: Path, sha: str, outcome: str, log: Path) -> str:
+    """The run as a reading of main at SHA (lib/main_reading.py, GOH.MAINREDWAIVE): its red nodes
+    by the log; a red run that names none is no reading (it waives nothing). Never raises."""
+    try:
+        red = main_red.nodes_of(log.read_text(errors="replace")) if outcome == "red" else []
+        if outcome == "red" and not red:
+            return f"idle full suite on {sha[:8]}: no reading kept (red, naming no test)"
+        rid = main_reading.record(main, sha, "idle-suite", "*", red)
+    except Exception as e:  # noqa: BLE001 -- the reading never breaks the lander
+        return f"idle full suite on {sha[:8]}: no reading kept ({e.__class__.__name__}: {e})"
+    return f"idle full suite on {sha[:8]}: reading {rid} of main, {len(red)} red"
 
 
 def _stop_for(q: Path, main: Path) -> str:

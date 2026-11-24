@@ -13,6 +13,8 @@ here, not there.
 * here: a `process_template` is the RUN's inside a session (tests/_tree_clone.py, GOH.FSCHURN3),
   and then a pytest a test starts takes a basetemp root of its own (tests/suite_tmp.py `own_root`,
   GOH.NESTEDBASETEMP): no conftest hook or fixture asks for the basetemp before this one runs.
+* `_land_waive`: a land's reds that are main's or a newer rule's, waived by a reading on main or
+  warned (GOH.MAINREDWAIVE, GOH.RULEINFLIGHT, lib/land_waive.py).
 """
 
 import os
@@ -21,7 +23,14 @@ from pathlib import Path
 from _tree_clone import run_wide
 from suite_tmp import own_root
 
-pytest_plugins = ["_share_tokens", "_fs_churn", "_land_remote", "_xdist_usage", "_kept_store"]
+pytest_plugins = [
+    "_share_tokens",
+    "_fs_churn",
+    "_land_remote",
+    "_xdist_usage",
+    "_kept_store",
+    "_land_waive",
+]
 
 
 def pytest_configure(config) -> None:

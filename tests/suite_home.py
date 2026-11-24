@@ -143,6 +143,8 @@ CALLER_INPUTS = (
     "GOH_LAND_VERDICTS_CACHE",
     # ... and its goh.db, where the reuse audit counts its uses (lib/reuse_audit_store.py).
     "GOH_LAND_VERDICTS_AUDIT_DB",
+    # The lander's waivable reds, main's by a reading and newer rules (tests/_land_waive.py).
+    "GOH_LAND_WAIVE",
     # The ship's file for its reused and fresh binary tests (tests/_prof_reuse.py): dropped here,
     # no ship record named them (GOH.COVPROFILEREUSE's first measured run).
     "GOH_PROF_REUSE_OUT",

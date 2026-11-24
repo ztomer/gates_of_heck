@@ -16,13 +16,17 @@ whole land cycle, on a fault none of them made.
                                `<sha[:12]>`, so every notice said "no failing test named")
     notice(q, req, say)        at the enqueue, before its pre-step (lib/land_check.py at_enqueue):
                                says it and keeps the nodes on the request (`main_red`)
-    env(req)                   the pre-step's variable naming them (ENV), for land.sh's set
+    env(req)                   the pre-step's variable naming them (ENV), for land.sh's set,
+                               and `waive`'s
+    waive(reqs)                the reds a land.sh run of REQS may waive: main's own by a reading
+                               on main, a rule newer than the items (lib/land_waive.py)
     also(root)                 tools/affected_tests.py: the named nodes ROOT still defines join the
                                chosen set, so a lane sees main's red in its pre-step, minutes
                                before its gate would
 
-A lane whose change does not touch them goes red on them all the same: main IS red, and the gate
-would refuse it later. Pinned by tests/test_main_red.py.
+A lane whose change does not touch them is not billed for them: the run waives each one a reading
+ON MAIN at its base saw red (GOH.MAINREDWAIVE), and a test it turns red at a green base still reds.
+Pinned by tests/test_main_red.py.
 """
 
 from __future__ import annotations
@@ -124,9 +128,18 @@ def notice(q: Path, req: dict, say: Callable[[str], None]) -> list[str]:
 
 
 def env(req: dict) -> list[str]:
-    """`ENV=<nodes, one per line>` for the pre-step's land.sh run; [] when main is not red."""
+    """`ENV=<nodes, one per line>` for the pre-step's land.sh run, and what it may waive
+    (`waive`); [] when main is not red and nothing is waivable."""
     nodes = (req.get("main_red") or {}).get("nodes") or []
-    return [f"{ENV}=" + "\n".join(nodes)] if nodes else []
+    return ([f"{ENV}=" + "\n".join(nodes)] if nodes else []) + waive([req])
+
+
+def waive(reqs: list[dict]) -> list[str]:
+    """GOH_LAND_WAIVE for a land.sh run of REQS: the reds a reading on main or a newer rule
+    excuses (lib/land_waive.py, GOH.MAINREDWAIVE and GOH.RULEINFLIGHT)."""
+    import land_waive  # lib/, at the call: goh.db and git, which other readers here never need
+
+    return land_waive.env(reqs)
 
 
 def also(root: Path) -> dict[str, str]:

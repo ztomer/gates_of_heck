@@ -292,7 +292,7 @@ def lander_env(req: dict, keep: Path | str | None = None, also: list[dict] | Non
     kept = [f"GOH_LAND_PRE_FROM={keep or req['pre']['keep']}"] if req.get("pre") else []
     shas = [j for r in also or () if SHA.fullmatch(j := str((r.get("pre") or {}).get("judged")))]
     kept += [f"GOH_LAND_PRE_ALSO={' '.join(shas)}"] if shas else []
-    return [*kept, *land_slot.label(req)]
+    return [*kept, *land_slot.label(req), *main_red.waive([req, *(also or ())])]  # MAINREDWAIVE
 
 
 @contextlib.contextmanager
