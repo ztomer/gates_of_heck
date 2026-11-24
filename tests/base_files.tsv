@@ -47,6 +47,7 @@ lib/goh_db.py	base-code
 lib/goh_root.py	base-code
 lib/goh_root.sh	base-code
 lib/goh_version.sh	base-code
+lib/hook_ledgers.py	base-code
 lib/house_python.sh	base-code
 lib/identity_cache.py	base-code
 lib/killtree.py	base-code

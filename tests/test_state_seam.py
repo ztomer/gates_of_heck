@@ -40,6 +40,9 @@ ALLOWED: dict[str, set[str]] = {
         "lib/state_files.py",  # bounds the legacy files until wave 3's delete commit removes them
     },
     "hook ledgers": {  # S4 goh.db 0005
+        # LEFT: the door's file half (GOH.STATEDBS4): the legacy files are imported in line order
+        # and their pending lines read, until wave 3's delete commit removes them
+        "lib/hook_ledgers.py",
         "hooks/claude/agent_guard.py",
         "hooks/claude/lane_room.py",
         "scripts/model_choice_watch.py",
