@@ -15,6 +15,7 @@ import threading
 import time
 from pathlib import Path
 
+import _goh_db_fixture
 import pytest
 from conftest import REPO_ROOT, commit_all, hermetic_env, write
 from orphan_kit import wait_for_file, wait_for_file_py
@@ -23,6 +24,7 @@ from timing_bounds import GiveUp, assert_sooner, patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import idle_suite
+import land_records
 import landq_inflight
 import landq_state
 
@@ -165,6 +167,33 @@ def test_a_dead_enqueue_leaves_a_red_record_not_nothing(tmp_path):
     assert (rec["item"], rec["repo"], rec["state"]) == ("T.V", "/r", "red"), rec
     assert "died in its pre-step" in rec["why"] and dead.stdout.strip() in rec["why"], rec
     assert landq_inflight.live(q) == [] and len(list((q / "done").glob("*.json"))) == 1  # once
+
+
+@pytest.mark.load_sensitive
+def test_a_dead_enqueues_record_goes_through_the_land_records_door(tmp_path, monkeypatch):
+    """GOH.STATEDB S1: the vanished enqueue's red record is a goh.db row like every land record,
+    and a record of the item filed after the marker counts as settled when only its row is left
+    (a done/ file pruned or never kept): the death is filed once, never over a later record."""
+    _goh_db_fixture.use(monkeypatch, tmp_path)
+    q = tmp_path / "landq"
+    dead = subprocess.run([sys.executable, "-c", "import os; print(os.getpid())"],
+                          capture_output=True, text=True, check=True,
+                          stdin=subprocess.DEVNULL)  # fmt: skip
+    landq_inflight.mark(q, "T.V", pid=int(dead.stdout), repo="/r")
+    landq_inflight.mark(q, "T.W", pid=int(dead.stdout), repo="/r")
+    settled = f"{time.time_ns():020d}-T.W"
+    _goh_db_fixture.put(q, settled, {"item": "T.W", "state": "landed"})  # stamped after the mark
+    land_records.file(q, settled).unlink()  # the row alone holds it
+    assert landq_inflight.live(q) == []
+    filed = sorted(f.name.rpartition("-")[2] for f in land_records.file(q).glob("*.json"))
+    assert filed == ["T.V.json"], filed  # T.W settled by its row: no death filed over it
+    for f in land_records.file(q).glob("*.json"):
+        f.unlink()  # the rows alone: every record below is read from goh.db
+    got = land_records.records(q)
+    assert [r.rpartition("-")[2] for r, _ in got] == ["T.W", "T.V"], got
+    rec = got[1][1]
+    assert (rec["item"], rec["repo"], rec["state"]) == ("T.V", "/r", "red"), rec
+    assert "died in its pre-step" in rec["why"], rec
 
 
 def test_a_superseded_enqueue_leaves_no_record(tmp_path):

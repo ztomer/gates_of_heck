@@ -55,7 +55,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gitrun  # lib/: git under a deadline, no lock stranded
 import land_cause  # lib/: FAILED node ids and the structural step's line
 import land_records  # lib/: the land records' door (GOH.STATEDB)
-import landq_state  # lib/: one writer of every state record
 
 CLASSES = (
     "tip-moved",
@@ -339,15 +338,17 @@ def main(argv: list[str]) -> int:
 
 def file_vanished(q: Path, rec: dict, name: str, since: float) -> bool:
     """REC, the red record of an enqueue that died in its pre-step with nothing filed
-    (lib/landq_inflight.py `died`, GOH.ENQUEUEVANISH), written to Q's done/ as `<ns>-NAME.json`
-    unless a record of the item was written at or after SINCE (the enqueue settled, then exited).
+    (lib/landq_inflight.py `died`, GOH.ENQUEUEVANISH), filed through the land records' door as
+    run `<ns>-NAME` unless a record of the item was filed at or after SINCE (the enqueue settled,
+    then exited): its run stamp or its own time (`land_records.epoch`), a row read like a file.
     True when written; an unwritable queue is no record, never a crash."""
-    done = q / "done"
     try:
-        if any(p.stat().st_mtime >= since for p in done.glob(f"*-{name}.json")):
-            return False
-        done.mkdir(parents=True, exist_ok=True)
-        landq_state.write(done / f"{time.time_ns():020d}-{name}.json", rec)
+        for run, old in land_records.records(q):
+            ns = run.partition("-")[0]
+            stamp = int(ns) / 1e9 if ns.isdigit() else 0.0
+            if run.endswith(f"-{name}") and max(stamp, land_records.epoch(old, run)) >= since:
+                return False
+        land_records.write(q, f"{time.time_ns():020d}-{name}", rec)
     except OSError:
         return False
     return True
