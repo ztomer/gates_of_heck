@@ -84,12 +84,13 @@ fn row_key(key: &str) -> String {
     hex(&Sha256::digest(key.as_bytes()))
 }
 
+/// The busy timeout: `GOH_CACHE_DB_BUSY_MS` (`lib/goh_cache_db.py`'s), else 2 s.
 fn busy() -> std::time::Duration {
-    let ms = std::env::var("GOH_CACHE_DB_BUSY_MS")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(2_000);
-    std::time::Duration::from_millis(ms)
+    std::time::Duration::from_millis(busy_ms(std::env::var("GOH_CACHE_DB_BUSY_MS").ok()))
+}
+
+fn busy_ms(raw: Option<String>) -> u64 {
+    raw.and_then(|v| v.parse().ok()).unwrap_or(2_000)
 }
 
 fn has_table(con: &Connection) -> bool {
@@ -122,16 +123,18 @@ fn shipped() -> Option<Vec<i64>> {
 /// table's shape is then the only guard, and a write to a reshaped table fails as a skipped write.
 fn newer(con: &Connection, known: Option<&[i64]>) -> Option<String> {
     let known = known?;
-    let mut stmt = con.prepare("SELECT version FROM schema_version").ok()?;
-    let applied: Vec<i64> = stmt
-        .query_map([], |r| r.get(0))
-        .ok()?
-        .filter_map(Result::ok)
-        .collect();
-    let unknown: Vec<i64> = applied.into_iter().filter(|n| !known.contains(n)).collect();
+    let unknown: Vec<i64> = applied(con).unwrap_or_default();
+    let unknown: Vec<i64> = unknown.into_iter().filter(|n| !known.contains(n)).collect();
     (!unknown.is_empty()).then(|| {
         format!("goh-cache.db holds migration {unknown:?}, which this goh does not ship: read only")
     })
+}
+
+/// The migration numbers the open file records (`schema_version`).
+fn applied(con: &Connection) -> rusqlite::Result<Vec<i64>> {
+    let mut stmt = con.prepare("SELECT version FROM schema_version")?;
+    let found = stmt.query_map([], |r| r.get(0))?.collect();
+    found
 }
 
 impl Cache {
@@ -209,17 +212,17 @@ impl Cache {
     fn migrate(&self) {
         // The house interpreter (G2d): PATH's first python3 may be below the floor. None at all is
         // a skipped write, as every other failure here.
-        if let Ok(py) = crate::house_python::path() {
-            let seam = crate::goh_root().join("lib").join("goh_cache_db.py");
-            let _ = std::process::Command::new(py)
+        let seam = crate::goh_root().join("lib").join("goh_cache_db.py");
+        let _ = crate::house_python::path().map(|py| {
+            std::process::Command::new(py)
                 .arg(seam)
                 .arg("migrate")
                 .env("GOH_CACHE_DB", &self.db)
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
-                .status();
-        }
+                .status()
+        });
     }
 
     /// Record every `(key, verdict)` in one transaction. Best effort: a cache that cannot be
@@ -303,7 +306,7 @@ pub fn content_hash(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{row_key, Cache};
+    use super::{busy_ms, row_key, Cache};
     use std::path::PathBuf;
 
     fn cache(db: PathBuf) -> Cache {
@@ -389,6 +392,13 @@ mod tests {
         let c = cache(dir.path().join("none.db"));
         assert!(c.get("k").is_none());
         assert!(!dir.path().join("none.db").exists());
+    }
+
+    #[test]
+    fn the_busy_timeout_is_its_knob_s_else_two_seconds() {
+        assert_eq!(busy_ms(Some("5".to_owned())), 5);
+        assert_eq!(busy_ms(Some("soon".to_owned())), 2_000);
+        assert_eq!(busy_ms(None), 2_000);
     }
 
     #[test]
