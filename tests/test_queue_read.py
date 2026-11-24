@@ -116,13 +116,82 @@ def test_no_loop_is_an_answer_of_no_queue_never_a_crash(tmp_path: Path, monkeypa
     assert queue_read.items_or_empty(named) == []
 
 
-def test_a_schema_goh_does_not_know_is_no_queue_with_a_reason(tmp_path: Path) -> None:
+def add_views(db: Path, changes: str = "") -> None:
+    """The loop's versioned views (LOOP.QUEUENORMAL's contract) over a store whose own tables then
+    change (CHANGES runs after the views are copied out of them)."""
+    con = sqlite3.connect(db)
+    con.executescript(
+        "CREATE TABLE k1 AS SELECT key, seq, value FROM queue_keys;"
+        "CREATE TABLE i1 AS SELECT id, seq, archived, body FROM items;"
+        "CREATE VIEW queue_v1_keys AS SELECT key, seq, value FROM k1;"
+        "CREATE VIEW queue_v1_items AS SELECT id, seq, archived, body FROM i1;" + changes
+    )
+    con.close()
+
+
+@pytest.mark.parametrize("schema", [0, 3, 7])
+def test_the_versioned_views_are_read_whatever_the_tables_and_version(
+    tmp_path: Path, schema: int
+) -> None:
+    """GOH.QUEUESCHEMA: once both views exist they are all goh reads -- the tables under them may
+    change shape (items without body) and user_version is never compared to a list."""
+    db = tmp_path / "loop.db"
+    write_db(db, QUEUE)
+    add_views(
+        db,
+        "ALTER TABLE items DROP COLUMN body; DROP TABLE queue_keys;"
+        f"PRAGMA user_version = {schema};",
+    )
+    assert queue_read.load(tmp_path / "queue.json") == QUEUE
+
+
+def test_the_views_carry_the_archive_already_rebuilt(tmp_path: Path) -> None:
+    old = [{"id": "Z.9", "status": "done"}]
+    db = tmp_path / "loop.db"
+    write_db(db, {**QUEUE, "archive": {"items": old}}, archived=tuple(old))
+    add_views(db)
+    assert queue_read.load(tmp_path / "queue.json")["archive"] == {"items": old}
+
+
+def test_a_schema_1_file_with_a_later_additive_change_reads_its_tables(tmp_path: Path) -> None:
     db = tmp_path / "loop.db"
     write_db(db, QUEUE)
     con = sqlite3.connect(db)
-    con.execute("PRAGMA user_version = 99")  # a newer loop's file
+    con.executescript(
+        "PRAGMA user_version = 2; CREATE TABLE state(k TEXT);"
+        "ALTER TABLE items ADD COLUMN package INTEGER;"
+    )
     con.close()
-    with pytest.raises(queue_read.NoQueue, match="schema 99, which this goh does not know"):
+    assert queue_read.load(tmp_path / "queue.json") == QUEUE
+
+
+KEYS_VIEW = "CREATE VIEW queue_v1_keys AS SELECT key, seq, value FROM queue_keys;"
+
+
+@pytest.mark.parametrize(
+    ("change", "said"),
+    [
+        ("PRAGMA user_version = 0", "schema 0"),
+        ("ALTER TABLE items DROP COLUMN body", "items.body"),
+        ("ALTER TABLE items DROP COLUMN archived", "items.archived"),
+        ("ALTER TABLE queue_keys DROP COLUMN seq; ALTER TABLE queue_keys RENAME COLUMN value TO v",
+         "queue_keys.value"),
+        ("DROP TABLE items", "no items table"),
+        ("DROP TABLE queue_keys", "no queue_keys table"),
+        (KEYS_VIEW + "ALTER TABLE items DROP COLUMN body", "items.body"),  # one view is not both
+        (KEYS_VIEW + "CREATE VIEW queue_v1_items AS SELECT id, seq, archived FROM items",
+         "queue_v1_items.body"),
+    ],
+)  # fmt: skip
+def test_a_store_without_the_layout_is_no_queue_naming_what_is_missing(
+    tmp_path: Path, change: str, said: str
+) -> None:
+    db = tmp_path / "loop.db"
+    write_db(db, QUEUE)
+    con = sqlite3.connect(db)
+    con.executescript(change)
+    con.close()
+    with pytest.raises(queue_read.NoQueue, match=said):
         queue_read.load(tmp_path / "queue.json")
     assert queue_read.items_or_empty(tmp_path / "queue.json") == []  # an answer, never a crash
 

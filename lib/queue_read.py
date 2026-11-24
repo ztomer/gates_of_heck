@@ -17,8 +17,14 @@ The queue is NAMED by a path: GOH_LOOP_QUEUE, else the loop's default (`queue_pa
         queue_keys(key TEXT PRIMARY KEY, seq INTEGER, value TEXT)
                                 -- value: a top-level key's JSON (schema, rules, phases, ...);
                                    the `archive` key's `items` is a null placeholder for its rows
-        PRAGMA user_version     -- the file's schema; one this reader does not know (KNOWN_SCHEMAS)
-                                   is "no queue" with the reason (NoQueue), never a guess
+        PRAGMA user_version     -- the file's schema; never compared to a list (GOH.QUEUESCHEMA)
+        queue_v1_keys(key, seq, value), queue_v1_items(id, seq, archived, body)
+                                -- the loop's versioned views (LOOP.QUEUENORMAL): the same rows as
+                                   the two tables above, kept by every later schema: when both exist
+                                   they are read and nothing else is, whatever user_version says
+                                   (archive.items already rebuilt there); without them (schema 1)
+                                   the tables are read, and user_version 0 is refused. A relation
+                                   or column missing is "no queue" naming it (NoQueue)
         meta, schema_version, events: the loop's version record and history, not read here
   * else, until the loop's cutover, the JSON file at the path itself: {"items": [...], ...}.
 
@@ -54,7 +60,30 @@ def db_path(path: str | os.PathLike | None = None) -> Path:
     return Path(path or queue_path()).with_name(DB_NAME)
 
 
-KNOWN_SCHEMAS = frozenset({1})  # loop.db's PRAGMA user_version values this reader understands
+# What this reader reads of loop.db (GOH.QUEUESCHEMA). The loop's versioned views, which every
+# later schema keeps (LOOP.QUEUENORMAL), when both exist, whatever the file's user_version; else
+# today's tables (a schema-1 file). No list of schema numbers: a store without what it reads is
+# "no queue" naming the missing table or column, never a guess.
+VIEWS = {"queue_v1_keys": ("key", "value"), "queue_v1_items": ("seq", "archived", "body")}
+TABLES = {"queue_keys": ("key", "value"), "items": ("seq", "archived", "body")}
+
+
+def layout(con: sqlite3.Connection) -> tuple[str, str] | str:
+    """(keys, items): the two relations CON's queue is read from, or why there are none (named)."""
+
+    def cols(rel: str) -> set[str]:
+        return {r[1] for r in con.execute("SELECT * FROM pragma_table_info(?)", (rel,))}
+
+    use = VIEWS if all(cols(v) for v in VIEWS) else TABLES
+    if use is TABLES and (schema := con.execute("PRAGMA user_version").fetchone()[0]) < 1:
+        return f"is at schema {schema}, not a loop store"
+    for rel, need in use.items():
+        if not (have := cols(rel)):
+            return f"has no {rel} table"
+        if gone := [f"{rel}.{c}" for c in need if c not in have]:
+            return f"lacks {', '.join(gone)}"
+    keys, items = use
+    return keys, items
 
 
 ARCHIVE, ARCHIVE_ITEMS = (
@@ -64,7 +93,7 @@ ARCHIVE, ARCHIVE_ITEMS = (
 
 
 class NoQueue(OSError):
-    """No queue goh can read here; the message says why (absent, or a schema goh does not know)."""
+    """No queue goh can read here; the message says why (absent, or a store without its layout)."""
 
 
 def _load_db(db: Path) -> dict:
@@ -72,20 +101,21 @@ def _load_db(db: Path) -> dict:
     try:
         con = sqlite3.connect(uri, uri=True, timeout=5)
         try:
-            schema = con.execute("PRAGMA user_version").fetchone()[0]
-            if schema not in KNOWN_SCHEMAS:
-                known = ", ".join(map(str, sorted(KNOWN_SCHEMAS)))
-                raise NoQueue(f"no queue: {db} is at schema {schema}, which this goh does not "
-                              f"know ({known}); update goh")  # fmt: skip
-            keys = {k: json.loads(v) for k, v in con.execute("SELECT key, value FROM queue_keys")}
-            rows = con.execute("SELECT archived, body FROM items ORDER BY archived, seq").fetchall()
+            rels = layout(con)
+            if isinstance(rels, str):
+                raise NoQueue(f"no queue: {db} {rels} (goh reads loop.db by its layout)")
+            keys = {k: json.loads(v) for k, v in con.execute(f"SELECT key, value FROM {rels[0]}")}
+            rows = con.execute(
+                f"SELECT archived, body FROM {rels[1]} ORDER BY archived, seq"
+            ).fetchall()
         finally:
             con.close()
     except sqlite3.Error as e:
         raise ValueError(f"the queue store {db} is unreadable: {e}") from None
     live = [json.loads(b) for a, b in rows if not a]
     arch = keys.get(ARCHIVE)
-    if isinstance(arch, dict) and ARCHIVE_ITEMS in arch:  # the loop stores a null in its place
+    if isinstance(arch, dict) and ARCHIVE_ITEMS in arch and arch[ARCHIVE_ITEMS] is None:
+        # the tables hold a null in its place; queue_v1_keys holds the list already
         keys[ARCHIVE] = {**arch, ARCHIVE_ITEMS: [json.loads(b) for a, b in rows if a]}
     return {**keys, "items": live}
 

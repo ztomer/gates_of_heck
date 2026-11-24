@@ -83,23 +83,17 @@ pub fn load(flag: Option<&str>) -> Result<BTreeMap<String, String>, String> {
 
 /// Every item's status from the SQLite store DB, through `sqlite3 -readonly -json`.
 ///
+/// From the loop's versioned views when both exist (LOOP.QUEUENORMAL; the status from each item's
+/// JSON body), else from today's `items` table. Read by layout (GOH.QUEUESCHEMA): `user_version` is never compared to
+/// a list of known numbers, so an additive migration never makes goh say "no queue".
+///
 /// # Errors
 ///
-/// `sqlite3` cannot run, refuses the store, or prints rows that are not `{id, status}` objects.
+/// `sqlite3` cannot run, refuses the store, the store lacks a relation or column read here (named),
+/// or it prints rows that are not `{id, status}` objects.
 pub fn load_db(db: &Path) -> Result<BTreeMap<String, String>, String> {
-    let schema = sqlite(db, false, "PRAGMA user_version")?;
-    if !KNOWN_SCHEMAS.contains(&schema.trim()) {
-        return Err(format!(
-            "no queue: {} is at schema {}, which this goh does not know; update goh",
-            db.display(),
-            schema.trim()
-        ));
-    }
-    let rows = sqlite(
-        db,
-        true,
-        "SELECT id, status FROM items ORDER BY archived, seq",
-    )?; // archived rows are done items too
+    let sql = layout(db)?;
+    let rows = sqlite(db, true, sql)?; // archived rows are done items too
     let rows = if rows.trim().is_empty() {
         "[]"
     } else {
@@ -109,8 +103,68 @@ pub fn load_db(db: &Path) -> Result<BTreeMap<String, String>, String> {
         .map_err(|e| format!("the queue store {} is unreadable: {e}", db.display()))
 }
 
-/// The loop.db `PRAGMA user_version` values this reader understands.
-const KNOWN_SCHEMAS: [&str; 1] = ["1"];
+/// The loop's versioned views, both of which must exist to be read, and the columns read of each.
+const VIEWS: [(&str, &[&str]); 2] = [
+    ("queue_v1_keys", &[]),
+    ("queue_v1_items", &["id", "seq", "archived", "body"]),
+];
+
+/// Today's table (a schema-1 file without the views) and the columns read of it.
+const TABLE: (&str, &[&str]) = ("items", &["id", "seq", "archived", "status"]);
+
+/// The query DB's statuses are read with, or why there is none: a relation or column missing, or a
+/// file without the views at `user_version` 0 (not a loop store).
+fn layout(db: &Path) -> Result<&'static str, String> {
+    let cols = sqlite(
+        db,
+        false,
+        "SELECT m.name || '.' || p.name FROM sqlite_master m JOIN pragma_table_info(m.name) p \
+         WHERE m.name IN ('items', 'queue_v1_keys', 'queue_v1_items')",
+    )?;
+    let have: Vec<&str> = cols.lines().map(str::trim).collect();
+    let has_rel = |rel: &str| have.iter().any(|c| c.split('.').next() == Some(rel));
+    let views = VIEWS.iter().all(|(rel, _)| has_rel(rel));
+    let (rel, need, sql) = if views {
+        let (rel, need) = VIEWS[1];
+        (
+            rel,
+            need,
+            "SELECT id, json_extract(body, '$.status') AS status FROM queue_v1_items ORDER BY archived, seq",
+        )
+    } else {
+        let schema = sqlite(db, false, "PRAGMA user_version")?;
+        if schema.trim().parse::<i64>().map_or(true, |v| v < 1) {
+            return Err(format!(
+                "no queue: {} is at schema {}, not a loop store",
+                db.display(),
+                schema.trim()
+            ));
+        }
+        let (rel, need) = TABLE;
+        (
+            rel,
+            need,
+            "SELECT id, status FROM items ORDER BY archived, seq",
+        )
+    };
+    if !has_rel(rel) {
+        return Err(format!("no queue: {} has no {rel} table", db.display()));
+    }
+    let gone: Vec<String> = need
+        .iter()
+        .map(|c| format!("{rel}.{c}"))
+        .filter(|c| !have.contains(&c.as_str()))
+        .collect();
+    if gone.is_empty() {
+        Ok(sql)
+    } else {
+        Err(format!(
+            "no queue: {} lacks {} (goh reads loop.db by its layout)",
+            db.display(),
+            gone.join(", ")
+        ))
+    }
+}
 
 /// `sqlite3 -readonly [-json] DB SQL`'s output, or why it could not run.
 fn sqlite(db: &Path, json: bool, sql: &str) -> Result<String, String> {
