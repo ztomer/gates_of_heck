@@ -101,6 +101,35 @@ def test_a_stretched_ceiling_still_fails_and_says_by_how_much(tmp_path: Path) ->
     assert "over its 0.3 s ceiling x1.5 for the box's load and speed" in r.stdout, r.stdout
 
 
+BURNER = (
+    "import time\n\ndef test_busy():\n    t = time.process_time()\n"
+    "    while time.process_time() - t < 0.6:\n        pass\n"
+)
+
+
+def test_a_cpu_test_under_the_qos_clamp_is_judged_by_its_cpu_not_the_run_queue(tmp_path) -> None:
+    """GOH.SUITEDRIFTBUILD: a lane or work gate runs under `taskpolicy -c utility` (GOH.LANDSHARE),
+    and the clamp is invisible to the run queue. At a load of 3.2 per core the probe's fixed loop
+    took x25-35 its quiet wall on a clamped thread and x0.9 on a free one, while the run queue said
+    x3.2: test_declared_reads (192 s), the scanner reach test (263.7 s at x2.5) and the Rust floor
+    test (191.4 s at x2.8) went red on the idle suite for the clamp, not their code. A CPU-bound
+    test is judged by the seconds it would take a quiet core (lib/long_pole.py `pole`, the stretch
+    measured on its own thread). The pinned stretch is past any clamp's, so the verdict holds
+    on the clamped box this test itself runs on."""
+    r = planted(tmp_path, BURNER, ceiling=0.3, load=1.0, stretch=1000.0)
+    assert r.returncode == 0, r.stdout + r.stderr
+    r = planted(tmp_path, BURNER, ceiling=0.3, load=1.0)  # the instrument: unclamped, it is red
+    assert r.returncode == 1, r.stdout + r.stderr
+
+
+def test_a_wait_under_the_qos_clamp_still_fails_its_ceiling(tmp_path) -> None:
+    """The other half: the clamp stretches CPU work, never a wait. A leaked child holding a pipe
+    spends no CPU, so a measured stretch of x10 never excuses it."""
+    r = planted(tmp_path, SLEEPER, ceiling=0.3, load=1.0, stretch=10.0)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "over its 0.3 s ceiling" in r.stdout, r.stdout
+
+
 def test_the_load_factor_is_run_queue_per_core_never_below_one(monkeypatch) -> None:
     monkeypatch.setenv(_drift_guard.SPEED_ENV, "1")  # the owner's box: the load alone
     monkeypatch.setattr(os, "cpu_count", lambda: 16)

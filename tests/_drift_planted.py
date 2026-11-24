@@ -21,9 +21,12 @@ def planted(
     ceiling: float = 30,
     load: float = 1.0,
     setup_ceiling: float | None = None,
+    stretch: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """A one-test suite whose conftest is the real guard's, run in a child pytest, at a pinned
-    load factor -- the box running this test has its own, and the planted ceilings are tenths."""
+    load factor -- the box running this test has its own, and the planted ceilings are tenths.
+    STRETCH pins what the guard's probe measures on the test's thread (`pole_stretch`), for every
+    phase however short: the QoS clamp's reading, which the run queue never shows."""
     (tmp_path / "conftest.py").write_text(
         f"import sys\nsys.path.insert(0, {str(TESTS)!r})\n"
         "import _drift_guard\n"
@@ -31,13 +34,18 @@ def planted(
         f"_drift_guard.CEILING_S = {ceiling}\n"
         f"_drift_guard.load_factor = lambda *_window: {load}\n"
         + (f"_drift_guard.SETUP_CEILING_S = {setup_ceiling}\n" if setup_ceiling else "")
+        + (
+            f"_drift_guard.POLE_PROBE_AFTER_S = 0\n_drift_guard.pole_stretch = lambda: {stretch}\n"
+            if stretch
+            else ""
+        )
     )
     (tmp_path / "test_planted.py").write_text(body)
     return subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "no:xdist",
          str(tmp_path)],
         capture_output=True, text=True, cwd=tmp_path, timeout=patience(60), check=False,
-        stdin=subprocess.DEVNULL,
+        env=dict(os.environ, **{_drift_guard.SPEED_ENV: "1"}), stdin=subprocess.DEVNULL,
     )  # fmt: skip
 
 

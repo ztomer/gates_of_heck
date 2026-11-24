@@ -345,6 +345,22 @@ def run_queue(start: float, stop: float) -> float:
     return load_factor(start, stop) / speed_factor()
 
 
+# THE QOS CLAMP (GOH.SUITEDRIFTBUILD). A lane or work gate runs under `taskpolicy -c utility`
+# (lib/land_share.py, GOH.LANDSHARE), and the run queue cannot see it: at 3.2 runnable threads per
+# core (2026-11-24) the speed probe's loop took x25-35 its quiet wall on a clamped thread, x0.9 on
+# a free one. Stretched by the run queue alone, the idle suite (class `work`) judged CPU-bound tests
+# at a tenth of their real stretch: test_declared_reads 192 s, the scanner reach test 263.7 s at
+# x2.5, the Rust floor test 191.4 s at x2.8. A phase is judged by the SMALLER of two readings of its
+# quiet seconds: its wall over the run queue's stretch (blind to the clamp), and `pole` -- its CPU
+# with the stretch MEASURED on its own thread, which sees the clamp (taken at a phase of
+# POLE_PROBE_AFTER_S or more, so at every ceiling). A wait spends no CPU, so `pole` keeps it whole:
+# a leaked child holding a pipe is judged as it always was, by the run queue's reading.
+def judged_s(wall: float, factor: float, pole_s: float) -> float:
+    """A phase's seconds against its ceiling: the run queue's reading or the measured one,
+    whichever is less."""
+    return min(wall / factor, pole_s / speed_factor())
+
+
 def _cpu_s() -> float:
     """CPU seconds of this process and every child it has waited for."""
     own = resource.getrusage(resource.RUSAGE_SELF)
@@ -382,7 +398,7 @@ def pytest_runtest_makereport(item, call):
     setup = rep.when == "setup"
     ceiling = setup_ceiling(item.nodeid) if setup else SLOW.get(item.nodeid, CEILING_S)
     factor = load_factor(call.start, call.stop)
-    if call.duration > ceiling * factor:
+    if judged_s(call.duration, factor, rep.goh_pole) > ceiling:
         stretch = f" x{factor:.2g} for the box's load and speed" if factor > 1 else ""
         rep.outcome = "failed"
         if setup:
