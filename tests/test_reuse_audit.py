@@ -29,6 +29,7 @@ sys.path.insert(0, str(REPO_ROOT / "checks"))
 import check_estate_corpus as sweep  # checks/, after its path
 import reuse  # lib/, after its path
 import reuse_audit
+import reuse_audit_store
 
 FIELDS = {"repo": "/r/.git", "sha": "a" * 40, "identity": "i" * 64}
 
@@ -237,9 +238,8 @@ def test_an_unfiled_fault_is_named_at_session_start(tmp_path, store, monkeypatch
     assert reuse_audit.state("carry")["fault"].startswith("not filed")
     said = [ln for ln in _session_start(tmp_path, store).splitlines() if "reuse" in ln]
     assert len(said) == 1 and "carry" in said[0] and "not filed" in said[0], said
-    rec = json.loads((store / "audit" / "carry.json").read_text())
-    rec["fault"] = "filed GOH.REUSEOFFCARRY"
-    (store / "audit" / "carry.json").write_text(json.dumps(rec))
+    rec = reuse_audit_store.get("carry")  # goh.db's row (GOH.VERDICTDB)
+    reuse_audit_store.put({**rec, "fault": "filed GOH.REUSEOFFCARRY"})
     assert not [ln for ln in _session_start(tmp_path, store).splitlines() if "reuse" in ln]
 
 

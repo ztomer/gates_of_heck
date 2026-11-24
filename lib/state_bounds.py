@@ -131,7 +131,10 @@ REGISTRY: dict[str, Bound | Kept | Container] = {
     "reuse/profcarry": Kept("pruned by TTL at each write batch (lib/reuse.py prune)"),
     "reuse/relset": Kept("pruned by TTL at each write (lib/release_gate.py reuse.prune)"),
     "reuse/profstore": Kept("the newest keys only (lib/prof_store.py prune)"),
-    "reuse/audit": Kept("one record per reuse path (lib/reuse_audit.py)"),
+    "reuse/audit": Kept(
+        "the pre-switch records and the audit's flock: goh.db reuse_audit rows now "
+        "(lib/reuse_audit_store.py), read until wave 3 deletes them"
+    ),
     # The suite's kept stores (tests/_kept_store.py, GOH.VERDICTBOUND): the two shell-lint ones are
     # files the goh binary reads until V2 moves them into goh-cache.db; parse-findings is rows now.
     "self-walk-verdicts": Kept("each record dropped after 30 days, every suite session"),

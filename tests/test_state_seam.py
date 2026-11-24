@@ -50,9 +50,10 @@ ALLOWED: dict[str, set[str]] = {
         "lib/state_bounds.py",
         "lib/state_files.py",
     },
-    "reuse audit": {  # V1 goh.db 0007a
-        "lib/reuse_audit.py",
-        "lib/reuse_fault.py",
+    "reuse audit": {  # V1 goh.db 0008 reuse_audit, reuse_shadow (lib/reuse_audit_store.py)
+        # LEFT: the files' window (a record file read when no row holds its path; shadow.jsonl's
+        # lines not yet imported) and the flock beside them, until wave 3's delete commit
+        "lib/reuse_audit_store.py",
         "lib/state_bounds.py",
         "lib/state_files.py",
     },

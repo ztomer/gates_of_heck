@@ -28,7 +28,9 @@ A DISAGREEMENT IS RE-RUN FIRST. Known load flakes exist, so a reused verdict tha
 fresh one re-runs both sides (`again`: the store read again, the work done again); only a
 disagreement both re-runs repeat turns the path off. One that does not repeat is a flake, counted.
 
-OFF IS ONE RECORDED STATE: `<store>/audit/<path>.json`, never an environment variable. It names
+OFF IS ONE RECORDED STATE: the path's row of goh.db's `reuse_audit` (lib/reuse_audit_store.py,
+GOH.VERDICTDB; a file `<store>/audit/<path>.json` before the switch), never an environment
+variable, and never the disposable cache: lost, it would turn a wrong reuse back on. It names
 the cause, both verdicts and the key, and a fault item is filed (`loopctl file`; GOH_LOOPCTL and
 GOH_LOOP_QUEUE are the seams; it names its class as rules.class_first asks, `class_of: none`; one
 that cannot be filed is named in the record and at every SessionStart, hooks/claude/
@@ -66,6 +68,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_root  # lib/: GOH_LIVE_ROOT, honoured for an export only
 import lock_order  # lib/: the one acquire path (GOH.LOCKORDER)
 import reuse  # lib/, beside this file: the one store and its path registry
+import reuse_audit_store  # lib/: the records' rows in goh.db (GOH.VERDICTDB)
 import reuse_fault  # lib/: the fault item an off files
 
 # The audit's own names: _off files through this module's global (a test's seam), and
@@ -76,14 +79,13 @@ WINDOW_S = 7 * reuse.DAY_S
 COUNTS = ("uses", "sampled", "compared", "agreed", "disagreed", "flakes")
 
 
-def _dir() -> Path:
-    return reuse.root() / "audit"
-
-
 @contextlib.contextmanager
 def _locked() -> Iterator[None]:
-    _dir().mkdir(parents=True, exist_ok=True)
-    with (_dir() / ".lock").open("a") as fh:
+    """One read-change-write of a record at a time. The flock stays a file (handover plan (e)):
+    the change may file a fault (a loopctl child), which no database transaction may span."""
+    lock = reuse_audit_store.lock_path()
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with lock.open("a") as fh:
         lock_order.flock(fh, "reuse_audit")  # released when the file closes
         yield
 
@@ -93,20 +95,14 @@ def _fresh_window(start: int) -> dict:
 
 
 def _read(name: str) -> dict:
-    try:
-        rec = json.loads((_dir() / f"{name}.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        rec = {}
-    if not isinstance(rec, dict) or not isinstance(rec.get("window"), dict):
+    rec = reuse_audit_store.get(name) or {}
+    if not isinstance(rec.get("window"), dict):
         rec = {"path": name, "state": "on", "window": _fresh_window(reuse.now()), "closed": []}
     return rec
 
 
 def _write(rec: dict) -> None:
-    dest = _dir() / f"{rec['path']}.json"
-    tmp = dest.with_name(f".{dest.name}.{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(rec, sort_keys=True, indent=1), encoding="utf-8")
-    os.replace(tmp, dest)
+    reuse_audit_store.put(rec)
 
 
 def _roll(p: reuse.ReusePath, rec: dict) -> dict:
@@ -196,8 +192,7 @@ def compare(path: str, fields: dict[str, str], reused: str, fresh: str,
             why = f"reused {reused!r}, fresh {fresh!r}, both again on a re-run of both sides"
             _off(p, rec, "disagree", why, line)
         _write(rec)
-        with (_dir() / "shadow.jsonl").open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps({**line, "outcome": kind}, sort_keys=True) + "\n")
+        reuse_audit_store.shadow_add({**line, "outcome": kind})
     if fresh == "red" and line.get("again", {}).get("fresh") == "green":  # outside the audit lock
         import flakes  # lib/: the flake register (GOH.FLAKEREGISTER)
 

@@ -82,6 +82,7 @@ lib/remote_lane.py	base-code
 lib/reuse.py	base-code
 lib/reuse_store.py	base-code
 lib/reuse_audit.py	base-code
+lib/reuse_audit_store.py	base-code
 lib/reuse_fault.py	base-code
 lib/rm_tree.sh	base-code
 lib/run_path.sh	base-code

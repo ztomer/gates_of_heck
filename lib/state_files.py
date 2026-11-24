@@ -112,8 +112,8 @@ FILES: dict[str, FileBound | FileKept] = {
         30000,
         "epoch",
         "reuse_audit",
-        "lib/reuse_audit.py compare, ~3000 rows a day; the verdicts live in its per-path records, "
-        "this is their evidence for a review",
+        "the pre-switch file: lib/reuse_audit.py compare writes goh.db's reuse_shadow now "
+        "(GOH.VERDICTDB, lib/reuse_audit_store.py), which imports it, until wave 3 deletes it",
     ),
     "landq/lander.log": FileBound(
         None,

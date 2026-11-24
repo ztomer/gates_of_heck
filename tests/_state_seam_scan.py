@@ -59,7 +59,7 @@ STORES: dict[str, tuple[str, tuple[str, ...]]] = {
         ("test-durations.json", "test-durations", "remote-rates.json", "linux-unsafe.json"),
     ),
     "reuse records": ("V1 goh-cache.db 0002 verdicts", ("reuse",)),
-    "reuse audit": ("V1 goh.db 0007a", ("audit",)),
+    "reuse audit": ("V1 goh.db 0008 reuse_audit", ("audit",)),
     "kept stores": (
         "V1 goh-cache.db 0002 kept",
         ("self-walk-verdicts", "parse-findings", "tree-lint-verdicts"),

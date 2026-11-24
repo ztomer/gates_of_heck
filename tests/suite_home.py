@@ -141,6 +141,8 @@ CALLER_INPUTS = (
     "GOH_LAND_VERDICTS_STORE",
     # ... and its goh-cache.db, where those verdicts live (lib/reuse_store.py, GOH.VERDICTDB).
     "GOH_LAND_VERDICTS_CACHE",
+    # ... and its goh.db, where the reuse audit counts its uses (lib/reuse_audit_store.py).
+    "GOH_LAND_VERDICTS_AUDIT_DB",
     # The ship's file for its reused and fresh binary tests (tests/_prof_reuse.py): dropped here,
     # no ship record named them (GOH.COVPROFILEREUSE's first measured run).
     "GOH_PROF_REUSE_OUT",
@@ -170,6 +172,12 @@ def _land_store() -> None:
         cache = str(Path(named, "goh-cache.db") if named.startswith("/") else
                     cache_base / "goh" / "goh-cache.db")  # fmt: skip
     os.environ.setdefault("GOH_LAND_VERDICTS_CACHE", cache)
+    # Its audit's goh.db, by lib/reuse_audit_store.py `db`'s rule: beside a named root, else
+    # GOH_DB, else the caller's XDG state (base, above).
+    audit = os.environ.get("GOH_DB", "")
+    audit = str(Path(named, "goh.db") if named.startswith("/") else
+                audit if audit.startswith("/") else base / "goh" / "goh.db")  # fmt: skip
+    os.environ.setdefault("GOH_LAND_VERDICTS_AUDIT_DB", audit)
 
 
 def _kept_db() -> None:

@@ -174,7 +174,8 @@ pruned at their TTL. `prune` keeps each path inside its TTL and its newest `reus
   that skip work on it), its store and its SHADOW. A site asks `use(path, fields)` first: "reuse",
   "shadow" (one use in `every`, counted, never by chance: do the work anyway, then `compare`) or
   "off". A disagreement re-runs both sides (the store read again, the work done again) and only a
-  repeated one turns the path off: one recorded state, `<root>/audit/<path>.json`, with both
+  repeated one turns the path off: one recorded state, the path's row of goh.db's `reuse_audit`
+  (lib/reuse_audit_store.py, durable: lost, it would turn a wrong reuse back on), with both
   verdicts, the key and the fault item it filed (`loopctl file`, as `class_of: none`; one loopctl
   refused is named at every SessionStart; an id the queue already holds is an earlier off's item,
   so the next free one, `GOH.REUSEOFF<PATH>2` and on, is filed naming it; a record whose fresh

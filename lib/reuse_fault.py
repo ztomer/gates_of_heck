@@ -20,6 +20,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import queue_read  # lib/: the loop queue's one reader (LOOP.QUEUEARCHIVE)
 import reuse  # lib/, beside this file: the store's root and its path registry
+import reuse_audit_store  # lib/: the audit's records, goh.db rows (GOH.VERDICTDB)
 
 # When the loop re-measures a goh prediction (triggers.verify_problems: {"lands"|"ships": N}).
 VERIFY_AFTER = {"lands": 5}
@@ -124,11 +125,10 @@ def unfiled() -> list[str]:
     SessionStart (hooks/claude/estate_advisories.py), so a refused filing alerts someone."""
     out = []
     for name in reuse.PATHS:
-        try:
-            rec = json.loads((reuse.root() / "audit" / f"{name}.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        rec = reuse_audit_store.get(name)
+        if rec is None:
             continue
-        fault = str(rec.get("fault") or "") if isinstance(rec, dict) else ""
+        fault = str(rec.get("fault") or "")
         if rec.get("state") == "off" and not fault.startswith("filed "):
             out.append(f"{name} off ({rec.get('cause')}), fault {fault or 'not filed'}")
     return out

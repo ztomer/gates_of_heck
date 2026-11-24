@@ -99,6 +99,8 @@ def identity(root: Path = REPO_ROOT) -> str | None:
 
 STORE = "GOH_LAND_VERDICTS_STORE"  # the caller's store root (tests/suite_home.py `_land_store`)
 CACHE = "GOH_LAND_VERDICTS_CACHE"  # ... and its records' goh-cache.db (lib/reuse_store.py)
+# ... and its audit's goh.db: each a caller's file, opened by that lib module's NAMED (in-process)
+NAMED = {CACHE: "reuse_store", "GOH_LAND_VERDICTS_AUDIT_DB": "reuse_audit_store"}
 
 
 def _take() -> dict[str, str]:
@@ -111,10 +113,9 @@ def _take() -> dict[str, str]:
     (GOH.VERDICTCARRY3). A session a test starts now sees only the keys that test names. The store
     is GOH_REUSE_DIR when one is named, else the caller's that suite_home resolved."""
     got = {k: os.environ.pop(k) for k in (RECORD, REUSE) if k in os.environ}
-    named = os.environ.get("GOH_REUSE_DIR")
-    store, cache = named or os.environ.pop(STORE, ""), os.environ.pop(CACHE, "")
-    os.environ.pop(STORE, None)
-    got.update({STORE: store, CACHE: "" if named else cache} if store else {})
+    named, store = os.environ.get("GOH_REUSE_DIR"), os.environ.pop(STORE, "")
+    files = {k: os.environ.pop(k, "") * (not named) for k in NAMED}  # a named root's are its own
+    got.update({STORE: named or store, **files} if named or store else {})
     return got
 
 
@@ -136,15 +137,15 @@ def _in_store():
     for good, a test's child inherited the land's store (GOH.VERDICTCARRY3)."""
     was = os.environ.get("GOH_REUSE_DIR")
     os.environ["GOH_REUSE_DIR"] = _store()
-    _lib("reuse_store").NAMED = Path(_on(CACHE)) if _on(CACHE) else None  # in-process only
+    for k, mod in NAMED.items():  # the caller's files, in-process only
+        _lib(mod).NAMED = Path(_on(k)) if _on(k) else None
     try:
         yield _lib("reuse"), _lib("reuse_audit")
     finally:
-        _lib("reuse_store").NAMED = None
-        if was is None:
-            os.environ.pop("GOH_REUSE_DIR", None)
-        else:
-            os.environ["GOH_REUSE_DIR"] = was
+        for mod in NAMED.values():
+            _lib(mod).NAMED = None
+        os.environ.pop("GOH_REUSE_DIR", None)
+        os.environ.update({} if was is None else {"GOH_REUSE_DIR": was})
 
 
 def _store_or_none():  # `_in_store`, when a store is named to count in; else None
