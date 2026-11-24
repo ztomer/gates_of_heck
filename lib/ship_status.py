@@ -120,12 +120,12 @@ def _gone(res: dict) -> bool:
     return bool(pid) and not pid_owner.alive_line(str(res.get("pid_stamp") or pid))
 
 
-def settle(path: Path) -> bool:
+def settle(path: Path, res: dict | None = None) -> bool:
     """Write the terminal record a killed worker could not (GOH.SHIPEARLY): a result that says
     running while its worker is gone becomes `failed` at ABANDONED, naming the pid, so no record
     stays status-less or running forever (two Finance_zinc ships of 2026-11-17 said running six
-    days after their workers died). True when it rewrote PATH."""
-    res = ship_records.get(path)
+    days after their workers died). True when it rewrote PATH (RES: its record, already read)."""
+    res = ship_records.get(path) if res is None else res
     if res is None or not _gone(res):
         return False
     done = [s["name"] for s in res.get("steps", []) if isinstance(s, dict) and "name" in s]
@@ -140,7 +140,7 @@ def settle(path: Path) -> bool:
 def settle_all(directory: Path, say=None) -> list[Path]:
     """`settle` over every ship result in DIRECTORY (a repo's ship records): the ones rewritten,
     each said through SAY when given."""
-    done = [p for p, _ in ship_records.in_dir(directory) if settle(p)]
+    done = [p for p, rec in ship_records.in_dir(directory) if settle(p, rec)]
     for p in done if say else ():
         say(f"goh ship: an earlier ship's worker is gone; recorded it as failed: {p}")
     return done
