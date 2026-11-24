@@ -20,7 +20,9 @@ AT RISK when, in the kept profile:
   * its file is new since the measured commit, and not named as test code (`tests.rs`,
     `*_test(s).rs`, `tests/`); a file the measured commit had but the profile lacks is excluded
     from measurement, and the ship never judges it.
-No profile, no tag, or a measured commit this clone lacks is said and skipped. Rust only: the
+A line the repo's diffcov_allow.json names (with its reason) is passed by the ship's diff
+coverage, so it is never at risk (GOH.SHIPCOVRISK). No profile, no tag, or a measured commit this
+clone lacks is said and skipped. Rust only: the
 ship's diff coverage judges `*.rs` alone. Printed by `goh land --check` and at enqueue, and kept
 on the land record as `cov_risk`; it never changes either verdict.
 
@@ -152,6 +154,35 @@ def _old_line(hunks: list[tuple[int, int, int, int]], ln: int) -> tuple[int, boo
     return ln + shift, True
 
 
+def allowed(top: str | Path) -> set[tuple[str, str]]:
+    """(file, stripped text) of each entry of TOP's diff coverage allowlist (gates/diff_cov.py
+    load_allow, its one reader): lines the ship's diff coverage passes, so no land warns of or
+    carries them (GOH.SHIPCOVRISK). An unreadable list is the ship's to refuse: none here."""
+    import diff_cov  # gates/, on the path above
+
+    try:
+        return {(e["file"], e["text"].strip()) for e in diff_cov.load_allow(str(top))[1]}
+    except diff_cov.Refused:
+        return set()
+
+
+def _unallowed(top: str, risky: list[tuple[str, int, str, bool]]) -> list:
+    """RISKY less the lines TOP's allowlist names."""
+    allow = allowed(top)
+    texts: dict[str, list[str]] = {}
+    for rel in {r[0] for r in risky} & {f for f, _t in allow}:
+        try:
+            texts[rel] = (Path(top) / rel).read_text(errors="replace").splitlines()
+        except OSError:
+            texts[rel] = []
+
+    def named(rel: str, ln: int) -> bool:
+        lines = texts.get(rel) or []
+        return ln <= len(lines) and (rel, lines[ln - 1].strip()) in allow
+
+    return [r for r in risky if not named(r[0], r[1])]
+
+
 def _judge(top: str, summary: Path) -> tuple[list[tuple[str, int, str, bool]], str, str]:
     """([(file, line, why, carried)], said, tag): each changed Rust line since the last ship at
     risk, and whether the ship's diff coverage would refuse it (not covered by any part); TAG is
@@ -193,7 +224,7 @@ def _judge(top: str, summary: Path) -> tuple[list[tuple[str, int, str, bool]], s
             if any(n in exe for n in near) and not any(n in own for n in near):
                 carried = not any(n in cov for n in near)
                 risky.append((rel, ln, "external suite only, or no test", carried))
-    return risky, f"since {tag}, profile {sha[:8]}", tag
+    return _unallowed(top, risky), f"since {tag}, profile {sha[:8]}", tag
 
 
 def at_risk(top: str | Path, summary: Path) -> tuple[list[tuple[str, list[int], str]], str]:

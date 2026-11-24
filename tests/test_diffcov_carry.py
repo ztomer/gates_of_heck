@@ -180,6 +180,26 @@ def test_a_carried_line_since_deleted_or_judged_covered_no_longer_counts(tmp_pat
     assert diffcov_carry.refusal(main, "v0.1.0", _commit(main, "delete it"), q) is None
 
 
+def test_a_line_the_allowlist_names_is_neither_carried_nor_refused(tmp_path, monkeypatch):
+    """The ship's diff coverage (gates/diff_cov.py) passes a changed line its diffcov_allow.json
+    names with a reason, so the land warns of and carries none, and the ship's preflight refuses
+    none: on 2026-11-24 it named crates/goh/src/privnames_add.rs:29, allowlisted since its land,
+    among the 3 lines it would refuse (GOH.SHIPCOVRISK)."""
+    main, wt = _land(tmp_path, monkeypatch)
+    q = tmp_path / "landq"
+    _lines, rec = cov_risk.report(wt, main)
+    _landed(q, main, wt, rec, "GOH.LANE")  # carried before the entry was written
+    assert diffcov_carry.refusal(main, "v0.1.0", _git(main, "rev-parse", "HEAD"), q)
+    allow = {"entries": [{"file": PROBE, "text": LINE, "reason": "unreachable, and why"}]}
+    (main / "diffcov_allow.json").write_text(json.dumps(allow))
+    head = _commit(main, "allow it")
+    assert diffcov_carry.refusal(main, "v0.1.0", head, q) is None
+    _git(wt, "merge", "-q", "--ff-only", "main")
+    lines, rec = cov_risk.report(wt, main)
+    assert rec["carry"] == [] and PROBE not in rec["files"], rec
+    assert not any(PROBE in ln for ln in lines), lines
+
+
 def test_an_unmeasured_carry_files_no_item_and_refuses_no_ship(tmp_path, monkeypatch):
     main, wt = _land(tmp_path, monkeypatch, measured=False)
     lines, rec = cov_risk.report(wt, main)

@@ -4,6 +4,11 @@
       "file": "crates/goh/src/privnames_add.rs",
       "text": ".map_err(|e| format!(\"git {}: {e}\", args.first().copied().unwrap_or(\"\")))",
       "reason": "git could not be spawned at all: no test machine lacks git, and goh's gates need it before this runs"
+    },
+    {
+      "file": "crates/goh/src/gohpin/scan.rs",
+      "text": ".unwrap_or_else(|e| unreachable!(\"a constant pattern: {e}\"))",
+      "reason": "the error arm of Regex::new on a compile-time constant pattern: it runs only on a pattern that does not compile, and every test that reads a pin (gohpin::tests) compiles each pattern first, so no test or run can reach it"
     }
   ]
 }

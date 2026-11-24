@@ -24,6 +24,8 @@ carried line no longer counts when:
   * a later land's own judgment did not carry it: a record after it whose cov_risk judged a tip
     (`head`) holding this land lists no line of that file with that text (a newer profile, or a
     covered neighbourhood). A lane judged on a tip without this land's change never clears it.
+A line the repo's diffcov_allow.json names never counts: the ship's diff coverage passes it, so
+neither the land carries it nor the preflight refuses it (GOH.SHIPCOVRISK).
 Only MEASURED lines count (GOH.DIFFCOVUNMEASURED, cov_risk.measured): a line of a file new since
 the profile was never measured by any land, so it files no item and refuses no ship; the ship's
 own diff coverage judges it after the suite.
@@ -246,6 +248,7 @@ def open_lines(repo: Path, tag: str, head: str, q: Path | None = None) -> list[d
 
     import cov_risk  # lib/: what a measured carried line is
 
+    allow = cov_risk.allowed(repo)  # passed by the ship's diff coverage: never refused here
     found: dict[tuple[str, int], dict] = {}
     cleared: set[tuple[str, int]] = set()
     for n, rec in enumerate(recs):
@@ -259,6 +262,8 @@ def open_lines(repo: Path, tag: str, head: str, q: Path | None = None) -> list[d
             if not cov_risk.measured(c):
                 continue  # unmeasured, not uncovered: the ship's diff coverage judges it
             rel, text = c["file"], c["text"]
+            if (rel, text.strip()) in allow:
+                continue  # named with its reason in the allowlist since (GOH.SHIPCOVRISK)
             at = tree.where(frm, rel, c["line"], text)
             lines = tree.text(rel) or []
             if at is None or at > len(lines) or lines[at - 1].strip() != text:
