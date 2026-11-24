@@ -13,6 +13,7 @@ asserts the scratch main's core.bare stayed unset. `test_the_fixture_reproduces_
 calibration: the raw inheritance DOES flip it, so a green run elsewhere means the route is
 scrubbed, not that the fixture is inert.
 """
+# goh-land-guard: test_rust_test_code_spawns_git_only_through_the_testkit
 
 import os
 import subprocess

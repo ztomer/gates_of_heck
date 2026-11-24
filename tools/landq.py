@@ -3,7 +3,7 @@
 
     goh land --enqueue REPO SHA [--item ID] [--ship [--summary TEXT]] [--no-start]
     goh land --enqueue --land WORKTREE [--item ID] [--no-start] [--no-pre REASON]
-    goh land --check WORKTREE   # the land's structural guards, in seconds (lib/land_check.py)
+    goh land --check [--rules] WORKTREE  # its guards; --rules: every rule test alone, < 1 min
     goh land --wait ID|REQUEST [--timeout S]  # block until it finished: 0 landed, 1 red, 3 else
     goh land --cancel ITEM  # stop its pre-step, as a re-enqueue does (lib/landq_supersede.py)
     goh land --drain        # the lander: run every request in order, then exit
@@ -388,7 +388,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--drain", action="store_true")
     mode.add_argument("--status", action="store_true")
     mode.add_argument("--ruff-bump", action="store_true", help="land a newer ruff's pin bump, once")
-    mode.add_argument("--check", metavar="WORKTREE", help="its tip's structural land guards")
+    land_check.add_arguments(mode, ap)  # --check WORKTREE [--rules]
     mode.add_argument("--cancel", metavar="ITEM", help="stop ITEM's enqueue in its pre-step")
     landq_report.add_arguments(mode, ap)
     landq_background.add_arguments(ap)  # --land, --no-pre, --no-start, --wait, --foreground
@@ -407,7 +407,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.drain or args.status:
         return drain() if args.drain else landq_look.status(qdir())
     if args.check is not None:
-        return land_check.cli(args.check, qdir())
+        return land_check.cli(args.check, qdir(), args.rules)
     if args.ruff_bump:  # lib/ruff_bump.py look: the bump-only land, if one is owed
         return ruff_bump.look(home, live_root(), args.detach, Path(__file__).resolve(), info)
     if args.wait and args.enqueue is None:  # THE WAIT

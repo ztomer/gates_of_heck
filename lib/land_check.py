@@ -153,11 +153,15 @@ def costs() -> dict[str, float]:
     return cost
 
 
-def tests(root: Path, q: Path | None, repo: str = "") -> list[str]:
+def tests(root: Path, q: Path | None, repo: str = "", rules: bool = False) -> list[str]:
     """The guard test functions the tree defines now: a declared one measured at most
-    DECLARED_EACH_S (one the suite has not timed yet is run), a past refuser at most EACH_S."""
+    DECLARED_EACH_S (one the suite has not timed yet is run), a past refuser at most EACH_S; RULES
+    (`goh land --check`, `--rules`) declares every rule test by its shape (lib/rule_tests.py)."""
     cost = costs()
-    mine = set(fast_tests.units(root, declared(root)))
+    from lib import rule_tests  # RULES: every rule test by its shape too (GOH.RULESLEFT)
+
+    found = rule_tests.rules(root) if rules else []
+    mine = set(fast_tests.units(root, [*declared(root), *found]))
     past = [fast_tests._base(g) for g in history(q, repo)]
     every = list(dict.fromkeys([*sorted(mine), *fast_tests.units(root, past)]))
     cap = dict.fromkeys(mine, DECLARED_EACH_S)
@@ -254,7 +258,7 @@ def _run(
 
 
 def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=False, no_pre=False,
-        cov=True, reqs: list[dict] | None = None):  # fmt: skip
+        cov=True, reqs: list[dict] | None = None, rules=False):  # fmt: skip
     """Every guard over ROOT; the refusing guards' names ([] is green). SAY prints a line. TABLES
     (`goh land --check`) adds every judge the change can break (`judge_tests`) and, unless not COV
     (a batch's ratchet phase, lib/landq_ratchet.py), diff coverage; NO_PRE `steps`' no-pre lint,
@@ -267,7 +271,7 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=Fal
     from lib import land_waive  # its reds that are main's or a newer rule's (GOH.MAINREDWAIVE)
 
     env.update(w.split("=", 1) for w in land_waive.words(reqs))
-    nodes = tests(root, q, repo)
+    nodes = tests(root, q, repo, rules=rules or tables)
     if tables:
         t0 = time.monotonic()
         extra = [n for n in judge_tests(root) if n not in nodes]
@@ -277,7 +281,7 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=Fal
     jobs: dict[str, list[str]] = {s: ["bash", "-c", s] for s in steps(root, no_pre)}
     serial = ["-n", "0"] if (root / "tests" / "_shard.py").is_file() else []  # goh's xdist
     py = [env["GOH_PY"], "-m", "pytest", "-q", "-p", "no:cacheprovider", *serial]
-    parts = shards(nodes, JUDGE_SHARDS if tables else SHARDS)
+    parts = shards(nodes, JUDGE_SHARDS if tables or rules else SHARDS)  # RULES: --check --rules
     for i, part in enumerate(parts, 1):
         jobs[f"guard tests {i}/{len(parts)}"] = [*py, "--", *part]
     if tables and cov and (job := diff_cov_job(root, env)):
@@ -383,54 +387,16 @@ def at_enqueue(q: Path, req: dict, file, record, say=print, no_pre: str | None =
     return why
 
 
-def cli(worktree: str, q: Path) -> int:
-    """`goh land --check WORKTREE`: its committed tip's guards; 0 green, 1 refused, 2 unusable."""
-    from lib import gitrun  # no-lock readers under a deadline (GOH.GITKILL)
-    from tui.lib import err, info, ok, warn
+def add_arguments(mode, ap) -> None:
+    mode.add_argument("--check", metavar="WORKTREE", help="its tip's structural land guards")
+    ap.add_argument("--rules", action="store_true", help="--check: every rule test, no judge")
 
-    found = gitrun.run_reader(("rev-parse", "--show-toplevel"), repo=worktree, timeout=60)
-    top = found.stdout.strip() if found.returncode == 0 else ""
-    if not top:
-        err(f"goh land --check: {worktree} is not a git checkout")
-        return 2
-    dirty = gitrun.run_reader(("status", "--porcelain"), repo=top, timeout=60)
-    if dirty.returncode or dirty.stdout.strip():
-        some = ", ".join(ln[3:] for ln in dirty.stdout.splitlines()[:5])
-        err(
-            f"goh land --check: {top} is not its commit ({some or 'git status failed'}) -- the "
-            "land judges the commit, and an uncommitted or untracked file would judge another "
-            "tree; commit or remove them, then check"
-        )
-        return 2
-    listing = gitrun.run_reader(("worktree", "list", "--porcelain"), repo=top, timeout=60)
-    main = listing.stdout.split("\n", 1)[0].removeprefix("worktree ")
-    t0 = time.monotonic()
-    # A commit no commit gate judged (a cherry-pick, a rebase, --no-verify) is judged now, by the
-    # gate its pre-commit would have run, and named (GOH.CHERRYPICKGATE).
-    from lib import commit_stamp
 
-    refused_commits = commit_stamp.check(top, info)
-    for r in refused_commits:
-        err(f"goh land --check: {r}")
-    # An item the range names with no changelog fragment is refused here, where the lane can add
-    # it, not at the ship's release (GOH.FRAGMENTATLAND).
-    from lib import fragment_check
+def cli(worktree: str, q: Path, rules: bool = False) -> int:
+    """`goh land --check [--rules] WORKTREE` (lib/land_check_cli.py, split out at the line cap)."""
+    from lib import land_check_cli
 
-    no_fragment = fragment_check.missing(top)
-    for r in no_fragment:
-        err(f"goh land --check: {r}")
-    refused = run(Path(top), q, info, main, tables=True)
-    refused += [f"the commit gate on {r.split(' ', 5)[4]}" for r in refused_commits]
-    refused += [f"the changelog fragment of {r.split(' ', 1)[0]}" for r in no_fragment]
-    took = f"{time.monotonic() - t0:.1f} s"
-    t1 = time.monotonic()
-    cov_risk.say(top, main, warn)  # GOH.DIFFCOVLAND: a warning, never this check's verdict
-    info(f"diff coverage risk read in {time.monotonic() - t1:.1f} s")
-    if refused:
-        err(f"goh land --check: refused in {took} by {', '.join(refused)}")
-        return 1
-    ok(f"goh land --check: every guard green in {took}")
-    return 0
+    return land_check_cli.cli(worktree, q, rules)
 
 
 NODE = re.compile(r"tests/[^\s:,()]+\.py::[^\s,()]+")

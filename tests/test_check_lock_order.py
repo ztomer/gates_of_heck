@@ -5,6 +5,7 @@ holding the load slot (run inside `tools/load.py`) waiting for the land lock. Th
 tree green, then reads it again with the land-inside-the-slot invocation planted (its `plant` seam:
 a file read as if tracked, so no copy of goh is made): it must name the cycle, land -> load -> land.
 """
+# goh-land-guard: test_the_clean_tree_has_no_finding
 
 from __future__ import annotations
 
