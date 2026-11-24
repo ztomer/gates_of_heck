@@ -13,22 +13,25 @@ and main's own new migration still applies, from main only.
 
 from __future__ import annotations
 
-import os
 import shutil
 import sqlite3
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 import db_core
+import db_record
 from _tree_clone import from_template
 from conftest import REPO_ROOT, git, hermetic_env
 from timing_bounds import patience
 
-COPY = ("lib/db_core.py", "lib/goh_db.py", "lib/lock_order.py", "lib/lock_order.tsv",
-        "lib/pid_owner.py", "lib/goh_db_schema", "tui/lib.py", "tui/stylerc")  # fmt: skip
-TREE_READS = ("lib/db_core.py", "lib/goh_db.py", "lib/lock_order.py", "lib/lock_order.tsv",
-              "lib/pid_owner.py", "lib/goh_db_schema/", "tui/lib.py", "tui/stylerc")  # fmt: skip
+COPY = ("lib/db_core.py", "lib/db_record.py", "lib/goh_db.py", "lib/lock_order.py",
+        "lib/lock_order.tsv", "lib/pid_owner.py", "lib/goh_db_schema", "tui/lib.py",
+        "tui/stylerc")  # fmt: skip
+TREE_READS = ("lib/db_core.py", "lib/db_record.py", "lib/goh_db.py", "lib/lock_order.py",
+              "lib/lock_order.tsv", "lib/pid_owner.py", "lib/goh_db_schema/", "tui/lib.py",
+              "tui/stylerc")  # fmt: skip
 
 DRIVER = """
 import sys
@@ -126,12 +129,89 @@ def test_a_copy_never_creates_the_shared_file(tmp_path_factory, tmp_path) -> Non
     assert not (tmp_path / "state" / "goh" / "goh.db").exists()
 
 
-def test_the_record_is_a_primary_checkout(tmp_path) -> None:
-    """A linked worktree's `.git` is a file; a primary checkout's a directory; an install with no
-    git at all is its own record."""
-    assert db_core.of_record(tmp_path)
-    (tmp_path / ".git").mkdir()
-    assert db_core.of_record(tmp_path)
-    os.rmdir(tmp_path / ".git")
+def _export(src: Path, rev: str, dest: Path, live: Path | None) -> Path:
+    """A copy shaped as gates/_from_head.sh makes one: `git archive REV` with no `.git`, the rev in
+    `.goh-head` and the checkout that made it in `.goh-live` (NONE: canary_sides' export)."""
+    sha = git(src, "rev-parse", rev).strip()
+    tar = dest.parent / f"{dest.name}.tar"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    git(src, "archive", "-o", str(tar), sha)
+    with tarfile.open(tar) as t:
+        t.extractall(dest, filter="data")
+    (dest / ".goh-head").write_text(f"{sha}\n")
+    if live is not None:
+        (dest / ".goh-live").write_text(f"{live}\n")
+    return dest
+
+
+def test_a_head_copy_of_a_commit_not_on_main_never_migrates_the_shared_file(
+    tmp_path_factory, tmp_path
+) -> None:
+    """GOH.HEADCOPYRECORD. 2026-11-24 00:34:55: the SHIPSV2 lane's pre-commit exported its STAGED
+    TREE to ~/.cache/goh/head/7b705d90.. (no `.git`), and commit_stamp.py's `record` from that copy
+    applied 0009 to the real goh.db at 00:35:25 ("goh unknown"), before 0009 was on main: the rule
+    read a directory with no `.git` as an install. A copy is of record by its COMMIT."""
+    main = _main_copy(tmp_path_factory, tmp_path)
+    shipped = sorted(int(p.name[:4]) for p in (main / "lib" / "goh_db_schema").glob("*.sql"))
+    assert _write(tmp_path, main, "m1") == "wrote"
+    lane = tmp_path / "lane"
+    git(main, "worktree", "add", "-q", "-b", "lane", str(lane))
+    (lane / "lib" / "goh_db_schema" / "0099_lane.sql").write_text("CREATE TABLE lane(x);\n")
+    git(lane, "add", "-A")
+    tree = git(lane, "write-tree").strip()  # what a goh commit's pre-commit exports (SELFGATE)
+    staged = _export(lane, tree, tmp_path / "head" / tree, lane)
+    got = _write(tmp_path, staged, "t1")
+    assert got.startswith("refused:") and "0099_lane" in got, got
+    _commit(lane, "the lane's migration")
+    commit = _export(lane, "HEAD", tmp_path / "head" / "lane-tip", lane)
+    got = _write(tmp_path, commit, "c1")
+    assert got.startswith("refused:") and "0099_lane" in got, got
+    side = _export(lane, "HEAD", tmp_path / "canary" / "head", None)  # canary_sides: no .goh-live
+    got = _write(tmp_path, side, "s1")
+    assert got.startswith("refused:") and "0099_lane" in got, got
+    assert _file(tmp_path) == (shipped, "m1"), "a head copy's migration reached the shared file"
+
+
+def test_a_head_copy_of_mains_tip_migrates_the_shared_file(tmp_path_factory, tmp_path) -> None:
+    """The other side: main's own commit, run from its export (a consumer's gate runs goh's HEAD
+    from ~/.cache/goh/head/<sha>), is the code of record, and an ancestor of main's tip is too."""
+    main = _main_copy(tmp_path_factory, tmp_path)
+    shipped = sorted(int(p.name[:4]) for p in (main / "lib" / "goh_db_schema").glob("*.sql"))
+    assert _write(tmp_path, main, "m1") == "wrote"
+    old = _export(main, "HEAD", tmp_path / "head" / "old", main)
+    (main / "lib" / "goh_db_schema" / "0098_main.sql").write_text("CREATE TABLE landed(x);\n")
+    _commit(main, "main's own migration")
+    assert _write(tmp_path, old, "o1") == "wrote"  # an ancestor of main: of record, no migration
+    tip = _export(main, "HEAD", tmp_path / "head" / "tip", main)
+    assert _write(tmp_path, tip, "h1") == "wrote"
+    assert _file(tmp_path) == ([*shipped, 98], "h1")
+
+
+def test_a_copy_that_names_no_commit_is_not_of_record(tmp_path_factory, tmp_path) -> None:
+    """No `.git` and no `.goh-head` (a bare `git archive` such as lib/selection_miss.py's, a push
+    gate's kept tree): nothing shows its commit is main's, so it migrates no shared file."""
+    main = _main_copy(tmp_path_factory, tmp_path)
+    assert _write(tmp_path, main, "m1") == "wrote"
+    bare = _export(main, "HEAD", tmp_path / "bare", None)
+    (bare / ".goh-head").unlink()
+    (bare / "lib" / "goh_db_schema" / "0097_bare.sql").write_text("CREATE TABLE bare(x);\n")
+    got = _write(tmp_path, bare, "b1")
+    assert got.startswith("refused:") and "0097_bare" in got, got
+
+
+def test_the_record_is_a_commit_on_main(tmp_path) -> None:
+    """A linked worktree's `.git` is a file: never. A primary checkout on main: yes. A directory
+    with no git that names no commit: no (it was "an install", which let a head copy migrate)."""
+
+    def why() -> str | None:
+        db_record._RECORD.clear()  # the answer is kept per process; this test changes the tree
+        return db_core.why_not_of_record(tmp_path)
+
+    assert "names no commit" in str(why())
     (tmp_path / ".git").write_text("gitdir: /x/.git/worktrees/w\n")
-    assert not db_core.of_record(tmp_path)
+    assert "linked worktree" in str(why())
+    (tmp_path / ".git").unlink()
+    git(tmp_path, "init", "-q", "-b", "main")
+    assert why() is None
+    git(tmp_path, "checkout", "-q", "-b", "lane")
+    assert "not main" in str(why())  # a primary checkout on another branch with no commit yet

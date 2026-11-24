@@ -173,7 +173,7 @@ def causes(q: Path) -> dict[str, dict]:
 def set_causes(q: Path, side: dict[str, dict]) -> None:
     """Queue Q's red classes are SIDE (`<run>.json` -> cause), replacing the ones before."""
     key = queue_key(q)
-    with goh_db.transaction() as con:
+    with goh_db.refusable(), goh_db.transaction() as con:
         con.execute("DELETE FROM red_causes WHERE queue = ?", (key,))
         con.executemany(
             "INSERT INTO red_causes (queue, run, cause, at, body) VALUES (?, ?, ?, ?, ?)",
@@ -238,9 +238,11 @@ def _insert(con: sqlite3.Connection, key: str, name: str, rows: list[dict]) -> i
 
 
 def append(q: Path, name: str, rows: list[dict]) -> int:
-    """ROWS onto ledger NAME of queue Q, each body once; how many were new."""
-    with goh_db.transaction() as con:
+    """ROWS onto ledger NAME of queue Q, each body once; how many were new (0 when this copy may
+    not write goh.db, said)."""
+    with goh_db.refusable(), goh_db.transaction() as con:
         return _insert(con, queue_key(q), name, rows)
+    return 0
 
 
 def import_done(q: Path) -> dict[str, int]:

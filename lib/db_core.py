@@ -24,15 +24,20 @@ down (`NewerFile` on a write, naming the migration it does not ship).
 ONLY THE CODE OF RECORD MIGRATES A SHARED FILE (GOH.LANEMIGRATE). On 2026-11-23 `goh land --check`
 run from lane worktrees opened the real goh.db with the lane's code and applied migrations main did
 not have yet; main's goh then refused every write (NewerFile) until those lanes landed. The code of
-record is the PRIMARY checkout (`.git` a directory: the one GOH_DIR names) or an install with no
-git; a linked worktree (`.git` a file: a lane, a landq slot running a land's pre-step, the idle
-suite's tree) is not, whoever runs it. A shared file is one in the account's goh state or cache
-directory (from the passwd home, not HOME; or the XDG home set outside a suite). A copy that is not
-of record writes a shared file only when the file already holds every migration the copy ships; a
-file lacking one (the lane's own, or main's newest before main has run) opens READ-ONLY and says
-which (`NotOfRecord` on a write), and a missing one is never created. A pre-step never migrates:
-after the land main ships the migration, and main's next run applies it. Any other file (a test's
-tmp_path) migrates from any copy.
+record is decided by its COMMIT (GOH.HEADCOPYRECORD, `why_not_of_record`): the primary checkout on
+main, or an export (`.goh-head`, ~/.cache/goh/head/<sha>) of a commit on main's tip. A linked
+worktree (`.git` a file: a lane, a landq slot running a land's pre-step, the idle suite's tree), an
+export of a lane's commit or of a staged tree (a goh commit's pre-commit, GOH.SELFGATE), and a copy
+with no git that names no commit are not, whoever runs them. On 2026-11-24 a lane's pre-commit ran
+lib/commit_stamp.py from its staged tree's export, which the rule then read as "an install", and
+0009 reached the real goh.db before main had it. The answer costs a few file reads (one `git
+merge-base` for an export of an older main commit) and is kept per process. A shared file is one in
+the account's goh state or cache directory (from the passwd home, not HOME; or the XDG home set
+outside a suite). A copy that is not of record writes a shared file only when the file already holds
+every migration the copy ships; a file lacking one (the lane's own, or main's newest before main has
+run) opens READ-ONLY and says which (`NotOfRecord` on a write), and a missing one is never created.
+A pre-step never migrates: after the land main ships the migration, and main's next run applies it.
+Any other file (a test's tmp_path) migrates from any copy.
 
 HERMETIC. With GATES_OF_HECK_SUITE_REAL_HOME set (tests/suite_home.py), opening a file that lives
 directly in the real home's goh state or cache directory raises `RealHomeOpen`: no test writes
@@ -66,6 +71,9 @@ REAL_XDG_STATE_ENV = "GATES_OF_HECK_SUITE_REAL_XDG_STATE_HOME"
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from tui.lib import warn  # noqa: E402 -- the root, on the path from the line above
+
+sys.path.insert(0, str(ROOT / "lib"))
+import db_record  # noqa: E402 -- lib/, on the path from the line above
 
 BOOT = """
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -150,10 +158,14 @@ def guard(p: Path, env: Mapping[str, str] | None = None) -> None:
                                "tests point GOH_DB / GOH_CACHE_DB at tmp_path")  # fmt: skip
 
 
+def why_not_of_record(root: Path = ROOT) -> str | None:
+    """Why ROOT is not the code of record, or None (lib/db_record.py: decided by its commit)."""
+    return db_record.why_not(root)
+
+
 def of_record(root: Path = ROOT) -> bool:
-    """ROOT is the code of record: a primary checkout (`.git` a directory) or an install with no
-    git. A linked worktree's `.git` is a file (a lane, a landq slot, the idle suite's tree)."""
-    return not (root / ".git").is_file()
+    """ROOT is the code of record (why_not_of_record)."""
+    return why_not_of_record(root) is None
 
 
 def shared_dirs(env: Mapping[str, str] | None = None) -> list[Path]:
@@ -181,6 +193,9 @@ def writer() -> str:
                              stdin=subprocess.DEVNULL).stdout.strip()  # fmt: skip
     except (OSError, subprocess.TimeoutExpired):
         out = ""
+    if not out:  # an export: its commit, which `goh unknown` hid on 2026-11-24
+        with contextlib.suppress(OSError):
+            out = "export " + (ROOT / ".goh-head").read_text(encoding="utf-8").strip()[:12]
     return f"goh {out.removeprefix('v') or 'unknown'}"
 
 
@@ -238,8 +253,8 @@ def not_of_record(con: sqlite3.Connection, seam: Seam) -> str | None:
     known = migrations(seam)
     if lacking := sorted(set(known) - set(version(con)["applied"])):
         return (f"{seam.file} lacks migration {', '.join(known[n].stem for n in lacking)}, and "
-                f"{ROOT} is not the code of record (a linked worktree): only the primary "
-                "checkout migrates the shared file; opened read-only")  # fmt: skip
+                f"{ROOT} is not the code of record ({why_not_of_record()}): only main's code "
+                "migrates the shared file; opened read-only")  # fmt: skip
     return None
 
 
@@ -314,12 +329,12 @@ def _opened(
     p = at or path(seam)
     if not named:
         guard(p)
-    record = of_record() or not shared(p)
+    record = not shared(p) or of_record()
     fresh = not p.exists() or p.stat().st_size == 0
     if fresh and not record:
         raise NotOfRecord(
-            f"{p}: no {seam.file} yet, and {ROOT} is not the code of record (a "
-            "linked worktree): only the primary checkout creates the shared file"
+            f"{p}: no {seam.file} yet, and {ROOT} is not the code of record "
+            f"({why_not_of_record()}): only main's code creates the shared file"
         )
     p.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(p, isolation_level=None, timeout=busy_ms(seam) / 1000)

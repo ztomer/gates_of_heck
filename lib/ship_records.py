@@ -77,13 +77,13 @@ def _row(res: dict, result: str, now: float) -> tuple:
 
 def put(res: dict) -> None:
     """Write RES (a whole ship record) as its result's row."""
-    with goh_db.transaction() as con:
+    with goh_db.refusable(), goh_db.transaction() as con:
         con.execute("INSERT OR REPLACE INTO ships VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                     _row(res, str(res["result"]), time.time()))  # fmt: skip
 
 
 def put_pins(result: Path | str, body: dict) -> None:
-    with goh_db.transaction() as con:
+    with goh_db.refusable(), goh_db.transaction() as con:
         con.execute("INSERT OR REPLACE INTO ship_pins VALUES (?,?,?,?)",
                     (str(result), Path(result).stem, json.dumps(body), time.time()))  # fmt: skip
 

@@ -77,5 +77,26 @@ def transaction(at: Path | None = None, named: bool = False) -> Iterator[sqlite3
         yield con
 
 
+def refused(e: BaseException) -> bool:
+    """E is a write this copy may not make: the file is a newer goh's, or a shared file only main's
+    code migrates (db_core.NewerFile and its NotOfRecord). Said on one stderr line, never raised."""
+    if not isinstance(e, db_core.NewerFile):
+        return False
+    db_core.warn(f"goh.db: not written ({e})")
+    return True
+
+
+@contextlib.contextmanager
+def refusable() -> Iterator[None]:
+    """A side record whose write this copy may not make is skipped (`refused`), never a raise: a
+    store writer fails open, so a step that records its result (the release canary, a commit's
+    stamp, a ship's pins) is not red because the file belongs to main's code or a newer goh's
+    (GOH.HEADCOPYRECORD: every land went red while a lane's 0009 sat in the real goh.db)."""
+    try:
+        yield
+    except db_core.NewerFile as e:
+        refused(e)
+
+
 if __name__ == "__main__":
     sys.exit(db_core.main(SEAM, sys.argv[1:]))

@@ -172,13 +172,17 @@ def update(p: Path | str, change: Callable[[object], object]) -> object:
     """The store whose file is P read, CHANGEd and written in one transaction: CHANGE is handed the
     value (None for none) and returns the new one, returned here. Raises sqlite3.Error, OSError."""
     p = Path(p)
-    with _write(p) as con:
-        _import_kv(con, p)
-        row = con.execute("SELECT body FROM kv WHERE name=?", (kv_name(p),)).fetchone()
-        new = change(json.loads(row[0]) if row else None)
-        con.execute("INSERT INTO kv VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET "
-                    "body=excluded.body, at=excluded.at",
-                    (kv_name(p), _dump(new), time.time()))  # fmt: skip
+    try:
+        with _write(p) as con:
+            _import_kv(con, p)
+            row = con.execute("SELECT body FROM kv WHERE name=?", (kv_name(p),)).fetchone()
+            new = change(json.loads(row[0]) if row else None)
+            con.execute("INSERT INTO kv VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET "
+                        "body=excluded.body, at=excluded.at",
+                        (kv_name(p), _dump(new), time.time()))  # fmt: skip
+    except goh_db.db_core.NewerFile as e:  # this copy may not write it: the value, unkept
+        goh_db.refused(e)
+        return change(get(p))
     return new
 
 
@@ -218,7 +222,7 @@ def _import_gated(con: sqlite3.Connection, p: Path) -> int:
 def gated_add(p: Path | str, row: dict) -> None:
     """One commit-gated row ({tree, repo, at}) for the ledger whose file is P."""
     p = Path(p)
-    with _write(p) as con:
+    with goh_db.refusable(), _write(p) as con:
         _import_gated(con, p)
         con.execute("INSERT INTO commit_gated(at, tree, body) VALUES (?, ?, ?)",
                     (_epoch(row.get("at")), str(row["tree"]), _dump(row)))  # fmt: skip
@@ -284,7 +288,7 @@ def _import_flakes(con: sqlite3.Connection, d: Path) -> int:
 def flake_add(d: Path | str, test: str, row: dict) -> None:
     """One row of TEST (a record, or a filing) in the register whose directory is D."""
     d = Path(d)
-    with goh_db.transaction(db(d)) as con:
+    with goh_db.refusable(), goh_db.transaction(db(d)) as con:
         _import_flakes(con, d)
         con.execute("INSERT INTO flakes(epoch, test, body) VALUES (?, ?, ?)",
                     (float(row.get("epoch") or time.time()), test, _dump(row)))  # fmt: skip
