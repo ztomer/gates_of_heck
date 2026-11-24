@@ -206,6 +206,17 @@ def test_another_tests_stale_owner_never_takes_this_tests_slot(repo, tmp_path, m
     assert not Path(extra["path"]).exists(), "another test's owner write kept this slot"
 
 
+def test_a_queues_owners_are_its_own_slots_never_a_pattern_match(repo, tmp_path):
+    """The owners of queue Q are the rows under Q's slots, read by prefix: as a LIKE pattern,
+    Q's `_` matched any character, so another queue's owners were Q's too (GOH.SLOTKEEPRED)."""
+    sha = git(repo, "rev-parse", "HEAD").strip()
+    mine, other = tmp_path / "q_1", tmp_path / "qX1"  # one character apart, where `_` stands
+    land_slot.claim(mine, repo, sha)
+    land_slot.claim(other, repo, sha)
+    base = os.path.realpath(mine / "slots") + os.sep
+    assert [o["repo_key"].startswith(base) for o in land_slot.owners(mine)] == [True]
+
+
 def test_an_older_gohs_owner_file_is_imported_and_still_holds_its_slot(repo, tmp_path):
     """GOH.LANDQDB: a `<n>.owner` file a lander before the switch made is a row after the import;
     a queued request naming its token keeps the slot held although its pid is gone."""

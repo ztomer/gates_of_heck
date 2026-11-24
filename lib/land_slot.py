@@ -132,12 +132,12 @@ def _free(owner: Path, token: str) -> None:
 
 def owners(q: Path) -> list[dict]:
     """Every slot owner row under queue Q: {repo_key, n, token, pid, pid_stamp, at, alive}."""
-    base = os.path.realpath(q / "slots")
+    base = os.path.realpath(q / "slots") + os.sep
     try:
-        with goh_db.ro() as con:
+        with goh_db.ro() as con:  # a prefix, never a LIKE pattern: a path's `_` is any character
             rows = con.execute("SELECT repo_key, n, token, pid, pid_stamp, at FROM slot_owners "
-                               "WHERE repo_key LIKE ? ORDER BY repo_key, n",
-                               (base + os.sep + "%",)).fetchall()  # fmt: skip
+                               "WHERE substr(repo_key, 1, ?) = ? ORDER BY repo_key, n",
+                               (len(base), base)).fetchall()  # fmt: skip
     except (OSError, sqlite3.Error):
         return []
     cols = ("repo_key", "n", "token", "pid", "pid_stamp", "at")
