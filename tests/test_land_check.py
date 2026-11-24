@@ -22,7 +22,7 @@ from test_landq import _land_wt, _pending, env, landq, recorded  # noqa: F401 --
 from timing_bounds import assert_sooner, patience
 
 sys.path.insert(0, str(REPO_ROOT))
-from lib import durations, land_check, land_records
+from lib import durations, land_check, land_judges, land_records
 
 TREE_READS = ("docs/map.md", "tests/", ".gatesrc")  # a clone of the whole tree, planted
 
@@ -262,7 +262,7 @@ def test_the_check_runs_the_table_tests_the_diff_chooses_and_names_the_table(tmp
         {
             "dur": {
                 "tests/test_t.py::test_every_script_has_a_row": 0.1,
-                "tests/test_t.py::test_no_slow_table_rows": land_check.JUDGE_EACH_S + 1,
+                "tests/test_t.py::test_no_slow_table_rows": land_judges.JUDGE_EACH_S + 1,
                 "tests/test_t.py::test_plain_behaviour": 0.1,
             }
         },
@@ -270,11 +270,11 @@ def test_the_check_runs_the_table_tests_the_diff_chooses_and_names_the_table(tmp
     )
     monkeypatch.setenv("GOH_TEST_DURATIONS", str(times))
     monkeypatch.setattr(
-        land_check,
+        land_judges,
         "chosen_by_diff",
         lambda root, judges=False: [] if judges else ["tests/test_t.py"],
     )
-    assert land_check.judge_tests(tree) == [
+    assert land_judges.judge_tests(tree) == [
         "tests/test_t.py::test_every_script_has_a_row",
         "tests/test_t.py::test_no_new_manifest_entry",
     ]
@@ -389,3 +389,53 @@ def test_one_check_names_every_judge_a_lane_breaks_with_diff_coverage(tmp_path, 
         "tests/test_j.py::test_plain_behaviour" not in refused
     )  # the lane's own test: not a judge
     assert any("diff coverage: REFUSED" in s and "x.rs:12" in s for s in said), said
+
+
+# GOH.RULESLEFT: the judges a diff chooses are bounded by a budget. A change to a helper most tree
+# readers reach (this lane's 11 files: tests/_drift_guard.py, lib/proc_deadline.py) chose 1599
+# judges, 2873 s by the suite's measurement, and every one of 8 shards ran past its 538 s deadline
+# at load 65-88. Past the budget a judge is left to the enqueue's pre-step, which runs every one,
+# and the check says how many; the table judges (the most frequent red class) go first.
+BUDGET_TESTS = """\
+def test_every_row_is_in_the_map(): pass
+def test_cheap_a(): pass
+def test_cheap_b(): pass
+def test_dear(): pass
+"""
+
+
+def test_the_judges_past_the_budget_are_left_to_the_pre_step_and_said(tmp_path, monkeypatch):
+    tree = tmp_path / "tree"
+    (tree / "tests").mkdir(parents=True)
+    (tree / "tests" / "test_b.py").write_text(BUDGET_TESTS)
+    times = tmp_path / "goh.db"
+    durations.record({"dur": {
+        "tests/test_b.py::test_every_row_is_in_the_map": 30.0,  # a table judge: first, dear or not
+        "tests/test_b.py::test_cheap_a": 5.0,
+        "tests/test_b.py::test_cheap_b": 10.0,
+        "tests/test_b.py::test_dear": 20.0,  # cheapest first: past the budget, left
+    }}, db=times)  # fmt: skip
+    monkeypatch.setenv("GOH_TEST_DURATIONS", str(times))
+    monkeypatch.setattr(land_judges, "JUDGE_BUDGET_S", 50.0)
+    monkeypatch.setattr(
+        land_judges, "chosen_by_diff", lambda root, judges=False: ["tests/test_b.py"]
+    )
+    every = land_judges.judge_tests(tree)
+    assert len(every) == 4, every
+    ran, left = land_judges.budgeted(every)
+    assert ran == [
+        "tests/test_b.py::test_cheap_a",
+        "tests/test_b.py::test_cheap_b",
+        "tests/test_b.py::test_every_row_is_in_the_map",
+    ]
+    assert left == ["tests/test_b.py::test_dear"]
+    said: list[str] = []
+    assert land_check.run(tree, None, said.append, "", tables=True) == [], said
+    assert any("1 judge test" in s and "budget" in s and "pre-step" in s for s in said), said
+    assert any("guard tests" in s and "green" in s for s in said), said
+
+
+def test_the_judge_budget_fits_every_shard_inside_its_quiet_deadline():
+    """The budget is the shards' share of the quiet deadline with the room load takes (x5)."""
+    per_shard = land_judges.JUDGE_BUDGET_S / land_check.JUDGE_SHARDS
+    assert per_shard * 5 <= land_check.STEP_TIMEOUT, per_shard

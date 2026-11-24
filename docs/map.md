@@ -491,6 +491,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 | `load_cap.py` | The cap on concurrent land pre-steps: the PEAK of the measured throughput curve (GOH.LOADCAP). | `lib/capacity.py`, `lib/capacity_presteps.py` | `test_capacity_presteps.py` |
 | `remote_saved.py` | what the Linux worker saved, per share and per land (GOH.REMOTESAVED). | `lib/land_gate.sh`, `lib/landq_remote.py`, `lib/remote_gate.py`, `lib/remote_lane.py` and 1 more | `test_remote_saved.py` |
 | `remote_trust.py` | which tests' Linux verdicts count at the land gate (GOH.REMOTETRUST). | `lib/idle_red.py`, `lib/pre_reuse.py`, `lib/remote_lane.py` | `test_remote_trust.py` |
+| `land_judges.py` | the judges `goh land --check` runs for a diff, and their budget. | `lib/land_check.py` | `test_land_check.py` |
 
 ## Tools
 

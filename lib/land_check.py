@@ -25,12 +25,14 @@ THE GUARDS, run in the checkout as the land runs them, side by side:
 THE JUDGES (`goh land --check` only; GOH.TABLESEARLY, GOH.LANDCHECK2). 25 of the 48 reds in 100
 land records were consistency-table tests (lib/land_reds.py's class), and GOH-TINY's land went red
 7 times on judges only the pre-step ran, one per attempt. The check adds every judge the change can
-break (`judge_tests`): the enqueue pre-step's own choice for the diff cut to its whole-tree judges
-(its first run) and the test functions land_reds' rule calls table judges (`judges_a_table`), each
-under JUDGE_EACH_S, over JUDGE_SHARDS runs; and the pre-step's diff coverage judge run alone
-(`diff_cov_job`). Every job runs to its verdict, so one pass names every refusal; a table refusal
-names the table files its assertions name. The enqueue's check leaves them out: its pre-step runs
-them minutes later anyway.
+break (lib/land_judges.py `judge_tests`): the enqueue pre-step's own choice for the diff cut to its
+whole-tree judges (its first run) and the test functions land_reds' rule calls table judges
+(`judges_a_table`), each under JUDGE_EACH_S, within JUDGE_BUDGET_S in all (`budgeted`, RULESLEFT:
+table judges first, then the cheapest; the rest named by count and left to the pre-step), over
+JUDGE_SHARDS runs; and the pre-step's diff coverage judge run alone (`diff_cov_job`). Every job
+runs to its verdict, so one pass names every refusal of what it ran; a table refusal names the
+table files its assertions name. The enqueue's check leaves them out: its pre-step runs them
+minutes later anyway.
 
 THE RECORD. A refused land names its guard: `guards(text)` reads a land's log for the failing
 test node ids and the failing gate steps, `fields` puts `guard` (the first) and `guards` on the
@@ -53,12 +55,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT)]
-from lib import cov_risk, fast_tests, land_records, land_reds, main_red, proc_deadline, terse  # noqa: E402
+from lib import (  # noqa: E402
+    cov_risk,
+    fast_tests,
+    land_judges,
+    land_records,
+    land_reds,
+    main_red,
+    proc_deadline,
+    terse,
+)
 from tui.lib import counted  # noqa: E402
 
 DECLARED_EACH_S = 10.0  # the most a declared guard or rule test may cost, by measurement
 SHARDS = 3  # the guard tests' pytest runs, side by side, balanced by measured cost
-UNMEASURED_S = 1.0  # the cost of a test the suite has not measured yet
 # EVERY JUDGE A DIFF CAN BREAK (GOH.LANDCHECK2). GOH-TINY's land went red 7 times in 45 min on
 # 2026-11-22, each on a different judge only the pre-step ran (an orphan session leader, a reader
 # count, an env dump, self_walk[shell], diff coverage twice), each attempt naming one. The check
@@ -66,9 +76,8 @@ UNMEASURED_S = 1.0  # the cost of a test the suite has not measured yet
 # --only judges) -- at most JUDGE_EACH_S each by the suite's measurement, over JUDGE_SHARDS runs,
 # plus its diff coverage judge (--only diff-cov: the instrumented run of the chosen binary tests,
 # under DIFFCOV_TIMEOUT), side by side, and names every refusal in one pass.
-JUDGE_EACH_S, JUDGE_SHARDS, DIFFCOV_TIMEOUT = 120.0, 8, 1500
+JUDGE_SHARDS, DIFFCOV_TIMEOUT = 8, 1500  # the choice and its budget: lib/land_judges.py
 DIFFCOV = "diff coverage"
-SELECT_TIMEOUT = 120
 STEP_TIMEOUT = 300
 # Exits that are no verdict on the tree: a step past its deadline (124); pytest interrupted (3),
 # misused (4: a node it cannot find) or given no test (5). A check that judged nothing is never
@@ -152,55 +161,17 @@ def records(q: Path | None, newest: int | None = None) -> list[dict]:
     ]
 
 
-def costs() -> dict[str, float]:
-    """The suite's measured seconds per test function (its parameters and groups summed)."""
-    cost: dict[str, float] = {}
-    for nodeid, s in fast_tests.load().items():
-        cost[fast_tests._base(nodeid)] = cost.get(fast_tests._base(nodeid), 0.0) + s
-    return cost
-
-
 def tests(root: Path, q: Path | None, repo: str = "", rules: bool = False) -> list[str]:
     """The guard test functions the tree defines now, each measured at most DECLARED_EACH_S (one
     the suite has not timed yet is run): the declared ones and, RULES (`goh land --check`,
     `--rules`, the enqueue), every rule test by its shape (lib/rule_tests.py). Q and REPO are
     the record's, which no longer chooses a guard (the learned list is retired, GOH.RULESLEFT)."""
-    cost = costs()
+    cost = land_judges.costs()
     from lib import rule_tests  # RULES: every rule test by its shape too (GOH.RULESLEFT)
 
     found = rule_tests.rules(root) if rules else []
     mine = fast_tests.units(root, [*declared(root), *found])
     return [n for n in sorted(set(mine)) if cost.get(n, 0.0) <= DECLARED_EACH_S]
-
-
-def chosen_by_diff(root: Path, judges: bool = False) -> list[str]:
-    """What the enqueue's pre-step would choose for ROOT's diff against main: the tree's own
-    tools/affected_tests.py in its enqueue mode (JUDGES: its first run alone, the whole-tree
-    judges); [] for a tree without one, or when it fails."""
-    tool = root / "tools" / "affected_tests.py"
-    if not tool.is_file():
-        return []
-    env = {**_env(root), "GOH_LAND_PRE_ONLY": "1"}
-    argv = [env["GOH_PY"], str(tool), "--root", str(root), "--base", "main"]
-    argv += ["--only", "judges"] if judges else []
-    try:
-        res = subprocess.run(argv, cwd=root, env=env, capture_output=True, text=True, check=False,
-                             stdin=subprocess.DEVNULL, timeout=SELECT_TIMEOUT)  # fmt: skip
-    except (OSError, subprocess.TimeoutExpired):
-        return []
-    lines = res.stdout.splitlines() if res.returncode == 0 else []
-    return [ln.strip() for ln in lines if ln.startswith("tests/")]
-
-
-def judge_tests(root: Path) -> list[str]:
-    """Every judge ROOT's change can break (GOH.LANDCHECK2): of the pre-step's choice for its diff,
-    its whole-tree judges (`chosen_by_diff` JUDGES) and the test functions lib/land_reds.py's rule
-    calls table judges (GOH.TABLESEARLY), each at most JUDGE_EACH_S by the suite's measurement (an
-    unmeasured one runs); no total budget, the shards spread them."""
-    cost = costs()
-    judges = set(fast_tests.units(root, chosen_by_diff(root, judges=True)))
-    found = [n for n in fast_tests.units(root, chosen_by_diff(root)) if land_reds.judges_a_table(n)]
-    return sorted(n for n in judges | set(found) if cost.get(n, UNMEASURED_S) <= JUDGE_EACH_S)
 
 
 def diff_cov_job(root: Path, env: dict[str, str]) -> list[str] | None:
@@ -214,7 +185,7 @@ def diff_cov_job(root: Path, env: dict[str, str]) -> list[str] | None:
 
 def shards(nodes: list[str], n: int = SHARDS) -> list[list[str]]:
     """NODES in up to N runs of near-equal measured cost (the costliest first, to the lightest)."""
-    cost = costs()
+    cost = land_judges.costs()
     out: list[list[str]] = [[] for _ in range(min(n, len(nodes)))]
     load = [0.0] * len(out)
     for node in sorted(nodes, key=lambda x: -cost.get(x, 0.1)):
@@ -289,9 +260,16 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=Fal
     nodes = tests(root, q, repo, rules or tables)  # positional: a test's fake takes *args
     if tables:
         t0 = time.monotonic()
-        extra = [n for n in judge_tests(root) if n not in nodes]
-        say(f"check: {counted(len(extra), 'judge test')} the diff can break, chosen in "
+        every = [n for n in land_judges.judge_tests(root) if n not in nodes]
+        extra, left = land_judges.budgeted(every)
+        say(f"check: {counted(len(extra) + len(left), 'judge test')} the diff can break, chosen in "
             f"{time.monotonic() - t0:.1f} s")  # fmt: skip
+        if left:
+            dear = sum(land_judges.costs().get(n, land_judges.UNMEASURED_S) for n in left)
+            budget = land_judges.JUDGE_BUDGET_S
+            say(f"check: {counted(len(left), 'judge test')} ({dear:.0f} s measured) past the "
+                f"check's {budget:.0f} s budget -- left to the enqueue's pre-step, which runs "
+                "every one")  # fmt: skip
         nodes += extra
     jobs: dict[str, list[str]] = {s: ["bash", "-c", s] for s in steps(root, no_pre)}
     serial = ["-n", "0"] if (root / "tests" / "_shard.py").is_file() else []  # goh's xdist
