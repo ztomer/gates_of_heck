@@ -304,6 +304,10 @@ def code_only(rel: str, text: str) -> str:
     return mask.python_code_only(text) if rel.endswith(".py") else mask.shell_code_only(text)
 
 
+# A one-line `sys.path.insert(...)` statement: up to its line's end or a `;`.
+_SYS_PATH = re.compile(r"\b_?sys\.path\.(?:insert|append)\([^\n;]*")
+
+
 def names_path(code: str, path: str) -> bool:
     """Whether `code` names the tree path `path`: spelled whole, or every part quoted
     (`REPO_ROOT / "lib" / "x.py"`). A file at the root (`.gatesrc`, `install.sh`) is named only as
@@ -317,6 +321,9 @@ def names_path(code: str, path: str) -> bool:
         return re.search(rf"\bREPO_ROOT\s*/\s*[\"']{re.escape(path)}[\"']", code) is not None
     if any(_whole(code, m.start(), m.end()) for m in re.finditer(re.escape(path), code)):
         return True
+    if not all(f'"{c}"' in code or f"'{c}'" in code for c in parts):
+        return False
+    code = _SYS_PATH.sub("", code)  # a directory put on sys.path is part of no file's name
     return all(f'"{c}"' in code or f"'{c}'" in code for c in parts)
 
 

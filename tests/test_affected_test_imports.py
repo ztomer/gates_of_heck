@@ -190,6 +190,25 @@ def test_the_slice_holds_what_runs_at_import_and_what_the_names_reach() -> None:
     assert ts.slice_of("def (:\n", frozenset({"a"})) is None
 
 
+def test_a_directory_put_on_sys_path_is_no_part_of_a_file_named_elsewhere() -> None:
+    """lib/load_sources.py puts `gates` on sys.path (the _from_head preamble) and matches running
+    processes on the basename `push_gate.sh`: two literals with no join, read as one path, which
+    made three tests readers of the gate. A join, on one line or through a name, names it."""
+    from lib.source_closure import names_path
+
+    path = "gates/push_gate.sh"
+    on_path = '    _sys.path.insert(0, _os.path.join(_os.path.dirname(HERE), "..", "gates"))\n'
+    table = 'CONTEXTS = (("push-gate", {"push_gate.sh"}),)\n'
+    assert not names_path(on_path + table, path)
+    assert not names_path(
+        on_path.replace("_sys", "sys").replace("insert(0, ", "append(") + table, path
+    )
+    assert names_path('G = REPO_ROOT / "gates" / "push_gate.sh"\n', path)
+    assert names_path('GATES = REPO_ROOT / "gates"\nG = GATES / "push_gate.sh"\n', path)
+    assert names_path(on_path + 'GATES = ROOT / "gates"\nG = GATES / "push_gate.sh"\n', path)
+    assert names_path('sys.path.insert(0, p); G = R / "gates" / "push_gate.sh"\n', path)
+
+
 def test_on_the_real_tree_a_push_gate_change_chooses_under_100_files() -> None:
     """The metric: 114 test files before (2026-11-20, main 7cb938df), 87 after. The importers that
     stay are those whose names run or copy the gate: tests/test_push_gate_race.py's `_push` runs

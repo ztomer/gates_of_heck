@@ -40,9 +40,6 @@ _RUNS = re.compile(
 # table itself (`_declares`), never listed here again.
 MENTIONS = {
     "gates/required_judge.py -> gates/commit_gate.sh": "a marker it tests for in the gated repo",
-    "gates/required_tools.py -> gates/py_gate.sh": "a layer's entry, named in the tool table",
-    "gates/required_tools.py -> gates/py_staged.sh": "a layer's entry, named in the tool table",
-    "gates/required_tools.py -> gates/swift_gate.sh": "a layer's entry, named in the tool table",
     "gates/required_tools.py -> tools/gate.sh": "the gated repo's tools/gate.sh, read as text",
     "lib/cov_env.py -> tools/pytest.sh": "a WHOLESALE entry's key (a file it scans, keyed)",
     "lib/estate_registry.py -> scripts/estate_registry.py": "a command printed for the owner",
