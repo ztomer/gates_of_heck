@@ -223,3 +223,14 @@ def test_a_removed_slot_takes_its_own_build_dir_with_it(repo, tmp_path, monkeypa
     land_slot.release(q, repo, slot["path"], slot["token"])
     assert not Path(slot["path"]).exists() and not mine.exists(), f"left behind: {mine}"
     assert mains.is_dir(), "the main checkout's build dir was removed"
+
+
+def test_a_failed_owner_read_never_reads_the_slot_as_another_requests(repo, tmp_path, monkeypatch):
+    """GOH.LANDQDB: the owner is a goh.db row, and a read of it can fail (a busy file under load).
+    The lander's `ready` then claimed its own slot again, found its own token in the row and called
+    it "another request's now": the land went red with no gate run."""
+    q, sha = tmp_path / "q", git(repo, "rev-parse", "HEAD").strip()
+    slot = land_slot.claim(q, repo, sha)
+    req = {"slot": slot["token"], "worktree": slot["path"], "repo": str(repo), "sha": sha}
+    monkeypatch.setattr(land_slot, "_owner", lambda _owner: {})  # the read that failed
+    assert land_slot.ready(q, req) == ""

@@ -113,6 +113,8 @@ def _take(q: Path, owner: Path, token: str) -> bool:
     with goh_db.transaction() as con:
         got = con.execute("SELECT token FROM slot_owners WHERE repo_key = ? AND n = ?",
                           (key, n)).fetchone()  # fmt: skip
+        if got and got[0] == token:
+            return True  # TOKEN's already: a read before that failed is never "another's"
         if got and (got[0] != was.get("token") or alive or _queued(con, q, got[0])):
             return False  # held: live, queued, or claimed by another since the read
         con.execute("INSERT OR REPLACE INTO slot_owners (repo_key, n, token, pid, pid_stamp, at) "
