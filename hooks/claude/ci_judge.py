@@ -107,3 +107,28 @@ def judge_ci(prompt: str, contract: str = "") -> str | None:
         if m := SHIP_ASK.search(clause):
             return SHIP_REFUSAL.format(ask=m.group(0).strip())
     return None
+
+
+# GOH.RULESLEFT: a brief that asks its agent to enqueue a goh land names the pre-enqueue check.
+# `goh land --check "$PWD"` names every rule test and judge the land will hold the change to in one
+# pass; lanes skipped it because no brief asked, and met each refusal one land at a time.
+LAND_ENQUEUE = re.compile(r"\bgoh\s+land\s+--enqueue\b")
+LAND_CHECK = re.compile(r"\bgoh\s+land\s+--check\b")
+LAND_REFUSAL = (
+    "Refused: this spawn asks the agent to enqueue a goh land ({ask!r}) and never names the check "
+    'before it. Add: before EVERY enqueue run `goh land --check "$PWD"` (or `--check --rules` for '
+    "the rule tests alone): it names every rule and judge the land will hold the change to in one "
+    "pass, where the land would name them one red at a time (GOH.RULESLEFT)."
+)
+
+
+def judge_land(prompt: str, contract: str = "") -> str | None:
+    """The refusal for a prompt that asks its agent to `goh land --enqueue` and never names
+    `goh land --check`, or None. A negated clause ("never run goh land --enqueue") asks nothing."""
+    body = prompt.replace(contract, "") if contract else prompt
+    if LAND_CHECK.search(body):
+        return None
+    for clause, negated in _clauses(body):
+        if not negated and (m := LAND_ENQUEUE.search(clause)):
+            return LAND_REFUSAL.format(ask=m.group(0))
+    return None

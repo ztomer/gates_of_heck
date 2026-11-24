@@ -35,6 +35,8 @@ kept by hand; this hook keeps them structurally (tests/test_claude_agent_guard.p
   Either is an `updatedInput` with the new model and effort, and `explored: true` on the ledger
   line. A spawn without the `checkable` tag is never routed down
   (tests/test_agent_guard_exploration.py).
+* A brief that asks its agent to `goh land --enqueue` names `goh land --check` before it, or is
+  refused (ci_judge.py `judge_land`, GOH.RULESLEFT): lanes skipped the check no brief asked for.
 * Adaptive lanes (GOH.ADAPTLANES, `lane_room.py`): a write spawn asks lib/capacity.py's reading
   (`goh capacity`) whether the machine has room for another lane; GOH_LANE_ADMIT `refuse`
   (default) defers it naming what the reading lacked, `warn` says so and admits, an `Owner-asked:`
@@ -84,7 +86,10 @@ import hook_ledgers  # lib/: goh.db's hook ledgers, the spawn ledger's one door
 import lane_room  # a write spawn starts only while the machine has room (GOH.ADAPTLANES)
 import model_choice  # the rules file's one reader, beside this script
 import scratch_guard  # a fixed-name file in the shared scratchpad root (GOH.AGENTSCRATCH)
-from ci_judge import judge_ci as _judge_ci  # the CI-watching judge, beside this script
+from ci_judge import (
+    judge_ci as _judge_ci,  # the CI-watching judge, beside this script
+    judge_land as _judge_land,  # a land enqueued with no check (GOH.RULESLEFT)
+)
 from report_faults import read_faults  # the report's `Faults seen:` (LOOP.FAULTBULLETS)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -306,7 +311,7 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
         why, pool = judge_pool(declared, prompt, rules)
         if why:
             return _refuse(why, rules, prompt, agent_type)
-    if not exempt and (why := _judge_ci(prompt, CONTRACT)):
+    if not exempt and (why := _judge_ci(prompt, CONTRACT) or _judge_land(prompt, CONTRACT)):
         return _deny(why, rules)
     escape = None
     if not exempt:
