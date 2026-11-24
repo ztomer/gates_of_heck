@@ -179,3 +179,34 @@ def test_a_running_record_is_imported_only_once_it_ends(db: Path, tmp_path: Path
     _rec(base, "alpha", "20261120T000000Z-aaaaaaaa", status="ok")  # the old worker's last step
     assert ship_records.import_files(base) == {"ships": 1, "ship_pins": 0}
     assert ship_records.get(p)["status"] == "ok"
+
+
+def test_ships_v2_serves_every_field_the_loop_reads(db: Path, tmp_path: Path) -> None:
+    """goh.db 0009 (GOH.SHIPSV2): the loop's ship readers (goh_view) read the highest ships view
+    with `body`; every field they read from a result file comes back equal from ships_v2."""
+    base = tmp_path / "ship"
+    loop = {"pid": 4242, "own_s": 12.5, "summary": "did it", "created": "2026-11-20T00:00:00Z",
+            "timeout_s": 900, "handoff_sha": "b" * 40}  # fmt: skip
+    _rec(base, "alpha", "20261120T000000Z-aaaaaaaa", **loop)
+    _rec(base, "alpha", "20261121T000000Z-bbbbbbbb", status="failed", failed_step="push", **loop)
+    files = {str(p): r for p, r in ship_records.every(base)}
+    ship_records.import_files(base)
+    with goh_db.ro() as con:
+        cols = [r[1] for r in con.execute("PRAGMA table_info(ships_v2)")]
+        v1 = [r[1] for r in con.execute("PRAGMA table_info(ships_v1)")]
+        rows = dict(con.execute("SELECT result, body FROM ships_v2").fetchall())
+    assert set(v1) | {"body"} <= set(cols)
+    assert set(rows) == set(files)
+    keys = (
+        "steps",
+        "pid",
+        "failed_step",
+        "own_s",
+        "summary",
+        "created",
+        "timeout_s",
+        "handoff_sha",
+    )
+    for result, rec in files.items():
+        got = json.loads(rows[result])
+        assert {k: got.get(k) for k in keys} == {k: rec.get(k) for k in keys}, result
