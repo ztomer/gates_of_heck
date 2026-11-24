@@ -14,6 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import _goh_db_fixture as gdb
 import pytest
 from conftest import REPO_ROOT, hermetic_env
 from test_landq import FAKE_LOOPCTL, LANDQ, landq, make_repo
@@ -152,10 +153,12 @@ def qenv(tmp_path: Path) -> dict[str, str]:
     )
 
 
-def cli(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def cli(tmp_path: Path, *args: str, db: Path | None = None) -> subprocess.CompletedProcess[str]:
+    """`--report` on queue TMP_PATH; DB names its goh.db (else the suite home's)."""
+    named = {"GOH_DB": str(db)} if db else {}
     return subprocess.run(
         [sys.executable, str(LANDQ), "--report", *args],
-        env=hermetic_env(GOH_LANDQ_DIR=str(tmp_path)),
+        env=hermetic_env(GOH_LANDQ_DIR=str(tmp_path), **named),
         capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
         timeout=patience(120),
     )  # fmt: skip
@@ -173,10 +176,23 @@ def test_the_command_prints_the_json_and_the_text_table(tmp_path):
     assert "2026-11-16" not in text.stdout  # --since cuts the earlier day
 
 
-def test_an_empty_queue_prints_an_empty_table_not_a_traceback(tmp_path):
-    got = cli(tmp_path, "--json")
+def test_an_empty_queue_prints_an_empty_table_not_a_traceback(tmp_path, monkeypatch):
+    """An empty queue is an EMPTY goh.db (GOH.STATEDB): the test's own, made and holding no
+    record. Without one the test read the suite home's, there or not by the order tests ran."""
+    db = gdb.made(monkeypatch, tmp_path)
+    got = cli(tmp_path, "--json", db=db)
     assert got.returncode == 0, got.stderr
     assert json.loads(got.stdout)["rows"] == []
+
+
+def test_no_goh_db_is_unknown_in_one_line_never_an_empty_table(tmp_path):
+    """No goh.db is unknown, never zero lands (GOH.STATEDB db-plan (d)): exit 2, one line."""
+    got = cli(tmp_path, "--json", db=tmp_path / "goh.db")
+    assert (got.returncode, got.stdout) == (2, ""), got
+    assert got.stderr.strip().splitlines() == [
+        "✗ goh land --report: the lands are unknown: there is no goh.db"
+    ]
+    assert "Traceback" not in got.stderr and not (tmp_path / "goh.db").exists()
 
 
 def test_the_log_parser_reads_every_slot_line_the_gates_print():
