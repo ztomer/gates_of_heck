@@ -47,6 +47,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, on the path from the line above
+import state_retire_ships  # the ship records' half (GOH.STATEDB S2), beside this file
 
 
 def state_dir() -> Path:
@@ -329,6 +330,12 @@ def _existing(*paths: Path) -> list[Path]:
 
 
 STORES: dict[str, Store] = {
+    "ships": Store(
+        files=state_retire_ships.files,
+        load=state_retire_ships.load,
+        check=state_retire_ships.check,
+        keep=state_retire_ships.keep,
+    ),
     "durations": Store(
         files=lambda: _existing(*(state_dir() / n for n in DUR_FILES.values())),
         load=_dur_load,
@@ -348,7 +355,11 @@ def archive_dir(day: str | None = None) -> Path:
 
 
 def _archived(p: Path, to: Path) -> Path:
-    for where, root in (("state", state_dir()), ("cache", cache_dir())):
+    for where, root in (
+        ("state", state_dir()),
+        ("cache", cache_dir()),
+        ("ship", state_retire_ships.base()),
+    ):
         with contextlib.suppress(ValueError):
             return to / where / p.relative_to(root)
     return to / "elsewhere" / p.name

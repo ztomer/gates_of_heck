@@ -25,6 +25,7 @@ SEAM = {
     "lib/goh_db.py",
     "lib/goh_cache_db.py",
     "lib/state_retire.py",  # `goh state retire`: the moved stores' files, archived and deleted
+    "lib/state_retire_ships.py",  # its ship records' half (GOH.STATEDB S2)
     "tests/_state_seam_scan.py",
 }  # and this scanner, whose table names every store
 
