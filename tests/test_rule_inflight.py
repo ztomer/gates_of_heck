@@ -35,11 +35,13 @@ PLAIN_TEXT = (  # a new test of one file: no rule, so its red is the item's
 FILES = {"src/a.txt": "fine\n", "tests/test_base.py": "def test_ok():\n    assert True\n"}
 
 
-def _in_flight(tmp_path, monkeypatch, rule: str = RULE_TEXT, name: str = "tests/test_rule.py"):
+def _in_flight(
+    repo, tmp_path, monkeypatch, rule: str = RULE_TEXT, name: str = "tests/test_rule.py"
+):
     """A lane forked before main gained RULE, its tip violating it, then rebased onto main the way
     the lander gates it; (main, the lane, its enqueued sha)."""
     dbfix.made(monkeypatch, tmp_path)
-    m, base = main_repo(tmp_path, FILES)
+    m, base = main_repo(repo, FILES)
     wt = lane(m, base)
     put(wt, "src/bad.txt", "BAD\n")
     enqueued = commit(wt, "item")
@@ -49,8 +51,8 @@ def _in_flight(tmp_path, monkeypatch, rule: str = RULE_TEXT, name: str = "tests/
     return m, wt, enqueued
 
 
-def test_a_rule_newer_than_the_item_warns_it_naming_the_rule(tmp_path, monkeypatch):
-    m, wt, enqueued = _in_flight(tmp_path, monkeypatch)
+def test_a_rule_newer_than_the_item_warns_it_naming_the_rule(repo, tmp_path, monkeypatch):
+    m, wt, enqueued = _in_flight(repo, tmp_path, monkeypatch)
     assert suite(wt, []).returncode == 1  # without the waiver: the rule reds the item
     waive = land_waive.words([{"repo": str(m), "sha": enqueued, "item": "GOH.PLANTED"}])
     got = json.loads(waive[0].split("=", 1)[1])
@@ -64,9 +66,9 @@ def test_a_rule_newer_than_the_item_warns_it_naming_the_rule(tmp_path, monkeypat
     assert "still owes the fix" in w["reason"] and "main gains a test" in w["reason"]
 
 
-def test_a_rule_at_the_items_base_reds_it(tmp_path, monkeypatch):
+def test_a_rule_at_the_items_base_reds_it(repo, tmp_path, monkeypatch):
     dbfix.made(monkeypatch, tmp_path)
-    m, _ = main_repo(tmp_path, {**FILES, "tests/test_rule.py": RULE_TEXT})
+    m, _ = main_repo(repo, {**FILES, "tests/test_rule.py": RULE_TEXT})
     wt = lane(m, git(m, "rev-parse", "HEAD").strip())
     put(wt, "src/bad.txt", "BAD\n")
     enqueued = commit(wt, "item")
@@ -74,8 +76,8 @@ def test_a_rule_at_the_items_base_reds_it(tmp_path, monkeypatch):
     assert suite(wt, []).returncode == 1
 
 
-def test_the_warning_is_red_on_the_items_next_land(tmp_path, monkeypatch):
-    m, wt, enqueued = _in_flight(tmp_path, monkeypatch)
+def test_the_warning_is_red_on_the_items_next_land(repo, tmp_path, monkeypatch):
+    m, wt, enqueued = _in_flight(repo, tmp_path, monkeypatch)
     req = {"repo": str(m), "sha": enqueued, "item": "GOH.PLANTED"}
     warned = {"node": RULE, "kind": "rule-in-flight", "rule": RULE}
     dbfix.land(tmp_path / "q", "01-GOH.PLANTED", {"item": "GOH.PLANTED", "state": "red",
@@ -88,14 +90,14 @@ def test_the_warning_is_red_on_the_items_next_land(tmp_path, monkeypatch):
     assert land_waive.words([{**req, "item": "GOH.OTHER"}]) != []  # another item's grace is its own
 
 
-def test_a_new_test_that_is_no_rule_reds_the_item(tmp_path, monkeypatch):
-    m, wt, enqueued = _in_flight(tmp_path, monkeypatch, PLAIN_TEXT, "tests/test_plain.py")
+def test_a_new_test_that_is_no_rule_reds_the_item(repo, tmp_path, monkeypatch):
+    m, wt, enqueued = _in_flight(repo, tmp_path, monkeypatch, PLAIN_TEXT, "tests/test_plain.py")
     assert land_waive.words([{"repo": str(m), "sha": enqueued, "item": "GOH.PLANTED"}]) == []
     assert suite(wt, []).returncode == 1
 
 
-def test_a_stack_waives_a_rule_only_when_every_item_predates_it(tmp_path, monkeypatch):
-    m, _wt, enqueued = _in_flight(tmp_path, monkeypatch)
+def test_a_stack_waives_a_rule_only_when_every_item_predates_it(repo, tmp_path, monkeypatch):
+    m, _wt, enqueued = _in_flight(repo, tmp_path, monkeypatch)
     after = lane(m, git(m, "rev-parse", "HEAD").strip(), "after")
     put(after, "src/other.txt", "ok\n")
     later = commit(after, "an item based after the rule")
@@ -104,10 +106,10 @@ def test_a_stack_waives_a_rule_only_when_every_item_predates_it(tmp_path, monkey
     assert land_waive.rules_in_flight(str(m), git(m, "rev-parse", "HEAD").strip(), [enqueued])
 
 
-def test_the_ratchet_phase_and_land_check_warn_a_rule_in_flight(tmp_path, monkeypatch):
+def test_the_ratchet_phase_and_land_check_warn_a_rule_in_flight(repo, tmp_path, monkeypatch):
     from lib import land_check
 
-    m, wt, enqueued = _in_flight(tmp_path, monkeypatch, "# goh-land-guard:\n" + RULE_TEXT)
+    m, wt, enqueued = _in_flight(repo, tmp_path, monkeypatch, "# goh-land-guard:\n" + RULE_TEXT)
     said: list[str] = []
     assert land_check.run(wt, None, said.append, str(m)) != []  # HEAD, rebased, holds the rule
     req = {"repo": str(m), "sha": enqueued, "item": "GOH.PLANTED"}

@@ -35,17 +35,19 @@ FILES = {
 }
 
 
-def _planted(tmp_path: Path, monkeypatch, breaks_ok: bool = False):
+def _planted(repo: Path, tmp_path: Path, monkeypatch, breaks_ok: bool = False):
     dbfix.made(monkeypatch, tmp_path)
-    m, base = main_repo(tmp_path, FILES)
+    m, base = main_repo(repo, FILES)
     wt = lane(m, base)
     put(wt, "src/value.txt", "2\n" if breaks_ok else "1\n")
     put(wt, "notes.txt", "the item's own change\n")
     return m, base, wt, commit(wt, "item")
 
 
-def test_a_red_main_reading_at_the_base_waives_it_and_without_one_it_reds(tmp_path, monkeypatch):
-    m, base, wt, tip = _planted(tmp_path, monkeypatch)
+def test_a_red_main_reading_at_the_base_waives_it_and_without_one_it_reds(
+    repo, tmp_path, monkeypatch
+):
+    m, base, wt, tip = _planted(repo, tmp_path, monkeypatch)
     req = {"repo": str(m), "sha": tip, "item": "GOH.PLANTED"}
     assert land_waive.words([req]) == []  # no reading on main: nothing is waivable
     red = suite(wt, [])
@@ -63,16 +65,16 @@ def test_a_red_main_reading_at_the_base_waives_it_and_without_one_it_reds(tmp_pa
     ]
 
 
-def test_a_test_the_item_turns_red_at_a_green_base_still_reds_it(tmp_path, monkeypatch):
-    m, base, wt, tip = _planted(tmp_path, monkeypatch, breaks_ok=True)
+def test_a_test_the_item_turns_red_at_a_green_base_still_reds_it(repo, tmp_path, monkeypatch):
+    m, base, wt, tip = _planted(repo, tmp_path, monkeypatch, breaks_ok=True)
     main_reading.record(m, base, "idle-suite", "*", [SHARED])  # main red on SHARED only
     run = suite(wt, land_waive.words([{"repo": str(m), "sha": tip}]))
     assert run.returncode == 1, run.stdout
     assert f"FAILED {OK}" in run.stdout and "1 xfailed" in run.stdout
 
 
-def test_a_reading_at_another_sha_or_a_later_green_one_waives_nothing(tmp_path, monkeypatch):
-    m, base, wt, tip = _planted(tmp_path, monkeypatch)
+def test_a_reading_at_another_sha_or_a_later_green_one_waives_nothing(repo, tmp_path, monkeypatch):
+    m, base, wt, tip = _planted(repo, tmp_path, monkeypatch)
     put(m, "later.txt", "main moved\n")
     later = commit(m, "main moves")
     main_reading.record(m, later, "probe", [SHARED], [SHARED])  # red, but not at the item's base
@@ -86,8 +88,8 @@ def test_a_reading_at_another_sha_or_a_later_green_one_waives_nothing(tmp_path, 
     assert suite(wt, land_waive.words([{"repo": str(m), "sha": tip}])).returncode == 1
 
 
-def test_the_waiver_reaches_xdist_workers(tmp_path, monkeypatch):
-    m, base, wt, tip = _planted(tmp_path, monkeypatch)
+def test_the_waiver_reaches_xdist_workers(repo, tmp_path, monkeypatch):
+    m, base, wt, tip = _planted(repo, tmp_path, monkeypatch)
     main_reading.record(m, base, "idle-suite", "*", [SHARED])
     run = suite(wt, land_waive.words([{"repo": str(m), "sha": tip}]), "-n", "2")
     assert run.returncode == 0, run.stdout + run.stderr
@@ -95,9 +97,9 @@ def test_the_waiver_reaches_xdist_workers(tmp_path, monkeypatch):
 
 
 def test_a_probe_reads_main_on_a_clean_checkout_and_no_verdict_records_nothing(
-    tmp_path, monkeypatch
+    repo, tmp_path, monkeypatch
 ):
-    m, base, _wt, _tip = _planted(tmp_path, monkeypatch)
+    m, base, _wt, _tip = _planted(repo, tmp_path, monkeypatch)
     seen = []
 
     def runner(wt: Path, nodes: list[str]) -> tuple[int, str]:
@@ -117,8 +119,8 @@ def test_a_probe_reads_main_on_a_clean_checkout_and_no_verdict_records_nothing(
     assert main_reading.red_at(m, base) == {SHARED: rid}
 
 
-def test_the_lander_probes_main_once_for_the_idle_suites_reds(tmp_path, monkeypatch):
-    m, base, _wt, _tip = _planted(tmp_path, monkeypatch)
+def test_the_lander_probes_main_once_for_the_idle_suites_reds(repo, tmp_path, monkeypatch):
+    m, base, _wt, _tip = _planted(repo, tmp_path, monkeypatch)
     q = tmp_path / "q"
     (q / "idle-suite").mkdir(parents=True)
     (q / "idle-suite" / "last.json").write_text(json.dumps({"sha": base, "outcome": "red"}))
@@ -136,8 +138,8 @@ def test_the_lander_probes_main_once_for_the_idle_suites_reds(tmp_path, monkeypa
     assert calls == [[SHARED]]
 
 
-def test_the_idle_suite_keeps_its_run_as_a_reading_of_main(tmp_path, monkeypatch):
-    m, base, _wt, _tip = _planted(tmp_path, monkeypatch)
+def test_the_idle_suite_keeps_its_run_as_a_reading_of_main(repo, tmp_path, monkeypatch):
+    m, base, _wt, _tip = _planted(repo, tmp_path, monkeypatch)
     log = tmp_path / "idle.log"
     log.write_text(f"FAILED {SHARED} - AssertionError\n1 failed\n")
     said = idle_suite.reading(m, base, "red", log)
@@ -156,12 +158,12 @@ def test_no_goh_db_is_no_reading(tmp_path, monkeypatch):
     assert land_waive.words([{"repo": str(tmp_path), "sha": "0" * 40}]) == []
 
 
-def test_land_check_waives_main_red_guards_by_a_reading(tmp_path, monkeypatch):
+def test_land_check_waives_main_red_guards_by_a_reading(repo, tmp_path, monkeypatch):
     from lib import land_check
 
     dbfix.made(monkeypatch, tmp_path)
     m, base = main_repo(
-        tmp_path, {**FILES, "tests/test_a.py": "# goh-land-guard:\n" + FILES["tests/test_a.py"]}
+        repo, {**FILES, "tests/test_a.py": "# goh-land-guard:\n" + FILES["tests/test_a.py"]}
     )
     wt = lane(m, base)
     put(wt, "notes.txt", "the item's own change\n")

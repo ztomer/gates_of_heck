@@ -30,10 +30,8 @@ def commit(repo: Path, msg: str = "c") -> str:
     return git(repo, "rev-parse", "HEAD").strip()
 
 
-def main_repo(tmp: Path, files: dict[str, str]) -> tuple[Path, str]:
-    m = tmp / "main"
-    m.mkdir()
-    git(m, "init", "-q", "-b", "main")
+def main_repo(m: Path, files: dict[str, str]) -> tuple[Path, str]:
+    """M, conftest's `repo` (a clone of the shared template, on main), made the planted main."""
     put(m, "pytest.ini", "[pytest]\n")
     put(m, "tests/conftest.py", CONFTEST)
     for rel, text in files.items():
