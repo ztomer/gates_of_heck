@@ -114,3 +114,12 @@ def test_a_node_whose_param_id_has_spaces_is_kept_whole():
         "tests/t.py::test_x[some other source]",
         "tests/t.py::test_y[a b]",
     ]
+
+
+def test_a_node_an_older_list_cut_joins_as_its_base(tmp_path, monkeypatch):
+    """GOH.REMOTEREDSILENT: the enqueue's notice is the installed kit's, which may still cut
+    `[some other source]` at the space; the tree's set takes the cut id as its base, never as a
+    node no xdist worker finds."""
+    write(tmp_path, "tests/test_t.py", "def test_reads_the_live_queue():\n    pass\n")
+    monkeypatch.setenv(main_red.ENV, f"{NODE}[some\n{NODE}[a b]")
+    assert list(main_red.also(tmp_path)) == [NODE, f"{NODE}[a b]"]

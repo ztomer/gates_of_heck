@@ -133,7 +133,9 @@ def also(root: Path) -> dict[str, str]:
     """{node: why} for the nodes ENV names whose test function ROOT still defines."""
     from lib import fast_tests  # lib/: the functions a test file defines now
 
-    named = [n for n in os.environ.get(ENV, "").splitlines() if "::" in n]
+    # An id an older list cut (`t[some`, no closing bracket) joins as its base (GOH.REMOTEREDSILENT)
+    lines = os.environ.get(ENV, "").splitlines()
+    named = [n.split("[")[0] if "[" in n and not n.endswith("]") else n for n in lines if "::" in n]
     have = set(fast_tests.units(root, list(dict.fromkeys(n.split("::")[0] for n in named))))
     why = "main is red on it in the idle full suite (GOH.MAINREDNOTICE)"
     return {n: why for n in named if fast_tests._base(n) in have}
