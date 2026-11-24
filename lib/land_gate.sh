@@ -68,6 +68,9 @@ land_suite_why() {
         suite_why="missed: the gate ran no whole suite to ask (tools/pytest.sh with no arguments)"
     fi
     info "suite: $suite_why"
+    # The gate's worker share, what it saved (GOH.REMOTESAVED, lib/remote_saved.py): its figure
+    # lines into the land's log, which the lander reads into the record.
+    [ ! -s "${verdicts:-}.shares" ] || cat "$verdicts.shares"
 }
 
 # land_shadow -- THE CARRY RULE, MEASURED (GOH.CARRYSHADOW): the `shadow:` lines the gate's suite

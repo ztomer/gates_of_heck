@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT))
 fast_tests = importlib.import_module("lib.fast_tests")
 remote_gate = importlib.import_module("lib.remote_gate")
 remote_lane = importlib.import_module("lib.remote_lane")
+remote_saved = importlib.import_module("lib.remote_saved")
 
 KEY = "goh_land_remote"  # controller -> worker: the files the worker deselects
 _state: dict = {}
@@ -124,6 +125,8 @@ def pytest_sessionfinish(session) -> None:
     with remote_gate.table(_table()):
         green, lines = remote_gate.finish(ROOT, share, d["shadow"], _mac, _run_local)
     _say(session.config, lines)
+    # its figure beside the verdict record, for the land's log (tools/land.sh, GOH.REMOTESAVED)
+    remote_saved.keep(lines, f"{lv._on(lv.REUSE)}.shares" if lv._on(lv.REUSE) else "")
     if not d["shadow"]:  # passed by ANOTHER verdict: the store's record is never `full`
         plan = lv._plan(session.config)
         plan["other"] = int(plan.get("other", 0)) + len(share.nodes)

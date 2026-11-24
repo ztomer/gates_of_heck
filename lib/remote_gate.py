@@ -44,7 +44,7 @@ import xml.etree.ElementTree as ET
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
-from lib import durations, proc_deadline
+from lib import durations, proc_deadline, remote_saved
 from lib.remote_lane import (
     FALLBACK,
     LINUX_SAFE,
@@ -144,8 +144,9 @@ def settle(root: Path, share: Share, clock: Callable[[], float] = time.time) -> 
         share.proc.kill()
         share.proc.wait()
         got_rc, late = FALLBACK, "late"
-    rc = got_rc
+    rc, share.ended = got_rc, (mac_end, clock())  # both sides' walls (lib/remote_saved.py)
     said = share.log.read_text(errors="replace")
+    share.said = said
     got: dict[str, str] = {}
     try:
         text = share.junit.read_text() if rc in (0, 1) else ""
@@ -185,11 +186,32 @@ def record_unsafe(found: dict[str, str]) -> None:
 
 
 def finish(root: Path, share: Share, shadow: bool, mac: dict[str, bool],
-           run_local: Callable[[list[str]], int]) -> tuple[bool, list[str]]:  # fmt: skip
+           run_local: Callable[[list[str]], int],
+           clock: Callable[[], float] | None = None) -> tuple[bool, list[str]]:  # fmt: skip
     """The gate's verdict on the share: (green, the lines to say). A shadow's Mac run stands and
     only feeds the ledger; else the worker's failures are red, and a fallback runs the files on
-    the Mac (`run_local`), whose exit decides."""
-    outcome, got = settle(root, share)
+    the Mac (`run_local`), whose exit decides. The last line is the share's figure: what it saved
+    (lib/remote_saved.py), which tests/_land_remote.py keeps for the land's log."""
+    clock = clock or time.time
+    outcome, got = settle(root, share, clock)
+    rerun = [0.0]
+
+    def timed(files: list[str]) -> int:
+        t = clock()
+        rc = run_local(files)
+        rerun[0] += clock() - t
+        return rc
+
+    green, lines = _verdict(share, shadow, mac, timed, outcome, got)
+    est = 0.0 if shadow else share.est_s  # a shadow ran its files on the Mac too: nothing saved
+    fig = remote_saved.figure("gate", share.said, len(share.nodes), outcome.split(":")[0],
+                              share.started, *share.ended, est, rerun[0])  # fmt: skip
+    return green, [*lines, remote_saved.line(fig)]
+
+
+def _verdict(share: Share, shadow: bool, mac: dict[str, bool],
+             run_local: Callable[[list[str]], int], outcome: str,
+             got: dict[str, str]) -> tuple[bool, list[str]]:  # fmt: skip
     n = len(share.nodes)
     if shadow:
         found = disagreements(mac, got)

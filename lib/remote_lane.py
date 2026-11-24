@@ -54,7 +54,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from lib import durations as duration_db, fast_tests, tmp_root
+from lib import durations as duration_db, fast_tests, remote_saved, tmp_root
+from lib.remote_saved import cause  # how a share ended, re-exported (lib/remote_gate.py)
 from lib.step_timings import timed
 from tui.lib import info, warn
 
@@ -216,6 +217,9 @@ class Share:
     log: Path
     started: float = 0.0  # time.time() at the start, for both sides' walls (`measure`)
     mac_s: float = 0.0  # the Mac's estimated serial seconds this pre-step, judges included
+    est_s: float = 0.0  # the share's own Mac wall at the Mac's width (lib/remote_saved.py)
+    ended: tuple[float, float] = (0.0, 0.0)  # the gate's (Mac done, worker done), and its log
+    said: str = ""
 
 
 def begin(root: Path, nodes: list[str], mac_runs: bool = True,
@@ -250,7 +254,8 @@ def launch(root: Path, remote: list[str], mac_s: float,
     with log.open("wb") as out:
         proc = subprocess.Popen(argv, stdout=out, stderr=subprocess.STDOUT,
                                 stdin=subprocess.DEVNULL, env=env)  # fmt: skip
-    return Share(remote, proc, Path(junit), log, time.time(), mac_s)
+    est = sum(cost(remote, fast_tests.load()).values()) / max(load_rates().mac_width, 1.0)
+    return Share(remote, proc, Path(junit), log, time.time(), mac_s, est)
 
 
 def cancel(share: Share | None) -> None:
@@ -299,36 +304,19 @@ def mac_run(root: Path) -> Callable[[list[str]], int]:
     return lambda nodes: timed(f"pre-land: {len(nodes)} tests given back", [*pytest, *nodes])
 
 
-# A fallback's cause, from the shard's own words (tools/remote_shard.py): the first that matches.
-CAUSES = (
-    ("mux", ("mux_client", "mm_send_fd")),
-    ("busy", (" busy: load",)),
-    ("off-pin", ("off goh's pins",)),
-    ("skips", ("skips differ",)),
-    ("scratch", ("GB free, under", "GB, over its")),
-    ("in-flight", ("run in flight",)),
-    ("unreachable", ("unreachable (ssh", "did not answer")),
-    ("dropped", ("did not finish",)),
-    ("no-junit", ("wrote no junit", "junit does not parse", "remote pytest exited")),
-    ("start", ("did not start", "did not sync")),
-)
-
-
-def cause(said: str) -> str:
-    """Why a share fell back, as one word (GOH.REMOTEMUX: the land record counts them)."""
-    return next((name for name, marks in CAUSES if any(m in said for m in marks)), "other")
-
-
-def note(share: Share, rc: int, said: str) -> None:
+def note(share: Share, rc: int, said: str, fig: dict | None = None) -> None:
     """The share's outcome beside the pre-step's figures (`$GOH_LAND_PRE_TOOK.remote`), which
     lib/land_prestep.py carries into the land record's `pre_run.remote` for --report: the tests
     sent, `remote` (the worker judged them), `failed` (some failed there) or `fallback` with its
-    `cause`, and whether the run left a broken ssh multiplexer for a fresh connection."""
+    `cause`, whether the run left a broken ssh multiplexer for a fresh connection, and what it
+    saved (FIG, lib/remote_saved.py), which is also said where the land's log reads it."""
+    if fig is not None:
+        remote_saved.say(fig)
     took = os.environ.get("GOH_LAND_PRE_TOOK")
     if not took:
         return
     outcome = "remote" if rc == 0 else "failed" if rc == 1 else "fallback"
-    data = {"tests": len(share.nodes), "outcome": outcome,
+    data = {"tests": len(share.nodes), "outcome": outcome, **(fig or {}),
             "cause": cause(said) if outcome == "fallback" else None,
             "fresh": "a fresh connection instead" in said}  # fmt: skip
     with contextlib.suppress(OSError):  # the instrument never fails the pre-step
@@ -346,6 +334,7 @@ def end(root: Path, share: Share | None, record: str, merge: Callable[[Path, Pat
         return 0
     mac_end = clock()  # the Mac's side is done: its wall ends here
     rc = share.proc.wait()
+    worker_end, rerun = clock(), 0.0
     said = share.log.read_text(errors="replace")
     tail = said.splitlines()[-6:]
     sys.stdout.write("".join(f"  remote: {ln}\n" for ln in tail))
@@ -357,7 +346,7 @@ def end(root: Path, share: Share | None, record: str, merge: Callable[[Path, Pat
     except (OSError, ET.ParseError):
         got, rc = {}, FALLBACK
     broke = rc == 1 and "failed" not in got.values()  # the shard's own exit 1, no test's
-    note(share, FALLBACK if broke else rc, said)
+    rc_said = FALLBACK if broke else rc
     try:
         record_passes(record, [n for n, kind in got.items() if kind == "passed"])
         failed = [n for n, kind in got.items() if kind == "failed"]
@@ -372,7 +361,9 @@ def end(root: Path, share: Share | None, record: str, merge: Callable[[Path, Pat
         aside = Path(f"{record}.mac") if record and record != os.devnull else None
         if aside and Path(record).is_file():
             Path(record).replace(aside)
+        t = clock()
         mac = (run_local or mac_run(root))(redo)
+        rerun = clock() - t
         if aside and aside.is_file():
             merge(Path(record), aside)
         if mac == 0 and failed:
@@ -381,6 +372,10 @@ def end(root: Path, share: Share | None, record: str, merge: Callable[[Path, Pat
                  f"a Linux defect, or drop the file from {LINUX_SAFE}")  # fmt: skip
         return mac
     finally:
+        where = "enqueue" if os.environ.get("GOH_LAND_PRE_ONLY") else "pre-land"
+        out = "remote" if rc_said == 0 else "failed" if rc_said == 1 else "fallback"
+        note(share, rc_said, said, remote_saved.figure(where, said, len(share.nodes), out,
+             share.started, mac_end, worker_end, share.est_s, rerun))  # fmt: skip
         _cleanup(share)
 
 

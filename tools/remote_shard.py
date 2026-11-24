@@ -365,6 +365,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--manifest", type=Path, default=ROOT / "gates" / "required_tools.tsv")
     a = ap.parse_args(argv)
     c, tree = conf(), a.tree.resolve()
+    info(f"remote-shard: host {c['host']}")  # whose share this is (lib/remote_saved.py)
     slot = a.slot or hashlib.sha256(str(tree).encode()).hexdigest()[:10]
     if not slot.replace("-", "").replace("_", "").isalnum():
         ap.error(f"--slot {slot!r}: letters, digits, - and _ only")

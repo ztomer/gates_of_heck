@@ -127,7 +127,7 @@ def loopctl() -> Path:
     return Path(os.environ.get("GOH_LOOPCTL") or Path.home() / "Projects/.loop/tools/loopctl.py")
 
 
-git, now = landq_request.git, landq_request.now
+git, now, shares_of = landq_request.git, landq_request.now, landq_report.landq_remote.shares
 git_bindings = importlib.import_module("ship_version").git_bindings  # git's own list, one copy
 
 
@@ -239,7 +239,7 @@ def record(req_path: Path, outcome: dict, item: str) -> None:
     outcome = {**outcome, "at": now()}
     req = landq_batch.read(req_path)
     outcome.update(land_e2e.asked(req))  # the e2e's start (GOH.LANDTARGET)
-    outcome.update(land_slot.done(q, req), **landq_report.slot_waits(outcome))
+    outcome.update(land_slot.done(q, req), **landq_report.slot_waits(outcome), **shares_of(outcome))
     land_prestep.discard(req, q, land_prestep.conflict_red(outcome))  # LANDLEAKS
     outcome.update(item=named, attempt=land_attempts.attempt_of(q, named))
     outcome.update(flakes.land_retry(land_records.records(q), named, outcome))  # a retry's pass

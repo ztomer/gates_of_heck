@@ -80,6 +80,7 @@ lib/proc_table.py	base-code
 lib/prune_kept.py	base-code
 lib/queue_read.py	base-code
 lib/remote_lane.py	base-code
+lib/remote_saved.py	base-code
 lib/reuse.py	base-code
 lib/reuse_audit.py	base-code
 lib/reuse_audit_store.py	base-code

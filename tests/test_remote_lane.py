@@ -303,14 +303,16 @@ def test_each_share_s_outcome_reaches_the_land_record(tree: Path, monkeypatch):
     share = _share(tree, rl.FALLBACK)
     share.log.write_text("⚠ media-server busy: load 9.62 > 6.0 -- the caller runs the shard\n")
     rl.end(tree, share, "", av.merge_records, lambda ns: 0)
-    got = json.loads(Path(f"{took}.remote").read_text())
-    assert got == {"tests": 1, "outcome": "fallback", "cause": "busy", "fresh": False}
+    got = json.loads(Path(f"{took}.remote").read_text())  # its saving: test_remote_saved
+    assert {k: got[k] for k in ("tests", "outcome", "cause", "fresh")} == {
+        "tests": 1, "outcome": "fallback", "cause": "busy", "fresh": False}  # fmt: skip
     share = _share(tree, 0)
     share.log.write_text("⚠ the shared ssh connection failed (mux_client...): a fresh connection "
                          "instead\n✓ remote fakehost: 2 passed\n")  # fmt: skip
     rl.end(tree, share, "", av.merge_records, lambda ns: 0)
     got = json.loads(Path(f"{took}.remote").read_text())
-    assert got == {"tests": 1, "outcome": "remote", "cause": None, "fresh": True}
+    assert {k: got[k] for k in ("tests", "outcome", "cause", "fresh")} == {
+        "tests": 1, "outcome": "remote", "cause": None, "fresh": True}  # fmt: skip
 
 
 @pytest.mark.parametrize("mac_rc", [0, 1])
