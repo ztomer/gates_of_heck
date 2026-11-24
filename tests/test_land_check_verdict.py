@@ -55,6 +55,19 @@ def test_a_slow_guard_under_a_measured_clamp_is_waited_for(tmp_path, monkeypatch
     assert land_check.run(tree, None, said.append, "") == [], said
 
 
+@pytest.mark.load_sensitive
+def test_the_clamp_is_measured_again_at_the_deadline(tmp_path, monkeypatch):
+    """The first probe runs before the jobs load the box: at the deadline the clamp is read again,
+    and a job the box now runs x4 slower is waited for, not cut at the quiet bound."""
+    tree = _tree(tmp_path, 3)
+    monkeypatch.setattr(land_check, "STEP_TIMEOUT", 2)
+    box = timing_bounds.stretch()
+    probes = iter([1.0])  # the start's reading; every later one is x4 the box
+    monkeypatch.setattr(proc_deadline, "stretch", lambda: next(probes, 4.0 * box))
+    said: list[str] = []
+    assert land_check.run(tree, None, said.append, "") == [], said
+
+
 def test_the_stretched_deadline_is_capped():
     assert land_check.deadline(300, 2.0) == 600
     assert land_check.deadline(300, 0.5) == 300, "never below the quiet bound"

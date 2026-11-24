@@ -239,10 +239,16 @@ def _env(root: Path) -> dict[str, str]:
 
 
 def _run(
-    argv: list[str], root: Path, env: dict[str, str], timeout: float | None = None
+    argv: list[str],
+    root: Path,
+    env: dict[str, str],
+    timeout: float | None = None,
+    quiet: float | None = None,
 ) -> tuple[int, str, float]:
     """ARGV in its own session, its output in a file (a child that outlives it holds no pipe), the
-    whole group stopped at TIMEOUT, else STEP_TIMEOUT (lib/killtree.py: TERM, grace, KILL)."""
+    whole group stopped at TIMEOUT, else STEP_TIMEOUT (lib/killtree.py: TERM, grace, KILL). QUIET
+    (a job's quiet bound): at the deadline the clamp is measured again and the deadline moves to
+    QUIET stretched by it, while that is later (the jobs' own load is not there at the start)."""
     from lib import killtree
 
     limit = timeout or STEP_TIMEOUT
@@ -250,7 +256,11 @@ def _run(
     with tempfile.TemporaryFile() as log:
         proc = subprocess.Popen(argv, cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=log,
                                 stderr=subprocess.STDOUT, start_new_session=True)  # fmt: skip
-        rc = proc_deadline.wait(proc, limit)
+        while (rc := proc_deadline.wait(proc, limit - (time.monotonic() - t0))) is None and quiet:
+            later = deadline(quiet, proc_deadline.stretch())
+            if later <= time.monotonic() - t0 + 1:
+                break
+            limit = later
         if rc is None:
             killtree.stop_group(killtree.session_pgid(proc), proc=proc)
             proc.wait()
@@ -298,7 +308,13 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=Fal
     say(f"check: each job's deadline {limit:.0f} s (this thread runs x{slow:.1f} a quiet core)")
     with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
         done = {
-            name: pool.submit(_run, argv, root, env, DIFFCOV_TIMEOUT if name == DIFFCOV else limit)
+            name: pool.submit(
+                _run,
+                argv,
+                root,
+                env,
+                *((DIFFCOV_TIMEOUT, None) if name == DIFFCOV else (limit, STEP_TIMEOUT)),
+            )
             for name, argv in jobs.items()
         }
         results = {name: f.result() for name, f in done.items()}
