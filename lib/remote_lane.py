@@ -334,7 +334,7 @@ def end(root: Path, share: Share | None, record: str, merge: Callable[[Path, Pat
         return 0
     mac_end = clock()  # the Mac's side is done: its wall ends here
     rc = share.proc.wait()
-    worker_end, rerun = clock(), 0.0
+    worker_end, rerun = remote_saved.ended(share.junit, clock()), 0.0
     said = share.log.read_text(errors="replace")
     tail = said.splitlines()[-6:]
     sys.stdout.write("".join(f"  remote: {ln}\n" for ln in tail))

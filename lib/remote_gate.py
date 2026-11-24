@@ -144,7 +144,7 @@ def settle(root: Path, share: Share, clock: Callable[[], float] = time.time) -> 
         share.proc.kill()
         share.proc.wait()
         got_rc, late = FALLBACK, "late"
-    rc, share.ended = got_rc, (mac_end, clock())  # both sides' walls (lib/remote_saved.py)
+    rc, share.ended = got_rc, (mac_end, remote_saved.ended(share.junit, clock()))  # both walls
     said = share.log.read_text(errors="replace")
     share.said = said
     got: dict[str, str] = {}

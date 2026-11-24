@@ -82,6 +82,16 @@ def figure(where: str, said: str, tests: int, outcome: str, t0: float, mac_end: 
             "t0": round(t0, 3)}  # fmt: skip
 
 
+def ended(junit: Path, now: float) -> float:
+    """When the worker finished: its junit's write when it wrote one before NOW (a worker done
+    before the Mac is waited for at once, and NOW is the Mac's end), else NOW."""
+    try:
+        st = junit.stat()
+    except OSError:
+        return now
+    return min(now, st.st_mtime) if st.st_size else now
+
+
 def line(fig: dict) -> str:
     return PREFIX + json.dumps(fig, sort_keys=True)
 

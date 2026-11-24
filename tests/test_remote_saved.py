@@ -173,3 +173,14 @@ def test_the_real_shard_names_its_host_in_the_figure(tmp_path: Path, monkeypatch
     rl.end(REPO_ROOT, share, "", av.merge_records, lambda ns: 0)
     (fig,) = rs.of_log(capsys.readouterr().out)
     assert fig["host"] == "unreachable.invalid" and fig["outcome"] == "fallback", fig
+
+
+def test_a_worker_done_before_the_mac_is_timed_by_its_junit(tree: Path, capsys):
+    """The first measured share (2026-11-24, 248 tests): the worker had finished long before the
+    Mac, and its wall read the Mac's (1140.2 s both) because the wait returned at once. Its own
+    end is its junit's write: 1000 + 70 here, while the Mac ends at 1100."""
+    share = _share(tree, 0)
+    os.utime(share.junit, (1070.0, 1070.0))
+    rl.end(tree, share, "", av.merge_records, lambda ns: 0, clock=_Clock(1100.0, 1100.5))
+    (fig,) = rs.of_log(capsys.readouterr().out)
+    assert fig["worker_s"] == 70.0 and fig["mac_s"] == 100.0 and fig["saved_s"] == 90.0, fig
