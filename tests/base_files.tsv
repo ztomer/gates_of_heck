@@ -31,8 +31,8 @@ lib/cov_env.py	base-code
 lib/crate_reach.py	base-code
 lib/db_bounds.py	base-code
 lib/db_core.py	base-code
-lib/db_waits.py	base-code
 lib/db_record.py	base-code
+lib/db_waits.py	base-code
 lib/declared_reads.py	base-code
 lib/durations.py	base-code
 lib/estate_registry.py	base-code
@@ -81,10 +81,10 @@ lib/prune_kept.py	base-code
 lib/queue_read.py	base-code
 lib/remote_lane.py	base-code
 lib/reuse.py	base-code
-lib/reuse_store.py	base-code
 lib/reuse_audit.py	base-code
 lib/reuse_audit_store.py	base-code
 lib/reuse_fault.py	base-code
+lib/reuse_store.py	base-code
 lib/rm_tree.sh	base-code
 lib/run_path.sh	base-code
 lib/run_rule.py	base-code

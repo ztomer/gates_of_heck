@@ -176,7 +176,9 @@ def test_every_script_has_a_row_in_the_map():
         *(REPO_ROOT / "lib").glob("*.py"),
     ]
     missing = sorted(p.name for p in scripts if f"`{p.name}`" not in text)
-    assert not missing, f"no row in docs/map.md for: {missing}"
+    assert not missing, (
+        f"no row in docs/map.md for: {missing}; `python3 lib/tables.py --write` adds one"
+    )
 
 
 def test_every_row_in_the_map_names_a_file_that_exists():
@@ -192,4 +194,7 @@ def test_every_row_in_the_map_names_a_file_that_exists():
         for name in _re.findall(r"^\| `([^`/]+\.(?:py|sh|tsv|json))`", body, _re.MULTILINE):
             if not (REPO_ROOT / base / name).exists():
                 stale.append(f"{base}/{name}")
-    assert not stale, f"docs/map.md rows for files that do not exist: {stale}"
+    assert not stale, (
+        f"docs/map.md rows for files that do not exist: {stale}; "
+        "`python3 lib/tables.py --write` drops them"
+    )
