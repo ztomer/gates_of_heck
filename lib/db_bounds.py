@@ -9,7 +9,8 @@
     sweep(seam)     each table past its bound gives up its OLDEST rows, then the file past its
                     budget (the seam's, goh.db 256 MB, goh-cache.db 2 GB) gives up more from its
                     largest tables; then incremental_vacuum and wal_checkpoint(TRUNCATE)
-    unbounded(seam) one line per table with no bound, past its bound, or the file past its budget
+    unbounded(seam) one line per table with no bound, past its bound, or the file past its budget;
+                    on a newer goh's file, not the tables its own migrations created
 
 WHERE THE ROWS GO. A history file (goh.db: lands, ships) loses nothing: its rows move to a yearly
 archive beside it, `goh-archive-YYYY.db` (the year of each row's stamp), versioned like every
@@ -77,6 +78,18 @@ def bounds(seam: db_core.Seam) -> dict[str, TableBound]:
         for line in p.read_text(encoding="utf-8").splitlines():
             if got := parse(line):
                 out[got[0]] = got[1]
+    return out
+
+
+CREATES = re.compile(r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[\"`]?([A-Za-z_][A-Za-z0-9_]*)",
+                     re.IGNORECASE)  # fmt: skip
+
+
+def created(seam: db_core.Seam) -> set[str]:
+    """The tables this goh's own migrations create (BOOT's included)."""
+    out = set(db_core.BOOT_TABLES)
+    for p in db_core.migrations(seam).values():
+        out |= set(CREATES.findall(p.read_text(encoding="utf-8")))
     return out
 
 
@@ -238,8 +251,12 @@ def unbounded(seam: db_core.Seam, now: float | None = None) -> list[str]:
     out: list[str] = []
     with contextlib.suppress(FileNotFoundError), db_core.ro(seam) as con:
         known = bounds(seam)
+        # A newer goh's file: the tables its migrations created are bounded by headers this goh
+        # does not ship, and are that goh's to judge (an older release called 0006's three
+        # tables unbounded, GOH.DURATIONSDB).
+        mine = created(seam) if db_core.newer(con, seam) else None
         for t in tables(con):
-            if t in db_core.BOOT_TABLES:
+            if t in db_core.BOOT_TABLES or (mine is not None and t not in mine):
                 continue
             b = known.get(t)
             if b is None:

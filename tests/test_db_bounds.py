@@ -107,6 +107,28 @@ def test_unbounded_names_a_table_with_no_bound_and_the_file_past_its_budget(tmp_
     assert any("past its budget of 1" in g for g in got), got
 
 
+def test_an_older_goh_leaves_a_newer_migrations_tables_to_their_own_bounds(tmp_path, monkeypatch):
+    """GOH.DURATIONSDB's 0006 landed with its `-- bound:` headers, and every goh without 0006 (a
+    release, an old HEAD export, a lane on an older base) called readings, pruned and duration_kv
+    unbounded: their headers live in a migration it does not ship. A table a newer goh's migration
+    created is that goh's to judge; a stray table in a file of this goh's own version still is."""
+    s = seam(tmp_path, monkeypatch, "rows=10")
+    newer = dataclasses.replace(s, schema=tmp_path / "schema-newer")
+    newer.schema.mkdir()
+    (newer.schema / "0001_h.sql").write_text((s.schema / "0001_h.sql").read_text())
+    (newer.schema / "0002_n.sql").write_text(
+        "-- bound: n rows=10 stamp=at\nCREATE TABLE n(at REAL);\n"
+    )
+    with db_core.connect(newer):
+        pass
+    assert db_bounds.unbounded(newer) == []
+    got = db_bounds.unbounded(s)  # the older goh, on the newer file
+    assert not any("table n " in g for g in got), got
+    with db_core.connect(newer) as con:
+        con.execute("CREATE TABLE stray(x)")
+    assert any("table stray has no `-- bound:` header" in g for g in db_bounds.unbounded(newer))
+
+
 def test_a_missing_file_is_never_created_by_the_bounds(tmp_path, monkeypatch) -> None:
     s = seam(tmp_path, monkeypatch, "rows=10")
     assert db_bounds.sweep(s) == {} and db_bounds.unbounded(s) == []
