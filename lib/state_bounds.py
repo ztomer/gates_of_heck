@@ -131,6 +131,17 @@ REGISTRY: dict[str, Bound | Kept | Container] = {
     "reuse/profcarry": Kept("pruned by TTL at each write batch (lib/reuse.py prune)"),
     "reuse/relset": Kept("pruned by TTL at each write (lib/release_gate.py reuse.prune)"),
     "reuse/profstore": Kept("the newest keys only (lib/prof_store.py prune)"),
+    # Decided files (GOH.VERDICTDB V1 step 2; tests/test_reuse_root_files.py): neither is many
+    # small files nor written concurrently, the two costs the move into the databases removes.
+    "reuse/profreach": Kept(
+        "stays a file (GOH.VERDICTDB): an index of profstore, one ~0.8 MB file per key (9 on "
+        "2026-11-24), written once per key; valid while the key's .profdata count matches, deleted "
+        "with the key (lib/bin_reach.py Reach.load), both read from profstore's own directory"
+    ),
+    "reuse/binreach": Kept(
+        "stays a file (GOH.VERDICTDB): the reach audit's ledger, 200 rows (lib/bin_reach_audit.py "
+        "ROWS), one writer (an audited land's pre-step); its disagreements are fault items"
+    ),
     "reuse/audit": Kept(
         "the pre-switch records and the audit's flock: goh.db reuse_audit rows now "
         "(lib/reuse_audit_store.py), read until wave 3 deletes them"
