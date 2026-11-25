@@ -28,7 +28,7 @@ def _handed(tmp_path: Path, **extra: str) -> str:
     stub = tmp_path / "python3"
     stub.write_text(
         "#!/bin/bash\n"
-        f'case "$1" in -S | -c) exec "{sys.executable}" "$@" ;; esac\n'
+        f'case "$1" in -S | -c | */suite_preflight.py) exec "{sys.executable}" "$@" ;; esac\n'
         'if [ "$1 $2" != "-m pytest" ] || [ "$3" = --version ]; then exit 0; fi\n'
         f'printf %s "${{GOH_TEST_DURATIONS-unset}}" > "{seen}"\n'
     )

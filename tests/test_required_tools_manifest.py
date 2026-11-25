@@ -46,8 +46,10 @@ SITES = [
     re.compile(r"cargo ([\w-]+) --version >/dev/null 2>&1 \\\s*\n\s*\|\|"),
     # The native ports (Phase N1) refuse through one helper, `pyformat::on_path("tool")`.
     re.compile(r"\bon_path\(\"([\w.-]+)\"\)"),
-    # A module the goh suite imports, refused by name in tools/pytest.sh (layer `goh-suite`).
-    re.compile(r"-c 'import \w+' 2>/dev/null \\\s*\n\s*\|\| die \"([\w.-]+) is not installed"),
+    # A module the goh suite imports, refused by name before it (lib/suite_preflight.py MODULES,
+    # layer `goh-suite`), and the ruff it asks the house interpreter for there.
+    re.compile(r'^    \("([\w.-]+)", "\w+"\),  # suite: ', re.MULTILINE),
+    re.compile(r'return missing\("([\w.-]+)"\)'),
 ]
 
 

@@ -58,7 +58,7 @@
 #                        transport, the two helper libraries under the run; unpinned, the runner chose.
 #   pillow =13.0.0, numpy =2.5.5   PIN: the goh suite's own imports (golden_core, the parity tier).
 # `--check` JUDGES A PIN (GOH.PINCHECKFLOOR): in a consumer a pinned tool must be AT LEAST its pin (the
-# floor `--floors` publishes); in a goh checkout EXACTLY its pin, as tools/pytest.sh's --pins-held holds it.
+# floor `--floors` publishes); in a goh checkout EXACTLY its pin, as lib/suite_preflight.py (tools/pytest.sh) holds it.
 # EVERY pip row is a pin (tests/test_ci_install_pins.py): CI installs from this table, so an unpinned
 # pip row is a release the runner picks and the box does not have. tools/pytest.sh refuses a goh-suite
 # module whose installed release is not its pin (required_tools.py --pins-held), so the box is CI's.
@@ -71,15 +71,15 @@ python	python3	system	the house interpreter (lib/house_python.sh): brew install 
 python	ruff	pip	python3 -m pip install ruff	gates/py_gate.sh	=0.17.6
 python	pytest	pip	python3 -m pip install pytest	gates/py_gate.sh	=9.2.0
 python	pytest	pip	python3 -m pip install pytest	gates/staged_guards.sh	=9.2.0
-goh-suite	pytest	pip	python3 -m pip install pytest	tools/pytest.sh	=9.2.0
-goh-suite	pytest-xdist	pip	python3 -m pip install pytest-xdist	tools/pytest.sh	=3.8.0
-goh-suite	pytest-cov	pip	python3 -m pip install pytest-cov	tools/pytest.sh	=7.1.0
-goh-suite	pluggy	pip	python3 -m pip install pluggy	tools/pytest.sh	=1.7.0
-goh-suite	execnet	pip	python3 -m pip install execnet	tools/pytest.sh	=2.1.2
-goh-suite	pillow	pip	python3 -m pip install pillow	tools/pytest.sh	=13.0.0
-goh-suite	numpy	pip	python3 -m pip install numpy	tools/pytest.sh	=2.5.5
-goh-suite	coverage	pip	python3 -m pip install coverage	tools/pytest.sh	=7.17.3
-goh-suite	ruff	pip	python3 -m pip install ruff	tools/pytest.sh	=0.17.6
+goh-suite	pytest	pip	python3 -m pip install pytest	lib/suite_preflight.py	=9.2.0
+goh-suite	pytest-xdist	pip	python3 -m pip install pytest-xdist	lib/suite_preflight.py	=3.8.0
+goh-suite	pytest-cov	pip	python3 -m pip install pytest-cov	lib/suite_preflight.py	=7.1.0
+goh-suite	pluggy	pip	python3 -m pip install pluggy	lib/suite_preflight.py	=1.7.0
+goh-suite	execnet	pip	python3 -m pip install execnet	lib/suite_preflight.py	=2.1.2
+goh-suite	pillow	pip	python3 -m pip install pillow	lib/suite_preflight.py	=13.0.0
+goh-suite	numpy	pip	python3 -m pip install numpy	lib/suite_preflight.py	=2.5.5
+goh-suite	coverage	pip	python3 -m pip install coverage	lib/suite_preflight.py	=7.17.3
+goh-suite	ruff	pip	python3 -m pip install ruff	lib/suite_preflight.py	=0.17.6
 goh-suite	git-cliff	brew	brew install git-cliff	tools/pytest.sh	-
 goh-suite	shellcheck	brew	brew install shellcheck	tools/pytest.sh	0.11.0
 goh-suite	swiftlint	brew	brew install swiftlint	tools/pytest.sh	0.65.1

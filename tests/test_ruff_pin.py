@@ -84,9 +84,3 @@ def test_every_manifest_ruff_row_installs_the_pin():
     assert ruff, "the manifest installs ruff"
     for r in ruff:
         assert r["install"].endswith(f"ruff=={RUFF}") and r["pin"] == RUFF, r
-
-
-def test_the_suite_preflight_holds_every_ruff_to_the_pin():
-    text = (REPO_ROOT / "tools" / "pytest.sh").read_text()
-    pin = r'ruff_agree\.py" --pin "\$\("\$GOH_PY" -S "\$GOH/gates/ruff_house\.py" --pin\)"'
-    assert re.search(pin, text), "tools/pytest.sh asks ruff_agree.py --pin with ruff_house's pin"

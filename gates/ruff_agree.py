@@ -29,8 +29,8 @@ Every way the machine runs ruff (`"$GOH_PY" -m ruff` and each distinct `ruff` on
 version, or exit 1 naming each with its version and its upgrade (GOH.TOOLHYGIENE: 0.17.0 beside
 0.17.4 made a verdict depend on the invocation). `--pin VERSION`: every one IS that release
 (GOH.CIRUFF; the hosted workflow installs one ruff, `GOH_CI_RUFF`, and asks this in its
-provisioning step). Invoked by tools/pytest.sh, before the suite; `.github/workflows/gate.yml` with
-`--pin`.
+provisioning step). Invoked by lib/suite_preflight.py (tools/pytest.sh), before the suite;
+`.github/workflows/gate.yml` with `--pin`.
 """
 
 from __future__ import annotations
@@ -49,6 +49,7 @@ import os
 import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 VERSION = re.compile(r"\bruff (\d+(?:\.\d+)+)")
@@ -109,16 +110,19 @@ def _upgrade(py: str, path: Path | None) -> str:
 
 
 def invocations(py: str, path: str) -> list[tuple[str, Path | None, str | None]]:
-    """(how it is invoked, the PATH entry or None for the interpreter's, its version or None)."""
-    out: list[tuple[str, Path | None, str | None]] = []
+    """(how it is invoked, the PATH entry or None for the interpreter's, its version or None), all
+    asked at once (GOH.PYHARNESS): each is a process the machine waits on, not work."""
+    asked: list[tuple[str, Path | None, list[str]]] = []
     if py:
-        out.append((f"{py} -m ruff", None, _version([py, "-m", "ruff"])))
-    out += [(str(p), p, _version([str(p)])) for p in _on_path(path)]
-    return out
+        asked.append((f"{py} -m ruff", None, [py, "-m", "ruff"]))
+    asked += [(str(p), p, [str(p)]) for p in _on_path(path)]
+    with ThreadPoolExecutor(max_workers=max(1, len(asked))) as pool:
+        found = list(pool.map(_version, [argv for _, _, argv in asked]))
+    return [(label, where, v) for (label, where, _), v in zip(asked, found, strict=True)]
 
 
-def _pinned(py: str, pin: str) -> int:
-    every = invocations(py, os.environ.get("PATH", ""))
+def off_pin(py: str, pin: str, every: list[tuple[str, Path | None, str | None]]) -> int:
+    """1, naming each on stderr, when an invocation of `every` is not the ruff `pin`; else 0."""
     off = [(label, v) for label, _, v in every if v != pin and (v or label.endswith(" -m ruff"))]
     if not off:
         return 0
@@ -135,7 +139,7 @@ def main() -> int:
     py = os.environ.get("GOH_PY") or sys.executable
     args = sys.argv[1:]
     if args[:1] == ["--pin"] and len(args) == 2:
-        return _pinned(py, args[1])
+        return off_pin(py, args[1], invocations(py, os.environ.get("PATH", "")))
     if args:
         print(f"usage: {sys.argv[0]} [--pin VERSION]", file=sys.stderr)
         return 2

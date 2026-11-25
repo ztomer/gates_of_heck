@@ -5,3 +5,10 @@
 * GOH.PYHARNESS: the resolve of the goh the gates run (`tests/_prebuild.py`) is started beside the
   run and joined before its first test, in place of a 0.3-0.5 s wait ahead of collection; a
   `--collect-only` starts none.
+* GOH.PYHARNESS: `tools/pytest.sh` asks what the suite refuses to start without in one process
+  (`lib/suite_preflight.py`) in place of eleven: 0.3 s for 1.9 s. Every module is still imported
+  (a broken one is refused with its error, a crashing one by name), each pin and every ruff held,
+  and a refused run leaves no temp root. The pins are the tree's own manifest.
+* GOH.PYHARNESS: a run narrowed to files or node ids takes the workers its tests cost
+  (`lib/suite_width.py`, the suite's duration table): `-n 0` for 2 s or less, one worker per 1.5 s
+  after it. A run it cannot cost, a land's and a whole one are at the ceiling; `-n` still wins.

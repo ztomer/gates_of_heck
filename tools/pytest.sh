@@ -108,65 +108,45 @@ if [ -z "${GATES_OF_HECK_SUITE_RUNNER:-}" ] && [ -z "${GATES_OF_HECK_SUITE_NESTE
     # database, goh.db (lib/fast_tests.py `cache()`, its one spelling; GOH.DURATIONSDB), and
     # tests/suite_home.py pops it, so no worker or fixture run under this one writes it. A run
     # nested on purpose is named none.
-    GOH_TEST_DURATIONS="$(PYTHONPATH="$GOH" "$GOH_PY" -c 'from lib.fast_tests import cache; print(cache())')" \
-        || die "cannot resolve the suite's duration table (lib/fast_tests.py cache())" 2
-    export GOH_TEST_DURATIONS
+    preflight_args=(--table)
 else
     unset GOH_TEST_DURATIONS
+    preflight_args=()
 fi
+# WHAT THE SUITE REFUSES TO START WITHOUT, ASKED ONCE (GOH.PYHARNESS, lib/suite_preflight.py): every
+# goh-suite module imports and is the manifest's pin, the release hosted CI installs (GOH.PYTESTPIN:
+# pytest 9.2.0 renamed a long string parameter's id; CI, unpinned, got it while this box ran 9.1.1,
+# and v0.139.6's CI was red on a tree the local gate passed); every ruff on the machine is goh's pin
+# (gates/ruff_agree.py, GOH.TOOLHYGIENE, GOH.RUFFVERSION). One process, 0.3 s, where eleven took
+# 1.9. It answers the duration table, the pins' pytest plugins and a narrowed run's width too.
+# GOH_LIVE: the pins judged are this tree's, as its tests are (tests/conftest.py). Before the root
+# is claimed: a refused run leaves none.
+preflight="" preflight_rc=0 preflight_at="" suite_width="" PYTEST_PLUGINS=""
+preflight="$(GOH_LIVE=1 "$GOH_PY" "$GOH/lib/suite_preflight.py" "${preflight_args[@]}" -- "$@" </dev/null)" \
+    || preflight_rc=$?
+[ "${#preflight_args[@]}" -eq 0 ] || GOH_TEST_DURATIONS=""
+while IFS=$'\t' read -r key value; do
+    case "$key" in
+        at) preflight_at="$value" ;;
+        refuse) die "${value#* }" "${value%% *}" ;;
+        table) GOH_TEST_DURATIONS="$value" ;;
+        plugins) PYTEST_PLUGINS="$value" ;;
+        width) suite_width="$value" ;;
+    esac
+done <<<"$preflight"
+# Killed, not refused: an import that takes the interpreter down says no word of its own.
+[ "$preflight_rc" -eq 0 ] || die "the suite's preflight died (exit $preflight_rc)${preflight_at:+ importing $preflight_at for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install $preflight_at} -- lib/suite_preflight.py"
+[ "${#preflight_args[@]}" -eq 0 ] || export GOH_TEST_DURATIONS
+# ONE PLUGIN SET (GOH.PLUGINPARITY): this run loads only the plugins pyproject.toml names with -p, and
+# a pytest a test starts in a FIXTURE repo loads only the manifest's pins' (PYTEST_PLUGINS), never
+# the box's other site-packages -- the set hosted CI, which installs exactly the pins, auto-loads.
+export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTEST_PLUGINS
 . "$GOH/gates/_pytest_root.sh"
 # After the guards: a refused runner claims no root and cuts no other run's kept ones.
 goh_pytest_root  # concurrent suites cannot prune each other's temp dirs; kept after a failure
 export GATES_OF_HECK_SUITE_RUNNER=$$
-# Refused by name, not as "No module named pytest" from the coverage gate's external export, the
-# shape goh's first hosted run died of (CI.PUBLIC2): the manifest's goh-suite layer installs it.
-"$GOH_PY" -m pytest --version >/dev/null 2>&1 \
-    || die "pytest is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install pytest"
-# The suite's own imports (run 42930175911: twelve golden_core tests errored on a runner with no
-# Pillow, and the numpy parity tier skipped): refused by name, installed by the goh-suite layer.
-"$GOH_PY" -c 'import PIL' 2>/dev/null \
-    || die "pillow is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install pillow"
-"$GOH_PY" -c 'import numpy' 2>/dev/null \
-    || die "numpy is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install numpy"
-# The coverage gate's tests run coverage through the house interpreter (run 42950563400:
-# test_gate_tests_unbound died on "'coverage' not installed").
-"$GOH_PY" -c 'import coverage' 2>/dev/null \
-    || die "coverage is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install coverage"
-# The suite's parallel runner (GOH.PYTESTPIN): a manifest row, installed by the goh-suite layer like
-# the rest. A serial run outruns local_ci's step ceiling on a hosted runner, so there is no serial
-# fallback to drift into.
-"$GOH_PY" -c 'import xdist' 2>/dev/null \
-    || die "pytest-xdist is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install pytest-xdist"
-# pytest's plugin manager and xdist's transport (GOH.PLUGINPARITY): pinned like the rest, so a
-# release of either is not the runner's choice.
-# py_gate's coverage step (`pytest --cov`), which tests/test_cwd_and_py_gate.py drives for real.
-"$GOH_PY" -c 'import pytest_cov' 2>/dev/null \
-    || die "pytest-cov is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install pytest-cov"
-"$GOH_PY" -c 'import pluggy' 2>/dev/null \
-    || die "pluggy is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install pluggy"
-"$GOH_PY" -c 'import execnet' 2>/dev/null \
-    || die "execnet is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install execnet"
-# THE BOX IS CI (GOH.PYTESTPIN): every goh-suite module at exactly the release the manifest pins,
-# the one hosted CI installs. pytest 9.2.0 renamed a long string parameter's id; CI, unpinned, got
-# it while this box ran 9.1.1, and v0.139.6's CI was red on a tree the local gate passed.
-"$GOH_PY" "$GOH/gates/required_tools.py" --layer goh-suite --pins-held \
-    || die "this interpreter's goh-suite modules are not the manifest's pins (above) -- install them with the pip line $GOH_PY $GOH/gates/required_tools.py --layer goh-suite --install prints"
-# ONE PLUGIN SET (GOH.PLUGINPARITY): this run loads only the plugins pyproject.toml names with -p, and
-# a pytest a test starts in a FIXTURE repo loads only the manifest's pins' (PYTEST_PLUGINS), never
-# the box's other site-packages -- the set hosted CI, which installs exactly the pins, auto-loads.
-PYTEST_PLUGINS="$("$GOH_PY" "$GOH/gates/required_tools.py" --layer goh-suite --pytest-plugins)" \
-    || die "cannot read the goh-suite pins' pytest plugins (gates/required_tools.py --pytest-plugins)" 2
-export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTEST_PLUGINS
-# The tools the suite's FIXTURE repos are gated and shipped with (run 42944992082: ~45 Python-gate
-# tests died on "ruff is not available through <python> -m", and 23 test_ship tests on a missing
-# git-cliff): goh's own gates declare no python or ship layer, so the goh-suite layer installs them.
-"$GOH_PY" -m ruff --version >/dev/null 2>&1 \
-    || die "ruff is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install ruff"
-# One ruff (GOH.TOOLHYGIENE): `python3 -m ruff` was 0.17.0 while PATH's ruff was 0.17.4, so a gate's
-# verdict hung on how it was invoked. Every invocation reports the same version, or nothing runs.
-# ...and that version is goh's pin (gates/ruff_house.py RUFF, GOH.RUFFVERSION), the one CI installs.
-"$GOH_PY" "$GOH/gates/ruff_agree.py" --pin "$("$GOH_PY" -S "$GOH/gates/ruff_house.py" --pin)" \
-    || die "the rufs on this machine are not goh's pinned ruff (above) -- install it, then rerun"
+# The tools the suite's FIXTURE repos are shipped with (run 42944992082: 23 test_ship tests on a
+# missing git-cliff): goh's own gates declare no ship layer, so the goh-suite layer installs it.
 command -v git-cliff >/dev/null 2>&1 || die "git-cliff is not on PATH (tools/ship.py's next version) -- brew install git-cliff"
 # What goh's OWN pre-commit runs (test_self_hosted_repo_satisfies_its_own_hook; run 42957429139 died
 # "swiftlint is not installed"): the shell lint, the swift twin and the rustfmt check.
@@ -184,16 +164,27 @@ ARGS=(-q)
 # test, so the run is as wide as cores / the gates admitted NOW -- it grows the moment another
 # gate leaves (the SELECTAUDIT land ran at -n 4 for 11+ minutes on a box at load 7.9 of 16,
 # 2026-11-17) and shrinks when one is admitted. GOH_SUITE_CORES pins a fixed count, no pool.
+# A NARROWED RUN TAKES WHAT ITS TESTS COST (GOH.PYHARNESS, lib/suite_width.py): one file's 2 s of
+# tests started 12 workers and spent 10 CPU seconds on them. `-n 0` (or the few the table says) is
+# under any share, so a serial run takes no pool. A run it cannot cost is at the ceiling, as a whole
+# one; GOH_SUITE_CORES and the caller's own -n (after these arguments) win.
 # shellcheck source=lib/worker_share.sh
 . "$GOH/lib/worker_share.sh"
 if [ -n "${GOH_SUITE_CORES:-}" ]; then
-    cores="$GOH_SUITE_CORES"
+    cores="$GOH_SUITE_CORES" suite_width=""
+elif [ "$suite_width" = 0 ]; then
+    cores=1
 else
     goh_share_pool "$PYTEST_DEBUG_TEMPROOT/share-pool" 12 || die "cannot start the suite's live share (lib/worker_share.py pool)" 2
     cores="$GOH_SHARE_CEIL"
 fi
 case "$cores" in '' | *[!0-9]* | 0) die "cannot read this machine's core count (got '$cores')" 2 ;; esac
 [ "$cores" -gt 12 ] && cores=12
+case "$suite_width" in
+    *[!0-9]*) die "lib/suite_width.py answered no worker count ('$suite_width')" 2 ;;
+    ?*) [ "$suite_width" -gt "$cores" ] || [ "$suite_width" = 0 ] || cores="$suite_width" ;;
+esac
+[ "$suite_width" != 0 ] || cores=0
 ARGS+=(-n "$cores" --dist loadgroup)
 # ONE SHARD OF THE SUITE (GOH.CIWALL): hosted CI's coverage parts each run the K-th of N disjoint
 # parts (tests/_shard.py); only the coverage gate's part mode sets it (gates/_coverage_rust.sh). A

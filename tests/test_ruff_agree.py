@@ -59,10 +59,6 @@ def test_two_rufs_on_path_that_disagree_are_refused(tmp_path):
     assert r.returncode == 1 and "ruff 0.16.9" in r.stderr, r.stderr
 
 
-def test_the_suite_preflight_runs_it():
-    assert "gates/ruff_agree.py" in (REPO_ROOT / "tools" / "pytest.sh").read_text()
-
-
 # The hosted runner (GOH.CIRUFF): run 43139901867 failed goh's rust coverage step's pytest
 # export on "ruff: 3 invocations, 2 versions" -- the manifest's `brew install ruff` and its unpinned
 # pip row gave the runner two, and the split read as a coverage loss, not a provisioning one. The
