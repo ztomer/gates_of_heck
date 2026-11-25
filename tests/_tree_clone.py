@@ -24,6 +24,7 @@ import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
+import _quiet_pack
 import _tree_pool
 from _reused_tmp import reused_mkdtemp
 from timing_bounds import patience
@@ -283,13 +284,14 @@ def _keep_quiet(tree: Path) -> None:
 def _build_quietly(build, tree: Path, keep_quiet: bool = True) -> None:
     """Build the template `tree` with background git off, make it quiescent and keep it so in every
     repository it holds, then refuse it if it points at its own directory."""
-    with quiet_git():
-        build(tree)
-    _wait_quiescent(tree)
-    if keep_quiet:
-        _keep_quiet(tree)
-    _pack(tree)
-    _tidy(tree)
+    with _quiet_pack.aside():
+        with quiet_git():
+            build(tree)
+        _wait_quiescent(tree)
+        if keep_quiet:
+            _keep_quiet(tree)
+        _pack(tree)
+        _tidy(tree)
     _refuse_self_reference(tree)
     _seal(tree)
 

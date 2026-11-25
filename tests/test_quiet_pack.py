@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import weakref
 from pathlib import Path
 
 import _pytest.tmpdir
@@ -14,6 +15,12 @@ import _quiet_pack
 import pytest
 from _tree_clone import clone_tree
 from conftest import commit_all, git, write
+
+
+@pytest.fixture(autouse=True)
+def _nothing_runs(monkeypatch) -> None:
+    """No child an earlier test of this worker started and never waited for."""
+    monkeypatch.setattr(_quiet_pack, "_CHILDREN", weakref.WeakSet())
 
 
 def _packs(repo: Path) -> list[str]:
@@ -67,6 +74,45 @@ def test_whatever_can_read_an_object_finds_it(repo: Path, ask) -> None:
     at = repo.parent / "copy" if (repo.parent / "copy").exists() else repo
     assert len(_packs(at)) == len(before) + 2
     git(at, "fsck", "--strict", "--full")
+
+
+def _commit(repo: Path) -> None:
+    write(repo, "late.txt", "x\n")
+    commit_all(repo, "late")
+
+
+@pytest.mark.load_sensitive
+def test_a_process_that_runs_already_reads_the_commit(repo: Path) -> None:
+    """A ship waiting on the land lock, while lands arrive."""
+    reads = (
+        "import subprocess, sys; sys.stdin.readline(); subprocess.run(['git', 'fsck', '--strict',"
+        " '--full'], check=True, stdin=subprocess.DEVNULL)"
+    )
+    with subprocess.Popen([sys.executable, "-c", reads], cwd=repo, stdin=subprocess.PIPE) as child:
+        before = _packs(repo)
+        _commit(repo)
+        after = _packs(repo)
+        child.communicate(b"go\n")
+    assert len(after) > len(before), "kept back from a process that runs"
+    assert child.returncode == 0
+
+
+def test_a_process_that_may_have_left_another_behind_is_not_waited_for(repo: Path) -> None:
+    subprocess.run(["true"], check=True, stdin=subprocess.DEVNULL)
+    before = _packs(repo)
+    _commit(repo)
+    assert len(_packs(repo)) > len(before)
+
+
+@pytest.mark.load_sensitive
+def test_a_child_of_an_earlier_test_is_one_that_runs(repo: Path, monkeypatch) -> None:
+    with subprocess.Popen([sys.executable, "-c", "input()"], stdin=subprocess.PIPE) as child:
+        monkeypatch.setattr(_quiet_pack, "_WATCHING", ["another test's"])
+        before = _packs(repo)
+        _commit(repo)
+        after = _packs(repo)
+        child.communicate(b"\n")
+    assert len(after) > len(before)
 
 
 def test_a_repository_its_test_only_removes_writes_none(

@@ -29,7 +29,7 @@ import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from _quiet_pack import LOCK, _put, _sha, flush, is_quiet, keep, own, quietly, watch
+from _quiet_pack import LOCK, _put, _sha, flush, is_quiet, keep, own, quietly, started, watch
 
 REAL = "GATES_OF_HECK_REAL_GIT"
 _ENV_READ = {
@@ -428,12 +428,13 @@ def install(root: str) -> None:
     root, start = os.path.realpath(root), subprocess.Popen.__init__
 
     def popen(self, args, *more, **kw):
-        if not is_quiet():
-            if not more and not kw.get("shell") and serve(args, kw.get("cwd"), kw.get("env"), root):
-                args = ["/usr/bin/true"]
-            else:
-                flush()
-        start(self, args, *more, **kw)
+        if is_quiet():
+            return start(self, args, *more, **kw)
+        if not more and not kw.get("shell") and serve(args, kw.get("cwd"), kw.get("env"), root):
+            return start(self, ["/usr/bin/true"], *more, **kw)
+        flush()
+        started(self, args)
+        return start(self, args, *more, **kw)
 
     subprocess.Popen.__init__ = popen
     watch()

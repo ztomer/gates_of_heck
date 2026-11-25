@@ -22,23 +22,28 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _todays_gates import _clean_checkout_of_todays_gates
+from conftest import native_goh_path
 from test_push_gate import GATE, PUSH_GATE, REPO_ROOT, _git, _repo
 from timing_bounds import patience
 
 LITTER_GATE = GATE.replace("exit 0\n", 'printf x > "../$(basename "$PWD").out"\nexit 0\n')
 
 
-def _push(repo: Path, tmp_path: Path, export_root: Path) -> subprocess.CompletedProcess:
+def _push(
+    repo: Path, tmp_path: Path, export_root: Path, goh: Path = REPO_ROOT
+) -> subprocess.CompletedProcess:
     sha = _git(repo, "rev-parse", "HEAD")
     env = dict(
         os.environ,
         GATE_REPORT=str(tmp_path / "report.txt"),
-        GOH_DIR=str(REPO_ROOT),
+        GOH_DIR=str(goh),
+        **({"GOH_BIN": str(native_goh_path())} if goh != REPO_ROOT else {}),
         GOH_PUSH_LOGS=str(tmp_path / "push-logs"),
         GOH_PUSH_WORKTREES=str(export_root),
     )
     return subprocess.run(
-        ["bash", str(PUSH_GATE)],
+        ["bash", str(goh / PUSH_GATE.relative_to(REPO_ROOT))],
         cwd=repo,
         env=env,
         text=True,
@@ -345,17 +350,23 @@ def _sibling_repo(tmp_path: Path, cargo: str | None, gate: str = SIBLING_GATE) -
     return repo
 
 
+def _gates(tmp_path: Path) -> Path:
+    """The goh checkout an export carries: today's gates, a git checkout of their own, with no Rust
+    source -- a tenth of what each export of the whole checkout wrote and removed."""
+    return _clean_checkout_of_todays_gates(tmp_path / "goh", rust=False)
+
+
 def _report(tmp_path: Path) -> dict[str, str]:
     lines = (tmp_path / "report.txt").read_text().splitlines()
     return dict(line.split("=", 1) for line in lines)
 
 
 def test_a_consumer_that_declares_the_goh_sibling_gets_it_in_the_export(tmp_path):
-    repo = _sibling_repo(tmp_path, TUI_DEP)
-    got = _push(repo, tmp_path, tmp_path / "exports")
+    repo, gates = _sibling_repo(tmp_path, TUI_DEP), _gates(tmp_path)
+    got = _push(repo, tmp_path, tmp_path / "exports", gates)
     assert got.returncode == 0, got.stdout + got.stderr
     seen = _report(tmp_path)
-    assert seen["sibling"] == _git(REPO_ROOT, "rev-parse", "HEAD") and seen["tui"] == "found", seen
+    assert seen["sibling"] == _git(gates, "rev-parse", "HEAD") and seen["tui"] == "found", seen
     assert "outside its tree" not in got.stdout + got.stderr, got.stdout + got.stderr
     assert _run_litter(tmp_path / "exports") == []
 
@@ -372,7 +383,7 @@ def test_a_sibling_the_gate_makes_itself_is_still_named_as_litter(tmp_path):
     is still named, so the workaround stays visible if a consumer keeps it for another name."""
     gate = GATE.replace("exit 0\n", 'ln -s /tmp "../other_sibling"\nexit 0\n')
     repo = _sibling_repo(tmp_path, TUI_DEP, gate)
-    got = _push(repo, tmp_path, tmp_path / "exports")
+    got = _push(repo, tmp_path, tmp_path / "exports", _gates(tmp_path))
     assert got.returncode == 0, got.stdout + got.stderr
     assert "outside its tree (removed): other_sibling" in got.stdout + got.stderr
 

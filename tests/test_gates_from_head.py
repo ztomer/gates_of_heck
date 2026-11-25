@@ -15,13 +15,18 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+from _fast_git import fast_init
 from _todays_gates import _clean_checkout_of_todays_gates
 from _tree_clone import run_head_cache
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
+
+sys.path.insert(0, str(REPO_ROOT / "lib"))
+from source_closure import copy_closure
 
 PLANT = "LIVE-WORKING-TREE-EDIT-5521"
 
@@ -116,50 +121,34 @@ def test_a_sourced_lib_is_read_from_head_too(dirty: Path, consumer: Path, tmp_pa
     assert PLANT not in r.stderr, r.stderr
 
 
-def test_python_imports_resolve_into_the_export(gates: Path, consumer: Path, tmp_path) -> None:
+def test_python_imports_resolve_into_the_export(consumer: Path, tmp_path) -> None:
     """~/.zshrc exports PYTHONPATH at the live checkout; a checker started from the export must
     import tui.lib from the export, or the Python half is still live."""
-    probe = gates / "gates" / "zz_probe.sh"
+    tiny = tmp_path / "gates"  # what the probe runs, in a checkout of its own: 1,500 events fewer
+    copy_closure(tiny, "gates/_from_head.sh", "gates/_export_bin_goh.sh", "tui/lib.py")
+    probe = tiny / "gates" / "zz_probe.sh"
     probe.write_text(
         '#!/usr/bin/env bash\n. "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"\n'
         'goh_from_head "${BASH_SOURCE[0]}" "$@"\n'
         'python3 -c "import tui.lib, sys; print(tui.lib.__file__)"\n'
     )
-    subprocess.run(["git", "-C", str(gates), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
-    subprocess.run(
-        [
-            "git",
-            "-C",
-            str(gates),
-            "-c",
-            "user.name=t",
-            "-c",
-            "user.email=t@t",
-            "commit",
-            "-qm",
-            "probe",
-        ],
-        check=True,
+    fast_init(tiny, "main")
+    for args in (
+        ["add", "-A"],
+        ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "p"],
+    ):
+        subprocess.run(["git", "-C", str(tiny), *args], check=True, stdin=subprocess.DEVNULL)
+    r = subprocess.run(
+        ["bash", str(probe)],
+        cwd=consumer,
+        capture_output=True,
+        text=True,
+        env=_env(tmp_path, PYTHONPATH=str(tiny)),
+        timeout=60,
+        check=False,
         stdin=subprocess.DEVNULL,
     )
-    try:
-        r = subprocess.run(
-            ["bash", str(probe)],
-            cwd=consumer,
-            capture_output=True,
-            text=True,
-            env=_env(tmp_path, PYTHONPATH=str(gates)),
-            timeout=60,
-            check=False,
-            stdin=subprocess.DEVNULL,
-        )
-        assert str(tmp_path / "head-cache") in r.stdout, r.stdout + r.stderr
-    finally:
-        subprocess.run(
-            ["git", "-C", str(gates), "reset", "-q", "--hard", "HEAD~1"],
-            check=True,
-            stdin=subprocess.DEVNULL,
-        )
+    assert str(tmp_path / "head-cache") in r.stdout, r.stdout + r.stderr
 
 
 def test_a_test_that_drops_goh_live_is_refused_not_silently_run_on_head(

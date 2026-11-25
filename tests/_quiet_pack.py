@@ -4,7 +4,7 @@ written when something can ask for them (GOH.FSEVQUIET).
 Each add and each commit wrote a pack and its idx, four file events with their removal; a fixture of
 five commits made ten. They are kept in this process, per repository, and written as one pack when a
 process starts (git's own, a gate's, a fork), or the test's process looks into a `.git`, copies or
-renames anything -- and never, for a repository its test only removes.
+renames anything -- and never, for a repository its test only removes. Only while nothing else runs.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import struct
 import subprocess
 import sys
 import threading
+import weakref
 import zlib
 from collections.abc import Iterator, Mapping
 
@@ -51,6 +52,46 @@ def own(argv: list[str], env: Mapping[str, str]) -> subprocess.CompletedProcess[
 def keep(git: str, objects: list[tuple[str, bytes]]) -> None:
     with LOCK:
         PENDING.setdefault(git, []).extend(objects)
+        if _watched():  # before the index or the branch names them
+            flush()
+
+
+# A RUNNING PROCESS ASKS NOTHING: a ship waiting on a lock reads what is committed meanwhile. From
+# the first process of a test that can leave another behind (any but a git that only answers), or
+# while one of this process's children runs, nothing is kept back.
+_ANSWERS = {"add", "branch", "cat-file", "checkout", "checkout-index", "clone", "config",
+            "describe", "diff", "fetch", "for-each-ref", "fsck", "init", "log", "ls-files",
+            "ls-remote", "ls-tree", "merge-base", "pack-refs", "prune-packed", "read-tree",
+            "remote", "repack", "rev-list", "rev-parse", "show", "status", "symbolic-ref",
+            "tag", "update-ref", "worktree", "write-tree"}  # fmt: skip
+_CHILDREN: weakref.WeakSet[subprocess.Popen] = weakref.WeakSet()
+_WATCHING = [""]  # the test that started one
+
+
+def _test() -> str:
+    return os.environ.get("PYTEST_CURRENT_TEST", "").rpartition(" ")[0]
+
+
+def _watched() -> bool:
+    return _WATCHING[0] == _test() or any(c.returncode is None for c in list(_CHILDREN))
+
+
+@contextlib.contextmanager
+def aside() -> Iterator[None]:
+    """What starts here is a template's build (tests/_tree_clone.py), over when it is."""
+    was = _WATCHING[0]
+    try:
+        yield
+    finally:
+        _WATCHING[0] = was
+
+
+def started(child: subprocess.Popen, args: object) -> None:
+    """A process this one started."""
+    words = [str(w) for w in args] if isinstance(args, (list, tuple)) else []
+    if words[:1] != ["ps"] and (words[:1] != ["git"] or not _ANSWERS.intersection(words)):
+        _CHILDREN.add(child)
+        _WATCHING[0] = _test()
 
 
 def flush() -> None:
