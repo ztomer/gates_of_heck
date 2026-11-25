@@ -70,55 +70,39 @@ def _judge(estate: dict) -> str:
     return sweep.judge(dict(estate["entry"]), [])
 
 
-def test_a_repeat_run_with_nothing_moved_materialises_nothing(estate) -> None:
-    assert _judge(estate) == "verified"
-    built = len(estate["calls"])
-    assert built, "the first run must build the corpus"
-    assert _judge(estate) == "verified"
-    assert len(estate["calls"]) == built, "nothing moved, yet the corpus was rebuilt"
+def test_a_repeat_hits_and_each_thing_the_verdict_depends_on_is_a_miss(
+    estate, tmp_path, monkeypatch
+) -> None:
+    """One estate, moved one thing at a time (GOH.PYSLOW4: each was a first verdict of its own):
+    every move is a miss, and the same question again is a hit, so no move is carried by the last.
+    """
+    calls = estate["calls"]
 
+    def builds() -> int:
+        before = len(calls)
+        assert _judge(estate) == "verified"
+        return len(calls) - before
 
-def test_an_edit_in_the_corpus_is_a_miss(estate) -> None:
-    _judge(estate)
-    built = len(estate["calls"])
+    assert builds(), "the first run must build the corpus"
+    assert not builds(), "nothing moved, yet the corpus was rebuilt"
     path = estate["root"] / "pkg" / "m3.py"
     path.write_text(path.read_text() + "y = 1\n")
-    _judge(estate)
-    assert len(estate["calls"]) > built
-
-
-def test_a_new_file_in_the_corpus_is_a_miss(estate) -> None:
-    _judge(estate)
-    built = len(estate["calls"])
+    assert builds() and not builds(), "an edit in the corpus"
     (estate["root"] / "pkg" / "new.py").write_text("z = 1\n")
-    _judge(estate)
-    assert len(estate["calls"]) > built
-
-
-def test_a_different_binary_is_a_miss(estate, tmp_path, monkeypatch) -> None:
-    _judge(estate)
-    built = len(estate["calls"])
+    assert builds() and not builds(), "a new file in the corpus"
     other = tmp_path / "goh-copy"
     shutil.copy2(native_goh_path(), other)  # a clone (tests/_clone_copies.py)
     monkeypatch.setenv("GOH_BIN", str(other))
-    _judge(estate)
-    assert len(estate["calls"]) > built
-
-
-def test_a_different_goh_environment_is_a_miss(estate, monkeypatch) -> None:
-    _judge(estate)
-    built = len(estate["calls"])
+    assert builds() and not builds(), "a different binary"
     monkeypatch.setenv("GOH_MAX_LINES", "123")
-    _judge(estate)
-    assert len(estate["calls"]) > built
-
-
-def test_a_different_entry_is_a_miss(estate) -> None:
-    _judge(estate)
-    built = len(estate["calls"])
+    assert builds() and not builds(), "a different GOH_* environment"
     estate["entry"]["plant"] = PLANT + "\n"
-    _judge(estate)
-    assert len(estate["calls"]) > built
+    assert builds() and not builds(), "a different entry"
+    for f in (tmp_path / "cache").iterdir():
+        f.write_text("{not json")
+    assert builds() and not builds(), "a corrupt record"
+    monkeypatch.setenv("GOH_PROVEN", "0")
+    assert builds() and builds(), "off never hits"
 
 
 def test_the_checkers_own_source_is_in_the_key() -> None:
@@ -126,23 +110,6 @@ def test_the_checkers_own_source_is_in_the_key() -> None:
 
     base = {"source": b"a", "env": {}, "binary": ("goh", 1, 2)}
     assert identity(**base) != identity(**{**base, "source": b"b"})
-
-
-def test_a_corrupt_record_is_a_miss(estate, tmp_path) -> None:
-    _judge(estate)
-    built = len(estate["calls"])
-    for f in (tmp_path / "cache").iterdir():
-        f.write_text("{not json")
-    assert _judge(estate) == "verified"
-    assert len(estate["calls"]) > built
-
-
-def test_proven_off_never_hits(estate, monkeypatch) -> None:
-    _judge(estate)
-    built = len(estate["calls"])
-    monkeypatch.setenv("GOH_PROVEN", "0")
-    _judge(estate)
-    assert len(estate["calls"]) > built
 
 
 def test_a_red_verdict_is_never_recorded(estate) -> None:
