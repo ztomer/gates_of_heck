@@ -110,7 +110,6 @@
   "test_ruff_agree.py": 2,
   "test_ruff_pin.py": 1,
   "test_rust_each_crate.py": 2,
-  "test_rust_gate_scoped_cache.py": 1,
   "test_rust_lint_configs.py": 1,
   "test_schedule.py": 1,
   "test_seed_refused.py": 1,

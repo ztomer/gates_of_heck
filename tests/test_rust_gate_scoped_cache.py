@@ -10,6 +10,11 @@ a hit could be wrong is planted here on REAL cargo crates:
 * a source reaching outside its crate at run time widens that crate's scope to the whole tree;
 * a build that READ a file outside the scope (dep-info) is never recorded;
 * GOH_PROVEN=0 runs everything.
+
+The GATE itself (`_gate`) runs where it is the subject: both groups through one cache, and
+the compiler's own dep-info. What a scope keys and re-gates is
+gates/_rust_proven.sh's, run beside the real crates with a group that says it ran (`_groups`,
+GOH.PYSLOWTESTS: 40 whole gates, 396 s of a run).
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import _fake_cargo
@@ -25,13 +31,12 @@ from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
 from _tree_clone import from_template
 from conftest import hermetic_env
+from timing_bounds import patience
 
 ROOT = Path(__file__).resolve().parent.parent
 
 # NOT an xdist group: every test builds its own crates in its own temp repo, records proofs in that
-# repo's own git dir and runs the session's binary, so nothing here is shared or mutable. Grouped,
-# its ~55 s of cargo work ran on ONE worker and was the whole suite's critical path (P5, measured
-# 2026-10-06 with --durations).
+# repo's own git dir and runs the session's binary, so nothing here is shared or mutable.
 pytestmark = [
     pytest.mark.skipif(shutil.which("cargo") is None, reason="cargo not installed"),
 ]
@@ -114,6 +119,48 @@ def fake_cargo(tmp_path: Path, monkeypatch) -> Path:
     return log
 
 
+# The two groups as gates/rust_gate.sh runs them, each a line that says it ran; the crate group does
+# CRATE_DOES, in the crate. The gates' own identity (two closures of goh, 0.6 s each) answers at
+# once: it is frozen here, and tests/test_rust_gate_floor.py's subject.
+GROUPS = """
+set -euo pipefail
+repo="$1" cargo_dir="$2"
+cd "$repo"
+. "$GOH_DIR/gates/_common.sh"
+. ./.gatesrc
+goh_init rust
+. "$GOH_DIR/gates/_rust_proven.sh"
+GOH_PY="$STUB"
+goh_resolve_native
+crate_group() { echo "RAN crate"; (cd "$cargo_dir" && eval "${CRATE_DOES:-:}"); }
+repo_group() { echo "RAN repo"; }
+rust_proven_group crate compile crate_group
+rust_proven_group repo tree repo_group
+goh_done
+"""
+STUB = """#!/bin/bash
+case "$*" in *rust_runner_id.py*|*"gate_identity.py proven"*) echo "the gates"; exit 0 ;; esac
+exec "$REAL_PY" "$@"
+"""
+
+
+def _groups(repo: Path, crate: str, **env: str) -> subprocess.CompletedProcess:
+    stub = repo.parent / "stub-python"
+    stub.write_text(STUB)
+    stub.chmod(0o755)
+    gates = os.environ["SCOPED_CACHE_GATES"]
+    full = hermetic_env(drop_git=True, GOH_DIR=gates, PYTHONPATH=gates, STUB=str(stub),
+                        REAL_PY=sys.executable, GOH_BIN=os.environ["SCOPED_CACHE_GOH"],
+                        **env)  # fmt: skip
+    argv = ["bash", "-c", GROUPS, "groups", str(repo), str(repo / "crates" / crate)]
+    r = subprocess.run(argv, cwd=repo, capture_output=True, text=True, env=full, check=False,
+                       timeout=patience(120), stdin=subprocess.DEVNULL)  # fmt: skip
+    for group in ("crate", "repo"):  # it ran, or it said why not: never both, never neither
+        if r.returncode == 0:
+            assert _skipped(r, group) != (f"RAN {group}" in r.stdout), r.stdout + r.stderr
+    return r
+
+
 def _gate(repo: Path, crate: str, **env: str) -> subprocess.CompletedProcess:
     gates = Path(os.environ["SCOPED_CACHE_GATES"])
     # The frozen clone is PYTHONPATH too, never the live checkout the suite's PYTHONPATH names:
@@ -130,7 +177,7 @@ def _gate(repo: Path, crate: str, **env: str) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         env=full,
-        timeout=600,
+        timeout=patience(120),
         stdin=subprocess.DEVNULL,
         check=False,
     )
@@ -146,25 +193,33 @@ def _edit(repo: Path, rel: str, text: str) -> None:
     _git(repo, "add", "-A")
 
 
-def test_only_the_edited_crate_and_its_users_are_re_gated(estate: Path, fake_cargo: Path) -> None:
+def test_the_gate_runs_each_group_once_on_one_tree(estate: Path, fake_cargo: Path) -> None:
+    """gates/rust_gate.sh itself: the first run proves both groups, the second skips both; the
+    log says what RAN, not what the gate printed (clippy, once); GOH_PROVEN=0 runs everything."""
+    first = _gate(estate, "c")
+    assert first.returncode == 0, first.stdout + first.stderr
+    assert not _skipped(first, "crate") and not _skipped(first, "repo"), first.stdout
+    again = _gate(estate, "c")
+    assert _skipped(again, "crate") and _skipped(again, "repo"), again.stdout + again.stderr
+    assert [Path(d).name for d in _fake_cargo.calls(fake_cargo, "clippy")] == ["c"]
+    off = _gate(estate, "c", GOH_PROVEN="0")
+    assert not _skipped(off, "crate") and not _skipped(off, "repo"), off.stdout
+    assert [Path(d).name for d in _fake_cargo.calls(fake_cargo, "clippy")] == ["c", "c"]
+
+
+def test_only_the_edited_crate_and_its_users_are_re_gated(estate: Path) -> None:
     for name in ("a", "b", "c"):
-        first = _gate(estate, name)
+        first = _groups(estate, name)
         assert first.returncode == 0, first.stdout + first.stderr
         assert not _skipped(first, "crate"), name
         # The repo-wide scans read the whole repo whichever crate called them: the first crate
         # records them and every later crate of the same tree finds the record.
         assert _skipped(first, "repo") == (name != "a"), (name, first.stdout + first.stderr)
-    again = _gate(estate, "c")
-    assert _skipped(again, "crate") and _skipped(again, "repo"), again.stdout + again.stderr
-
     _edit(estate, "crates/b/src/lib.rs", "pub fn h() -> u64 {\n    2\n}\n")
-    after = {name: _gate(estate, name) for name in ("a", "b", "c")}
+    after = {name: _groups(estate, name) for name in ("a", "b", "c")}
     assert all(r.returncode == 0 for r in after.values()), {
         n: r.stdout + r.stderr for n, r in after.items() if r.returncode
     }
-    # The record says what RAN, not only what the gate printed: clippy, once per gated crate.
-    linted = [Path(d).name for d in _fake_cargo.calls(fake_cargo, "clippy")]
-    assert linted == ["a", "b", "c", "a", "b"], linted
     assert not _skipped(after["b"], "crate"), "the edited crate was not re-gated"
     assert not _skipped(after["a"], "crate"), (
         "a user of the edited path dependency was not re-gated"
@@ -173,21 +228,21 @@ def test_only_the_edited_crate_and_its_users_are_re_gated(estate: Path, fake_car
 
 
 def test_an_edit_outside_every_crate_re_gates_no_crate_but_shared_config_re_gates_all(
-    estate: Path, fake_cargo: Path
+    estate: Path,
 ) -> None:
-    assert _gate(estate, "c").returncode == 0
+    assert _groups(estate, "c").returncode == 0
     _edit(estate, "README.md", "more prose\n")
-    readme = _gate(estate, "c")
+    readme = _groups(estate, "c")
     assert _skipped(readme, "crate"), readme.stdout + readme.stderr
     assert not _skipped(readme, "repo"), "the repo-wide scans are keyed on the whole tree"
     (estate / "clippy.toml").write_text("too-many-arguments-threshold = 9\n")
     _git(estate, "add", "-A")
-    config = _gate(estate, "c")
+    config = _groups(estate, "c")
     assert not _skipped(config, "crate"), "a new clippy.toml above the crate did not re-gate it"
 
 
 def test_a_resolvable_reach_outside_the_crate_keys_on_exactly_that_file(
-    estate: Path, fake_cargo: Path
+    estate: Path,
 ) -> None:
     """An include of `../../shared/fixture.json` (relative to its source) is keyed on that file:
     editing it re-gates the crate, a README edit does not. Measured 2026-10-05: every crate of a
@@ -201,15 +256,15 @@ def test_a_resolvable_reach_outside_the_crate_keys_on_exactly_that_file(
         "crates/c/src/lib.rs",
         '\npub const FIXTURE: &str = include_str!("../../shared/fixture.json");\n',
     )
-    assert _gate(estate, "c").returncode == 0
+    assert _groups(estate, "c").returncode == 0
     _edit(estate, "README.md", "more prose\n")
-    assert _skipped(_gate(estate, "c"), "crate"), "a README edit re-gated a precisely keyed crate"
+    assert _skipped(_groups(estate, "c"), "crate"), "a README edit re-gated a precisely keyed crate"
     _edit(estate, "crates/shared/fixture.json", "\n")
-    assert not _skipped(_gate(estate, "c"), "crate"), "editing the file it reads did not re-gate"
+    assert not _skipped(_groups(estate, "c"), "crate"), "editing the file it reads did not re-gate"
 
 
 def test_an_unnameable_reach_keys_the_crate_on_the_whole_tree_only_where_it_compiles(
-    estate: Path, fake_cargo: Path
+    estate: Path,
 ) -> None:
     """A `..` join read at RUN time keys the crate's tests on the whole tree (`goh rust-scope`,
     tests/test_rust_gate_floor.py), never the crate group, which compiles and runs none: a README
@@ -222,16 +277,18 @@ def test_an_unnameable_reach_keys_the_crate_on_the_whole_tree_only_where_it_comp
         '    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..")\n'
         "}\n",
     )
-    assert _gate(estate, "c").returncode == 0
+    assert _groups(estate, "c").returncode == 0
     _edit(estate, "README.md", "more prose\n")
-    assert _skipped(_gate(estate, "c"), "crate"), "a run-time reach widened the compile scope"
+    assert _skipped(_groups(estate, "c"), "crate"), "a run-time reach widened the compile scope"
     (estate / "crates" / "c" / "build.rs").write_text(
         'fn main() {\n    let _ = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");\n}\n'
     )
     _git(estate, "add", "-A")
-    assert _gate(estate, "c").returncode == 0
+    assert _groups(estate, "c").returncode == 0
     _edit(estate, "README.md", "more prose\n")
-    assert not _skipped(_gate(estate, "c"), "crate"), "a build script's `..` was keyed on the crate"
+    assert not _skipped(_groups(estate, "c"), "crate"), (
+        "a build script's `..` was keyed on the crate"
+    )
 
 
 def test_a_path_dependencys_own_test_reads_do_not_widen_its_users(estate: Path) -> None:
@@ -242,9 +299,9 @@ def test_a_path_dependencys_own_test_reads_do_not_widen_its_users(estate: Path) 
         '    let _ = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");\n}\n'
     )
     _git(estate, "add", "-A")
-    assert _gate(estate, "a").returncode == 0
+    assert _groups(estate, "a").returncode == 0
     _edit(estate, "README.md", "more prose\n")
-    assert _skipped(_gate(estate, "a"), "crate"), "b's own tests widened a's scope"
+    assert _skipped(_groups(estate, "a"), "crate"), "b's own tests widened a's scope"
 
 
 def _reads_at_compile_time(estate: Path, target: Path) -> None:
@@ -268,16 +325,16 @@ def test_a_build_that_read_a_file_outside_its_scope_is_keyed_on_it_from_then_on(
     (estate / "shared.txt").write_text("v1\n")
     _reads_at_compile_time(estate, estate / "shared.txt")
     _git(estate, "add", "-A")
-    first = _gate(estate, "c")
+    first = _gate(estate, "c", GOH_RUST_GROUPS="crate")
     out = first.stdout + first.stderr
     assert first.returncode == 0, out
     assert "not recorded" in out and "shared.txt" in out and "keyed on" in out, out
-    second = _gate(estate, "c")
+    second = _gate(estate, "c", GOH_RUST_GROUPS="crate")
     assert second.returncode == 0 and not _skipped(second, "crate"), second.stdout + second.stderr
-    third = _gate(estate, "c")
+    third = _gate(estate, "c", GOH_RUST_GROUPS="crate")
     assert _skipped(third, "crate"), "a learned read was not keyed: the crate never records"
     _edit(estate, "shared.txt", "v2\n")
-    fourth = _gate(estate, "c")
+    fourth = _gate(estate, "c", GOH_RUST_GROUPS="crate")
     assert fourth.returncode == 0 and not _skipped(fourth, "crate"), (
         "an edit to a file the build read did not re-gate the crate"
     )
@@ -290,17 +347,14 @@ def test_a_read_outside_the_repository_is_never_learned_or_recorded(
     outside = tmp_path / "outside.txt"
     outside.write_text("v1\n")
     _reads_at_compile_time(estate, outside)
-    first = _gate(estate, "c")
-    assert first.returncode == 0, first.stdout + first.stderr
-    assert "not recorded" in first.stdout + first.stderr, first.stdout + first.stderr
-    for _ in range(2):
-        again = _gate(estate, "c")
-        assert not _skipped(again, "crate"), "a record was written for a build that read outside"
+    for _ in range(2):  # the second run is the one that would record what the first had learned
+        r = _groups(estate, "c", CRATE_DOES="cargo check -q --offline --locked")
+        out = r.stdout + r.stderr
+        assert r.returncode == 0 and not _skipped(r, "crate"), out
+        assert "not recorded as proven" in out and str(outside) in out, out
 
 
-def test_the_push_gates_change_base_is_no_groups_configuration(
-    estate: Path, fake_cargo: Path
-) -> None:
+def test_the_push_gates_change_base_is_no_groups_configuration(estate: Path) -> None:
     """GOH_CHANGE_BASE is a new commit on every push and only crates-behind reads it, outside every
     group: while it sat in the environment each group's key was new on every push, so nothing --
     the Rust coverage measurement included -- was reused from one land to the next
@@ -308,17 +362,11 @@ def test_the_push_gates_change_base_is_no_groups_configuration(
     _git(estate, "commit", "-qm", "one push")
     one = _git(estate, "rev-parse", "HEAD").strip()
     _git(estate, "commit", "-q", "--allow-empty", "-m", "the next")
-    first = _gate(estate, "c", GOH_CHANGE_BASE=one)
+    first = _groups(estate, "c", GOH_CHANGE_BASE=one)
     assert first.returncode == 0, first.stdout + first.stderr
-    again = _gate(estate, "c", GOH_CHANGE_BASE=_git(estate, "rev-parse", "HEAD").strip())
+    again = _groups(estate, "c", GOH_CHANGE_BASE=_git(estate, "rev-parse", "HEAD").strip())
     assert again.returncode == 0, again.stdout + again.stderr
     assert _skipped(again, "crate"), again.stdout + again.stderr
-
-
-def test_goh_proven_0_runs_everything(estate: Path, fake_cargo: Path) -> None:
-    assert _gate(estate, "c").returncode == 0
-    off = _gate(estate, "c", GOH_PROVEN="0")
-    assert not _skipped(off, "crate") and not _skipped(off, "repo"), off.stdout
 
 
 def test_a_path_dependency_in_the_gates_checkout_keeps_the_crate_cache_on(estate: Path) -> None:
@@ -341,30 +389,17 @@ def test_a_path_dependency_in_the_gates_checkout_keeps_the_crate_cache_on(estate
         stdin=subprocess.DEVNULL,
     )
     _git(estate, "add", "-A")
-    first = _gate(estate, "d")
+    first = _groups(estate, "d", CRATE_DOES="cargo check -q --offline --locked")
     assert first.returncode == 0, first.stdout + first.stderr
     assert "per-crate proven cache off" not in first.stdout + first.stderr, (
         first.stdout + first.stderr
     )
-    again = _gate(estate, "d")
+    again = _groups(estate, "d", CRATE_DOES="cargo check -q --offline --locked")
     assert _skipped(again, "crate"), again.stdout + again.stderr
 
 
-def _rewriting_cargo(tmp_path: Path, fake_bin: Path, kept: Path, monkeypatch) -> None:
-    """The fake cargo behind a wrapper whose clippy also appends to a kept file (GOH.KEEP1)."""
-    wrap = tmp_path / "rewriting-cargo"
-    wrap.mkdir()
-    (wrap / "cargo").write_text(
-        f'#!/bin/bash\n[ "$1" = clippy ] && echo rebuilt >> "{kept}"\nexec "{fake_bin}/cargo" "$@"\n'
-    )
-    (wrap / "cargo").chmod(0o755)
-    monkeypatch.setenv("SCOPED_CACHE_FAKE_CARGO", str(wrap))
-
-
 @pytest.mark.parametrize("listed", [False, True])
-def test_a_group_that_rewrites_a_kept_path_is_named(
-    estate: Path, fake_cargo: Path, tmp_path: Path, monkeypatch, listed: bool
-) -> None:
+def test_a_group_that_rewrites_a_kept_path_is_named(estate: Path, listed: bool) -> None:
     """GOH.KEEP1 in rust_gate's groups: the ratchet names the group by its label, not its step
     string (which carries a config hash). Unlisted is red; listed is a warning; neither records."""
     (estate / "build").mkdir()
@@ -377,11 +412,9 @@ def test_a_group_that_rewrites_a_kept_path_is_named(
             ' "reason": "the fixture clippy rebuilds it"}]}'
         )
     _git(estate, "add", "-A")
-    _rewriting_cargo(
-        tmp_path, Path(fake_cargo).parent / "bin", estate / "build" / "out.bin", monkeypatch
-    )
-    r = _gate(estate, "c")
+    rewrites = f"echo rebuilt >>{estate}/build/out.bin"
+    r = _groups(estate, "c", CRATE_DOES=rewrites)
     out = r.stdout + r.stderr
     assert "step 'rust_gate crate crates/c' rewrote kept path 'build/out.bin'" in out, out
     assert (r.returncode == 0) == listed, out
-    assert not _skipped(_gate(estate, "c"), "crate"), "a group that rewrote a kept path recorded"
+    assert not _skipped(_groups(estate, "c"), "crate"), "a group that rewrote a kept path recorded"

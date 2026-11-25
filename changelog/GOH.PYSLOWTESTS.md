@@ -1,3 +1,4 @@
 * GOH.PYSLOWTESTS: the suite's dependency graph of goh's tree is filled once a run and read by the other 11 workers, a whole selection asked by several files is asked once a run, and the graph costs half the CPU to build (9.5 s to 4.8 s: imports and prose are read from statements, names from a file's words), in a land's pre-step too.
 * GOH.PYSLOWTESTS: `test_rust_cov_reuse` and `test_rust_cov_env` judge the measurement's key in process and the shell half of it in one bash, and run the gate only where its decision is the subject (25 and 12 cases, two to six gate runs each).
 * GOH.PYSLOWTESTS: `test_check_lock_order` scans the whole tree twice, not 16 times: a four-line plant is judged beside the four files its edge runs through.
+* GOH.PYSLOWTESTS: `test_rust_gate_scoped_cache` runs the whole Rust gate two ways (both groups, the compiler's dep-info) and what a scope keys beside a group that says it ran.

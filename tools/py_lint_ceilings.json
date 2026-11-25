@@ -248,7 +248,7 @@
   "tests/test_ruff_subprocess_check.py": 2,
   "tests/test_rust_audit.py": 2,
   "tests/test_rust_gate.py": 4,
-  "tests/test_rust_gate_scoped_cache.py": 1,
+  "tests/test_rust_gate_scoped_cache.py": 0,
   "tests/test_rust_lint_configs.py": 1,
   "tests/test_screen_presentation.py": 3,
   "tests/test_secret_render_guard.py": 1,
