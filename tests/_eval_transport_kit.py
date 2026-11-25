@@ -79,7 +79,8 @@ class _FakeAPI(BaseHTTPRequestHandler):
 @pytest.fixture
 def fake_api():
     server = ThreadingHTTPServer(("127.0.0.1", 0), _FakeAPI)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    # its poll, which is what shutdown() waits out: 0.5 s by default, a test's whole time
+    thread = threading.Thread(target=server.serve_forever, args=(0.02,), daemon=True)
     thread.start()
     base = f"http://127.0.0.1:{server.server_address[1]}/v1"
     yield base

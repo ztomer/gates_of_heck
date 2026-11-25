@@ -52,11 +52,9 @@ def _waits_then_runs(tmp_path: Path, argv: list[str], cwd: Path, stdin: str = ""
     return err
 
 
-def test_a_gate_slow_to_reach_the_lock_is_still_held_until_it_says_it_waits(
-    repo: Path, tmp_path: Path
-) -> None:
-    """The faked load: the gate reaches the lock 4 s after it starts, past the old fixed 2.5 s."""
-    slow = ["bash", "-c", f'sleep 4; exec bash "{REPO_ROOT}/gates/local_ci.sh" --step true']
+def test_local_ci_joins_however_late_it_reaches_the_lock(repo: Path, tmp_path: Path) -> None:
+    """The faked load: the gate reaches the lock past the old fixed 2.5 s after it starts."""
+    slow = ["bash", "-c", f'sleep 2.6; exec bash "{REPO_ROOT}/gates/local_ci.sh" --step true']
     err = _waits_then_runs(tmp_path, slow, repo)
     assert "waiting for a measurement" in err
 
@@ -64,11 +62,6 @@ def test_a_gate_slow_to_reach_the_lock_is_still_held_until_it_says_it_waits(
 def test_every_gate_joins_through_goh_init(repo: Path, tmp_path: Path) -> None:
     (repo / "a.py").write_text("x = 1\n")
     _waits_then_runs(tmp_path, ["bash", str(REPO_ROOT / "gates" / "py_staged.sh"), "."], repo)
-
-
-def test_local_ci_joins(repo: Path, tmp_path: Path) -> None:
-    _waits_then_runs(tmp_path, ["bash", str(REPO_ROOT / "gates" / "local_ci.sh"), "--step", "true"],
-                     repo)  # fmt: skip
 
 
 def test_the_push_gate_joins(repo: Path, tmp_path: Path) -> None:

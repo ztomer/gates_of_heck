@@ -8,12 +8,11 @@ each owned shape beside it must not be. The allowlist's four ratchet properties 
 
 from __future__ import annotations
 
-import subprocess
 import sys
 
 import pytest
 from _fast_git import fast_init
-from conftest import REPO_ROOT, hermetic_env
+from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
 import check_saved_pid_kill as gate
@@ -26,22 +25,22 @@ def _findings(plant: dict[str, str], allow: dict | None = None) -> list[str]:
     return gate.check(REPO_ROOT, plant, allow or {"entries": []}, tracked=False)[0]
 
 
-def test_this_tree_is_clean_and_says_what_it_counted() -> None:
-    done = subprocess.run([sys.executable, str(CHECK), str(REPO_ROOT)], capture_output=True,
-                          text=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL,
-                          check=False)  # fmt: skip
-    assert done.returncode == 0, done.stdout + done.stderr
-    assert "owned" in done.stdout and "listed in checks/saved_pid_kill_allow.json" in done.stdout
-
-
-def test_an_empty_allowlist_names_exactly_the_listed_sites() -> None:
-    """The calibration against the tree itself: no fewer (blind) and no more (a false positive)."""
+def test_this_tree_is_clean_and_its_listed_sites_are_exactly_the_bare_ones(
+    monkeypatch, capsys
+) -> None:
+    """The tree is read once (2.3 s) for both: the command's verdict, and the calibration against
+    the tree itself with an empty allowlist, no fewer (blind) and no more (a false positive)."""
+    sites, read = gate.scan(REPO_ROOT)
+    monkeypatch.setattr(gate, "scan", lambda *_a, **_k: (sites, read))
+    code, out = gate.main([str(REPO_ROOT)]), capsys.readouterr()
+    assert code == 0, out.out + out.err
+    assert "owned" in out.out and "listed in checks/saved_pid_kill_allow.json" in out.out
     listed, _ = gate.load_allow(REPO_ROOT)
     findings = gate.check(REPO_ROOT, {}, {"entries": []})[0]
     named = {f.split(": a signal to a saved pid")[0] for f in findings}
-    sites = {s for s in gate.scan(REPO_ROOT)[0] if not s.owned}
-    assert named == {str(s) for s in sites}
-    assert {(s.path, s.call) for s in sites} == set(listed)
+    bare = {s for s in sites if not s.owned}
+    assert named == {str(s) for s in bare}
+    assert {(s.path, s.call) for s in bare} == set(listed)
 
 
 BARE_PY = {

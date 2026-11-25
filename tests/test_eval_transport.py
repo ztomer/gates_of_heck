@@ -180,18 +180,18 @@ class _DripHandler(BaseHTTPRequestHandler):
 @pytest.mark.load_sensitive
 def test_whole_call_deadline_bounds_a_slow_drip_body(fake_api=None):
     server = ThreadingHTTPServer(("127.0.0.1", 0), _DripHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=server.serve_forever, args=(0.02,), daemon=True)
     thread.start()
     base = f"http://127.0.0.1:{server.server_address[1]}/v1"
     try:
-        t = et.EvalTransport(base_url=base, timeout=2.0)
+        t = et.EvalTransport(base_url=base, timeout=1.0)
         start = time.monotonic()
         with pytest.raises(et.TransportError, match="deadline"):
             t.chat("m", [{"role": "user", "content": "hello"}])
         elapsed = time.monotonic() - start
         # Bounded by the whole-call deadline (+ small tolerance), NOT by the
         # never-ending drip: pre-fix behavior was unbounded growth.
-        assert_sooner(elapsed, 2, 60, "a 2 s whole-call deadline over an endless drip")
+        assert_sooner(elapsed, 1, 60, "a 1 s whole-call deadline over an endless drip")
     finally:
         server.shutdown()
         server.server_close()

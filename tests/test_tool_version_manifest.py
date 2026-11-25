@@ -114,13 +114,22 @@ def copies(root: Path, files: list[str]) -> list[str]:
             text = (root / rel).read_text(encoding="utf-8")
         except (UnicodeDecodeError, FileNotFoundError, IsADirectoryError):
             continue
-        code = code_of(rel, text)
         # A bare number is a copy of a tool's version only in a file that names that tool: 0.17.0
-        # is zig's floor and, in a ruff test, an off-pin ruff.
-        named = [t for t in current if re.search(rf"(?i)(?<![a-z-]){re.escape(t)}(?![a-z-])", text)]
+        # is zig's floor and, in a ruff test, an off-pin ruff. The number is looked for first: the
+        # names over every file were 4 s (GOH.PYSLOW4).
+        named = [
+            t
+            for t in current
+            if table[t] in text and re.search(rf"(?i)(?<![a-z-]){re.escape(t)}(?![a-z-])", text)
+        ]
         # A test plants versions OFF the manifest on purpose (a fake below the floor, an off-pin
         # ruff), so the beside-the-name rule reads only the code that judges.
         planted = rel.startswith("tests/")
+        # The code's lines are the text's with prose blanked: a text with no literal has no copy,
+        # and is not tokenized for it.
+        if not any(current[t].search(text) for t in named) and (planted or not beside.search(text)):
+            continue
+        code = code_of(rel, text)
         for n, line in enumerate(code.splitlines(), 1):
             for tool in named:
                 if current[tool].search(line):

@@ -8,12 +8,11 @@ running something else -- or a second copy of a checker kept "for now" -- is wha
 
 from __future__ import annotations
 
+import ast
 import re
 import subprocess
 import sys
 from pathlib import Path
-
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "checks"))
@@ -23,10 +22,17 @@ from _retired import NATIVE, SHIMS
 TREE_READS = ("checks/",)
 
 PAIRS = [(stem, NATIVE[stem]) for stem in SHIMS]
+# A shim's statements, its docstring apart.
+SHIM = """import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+__import__('_retired').forward('{check}', __name__)"""
 
 
-@pytest.mark.parametrize(("stem", "check"), PAIRS)
-def test_a_shim_runs_its_native_check_with_the_arguments_given(stem, check, tmp_path) -> None:
+def test_a_shim_runs_its_native_check_with_the_arguments_given(tmp_path) -> None:
+    """One of them: the rest are its statements with their own check's name, held below
+    (GOH.PYSLOW4: each was run, 0.35 s a call)."""
+    stem, check = PAIRS[0]
     fake = tmp_path / "goh"
     fake.write_text('#!/bin/sh\necho "native $*"\nexit 3\n')
     fake.chmod(0o755)
@@ -52,14 +58,15 @@ def test_every_shim_is_listed_and_every_listed_shim_is_a_shim() -> None:
     assert forwarding == {stem for stem, _ in PAIRS}
     for stem, check in PAIRS:
         text = (ROOT / "checks" / f"{stem}.py").read_text(encoding="utf-8")
-        assert f'forward("{check}", __name__)' in text, stem
-        assert len(text.splitlines()) < 15, f"{stem}.py is more than a forwarder"
+        assert ast.unparse(ast.Module(ast.parse(text).body[1:], [])) == SHIM.format(check=check), (
+            f"{stem}.py is more than a forwarder"
+        )
 
 
-@pytest.mark.parametrize(("stem", "check"), PAIRS)
-def test_importing_a_shim_is_a_clear_error_never_an_exec(stem, check) -> None:
+def test_importing_a_shim_is_a_clear_error_never_an_exec() -> None:
     """An exec at import time replaced the IMPORTING process: a pytest worker that imported one
     vanished with no output. Imported, a shim refuses by name instead."""
+    stem, check = PAIRS[0]
     r = subprocess.run(
         [sys.executable, "-c", f"import sys; sys.path.insert(0, 'checks'); import {stem}"],
         cwd=ROOT,
