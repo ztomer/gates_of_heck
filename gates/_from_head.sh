@@ -107,7 +107,11 @@ goh_export_rev() {
 # _goh_suite_ancestor <checkout root> -- 0 when goh's own suite runs in that checkout and is an
 # ancestor of this process (its pid in `<git dir>/goh-suite.live`, written by tests/conftest.py);
 # sets _goh_suite_pid. A consumer's gate run from the same checkout meanwhile is no descendant and
-# is not refused. Costs one `ps` -- only while a mark exists.
+# is not refused. Costs one `ps` -- only while a mark exists, which is for ever once a suite ran there:
+# a finished suite's (its number is free) costs one of one process, never the machine's table
+# (GOH.PYHARNESS: 45-85 ms of every gate and helper in such a checkout). The number alone is asked,
+# not the mark's start time: `ps` prints one in the caller's locale and zone, so a hand-built
+# environment would read the live suite's as another process's.
 _goh_suite_ancestor() {
     local gd="$1/.git" line pid p n=0
     local -A up=()
@@ -120,6 +124,7 @@ _goh_suite_ancestor() {
     [ -f "$gd/goh-suite.live" ] || return 1
     read -r pid _ <"$gd/goh-suite.live" || return 1
     [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+    [ -n "$(ps -o pid= -p "$pid" 2>/dev/null)" ] || return 1
     while read -r line p; do up[$line]="$p"; done < <(ps -A -o pid=,ppid= 2>/dev/null)
     p="$BASHPID"
     while [ -n "$p" ] && [ "$p" -gt 1 ] && [ "$n" -lt 512 ]; do

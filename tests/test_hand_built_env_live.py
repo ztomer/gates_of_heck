@@ -13,6 +13,7 @@ refused. A test that means HEAD says so with GATES_OF_HECK_HEAD_OK=1.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -102,6 +103,28 @@ def test_only_the_suites_own_descendants_are_refused(tmp_path: Path) -> None:
     finally:
         stranger.stdin.close()
         stranger.wait()
+
+
+@pytest.mark.load_sensitive
+def test_a_finished_suites_mark_never_reads_the_machines_table(tmp_path: Path) -> None:
+    """A mark outlives its suite, so every gate in a checkout a suite ever ran in paid a `ps` of
+    every process on the box (GOH.PYHARNESS). A live one's is walked whatever zone or locale its
+    caller has: the refusal reads no start time."""
+    (tmp_path / ".git").mkdir()
+    log, shim = tmp_path / "ps.log", tmp_path / "bin" / "ps"
+    shim.parent.mkdir()
+    shim.write_text(f'#!/bin/sh\necho "$*" >>"{log}"\nexec {shutil.which("ps")} "$@"\n')
+    shim.chmod(0o755)
+    env = _hand_built(tmp_path, TZ="Asia/Tokyo", LC_ALL="fr_FR.UTF-8")
+    env["PATH"] = f"{shim.parent}{os.pathsep}{env['PATH']}"
+    dead = subprocess.Popen(["true"], stdin=subprocess.DEVNULL)
+    dead.wait()
+    mark = tmp_path / ".git" / "goh-suite.live"
+    mark.write_text(f"{dead.pid} Wed Nov 25 10:32:12 2026\n")
+    assert _ancestor(tmp_path, env).returncode == 1
+    assert log.read_text().splitlines() == [f"-o pid= -p {dead.pid}"], "one process asked for"
+    mark.write_text(f"{pid_owner.stamp_line(os.getpid())}\n")
+    assert _ancestor(tmp_path, env).returncode == 0, "the live suite's own gate"
 
 
 def test_the_running_suite_left_its_mark() -> None:
