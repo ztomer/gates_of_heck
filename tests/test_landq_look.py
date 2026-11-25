@@ -137,6 +137,29 @@ def test_wait_after_a_re_enqueue_waits_for_that_attempt_not_the_last_red(tmp_pat
     assert out == [0]
 
 
+def test_a_record_filed_between_a_waits_two_looks_is_the_one_returned(tmp_path, monkeypatch):
+    """GOH.WAITORDER, 2026-11-25 (the land of 573a90aa): the wait read the previous red, then the
+    new attempt wrote its record and cleared its marker, then the wait saw no marker and returned
+    the old red. Whatever lands between the two looks, the old record is not the answer."""
+    q = tmp_path / "q"
+    land_records.write(q, "1000000001-T.S", {"item": "T.S", "state": "red", "sha": "b" * 40})
+    marker = landq_inflight.mark(q, "T.S")
+    real, looks = landq_look.find_request, []
+
+    def then_it_lands(*a):
+        found = real(*a)
+        if not looks:
+            looks.append(found)
+            land_records.write(q, "1000000002-T.S",
+                              {"item": "T.S", "state": "landed", "sha": "c" * 40})  # fmt: skip
+            landq_inflight.clear(marker)
+        return found
+
+    monkeypatch.setattr(landq_look, "find_request", then_it_lands)
+    monkeypatch.setattr(landq_look, "poll", 0.01)
+    assert landq_look.wait(q, "T.S", patience(30), lambda: None) == 0
+
+
 def test_a_red_enqueue_between_its_filing_and_its_record_is_still_its_request(tmp_path):
     """GOH.WAITEARLYGAP: an enqueue red on its pre-step files under `early/` (its marker gone in
     that transaction), then records the red; a wait reading between the two said "no request, no

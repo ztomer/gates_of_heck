@@ -155,11 +155,12 @@ def find_request(q: Path, what: str) -> Path | None:
 def _current(q: Path, what: str) -> Path | None:
     """WHAT's newest request, unless it is a done record while an enqueue of WHAT is still in its
     pre-step: that record is the PREVIOUS attempt's, and the enqueue files the one to wait for
-    (GOH.WAITSTALE: a re-enqueue's wait returned try 2's red)."""
+    (GOH.WAITSTALE: a re-enqueue's wait returned try 2's red). The enqueue is looked for FIRST: it
+    writes its record, then clears its marker, so no marker means its record is there to find; the
+    other order read the old record, then no marker, and returned it (GOH.WAITORDER)."""
+    busy = bool(landq_inflight.live(q, what))
     found = find_request(q, what)
-    if found is not None and found.parent.name == land_records.REF and landq_inflight.live(q, what):
-        return None
-    return found
+    return None if busy and found is not None and found.parent.name == land_records.REF else found
 
 
 def unfiled(q: Path, what: str, start_by: float) -> Path | int | None:
