@@ -12,6 +12,7 @@ derivation skips by file name compile only under cfg(test), and a build script r
 
 from __future__ import annotations
 
+import functools
 import posixpath
 import re
 import subprocess
@@ -35,11 +36,23 @@ def _git(*args: str) -> str:
                           check=True, stdin=subprocess.DEVNULL).stdout  # fmt: skip
 
 
+@functools.cache
 def _sources() -> dict[str, str]:
-    """HEAD's crates/**.rs, path -> text (HEAD's: what the stamp is derived from)."""
+    """HEAD's crates/**.rs, path -> text (HEAD's: what the stamp is derived from): one cat-file,
+    not a `git show` a file (GOH.PYSLOW4: some 300 forks in each of three tests)."""
     names = [n for n in _git("ls-tree", "-r", "--name-only", "HEAD", "crates").split("\n")
              if n.endswith(".rs")]  # fmt: skip
-    return {n: _git("show", f"HEAD:{n}") for n in names}
+    data = subprocess.run(["git", "-C", str(REPO_ROOT), "cat-file", "--batch"], check=True,
+                          input="".join(f"HEAD:{n}\n" for n in names).encode(),
+                          capture_output=True).stdout  # fmt: skip
+    out, at = {}, 0
+    for n in names:
+        head, _, _ = data[at:].partition(b"\n")
+        size = int(head.split()[2])  # `<oid> blob <size>`; a missing object says none and is red
+        at += len(head) + 1
+        out[n] = data[at : at + size].decode()
+        at += size + 1
+    return out
 
 
 def _test_named(path: str) -> bool:

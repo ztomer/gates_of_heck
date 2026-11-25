@@ -279,8 +279,9 @@ def _resolved(sources: dict[str, str]) -> dict[str, tuple[set[str], set[str]]]:
     out = {}
     for stem, src in sources.items():
         safe, plain = set(own[stem][0]), set(own[stem][1])
-        for home in ("conftest", *_imported(src)):
-            names = _imported(src).get(home) if home != "conftest" else None
+        imported = _imported(src)
+        for home in ("conftest", *imported):
+            names = imported.get(home) if home != "conftest" else None
             got = own.get(home, (set(), set()))
             safe |= {n for n in got[0] if names is None or n in names}
             plain |= {n for n in got[1] if names is None or n in names}
@@ -296,7 +297,8 @@ def _imported(source: str) -> dict[str, set[str]]:
     return out
 
 
-def census() -> dict[str, int]:
+def census() -> tuple[dict[str, int], int]:
+    """({file: its dumps}, the files read)."""
     paths = {p.relative_to(TESTS).as_posix(): p for p in sorted(TESTS.rglob("*.py"))}
     paths = {rel: p for rel, p in paths.items() if p.name != SELF}
     sources = {rel: p.read_text(encoding="utf-8") for rel, p in paths.items()}
@@ -308,7 +310,7 @@ def census() -> dict[str, int]:
         n = len(dumps(src, safe, plain))
         if n:
             out[rel] = n
-    return out
+    return out, len(sources)
 
 
 CASES = """\
@@ -390,13 +392,6 @@ def test_no_test_dumps_an_environment():
     test_goh_directory_spawns.py 1, test_gpu_lock.py 1, test_launch_app.py 1 and
     test_step_timings.py 6; each now captures names (tests/env_probe.py) or binds the
     env-carrying call before asserting on it."""
-    now = census()
+    now, read = census()
+    assert read > 300, read  # a floor: a census that reads no file reports clean
     assert now == {}, f"a whole environment dumped (use tests/env_probe.py): {now}"
-
-
-def test_the_census_reads_the_suite():
-    """A floor: a census that stopped parsing files reports clean. It reads every test module."""
-    files = [p for p in TESTS.rglob("*.py") if p.name != SELF]
-    assert len(files) > 300, len(files)
-    for path in files:
-        dumps(path.read_text(encoding="utf-8"))  # every module parses: none is silently skipped
