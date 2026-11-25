@@ -29,7 +29,7 @@ from pathlib import Path
 
 import _goh_db_fixture as gdb
 import pytest
-from _todays_gates import _clean_checkout_of_todays_gates
+from _todays_gates import _clean_checkout_of_todays_gates, gates_part
 from _tree_clone import run_head_cache
 from conftest import git
 from test_ship import _env, make_shipped
@@ -121,7 +121,7 @@ def test_an_export_carries_a_bin_goh_that_runs_its_own_commit(repo: Path, tmp_pa
     """`$GOH_DIR/bin/goh` in an export: the native build of the export's commit, GOH_DIR the export.
 
     GOH_BIN stands in for the build (the resolver trusts a named binary), so no cargo runs here."""
-    gates = _clean_checkout_of_todays_gates(tmp_path / "g", rust=False)
+    gates = gates_part(tmp_path / "g", "gates/_from_head.sh", "gates/goh.sh", "tools/ship.py")
     fake = tmp_path / "fake-goh"
     fake.write_text('#!/usr/bin/env bash\necho "GOH_DIR=$GOH_DIR ARGS=$*"\n')
     fake.chmod(0o755)

@@ -130,8 +130,13 @@ def _history(
     git(repo, "add", "-A")
     git(repo, "commit", "-q", "--no-verify", "-m", "main")
     base = git(repo, "rev-parse", "HEAD").strip()
-    git(repo, "checkout", "-q", "lane")
-    git(repo, "rebase", "-q", base)
+    # What `git rebase` of the lane's one commit onto main makes, made as a commit: its 20 files of
+    # state are git's own subject (GOH.FSEVQUIET).
+    git(repo, "checkout", "-q", "-B", "lane")
+    (repo / judged_adds).parent.mkdir(parents=True, exist_ok=True)
+    (repo / judged_adds).write_text("the lane's\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "--no-verify", "-m", "lane")
     return judged, git(repo, "rev-parse", "HEAD").strip(), base
 
 

@@ -3,6 +3,8 @@ cloned (split from tests/test_gate_environment.py, whose importers ran nothing e
 
 from __future__ import annotations
 
+import functools
+import hashlib
 import shutil
 import subprocess
 from pathlib import Path
@@ -61,28 +63,37 @@ def _build_read(checkout: Path) -> None:
     clone_tree(process_template("todays-gates", _build_clean_checkout), checkout)
 
 
-# What a land of goh runs, and the files it reads by a name no import spells.
-_LAND = ("tools/land.sh", "tools/load.py", "lib/gate_identity.py", "lib/release_gate.py",
-         "gates/_from_head.sh")  # fmt: skip
-_LAND_DATA = ("lib/lock_order.tsv", "gates/_export_bin_goh.sh")
-_LAND_DIRS = ("lib/state_sql", "lib/goh_db_schema", "lib/goh_cache_schema")
+# The data goh's scripts read by a name of their own directory's.
+_DATA = ("lib/lock_order.tsv", "lib/goh-rustc", "gates/_export_bin_goh.sh")
+_DATA_DIRS = ("lib/state_sql", "lib/goh_db_schema", "lib/goh_cache_schema")
+
+
+def gates_part(dest: Path, *paths: str) -> Path:
+    """The gates checkout a test of WHICH COMMIT judges needs: what PATHS run and read, committed as
+    they stand at DEST, built once a run. The estate is 766 files in each export and work tree of
+    it, a file event to write and one to remove (GOH.FSEVQUIET)."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    build = functools.partial(_build_part, paths)
+    clone_tree(process_template(f"gates-{_key(paths)}", build), dest)
+    return dest
+
+
+def _key(paths: tuple[str, ...]) -> str:
+    return hashlib.sha256("\0".join(paths).encode()).hexdigest()[:12]
 
 
 def land_gates(tmp_path: Path) -> Path:
-    """The gates a land of goh by goh reads, committed as they stand: 170 files. Such a land exports
-    its checkout once a commit and makes a work tree a lane; of the whole estate's 766 files, a test
-    of which commit is judged made ten copies, 8,600 file events (GOH.FSEVQUIET)."""
-    checkout = tmp_path / "gates_of_heck"
-    clone_tree(process_template("land-gates", _build_land), checkout)
-    return checkout
+    """What a land of goh by goh reads: 180 files. Such a land exports its checkout once a commit
+    and makes a work tree a lane, ten copies of it (8,600 file events of the whole estate)."""
+    paths = ("tools/land.sh", "tools/load.py", "lib/gate_identity.py", "lib/release_gate.py")
+    return gates_part(tmp_path / "gates_of_heck", *paths)
 
 
-def _build_land(checkout: Path) -> None:
+def _build_part(paths: tuple[str, ...], checkout: Path) -> None:
     import source_closure
 
-    data = [str(p.relative_to(ROOT)) for d in _LAND_DIRS for p in (ROOT / d).iterdir()]
-    data = [p for p in data if (ROOT / p).is_file()]
-    source_closure.copy_closure(checkout, *_LAND, extra=(*_LAND_DATA, *data))
+    data = [str(p.relative_to(ROOT)) for d in _DATA_DIRS for p in (ROOT / d).glob("*.*")]
+    source_closure.copy_closure(checkout, *paths, extra=(*_DATA, *data))
     fast_init(checkout, "main")
     _git(checkout, "add", "-A")
     _git(checkout, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "today")

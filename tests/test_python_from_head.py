@@ -14,11 +14,12 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from _todays_gates import _clean_checkout_of_todays_gates
+from _todays_gates import gates_part
 from _tree_clone import run_head_cache
 from conftest import REPO_ROOT
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
 
+FROM_HEAD = "gates/_from_head.sh"
 PLANT = "LIVE-PYTHON-CHECKER-EDIT-7714"
 NOTICE = "running HEAD's copy"
 STANZA = re.compile(
@@ -41,7 +42,8 @@ def test_every_python_entry_point_runs_from_head() -> None:
 
 @pytest.fixture(scope="module")
 def gates(tmp_path_factory) -> Path:
-    return _clean_checkout_of_todays_gates(tmp_path_factory.mktemp("g"), rust=False)
+    top = tmp_path_factory.mktemp("g") / "gates_of_heck"
+    return gates_part(top, "checks/loc_of_baseline_files.py", "gates/_from_head.py", FROM_HEAD)
 
 
 @pytest.fixture
