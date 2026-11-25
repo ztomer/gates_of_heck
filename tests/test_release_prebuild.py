@@ -15,10 +15,10 @@ import os
 import subprocess
 from pathlib import Path
 
+from _todays_gates import _clean_checkout_of_todays_gates
 from _tree_clone import run_head_cache
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
 from test_binary_source_identity import _no_store, private_store
-from test_gate_environment import _clean_checkout_of_todays_gates
 
 KIT = Path(__file__).resolve().parent.parent / "tools" / "release_goh.sh"
 

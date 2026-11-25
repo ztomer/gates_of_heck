@@ -16,7 +16,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from test_gate_environment import _clean_checkout_of_todays_gates
+from _todays_gates import _clean_checkout_of_todays_gates
 from test_gates_from_head import _env
 
 

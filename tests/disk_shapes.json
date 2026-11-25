@@ -71,9 +71,6 @@
   "test_reuse_store_db.py": {
    "sqlite": 3
   },
-  "test_self_hosted_hook.py": {
-   "goh-clone": 1
-  },
   "test_shell_lint_verdict_cache.py": {
    "sqlite": 1
   },

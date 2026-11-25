@@ -18,10 +18,10 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _todays_gates import _clean_checkout_of_todays_gates
 from _tree_clone import run_head_cache
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
-from test_gate_environment import _clean_checkout_of_todays_gates
 
 PLANT = "LIVE-WORKING-TREE-EDIT-5521"
 

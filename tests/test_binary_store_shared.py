@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from _todays_gates import _clean_checkout_of_todays_gates
 from test_binary_source_identity import (
     _fake_builder,
     _head_stamp,
@@ -19,7 +20,6 @@ from test_binary_source_identity import (
     _version,
     private_store,
 )
-from test_gate_environment import _clean_checkout_of_todays_gates
 
 
 def test_a_second_root_of_the_same_source_takes_the_first_ones_build(tmp_path: Path) -> None:

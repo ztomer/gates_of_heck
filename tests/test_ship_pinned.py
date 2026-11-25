@@ -29,9 +29,9 @@ from pathlib import Path
 
 import _goh_db_fixture as gdb
 import pytest
+from _todays_gates import _clean_checkout_of_todays_gates
 from _tree_clone import run_head_cache
 from conftest import git
-from test_gate_environment import _clean_checkout_of_todays_gates
 from test_ship import _env, make_shipped
 from timing_bounds import GiveUp
 

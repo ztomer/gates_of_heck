@@ -10,9 +10,9 @@ source is already named, by path, by its own warning; it must not also stop the 
 import subprocess
 from pathlib import Path
 
+from _todays_gates import _clean_checkout_of_todays_gates, _git
 from _tree_clone import run_head_cache
 from conftest import hermetic_env
-from test_gate_environment import _clean_checkout_of_todays_gates, _git
 
 
 def _fake_goh(tmp_path: Path, version: str) -> Path:

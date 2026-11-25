@@ -104,6 +104,42 @@ def test_every_step_is_gits_own_byte_for_byte(made, monkeypatch) -> None:
     assert _git(mine, "log", "--format=%s").split("\n")[0] == "git's own"
 
 
+def test_a_branch_moves_where_it_is(repo: Path) -> None:
+    """The template's branch is in packed-refs: no refs/heads is made for it."""
+    (repo / "f").write_text("1\n")
+    root, env = str(repo.resolve().parent), _env(False)
+    for args in (["git", "add", "f"], ["git", "commit", "-qm", "c"]):
+        assert _quiet_git.serve(args, repo, env, root)
+    assert not (repo / ".git" / "refs" / "heads").exists()
+    assert _git(repo, "log", "--format=%s") == "c\nfixture\n"
+    assert _git(repo, "rev-parse", "main") == _git(repo, "rev-parse", "HEAD")
+
+
+@pytest.mark.parametrize("settings", [
+    ("user.email", "t@t", "user.name", "t", "user.email", "u@u"),
+    ("core.hooksPath", ".githooks", "core.bare", "false"),
+    ("gc.auto", "0", "User.Name", "x", "user.name", "Y"),
+])  # fmt: skip
+def test_a_setting_is_written_as_git_writes_it(made, settings) -> None:
+    mine, gits = made("mine"), made("gits")
+    for key, value in zip(settings[::2], settings[1::2], strict=True):
+        assert _quiet_git.serve(["git", "config", key, value], mine, _env(False),
+                                str(mine.resolve().parent))  # fmt: skip
+        _git(gits, "config", key, value)
+        a, b = ((d / ".git" / "config").read_text() for d in (mine, gits))
+        assert a == b, (key, value)
+
+
+@pytest.mark.parametrize("args", [
+    ("--add", "a.b", "c"), ("a.b",), ("--get", "a.b"), ("remote.o.url", "/x"), ("a.b", "two words"),
+    ("a.b", "-x"), ("a.b", "#x"), ("alias.st", ""),
+])  # fmt: skip
+def test_any_other_config_is_gits(made, args) -> None:
+    d = made("r")
+    argv = ["git", "config", *args]
+    assert not _quiet_git.serve(argv, d, _env(False), str(d.resolve().parent))
+
+
 def _hook(d: Path) -> None:
     (d / ".git" / "hooks").mkdir(exist_ok=True)
     (d / ".git" / "hooks" / "pre-commit").write_text("#!/bin/sh\nexit 1\n")
@@ -155,7 +191,8 @@ def test_what_git_would_judge_is_gits(tmp_path: Path, made, plant) -> None:
 @pytest.mark.parametrize("argv", [
     ("add",), ("add", "-f", "f"), ("add", "*.x"), ("add", "absent"), ("add", "-p"),
     ("commit", "-m", "its summary is read"), ("commit", "-qm", ""), ("commit", "-qm", "nothing"),
-    ("commit", "-q", "--amend", "-m", "x"), ("-c", "core.abbrev=4", "add", "-A"), ("status",),
+    ("commit", "-q", "--amend", "-m", "x"),
+    ("-c", "core.abbrev=4", "add", "-A"), ("status",),
 ])  # fmt: skip
 def test_an_option_or_a_refusal_is_gits(tmp_path: Path, made, argv) -> None:
     d, root, env = made("r"), str(tmp_path.resolve()), _env(False)

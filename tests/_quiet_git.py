@@ -1,5 +1,5 @@
-"""A test's own `git add` and `git commit -q`, made with no git process and few files
-(GOH.FSEVQUIET).
+"""A test's own `git add`, `git commit -q` and `git config KEY VALUE`, made with no git process and
+few files (GOH.FSEVQUIET).
 
 Half of the suite's file events were git's: each add and commit of a fixture made an index.lock, a
 fan-out directory and a temp file per loose object, HEAD.lock, the branch's lock, AUTO_MERGE.lock,
@@ -366,19 +366,56 @@ def _commit(repo: Repo, args: list[str]) -> None:
         repo.write_index()
     sha = _sha("commit", body).hex()
     _TREES[sha] = tree
-    at = os.path.join(repo.git, ref)
+    at, packed = os.path.join(repo.git, ref), Path(repo.git, "packed-refs")
+    if parent and not os.path.exists(at):  # where it is: no directory, no file
+        text = packed.read_text(encoding="utf-8")
+        packed.write_text(text.replace(f"{parent} {ref}\n", f"{sha} {ref}\n"), encoding="utf-8")
+        return
     os.makedirs(os.path.dirname(at), exist_ok=True)
     _put(at, f"{sha}\n".encode())
 
 
+def _config(top: str, conf: dict[str, str], args: list[str]) -> None:
+    """`git config SECTION.NAME VALUE` of plain words, in the repository's own file."""
+    path = os.path.join(top, ".git", "config")
+    if conf or len(args) != 2 or not re.fullmatch(r"[A-Za-z]+\.[A-Za-z][A-Za-z0-9]*", args[0]):
+        raise Declined("no plain setting")
+    if not re.fullmatch(r"[\w./@:+-]+", args[1], re.ASCII) or args[1].startswith("-"):
+        raise Declined("no plain value")
+    if os.path.lexists(path + ".lock") or not os.access(os.path.dirname(path), os.W_OK):
+        raise Declined("locked")
+    section, _, name = args[0].partition(".")
+    lines = Path(path).read_text(encoding="utf-8").splitlines(keepends=True)
+    heads = [i for i, ln in enumerate(lines) if ln.startswith("[")]
+    mine = [i for i in heads if lines[i].strip().lower() == f"[{section.lower()}]"]
+    odd = any("\\" in ln or "#" in ln or ";" in ln or not ln.endswith("\n") for ln in lines)
+    if len(mine) > 1 or odd or any(not ln.startswith(("[", "\t")) for ln in lines):
+        raise Declined("a config not written by git alone")
+    row = f"\t{name} = {args[1]}\n"
+    if not mine:
+        lines += [f"[{section}]\n", row]
+    else:
+        end = min([i for i in heads if i > mine[0]], default=len(lines))
+        at = [i for i in range(mine[0] + 1, end)
+              if lines[i].split("=")[0].strip().lower() == name.lower()]  # fmt: skip
+        if len(at) > 1:
+            raise Declined("two of it")
+        if at:
+            lines[at[0]] = row
+        else:
+            lines.insert(end, row)
+    _put(path, "".join(lines).encode())
+
+
 def serve(argv: object, cwd: object, env: Mapping[str, str] | None, root: str) -> bool:
-    """Whether ARGV, a test's `git add` or `git commit -q` in a repository under ROOT, is done."""
+    """Whether ARGV, a test's `git add`, `commit -q` or `config` in a repository under ROOT, is
+    done."""
     if not isinstance(argv, (list, tuple)) or not argv or argv[0] != "git":
         return False
     try:
         words = [os.fsdecode(a) for a in argv]
         here, conf, command, args = _parse(words)
-        if command not in ("add", "commit"):
+        if command not in ("add", "commit", "config"):
             return False
         env = os.environ if env is None else env
         if env.get(REAL) or any(k.startswith("GIT_") and k not in _ENV_READ for k in env):
@@ -389,6 +426,9 @@ def serve(argv: object, cwd: object, env: Mapping[str, str] | None, root: str) -
         top = os.path.realpath(os.path.join(os.fsdecode(cwd or os.getcwd()), here))
         if not top.startswith(root + os.sep):
             return False
+        if command == "config":
+            _config(top, conf, args)
+            return True
         repo = Repo(top, conf, env)
         (_add if command == "add" else _commit)(repo, args)
     except (Declined, OSError, ValueError, UnicodeError, IndexError):

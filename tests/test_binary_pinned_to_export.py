@@ -22,9 +22,10 @@ import os
 import subprocess
 from pathlib import Path
 
+from _todays_gates import _clean_checkout_of_todays_gates
+from _tree_clone import clone_tree
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
 from test_binary_source_identity import _fake, _head_stamp, _no_store, _version, private_store
-from test_gate_environment import _clean_checkout_of_todays_gates
 
 STORE = Path("bin") / "by-stamp"
 
@@ -53,18 +54,8 @@ class Land:
         self.a_version, self.a_stamp = _version(self.checkout), _head_stamp(self.checkout)
         self.export = tmp_path / "head" / self.a
         self.export.mkdir(parents=True)
-        archive = subprocess.run(
-            ["git", "-C", str(self.checkout), "archive", self.a],
-            capture_output=True,
-            check=True,
-            stdin=subprocess.DEVNULL,
-        ).stdout
-        subprocess.run(
-            ["tar", "-x", "-C", str(self.export)],
-            input=archive,
-            check=True,
-            capture_output=True,
-        )
+        for name in _git(self.checkout, "ls-tree", "--name-only", self.a).splitlines():
+            clone_tree(self.checkout / name, self.export / name)  # a clean work tree is its archive
         (self.export / ".goh-head").write_text(self.a + "\n")
         (self.export / ".goh-used").write_text("")
         manifest = self.checkout / "Cargo.toml"

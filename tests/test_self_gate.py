@@ -20,9 +20,9 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _todays_gates import _clean_checkout_of_todays_gates
 from _tree_clone import run_head_cache
 from conftest import REPO_ROOT, git, hermetic_env
-from test_gate_environment import _clean_checkout_of_todays_gates
 
 MARK = "SELFGATE-STAGED-TREE-JUDGED"
 FAKE = """#!/usr/bin/env bash

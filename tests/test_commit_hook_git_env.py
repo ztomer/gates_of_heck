@@ -23,9 +23,9 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import as_fixture
+from _todays_gates import _clean_checkout_of_todays_gates
 from _tree_clone import run_head_cache
 from conftest import EMOJI_SMILE, REPO_ROOT, hermetic_env, native_goh_path
-from test_gate_environment import _clean_checkout_of_todays_gates
 
 # The commit hook as it shipped before the variables were dropped: consumers run it until they
 # re-install, so the gates-side half of the fix has to hold under it too.

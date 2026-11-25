@@ -65,7 +65,7 @@ def gates(tmp_path_factory) -> Path:
     """A FROZEN clean clone of today's gates. The proven key includes the gates checkout's identity
     (its diff and untracked files), and other tests of a parallel suite briefly create files in
     the live one -- which the cache rightly refuses to trust, and which made this suite flaky."""
-    from test_gate_environment import _clean_checkout_of_todays_gates
+    from _todays_gates import _clean_checkout_of_todays_gates
 
     return _clean_checkout_of_todays_gates(tmp_path_factory.mktemp("gates"))
 

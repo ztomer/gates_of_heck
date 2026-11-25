@@ -16,9 +16,9 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _todays_gates import _clean_checkout_of_todays_gates
 from conftest import REPO_ROOT, hermetic_env
 from test_binary_source_identity import _fake, _head_stamp, private_store
-from test_gate_environment import _clean_checkout_of_todays_gates
 from timing_bounds import patience
 
 RESOLVE = f'. "{REPO_ROOT}/gates/_goh_bin.sh"; goh_resolve_native; printf %s "$goh_native"'

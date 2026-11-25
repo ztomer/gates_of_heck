@@ -18,9 +18,9 @@ from pathlib import Path
 
 import pytest
 from _tiny_goh import HELP, tiny_goh
+from _todays_gates import _clean_checkout_of_todays_gates, _git
 from conftest import hermetic_env, native_goh_path
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
-from test_gate_environment import _clean_checkout_of_todays_gates, _git
 
 
 def _no_store(checkout: Path) -> None:
@@ -226,7 +226,7 @@ def test_goh_live_runs_the_working_trees_binary_not_heads(tmp_path: Path) -> Non
     import os
     import subprocess
 
-    from test_gate_environment import _clean_checkout_of_todays_gates
+    from _todays_gates import _clean_checkout_of_todays_gates
 
     gates = _clean_checkout_of_todays_gates(tmp_path)
     tiny_goh(gates)  # which binary answers is under test, not goh's 150 crates
@@ -273,7 +273,7 @@ def test_goh_live_runs_the_working_trees_binary_not_heads(tmp_path: Path) -> Non
 def test_goh_live_delta_empty_on_clean_checkout_with_no_untracked_files(tmp_path: Path) -> None:
     """goh_live_delta returns empty on a clean checkout; GNU xargs on empty input without -r
     would execute shasum on stdin and produce a false delta (Linux container defect)."""
-    from test_gate_environment import _clean_checkout_of_todays_gates
+    from _todays_gates import _clean_checkout_of_todays_gates
 
     gates = _clean_checkout_of_todays_gates(tmp_path)
     res = subprocess.run(

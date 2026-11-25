@@ -15,8 +15,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _todays_gates import _clean_checkout_of_todays_gates
 from conftest import commit_all, git, hermetic_env, native_goh_path, write
-from test_gate_environment import _clean_checkout_of_todays_gates
 from test_landq import FAKE_LOOPCTL, _land_wt, _pending, landq, recorded
 from timing_bounds import patience
 

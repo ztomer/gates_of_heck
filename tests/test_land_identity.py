@@ -17,8 +17,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from _todays_gates import _clean_checkout_of_todays_gates
 from conftest import hermetic_env, native_goh_path
-from test_gate_environment import _clean_checkout_of_todays_gates
 from timing_bounds import patience
 
 
