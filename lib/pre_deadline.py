@@ -159,7 +159,9 @@ def main(argv: list[str]) -> int:
     except ValueError as why:
         print(f"pre_deadline: {why}", file=sys.stderr)
         return 2
-    limit = deadline(work(timing_ledger.read(), args.repo), workers, floor_s, ceiling_s)
+    limit = deadline(
+        work(timing_ledger.read(kinds=("land",)), args.repo), workers, floor_s, ceiling_s
+    )
     if args.cmd == "show":
         print(limit)
         return 0

@@ -21,6 +21,7 @@ from pathlib import Path
 import _goh_db_fixture as gdb
 import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
+import steps_store
 from _small_store import estate_state
 from conftest import REPO_ROOT, hermetic_env
 from test_consumer_pins import SCRIPT, TAG, WF, _ahead, _consumer
@@ -109,8 +110,7 @@ def test_the_install_commits_and_returns_before_any_consumer_push_gate_runs(tmp_
     }, rec
     assert all(_ahead(r) == 0 for r in repos.values()), rec
     assert sorted((tmp_path / "gates.log").read_text().split("\n")[:-1]) == ["one ran", "two ran"]
-    rows = [json.loads(x) for x in Path(str(sweep).replace(".json", ".timings.jsonl"))
-            .read_text().splitlines()]  # fmt: skip
+    rows = steps_store.rows(str(sweep).replace(".json", ".timings.jsonl")) or []
     assert {x["label"] for x in rows} >= {"push one", "push two"}, rows
 
 

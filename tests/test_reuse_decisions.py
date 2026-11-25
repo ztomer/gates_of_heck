@@ -19,8 +19,8 @@ from test_landq import _land_wt, env, landq, recorded  # noqa: F401  -- `env` is
 from test_suite_once import _record, _runner
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import _goh_db_fixture as gdb
 import land_spd
-import timing_ledger
 
 
 def test_the_gates_runner_records_why_it_took_or_missed_the_verdict(tmp_path):
@@ -42,9 +42,7 @@ def _land_row(repo: Path, tmp_path: Path, env: dict, gate: str, pre: str) -> tup
     got = recorded(env)["T.T"]
     log = Path(got["log"]).read_text()
     assert got["state"] == "landed", log
-    rows = [
-        r for r in timing_ledger.read(tmp_path / "timing" / "ledger.jsonl") if r["kind"] == "land"
-    ]
+    rows = gdb.timed(tmp_path / "goh.db", "land")
     assert len(rows) == 1, rows
     return rows[0], log
 

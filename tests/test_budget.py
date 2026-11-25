@@ -254,7 +254,7 @@ def test_ships_that_predate_the_ledger_are_its_first_rows_and_never_doubled(
     gdb.ship(d / "20261117T011348Z-002e818d.json", res)
     (d / "junk.json").write_text("{not json")  # files beside it are read by nothing (S2)
     (d / "20261117T000000Z-0000000a.json").write_text(json.dumps(res))
-    assert budget.backfill_ships() == 2 and budget.backfill_ships() == 0
+    assert budget.backfill_ships() == 1 and budget.backfill_ships() == 0  # its `release` span
     first = timing_ledger.read()[0]
     assert first["ref"] == "20261117T011348Z-002e818d" and "load_end" not in first  # not 'now'
 

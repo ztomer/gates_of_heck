@@ -34,9 +34,9 @@ from test_verdict_carry import SESSION_CONFTEST
 from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import _goh_db_fixture as gdb
 import gate_identity
 import reuse
-import timing_ledger
 
 TABLE = """\
 class Closure:
@@ -124,8 +124,7 @@ def _enqueue(env: dict, wt: Path, item: str) -> None:  # noqa: F811
 
 
 def _land_row(tmp_path: Path) -> dict:
-    rows = [r for r in timing_ledger.read(tmp_path / "timing" / "ledger.jsonl")
-            if r["kind"] == "land"]  # fmt: skip
+    rows = gdb.timed(tmp_path / "goh.db", "land")
     assert len(rows) == 1, rows
     return rows[0]
 

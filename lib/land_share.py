@@ -311,7 +311,7 @@ def main(argv: list[str]) -> int:
     if args.cmd == "suiteless":  # tools/pytest.sh, its suite carried (GOH.PREWIDTH)
         import timing_ledger
 
-        width = real_width(timing_ledger.read())
+        width = real_width(timing_ledger.read(kinds=("land",)))
         if declare(width):
             print(f"share: this gate runs no suite -- counted at its real width, {width} cores "
                   "(GOH.PREWIDTH, the suite-carried land rows' median)")  # fmt: skip

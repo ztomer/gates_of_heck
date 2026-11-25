@@ -13,6 +13,8 @@ the way the lander puts it (lib/land_records.py: its goh.db row).
     shipped(result)              RESULT's ship row (None when it has none)
     pins(result, body)           a ship's pin record row (lib/consumer_pins.py's install step)
     pinned(result)               RESULT's pin record row (None when it has none)
+    timed(db, *kinds)            a test's timing ledger, KINDS' rows alone: its goh.db's spans
+                                 (GOH.STEPTIMES)
 
 A ship record and its pins are rows only (GOH.STATEDB S2, wave 3): a test plants them here, never
 as files under a ship directory, which nothing reads.
@@ -31,6 +33,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 import goh_db
 import land_records  # lib/, on the path from the line above
 import ship_records
+import span_store
 
 
 def use(monkeypatch, tmp_path: Path) -> Path:
@@ -49,6 +52,11 @@ def made(monkeypatch, tmp_path: Path) -> Path:
 def land(q: Path, run: str, rec: dict) -> Path:
     land_records.write(q, run, rec)
     return land_records.ref(q, run)
+
+
+def timed(db: Path | str, *kinds: str) -> list[dict]:
+    with goh_db.ro(Path(db)) as con:
+        return span_store.rows(con, 0.0, kinds)
 
 
 def landed(q: Path, run: str) -> dict | None:

@@ -54,8 +54,8 @@ def snapshot() -> dict:
     repos, unreadable = estate_registry.read(estate_registry.registry_path())
     names = sorted({timing_ledger.repo_name(str(p)) for p in repos})
     pushes: dict[str, list[dict]] = {}
-    for r in timing_ledger.read():
-        if r.get("kind") == "push" and r.get("repo") in names and r.get("wall_s") is not None:
+    for r in timing_ledger.read(kinds=("push",)):
+        if r.get("repo") in names and r.get("wall_s") is not None:
             pushes.setdefault(r["repo"], []).append(r)
     shown = []
     for name, runs in pushes.items():
@@ -79,7 +79,7 @@ def snapshot() -> dict:
         )
     shown.sort(key=lambda j: -j["wall_s"])
     return {
-        "ledger": str(timing_ledger.ledger_path()),
+        "ledger": str(timing_ledger.where()),
         "registry": str(estate_registry.registry_path()),
         "target_s": TARGET_S,
         "aim_s": AIM_S,

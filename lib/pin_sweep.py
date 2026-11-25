@@ -89,6 +89,7 @@ import proc_deadline
 import ship_records
 import small_stores
 import step_timings
+import steps_store
 
 from tui.lib import counted, err, info, ok, step
 
@@ -353,6 +354,8 @@ def run(path: Path) -> int:
 
     jobs = [(w, partial(job, w)) for w in sorted(repos)]
     done = consumer_pins.sweep(jobs, said, row="push", ok=("pushed", "superseded"), at_once=1)
+    os.environ.pop(step_timings.ENV, None)
+    steps_store.ingest_all([str(timings_path(path))])  # its rows are the table's (GOH.STEPTIMES)
     n = sum(v["status"] == "pushed" for v in done.values())
     left = sum(v["status"] == "superseded" for v in done.values())
     info(f"pin sweep: {n} of {counted(len(done), 'consumer')} pushed"

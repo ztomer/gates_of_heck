@@ -72,14 +72,14 @@ land_exit() {
     [ -z "$verdicts" ] || rm -f "$verdicts.base" "$verdicts.reused" "$verdicts.why" "$verdicts.sources" "$verdicts.shares"
     [ -z "${GOH_LAND_PRE_ONLY:-}${GOH_LAND_STACK_ONTO:-}" ] || return "$rc"   # the enqueue's pre-step run, a stacking rebase: no land, no ledger row
     goh_span_record land "$(goh_repo_id "${main:-.}")" "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" \
-        ${land_timings:+--timings "${GOH_TIMINGS:-$land_timings}"} --field "wait_lock_s=$lock_wait" \
+        ${land_timings:+--timings "${GOH_TIMINGS:-$land_timings}"} ${GOH_LAND_TIMINGS_KEEP:+--spool "$GOH_LAND_TIMINGS_KEEP"} --field "wait_lock_s=$lock_wait" \
         --field "exit=$rc" ${pre_wall:+--field "pre_s=$pre_wall"} \
         ${pre_run:+--field "pre_run_s=$pre_run" --field "pre_workers=$pre_workers" --field "pre_cpu_s=${pre_cpu_s:-0}"} \
         ${pre_reused:+--field "pre_reused=$pre_reused"} ${suite_reused:+--field "suite_reused=$suite_reused"} \
         ${pre_why:+--field "pre_why=$pre_why"} ${suite_why:+--field "suite_why=$suite_why"} \
         ${shadow_f:+--field "shadow_f=$shadow_f" --field "shadow_ran=$shadow_ran" --field "shadow_red_out=$shadow_red_out"} ${shadow_red:+--field "shadow_red=$shadow_red"} \
         --field "sha=$(printf %.12s "${tip:-}")" || true
-    [ -z "$land_timings" ] || { [ ! -s "$land_timings" ] || [ -z "${GOH_LAND_TIMINGS_KEEP:-}" ] || mv -f "$land_timings" "$GOH_LAND_TIMINGS_KEEP"   # kept beside the land's log (GOH.LANDLEAKS)
+    [ -z "$land_timings" ] || { [ ! -s "$land_timings" ] || [ -z "${GOH_LAND_TIMINGS_KEEP:-}" ] || land_timings_keep   # kept by the name of the land's log (GOH.LANDLEAKS)
         rm -f "$land_timings" "$land_timings".*; }
 }
 trap land_exit EXIT

@@ -343,7 +343,7 @@ def main(argv: list[str]) -> int:
         print(json.dumps(tally, indent=2) if a.json else "\n".join(
             f"{n:5d}  {g}" for g, n in tally.items()) or "no red land names its guard")  # fmt: skip
         return 0
-    gates = [r for r in timing_ledger.read() if r.get("kind") == "land"]
+    gates = timing_ledger.read(kinds=("land",))
     rows = lands(q, gates)
     since = land_e2e._when(a.since) if a.since else None
     sha = None if since else land_spd_sha(rows, a.since)

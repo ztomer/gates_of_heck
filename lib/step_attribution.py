@@ -57,7 +57,7 @@ def gaps(rows: list[dict], floor: float = FLOOR, min_gap_s: float = MIN_GAP_S) -
         own[str(r.get("label", ""))] += ms
         if parent := str(r.get("parent") or ""):
             under[parent] += ms
-            count[parent] += 1
+            count[parent] += int(r.get("calls") or 1)
     found = []
     for label, kids in under.items():
         if label not in own:

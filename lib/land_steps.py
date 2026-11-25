@@ -17,9 +17,12 @@ set refuses the tip naming the failing tests, a deadline is no verdict and queue
 from __future__ import annotations
 
 import contextlib
-import json
 import re
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import steps_store  # lib/, beside this file: a land's steps in goh-cache.db
 
 RUN_LOG = re.compile(r"^batch \S+: \w+ by the gate run (\S+\.log)$", re.MULTILINE)
 TIMINGS = re.compile(r"^timings: (\S+)\s*$", re.MULTILINE)
@@ -50,8 +53,9 @@ def logs_of(q: Path, path: Path, rec: dict) -> list[Path]:
 
 
 def kept_timings(q: Path, path: Path, rec: dict) -> list[Path]:
-    """The gate timings the lander kept beside each of the land's logs (`<stem>.timings.jsonl`,
-    lib/land_prestep.py timings_keep, GOH.LANDLEAKS), the record's log's first."""
+    """The names of the gate timings beside each of the land's logs (`<stem>.timings.jsonl`,
+    lib/land_prestep.py timings_keep, GOH.LANDLEAKS), the record's log's first: a spool, or rows of
+    goh-cache.db's `steps` by that name (lib/steps_store.py)."""
     return [log.with_name(log.name.removesuffix(".log") + ".timings.jsonl")
             for log in logs_of(q, path, rec)]  # fmt: skip
 
@@ -68,17 +72,13 @@ def texts(q: Path, path: Path, rec: dict) -> list[str]:
 
 
 def steps_from_timings(path: Path) -> list[dict] | None:
-    """Each gate step of a timings file, summed by (parent, label); None when the file is gone."""
-    try:
-        lines = path.read_text(errors="replace").splitlines()
-    except OSError:
+    """Each gate step of a timings spool (goh-cache.db's `steps` once its land is over,
+    GOH.STEPTIMES), summed by (parent, label); None when neither has it."""
+    rows = steps_store.rows(path)
+    if rows is None:
         return None
     acc: dict[tuple[str, str], dict] = {}
-    for line in lines:
-        try:
-            r = json.loads(line)
-        except ValueError:
-            continue
+    for r in rows:
         if not isinstance(r, dict) or r.get("tier") != "step":
             continue
         key = (label(str(r.get("parent") or "")), label(str(r.get("label") or "")))

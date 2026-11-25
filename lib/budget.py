@@ -359,7 +359,7 @@ def snapshot() -> dict:
     rows = timing_ledger.read()
     judged = [judge(s, r) for s, r in sorted(subjects(rows).items())]
     return {
-        "ledger": str(timing_ledger.ledger_path()),
+        "ledger": str(timing_ledger.where()),
         "subjects": judged,
         "breaches": budget_breach.breaches(judged),
         "unmeasured": unmeasured({j["subject"] for j in judged}),

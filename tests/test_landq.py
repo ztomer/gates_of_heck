@@ -240,11 +240,8 @@ def test_a_landed_request_carries_its_request_time_and_is_one_e2e_row(repo, tmp_
     assert landq(env, "--drain").returncode == 0
     (rec,) = [r for _, r in land_records.records(tmp_path / "landq")]
     assert rec["requested"].endswith("Z") and isinstance(rec["pre_s"], float), rec
-    rows = [
-        json.loads(ln) for ln in (tmp_path / "timing" / "ledger.jsonl").read_text().splitlines()
-    ]
-    (e2e,) = [r for r in rows if r["kind"].startswith("land e2e")]
-    assert (e2e["kind"], e2e["item"], e2e["from"]) == ("land e2e plain", "T.E", "requested"), e2e
+    (e2e,) = [r for r in _goh_db_fixture.timed(env["GOH_DB"]) if r["kind"].startswith("land e2e")]
+    assert (e2e["kind"], e2e["item"]) == ("land e2e plain", "T.E"), e2e
 
 
 def test_a_red_land_gate_lands_nothing_and_records_the_log(repo, tmp_path, env):

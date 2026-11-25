@@ -60,13 +60,15 @@ def step_load(start: tuple[int, int] | None) -> dict:
 
 def record_ship_timing(res: dict) -> None:
     """The finished ship's rows in the timing ledger (`goh budget`: `<repo> ship` and `<repo>
-    release`, GOH.GATEBUDGET); a fault is said, never raised: the instrument never fails a ship."""
+    release`, GOH.GATEBUDGET) and its steps' in goh-cache.db (GOH.STEPTIMES); a fault is said,
+    never raised: the instrument never fails a ship."""
     try:
         import budget  # lib/, on the path through tools/ship.py, the one importer
 
         budget.record_ship(res)
     except (OSError, ValueError, KeyError, TypeError) as e:
         info(f"goh ship: the timing ledger was not written: {e}")
+    ship_profile.keep(res)
 
 
 def save(res: dict) -> None:

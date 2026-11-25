@@ -84,7 +84,7 @@ def rows() -> list[dict]:
 
 def backfill() -> int:
     """The seed's rows the ledger does not hold yet; how many were added."""
-    have = {(r["repo"], r.get("ref")) for r in timing_ledger.read() if r.get("kind") == "push"}
+    have = {(r["repo"], r.get("ref")) for r in timing_ledger.read(kinds=("push",))}
     added = [r for r in rows() if (r["repo"], r["ref"]) not in have]
     for row in added:
         timing_ledger.append(row)

@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 import _goh_db_fixture as gdb
+import steps_store
 from conftest import REPO_ROOT, hermetic_env
 from test_consumer_pins import SCRIPT, TAG, WF, _consumer
 from test_ship import _result, _ship, make_shipped
@@ -35,7 +36,8 @@ TIMINGS = REPO_ROOT / "lib" / "step_timings.py"
 
 
 def _rows(path: Path) -> list[dict]:
-    return [json.loads(x) for x in path.read_text().splitlines() if x.strip()]
+    """The steps of the spool PATH, wherever they are now (GOH.STEPTIMES)."""
+    return steps_store.rows(path) or []
 
 
 def test_each_sub_step_is_recorded_with_its_load_and_status_prints_them_by_cost(repo, tmp_path):
@@ -58,6 +60,8 @@ def test_each_sub_step_is_recorded_with_its_load_and_status_prints_them_by_cost(
     assert rows["slow check"]["ms"] >= 500, rows
     inst = {x["label"]: x for x in _rows(Path(steps["install"]["timings"]))}
     assert "consumer x" in inst, inst
+    left = list(tmp_path.glob("ship.*.timings.jsonl"))
+    assert left == [], left  # the rows are goh-cache.db's, the files gone
     status = subprocess.run([sys.executable, str(REPO_ROOT / "tools" / "ship.py"), "--status",
                              str(tmp_path / "ship.json")], capture_output=True, text=True,
                             env=hermetic_env(drop_git=True), timeout=patience(60),

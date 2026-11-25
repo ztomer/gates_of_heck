@@ -23,7 +23,7 @@ from test_gate_profile import _goh_copy  # its copy of the profile's closure
 from test_landq_batch import env, landq, lane, recorded  # noqa: F401  (env: a fixture)
 from timing_bounds import patience
 
-from lib import land_prestep, land_steps, log_follow
+from lib import land_prestep, land_steps, log_follow, steps_store
 
 # A gate that profiles as tools/gate_profile.sh does: timing rows (25 steps: more than the log's
 # top-20 table holds), then its log and a second one.
@@ -89,9 +89,9 @@ def test_a_finished_land_leaves_no_files_of_its_own_and_keeps_its_timings(
     env: dict[str, str],  # noqa: F811
     names: tuple[str, ...],
 ) -> None:
-    """The temp copy goes, the timings stay beside the land's log, and `goh land-profile` reads
-    the FULL step list from them -- not the log's top-20 table (RELEASELANDGATE's 154 s was
-    found in such a list)."""
+    """The temp copy goes, the timings are goh-cache.db's rows by the name of the land's log, and
+    `goh land-profile` reads the FULL step list from them -- not the log's top-20 table
+    (RELEASELANDGATE's 154 s was found in such a list)."""
     tmpdir = tmp_path / "t"
     tmpdir.mkdir()
     env = {**env, "GOH_LANDQ_BATCH": str(len(names)), "GOH_LAND_GATE": PROFILING_GATE,
@@ -112,10 +112,9 @@ def test_a_finished_land_leaves_no_files_of_its_own_and_keeps_its_timings(
     for run, rec in land_records.records(q):
         path = land_records.ref(q, run)
         kept = land_steps.kept_timings(q, path, rec)
-        assert any(p.is_file() for p in kept), (
-            kept,
-            sorted(p.name for p in (q / "logs").iterdir()),
-        )
+        left = sorted(p.name for p in (q / "logs").iterdir())
+        assert not any(p.is_file() for p in kept), left  # its rows are goh-cache.db's (STEPTIMES)
+        assert any(steps_store.rows(p) for p in kept), (kept, left)
         steps = land_steps.gate_steps(land_steps.texts(q, path, rec), kept)
         assert sorted(s["label"] for s in steps) == sorted(f"s{i}" for i in range(1, STEPS + 1))
 

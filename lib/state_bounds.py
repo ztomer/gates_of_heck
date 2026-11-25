@@ -72,6 +72,7 @@ import lock_order  # the one acquire path: a try-lock on a run directory's tree 
 import prune_kept  # its live-entry probe and its remover, one spelling
 import state_files  # the single files' table and trim (GOH.LEDGERBOUND)
 import state_paths
+import steps_store  # a land's and a ship's step rows, taken in before their spools go
 
 LANDS_PER_DAY = 48  # measured: 49 on 2026-11-17 and on 11-18
 RUNS_PER_LAND = 1.6  # measured: 75 log groups, 72 done records for 49 lands (11-18)
@@ -109,7 +110,7 @@ REGISTRY: dict[str, Bound | Kept | Container] = {
         HISTORY_DAYS,
         LAND_RUNS,
         r"^(\d{10,}-|idle-suite-[0-9a-f]+)",
-        "a land's log, its batch gate's logs and their timings",
+        "a land's log, its batch gate's logs and their timings' spools (lib/steps_store.py)",
     ),
     "landq/pre": Kept("kept verdicts, reaped per record (lib/land_prestep.py reap)"),
     "landq/slots": Kept("one checkout per repo, reused (lib/land_slot.py)"),
@@ -146,7 +147,7 @@ REGISTRY: dict[str, Bound | Kept | Container] = {
     "load_sources": Kept("one file per day, pruned at write (lib/load_sources.py prune)"),
     "compact_nudge": Kept("one marker per session, pruned (hooks/claude/compact_nudge.py)"),
     "seeds": Kept("fixed names, one per seed"),
-    "timing": Kept("one ledger file (lib/timing_ledger.py), bounded in FILES"),
+    "timing": Kept("the timing rows' spool (lib/timing_ledger.py), bounded in FILES"),
     "retired": Kept("the moved stores' files, one dated archive per `goh state retire` run"),
 }
 
@@ -224,6 +225,9 @@ def sweep(root: Path | None = None, now: float | None = None) -> list[Path]:
     Housekeeping: never raises."""
     root = state_root() if root is None else root
     removed: list[Path] = []
+    if root == state_root():
+        with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+            steps_store.sweep(now)  # a spool a killed run left is rows first (GOH.STEPTIMES)
     for rel, rule in REGISTRY.items():
         if isinstance(rule, Bound):
             for d in _dirs(root, rel):

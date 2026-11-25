@@ -245,7 +245,7 @@ def test_the_land_record_names_the_verdict_the_gates_suite_took(repo, tmp_path, 
     from test_landq import _land_wt, landq, recorded
 
     sys.path.insert(0, str(REPO_ROOT / "lib"))
-    import timing_ledger
+    import _goh_db_fixture as gdb
 
     wt, _ = _land_wt(repo, tmp_path)
     base = git(repo, "rev-parse", "HEAD").strip()
@@ -258,7 +258,5 @@ def test_the_land_record_names_the_verdict_the_gates_suite_took(repo, tmp_path, 
     assert landq(env, "--drain").returncode == 0
     got = recorded(env)["T.T"]
     assert got["state"] == "landed", Path(got["log"]).read_text()
-    rows = [
-        r for r in timing_ledger.read(tmp_path / "timing" / "ledger.jsonl") if r["kind"] == "land"
-    ]
+    rows = gdb.timed(tmp_path / "goh.db", "land")
     assert [r.get("suite_reused") for r in rows] == ["0123456789ab:feedfacecafe"], rows

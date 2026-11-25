@@ -278,9 +278,9 @@ def reap(q: Path, now_ns: int | None = None, repo: str | Path | None = None) -> 
 
 def timings_keep(log: Path | str) -> list[str]:
     """The `env` word that keeps a land's gate timings beside its log in the queue's `logs/`
-    (GOH.LANDLEAKS): `<log stem>.timings.jsonl`, pruned with the log (lib/state_bounds.py), read
-    by `goh land-profile` (lib/land_profile.py) and its step attribution. tools/land.sh moves its
-    own there at exit."""
+    (GOH.LANDLEAKS): `<log stem>.timings.jsonl`. tools/land.sh moves its own there at exit and
+    takes it into goh-cache.db's `steps` (lib/steps_store.py, GOH.STEPTIMES), where `goh
+    land-profile` (lib/land_profile.py) and its step attribution read it by that name."""
     return [f"GOH_LAND_TIMINGS_KEEP={str(log).removesuffix('.log')}.timings.jsonl"]
 
 

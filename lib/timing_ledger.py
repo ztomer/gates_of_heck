@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""lib/timing_ledger.py -- the ONE timing record: one JSON line per measured run (GOH.GATEBUDGET).
+"""lib/timing_ledger.py -- the ONE timing record: one row per measured run (GOH.GATEBUDGET), in
+goh.db's `spans` (GOH.STEPTIMES).
 
     timing_ledger.py record --kind push --repo NAME --wall 412.5 [--cpu 980.2] [--load 6.1]
                             [--ok 1] [--ref ID] [--timings FILE] [--field key=value ...]
-    timing_ledger.py path                  # the ledger file
+    timing_ledger.py path                  # where the rows are
     timing_ledger.py tail [N]              # the newest N rows
 
 WHY. goh timed its work in five places, each in its own shape (GOH_TIMINGS jsonl per gate, a ship
@@ -24,20 +25,28 @@ control_drift (the same-kind control's drift across the run, lib/step_timings.py
 one), top_steps ([label, seconds] of the costliest steps, so a breach names the step that moved)
 and any writer fields (`wait_lock_s`, `sha`, `item`).
 
-CONCURRENCY AND FAILURE. One `os.write` of one line under O_APPEND, under PIPE_BUF: concurrent
-writers interleave whole lines. A write that fails is dropped ON PURPOSE (the instrument is never
-the reason a gate goes red), and `record` returns None so a test can see it.
+WHERE. goh.db's `spans` and `span_steps` (lib/span_store.py). A `ship` and a `land attempt` are rows
+of `ships` and `lands` already and are read from there (lib/timing_derived.py). `ledger.jsonl` is
+the SPOOL alone: the line a writer leaves when goh.db is not there, is busy, or is one its code may
+not write, and where older copies of goh still append. The next row that reaches goh.db takes the
+spool's with it, commits, then empties it: a kill in between is drained again, adding nothing.
 
-The ledger's root: GOH_TIMING_DIR (absolute), else $XDG_STATE_HOME/goh/timing, else
-~/.local/state/goh/timing. Pinned by tests/test_timing_ledger.py.
+CONCURRENCY AND FAILURE. One transaction, or one `os.write` of one line under O_APPEND, under
+PIPE_BUF. A write that fails both ways is dropped ON PURPOSE (the instrument is never the reason a
+gate goes red), and `record` returns None so a test can see it.
+
+The spool's root: GOH_TIMING_DIR (absolute), else $XDG_STATE_HOME/goh/timing, else
+~/.local/state/goh/timing. A named one is its own ledger, in no goh.db but one GOH_DB names too.
+Pinned by tests/test_timing_ledger.py, test_span_store.py.
 
 GOH.GATEBUDGET: the ONE timing record (the first writer of the shape GOH.ONETIMING moves the others
-onto): one JSON line per measured run of a subject (`<repo> push`, `<repo> land`, `<repo> ship`,
-`<repo> release`) at `$GOH_TIMING_DIR/ledger.jsonl`, with wall_s, cpu_s (the run's reaped tree),
-load1, ok, ref, the gate's own control drift and its costliest steps. One atomic append; a write
-that fails is dropped (the instrument is never the reason a gate goes red). `record` is the shell's
-door (`timing_ledger.sh`), `row_for`/`append`/`read` Python's; `timings_facts` reads control drift
-and top steps from a `GOH_TIMINGS` file (`step_timings.control_drifts`).
+onto): one row per measured run of a subject (`<repo> push`, `<repo> land`, `<repo> ship`,
+`<repo> release`) in goh.db's `spans` (GOH.STEPTIMES; `ledger.jsonl` is its spool), with wall_s,
+cpu_s (the run's reaped tree), load1, ok, ref, the gate's own control drift and its costliest
+steps. A write that fails is dropped (the instrument is never the reason a gate goes red).
+`record` is the shell's door (`timing_ledger.sh`), `row_for`/`append`/`read` Python's;
+`timings_facts` reads control drift and top steps from a `GOH_TIMINGS` file
+(`step_timings.control_drifts`).
 """
 
 from __future__ import annotations
@@ -53,20 +62,29 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
     del _sys.path[0]
 
 import argparse
+import contextlib
 import datetime as dt
 import json
 import math
 import os
+import sqlite3
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import state_paths  # lib/, on the path from the line above
+import goh_db  # lib/, on the path from the line above
+import span_store
+import state_append  # the spool's lock, the one lib/state_bounds.py trims under
+import state_paths
+import timing_derived
 
 DIR_ENV = "GOH_TIMING_DIR"
-SCHEMA = 1
+SCHEMA = span_store.SCHEMA
 MAX_LINE = 4000  # under PIPE_BUF (4096 on macOS and Linux): an append is atomic
-GOH_NAME = "goh"  # the repo name the gates checkout's own subjects use ('goh ship', 'goh land')
+GOH_NAME = span_store.GOH_NAME
+DAYS = 35  # read's window: a month for a review, and the land sources' 14 days twice over
+FAULTS = (sqlite3.Error, OSError, RuntimeError)  # RuntimeError: lib/lock_order.py's refusal
 
 
 def ledger_dir() -> Path:
@@ -80,10 +98,18 @@ def ledger_path() -> Path:
     return ledger_dir() / "ledger.jsonl"
 
 
-def repo_name(name: str) -> str:
-    """A repository's subject name: its directory name, the gates checkout as `goh`."""
-    name = Path(name.rstrip("/")).name or name
-    return GOH_NAME if name == "gates_of_heck" else name
+def db() -> Path | None:
+    """The goh.db the rows are in; None when there is none, or a named spool stands alone."""
+    at = goh_db.path()
+    named = os.environ.get(DIR_ENV) and not os.environ.get("GOH_DB")
+    return None if named or not at.is_file() else at
+
+
+def where() -> Path:
+    return db() or ledger_path()
+
+
+repo_name = span_store.repo_name
 
 
 def subject_of(repo: str, kind: str) -> str:
@@ -143,8 +169,9 @@ def row_for(
     return row
 
 
-def read(path: Path | None = None) -> list[dict]:
-    """Every row, oldest first; a truncated or foreign line is skipped, counted by no one."""
+def spooled(path: Path | None = None) -> list[dict]:
+    """The spool's rows (PATH's), as written; a truncated or foreign line is skipped, counted by
+    no one."""
     rows: list[dict] = []
     try:
         with (path or ledger_path()).open(encoding="utf-8") as fh:
@@ -160,6 +187,34 @@ def read(path: Path | None = None) -> list[dict]:
     return rows
 
 
+def _same(row: dict) -> tuple:
+    return tuple(row.get(k) for k in ("kind", "repo", "epoch", "ref", "wall_s", "sha"))
+
+
+def read(
+    path: Path | None = None, kinds: tuple[str, ...] = (), repo: str | None = None
+) -> list[dict]:
+    """Every row of the last DAYS days, oldest first (PATH: that file's rows instead); KINDS' alone
+    and REPO's (its subject name) alone when given."""
+    if path is not None:
+        return spooled(path)
+    rows = spooled()  # before the spans: a row drained between the two reads is in both, not none
+    if db() is not None:
+        since = time.time() - DAYS * 86400
+        kept: list[dict] = []
+        with contextlib.suppress(*FAULTS), goh_db.known() as con:  # none in a file from before 0014
+            kept = span_store.rows(con, since, kinds, repo)
+        asked = tuple(k for k in timing_derived.KINDS if not kinds or k in kinds)
+        made = timing_derived.rows(asked, since)
+        seen = {_same(r) for r in kept}
+        own = {(r["kind"], r["repo"], r["ref"]) for r in made}
+        rows = [*(r for r in [*kept, *(r for r in rows if _same(r) not in seen)]
+                  if (r["kind"], r["repo"], r.get("ref")) not in own), *made]  # fmt: skip
+        rows.sort(key=lambda r: r["epoch"])
+    return [r for r in rows if (not kinds or r.get("kind") in kinds)
+            and (repo is None or r.get("repo") == repo)]  # fmt: skip
+
+
 def p95(kind: str, repo: str, rows: list[dict] | None = None) -> tuple[float, int] | None:
     """REPO's KIND runs' 95th percentile, nearest rank, in seconds as its caller sat through them
     (the run plus its wait for a gate slot or the land lock), and how many runs it read; None with
@@ -168,7 +223,7 @@ def p95(kind: str, repo: str, rows: list[dict] | None = None) -> tuple[float, in
     waits = sorted(
         float(r.get("wall_s") or 0) + float(r.get("slot_wait_s") or 0)
         + float(r.get("wait_lock_s") or 0)
-        for r in (read() if rows is None else rows)
+        for r in (read(kinds=(kind,), repo=name) if rows is None else rows)
         if r.get("kind") == kind and r.get("repo") == name
     )  # fmt: skip
     if not waits:
@@ -176,8 +231,7 @@ def p95(kind: str, repo: str, rows: list[dict] | None = None) -> tuple[float, in
     return waits[max(0, math.ceil(0.95 * len(waits)) - 1)], len(waits)
 
 
-def append(row: dict, path: Path | None = None) -> bool:
-    """One atomic line; False when it could not be written (never raises)."""
+def _spool(row: dict, path: Path | None = None) -> bool:
     target = path or ledger_path()
     line = (json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
     if len(line) > MAX_LINE:  # the optional detail goes first, never the measurement
@@ -186,27 +240,59 @@ def append(row: dict, path: Path | None = None) -> bool:
             :MAX_LINE
         ]
     try:
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import state_append  # the lock lib/state_bounds.py trims under (GOH.LEDGERBOUND)
-
         state_append.append(target, line)
-    except (OSError, RuntimeError):  # RuntimeError: lib/lock_order.py's refusal
+    except (OSError, RuntimeError):
         return False
     return True
 
 
+def _put(rows: list[dict]) -> None:
+    with goh_db.transaction() as con:
+        for row in rows:
+            if not timing_derived.has(con, row):
+                span_store.put(con, row)
+
+
+def drain() -> int:
+    """The spool's rows into goh.db, then the spool empty; how many lines it held. Held alone
+    throughout (a try-lock: a writer there now leaves it to the next row). Raises FAULTS."""
+    spool = ledger_path()
+    if db() is None or not spool.is_file() or not spool.stat().st_size:
+        return 0
+    with state_append.trimming(spool) as held:
+        rows = spooled(spool) if held else []
+        if held:
+            _put(rows)
+            os.truncate(spool, 0)  # after the commit: a kill between the two drains them again
+    return len(rows)
+
+
+def append(row: dict) -> bool:
+    """ROW kept: in goh.db, else in the spool; False when neither took it (never raises)."""
+    if db() is None:
+        return _spool(row)
+    try:
+        drain()
+        _put([row])
+    except FAULTS:
+        return _spool(row)
+    return True
+
+
 def known_refs(kind: str, repo: str) -> set[str]:
-    return {
-        r["ref"] for r in read() if r.get("kind") == kind and r.get("repo") == repo and r.get("ref")
-    }
+    return {r["ref"] for r in read(kinds=(kind,), repo=repo) if r.get("ref")}
 
 
 def record(kind: str, repo: str, wall_s: float, **kw: object) -> dict | None:
-    """Append one run of `repo`'s `kind`; the row, or None when it was not written. A row whose
+    """Keep one run of `repo`'s `kind`; the row, or None when it was not written. A row whose
     `ref` is already in the ledger for this subject is not written twice (a resumed ship)."""
     ref = str(kw.get("ref") or "")
     if ref and ref in known_refs(kind, repo):
         return None
+    return _kept(kind, repo, wall_s, **kw)
+
+
+def _kept(kind: str, repo: str, wall_s: float, **kw: object) -> dict | None:
     row = row_for(kind, repo, wall_s, **kw)  # type: ignore[arg-type]
     return row if append(row) else None
 
@@ -262,6 +348,7 @@ def main(argv: list[str]) -> int:
     rec.add_argument("--load", type=float, default=None, help="1-min load at the start")
     rec.add_argument("--ok", type=int, default=1)
     rec.add_argument("--ref", default="")
+    rec.add_argument("--spool", default="", help="the kept GOH_TIMINGS file: its run is the row's")
     rec.add_argument("--timings", default="", help="a GOH_TIMINGS file: control drift, top steps")
     rec.add_argument("--field", action="append", default=[], metavar="K=V")
     sub.add_parser("path")
@@ -274,7 +361,7 @@ def main(argv: list[str]) -> int:
     tl.add_argument("n", nargs="?", type=int, default=10)
     a = ap.parse_args(argv)
     if a.cmd == "path":
-        print(ledger_path())
+        print(where())
         return 0
     if a.cmd == "p95":
         if got := p95(a.kind, a.repo):
@@ -285,7 +372,13 @@ def main(argv: list[str]) -> int:
             print(json.dumps(r, ensure_ascii=False))
         return 0
     drift, steps = timings_facts(a.timings) if a.timings else (None, [])
-    record(
+    if a.spool:  # a batch's gates are one run's spans, each kept (lib/steps_store.py named)
+        import steps_store
+
+        a.ref, write = steps_store.named(a.spool)[0], _kept
+    else:
+        write = record
+    write(
         a.kind,
         repo_name(a.repo) if a.repo else "",
         a.wall,

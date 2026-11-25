@@ -2,6 +2,7 @@
 # lib/land_row.sh -- sourced by tools/land.sh (GOH_PY, GOH); pinned by tests/test_ship_profile.py.
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
 #
+# GOH.STEPTIMES: `land_timings_keep` takes the gate's step rows into goh-cache.db.
 # GOH.RELEASELANDGATE: `land_row LABEL T0 RC`, one profile row for a part of a land (its pre-step,
 # its gate) under a caller's `GOH_TIMINGS` only, so `lib/step_attribution.py` can name a release
 # land's seconds. Pinned by `test_ship_profile.py`.
@@ -13,6 +14,12 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 # 160 s, its rows 6 s, the rest a pre-step pytest that wrote none. A land with no caller profile
 # (the queue's, whose gate rows lib/land_profile.py reads flat) is profiled as before.
 ship_timings="${GOH_TIMINGS:-}"
+# The gate's step rows moved beside the land's log, then into goh-cache.db's `steps`, the file gone
+# (lib/steps_store.py, GOH.STEPTIMES); where that fails the file stays, for lib/state_bounds.py's sweep.
+land_timings_keep() {
+    mv -f "$land_timings" "$GOH_LAND_TIMINGS_KEEP" || return 0
+    "$GOH_PY" "$GOH/lib/steps_store.py" ingest "$GOH_LAND_TIMINGS_KEEP" >/dev/null 2>&1 7>&- 8<&- </dev/null || true
+}
 # land_row LABEL T0 RC -- one row for a part of this land since T0 (EPOCHREALTIME), caller's profile only.
 land_row() {
     [ -n "$ship_timings" ] || return 0

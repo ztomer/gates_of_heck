@@ -61,9 +61,9 @@ FILES: dict[str, FileBound | FileKept] = {
         60000,
         "epoch",
         "state_file",
-        "lib/timing_ledger.py, ~620 rows a day; read by goh budget (median of 5), goh land-profile "
-        "(a week either side), and the backfills (land_e2e, land_attempts, budget_ships, "
-        "cip_history) deduping on refs whose sources live HISTORY_DAYS",
+        "the spool of lib/timing_ledger.py's rows (goh.db's spans, GOH.STEPTIMES): what a writer "
+        "that could not reach goh.db left, drained by the next one that does; its window is the "
+        "readers' (timing_ledger.DAYS)",
     ),
     "landq/lander.log": FileBound(
         None,
