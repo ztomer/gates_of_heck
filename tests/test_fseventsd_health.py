@@ -20,11 +20,12 @@ import fseventsd_health as fh
 
 def test_under_the_bound_is_quiet_and_over_it_is_a_fault_with_its_restart() -> None:
     assert fh.verdict(10_240) is None
-    line = fh.verdict(6_900 * 1024)
+    line = fh.verdict(6_900 * 1024, pid=4242)
     assert line is not None and line.startswith("⚠"), line
     assert "✗" not in line, "the gate refuses a ✗ beside the suite's exit 0 (GOH.FSEVCHURNX)"
     assert "6.7 GB" in line and "1.0 GB" in line, line
-    assert fh.RESTART in line, line
+    assert line.endswith("sudo kill 4242"), line
+    assert "launchctl" not in line, "SIP refuses a kickstart of com.apple.fseventsd"
 
 
 def test_the_bound_is_one_gigabyte_unless_named() -> None:
@@ -47,7 +48,7 @@ def _cli(**env: str) -> subprocess.CompletedProcess:
 def test_the_cli_reads_the_seam_and_names_the_fault_on_stderr() -> None:
     r = _cli(GOH_FSEVENTSD_RSS_KB=str(3 * 1024 * 1024))
     assert r.returncode == 1, r
-    assert "fseventsd" in r.stderr and fh.RESTART in r.stderr, r.stderr
+    assert "fseventsd" in r.stderr and "sudo kill" in r.stderr, r.stderr
     quiet = _cli(GOH_FSEVENTSD_RSS_KB="10240")
     assert quiet.returncode == 0 and quiet.stderr == "", quiet
 

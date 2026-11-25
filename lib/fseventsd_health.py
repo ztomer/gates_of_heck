@@ -36,28 +36,34 @@ import subprocess
 import sys
 
 LIMIT_KB = 1024 * 1024  # 1 GB: a fresh daemon reads ~10-15 MB; the stuck one read 6.9 GB
-RESTART = "sudo launchctl kickstart -k system/com.apple.fseventsd"
+
+
+def restart(pid: int | None) -> str:
+    """The owner's command: launchd starts the daemon again. A `launchctl kickstart -k` is refused:
+    SIP guards the service (150, the owner's run of 2026-11-25). A signal is not, and took 3.6 GB
+    to 7 MB that minute."""
+    return f"sudo kill {pid if pid else '<its pid>'}"
 
 
 def _gb(kb: int) -> str:
     return f"{kb / (1024 * 1024):.1f} GB"
 
 
-def verdict(rss_kb: int, limit_kb: int = LIMIT_KB) -> str | None:
+def verdict(rss_kb: int, limit_kb: int = LIMIT_KB, pid: int | None = None) -> str | None:
     """None when `rss_kb` is under the bound; else the fault line."""
     if rss_kb <= limit_kb:
         return None
     return (
         f"⚠ fseventsd is saturated: {_gb(rss_kb)} RSS, over the {_gb(limit_kb)} bound -- every"
-        f" file event on this Mac waits on it. Restart it (the owner's call): {RESTART}"
+        f" file event on this Mac waits on it. Restart it (the owner's call): {restart(pid)}"
     )
 
 
-def rss_kb() -> int | None:
-    """fseventsd's RSS in KB, or None when there is no such daemon (Linux, a sandbox)."""
+def reading() -> tuple[int, int | None] | None:
+    """(fseventsd's RSS in KB, its pid), or None when there is no such daemon (Linux, a sandbox)."""
     seam = os.environ.get("GOH_FSEVENTSD_RSS_KB")
     if seam is not None:
-        return None if seam == "none" else int(seam)
+        return None if seam == "none" else (int(seam), None)
     try:
         pids = subprocess.run(
             ["pgrep", "-x", "fseventsd"], capture_output=True, text=True, check=False,
@@ -71,15 +77,15 @@ def rss_kb() -> int | None:
         ).stdout.strip()  # fmt: skip
     except (OSError, subprocess.TimeoutExpired):
         return None
-    return int(out) if out.isdigit() else None
+    return (int(out), int(pids[0])) if out.isdigit() else None
 
 
 def main() -> int:
-    kb = rss_kb()
-    if kb is None:
+    got = reading()
+    if got is None:
         return 0
     limit = int(os.environ.get("GOH_FSEVENTSD_LIMIT_KB") or LIMIT_KB)
-    line = verdict(kb, limit)
+    line = verdict(got[0], limit, got[1])
     if line is None:
         return 0
     print(line, file=sys.stderr)
