@@ -6,6 +6,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+import body_tables
 import db_core
 import goh_db
 import pytest
@@ -27,7 +28,7 @@ def found() -> list[str]:
 
 def test_every_row_is_filled_and_a_second_run_changes_none(db) -> None:
     done = {"repaired": 1, "folded": 2, "lands": 2, "ship_pins": 1, "ships": 1,
-            "agent_spawns": 1200}  # fmt: skip
+            "agent_spawns": 1200, **{t.name: 0 for t in body_tables.TABLES}}  # fmt: skip
     assert state_backfill.run() == done
     once = dump(db)
     assert state_backfill.run() == dict.fromkeys(done, 0) and dump(db) == once

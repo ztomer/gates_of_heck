@@ -85,14 +85,8 @@ def _slot(owner: Path) -> tuple[str, int]:
 
 def _queued(con: sqlite3.Connection, q: Path, token: str) -> bool:
     """A request pending or running names TOKEN as its slot (read in the claim's transaction)."""
-    ours, args = state_paths.where("queue", state_paths.forms(landq_state.queue_key(q)))
-    got = con.execute(f"SELECT body FROM requests WHERE {ours} AND state IN ('pending', "
-                      "'running')", args)  # fmt: skip
-    for (body,) in got:
-        with contextlib.suppress(ValueError, AttributeError):
-            if json.loads(body).get("slot") == token:
-                return True
-    return False
+    queued = landq_state.held(con, landq_state.queue_key(q), "pending", "running")
+    return any(req.get("slot") == token for _, req in queued)
 
 
 def _ours(key: str) -> tuple[str, tuple[str, ...]]:

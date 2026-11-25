@@ -1,0 +1,3 @@
+SELECT x.n, x.body,
+  json_patch(json_patch('{}', json_object('day', x.day, 'item', x.item, 'kind', x.kind, 'sha', x.sha, 'source', x.source, 'script', x.script, 'step', x.step, 'test', x.test, 'failed', x.failed, 'missed', x.missed, 'selected', x.selected, 'steps', x.steps, 'steps_missed', x.steps_missed, 'miss', CASE x.miss WHEN 1 THEN json('true') WHEN 0 THEN json('false') END, 'pre_ran', CASE x.pre_ran WHEN 1 THEN json('true') WHEN 0 THEN json('false') END, 'changed', json(nullif(nullif((SELECT json_group_array(c.value ORDER BY c.ord) FROM miss_files c WHERE c.n = x.n), '[]'), '{}')))), coalesce(x.rest, '{}')) AS doc
+FROM selection_misses x

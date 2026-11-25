@@ -264,12 +264,12 @@ def test_the_check_of_an_older_file_and_of_none(db, tmp_path, capsys) -> None:
 
 
 def test_a_copy_of_goh_without_the_numbers_writes_on(db, tmp_path) -> None:
-    """Every one of 0011 to 0014 is safe: code of schema 10 writes the migrated file."""
+    """Every one of 0011 to 0016 is safe: code of schema 10 writes the migrated file."""
     old = ten(tmp_path)
     with db_core.connect(old):
         pass
     with goh_db.connect() as con:
-        assert json.loads(db_core.version(con)["meta"]["old_writers_safe"]) == [11, 12, 13, 14]
+        assert json.loads(db_core.version(con)["meta"]["old_writers_safe"]) == [11, 12, 13, 14, 16]
     with db_core.transaction(old) as con:
         con.execute("INSERT INTO lands(queue, run, at, body) VALUES ('/q', '1', 1, ?)",
                     (json.dumps({"guards": ["g"], "pre_s": 2}),))  # fmt: skip

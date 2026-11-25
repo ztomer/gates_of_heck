@@ -53,6 +53,8 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import body_columns  # lib/, on the path from the line above
+import body_tables
 import goh_db  # lib/, on the path from the line above
 import land_cause
 import land_columns
@@ -211,12 +213,15 @@ def _ledger_row(key: str, name: str, row: dict) -> tuple:
 def ledger(q: Path, name: str) -> list[dict]:
     """Ledger NAME of queue Q, in the order its rows were appended."""
     table, bodies = LEDGERS[name][0], []
+    out: list[dict] = []
     with _reader() as con:
         if con is not None:
             ours, args = _ours(q)
-            sql = f"SELECT body FROM {table} WHERE {ours} ORDER BY n"
-            bodies = [b for (b,) in con.execute(sql, args)]
-    out = []
+            if name == "misses":
+                out = [doc for _, doc in body_columns.read(con, body_tables.MISSES, ours, args)]
+            else:
+                sql = f"SELECT body FROM {table} WHERE {ours} ORDER BY n"
+                bodies = [b for (b,) in con.execute(sql, args)]
     for body in bodies:
         with contextlib.suppress(ValueError):
             out.append(json.loads(body))
@@ -226,11 +231,15 @@ def ledger(q: Path, name: str) -> list[dict]:
 def insert(con: sqlite3.Connection, key: str, name: str, rows: list[dict]) -> int:
     """ROWS onto ledger NAME of queue KEY in CON's transaction, each body once; how many new."""
     table, col = LEDGERS[name]
-    before = con.total_changes
-    sql = f"INSERT OR IGNORE INTO {table} (queue, at, {col}, body) VALUES (?, ?, ?, ?)"
     key = state_paths.column(con, key)
-    con.executemany(sql, [_ledger_row(key, name, state_paths.put(con, name, r)) for r in rows])
-    return con.total_changes - before
+    if name == "misses":
+        own = [(r, _ledger_row(key, name, r)) for r in rows]
+        return sum(body_columns.write(con, body_tables.MISSES, r,
+                                      {"queue": q, "at": at, "day": day}, ignore=True)
+                   for r, (q, at, day, _) in own)  # fmt: skip
+    sql = f"INSERT OR IGNORE INTO {table} (queue, at, {col}, body) VALUES (?, ?, ?, ?)"
+    kept = [_ledger_row(key, name, state_paths.put(con, name, r)) for r in rows]
+    return con.executemany(sql, kept).rowcount  # total_changes counts a trigger's rows too
 
 
 def append(q: Path, name: str, rows: list[dict]) -> int:

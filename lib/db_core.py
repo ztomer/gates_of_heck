@@ -281,7 +281,12 @@ def migrate(con: sqlite3.Connection, seam: Seam) -> set[int]:
     have = {r[0] for r in con.execute("SELECT version FROM schema_version")}
     missing = db_schema.on_open(known, have)
     stamp = writer() if missing or not have else ""
-    for n in missing:
+    todo = missing
+    if missing and not have:
+        safe_ones = {n for n in missing if _safe(seam, n, True)}
+        if db_schema.fresh(con, {n: known[n] for n in missing}, stamp, safe_ones):
+            todo = []
+    for n in todo:
         safe = _safe(seam, n, not have)
         con.execute("BEGIN IMMEDIATE")
         try:

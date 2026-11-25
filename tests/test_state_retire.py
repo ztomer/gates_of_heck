@@ -67,7 +67,7 @@ def test_the_hook_ledgers_read_back_equal_are_archived_then_deleted(home: Path) 
     assert (to / "cache" / "agent-spawns.jsonl").read_text().endswith("{torn")  # byte for byte
     # every line in once, the duplicate twice; the row already there not again
     assert sorted(r["tool_use_id"] for r in hl.spawns()) == ["toolu_1", "toolu_1", "toolu_2"]
-    assert hl.lanes() == [{"at": "2026-11-23T01:00:00Z", "n": 1}]
+    assert hl.lanes() == [{"at": "2026-11-23T01:00:00+00:00", "n": 1}]
     assert hl.candidates() == [{"id": "FAULTS.a"}]
     assert hl.watch() == {"ran_at": "r0"}
     assert sr.stray() == []

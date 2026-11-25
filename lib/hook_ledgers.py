@@ -20,8 +20,9 @@ hook-ledgers` (lib/state_retire.py) imported each file, read it back equal and a
 goh.db reads as unknown (goh_db.Unknown), never as an empty ledger.
 
 A SPAWN'S FIELDS are columns and child rows (lib/spawn_columns.py, GOH.SPAWNKEY), its items among
-them. A row its table refuses is kept in DEAD beside goh.db: never retried, so one such row holds
-no other, and named by `goh state check`. Pinned by tests/test_hook_ledgers.py.
+them; a lane start's too (lib/body_columns.py, GOH.BODYCOLS). A row its table refuses is kept in
+DEAD beside goh.db: never retried, so one such row holds no other, and named by `goh state check`.
+Pinned by tests/test_hook_ledgers.py.
 
 GOH.STATEDBS4: the hook and cache ledgers in goh.db (0005): `agent_spawns` (the model-choice hook's
 spawn and outcome rows, was `agent-spawns.jsonl`), `lane_starts` (lane admission's verdicts, was
@@ -57,7 +58,9 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import goh_db  # the lib directory, on the path from the line above
+import body_columns  # the lib directory, on the path from the line above
+import body_tables
+import goh_db
 import lock_order
 import spawn_columns
 import state_paths
@@ -115,8 +118,8 @@ def insert(con: sqlite3.Connection, table: str, row: dict) -> None:
     if table == SPAWNS:
         spawn_columns.write(con, row)
     else:
-        con.execute(f"INSERT INTO {table}(at, body) VALUES (?, ?)",
-                    (spawn_columns.instant(row.get("at")) or 0.0, _dump(row)))  # fmt: skip
+        at = spawn_columns.instant(row.get("at")) or 0.0
+        body_columns.write(con, body_tables.LANES, row, {"at": at})
 
 
 # -- the spill: a write that waited HOOK_BUSY_MS ------------------------------------------------
@@ -264,7 +267,7 @@ def rows(table: str, db: Path | None = None) -> list[dict]:
             con.execute("BEGIN")  # a spawn and its child rows are one snapshot
             got = spawn_columns.read(con)
         elif con is not None:
-            got = [json.loads(b) for (b,) in con.execute(f"SELECT body FROM {table} ORDER BY n")]
+            got = [doc for _, doc in body_columns.read(con, body_tables.LANES)]
         got = [state_paths.got(table, r) for r in got]
     if db is not None:
         return got

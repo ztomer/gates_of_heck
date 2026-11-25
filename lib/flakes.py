@@ -130,7 +130,7 @@ def _record(test: str, repo: str, sha: str, site: str, logs: tuple[str, str],
     if load is None:
         with contextlib.suppress(OSError):
             load = round(os.getloadavg()[0], 2)
-    now = time.time()
+    now = round(time.time(), 3)  # `at` and `epoch` are one instant: its column is the epoch
     k = key(test)
     with _test_lock(k):
         rows = small_stores.flakes(root(), test)
@@ -138,7 +138,7 @@ def _record(test: str, repo: str, sha: str, site: str, logs: tuple[str, str],
         rec = {"id": f"{k}.{n}", "test": test, "repo": repo, "sha": sha, "load": load,
                "first": first, "second": second, "log": {"first": logs[0], "second": logs[1]},
                "site": site, "at": dt.datetime.fromtimestamp(now, dt.UTC).isoformat(
-                   timespec="seconds"), "epoch": round(now, 3)}  # fmt: skip
+                   timespec="seconds"), "epoch": now}  # fmt: skip
         small_stores.flake_add(root(), test, rec)
         since = 0
         for i, r in enumerate(rows):

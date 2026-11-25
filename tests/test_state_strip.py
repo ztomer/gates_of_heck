@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 import goh_db
+import hook_ledgers
 import land_records
 import pytest
 import ship_records
@@ -61,11 +62,15 @@ def test_every_document_the_columns_give_back_goes(db, on, tmp_path) -> None:
     ship_records.put(SHIP)
     ship_records.put({"result": "/s/results/Fin_z/x.json", "status": "ok", "repo": "/r/Fin/z"})
     land_records.write(tmp_path, "01795000000000000000-A.B", LAND)
+    lane = {"at": LAND["at"], "verdict": "room", "v": 1, "why": ["w"]}
+    assert hook_ledgers.append(hook_ledgers.LANES, lane) is None
     with goh_db.ro() as con:
         docs = [(t, k, body) for t in state_columns.TABLES
                 for _, k, body, _, _ in state_columns.rendered(con, t)]  # fmt: skip
-    assert len(docs) == 458 and state_strip.run(key) == (458, [])
-    assert [left(t) for t in state_columns.TABLES] == [0, 0, 0, 0]
+    land_records.append(tmp_path, "misses", [{"kind": "miss", "test": t} for t in "ab"])
+    assert len(docs) == 459 and state_strip.run(key) == (459, [])
+    assert {t: left(t) for t in state_columns.TABLES if left(t)} == {"selection_misses": 2}
+    assert hook_ledgers.lanes()[0]["why"] == ["w"]
     with goh_db.ro() as con:
         repos = con.execute("SELECT repo FROM ships ORDER BY repo").fetchall()
         assert repos == [("Fin/z",), ("goh",)]  # the keys: the first was Fin_z
@@ -76,7 +81,7 @@ def test_every_document_the_columns_give_back_goes(db, on, tmp_path) -> None:
     once = dump(db)
     assert state_strip.run(key) == (0, []) and dump(db) == once
     with goh_db.transaction() as con:  # the columns alone render every one of them again
-        for t in state_columns.TABLES:
+        for t in (t for t in state_columns.TABLES if t not in state_strip.KEPT):
             con.execute(f"UPDATE {t} SET body = '{{ }}'")
         again = {(t, k): doc for t in state_columns.TABLES
                  for _, k, _, doc, _ in state_columns.rendered(con, t)}  # fmt: skip

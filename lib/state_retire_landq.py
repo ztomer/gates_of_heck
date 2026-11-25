@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
-import json
 import os
 import sqlite3
 import sys
@@ -135,12 +134,8 @@ def load(con: sqlite3.Connection, paths: list[Path]) -> None:
         rec, run, state = _read(p), p.stem, p.parent.name
         n = 0
         if rec is not None and not _row(con, queue, run) and not _landed(con, queue, run):
-            if state == landq_state.EARLY:
-                n = con.execute("INSERT OR IGNORE INTO early (queue, run, at, body) VALUES "
-                                "(?, ?, ?, ?)", (queue, run, p.stat().st_mtime,
-                                                 json.dumps(rec))).rowcount  # fmt: skip
-            else:
-                n = landq_state._insert(con, queue, run, rec, state, "OR IGNORE")
+            at = p.stat().st_mtime
+            n = int(landq_state.insert(con, queue, run, rec, state, at, ignore=True))
         table = "early" if state == landq_state.EARLY else "requests"
         sha = hashlib.sha256(p.read_bytes()).hexdigest()
         con.execute("INSERT OR IGNORE INTO imports(store, source, sha256, rows, at) "

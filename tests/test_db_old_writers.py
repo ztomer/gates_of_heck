@@ -123,7 +123,7 @@ def test_the_shipped_safe_numbers_are_the_columns_files(tmp_path, monkeypatch) -
     monkeypatch.setenv("GOH_DB", str(tmp_path / "goh.db"))
     with goh_db.connect() as con:
         meta = db_core.version(con)["meta"]
-    assert db_schema.safe_numbers(meta) == {11, 12, 13, 14}
+    assert db_schema.safe_numbers(meta) == {11, 12, 13, 14, 16}
 
 
 def test_an_older_copy_neither_sweeps_nor_judges_a_safe_files_tables(tmp_path, monkeypatch) -> None:

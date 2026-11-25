@@ -8,6 +8,9 @@ head lines and the one way it is applied (GOH.OLDWRITERS; split from lib/db_core
     migrations(seam)   every file the seam ships, by number
     statements(sql)    its statements, whole
     old_writers(sql), by_command(sql), withs(sql)   its head lines
+    fresh(con, ...)    every file of an empty database, in one transaction, its views and triggers
+                       last: each ALTER reads the whole schema again, so 0016's 226 of them after
+                       0011's triggers cost 0.8 s of CPU, and 0.02 s before them (GOH.BODYCOLS)
     apply(con, ...)    the statements, the schema_version row and, when safe, the number in
                        meta.old_writers_safe, inside the caller's transaction
     version(con), top(con), ahead(con, seam), stamp_rows(con, ...)   what the file says it holds
@@ -107,10 +110,37 @@ def safe_numbers(meta: dict[str, str]) -> set[int]:
     return {n for n in got if type(n) is int} if isinstance(got, list) else set()
 
 
-def apply(con: sqlite3.Connection, n: int, p: Path, stamp: str, safe: bool) -> None:
-    """File P as number N, inside the caller's transaction."""
+LATE = re.compile(r"(?:--[^\n]*\n|\s)*(?:CREATE|DROP)\s+(?:VIEW|TRIGGER)\b", re.IGNORECASE)
+
+
+def fresh(con: sqlite3.Connection, files: dict[int, Path], stamp: str, safe: set[int]) -> bool:
+    """FILES, all of them, into a file that holds no number; False when it holds one by now."""
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        if con.execute("SELECT 1 FROM schema_version").fetchone():
+            con.execute("ROLLBACK")  # another process made it while this one waited
+            return False
+        late: list[str] = []
+        for n, p in sorted(files.items()):
+            apply(con, n, p, stamp, n in safe, late)
+        for stmt in late:
+            con.execute(stmt)
+        con.execute("COMMIT")
+    except BaseException:
+        con.execute("ROLLBACK")
+        raise
+    return True
+
+
+def apply(con: sqlite3.Connection, n: int, p: Path, stamp: str, safe: bool,
+          late: list[str] | None = None) -> None:  # fmt: skip
+    """File P as number N, inside the caller's transaction; its views and triggers onto LATE, when
+    the caller runs them after every file (no row is there for a trigger to act on)."""
     for stmt in statements(p.read_text(encoding="utf-8")):
-        con.execute(stmt)
+        if late is not None and LATE.match(stmt):
+            late.append(stmt)
+        else:
+            con.execute(stmt)
     con.execute("INSERT INTO schema_version(version, name, applied_at, writer) VALUES (?, ?, ?, ?)",
                 (n, p.stem, time.time(), stamp))  # fmt: skip
     if safe:

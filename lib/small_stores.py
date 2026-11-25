@@ -24,7 +24,8 @@ GOH.STATEDBS3: goh's small state stores in goh.db (0004): `kv` (one JSON documen
 `estate_audit`, `pin_push`, `pin_sweeps`, `cache-evict`, `wf_pin.pins`; `get`/`update`/`put`, a
 read-change-write in one transaction), `commit_gated` (`gated_add`/`gated`: every tree a commit
 gate passed) and `flakes` (`flake_add`/`flakes`: the flake register's records and filings, in the
-order written). A store keeps its file's path (its env override) and its rows live in the goh.db
+order written; their fields columns, `body_columns.py`). A store keeps its file's path (its env
+override) and its rows live in the goh.db
 beside it (`db(p)`: `GOH_DB` when set), so a caller naming its own file has its own database. The
 path is identity only: no store reads or writes its file (retired by `state_retire.py`); no
 database reads as no value. `small_stores.py export [STATE_DIR] [--to DIR]`.
@@ -53,7 +54,9 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import goh_db  # the lib directory, on the path from the line above
+import body_columns  # the lib directory, on the path from the line above
+import body_tables
+import goh_db
 import state_paths
 
 # kv names: each was the file `<name>.json` (kv_name), beside the database (the estate audit's,
@@ -155,6 +158,10 @@ def _epoch(at: object) -> float:
         return 0.0
 
 
+def _stamp(at: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at))
+
+
 def gated_add(p: Path | str, row: dict) -> None:
     """One commit-gated row ({tree, repo, at}) for the ledger whose file is P."""
     p = Path(p)
@@ -165,12 +172,15 @@ def gated_add(p: Path | str, row: dict) -> None:
 
 
 def gated(p: Path | str) -> list[dict]:
-    """The commit-gated rows of the ledger whose path is P, oldest first."""
+    """The commit-gated rows of the ledger whose path is P, oldest first: {tree, at}, their columns
+    (the document's `repo`, a worktree's path, is read by nothing: GOH.BODYCOLS)."""
     with _read(Path(p)) as con:
         if con is None:
             return []
-        return [state_paths.got("commit_gated", json.loads(b))
-                for (b,) in con.execute("SELECT body FROM commit_gated ORDER BY n")]  # fmt: skip
+        return [
+            {"tree": tree, "at": _stamp(at)}
+            for tree, at in con.execute("SELECT tree, at FROM commit_gated ORDER BY n")
+        ]
 
 
 # -- flakes: the flake register --------------------------------------------------------------
@@ -179,10 +189,9 @@ def gated(p: Path | str) -> list[dict]:
 def flake_add(d: Path | str, test: str, row: dict) -> None:
     """One row of TEST (a record, or a filing) in the register whose directory is D."""
     d = Path(d)
+    own = {"epoch": float(row.get("epoch") or time.time()), "test": test}
     with goh_db.refusable(), goh_db.transaction(db(d)) as con:
-        con.execute("INSERT INTO flakes(epoch, test, body) VALUES (?, ?, ?)",
-                    (float(row.get("epoch") or time.time()), test,
-                     _dump(state_paths.put(con, "flakes", row))))  # fmt: skip
+        body_columns.write(con, body_tables.FLAKES, state_paths.put(con, "flakes", row), own)
 
 
 def flakes(d: Path | str, test: str | None = None) -> list[dict]:
@@ -191,10 +200,11 @@ def flakes(d: Path | str, test: str | None = None) -> list[dict]:
     with contextlib.ExitStack() as stack:
         try:
             con = stack.enter_context(goh_db.ro(db(Path(d))))
-            rows = con.execute("SELECT test, body FROM flakes ORDER BY n").fetchall()
+            rows = body_columns.read(con, body_tables.FLAKES)
         except (OSError, sqlite3.Error):
             rows = []
-    return [state_paths.got("flakes", json.loads(b)) for t, b in rows if test is None or t == test]
+    return [state_paths.got("flakes", doc) for own, doc in rows
+            if test is None or own["test"] == test]  # fmt: skip
 
 
 # -- the export ----------------------------------------------------------------------------------

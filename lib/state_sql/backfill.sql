@@ -18,3 +18,10 @@ INSERT OR REPLACE INTO lands (queue, run, item, sha, enqueued, repo, mode, state
 INSERT OR REPLACE INTO ship_pins (result, run, body, at) SELECT result, run, body, at FROM ship_pins WHERE rest IS NULL AND json_valid(body) LIMIT 500;
 INSERT OR REPLACE INTO ships (result, run, repo, item, sha, status, started, finished, version, body, at) SELECT result, run, repo, item, sha, status, started, finished, version, body, at FROM ships WHERE rest IS NULL AND json_valid(body) LIMIT 500;
 INSERT OR REPLACE INTO agent_spawns (n, at, event, agent, item, body) SELECT n, at, event, agent, item, body FROM agent_spawns WHERE rest IS NULL AND json_valid(body) LIMIT 500;
+INSERT OR REPLACE INTO lane_starts (n, at, body) SELECT n, at, body FROM lane_starts WHERE rest IS NULL AND json_valid(body) LIMIT 500;
+INSERT OR REPLACE INTO flakes (n, epoch, test, body) SELECT n, epoch, test, body FROM flakes WHERE rest IS NULL AND json_valid(body) LIMIT 500;
+INSERT OR REPLACE INTO selection_misses (n, queue, day, at, run, body) SELECT n, queue, day, at, run, body FROM selection_misses WHERE rest IS NULL AND json_valid(body) LIMIT 500;
+INSERT OR REPLACE INTO reuse_shadow (n, epoch, path, body) SELECT n, epoch, path, body FROM reuse_shadow WHERE rest IS NULL AND json_valid(body) LIMIT 500;
+INSERT OR REPLACE INTO reuse_audit (path, body, at) SELECT path, body, at FROM reuse_audit WHERE rest IS NULL AND json_valid(body) LIMIT 500;
+INSERT OR REPLACE INTO requests (queue, run, item, repo, sha, mode, state, pid, pid_stamp, until, filed_at, body) SELECT queue, run, item, repo, sha, mode, state, pid, pid_stamp, until, filed_at, body FROM requests WHERE rest IS NULL AND json_valid(body) LIMIT 500;
+INSERT OR REPLACE INTO early (queue, run, at, body) SELECT queue, run, at, body FROM early WHERE rest IS NULL AND json_valid(body) LIMIT 500;

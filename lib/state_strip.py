@@ -32,6 +32,7 @@ import goh_db
 import state_columns
 
 BATCH = 200
+KEPT = ("selection_misses",)  # its key is its document: the contract remakes the table
 CONTRACT = 17  # 0017 drops lands.body: the code that ships it reads the columns
 
 
@@ -82,7 +83,7 @@ def run(repo_key: Callable[[str], str]) -> tuple[int, list[str]]:
     """Every row of every table: (rows stripped, one line per row that stays whole)."""
     _may()
     total, whole = 0, []
-    for t in state_columns.TABLES:
+    for t in (t for t in state_columns.TABLES if t not in KEPT):
         after: int | None = -(1 << 62)
         while after is not None:
             after, done, kept = _batch(t, after, repo_key)

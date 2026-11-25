@@ -1,7 +1,8 @@
 """lib/state_columns.py -- `goh state check`: the rows of goh.db that keep a document beside the
 columns it became (GOH.LANDCOLS), each compared with what its columns give back.
 
-    TABLES             lands, ship_pins, ships, agent_spawns (schema files 0011 to 0013)
+    TABLES             lands, ship_pins, ships, agent_spawns (schema files 0011 to 0013) and
+                       lib/body_tables.py's seven (0016, GOH.BODYCOLS)
     rendered(con, t)   (rowid, key, document, the document its columns render, rest) per row of T
                        with a document, from lib/state_sql/doc_T.sql
     same(t, doc, again)   the two say the same: what section 0 of the data plan counts as equal
@@ -15,7 +16,8 @@ not folded into its land. A row its table refused (hook_ledgers.dead). A child r
 gone. A running ship is not compared: its steps write its record and its pins in turn.
 
 EQUAL, BUT SPELLED ANOTHER WAY: null, {} and [] are an absent key; a land's `at` and a spawn's
-`time` are one instant in any spelling; a ship's `repo` is its checkout's path in the document and
+`time` are one instant in any spelling; a lane start's `v` is a constant and its room's `why` the
+row's own; a ship's `repo` is its checkout's path in the document and
 the repo's name in the column; `schema` of ships and pins is a constant, not stored.
 
 TWO LANGUAGES: the SQL is files (lib/state_sql), so the Rust binary can read the same ones.
@@ -35,14 +37,16 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import body_tables  # lib/, on the path from the line above
 import db_bounds_with  # lib/, on the path from the line above
 import db_schema
 import goh_db
 import hook_ledgers
 
 SQL = Path(__file__).resolve().with_name("state_sql")
-TABLES = ("lands", "ship_pins", "ships", "agent_spawns")
-INSTANT = {"lands": "at", "agent_spawns": "time"}
+TABLES = ("lands", "ship_pins", "ships", "agent_spawns", *(t.name for t in body_tables.TABLES))
+INSTANT = {"lands": "at", "agent_spawns": "time", "lane_starts": "at", "flakes": "at"}
+RUNS = (body_tables.REQUESTS.name, body_tables.EARLY.name)  # one run is in one of them
 IN_FLIGHT = "status IN ('running', 'bisecting')"  # a ship its worker still writes
 # a red cause no document of its land has, which the fold would put there (backfill.sql's second)
 UNFOLDED = """SELECT l.rowid FROM red_causes r JOIN lands l ON l.queue = r.queue AND l.run = r.run
@@ -105,7 +109,20 @@ def _spelled(table: str, doc: Any) -> Any:
             doc[INSTANT[table]] = _instant(doc[INSTANT[table]])
         if table in ("ships", "ship_pins"):
             doc.pop("schema", None)
+        if table == "lane_starts":
+            _lane(doc)
     return doc
+
+
+def _lane(doc: dict) -> None:
+    """A lane start without what its columns say once: `v`, and the room's `why` the row's own."""
+    reading = doc.get("reading") if isinstance(doc.get("reading"), dict) else {}
+    room = reading.get("room") if isinstance(reading.get("room"), dict) else {}
+    for d in (doc, reading):
+        if d.get("v") == 1:
+            del d["v"]
+    if room.get("why") == doc.get("why"):
+        room.pop("why", None)
 
 
 def _typed(a: Any, b: Any) -> bool:
@@ -146,19 +163,23 @@ def orphans(con: sqlite3.Connection) -> list[str]:
     """One line per child table holding rows whose parent row is gone (no foreign keys, R10)."""
     out, kin = [], db_bounds_with.withs(goh_db.SEAM)
     have = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    for parent, child in sorted((p, c) for p, kids in kin.items() for c in kids):
-        if {parent, child} <= have:
-            join = " AND ".join(f"p.{k} = c.{k}" for k in key(con, parent))
-            n = con.execute(f"SELECT count(*) FROM {child} c WHERE NOT EXISTS "
-                            f"(SELECT 1 FROM {parent} p WHERE {join})").fetchone()[0]  # fmt: skip
-            out += [f"{child}: {n} of its rows have no {parent} row"] * bool(n)
+    pairs = {((p,), c) for p, kids in kin.items() for c in kids if p not in RUNS}
+    pairs |= {(RUNS, c) for c in kin.get(RUNS[0], [])}
+    for parents, child in sorted(pairs):
+        if {*parents, child} <= have:
+            gone = " AND ".join(
+                f"NOT EXISTS (SELECT 1 FROM {p} p WHERE "
+                + " AND ".join(f"p.{k} = c.{k}" for k in key(con, p)) + ")"
+                for p in parents)  # fmt: skip
+            n = con.execute(f"SELECT count(*) FROM {child} c WHERE {gone}").fetchone()[0]
+            out += [f"{child}: {n} of its rows have no {' or '.join(parents)} row"] * bool(n)
     return out
 
 
 def check(con: sqlite3.Connection) -> list[str]:
     """Every line `goh state check` says (module doc)."""
     if not migrated(con):
-        return ["goh.db has no columns for its documents yet: no schema file 0011 to 0013"]
+        return ["goh.db has no columns for its documents yet: no schema file 0011 to 0016"]
     out: list[str] = []
     for t in TABLES:
         n, bad = unfilled(con, t)
@@ -211,4 +232,4 @@ def writable() -> None:
     with goh_db.connect() as con:  # migrates; a newer goh's file is read-only
         if not migrated(con):
             raise sqlite3.OperationalError(f"goh.db holds {db_schema.version(con)['applied']}: "
-                                           "no schema file 0011 to 0013")  # fmt: skip
+                                           "no schema file 0011 to 0016")  # fmt: skip

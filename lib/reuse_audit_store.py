@@ -9,7 +9,8 @@ path; every compared sample is a row of `reuse_shadow` (the review's evidence).
                    test does, so each test has its own audit, as it had its own files), else
                    goh.db's own path (GOH_DB, else $XDG_STATE_HOME/goh/goh.db)
     get(name)      the record of path NAME, or None
-    put(rec)       write REC whole as its path's record
+    put(rec)       write REC whole as its path's record (its fields are columns and child rows,
+                   lib/body_columns.py)
     shadow_add(row)  one compared sample
     shadow()       every sample, oldest first
 
@@ -35,7 +36,6 @@ back and archives them); `lock_path()` is `reuse/audit.lock`.
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import sqlite3
 import sys
@@ -44,6 +44,8 @@ from collections.abc import Iterator
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import body_columns  # lib/, beside this file: a record and a sample as columns
+import body_tables
 import goh_db  # lib/, beside this file: the one door to goh.db
 import reuse_store  # lib/: the reuse root (GOH_REUSE_DIR)
 import state_paths
@@ -68,10 +70,6 @@ def _named() -> bool:
     return NAMED is not None
 
 
-def _dump(row: object) -> str:
-    return json.dumps(row, sort_keys=True)
-
-
 @contextlib.contextmanager
 def _read() -> Iterator[sqlite3.Connection | None]:
     """The database read-only, or None when there is none (or it predates 0008)."""
@@ -87,32 +85,29 @@ def _read() -> Iterator[sqlite3.Connection | None]:
 def get(name: str) -> dict | None:
     """Path NAME's record, or None."""
     with _read() as con:
-        row = None if con is None else con.execute(
-            "SELECT body FROM reuse_audit WHERE path=?", (name,)).fetchone()  # fmt: skip
-    rec = json.loads(row[0]) if row else None
-    return state_paths.got("reuse_audit", rec) if isinstance(rec, dict) else None
+        got = [] if con is None else body_columns.read(
+            con, body_tables.AUDIT, "path = ?", (name,), "path")  # fmt: skip
+    return state_paths.got("reuse_audit", got[0][1]) if got else None
 
 
 def put(rec: dict) -> None:
     """REC written whole as the record of its path (`rec["path"]`)."""
     with goh_db.refusable(), goh_db.transaction(db(), _named()) as con:
-        con.execute("INSERT INTO reuse_audit(path, body, at) VALUES (?, ?, ?) ON CONFLICT(path) "
-                    "DO UPDATE SET body=excluded.body, at=excluded.at",
-                    (str(rec["path"]), _dump(state_paths.put(con, "reuse_audit", rec)),
-                     time.time()))  # fmt: skip
+        doc, own = state_paths.put(con, "reuse_audit", rec), {"path": str(rec["path"])}
+        own["at"], key = time.time(), (own["path"],)
+        if not body_columns.update(con, body_tables.AUDIT, doc, own, "path = ?", key):
+            body_columns.write(con, body_tables.AUDIT, doc, own)
 
 
 def shadow_add(row: dict) -> None:
     """One compared sample (`row["path"]`, `row["epoch"]`)."""
     with goh_db.refusable(), goh_db.transaction(db(), _named()) as con:
-        con.execute("INSERT INTO reuse_shadow(epoch, path, body) VALUES (?, ?, ?)",
-                    (float(row.get("epoch") or time.time()), str(row.get("path") or ""),
-                     _dump(state_paths.put(con, "reuse_shadow", row))))  # fmt: skip
+        own = {"epoch": float(row.get("epoch") or time.time()), "path": str(row.get("path") or "")}
+        body_columns.write(con, body_tables.SHADOW, state_paths.put(con, "reuse_shadow", row), own)
 
 
 def shadow() -> list[dict]:
     """Every compared sample, in the order written."""
     with _read() as con:
-        rows = [] if con is None else [
-            b for (b,) in con.execute("SELECT body FROM reuse_shadow ORDER BY n")]  # fmt: skip
-    return [state_paths.got("reuse_shadow", json.loads(b)) for b in rows]
+        rows = [] if con is None else body_columns.read(con, body_tables.SHADOW)
+    return [state_paths.got("reuse_shadow", doc) for _, doc in rows]

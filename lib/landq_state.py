@@ -27,7 +27,8 @@ tests/test_landq_state.py.
 
 The landing queue's requests as goh.db rows (GOH.LANDQDB, migration 0007 `requests`): one row per
 request, its `state` enqueuing, pending or running, still named `<q>/<state>/<run>.json` (a key,
-never a file). `put` files one (replacing the enqueue's pre-step marker in the same transaction),
+never a file), its fields columns and child rows (`body_columns.py`). `put` files one (replacing
+the enqueue's pre-step marker in the same transaction),
 `move` is one UPDATE (FileNotFoundError when another mover won), `get`/`listing`/`rows`/`any_in`
 read, `drop` removes, `finish` deletes it inside the land record's own transaction
 (`land_records.write(..., request=)`), so a SIGKILL anywhere leaves a request in exactly one state;
@@ -49,6 +50,8 @@ from collections.abc import Iterator
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import body_columns  # lib/, on the path from the line above
+import body_tables
 import goh_db  # lib/, on the path from the line above
 import state_paths
 
@@ -93,13 +96,15 @@ def key(path: Path) -> tuple[str, str, str]:
     return queue_key(path.parent.parent), state, path.name.removesuffix(".json")
 
 
-def _cols(req: dict) -> tuple:
+def _cols(req: dict) -> dict:
+    """REQ's keys that `requests` had columns for before 0016 (`landq_v1` reads them)."""
     pid = req.get("pid")
     until = req.get("until")
-    return (str(req.get("item") or ""), str(req.get("repo") or ""), str(req.get("sha") or ""),
-            str(req.get("mode") or ""), pid if isinstance(pid, int) else None,
-            req.get("pid_stamp") if isinstance(req.get("pid_stamp"), str) else None,
-            float(until) if isinstance(until, (int, float)) else None)  # fmt: skip
+    return {"item": str(req["item"] or "") if "item" in req else None,
+            "repo": str(req.get("repo") or ""), "sha": str(req.get("sha") or ""),
+            "mode": str(req.get("mode") or ""), "pid": pid if isinstance(pid, int) else None,
+            "pid_stamp": req["pid_stamp"] if isinstance(req.get("pid_stamp"), str) else None,
+            "until": float(until) if isinstance(until, (int, float)) else None}  # fmt: skip
 
 
 def _filed(run: str) -> float:
@@ -107,16 +112,16 @@ def _filed(run: str) -> float:
     return int(ns) / 1e9 if ns.isdigit() and len(ns) > 12 else time.time()
 
 
-INSERT = ("INSERT INTO requests (queue, run, item, repo, sha, mode, pid, pid_stamp, until, state, "
-          "filed_at, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")  # fmt: skip
-
-
-def _insert(con: sqlite3.Connection, queue: str, run: str, req: dict, state: str, how: str = ""
-            ) -> int:  # fmt: skip
-    sql = INSERT.replace("INSERT", f"INSERT {how}") if how else INSERT
+def insert(con: sqlite3.Connection, queue: str, run: str, req: dict, state: str,
+           at: float | None = None, ignore: bool = False) -> bool:  # fmt: skip
+    """REQ as RUN's row in STATE, in CON's transaction (an early one filed AT)."""
     queue, req = state_paths.column(con, queue), state_paths.put(con, "requests", req)
-    cur = con.execute(sql, (queue, run, *_cols(req), state, _filed(run), json.dumps(req)))
-    return cur.rowcount
+    own = {"queue": queue, "run": run}
+    if state == EARLY:
+        own["at"] = time.time() if at is None else at
+        return body_columns.write(con, body_tables.EARLY, req, own, ignore)
+    own |= {**_cols(req), "state": state, "filed_at": _filed(run)}
+    return body_columns.write(con, body_tables.REQUESTS, req, own, ignore)
 
 
 def put(q: Path, run: str, req: dict, state: str = "pending", replaces: str | None = None) -> Path:
@@ -129,12 +134,7 @@ def put(q: Path, run: str, req: dict, state: str = "pending", replaces: str | No
         if replaces:
             ours, args = _ours(queue)
             con.execute(f"DELETE FROM requests WHERE {ours} AND run = ?", (*args, replaces))
-        if state == EARLY:
-            con.execute("INSERT INTO early (queue, run, at, body) VALUES (?, ?, ?, ?)",
-                        (state_paths.column(con, queue), run, time.time(),
-                         json.dumps(state_paths.put(con, "requests", req))))  # fmt: skip
-        else:
-            _insert(con, queue, run, req, state)
+        insert(con, queue, run, req, state)
     return name(q, state, run)
 
 
@@ -149,28 +149,26 @@ def _reader() -> Iterator[sqlite3.Connection | None]:
         yield None
 
 
-def _body(raw: str) -> dict | None:
-    try:
-        rec = json.loads(raw)
-    except ValueError:
-        return None
-    return state_paths.got("requests", rec) if isinstance(rec, dict) else None
+def held(con: sqlite3.Connection, queue: str, *states: str, run: str | None = None
+         ) -> list[tuple[str, dict]]:  # fmt: skip
+    """(run, request) of QUEUE's requests in STATES (EARLY's own table alone), RUN's only when
+    named, oldest first, read by CON."""
+    ours, args = _ours(queue)
+    if run is not None:
+        ours, args = f"{ours} AND run = ?", (*args, run)
+    t = body_tables.EARLY if states == (EARLY,) else body_tables.REQUESTS
+    if t is body_tables.REQUESTS:
+        ours, args = f"{ours} AND state IN ({', '.join('?' * len(states))})", (*args, *states)
+    return [(own["run"], state_paths.got("requests", doc))
+            for own, doc in body_columns.read(con, t, ours, args, "run")]  # fmt: skip
 
 
 def get(path: Path) -> dict | None:
     """The request named PATH while it is in PATH's state; None once it moved on or is gone."""
     queue, state, run = key(path)
-    ours, args = _ours(queue)
     with _reader() as con:
-        if con is None:
-            return None
-        if state == EARLY:
-            got = con.execute(f"SELECT body FROM early WHERE {ours} AND run = ?",
-                              (*args, run)).fetchone()  # fmt: skip
-        else:
-            got = con.execute(f"SELECT body FROM requests WHERE {ours} AND run = ? AND "
-                              "state = ?", (*args, run, state)).fetchone()  # fmt: skip
-    return _body(got[0]) if got else None
+        got = [] if con is None else held(con, queue, state, run=run)
+    return got[0][1] if got else None
 
 
 def state_of(q: Path, run: str) -> str | None:
@@ -189,10 +187,8 @@ def rows(q: Path, state: str) -> list[tuple[Path, dict]]:
     with _reader() as con:
         if con is None:
             return []
-        ours, args = _ours(queue_key(q))
-        got = con.execute(f"SELECT run, body FROM requests WHERE {ours} AND state = ? "
-                          "ORDER BY run", (*args, state)).fetchall()  # fmt: skip
-    return [(name(q, state, run), b) for run, raw in got if (b := _body(raw)) is not None]
+        got = held(con, queue_key(q), state)
+    return [(name(q, state, run), req) for run, req in got]
 
 
 def listing(q: Path, state: str) -> list[Path]:
@@ -242,12 +238,8 @@ def update(path: Path, req: dict) -> bool:
     ours, args = _ours(queue)
     with goh_db.transaction() as con:
         req = state_paths.put(con, "requests", req)
-        cur = con.execute(
-            "UPDATE requests SET item = ?, repo = ?, sha = ?, mode = ?, pid = ?, pid_stamp = ?, "
-            f"until = ?, body = ? WHERE {ours} AND run = ? AND state = ?",
-            (*_cols(req), json.dumps(req), *args, run, state),
-        )
-        return cur.rowcount == 1
+        ours, args = f"{ours} AND run = ? AND state = ?", (*args, run, state)
+        return body_columns.update(con, body_tables.REQUESTS, req, _cols(req), ours, args) == 1
 
 
 def drop(path: Path) -> bool:
