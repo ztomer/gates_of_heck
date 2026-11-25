@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _tiny_goh import tiny_goh
 from _tree_clone import from_template
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
@@ -59,6 +60,7 @@ def _build_clone(tree: Path) -> None:
     shutil.copy2(
         SCRIPT, tree / "scripts" / "build-goh.sh"
     )  # the script under test, committed or not
+    tiny_goh(tree)  # which source a build reads is under test, not goh's 150 crates
 
 
 def test_a_clean_tree_publishes(clone: Path) -> None:

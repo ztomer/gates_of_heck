@@ -17,6 +17,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _tiny_goh import HELP, tiny_goh
 from conftest import hermetic_env, native_goh_path
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
 from test_gate_environment import _clean_checkout_of_todays_gates, _git
@@ -220,27 +221,24 @@ def test_goh_live_runs_the_working_trees_binary_not_heads(tmp_path: Path) -> Non
     """GOH_LIVE=1 is "run the working tree"; the native binary is part of it. bin/goh is HEAD's
     (C3), so with an uncommitted Rust change goh.sh used to run HEAD's binary under GOH_LIVE -- a
     new subcommand read "unrecognized" and a test of an uncommitted fix could pass against old code
-    (found 2026-10-06, Phase N1). Planted: an uncommitted change to `goh --help`. The build reuses
-    one target dir across runs (GOH_LIVE_TARGET_DIR), so only the first run compiles."""
+    (found 2026-10-06, Phase N1). Planted: an uncommitted change to `goh --help`. The goh is
+    a two-file crate (tests/_tiny_goh.py): the real one was 4,100 files built and removed a run."""
     import os
     import subprocess
 
     from test_gate_environment import _clean_checkout_of_todays_gates
 
     gates = _clean_checkout_of_todays_gates(tmp_path)
+    tiny_goh(gates)  # which binary answers is under test, not goh's 150 crates
     cli = gates / "crates" / "goh" / "src" / "cli.rs"
     before = cli.read_text()
-    after = before.replace(
-        "/// Fail when a crate is exempt from its workspace lint policy",
-        "/// LIVE-RUST-EDIT-9031",
-        1,
-    )
+    after = before.replace(HELP, "LIVE-RUST-EDIT-9031", 1)
     assert after != before, "the plant found nothing to replace: the test would prove nothing"
     cli.write_text(after)
     env = scrubbed(os.environ, ("GOH_", "PYTEST_"))
     env.update(
         GOH_LIVE="1",
-        GOH_LIVE_TARGET_DIR=str(Path(__file__).resolve().parents[1] / "target" / "goh-live-test"),
+        GOH_LIVE_TARGET_DIR=str(tmp_path / "goh-live-test"),
         DRIFT_BUILD_OK="1",  # building the working tree's goh is the subject (tests/_drift_guard.py)
     )
     live = subprocess.run(

@@ -4,3 +4,4 @@
 * GOH.FSEVQUIET: the empty-scope sweep gives the estate gate an empty estate, so a sweep no longer copies every consumer corpus of the machine (16,131 file events, 10.7 s to 3.0 s), and the gate's excuse in `checks/empty_scope_allow.json` is gone.
 * GOH.FSEVQUIET: an estate corpus borrows its owner's git objects, and a file the suite copies with shutil is a clone (44.8 MB a run of the estate tests was written again).
 * GOH.FSEVQUIET: the gates a test runs as a consumer come from a checkout without tests/ and changelog/ (960 files, not 2,034), and the suite's shared HEAD export is one a run, not one a worker.
+* GOH.FSEVQUIET: the suite's git writes no template files, no loose objects of a fetch, and syncs nothing; a test's goh.db journals in memory with small pages (`tests/db_on_disk.json` names the 11 tests of WAL, locking or a crash, and only shrinks); the two tests of which source a build reads build a two-file goh, not 150 crates.
