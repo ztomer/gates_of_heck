@@ -222,7 +222,7 @@ def test_the_plugin_deselects_the_share_and_the_workers_verdict_decides(tree, mo
     lr.pytest_sessionfinish(session)
     assert session.exitstatus == status
     assert plan["other"] == 2  # passed by another verdict: never a full Mac record
-    assert asked == [(real, True)] and rg.cache_rows.KEPT_ENV not in os.environ
+    assert asked == [(real, True)] and os.environ.get(rg.cache_rows.KEPT_ENV) is None
 
 
 class _Hung:
