@@ -48,7 +48,8 @@ goh_sccache_up() {
     if [ -n "${GOH_SCCACHE_STARTER:-}" ]; then
         "$GOH_SCCACHE_STARTER" "${SCCACHE_DIR:-}" </dev/null 2>/dev/null || :
     else
-        python3 "${0%/*}/sccache_repoint.py" start "${SCCACHE_DIR:-}" </dev/null 2>/dev/null || :
+        goh_py=${GOH_PY:-$(bash "${0%/*}/house_python.sh" 2>/dev/null </dev/null)} || return 0
+        "$goh_py" "${0%/*}/sccache_repoint.py" start "${SCCACHE_DIR:-}" </dev/null 2>/dev/null || :
     fi
 }
 if [ "${1:-}" = --goh-server ]; then
