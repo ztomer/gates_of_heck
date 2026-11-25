@@ -1,61 +1,53 @@
 {
- "per_test": 20000,
- "per_test_run": 185,
+ "per_test": 17000,
+ "per_test_run": 110,
+ "bytes_per_test_run": 125000,
+ "mean_from": 2000,
  "new": {
   "events": 150,
   "bytes": 1000000
  },
  "today": {
-  "events": 2500,
-  "bytes": 20000000
+  "events": 2200,
+  "bytes": 8000000
  },
  "named": {
-  "tests/test_binary_currency.py": {
-   "events": 5500
-  },
   "tests/test_binary_source_identity.py": {
-   "events": 5000
+   "events": 3200
+  },
+  "tests/test_coverage_shared_build.py": {
+   "bytes": 15000000
   },
   "tests/test_estate_corpus_cache.py": {
-   "events": 8000
+   "events": 7000
   },
   "tests/test_fs_ceilings.py": {
    "events": 600
   },
-  "tests/test_gates_from_head.py": {
-   "events": 4000
+  "tests/test_gate_temp_leaks.py": {
+   "bytes": 9500000,
+   "events": 9500
   },
   "tests/test_land_check.py": {
-   "events": 5000
+   "events": 3600
   },
   "tests/test_land_driver.py": {
-   "bytes": 60000000,
-   "events": 16000
+   "bytes": 40000000,
+   "events": 10500
   },
   "tests/test_land_identity.py": {
-   "bytes": 50000000,
-   "events": 14000
+   "bytes": 32000000,
+   "events": 8500
   },
   "tests/test_push_gate_runs.py": {
-   "events": 7000
-  },
-  "tests/test_python_from_head.py": {
-   "events": 4000
-  },
-  "tests/test_release_prebuild.py": {
-   "bytes": 30000000,
-   "events": 8000
+   "events": 6500
   },
   "tests/test_self_hosted_hook.py": {
-   "bytes": 100000000,
-   "events": 20000
+   "bytes": 40000000,
+   "events": 16500
   },
   "tests/test_ship_pinned.py": {
-   "events": 5500
-  },
-  "tests/test_swift_gate_baseline.py": {
-   "bytes": 250000000,
-   "events": 12000
+   "events": 2800
   }
  }
 }

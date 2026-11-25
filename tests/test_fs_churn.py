@@ -270,10 +270,41 @@ def test_the_verdict_names_each_broken_ceiling() -> None:
     assert len(verdict(rep, 10, {"per_test": 5000, "per_test_run": 500}, whole=False)) == 1
 
 
+def test_a_large_argument_run_that_carried_nothing_is_judged_by_the_means() -> None:
+    """A land's pre-step (GOH.FSEVQUIET): its tests are named, so no run is `whole`, and nothing is
+    carried. Its bytes are judged in a window that lost events, its events are not."""
+    at = {"per_test": 100, "per_test_run": 50, "bytes_per_test_run": 1000, "mean_from": 10}
+    rep = {"events": 400, "teardown_entries": 101, "per_test": {}, "bytes": 10_001, "deselected": 0}
+    faults = verdict(rep, 10, at, whole=False)
+    assert len(faults) == 2 and "50.1 each" in faults[0] and "10001 bytes" in faults[1], faults
+    assert verdict(rep, 9, at, whole=False) == []  # a selection this small is no sample
+    assert len(verdict(rep, 9, at)) == 2  # a whole run is judged at any size
+    assert verdict({**rep, "deselected": 1}, 10, at, whole=False) == []  # what is left of a run
+    lost = {"unmeasured": "drops", "teardown_entries": 101, "bytes": 10_001}
+    assert len(verdict(lost, 10, at, whole=False)) == 1
+    assert verdict({**lost, "bytes": 10_000}, 10, at, whole=False) == []
+
+
+def test_a_lands_pre_step_is_counted_and_a_narrowed_run_by_hand_is_not() -> None:
+    """The one line of tools/pytest.sh that says which runs are counted, run by bash itself."""
+    runner = (REPO_ROOT / "tools" / "pytest.sh").read_text().splitlines()
+    (line,) = [ln for ln in runner if "export GATES_OF_HECK_FS_EVENTS=" in ln]
+    for args, record, counted in (
+        ((), "", True), (("a.py",), "/r", True), (("a.py",), "", False), ((), "/r", True),
+    ):  # fmt: skip
+        script = f'PYTEST_DEBUG_TEMPROOT=/t\n{line}\necho "${{GATES_OF_HECK_FS_EVENTS:-none}}"'
+        r = subprocess.run(
+            ["bash", "-euc", script, "pytest.sh", *args], capture_output=True, text=True,
+            env=hermetic_env(GOH_LAND_VERDICTS_RECORD=record), check=True,
+            stdin=subprocess.DEVNULL,
+        )  # fmt: skip
+        assert r.stdout.strip() == ("/t/fs-events.json" if counted else "none"), (args, record)
+
+
 def test_the_recorded_ceiling_is_a_ratchet_with_both_bounds() -> None:
     ceiling = json.loads((REPO_ROOT / "tests" / "fs_events_ceiling.json").read_text())
-    assert {"per_test", "per_test_run"} <= ceiling.keys(), ceiling
-    assert all(isinstance(ceiling[k], int) and ceiling[k] > 0 for k in ("per_test", "per_test_run"))
+    keys = ("per_test", "per_test_run", "bytes_per_test_run", "mean_from")
+    assert all(isinstance(ceiling.get(k), int) and ceiling[k] > 0 for k in keys), ceiling
 
 
 def test_a_head_export_a_test_made_is_counted_as_its_own() -> None:

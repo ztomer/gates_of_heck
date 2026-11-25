@@ -231,9 +231,10 @@ fi
 # and `fs_whole`, so a ceiling is re-set from whole rows). Its per-run ceiling
 # (tests/fs_events_ceiling.json) judges only a WHOLE run: a carried run (suite:carried, the rust
 # gate's external pytest inside a land) deselects what the pre-step passed, and the change's own
-# tests are no sample of it (GOH.FSCEILINGRED). A caller that names the file
-# (GATES_OF_HECK_FS_EVENTS) gets a narrowed run counted too.
-[ "$#" -ne 0 ] || export GATES_OF_HECK_FS_EVENTS="${GATES_OF_HECK_FS_EVENTS:-$PYTEST_DEBUG_TEMPROOT/fs-events.json}"
+# tests are no sample of it (GOH.FSCEILINGRED). A land's pre-step (arguments, and its verdict record)
+# is counted as well (GOH.FSEVQUIET), and a caller that names the file (GATES_OF_HECK_FS_EVENTS)
+# gets any narrowed run counted.
+[ "$#" -ne 0 ] && [ -z "${GOH_LAND_VERDICTS_RECORD:-}" ] || export GATES_OF_HECK_FS_EVENTS="${GATES_OF_HECK_FS_EVENTS:-$PYTEST_DEBUG_TEMPROOT/fs-events.json}"
 [ "$#" -ne 0 ] || goh_span_start
 rc=0
 # A lane/work suite this script admitted runs under its class's QoS clamp (GATE_SLOT_QOS,

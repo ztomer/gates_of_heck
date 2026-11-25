@@ -19,8 +19,8 @@ from test_fs_churn import CHURNY, QUIET, XDIST, _session
 
 TREE_READS = ("tests/",)  # the lists name files there
 CEILING = json.loads((REPO_ROOT / "tests" / "fs_events_ceiling.json").read_text())
-TODAY = 788  # the names of tests/fs_churn_today.txt, only ever lowered
-NAMED = 14  # the files with ceilings of their own, only ever lowered
+TODAY = 738  # the names of tests/fs_churn_today.txt, only ever lowered
+NAMED = 11  # the files with ceilings of their own, only ever lowered
 darwin = pytest.mark.skipif(sys.platform != "darwin", reason="FSEvents is macOS only")
 
 LOOSE = {"per_test": 100_000, "per_test_run": 100_000}
@@ -64,6 +64,11 @@ def test_bytes_are_judged_and_a_list_or_a_name_holds_a_file_to_its_own(tmp_path:
     assert r.returncode == 1 and "made 5000 bytes" in r.stdout, r.stdout[-1500:]
     r, _ = _session(tmp_path, WRITES, _conf(files_today=["test_planted.py"]))
     assert r.returncode == 0, r.stdout[-1500:]
+    part = {"files_today": ["test_planted.py"], "bytes_per_test_run": 4999, "mean_from": 1}
+    r, _ = _session(tmp_path, WRITES, _conf(**part), "test_planted.py")  # as a pre-step names it
+    assert r.returncode == 1 and "bytes left written by a run of 1 (5000" in r.stdout, r.stdout[
+        -1500:
+    ]
     named = {"test_planted.py": {"bytes": 5000}}
     r, _ = _session(tmp_path, WRITES, _conf(named=named))
     assert r.returncode == 0, r.stdout[-1500:]

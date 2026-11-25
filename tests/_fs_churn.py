@@ -28,10 +28,14 @@ telling the controller, which collects nothing). A partial run's count is still 
 `whole` and `deselected`, and the per-test ceiling, which holds for any selection, still
 judges it, as each FILE's own does (tests/_fs_ceilings.py, GOH.FSEVQUIET).
 
+A LAND'S PRE-STEP names its tests and carries none; from `mean_from` tests it is judged by the mean
+as a whole run is (GOH.FSEVQUIET), by events where the window measured, and by the bytes each test
+left written (`bytes_per_test_run`) in any window: a drop of fseventsd's loses no byte.
+
 UNMEASURED WINDOWS ARE NO VERDICT (GOH.FSDROPVERDICT). A window whose stream dropped events, or
 did not deliver through the run's end (lib/fs_events.py `Stream.drain`), undercounts: 148 of 400
 planted dirs at load 25-45 read as a verdict and refused lands (2026-11-23). Such a run writes
-`unmeasured` (why) and no count, and is judged by neither ceiling; the line says so.
+`unmeasured` (why) and no count, and its events are judged by no ceiling; the line says so.
 
 THE BYTES (GOH.FSEVQUIET): the same run reads what each test leaves written (tests/_fs_bytes.py) and
 the devices' write counters, and prints the 20 largest tests.
@@ -131,21 +135,38 @@ def _ceiling() -> dict:
     return json.loads(raw) if raw else json.loads(CEILING_FILE.read_text())
 
 
+def judges_mean(rep: dict, tests_run: int, ceiling: dict, whole: bool) -> bool:
+    """A whole run's mean is judged, and that of an argument run of `mean_from` tests that carried
+    none (a land's pre-step): nothing was taken out of it, and it is large enough to be a sample."""
+    large = tests_run >= ceiling.get("mean_from", sys.maxsize)
+    return whole or (large and not rep.get("deselected"))
+
+
 def verdict(rep: dict, tests_run: int, ceiling: dict, whole: bool = True) -> list[str]:
-    """Each way `rep` (a Tally report) breaks `ceiling`; empty when it holds. The per-run mean is
-    judged only for a `whole` run: the ceiling describes the whole suite, never a selection."""
+    """Each way `rep` (a Tally report) breaks `ceiling`; empty when it holds. The means are judged
+    only where `judges_mean`: the ceiling describes the whole suite, never a small selection. An
+    unmeasured window has no events to judge; its bytes are read from the files and judged."""
     faults = []
-    worst = max(rep["per_test"].items(), key=lambda kv: kv[1], default=None)
+    counted = not rep.get("unmeasured")
+    worst = max(rep["per_test"].items(), key=lambda kv: kv[1], default=None) if counted else None
     if worst and worst[1] > ceiling["per_test"]:
         faults.append(
             f"{worst[0]} made {worst[1]} file events,"
             f" over the per-test ceiling {ceiling['per_test']}"
         )
-    total = rep["events"] + rep["teardown_entries"]
-    if whole and tests_run and total / tests_run > ceiling["per_test_run"]:
+    if not tests_run or not judges_mean(rep, tests_run, ceiling, whole):
+        return faults
+    total = rep["events"] + rep["teardown_entries"] if counted else 0
+    if total / tests_run > ceiling["per_test_run"]:
         faults.append(
             f"{total} file events (with what the run left to remove) for {tests_run} tests"
             f" ({total / tests_run:.1f} each), over the ceiling {ceiling['per_test_run']} each"
+        )
+    each, most = rep.get("bytes", 0) / tests_run, ceiling.get("bytes_per_test_run", sys.maxsize)
+    if each > most:
+        faults.append(
+            f"{rep['bytes']} bytes left written by a run of {tests_run} ({each:.0f} a test),"
+            f" over the ceiling {most} each"
         )
     return faults
 
@@ -233,7 +254,7 @@ def pytest_sessionfinish(session, exitstatus) -> None:
     rep["whole"] = whole = _whole_run.whole(session.config) and not rep["deselected"]
     ceiling = _ceiling()
     unmeasured = rep.get("unmeasured", "")
-    faults = [] if unmeasured else verdict(rep, ran, ceiling, whole)
+    faults = verdict(rep, ran, ceiling, whole)
     faults += _files(rep, tally, ceiling, _STATE.pop("nodes"), whole)
     rep["ceiling"], rep["faults"] = ceiling, faults
     Path(_STATE.pop("out")).write_text(json.dumps(rep, indent=1) + "\n")
@@ -242,7 +263,7 @@ def pytest_sessionfinish(session, exitstatus) -> None:
         (tr.write_line if tr else print)(
             f"⚠ file events: unmeasured, no verdict: {unmeasured} (tests/_fs_churn.py)"
         )
-    elif not whole:
+    elif not judges_mean(rep, ran, ceiling, whole):
         (tr.write_line if tr else print)(
             f"→ file events: a partial run ({ran} ran, {rep['deselected']} deselected): the per-run"
             f" ceiling describes whole runs and is not judged (tests/_fs_churn.py)"
