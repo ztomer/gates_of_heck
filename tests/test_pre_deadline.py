@@ -42,18 +42,18 @@ def test_work_is_the_largest_recent_verdict_of_this_repo() -> None:
 
 
 def _land(
-    tmp_path: Path, repo: Path, cores: int, pre: str = "sleep 4"
+    tmp_path: Path, repo: Path, cores: int, pre: str = "sleep 4", run_s: int = 2
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     """A pre-step of 4 s whose ledger says the set costs 2 s at 12 workers (24 worker-s): 8 s at
-    a 5-worker share, 3 s at 12; GOH_LAND_PRE_MAX (the floor) is 2 s, today's whole deadline.
+    a 5-worker share, 3 s at 12; GOH_LAND_PRE_MAX (the floor) is RUN_S, the whole deadline once.
     The gate runs beside it (GOH.GATEPARALLEL), admitted before or after it: the pre-step's share
     is the whole of CORES or half of it, and each test holds for both."""
     wt = _worktree(repo, tmp_path)
     timing = tmp_path / "timing"
     timing.mkdir()
-    (timing / "ledger.jsonl").write_text(json.dumps(_row(pre_run_s=2, pre_workers=12)) + "\n")
+    (timing / "ledger.jsonl").write_text(json.dumps(_row(pre_run_s=run_s, pre_workers=12)) + "\n")
     _declare(wt, f"GOH_LAND_GATE='echo gate >> {tmp_path / 'seen'}'\nGOH_LAND_PRE='{pre}'\n")
-    env = hermetic_env(drop_git=True, GOH_LAND_PRE_MAX="2s", GOH_TIMING_DIR=str(timing),
+    env = hermetic_env(drop_git=True, GOH_LAND_PRE_MAX=f"{run_s}s", GOH_TIMING_DIR=str(timing),
                        GOH_GATE_CORES=str(cores),
                        GOH_GATE_SLOT_DIR=str(tmp_path / "slots"))  # fmt: skip
     env.pop("GATES_OF_HECK_SUITE_RUNNER", None)
@@ -75,11 +75,11 @@ def test_a_5_worker_share_gets_the_time_its_set_needs_and_a_verdict(repo, tmp_pa
 
 
 def test_a_wide_share_keeps_the_short_deadline(repo, tmp_path) -> None:
-    r, _ = _land(tmp_path, repo, cores=12, pre="sleep 9")
+    r, _ = _land(tmp_path, repo, cores=12, pre="sleep 9", run_s=1)
     out = r.stdout + r.stderr
     assert r.returncode == 0, out
     assert "pre-land: no verdict after " in out, out
-    assert "of 3 s at 12 workers" in out or "of 6 s at 6 workers" in out, out
+    assert any(f"of {pd.deadline(12, n, 1)} s at {n} workers" in out for n in (12, 6)), out
 
 
 @pytest.mark.load_sensitive

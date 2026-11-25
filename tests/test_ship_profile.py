@@ -84,7 +84,7 @@ d={log}
 n=$(basename "$PWD")
 echo "$n start $(python3 -c 'import time; print(time.time())')" >>"$d"
 [ -z "${{GOH_TIMINGS:-}}" ] || echo "$n leaked $GOH_TIMINGS" >>"$d"
-sleep 1.5
+sleep 0.5
 echo "$n end $(python3 -c 'import time; print(time.time())')" >>"$d"
 """
 
@@ -130,7 +130,7 @@ def test_the_sweep_pushes_its_consumers_one_after_another_each_profiled(tmp_path
         assert row["tier"] == "consumer" and isinstance(row["load1"], float), rows
         row = pushes[f"push {n}"]
         assert row["tier"] == "consumer" and isinstance(row["load1"], float), pushes
-        assert row["ms"] >= 1400, row  # the push through its gate, in the sweep
+        assert row["ms"] >= 450, row  # the push through its gate, in the sweep
 
 
 def test_status_names_the_seconds_no_row_recorded(tmp_path):
