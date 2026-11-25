@@ -136,7 +136,7 @@ def land_script(_wt: Path) -> Path:
 def prestep(req: dict) -> None:
     """GOH.ENQUEUEPRE (lib/land_prestep.py): the pre-step first, then the queue."""
     wt = Path(req["worktree"])
-    landq_inflight.mark(qdir(), req["item"] or Path(req["repo"]).name, repo=req["repo"], slot=req)
+    landq_inflight.mark_request(qdir(), req)  # again: its start, which the batch window reads
     try:  # its seconds: the e2e's pre-step share (lib/land_e2e.py)
         req["pre_s"] = land_prestep.run_kept(req, qdir(), land_script(wt), git_bindings())
     except land_prestep.Red as e:
@@ -413,6 +413,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.land is not None:
             landq_background.worktree_only(args, qdir())  # stops ITEM's earlier pre-step too
             req = land_request(args.land, args.item, qdir())  # in a slot (GOH.LANDSNAPSHOT)
+            landq_inflight.mark_request(qdir(), req)  # its tip, for a later enqueue's `ahead`
             if args.no_pre is not None and not args.no_pre.strip():
                 raise Refused("--no-pre needs a reason: --no-pre 'why this tip skips the pre-step'")
             if land_check.at_enqueue(qdir(), req, enqueue, record, info, args.no_pre):

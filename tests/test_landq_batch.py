@@ -99,12 +99,13 @@ def in_process(env: dict[str, str], *args: str) -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess(args, rc, out.getvalue(), errs.getvalue())
 
 
-def enqueue_all(env: dict[str, str], wts: list[tuple[Path, str]]) -> None:
+def enqueue_all(env: dict[str, str], wts: list[tuple[Path, str]], told: str = "") -> None:
     """Each lane enqueued as `goh land --enqueue` does, in this process (GOH.PYSLOW2), all but its
     pre-step: a pre-step of `true` was 0.9 s of a gate slot's wait in each of ~40 enqueues, and the
     batch judges none. Its figures stay on the request; never `--no-pre`, a land judged alone
     (GOH.NOPREBATCH). The enqueue and its pre-step for real: tests/test_landq.py,
-    tests/test_pre_on_tip.py, tests/test_landq_batch_pre.py."""
+    tests/test_pre_on_tip.py, tests/test_landq_batch_pre.py. The item
+    TOLD is refused once for a conflict with one ahead (GOH.ENQCONFLICT), then queued."""
     for wt, item in wts:
         with (
             mock.patch.object(lander(), "prestep", lambda r: r.update(pre_run=dict(GREEN_PRE))),
@@ -112,6 +113,10 @@ def enqueue_all(env: dict[str, str], wts: list[tuple[Path, str]]) -> None:
         ):
             done = in_process(env, "--enqueue", "--foreground", "--land", str(wt), "--item", item,
                               "--no-start")  # fmt: skip
+        if item == told:
+            assert done.returncode == 1 and "queued ahead of it" in done.stderr, done.stderr
+            enqueue_all(env, [(wt, item)])
+            continue
         assert done.returncode == 0, done.stdout + done.stderr
 
 
@@ -232,7 +237,7 @@ def test_a_conflicting_item_is_red_conflict_and_does_not_block_the_rest(repo, tm
         (lane(repo, tmp_path, "two", {"shared.txt": "from two\n"}), "T.TWO"),
         (lane(repo, tmp_path, "three", {"three.txt": "3\n"}), "T.THREE"),
     ]
-    enqueue_all(env, wts)
+    enqueue_all(env, wts, told="T.TWO")
     assert landq(env, "--drain").returncode == 0
     got = recorded(env)
     assert got["T.ONE"]["state"] == "landed" and got["T.THREE"]["state"] == "landed", got

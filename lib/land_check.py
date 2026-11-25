@@ -373,11 +373,13 @@ def count(q: Path) -> dict[str, int]:
 def at_enqueue(q: Path, req: dict, file, record, say=print, no_pre: str | None = None) -> str:
     """REQ's guards in its slot before the pre-step: '' green; else the refusal, the request filed
     by FILE under `early/` and recorded red with its guards (lib/landq_early.py settle). The
-    stacking check on main runs first: a conflict is red in seconds (GOH.BATCHCONFLICTFIRST)."""
+    stacking check runs first: a conflict with main (GOH.BATCHCONFLICTFIRST), or with a land
+    ahead when a pre-step follows (GOH.ENQCONFLICT), is red in seconds."""
     from lib import landq_early
     from tui.lib import err
 
-    if red := landq_early.at_enqueue(q, req, file, record):  # seconds, before any test runs
+    # seconds, before any test runs
+    if red := landq_early.at_enqueue(q, req, file, record, tell_ahead=no_pre is None):
         err(f"goh land: {red.splitlines()[0]} -- recorded red at enqueue, nothing queued")
         return red.splitlines()[0]  # GOH.BATCHCONFLICTFIRST: no guard or pre-step for it
     lines: list[str] = []

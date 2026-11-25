@@ -12,6 +12,10 @@ and a `--wait ID` started beside its own enqueue exited 2, "no request".
                     reader sees one or the other, never both and never neither; removed when the
                     enqueuing process exits without filing
     live(q, item)   the markers whose enqueue is still running; ITEM narrows it to one item
+    mark_child(q, item, pid, repo)   the background enqueue's marker, put by the process that
+                    started it before that one returns (GOH.ENQCONFLICT): the child's own replaces
+                    it, and one that dies before its first mark is `died`'s
+    ahead(q, repo, item)   the markers of REPO's other lands marked before this process's, by tip
 
 SUPERSEDED (GOH.REENQUEUECANCEL, lib/landq_supersede.py). A marker names what stops its enqueue:
 the enqueuer's pid and start (`pid_stamp`), the pre-step's process group as it was stamped at its
@@ -62,18 +66,12 @@ def mark(q: Path, item: str, pid: int | None = None, repo: str = "", slot: dict 
          ) -> Path:  # fmt: skip
     """Record that PID (this process) is enqueuing ITEM of REPO; removed when this process exits
     (REPO: the lander's batch window waits only for lands it could batch, lib/landq_window.py).
-    SLOT, the request: the checkout slot it claimed (`worktree`, `slot`), freed when superseded."""
+    SLOT, the request: its tip (`sha`, what a later enqueue is judged against: `ahead`) and the
+    checkout slot it claimed (`worktree`, `slot`), freed when superseded."""
     pid = pid or os.getpid()
-    bound = int(os.environ.get("GOH_ENQUEUE_PRE_TIMEOUT") or PRE_TIMEOUT_S) + MARGIN_S
-    run = f"{pid}-{slug(item)}"
-    marker = {
-        "pid": pid,
-        "pid_stamp": pid_owner.stamp_line(pid),
-        "item": item,
-        "repo": repo,
-        "at": time.time(),
-        "until": time.time() + bound,
-    }
+    run, marker = _body(item, pid, repo)
+    if slot and slot.get("sha"):
+        marker["sha"] = slot["sha"]
     if slot and slot.get("slot"):
         marker["slot"] = {"worktree": slot["worktree"], "token": slot["slot"]}
     # a marker this pid left before is replaced in one transaction, its tombstone kept: a drop and
@@ -83,9 +81,66 @@ def mark(q: Path, item: str, pid: int | None = None, repo: str = "", slot: dict 
     if was.get("superseded") and was.get("pid_stamp") == marker["pid_stamp"]:
         marker["superseded"] = was["superseded"]
     path = landq_state.put(q, run, marker, DIR, replaces=run)
-    atexit.register(clear, path)
+    atexit.register(left, path)
     _MINE.append(path)
     return path
+
+
+def _body(item: str, pid: int, repo: str) -> tuple[str, dict]:
+    """(run, body) of PID's marker for ITEM, as of now."""
+    bound = int(os.environ.get("GOH_ENQUEUE_PRE_TIMEOUT") or PRE_TIMEOUT_S) + MARGIN_S
+    at = time.time()
+    return f"{pid}-{slug(item)}", {
+        "pid": pid,
+        "pid_stamp": pid_owner.stamp_line(pid),
+        "item": item,
+        "repo": repo,
+        "at": at,
+        "until": at + bound,
+    }
+
+
+def who(req: dict) -> str:
+    """REQ's item, or its repo's name: what its request and its marker are named by."""
+    return str(req.get("item") or Path(str(req.get("repo"))).name)
+
+
+def mark_request(q: Path, req: dict) -> Path:
+    """This process's marker, naming REQ's repo, tip and slot."""
+    return mark(q, who(req), repo=req["repo"], slot=req)
+
+
+def mark_child(q: Path, item: str, pid: int, repo: str) -> float:
+    """The marker of the enqueue PID this process just started, unless that one marked itself
+    already: no moment after the start returns has a live enqueue and no marker, however late the
+    child's own mark is (GOH.ENQCONFLICT). This process's exit clears nothing: the child's does.
+    Its `at`, 0.0 when the child was first."""
+    run, marker = _body(item, pid, repo)
+    try:
+        landq_state.put(q, run, marker, DIR)
+    except sqlite3.IntegrityError:
+        return 0.0
+    return marker["at"]
+
+
+def left(path: Path) -> None:
+    """This enqueue exits: its marker cleared, unless an unhandled exception ended it. A crash
+    filed nothing and recorded nothing, so the marker of the dead pid stays for the reader that
+    records it (`died`): cleared, a `--wait` read the previous attempt's record."""
+    if getattr(sys, "last_exc", None) is None:
+        clear(path)
+
+
+def ahead(q: Path, repo: str, item: str) -> list[dict]:
+    """The enqueues of REPO still in their pre-step, with a tip, marked before this process's own
+    (two at once: the earlier one alone is ahead), ITEM's and superseded ones not (they file
+    nothing), oldest first."""
+    me, marks = os.getpid(), live(q)
+    mine = (max((float(m["at"]) for m in marks if m["pid"] == me), default=time.time()), me)
+    out = [m for m in marks if m.get("sha") and m.get("repo") == repo and not m.get("superseded")
+           and slug(str(m.get("item") or "")) != slug(item)
+           and (float(m.get("at") or 0), int(m["pid"])) < mine]  # fmt: skip
+    return sorted(out, key=lambda m: float(m.get("at") or 0))
 
 
 def note_child(pid: int) -> None:

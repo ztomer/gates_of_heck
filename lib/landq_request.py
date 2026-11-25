@@ -70,6 +70,17 @@ def request(repo_arg: str, sha_arg: str, item: str, ship: bool, summary: str) ->
             "enqueued_at": now()}  # fmt: skip
 
 
+def unread(wt_arg: str, item: str) -> dict:
+    """What a land refused before it had a request is recorded as (GOH.ENQCONFLICT): WORKTREE's
+    repo and tip as far as they read, in no slot."""
+    top = git(Path(wt_arg), "rev-parse", "--show-toplevel") or str(Path(wt_arg))
+    listing = git(Path(top), "worktree", "list", "--porcelain").splitlines()
+    return {"repo": listing[0].removeprefix("worktree ") if listing else top, "worktree": top,
+            "sha": git(Path(top), "rev-parse", "HEAD"), "remote": "", "item": item,
+            "branch": git(Path(top), "rev-parse", "--abbrev-ref", "HEAD"),
+            "mode": "land", "summary": "", "enqueued_at": now()}  # fmt: skip
+
+
 def land_request(wt_arg: str, item: str, q: Path | None = None) -> dict:
     """The request to land WORKTREE's tip by tools/land.sh, refused where land.sh refuses. Under
     a queue Q it runs in a slot (GOH.LANDSNAPSHOT, lib/land_slot.py): its `worktree` is goh's

@@ -23,11 +23,20 @@ moved, no gate runs. A request that does not replay is red with the record the b
 branch forked that touch them (their subjects name the landing). A git read that fails is no
 verdict: the request stays pending for the batch.
 
-AGAINST MAIN ONLY, not the pending items ahead (a deviation from the item's brief). Main never
-moves back, so a conflict with it is a fact; a conflict with a request still pending is not -- that
-request may be red, or bisected out, and then this one lands as it is. The batch still reds one
-that does not stack on the item below it (lib/landq_batch.py), and once that item LANDS this check
-reds the rest within the same lander pass: the brief's bound, "within a minute of that landing".
+THE SWEEP JUDGES AGAINST MAIN ONLY, not the pending items ahead (a deviation from the item's
+brief). Main never moves back, so a conflict with it is a fact; a conflict with a request still
+pending is not -- that request may be red, or bisected out, and then this one lands as it is. The
+batch still reds one that does not stack on the item below it (lib/landq_batch.py), and once that
+item LANDS this check reds the rest within the same lander pass.
+
+AN ENQUEUE IS ALSO TOLD OF A LAND AHEAD (GOH.ENQCONFLICT), before its guards and pre-step: one in
+its pre-step (its `enqueuing` marker, lib/landq_inflight.py `ahead`), pending or running, that it
+does not stack on. 22 lands in the 7 days to 2026-11-25 spent 23,719 s of pre-step and then went
+red on a conflict; replayed, 19 conflicted at their enqueue with a land already ahead (5 with one
+in its pre-step, 15 with one queued), and 9 of the 40 enqueues so told would have had no landing to
+conflict with. So it is told ONCE: the red names the land ahead and its tip, and the same tip
+enqueued again over the same one runs its pre-step (`told`); a `--no-pre` enqueue has no pre-step to
+save and is not asked. A land ahead that does not stack on main itself is none.
 
 COST (measured 2026-11-18, the GOH.EARLYCONFLICT changelog): tens of ms per pending item, against
 the minutes an item waits in the queue. Pinned by tests/test_landq_early.py.
@@ -37,7 +46,8 @@ pending land is replayed onto main in objects only (`git merge-tree --write-tree
 land.sh's row merge driver, `commit-tree`; no worktree moved, no gate) and one that conflicts is
 red at once with the batch's `conflict: did not stack on` record, its log naming the files and the
 commits on main that touch them; `--enqueue --land` does the same before filing, a red one recorded
-and never queued. Judged against main only: a conflict with a request still pending is no verdict.
+and never queued. A pending land is judged against main only; an enqueue, before its pre-step, also
+against each land ahead of it, in its pre-step or queued (`ahead`, once per tip: GOH.ENQCONFLICT).
 Invoked by `tools/landq.py`.
 """
 
@@ -51,6 +61,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 import gitrun
+import land_records
+import landq_inflight
 import landq_state
 
 ROWS = Path(__file__).resolve().parent / "row_merge.py"
@@ -170,15 +182,56 @@ def sweep(q: Path, record: Record, say: Callable[[str], None]) -> int:
     return n
 
 
-def at_enqueue(q: Path, req: dict, file: Callable[[dict, str], Path], record: Record) -> str:
+def told(q: Path, req: dict, why: str) -> bool:
+    """REQ's item was red on WHY at this very tip last time: its lane enqueued it again knowing."""
+    mine = landq_inflight.slug(landq_inflight.who(req))
+    runs = [r for r in land_records.runs(q) if r.partition("-")[2] == mine]
+    last = land_records.get(q, runs[-1]) if runs else None
+    return bool(last and last.get("sha") == req["sha"]
+                and str(last.get("why") or "").startswith(f"{why},"))  # fmt: skip
+
+
+def ahead(q: Path, req: dict) -> tuple[dict, str] | None:
+    """REQ's red outcome and log text when it does not stack on a land of its repo ahead of it
+    (module doc), not yet told of it; None when it stacks on each."""
+    repo, who, slug = Path(req["repo"]), landq_inflight.who, landq_inflight.slug
+    found = [(x, "queued") for _, x in lands(q, ("pending", "running")).get(str(repo), [])
+             if slug(who(x)) != slug(who(req))]  # fmt: skip
+    found += [(m, "in its pre-step") for m in landq_inflight.ahead(q, str(repo), who(req))]
+    if not found:
+        return None
+    main = _git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    def onto(base: str, tip: str) -> tuple[str, list[str]]:
+        return replay(repo, base, _git(repo, "merge-base", main, tip).stdout.strip(), tip)
+
+    for x, phase in found:
+        base, _ = onto(main, x["sha"])
+        files = onto(base, req["sha"])[1] if base else []
+        why = f"conflict: does not stack on {who(x)} @ {x['sha'][:8]}"
+        if files and not told(q, req, why):
+            branch = req.get("branch") or req["sha"][:8]
+            log = (f"✗ early conflict check (GOH.ENQCONFLICT): {branch} conflicts with {who(x)} @ "
+                   f"{x['sha'][:8]}, {phase} ahead of it, in {' '.join(files)} -- no guard or "
+                   f"pre-step ran, nothing landed\n`goh land --wait {who(x)}`: if it lands, rebase "
+                   "onto main and enqueue; if it is red, enqueue again. The same tip enqueued "
+                   "again before that runs its pre-step: told once\n")  # fmt: skip
+            return {**outcome(req, main), "why": f"{why}, {phase}"}, log
+    return None
+
+
+def at_enqueue(q: Path, req: dict, file: Callable[[dict, str], Path], record: Record,
+               tell_ahead: bool = False) -> str:  # fmt: skip
     """REQ judged before it is filed: '' when it stacks (or no verdict); else its red log, the
-    request filed by FILE under `early/` and recorded red, so the lander never sees it."""
+    request filed by FILE under `early/` and recorded red, so the lander never sees it. With
+    TELL_AHEAD, before its pre-step, also against the lands ahead of it (`ahead`)."""
     try:
         reds = judge(Path(req["repo"]), [(landq_state.name(q, "pending", f"~{req['sha']}"), req)])
+        found = reds[0][1:] if reds else ahead(q, req) if tell_ahead else None
     except Unread:
         return ""
-    if not reds:
+    if not found:
         return ""
-    _, red, log = reds[0]
+    red, log = found
     settle(q, file(req, "early"), red, log, record)
     return log

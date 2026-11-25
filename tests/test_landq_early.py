@@ -49,7 +49,7 @@ def test_a_pending_land_that_conflicts_with_a_landing_is_red_before_its_turn(rep
         (lane(repo, tmp_path, "three", {"shared.txt": "from three\n"}), "T.THREE"),
     ]
     enqueued = git(wts[2][0], "rev-parse", "HEAD").strip()
-    enqueue_all(env, wts)
+    enqueue_all(env, wts, told="T.THREE")
     done = landq(env, "--drain")
     assert done.returncode == 0, done.stdout + done.stderr
     got = recorded(env)
@@ -57,7 +57,7 @@ def test_a_pending_land_that_conflicts_with_a_landing_is_red_before_its_turn(rep
     assert got["T.THREE"]["state"] == "red", got
     assert got["T.THREE"]["why"].startswith("conflict: did not stack on"), got["T.THREE"]
     # red the moment ONE landed: before T.TWO, which was queued ahead of it, ran
-    assert order(env) == ["T.ONE", "T.THREE", "T.TWO"], order(env)
+    assert order(env) == ["T.THREE", "T.ONE", "T.THREE", "T.TWO"], order(env)  # the first: told
     assert gate_runs(env) == ["one", "two"], gate_runs(env)  # never gated
     log = Path(got["T.THREE"]["log"]).read_text()
     assert "conflicts with main" in log and "shared.txt" in log, log

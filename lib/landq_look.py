@@ -4,7 +4,8 @@ the item still in its pre-step (lib/landq_inflight.py) is waited for until it fi
 the wait exits 2 (GOH.WAITUNFILED); a done record while one is in flight is the previous
 attempt's, never returned (GOH.WAITSTALE): the enqueue is marked in flight from its first step,
 not its pre-step's, and a wait past --timeout before it files says "pre-step running", exit 3
-(GOH.WAITSTALE2). Each tick re-reads where the request is and says so
+(GOH.WAITSTALE2); one that ends with nothing filed and nothing recorded (a cancel) is exit 3, never
+the record before it (GOH.ENQCONFLICT). Each tick re-reads where the request is and says so
 once per change: queued behind whom, running (a batch's gate N), done (GOH.LANDWAITSTALE).
 Every request is read through lib/landq_state.py and every record through lib/land_records.py,
 goh.db rows both: one moved is read again next tick, never a crash (GOH.CIRED01310). Pinned
@@ -66,6 +67,8 @@ _tui = importlib.import_module("tui.lib")
 err, info, ok = _tui.err, _tui.info, _tui.ok
 poll = 2.0
 heartbeat = 60.0  # an unchanged state is said again this often, with how long (GOH.WAITEARLY)
+GONE = 4  # an enqueue seen, then none, for GONE_S with nothing filed: a superseder marks its
+GONE_S = 15.0  # own well within that of the old one's stop
 STOPS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
 
 
@@ -152,31 +155,37 @@ def find_request(q: Path, what: str) -> Path | None:
     return newest[1] if newest else None
 
 
-def _current(q: Path, what: str) -> Path | None:
-    """WHAT's newest request, unless it is a done record while an enqueue of WHAT is still in its
-    pre-step: that record is the PREVIOUS attempt's, and the enqueue files the one to wait for
-    (GOH.WAITSTALE: a re-enqueue's wait returned try 2's red). The enqueue is looked for FIRST: it
-    writes its record, then clears its marker, so no marker means its record is there to find; the
-    other order read the old record, then no marker, and returned it (GOH.WAITORDER)."""
-    busy = bool(landq_inflight.live(q, what))
-    found = find_request(q, what)
-    return None if busy and found is not None and found.parent.name == land_records.REF else found
-
-
 def unfiled(q: Path, what: str, start_by: float) -> Path | int | None:
     """WHAT's request; while there is none, wait out an enqueue of it still in its pre-step
-    (GOH.WAITUNFILED): None when neither exists, 3 past START_BY."""
-    said = False
-    while (found := _current(q, what)) is None:
-        if not landq_inflight.live(q, what):
-            return find_request(q, what)  # it filed, then exited, between the two looks
-        if time.monotonic() > start_by:
+    (GOH.WAITUNFILED): None when neither exists, 3 past START_BY, GONE when the enqueue ended with
+    nothing of its own filed or recorded.
+
+    A done record is the PREVIOUS attempt's while an enqueue is in its pre-step (GOH.WAITSTALE: a
+    re-enqueue's wait returned try 2's red), and after one was seen, when it is the record this
+    wait started with: a cancelled enqueue's wait returned it (GOH.ENQCONFLICT). The enqueue is
+    looked for FIRST: it writes its record, then clears its marker, so no marker means its record
+    is there to find; the other order read the old record, then no marker, and returned it
+    (GOH.WAITORDER)."""
+    before = find_request(q, what)
+    said, gone = False, 0.0
+    while True:
+        busy = bool(landq_inflight.live(q, what))
+        found = find_request(q, what)
+        done = found is not None and found.parent.name == land_records.REF
+        if found is not None and not (done and (busy or (said and found == before))):
+            return found
+        if not busy and not said:
+            return None
+        tick = time.monotonic()
+        gone = 0.0 if busy else gone or tick
+        if gone and tick - gone >= GONE_S:
+            return GONE
+        if tick > start_by:
             return 3
         if not said:
             info(f"goh land --wait: {what}'s enqueue is in its pre-step; waiting for its request")
             said = True
         time.sleep(poll)
-    return found
 
 
 def _names(q: Path, state: str) -> list[str]:
@@ -240,6 +249,9 @@ def _wait(q: Path, what: str, timeout: float, nudge: Callable[[], None]) -> tupl
     found = unfiled(q, what, start_by)
     if found == 3:  # GOH.WAITSTALE2: running, not stuck; the lane waits again
         return 3, f"pre-step running: its enqueue has filed nothing yet after {timeout:.0f}s"
+    if found == GONE:
+        return 3, (f"{what}'s enqueue ended and filed nothing (cancelled, or stopped by hand): "
+                   "what is recorded is the attempt before it")  # fmt: skip
     if found is None:
         return 2, f"no request for {what} under {q}, and no enqueue of it running"
     assert isinstance(found, Path)

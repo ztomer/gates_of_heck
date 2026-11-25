@@ -9,8 +9,11 @@ background unannounced. So without `--wait` or `--foreground` the enqueue
     2. re-runs itself detached with `--detached` (its own session, log `<q>/logs/enqueue-*.log`),
        where a red pre-step is recorded red like an early conflict (done/, loopctl), so the lane's
        `goh land --wait ITEM` reads it, exit 1 with the failing tests named;
-    3. returns 0 once the child's in-flight marker is up (lib/landq_inflight.py), so a `--wait`
-       started next follows the pre-step instead of finding nothing, and says all of this.
+    3. puts the child's in-flight marker up itself (lib/landq_inflight.py `mark_child`), so a
+       `--wait` started next follows that enqueue, never the attempt before it, and returns 0 once
+       the child marked itself, saying all of this; a child that has not within MARK_WAIT_S is
+       exit 75 with its pid and log (GOH.ENQCONFLICT: it returned 0, and the `--wait` after it
+       read the previous run's red).
 
 `--foreground` is the enqueue as it was (the pre-step here, its verdict the exit: lib/ruff_bump.py
 reads it); `--enqueue ... --wait` runs here too, then blocks on the request it filed.
@@ -19,10 +22,10 @@ Pinned by tests/test_landq_background.py.
 `goh land --enqueue --land` in the background (GOH.TOOLTIMEOUT): the enqueue's pre-step runs up to
 30 min, past the Bash tool's timeout, so without `--wait` or `--foreground` it refuses what refuses
 at once (REPO SHA or --ship beside --land, the main checkout, uncommitted changes), re-runs itself
-detached (`--detached`, log `<landq>/logs/enqueue-*.log`) and returns once the child's in-flight
-marker is up; the child's red pre-step is recorded red like an early conflict, so `goh land --wait
-ITEM` reads it. Also the land-enqueue flags and the mode check (`--wait` alone, or with `--enqueue`
-the foreground enqueue's own wait).
+detached (`--detached`, log `<landq>/logs/enqueue-*.log`) and returns once the child has marked
+itself in flight (75 when it has not in a minute); the child's refusal or red pre-step is recorded
+red like an early conflict, so `goh land --wait ITEM` reads it. Also the land-enqueue flags and the
+mode check (`--wait` alone, or with `--enqueue` the foreground enqueue's own wait).
 """
 
 from __future__ import annotations
@@ -46,6 +49,7 @@ err, info = _tui.err, _tui.info
 supersede, cancel = landq_supersede.supersede, landq_supersede.cancel
 
 MARK_WAIT_S = 60  # the child imports, claims a slot and marks; far under this on a loaded box
+GAVE_UP = 75  # EX_TEMPFAIL: started, unproven -- never the 0 of an enqueue seen in flight
 
 
 def add_arguments(ap: argparse.ArgumentParser) -> None:
@@ -98,10 +102,13 @@ def worktree_only(args: argparse.Namespace, q: Path | None = None) -> None:
 
 def red(args: argparse.Namespace, req: dict, why: str, q: Path, enqueue, record) -> None:
     """The detached child's refusal, recorded red like an early conflict (lib/landq_early.py), so
-    the lane's `--wait ITEM` reads it: nobody reads this process's exit."""
-    if args.detached and req:
+    the lane's `--wait ITEM` reads it: nobody reads this process's exit. One refused before its
+    request existed (no slot, a tree gone dirty) is recorded too (GOH.ENQCONFLICT)."""
+    if args.detached:
+        stage = "enqueue pre-step" if req else "enqueue refused"
+        req = req or landq_request.unread(args.land, args.item)
         out = {"sha": req["sha"], "repo": req["repo"], "mode": "land", "state": "red",
-               "why": f"enqueue pre-step: {why.splitlines()[0]}"}  # fmt: skip
+               "why": f"{stage}: {why.splitlines()[0]}"}  # fmt: skip
         landq_early.settle(q, enqueue(req, "early"), out, f"{why}\n", record)
 
 
@@ -122,9 +129,17 @@ def start(args: argparse.Namespace, given: list[str] | None, q: Path, landq: Pat
         child = subprocess.Popen([sys.executable, str(landq), *given, "--detached"],
                                  stdin=subprocess.DEVNULL, stdout=out, stderr=out,
                                  start_new_session=True, env=os.environ.copy())  # fmt: skip
+    put = landq_inflight.mark_child(q, who, child.pid, req["repo"])
     give_up = time.monotonic() + MARK_WAIT_S
-    while child.poll() is None and not landq_inflight.live(q, who) and time.monotonic() < give_up:
+    while (alive := child.poll() is None) and time.monotonic() < give_up:
+        if any(m["pid"] == child.pid and m["at"] != put for m in landq_inflight.live(q, who)):
+            break  # its own mark: it runs
         time.sleep(0.2)
+    else:
+        if alive:
+            err(f"goh land: the enqueue (pid {child.pid}) has not marked itself in {MARK_WAIT_S} s:"
+                f" it may still run; log {log}; `goh land --wait {who}` follows it")  # fmt: skip
+            return GAVE_UP
     if child.poll() not in (None, 0):
         err(f"goh land: the enqueue exited {child.returncode} before its pre-step; log {log}")
         return child.returncode or 1
