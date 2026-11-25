@@ -52,6 +52,7 @@ import idle_suite  # noqa: E402 -- lib/: main_checkout, pending, enqueuing, IN_S
 import lock_order  # noqa: E402 -- lib/, beside this file
 import reuse_fault  # noqa: E402 -- lib/: the one funnel that files a goh fault item
 import ruff_currency  # noqa: E402 -- gates/: the pin, the box's newest ruff, the bump commit
+import state_paths  # noqa: E402 -- lib/
 from full_run import _git  # noqa: E402 -- lib/, beside this file
 
 OFF_ENV = "GOH_LANDQ_RUFF_BUMP"  # "off": nothing starts a bump-only land
@@ -100,7 +101,7 @@ def file_item(item: str, pin: str, new: str) -> str:
     """File the bump's queue item through lib/reuse_fault._file (GOH.RUFFBUMPITEM): a land goh
     starts by itself has no item else, and the loop never ships or closes it. An item the queue
     holds already is fine; a refused filing is said, never fatal to the land."""
-    loopctl = os.environ.get("GOH_LOOPCTL") or str(Path.home() / "Projects/.loop/tools/loopctl.py")
+    loopctl = str(state_paths.loopctl())
     if not os.path.isfile(loopctl):
         return f"item not filed: no loopctl at {loopctl}"
     rec = {"id": item, "repo": "gates_of_heck", "status": "todo", "depends": [],

@@ -25,13 +25,14 @@ import gate_lanes
 import land_records
 import land_slot
 import load_cap
+import state_paths
 import timing_ledger
 
 WEIGHT_RUNS = 10  # a repo's newest recorded pre-steps its weight is the median of
 
 
 def landq_dir() -> Path:
-    return Path(os.environ.get("GOH_LANDQ_DIR") or Path.home() / ".local/state/goh/landq")
+    return state_paths.landq_dir()
 
 
 def prestep_weight(repo: str, records: list[dict]) -> tuple[float | None, str]:

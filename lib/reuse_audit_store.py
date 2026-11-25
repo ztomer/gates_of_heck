@@ -46,6 +46,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, beside this file: the one door to goh.db
 import reuse_store  # lib/: the reuse root (GOH_REUSE_DIR)
+import state_paths
 
 NAMED: Path | None = None  # the caller's goh.db a land suite's controller counts into
 
@@ -89,7 +90,7 @@ def get(name: str) -> dict | None:
         row = None if con is None else con.execute(
             "SELECT body FROM reuse_audit WHERE path=?", (name,)).fetchone()  # fmt: skip
     rec = json.loads(row[0]) if row else None
-    return rec if isinstance(rec, dict) else None
+    return state_paths.got("reuse_audit", rec) if isinstance(rec, dict) else None
 
 
 def put(rec: dict) -> None:
@@ -97,7 +98,8 @@ def put(rec: dict) -> None:
     with goh_db.refusable(), goh_db.transaction(db(), _named()) as con:
         con.execute("INSERT INTO reuse_audit(path, body, at) VALUES (?, ?, ?) ON CONFLICT(path) "
                     "DO UPDATE SET body=excluded.body, at=excluded.at",
-                    (str(rec["path"]), _dump(rec), time.time()))  # fmt: skip
+                    (str(rec["path"]), _dump(state_paths.put(con, "reuse_audit", rec)),
+                     time.time()))  # fmt: skip
 
 
 def shadow_add(row: dict) -> None:
@@ -105,7 +107,7 @@ def shadow_add(row: dict) -> None:
     with goh_db.refusable(), goh_db.transaction(db(), _named()) as con:
         con.execute("INSERT INTO reuse_shadow(epoch, path, body) VALUES (?, ?, ?)",
                     (float(row.get("epoch") or time.time()), str(row.get("path") or ""),
-                     _dump(row)))  # fmt: skip
+                     _dump(state_paths.put(con, "reuse_shadow", row))))  # fmt: skip
 
 
 def shadow() -> list[dict]:
@@ -113,4 +115,4 @@ def shadow() -> list[dict]:
     with _read() as con:
         rows = [] if con is None else [
             b for (b,) in con.execute("SELECT body FROM reuse_shadow ORDER BY n")]  # fmt: skip
-    return [json.loads(b) for b in rows]
+    return [state_paths.got("reuse_shadow", json.loads(b)) for b in rows]

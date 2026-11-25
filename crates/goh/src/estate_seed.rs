@@ -42,6 +42,7 @@
 //! `crates_behind`'s seed is retired, D-0001): the first copy of this lived in `hookindex/seed.rs`, and a second copy is how
 //! one of them would have kept the directory-name key.
 
+use crate::goh_config;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -79,8 +80,8 @@ pub struct Kind {
     pub name: &'static str,
 }
 
-/// The private store: `GOH_SEED_DIR`, else `$XDG_STATE_HOME/goh/seeds`, else
-/// `$HOME/.local/state/goh/seeds` (the estate state's own directory, `lib/estate_registry.py`).
+/// The private store: `GOH_SEED_DIR`, else `seeds/` in goh's state root (`crate::goh_config`,
+/// `lib/state_paths.py` `seed_dir`).
 #[must_use]
 pub fn store_dir() -> Option<PathBuf> {
     let set = |k: &str| {
@@ -91,8 +92,8 @@ pub fn store_dir() -> Option<PathBuf> {
     if let Some(d) = set("GOH_SEED_DIR") {
         return Some(d);
     }
-    let base = set("XDG_STATE_HOME").or_else(|| set("HOME").map(|h| h.join(".local/state")))?;
-    Some(base.join("goh").join("seeds"))
+    let root = goh_config::or_said(goh_config::state_root(&goh_config::process))?;
+    Some(root.join("seeds"))
 }
 
 /// Where `held` is to be edited, for a note.

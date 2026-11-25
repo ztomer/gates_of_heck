@@ -37,6 +37,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, beside this file: the one door to goh.db
+import state_paths
 
 PINS = ".pins.json"
 COLUMNS = ("item", "sha", "status", "started", "finished", "version")
@@ -46,8 +47,8 @@ PIN_ROW = "result, run, body, at"
 
 
 def ship_dir() -> Path:
-    """Where ship results and their step logs live: GOH_SHIP_DIR, else ~/.local/state/goh/ship."""
-    return Path(os.environ.get("GOH_SHIP_DIR") or Path.home() / ".local/state/goh/ship")
+    """Where ship results and their step logs live: GOH_SHIP_DIR, else the state root's ship/."""
+    return Path(os.environ.get("GOH_SHIP_DIR") or state_paths.state_root() / "ship")
 
 
 def pins_path(result: Path | str) -> Path:
@@ -56,11 +57,16 @@ def pins_path(result: Path | str) -> Path:
     return Path(result).with_suffix(PINS)
 
 
-def _row(res: dict, result: str, now: float) -> tuple:
+def _row(res: dict, result: str, now: float, repo: str = "") -> tuple:
     p = Path(result)
     vals = [res.get(c) for c in COLUMNS]
-    return (result, p.stem, p.parent.name, *(None if v is None else str(v) for v in vals),
+    return (result, p.stem, repo or p.parent.name, *(None if v is None else str(v) for v in vals),
             json.dumps(res), now)  # fmt: skip
+
+
+def _repo(con: sqlite3.Connection, res: dict) -> str:
+    """The repo column of RES: its key in a file of tokens, else "" (its directory's name)."""
+    return str(state_paths.repo_key(res.get("repo")) or "") if state_paths.tokens(con) else ""
 
 
 def put(res: dict) -> None:
@@ -68,13 +74,16 @@ def put(res: dict) -> None:
     raised, never skipped (the ship's one record is no side record: lib/ship_status.py save)."""
     with goh_db.transaction() as con:
         con.execute(f"INSERT OR REPLACE INTO ships({SHIP_ROW}) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                    _row(res, str(res["result"]), time.time()))  # fmt: skip
+                    _row(state_paths.put(con, "ships", res),
+                         state_paths.column(con, str(res["result"])), time.time(),
+                         _repo(con, res)))  # fmt: skip
 
 
 def put_pins(result: Path | str, body: dict) -> None:
     with goh_db.refusable(), goh_db.transaction() as con:
         con.execute(f"INSERT OR REPLACE INTO ship_pins({PIN_ROW}) VALUES (?,?,?,?)",
-                    (str(result), Path(result).stem, json.dumps(body), time.time()))  # fmt: skip
+                    (state_paths.column(con, str(result)), Path(result).stem,
+                     json.dumps(state_paths.put(con, "ship_pins", body)), time.time()))  # fmt: skip
 
 
 @contextlib.contextmanager
@@ -96,18 +105,23 @@ def _read(one: bool = False) -> Iterator[sqlite3.Connection | None]:
 
 def get(result: Path | str) -> dict | None:
     """RESULT's record (its row), else None."""
+    at, args = state_paths.where("result", state_paths.forms(result))
     with _read(one=True) as con:
         row = (
-            con and con.execute("SELECT body FROM ships WHERE result=?", (str(result),)).fetchone()
+            con
+            and con.execute(
+                f"SELECT body FROM ships WHERE {at} ORDER BY result DESC", args
+            ).fetchone()
         )
-    return json.loads(row[0]) if row else None
+    return state_paths.got("ships", json.loads(row[0])) if row else None
 
 
 def get_pins(result: Path | str) -> dict | None:
+    at, args = state_paths.where("result", state_paths.forms(result))
     with _read(one=True) as con:
-        row = con and con.execute("SELECT body FROM ship_pins WHERE result=?",
-                                  (str(result),)).fetchone()  # fmt: skip
-    return json.loads(row[0]) if row else None
+        row = con and con.execute(f"SELECT body FROM ship_pins WHERE {at} ORDER BY result DESC",
+                                  args).fetchone()  # fmt: skip
+    return state_paths.got("ship_pins", json.loads(row[0])) if row else None
 
 
 def in_dir(directory: Path) -> list[tuple[Path, dict]]:
@@ -115,13 +129,14 @@ def in_dir(directory: Path) -> list[tuple[Path, dict]]:
     there."""
     directory = Path(directory)
     out: dict[str, dict] = {}
+    ends = [f + end for f in state_paths.forms(directory) for end in (os.sep, chr(ord(os.sep) + 1))]
+    span = " OR ".join(["result >= ? AND result < ?"] * (len(ends) // 2))
     with _read() as con:
-        lo = str(directory) + os.sep
-        for result, body in con.execute("SELECT result, body FROM ships WHERE result >= ? AND "
-                                        "result < ?", (lo, lo[:-1] + chr(ord(os.sep) + 1))) if (
-                                            con) else ():  # fmt: skip
-            if Path(result).parent == directory:
-                out[result] = json.loads(body)
+        for result, body in con.execute(f"SELECT result, body FROM ships WHERE {span} "
+                                        "ORDER BY result", ends) if con else ():  # fmt: skip
+            full = state_paths.decode(result)
+            if Path(full).parent == directory:
+                out[full] = state_paths.got("ships", json.loads(body))
     return [(Path(k), out[k]) for k in sorted(out)]
 
 
@@ -131,7 +146,8 @@ def live() -> list[tuple[Path, dict]]:
     with _read() as con:
         rows = con.execute("SELECT result, body FROM ships WHERE status IN ('running', "
                            "'bisecting') ORDER BY result").fetchall() if con else []  # fmt: skip
-    return [(Path(r), json.loads(b)) for r, b in rows]
+    return [(Path(state_paths.decode(r)), state_paths.got("ships", json.loads(b)))
+            for r, b in rows]  # fmt: skip
 
 
 def repo_dirs(base: Path | None = None) -> list[Path]:
@@ -140,8 +156,9 @@ def repo_dirs(base: Path | None = None) -> list[Path]:
     dirs = {p for p in base.iterdir() if p.is_dir()} if base.is_dir() else set()
     with _read() as con:
         for (result,) in con.execute("SELECT result FROM ships") if con else ():
-            if Path(result).parent.parent == base:
-                dirs.add(Path(result).parent)
+            full = Path(state_paths.decode(result))
+            if full.parent.parent == base:
+                dirs.add(full.parent)
     return sorted(dirs)
 
 
@@ -176,7 +193,8 @@ def test_rows(roots: tuple[str, ...] | None = None) -> list[str]:
     keep = (str(ship_dir()), str(ship_dir().resolve()))
     with _read() as con:
         rows = con.execute("SELECT result FROM ships").fetchall() if con else []
-    return sorted(r for (r,) in rows if any(_under(r, t) for t in roots)
+    found = (state_paths.decode(r) for (r,) in rows)
+    return sorted(r for r in found if any(_under(r, t) for t in roots)
                   and not any(_under(r, k) for k in keep))  # fmt: skip
 
 
@@ -185,5 +203,6 @@ def drop_test_rows(roots: tuple[str, ...] | None = None) -> int:
     gone = test_rows(roots)
     with goh_db.transaction() as con:
         for table in ("ships", "ship_pins"):
-            con.executemany(f"DELETE FROM {table} WHERE result=?", [(r,) for r in gone])
+            con.executemany(f"DELETE FROM {table} WHERE result=?",
+                            [(f,) for r in gone for f in state_paths.forms(r)])  # fmt: skip
     return len(gone)

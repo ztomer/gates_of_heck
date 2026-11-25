@@ -42,6 +42,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gate_identity  # lib/, beside this file
+import state_paths
 from canary_sides import Verdict, common_dir, foreign_repo_env, fresh, git_run, kept, restored
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -54,11 +55,7 @@ SKIP_TOP = ("docs", "tests", ".git")
 
 
 def seed_store() -> Path:
-    named = os.environ.get("GOH_SEED_DIR", "")
-    if named:
-        return Path(named)
-    state = os.environ.get("XDG_STATE_HOME", "")
-    return (Path(state) if state else Path.home() / ".local" / "state") / "goh" / "seeds"
+    return state_paths.seed_dir()
 
 
 def _listed(root: Path) -> list[str]:

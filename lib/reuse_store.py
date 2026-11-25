@@ -47,6 +47,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_cache_db  # lib/, beside this file: the one door to goh-cache.db
+import state_paths
 
 NAMED: Path | None = None  # the caller's goh-cache.db a suite controller records into
 CAP = 20000  # rows one path keeps at most, newest first (`pushed`: a year of push gates)
@@ -60,9 +61,7 @@ def root() -> Path:
         if not named.startswith("/"):
             raise ValueError(f"GOH_REUSE_DIR must be an absolute path: {named!r}")
         return Path(named)
-    state = os.environ.get("XDG_STATE_HOME", "")
-    base = Path(state) if state.startswith("/") else Path.home() / ".local" / "state"
-    return base / "goh" / "reuse"
+    return state_paths.state_root() / "reuse"
 
 
 def root_named() -> bool:

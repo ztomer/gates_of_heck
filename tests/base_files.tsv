@@ -99,6 +99,7 @@ lib/ship_suite.py	base-code
 lib/small_stores.py	base-code
 lib/source_closure.py	base-code
 lib/state_append.py	base-code
+lib/state_paths.py	base-code
 lib/step_timings.py	base-code
 lib/suite_cache_guard.sh	base-code
 lib/test_closure.py	base-code

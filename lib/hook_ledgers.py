@@ -58,6 +58,7 @@ from typing import Any
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # the lib directory, on the path from the line above
 import lock_order
+import state_paths
 
 STORE = "hook ledgers"  # the imports ledger's store
 SPAWNS, LANES, CANDIDATES = "agent_spawns", "lane_starts", "fault_candidates"
@@ -97,17 +98,18 @@ def _lines(data: bytes) -> list[dict]:
 
 def _kv(con: sqlite3.Connection, name: str) -> Any:
     row = con.execute("SELECT body FROM kv WHERE name=?", (name,)).fetchone()
-    return json.loads(row[0]) if row else None
+    return state_paths.got(name, json.loads(row[0])) if row else None
 
 
 def _kv_put(con: sqlite3.Connection, name: str, value: object) -> None:
     con.execute("INSERT INTO kv(name, body, at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET "
                 "body=excluded.body, at=excluded.at",
-                (name, _dump(value), time.time()))  # fmt: skip
+                (name, _dump(state_paths.put(con, name, value)), time.time()))  # fmt: skip
 
 
 def insert(con: sqlite3.Connection, table: str, row: dict) -> None:
     """ROW as TABLE's next row (SPAWNS or LANES; lib/state_retire.py's import uses it too)."""
+    row = state_paths.put(con, table, row)
     if table == SPAWNS:
         m = ITEM.match(str(row.get("description") or "")) if row.get("event") == "spawn" else None
         con.execute("INSERT INTO agent_spawns(at, event, agent, item, body) VALUES (?, ?, ?, ?, ?)",
@@ -219,8 +221,9 @@ def rows(table: str, db: Path | None = None) -> list[dict]:
     """TABLE's rows (SPAWNS or LANES) in the order written, then the spill's (DB: that file's rows
     alone, a run's own goh.db). No goh.db raises goh_db.Unknown: unknown, never empty."""
     with _read(db) as con:
-        got = [] if con is None else [json.loads(b) for (b,) in con.execute(
-            f"SELECT body FROM {table} ORDER BY n")]  # fmt: skip
+        got = [] if con is None else [
+            state_paths.got(table, json.loads(b))
+            for (b,) in con.execute(f"SELECT body FROM {table} ORDER BY n")]  # fmt: skip
     if db is not None:
         return got
     return got + [r for t, r in _spilled(spill_file()) if t == table]

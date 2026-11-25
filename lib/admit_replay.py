@@ -64,6 +64,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import land_records  # lib/: the land records' one door (GOH.STATEDB)
+import state_paths
 import timing_ledger
 
 KINDS = ("push", "land")
@@ -246,9 +247,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
     rules = [Rule.parse(r) for r in (args.rule or ["count:2", f"cpu:{args.cores:g}"])]
-    queue = args.landq or Path(
-        os.environ.get("GOH_LANDQ_DIR") or Path.home() / ".local/state/goh/landq"
-    )
+    queue = args.landq or Path(state_paths.landq_dir())
     rows = day_rows(timing_ledger.read(args.ledger), args.day)
     slots = next((r.limit for r in rules if r.kind == "count"), 2.0)
     jobs = jobs_from(rows, slot_waits=landq_slot_waits(queue), unknown_weight=args.cores / slots,

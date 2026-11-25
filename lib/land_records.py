@@ -49,6 +49,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, on the path from the line above
 import land_cause
 import landq_state
+import state_paths
 
 COLS = ("item", "sha", "enqueued", "repo", "mode", "state", "attempt", "requested", "started",
         "finished", "k")  # fmt: skip
@@ -56,6 +57,11 @@ COLS = ("item", "sha", "enqueued", "repo", "mode", "state", "attempt", "requeste
 
 def queue_key(q: Path) -> str:
     return os.path.realpath(q)
+
+
+def _ours(q: Path) -> tuple[str, tuple[str, ...]]:
+    """(clause, args) naming queue Q's rows, under either form of its path."""
+    return state_paths.where("queue", state_paths.forms(queue_key(q)))
 
 
 REF = "lands"  # the table a record's reference names
@@ -118,7 +124,9 @@ def write(q: Path, run: str, rec: dict, request: Path | None = None) -> None:
 
     def put() -> None:
         with goh_db.transaction() as con:
-            con.execute(f"INSERT OR REPLACE {INSERT}", _row(queue_key(q), run, rec))
+            con.execute(f"INSERT OR REPLACE {INSERT}",
+                        _row(state_paths.column(con, queue_key(q)), run,
+                             state_paths.put(con, "lands", rec)))  # fmt: skip
             if request is not None:
                 landq_state.finish(con, request)
 
@@ -141,12 +149,14 @@ def _rows(q: Path) -> dict[str, dict]:
     with _reader() as con:
         if con is None:
             return out
-        for run, body in con.execute("SELECT run, body FROM lands WHERE queue = ? ORDER BY run",
-                                     (queue_key(q),)):  # fmt: skip
+        ours, args = _ours(q)
+        for run, body in con.execute(f"SELECT run, body FROM lands WHERE {ours} "
+                                     "ORDER BY run, queue",
+                                     args):  # fmt: skip
             with contextlib.suppress(ValueError):
                 rec = json.loads(body)
                 if isinstance(rec, dict):
-                    out[run] = rec
+                    out[run] = state_paths.got("lands", rec)
     return out
 
 
@@ -160,8 +170,8 @@ def runs(q: Path) -> list[str]:
     have: set[str] = set()
     with _reader() as con:
         if con is not None:
-            have.update(r[0] for r in con.execute("SELECT run FROM lands WHERE queue = ?",
-                                                  (queue_key(q),)))  # fmt: skip
+            ours, args = _ours(q)
+            have.update(r[0] for r in con.execute(f"SELECT run FROM lands WHERE {ours}", args))
     return sorted(have)
 
 
@@ -169,13 +179,14 @@ def get(q: Path, run: str) -> dict | None:
     """RUN's record, or None while it has none (a torn file reads as none: read again)."""
     with _reader() as con:
         if con is not None:
-            got = con.execute("SELECT body FROM lands WHERE queue = ? AND run = ?",
-                              (queue_key(q), run)).fetchone()  # fmt: skip
+            ours, args = _ours(q)
+            got = con.execute(f"SELECT body FROM lands WHERE {ours} AND run = ? "
+                              "ORDER BY queue DESC", (*args, run)).fetchone()  # fmt: skip
             if got:
                 with contextlib.suppress(ValueError):
                     rec = json.loads(got[0])
                     if isinstance(rec, dict):
-                        return rec
+                        return state_paths.got("lands", rec)
     return None
 
 
@@ -184,8 +195,8 @@ def causes(q: Path) -> dict[str, dict]:
     out: dict[str, dict] = {}
     with _reader() as con:
         if con is not None:
-            for run, body in con.execute("SELECT run, body FROM red_causes WHERE queue = ?",
-                                         (queue_key(q),)):  # fmt: skip
+            ours, args = _ours(q)
+            for run, body in con.execute(f"SELECT run, body FROM red_causes WHERE {ours}", args):
                 with contextlib.suppress(ValueError):
                     out[f"{run}.json"] = json.loads(body)
     return out
@@ -195,7 +206,9 @@ def set_causes(q: Path, side: dict[str, dict]) -> None:
     """Queue Q's red classes are SIDE (`<run>.json` -> cause), replacing the ones before."""
     key = queue_key(q)
     with goh_db.refusable(), goh_db.transaction() as con:
-        con.execute("DELETE FROM red_causes WHERE queue = ?", (key,))
+        ours, args = _ours(q)
+        con.execute(f"DELETE FROM red_causes WHERE {ours}", args)
+        key = state_paths.column(con, key)
         con.executemany(
             "INSERT INTO red_causes (queue, run, cause, at, body) VALUES (?, ?, ?, ?, ?)",
             [(key, name.removesuffix(".json"), str(c.get("cause") or ""),
@@ -224,13 +237,14 @@ def ledger(q: Path, name: str) -> list[dict]:
     table, bodies = LEDGERS[name][0], []
     with _reader() as con:
         if con is not None:
-            sql = f"SELECT body FROM {table} WHERE queue = ? ORDER BY n"
-            bodies = [b for (b,) in con.execute(sql, (queue_key(q),))]
+            ours, args = _ours(q)
+            sql = f"SELECT body FROM {table} WHERE {ours} ORDER BY n"
+            bodies = [b for (b,) in con.execute(sql, args)]
     out = []
     for body in bodies:
         with contextlib.suppress(ValueError):
             out.append(json.loads(body))
-    return out
+    return state_paths.got(name, out)
 
 
 def insert(con: sqlite3.Connection, key: str, name: str, rows: list[dict]) -> int:
@@ -238,7 +252,8 @@ def insert(con: sqlite3.Connection, key: str, name: str, rows: list[dict]) -> in
     table, col = LEDGERS[name]
     before = con.total_changes
     sql = f"INSERT OR IGNORE INTO {table} (queue, at, {col}, body) VALUES (?, ?, ?, ?)"
-    con.executemany(sql, [_ledger_row(key, name, r) for r in rows])
+    key = state_paths.column(con, key)
+    con.executemany(sql, [_ledger_row(key, name, state_paths.put(con, name, r)) for r in rows])
     return con.total_changes - before
 
 

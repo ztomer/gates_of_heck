@@ -28,6 +28,7 @@ import gitrun
 import goh_db
 import pid_owner
 import ship_records
+import state_paths
 
 MAX = "90m"  # a land gate's own bound
 # The tree's own passes of tests measured running no binary are not run again (tests/_same_tree.py):
@@ -119,7 +120,7 @@ def judge_env(base: str, gate_class: str) -> dict[str, str]:
 
 
 def landq_dir() -> Path:
-    return Path(os.environ.get("GOH_LANDQ_DIR") or Path.home() / ".local/state/goh/landq")
+    return state_paths.landq_dir()
 
 
 def adoptable(sha: str, base: str, q: Path | None = None) -> tuple[Path | None, str]:

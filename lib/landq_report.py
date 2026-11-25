@@ -43,6 +43,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import state_paths  # lib/, on every caller's path
+
 from tui.lib import counted, err, info, ok, warn
 
 try:
@@ -445,5 +447,4 @@ def run(queue: Path, since: str, as_json: bool) -> int:
     return 0
 
 
-def default_queue() -> Path:
-    return Path(os.environ.get("GOH_LANDQ_DIR") or Path.home() / ".local/state/goh/landq")
+default_queue = state_paths.landq_dir

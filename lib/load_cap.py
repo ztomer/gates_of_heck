@@ -52,6 +52,9 @@ import os
 import sys
 from typing import Any
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import state_paths  # lib/, on the path from the line above
+
 DEFAULT = 1  # the measured peak, 2026-11-24 (above)
 MIN_HOURS = 5  # busy hours a band needs before it can be the peak
 WINDOW_S = 7 * 86400  # the newest week of records judges
@@ -133,7 +136,7 @@ def main(argv: list[str]) -> int:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import land_records
 
-    q = os.environ.get("GOH_LANDQ_DIR") or os.path.expanduser("~/.local/state/goh/landq")
+    q = str(state_paths.landq_dir())
     from pathlib import Path
 
     recs = [r for _, r in land_records.records(Path(q))]

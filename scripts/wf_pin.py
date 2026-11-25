@@ -91,6 +91,7 @@ import consumer_pins
 import estate_commit
 import estate_registry
 import pin_sweep
+import state_paths
 from consumer_pins import Pin
 
 GOH = Path(__file__).resolve().parent.parent
@@ -257,7 +258,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--root",
         type=Path,
-        default=Path(os.environ.get("GOH_ESTATE_ROOT", Path.home() / "Projects")),
+        default=state_paths.estate_root(),
     )
     ap.add_argument("--tag", help="the goh release to pin (default: goh's newest vX.Y.Z tag)")
     ap.add_argument("--slug", help="goh's GitHub OWNER/NAME (default: from goh's origin)")

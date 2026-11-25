@@ -49,6 +49,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, on the path from the line above
 import landq_state
 import lock_order
+import state_paths
 import state_retire_lands  # its queue(): GOH_LANDQ_DIR, else the state's landq/
 
 DIRS = (*landq_state.STATES, landq_state.EARLY)
@@ -144,7 +145,7 @@ def load(con: sqlite3.Connection, paths: list[Path]) -> None:
         sha = hashlib.sha256(p.read_bytes()).hexdigest()
         con.execute("INSERT OR IGNORE INTO imports(store, source, sha256, rows, at) "
                     "VALUES (?, ?, ?, ?, ?)",
-                    (table, str(p), sha, n, now))  # fmt: skip
+                    (table, state_paths.column(con, str(p)), sha, n, now))  # fmt: skip
 
 
 def check(con: sqlite3.Connection, p: Path) -> str | None:

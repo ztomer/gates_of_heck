@@ -57,6 +57,7 @@ import estate_registry
 import gate_coverage
 import hook_currency
 import shared_advisories
+import state_paths
 
 DENY = [
     "--deny",
@@ -423,7 +424,7 @@ def main() -> int:
     ap.add_argument(
         "--root",
         type=Path,
-        default=Path(os.environ.get("GOH_ESTATE_ROOT", Path.home() / "Projects")),
+        default=state_paths.estate_root(),
     )
     ap.add_argument("--state", type=Path, default=default_state())
     ap.add_argument("--db", help="advisory database path (a fixture, in tests)")

@@ -71,6 +71,7 @@ import db_bounds  # goh.db's and goh-cache.db's tables and budgets (GOH.DBSEAM)
 import lock_order  # the one acquire path: a try-lock on a run directory's tree lock
 import prune_kept  # its live-entry probe and its remover, one spelling
 import state_files  # the single files' table and trim (GOH.LEDGERBOUND)
+import state_paths
 
 LANDS_PER_DAY = 48  # measured: 49 on 2026-11-17 and on 11-18
 RUNS_PER_LAND = 1.6  # measured: 75 log groups, 72 done records for 49 lands (11-18)
@@ -151,9 +152,8 @@ REGISTRY: dict[str, Bound | Kept | Container] = {
 
 
 def state_root() -> Path:
-    """$XDG_STATE_HOME/goh, else ~/.local/state/goh (the root lib/run_path.py's run/ lives in)."""
-    state = os.environ.get("XDG_STATE_HOME", "")
-    return (Path(state) if state.startswith("/") else Path.home() / ".local" / "state") / "goh"
+    """goh's state root (lib/state_paths.py)."""
+    return state_paths.state_root()
 
 
 def _held(path: Path) -> bool:

@@ -85,6 +85,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / "lib")]
+
 bounded_run = importlib.import_module("bounded_run")
 land_filers = importlib.import_module("land_filers")  # diffcov carry, cap ahead
 flakes = importlib.import_module("flakes")
@@ -107,6 +108,7 @@ landq_look = importlib.import_module("landq_look")
 landq_inflight = importlib.import_module("landq_inflight")
 landq_background = importlib.import_module("landq_background")
 landq_state = importlib.import_module("landq_state")
+state_paths = importlib.import_module("state_paths")
 ruff_bump = importlib.import_module("ruff_bump")
 selection_miss = importlib.import_module("selection_miss")
 Refused, request = landq_request.Refused, landq_request.request
@@ -119,12 +121,7 @@ LAND_TIMEOUT = 2 * 3600  # land.sh: a 10 min pre-step, a 90 min gate, and a wait
 DIRS = ("logs",)  # requests are goh.db rows (GOH.LANDQDB); done/ is lib/land_records.py's
 
 
-def qdir() -> Path:
-    return Path(os.environ.get("GOH_LANDQ_DIR") or Path.home() / ".local/state/goh/landq")
-
-
-def loopctl() -> Path:
-    return Path(os.environ.get("GOH_LOOPCTL") or Path.home() / "Projects/.loop/tools/loopctl.py")
+qdir, loopctl = state_paths.landq_dir, state_paths.loopctl
 
 
 git, now, shares_of = landq_request.git, landq_request.now, landq_report.landq_remote.shares

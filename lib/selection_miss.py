@@ -64,6 +64,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gitrun
 import land_records  # lib/: the land records' one door (GOH.STATEDB)
+import state_paths
 from tmp_root import goh_tmp
 
 FAILED = re.compile(r"^(?:\d+:)?[ \t]*FAILED (tests/[^\s@]+)", re.MULTILINE)
@@ -290,8 +291,7 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="replay the selection-miss ledger from done/")
     ap.add_argument("--replay", action="store_true", required=True)
     ap.add_argument("--since", default="")
-    ap.add_argument("--queue", default=os.environ.get("GOH_LANDQ_DIR")
-                    or str(Path.home() / ".local/state/goh/landq"))  # fmt: skip
+    ap.add_argument("--queue", default=str(state_paths.landq_dir()))
     args = ap.parse_args(argv)
     for r in replay(Path(args.queue), args.since):
         print(json.dumps({k: v for k, v in r.items() if k != "changed"}, sort_keys=True))

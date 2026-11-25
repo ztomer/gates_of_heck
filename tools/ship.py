@@ -113,6 +113,7 @@ import ship_pushed
 import ship_status
 import ship_undo
 import ship_verify
+import state_paths  # noqa: E402 -- lib/
 from ship_preflight import preflights, run_preflights
 from ship_version import (
     SEMVER,
@@ -160,8 +161,7 @@ def default_out(name: str, sha: str) -> Path:
     return base / name.replace("/", "_") / f"{stamp}-{sha[:8]}.json"
 
 
-def loopctl() -> Path:
-    return Path(os.environ.get("GOH_LOOPCTL") or Path.home() / "Projects/.loop/tools/loopctl.py")
+loopctl = state_paths.loopctl
 
 
 def plan(args: argparse.Namespace) -> dict:
@@ -178,7 +178,7 @@ def plan(args: argparse.Namespace) -> dict:
     remote, _, branch = upstream.partition("/")
     if args.progress and not args.item:
         raise Refused("--progress needs --item: it records a slice of that item as PROGRESS")
-    root = Path(os.environ.get("LOOPCTL_ROOT") or Path.home() / "Projects")
+    root = Path(os.environ.get("LOOPCTL_ROOT") or state_paths.repos_root())
     try:
         name = str(repo.resolve().relative_to(root.resolve()))
     except ValueError:

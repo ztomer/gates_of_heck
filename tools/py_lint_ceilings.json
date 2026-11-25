@@ -98,7 +98,7 @@
   "scripts/claude_cache_probe.py": 6,
   "scripts/estate_audit.py": 4,
   "scripts/estate_registry.py": 4,
-  "scripts/model_choice_watch.py": 14,
+  "scripts/model_choice_watch.py": 13,
   "scripts/release_canary.py": 1,
   "scripts/spend_watch.py": 29,
   "tests/_drift_guard.py": 11,

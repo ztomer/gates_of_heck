@@ -15,6 +15,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use super::{Declared, Row, Shape, State, Verdict};
+use crate::goh_config;
 
 const TAG: &str = "[shape_diff]";
 /// The most unnamed hits listed per scanner; the count is always whole.
@@ -225,10 +226,8 @@ pub fn estate() -> Option<Vec<PathBuf>> {
     let state = std::env::var_os("GOH_ESTATE_STATE")
         .map(PathBuf::from)
         .or_else(|| {
-            let base = std::env::var_os("XDG_STATE_HOME")
-                .map(PathBuf::from)
-                .or_else(|| std::env::var_os("HOME").map(|h| Path::new(&h).join(".local/state")))?;
-            Some(base.join("goh/estate_audit.json"))
+            let root = goh_config::or_said(goh_config::state_root(&goh_config::process))?;
+            Some(root.join("estate_audit.json"))
         })?;
     let text = std::fs::read_to_string(state.parent()?.join("installed_repos")).ok()?;
     Some(

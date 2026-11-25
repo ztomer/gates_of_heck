@@ -128,7 +128,7 @@ pub struct RoadmapArgs {
     /// Write today's findings as `roadmap_seed.json` (refused if any count would rise).
     #[arg(long, conflicts_with = "staged")]
     pub seed: bool,
-    /// The umbrella queue file (default: `GOH_ROADMAP_QUEUE`, else `~/Projects/.loop/queue.json`).
+    /// The umbrella queue file (default: `GOH_ROADMAP_QUEUE`, else `GOH_LOOP_QUEUE`, else the config's).
     #[arg(long)]
     pub queue: Option<String>,
 }

@@ -62,6 +62,7 @@ from dataclasses import dataclass, field
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cache_tier  # lib/, beside this file
 import sccache_cap  # lib/, beside this file: the one disk cap
+import state_paths
 
 SUBDIR = "sccache"
 IDLE_S = 30.0
@@ -261,8 +262,8 @@ LOG_MAX = 64 << 10
 def say(line: str) -> None:
     """LINE printed, and kept in the start log: the wrapper's own output is the crate's to cargo."""
     print(line)
-    path = os.environ.get("GOH_SCCACHE_LOG") or os.path.expanduser(
-        "~/.local/state/goh/sccache-start.log")  # fmt: skip
+    path = os.environ.get("GOH_SCCACHE_LOG") or str(
+        state_paths.state_root() / "sccache-start.log")  # fmt: skip
     with contextlib.suppress(OSError):
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         big = os.path.exists(path) and os.path.getsize(path) > LOG_MAX

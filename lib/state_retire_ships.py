@@ -33,6 +33,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ship_records  # lib/, on the path from the line above
 import ship_status
+import state_paths
 
 # a ship directory's files that are no record: the sweep's record, the suite's profiles, the
 # coverage summary (the step logs are .log and .jsonl and stay, handover plan (e))
@@ -100,7 +101,8 @@ def load(con: sqlite3.Connection, paths: list[Path]) -> None:
                         "VALUES (?,?,?,?)", pin)  # fmt: skip
         con.execute("INSERT OR IGNORE INTO imports(store, source, sha256, rows, at) "
                     "VALUES (?, ?, ?, ?, ?)",
-                    (table, str(p), hashlib.sha256(raw).hexdigest(), 1, now))  # fmt: skip
+                    (table, state_paths.column(con, str(p)), hashlib.sha256(raw).hexdigest(),
+                     1, now))  # fmt: skip
 
 
 def check(con: sqlite3.Connection, p: Path) -> str | None:

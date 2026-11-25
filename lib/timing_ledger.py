@@ -60,6 +60,9 @@ import os
 import sys
 from pathlib import Path
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import state_paths  # lib/, on the path from the line above
+
 DIR_ENV = "GOH_TIMING_DIR"
 SCHEMA = 1
 MAX_LINE = 4000  # under PIPE_BUF (4096 on macOS and Linux): an append is atomic
@@ -70,8 +73,7 @@ def ledger_dir() -> Path:
     explicit = os.environ.get(DIR_ENV)
     if explicit:
         return Path(explicit)
-    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
-    return Path(base) / "goh" / "timing"
+    return state_paths.state_root() / "timing"
 
 
 def ledger_path() -> Path:

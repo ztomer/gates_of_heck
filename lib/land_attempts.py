@@ -34,12 +34,12 @@ s, landed 300 s = 837 s`; a chain still red is an open failed run.
 from __future__ import annotations
 
 import datetime as dt
-import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import land_records  # the land records' one door (GOH.STATEDB)
+import state_paths
 import timing_ledger
 
 KIND = "land attempt"
@@ -48,7 +48,7 @@ RETRIES = "land retries"
 
 def queue_dir() -> Path:
     """The landing queue (tools/landq.py's GOH_LANDQ_DIR)."""
-    return Path(os.environ.get("GOH_LANDQ_DIR") or Path.home() / ".local/state/goh/landq")
+    return state_paths.landq_dir()
 
 
 def item_of(path: Path, rec: dict) -> str:

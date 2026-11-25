@@ -36,8 +36,12 @@ canary share it). Pinned by `test_release_canary.py`.
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Callable, Iterable
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import state_paths  # lib/, on the path from the line above
 
 try:  # the one acquire path (lib/lock_order.py, GOH.LOCKORDER), imported as `X` or as `lib.X`
     import lock_order
@@ -52,12 +56,11 @@ REPO_DEPTH = 3  # ~/Projects/<repo>, ~/Projects/<group>/<repo>: a nested server 
 
 def state_file() -> Path:
     """Where the estate audit records what it found: `GOH_ESTATE_STATE`, else
-    `$XDG_STATE_HOME/goh/estate_audit.json`, else `~/.local/state/goh/estate_audit.json`."""
+    `estate_audit.json` in the state root (lib/state_paths.py)."""
     env = os.environ.get("GOH_ESTATE_STATE")
     if env:
         return Path(env).expanduser()
-    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
-    return Path(base).expanduser() / "goh" / small_stores.KV_FILES["estate_audit"]
+    return state_paths.state_root() / small_stores.KV_FILES["estate_audit"]
 
 
 def update_state(state: Path, change: Callable[[dict], dict]) -> dict:

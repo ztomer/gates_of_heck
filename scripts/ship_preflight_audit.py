@@ -32,6 +32,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / "lib"), str(ROOT / "tools")]
+import state_paths  # noqa: E402 -- lib/
+
 SEED_NAME = "ship_preflight.json"
 
 
@@ -70,7 +72,7 @@ def findings(root: Path) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    ap.add_argument("--root", default=str(Path.home() / "Projects"))
+    ap.add_argument("--root", default=str(state_paths.repos_root()))
     ap.add_argument("--seed", action="store_true", help="write today's findings as the seed")
     a = ap.parse_args(argv)
     from tui.lib import err, ok, warn

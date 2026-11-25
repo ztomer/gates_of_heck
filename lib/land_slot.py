@@ -62,6 +62,7 @@ import full_run
 import goh_db
 import landq_state
 import pid_owner
+import state_paths
 
 KEEP = 4  # slot numbers below this stay checked out between lands (warm build output)
 
@@ -84,8 +85,9 @@ def _slot(owner: Path) -> tuple[str, int]:
 
 def _queued(con: sqlite3.Connection, q: Path, token: str) -> bool:
     """A request pending or running names TOKEN as its slot (read in the claim's transaction)."""
-    got = con.execute("SELECT body FROM requests WHERE queue = ? AND state IN ('pending', "
-                      "'running')", (landq_state.queue_key(q),))  # fmt: skip
+    ours, args = state_paths.where("queue", state_paths.forms(landq_state.queue_key(q)))
+    got = con.execute(f"SELECT body FROM requests WHERE {ours} AND state IN ('pending', "
+                      "'running')", args)  # fmt: skip
     for (body,) in got:
         with contextlib.suppress(ValueError, AttributeError):
             if json.loads(body).get("slot") == token:
@@ -93,13 +95,19 @@ def _queued(con: sqlite3.Connection, q: Path, token: str) -> bool:
     return False
 
 
+def _ours(key: str) -> tuple[str, tuple[str, ...]]:
+    """(clause, args) naming the rows of slots root KEY, under either form of its path."""
+    return state_paths.where("repo_key", state_paths.forms(key))
+
+
 def _owner(owner: Path) -> dict:
     """The slot's owner row {token, pid, pid_stamp}, {} when it has none."""
     key, n = _slot(owner)
+    ours, args = _ours(key)
     try:
         with goh_db.ro() as con:
-            got = con.execute("SELECT token, pid, pid_stamp FROM slot_owners WHERE repo_key = ? "
-                              "AND n = ?", (key, n)).fetchone()  # fmt: skip
+            got = con.execute(f"SELECT token, pid, pid_stamp FROM slot_owners WHERE {ours} "
+                              "AND n = ?", (*args, n)).fetchone()  # fmt: skip
     except (OSError, sqlite3.Error):
         return {}
     return dict(zip(("token", "pid", "pid_stamp"), got, strict=True)) if got else {}
@@ -116,42 +124,51 @@ def _take(q: Path, owner: Path, token: str) -> bool:
     """Claim OWNER for TOKEN in one transaction: an empty slot, or one whose owner (the one read
     here, its pid gone) no queued request names."""
     key, n = _slot(owner)
+    ours, args = _ours(key)
     me = os.getpid()
     stamp = pid_owner.stamp_line(me)
     was = _owner(owner)
     alive = bool(was) and _alive(was)  # read before the transaction: no `ps` is waited on in one
     with goh_db.transaction() as con:
-        got = con.execute("SELECT token FROM slot_owners WHERE repo_key = ? AND n = ?",
-                          (key, n)).fetchone()  # fmt: skip
+        got = con.execute(f"SELECT token FROM slot_owners WHERE {ours} AND n = ?",
+                          (*args, n)).fetchone()  # fmt: skip
         if got and got[0] == token:
             return True  # TOKEN's already: a read before that failed is never "another's"
         if got and (got[0] != was.get("token") or alive or _queued(con, q, got[0])):
             return False  # held: live, queued, or claimed by another since the read
-        con.execute("INSERT OR REPLACE INTO slot_owners (repo_key, n, token, pid, pid_stamp, at) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (key, n, token, me, stamp, time.time()))  # fmt: skip
+        con.execute(f"DELETE FROM slot_owners WHERE {ours} AND n = ?", (*args, n))
+        con.execute("INSERT INTO slot_owners (repo_key, n, token, pid, pid_stamp, at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)", (state_paths.column(con, key), n, token, me,
+                                                  stamp, time.time()))  # fmt: skip
     return True
 
 
 def _free(owner: Path, token: str) -> None:
     key, n = _slot(owner)
+    ours, args = _ours(key)
     with goh_db.transaction() as con:
-        con.execute("DELETE FROM slot_owners WHERE repo_key = ? AND n = ? AND token = ?",
-                    (key, n, token))  # fmt: skip
+        con.execute(f"DELETE FROM slot_owners WHERE {ours} AND n = ? AND token = ?",
+                    (*args, n, token))  # fmt: skip
 
 
 def owners(q: Path) -> list[dict]:
     """Every slot owner row under queue Q: {repo_key, n, token, pid, pid_stamp, at, alive}."""
     base = os.path.realpath(q / "slots") + os.sep
+    starts = [x for f in state_paths.forms(base) for x in (len(f), f)]
+    under = " OR ".join(["substr(repo_key, 1, ?) = ?"] * (len(starts) // 2))
     try:
         with goh_db.ro() as con:  # a prefix, never a LIKE pattern: a path's `_` is any character
-            rows = con.execute("SELECT repo_key, n, token, pid, pid_stamp, at FROM slot_owners "
-                               "WHERE substr(repo_key, 1, ?) = ? ORDER BY repo_key, n",
-                               (len(base), base)).fetchall()  # fmt: skip
+            rows = con.execute(
+                "SELECT repo_key, n, token, pid, pid_stamp, at FROM slot_owners "
+                f"WHERE {under} ORDER BY repo_key, n",
+                starts,
+            ).fetchall()
     except (OSError, sqlite3.Error):
         return []
     cols = ("repo_key", "n", "token", "pid", "pid_stamp", "at")
-    return [{**(r := dict(zip(cols, row, strict=True))), "alive": _alive(r)} for row in rows]
+    out = [dict(zip(cols, row, strict=True)) for row in rows]
+    return [{**r, "repo_key": os.path.realpath(state_paths.decode(r["repo_key"])),
+             "alive": _alive(r)} for r in out]  # fmt: skip
 
 
 def presteps(q: Path) -> list[dict]:
@@ -176,13 +193,14 @@ def reap(q: Path) -> list[dict]:
     for o in owners(q):
         if o["alive"]:
             continue
+        ours, args = _ours(o["repo_key"])
         with goh_db.transaction() as con:
-            got = con.execute("SELECT token FROM slot_owners WHERE repo_key = ? AND n = ?",
-                              (o["repo_key"], o["n"])).fetchone()  # fmt: skip
+            got = con.execute(f"SELECT token FROM slot_owners WHERE {ours} AND n = ?",
+                              (*args, o["n"])).fetchone()  # fmt: skip
             if not got or got[0] != o["token"] or _queued(con, q, o["token"]):
                 continue
-            con.execute("DELETE FROM slot_owners WHERE repo_key = ? AND n = ? AND token = ?",
-                        (o["repo_key"], o["n"], o["token"]))  # fmt: skip
+            con.execute(f"DELETE FROM slot_owners WHERE {ours} AND n = ? AND token = ?",
+                        (*args, o["n"], o["token"]))  # fmt: skip
         gone.append(o)
     return gone
 
@@ -203,7 +221,8 @@ def import_owners(q: Path) -> int:
     with goh_db.transaction() as con:
         before = con.total_changes
         con.executemany("INSERT OR IGNORE INTO slot_owners (repo_key, n, token, pid, pid_stamp, "
-                        "at) VALUES (?, ?, ?, ?, ?, ?)", [r for _, r in rows])  # fmt: skip
+                        "at) VALUES (?, ?, ?, ?, ?, ?)",
+                        [(state_paths.column(con, r[0]), *r[1:]) for _, r in rows])  # fmt: skip
         added = con.total_changes - before
     for f, _ in rows:
         if _owner(f):

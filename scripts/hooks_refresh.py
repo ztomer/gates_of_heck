@@ -43,7 +43,6 @@ daily estate audit records the same list (`stale_hooks`) and the session hook sa
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -59,6 +58,7 @@ import consumer_pins
 import estate_commit
 import estate_registry
 import hook_currency
+import state_paths
 
 GOH = Path(__file__).resolve().parent.parent
 MESSAGE = "chore: refresh goh's stock hooks ({hooks}) -- goh hooks --refresh"
@@ -148,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--root",
         type=Path,
-        default=Path(os.environ.get("GOH_ESTATE_ROOT", Path.home() / "Projects")),
+        default=state_paths.estate_root(),
     )
     ap.add_argument("--refresh", action="store_true", help="install.sh and commit each stale repo")
     ap.add_argument(

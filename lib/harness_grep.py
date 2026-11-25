@@ -33,11 +33,15 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 
 import busyloop
 import self_match
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import state_paths  # lib/, on the path from the line above
 
 ESCAPE = re.compile(r"#\s*grep-vq-ok:\s*\S")
 _GREP = re.compile(r"(?<![\w./$-])grep\b(?![\w.-])")
@@ -46,10 +50,9 @@ _GREP_ARG = set("ABCmdDef")
 
 
 def state_path(env: Mapping[str, str] | None = None) -> Path:
-    """Where `goh shell-check` records the probe: `$XDG_STATE_HOME/goh/harness_grep.json`."""
+    """Where `goh shell-check` records the probe: harness_grep.json in the state root."""
     env = os.environ if env is None else env
-    base = env.get("XDG_STATE_HOME") or os.path.join(env.get("HOME", ""), ".local", "state")
-    return Path(base) / "goh" / "harness_grep.json"
+    return state_paths.state_root(env) / "harness_grep.json"
 
 
 def fixed(env: Mapping[str, str] | None = None, path: Path | None = None) -> bool:

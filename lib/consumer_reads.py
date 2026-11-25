@@ -39,6 +39,7 @@ if str(Path(__file__).resolve().parent) not in sys.path:  # gitrun's own bare im
     sys.path.append(str(Path(__file__).resolve().parent))
 import estate_registry
 import gitrun
+import state_paths
 
 # The changed paths no gate runs (scripts/release_canary.py NOT_GATE_INPUTS: docs, tests, *.md).
 NOT_READ = ("docs/", "tests/", "changelog/")
@@ -55,7 +56,7 @@ def looked_for(changed: list[str]) -> list[str]:
 def estate(goh: Path) -> list[Path]:
     """The canary's consumers (release_canary.consumers): the gated repos of the estate registry
     unioned with the walk of GOH_ESTATE_ROOT (else home Projects/), goh (any worktree) out."""
-    root = Path(os.environ.get("GOH_ESTATE_ROOT") or Path.home() / "Projects")
+    root = state_paths.estate_root()
     repos, _ = estate_registry.union(
         estate_registry.walk_repos(root),
         estate_registry.registry_path(estate_registry.state_file()),

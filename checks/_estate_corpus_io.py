@@ -25,6 +25,8 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+import state_paths  # lib/, on the path from the line above
 from _gitutil import foreign_repo_env, listed_files, scratch_git
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -145,11 +147,10 @@ STORE_ROOTS = "estate_corpus_roots.json"
 
 def store_dir():
     """The private store (`crates/goh/src/estate_seed.rs` `store_dir`): GOH_SEED_DIR, else
-    $XDG_STATE_HOME/goh/seeds, else ~/.local/state/goh/seeds."""
+    seeds/ in the state root (lib/state_paths.py)."""
     if os.environ.get("GOH_SEED_DIR"):
         return os.path.expanduser(os.environ["GOH_SEED_DIR"])
-    state = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
-    return os.path.join(state, "goh", "seeds")
+    return str(state_paths.seed_dir())
 
 
 def resolve_root(root):

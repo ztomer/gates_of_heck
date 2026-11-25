@@ -15,11 +15,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
+import state_paths  # lib/, on the path from the line above
+
 LOOPCTL_TIMEOUT_S = 15.0
 
 
 def loopctl_path() -> Path:
-    return Path(os.environ.get("GOH_LOOPCTL") or Path.home() / "Projects/.loop/tools/loopctl.py")
+    return state_paths.loopctl()
 
 
 def start_loop_stale(projects: Path) -> subprocess.Popen[str] | None:

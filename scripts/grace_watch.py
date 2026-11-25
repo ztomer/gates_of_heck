@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import os
 import sys
 import tempfile
 import time
@@ -34,6 +33,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import release_canary as canary  # the sweep, the sides and the consumers: one implementation
+import state_paths
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tui.lib import counted, err, info, ok
@@ -113,7 +113,7 @@ def main() -> int:
     ap.add_argument(
         "--root",
         type=Path,
-        default=Path(os.environ.get("GOH_ESTATE_ROOT", Path.home() / "Projects")),
+        default=state_paths.estate_root(),
     )
     ap.add_argument("--state", type=Path, default=estate_registry.state_file())
     ap.add_argument("--goh", type=Path, default=canary.ROOT, help="the goh consumers run")

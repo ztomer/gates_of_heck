@@ -1,7 +1,7 @@
 //! The umbrella queue a roadmap cites as `(queue: <ID>)`: which of its items are done.
 //!
 //! A SEAM, so a test reads a fixture and a machine without the umbrella degrades: `--queue PATH`,
-//! else `GOH_ROADMAP_QUEUE`, else `$HOME/Projects/.loop/queue.json`. A queue that is absent or
+//! else `GOH_ROADMAP_QUEUE`, else the loop's queue (`goh_config::loop_queue`). A queue that is absent or
 //! unreadable is not the repo's defect, so the rule is NOT JUDGED and the gate says why -- never a
 //! crash, and never a silent pass: the caller prints the reason and withholds the seed's
 //! `queue-done` entries, which a blind rule would otherwise read as fixed.
@@ -14,6 +14,8 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+
+use crate::goh_config;
 
 /// The SQLite store's file name, beside the queue's path.
 pub const DB_NAME: &str = "loop.db";
@@ -36,10 +38,7 @@ pub fn locate(flag: Option<&str>) -> Result<PathBuf, String> {
         Ok(_) => return Err(format!("{ENV} is set empty")),
         Err(_) => {}
     }
-    std::env::var_os("HOME")
-        .filter(|h| !h.is_empty())
-        .map(|h| PathBuf::from(h).join("Projects/.loop/queue.json"))
-        .ok_or_else(|| format!("neither {ENV} nor HOME is set"))
+    goh_config::loop_queue(&goh_config::process).map_err(|why| format!("no {ENV}, and {why}"))
 }
 
 /// Every item's status by id, from the queue file's text.

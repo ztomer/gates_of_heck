@@ -61,6 +61,7 @@ import agent_audit
 import apply_claude_hooks
 import model_choice
 import spend_watch
+import state_paths  # noqa: E402 -- lib/
 
 usage_review = importlib.import_module("usage_review")  # scripts/, on sys.path above
 queue_read = importlib.import_module("queue_read")  # lib/: the loop queue's one reader
@@ -68,7 +69,7 @@ hook_ledgers = importlib.import_module("hook_ledgers")  # lib/: goh.db's ledgers
 STATUSES = importlib.import_module("agent_guard").STATUSES  # hooks/claude/, on sys.path above
 
 LABEL = "com.ztomer.goh-model-choice-watch"
-LOOP = Path.home() / "Projects" / ".loop"
+LOOP = state_paths.repos_root() / ".loop"
 USER_AGENT = "goh-model-choice-watch/1"
 WEEKDAY, HOUR = 1, 9  # Monday 09:30
 SPAWN_TOOLS = ('"name":"Agent"', '"name":"Task"')
@@ -409,8 +410,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--settings", type=Path, default=Path.home() / ".claude" / "settings.json")
     ap.add_argument("--projects", type=Path, default=Path.home() / ".claude" / "projects")
     ap.add_argument("--claude", default=shutil.which("claude"), help="the Claude Code CLI")
-    ap.add_argument("--root", type=Path,
-                    default=Path(os.environ.get("GOH_ESTATE_ROOT", Path.home() / "Projects")))  # fmt: skip
+    ap.add_argument("--root", type=Path, default=state_paths.estate_root())
     ap.add_argument("--days", type=int, default=7, help="the canary's window")
     ap.add_argument("--offline-audit", action="store_true", help="the audit asks GitHub nothing")
     ap.add_argument("--no-live-proof", action="store_true", help="never spend tokens")

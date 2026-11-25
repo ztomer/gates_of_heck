@@ -86,6 +86,7 @@ import reuse  # lib/: the land record (`landed_identity`)
 import reuse_fault  # lib/: `loopctl file` and the queue's current phase
 import ship_red_cause  # lib/: what the red's log names (GOH.SHIPBISECTCOV)
 import ship_suite  # lib/: the check the release kit makes
+import state_paths
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX = full_run.MAX
@@ -256,7 +257,7 @@ def _parent(repo: Path, sha: str) -> str:
 def file_fault(repo: Path, culprit: str, since: str, base: str, subject: str) -> str:
     """`loopctl file` the fault item naming the culprit land; "filed ID", "already filed ID" (a
     later ship's bisect found the same land), or "not filed: why"."""
-    loopctl = os.environ.get("GOH_LOOPCTL") or str(Path.home() / "Projects/.loop/tools/loopctl.py")
+    loopctl = str(state_paths.loopctl())
     if not os.path.isfile(loopctl):
         return f"not filed: no loopctl at {loopctl}"
     item = {"id": f"GOH.SHIPRED{culprit[:8].upper()}", "repo": repo.name, "status": "todo",

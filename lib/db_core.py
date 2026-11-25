@@ -64,6 +64,7 @@ sys.path.insert(0, str(ROOT / "lib"))
 import db_record  # noqa: E402 -- lib/, on the path from the line above
 import db_schema  # noqa: E402 -- lib/: one schema file, its head and how it is applied
 import db_waits  # noqa: E402 -- lib/: the lock-wait instrument's rows
+import state_paths  # noqa: E402 -- lib/: the state root
 from db_schema import (  # noqa: E402, F401 -- lib/: this module's API too
     ahead,
     migrations,
@@ -116,12 +117,15 @@ class Seam:
 
 
 def path(seam: Seam, env: Mapping[str, str] | None = None) -> Path:
-    """The seam's file: its override (absolute only), else $XDG.../goh/FILE, else under HOME."""
+    """The seam's file: its override (absolute only), else the state root's FILE
+    (lib/state_paths.py), or $XDG_CACHE_HOME/goh/FILE, else under HOME."""
     env = os.environ if env is None else env
     if raw := env.get(seam.env):
         if not os.path.isabs(raw):
             raise ValueError(f"{seam.env}={raw!r} is not an absolute path")
         return Path(raw)
+    if seam.xdg == "XDG_STATE_HOME":
+        return state_paths.state_root(env) / seam.file
     base = env.get(seam.xdg) or os.path.join(env.get("HOME") or os.path.expanduser("~"),
                                              seam.fallback)  # fmt: skip
     return Path(base) / "goh" / seam.file
@@ -133,7 +137,8 @@ def real_dirs(env: Mapping[str, str] | None = None) -> list[Path]:
     real = env.get(REAL_HOME_ENV)
     if not real:
         return []
-    dirs = [Path(real, ".local", "state", "goh"), Path(real, ".cache", "goh")]
+    dirs = [Path(real, ".local", "state", "goh"), Path(real, ".cache", "goh"),
+            state_paths.state_root({"HOME": real})]  # fmt: skip
     if xdg := env.get(REAL_XDG_STATE_ENV):
         dirs.append(Path(xdg, "goh"))
     return [Path(os.path.realpath(d)) for d in dirs]
@@ -164,8 +169,10 @@ def shared_dirs(env: Mapping[str, str] | None = None) -> list[Path]:
     outside one."""
     env = os.environ if env is None else env
     account = Path(pwd.getpwuid(os.getuid()).pw_dir)
-    dirs = [account / ".local" / "state" / "goh", account / ".cache" / "goh", *real_dirs(env)]
+    dirs = [account / ".local" / "state" / "goh", account / ".cache" / "goh",
+            state_paths.state_root({"HOME": str(account)}), *real_dirs(env)]  # fmt: skip
     if not env.get(REAL_HOME_ENV):
+        dirs.append(state_paths.state_root(env))
         dirs += [Path(env[x], "goh") for x in ("XDG_STATE_HOME", "XDG_CACHE_HOME")
                  if os.path.isabs(env.get(x) or "")]  # fmt: skip
     return [Path(os.path.realpath(d)) for d in dirs]

@@ -75,7 +75,6 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 import argparse
 import datetime as dt
 import json
-import os
 import re
 import statistics
 import sys
@@ -86,6 +85,7 @@ import bin_reach_audit
 import land_e2e
 import land_records  # lib/: the land records' one door (GOH.STATEDB)
 import land_spd
+import state_paths
 import timing_ledger
 from land_steps import gate_steps, kept_timings, phases, texts
 
@@ -330,7 +330,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--guards", action="store_true", help="red lands counted by refusing guard")
     ap.add_argument("--landq", help="the landing queue dir (default $GOH_LANDQ_DIR)")
     a = ap.parse_args(argv)
-    q = Path(a.landq or os.environ.get("GOH_LANDQ_DIR") or Path.home() / ".local/state/goh/landq")
+    q = Path(a.landq or state_paths.landq_dir())
     if a.guards:
         import land_check
 

@@ -19,11 +19,15 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import state_paths  # lib/, on the path from the line above
 
 try:
     from lib import reuse
@@ -100,7 +104,7 @@ def file_fault(tree: str, node: str, changed: list[str]) -> str:
         from lib import reuse_fault
     except ImportError:  # run by path, not as a package
         import reuse_fault  # type: ignore[no-redef]
-    loopctl = os.environ.get("GOH_LOOPCTL") or str(Path.home() / "Projects/.loop/tools/loopctl.py")
+    loopctl = str(state_paths.loopctl())
     if not os.path.isfile(loopctl):
         return f"not filed: no loopctl at {loopctl}"
     iid = "GOH.BINREACHMISS" + hashlib.sha256(node.encode()).hexdigest()[:8].upper()

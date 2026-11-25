@@ -30,14 +30,9 @@ fn probe_within(execpath: &str, ceiling: Duration) -> Option<i32> {
         .code
 }
 
-/// The record's directory: `$XDG_STATE_HOME/goh`, else `~/.local/state/goh`.
+/// The record's directory: goh's state root.
 pub fn state_dir(env: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
-    let var = |k: &str| env(k).filter(|v| !v.is_empty());
-    let base = var("XDG_STATE_HOME").map_or_else(
-        || var("HOME").map(|h| PathBuf::from(h).join(".local/state")),
-        |x| Some(PathBuf::from(x)),
-    )?;
-    Some(base.join("goh"))
+    crate::goh_config::state_root(env).ok()
 }
 
 /// The record the guard reads.

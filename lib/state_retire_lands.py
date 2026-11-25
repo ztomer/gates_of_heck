@@ -34,6 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import land_records  # lib/, on the path from the line above
+import state_paths
 
 DONE = "done"
 CAUSES = "red_causes.json"
@@ -125,7 +126,7 @@ def load(con: sqlite3.Connection, paths: list[Path]) -> None:
         sha = hashlib.sha256(p.read_bytes()).hexdigest()
         con.execute("INSERT OR IGNORE INTO imports(store, source, sha256, rows, at) "
                     "VALUES (?, ?, ?, ?, ?)",
-                    (table, str(p), sha, n, now))  # fmt: skip
+                    (table, state_paths.column(con, str(p)), sha, n, now))  # fmt: skip
 
 
 def check(con: sqlite3.Connection, p: Path) -> str | None:

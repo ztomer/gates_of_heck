@@ -49,16 +49,20 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
 from pathlib import Path
 from urllib.parse import quote
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import state_paths  # lib/, on the path from the line above
 
 DB_NAME = "loop.db"
 ENV = "GOH_LOOP_QUEUE"
 
 
 def queue_path() -> str:
-    """The queue's name: GOH_LOOP_QUEUE, else the loop's default place."""
-    return os.environ.get(ENV) or os.path.expanduser("~/Projects/.loop/queue.json")
+    """The queue's name: GOH_LOOP_QUEUE, else config.toml's, else the loop's place."""
+    return str(state_paths.loop_queue())
 
 
 def db_path(path: str | os.PathLike | None = None) -> Path:

@@ -50,6 +50,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, on the path from the line above
+import state_paths
 
 STATES = ("enqueuing", "pending", "running")
 EARLY = "early"  # a land judged red at enqueue: filed only to be recorded, never queued (`early`)
@@ -73,6 +74,11 @@ def read(path: Path) -> dict | None:
 
 def queue_key(q: Path) -> str:
     return os.path.realpath(q)
+
+
+def _ours(queue: str) -> tuple[str, tuple[str, ...]]:
+    """(clause, args) naming QUEUE's rows, under either form of its path (lib/state_paths.py)."""
+    return state_paths.where("queue", state_paths.forms(queue))
 
 
 def name(q: Path, state: str, run: str) -> Path:
@@ -108,6 +114,7 @@ INSERT = ("INSERT INTO requests (queue, run, item, repo, sha, mode, pid, pid_sta
 def _insert(con: sqlite3.Connection, queue: str, run: str, req: dict, state: str, how: str = ""
             ) -> int:  # fmt: skip
     sql = INSERT.replace("INSERT", f"INSERT {how}") if how else INSERT
+    queue, req = state_paths.column(con, queue), state_paths.put(con, "requests", req)
     cur = con.execute(sql, (queue, run, *_cols(req), state, _filed(run), json.dumps(req)))
     return cur.rowcount
 
@@ -120,10 +127,12 @@ def put(q: Path, run: str, req: dict, state: str = "pending", replaces: str | No
     queue = queue_key(q)
     with goh_db.transaction() as con:
         if replaces:
-            con.execute("DELETE FROM requests WHERE queue = ? AND run = ?", (queue, replaces))
+            ours, args = _ours(queue)
+            con.execute(f"DELETE FROM requests WHERE {ours} AND run = ?", (*args, replaces))
         if state == EARLY:
             con.execute("INSERT INTO early (queue, run, at, body) VALUES (?, ?, ?, ?)",
-                        (queue, run, time.time(), json.dumps(req)))  # fmt: skip
+                        (state_paths.column(con, queue), run, time.time(),
+                         json.dumps(state_paths.put(con, "requests", req))))  # fmt: skip
         else:
             _insert(con, queue, run, req, state)
     return name(q, state, run)
@@ -145,21 +154,22 @@ def _body(raw: str) -> dict | None:
         rec = json.loads(raw)
     except ValueError:
         return None
-    return rec if isinstance(rec, dict) else None
+    return state_paths.got("requests", rec) if isinstance(rec, dict) else None
 
 
 def get(path: Path) -> dict | None:
     """The request named PATH while it is in PATH's state; None once it moved on or is gone."""
     queue, state, run = key(path)
+    ours, args = _ours(queue)
     with _reader() as con:
         if con is None:
             return None
         if state == EARLY:
-            got = con.execute("SELECT body FROM early WHERE queue = ? AND run = ?",
-                              (queue, run)).fetchone()  # fmt: skip
+            got = con.execute(f"SELECT body FROM early WHERE {ours} AND run = ?",
+                              (*args, run)).fetchone()  # fmt: skip
         else:
-            got = con.execute("SELECT body FROM requests WHERE queue = ? AND run = ? AND "
-                              "state = ?", (queue, run, state)).fetchone()  # fmt: skip
+            got = con.execute(f"SELECT body FROM requests WHERE {ours} AND run = ? AND "
+                              "state = ?", (*args, run, state)).fetchone()  # fmt: skip
     return _body(got[0]) if got else None
 
 
@@ -168,8 +178,9 @@ def state_of(q: Path, run: str) -> str | None:
     with _reader() as con:
         if con is None:
             return None
-        got = con.execute("SELECT state FROM requests WHERE queue = ? AND run = ?",
-                          (queue_key(q), run)).fetchone()  # fmt: skip
+        ours, args = _ours(queue_key(q))
+        got = con.execute(f"SELECT state FROM requests WHERE {ours} AND run = ?",
+                          (*args, run)).fetchone()  # fmt: skip
     return got[0] if got else None
 
 
@@ -178,8 +189,9 @@ def rows(q: Path, state: str) -> list[tuple[Path, dict]]:
     with _reader() as con:
         if con is None:
             return []
-        got = con.execute("SELECT run, body FROM requests WHERE queue = ? AND state = ? "
-                          "ORDER BY run", (queue_key(q), state)).fetchall()  # fmt: skip
+        ours, args = _ours(queue_key(q))
+        got = con.execute(f"SELECT run, body FROM requests WHERE {ours} AND state = ? "
+                          "ORDER BY run", (*args, state)).fetchall()  # fmt: skip
     return [(name(q, state, run), b) for run, raw in got if (b := _body(raw)) is not None]
 
 
@@ -188,12 +200,12 @@ def listing(q: Path, state: str) -> list[Path]:
     with _reader() as con:
         if con is None:
             return []
+        ours, args = _ours(queue_key(q))
         if state == EARLY:
-            got = con.execute("SELECT run FROM early WHERE queue = ? ORDER BY run",
-                              (queue_key(q),)).fetchall()  # fmt: skip
+            got = con.execute(f"SELECT run FROM early WHERE {ours} ORDER BY run", args).fetchall()
             return [name(q, state, run) for (run,) in got]
-        got = con.execute("SELECT run FROM requests WHERE queue = ? AND state = ? ORDER BY run",
-                          (queue_key(q), state)).fetchall()  # fmt: skip
+        got = con.execute(f"SELECT run FROM requests WHERE {ours} AND state = ? ORDER BY run",
+                          (*args, state)).fetchall()  # fmt: skip
     return [name(q, state, run) for (run,) in got]
 
 
@@ -203,8 +215,9 @@ def any_in(q: Path, *states: str) -> bool:
         if con is None:
             return False
         marks = ", ".join("?" * len(states))
-        got = con.execute(f"SELECT 1 FROM requests WHERE queue = ? AND state IN ({marks}) LIMIT 1",
-                          (queue_key(q), *states)).fetchone()  # fmt: skip
+        ours, args = _ours(queue_key(q))
+        got = con.execute(f"SELECT 1 FROM requests WHERE {ours} AND state IN ({marks}) LIMIT 1",
+                          (*args, *states)).fetchone()  # fmt: skip
     return got is not None
 
 
@@ -214,9 +227,10 @@ def move(path: Path, to: str) -> Path:
     if to not in STATES:
         raise ValueError(f"{to!r}: a request's state is one of {STATES}")
     queue, state, run = key(path)
+    ours, args = _ours(queue)
     with goh_db.transaction() as con:
-        cur = con.execute("UPDATE requests SET state = ? WHERE queue = ? AND run = ? AND state = ?",
-                          (to, queue, run, state))  # fmt: skip
+        cur = con.execute(f"UPDATE requests SET state = ? WHERE {ours} AND run = ? AND state = ?",
+                          (to, *args, run, state))  # fmt: skip
         if cur.rowcount != 1:
             raise FileNotFoundError(f"{path}: no request {run} in {state}")
     return path.parent.parent / to / path.name
@@ -225,11 +239,13 @@ def move(path: Path, to: str) -> Path:
 def update(path: Path, req: dict) -> bool:
     """The body of the request named PATH is REQ (same state); False when it is not there."""
     queue, state, run = key(path)
+    ours, args = _ours(queue)
     with goh_db.transaction() as con:
+        req = state_paths.put(con, "requests", req)
         cur = con.execute(
             "UPDATE requests SET item = ?, repo = ?, sha = ?, mode = ?, pid = ?, pid_stamp = ?, "
-            "until = ?, body = ? WHERE queue = ? AND run = ? AND state = ?",
-            (*_cols(req), json.dumps(req), queue, run, state),
+            f"until = ?, body = ? WHERE {ours} AND run = ? AND state = ?",
+            (*_cols(req), json.dumps(req), *args, run, state),
         )
         return cur.rowcount == 1
 
@@ -237,12 +253,13 @@ def update(path: Path, req: dict) -> bool:
 def drop(path: Path) -> bool:
     """The request named PATH gone; False when it was not in PATH's state."""
     queue, state, run = key(path)
+    ours, args = _ours(queue)
     with goh_db.transaction() as con:
         if state == EARLY:
-            return con.execute("DELETE FROM early WHERE queue = ? AND run = ?",
-                               (queue, run)).rowcount == 1  # fmt: skip
-        cur = con.execute("DELETE FROM requests WHERE queue = ? AND run = ? AND state = ?",
-                          (queue, run, state))  # fmt: skip
+            return con.execute(f"DELETE FROM early WHERE {ours} AND run = ?",
+                               (*args, run)).rowcount == 1  # fmt: skip
+        cur = con.execute(f"DELETE FROM requests WHERE {ours} AND run = ? AND state = ?",
+                          (*args, run, state))  # fmt: skip
         return cur.rowcount == 1
 
 
@@ -250,8 +267,9 @@ def finish(con: sqlite3.Connection, path: Path) -> None:
     """Inside the caller's transaction (lib/land_records.py write): the request named PATH gone,
     in whatever state, in the same commit as its land record."""
     queue, _, run = key(path)
-    con.execute("DELETE FROM requests WHERE queue = ? AND run = ?", (queue, run))
-    con.execute("DELETE FROM early WHERE queue = ? AND run = ?", (queue, run))
+    ours, args = _ours(queue)
+    con.execute(f"DELETE FROM requests WHERE {ours} AND run = ?", (*args, run))
+    con.execute(f"DELETE FROM early WHERE {ours} AND run = ?", (*args, run))
 
 
 def request(path: Path) -> dict:

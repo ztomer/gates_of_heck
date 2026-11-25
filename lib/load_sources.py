@@ -63,6 +63,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import state_paths  # noqa: E402 -- lib/, on the path from the line above
+
 sys.path.insert(1, str(HERE.parent))
 from proc_table import Proc, Snapshot, reader  # noqa: E402
 
@@ -325,8 +327,7 @@ def ledger_dir() -> Path:
     explicit = os.environ.get(DIR_ENV)
     if explicit:
         return Path(explicit)
-    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
-    return Path(base) / "goh" / "load_sources"
+    return state_paths.state_root() / "load_sources"
 
 
 def _day_file(d: Path, t: float) -> Path:

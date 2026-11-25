@@ -21,6 +21,9 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
+import state_paths  # lib/, on the path from the line above
+
 DEFAULT_AT = 300_000
 DEFAULT_STEP = 50_000
 CHUNK = 1 << 16
@@ -77,8 +80,7 @@ def context_tokens(transcript: Path) -> int | None:
 
 
 def _state_dir() -> Path:
-    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
-    return Path(base) / "goh" / "compact_nudge"
+    return state_paths.state_root() / "compact_nudge"
 
 
 def _prune(state: Path) -> None:

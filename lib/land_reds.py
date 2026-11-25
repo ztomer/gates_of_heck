@@ -58,7 +58,6 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
@@ -69,6 +68,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gitrun  # lib/: git under a deadline, no lock stranded
 import land_cause  # lib/: FAILED node ids and the structural step's line
 import land_records  # lib/: the land records' door (GOH.STATEDB)
+import state_paths
 
 CLASSES = (
     "tip-moved",
@@ -335,7 +335,7 @@ def render(rep: dict) -> list[str]:
 
 def qdir() -> Path:
     """The landing queue's state dir, as tools/landq.py `qdir` reads it."""
-    return Path(os.environ.get("GOH_LANDQ_DIR") or Path.home() / ".local/state/goh/landq")
+    return state_paths.landq_dir()
 
 
 def main(argv: list[str]) -> int:

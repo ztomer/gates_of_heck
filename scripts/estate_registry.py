@@ -40,13 +40,13 @@ audits is `unaudited` ("not audited at push"), never red; one a step goh cannot 
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
 import estate_registry
+import state_paths  # noqa: E402 -- lib/
 
 sys.path.insert(0, str(ROOT))
 from tui.lib import err, info, ok, warn
@@ -96,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "seed":
-        root = args.root or Path(os.environ.get("GOH_ESTATE_ROOT", Path.home() / "Projects"))
+        root = args.root or state_paths.estate_root()
         extras = args.extra if args.extra is not None else [DEFAULT_EXTRA]
         added = _seed(root, [Path(e) for e in extras], registry)
         for r in added:

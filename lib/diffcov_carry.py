@@ -52,6 +52,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gitrun  # lib/: git under a deadline, aimed at its repository
 import land_records  # lib/: the land records' one door (GOH.STATEDB)
+import state_paths
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import counted  # the root, for the tui lib
@@ -74,7 +75,7 @@ def item_id(outcome: dict, item: str) -> str:
 
 
 def _repo_name(repo: str) -> str:
-    root = Path(os.environ.get("LOOPCTL_ROOT") or Path.home() / "Projects")
+    root = Path(os.environ.get("LOOPCTL_ROOT") or state_paths.repos_root())
     try:
         return str(Path(repo).resolve().relative_to(root.resolve()))
     except ValueError:
@@ -239,7 +240,7 @@ def open_lines(repo: Path, tag: str, head: str, q: Path | None = None) -> list[d
     numbering: `{file, line, text, land, item}`."""
     if not tag or not head:
         return []
-    q = q or Path(os.environ.get("GOH_LANDQ_DIR") or Path.home() / ".local/state/goh/landq")
+    q = q or state_paths.landq_dir()
     shas = (_git(repo, "rev-list", f"{tag}..{head}") or "").split()
     recs = _landed(q, repo, {s: i for i, s in enumerate(shas)})
     landed_items = {r.get("item") for r in recs if r.get("item")}

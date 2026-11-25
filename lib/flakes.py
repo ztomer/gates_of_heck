@@ -66,6 +66,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lock_order  # the one acquire path
 import small_stores  # goh.db's flakes table (GOH.STATEDBS3)
+import state_paths
 
 DAYS = 14
 FILE_AT = 2  # records in DAYS that file the test's item
@@ -77,8 +78,7 @@ UNNAMED = "land gate of {repo} (no test named in its log)"
 def root() -> Path:
     if seam := os.environ.get("GOH_FLAKE_DIR"):
         return Path(seam)
-    state = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local/state")
-    return Path(state) / "goh" / small_stores.FLAKE_DIR
+    return state_paths.state_root() / small_stores.FLAKE_DIR
 
 
 def register() -> Path:
@@ -169,7 +169,7 @@ def _item(test: str, recs: list[dict]) -> dict:
     repo = str(recs[-1].get("repo") or "").removesuffix(
         "/.git"
     )  # a reuse key's repo is its git dir
-    root_dir = Path(os.environ.get("LOOPCTL_ROOT") or Path.home() / "Projects")
+    root_dir = Path(os.environ.get("LOOPCTL_ROOT") or state_paths.repos_root())
     try:  # the loop's repo token: a path under ~/Projects, else the checkout's name
         repo = str(Path(repo).resolve().relative_to(root_dir.resolve()))
     except (ValueError, OSError):
@@ -197,7 +197,7 @@ def _item(test: str, recs: list[dict]) -> dict:
 
 
 def _file(test: str, recs: list[dict]) -> str:
-    loopctl = os.environ.get("GOH_LOOPCTL") or str(Path.home() / "Projects/.loop/tools/loopctl.py")
+    loopctl = str(state_paths.loopctl())
     iid = item_id(test)
     if not os.path.isfile(loopctl):
         return f"not filed: no loopctl at {loopctl}"

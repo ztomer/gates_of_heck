@@ -27,11 +27,11 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import state_paths
 import timing_ledger
 
 FILE = "cip_history.json"
@@ -41,11 +41,7 @@ FIELDS = ("item", "repo", "wall_s", "load1", "load_end", "sha", "at")
 def seed_dir() -> Path:
     """The owner's PRIVATE seed store (GOH_SEED_DIR, docs/config.md): the lanes name private
     repositories, which this public tree never does (the private_names gate)."""
-    explicit = os.environ.get("GOH_SEED_DIR")
-    if explicit:
-        return Path(explicit)
-    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
-    return Path(base) / "goh" / "seeds"
+    return state_paths.seed_dir()
 
 
 def history() -> list[dict]:

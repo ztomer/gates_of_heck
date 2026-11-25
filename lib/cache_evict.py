@@ -172,9 +172,10 @@ def plan(objs: list[Obj], internal: int, external: int | None, clock: float,
 def state_path() -> str:
     """The ledger's name; its record is goh.db's `kv` row beside it (read_ledger, GOH.STATEDBS3)."""
     import small_stores  # lib/: the database beside the ledger's name
+    import state_paths
 
     return os.environ.get("GOH_CACHE_EVICT_STATE") or os.path.join(
-        os.path.expanduser("~/.local/state/goh"), small_stores.KV_FILES["cache-evict"])  # fmt: skip
+        state_paths.state_root(), small_stores.KV_FILES["cache-evict"])  # fmt: skip
 
 
 def read_ledger(path: str) -> dict:

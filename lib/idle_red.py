@@ -31,6 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import reuse_fault
 import selection_miss
+import state_paths
 
 LANDS = 30  # commits named at most
 FAILED = 10  # failed tests named at most
@@ -100,9 +101,7 @@ def offs() -> list[str]:
 
 def file_red(main: Path, green: str, sha: str, log: Path) -> str:
     try:
-        loopctl = os.environ.get("GOH_LOOPCTL") or str(
-            Path.home() / "Projects/.loop/tools/loopctl.py"
-        )
+        loopctl = str(state_paths.loopctl())
         if not os.path.isfile(loopctl):
             return f"not filed: no loopctl at {loopctl}"
         it = item(main, green, sha, log)

@@ -75,6 +75,7 @@ import estate_registry
 import killtree
 import not_applicable
 import pgid_cpu
+import state_paths
 from canary_sides import Verdict, common_dir, export, git_run as _git, parse, resolve
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "gates"))
@@ -402,7 +403,7 @@ def main() -> int:
     ap.add_argument(
         "--root",
         type=Path,
-        default=Path(os.environ.get("GOH_ESTATE_ROOT", Path.home() / "Projects")),
+        default=state_paths.estate_root(),
     )
     ap.add_argument("--state", type=Path, default=estate_registry.state_file())
     ap.add_argument("--goh", type=Path, default=ROOT, help="the gates_of_heck tree being released")

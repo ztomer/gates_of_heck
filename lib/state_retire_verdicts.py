@@ -47,6 +47,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_cache_db  # lib/, on the path from the line above
 import goh_db
 import reuse_store  # lib/: the reuse root (GOH_REUSE_DIR)
+import state_paths
 
 RECORD_DIRS = ("affected", "carry", "gate", "pushed", "profcarry", "relset")  # reuse paths' files
 AUDIT = "reuse audit"  # the imports ledger's store, as lib/reuse_audit_store.py named it
@@ -58,7 +59,7 @@ def _xdg(var: str, default: tuple[str, ...]) -> Path:
 
 
 def _state() -> Path:
-    return _xdg("XDG_STATE_HOME", (".local", "state"))
+    return state_paths.state_root()
 
 
 def _cache() -> Path:

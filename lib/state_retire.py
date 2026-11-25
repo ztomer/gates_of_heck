@@ -49,15 +49,12 @@ from types import ModuleType
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, on the path from the line above
 import state_commands  # `goh state`'s other words
+import state_paths
 import state_retire_lands as lands  # the land records' half (GOH.STATEDB S1)
 import state_retire_ships  # the ship records' half (GOH.STATEDB S2), beside this file
 import state_retire_verdicts  # GOH.VERDICTDB's stores, beside this one in the seam
 
-
-def state_dir() -> Path:
-    """$XDG_STATE_HOME/goh, else ~/.local/state/goh."""
-    base = os.environ.get("XDG_STATE_HOME", "")
-    return (Path(base) if base.startswith("/") else Path.home() / ".local" / "state") / "goh"
+state_dir = state_paths.state_root
 
 
 def cache_dir() -> Path:
@@ -107,8 +104,9 @@ def _lines(p: Path) -> list[dict]:
 
 def _ledger(con: sqlite3.Connection, store: str, p: Path, rows: int, source: str = "") -> None:
     sha = hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else ""
+    row = (store, source or state_paths.column(con, str(p)), sha, rows, time.time())
     con.execute("INSERT OR IGNORE INTO imports(store, source, sha256, rows, at) VALUES (?,?,?,?,?)",
-                (store, source or str(p), sha, rows, time.time()))  # fmt: skip
+                row)  # fmt: skip
 
 
 def _subset(con: sqlite3.Connection, table: str, p: Path, body=_dump) -> str | None:

@@ -58,6 +58,7 @@ sys.path.insert(0, str(ROOT / "lib"))
 import estate_registry
 import landed_verify
 import model_choice
+import state_paths  # noqa: E402 -- lib/
 
 hook_ledgers = importlib.import_module(
     "hook_ledgers"
@@ -353,7 +354,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--ledger", type=Path, default=None, help="a ledger file; default goh.db's")
     ap.add_argument("--root", type=Path,
-                    default=Path(os.environ.get("GOH_ESTATE_ROOT", Path.home() / "Projects")),
+                    default=state_paths.estate_root(),
                     help="where the repos a landed sha may be in live")  # fmt: skip
     ap.add_argument("--offline", action="store_true", help="never ask GitHub: shas unverified")
     ap.add_argument("--json", action="store_true", help="machine-readable report")

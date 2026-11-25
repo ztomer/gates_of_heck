@@ -54,6 +54,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # the lib directory, on the path from the line above
+import state_paths
 
 # kv names: each was the file `<name>.json` (kv_name), beside the database (the estate audit's,
 # the pin push ledger's and the sweep registry's dir is GOH_ESTATE_STATE's)
@@ -114,7 +115,7 @@ def get(p: Path | str) -> object:
         if con is not None:
             row = con.execute("SELECT body FROM kv WHERE name=?", (kv_name(p),)).fetchone()
             if row is not None:
-                return json.loads(row[0])
+                return state_paths.got(kv_name(p), json.loads(row[0]))
     return None
 
 
@@ -125,11 +126,12 @@ def update(p: Path | str, change: Callable[[object], object]) -> object:
     try:
         with _write(p) as con:
             row = con.execute("SELECT body FROM kv WHERE name=?", (kv_name(p),)).fetchone()
-            new = change(json.loads(row[0]) if row else None)
+            name = kv_name(p)
+            new = change(state_paths.got(name, json.loads(row[0])) if row else None)
             con.execute("INSERT INTO kv(name, body, at) VALUES (?, ?, ?) "
                         "ON CONFLICT(name) DO UPDATE SET "
                         "body=excluded.body, at=excluded.at",
-                        (kv_name(p), _dump(new), time.time()))  # fmt: skip
+                        (name, _dump(state_paths.put(con, name, new)), time.time()))  # fmt: skip
     except goh_db.db_core.NewerFile as e:  # this copy may not write it: the value, unkept
         goh_db.refused(e)
         return change(get(p))
@@ -158,7 +160,8 @@ def gated_add(p: Path | str, row: dict) -> None:
     p = Path(p)
     with goh_db.refusable(), _write(p) as con:
         con.execute("INSERT INTO commit_gated(at, tree, body) VALUES (?, ?, ?)",
-                    (_epoch(row.get("at")), str(row["tree"]), _dump(row)))  # fmt: skip
+                    (_epoch(row.get("at")), str(row["tree"]),
+                     _dump(state_paths.put(con, "commit_gated", row))))  # fmt: skip
 
 
 def gated(p: Path | str) -> list[dict]:
@@ -166,7 +169,8 @@ def gated(p: Path | str) -> list[dict]:
     with _read(Path(p)) as con:
         if con is None:
             return []
-        return [json.loads(b) for (b,) in con.execute("SELECT body FROM commit_gated ORDER BY n")]
+        return [state_paths.got("commit_gated", json.loads(b))
+                for (b,) in con.execute("SELECT body FROM commit_gated ORDER BY n")]  # fmt: skip
 
 
 # -- flakes: the flake register --------------------------------------------------------------
@@ -177,7 +181,8 @@ def flake_add(d: Path | str, test: str, row: dict) -> None:
     d = Path(d)
     with goh_db.refusable(), goh_db.transaction(db(d)) as con:
         con.execute("INSERT INTO flakes(epoch, test, body) VALUES (?, ?, ?)",
-                    (float(row.get("epoch") or time.time()), test, _dump(row)))  # fmt: skip
+                    (float(row.get("epoch") or time.time()), test,
+                     _dump(state_paths.put(con, "flakes", row))))  # fmt: skip
 
 
 def flakes(d: Path | str, test: str | None = None) -> list[dict]:
@@ -189,7 +194,7 @@ def flakes(d: Path | str, test: str | None = None) -> list[dict]:
             rows = con.execute("SELECT test, body FROM flakes ORDER BY n").fetchall()
         except (OSError, sqlite3.Error):
             rows = []
-    return [json.loads(b) for t, b in rows if test is None or t == test]
+    return [state_paths.got("flakes", json.loads(b)) for t, b in rows if test is None or t == test]
 
 
 # -- the export ----------------------------------------------------------------------------------

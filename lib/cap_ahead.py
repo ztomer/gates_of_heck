@@ -46,6 +46,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gitrun  # lib/: git under a deadline, aimed at its repository
+import state_paths
 
 ROOT = Path(__file__).resolve().parent.parent
 BAND = 50  # the band: the last BAND lines under the cap (goh's 450 headroom at 500)
@@ -246,7 +247,7 @@ def main(argv: list[str]) -> int:
     if len(argv) < 2 or argv[0] != "sweep":
         print("usage: cap_ahead.py sweep [--prefix GOH] REPO...")
         return 2
-    loopctl = os.environ.get("GOH_LOOPCTL") or str(Path.home() / "Projects/.loop/tools/loopctl.py")
+    loopctl = str(state_paths.loopctl())
     for r in argv[1:]:
         for line in sweep(Path(r).resolve(), loopctl, prefix):
             print(line)

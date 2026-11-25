@@ -22,12 +22,12 @@ import json
 import os
 import subprocess
 import sys
-from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import queue_read  # lib/: the loop queue's one reader (LOOP.QUEUEARCHIVE)
 import reuse  # lib/, beside this file: the store's root and its path registry
 import reuse_audit_store  # lib/: the audit's records, goh.db rows (GOH.VERDICTDB)
+import state_paths
 
 # When the loop re-measures a goh prediction (triggers.verify_problems: {"lands"|"ships": N}).
 VERIFY_AFTER = {"lands": 5}
@@ -42,7 +42,7 @@ def file_fault(p: reuse.ReusePath, cause: str, why: str, line: dict) -> str:
     off only while on, so each off is a new instance (an enable came between): an id the queue
     already holds is an EARLIER off's item, done or open, never this one -- the next free id is
     filed, naming it (GOH.REUSEOFFLANDED2: the refusal read as filed, and nothing tracked it)."""
-    loopctl = os.environ.get("GOH_LOOPCTL") or str(Path.home() / "Projects/.loop/tools/loopctl.py")
+    loopctl = str(state_paths.loopctl())
     if not os.path.isfile(loopctl):
         return f"not filed: no loopctl at {loopctl}"
     phase = current_phase(set(_fault_item(p, "", "", cause, why, line, "")))

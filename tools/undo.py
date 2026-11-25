@@ -52,6 +52,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(HERE), "lib"))
 import edit_ledger  # noqa: E402  # who edited which file (GOH.UNDOOWNER)
 import landq_state  # noqa: E402  # the land queue's requests (GOH.LANDQDB)
 import repo_hold  # noqa: E402  # the one reading of `goh.hold`
+import state_paths  # noqa: E402 -- lib/
 
 KEEP = ".goh-undo"
 MANIFEST = "manifest.json"  # path -> {"absent": bool, "mode": int}: what the kept copy stands for
@@ -114,7 +115,7 @@ def _base(top: str) -> str:
 
 
 def _landq_dir() -> Path:
-    return Path(os.environ.get("GOH_LANDQ_DIR") or Path.home() / ".local/state/goh/landq")
+    return state_paths.landq_dir()
 
 
 def lane_items(top: str) -> dict[str, str]:

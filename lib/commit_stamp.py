@@ -53,6 +53,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
+import state_paths  # noqa: E402 -- lib/
 import tmp_root  # noqa: E402 -- every temp root under goh_tmp (GOH.TMPNOINDEX)
 
 GATE = ROOT / "gates" / "commit_gate.sh"
@@ -63,8 +64,7 @@ def ledger() -> Path:
     """The ledger's name: its rows are goh.db's `commit_gated`, in the goh.db beside it."""
     import small_stores  # lib/, on the path above
 
-    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
-    return Path(base) / "goh" / small_stores.GATED_FILE
+    return state_paths.state_root() / small_stores.GATED_FILE
 
 
 def _git(repo: str | Path, *args: str, env: dict | None = None) -> subprocess.CompletedProcess:
