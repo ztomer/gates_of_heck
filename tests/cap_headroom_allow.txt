@@ -1,7 +1,6 @@
 # GOH.CAPHEADROOM ratchet: files over 450 lines on 2026-11-17. Only shrinks (tests/test_cap_headroom.py).
 checks/_calibration.py
 checks/_canary_cases.py
-checks/_display_seam_probe.py
 checks/check_display_seam.py
 checks/check_empty_scope.py
 checks/check_mcp_wire.py

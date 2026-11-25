@@ -1,28 +1,22 @@
 {
- "per_test": 15500,
- "per_test_run": 75,
- "bytes_per_test_run": 40000,
+ "per_test": 4500,
+ "per_test_run": 60,
+ "bytes_per_test_run": 30000,
  "mean_from": 2000,
  "new": {
   "events": 150,
   "bytes": 1000000
  },
  "today": {
-  "events": 2200,
+  "events": 2000,
   "bytes": 8000000
  },
  "named": {
-  "tests/test_binary_source_identity.py": {
-   "events": 3000
-  },
-  "tests/test_coverage_shared_build.py": {
-   "bytes": 15000000
-  },
   "tests/test_fs_ceilings.py": {
    "events": 600
   },
   "tests/test_gate_temp_leaks.py": {
-   "events": 9500
+   "events": 3600
   },
   "tests/test_land_check.py": {
    "events": 3600
@@ -36,10 +30,6 @@
   },
   "tests/test_quiet_git.py": {
    "events": 450
-  },
-  "tests/test_self_hosted_hook.py": {
-   "bytes": 40000000,
-   "events": 15500
   },
   "tests/test_state_cutover.py": {
    "bytes": 5500000,
