@@ -94,24 +94,18 @@ def test_the_sweep_reaches_a_grandchild(tmp_path: Path) -> None:
 
 
 @pytest.mark.load_sensitive
-def test_a_hanging_step_is_reported_not_silently_killed(tmp_path: Path, capsys) -> None:
+def test_a_hanging_step_is_reported_at_its_ceiling_not_silently_killed(capsys) -> None:
     """`TIMED OUT after Ns`, with the number. A ceiling nobody gave a value, or that expires without
-    saying so, is the 2026-10-03 incident with a shorter fuse."""
+    saying so, is the 2026-10-03 incident with a shorter fuse. And the bound is a BOUND: a gate that
+    says 30 s and means "eventually" is the defect."""
+    started = time.monotonic()
     code = run(["/bin/bash", "-c", "sleep 901"], timeout=2, grace=1)
+    elapsed = time.monotonic() - started
     captured = capsys.readouterr()
     assert code == bounded_run.TIMEOUT_EXIT, code
     assert "TIMED OUT after 2s" in captured.err, captured.err
     assert "the step" in captured.err, captured.err
-
-
-@pytest.mark.load_sensitive
-def test_the_ceiling_is_honoured_within_its_own_tolerance() -> None:
-    """The bound must be a BOUND. A gate that says 30 s and means "eventually" is the defect."""
-    started = time.monotonic()
-    code = run(["/bin/bash", "-c", "sleep 902"], timeout=2, grace=1)
-    elapsed = time.monotonic() - started
-    assert code == bounded_run.TIMEOUT_EXIT
-    assert_sooner(elapsed, 3, 902, "a 2 s ceiling with a 1 s grace")
+    assert_sooner(elapsed, 3, 901, "a 2 s ceiling with a 1 s grace")
 
 
 # ── pass-through: a bounded step must not change anything ────────────────────
@@ -343,13 +337,13 @@ def test_the_default_ceiling_exists_on_both_paths() -> None:
 
 
 def test_cpu_ceiling_refuses_burner_while_sleeping_step_passes(capsys) -> None:
-    """Falsifier: under raw wall-clock `--timeout 1`, a 2.2s sleep is refused; under
+    """Falsifier: under raw wall-clock `--timeout 1`, a 1.2s sleep is refused; under
     `--cpu-timeout 1 --timeout 30`, the sleep passes while single-process and reaped-descendant
     CPU burners are refused with 124."""
-    assert bounded_run.run(["/bin/sleep", "2.2"], 1, 1, "wall-baseline") == bounded_run.TIMEOUT_EXIT
+    assert bounded_run.run(["/bin/sleep", "1.2"], 1, 1, "wall-baseline") == bounded_run.TIMEOUT_EXIT
     capsys.readouterr()
 
-    assert bounded_run.run(["/bin/sleep", "2.2"], 30, 1, "sleep-ok", cpu_timeout=1) == 0
+    assert bounded_run.run(["/bin/sleep", "1.2"], 30, 1, "sleep-ok", cpu_timeout=1) == 0
 
     rc_burn = bounded_run.run(
         [sys.executable, "-c", "while True:\n pass"],

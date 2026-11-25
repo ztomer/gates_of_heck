@@ -262,11 +262,12 @@ def test_a_server_whose_stdout_closes_before_it_exits_is_named_with_its_status(t
 
 
 def test_a_server_that_closes_stdout_and_lives_on_is_named_at_the_deadline(tmp_path):
-    session = mw.Session("exec 1>&-; exec sleep 30", tmp_path, 2)
+    # It lives until close() ends its stdin: a `sleep` was killed after close()'s whole grace.
+    session = mw.Session("exec 1>&-; exec cat >/dev/null", tmp_path, 1)
     try:
         with pytest.raises(mw.WireError) as raised:
             session.request("server/discover", {})
-        assert "closed its stdout and did not exit within 2s" in str(raised.value), raised.value
+        assert "closed its stdout and did not exit within 1s" in str(raised.value), raised.value
     finally:
         session.close()
 

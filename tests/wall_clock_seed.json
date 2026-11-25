@@ -16,7 +16,7 @@
   "test_binary_currency.py": 1,
   "test_binary_pinned_to_export.py": 2,
   "test_binary_source_identity.py": 4,
-  "test_bounded_run.py": 4,
+  "test_bounded_run.py": 3,
   "test_build_lock_ignored.py": 2,
   "test_check_dep_currency.py": 3,
   "test_check_mcp_wire.py": 3,
