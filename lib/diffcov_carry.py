@@ -137,13 +137,16 @@ def file_item(outcome: dict, req: dict | None, loopctl: str, item: str = "") -> 
 def _landed(q: Path, repo: Path, order: dict[str, int]) -> list[dict]:
     """The repo's landed records on ORDER (tag..HEAD), oldest landing first."""
     real = os.path.realpath(repo)
-    out = []
-    for _, rec in land_records.records(q):
+    which = ("state", "mode", "repo", "sha", "landed")
+    at: dict[str, int] = {}
+    for run, rec in land_records.records(q, keys=which):
         sha = rec.get("landed") or rec.get("sha") or ""
         mine = sha in order and os.path.realpath(rec.get("repo") or "") == real
         if mine and rec.get("state") == "landed" and rec.get("mode", "land") == "land":
-            out.append({**rec, "_at": order[sha]})
-    return sorted(out, key=lambda r: -r["_at"])
+            at[run] = order[sha]
+    recs = land_records.records(q, keys=(*which, "item", "enqueued", "cov_risk", "diffcov_item"),
+                                runs=at)  # fmt: skip
+    return [rec for _, rec in sorted(recs, key=lambda kv: -at[kv[0]])]
 
 
 class _Tree:

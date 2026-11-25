@@ -98,7 +98,7 @@ def most() -> float:
 def expected(q: Path, repo: object) -> float:
     """How long REPO's enqueue pre-steps take: the median `pre_s` of its newest done records."""
     took = []
-    for _, rec in land_records.records(q, reverse=True):
+    for _, rec in land_records.records(q, reverse=True, keys=("repo", "pre_s")):
         if rec.get("repo") == repo and isinstance(rec.get("pre_s"), (int, float)):
             took.append(float(rec["pre_s"]))
             if len(took) == NEWEST:

@@ -51,9 +51,10 @@ def test_a_land_record_that_cannot_be_written_twice_is_raised(tmp_path, monkeypa
 def test_a_land_record_written_on_its_retry_is_the_row(tmp_path, monkeypatch):
     gdb.use(monkeypatch, tmp_path)
     tries = _failing(monkeypatch, 1)
-    land_records.write(tmp_path / "landq", "0001-X.Y", {"state": "landed"})
+    rec = {"state": "landed", "at": "2026-11-18T11:06:40Z"}
+    land_records.write(tmp_path / "landq", "0001-X.Y", rec)
     assert len(tries) == 2
-    assert land_records.get(tmp_path / "landq", "0001-X.Y") == {"state": "landed"}
+    assert land_records.get(tmp_path / "landq", "0001-X.Y") == rec
 
 
 def test_a_ship_record_that_cannot_be_written_twice_is_raised(tmp_path, monkeypatch, capsys):

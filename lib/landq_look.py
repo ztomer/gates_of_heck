@@ -130,7 +130,7 @@ def status(q: Path) -> int:
         for _, r in landq_state.rows(q, d):  # one read per state (GOH.LANDQDB)
             repo, sha = Path(str(r.get("repo") or "-")).name, str(r.get("sha") or "-")[:8]
             info(f"{d}: {r.get('item') or '-'} {repo} @ {sha} ({r.get('mode', '?')})")
-    for run, r in land_records.records(q)[-10:]:
+    for run, r in land_records.records(q, keys=("state", "sha", "log"))[-10:]:
         info(f"done: {run} {r.get('state', '?')} @ {str(r.get('sha') or '-')[:8]} "
              f"{r.get('log', '')}")  # fmt: skip
     return 0

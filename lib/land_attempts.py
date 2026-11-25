@@ -57,10 +57,14 @@ def item_of(path: Path, rec: dict) -> str:
     return str(rec.get("item") or path.stem.partition("-")[2])
 
 
+KEYS = ("item", "state", "repo", "sha", "mode", "why", "started", "finished", "load_start",
+        "load_end", "slot_wait_s", "slot_wait_by_class", "attempt")  # fmt: skip  # row_of's
+
+
 def attempt_of(q: Path, item: str) -> int:
     """The attempt number of ITEM's next record in queue Q (1 when it has never gone red)."""
     n = 0
-    for run, rec in land_records.records(q):
+    for run, rec in land_records.records(q, keys=("item", "state")):
         if item and item_of(Path(f"{run}.json"), rec) == item:
             n = 0 if rec.get("state") == "landed" else n + 1
     return n + 1
@@ -112,7 +116,7 @@ def backfill(q: Path) -> int:
     have = {(r["repo"], r.get("ref")) for r in timing_ledger.read() if r.get("kind") == KIND}
     reds: dict[str, int] = {}
     added = []
-    for run, rec in land_records.records(q):
+    for run, rec in land_records.records(q, keys=KEYS):
         path = Path(f"{run}.json")
         item = item_of(path, rec)
         n = reds.get(item, 0)

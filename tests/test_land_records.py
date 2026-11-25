@@ -40,14 +40,15 @@ def test_a_write_is_a_row_and_no_file_and_get_reads_it(tmp_path, monkeypatch):
 def test_a_queue_reads_only_its_own_rows_and_never_a_done_file(tmp_path, monkeypatch):
     gdb.use(monkeypatch, tmp_path)
     a, b = tmp_path / "a", tmp_path / "b"
-    gdb.land(a, "0001-A", {"state": "landed"})
-    gdb.land(b, "0001-A", {"state": "red"})
+    at = {"at": "2026-11-18T11:06:40Z"}
+    gdb.land(a, "0001-A", {"state": "landed", **at})
+    gdb.land(b, "0001-A", {"state": "red", **at})
     (a / "done").mkdir(parents=True)
     landq_state.write(a / "done" / "0002-OLD.json", {"state": "red"})  # an old goh's file
-    assert land_records.records(a) == [("0001-A", {"state": "landed"})]
+    assert land_records.records(a) == [("0001-A", {"state": "landed", **at})]
     assert land_records.runs(a) == ["0001-A"]
     assert land_records.get(a, "0002-OLD") is None, "a done/ file is read by nothing"
-    named = {"state": "red", "cause": "lander", "cause_detail": ""}  # named at write: LANDEREXIT1
+    named = {"state": "red", "cause": "lander", "cause_detail": "", **at}  # at write: LANDEREXIT1
     assert land_records.records(b, reverse=True) == [("0001-A", named)]
 
 
@@ -63,12 +64,14 @@ def test_no_goh_db_is_unknown_and_creates_none(tmp_path, monkeypatch, capsys):
     assert not db.exists()
 
 
-def test_the_red_causes_are_rows_replaced_whole(tmp_path, monkeypatch):
+def test_a_class_set_later_is_the_lands_own_and_no_file(tmp_path, monkeypatch):
     gdb.use(monkeypatch, tmp_path)
     q = tmp_path / "landq"
+    gdb.land(q, "0002-B", {"state": "red"})
     land_records.set_causes(q, {"0001-A.json": {"cause": "x"}, "0002-B.json": {"cause": "y"}})
-    land_records.set_causes(q, {"0002-B.json": {"cause": "z"}})
-    assert land_records.causes(q) == {"0002-B.json": {"cause": "z"}}
+    land_records.set_causes(q, {"0002-B.json": {"cause": "z"}})  # it has one: the first stays
+    assert land_records.causes(q) == {"0002-B.json": {"cause": "y"}}
+    assert land_records.get(q, "0002-B")["red_cause"] == {"cause": "y"}
     assert not (q / "red_causes.json").exists()
 
 

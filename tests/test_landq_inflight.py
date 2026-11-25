@@ -29,6 +29,12 @@ import landq_inflight
 import landq_state
 
 
+@pytest.fixture(autouse=True)
+def _no_marker_left(monkeypatch):
+    """A marker a test supersedes is not this worker's: `bail` would end its next pre-step."""
+    monkeypatch.setattr(landq_inflight, "_MINE", [])
+
+
 @pytest.fixture
 def env(tmp_path: Path) -> dict[str, str]:
     """tests/test_landq.py's queue: its own dir, a fake loopctl recording each outcome."""

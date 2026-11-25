@@ -109,11 +109,16 @@ def _secs(a: dt.datetime | None, b: dt.datetime | None) -> float | None:
     return (b - a).total_seconds() if a and b else None
 
 
+# what a land's chain is read by, here and in lib/land_spd.py, lib/land_e2e.py and lib/land_steps.py
+KEYS = (*land_e2e.KEYS, "started", "landed", "slot_wait_s", "slot_wait_by_class", "batch",
+        "pre_affected", "pre_run")  # fmt: skip
+
+
 def chains(q: Path) -> list[tuple[str, list[tuple[Path, dict]]]]:
     """Every landed item's chain of `land` records, oldest landing first (land_e2e.rows')."""
     open_: dict[str, list[tuple[Path, dict]]] = {}
     out = []
-    for run, rec in land_records.records(q):
+    for run, rec in land_records.records(q, keys=KEYS):
         path = Path(f"{run}.json")  # its name: the stem its logs are read by
         if rec.get("mode") != "land":
             continue

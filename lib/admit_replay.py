@@ -215,7 +215,7 @@ def jobs_from(
 def landq_slot_waits(queue: Path) -> dict[str, float]:
     """sha[:12] -> the slot wait the landing queue recorded for that land (none when unrecorded)."""
     out: dict[str, float] = {}
-    for _, rec in land_records.records(queue):
+    for _, rec in land_records.records(queue, keys=("sha", "slot_wait_s")):
         wait = rec.get("slot_wait_s")
         if isinstance(wait, (int, float)) and rec.get("sha"):
             out[str(rec["sha"])[:12]] = float(wait)

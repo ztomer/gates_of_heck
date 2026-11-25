@@ -58,6 +58,19 @@ def _files(q: Path) -> dict[str, Path]:
     return out
 
 
+def test_a_record_with_no_instant_is_imported_into_a_file_of_tokens(q: Path) -> None:
+    path = q / "done" / "01795100000000000000-GOH.A.json"
+    path.write_text(json.dumps({"state": "landed", "log": f"{q}/logs/a.log"}))
+    import goh_db
+
+    with goh_db.transaction() as con:
+        con.execute("INSERT OR REPLACE INTO meta VALUES ('paths', 'token')")
+    said: list[str] = []
+    assert sr.retire("lands", day=DAY, say=said.append) is True, said
+    assert land_records.records(q) == [(path.stem, {
+        "state": "landed", "log": f"{q}/logs/a.log", "at": "2026-11-19T14:53:20Z"})]  # fmt: skip
+
+
 def test_the_land_files_are_imported_archived_and_deleted(q: Path) -> None:
     files = _files(q)
     before = {k: p.read_bytes() for k, p in files.items()}

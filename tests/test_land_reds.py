@@ -204,7 +204,7 @@ def _done(q, name, rec):
     gdb.land(q, name.removesuffix(".json"), rec)
 
 
-def test_backfill_writes_only_the_side_table_and_the_report_counts_it(tmp_path, monkeypatch):
+def test_backfill_classes_the_reds_that_have_none_and_the_report_counts_them(tmp_path, monkeypatch):
     gdb.use(monkeypatch, tmp_path)
     q = tmp_path / "landq"
     t = "tests/test_base_table.py::test_every_base_file_has_one_true_row"
@@ -216,9 +216,12 @@ def test_backfill_writes_only_the_side_table_and_the_report_counts_it(tmp_path, 
     _done(
         q, "04-GOH.C.json", {"state": "red", "why": "tip moved", "item": "GOH.C", "red_cause": kept}
     )
-    before = land_records.records(q)
-    assert lr.backfill(q) == 3
-    assert land_records.records(q) == before  # read-only
+    before = dict(land_records.records(q))
+    assert lr.backfill(q) == 2
+    after = dict(land_records.records(q))
+    assert {r: {**rec, "red_cause": None} for r, rec in after.items()} == {
+        r: {**rec, "red_cause": None} for r, rec in before.items()}  # fmt: skip  # nothing else
+    assert after["04-GOH.C"]["red_cause"]["rule"] == "kept" and lr.backfill(q) == 0
     side = land_records.causes(q)
     assert side["01-GOH.A.json"]["cause"] == "consistency-table"
     assert side["02-GOH.B.json"]["cause"] == "flake"  # the same commit landed later

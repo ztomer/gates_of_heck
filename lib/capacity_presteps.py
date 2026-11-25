@@ -69,7 +69,8 @@ def reading(slots: dict[str, Any], holders_of: Callable[[str, int, str], list[di
     in their pre-step (a checkout slot whose claimer lives, its request not yet filed), whose
     count is judged against the cap (lib/load_cap.py); and the dead owners reaped."""
     q = landq_dir()
-    records = [r for _, r in land_records.records(q)]
+    keys = (*load_cap.KEYS, "repo", "pre_run")
+    records = [r for _, r in land_records.records(q, keys=keys)]
     width = gate_lanes.lane_slots("pre", slots["total"]) if slots["total"] else 0
     directory = slots["dir"]
     holders = holders_of(directory, width, "pre") if width and os.path.isdir(directory) else []

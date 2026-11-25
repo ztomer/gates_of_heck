@@ -134,9 +134,10 @@ def test_a_move_is_one_state_and_a_second_mover_loses(tmp_path, monkeypatch):
     assert landq_state.get(path) is None
     assert landq_state.get(running) == {"item": "T.M"}
     assert landq_state.state_of(q, "01795000000000000001-T.M") == "running"
-    land_records.write(q, running.stem, {"item": "T.M", "state": "landed"}, request=running)
+    rec = {"item": "T.M", "state": "landed", "at": "2026-11-18T11:06:40Z"}
+    land_records.write(q, running.stem, rec, request=running)
     assert landq_state.state_of(q, running.stem) is None
-    assert land_records.get(q, running.stem) == {"item": "T.M", "state": "landed"}
+    assert land_records.get(q, running.stem) == rec
 
 
 def test_the_landq_v1_view_is_the_queue_other_readers_read(tmp_path, monkeypatch):

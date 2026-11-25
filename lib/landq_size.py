@@ -135,7 +135,8 @@ def best(p: float, parallel: bool = True, most: int = MOST) -> int:
 def history(q: Path, repo: str, n: int = WINDOW) -> list[bool]:
     """Red (True) or green, the newest N attempts of REPO a gate judged, newest first."""
     out: list[bool] = []
-    for _, rec in land_records.records(q, reverse=True):  # newest enqueued first
+    keys = ("repo", "mode", "state", "why")
+    for _, rec in land_records.records(q, reverse=True, keys=keys):  # newest enqueued first
         if rec.get("repo") == repo and rec.get("mode") == "land" and (landq_report.gated(rec)):
             out.append(rec.get("state") != "landed")
             if len(out) == n:

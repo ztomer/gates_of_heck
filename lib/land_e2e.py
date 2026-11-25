@@ -51,6 +51,10 @@ KINDS = (PLAIN, INSTRUMENTED)
 COVERAGE = re.compile(r"rc=\d+\s+\S+\s+coverage \(floor")
 
 
+KEYS = ("mode", "item", "state", "sha", "repo", "log", "requested", "started", "finished", "pre_s",
+        "load_start", "load_end")  # fmt: skip  # what a row is made of
+
+
 def _when(ts: object) -> dt.datetime | None:
     try:
         t = dt.datetime.fromisoformat(str(ts))
@@ -105,7 +109,7 @@ def rows(q: Path, gates: list[dict] | None = None) -> list[dict]:
     """Every landed item's e2e row, oldest landing first; GATES the ledger's `land` rows."""
     chains: dict[str, list[tuple[Path, dict]]] = {}
     out: list[dict] = []
-    for run, rec in land_records.records(q):
+    for run, rec in land_records.records(q, keys=KEYS):
         path = Path(f"{run}.json")  # its name: the stem the filing time and the logs are read by
         if rec.get("mode") != "land":
             continue

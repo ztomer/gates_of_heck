@@ -49,6 +49,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gitrun
 import goh_db
+import land_columns
 import main_reading
 import tree_walk
 
@@ -118,13 +119,10 @@ def warned(items: list[str]) -> set[str]:
     out: set[str] = set()
     try:
         with goh_db.known() as con:
-            for item in items:
-                for (body,) in con.execute(
-                    "SELECT body FROM lands WHERE item=? AND state='landed'", (item,)
-                ):
-                    for w in json.loads(body).get("waived") or []:
-                        if w.get("kind") == "rule-in-flight" and w.get("node"):
-                            out.add(str(w["node"]))
+            for rec in land_columns.landed(con, items, ("waived",)):
+                for w in rec.get("waived") or []:
+                    if w.get("kind") == "rule-in-flight" and w.get("node"):
+                        out.add(str(w["node"]))
     except (OSError, sqlite3.Error, ValueError):
         pass
     return out

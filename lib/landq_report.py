@@ -57,6 +57,8 @@ except ImportError:  # run with lib/ itself on the path (tools/landq.py)
 
 TAKEN = re.compile(r"gate slot \d+/\d+ taken after (\d+)s")
 WAITED = re.compile(r"waited (?:(\d+)m )?(\d+)s for a gate slot")
+KEYS = ("at", "finished", "started", "log", "slot_wait_s", "load_start", "batch", "state", "repo",
+        "k", "why", "pre_run", "remote_shares")  # fmt: skip  # what an attempt is read by
 SKEW_S = 2.0  # a clock/filename rounding slack when a log "predates" its request
 # The Rust coverage step's decision (gates/_rust_proven.sh rust_coverage_reuse), as
 # lib/log_follow.py carries it into a land's log: `measuring -- WHY` or `reused -- ...`.
@@ -201,12 +203,9 @@ def read_attempts(queue: Path, birth_of: Callable[[Path], float | None] = birth)
     """Every done record as an Attempt; `birth_of` is the log-birth seam (a test sets it)."""
     out: list[Attempt] = []
     recs: list[tuple[Path, dict]] = []
-    for run, rec in land_records.records(queue):  # goh.db's lands (S1)
-        try:
-            _stem_parts(run)
-        except ValueError:
-            continue
-        recs.append((Path(f"{run}.json"), rec))
+    for run, rec in land_records.records(queue, keys=KEYS):  # goh.db's lands (S1)
+        if run.partition("-")[0].isdecimal():
+            recs.append((Path(f"{run}.json"), rec))
     users: dict[str, int] = {}
     for _, rec in recs:
         users[str(rec.get("log") or "")] = users.get(str(rec.get("log") or ""), 0) + 1

@@ -33,6 +33,7 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import land_columns  # lib/, on the path from the line above
 import land_records  # lib/, on the path from the line above
 import state_paths
 
@@ -107,8 +108,8 @@ def load(con: sqlite3.Connection, paths: list[Path]) -> None:
     for p in paths:
         if p.parent.name == DONE:
             if isinstance(rec := _json(p), dict):
-                con.execute(f"INSERT OR IGNORE {land_records.INSERT}",
-                            land_records._row(key, p.stem, rec))  # fmt: skip
+                at = land_records.epoch(rec, p.stem)
+                land_columns.put(con, key, p.stem, rec, at, keep=True)
             n, table = 1, "lands"
         elif p.name == CAUSES:
             side = _json(p)
@@ -135,11 +136,16 @@ def check(con: sqlite3.Connection, p: Path) -> str | None:
     row of the queue."""
     key = _key()
     if p.parent.name == DONE:
-        row = con.execute("SELECT body FROM lands WHERE queue = ? AND run = ?",
-                          (key, p.stem)).fetchone()  # fmt: skip
+        ours, args = state_paths.where("queue", state_paths.forms(key))
+        row = con.execute(f"SELECT body FROM lands WHERE {ours} AND run = ?",
+                          (*args, p.stem)).fetchone()  # fmt: skip
         if row is None:
             return "no lands row"
-        return None if json.loads(row[0]) == _json(p) else "its lands row differs"
+        have = state_paths.got("lands", json.loads(row[0]))
+        want = _json(p)
+        if isinstance(want, dict) and not want.get("at") and "at" in have:
+            want = {**want, "at": have["at"]}  # a row written by name is never without one
+        return None if have == want else "its lands row differs"
     if p.name == CAUSES:
         side = _json(p)
         have = {r: (json.loads(b), at) for r, b, at in con.execute(

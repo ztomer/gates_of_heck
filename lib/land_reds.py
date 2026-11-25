@@ -9,8 +9,8 @@ pre-land tests failed` (30), so no cause could be counted. This module is the co
                       the instrument is never the reason a land fails.
     classify(...)     the deterministic rules below over the record, its log and the failing
                       tests' own source at the record's commit; the first rule that applies wins.
-    backfill(q)       classifies every red land record already written, read-only over the
-                      records: the answers go to goh.db's red_causes (lib/land_records.py).
+    backfill(q)       classifies every red land record that has no class: the answer goes to its
+                      land's columns in goh.db (lib/land_records.py `set_causes`).
     report(q, last)   `goh land-reds [--last N] [--json] [--backfill]`: the classes by count over
                       the newest N records, each with example records.
 
@@ -39,9 +39,8 @@ log and each failing test's function at the record's commit, first match wins: `
 manifest, allowlist, seed or map), `env-leak` (a test of the environment, or one reading a variable
 the failing gate step sets), `pinned-text` (a test that reads a source file's text and runs
 nothing), `real-bug` (any other failing test), `other` (no test named). `goh land-reds [--last N]
-[--json] [--backfill]` counts the classes with example records; `--backfill` classifies the records
-already written into `<landq>/red_causes.json`, never writing a record. Invoked by
-`tools/landq.py`. Pinned by `test_landq.py`.
+[--json] [--backfill]` counts the classes with example records; `--backfill` gives each red land
+record with no class its class, in goh.db. Invoked by `tools/landq.py`. Pinned by `test_landq.py`.
 """
 
 from __future__ import annotations
@@ -263,9 +262,12 @@ def fields(outcome: dict) -> dict:
         return {"red_cause": {"cause": "other", "rule": f"not judged: {e}", "tests": []}, **waived}
 
 
+KEYS = ("state", "item", "enqueued", "sha", "repo", "why", "log")  # what a red is read by
+
+
 def records(q: Path) -> list[tuple[str, dict]]:
     """`(name, record)` for every land record (lib/land_records.py), oldest first."""
-    return [(f"{run}.json", rec) for run, rec in land_records.records(q)]
+    return [(f"{run}.json", rec) for run, rec in land_records.records(q, keys=KEYS)]
 
 
 def _item(name: str, rec: dict) -> str:
@@ -273,12 +275,12 @@ def _item(name: str, rec: dict) -> str:
 
 
 def backfill(q: Path) -> int:
-    """Classify every red done/ record into `<q>/red_causes.json` (the records are never
-    written); how many it holds."""
+    """Every red land record with no class classified, in goh.db; how many there were."""
     recs = records(q)
+    had = land_records.causes(q)
     side: dict[str, dict] = {}
     for i, (name, rec) in enumerate(recs):
-        if rec.get("state") != "red":
+        if rec.get("state") != "red" or name in had:
             continue
         later = recs[i + 1 :]
         retried = any(
@@ -294,17 +296,17 @@ def backfill(q: Path) -> int:
 
 def report(q: Path, last: int = 0) -> dict:
     """The newest LAST records (all, when 0): how many were red, and the classes by count, each
-    with up to three example records. A record's own `red_cause` wins over the side file's."""
+    with up to three example records."""
     recs = records(q)
     recs = recs[-last:] if last else recs
-    side = land_records.causes(q)
+    had = land_records.causes(q)
     classes: dict[str, dict] = {}
     red = 0
     for name, rec in recs:
         if rec.get("state") != "red":
             continue
         red += 1
-        cause = rec.get("red_cause") or side.get(name) or judge(rec)
+        cause = had.get(name) or judge(rec)
         row = classes.setdefault(cause["cause"], {"count": 0, "examples": []})
         row["count"] += 1
         if len(row["examples"]) < 3:
@@ -342,7 +344,7 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="goh land-reds", description=__doc__.split("\n")[0])
     ap.add_argument("--last", type=int, default=0, help="only the newest N records (default all)")
     ap.add_argument("--json", action="store_true", help="the report as JSON")
-    ap.add_argument("--backfill", action="store_true", help="classify every red record into goh.db")
+    ap.add_argument("--backfill", action="store_true", help="classify each red with no class")
     args = ap.parse_args(argv)
     q = qdir()
     if args.backfill:
@@ -362,10 +364,10 @@ def file_vanished(q: Path, rec: dict, name: str, since: float) -> bool:
     then exited): its run stamp or its own time (`land_records.epoch`), a row read like a file.
     True when written; an unwritable queue is no record, never a crash."""
     try:
-        for run, old in land_records.records(q):
+        for run, at in land_records.stamps(q).items():
             ns = run.partition("-")[0]
             stamp = int(ns) / 1e9 if ns.isdigit() else 0.0
-            if run.endswith(f"-{name}") and max(stamp, land_records.epoch(old, run)) >= since:
+            if run.endswith(f"-{name}") and max(stamp, at) >= since:
                 return False
         land_records.write(q, f"{time.time_ns():020d}-{name}", rec)
     except OSError:

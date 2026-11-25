@@ -58,6 +58,7 @@ import state_paths  # lib/, on the path from the line above
 DEFAULT = 1  # the measured peak, 2026-11-24 (above)
 MIN_HOURS = 5  # busy hours a band needs before it can be the peak
 WINDOW_S = 7 * 86400  # the newest week of records judges
+KEYS = ("requested", "pre_s", "started", "finished", "state", "at")  # of a land record
 HOUR = 3600.0
 BUSY = 0.05  # mean pre-steps plus gates in flight that make an hour busy
 
@@ -139,7 +140,7 @@ def main(argv: list[str]) -> int:
     q = str(state_paths.landq_dir())
     from pathlib import Path
 
-    recs = [r for _, r in land_records.records(Path(q))]
+    recs = [r for _, r in land_records.records(Path(q), keys=KEYS)]
     c, got = curve(recs), cap(recs)
     if args.json:
         print(json.dumps({"curve": c, "peak": peak(c), "cap": got}, sort_keys=True))

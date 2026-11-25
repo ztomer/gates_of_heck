@@ -152,7 +152,8 @@ def records(q: Path | None, newest: int | None = None) -> list[dict]:
     if q is None:
         return []
     out: list[dict] = []
-    out += [rec for _, rec in land_records.records(q, reverse=True)[:newest]]
+    keys = ("state", "repo", "item", "sha", "guard", "guards")
+    out += [dict(rec) for _, rec in land_records.records(q, reverse=True, keys=keys)[:newest]]
     learned = land_records.ledger(q, "guards")
     out += reversed(learned[-newest:] if newest else learned)
     named = [r for r in out if isinstance(r, dict) and r.get("state") == "red"]
