@@ -46,53 +46,42 @@ def _run(repo: Path, *argv: str) -> subprocess.CompletedProcess[str]:
     )  # fmt: skip
 
 
-def _verdicts(tmp_path: Path, goh: Path, body: str) -> tuple[subprocess.CompletedProcess[str], ...]:
+def test_lint_and_commit_refuse_the_same_planted_findings(tmp_path, goh):
+    """One dirty tree for both findings and for the no-path form (GOH.LINTASGATE: `goh lint` is the
+    commit of everything changed, so the E501 sits in an edited tracked file and the SIM105 in a
+    new untracked one). Plain `ruff check`, the instrument this replaces, is green on the SIM105."""
     repo = _repo(tmp_path)
-    (repo / "tool.py").write_text(body)
-    lint = _run(repo, str(goh), "lint", "tool.py")
-    assert _git(repo, "diff", "--cached", "--name-only") == "", "a lint stages nothing"
+    (repo / "old.py").write_text(CLEAN)
+    _git(repo, "add", "old.py")
+    _git(repo, "commit", "-q", "--no-verify", "-m", "old")
     head = _git(repo, "rev-parse", "HEAD")
-    _git(repo, "add", "tool.py")
+    (repo / "old.py").write_text(E501)
+    (repo / "tool.py").write_text(SIM105)
+    assert _run(repo, "ruff", "check", "--isolated", "tool.py").returncode == 0
+    lint = _run(repo, str(goh), "lint")
+    assert _git(repo, "diff", "--cached", "--name-only") == "", "a lint stages nothing"
+    _git(repo, "add", "old.py", "tool.py")
     commit = _run(repo, "git", "commit", "-q", "-m", "plant")
-    return lint, commit, head == _git(repo, "rev-parse", "HEAD")
-
-
-@pytest.mark.parametrize(("body", "code"), [(E501, "E501"), (SIM105, "SIM105")])
-def test_lint_and_commit_refuse_the_same_planted_finding(tmp_path, goh, body, code):
-    lint, commit, unmoved = _verdicts(tmp_path, goh, body)
     lint_out, commit_out = lint.stdout + lint.stderr, commit.stdout + commit.stderr
-    assert commit.returncode != 0 and unmoved, commit_out
+    assert commit.returncode != 0 and head == _git(repo, "rev-parse", "HEAD"), commit_out
     assert lint.returncode == commit.returncode, (lint_out, commit_out)
-    assert code in lint_out and code in commit_out, (lint_out, commit_out)
+    for code in ("E501", "SIM105"):
+        assert code in lint_out and code in commit_out, (lint_out, commit_out)
 
 
 def test_lint_and_commit_pass_the_same_clean_file(tmp_path, goh):
-    lint, commit, unmoved = _verdicts(tmp_path, goh, CLEAN)
-    assert lint.returncode == 0 == commit.returncode, lint.stdout + lint.stderr
-    assert "nothing committed" in lint.stdout + lint.stderr
-    assert not unmoved, "the commit landed"
-
-
-def test_plain_ruff_passes_what_the_commit_refuses(tmp_path, goh):
-    """The instrument this replaces, shown blind: plain `ruff check` is green on the SIM105 plant
-    that the commit gate (and so `goh lint`) refuses."""
     repo = _repo(tmp_path)
-    (repo / "tool.py").write_text(SIM105)
-    assert _run(repo, "ruff", "check", "--isolated", "tool.py").returncode == 0
-    assert _run(repo, str(goh), "lint", "tool.py").returncode != 0
-
-
-def test_no_path_lints_every_file_changed_against_head(tmp_path, goh):
-    """GOH.LINTASGATE: `goh lint` with no path is the commit of everything changed -- the edited
-    tracked files and the new untracked ones -- so the one command needs no list typed by hand."""
-    repo = _repo(tmp_path)
-    (repo / "tool.py").write_text(SIM105)
-    lint = _run(repo, str(goh), "lint")
-    assert lint.returncode != 0 and "SIM105" in lint.stdout + lint.stderr, lint.stdout + lint.stderr
+    head = _git(repo, "rev-parse", "HEAD")
     (repo / "tool.py").write_text(CLEAN)
-    lint = _run(repo, str(goh), "lint")
+    (repo / "other.py").write_text(SIM105)  # changed, and not among the paths named
+    lint = _run(repo, str(goh), "lint", "tool.py")
     assert lint.returncode == 0, lint.stdout + lint.stderr
+    assert "nothing committed" in lint.stdout + lint.stderr
+    assert _git(repo, "diff", "--cached", "--name-only") == "", "a lint stages nothing"
+    (repo / "other.py").unlink()
     _git(repo, "add", "tool.py")
-    _git(repo, "commit", "-q", "--no-verify", "-m", "clean")
+    commit = _run(repo, "git", "commit", "-q", "-m", "plant")
+    assert commit.returncode == 0, commit.stdout + commit.stderr
+    assert head != _git(repo, "rev-parse", "HEAD"), "the commit landed"
     lint = _run(repo, str(goh), "lint")
     assert lint.returncode == 0 and "nothing changed against HEAD" in lint.stdout + lint.stderr
