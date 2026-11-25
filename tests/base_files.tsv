@@ -145,6 +145,7 @@ tests/_land_audit.py	base-code
 tests/_land_trees.py	base-code
 tests/_land_verdicts.py	base-code
 tests/_loadgroup.py	base-code
+tests/_prebuild.py	base-code
 tests/_prof_record.py	base-code
 tests/_prof_reuse.py	base-code
 tests/_quiet_pack.py	base-code

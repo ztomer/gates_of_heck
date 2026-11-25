@@ -20,9 +20,9 @@ other sessions load, a timing gate flakes and gets switched off:
 
 Found by the build guard on its first run: under GOH_LIVE with uncommitted Rust, every gate test
 resolved the working tree's goh by BUILDING it (gates/_goh_bin.sh, `goh_live_binary`) -- 75 tests
-racing one `cargo build --release` on cargo's lock. `prebuild_live` (conftest's
-`pytest_configure`) now builds it once, in the
-controller, before a worker starts; every gate then finds it current.
+racing one `cargo build --release` on cargo's lock. `prebuild_live` (tests/_prebuild.py, conftest's
+`pytest_configure`) now builds it once, in the controller, before a test is handed out; every gate
+then finds it current.
 
 * a crate a test builds OUTSIDE this checkout builds into BUILD_DIR, a directory this run owns and
   removes. `~/.cargo/config.toml` keys `build-dir` by `{workspace-path-hash}`, so each temp
@@ -41,7 +41,6 @@ import importlib.util
 import os
 import resource
 import shutil
-import subprocess
 import sys
 import threading
 import time
@@ -50,6 +49,7 @@ from pathlib import Path
 
 import _setup_work
 import pytest
+from _prebuild import prebuild_live  # noqa: F401  (conftest's pytest_configure calls it here)
 from _reused_tmp import reused_mkdtemp
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -421,29 +421,3 @@ def pytest_runtest_makereport(item, call):
             "(tests/_drift_guard.py): a leaked child holding a captured pipe, a hidden build, or a "
             "test that runs a whole gate to check one step. Fix it, or name it in SLOW with a reason."
         )
-
-
-def prebuild_live(config, root: Path | None = None) -> None:
-    """The goh every gate a test spawns will resolve -- built once, here, in the controller.
-
-    Under GOH_LIVE with the working tree's Rust ahead of HEAD that is the tree's build
-    (`goh_live_binary`); otherwise HEAD's (bin/goh, or the store). Only the first half used to be
-    done here, so a checkout whose bin/goh was not HEAD's build -- every fresh worktree, every commit
-    whose crates moved -- left the FIRST gate a test ran to build it, which the cargo shim refuses:
-    9 tests of test_rust_gate.py failed in any new worktree (G2c). `goh_resolve_native` is the one
-    resolver the gates call, so the controller asks exactly what they will.
-    """
-    if hasattr(config, "workerinput") or not os.environ.get("GOH_LIVE"):
-        return  # a worker: the controller already did it
-    if os.environ.get("GOH_STAGED_GUARD_RUN"):
-        # A commit's source guard (gates/staged_guards.sh) runs tests that read the tree's text and
-        # spawn no gate; inside a fixture's commit there is not even a cargo to build with.
-        return
-    r = subprocess.run(
-        ["bash", "-c", ('source "$1/gates/_goh_bin.sh"; goh_resolve_native; [ -n "$goh_native" ] '
-         '|| { echo "$goh_native_why" >&2; false; }'), "_", str(root or _ROOT)],
-        capture_output=True, text=True, timeout=900, check=False,
-        env=dict(os.environ, DRIFT_BUILD_OK="1"), stdin=subprocess.DEVNULL,
-    )  # fmt: skip
-    if r.returncode != 0:
-        raise pytest.UsageError(f"the goh the gates resolve did not build:\n{r.stderr}")
