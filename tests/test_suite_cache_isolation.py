@@ -74,7 +74,8 @@ def test_the_suites_git_writes_no_more_than_its_tests_read(tmp_path: Path) -> No
     loose object per object fetched and a sync of it all to the SSD."""
 
     def git(*args: str) -> str:
-        return subprocess.run(["git", *args], capture_output=True, text=True, check=True,
+        quiet = ("-c", "maintenance.auto=false")  # its detached lock file is not what is read here
+        return subprocess.run(["git", *quiet, *args], capture_output=True, text=True, check=True,
                               cwd=tmp_path, stdin=subprocess.DEVNULL).stdout  # fmt: skip
 
     def _build() -> None:  # git's own `init` is the subject: no template stands in for it
