@@ -10,7 +10,6 @@
 .github/actions/goh-setup/action.yml	suite-wide
 .github/workflows/gate.yml	suite-wide
 checks/_gitutil.py	base-code
-checks/_goh_tmp.py	base-code
 checks/_prose_mask.py	base-code
 checks/_retired.py	base-code
 gates/_cargo_config.py	base-code

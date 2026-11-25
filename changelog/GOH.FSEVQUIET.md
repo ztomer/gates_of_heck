@@ -16,3 +16,4 @@
 * GOH.FSEVQUIET: the instrumented-build test resolves goh on a checkout of its own: on this one it read a build another test had made of HEAD, and was red under the coverage step when none had.
 * GOH.FSEVQUIET: a test's `git config NAME VALUE` is made without git, a commit moves a packed branch where it is, and the gates a test runs as a consumer live in `tests/_todays_gates.py`.
 * GOH.FSEVQUIET: a land's pre-step is counted and, from 2,000 tests, judged by the run's means as a whole run is; a run's bytes a test have a ceiling of their own, judged also where fseventsd dropped events. Ceilings: 185 events a test of a run became 110, with 125,000 bytes; one test 20,000 became 17,000; today's files 2,500 events and 20 MB became 2,200 and 8 MB, 788 of them 738; 14 named files became 11.
+* GOH.FSEVQUIET: a checker's scratch repository is the empty one git made for its first case, written again from memory: no seed directory a process.

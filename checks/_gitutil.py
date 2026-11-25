@@ -72,33 +72,39 @@ def foreign_repo_env(base=None) -> dict:
     return env
 
 
-_EMPTY_GIT: dict = {}
+_EMPTY_GIT: dict = {}  # a relative path -> its bytes, None for a directory
 
 
 def scratch_git(dest: str) -> None:
-    """Make `dest` a git repository by copying ONE empty `.git` that git itself made once per
-    process: `git init` (+ `config` for an identity) per scratch repo was most of the spawns of
-    every fixture-building checker -- 48 of 80 per `check_estate_corpus` run, sys load that
-    saturated the box for concurrent sessions (tools/session_bench.py, 2026-10-06). Commit with
+    """Make `dest` a git repository: git itself inits the process's first, and each later one is
+    that empty `.git` again, from memory -- `git init` (+ `config` for an identity) per scratch repo
+    was most of the spawns of every fixture-building checker -- 48 of 80 per `check_estate_corpus`
+    run, sys load that saturated the box for concurrent sessions (tools/session_bench.py,
+    2026-10-06) -- and no seed directory is made of it (GOH.FSEVQUIET). Commit with
     `-c user.email=... -c user.name=...`: no config is written."""
-    import atexit
-    import shutil
-    import tempfile
-
-    from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
-
-    if "git" not in _EMPTY_GIT:
-        seed = tempfile.mkdtemp(dir=goh_tmp(), prefix="goh-empty-git.")
-        atexit.register(shutil.rmtree, seed, True)
+    top = os.path.join(dest, ".git")
+    if not _EMPTY_GIT:
         subprocess.run(
-            ["git", "-C", seed, "init", "-q", "--template="],
+            ["git", "-C", dest, "init", "-q", "--template="],
             capture_output=True,
             check=True,
             env=foreign_repo_env(),
             stdin=subprocess.DEVNULL,
         )
-        _EMPTY_GIT["git"] = os.path.join(seed, ".git")
-    shutil.copytree(_EMPTY_GIT["git"], os.path.join(dest, ".git"))
+        for at, dirs, names in os.walk(top):
+            rel = os.path.relpath(at, top)
+            _EMPTY_GIT.update({os.path.join(rel, d): None for d in dirs})
+            for name in names:
+                with open(os.path.join(at, name), "rb") as handle:
+                    _EMPTY_GIT[os.path.join(rel, name)] = handle.read()
+        return
+    os.mkdir(top)
+    for rel, data in _EMPTY_GIT.items():
+        if data is None:
+            os.mkdir(os.path.join(top, rel))
+        else:
+            with open(os.path.join(top, rel), "wb") as handle:
+                handle.write(data)
 
 
 def git_read(args, *, timeout, env=None):
