@@ -18,7 +18,10 @@ caller gets a warning to show.
 THE FILES THEY WERE. goh.db alone holds them since the database plan's wave 3: `goh state retire
 hook-ledgers` (lib/state_retire.py) imported each file, read it back equal and archived it. No
 goh.db reads as unknown (goh_db.Unknown), never as an empty ledger.
-Pinned by tests/test_hook_ledgers.py.
+
+A SPAWN'S FIELDS are columns and child rows (lib/spawn_columns.py, GOH.SPAWNKEY), its items among
+them. A row its table refuses is kept in DEAD beside goh.db: never retried, so one such row holds
+no other, and named by `goh state check`. Pinned by tests/test_hook_ledgers.py.
 
 GOH.STATEDBS4: the hook and cache ledgers in goh.db (0005): `agent_spawns` (the model-choice hook's
 spawn and outcome rows, was `agent-spawns.jsonl`), `lane_starts` (lane admission's verdicts, was
@@ -43,21 +46,20 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
         __import__("_from_head").reexec(__file__)
     del _sys.path[0]
 
-import calendar
 import contextlib
 import json
 import os
-import re
 import sqlite3
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # the lib directory, on the path from the line above
 import lock_order
+import spawn_columns
 import state_paths
 
 STORE = "hook ledgers"  # the imports ledger's store
@@ -65,8 +67,10 @@ SPAWNS, LANES, CANDIDATES = "agent_spawns", "lane_starts", "fault_candidates"
 WATCH = "model-choice-watch"  # kv: the weekly watch's record
 BUSY = "hook-ledgers.busy"  # kv: {count, last}: rows a write spilled past HOOK_BUSY_MS
 SPILL = "hook-ledgers.spill.jsonl"  # beside goh.db: {table, row} lines a busy write left
+DEAD = "hook-ledgers.dead.jsonl"  # beside goh.db: {table, row, why, at}, a row its table refuses
 HOOK_BUSY_MS = 5000  # a hook's write waits this long for goh.db, then lets the spawn through
-ITEM = re.compile(r"^\s*([A-Z][A-Z0-9]*(?:\.[A-Za-z0-9]+)+)\b")  # GOH.STATEDBS4: ...
+# what one row of the spill can meet that no other row would: it is dead-lettered, never retried
+REFUSED = (spawn_columns.Refused, sqlite3.IntegrityError, sqlite3.DataError, OverflowError)
 
 
 def cache_dir() -> Path:
@@ -75,16 +79,6 @@ def cache_dir() -> Path:
 
 def _dump(row: object) -> str:
     return json.dumps(row, sort_keys=True)
-
-
-def _epoch(at: object) -> float:
-    """An ISO stamp (`2026-11-22T21:27:12+00:00`) or a number as epoch seconds; 0 when neither."""
-    if isinstance(at, (int, float)):
-        return float(at)
-    try:
-        return float(calendar.timegm(time.strptime(str(at)[:19], "%Y-%m-%dT%H:%M:%S")))
-    except ValueError:
-        return 0.0
 
 
 def _lines(data: bytes) -> list[dict]:
@@ -107,17 +101,22 @@ def _kv_put(con: sqlite3.Connection, name: str, value: object) -> None:
                 (name, _dump(state_paths.put(con, name, value)), time.time()))  # fmt: skip
 
 
+def kept(table: str) -> tuple[Callable[[dict], str], Callable[[str], str]]:
+    """How two copies of one TABLE row compare: (a row's text, a stored document's text)."""
+    if table != SPAWNS:
+        return _dump, str
+    return (lambda r: _dump(spawn_columns.normal(r))), lambda b: _dump(
+        spawn_columns.normal(json.loads(b)))  # fmt: skip
+
+
 def insert(con: sqlite3.Connection, table: str, row: dict) -> None:
     """ROW as TABLE's next row (SPAWNS or LANES; lib/state_retire.py's import uses it too)."""
     row = state_paths.put(con, table, row)
     if table == SPAWNS:
-        m = ITEM.match(str(row.get("description") or "")) if row.get("event") == "spawn" else None
-        con.execute("INSERT INTO agent_spawns(at, event, agent, item, body) VALUES (?, ?, ?, ?, ?)",
-                    (_epoch(row.get("time")), str(row.get("event") or ""), row.get("agent_id"),
-                     m.group(1) if m else None, _dump(row)))  # fmt: skip
+        spawn_columns.write(con, row)
     else:
         con.execute(f"INSERT INTO {table}(at, body) VALUES (?, ?)",
-                    (_epoch(row.get("at")), _dump(row)))  # fmt: skip
+                    (spawn_columns.instant(row.get("at")) or 0.0, _dump(row)))  # fmt: skip
 
 
 # -- the spill: a write that waited HOOK_BUSY_MS ------------------------------------------------
@@ -127,14 +126,17 @@ def spill_file() -> Path:
     return goh_db.path().with_name(SPILL)
 
 
-def _spill(table: str, row: dict) -> None:
-    p = spill_file()
+def _line(p: Path, rec: dict) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(p, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
-    try:  # one write: O_APPEND keeps the line whole beside another spill
-        os.write(fd, (json.dumps({"table": table, "row": row}, sort_keys=True) + "\n").encode())
+    try:  # one write: O_APPEND keeps the line whole beside another
+        os.write(fd, (json.dumps(rec, sort_keys=True) + "\n").encode())
     finally:
         os.close(fd)
+
+
+def _spill(table: str, row: dict) -> None:
+    _line(spill_file(), {"table": table, "row": row})
 
 
 def _spilled(p: Path) -> list[tuple[str, dict]]:
@@ -145,9 +147,38 @@ def _spilled(p: Path) -> list[tuple[str, dict]]:
     return []
 
 
-def _drain(con: sqlite3.Connection, claimed: list[Path]) -> None:
-    """The spill's rows into their tables, before this write's row, counted in kv BUSY. The file
-    is claimed by a rename (another spill starts a new one); the caller removes it after COMMIT."""
+def _taken(con: sqlite3.Connection, table: str, row: dict) -> str | None:
+    """ROW inserted whole, or why its table refuses it (nothing of it written)."""
+    con.execute("SAVEPOINT hook_row")
+    why = None
+    try:
+        insert(con, table, row)
+    except REFUSED as e:
+        con.execute("ROLLBACK TO hook_row")
+        why = str(e)
+    con.execute("RELEASE hook_row")
+    return why
+
+
+def _bury(letters: list[tuple[str, dict, str]]) -> None:
+    for table, row, why in letters:
+        _line(goh_db.path().with_name(DEAD),
+              {"table": table, "row": row, "why": why, "at": time.time()})  # fmt: skip
+
+
+def dead() -> list[dict]:
+    """The rows their tables refused, as {table, row, why, at}: `goh state check` names each."""
+    with contextlib.suppress(OSError):
+        return _lines(goh_db.path().with_name(DEAD).read_bytes())
+    return []
+
+
+def _drain(
+    con: sqlite3.Connection, claimed: list[Path], letters: list[tuple[str, dict, str]]
+) -> None:
+    """The spill's rows into their tables, before this write's row, counted in kv BUSY; a row its
+    table refuses joins LETTERS. The file is claimed by a rename (another spill starts a new one);
+    the caller removes it after COMMIT."""
     p = spill_file()
     if not p.exists():
         return
@@ -159,7 +190,8 @@ def _drain(con: sqlite3.Connection, claimed: list[Path]) -> None:
     claimed.append(mine)
     rows = _spilled(mine)
     for table, row in rows:
-        insert(con, table, row)
+        if why := _taken(con, table, row):
+            letters.append((table, row, why))
     busy = _kv(con, BUSY) or {"count": 0}
     _kv_put(con, BUSY, {"count": int(busy.get("count") or 0) + len(rows), "last": time.time()})
 
@@ -183,10 +215,13 @@ def append(table: str, row: dict) -> str | None:
     """One hook ledger row (SPAWNS or LANES), after the spill's;
     the warning to show when goh.db could not take it (the row is spilled, the spawn goes on)."""
     claimed: list[Path] = []
+    letters: list[tuple[str, dict, str]] = []
     try:
         with _hook_busy(), goh_db.transaction() as con:
-            _drain(con, claimed)
-            insert(con, table, row)
+            _drain(con, claimed, letters)
+            if why := _taken(con, table, row):
+                letters.append((table, row, why))
+        _bury(letters)  # the COMMIT is done: until here the spill still holds them
     except (sqlite3.Error, OSError, lock_order.OrderError) as e:  # an ancestor holding goh.db: open
         for mine in claimed:  # rolled back: its rows go back to the spill
             for t, r in _spilled(mine):
@@ -199,6 +234,9 @@ def append(table: str, row: dict) -> str | None:
         return f"hook_ledgers: goh.db did not take the {table} row ({e}); spilled, counted."
     for mine in claimed:
         mine.unlink(missing_ok=True)
+    if letters:
+        said = "; ".join(f"{t}: {why}" for t, _, why in letters)
+        return f"hook_ledgers: not written, kept in {DEAD}: {said}"
     return None
 
 
@@ -221,12 +259,17 @@ def rows(table: str, db: Path | None = None) -> list[dict]:
     """TABLE's rows (SPAWNS or LANES) in the order written, then the spill's (DB: that file's rows
     alone, a run's own goh.db). No goh.db raises goh_db.Unknown: unknown, never empty."""
     with _read(db) as con:
-        got = [] if con is None else [
-            state_paths.got(table, json.loads(b))
-            for (b,) in con.execute(f"SELECT body FROM {table} ORDER BY n")]  # fmt: skip
+        got: list[dict] = []
+        if con is not None and table == SPAWNS:
+            con.execute("BEGIN")  # a spawn and its child rows are one snapshot
+            got = spawn_columns.read(con)
+        elif con is not None:
+            got = [json.loads(b) for (b,) in con.execute(f"SELECT body FROM {table} ORDER BY n")]
+        got = [state_paths.got(table, r) for r in got]
     if db is not None:
         return got
-    return got + [r for t, r in _spilled(spill_file()) if t == table]
+    late = [r for t, r in _spilled(spill_file()) if t == table]
+    return got + ([spawn_columns.normal(r) for r in late] if table == SPAWNS else late)
 
 
 def spawns(db: Path | None = None) -> list[dict]:

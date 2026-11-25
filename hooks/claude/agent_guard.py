@@ -42,7 +42,8 @@ kept by hand; this hook keeps them structurally (tests/test_claude_agent_guard.p
   (default) defers it naming what the reading lacked, `warn` says so and admits, an `Owner-asked:`
   line is deferred too (admitted in warn mode) and refused above the hard ceiling (GOH.OWNERASKCAP),
   a failed reading admits; goh.db's `lane_starts`.
-* Every allowed spawn is one row of goh.db's `agent_spawns` (lib/hook_ledgers.py); SubagentStop
+* Every allowed spawn is one row of goh.db's `agent_spawns` (lib/hook_ledgers.py), with the queue
+  items its brief names, or why none (`spawn_items.py`, GOH.SPAWNKEY); SubagentStop
   adds the outcome row -- tokens summed from the agent's transcript, the report's `Status:` and the
   report itself (the audit checks its shas) -- so a wrong choice either way is visible as data.
 * A fixed-name file the agent wrote straight into the shared scratchpad root is named at
@@ -101,6 +102,7 @@ import hook_ledgers  # lib/: goh.db's hook ledgers, the spawn ledger's one door
 import lane_room  # a write spawn starts only while the machine has room (GOH.ADAPTLANES)
 import model_choice  # the rules file's one reader, beside this script
 import scratch_guard  # a fixed-name file in the shared scratchpad root (GOH.AGENTSCRATCH)
+import spawn_items  # the queue items a brief names (GOH.SPAWNKEY)
 from ci_judge import (
     judge_ci as _judge_ci,  # the CI-watching judge, beside this script
     judge_land as _judge_land,  # a land enqueued with no check (GOH.RULESLEFT)
@@ -245,10 +247,6 @@ def _now() -> str:
     return dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
 
 
-def _first_line(text: str) -> str:
-    return next((ln.strip() for ln in text.splitlines() if ln.strip()), "")[:200]
-
-
 def _routed(prompt: str, target: str, why: str, declared: str) -> str:
     """The prompt with its `Model-choice:` line naming the tier it now runs on."""
     model, effort = target.split("@")
@@ -359,7 +357,9 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
         "subagent_type": agent_type, "exempt": exempt, "description": tool_input.get("description"),
         "declared": None if exempt else declared, "explored": route is not None,
         "route": route[1] if route else None, "pool": pool, "agent_type_escape": escape,
-        "prompt_sha": hashlib.sha256(final.encode()).hexdigest(), "first_line": _first_line(prompt),
+        "prompt_sha": hashlib.sha256(final.encode()).hexdigest(),
+        "first_line": spawn_items.first_line(prompt),
+        **spawn_items.fields(prompt, tool_input.get("description")),
         "apps": appstate.snapshot(event.get("tool_use_id")),
         "profile": rules.profile or None, "profile_why": rules.profile_why,
         "meter": _meter(rules.meter), "lane": (lane.record or {}).get("verdict"),

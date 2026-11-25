@@ -18,7 +18,8 @@ import hook_ledgers as hl
 
 def _spawn(i: int, desc: str = "GOH.STATEDBS4: the hook ledgers") -> dict:
     return {"event": "spawn", "time": f"2026-11-2{i % 4}T0{i % 9}:00:00+00:00", "description": desc,
-            "tool_use_id": f"toolu_{i}", "session_id": "s", "model": "opus"}  # fmt: skip
+            "tool_use_id": f"toolu_{i}", "session_id": "s", "model": "opus",
+            "items": ["GOH.STATEDBS4"]}  # fmt: skip
 
 
 def _outcome(i: int) -> dict:

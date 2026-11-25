@@ -213,3 +213,18 @@ def test_a_write_racing_the_registration_is_told_to_retry(loop: Path) -> None:
     reason = json.loads(r.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
     assert "registration pending: retry in a few seconds" in reason
     assert "GOH.LANE" in reason
+
+
+def test_an_items_line_registers_each_of_its_own(loop: Path) -> None:
+    """GOH.SPAWNKEY: the line says which are the lane's, so naming others is no ambiguity."""
+    pending = {"repo": "gates_of_heck", "status": "in_progress", "agent": "pending-spawn"}
+    _items(loop, [{"id": i, **pending} for i in ("GOH.LANE", "GOH.TWO", "GOH.NOT")])
+    r = _fire(loop, prompt="Items: GOH.LANE, GOH.TWO\nGOH.NOT is another lane's.")
+    assert r.returncode == 0, r.stderr
+    assert [_agent(loop, i) for i in ("GOH.LANE", "GOH.TWO")] == [AGENT, AGENT]
+    assert _agent(loop, "GOH.NOT") == "pending-spawn"
+
+
+def test_an_items_line_of_none_registers_nothing(loop: Path) -> None:
+    assert _fire(loop, prompt="Items: none because it only reads\nitem GOH.LANE").returncode == 0
+    assert _calls(loop) == []

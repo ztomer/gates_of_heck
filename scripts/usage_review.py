@@ -137,8 +137,9 @@ def meter_stats(
         "readings": len(readings),
     }
     for w in windows:
-        vals = [x[w] for x in readings if isinstance(x.get(w), int)]
-        out[f"min_{w}"] = min(vals) if vals else None
+        vals = [x[w] for x in readings if isinstance(x.get(w), (int, float))]
+        low = min(vals) if vals else None  # a whole percent is read back as a REAL column's 95.0
+        out[f"min_{w}"] = int(low) if low is not None and low == int(low) else low
     return out
 
 

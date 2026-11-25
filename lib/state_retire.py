@@ -109,9 +109,9 @@ def _ledger(con: sqlite3.Connection, store: str, p: Path, rows: int, source: str
                 row)  # fmt: skip
 
 
-def _subset(con: sqlite3.Connection, table: str, p: Path, body=_dump) -> str | None:
+def _subset(con: sqlite3.Connection, table: str, p: Path, body=_dump, row=str) -> str | None:
     """Every line of P is a row of TABLE (as many times as P holds it), else why not."""
-    have = Counter(b for (b,) in con.execute(f"SELECT body FROM {table}"))
+    have = Counter(row(b) for (b,) in con.execute(f"SELECT body FROM {table}"))
     want = Counter(body(r) for r in _lines(p))
     short = sum((want - have).values())
     return f"{short} of {sum(want.values())} lines have no {table} row" if short else None
@@ -140,8 +140,7 @@ def _root(where: str) -> Path:
 
 
 def _hook_file(table: str) -> Path:
-    where, name = HOOK_FILES[table]
-    return _root(where) / name
+    return _root(HOOK_FILES[table][0]) / HOOK_FILES[table][1]
 
 
 def _hook_table(p: Path) -> str:
@@ -152,16 +151,16 @@ def _hook_load(con: sqlite3.Connection, files: list[Path]) -> None:
     import hook_ledgers
 
     for p in files:
-        table = _hook_table(p)
-        if table == "model-choice-watch":
+        if (table := _hook_table(p)) == "model-choice-watch":
             if (doc := _json(p)) is not None:
                 con.execute("INSERT OR IGNORE INTO kv(name, body, at) VALUES (?, ?, ?)",
                             (table, _dump(doc), p.stat().st_mtime))  # fmt: skip
             continue
-        have, added = Counter(b for (b,) in con.execute(f"SELECT body FROM {table}")), 0
+        body, row = hook_ledgers.kept(table)
+        have, added = Counter(row(b) for (b,) in con.execute(f"SELECT body FROM {table}")), 0
         for r in _lines(p):  # in line order; a line the table already holds is taken once
-            if have[_dump(r)] > 0:
-                have[_dump(r)] -= 1
+            if have[body(r)] > 0:
+                have[body(r)] -= 1
             elif table == "fault_candidates":
                 con.execute("INSERT INTO fault_candidates(at, body) VALUES (?, ?)",
                             (p.stat().st_mtime, _dump(r)))  # fmt: skip
@@ -173,10 +172,11 @@ def _hook_load(con: sqlite3.Connection, files: list[Path]) -> None:
 
 
 def _hook_check(con: sqlite3.Connection, p: Path) -> str | None:
-    table = _hook_table(p)
-    if table == "model-choice-watch":
+    import hook_ledgers
+
+    if (table := _hook_table(p)) == "model-choice-watch":
         return _kv_equal(con, table, p)
-    return _subset(con, table, p)
+    return _subset(con, table, p, *hook_ledgers.kept(table))
 
 
 # -- small stores (GOH.STATEDBS3, goh.db 0004) ---------------------------------------------------

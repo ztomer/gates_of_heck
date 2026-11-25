@@ -12,7 +12,6 @@ import db_core
 import enqueue_witness
 import goh_cache_db
 import goh_db
-import hook_ledgers
 import land_records
 import landq_inflight
 import pytest
@@ -35,8 +34,10 @@ def q(sql: str, *args: object) -> list[tuple]:
 
 
 def spawn(row: dict) -> int:
+    """As code of schema 10 writes it: the document alone, its columns the trigger's."""
     with goh_db.transaction() as con:
-        hook_ledgers.insert(con, hook_ledgers.SPAWNS, row)
+        con.execute("INSERT INTO agent_spawns(at, event, agent, body) VALUES (?, ?, ?, ?)",
+                    (AT, row.get("event") or "", row.get("agent_id"), json.dumps(row)))  # fmt: skip
         return con.execute("SELECT max(n) FROM agent_spawns").fetchone()[0]
 
 

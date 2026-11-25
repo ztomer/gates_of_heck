@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """agent_audit.py -- was each subagent's model choice wrong, in either direction? From the ledger.
 
-`hooks/claude/agent_guard.py` writes one line per spawn (its declared model@effort and tags) and
+`hooks/claude/agent_guard.py` writes one row per spawn (its declared model@effort and tags) and
 one per outcome (tokens from the agent's transcript, the report and the `Status:` it opened with)
-to `$XDG_CACHE_HOME/goh/agent-spawns.jsonl`. This reads them back, judged by the rules file
+to goh.db's `agent_spawns`. This reads its columns back (lib/spawn_columns.py), judged by the rules
+file
 (`hooks/claude/model_choice.json`, through `model_choice.py` -- no class or price is spelled here):
 
 * LANDED: every outcome whose report says landed and names shas is checked against GitHub

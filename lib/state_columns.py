@@ -11,8 +11,8 @@ columns it became (GOH.LANDCOLS), each compared with what its columns give back.
 WHAT IT NAMES. A row with `rest` NULL: no writer's trigger filled it (`goh state backfill` does),
 or its document is not JSON. A `rest` that holds a field: a key no column has, or a value of the
 wrong type, kept there until it is looked at. A document its columns do not give back. A red cause
-not folded into its land. A child row whose parent is gone. A running ship is not compared: its
-steps write its record and its pins in turn.
+not folded into its land. A row its table refused (hook_ledgers.dead). A child row whose parent is
+gone. A running ship is not compared: its steps write its record and its pins in turn.
 
 EQUAL, BUT SPELLED ANOTHER WAY: null, {} and [] are an absent key; a land's `at` and a spawn's
 `time` are one instant in any spelling; a ship's `repo` is its checkout's path in the document and
@@ -38,6 +38,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db_bounds_with  # lib/, on the path from the line above
 import db_schema
 import goh_db
+import hook_ledgers
 
 SQL = Path(__file__).resolve().with_name("state_sql")
 TABLES = ("lands", "ship_pins", "ships", "agent_spawns")
@@ -172,6 +173,9 @@ def check(con: sqlite3.Connection) -> list[str]:
                 out.append(f"{t}: {k}: its columns do not give back {', '.join(ks)}")
     if n := len(con.execute(UNFOLDED).fetchall()):
         out.append(f"lands: {n} red causes not folded in: goh state backfill")
+    for r in hook_ledgers.dead():
+        row = json.dumps(r.get("row"))[:120]
+        out.append(f"{r.get('table')}: in {hook_ledgers.DEAD}: {r.get('why')}: {row}")
     return out + orphans(con)
 
 

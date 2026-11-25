@@ -10,7 +10,8 @@ it fires as the tool returns, before the coordinator's next turn.
 * the item (GOH.SPAWNREGISTER2): any queue id the brief (`tool_input.prompt`) names, however it
   phrases it (`item X.Y`, `lane for X.Y`, `i['id']=='X.Y'`), that is an in-progress item whose agent
   is still `pending-spawn`. Exactly one such item is registered; several are ambiguous, so none is
-  and stderr says why (exit 1); none is a no-op;
+  and stderr says why (exit 1); none is a no-op. A brief with an `Items:` line (`spawn_items.py`,
+  GOH.SPAWNKEY) says which are its own: each of those still `pending-spawn` is registered;
 * the agent id, as probed on this machine (Claude Code transcripts, 2026-11-18): an async spawn's
   response is `{"isAsync": true, "status": "async_launched", "agentId": "<id>", ...}`; its text
   form says `agentId: <id> (internal ID ...)`, read too in case the hook sees only the content;
@@ -38,6 +39,9 @@ import sys
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(_ROOT, "lib"))
 import queue_hold  # noqa: E402  (the queue path seam and the pending-spawn marker)
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import spawn_items  # noqa: E402  (beside this script: the brief's `Items:` line)
 
 AGENT_TEXT = re.compile(r"\bagentId:\s*([A-Za-z0-9_-]+)")
 
@@ -86,28 +90,8 @@ def start_argv(queue: str, item: dict, agent: str) -> list[str]:
     return argv
 
 
-def main() -> int:
-    try:
-        event = json.load(sys.stdin)
-    except ValueError:
-        return 0
-    if not isinstance(event, dict):
-        return 0
-    prompt = str((event.get("tool_input") or {}).get("prompt") or "")
-    agent = agent_id(event.get("tool_response"))
-    if not prompt or not agent:
-        return 0
-    queue = queue_hold.queue_path()
-    named = pending_items(prompt, queue)
-    if not named:
-        return 0
-    if len(named) > 1:
-        ids = ", ".join(str(i["id"]) for i in named)
-        print(f"spawn_register: ambiguous brief names {len(named)} pending-spawn items ({ids}); "
-              f"registered none -- run `loopctl start ID {agent}` for the lane's own",
-              file=sys.stderr)  # fmt: skip
-        return 1
-    item = named[0]
+def register(queue: str, item: dict, agent: str) -> int:
+    """One `loopctl start`; what it refused is said, and 1."""
     loop = os.path.dirname(os.path.abspath(queue))
     env = {**os.environ, "PYTHONPATH": os.pathsep.join([_ROOT, "."])}
     try:
@@ -122,6 +106,32 @@ def main() -> int:
               f"{(r.stderr or r.stdout).strip()}", file=sys.stderr)  # fmt: skip
         return 1
     return 0
+
+
+def main() -> int:
+    try:
+        event = json.load(sys.stdin)
+    except ValueError:
+        return 0
+    if not isinstance(event, dict):
+        return 0
+    prompt = str((event.get("tool_input") or {}).get("prompt") or "")
+    agent = agent_id(event.get("tool_response"))
+    if not prompt or not agent:
+        return 0
+    queue = queue_hold.queue_path()
+    said = spawn_items.declared(prompt)
+    named = pending_items(prompt, queue)
+    if said is not None:  # its own items, not every one the brief mentions
+        named = [i for i in named if i["id"] in said[0]]
+    if len(named) > 1 and said is None:
+        ids = ", ".join(str(i["id"]) for i in named)
+        print(f"spawn_register: ambiguous brief names {len(named)} pending-spawn items ({ids}); "
+              f"registered none -- run `loopctl start ID {agent}` for the lane's own, or say the "
+              "brief's own on an `Items:` line",
+              file=sys.stderr)  # fmt: skip
+        return 1
+    return max([register(queue, i, agent) for i in named], default=0)
 
 
 if __name__ == "__main__":
