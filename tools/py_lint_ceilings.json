@@ -158,7 +158,6 @@
   "tests/test_coverage_rust_exports.py": 2,
   "tests/test_coverage_strictest.py": 1,
   "tests/test_coverage_swift_scope.py": 6,
-  "tests/test_crates_io_cache.py": 1,
   "tests/test_credential_urls_native_parity.py": 2,
   "tests/test_cwd_and_py_gate.py": 2,
   "tests/test_dep_currency_native_parity.py": 3,

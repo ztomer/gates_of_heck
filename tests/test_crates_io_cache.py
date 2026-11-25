@@ -23,6 +23,7 @@ import time
 from pathlib import Path
 
 import pytest
+from conftest import REPO_ROOT
 
 FAKE_CURL = """#!/bin/sh
 for last; do :; done
@@ -47,6 +48,7 @@ class Seam:
         self.env = {
             "PATH": f"{self.bin}:/usr/bin:/bin",
             "HOME": str(tmp),
+            "GOH_DIR": str(REPO_ROOT),
             "CALLS": str(self.calls),
             "ANSWERS": str(self.answers),
             "GOH_CRATES_IO_CACHE": str(self.cache),
@@ -148,7 +150,7 @@ def test_lookups_run_concurrently(seam: Seam) -> None:
     little if they overlap. One lookup is timed first, in the same test, so the box's load is in
     both; a fixed 3 s was a bound on the box's spawn speed as much as on the overlap."""
     names = [f"c{i}" for i in range(20)]
-    seam.answer(solo="1.0.0", **{n: "1.0.0" for n in names})
+    seam.answer(solo="1.0.0", **dict.fromkeys(names, "1.0.0"))
     t0 = time.monotonic()
     seam.deps(seam.repo("solo"), DELAY="0.3")
     alone = time.monotonic() - t0
