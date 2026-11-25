@@ -29,6 +29,7 @@ def commit(repo: Path, at: int, msg: str, *args: str) -> str:
 def _build_checkout(root: Path) -> None:
     root.mkdir(exist_ok=True)
     git(root, "init", "-q", "-b", "main")
+    git(root, "config", "core.logAllRefUpdates", "always")  # its reflog is the subject
     for at, msg in ((0, "before"), (100, "x"), (200, "after")):
         commit(root, T0 + at, msg)
 

@@ -21,6 +21,7 @@ here, not there.
 import os
 from pathlib import Path
 
+import _quiet_git
 from _clone_copies import install
 from _tree_clone import run_wide
 from suite_tmp import own_root
@@ -40,4 +41,5 @@ def pytest_configure(config) -> None:
     install()  # shutil's copies are clones (tests/_clone_copies.py, GOH.FSEVQUIET)
     if os.environ.get("PYTEST_DEBUG_TEMPROOT"):  # the run's root (tests/suite_tmp.py)
         run_wide(Path(os.environ["PYTEST_DEBUG_TEMPROOT"]))
+        _quiet_git.install(os.environ["PYTEST_DEBUG_TEMPROOT"])  # GOH.FSEVQUIET
     own_root(config)  # after run_wide: the run's templates stay the worker's, shared

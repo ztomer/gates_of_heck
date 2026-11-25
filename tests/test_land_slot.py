@@ -118,11 +118,13 @@ def test_an_edit_in_the_lane_during_the_land_does_not_change_the_verdict(repo, t
 def test_the_lander_never_moves_the_lanes_tip(repo, tmp_path):
     """Main moved, so the land rebases: in the slot. The lane's HEAD and reflog are untouched."""
     env = _env(tmp_path)
+    git(repo, "config", "core.logAllRefUpdates", "always")
     wt, tip = lane(repo, tmp_path)
     write(repo, "m.txt", "main moved\n")
     git(repo, "add", "m.txt")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--no-verify", "-m", "m")
     reflog = git(wt, "reflog", "show", "--format=%H %gs", "HEAD")
+    assert reflog, "the lane keeps no reflog to read"
     enqueue(env, wt, "T.TIP")
     landq(env, "--drain")
     got = recorded(env)["T.TIP"]

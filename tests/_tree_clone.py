@@ -81,7 +81,7 @@ def clone_tree(src: Path | str, dst: Path | str) -> None:
 # taken; `clone_tree` gives a clone its write bits back on those few directories only. Absolute
 # template git dir -> the directories sealed in it, for `_unseal_clone`.
 _SEALED: dict[str, tuple[str, ...]] = {}
-_SEAL_PARTS = ("", "objects", "refs/heads", "refs/tags")
+_SEAL_PARTS = ("", "objects", "refs", "refs/heads", "refs/tags")
 
 
 def _sealable(git_dir: Path) -> list[Path]:
@@ -261,6 +261,7 @@ def _build_quietly(build, tree: Path, keep_quiet: bool = True) -> None:
     if keep_quiet:
         _keep_quiet(tree)
     _pack(tree)
+    _tidy(tree)
     _refuse_self_reference(tree)
     _seal(tree)
 
@@ -287,20 +288,59 @@ def _pack(tree: Path) -> None:
         loose = [
             d for d in (git_dir / "objects").iterdir() if len(d.name) == 2 and any(d.iterdir())
         ]
-        if loose:
+        if loose or len(list((git_dir / "objects").glob("pack/*.pack"))) > 1:
             subprocess.run(
-                ["git", "--git-dir", str(git_dir), "repack", "-adlq"],
+                ["git", "--git-dir", str(git_dir), "repack", "-adlqn"],
                 check=True, capture_output=True, stdin=subprocess.DEVNULL, timeout=patience(60.0),
-                env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
+                env=_no_git_env(),
             )  # fmt: skip
             subprocess.run(
                 ["git", "--git-dir", str(git_dir), "prune-packed", "-q"],
                 check=True, capture_output=True, stdin=subprocess.DEVNULL, timeout=patience(60.0),
-                env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
+                env=_no_git_env(),
             )  # fmt: skip
             for d in (git_dir / "objects").iterdir():
                 if len(d.name) == 2 and d.is_dir() and not any(d.iterdir()):
                     d.rmdir()
+
+
+def _tidy(tree: Path) -> None:
+    """Every repository in `tree` in as few files as git keeps one in (GOH.FSEVQUIET): packed refs,
+    no reflog (the suite's git keeps none, tests/suite_home.py), no note nothing reads, and no empty
+    directory git makes again when it has something to put there. Each was one file event in every
+    clone of it: 25 of a one-commit repository's, 10 now. A reflog a build asked for by name
+    (core.logAllRefUpdates=always) stays."""
+    for git_dir in _repositories(tree):
+        if (git_dir / "packed-refs").exists() or _loose_refs(git_dir):
+            subprocess.run(["git", "--git-dir", str(git_dir), "pack-refs", "--all", "--prune"],
+                           check=True, capture_output=True, stdin=subprocess.DEVNULL,
+                           timeout=patience(60.0), env=_no_git_env())  # fmt: skip
+        conf = git_dir / "config"
+        text = conf.read_text()
+        if "logAllRefUpdates = always" not in text:
+            conf.write_text(text.replace("\tlogallrefupdates = true\n", ""))
+            shutil.rmtree(git_dir / "logs", ignore_errors=True)
+        for name in (
+            "COMMIT_EDITMSG",
+            "FETCH_HEAD",
+            "description",
+            "info/refs",
+            "objects/info/packs",
+        ):
+            (git_dir / name).unlink(missing_ok=True)
+        for part in ("info", "objects/info", "objects/pack", "refs"):
+            for here, _dirs, _files in os.walk(git_dir / part, topdown=False):
+                if here != str(git_dir / "refs"):
+                    with contextlib.suppress(OSError):  # not empty
+                        os.rmdir(here)
+
+
+def _loose_refs(git_dir: Path) -> bool:
+    return any(files for _here, _dirs, files in os.walk(git_dir / "refs"))
+
+
+def _no_git_env() -> dict[str, str]:
+    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
 
 
 def _refuse_self_reference(tree: Path) -> None:

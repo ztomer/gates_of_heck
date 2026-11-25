@@ -100,7 +100,7 @@ def stage(repo: Path, *rels: str) -> None:
 
 def commit_all(repo: Path, msg: str = "fixture") -> None:
     git(repo, "add", "-A")
-    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", msg)
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", msg)
 
 
 def _build_repo_template(r: Path) -> None:

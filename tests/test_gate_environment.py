@@ -286,9 +286,9 @@ def _build_clean_checkout(checkout: Path) -> None:
     for rel in filter(None, (u.decode() for u in untracked)):
         (checkout / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / rel, checkout / rel)
-    # THE ESTATE, not its suite (GOH.FSEVQUIET): no gate reads tests/ or the changelog's fragments,
+    # THE ESTATE, not its suite (GOH.FSEVQUIET): no gate reads tests/, docs/ or the fragments,
     # and they were 1,074 of the 2,034 files every clone of this removes and every export writes.
-    for part in ("tests", "changelog"):
+    for part in ("tests", "changelog", "docs"):
         shutil.rmtree(checkout / part, ignore_errors=True)
     _git(checkout, "add", "-A")
     # A clean working tree has NOTHING to commit and `git commit` says so with a

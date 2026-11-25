@@ -93,7 +93,7 @@ def test_an_empty_diff_or_a_base_that_is_no_ancestor_runs_the_full_gate(repo: Pa
     git(repo, "checkout", "-q", "--detach", base)
     (repo / "CHANGELOG.md").write_text("# CHANGELOG\n\n## other\n")
     elsewhere = _commit(repo, "a sibling, so the release is no descendant of it")
-    git(repo, "checkout", "-q", "-")
+    git(repo, "checkout", "-q", "main")
     assert release_gate.decide(repo, elsewhere) == "full"
 
 

@@ -220,11 +220,13 @@ def test_process_template_builds_once_and_clones_stay_apart(tmp_path: Path) -> N
 
 
 def _git_sees(tree: Path, key: str) -> str:
-    """What a git the build spawned would do about background work: the effective values."""
+    """What a git the build spawned would do about background work: the effective values, the
+    suite's own ~/.gitconfig (which turns it off too, tests/suite_home.py) aside."""
     from conftest import hermetic_env
 
     out = []
-    for env in (hermetic_env(drop_git=True), hermetic_env(), None):
+    home = {"HOME": str(tree.parent / "no-home")}
+    for env in (hermetic_env(True, **home), hermetic_env(**home), {**os.environ, **home}):
         run = subprocess.run(
             ["git", "-C", str(tree), "config", "--get", key],
             capture_output=True, text=True, env=env, check=False, stdin=subprocess.DEVNULL,
@@ -261,6 +263,18 @@ def test_every_git_a_template_build_spawns_has_background_work_off(
     assert seen == {"maintenance": "false/false/false", "gc": "0/0/0"}
     # ... and only for the build: a test's own git is not the template's.
     assert _git_sees(tmp_path, "maintenance.auto") != "false/false/false"
+
+
+def test_a_clones_repository_is_as_few_files_as_git_keeps_one_in(repo: Path) -> None:
+    """GOH.FSEVQUIET: the one-commit `repo` was 25 entries of .git, each an event of its test."""
+    git_dir = repo / ".git"
+    left = sorted(str(p.relative_to(git_dir)) for p in git_dir.rglob("*") if p.suffix != ".pack")
+    assert [p for p in left if not p.endswith(".idx")] == [
+        "HEAD", "config", "hooks", "index", "objects", "objects/pack", "packed-refs", "refs",
+    ], left  # fmt: skip
+    assert (
+        len(list(git_dir.rglob("*.pack"))) == 1 and git(repo, "log", "--format=%s") == "fixture\n"
+    )
 
 
 def test_every_repository_in_a_clone_keeps_background_work_off(

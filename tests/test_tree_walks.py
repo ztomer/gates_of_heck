@@ -60,7 +60,7 @@ def planted(tmp_path: Path) -> Path:
         (vend / "m").mkdir(parents=True)
         (vend / "Cargo.toml").write_text(STRAY)
         (vend / "m" / "Cargo.toml").write_text(STRAY_MEMBER)
-    for i in range(300):
+    for i in range(20):  # a walk of one of them is already the wrong answer
         (repo / "target" / "debug" / "deps" / f"d{i}" / "x").mkdir(parents=True)
     fast_init(repo)
     _git(repo, "add", "-A")
