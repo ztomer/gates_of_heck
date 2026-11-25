@@ -111,6 +111,24 @@ def test_no_profile_is_said_and_never_raises(tmp_path, monkeypatch):
     assert "no kept ship coverage profile" in seen[0] and rec["lines"] == 0
 
 
+def test_a_run_whose_part_never_finished_is_not_kept_as_the_profile(tmp_path, monkeypatch):
+    """2026-11-23: the ship of 9c27e293, its external suite red, was kept as the profile; the next
+    lands carried 482 lines as uncovered and the next complete run put them at 3."""
+    monkeypatch.setattr(cov_risk, "_git", lambda top, *a: "c" * 40)
+    parts = tmp_path / cov_risk.PARTS
+    parts.mkdir(parents=True)
+    dest = tmp_path / "ship" / cov_risk.NAME
+    _part(parts / "part-workspace.info", {str(tmp_path / LIB): {1: 1}})
+    for name in ("part-workspace.info.log", "part-workspace.info.ok", "part-external.info.log"):
+        (parts / name).touch()
+    assert "no complete lcov parts" in cov_risk.keep_run(tmp_path, dest) and not dest.exists()
+    (parts / "part-external.info.ok").touch()
+    assert cov_risk.keep_run(tmp_path, dest) == "" and dest.exists()
+    cov_risk.fresh(tmp_path)  # the next run's start: one that measures nothing keeps nothing
+    dest.unlink()
+    assert "no complete lcov parts" in cov_risk.keep_run(tmp_path, dest) and not dest.exists()
+
+
 def test_the_land_record_keeps_the_warning_landed_or_red():
     from lib import land_check
 

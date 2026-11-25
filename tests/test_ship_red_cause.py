@@ -125,7 +125,8 @@ def test_a_failing_test_red_bisects_on_that_test_alone_saying_bisecting(
     assert res["status"] == "failed" and res["finished"] and "bisect_step" not in res, res
     seen = (tmp_path / "probe-records").glob("*.json")
     probes = {p.stem: json.loads(p.read_text()) for p in seen}
-    assert set(probes) == {first, culprit}, probes  # halving: the first land green, then red
+    # the tip again, then halving: the first land green, then red
+    assert set(probes) == {tip, first, culprit}, probes
     for sha, mid in probes.items():  # the record while the worker bisects
         assert mid["status"] == "bisecting" and "finished" not in mid, mid
         assert mid["bisect_step"]["sha"] == sha and mid["bisect_step"]["lands"] == 3, mid

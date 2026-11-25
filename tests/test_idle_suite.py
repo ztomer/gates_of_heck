@@ -22,6 +22,7 @@ from conftest import REPO_ROOT, commit_all, git, write
 from timing_bounds import GiveUp, assert_sooner
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import cov_risk
 import idle_suite
 import landq_state
 
@@ -100,6 +101,27 @@ def test_the_idle_run_judges_as_the_ship_does_and_records_its_base(main, tmp_pat
     assert out.read_text().split() == [sha, "/dev/null", "work", "@tree", tagged]
     last = json.loads((q / "idle-suite" / "last.json").read_text())
     assert (last["sha"], last["outcome"], last["base"]) == (sha, "green", tagged), last
+
+
+@pytest.mark.parametrize("exit_code", [0, 1])
+def test_a_complete_idle_run_green_or_red_leaves_the_profile_the_ship_reads(
+    main, tmp_path, exit_code
+) -> None:
+    """The idle run of a7bd590f measured 5 of 1199 changed lines uncovered and kept nothing: the
+    next ship's preflight could name none of them (GOH.SUITEREDEARLY)."""
+    q, said = queue(tmp_path), []
+    code = (
+        "import os, pathlib, sys; p = pathlib.Path('target/llvm-cov/lcov-parts'); "
+        "p.mkdir(parents=True, exist_ok=True); n = p / 'part-workspace.info'; "
+        "n.write_text(f'SF:{os.getcwd()}/a.rs\\nDA:1,1\\nDA:2,0\\nend_of_record\\n'); "
+        "pathlib.Path(f'{n}.log').touch(); pathlib.Path(f'{n}.ok').touch(); "
+        f"sys.exit({exit_code})"
+    )
+    outcome = idle_suite.run(q, main, say=said.append, argv=[sys.executable, "-c", code], poll=0.05)
+    assert outcome == ("red" if exit_code else "green")
+    kept = json.loads(cov_risk.summary_path(main).read_text())
+    assert kept["sha"] == git(main, "rev-parse", "HEAD").strip(), said
+    assert kept["files"] == {"a.rs": {"exec": [1, 2], "own": [1], "cov": [1]}}, said
 
 
 def test_no_idle_run_starts_while_a_ship_of_the_repo_is_in_flight(main, tmp_path, ships) -> None:

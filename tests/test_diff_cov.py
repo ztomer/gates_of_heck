@@ -339,7 +339,7 @@ def test_an_added_line_that_reads_like_a_header_keeps_its_file(monkeypatch: pyte
     assert dict(diff_cov.changed_lines("/r", "HEAD")) == {
         "a b.rs": {2, 3, 4, 5, 8}, 'q"t\t.rs': {1}, "new.rs": {1}}  # fmt: skip
     monkeypatch.setattr(cov_risk, "_git", lambda _top, *_a: HEADERLIKE)
-    assert cov_risk._hunks("/r", "HEAD") == {  # the same reader, its old sides too
+    assert cov_risk.hunks("/r", "HEAD") == {  # the same reader, its old sides too
         "a b.rs": ("a b.rs", [(1, 0, 2, 4), (4, 2, 8, 1)]),
         'q"t\t.rs': ('q"t\t.rs', [(1, 1, 1, 1)]),
         "new.rs": ("", [(0, 0, 1, 1)]),

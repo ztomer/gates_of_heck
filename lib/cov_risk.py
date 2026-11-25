@@ -10,6 +10,10 @@ KEEP. After its run the ship's suite step (lib/ship_full_run.py) folds the run's
 `<ship dir>/<repo>/covsrc.json`: the commit measured, and per file its executable lines and the
 lines the in-process tests (`part-workspace*`, every part not `part-external*`) covered. A line
 covered by the external suite alone is the one a land cannot predict and a profile carry may lose.
+Only a COMPLETE run is kept (GOH.SUITEREDEARLY: every part begun has its `.ok`): on 2026-11-23 a
+run whose external suite was red was, and the next lands carried 482 lines as uncovered that the
+next complete run put at 3. `fresh` empties the parts before a run, so none is kept as a later
+commit's, and the idle lander's run is kept as the ship's is (`keep_run`): the newest measurement.
 
 PREDICT. A changed line since the last ship (the newest v-tag, the ship's own GOH_CHANGE_BASE) is
 AT RISK when, in the kept profile:
@@ -62,6 +66,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -74,6 +79,7 @@ from lib import gitrun  # noqa: E402
 from tui.lib import counted  # noqa: E402
 
 NAME = "covsrc.json"
+PARTS = "target/llvm-cov/lcov-parts"  # an instrumented run's parts, in its worktree
 WINDOW = 3
 HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 TESTS = re.compile(r"(^|/)tests?(/|\.rs$)|_tests?\.rs$")
@@ -91,9 +97,29 @@ def _git(top: str | Path, *args: str) -> str | None:
     return r.stdout if r.returncode == 0 else None
 
 
+def fresh(wt: Path) -> None:
+    """WT's parts of an earlier run gone: one that stops before it measures keeps none of them."""
+    shutil.rmtree(wt / PARTS, ignore_errors=True)
+
+
+def keep_run(wt: Path, dest: Path) -> str:
+    """The instrumented run in WT kept as the profile DEST (GOH.DIFFCOVLAND): "" or why not. Never
+    raises: the profile is a hint, the run's verdict stands."""
+    try:
+        kept = keep(wt / PARTS, wt, dest)
+    except Exception as exc:  # noqa: BLE001 -- said by the caller, never a verdict
+        return f"coverage profile not kept: {exc}"
+    return "" if kept else "no complete lcov parts, no coverage profile kept"
+
+
 def keep(parts_dir: Path, top: Path, dest: Path) -> dict | None:
-    """Fold PARTS_DIR's lcov parts (measured in checkout TOP) into DEST; the summary, or None."""
+    """Fold PARTS_DIR's lcov parts (measured in checkout TOP) into DEST; the summary, or None when
+    there are none or a part was begun (its `.log`) and never finished (no `.ok`): what that part
+    covers is unmeasured, never uncovered (GOH.SUITEREDEARLY)."""
     from lcov_merge import parse_part
+
+    if any(not lg.with_suffix(".ok").exists() for lg in parts_dir.glob("part-*.info.log")):
+        return None
 
     sha = (_git(top, "rev-parse", "HEAD") or "").strip()
     parts = sorted(parts_dir.glob("part-*.info"))
@@ -130,12 +156,14 @@ def keep(parts_dir: Path, top: Path, dest: Path) -> dict | None:
     return data
 
 
-def _hunks(top: str, base: str) -> dict[str, tuple[str, list[tuple[int, int, int, int]]]]:
+def hunks(
+    top: str, base: str, head: str = "HEAD"
+) -> dict[str, tuple[str, list[tuple[int, int, int, int]]]]:
     """new path -> (old path, [(old start, old count, new start, new count)]) of BASE..HEAD."""
     out = _git(
         top, "-c", "core.quotePath=false", "diff", "-U0", "--no-color", "--no-ext-diff",
         "--no-textconv", "--no-prefix", "-M", "--diff-filter=d",
-        base, "HEAD", "--", ":(glob)**/*.rs",
+        base, head, "--", ":(glob)**/*.rs",
     )  # fmt: skip
     import diff_cov  # gates/, on the path above: the one reader of a diff's hunks
 
@@ -145,7 +173,7 @@ def _hunks(top: str, base: str) -> dict[str, tuple[str, list[tuple[int, int, int
     return found
 
 
-def _old_line(hunks: list[tuple[int, int, int, int]], ln: int) -> tuple[int, bool]:
+def old_line(hunks: list[tuple[int, int, int, int]], ln: int) -> tuple[int, bool]:
     """New line LN's line in the old side: (line, unchanged) -- an edited line maps to its hunk's
     old start."""
     shift = 0
@@ -204,8 +232,8 @@ def _judge(top: str, summary: Path) -> tuple[list[tuple[str, int, str, bool]], s
     ).strip()
     if not tag:
         return [], "no v-tag below HEAD: no last ship to diff from", ""
-    changed = _hunks(top, tag)
-    since = _hunks(top, sha)
+    changed = hunks(top, tag)
+    since = hunks(top, sha)
     files = data.get("files", {})
     risky: list[tuple[str, int, str, bool]] = []
     for rel, (_o, hs) in sorted(changed.items()):
@@ -224,7 +252,7 @@ def _judge(top: str, summary: Path) -> tuple[list[tuple[str, int, str, bool]], s
         exe, own = set(prof["exec"]), set(prof["own"])
         cov = set(prof["cov"]) if "cov" in prof else set()  # a profile kept before GOH.DIFFCOVCARRY
         for ln in lines:
-            o, same = _old_line(shs, ln)
+            o, same = old_line(shs, ln)
             near = [o] if same else range(o - WINDOW, o + WINDOW + 1)
             if any(n in exe for n in near) and not any(n in own for n in near):
                 carried = not any(n in cov for n in near)
@@ -249,7 +277,7 @@ def carry(top: str | Path, repo: str | Path, found: list[tuple[str, int, str, bo
     base = (_git(top, "merge-base", "HEAD", main) or "").strip() if main else ""
     mine = {
         rel: {ln for _a, _b, c, d in hs for ln in range(c, c + d)}
-        for rel, (_o, hs) in (_hunks(top, base) if base else {}).items()
+        for rel, (_o, hs) in (hunks(top, base) if base else {}).items()
     }
     texts: dict[str, list[str]] = {}
     out: list[dict] = []
@@ -276,7 +304,7 @@ def measured(c: dict) -> bool:
     return bool(c.get("measured", c.get("why") != NEW))
 
 
-def _ranges(lines: list[int]) -> str:
+def ranges(lines: list[int]) -> str:
     out, start, prev = [], lines[0], lines[0]
     for ln in [*lines[1:], None]:
         if ln is not None and ln == prev + 1:
@@ -293,7 +321,7 @@ def report(top: str | Path, repo: str | Path) -> tuple[list[str], dict]:
     found, said, tag = _judge(str(top), summary_path(repo))
     risky = at_risk_from(found)
     n = sum(len(ls) for _f, ls, _w in risky)
-    rec: dict = {"lines": n, "said": said, "files": {f: _ranges(ls) for f, ls, _w in risky}}
+    rec: dict = {"lines": n, "said": said, "files": {f: ranges(ls) for f, ls, _w in risky}}
     if tag:
         rec["head"] = (_git(str(top), "rev-parse", "HEAD") or "").strip()
         rec["base"] = tag
@@ -305,7 +333,7 @@ def report(top: str | Path, repo: str | Path) -> tuple[list[str], dict]:
         f"ship's profile ({said}) -- the next ship's diff coverage may fail on them:"
     )
     out = [head]
-    out += [f"    {f}:{_ranges(ls)}  ({w})" for f, ls, w in risky[:SHOWN]]
+    out += [f"    {f}:{ranges(ls)}  ({w})" for f, ls, w in risky[:SHOWN]]
     if len(risky) > SHOWN:
         out.append(f"    ... and {counted(len(risky) - SHOWN, 'more file')}")
     kept = rec.get("carry") or []

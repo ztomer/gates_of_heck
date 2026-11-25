@@ -147,3 +147,47 @@ fn structural_outside_a_git_repo_is_an_error_not_a_pass() {
     assert_eq!(out.status.code(), Some(2), "{}", out.text());
     assert!(!out.stdout.contains("all structural gates passed"));
 }
+
+/// A machine without `sqlite3` beside a `loop.db`: the citation is NOT JUDGED, saying why, and the
+/// gate is green (the idle run of a7bd590f measured this arm uncovered, GOH.SUITEREDEARLY).
+#[test]
+fn a_queue_store_without_sqlite3_is_not_judged_and_says_so() {
+    let r = repo_with(&[
+        (".gatesrc", &goh_testkit::gatesrc("GOH_ROADMAP=ROADMAP.md\n")),
+        (
+            "ROADMAP.md",
+            "# Roadmap\n\n## Phase 1 — now\n\n- **KB.A1 — an entry.** (queue: KB.A1.) Done when: a test.\n",
+        ),
+    ])
+    .expect("fixture");
+    let dir = tempfile::tempdir().expect("queue dir");
+    std::fs::write(dir.path().join("loop.db"), "").expect("store");
+    // PATH holds git and bash alone: the tools the scan runs, and no sqlite3.
+    let bin = dir.path().join("bin");
+    std::fs::create_dir(&bin).expect("bin");
+    for tool in ["git", "bash"] {
+        let real = std::env::split_paths(&std::env::var_os("PATH").expect("PATH"))
+            .map(|d| d.join(tool))
+            .find(|p| p.is_file())
+            .expect("the tool is on PATH");
+        std::os::unix::fs::symlink(real, bin.join(tool)).expect("link");
+    }
+    let queue = dir.path().join("queue.json");
+    let out = goh_at(
+        std::path::Path::new(env!("CARGO_BIN_EXE_goh")),
+        Some(&r),
+        &["roadmap"],
+        &[
+            ("PATH", bin.to_str().expect("utf-8")),
+            ("GOH_ROADMAP_QUEUE", queue.to_str().expect("utf-8")),
+            ("GOH_SEED_DIR", dir.path().to_str().expect("utf-8")),
+        ],
+    )
+    .expect("goh runs");
+    let said = out.text();
+    assert!(
+        said.contains("cannot run sqlite3 to read the queue store"),
+        "{said}"
+    );
+    assert!(out.status.success(), "{said}");
+}

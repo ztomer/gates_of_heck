@@ -95,8 +95,9 @@ def test_a_ship_under_a_floor_releases_nothing_and_names_the_culprit_land(
     assert res["failed_step"] == "suite", res
     assert not git(shipped, "tag", "--list", "v1.1.0").strip(), "a red ship released"
     assert [s["name"] for s in res["steps"]] == ["suite"], res["steps"]  # nothing after it ran
-    # the tip (red), then the bisect: the first land (green), the middle one (red)
-    assert _judged(tmp_path) == [lands[2], lands[0], lands[1]], _judged(tmp_path)
+    # the tip (red), the bisect's re-run of it (red), then the first land (green), the middle (red)
+    want = [lands[2], lands[2], lands[0], lands[1]]
+    assert _judged(tmp_path) == want, _judged(tmp_path)
     assert res["bisect"]["culprit"] == lands[1], res.get("bisect")
     assert _bases(tmp_path) == {git(shipped, "rev-parse", "v1.0.0^{commit}").strip()}
     filed = [c for c in _calls(tmp_path) if "file" in c]

@@ -131,7 +131,17 @@ def test_a_land_records_its_uncovered_line_and_files_its_item(tmp_path, monkeypa
     assert diffcov_carry.file_item(outcome, other, str(fake)) == {}
 
 
-def test_the_ship_preflight_refuses_naming_the_line_until_it_is_covered(tmp_path, monkeypatch):
+def _measured(tmp_path: Path, main: Path, line: int, hits: int | None) -> None:
+    """A later complete run of MAIN's tip kept as the newest profile: probe.rs's LINE hit HITS
+    times (None: no executable line)."""
+    parts = tmp_path / f"parts-{line}-{hits}"
+    parts.mkdir()
+    da = "" if hits is None else f"DA:{line},{hits}\n"
+    (parts / "part-external.info").write_text(f"SF:{main / PROBE}\nDA:1,1\n{da}end_of_record\n")
+    assert cov_risk.keep(parts, main, cov_risk.summary_path(main))
+
+
+def test_the_ship_preflight_refuses_naming_the_line_until_it_is_measured(tmp_path, monkeypatch):
     main, wt = _land(tmp_path, monkeypatch)
     q = tmp_path / "landq"
     _lines, rec = cov_risk.report(wt, main)
@@ -146,14 +156,18 @@ def test_the_ship_preflight_refuses_naming_the_line_until_it_is_covered(tmp_path
     _landed(q, main, wt, rec2, "GOH.OTHER")
     head = _git(main, "rev-parse", "HEAD")
     assert diffcov_carry.refusal(main, "v0.1.0", head, q), "an unrelated land covers nothing"
-    # the fix lane lands under the filed item: covered
+    # the fix lane lands under the filed item: it ran plain, so nothing measured the line
     (wt / "crates/goh/src/probe_tests.rs").write_text("fn covers() {}\n")
     _commit(wt, "cover it")
     _landed(q, main, wt, {"lines": 0}, "GOH.DIFFCOVLANE")
-    assert diffcov_carry.refusal(main, "v0.1.0", _git(main, "rev-parse", "HEAD"), q) is None
+    head = _git(main, "rev-parse", "HEAD")
+    why = diffcov_carry.refusal(main, "v0.1.0", head, q)
+    assert why and "item GOH.DIFFCOVLANE, landed, not measured since)" in why, why
+    _measured(tmp_path, main, 4, 1)  # the idle lander's run of that tip: covered
+    assert diffcov_carry.refusal(main, "v0.1.0", head, q) is None
 
 
-def test_a_carried_line_since_deleted_or_judged_covered_no_longer_counts(tmp_path, monkeypatch):
+def test_a_later_judgment_clears_no_carried_line_and_a_deletion_does(tmp_path, monkeypatch):
     main, wt = _land(tmp_path, monkeypatch)
     q = tmp_path / "landq"
     _lines, rec = cov_risk.report(wt, main)
@@ -167,15 +181,12 @@ def test_a_carried_line_since_deleted_or_judged_covered_no_longer_counts(tmp_pat
     blind = {"lines": 0, "head": tip, "base": "v0.1.0", "carry": []}
     _landed(q, main, main, blind, "GOH.PAR")
     assert diffcov_carry.refusal(main, "v0.1.0", _git(main, "rev-parse", "HEAD"), q)
-    # a later land whose judgment (a newer profile) of a tip holding the land no longer carries it
+    # nor does a later land's, of a tip holding the land: it read the same old profile
     _git(wt, "merge", "-q", "--ff-only", "main")
     (wt / A).write_text((wt / A).read_text() + "let a11 = 11;\n")
     _commit(wt, "later")
     judged = {"lines": 0, "head": _git(wt, "rev-parse", "HEAD"), "base": "v0.1.0", "carry": []}
     _landed(q, main, wt, judged, "GOH.LATER")
-    assert diffcov_carry.refusal(main, "v0.1.0", _git(main, "rev-parse", "HEAD"), q) is None
-    # without that judgment it counts; once the line is deleted it does not
-    gdb.unland(q, max(land_records.runs(q)))
     head = _git(main, "rev-parse", "HEAD")
     assert diffcov_carry.refusal(main, "v0.1.0", head, q)
     _git(main, "tag", "v0.2.0")  # a land before the base tag was the last ship's
@@ -344,25 +355,23 @@ def test_the_lander_files_the_item_and_names_it_on_the_landing_record(tmp_path, 
     assert any("file" in c for c in calls) and any("set" in c for c in calls), calls
 
 
-@pytest.mark.parametrize("hits", [1, 0])
+@pytest.mark.parametrize("hits", [1, 0, None])
 def test_a_carry_is_rejudged_against_the_newest_ship_profile(tmp_path, monkeypatch, hits):
     """GOH.CARRYREJUDGE: GOH.LANDRUSTCOV carried observed.rs `_ => Vec::new(),` judged on the
     v0.144.0 profile; v0.145.0's profile covered it, yet the preflight refused two ships. A carry
-    judged on an older profile is re-judged on the newest: covered there clears it, else refuses."""
+    judged on an older profile is re-judged on the newest: covered there, or no executable line,
+    clears it, else refuses."""
     main, wt = _land(tmp_path, monkeypatch)
     q = tmp_path / "landq"
     _lines, rec = cov_risk.report(wt, main)
     _landed(q, main, wt, rec, "GOH.LANE")
     (main / PROBE).write_text("// moved down\n" + (main / PROBE).read_text())
     _commit(main, "shift the line to 5")
-    parts = tmp_path / "parts2"
-    parts.mkdir()
-    (parts / "part-external.info").write_text(f"SF:{main / PROBE}\nDA:5,{hits}\nend_of_record\n")
-    assert cov_risk.keep(parts, main, cov_risk.summary_path(main))  # the newer ship's profile
+    _measured(tmp_path, main, 5, hits)  # the newer ship's profile
     (main / PROBE).write_text("// again\n" + (main / PROBE).read_text())
     head = _commit(main, "after that ship: the line is 6")
     why = diffcov_carry.refusal(main, "v0.1.0", head, q)
-    if hits:
-        assert why is None, why
-    else:
+    if hits == 0:
         assert why and f"{PROBE}:6  {LINE}" in why, why
+    else:
+        assert why is None, why

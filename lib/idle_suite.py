@@ -41,6 +41,11 @@ run and the ship's full run are where a fault only an unchosen test sees turns r
 a fault item naming the lands since the last green full run (lib/idle_red.py; `last.json` keeps
 `green`, the tip of the last green run), and the shadow records the tests F missed.
 
+ITS MEASUREMENT IS KEPT (GOH.SUITEREDEARLY). A complete run, green or red, leaves its per-line
+coverage where the ship's own does (lib/cov_risk.py `keep_run`), so the next ship's preflight names
+the lines it measured uncovered instead of finding them by a suite of its own: on a7bd590f
+(2026-11-25) it named 5 of 1199 and kept nothing.
+
 A READING OF MAIN (GOH.MAINREDWAIVE). Each green or red run is kept in goh.db as a reading of main
 at its tip (`reading`, lib/main_reading.py): the only evidence a land may waive a red by.
 
@@ -72,6 +77,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import cov_risk  # lib/: the kept per-line coverage profile
 import full_run  # lib/: shared, lock-free
 import idle_red
 import killtree
@@ -171,6 +177,9 @@ def run(
                 say(f"idle full suite on {sha[:8]}: {moved}")
         for line in idle_red.offs():  # a reuse path off whose fault a suite could not file
             say(line)
+        if outcome in ("green", "red"):  # what it measured, for the next ship's preflight
+            why = cov_risk.keep_run(state / "wt", cov_risk.summary_path(main))
+            say(f"idle full suite on {sha[:8]}: {why or 'its coverage profile is kept'}")
         if outcome in ("green", "red"):  # main's reading at SHA, a land's waiver's evidence
             say(reading(main, sha, outcome, log_of(q, sha)))
     finally:
@@ -225,6 +234,7 @@ def _run_locked(q: Path, main: Path, state: Path, sha: str, base: str,
     if why:
         say(f"idle full suite: no worktree at {sha[:8]}: {why}")
         return "failed"
+    cov_risk.fresh(wt)
     log = log_of(q, sha)
     log.parent.mkdir(parents=True, exist_ok=True)
     # The ship's own judgement (full_run.judge_env), so a green run of the tip is the ship's run.

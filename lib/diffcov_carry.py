@@ -14,16 +14,19 @@ through `loopctl file --json` (status todo, phase SPD, regression, class_of GOH.
 the record names it as `diffcov_item`, so a fix lane starts minutes after the land, not after the
 ship. A line an earlier land already carried is that land's item, never filed twice.
 
-AT THE SHIP. `refusal` is `goh ship`'s preflight, before the suite, read in seconds: every landed
-record of the repo since the base tag (its landing on `tag..HEAD`) with a carried line still
-uncovered refuses, naming `file:line  text`, unless --allow-diffcov REASON. Re-judged cheaply, a
-carried line no longer counts when:
+AT THE SHIP. `refusal` is `goh ship`'s preflight, before the suite, read in seconds. It refuses on
+every carried line of the repo's landed records since the base tag (landing on `tag..HEAD`) still
+uncovered, and on every changed line the newest complete run measured uncovered whether a land
+carried it or not (lib/cov_newest.py: the ship's own run or the idle lander's, green or red),
+naming `file:line  text`, unless --allow-diffcov REASON. A carried line no longer counts when:
   * it is gone: its file is absent at the ship's HEAD, or `git diff -U0 head..HEAD` changed it
     (an edited line is the editing land's own judgment, carried there if still at risk);
-  * the item filed for it landed (the fix lane's land: the ship's suite stays the measurement);
-  * a later land's own judgment did not carry it: a record after it whose cov_risk judged a tip
-    (`head`) holding this land lists no line of that file with that text (a newer profile, or a
-    covered neighbourhood). A lane judged on a tip without this land's change never clears it.
+  * that newest run measured it, unchanged since, as covered or as no executable line.
+ONLY A MEASUREMENT CLEARS ONE (GOH.SUITEREDEARLY). The land of the item filed for it ran plain and
+measured nothing, and a later land's judgment that lists no such line is a reading of the same old
+profile: both cleared lines until 2026-11-25, and the suite found them. An item that landed since
+is said in the refusal, which --allow-diffcov answers naming the test.
+A changed line no run has measured is NAMED and never refused (`unmeasured`, below).
 A line the repo's diffcov_allow.json names never counts: the ship's diff coverage passes it, so
 neither the land carries it nor the preflight refuses it (GOH.SHIPCOVRISK).
 Only MEASURED lines count (GOH.DIFFCOVUNMEASURED, cov_risk.measured): a line of a file new since
@@ -34,22 +37,21 @@ Pinned by tests/test_diffcov_carry.py.
 A land's carried uncovered lines to the next ship (GOH.DIFFCOVCARRY): a landing with its own
 carried lines files `<PREFIX>.DIFFCOV<sha>` through `loopctl file` (answering a closed class and an
 open carry item's repeat refusal), and `goh ship`'s preflight refuses in seconds, before the suite,
-while a land since the base tag carried a line still uncovered at HEAD (not deleted or edited, its
-item not landed, no later judgment of a tip holding it dropping it), unless `--allow-diffcov
-REASON`; only MEASURED lines file or refuse (GOH.DIFFCOVUNMEASURED), an unmeasured one is the
-ship's own diff coverage's to judge. Invoked by `tools/landq.py`.
+while a changed line since the base tag is uncovered by a land's carry or by the newest complete
+run (not deleted or edited, not measured covered since: GOH.SUITEREDEARLY), unless
+`--allow-diffcov REASON`; only MEASURED lines file or refuse (GOH.DIFFCOVUNMEASURED), an unmeasured
+one is named there and the ship's own diff coverage's to judge. Invoked by `tools/landq.py`.
 """
 
 from __future__ import annotations
 
-import contextlib
-import json
 import os
 import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cov_newest  # lib/: what the newest complete run measured
 import gitrun  # lib/: git under a deadline, aimed at its repository
 import land_records  # lib/: the land records' one door (GOH.STATEDB)
 import state_paths
@@ -194,50 +196,6 @@ class _Tree:
         return ln + shift
 
 
-class _Newest:
-    """The newest kept ship profile, asked whether it covers line LN of REL at HEAD."""
-
-    def __init__(self, repo: Path, head: str) -> None:
-        import cov_risk  # lib/: where the profile is kept
-
-        self.repo, self.head, self.data = repo, head, {}
-        with contextlib.suppress(OSError, ValueError):
-            self.data = json.loads(cov_risk.summary_path(repo).read_text())
-        self.sha = self.data.get("sha") or ""
-        if self.sha and _git(repo, "cat-file", "-e", f"{self.sha}^{{commit}}") is None:
-            self.sha = ""
-        self.diffs: dict[str, list[tuple[int, int, int, int]] | None] = {}
-
-    def newer_than(self, said: str) -> bool:
-        return bool(self.sha) and f"profile {self.sha[:8]}" not in (said or "")
-
-    def covers(self, rel: str, ln: int) -> bool:
-        prof = (self.data.get("files") or {}).get(rel)
-        if not prof or not self.sha:
-            return False
-        if rel not in self.diffs:
-            import cov_risk  # lib/: the one -U0 hunk reader's pattern
-
-            out = _git(self.repo, "diff", "-U0", "--no-color", "--no-ext-diff", "--no-textconv",
-                       self.sha, self.head, "--", rel)  # fmt: skip
-            self.diffs[rel] = None if out is None else [
-                tuple(int(m.group(i) or 1) for i in (1, 2, 3, 4))
-                for m in map(cov_risk.HUNK.match, out.splitlines()) if m
-            ]  # fmt: skip
-        hunks = self.diffs[rel]
-        if hunks is None:
-            return False
-        shift = 0  # HEAD's line LN back to the profile's commit: a changed line is not judged
-        for a, b, c, d in hunks:
-            if d and c <= ln < c + d:
-                return False
-            if (c + d if d else c + 1) <= ln:
-                shift = (a + b if b else a + 1) - (c + d if d else c + 1)
-            else:
-                break
-        return ln + shift in set(prof.get("cov") or [])
-
-
 def open_lines(repo: Path, tag: str, head: str, q: Path | None = None) -> list[dict]:
     """The carried lines of the lands since TAG still uncovered at HEAD, each once, at HEAD's
     numbering: `{file, line, text, land, item}`."""
@@ -248,28 +206,17 @@ def open_lines(repo: Path, tag: str, head: str, q: Path | None = None) -> list[d
     recs = _landed(q, repo, {s: i for i, s in enumerate(shas)})
     landed_items = {r.get("item") for r in recs if r.get("item")}
     tree = _Tree(repo, head)
-    newest = _Newest(repo, head)
-    seen: dict[tuple[str, str], bool] = {}
-
-    def holds(landed: str, judged: str) -> bool:  # a later judgment saw this land's change
-        if (landed, judged) not in seen:
-            seen[(landed, judged)] = (
-                _git(repo, "merge-base", "--is-ancestor", landed, judged) is not None
-            )
-        return seen[(landed, judged)]
+    newest = cov_newest.Newest(repo, head)
 
     import cov_risk  # lib/: what a measured carried line is
 
     allow = cov_risk.allowed(repo)  # passed by the ship's diff coverage: never refused here
     found: dict[tuple[str, int], dict] = {}
-    cleared: set[tuple[str, int]] = set()
-    for n, rec in enumerate(recs):
+    for rec in recs:
         cr = rec.get("cov_risk") or {}
         frm = cr.get("head") or rec.get("enqueued") or rec.get("sha") or ""
         landed = rec.get("landed") or rec.get("sha") or ""
-        filed = (rec.get("diffcov_item") or {}).get("id")
-        later = [j for r in recs[n + 1 :] if (j := r.get("cov_risk") or {}).get("head")
-                 and isinstance(j.get("carry"), list)]  # fmt: skip
+        filed = (rec.get("diffcov_item") or {}).get("id") or ""
         for c in cr.get("carry") or []:
             if not cov_risk.measured(c):
                 continue  # unmeasured, not uncovered: the ship's diff coverage judges it
@@ -280,23 +227,34 @@ def open_lines(repo: Path, tag: str, head: str, q: Path | None = None) -> list[d
             lines = tree.text(rel) or []
             if at is None or at > len(lines) or lines[at - 1].strip() != text:
                 continue  # gone at HEAD
-            key = (rel, at)
-            land = rec.get("item") or landed[:8]
-            found.setdefault(
-                key, {"file": rel, "line": at, "text": text, "land": land, "item": filed or ""}
-            )
-            if (
-                (c.get("own") and filed in landed_items)
-                or any(
-                    holds(landed, j["head"])
-                    and not any(o["file"] == rel and o["text"] == text for o in j["carry"])
-                    for j in later
-                )
-                or (newest.newer_than(cr.get("said") or "") and newest.covers(rel, at))
-            ):
-                cleared.add(key)  # its fix lane landed, a later judgment or the newest profile
-    return sorted((c for k, c in found.items() if k not in cleared),
-                  key=lambda c: (c["file"], c["line"]))  # fmt: skip
+            if newest.verdict(rel, at) in (cov_newest.COVERED, cov_newest.NOT_JUDGED):
+                continue  # measured since: the suite's diff coverage passes it
+            found.setdefault((rel, at), {
+                "file": rel, "line": at, "text": text, "item": filed,
+                "land": f"land {rec.get('item') or landed[:8]}",
+                "fixed": bool(c.get("own")) and filed in landed_items,
+            })  # fmt: skip
+    for rel, ln, text in newest.uncovered(tag):
+        found.setdefault((rel, ln), {"file": rel, "line": ln, "text": text, "item": "",
+                                     "land": f"measured at {newest.sha[:8]}",
+                                     "fixed": False})  # fmt: skip
+    return sorted(found.values(), key=lambda c: (c["file"], c["line"]))
+
+
+def unmeasured(repo: Path, tag: str, head: str) -> str:
+    """The note on the changed Rust lines no complete run has measured, or "" when there are none:
+    named so a suite red on one is no surprise, never a refusal (GOH.DIFFCOVUNMEASURED)."""
+    newest = cov_newest.Newest(repo, head)
+    left = newest.unmeasured(tag)
+    if not left:
+        return ""
+    import cov_risk  # lib/: the one spelling of a file's line ranges
+
+    n = sum(len(lns) for lns in left.values())
+    named = [f"    {rel}:{cov_risk.ranges(lns)}" for rel, lns in sorted(left.items())]
+    by = f"the newest profile ({newest.sha[:8]})" if newest.sha else "any profile (none is kept)"
+    said = f"diff coverage: {counted(n, 'changed Rust line')} since {tag} not measured by {by}"
+    return "\n".join([f"{said}; this ship's suite judges them:", *named])
 
 
 def refusal(repo: Path, tag: str, head: str, q: Path | None = None) -> str | None:
@@ -309,16 +267,19 @@ def refusal(repo: Path, tag: str, head: str, q: Path | None = None) -> str | Non
     if not left:
         return None
     named = "\n".join(
-        f"    {c['file']}:{c['line']}  {c['text']}  (land {c['land']}"
-        + (f", item {c['item']})" if c["item"] else ")")
+        f"    {c['file']}:{c['line']}  {c['text']}  ({c['land']}"
+        + (f", item {c['item']}" if c["item"] else "")
+        + (", landed, not measured since)" if c["fixed"] else ")")
         for c in left[:SHOWN]
     )
     more = f"\n    ... and {len(left) - SHOWN} more" if len(left) > SHOWN else ""
     return (
-        f"diff coverage carry: {counted(len(left), 'changed Rust line')} the lands since {tag} "
-        f"recorded uncovered are still uncovered at {head[:8]}; the suite's diff coverage would "
-        f"refuse them after its 15 min run (GOH.DIFFCOVCARRY):\n{named}{more}\n  cover each "
-        "(landing the item filed for it clears it), delete it, or ship with --allow-diffcov REASON"
+        f"diff coverage carry: {counted(len(left), 'changed Rust line')} since {tag} "
+        f"{'is' if len(left) == 1 else 'are'} uncovered by every measurement kept at {head[:8]}; "
+        "the suite's diff coverage would refuse them after its 15 min run "
+        f"(GOH.DIFFCOVCARRY):\n{named}{more}\n  cover each (the next complete instrumented run "
+        "of main -- the idle lander's -- clears it, its item's land alone does not), delete it, "
+        "or ship with --allow-diffcov REASON naming the test that covers it"
     )
 
 
@@ -326,4 +287,15 @@ def ship_refusal(repo: Path, tag: str, head: str, allow: str | None) -> str | No
     """tools/ship.py's call: an empty --allow-diffcov REASON is refused; any other skips."""
     if allow is not None:
         return None if allow.strip() else "--allow-diffcov needs a REASON: why they may ship"
-    return refusal(repo, tag, head)
+    if why := refusal(repo, tag, head):
+        return why
+    if tag and (note := _note(repo, tag, head)):
+        print(note, file=sys.stderr)
+    return None
+
+
+def _note(repo: Path, tag: str, head: str) -> str:
+    try:
+        return unmeasured(repo, tag, head)
+    except Exception as e:  # noqa: BLE001 -- a note, never a refusal
+        return f"diff coverage: the unmeasured lines not read ({e})"

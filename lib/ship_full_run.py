@@ -112,7 +112,8 @@ def _judge(repo: Path, wt: Path, sha: str, base: str, argv: list[str] | None) ->
     if why := full_run.prepare(repo, wt, sha):
         print(f"ship full suite: no worktree at {sha[:8]}: {why}", flush=True)
         return NO_VERDICT
-    print(f"ship full suite on {sha[:8]} in {wt}, its diff coverage since "
+    cov_risk.fresh(wt)
+    print(f"ship full suite on {sha} in {wt}, its diff coverage since "
           f"{base[:8] if base else 'the root'}", flush=True)  # fmt: skip
     env = full_run.judge_env(base, "ship")  # the idle lander's run is this same one (adopt)
     rc = subprocess.run(argv or default_argv(), cwd=wt, env=env, stdin=subprocess.DEVNULL,
@@ -137,11 +138,11 @@ def run(repo: Path, wt: Path, argv: list[str] | None = None) -> int:
               f"judged this tree with its diff coverage since {base[:8] or 'the root'} "
               f"(GOH.IDLESUITERETIRE)", flush=True)  # fmt: skip
         adopt_profiles(idle)
-        keep_profile(idle)
+        keep_profile(idle, wt)
         return GREEN
     print(f"ship full suite on {sha[:8]}: no idle run adopted: {why}", flush=True)
     rc = _judge(repo, wt, sha, base, argv)
-    keep_profile(wt)
+    keep_profile(wt, wt)
     if rc == GREEN and (why := ship_suite.full_suite(repo, sha)[1]):  # green, yet no record: say so
         print(f"ship full suite on {sha[:8]}: green, but {why}", flush=True)
         return NO_VERDICT
@@ -158,18 +159,12 @@ def adopt_profiles(idle_wt: Path) -> None:
         Path(out).write_bytes(kept.read_bytes())
 
 
-def keep_profile(wt: Path) -> None:
-    """The run's per-line coverage sources, kept beside the ship's records for the next land's
-    diff coverage warning (lib/cov_risk.py, GOH.DIFFCOVLAND); a failure is said, never a verdict."""
-    try:
-        kept = cov_risk.keep(
-            wt / "target" / "llvm-cov" / "lcov-parts", wt, wt.parent / cov_risk.NAME
-        )
-    except Exception as exc:  # noqa: BLE001 -- the profile is a hint, the ship's verdict stands
-        print(f"ship full suite: coverage profile not kept: {exc}", flush=True)
-        return
-    if kept is None:
-        print("ship full suite: no lcov parts, no coverage profile kept", flush=True)
+def keep_profile(ran: Path, wt: Path) -> None:
+    """The per-line coverage sources of the run in RAN, kept beside the ship's worktree WT, where
+    its records are (lib/cov_risk.py, GOH.DIFFCOVLAND): an adopted idle run's too, which until
+    GOH.SUITEREDEARLY went beside the idle worktree, where nothing reads it. Said, no verdict."""
+    if why := cov_risk.keep_run(ran, wt.parent / cov_risk.NAME):
+        print(f"ship full suite: {why}", flush=True)
 
 
 def lands(repo: Path, base: str, head: str) -> list[str]:
@@ -185,28 +180,43 @@ def bisect(repo: Path, wt: Path, head: str, argv: list[str] | None = None, tests
            step: Callable[[dict], None] | None = None) -> dict:  # fmt: skip
     """HEAD's run was red: the first red land since the last ship, halving over `lands`, and the
     fault item filed for it. TESTS (the failing tests the red named): each probe runs those alone,
-    plain (lib/ship_red_cause.py), never the full instrumented run. STEP is told each probe before
-    it runs. A probe with no verdict stops the bisect, naming the range left."""
+    plain (lib/ship_red_cause.py), never the full instrumented run. HEAD IS RE-RUN FIRST, and only
+    a HEAD red again is bisected (GOH.SUITEREDEARLY: the 2026-11-23T09:40 ship probed older lands
+    for 36 min and asked its own red last): green there is a flake, no verdict ends it. STEP is told
+    each probe before it runs. A probe with no verdict stops the bisect, naming the range left."""
     base = last_ship(repo, head)
     cands, runs = lands(repo, base, head), []
+
+    def probe(sha: str, **more: object) -> int:
+        if step:
+            step({"n": len(runs) + 1, "lands": len(cands), "sha": sha, **more})
+        if tests and (why := full_run.prepare(repo, wt, sha)):
+            print(f"ship bisect: no worktree at {sha[:8]}: {why}", flush=True)
+            rc = NO_VERDICT
+        elif tests:
+            print(f"ship bisect on {sha[:8]}: {' '.join(tests)}", flush=True)
+            rc = ship_red_cause.probe(wt, list(tests), MAX)
+        else:
+            rc = _judge(repo, wt, sha, base, argv)
+        runs.append({"sha": sha, "verdict": {GREEN: "green", RED: "red"}.get(rc, "none")})
+        return rc
+
+    again = probe(head, recheck=True)
+    found = {"base": base, "lands": len(cands), "runs": runs, "tests": list(tests)}
+    if again == GREEN:
+        return {**found, "confirm": list(runs), "culprit": "", "candidate": head, "flake": True,
+                "fault": f"not filed: a flake -- {head[:12]}, the tip the suite was red on, is "
+                "green at the same run again"}  # fmt: skip
+    if again == NO_VERDICT:
+        return {**found, "culprit": "", "fault": f"not filed: {head[:12]}, the tip the suite was "
+                "red on, gave no verdict again, so nothing is bisected"}  # fmt: skip
     lo, hi = -1, len(cands) - 1
     while hi - lo > 1:
         mid = (lo + hi) // 2
-        if step:
-            step({"n": len(runs) + 1, "lands": len(cands), "sha": cands[mid]})
-        if tests and (why := full_run.prepare(repo, wt, cands[mid])):
-            print(f"ship bisect: no worktree at {cands[mid][:8]}: {why}", flush=True)
-            rc = NO_VERDICT
-        elif tests:
-            print(f"ship bisect on {cands[mid][:8]}: {' '.join(tests)}", flush=True)
-            rc = ship_red_cause.probe(wt, list(tests), MAX)
-        else:
-            rc = _judge(repo, wt, cands[mid], base, argv)
-        runs.append({"sha": cands[mid], "verdict": {GREEN: "green", RED: "red"}.get(rc, "none")})
+        rc = probe(cands[mid])
         if rc == NO_VERDICT:
             break
         lo, hi = (mid, hi) if rc == GREEN else (lo, mid)
-    found = {"base": base, "lands": len(cands), "runs": runs, "tests": list(tests)}
     if not cands or hi - lo > 1:
         return {**found, "culprit": "", "fault": "not filed: the bisect reached no single land"}
     culprit, since = cands[hi], cands[lo] if lo >= 0 else base
@@ -227,21 +237,22 @@ def confirm(repo: Path, wt: Path, pair: tuple[str, str], judge: tuple[str, list[
             step: Callable[[dict], None] | None = None) -> list[dict]:  # fmt: skip
     """Before the candidate culprit of PAIR is named (GOH.BISECTRECHECK): the red's failing TESTS
     run again at it, then at its parent land (PAIR's second, "" when that is the last ship, which
-    released: green). Naming no tests (a floor), a culprit no probe saw red -- the tip, whose red
-    is the run being bisected -- gets one more full run (JUDGE: its base, argv). Each {sha,
-    verdict}; a culprit not red stops there. STEP is told each re-check, as each probe."""
+    released: green). Naming no tests (a floor), the full run this bisect already made there stands,
+    else one more is made (JUDGE: its base, argv); the tip's own re-run stands either way. Each
+    {sha, verdict}; a culprit not red stops there. STEP is told each re-check, as each probe."""
     out: list[dict] = []
     for sha, want in zip(pair, (RED, GREEN), strict=True):
         if not sha:
             continue
         if step:
             step({"n": len(runs) + len(out) + 1, "sha": sha, "recheck": True})
-        if tests:
+        seen = {r["sha"]: r["verdict"] for r in (runs[:1] if tests else runs)}
+        if seen.get(sha) == ("red", "green")[want == GREEN]:
+            rc = want  # this bisect already judged it there: the tip's re-run, or a full run
+        elif tests:
             why = full_run.prepare(repo, wt, sha)
             print(f"ship bisect: re-check {sha[:8]}: {why or ' '.join(tests)}", flush=True)
             rc = NO_VERDICT if why else ship_red_cause.probe(wt, list(tests), MAX)
-        elif any(r["sha"] == sha and r["verdict"] == ("red", "green")[want == GREEN] for r in runs):
-            rc = want  # the full run already judged it in this bisect
         else:
             rc = _judge(repo, wt, sha, *judge)
         out.append({"sha": sha, "verdict": {GREEN: "green", RED: "red"}.get(rc, "none")})
@@ -297,9 +308,17 @@ def after_red(res: dict, save: Callable[[dict], None]) -> bool:
     ):
         return False
     repo = Path(res["repo"])
-    head = full_run._git(repo, "rev-parse", "HEAD").stdout.strip()
     log = Path(step.get("log") or os.devnull)
     text = log.read_text(encoding="utf-8", errors="replace") if log.is_file() else ""
+    # The commit the suite RAN on, as its log says: the land lock is given back, so HEAD may be a
+    # later land, whose lines and lands are not this red's (GOH.SUITEREDEARLY).
+    named = ship_red_cause.judged(text)
+    head = full_run._git(repo, "rev-parse", "--verify", "--quiet", f"{named}^{{commit}}")
+    head = head.stdout.strip() if named else ""
+    if not head:
+        print(f"ship full suite: red, and its log names no commit it ran on ({log}): nothing is "
+              "bisected", flush=True)  # fmt: skip
+        return False
     if rows := ship_red_cause.uncovered(text):
         base = last_ship(repo, head)
         found = ship_red_cause.attribute(repo, head, lands(repo, base, head), rows)
