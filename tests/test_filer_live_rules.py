@@ -54,6 +54,7 @@ pytestmark = pytest.mark.skipif(
 
 
 OPEN = ("todo", "in_progress")
+CLOSED = 300
 
 
 def live_queue(loop: Path = LOOP) -> dict:
@@ -101,7 +102,10 @@ def arm(data: dict, tmp_path: Path, monkeypatch) -> Path:
     # failed by what the queue held that day.
     # Of a closed one, its short fields (GOH.FSEVQUIET): ids, states and classes are what the rules
     # ask, and the whole history's prose was 4.6 MB a test.
-    data = {**data, "items": [_short(i) for i in data["items"] if i.get("status") not in OPEN]}
+    # The last of them, and no archive: thousands of closed ids were 1.9 MB a test.
+    closed = [i for i in data["items"] if i.get("status") not in OPEN]
+    data = {**data, "items": [_short(i) for i in closed[-CLOSED:]]}
+    data["archive"] = type(data.get("archive", []))()
     # The rules minus the owner's freezes (GOH.FILERLIVEFREEZE): FRZ.QUEUEDB-GOH froze
     # gates_of_heck on 2026-11-23, the live rules refused both probes, and every goh gate went
     # red until it lifted. A freeze is a legitimate state of the queue, never a rules regression.

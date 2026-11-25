@@ -1,7 +1,7 @@
 {
  "per_test": 15500,
- "per_test_run": 90,
- "bytes_per_test_run": 52000,
+ "per_test_run": 75,
+ "bytes_per_test_run": 40000,
  "mean_from": 2000,
  "new": {
   "events": 150,
@@ -22,19 +22,17 @@
    "events": 600
   },
   "tests/test_gate_temp_leaks.py": {
-   "bytes": 11500000,
    "events": 9500
   },
   "tests/test_land_check.py": {
    "events": 3600
   },
   "tests/test_land_driver.py": {
-   "bytes": 40000000,
-   "events": 9500
+   "bytes": 11500000,
+   "events": 2600
   },
   "tests/test_land_identity.py": {
-   "bytes": 32000000,
-   "events": 7800
+   "bytes": 9500000
   },
   "tests/test_quiet_git.py": {
    "events": 450
@@ -42,9 +40,6 @@
   "tests/test_self_hosted_hook.py": {
    "bytes": 40000000,
    "events": 15500
-  },
-  "tests/test_ship_pinned.py": {
-   "events": 2600
   },
   "tests/test_state_cutover.py": {
    "bytes": 5500000,

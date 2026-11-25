@@ -15,11 +15,22 @@ import state_backfill
 import state_columns
 from _columns_fixture import copied, dump, killed, old_file
 
+# A statement fills 500 rows; here 5, so twelve rows take the three runs 1,200 took (2.7 MB a case,
+# GOH.FSEVQUIET). What is committed, and where a kill may fall, is the statement's, not its number.
+FEW = """
+all_rows = m.steps
+def few():
+    return [(n, s.replace("LIMIT 500", "LIMIT 5")) for n, s in all_rows()]
+m.steps = few
+"""
+
 
 @pytest.fixture
 def db(tmp_path: Path, monkeypatch) -> Path:
     monkeypatch.setenv("GOH_DB", str(tmp_path / "state" / "goh.db"))
-    return old_file(tmp_path, 1200)
+    few = [(n, s.replace("LIMIT 500", "LIMIT 5")) for n, s in state_backfill.steps()]
+    monkeypatch.setattr(state_backfill, "steps", lambda: few)
+    return old_file(tmp_path, 12)
 
 
 @pytest.fixture(autouse=True)
@@ -35,7 +46,7 @@ def found() -> list[str]:
 
 def test_every_row_is_filled_and_a_second_run_changes_none(db) -> None:
     done = {"repaired": 1, "folded": 2, "lands": 2, "ship_pins": 1, "ships": 1,
-            "agent_spawns": 1200, "fault_candidates": 0,
+            "agent_spawns": 12, "fault_candidates": 0,
             **{t.name: 0 for t in body_tables.TABLES}}  # fmt: skip
     assert state_backfill.run() == done
     once = dump(db)
@@ -43,7 +54,7 @@ def test_every_row_is_filled_and_a_second_run_changes_none(db) -> None:
     with goh_db.ro() as con:
         rows = {r: (c, k) for r, c, k in con.execute("SELECT run, red_class, rest FROM lands")}
         tests = con.execute("SELECT run, value FROM land_lists WHERE kind = 'red_test'").fetchall()
-        assert con.execute("SELECT count(*) FROM spawn_lists").fetchone() == (2400,)
+        assert con.execute("SELECT count(*) FROM spawn_lists").fetchone() == (24,)
     odd = '{"slot_s":"soon"}'
     assert rows == {"1-died": ("flake", "{}"), "2-red": ("flake", "{}"), "3-old": (None, "{}"),
                     "4-odd": (None, odd)}  # fmt: skip
@@ -53,12 +64,12 @@ def test_every_row_is_filled_and_a_second_run_changes_none(db) -> None:
         f"lands: /q 4-odd: `rest` holds {odd}"]  # fmt: skip
 
 
-# 1 the repair, 2 the fold, 3 to 5 the small tables, 6 to 8 the spawns' 500, 500 and 200
+# 1 the repair, 2 the fold, 3 to 5 the small tables, 6 to 8 the spawns' 5, 5 and 2
 @pytest.mark.parametrize("nth", [1, 2, 3, 5, 6, 8])
 def test_a_kill_then_a_run_is_one_clean_run(db, tmp_path, monkeypatch, nth) -> None:
     clean = copied(tmp_path / "clean" / "goh.db")  # migrated: both runs start at the same rows
     was = dump(clean)
-    killed("state_backfill", nth)
+    killed("state_backfill", nth, FEW)
     assert found() and (dump(db) != was) == (nth > 1)
     state_backfill.run()
     monkeypatch.setenv("GOH_DB", str(clean))

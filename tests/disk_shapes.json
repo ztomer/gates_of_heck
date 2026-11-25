@@ -9,9 +9,6 @@
  },
  "seed": {
   "_columns_fixture.py": {
-   "sqlite": 2
-  },
-  "_tree_lint.py": {
    "sqlite": 1
   },
   "test_capacity_window.py": {

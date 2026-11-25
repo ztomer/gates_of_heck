@@ -11,7 +11,6 @@ goh's code writes, and a file from before the columns holding rows of them.
 
 from __future__ import annotations
 
-import contextlib
 import dataclasses
 import json
 import os
@@ -24,6 +23,7 @@ from pathlib import Path
 
 import db_core
 import goh_db
+from _tree_clone import clone_tree
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
@@ -160,9 +160,11 @@ def old_file(tmp_path: Path, spawns: int = 3) -> Path:
 
 
 def copied(to: Path) -> Path:
+    """goh.db as it stands, cloned to TO: its WAL is in the file first, none writes meanwhile."""
     to.parent.mkdir(parents=True)
-    with goh_db.connect() as con, contextlib.closing(sqlite3.connect(to)) as out:
-        con.backup(out)
+    with goh_db.connect() as con:
+        con.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
+    clone_tree(goh_db.path(), to)
     return to
 
 
