@@ -27,6 +27,8 @@ import stat
 from collections.abc import Callable
 from pathlib import Path
 
+import _quiet_pack
+
 TEMPLATES = ("/goh-templates/", "/goh-process-templates/")
 _ROOT: list[str] = []
 _OUT: dict[str, tuple[str, int, int]] = {}  # a clone given out -> its template, stamp, inode
@@ -146,12 +148,19 @@ def origin(src: str, sealed: Sealed) -> str:
     """The part of a template SRC is, where SRC is an untouched part of a clone given out: a clone
     of it is the template's, so it is pooled too. SRC where it is none."""
     for top, (its, stamp, _inode) in _OUT.items():
-        if src.startswith(top + os.sep) and not os.path.islink(src):
+        if (src == top or src.startswith(top + os.sep)) and not os.path.islink(src):
             part = its + src[len(top) :]
             with contextlib.suppress(OSError):  # no part of the template, or no directory
                 if not any(_changes(part, src, stamp, sealed)[:2]):
                     return part
     return src
+
+
+def in_parts(src: str) -> bool:
+    """Whether SRC is a clone given out that its test changed, or holds some: cloned entry by entry,
+    what is untouched in it is the template's."""
+    known = src in _OUT or any(os.path.dirname(top) == src for top in _OUT)
+    return known and os.path.isdir(src) and not os.path.islink(src)
 
 
 def _now(top: str) -> tuple[int, int]:
@@ -171,26 +180,36 @@ def _home(src: str) -> str:
     return os.path.join(_ROOT[0], "goh-tree-pool", hashlib.sha256(src.encode()).hexdigest()[:16])
 
 
+def whole(dst: str, sealed: Sealed) -> str:
+    """The template DST is an untouched clone of, or ""."""
+    src, stamp, inode = _OUT.get(dst, ("", 0, 0))
+    if src and os.lstat(dst).st_ino == inode and not any(_changes(src, dst, stamp, sealed)[:2]):
+        return src
+    return ""
+
+
+def put(dst: str, clone: Clone, sealed: Sealed) -> bool:
+    """Whether the clone DST is put back and in the pool; what is left of it if not is the
+    caller's to remove."""
+    src, stamp, inode = _OUT.pop(dst)
+    try:
+        if any(r.endswith((".db", ".sqlite")) for r in _shape(src, sealed)):
+            return False
+        if os.lstat(dst).st_ino != inode or not _restore(src, dst, stamp, clone, sealed):
+            return False
+        os.makedirs(_home(src), exist_ok=True)
+        _N[0] += 1
+        os.rename(dst, os.path.join(_home(src), f"{_now(dst)[0]}.{os.getpid()}.{_N[0]}"))
+    except OSError:
+        return False
+    return True
+
+
 def reclaim(path: str, clone: Clone, sealed: Sealed) -> int:
     """The clones under PATH (a passed test's tmp_path, about to be removed) put back and pooled;
     how many. The innermost first: one made inside another is no part of it."""
-    n = 0
-    for dst in sorted((d for d in _OUT if d.startswith(path + os.sep)), key=len, reverse=True):
-        src, stamp, inode = _OUT.pop(dst)
-        try:
-            shape = _shape(src, sealed)
-            if any(r.endswith((".db", ".sqlite")) for r in shape):
-                continue
-            st = os.lstat(dst)
-            if st.st_ino != inode or not _restore(src, dst, stamp, clone, sealed):
-                continue
-            os.makedirs(_home(src), exist_ok=True)
-            _N[0] += 1
-            os.rename(dst, os.path.join(_home(src), f"{_now(dst)[0]}.{os.getpid()}.{_N[0]}"))
-            n += 1
-        except OSError:  # what is left of it is removed with the rest
-            continue
-    return n
+    under = sorted((d for d in _OUT if d.startswith(path + os.sep)), key=len, reverse=True)
+    return sum([put(dst, clone, sealed) for dst in under])
 
 
 def install(root: str, clone: Clone, sealed: Sealed) -> None:
@@ -200,6 +219,7 @@ def install(root: str, clone: Clone, sealed: Sealed) -> None:
     real = shutil.rmtree
 
     def rmtree(path: Path, *a, **kw) -> None:
+        _quiet_pack.drop(real_of(path))
         reclaim(real_of(path), clone, sealed)
         real(path, *a, **kw)
 

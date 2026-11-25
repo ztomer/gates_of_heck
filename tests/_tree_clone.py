@@ -62,8 +62,17 @@ def clone_tree(src: Path | str, dst: Path | str) -> None:
     """Copy the tree `src` to `dst` (which must not exist): clonefile(2), else copytree."""
     if os.path.lexists(dst):
         raise FileExistsError(errno.EEXIST, "clone target exists", str(dst))
+    sys.audit("goh.clone_tree", str(src))  # tests/_quiet_pack.py
     if _CLONEFILE is not None:
-        mine, its = _tree_pool.real_of(dst), _tree_pool.origin(_tree_pool.real_of(src), _is_sealed)
+        here = _tree_pool.real_of(src)
+        mine, its = _tree_pool.real_of(dst), _tree_pool.origin(here, _is_sealed)
+        if its == here and _tree_pool.in_parts(here):
+            os.mkdir(dst)
+            for name in os.listdir(here):
+                part = os.path.join(here, name)
+                (_clone_part if os.path.islink(part) else clone_tree)(part, os.path.join(dst, name))
+            shutil.copymode(here, dst)
+            return
         if _tree_pool.take(its, mine, _clone_part, _is_sealed):
             return
         if _CLONEFILE(os.fsencode(its), os.fsencode(dst), 0) == 0:

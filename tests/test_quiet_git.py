@@ -80,9 +80,9 @@ def _nothing(d: Path) -> list[tuple[str, ...]]:
 STEPS = (_first, _edits, _staged, _nothing)
 
 
-def _state(d: Path) -> dict[str, str]:
+def _state(d: Path, branch: str = "main") -> dict[str, str]:
     return {" ".join(a): _git(d, *a) for a in (
-        ("log", "--format=%H %T %P %an %ae %at %cn %ce %ct%n%B", "main"), ("ls-files", "-s"),
+        ("log", "--format=%H %T %P %an %ae %at %cn %ce %ct%n%B", branch), ("ls-files", "-s"),
         ("status", "--porcelain=v2", "--branch"), ("ls-tree", "-r", "HEAD"),
         ("diff", "HEAD", "--stat"))}  # fmt: skip
 
@@ -106,6 +106,58 @@ def test_every_step_is_gits_own_byte_for_byte(made, monkeypatch) -> None:
     (mine / "a.txt").write_text("git goes on from there\n")
     _git(mine, "commit", "-qam", "git's own")
     assert _git(mine, "log", "--format=%s").split("\n")[0] == "git's own"
+
+
+@pytest.mark.parametrize("packed", [False, True])
+def test_a_linked_work_tree_s_steps_are_gits_own(made, tmp_path: Path, monkeypatch, packed) -> None:
+    """Its HEAD and index its own, the objects and the branch the repository's."""
+    mine, gits = made("mine"), made("gits")
+    served: list[bool] = []
+    real = _quiet_git.serve
+    monkeypatch.setattr(_quiet_git, "serve", lambda *a: served.append(real(*a)) or served[-1])
+    lanes = []
+    for d in (mine, gits):
+        _git(d, "commit", "-q", "--allow-empty", "-m", "first", env=_env(d == gits))
+        _git(d, "worktree", "add", "-q", "-b", "lane", f"{d}-wt")
+        if packed:
+            _git(d, "pack-refs", "--all")
+        lanes.append(Path(f"{d}-wt"))
+    for step in STEPS:
+        for d in lanes:
+            for args in step(d):
+                served.clear()
+                _git(d, *args, env=_env(d == lanes[1]))
+                assert served[-1] == (d == lanes[0]), (step.__name__, args)
+        assert _state(lanes[0], "lane") == _state(lanes[1], "lane"), step.__name__
+    assert _git(mine, "log", "--format=%s", "main", "--") == "first\n"
+    assert _git(mine, "status", "--porcelain") == ""
+    _git(mine, "fsck", "--strict", "--full")
+    assert not list((mine / ".git" / "objects").glob("??")), "a loose object"
+
+
+def test_a_work_tree_of_another_repository_s_is_gits(made, tmp_path: Path) -> None:
+    """A linked work tree under the run's root whose repository is not: the checkout under test."""
+    d, env = made("r"), _env(False)
+    _git(d, "commit", "-q", "--allow-empty", "-m", "first")
+    (tmp_path / "in").mkdir()
+    _git(d, "worktree", "add", "-q", "-b", "lane", str(tmp_path / "in" / "wt"))
+    (tmp_path / "in" / "wt" / "f").write_text("1\n")
+    argv = ["git", "add", "-A"]
+    assert not _quiet_git.serve(argv, tmp_path / "in" / "wt", env, str((tmp_path / "in").resolve()))
+    assert _quiet_git.serve(argv, tmp_path / "in" / "wt", env, str(tmp_path.resolve()))
+
+
+def test_a_commit_past_its_hooks_is_made_and_one_that_runs_them_is_gits(made) -> None:
+    d = made("r")
+    (d / ".githooks").mkdir()
+    for name in ("pre-commit", "commit-msg", "pre-push"):
+        (d / ".githooks" / name).write_text("#!/bin/sh\nexit 1\n")
+        (d / ".githooks" / name).chmod(0o755)
+    _git(d, "config", "core.hooksPath", ".githooks")
+    assert _served(["git", "add", "-A"], d)
+    assert not _served(["git", "commit", "-qm", "c"], d)
+    assert _served(["git", "commit", "-q", "--no-verify", "-m", "c"], d)
+    assert _git(d, "log", "--format=%s") == "c\n"
 
 
 def test_a_branch_moves_where_it_is(repo: Path) -> None:
@@ -157,6 +209,13 @@ def _conf(*args: str):
     return lambda d: _git(d, "config", *args)
 
 
+def _hooks_elsewhere(d: Path) -> None:
+    (d / ".githooks").mkdir()
+    (d / ".githooks" / "post-commit").write_text("#!/bin/sh\nexit 0\n")
+    (d / ".githooks" / "post-commit").chmod(0o755)
+    _git(d, "config", "core.hooksPath", ".githooks")
+
+
 def _nested(d: Path) -> None:
     (d / "nested").mkdir()
     clone_tree(d / ".git", d / "nested" / ".git")
@@ -169,7 +228,7 @@ def _borrows(d: Path) -> None:
 
 
 @pytest.mark.parametrize("plant", [
-    _hook, _attributes, _conf("core.hooksPath", "/nowhere"), _conf("core.autocrlf", "input"),
+    _hook, _attributes, _hooks_elsewhere, _conf("core.autocrlf", "input"),
     _conf("commit.gpgsign", "true"), _conf("core.logAllRefUpdates", "always"),
     lambda d: _git(d, "update-index", "--assume-unchanged", "f"),
     lambda d: _git(d, "checkout", "-q", "--detach"),

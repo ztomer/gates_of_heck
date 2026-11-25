@@ -10,7 +10,7 @@ pack, its idx, the index and the branch. tests/_suite_plugins.py asks it for eve
 starts itself; a command a gate or a script starts is git's.
 
 git itself runs wherever this would have to guess: a hook, an attribute or filter, a setting it does
-not know, a submodule, a linked worktree, objects borrowed from another repository, a conflict, a
+not know, a submodule, objects borrowed from another repository, a conflict, a
 merge under way, an option it does not read, a GIT_* variable, a `git` of the test's own on PATH,
 GATES_OF_HECK_REAL_GIT=1.
 """
@@ -26,9 +26,10 @@ import stat
 import struct
 import subprocess
 import time
-import zlib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+
+from _quiet_pack import LOCK, _put, _sha, flush, is_quiet, keep, own, quietly, watch
 
 REAL = "GATES_OF_HECK_REAL_GIT"
 _ENV_READ = {
@@ -40,8 +41,10 @@ _SET = {"user.name", "user.email", "commit.gpgsign=false", "maintenance.auto=fal
 _UNDER_WAY = ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply",
               "SQUASH_MSG", "MERGE_MSG", "BISECT_LOG", "info/attributes", "index.lock",
               "HEAD.lock", "objects/info/alternates")  # fmt: skip
+_HOOKS = {"pre-commit", "prepare-commit-msg", "commit-msg", "post-commit", "post-rewrite",
+          "post-index-change", "reference-transaction", "pre-auto-gc"}  # fmt: skip
 _UNKNOWN = re.compile(
-    r"^\[(?:include|includeif|extensions|filter)|^(?:hookspath|autocrlf|eol|splitindex|"
+    r"^\[(?:include|includeif|extensions|filter)|^(?:autocrlf|eol|splitindex|"
     r"sparsecheckout|attributesfile|worktree|excludesfile|fsmonitor|template|cleanup)\b|"
     r"^(?:gpgsign|bare)\s*=\s*true|^(?:filemode|symlinks|ignorecase)\s*=\s*false|^logallrefupdates\s*=\s*always",
     re.IGNORECASE | re.MULTILINE,
@@ -61,7 +64,11 @@ def _parse(argv: Sequence[str]) -> tuple[str, dict[str, str], str, list[str]]:
             here = os.path.join(here, argv[i + 1])
         elif argv[i] == "-c" and i + 1 < len(argv):
             key, _, value = argv[i + 1].partition("=")
-            if key.lower() not in _SET and f"{key.lower()}={value}" not in _SET:
+            if (
+                key.lower() not in _SET
+                and key.lower() != "core.hookspath"
+                and f"{key.lower()}={value}" not in _SET
+            ):
                 raise Declined(argv[i + 1])
             conf[key.lower()] = value
         else:
@@ -90,18 +97,37 @@ def _settings(text: str) -> dict[str, str]:
     return out
 
 
+def _linked(pointer: str) -> tuple[str, str]:
+    """(its git dir, the repository's) of the linked work tree whose `.git` file is POINTER."""
+    text = Path(pointer).read_text(encoding="utf-8").strip()
+    git = os.path.join(os.path.dirname(pointer), text.removeprefix("gitdir: "))
+    commondir = Path(git, "commondir")
+    if not text.startswith("gitdir: ") or not commondir.is_file():
+        raise Declined("a submodule, or a git dir elsewhere")
+    common = os.path.join(git, commondir.read_text(encoding="utf-8").strip())
+    if os.path.lexists(os.path.join(git, "config.worktree")):
+        raise Declined("a setting of the work tree's own")
+    return os.path.realpath(git), os.path.realpath(common)
+
+
 class Repo:
     def __init__(self, top: str, conf: dict[str, str], env: Mapping[str, str]) -> None:
+        # (git: this work tree's HEAD and index; common: the objects, refs, config and hooks)
         self.top, self.git, self.env = top, os.path.join(top, ".git"), env
-        if not os.path.isdir(os.path.join(self.git, "objects")):
-            raise Declined("not the top of a work tree of its own")
-        if any(os.path.lexists(os.path.join(self.git, p)) for p in _UNDER_WAY):
+        self.common = self.git
+        if os.path.isfile(self.git):
+            self.git, self.common = _linked(self.git)
+        if not os.path.isdir(os.path.join(self.common, "objects")):
+            raise Declined("not the top of a work tree")
+        if any(os.path.lexists(os.path.join(d, p)) for p in _UNDER_WAY
+               for d in (self.git, self.common)):  # fmt: skip
             raise Declined("under way")
-        if not all(os.access(os.path.join(self.git, p), os.W_OK) for p in ("", "objects", "refs")):
+        needs = [self.git, *(os.path.join(self.common, p) for p in ("", "objects", "refs"))]
+        if not all(os.access(p, os.W_OK) for p in needs):
             raise Declined("sealed")  # a run's template (tests/_tree_clone.py)
         home = env.get("HOME", "")
         files = [os.path.join(env.get("XDG_CONFIG_HOME") or f"{home}/.config", "git", "config"),
-                 os.path.join(home, ".gitconfig"), os.path.join(self.git, "config")]  # fmt: skip
+                 os.path.join(home, ".gitconfig"), os.path.join(self.common, "config")]  # fmt: skip
         self.conf: dict[str, str] = {}
         for f in files:
             text = Path(f).read_text(encoding="utf-8") if os.path.isfile(f) else ""
@@ -138,23 +164,19 @@ class Repo:
         return out
 
     def changed(self, paths: list[str]) -> list[tuple[str, bytes]]:
-        """(`?` untracked, `M` or `D` against the index; path) of what `git status` lists."""
-        argv = ["git", "-C", self.top, "status", "--porcelain=v2", "-z", "-uall", "--no-renames",
-                *(["--", *paths] if paths else [])]  # fmt: skip
-        r = subprocess.run(argv, capture_output=True, stdin=subprocess.DEVNULL, check=False,
-                           env={**self.env, "GIT_OPTIONAL_LOCKS": "0"})  # fmt: skip
+        """(`?` untracked, `M` or `D` against the index; path). No object is read for it."""
+        argv = ["git", "-C", self.top, "ls-files", "-z", "-t", "--others", "--modified",
+                "--deleted", "--exclude-standard", *(["--", *paths] if paths else [])]  # fmt: skip
+        r = own(argv, {**self.env, "GIT_OPTIONAL_LOCKS": "0"})
         if r.returncode:
             raise Declined(r.stderr.decode(errors="replace"))
-        out = []
+        how: dict[bytes, str] = {}  # a deleted one is listed as modified too
         for row in filter(None, r.stdout.split(b"\0")):
-            if row[:2] == b"? ":
-                out.append(("?", row[2:]))
-            elif row[:2] == b"1 " and row[5:6] == b"N":
-                xy, path = row[2:4], row.split(b" ", 8)[8]
-                if xy[1:] != b".":
-                    out.append(("D" if xy[1:] == b"D" else "M", path))
-            else:
+            tag, path = {b"? ": "?", b"C ": "M", b"R ": "D"}.get(row[:2]), row[2:]
+            if tag is None:
                 raise Declined(row.decode(errors="replace"))
+            how[path] = "D" if "D" in (tag, how.get(path)) else tag
+        out = [(tag, path) for path, tag in how.items()]
         if any(p.endswith((b"/", b".gitattributes", b".gitmodules")) for _, p in out):
             raise Declined("a repository, or attributes, in the tree")
         return out
@@ -228,7 +250,7 @@ class Repo:
         if not head.startswith("ref: refs/heads/"):
             raise Declined("a detached HEAD")
         ref = head[5:]
-        loose, packed = Path(self.git, ref), Path(self.git, "packed-refs")
+        loose, packed = Path(self.common, ref), Path(self.common, "packed-refs")
         if loose.is_file():
             return ref, loose.read_text(encoding="utf-8").strip()
         for line in packed.read_text(encoding="utf-8").splitlines() if packed.is_file() else ():
@@ -257,46 +279,6 @@ class Repo:
         return _TREES[commit]
 
 
-def _sha(kind: str, data: bytes) -> bytes:
-    return hashlib.sha1(b"%s %d\0" % (kind.encode(), len(data)) + data).digest()
-
-
-def _put(path: str, data: bytes) -> None:
-    with open(path, "wb") as f:
-        f.write(data)
-
-
-def _pack(git: str, objects: list[tuple[str, bytes]]) -> None:
-    """OBJECTS as one pack of the repository GIT, and its idx (version 2)."""
-    rows, body = [], bytearray(b"")
-    kinds = {"commit": 1, "tree": 2, "blob": 3}
-    for kind, data in {_sha(*o): o for o in objects}.values():
-        size, start = len(data), 12 + len(body)
-        first, size = (kinds[kind] << 4) | (size & 15), size >> 4
-        head = bytearray()
-        while size:
-            head.append(first | 0x80)
-            first, size = size & 127, size >> 7
-        head.append(first)
-        raw = bytes(head) + zlib.compress(data, 1)
-        body += raw
-        rows.append((_sha(kind, data), zlib.crc32(raw), start))
-    rows.sort()
-    pack = struct.pack(">4sII", b"PACK", 2, len(rows)) + bytes(body)
-    trailer = hashlib.sha1(pack).digest()
-    idx = b"\xfftOc" + struct.pack(">I", 2)
-    idx += b"".join(struct.pack(">I", sum(r[0][0] <= i for r in rows)) for i in range(256))
-    idx += b"".join(r[0] for r in rows)
-    idx += b"".join(struct.pack(">I", r[1]) for r in rows)
-    idx += b"".join(struct.pack(">I", r[2]) for r in rows) + trailer
-    at = os.path.join(git, "objects", "pack")
-    os.makedirs(at, exist_ok=True)
-    name = os.path.join(at, f"pack-{trailer.hex()}")
-    if not os.path.exists(f"{name}.idx"):
-        _put(f"{name}.pack", pack + trailer)
-        _put(f"{name}.idx", idx + hashlib.sha1(idx).digest())
-
-
 def _message(parts: list[str]) -> str:
     """As git cleans a -m message (--cleanup=whitespace)."""
     lines = [ln.rstrip() for ln in "\n\n".join(parts).splitlines()]
@@ -321,7 +303,7 @@ def _add(repo: Repo, args: list[str]) -> None:
     blobs = repo.add(changed)
     if changed:
         if blobs:
-            _pack(repo.git, blobs)
+            keep(repo.common, blobs)
         repo.write_index()
 
 
@@ -343,9 +325,10 @@ def _commit(repo: Repo, args: list[str]) -> None:
         else:
             raise Declined(a)
         i += 1
-    there = os.path.join(repo.git, "hooks")
-    found = set(os.listdir(there)) if os.path.isdir(there) else set()
-    if not quiet or found - ({"pre-commit", "commit-msg", "pre-push"} if not hooks else set()):
+    there = repo.conf.get("core.hookspath") or os.path.join(repo.common, "hooks")
+    there = os.path.join(repo.top, there.replace("~", repo.env.get("HOME", ""), 1))
+    found = _HOOKS & set(os.listdir(there)) if os.path.isdir(there) else set()
+    if not quiet or found - ({"pre-commit", "commit-msg"} if not hooks else set()):
         raise Declined("a hook, or its summary")
     message = _message(parts)
     objects: list[tuple[str, bytes]] = []
@@ -357,17 +340,17 @@ def _commit(repo: Repo, args: list[str]) -> None:
     tree, trees = repo.trees()
     if not empty and (tree == repo.tree_of(parent) if parent else not repo.entries):
         raise Declined("nothing to commit")
-    if any(os.path.lexists(os.path.join(repo.git, f"{p}.lock")) for p in (ref, "packed-refs")):
+    if any(os.path.lexists(os.path.join(repo.common, f"{p}.lock")) for p in (ref, "packed-refs")):
         raise Declined("locked")
     body = (f"tree {tree}\n" + (f"parent {parent}\n" if parent else "")
             + f"author {repo.who('AUTHOR')}\ncommitter {repo.who('COMMITTER')}\n\n{message}"
             ).encode()  # fmt: skip
-    _pack(repo.git, [*objects, *trees, ("commit", body)])
+    keep(repo.common, [*objects, *trees, ("commit", body)])
     if every:
         repo.write_index()
     sha = _sha("commit", body).hex()
     _TREES[sha] = tree
-    at, packed = os.path.join(repo.git, ref), Path(repo.git, "packed-refs")
+    at, packed = os.path.join(repo.common, ref), Path(repo.common, "packed-refs")
     if parent and not os.path.exists(at):  # where it is: no directory, no file
         text = packed.read_text(encoding="utf-8")
         packed.write_text(text.replace(f"{parent} {ref}\n", f"{sha} {ref}\n"), encoding="utf-8")
@@ -427,11 +410,14 @@ def serve(argv: object, cwd: object, env: Mapping[str, str] | None, root: str) -
         top = os.path.realpath(os.path.join(os.fsdecode(cwd or os.getcwd()), here))
         if not top.startswith(root + os.sep):
             return False
-        if command == "config":
-            _config(top, conf, args)
-            return True
-        repo = Repo(top, conf, env)
-        (_add if command == "add" else _commit)(repo, args)
+        with LOCK, quietly():
+            if command == "config":
+                _config(top, conf, args)
+                return True
+            repo = Repo(top, conf, env)
+            if not repo.common.startswith(root + os.sep):  # this checkout's own, linked to
+                return False
+            (_add if command == "add" else _commit)(repo, args)
     except (Declined, OSError, ValueError, UnicodeError, IndexError):
         return False
     return True
@@ -442,8 +428,12 @@ def install(root: str) -> None:
     root, start = os.path.realpath(root), subprocess.Popen.__init__
 
     def popen(self, args, *more, **kw):
-        if not more and not kw.get("shell") and serve(args, kw.get("cwd"), kw.get("env"), root):
-            args = ["/usr/bin/true"]
+        if not is_quiet():
+            if not more and not kw.get("shell") and serve(args, kw.get("cwd"), kw.get("env"), root):
+                args = ["/usr/bin/true"]
+            else:
+                flush()
         start(self, args, *more, **kw)
 
     subprocess.Popen.__init__ = popen
+    watch()

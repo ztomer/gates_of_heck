@@ -20,6 +20,7 @@ from pathlib import Path
 
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _grown import built, keyed
 from _small_store import estate_state
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
 
@@ -57,7 +58,11 @@ def _git(repo: Path, *args: str) -> str:
 
 
 def _consumer(root: Path, name: str, pre_commit: bytes) -> Path:
-    repo = root / name
+    return built(root / name, keyed("hooks-refresh", pre_commit, STOCK, GATE),
+                 lambda repo: _build(repo, pre_commit))  # fmt: skip
+
+
+def _build(repo: Path, pre_commit: bytes) -> None:
     hooks = repo / ".githooks"
     hooks.mkdir(parents=True)
     for h, body in STOCK.items():
@@ -73,7 +78,6 @@ def _consumer(root: Path, name: str, pre_commit: bytes) -> Path:
     _git(repo, "config", "core.hooksPath", ".githooks")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "--no-verify", "-m", "fixture")
-    return repo
 
 
 def _run(root: Path, tmp_path: Path, *args: str) -> subprocess.CompletedProcess:

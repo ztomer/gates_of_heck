@@ -192,9 +192,8 @@ def _goh_export(gates: Path, tmp_path: Path) -> Path:
 def _moved(export: Path, where: Path) -> Path:
     """The same export at another path: the next land's ~/.cache/goh/head/<sha>."""
     dest = where / export.name
-    dest.mkdir(parents=True)
-    for entry in sorted(export.iterdir()):  # the run's template's: pooled (tests/_tree_pool.py)
-        clone_tree(entry, dest / entry.name)
+    dest.parent.mkdir(parents=True)
+    clone_tree(export, dest)
     return dest
 
 

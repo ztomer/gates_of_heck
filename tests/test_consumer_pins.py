@@ -23,6 +23,7 @@ from pathlib import Path
 
 import _goh_db_fixture as gdb
 from _fast_git import fast_init
+from _grown import keyed, tracked
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
@@ -94,20 +95,20 @@ def _commit(repo: Path, msg: str) -> None:
 
 def _consumer(tmp_path: Path, name: str, files: dict[str, str]) -> Path:
     """A consumer at ROOT/NAME whose main tracks a bare origin outside the estate."""
-    repo = tmp_path / "estate" / name
-    for rel, body in files.items():
-        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
-        (repo / rel).write_text(body)
-    fast_init(repo, "main")
-    _git(repo, "config", "user.email", "t@t")
-    _git(repo, "config", "user.name", "t")
-    _commit(repo, "fixture")
-    origin = tmp_path / "origins" / f"{name}.git"  # a bare clone: the origin holds the fixture
-    _git(repo, "clone", "-q", "--bare", str(repo), str(origin))
-    _git(repo, "remote", "add", "origin", str(origin))
-    _git(repo, "fetch", "-q", "origin")
-    _git(repo, "branch", "-q", "--set-upstream-to=origin/main", "main")
-    return repo
+
+    def build(repo: Path) -> None:
+        for rel, body in files.items():
+            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (repo / rel).write_text(body)
+        fast_init(repo, "main")
+        _git(repo, "config", "user.email", "t@t")
+        _git(repo, "config", "user.name", "t")
+        _commit(repo, "fixture")
+
+    return tracked(
+        tmp_path / "estate" / name, tmp_path / "origins" / f"{name}.git",
+        keyed("consumer-pins", files), build,
+    )  # fmt: skip
 
 
 def _ahead(repo: Path) -> int:

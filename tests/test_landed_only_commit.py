@@ -22,6 +22,7 @@ import pytest
 import test_release_kit as rk
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _grown import built, keyed
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
 from test_release_kit import TAG, VERSION, run_release, sh
 
@@ -52,7 +53,12 @@ def _install_hook(main: Path) -> None:
 
 def _landed_only_repo(tmp_path: Path, rc: str = "GOH_LANDED_ONLY=main\n") -> tuple[Path, Path]:
     """(main, wt): a primary checkout on `main` declaring GOH_LANDED_ONLY, and a linked worktree."""
-    main = tmp_path / "main"
+    main = built(tmp_path / "main", keyed("landed-only", rc), lambda main: _build(main, rc))
+    _git(main, "worktree", "add", "-q", "-b", "feature", str(tmp_path / "wt"))
+    return main, tmp_path / "wt"
+
+
+def _build(main: Path, rc: str) -> None:
     (main / "tools").mkdir(parents=True)
     (main / "tools" / "gate.sh").write_text(STRUCTURAL_GATE)
     (main / "tools" / "gate.sh").chmod(0o755)
@@ -66,8 +72,6 @@ def _landed_only_repo(tmp_path: Path, rc: str = "GOH_LANDED_ONLY=main\n") -> tup
     _install_hook(main)
     _git(main, "add", "-A")
     _git(main, "commit", "-q", "--no-verify", "-m", "hook")
-    _git(main, "worktree", "add", "-q", "-b", "feature", str(tmp_path / "wt"))
-    return main, tmp_path / "wt"
 
 
 def _env(**extra: str) -> dict[str, str]:

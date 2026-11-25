@@ -147,6 +147,7 @@ tests/_land_verdicts.py	base-code
 tests/_loadgroup.py	base-code
 tests/_prof_record.py	base-code
 tests/_prof_reuse.py	base-code
+tests/_quiet_pack.py	base-code
 tests/_read_audit.py	base-code
 tests/_reused_tmp.py	base-code
 tests/_same_tree.py	base-code
@@ -154,8 +155,8 @@ tests/_schedule.py	base-code
 tests/_setup_work.py	base-code
 tests/_shard.py	base-code
 tests/_tree_clone.py	base-code
-tests/_tree_pool.py	base-code
 tests/_tree_guard.py	base-code
+tests/_tree_pool.py	base-code
 tests/_whole_run.py	base-code
 tests/ci_shape.py	base-code
 tests/conftest.py	suite-wide

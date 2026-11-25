@@ -186,6 +186,23 @@ def test_an_untouched_part_of_a_clone_is_cloned_and_pooled_as_the_templates(
     assert _state(tmp_path / "d1") == _state(template / "d1")
 
 
+def test_a_changed_clone_is_cloned_as_it_is_and_pooled_where_it_is_not(
+    tmp_path: Path, template: Path
+) -> None:
+    (tmp_path / "a").mkdir()
+    clone_tree(template, tmp_path / "a" / "t")
+    _committed(tmp_path / "a" / "t")
+    _forged(tmp_path / "a" / "t")
+    (tmp_path / "a" / "t").chmod(0o700)
+    clone_tree(tmp_path / "a" / "t", tmp_path / "a" / "u")
+    assert _state(tmp_path / "a" / "u") == _state(tmp_path / "a" / "t")
+    inode = (tmp_path / "a" / "u" / "d1").stat().st_ino
+    _pytest.tmpdir.rmtree(tmp_path / "a")
+    clone_tree(template, tmp_path / "t")
+    clone_tree(tmp_path / "t" / "d1", tmp_path / "d1")
+    assert (tmp_path / "d1").stat().st_ino == inode
+
+
 def _emptied(t: Path) -> None:
     for n in range(4):
         shutil.rmtree(t / f"d{n}")

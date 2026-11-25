@@ -22,6 +22,7 @@ import os
 from pathlib import Path
 
 import _closure_clones
+import _fixture_copies
 import _quiet_git
 from _clone_copies import install
 from _tree_clone import run_wide
@@ -41,6 +42,7 @@ pytest_plugins = [
 def pytest_configure(config) -> None:
     install()  # shutil's copies are clones (tests/_clone_copies.py, GOH.FSEVQUIET)
     _closure_clones.install()
+    _fixture_copies.install()
     if os.environ.get("PYTEST_DEBUG_TEMPROOT"):  # the run's root (tests/suite_tmp.py)
         run_wide(Path(os.environ["PYTEST_DEBUG_TEMPROOT"]))
         _quiet_git.install(os.environ["PYTEST_DEBUG_TEMPROOT"])  # GOH.FSEVQUIET

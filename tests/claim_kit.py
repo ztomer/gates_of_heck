@@ -25,6 +25,7 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
+from _grown import grow
 from conftest import commit_all, run_goh, stage, write
 
 # The number of derivations (`crates/goh/src/claims/derive.rs::derive`), pinned there by
@@ -78,7 +79,11 @@ TESTS = (
 
 
 def estate(repo: Path) -> Path:
-    """The fixture tree, written, staged and committed."""
+    """The fixture tree, written, staged and committed (once a run: tests/_grown.py)."""
+    return grow(repo, "claim-estate", _estate)
+
+
+def _estate(repo: Path) -> None:
     write(repo, "pkg/roster.py", ROSTER)
     write(repo, "pkg/__init__.py", "")
     write(repo, "pkg/notes.md", "# notes\n\nA file about the package.\n")
@@ -91,7 +96,6 @@ def estate(repo: Path) -> Path:
     stage(repo, "pkg/roster.py", "pkg/__init__.py", "pkg/notes.md", "tests/test_thing.py")
     stage(repo, "tests/nested/test_deep.py", "no_newline.txt", "junk/broken.py")
     commit_all(repo, "estate")
-    return repo
 
 
 def doc(repo: Path, body: str, name: str = "docs/note.md") -> Path:
