@@ -243,7 +243,7 @@ class Repo:
         when = self.env.get(f"GIT_{role}_DATE") or ""
         if when and not re.fullmatch(r"\d{9,} [+-]\d{4}", when):
             raise Declined(when)
-        return f"{name} <{email}> {when or time.strftime('%s %z')}"
+        return f"{name} <{email}> {when or f'{int(time.time())} +0000'}"
 
     def tree_of(self, commit: str) -> str:
         if commit not in _TREES:
