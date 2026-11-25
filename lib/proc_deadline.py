@@ -53,10 +53,11 @@ def expired(max_s: float, data: dict, pid: int) -> str:
     )
 
 
-# THE CLAMP A DEADLINE STRETCHES BY (GOH.CHECKGIVEUP300). A lane or work gate runs under
-# `taskpolicy -c utility` (GOH.LANDSHARE), which the run queue cannot see: x25-35 on a clamped
-# thread where the load average said x3.2 (GOH.SUITEDRIFTBUILD). `goh land --check`'s guard
-# jobs gave up at a fixed 300 s under it. `stretch` times one fixed loop (REFERENCE_CPU_S of one
+# THE SLOWDOWN A DEADLINE STRETCHES BY (GOH.CHECKGIVEUP300). A QoS clamp is invisible to the run
+# queue: under `taskpolicy -c utility` a thread ran x25-35 where the load average said x3.2
+# (GOH.SUITEDRIFTBUILD) and `goh land --check`'s guard jobs gave up at a fixed 300 s. goh sets
+# that clamp only when asked since GOH.QOSCLAMP; a caller may still run under one, and the run
+# queue costs a thread too. `stretch` times one fixed loop (REFERENCE_CPU_S of one
 # core of the owner's box; tests/_drift_guard.py's probe is this same loop) on the caller's
 # thread, the median of STRETCH_SAMPLES, never below 1: what the clamp and the run queue cost now.
 REFERENCE_CPU_S = 0.016

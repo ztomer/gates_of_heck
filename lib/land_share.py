@@ -21,14 +21,26 @@ rest, at least 1 each. With no land-path run admitted the rule is worker_share's
 least one per other gate, so the shares sum to at most the cores whenever the gates fit at one
 core each (beyond that every gate gets 1, as `divide` always did).
 
-THE CLAMP (QoS). A lane- or work-class gate runs under a CPU clamp; the land path, a commit gate
-and a ship never do. Probed 2026-11-21 at load 48-50 on 12P+4E cores, fixed work x8: default
-1.9-5.1 s; `nice 19` 3.0-4.3 s (no effect on macOS); `taskpolicy -c utility` 11.3-34.2 s;
-background 37-60 s. So on macOS the lever is the utility QoS clamp, set at EXEC (taskpolicy's `-c`
-does not apply to a running pid). On Linux it is nice + ionice's lowest best-effort level (a
-cgroup weight needs a delegated cgroup the gate does not own: not used). An OS outside the house
-targets is a hard refusal behind the `GOH_QOS_OS` seam; a missing tool degrades with its reason.
-`GOH_LANE_QOS=off` turns the clamp off (a timing probe that must run at default QoS).
+THE CLAMP (QoS, GOH.QOSCLAMP). macOS sets none on a lane- or work-class gate: the share above is
+the land path's protection. Until 2026-11-25 such a gate ran under `taskpolicy -c utility`. With
+43-62% of the machine idle one CPU loop took 9.8-26.3 s under it against 1.05 s, and the idle
+suite's 17 workers sat runnable at 9% of a core each for 2,117 s. One worker, alone but on a box
+other sessions kept at load 33, 4% idle (12P+4E; mean seconds a unit of CPU / 20 spawns / memory /
+8 threads over 3 rounds; P = its CPU time on P cores; Q = runnable over running):
+
+    default       .085 .031 .106 .036   P .87   Q 1.1   base priority 31
+    nice 10       .086 .031 .103 .034   P .91   Q 1.0   base priority 31
+    nice 19       .084 .050 .106 .035   P .90   Q 1.1   base priority 31
+    tiers -l5-t5  .084 .033 .105 .035   P .90   Q 1.1   base priority 31
+    utility       .228 .188 .460 .151   P .40   Q 3.2   base priority 20: x2.7-6
+
+The clamp prefers E cores rather than confining to them, and waits. `nice` and the tiers leave a
+thread's base priority at 31, so the 2026-11-21 note's 'nice 19: no effect' stands; a task role
+(setpriority's PRIO_DARWIN_ROLE) is not inherited by a child. `GOH_LANE_QOS=utility` asks for the
+clamp by name. On Linux it is nice + ionice's lowest best-effort level, a weight that costs an idle
+box nothing (a cgroup weight needs a cgroup the gate does not own: not used). An OS outside
+the house targets is a hard refusal behind the `GOH_QOS_OS` seam; a missing tool degrades with its
+reason. `GOH_LANE_QOS=off` turns any clamp off (a timing probe that must run at default QoS).
 
 A GATE THAT RUNS NO SUITE (GOH.PREWIDTH). A land's gate whose suite carries the pre-step's verdict
 (tools/pytest.sh) runs only its structural, cargo and canary steps, yet it held an equal share: two
@@ -43,8 +55,9 @@ THE LAND PATH'S SHARE AND THE LANES' CLAMP (GOH.LANDSHARE): while a land-path ga
 a land's pre-step and the lander's pre-land --, `land`, `ship`) is admitted, those split
 `GOH_LAND_SHARE` of the cores (0.75) and every other gate the rest, at least 1 each, read live from
 each held slot's recorded class; a lane/work gate's `tools/load.py 0` command and its
-`tools/pytest.sh` suite exec under `taskpolicy -c utility` (macOS) or nice + ionice (Linux), behind
-the `GOH_QOS_OS` seam; `qos --class C` is the shell's reading.
+`tools/pytest.sh` suite exec under nice + ionice on Linux and at default QoS on macOS
+(`GOH_LANE_QOS=utility` clamps it there), behind the `GOH_QOS_OS` seam; `qos --class C` is the
+shell's reading.
 """
 
 from __future__ import annotations
@@ -66,14 +79,17 @@ import sys
 from collections.abc import Callable
 
 LAND_PATH = frozenset({"pre", "land", "ship"})  # the runs a land waits on (lib/gate_lanes.py)
-CLAMPED = frozenset({"lane", "work"})  # the classes run under the CPU clamp
+CLAMPED = frozenset({"lane", "work"})  # the classes a clamp is for (qos_prefix)
 SHARE_ENV = "GOH_LAND_SHARE"  # the knob: the land path's fraction of the cores, (0, 1]
 SHARE_DEFAULT = (
     0.75  # the plan's start (rules.spd_plan.strategy_20261121): 12 of 16 = the suite's cap
 )
 RESOLVED_ENV = "GOH_SHARE_LAND"  # the fraction as the admission resolved it, for every runner
 CLASS_ENV = "GOH_SHARE_CLASS"  # the class this run's share is counted as (set at admission)
-QOS_ENV = "GOH_LANE_QOS"  # `off` turns the clamp off; anything else (or unset) leaves it on
+QOS_ENV = "GOH_LANE_QOS"  # `off`: no clamp; `utility`: macOS's, by name; unset: the OS's default
+DARWIN_CLAMP = "utility"  # taskpolicy's name for it; macOS runs it only when asked by this name
+LINUX_NICE = ("nice", "-n", "10")  # a weight, so it costs nothing on an idle box
+LINUX_IONICE = ("ionice", "-c", "2", "-n", "7")  # best effort, its lowest level
 OS_ENV = "GOH_QOS_OS"  # the seam: darwin | linux (tests pin both on any box)
 DEFAULT_CLASS = "work"
 WIDTHS = "widths"  # <slots>/widths/<slot name>: `<owner pid>\t<real width>` of a gate with no suite
@@ -242,36 +258,34 @@ def qos_prefix(
     environ: dict[str, str] | None = None,
     which: Callable[[str], str | None] = shutil.which,
 ) -> tuple[list[str], str]:
-    """(argv prefix, why) for a gate of `gate_class`: the clamp a lane/work gate execs under, or []
-    with the reason it runs at default QoS. SystemExit naming the seam on an OS outside the house
-    targets (darwin, linux)."""
+    """(argv prefix, why) for a gate of `gate_class`: the clamp a lane/work gate execs under (Linux
+    by default, macOS when GOH_LANE_QOS names it), or [] with the reason it runs at default QoS.
+    SystemExit naming the seam on an OS outside the house targets (darwin, linux)."""
     env = os.environ if environ is None else environ
     if gate_class not in CLAMPED:
         return (
             [],
             f"class {gate_class}: default QoS (the land path and commit gates are never clamped)",
         )
-    if env.get(QOS_ENV, "").strip() == "off":
+    asked = env.get(QOS_ENV, "").strip()
+    if asked == "off":
         return [], f"class {gate_class}: default QoS ({QOS_ENV}=off)"
     system = env.get(OS_ENV, "").strip() or sys.platform
     if system == "darwin":
+        if asked != DARWIN_CLAMP:
+            return [], (f"class {gate_class}: default QoS -- the share ({SHARE_ENV}) protects the "
+                        f"land path on macOS ({QOS_ENV}={DARWIN_CLAMP} clamps)")  # fmt: skip
         if which("taskpolicy") is None:
             return [], f"class {gate_class}: default QoS -- taskpolicy not found on PATH, no clamp"
-        return ["taskpolicy", "-c", "utility"], f"class {gate_class}: taskpolicy -c utility"
+        why = f"class {gate_class}: taskpolicy -c {DARWIN_CLAMP} ({QOS_ENV}={DARWIN_CLAMP})"
+        return ["taskpolicy", "-c", DARWIN_CLAMP], why
     if system.startswith("linux"):
         if which("nice") is None:
             return [], f"class {gate_class}: default QoS -- nice not found on PATH, no clamp"
-        argv = ["nice", "-n", "10"]
+        argv, io = list(LINUX_NICE), list(LINUX_IONICE)
         if which("ionice") is None:
-            return argv, f"class {gate_class}: nice -n 10 (ionice not found: CPU only)"
-        return [
-            *argv,
-            "ionice",
-            "-c",
-            "2",
-            "-n",
-            "7",
-        ], f"class {gate_class}: nice -n 10 + ionice -c 2 -n 7"
+            return argv, f"class {gate_class}: {' '.join(argv)} (ionice not found: CPU only)"
+        return [*argv, *io], f"class {gate_class}: {' '.join(argv)} + {' '.join(io)}"
     raise SystemExit(
         f"gate QoS: unsupported OS {system!r} -- the house targets are darwin and linux "
         f"({OS_ENV} is the seam)"
@@ -292,10 +306,11 @@ def clamp(
         return command
     prefix, why = qos_prefix(gate_class, env)
     if gate_class in CLAMPED:
-        say(
-            f"load: QoS {why} (GOH.LANDSHARE): a timing-sensitive test under the clamp may need "
-            "wider deadlines when the machine is contended"
+        wider = (
+            ": a timing-sensitive test under the clamp may need wider deadlines when the machine "
+            "is contended"
         )
+        say(f"load: QoS {why} (GOH.LANDSHARE){wider if prefix else ''}")
     return [*prefix, *command]
 
 

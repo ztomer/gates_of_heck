@@ -178,8 +178,8 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller> <class | ""> <max w
     # variables every runner it starts reads. Counted afresh: an inherited share is another gate's.
     goh_workers_export --admitted --dir "$dir" --class "$class" || { err "gate slot: cannot size this gate's workers (lib/worker_share.py)"; exit 1; }
     # THE CLAMP (GOH.LANDSHARE, lib/land_share.py): a lane/work gate's runners exec under the QoS
-    # clamp (macOS `taskpolicy -c utility`, Linux nice + ionice), the land path never. A running
-    # shell cannot be clamped (taskpolicy's -c is exec-only), so its runners prefix GATE_SLOT_QOS
+    # clamp (Linux nice + ionice; macOS none unless GOH_LANE_QOS=utility, GOH.QOSCLAMP), the land
+    # path never. A clamp is set at exec, so this gate's runners prefix GATE_SLOT_QOS
     # (tools/pytest.sh); tools/load.py clamps the command it execs itself.
     local qos_out qos_why qos_word
     qos_out="$("$GOH_PY" -S "$LAND_SHARE_HELPER" qos --class "$class")" \

@@ -77,9 +77,9 @@ MACHINE_SHAPE = {"GOH_GATE_CORES": "16", "GOH_GATE_SLOTS": "2"}
 PINNED_TODAY = "2026-03-04"
 CLOCK = {"GOH_TODAY": PINNED_TODAY}
 # THE CLAMP OFF (GOH.LANDSHARE): a fixture's `load.py 0` or gate takes class `work` and would exec
-# under the lane QoS clamp (lib/land_share.py) -- inside a LAND's suite too, slowing the land path's
-# own tests 6-7x under contention. The suite runs at its gate's QoS, inherited; a test of the clamp
-# turns it on by name.
+# under the lane QoS clamp (lib/land_share.py: Linux's, or the macOS one when asked for) -- inside a
+# LAND's suite too, slowing the land path's own tests. The suite runs at its gate's
+# QoS, inherited; a test of the clamp turns it on by name.
 QOS = {"GOH_LANE_QOS": "off"}
 # THE REMOVABLE CACHE TIER OUT OF REACH (GOH.CACHEEVICT): a gate a test runs asks lib/cache_tier.py
 # for the large tier before cargo; pointed nowhere, no test reads or writes a real /Volumes drive.

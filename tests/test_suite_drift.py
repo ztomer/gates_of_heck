@@ -108,14 +108,14 @@ BURNER = (
 
 
 def test_a_cpu_test_under_the_qos_clamp_is_judged_by_its_cpu_not_the_run_queue(tmp_path) -> None:
-    """GOH.SUITEDRIFTBUILD: a lane or work gate runs under `taskpolicy -c utility` (GOH.LANDSHARE),
-    and the clamp is invisible to the run queue. At a load of 3.2 per core the probe's fixed loop
-    took x25-35 its quiet wall on a clamped thread and x0.9 on a free one, while the run queue said
-    x3.2: test_declared_reads (192 s), the scanner reach test (263.7 s at x2.5) and the Rust floor
-    test (191.4 s at x2.8) went red on the idle suite for the clamp, not their code. A CPU-bound
-    test is judged by the seconds it would take a quiet core (lib/long_pole.py `pole`, the stretch
-    measured on its own thread). The pinned stretch is past any clamp's, so the verdict holds
-    on the clamped box this test itself runs on."""
+    """GOH.SUITEDRIFTBUILD: until GOH.QOSCLAMP a lane or work gate ran under `taskpolicy -c
+    utility`, and the clamp is invisible to the run queue. At a load of 3.2 per core the probe's
+    fixed loop took x25-35 its quiet wall on a clamped thread and x0.9 on a free one, while the
+    run queue said x3.2: test_declared_reads (192 s), the scanner reach test (263.7 s at x2.5)
+    and the Rust floor test (191.4 s at x2.8) went red on the idle suite for the clamp, not
+    their code. A CPU-bound test is judged by the seconds it would take a quiet core
+    (lib/long_pole.py `pole`, the stretch measured on its own thread). The pinned stretch is
+    past any clamp's, so the verdict holds on the clamped box this test itself runs on."""
     r = planted(tmp_path, BURNER, ceiling=0.3, load=1.0, stretch=1000.0)
     assert r.returncode == 0, r.stdout + r.stderr
     r = planted(tmp_path, BURNER, ceiling=0.3, load=1.0)  # the instrument: unclamped, it is red

@@ -28,7 +28,7 @@ import lock_order
 #   pre    a land's pre-step and the lander's pre-land (tools/land.sh `land_pre`, GOH.LANDSHARE):
 #          the PRE lane, PRE_SLOTS of its own (GOH.PREWIDTH), arrival order among them; it is the
 #          LAND PATH -- with `land` and `ship` it takes most of the cores and runs at default QoS
-#          while lane/work gates run clamped (lib/land_share.py). In the short lane a third
+#          while lane/work gates split the rest (lib/land_share.py). In the short lane a third
 #          pre-step started at 4 of 16 workers and ran to its 1500 s deadline with no verdict
 #          (2026-11-21), and two of them held every commit gate out: a third now waits in line
 #   land   a land's gate (lib/land_gate.sh): the long lane, ranked first

@@ -356,11 +356,11 @@ def run_queue(start: float, stop: float) -> float:
     return load_factor(start, stop) / speed_factor()
 
 
-# THE QOS CLAMP (GOH.SUITEDRIFTBUILD). A lane or work gate runs under `taskpolicy -c utility`
-# (GOH.LANDSHARE), which the run queue cannot see: a clamped thread ran the speed loop x25-35 where
-# the run queue said x3.2 (2026-11-24), and CPU-bound tests went red at a tenth of their stretch. A
-# phase is judged by the SMALLER of its wall over the run queue and `pole` (its CPU at the stretch
-# measured on its own thread); a wait spends no CPU, so a leaked child is judged as before.
+# THE QOS CLAMP (GOH.SUITEDRIFTBUILD). Under `taskpolicy -c utility` (every lane or work gate until
+# GOH.QOSCLAMP, by request since) a thread ran the speed loop x25-35 where the run queue said x3.2
+# (2026-11-24), and CPU-bound tests went red at a tenth of their stretch. A phase is judged by the
+# SMALLER of its wall over the run queue and `pole` (its CPU at the stretch measured on its own
+# thread); a wait spends no CPU, so a leaked child is judged as before.
 def judged_s(wall: float, factor: float, pole_s: float) -> float:
     """A phase's seconds against its ceiling: the run queue's reading or the measured one,
     whichever is less."""

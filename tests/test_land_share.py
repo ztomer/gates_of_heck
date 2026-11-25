@@ -1,13 +1,13 @@
 """The land path takes most of the cores and runs at default QoS; lane/work gates split the rest
-under a CPU clamp (GOH.LANDSHARE, lib/land_share.py).
+(GOH.LANDSHARE, lib/land_share.py), clamped on Linux (GOH.QOSCLAMP).
 
 2026-11-21: every admitted gate got `cores // admitted`, so a land's pre-step and the lander's
 pre-land ran at 5 of 16 workers beside lane gates -- 1314 s for one pre-step, then the same set
 again at 5 workers in the lander. Pinned here: the weighted rule and THE BOUND; the live token
 pool moving within one test as a land-path run starts and ends; both admissions (tools/load.py's
 in-process one and the shell's) exporting the weighted share; the pre-step declaring the land
-path's `pre` class; and the clamp -- macOS `taskpolicy -c utility`, Linux nice + ionice, behind
-the GOH_QOS_OS seam -- applied to lane/work runs and never to the land path.
+path's `pre` class; and the clamp -- macOS none unless asked for by name (GOH.QOSCLAMP), Linux
+nice + ionice, behind the GOH_QOS_OS seam -- applied to lane/work runs and never to the land path.
 """
 
 from __future__ import annotations
@@ -232,11 +232,23 @@ def _which(*present: str):
     return lambda name: f"/usr/bin/{name}" if name in present else None
 
 
-def test_lane_and_work_gates_are_clamped_on_macos_and_the_land_path_never() -> None:
-    env = {"GOH_QOS_OS": "darwin"}
+def test_on_macos_a_lane_gate_runs_at_default_qos_and_its_share_protects_the_land_path() -> None:
+    """GOH.QOSCLAMP: `taskpolicy -c utility` ran an idle box's lane suite x3.5-26 slower, so it is
+    asked for by name; `nice` is no lever on macOS (a thread's base priority is 31 at nice 19)."""
+    for qos in ("", "on"):
+        env = {"GOH_QOS_OS": "darwin", "GOH_LANE_QOS": qos}
+        for klass in ("lane", "work"):
+            argv, why = land_share.qos_prefix(klass, env, _which("taskpolicy", "nice"))
+            assert argv == [], (klass, qos)
+            assert "default QoS" in why and "GOH_LAND_SHARE" in why, why
+
+
+def test_the_macos_clamp_is_asked_for_by_name_and_never_touches_the_land_path() -> None:
+    env = {"GOH_QOS_OS": "darwin", "GOH_LANE_QOS": "utility"}
     for klass in ("lane", "work"):
-        argv, _ = land_share.qos_prefix(klass, env, _which("taskpolicy"))
+        argv, why = land_share.qos_prefix(klass, env, _which("taskpolicy"))
         assert argv == ["taskpolicy", "-c", "utility"], klass
+        assert "GOH_LANE_QOS=utility" in why, why
     for klass in ("pre", "land", "ship", "short"):
         argv, why = land_share.qos_prefix(klass, env, _which("taskpolicy"))
         assert argv == [] and "default QoS" in why, klass
@@ -252,7 +264,8 @@ def test_the_linux_seam_lowers_nice_and_io_and_never_touches_the_land_path() -> 
 
 
 def test_a_missing_tool_degrades_with_its_reason_and_an_unsupported_os_refuses() -> None:
-    argv, why = land_share.qos_prefix("lane", {"GOH_QOS_OS": "darwin"}, _which())
+    asked = {"GOH_QOS_OS": "darwin", "GOH_LANE_QOS": "utility"}
+    argv, why = land_share.qos_prefix("lane", asked, _which())
     assert argv == [] and "taskpolicy not found" in why
     argv, why = land_share.qos_prefix("lane", {"GOH_QOS_OS": "darwin", "GOH_LANE_QOS": "off"})
     assert argv == [] and "GOH_LANE_QOS=off" in why
@@ -274,10 +287,12 @@ def _fake_tools(tmp_path: Path) -> Path:
     return bin_dir
 
 
-def _load_run(tmp_path: Path, qos_os: str, **extra: str) -> subprocess.CompletedProcess:
+def _load_run(
+    tmp_path: Path, qos_os: str, qos: str = "on", **extra: str
+) -> subprocess.CompletedProcess:
     bin_dir = _fake_tools(tmp_path)
     env = _admit_env(
-        tmp_path, GOH_LOAD_DIR=str(tmp_path / "load"), GOH_QOS_OS=qos_os, GOH_LANE_QOS="on",
+        tmp_path, GOH_LOAD_DIR=str(tmp_path / "load"), GOH_QOS_OS=qos_os, GOH_LANE_QOS=qos,
         PATH=f"{bin_dir}:{os.environ['PATH']}", **extra,
     )  # fmt: skip
     work = tmp_path / "work"
@@ -289,13 +304,13 @@ def _load_run(tmp_path: Path, qos_os: str, **extra: str) -> subprocess.Completed
     )  # fmt: skip
 
 
-CLAMPS = [("darwin", "taskpolicy", "-c utility"), ("linux", "nice", "-n 10")]
+CLAMPS = [("darwin", "utility", "taskpolicy", "-c utility"), ("linux", "on", "nice", "-n 10")]
 
 
 @pytest.mark.load_sensitive  # load.py waits for its admission (--wait-max)
-@pytest.mark.parametrize(("qos_os", "tool", "flags"), CLAMPS)
-def test_a_work_class_load_run_execs_under_the_clamp(tmp_path, qos_os, tool, flags) -> None:
-    got = _load_run(tmp_path, qos_os)
+@pytest.mark.parametrize(("qos_os", "qos", "tool", "flags"), CLAMPS)
+def test_a_work_class_load_run_execs_under_the_clamp(tmp_path, qos_os, qos, tool, flags) -> None:
+    got = _load_run(tmp_path, qos_os, qos)
     assert got.returncode == 0, got.stdout + got.stderr
     argv = (tmp_path / f"{tool}.argv").read_text()
     assert argv.startswith(flags) and "/usr/bin/true" in argv, argv
@@ -303,9 +318,18 @@ def test_a_work_class_load_run_execs_under_the_clamp(tmp_path, qos_os, tool, fla
 
 
 @pytest.mark.load_sensitive  # load.py waits for its admission (--wait-max)
+def test_a_work_class_load_run_on_macos_execs_unclamped_and_says_why(tmp_path) -> None:
+    got = _load_run(tmp_path, "darwin")
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert not list(tmp_path.glob("*.argv")), [p.read_text() for p in tmp_path.glob("*.argv")]
+    said = got.stdout + got.stderr
+    assert "default QoS" in said and "wider deadlines" not in said, said
+
+
+@pytest.mark.load_sensitive  # load.py waits for its admission (--wait-max)
 @pytest.mark.parametrize("qos_os", ["darwin", "linux"])
 def test_a_land_path_load_run_never_execs_under_the_clamp(tmp_path, qos_os) -> None:
-    got = _load_run(tmp_path, qos_os, GOH_GATE_CLASS="land")
+    got = _load_run(tmp_path, qos_os, "utility", GOH_GATE_CLASS="land")
     assert got.returncode == 0, got.stdout + got.stderr
     assert not list(tmp_path.glob("*.argv")), [p.read_text() for p in tmp_path.glob("*.argv")]
 

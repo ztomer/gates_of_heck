@@ -29,8 +29,8 @@ import time
 
 from _drift_guard import load_factor, thread_stretch
 
-# THE QOS CLAMP (GOH.SUITEDRIFTBUILD). A lane or work gate's suite runs under `taskpolicy -c
-# utility`, which the run queue cannot see: x25-35 on a clamped thread where `load_factor` said
+# THE QOS CLAMP (GOH.SUITEDRIFTBUILD). Under `taskpolicy -c utility` (every lane or work gate until
+# GOH.QOSCLAMP, by request since) a thread ran x25-35 where the run queue, `load_factor`, said
 # x3.2. Every give-up here stretches by the larger of the run queue and the stretch last measured
 # on this process's own thread (`thread_stretch`).
 
