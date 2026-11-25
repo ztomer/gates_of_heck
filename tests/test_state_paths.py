@@ -24,7 +24,7 @@ def host(monkeypatch, tmp_path: Path) -> Path:
     for var in ("GOH_STATE_ROOT", "GOH_REPOS_ROOT", "GOH_LOOP_QUEUE", "GOH_LANDQ_DIR", "GOH_DB",
                 "GOH_LOOPCTL", "GOH_SEED_DIR", "GOH_SHIP_DIR", "XDG_STATE_HOME"):  # fmt: skip
         monkeypatch.delenv(var, raising=False)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("HOME", str(tmp_path / "hm"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "conf"))
     return tmp_path
 
@@ -36,7 +36,7 @@ def conf(host: Path, text: str) -> None:
 
 
 def test_the_defaults_are_under_the_home_and_xdg_moves_the_state(host: Path, monkeypatch):
-    home = host / "home"
+    home = host / "hm"
     assert state_paths.state_root() == home / ".local/state/goh"
     assert state_paths.repos_root() == home / "Projects"
     assert state_paths.loop_queue() == home / "Projects/.loop/queue.json"
@@ -59,14 +59,14 @@ def test_the_config_names_the_roots_every_seam_defaults_to_and_the_environment_w
     assert ship_records.ship_dir() == host / "s/ship"
     assert state_paths.landq_dir() == host / "s/landq"
     assert state_paths.seed_dir() == host / "s/seeds"
-    assert state_paths.repos_root() == host / "home/src"
-    assert state_paths.loopctl() == host / "home/src/.loop/tools/loopctl.py"
+    assert state_paths.repos_root() == host / "hm/src"
+    assert state_paths.loopctl() == host / "hm/src/.loop/tools/loopctl.py"
     assert state_paths.loop_queue() == Path("/q/queue.json")
     monkeypatch.setenv("GOH_STATE_ROOT", str(host / "e"))
     monkeypatch.setenv("GOH_REPOS_ROOT", "~/r")
     monkeypatch.setenv("GOH_LOOP_QUEUE", "q.json")
     assert state_paths.state_root() == host / "e"
-    assert state_paths.repos_root() == host / "home/r"
+    assert state_paths.repos_root() == host / "hm/r"
     assert state_paths.loop_queue() == Path("q.json")
 
 
@@ -96,15 +96,15 @@ def test_a_suite_never_opens_the_database_the_real_homes_config_names(host: Path
 
 
 def roots(host: Path, monkeypatch) -> None:
-    monkeypatch.setenv("GOH_STATE_ROOT", str(host / "home/state"))
-    monkeypatch.setenv("GOH_REPOS_ROOT", str(host / "home/src"))
+    monkeypatch.setenv("GOH_STATE_ROOT", str(host / "hm/state"))
+    monkeypatch.setenv("GOH_REPOS_ROOT", str(host / "hm/src"))
 
 
 def test_a_path_goes_to_its_token_and_back_the_longest_root_first(host: Path, monkeypatch):
     roots(host, monkeypatch)
-    for path, token in (("home/state/ship/a.json", "$STATE/ship/a.json"), ("home/state", "$STATE"),
-                        ("home/src/group/app", "$REPOS/group/app"), ("home/x", "$HOMEDIR/x"),
-                        ("home/state-old/a", "$HOMEDIR/state-old/a")):  # fmt: skip
+    for path, token in (("hm/state/ship/a.json", "$STATE/ship/a.json"), ("hm/state", "$STATE"),
+                        ("hm/src/group/app", "$REPOS/group/app"), ("hm/x", "$HOMEDIR/x"),
+                        ("hm/state-old/a", "$HOMEDIR/state-old/a")):  # fmt: skip
         full = str(host / path)
         assert state_paths.encode(full) == token
         assert state_paths.decode(token) == full
@@ -125,7 +125,7 @@ def test_a_root_that_is_a_link_is_the_same_root(host: Path, monkeypatch):
 
 def test_a_repo_goes_to_its_key_and_back_under_every_spelling(host: Path, monkeypatch):
     roots(host, monkeypatch)
-    home = host / "home"
+    home = host / "hm"
     for path, key in ((home / "src/app", "app"), (home / "src/group/app", "group/app"),
                       (home / "tools/x", "~/tools/x")):  # fmt: skip
         assert state_paths.repo_key(str(path)) == key
@@ -141,7 +141,7 @@ def test_a_repo_goes_to_its_key_and_back_under_every_spelling(host: Path, monkey
 
 def test_another_home_reads_the_same_rows_at_its_own_paths(host: Path, monkeypatch):
     roots(host, monkeypatch)
-    rec = {"repo": str(host / "home/src/app"), "log": str(host / "home/state/l.log")}
+    rec = {"repo": str(host / "hm/src/app"), "log": str(host / "hm/state/l.log")}
     con = sqlite3.connect(":memory:")
     con.execute("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT)")
     assert state_paths.put(con, "lands", rec) == rec  # meta.paths unset: today's form
@@ -162,7 +162,7 @@ def test_a_token_in_text_is_left_alone(host: Path, monkeypatch):
     assert not state_paths.tokens(con)  # a file from before `meta`
     con.execute("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT)")
     con.execute("INSERT INTO meta VALUES ('paths', 'token')")
-    said = f"{host}/home/state/a.log is gone"
+    said = f"{host}/hm/state/a.log is gone"
     rec = {"why": "$STATE/a.log is gone", "guards": [said], "cov_risk": {"said": said}, "log": 5,
            "red_logs": "$STATE"}  # fmt: skip
     assert state_paths.got("lands", rec) == rec

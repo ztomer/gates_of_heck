@@ -91,6 +91,13 @@ pub const SHAPES: Declared = Declared {
             fixture: ("tests/test_pins.py", "FIXTURE = \"\"\"\nimage: foo:latest\n\"\"\"\n"),
         },
         Shape {
+            name: "a SQL query's FROM",
+            path: r"\.sql$",
+            line: r"^\s*FROM\s",
+            verdict: Verdict::OutOfScope("a FROM clause names a table, not an image; nothing builds a .sql file"),
+            fixture: ("db/0001_views.sql", "CREATE VIEW v AS SELECT a\nFROM readings\nWHERE a > 0;\n"),
+        },
+        Shape {
             name: "data: a patch, a log, a recorded output",
             path: DATA,
             line: "",
