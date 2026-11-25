@@ -11,7 +11,8 @@ import pytest
 from _fixture_copies import FIXTURES
 
 SRC = Path(FIXTURES) / "screen_presentation"
-TREE_READS = ("tests/fixtures/screen_presentation/",)
+SMALL = Path(FIXTURES) / "commit_class"  # two files: the options' fixture
+TREE_READS = ("tests/fixtures/screen_presentation/", "tests/fixtures/commit_class/")
 
 
 def _state(top: Path) -> dict[str, tuple]:
@@ -33,14 +34,16 @@ def test_a_copy_is_the_directorys_and_each_tests_own(tmp_path: Path) -> None:
 
 
 def test_what_is_there_an_option_or_another_tree_is_shutils(tmp_path: Path) -> None:
+    """Read on a two-file fixture: the fixture of 25 copied twice more here made 158 file events at
+    a land's load, over the file's ceiling (GOH.FIXCOPYEVENTS); the first test copies that one."""
     (tmp_path / "there").mkdir()
     with pytest.raises(FileExistsError):
-        shutil.copytree(SRC, tmp_path / "there")
-    shutil.copytree(SRC, tmp_path / "there", dirs_exist_ok=True)
-    assert _state(tmp_path / "there") == _state(SRC)
-    drop = min(_state(SRC))
-    shutil.copytree(SRC, tmp_path / "less", ignore=shutil.ignore_patterns(drop))
-    assert drop not in _state(tmp_path / "less")
+        shutil.copytree(SMALL, tmp_path / "there")
+    shutil.copytree(SMALL, tmp_path / "there", dirs_exist_ok=True)
+    assert _state(tmp_path / "there") == _state(SMALL)
+    drop = min(_state(SMALL))
+    shutil.copytree(SMALL, tmp_path / "less", ignore=shutil.ignore_patterns(drop))
+    assert drop not in _state(tmp_path / "less") and len(_state(tmp_path / "less")) == 1
     (tmp_path / "own").mkdir()
     (tmp_path / "own" / "f").write_text("1")
     shutil.copytree(tmp_path / "own", tmp_path / "x")
