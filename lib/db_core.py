@@ -322,6 +322,7 @@ def _opened(
             f"({why_not_of_record()}): only main's code creates the shared file"
         )
     p.parent.mkdir(parents=True, exist_ok=True)
+    fresh = fresh and not db_settings.seed(seam.schema, p, ROOT)
     con = sqlite3.connect(p, isolation_level=None, timeout=busy_ms(seam) / 1000)
     refusal: NewerFile | None = None
     try:
@@ -336,6 +337,8 @@ def _opened(
             con = _ro(p, seam)
         elif record:
             migrate(con, seam)
+            if fresh:
+                db_settings.keep(seam.schema, p, ROOT)
         yield con, refusal
     finally:
         con.close()

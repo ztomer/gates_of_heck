@@ -44,13 +44,16 @@ def by_test(per_dir: dict[str, int], dirs: dict[str, str]) -> dict[str, int]:
 
 
 def readings(events: dict[str, int], size: dict[str, int], ran: set[str]) -> dict[str, dict]:
-    """{file: {events, bytes, and each one's worst test}} of the files of `ran` (node ids)."""
-    out: dict[str, dict] = {
-        f: {"events": 0, "bytes": 0} for f in {node.split("::")[0] for node in ran}
-    }
+    """{file: {events, bytes, each one's worst test, and over the file `tests`, `all_events` and
+    `all_bytes`: what the run paid for it}} of the files of `ran` (node ids)."""
+    out: dict[str, dict] = {}
+    for node in {*ran, *events, *size}:
+        zero = {"events": 0, "bytes": 0, "all_events": 0, "all_bytes": 0, "tests": 0}
+        out.setdefault(node.split("::")[0], zero)["tests"] += node in ran
     for kind, per in (("events", events), ("bytes", size)):
         for node, n in per.items():
-            row = out.setdefault(node.split("::")[0], {"events": 0, "bytes": 0})
+            row = out[node.split("::")[0]]
+            row[f"all_{kind}"] += n
             if n > row[kind]:
                 row[kind], row[f"{kind}_test"] = n, node
     return out

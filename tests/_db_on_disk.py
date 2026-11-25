@@ -21,6 +21,9 @@ from pathlib import Path
 import pytest
 
 ENV = "GATES_OF_HECK_DB_THROWAWAY"  # lib/db_settings.py THROWAWAY_ENV
+SEEDS = "GATES_OF_HECK_DB_SEEDS"  # lib/db_settings.py SEED_ENV
+# The tests of how a file is made and migrated: each makes its own, as production does.
+MAKERS = ("test_db_",)
 
 
 @functools.cache
@@ -33,6 +36,8 @@ def pytest_configure(config) -> None:
     root = os.environ.get("PYTEST_DEBUG_TEMPROOT")
     if root:  # an outer run's, when this is a session its test started: one mode for one file
         os.environ.setdefault(ENV, root)
+        seeds = os.environ.setdefault(SEEDS, os.path.join(root, "goh-db-seeds"))
+        os.makedirs(seeds, exist_ok=True)
 
 
 _HELD: list[sqlite3.Connection] = []
@@ -67,3 +72,5 @@ def pytest_unconfigure(config) -> None:
 def _db_journal(request, monkeypatch):
     if request.node.nodeid.split("[")[0] in on_disk():
         monkeypatch.delenv(ENV, raising=False)
+    if request.node.nodeid.rsplit("/", 1)[-1].startswith(MAKERS):
+        monkeypatch.delenv(SEEDS, raising=False)

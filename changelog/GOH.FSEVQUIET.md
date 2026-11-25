@@ -9,3 +9,4 @@
 * GOH.FSEVQUIET: a static gate (`tests/disk_shapes.py`) refuses a new raw on-disk sqlite database or clone of goh in a test file, unless `tests/disk_shapes.json` lists it with a reason; today's 48 only shrink.
 * GOH.FSEVQUIET: every test file is judged by its worst test's file events and bytes left written, in a partial run too (`tests/_fs_ceilings.py`): a new file at 150 events and 1 MB, today's files at 2,500 and 20 MB, and 14 named exceptions by lists that only shrink; `python3 tests/_fs_ceilings.py REPORT` shrinks them from a whole run.
 * GOH.FSEVQUIET: the suite home's databases are held open, so their journal files are made once a run, and the workers' xdist group maps are one file, not two a worker.
+* GOH.FSEVQUIET: a test's fresh goh.db is a clone of the run's first one of that schema (`lib/db_settings.py` `seed`): 384 KB written became 32 KB, and 260 ms became 8 ms; the byte meter reads a clone written to by its own blocks, not its whole size.

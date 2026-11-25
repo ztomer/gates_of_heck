@@ -106,9 +106,12 @@ def test_a_tests_events_are_its_own_dirs_never_a_nested_sessions() -> None:
     events = by_test({"g/test_a0": 3, "g/test_a1": 4, "g/x0": 9}, dirs)
     assert events == {"t.py::a[0]": 3, "t.py::a[1]": 4}
     assert readings(events, {"t.py::a[0]": 7}, {"t.py::a[0]", "u.py::b"}) == {
-        "t.py": {"events": 4, "events_test": "t.py::a[1]", "bytes": 7, "bytes_test": "t.py::a[0]"},
-        "u.py": {"events": 0, "bytes": 0},
-    }
+        "t.py": {
+            "events": 4, "events_test": "t.py::a[1]", "bytes": 7, "bytes_test": "t.py::a[0]",
+            "all_events": 7, "all_bytes": 7, "tests": 1,
+        },
+        "u.py": {"events": 0, "bytes": 0, "all_events": 0, "all_bytes": 0, "tests": 1},
+    }  # fmt: skip
 
 
 def test_the_lists_name_only_files_that_stand_and_only_shrink() -> None:

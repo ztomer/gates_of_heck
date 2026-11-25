@@ -69,6 +69,26 @@ def test_a_clone_of_a_file_outside_wrote_no_bytes_and_one_made_inside_is_counted
 
 
 @darwin
+def test_a_big_clone_with_one_block_written_wrote_that_block(tmp_path: Path) -> None:
+    """A test's goh.db is a clone of the run's (lib/db_settings.py `seed`), a row added to it."""
+    src = tmp_path / "src"
+    src.write_bytes(os.urandom(400_000))
+    mine = tmp_path / "mine"
+    mine.mkdir()
+    clone_tree(src, mine / "db")
+    with (mine / "db").open("r+b") as f:
+        f.write(b"one row")
+        os.fsync(f.fileno())
+    wrote, cloned = written(mine)
+    assert wrote + cloned == 400_000 and 0 < wrote <= 64_000, (wrote, cloned)
+    clone_tree(mine / "db", mine / "copy")  # within the tmp_path: the original is counted in full
+    with (mine / "copy").open("r+b") as f:
+        f.write(b"another")
+        os.fsync(f.fileno())
+    assert written(mine)[0] >= wrote
+
+
+@darwin
 def test_the_device_counter_reads() -> None:
     n = device_bytes()
     assert n is not None and n > 0

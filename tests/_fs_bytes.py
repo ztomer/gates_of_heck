@@ -7,10 +7,14 @@ process that runs tests, what a test's own tmp_path holds when its teardown star
 * `cloned`: the size of those that are clones of a file OUTSIDE it (clonefile(2): a template's),
   which wrote metadata only. A clone is told by its clone id's reference count being more than the
   files of the tmp_path that carry the id; clones made within it are counted once, as bytes.
+  A clone written to since has an id of its own: the blocks it shares still (its size less
+  ATTR_CMNEXT_PRIVATESIZE) are cloned, the rest bytes.
 
-A lower bound by construction: a file the test wrote and removed, or wrote over, and whatever it
-wrote outside its tmp_path, is in `device_bytes` only -- the whole machine's write counters
-(IOBlockStorageDriver) over the run. No process's rusage: it loses the children, which write most.
+A lower bound by construction: a file copied within the tmp_path whose copy was then written to (the
+two share what neither wrote, and it reads as cloned), a file the test wrote and removed, or wrote
+over, and whatever it wrote outside its tmp_path, is in `device_bytes` only -- the whole machine's
+write counters (IOBlockStorageDriver) over the run. No process's rusage: it loses the children,
+which write most.
 On only where _fs_churn counts; xdist workers hand their sums to the controller when they go down.
 Pinned by tests/test_fs_bytes.py.
 """
@@ -39,7 +43,7 @@ DIRS: dict[str, str] = {}  # a test's tmp_path, as lib/fs_events.py `own_dir` sp
 
 # <sys/attr.h>: getattrlist(2) with the extended common attributes.
 _FSOPT = 0x1 | 0x20  # NOFOLLOW | ATTR_CMN_EXTENDED
-_CLONEID, _CLONE_REFCNT = 0x100, 0x1000
+_PRIVATESIZE, _CLONEID, _CLONE_REFCNT = 0x8, 0x100, 0x1000
 
 
 class _AttrList(ctypes.Structure):
@@ -51,18 +55,19 @@ class _AttrList(ctypes.Structure):
 
 
 _LIBC = ctypes.CDLL(None, use_errno=True) if sys.platform == "darwin" else None
-_WANT = _AttrList(5, 0, 0, 0, 0, 0, _CLONEID | _CLONE_REFCNT)
+_WANT = _AttrList(5, 0, 0, 0, 0, 0, _PRIVATESIZE | _CLONEID | _CLONE_REFCNT)
 _BUF = ctypes.create_string_buffer(64)
 
 
-def clone_of(path: str) -> tuple[int, int]:
-    """(clone id, files that share it) of `path`; (0, 1) where the filesystem has no clones."""
+def clone_of(path: str) -> tuple[int, int, int | None]:
+    """(clone id, files that share it, bytes on disk no other file shares) of `path`; (0, 1, None)
+    where the filesystem has no clones."""
     if _LIBC is None:
-        return 0, 1
+        return 0, 1, None
     if _LIBC.getattrlist(os.fsencode(path), ctypes.byref(_WANT), _BUF, 64, _FSOPT) != 0:
-        return 0, 1
-    size, ident, refs = struct.unpack_from("=IQI", _BUF.raw)
-    return (ident, refs) if size >= 16 else (0, 1)
+        return 0, 1, None
+    size, own, ident, refs = struct.unpack_from("=IqQI", _BUF.raw)
+    return (ident, refs, own) if size >= 24 else (0, 1, None)
 
 
 def written(root: Path | str) -> tuple[int, int]:
@@ -80,12 +85,14 @@ def written(root: Path | str) -> tuple[int, int]:
             if not stat.S_ISREG(st.st_mode) or not st.st_size or st.st_ino in inodes:
                 continue
             inodes.add(st.st_ino)
-            ident, refs = clone_of(path)
+            ident, refs, own = clone_of(path)
             if ident and refs > 1:
                 of = shared[ident]
                 of[0], of[1], of[2] = max(of[0], st.st_size), refs, of[2] + 1
-            else:
-                total += st.st_size
+            else:  # a small file's bytes live in its inode: its private size is 0, its size written
+                part = st.st_size if not own or not ident else min(own, st.st_size)
+                total += part
+                cloned += st.st_size - part
     for size, refs, here in shared.values():
         if refs > here:
             cloned += size * here
