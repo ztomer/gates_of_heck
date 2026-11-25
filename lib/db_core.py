@@ -210,10 +210,8 @@ def busy_ms(seam: Seam) -> int:
 
 
 def throwaway(p: Path, env: Mapping[str, str] | None = None) -> bool:
-    """P is a test's own file, under the suite run's root (GOH.FSEVQUIET): it keeps its journal in
-    memory, syncs nothing and has small pages. A WAL file's -wal and -shm are made and removed at
-    every open, and a 4 KiB page per table of every migration was the largest file a test left.
-    Never a shared file, nor the suite home's. A test of WAL, of locking or of a crash clears it."""
+    """P is a test's own file, under the suite run's root (tests/_db_on_disk.py): it journals in
+    memory, syncs nothing and has small pages. Never a shared file, nor the suite home's."""
     root = (os.environ if env is None else env).get(THROWAWAY_ENV)
     return bool(root) and Path(os.path.realpath(p)).is_relative_to(os.path.realpath(root))
 

@@ -80,6 +80,9 @@
   "test_shell_verdicts_db.py": {
    "sqlite": 1
   },
+  "test_spawn_items.py": {
+   "sqlite": 1
+  },
   "test_state_columns.py": {
    "sqlite": 1
   },
