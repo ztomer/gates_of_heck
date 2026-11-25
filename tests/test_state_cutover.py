@@ -115,18 +115,28 @@ def run() -> list[str]:
     return said
 
 
-def decoded(con: sqlite3.Connection) -> str:
+def decoded(con: sqlite3.Connection) -> dict[str, list[str]]:
     """Every row as its reader hands it on, the paths of this host."""
     out = {}
-    for name, got in read_all(con).items():
+    for name, got in read_all(con, os.environ["HOME"]).items():
         docs = [d[-1] if isinstance(d, tuple) and name != "commit_gated" else d for d in got]
-        out[name] = [state_paths.got(name, d) for d in docs]
-    return json.dumps(out, sort_keys=True)
+        out[name] = [json.dumps(state_paths.got(name, d), sort_keys=True) for d in docs]
+    assert len(out["lands"]) >= 2
+    return out
+
+
+def compared(home: str, after: sqlite3.Connection) -> tuple[dict, dict]:
+    """(what there was before, what is in AFTER), but for what the cutover says it changes."""
+    before = filled(home)
+    land_columns.add_cause(before, home + "/q", "1-RED", LAND["red_cause"], lambda _: AT)
+    for c in (before, after):
+        c.execute("UPDATE lands SET rest = '{}'")
+        c.execute("DELETE FROM spawn_lists WHERE value = 'OLD.ITEM'")
+    with contextlib.closing(before):
+        return decoded(before), decoded(after)
 
 
 def test_the_whole_command_then_nothing_to_do(con, home, letters, monkeypatch) -> None:
-    before = filled(home)
-    land_columns.add_cause(before, home + "/q", "1-RED", LAND["red_cause"], lambda _: AT)
     items = {n for (n,) in con.execute("SELECT n FROM agent_spawns WHERE item IS NOT NULL")}
     said = run()
     assert state_cutover.plan(con) in ([], ["vacuum"]) and state_shape.fence(con) is None
@@ -135,10 +145,8 @@ def test_the_whole_command_then_nothing_to_do(con, home, letters, monkeypatch) -
         "promote: 1 spawns' items"]  # fmt: skip
     assert [(t, r["run"], r["slot_s"]) for t, r, _ in letters] == [("lands", "1-RED", "soon")]
     assert state_columns.check(con) == [] and state_rekey.left(con) == {}
-    for c in (before, con):  # what the cutover says differs on purpose
-        c.execute("UPDATE lands SET rest = '{}'")
-        c.execute("DELETE FROM spawn_lists WHERE value = 'OLD.ITEM'")
-    assert decoded(con) == decoded(before)
+    before, after = compared(home, con)
+    assert after == before
     assert items and con.execute("SELECT count(*) FROM commit_gated").fetchone() == (1,)
     monkeypatch.setattr(state_cutover, "plan", lambda _: [])
     assert run() == ["done already: nothing to do"]
@@ -266,17 +274,23 @@ def test_the_purge_only_after_its_contract(con, home, letters, tmp_path, monkeyp
 # -- the kills, on one file ------------------------------------------------------------------------
 
 KILL = """
-import os, signal, sys
+import contextlib, os, signal, sys
 sys.path[:0] = [sys.argv[1], sys.argv[2]]
-import state_cutover, state_rekey, state_strip
+import goh_db, state_cutover, state_rekey, state_strip
 at, left = sys.argv[3], [1]
 def die(*_): os.kill(os.getpid(), signal.SIGKILL)
 state_cutover.passed = lambda step: die() if step == at else None
 if at.startswith("strip-"):
-    batch, left[0] = state_strip._batch, int(at[6:])
+    batch, left[0], real = state_strip._batch, int(at[6:]), goh_db.transaction
+    @contextlib.contextmanager
+    def dying(*a):  # the batch's statements are done and its COMMIT is not
+        with real(*a) as con:
+            yield con
+            die()
     def counted(*a):
         left[0] -= 1
-        return batch(*a) if left[0] else die()
+        goh_db.transaction = goh_db.transaction if left[0] else dying
+        return batch(*a)
     state_strip._batch = counted
 if at == "in-rekey": state_rekey._kv = die
 state_cutover.run(lambda said: print(said, flush=True))
@@ -308,8 +322,7 @@ def probe(q: Path, n: int) -> None:
 def test_killed_at_every_point_it_goes_on_and_loses_nothing(home) -> None:
     with contextlib.closing(filled(home)) as mem:
         goh_db.path().parent.mkdir(parents=True)
-        with contextlib.closing(sqlite3.connect(goh_db.path())) as out:
-            mem.backup(out)
+        goh_db.path().write_bytes(mem.serialize())
     q = Path(home) / "q2"
     env = hermetic_env(GOH_DB=str(goh_db.path()), HOME=home)
     seen: list[str] = []
@@ -334,9 +347,14 @@ def test_killed_at_every_point_it_goes_on_and_loses_nothing(home) -> None:
             0
         ]
         assert (ours, spilled) == (len(POINTS), len(POINTS))
+        with contextlib.closing(sqlite3.connect(":memory:")) as copy:
+            con.backup(copy)
+            before, after = compared(home, copy)
         assert len(con.execute("SELECT 1 FROM agent_spawns").fetchall()) == 452 + len(POINTS)
         assert {"OLD.ITEM"} <= {v for (v,) in con.execute("SELECT value FROM spawn_lists")}
         red = con.execute("SELECT red_class FROM lands WHERE run = '1-RED'").fetchone()
     assert red == (LAND["red_cause"]["cause"],)
     assert {r["table"] for r in hook_ledgers.dead()} == {"lands"}
     assert hook_ledgers.candidates() == [CANDIDATE] and state_strip.KEPT
+    lost = {t: [d for d in docs if d not in after[t]] for t, docs in before.items()}
+    assert not any(lost.values()), lost

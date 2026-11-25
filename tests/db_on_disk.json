@@ -9,5 +9,5 @@
  "tests/test_landq_db.py::test_a_kill_after_the_enqueue_filed_leaves_the_request_pending_only": "crash recovery is the subject",
  "tests/test_landq_db.py::test_a_kill_after_the_land_record_leaves_the_request_done_only": "crash recovery is the subject",
  "tests/test_state_backfill.py::test_a_kill_then_a_run_is_one_clean_run": "crash recovery is the subject",
- "tests/test_state_strip.py::test_a_kill_then_a_run_is_one_clean_run": "crash recovery is the subject"
+ "tests/test_state_cutover.py::test_killed_at_every_point_it_goes_on_and_loses_nothing": "crash recovery is the subject"
 }

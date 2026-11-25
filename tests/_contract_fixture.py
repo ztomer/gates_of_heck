@@ -4,7 +4,7 @@ the rows read back, and the contracts 0017 to 0020 as `goh state contract` runs 
     fenced(con)          a cutover's fence put up
     contracts(con, *n)   those numbers applied, each in one transaction
     write_all(con)       one whole document through each table's one writer
-    read_all(con)        {table: what its one reader gives}
+    read_all(con, root)  {table: what its one reader gives}
 """
 
 from __future__ import annotations
@@ -87,9 +87,9 @@ def write_all(con: sqlite3.Connection, root: str = "", runs: bool = True) -> Non
     small_stores.gated_row(con, {"tree": "t0", "repo": f"{root}/r", "at": LAND["at"]})
 
 
-def read_all(con: sqlite3.Connection) -> dict[str, list]:
+def read_all(con: sqlite3.Connection, root: str = "") -> dict[str, list]:
     out: dict[str, list] = {
-        "lands": list(land_columns.read(con, "/q").values()),
+        "lands": list(land_columns.read(con, root + "/q").values()),
         "ships": ship_columns.read(con),
         "ship_pins": ship_columns.read_pins(con),
         "agent_spawns": spawn_columns.read(con),

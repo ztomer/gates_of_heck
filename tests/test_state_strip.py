@@ -14,14 +14,11 @@ import ship_records
 import state_backfill
 import state_columns
 import state_strip
-from _columns_fixture import LAND, PINS, RESULT, SHIP, copied, dump, killed, old_file
-
-ON = "m.CONTRACT = 14"  # a number this goh ships stands for the contract it does not yet
-
-KEYED = "lambda path: path.removeprefix('/r/')"  # a repo's key as S7's codec gives it
+from _columns_fixture import LAND, PINS, RESULT, SHIP, dump, old_file
 
 
 def key(path: str) -> str:
+    """A repo's key as the cutover's codec gives it."""
     return path.removeprefix("/r/")
 
 
@@ -108,18 +105,6 @@ def test_a_row_that_differs_or_was_never_filled_stays_whole_and_is_named(db, on)
     with goh_db.ro() as con:
         row = con.execute("SELECT body FROM lands WHERE run = '3-old'").fetchone()
     assert json.loads(row[0]) == {"at": LAND["at"], "item": "A.B", "pre_s": 1.5}
-
-
-# each table takes one transaction that strips and one that finds no more; the spawns 200, 200, 50
-@pytest.mark.parametrize("nth", [1, 3, 7, 8, 9])
-def test_a_kill_then_a_run_is_one_clean_run(db, on, tmp_path, monkeypatch, nth) -> None:
-    clean = copied(tmp_path / "clean" / "goh.db")
-    killed("state_strip", nth, ON, KEYED)
-    assert any(map(left, state_columns.TABLES)) and (dump(db) != dump(clean)) == (nth > 1)
-    n, whole = state_strip.run(key)
-    assert n > 0 and whole == [] and not any(map(left, state_columns.TABLES))
-    monkeypatch.setenv("GOH_DB", str(clean))
-    assert state_strip.run(key) == (456, []) and dump(db) == dump(clean)
 
 
 def test_the_command(db, on, capsys) -> None:
