@@ -86,7 +86,8 @@ def repo(tmp_path: Path) -> Path:
 
 def _gate(repo: Path, gates: Path, goh: Path, fake: Path) -> str:
     env = hermetic_env(drop_git=True, GOH_DIR=str(gates), PYTHONPATH=str(gates))
-    env.update(GOH_BIN=str(goh), GOH_RUST_COVERAGE="plain")
+    # no `repo` group: its scans are keyed on the whole tree and ask nothing of these two keys
+    env.update(GOH_BIN=str(goh), GOH_RUST_COVERAGE="plain", GOH_RUST_GROUPS="crate,coverage")
     env["PATH"] = f"{fake}:{env['PATH']}"
     argv = ["bash", str(gates / "gates" / "rust_gate.sh"), str(repo), str(repo / "crates" / "c")]
     r = subprocess.run(argv, cwd=repo, capture_output=True, text=True, env=env, check=False,
@@ -118,8 +119,17 @@ def test_each_rust_step_runs_when_what_it_judges_changed(
     bin_dir, log = _fake_cargo.install(tmp_path / "fake-cargo")
     first = _gate(repo, gates, goh, bin_dir)
     assert _ran(log, 0) == (1, 1), first
+    # The Python suite, which no Rust test reads, and a gates change outside rust_gate.sh's closure:
+    # neither moves either key.
+    n = _lines(log)
+    _edit(repo, "tests/test_x.py")
+    (gates / "lib" / "zz_unrelated.py").write_text("Z = 1\n")
+    _git(gates, "add", "-A")
+    _git(gates, "commit", "-qm", "an unrelated gates change")
+    out = _gate(repo, gates, goh, bin_dir)
+    assert _ran(log, n) == (0, 0), out
+    assert "crate checks: proven" in out and "cargo-test checks: proven" in out, out
     for rel, want in (
-        ("tests/test_x.py", (0, 0)),  # the Python suite: no Rust test reads it
         ("lib/tool.py", (0, 1)),  # Python a Rust test may run: cargo test, never clippy
         ("crates/c/src/lib.rs", (1, 1)),  # Rust: both
     ):
@@ -127,14 +137,6 @@ def test_each_rust_step_runs_when_what_it_judges_changed(
         _edit(repo, rel)
         out = _gate(repo, gates, goh, bin_dir)
         assert _ran(log, n) == want, (rel, out)
-    n = _lines(log)
-    # A gates change outside rust_gate.sh's closure moves neither key.
-    (gates / "lib" / "zz_unrelated.py").write_text("Z = 1\n")
-    _git(gates, "add", "-A")
-    _git(gates, "commit", "-qm", "an unrelated gates change")
-    out = _gate(repo, gates, goh, bin_dir)
-    assert _ran(log, n) == (0, 0), out
-    assert "crate checks: proven" in out and "cargo-test checks: proven" in out, out
 
 
 def _unread() -> list[str]:
