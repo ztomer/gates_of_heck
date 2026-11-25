@@ -24,6 +24,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -96,6 +97,7 @@ def test_a_gate_starved_past_the_backstop_is_timed_out_not_red(tmp_path, starved
     assert rc == 124, out  # GNU timeout's code: the house's "no verdict", not 1's "red"
     assert "TIMED OUT after 4s: check_hung.py" in out, out  # the backstop, four times the bound
     assert "starved" in out, out
+    assert re.sub(r"in \d+s wall", "in 4s wall", out) == STARVED  # what the canary reads below
     assert "delete its excuse" not in out and "PASSED over" not in out, out
 
 
@@ -132,17 +134,18 @@ def _structural(step_output: str) -> str:
     )
 
 
-def _starved_output(tmp_path, monkeypatch) -> str:
-    root = _repo(tmp_path, {"check_hung.py": "import time\ntime.sleep(60)\n"})
-    (root / "tools" / ces.ALLOW_FILE).write_text(json.dumps({"legitimate": {"check_hung.py": "x"}}))
-    rc, out = _main(root, monkeypatch)
-    assert rc == 124, out
-    return out
+# What a sweep past the backstop says, held to the real one's words above: the canary's tests read
+# the words, and each sweep that makes them waits out the backstop.
+STARVED = (
+    "⚠ check_hung.py gave NO verdict (TIMED OUT after 4s: check_hung.py -- starved: 0.0 CPU-s in "
+    "4s wall, the machine's load, not this gate's verdict) -- its scope is unchecked, not clean\n"
+    "→ A gate that could not run is not a gate that passed. Raise TIMEOUT if the machine is\n"
+    "→ merely loaded, or fix the gate; either way do not read its silence as compliance.\n"
+)
 
 
-@pytest.mark.load_sensitive
-def test_the_canary_reads_a_starved_step_as_no_verdict(tmp_path, starved, monkeypatch):
-    v = _canary_mod().parse(1, _structural(_starved_output(tmp_path, monkeypatch)))
+def test_the_canary_reads_a_starved_step_as_no_verdict():
+    v = _canary_mod().parse(1, _structural(STARVED))
     assert v.error is None, v.error
     assert LABEL not in v.red, v.red  # never "turned red -- fix the findings"
     assert "TIMED OUT after" in v.timed_out[LABEL], v.timed_out
@@ -161,10 +164,8 @@ def _bin(at: Path, text: str, rc: int) -> Path:
     return at
 
 
-@pytest.mark.load_sensitive
-def test_a_starved_consumer_refuses_the_land_as_a_timeout(tmp_path, starved, monkeypatch):
+def test_a_starved_consumer_refuses_the_land_as_a_timeout(tmp_path):
     """End to end: the run refuses (fail closed) and SAYS it was starved; no consumer turned red."""
-    step_out = _starved_output(tmp_path / "s", monkeypatch)
     consumer = tmp_path / "consumers" / "adv"
     fast_init(consumer)
     write_gatesrc(consumer, "GOH_MAX_LINES=500\n")
@@ -186,7 +187,7 @@ def test_a_starved_consumer_refuses_the_land_as_a_timeout(tmp_path, starved, mon
     (state.parent / "installed_repos").write_text(f"{consumer}\n")
     green = f"· {LABEL} (≤1800s)\n✓ {LABEL}\n✓ all structural gates passed\n"
     base = _bin(tmp_path / "base-goh", green, 0)
-    head = _bin(tmp_path / "head-goh", _structural(step_out), 1)
+    head = _bin(tmp_path / "head-goh", _structural(STARVED), 1)
     (tmp_path / "root").mkdir()
     argv = [sys.executable, str(SCRIPT), "--root", str(tmp_path / "root"), "--state", str(state)]
     argv += ["--base-bin", str(base), "--head-bin", str(head), "--goh", str(REPO_ROOT)]
