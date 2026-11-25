@@ -162,6 +162,12 @@ def _nested(d: Path) -> None:
     clone_tree(d / ".git", d / "nested" / ".git")
 
 
+def _borrows(d: Path) -> None:
+    info = d / ".git" / "objects" / "info"
+    info.mkdir(exist_ok=True)
+    (info / "alternates").write_text(f"{d / '.git' / 'objects'}\n")
+
+
 @pytest.mark.parametrize("plant", [
     _hook, _attributes, _conf("core.hooksPath", "/nowhere"), _conf("core.autocrlf", "input"),
     _conf("commit.gpgsign", "true"), _conf("core.logAllRefUpdates", "always"),
@@ -170,9 +176,9 @@ def _nested(d: Path) -> None:
     lambda d: (d / ".git" / "MERGE_HEAD").write_text("0" * 40),
     _nested, lambda d: (d / ".git" / "index.lock").touch(),
     lambda d: (d / ".git" / "objects").chmod(0o555),
-    lambda d: (d / ".git" / "packed-refs.lock").touch(),
+    lambda d: (d / ".git" / "packed-refs.lock").touch(), _borrows,
 ], ids=["hook", "attributes", "hookspath", "autocrlf", "gpgsign", "reflog", "flagged", "detached",
-        "merge", "nested", "locked", "sealed", "refs-locked"])  # fmt: skip
+        "merge", "nested", "locked", "sealed", "refs-locked", "borrows"])  # fmt: skip
 def test_what_git_would_judge_is_gits(tmp_path: Path, made, plant) -> None:
     env = _env(False)
     made("r")

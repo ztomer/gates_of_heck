@@ -10,8 +10,9 @@ pack, its idx, the index and the branch. tests/_suite_plugins.py asks it for eve
 starts itself; a command a gate or a script starts is git's.
 
 git itself runs wherever this would have to guess: a hook, an attribute or filter, a setting it does
-not know, a submodule, a linked worktree, a conflict, a merge under way, an option it does not read,
-a GIT_* variable, a `git` of the test's own on PATH, GATES_OF_HECK_REAL_GIT=1.
+not know, a submodule, a linked worktree, objects borrowed from another repository, a conflict, a
+merge under way, an option it does not read, a GIT_* variable, a `git` of the test's own on PATH,
+GATES_OF_HECK_REAL_GIT=1.
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ _ENV_READ = {
 _SET = {"user.name", "user.email", "commit.gpgsign=false", "maintenance.auto=false", "gc.auto=0"}
 _UNDER_WAY = ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply",
               "SQUASH_MSG", "MERGE_MSG", "BISECT_LOG", "info/attributes", "index.lock",
-              "HEAD.lock")  # fmt: skip
+              "HEAD.lock", "objects/info/alternates")  # fmt: skip
 _UNKNOWN = re.compile(
     r"^\[(?:include|includeif|extensions|filter)|^(?:hookspath|autocrlf|eol|splitindex|"
     r"sparsecheckout|attributesfile|worktree|excludesfile|fsmonitor|template|cleanup)\b|"
