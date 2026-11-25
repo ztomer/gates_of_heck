@@ -24,11 +24,11 @@ Pinned by tests/test_small_stores.py.
 
 GOH.STATEDBS3: goh's small state stores in goh.db (0004): `kv` (one JSON document per name:
 `estate_audit`, `pin_push`, `pin_sweeps`, `cache-evict`, `wf_pin.pins`; `get`/`update`/`put`, a
-read-change-write in one transaction), `commit_gated` (`gated_add`/`gated`: every tree a commit
-gate passed) and `flakes` (`flake_add`/`flakes`: the flake register's records and filings, in the
-order written; their fields columns, `body_columns.py`). A store keeps its file's path (its env
-override) and its rows live in the goh.db
-beside it (`db(p)`: `GOH_DB` when set), so a caller naming its own file has its own database. The
+read-change-write in one transaction), `commit_gated` (`gated_add`/`gated`: the key of every commit
+a commit gate passed, its `tree` column) and `flakes` (`flake_add`/`flakes`: the flake register's
+records and filings, in the order written; their fields columns, `body_columns.py`). A store keeps
+its file's path (its env override) and its rows live in the goh.db beside it (`db(p)`: `GOH_DB`
+when set), so a caller naming its own file has its own database. The
 path is identity only: no store reads or writes its file (retired by `state_retire.py`); no
 database reads as no value. `small_stores.py export [STATE_DIR] [--to DIR]`.
 """
@@ -155,7 +155,7 @@ def put(p: Path | str, value: object) -> None:
     update(p, lambda _old: value)
 
 
-# -- commit_gated: every tree a commit gate passed ------------------------------------------------
+# -- commit_gated: the key of every commit a commit gate passed (lib/commit_key.py) ------------
 
 
 def _epoch(at: object) -> float:
@@ -173,7 +173,7 @@ def _stamp(at: float) -> str:
 
 
 def gated_add(p: Path | str, row: dict) -> None:
-    """One commit-gated row ({tree, repo, at}) for the ledger whose file is P."""
+    """One commit-gated row ({tree, at}) for the ledger whose file is P."""
     p = Path(p)
     with goh_db.refusable(), _write(p) as con:
         gated_row(con, row)

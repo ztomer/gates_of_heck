@@ -149,12 +149,12 @@ def test_the_evictors_ledger_the_commit_stamps_and_the_flakes_write_goh_db(
     files = {p: p.read_bytes() for p in state.rglob("*") if p.is_file()}
     ledger = str(state / "cache-evict.json")
     cache_evict.write_ledger(ledger, {"L": 3.0, "objs": {}})
-    commit_stamp.record("t-new", "/p/c")
+    commit_stamp.record("t-new")
     rec = flakes.record(TEST, "/p/a", "c" * 40, "site", load=1.0)
     assert {p: p.read_bytes() for p in state.rglob("*") if p.is_file() and p.suffix != ".lock"
             and not p.name.startswith("goh.db")} == files, "no store file is written"  # fmt: skip
     assert cache_evict.read_ledger(ledger) == {"L": 3.0, "objs": {}}
-    assert {"t-new"} == commit_stamp.stamped()  # the file's trees are read by nothing
+    assert {"t-new"} == commit_stamp.stamped()  # the file's rows are read by nothing
     assert rec["id"] == f"{flakes.key(TEST)}.1", rec
     assert [r["id"] for r in flakes.recorded(TEST)][-1] == rec["id"]
 

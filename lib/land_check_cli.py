@@ -38,28 +38,44 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from lib import check_jobs, land_check
 
 
-def tip(top: str, say: Callable[[str], object], err: Callable[[str], object],
-        gated: bool = False) -> list[str]:  # fmt: skip
-    """What TOP's commits are refused by, each said by ERR: a commit no commit gate judged (a
-    cherry-pick, a rebase, --no-verify), judged now by the gate its pre-commit would have run
-    (GOH.CHERRYPICKGATE); an item the range names with no changelog fragment, refused where the
-    lane can add it, not at the ship's release (GOH.FRAGMENTATLAND). GATED (the enqueue): the
-    commit gate only in a tree that declares goh's gates (.gatesrc, tools/gate.sh)."""
-    from lib import commit_stamp, fragment_check
+def _commits(top: str, say: Callable[[str], object], gated: bool) -> list[str]:
+    """The commits' refusals, as `tip` says."""
+    from lib import commit_stamp
 
     declares = any((Path(top) / f).is_file() for f in (".gatesrc", "tools/gate.sh"))
-    commits = commit_stamp.check(top, say) if declares or not gated else []
+    if gated and not declares:
+        return []
+    # the enqueue is the land path's run, a lane's own --check whatever it was admitted as
+    return commit_stamp.check(top, say, gate_class="pre" if gated else None)
+
+
+def tip(top: str, say: Callable[[str], object], err: Callable[[str], object],
+        rest: Callable[[], list[str]], gated: bool = False) -> list[str]:  # fmt: skip
+    """What TOP's commits are refused by, each said by ERR, and what REST (the check's guards, run
+    beside the commits' gates) refuses: a commit no commit gate judged (a cherry-pick, a rebase,
+    --no-verify), judged now by the gate its pre-commit would have run (GOH.CHERRYPICKGATE); an
+    item the range names with no changelog fragment, refused where the lane can add it, not at the
+    ship's release (GOH.FRAGMENTATLAND). GATED (the enqueue): the commit gate only in a tree that
+    declares goh's gates (.gatesrc, tools/gate.sh)."""
+    from lib import fragment_check
+
     fragments = fragment_check.missing(top)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        gates = pool.submit(_commits, top, say, gated)
+        guards = rest()
+        commits = gates.result()
     for r in (*commits, *fragments):
         err(f"goh land --check: {r}")
     named = [re.sub(r"^the commit gate on (\S+).*", r"the commit gate on \1", r.split("\n")[0])
              for r in commits]  # fmt: skip
-    return named + [f"the changelog fragment of {r.split(' ', 1)[0]}" for r in fragments]
+    absent = [f"the changelog fragment of {r.split(' ', 1)[0]}" for r in fragments]
+    return [*named, *absent, *guards]
 
 
 def cli(worktree: str, q: Path, rules: bool = False) -> int:
@@ -91,9 +107,9 @@ def cli(worktree: str, q: Path, rules: bool = False) -> int:
     # 2026-11-24, 8 of 8 guard shards timed out and the check said "every guard green in 331.8 s".
     # A stop signal leaves no job and no worktree behind (lib/check_jobs.py, GOH.CHECKVERDICT).
     with check_jobs.guarded(door, main, head, signals=True) as job:
-        refused = tip(top, info, err)
-        refused += land_check.run(Path(top), None if rules else q, info, main, tables=not rules,
-                                  rules=rules, door=door or "check")  # fmt: skip
+        refused = tip(top, info, err, lambda: land_check.run(
+            Path(top), None if rules else q, info, main, tables=not rules, rules=rules,
+            door=door or "check"))  # fmt: skip
         job.rc = int(bool(refused))
     took = f"{time.monotonic() - t0:.1f} s"
     t1 = time.monotonic()

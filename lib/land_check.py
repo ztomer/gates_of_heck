@@ -387,9 +387,10 @@ def at_enqueue(q: Path, req: dict, file, record, say=print, no_pre: str | None =
 
     with check_jobs.guarded("enqueue", req["repo"], req["sha"]) as job:
         # the commit gate and the changelog fragments, as --check judges them (GOH.CHECKVERDICT)
-        refused = land_check_cli.tip(req["worktree"], said, said, gated=True)
-        refused += run(Path(req["worktree"]), q, said, req["repo"], no_pre=no_pre is not None,
-                       reqs=[req], rules=True, door="enqueue")  # fmt: skip
+        refused = land_check_cli.tip(
+            req["worktree"], said, said, gated=True,
+            rest=lambda: run(Path(req["worktree"]), q, said, req["repo"], reqs=[req], rules=True,
+                             no_pre=no_pre is not None, door="enqueue"))  # fmt: skip
         job.rc = int(bool(refused))
     req["cov_risk"] = cov_risk.say(req["worktree"], req["repo"], say)  # kept on the land record
     if not refused:

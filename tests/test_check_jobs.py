@@ -23,7 +23,7 @@ sys.path.insert(0, str(REPO_ROOT))
 import pid_owner
 import timing_ledger
 
-from lib import check_jobs, commit_stamp, proc_deadline
+from lib import check_jobs, commit_key, commit_stamp, proc_deadline
 
 # A job as the check runs one: a child of its own group, and a grandchild that left the group.
 JOB = """\
@@ -107,7 +107,7 @@ def test_a_stopped_check_leaves_no_process_and_no_worktree_and_is_recorded(repo,
 def test_the_cli_check_itself_dies_clean(repo, tmp_path, env):  # noqa: F811
     """The door: `goh land --check` TERMed with a step running, through tools/landq.py."""
     wt, _ = _land_wt(repo, tmp_path)
-    commit_stamp.record(git(wt, "rev-parse", "HEAD^{tree}").strip(), str(wt))  # its gate: apart
+    commit_stamp.record(commit_key.of(wt, "HEAD"))  # its gate: apart
     job = tmp_path / "job.sh"
     job.write_text(JOB)
     env = {**env, "GOH_LAND_CHECK_STEPS": f"bash {job}", "GOH_TIMING_DIR": str(tmp_path / "timing"),

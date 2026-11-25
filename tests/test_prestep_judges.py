@@ -23,7 +23,7 @@ from test_landq import FAKE_LOOPCTL, _land_wt, _pending, landq
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 import affected_tests as at
 
-from lib import commit_stamp
+from lib import commit_key, commit_stamp
 
 PRE = f'"$GOH_PY" {REPO_ROOT}/tools/affected_tests.py --run --structural --base "$1"'
 PYTEST = '#!/usr/bin/env bash\nexec "$GOH_PY" -m pytest -q -p no:cacheprovider "$@"\n'
@@ -67,7 +67,7 @@ def _branch(repo: Path, tmp_path: Path, files: dict[str, str]) -> Path:
     git(wt, "add", "-A")
     git(wt, "commit", "-q", "--no-verify", "-m", "branch")
     for rev in ("HEAD", "HEAD^"):  # a commit gate passed them: the enqueue's is not under test here
-        commit_stamp.record(git(wt, "rev-parse", f"{rev}^{{tree}}").strip(), str(wt))
+        commit_stamp.record(commit_key.of(wt, rev))
     return wt
 
 

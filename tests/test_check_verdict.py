@@ -268,7 +268,7 @@ def test_the_enqueue_refuses_an_ungated_commit_and_a_missing_fragment(tmp_path, 
     ran: list[str] = []
     ungated = "the commit gate on 0123456789 (one), which no commit gate judged:\nfound X"
     missing = "T.I has no changelog/T.I.md fragment at the tip -- add one"
-    monkeypatch.setattr(commit_stamp, "check", lambda top, say: ran.append("gate") or [ungated])
+    monkeypatch.setattr(commit_stamp, "check", lambda *a, **k: ran.append("gate") or [ungated])
     monkeypatch.setattr(fragment_check, "missing", lambda top: [missing])
     monkeypatch.setattr(landq_early, "at_enqueue", lambda *a, **k: "")
     monkeypatch.setattr(landq_early, "settle", lambda q, p, red, log, r: settled.append((red, log)))
@@ -293,6 +293,6 @@ def test_the_enqueue_refuses_an_ungated_commit_and_a_missing_fragment(tmp_path, 
     red, log = settled[-1]
     assert red["guards"] == ["the commit gate on 0123456789", "the changelog fragment of T.I"]
     assert "found X" in log and missing in log, log
-    monkeypatch.setattr(commit_stamp, "check", lambda top, say: [])
+    monkeypatch.setattr(commit_stamp, "check", lambda *a, **k: [])
     monkeypatch.setattr(fragment_check, "missing", lambda top: [])
     assert enqueue() == ""
