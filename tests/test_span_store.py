@@ -248,3 +248,11 @@ def test_a_named_spool_is_no_goh_db_s(monkeypatch, tmp_path: Path) -> None:
     assert timing_ledger.db() == tmp_path / "goh.db"
     monkeypatch.setenv("GOH_DB", str(tmp_path / "none.db"))
     assert timing_ledger.db() is None  # never made for a measurement's sake
+
+
+@pytest.mark.parametrize("epoch", [{}, {"epoch": "soon"}])
+def test_a_spooled_row_with_no_time_is_read_as_the_oldest(ledger, epoch: dict) -> None:
+    odd = {"v": 1, "subject": "x push", "kind": "push", "repo": "x", "wall_s": 3.0, **epoch}
+    timing_ledger.append(row())
+    assert timing_ledger._spool(odd)
+    assert timing_ledger.read()[0] == odd

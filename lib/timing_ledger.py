@@ -191,6 +191,12 @@ def _same(row: dict) -> tuple:
     return tuple(row.get(k) for k in ("kind", "repo", "epoch", "ref", "wall_s", "sha"))
 
 
+def _epoch(row: dict) -> float:
+    """A row's place in time; a spooled line with no epoch is the oldest, never the reader's end."""
+    at = row.get("epoch")
+    return float(at) if isinstance(at, int | float) else 0.0
+
+
 def read(
     path: Path | None = None, kinds: tuple[str, ...] = (), repo: str | None = None
 ) -> list[dict]:
@@ -210,7 +216,7 @@ def read(
         own = {(r["kind"], r["repo"], r["ref"]) for r in made}
         rows = [*(r for r in [*kept, *(r for r in rows if _same(r) not in seen)]
                   if (r["kind"], r["repo"], r.get("ref")) not in own), *made]  # fmt: skip
-        rows.sort(key=lambda r: r["epoch"])
+        rows.sort(key=_epoch)
     return [r for r in rows if (not kinds or r.get("kind") in kinds)
             and (repo is None or r.get("repo") == repo)]  # fmt: skip
 
