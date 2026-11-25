@@ -102,7 +102,7 @@
   "test_python_from_head.py": 1,
   "test_release_goh.py": 2,
   "test_release_hardening.py": 2,
-  "test_repo_hold.py": 3,
+  "test_repo_hold.py": 2,
   "test_required_tools.py": 4,
   "test_required_tools_floors.py": 4,
   "test_required_tools_manifest.py": 6,

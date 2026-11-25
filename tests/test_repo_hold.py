@@ -13,10 +13,12 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _hook_inproc import run_hook, start_hook
 from conftest import REPO_ROOT, git
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -31,11 +33,10 @@ def _hold(repo: Path, key: str = "hold", value: str | None = None) -> Path:
     return repo
 
 
-def _verdict(event: dict) -> str | None:
-    r = subprocess.run(
-        [sys.executable, str(GUARD)], input=json.dumps(event), capture_output=True, text=True,
-        timeout=30, check=False,
-    )  # fmt: skip
+def _verdict(event: dict, run: Callable = run_hook) -> str | None:
+    """The guard's decision, its main() in this process (tests/_hook_inproc.py); `start_hook` is
+    its file started as the harness starts it."""
+    r = run(GUARD, json.dumps(event))
     assert r.returncode == 0, r.stderr
     if not r.stdout.strip():
         return None
@@ -128,6 +129,8 @@ def test_an_edit_inside_a_held_repo_is_refused_naming_why_and_the_lift(
     _hold(repo)
     reason = _verdict(event)
     assert reason and REASON in reason and "lift-cmd" in reason and tool in reason
+    if tool == "Edit":  # the file itself, started as the harness starts it
+        assert _verdict(event, start_hook) == reason
 
 
 def test_an_edit_outside_a_held_repo_runs(repo: Path, tmp_path: Path) -> None:
