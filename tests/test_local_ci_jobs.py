@@ -78,25 +78,21 @@ def test_jobs_run_concurrently_and_report_in_declared_order(repo):
 
 
 @pytest.mark.load_sensitive
-def test_default_is_serial(repo):
-    # Distinct strings for the same reason as below: a repeated step is a proven-cache hit.
-    steps(repo, "sleep 0.6", "sleep 0.61")
-    r, wall = run_ci(repo)
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert wall >= 1.2, f"steps overlapped ({wall:.2f} s) without GOH_CI_JOBS"
-
-
-@pytest.mark.load_sensitive
 def test_steps_sharing_a_tag_never_overlap(repo):
-    # Each step holds a mkdir lock for its whole run; an overlap makes the second mkdir fail.
-    hold = f"mkdir {repo}/lock || exit 7; sleep 0.4; rmdir {repo}/lock"
+    # The untagged third step is launched after the second was considered: the first holds its tag
+    # until the third runs, by when an overlapping second step has run too.
+    b, c = repo / "b.ran", repo / "c.ran"
+    wait = f"for _ in {{1..600}}; do [ ! -e {c} ] || break; sleep 0.05; done; sleep 0.2"
     steps(
-        repo, f"[db] {hold}", f"[db] {hold}", f"[db] {hold}", "sleep 0.1", extra="GOH_CI_JOBS=4\n"
+        repo,
+        f"[db] {wait}; [ -e {c} ] && [ ! -e {b} ]",
+        f"[db] touch {b}",
+        f"touch {c}",
+        extra="GOH_CI_JOBS=4\n",
     )
-    r, wall = run_ci(repo)
+    r, _ = run_ci(repo)
     assert r.returncode == 0, f"tagged steps overlapped:\n{r.stdout}{r.stderr}"
-    assert wall >= 1.2, f"three [db] steps of 0.4 s finished in {wall:.2f} s"
-    assert "[db]" in r.stdout, "the tag must stay visible in the step's name"
+    assert b.exists() and "[db]" in r.stdout, "the tag must stay visible in the step's name"
 
 
 @pytest.mark.load_sensitive
@@ -186,16 +182,15 @@ def test_steps_only_without_steps_is_an_error(repo):
     assert "no steps declared" in r.stderr, r.stderr
 
 
-@pytest.mark.load_sensitive
 def test_the_environment_is_not_configuration(repo, tmp_path):
     """A key is configuration iff the repo's own file says so. Measured: a sweep that exported
     GOH_CI_JOBS=4 made every local_ci the suite ran concurrent, and an order test went red --
-    the parent's budget had become every nested repo's. GOH_CI_STEPS leaked the same way."""
-    leaked = tmp_path / "leaked-step-ran"
-    steps(repo, "sleep 0.6", "sleep 0.61")
+    the parent's budget had become every nested repo's. GOH_CI_STEPS leaked the same way. And so
+    the default is SERIAL: the second step has not started when the first one ends."""
+    leaked, second = tmp_path / "leaked-step-ran", repo / "second"
+    steps(repo, f"sleep 0.6; [ ! -e {second} ]", f"touch {second}")
     env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_CI_")}
     env.update(GOH_CI_JOBS="4", GOH_CI_STEPS=f"touch {leaked}")
-    t0 = time.monotonic()
     r = subprocess.run(
         ["/bin/bash", str(LOCAL_CI)],
         cwd=repo,
@@ -206,7 +201,6 @@ def test_the_environment_is_not_configuration(repo, tmp_path):
         check=False,
         stdin=subprocess.DEVNULL,
     )
-    wall = time.monotonic() - t0
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert wall >= 1.2, f"an inherited GOH_CI_JOBS made the run concurrent ({wall:.2f} s)"
+    assert r.returncode == 0, f"an inherited GOH_CI_JOBS made the run concurrent: {r.stderr}"
+    assert second.exists(), r.stdout + r.stderr
     assert not leaked.exists(), "an inherited GOH_CI_STEPS ran"

@@ -50,130 +50,77 @@ def gatesrc(repo: Path, steps: str) -> None:
 # ── dry-run ──
 
 
-def test_dry_run_lists_steps_and_executes_nothing(repo):
+def test_dry_run_lists_steps_with_their_source_and_executes_nothing(repo):
     marker = repo / "marker"
     gatesrc(repo, f"touch {marker}:false")
-    r = run_ci(repo, "--dry-run")
+    r = run_ci(repo, "--dry-run", "--step", "echo hi")
     assert r.returncode == 0
     assert not marker.exists(), "dry-run executed a step"
     assert "touch" in r.stdout and "false" in r.stdout
-
-
-def test_dry_run_shows_step_source(repo):
-    gatesrc(repo, "true")
-    r = run_ci(repo, "--dry-run", "--step", "echo hi")
-    assert r.returncode == 0
     combined = r.stdout + r.stderr
     assert ".gatesrc" in combined
     assert "--step" in combined or "cli" in combined.lower()
 
 
-# ── execution semantics ──
+# ── execution semantics: one green run and one red one, each read for all it must show ──
 
 
-def test_all_green_exits_zero(repo):
-    gatesrc(repo, "true:true")
-    r = run_ci(repo)
-    assert r.returncode == 0, r.stdout + r.stderr
+def test_a_green_run_runs_every_step_in_order_from_the_repo_root(repo):
+    """Invoked from OUTSIDE the repo, the root given positionally: a relative-path step resolved
+    against the caller's cwd and failed (the runner cd's to $ROOT right after resolving it).
 
-
-def test_failure_accumulates_does_not_stop(repo):
-    # A failing MIDDLE step must not prevent later steps from running —
-    # one CI pass should surface every failure at once.
-    a, b = repo / "a.done", repo / "b.done"
-    gatesrc(repo, f"true:exit 3:touch {b}")
-    r = run_ci(repo, "--step", f"touch {a}")
-    assert r.returncode != 0
-    assert a.exists() and b.exists()
-
-
-def test_failing_step_output_is_printed(repo):
-    sentinel = "SENTINEL-FAILURE-DETAIL"
-    gatesrc(repo, f"echo {sentinel} >&2; exit 1")
-    r = run_ci(repo)
-    assert r.returncode != 0
-    assert sentinel in (r.stdout + r.stderr)
-
-
-def test_successful_step_output_is_captured_not_streamed(repo):
-    # The step's stdout must land in the log, not the console. The label IS
-    # the command string, so the sentinel must come from OUTPUT only.
+    And a step that reads stdin (`cat`) consumed the REMAINING step list from the runner's heredoc,
+    and the run ended early, silently, exit 0: every child gets </dev/null now."""
+    tools = repo / "tools"
+    tools.mkdir()
+    step = tools / "step.sh"
+    step.write_text("#!/bin/bash\necho relative >> order.log\n")
+    step.chmod(0o755)
+    # The label IS the command string, so the sentinel must come from OUTPUT only.
     (repo / "secret.txt").write_text("QUIET-SUCCESS-SENTINEL\n")
-    gatesrc(repo, "cat secret.txt")
-    r = run_ci(repo)
-    assert r.returncode == 0
-    assert "QUIET-SUCCESS-SENTINEL" not in (r.stdout + r.stderr)
+    steps = (
+        ":",  # an empty token is ignored
+        "./tools/step.sh",
+        "cat secret.txt",
+        "cat",
+        # the step string is the wrapper's --label: as a separate argument, a leading '-' read as a
+        # flag and the wrapper refused before the step ran (GOH.NITS1)
+        "-x 2>/dev/null; echo dashed >> order.log",
+        "echo gatesrc-last >> order.log",
+        ":",
+    )
+    gatesrc(repo, ":".join(steps))
+    r = run_ci(repo.parent, "--step", "echo cli >> order.log", str(repo))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "QUIET-SUCCESS-SENTINEL" not in (r.stdout + r.stderr), "a passing step's output streamed"
+    assert (repo / "order.log").read_text().split() == ["relative", "dashed", "gatesrc-last", "cli"]
 
 
-def test_reported_log_dir_holds_only_regular_files(repo):
+def test_a_red_run_goes_on_names_what_failed_and_keeps_its_output(repo):
+    """A failing MIDDLE step must not prevent later steps from running: one CI pass surfaces every
+    failure at once, each with its output, counted at the end."""
+    a, b = repo / "a.done", repo / "b.done"
+    gatesrc(repo, f"true:exit 3:echo $((6*7))-FAILURE-DETAIL >&2; exit 1:touch {b}")
+    r = run_ci(repo, "--step", f"touch {a}")
+    combined = r.stdout + r.stderr
+    assert r.returncode == 1, combined  # the accumulator's exit, not a step's 3
+    assert a.exists() and b.exists()
+    assert "42-FAILURE-DETAIL" in combined
+    assert "2 of 5 steps failed" in combined, combined
     # The failure summary hands the operator a directory to search. A FIFO
     # left in it (the step-completion channel) makes `grep -r` block forever
     # on its read -- a hung command where a search was asked for.
-    gatesrc(repo, "echo boom >&2; exit 1")
-    r = run_ci(repo)
-    assert r.returncode != 0
-    line = next(l for l in (r.stdout + r.stderr).splitlines() if "full output:" in l)
+    line = next(ln for ln in combined.splitlines() if "full output:" in ln)
     logdir = Path(line.split("full output:", 1)[1].strip())
     entries = list(logdir.iterdir())
     assert entries, "the reported log dir is empty"
     odd = [e.name for e in entries if not e.is_file()]
     assert odd == [], f"non-regular files in the reported log dir: {odd}"
-
-
-def test_summary_counts_failures(repo):
-    gatesrc(repo, "false:false:true")
-    r = run_ci(repo)
-    assert r.returncode != 0
-    assert "2" in (r.stdout + r.stderr)
-
-
-def test_stdin_reading_step_cannot_eat_the_step_list(repo):
-    """Red-proof regression: child steps inherited the runner's heredoc stdin,
-    so a step that reads stdin (cat) consumed the REMAINING step list and the
-    run ended early, silently, exit 0. Every child gets </dev/null now."""
-    a, b = repo / "a.done", repo / "b.done"
-    gatesrc(repo, f"touch {a}:cat:touch {b}")
-    r = run_ci(repo)
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert a.exists(), "first step never ran"
-    assert b.exists(), "cat ate the remaining step list from the loop's stdin"
-
-
-# ── working directory ──
-
-
-def test_relative_path_steps_resolve_from_repo_root(repo):
-    """Red-proof regression: invoked from OUTSIDE the repo, a relative-path
-    step resolved against the caller's cwd and failed. The runner cd's to
-    $ROOT right after resolving it."""
-    tools = repo / "tools"
-    tools.mkdir()
-    step = tools / "step.sh"
-    step.write_text("#!/bin/bash\ntouch marker.done\n")
-    step.chmod(0o755)
-    gatesrc(repo, "./tools/step.sh")
-    # Invoke from OUTSIDE the repo, passing the root positionally.
-    r = run_ci(repo.parent, str(repo))
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert (repo / "marker.done").exists()
+    pictographs = [ch for ch in combined if ord(ch) >= 0x1F000]
+    assert pictographs == [], f"non-Kare pictographs {pictographs}"
 
 
 # ── step sourcing ──
-
-
-def test_gatesrc_and_cli_steps_combine_in_order(repo):
-    logf = repo / "order.log"
-    gatesrc(repo, f"echo gatesrc-first >> {logf}")
-    r = run_ci(repo, "--step", f"echo cli-second >> {logf}")
-    assert r.returncode == 0, r.stdout + r.stderr
-    lines = logf.read_text().splitlines()
-    assert lines == ["gatesrc-first", "cli-second"]
-
-
-def test_empty_tokens_are_ignored(repo):
-    gatesrc(repo, "::true::")
-    r = run_ci(repo)
-    assert r.returncode == 0, r.stdout + r.stderr
 
 
 def test_no_steps_anywhere_is_a_named_error(repo):
@@ -235,33 +182,3 @@ def test_invalid_timeout_is_usage_error(repo, monkeypatch):
     r = run_ci(repo)
     assert r.returncode == 2
     assert "GOH_LCI_TIMEOUT" in (r.stdout + r.stderr)
-
-
-# ── output discipline ──
-
-
-def test_output_uses_kare_glyphs_only(repo):
-    gatesrc(repo, "false:true")
-    r = run_ci(repo)
-    combined = r.stdout + r.stderr
-    stripped = ""
-    for line in combined.splitlines():
-        stripped += line.strip("→·✓✗⚠ ")
-        stripped += "\n"
-    for ch in stripped.replace("\n", ""):
-        ch_clean = ch if ch not in "→·✓✗⚠" else ""
-        if ch_clean == "":
-            continue
-        assert ord(ch_clean) < 0x1F000 or ch_clean in "→·✓✗⚠↔↑↓←⌘⌥⌨", (
-            f"non-Kare pictograph U+{ord(ch_clean):04X} {ch_clean!r}"
-        )
-
-
-def test_a_step_beginning_with_a_dash_runs(repo):
-    # The step string is the wrapper's --label: as a separate argument, a leading '-' read as a flag
-    # and the wrapper refused before the step ran (GOH.NITS1).
-    marker = repo / "ran"
-    gatesrc(repo, f"-x 2>/dev/null; touch {marker}")
-    r = run_ci(repo)
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert marker.exists(), r.stdout + r.stderr
