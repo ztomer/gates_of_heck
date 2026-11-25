@@ -115,7 +115,9 @@ def find_request(q: Path, what: str) -> Path | None:
     """WHAT's newest request, wherever it is now: a request's path or name, else an item ID."""
     name = Path(what).name.removesuffix(".json")
     newest: tuple[str, Path] | None = None
-    queued = [f for d in ("pending", "running") for f in landq_state.listing(q, d)]
+    # "early": a red enqueue's request until its record is written (GOH.WAITEARLYGAP); in the order
+    # a request moves, so one moving on mid-look is still met
+    queued = [f for d in ("pending", "running", "early") for f in landq_state.listing(q, d)]
     for f in [*queued, *(land_records.ref(q, run) for run in land_records.runs(q))]:
         if f.stem == name:
             return f

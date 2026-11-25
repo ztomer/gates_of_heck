@@ -173,10 +173,14 @@ def rows(q: Path, state: str) -> list[tuple[Path, dict]]:
 
 
 def listing(q: Path, state: str) -> list[Path]:
-    """The names of queue Q's requests in STATE, oldest first."""
+    """The names of queue Q's requests in STATE, oldest first; EARLY's have their own table."""
     with _reader() as con:
         if con is None:
             return []
+        if state == EARLY:
+            got = con.execute("SELECT run FROM early WHERE queue = ? ORDER BY run",
+                              (queue_key(q),)).fetchall()  # fmt: skip
+            return [name(q, state, run) for (run,) in got]
         got = con.execute("SELECT run FROM requests WHERE queue = ? AND state = ? ORDER BY run",
                           (queue_key(q), state)).fetchall()  # fmt: skip
     return [name(q, state, run) for (run,) in got]

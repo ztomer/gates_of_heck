@@ -135,3 +135,16 @@ def test_wait_after_a_re_enqueue_waits_for_that_attempt_not_the_last_red(tmp_pat
     landq_inflight.clear(marker)
     t.join(patience(30))
     assert out == [0]
+
+
+def test_a_red_enqueue_between_its_filing_and_its_record_is_still_its_request(tmp_path):
+    """GOH.WAITEARLYGAP: an enqueue red on its pre-step files under `early/` (its marker gone in
+    that transaction), then records the red; a wait reading between the two said "no request, no
+    enqueue of it running", exit 2."""
+    q = tmp_path / "landq"
+    filed = _req(q, "early", "00000000000000000001-T.GAP", "T.GAP")
+    found = landq_look.unfiled(q, "T.GAP", float("inf"))
+    assert isinstance(found, Path), found
+    assert found.stem == filed.stem
+    land_records.write(q, filed.stem, {"item": "T.GAP", "state": "red"}, filed)
+    assert landq_look.find_request(q, "T.GAP") == land_records.ref(q, filed.stem)
