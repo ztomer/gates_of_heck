@@ -73,7 +73,8 @@ def _staged(d: Path) -> list[tuple[str, ...]]:
 
 
 def _nothing(d: Path) -> list[tuple[str, ...]]:
-    return [("add", "."), ("-c", "user.name=An Other", "-c", "user.email=o@o", "commit", "-q",
+    return [("add", "."), ("-c", "user.name=An Other", "-c", "user.email=o@o",
+                           "-c", "tag.gpgsign=false", "commit", "-q",
                            "--allow-empty", "-m", "empty")]  # fmt: skip
 
 

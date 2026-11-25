@@ -1,5 +1,5 @@
-"""A test's own `git add`, `git commit -q` and `git config KEY VALUE`, made with no git process and
-few files (GOH.FSEVQUIET).
+"""A test's own `git add`, `git commit -q`, `git config KEY VALUE` and (tests/_quiet_worktree.py)
+`git worktree add -q`, made with no git process and few files (GOH.FSEVQUIET).
 
 Half of the suite's file events were git's: each add and commit of a fixture made an index.lock, a
 fan-out directory and a temp file per loose object, HEAD.lock, the branch's lock, AUTO_MERGE.lock,
@@ -29,6 +29,7 @@ import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+import _quiet_worktree
 from _quiet_pack import LOCK, _put, _sha, flush, is_quiet, keep, own, quietly, started, watch
 
 REAL = "GATES_OF_HECK_REAL_GIT"
@@ -37,7 +38,9 @@ _ENV_READ = {
     "GIT_COMMITTER_EMAIL", "GIT_COMMITTER_DATE", "GIT_CONFIG_NOSYSTEM", "GIT_OPTIONAL_LOCKS",
     "GIT_TERMINAL_PROMPT", "GIT_EDITOR", "GIT_PAGER",
 }  # fmt: skip
-_SET = {"user.name", "user.email", "commit.gpgsign=false", "maintenance.auto=false", "gc.auto=0"}
+_SET = {"user.name", "user.email", "commit.gpgsign=false", "tag.gpgsign=false",
+        "maintenance.auto=false", "gc.auto=0"}  # fmt: skip
+_WORKTREE = ["worktree", "add"]
 _UNDER_WAY = ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply",
               "SQUASH_MSG", "MERGE_MSG", "BISECT_LOG", "info/attributes", "index.lock",
               "HEAD.lock", "objects/info/alternates")  # fmt: skip
@@ -200,11 +203,7 @@ class Repo:
             else:
                 raise Declined("no file")
             new.append(("blob", data))
-            words = (int(st.st_ctime), st.st_ctime_ns % 10**9, int(st.st_mtime),
-                     st.st_mtime_ns % 10**9, st.st_dev, st.st_ino, mode, st.st_uid, st.st_gid,
-                     st.st_size)  # fmt: skip
-            packed = struct.pack(">10I", *(w & 0xFFFFFFFF for w in words))
-            self.entries[name] = packed, mode, _sha("blob", data)
+            self.entries[name] = _quiet_worktree.stat_words(st, mode), mode, _sha("blob", data)
         for name in self.entries:
             at = name.find(b"/")
             while at > 0:
@@ -392,14 +391,14 @@ def _config(top: str, conf: dict[str, str], args: list[str]) -> None:
 
 
 def serve(argv: object, cwd: object, env: Mapping[str, str] | None, root: str) -> bool:
-    """Whether ARGV, a test's `git add`, `commit -q` or `config` in a repository under ROOT, is
-    done."""
+    """Whether ARGV, a test's `git add`, `commit -q`, `config` or `worktree add -q` in a repository
+    under ROOT, is done."""
     if not isinstance(argv, (list, tuple)) or not argv or argv[0] != "git":
         return False
     try:
         words = [os.fsdecode(a) for a in argv]
         here, conf, command, args = _parse(words)
-        if command not in ("add", "commit", "config"):
+        if command not in ("add", "commit", "config") and [command, *args[:1]] != _WORKTREE:
             return False
         env = os.environ if env is None else env
         if env.get(REAL) or any(k.startswith("GIT_") and k not in _ENV_READ for k in env):
@@ -417,7 +416,10 @@ def serve(argv: object, cwd: object, env: Mapping[str, str] | None, root: str) -
             repo = Repo(top, conf, env)
             if not repo.common.startswith(root + os.sep):  # this checkout's own, linked to
                 return False
-            (_add if command == "add" else _commit)(repo, args)
+            if command == "worktree":
+                _quiet_worktree.add(repo, args[1:], Declined, root)
+            else:
+                (_add if command == "add" else _commit)(repo, args)
     except (Declined, OSError, ValueError, UnicodeError, IndexError):
         return False
     return True
