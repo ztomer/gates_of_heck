@@ -10,7 +10,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from _gatesrc_kit import write_gatesrc
+from _gatesrc_kit import write_gatesrc, write_message_hook
 from conftest import REPO_ROOT, git, hermetic_env, native_goh_path
 
 A_TEST = "def test_it_reds() -> None:\n    assert False\n"
@@ -109,12 +109,6 @@ def test_a_test_adding_commit_after_the_switch_without_a_trailer_is_refused(
     assert "tests/test_new.py" not in r.stderr, r.stderr
 
 
-def _hooked(repo: Path, gatesrc: str) -> None:
-    subprocess.run(["bash", str(REPO_ROOT / "install.sh"), str(repo)], check=True,
-                   capture_output=True, env=hermetic_env(drop_git=True, GOH_SKIP_BUILD="1"), stdin=subprocess.DEVNULL)  # fmt: skip
-    write_gatesrc(repo, gatesrc)
-
-
 def _git_commit(repo: Path, msg: str) -> subprocess.CompletedProcess[str]:
     env = hermetic_env(drop_git=True, GOH_DIR=str(REPO_ROOT), GOH_BIN=str(native_goh_path()))
     return subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", msg],
@@ -122,7 +116,7 @@ def _git_commit(repo: Path, msg: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_the_commit_msg_hook_runs_it_when_the_repo_opts_in(repo: Path) -> None:
-    _hooked(repo, "GOH_RED_RUN=1\n")
+    write_message_hook(repo, "GOH_RED_RUN=1\n")
     _staged(repo, A_TEST)
     r = _git_commit(repo, "feat: x")
     assert r.returncode != 0 and "Red-run:" in r.stderr, r.stderr
@@ -130,14 +124,14 @@ def test_the_commit_msg_hook_runs_it_when_the_repo_opts_in(repo: Path) -> None:
 
 
 def test_both_rules_run_when_both_are_on(repo: Path) -> None:
-    _hooked(repo, "GOH_COMMIT_CLASS=1\nGOH_RED_RUN=1\n")
+    write_message_hook(repo, "GOH_COMMIT_CLASS=1\nGOH_RED_RUN=1\n")
     _staged(repo, A_TEST)
     r = _git_commit(repo, "fix: y\n\nbody\n\nRed-run: inverted\n")
     assert r.returncode != 0 and "Class" in r.stderr, r.stderr
 
 
 def test_the_commit_msg_hook_is_inert_without_the_key(repo: Path) -> None:
-    _hooked(repo, "")
+    write_message_hook(repo, "")
     _staged(repo, A_TEST)
     assert _git_commit(repo, "feat: x").returncode == 0
 
@@ -163,7 +157,7 @@ def test_the_push_asks_again_so_no_verify_does_not_survive_it(tmp_path: Path) ->
 
 def test_the_commit_msg_hook_runs_the_repos_own_message_layer(repo: Path) -> None:
     """tools/commit_msg.sh is the repo's message layer, as tools/gate.sh is its tree layer."""
-    _hooked(repo, "")
+    write_message_hook(repo, "")
     layer = repo / "tools" / "commit_msg.sh"
     layer.parent.mkdir(parents=True, exist_ok=True)
     layer.write_text(

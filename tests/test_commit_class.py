@@ -13,7 +13,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from _gatesrc_kit import write_gatesrc
+from _gatesrc_kit import write_message_hook
 from conftest import REPO_ROOT, git, hermetic_env, native_goh_path
 
 OK_FIX = (
@@ -173,12 +173,6 @@ def test_a_range_with_every_fix_named_passes(repo: Path) -> None:
     assert _range(repo, f"{base}..HEAD").returncode == 0
 
 
-def _hooked(repo: Path, gatesrc: str) -> None:
-    subprocess.run(["bash", str(REPO_ROOT / "install.sh"), str(repo)], check=True,
-                   capture_output=True, env=hermetic_env(drop_git=True, GOH_SKIP_BUILD="1"), stdin=subprocess.DEVNULL)  # fmt: skip
-    write_gatesrc(repo, gatesrc)
-
-
 def _git_commit(repo: Path, msg: str) -> subprocess.CompletedProcess[str]:
     env = hermetic_env(drop_git=True, GOH_DIR=str(REPO_ROOT), GOH_BIN=str(native_goh_path()))
     return subprocess.run(["git", "-C", str(repo), "commit", "-q", "--allow-empty", "-m", msg],
@@ -186,25 +180,30 @@ def _git_commit(repo: Path, msg: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_the_commit_msg_hook_runs_it_when_the_repo_opts_in(repo: Path) -> None:
-    _hooked(repo, "GOH_COMMIT_CLASS=1\n")
-    assert (repo / ".githooks" / "commit-msg").is_file()
+    write_message_hook(repo, "GOH_COMMIT_CLASS=1\n")
     r = _git_commit(repo, "fix: y")
     assert r.returncode != 0 and "Class" in r.stderr, r.stderr
     assert _git_commit(repo, OK_FIX).returncode == 0
 
 
 def test_the_commit_msg_hook_is_inert_without_the_key(repo: Path) -> None:
-    _hooked(repo, "")
+    write_message_hook(repo, "")
     r = _git_commit(repo, "fix: y")
     assert r.returncode == 0, r.stderr
 
 
-def _push_over(tmp_path: Path, gatesrc: str) -> subprocess.CompletedProcess[str]:
-    """A fix committed with --no-verify on top of a base the remote has, pushed through push_gate."""
+def _push_over(
+    tmp_path: Path, gatesrc: str, adds: str = "notes.txt"
+) -> subprocess.CompletedProcess[str]:
+    """A fix adding ADDS, committed with --no-verify on top of a base the remote has, pushed through
+    push_gate."""
     from test_push_gate import PUSH_GATE, _repo
 
     proj = _repo(tmp_path, gatesrc=gatesrc)
     base = git(proj, "rev-parse", "HEAD").strip()
+    (proj / adds).parent.mkdir(exist_ok=True)
+    (proj / adds).write_text("def test_it() -> None:\n    assert False\n")
+    git(proj, "add", adds)
     tip = _commit(proj, "fix: skipped the hook")
     env = hermetic_env(drop_git=True, GOH_DIR=str(REPO_ROOT), GOH_BIN=str(native_goh_path()),
                        GATE_REPORT=str(tmp_path / "report.txt"),
@@ -222,9 +221,12 @@ def test_the_push_asks_again_so_no_verify_does_not_survive_it(tmp_path: Path) ->
 
 
 def test_the_push_is_untouched_without_the_key(tmp_path: Path) -> None:
-    r = _push_over(tmp_path, "")
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "commit_class" not in r.stdout + r.stderr
+    """The message rules run together: red-run, the other key, refuses this push by its own rule,
+    and the class rule, whose key is not set, adds no word. The refusal comes before the gate, so
+    no whole gate is run to hear nothing; tests/test_push_gate.py's pushes set no key and pass."""
+    r = _push_over(tmp_path, "GOH_RED_RUN=1\n", adds="tests/test_new.py")
+    assert r.returncode == 1 and "Red-run:" in r.stderr, r.stdout + r.stderr
+    assert "Class" not in r.stdout + r.stderr, r.stdout + r.stderr
 
 
 def test_a_replay_judges_history_by_the_rule_it_was_written_under(repo: Path) -> None:
