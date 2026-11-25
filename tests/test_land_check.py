@@ -28,14 +28,14 @@ from lib import durations, land_check, land_judges, land_records
 
 TREE_READS = ("lib/", "tests/", ".gatesrc")  # a clone of the whole tree, planted
 
-# Each STRAYSIGNAL3 refusal, planted back, ONE CASE EACH (GOH.PRELONGPOLE): the guard the check must
-# name, and the plants that break it (file, the fix's text, the text before the fix). The three
-# refusals together were one 67 s test (a pre-step's floor at every enqueue); each alone is a
-# clone, five cheap steps and the guard tests, which xdist spreads over the workers.
+# Each STRAYSIGNAL3 refusal, planted back: the guards the check must name, and the plants that break
+# them (file, the fix's text, the text before the fix). ALL FOUR IN ONE CLONE, checked once
+# (GOH.PYSLOW2): the refused set is compared whole, so a guard one plant hid would be missing, and
+# four clones ran every guard test of the tree four times for it.
 TABLES = "tests/test_tables.py::test_every_generated_table_is_as_its_generator_writes_it"
 REFUSALS = {
     "map-row": (
-        "tests/test_wiring.py::test_every_script_has_a_row_in_the_map",
+        ("tests/test_wiring.py::test_every_script_has_a_row_in_the_map",),
         (("lib/load_reap_code.py", '"""', '"""`lib/gone/`: speaks for a path not there.\n\n'),),
     ),
     "headroom": (
@@ -49,7 +49,7 @@ REFUSALS = {
         ),
     ),
     "env-spread": (
-        "tests/test_no_env_spread.py::test_no_test_spreads_os_environ_beyond_the_seed",
+        ("tests/test_no_env_spread.py::test_no_test_spreads_os_environ_beyond_the_seed",),
         (
             (
                 "tests/test_saved_pid_probes.py",
@@ -64,7 +64,9 @@ REFUSALS = {
         ),
     ),
     "declared-reads": (
-        "tests/test_declared_reads.py::test_every_test_joining_a_path_it_does_not_spell_declares_its_reads",
+        (
+            "tests/test_declared_reads.py::test_every_test_joining_a_path_it_does_not_spell_declares_its_reads",
+        ),
         (("tests/test_saved_pid_probes.py", 'TREE_READS = ("lib/",)', "_READS = ()"),),
     ),
 }
@@ -101,14 +103,13 @@ def _planted_clone(dest: Path, plants: tuple[tuple[str, str, str], ...]) -> Path
 
 
 @pytest.mark.load_sensitive(reason="times the check against the pre-step it replaces")
-@pytest.mark.parametrize("name", REFUSALS)
 def test_the_check_names_each_of_straysignal3s_three_refusals_in_seconds(
-    name, tmp_path, goh, monkeypatch
+    tmp_path, goh, monkeypatch
 ):
-    """One planted refusal in a clone: the check names its guard and nothing else (a guard the
-    clone already failed is no proof), in seconds. The four cases are STRAYSIGNAL3's three
-    refusals (the third broke two guards, so it plants two fixes back)."""
-    refused_guard, plants = REFUSALS[name]
+    """Every refusal planted in one clone: the check names each one's guards and nothing else (a
+    guard the clone already failed is no proof), in seconds, as a lane that broke them all is told.
+    The four are STRAYSIGNAL3's three refusals (the third broke two guards: two fixes back)."""
+    plants = tuple(p for _, put_back in REFUSALS.values() for p in put_back)
     ran = [s for s in land_check.steps(REPO_ROOT) if s != SKIPPED_STEP]
     assert len(ran) < len(land_check.steps(REPO_ROOT)), f"{SKIPPED_STEP} is no declared step"
     monkeypatch.setenv("GOH_LAND_CHECK_STEPS", ":".join(ran))
@@ -118,7 +119,7 @@ def test_the_check_names_each_of_straysignal3s_three_refusals_in_seconds(
     t0 = time.monotonic()
     refused = land_check.run(clone, None, said.append)
     took = time.monotonic() - t0
-    want = [refused_guard] if isinstance(refused_guard, str) else list(refused_guard)
+    want = [g for guards, _ in REFUSALS.values() for g in guards]
     assert sorted(refused) == sorted(want), "\n".join(said)
     assert_sooner(took, 30, 200, "goh land --check over STRAYSIGNAL3's planted tries")
 

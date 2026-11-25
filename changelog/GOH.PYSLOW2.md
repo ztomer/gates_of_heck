@@ -1,0 +1,1 @@
+* GOH.PYSLOW2: slow tests made cheap without losing a proof, worst first: `test_land_check` plants STRAYSIGNAL3's refusals in one clone and checks once (131 -> 37 test-seconds), `test_release_kit` merges the runs that repeat one release and names the suite's goh (80 -> 31).
