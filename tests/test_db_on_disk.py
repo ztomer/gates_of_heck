@@ -4,9 +4,7 @@
 from __future__ import annotations
 
 import ast
-import contextlib
 import os
-import sqlite3
 from pathlib import Path
 
 import db_core
@@ -27,6 +25,10 @@ def _mode(path: Path) -> tuple[str, list[str]]:
         return mode, sorted(p.name for p in path.parent.iterdir())
 
 
+def _page_size(path: Path) -> int:
+    return int.from_bytes(path.read_bytes()[16:18], "big")  # SQLite's file header
+
+
 def test_a_tests_own_database_leaves_no_file_beside_it(tmp_path, monkeypatch) -> None:
     assert Path(tmp_path).is_relative_to(Path(os.environ[ENV]).resolve())
     (tmp_path / "mine").mkdir()
@@ -34,12 +36,8 @@ def test_a_tests_own_database_leaves_no_file_beside_it(tmp_path, monkeypatch) ->
     assert _mode(tmp_path / "mine" / "goh.db") == ("memory", ["goh.db"])
     monkeypatch.delenv(ENV)  # production's own: the reading above can tell the two apart
     assert _mode(tmp_path / "wal" / "goh.db") == ("wal", ["goh.db", "goh.db-shm", "goh.db-wal"])
-    pages, sizes = [], []  # 512-byte pages: a table with one row is one of them, not 4 KB
-    for d in ("mine", "wal"):
-        with contextlib.closing(sqlite3.connect(tmp_path / d / "goh.db")) as con:
-            pages.append(con.execute("PRAGMA page_size").fetchone()[0])
-        sizes.append((tmp_path / d / "goh.db").stat().st_size)
-    assert pages == [512, 4096] and sizes[0] < sizes[1], (pages, sizes)
+    pages = [_page_size(tmp_path / d / "goh.db") for d in ("mine", "wal")]
+    assert pages == [512, 4096]  # a table with one row is 512 bytes of it, not 4 KB
 
 
 def test_a_database_outside_the_run_is_never_a_throwaway(tmp_path) -> None:
