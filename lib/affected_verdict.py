@@ -83,6 +83,8 @@ PATH = "affected"
 RECORD = "GOH_LAND_VERDICTS_RECORD"
 REUSE = "GOH_LAND_VERDICTS_REUSE"
 SHAPE = "GATES_OF_HECK_SUITE_SHAPE"
+GREEN = "green"  # the record's key: the identity its whole set was green on (`mark_green`)
+SIDES = (".judges", ".owed", ".mac")  # beside a record while its run lasts; a killed one leaves it
 # The lines a run of the set says (`judged`), and `outcome`'s patterns for them: one place each.
 TOOK = (
     "pre-land: the set's verdict on {on} holds (same tree, set and suite inputs; {by}, {took} s, "
@@ -212,7 +214,37 @@ def whole(root: Path, chosen: list[str], base: str | None, is_whole: bool,
     if not is_whole or not chosen or nested:
         return work()
     with own_record():  # then what the gate would run for want of a verdict (lib/pre_owed.py)
-        return judged(root, chosen, base, work) or _lib("pre_owed").run(root, base)
+        if rc := judged(root, chosen, base, work):
+            return rc
+        mark_green(os.environ.get(RECORD, ""))
+        return _lib("pre_owed").run(root, base)
+
+
+def _set_record(path: str | None) -> dict | None:
+    """The record at PATH when it is a whole set's, stamped, of a tree that held still."""
+    try:
+        rec = json.loads(Path(path or os.devnull).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    ok = isinstance(rec, dict) and rec.get("selection") == "affected" and rec.get("identity") \
+        and isinstance(rec.get("base"), str) and isinstance(rec.get("passed"), dict)  # fmt: skip
+    return rec if ok else None
+
+
+def mark_green(path: str) -> None:
+    """The set has just gone green: its record says so before what follows it starts (the tests
+    owed, lib/pre_owed.py; the release canary), so a stop there keeps the verdict (GOH.PREPARTIAL:
+    GOH.NITS3's enqueue, stopped in the canary at 1500 s, lost a whole green set)."""
+    if (rec := _set_record(path)) is not None:
+        tmp = Path(f"{path}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps({**rec, GREEN: rec["identity"]}), encoding="utf-8")
+        tmp.replace(path)
+
+
+def stands(path: str | None) -> bool:
+    """The record at PATH holds its set's green verdict (`mark_green`) on the tree it judged."""
+    rec = _set_record(path)
+    return rec is not None and rec.get(GREEN) == rec["identity"]
 
 
 def _hand(root: Path, rec: dict, base: str | None, chosen: list[str]) -> None:

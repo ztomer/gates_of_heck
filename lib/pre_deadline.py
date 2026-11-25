@@ -30,7 +30,9 @@ narrowed, on the box POOLSHARE measured at load 213-237; the share stays, the cl
 THE SHARE is read AFTER admission: this wrapper runs inside tools/load.py's slot, where
 GOH_GATE_WORKERS is the admission's own count, so the deadline is never a guess made before a wait.
 The command runs in a process group of its own, killed whole at the deadline (lib/load_tree.py),
-and the exit is 124, load.py's EXIT_DEADLINE, which land.sh reads as no verdict. The wait is
+and the exit is 124, load.py's EXIT_DEADLINE, which land.sh reads as no verdict -- but for an
+enqueue whose set was already green, stopped in the tests owed or the canary after it: 0, that
+verdict (GOH.PREPARTIAL, `_expired`). The wait is
 lib/proc_deadline.py's, never the stdlib's timed wait (GOH.PRESTEPMSGS: on macOS that one reads a
 child that ends after half its deadline as expired, its status lost), and the wrapper says nothing
 of its own at the deadline: tools/land.sh's one line names the run, the wait and the limit apart.
@@ -80,6 +82,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import affected_verdict
 import pre_cpu
 import proc_deadline
 import timing_ledger
@@ -91,6 +94,7 @@ MARGIN = 1.5
 WINDOW = 30  # the newest land rows read: an old, costlier set ages out
 CEILING_S = 25 * 60
 EXIT_DEADLINE = 124
+ENQUEUE = "GOH_LAND_PRE_ONLY"  # the enqueue's pre-step (tools/land.sh)
 UNITS = {"s": 1.0, "m": 60.0, "h": 3600.0}
 
 
@@ -122,6 +126,29 @@ def deadline(work_s: float, workers: int, floor_s: float, ceiling_s: float = CEI
     return math.ceil(min(max(ceiling_s, floor_s), max(floor_s, scaled)))
 
 
+def _sweep() -> None:
+    """The files a killed pre-step leaves beside its record, removed: their own code's `finally`
+    never ran (lib/affected_verdict.py SIDES). The record itself is tools/land.sh's."""
+    if record := os.environ.get(affected_verdict.RECORD):
+        for side in affected_verdict.SIDES:
+            Path(f"{record}{side}").unlink(missing_ok=True)
+
+
+def _expired() -> int:
+    """The exit of a run stopped at its deadline: EXIT_DEADLINE, no verdict -- or 0 for an enqueue
+    whose set was green before it, stopped in what follows the set (lib/affected_verdict.py
+    `stands`): that verdict is the enqueue's, and its land's gate runs what was still owed. Never a
+    land's own run, whose seconds the ledger would read as the set's cost (`work`)."""
+    record = os.environ.get(affected_verdict.RECORD)
+    if not os.environ.get(ENQUEUE) or not affected_verdict.stands(record):
+        return EXIT_DEADLINE
+    from tui.lib import info
+
+    info("pre-land: the set's green verdict stands: what follows it was stopped at the deadline, "
+         "and the gate runs what it owed (GOH.PREPARTIAL)")  # fmt: skip
+    return 0
+
+
 def _run(command: list[str], limit: int, mark: Path, workers: int) -> int:
     mark.write_text(f"{int(time.time())} {workers} {limit}\n", encoding="utf-8")
     child = subprocess.Popen(
@@ -130,6 +157,7 @@ def _run(command: list[str], limit: int, mark: Path, workers: int) -> int:
 
     def stop(number: int, _frame: object) -> None:
         kill_tree(child)
+        _sweep()
         os._exit(128 + number)
 
     for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
@@ -139,7 +167,8 @@ def _run(command: list[str], limit: int, mark: Path, workers: int) -> int:
         # What the killed pytest run cost, read while it lives (GOH.PREWIDTH, lib/pre_cpu.py).
         pre_cpu.at_deadline(child.pid, os.environ.get(pre_cpu.ENV))
         kill_tree(child)
-        return EXIT_DEADLINE
+        _sweep()
+        return _expired()
     return 128 - status if status < 0 else status
 
 

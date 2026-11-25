@@ -18,7 +18,8 @@ set is green, and answers it in its own slot (`run`): the tests left are collect
 holds is run (carrying like any pre-step run), and its passes join the record and the store.
 `settled` on the record names every test so answered -- it passed, was skipped, or is not collected
 here -- and `gap` leaves it out. Nothing is carried that was refused: a refused test RUNS, a red one
-is the pre-step's red, and the record's identity (the tree and the tools) is checked by the gate
+is the pre-step's red (a run of them stopped is none: the green set's verdict stands,
+GOH.PREPARTIAL), and the record's identity (the tree and the tools) is checked by the gate
 before any of it is read. A collection that cannot be read whole, a run on a tree that moved, or
 more than MOST tests settles nothing: the gate runs them, as before.
 
@@ -46,6 +47,7 @@ import pre_reuse  # lib/, beside this file: the one reader of the tree's selecti
 
 RECORD, REUSE = "GOH_LAND_VERDICTS_RECORD", "GOH_LAND_VERDICTS_REUSE"  # tests/_land_verdicts.py
 ENQUEUE = "GOH_LAND_PRE_ONLY"  # the enqueue's pre-step (tools/land.sh)
+NOT_RUN = (75, 124)  # tools/pytest.sh not admitted, a deadline: the set's own green verdict stands
 SETTLED = "settled"  # the record's key: tests answered on its tree that passed none
 MOST = 1500  # tests; past it the gate's own run is the cheaper half (1,353 was the most replayed)
 COUNT = re.compile(r"^(\d+) tests? collected\b", re.MULTILINE)
@@ -200,7 +202,11 @@ def run(root: Path, base: str | None) -> int:
 
             argv = ["env", f"{REUSE}={os.devnull}", f"{RECORD}={owed}", "bash",
                     str(root / "tools" / "pytest.sh"), "-q", *sorted(here)]  # fmt: skip
-            if rc := timed(f"pre-land: {len(here)} tests the gate would run", argv):
+            rc = timed(f"pre-land: {len(here)} tests the gate would run", argv)
+            if rc < 0 or rc > 128 or rc in NOT_RUN:  # killed, or never admitted: no test said red
+                info(f"pre-land: {said}: their run was stopped (exit {rc}), the gate runs them")
+                return 0
+            if rc:
                 return rc
         if not settle(Path(record), owed if here else None, left):
             info(f"pre-land: {said}: the tree moved under their run, the gate runs them")
