@@ -39,7 +39,8 @@ import ledger every store move writes), 0002 `lands`, `land_guards`, `red_causes
 (`durations.py`), 0007 `requests`, `slot_owners`, `early` and the `landq_v1` view (GOH.LANDQDB,
 `landq_state.py`, `land_slot.py`), 0008 `reuse_audit` and `reuse_shadow` (`reuse_audit_store.py`,
 GOH.VERDICTDB V1), 0022 `push_sweeps` (`push_sweep_rows.py`, GOH.PINSWEEP), 0023 `land_judgings`
-(`land_judge_rows.py`, GOH.ONEGATE); goh-cache.db 0001 `kv`, 0002 `verdicts` (`reuse_store.py`),
+(`land_judge_rows.py`, GOH.ONEGATE), 0024 `run_ends`, `run_phases` and `cpu_owners` (`run_ends.py`,
+`cpu_owners.py`, GOH.TIMEACCOUNT); goh-cache.db 0001 `kv`, 0002 `verdicts` (`reuse_store.py`),
 `kept` and `memo` (GOH.VERDICTDB V1), 0003 `shell_verdicts` (the goh binary's per-file verdicts,
 `crates/goh/src/verdict_cache.rs`, GOH.VERDICTDB V2). Pinned by `test_db_bounds.py` (every shipped
 table bounded).

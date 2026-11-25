@@ -32,6 +32,7 @@ pre_deadline = importlib.import_module("pre_deadline")
 killtree = importlib.import_module("killtree")
 land_slot = importlib.import_module("land_slot")
 land_spd = importlib.import_module("land_spd")
+run_ends = importlib.import_module("run_ends")  # GOH.TIMEACCOUNT: every start has an end row
 landq_remote = importlib.import_module("landq_remote")
 landq_inflight = importlib.import_module("landq_inflight")
 landq_state = importlib.import_module("landq_state")
@@ -41,11 +42,9 @@ tmp_root = importlib.import_module("tmp_root")
 _tui = importlib.import_module("tui.lib")
 info, warn = _tui.info, _tui.warn
 
-# land.sh bounds the set at its share's deadline (lib/pre_deadline.py: at most GOH_LAND_PRE_CEIL,
-# 25 min) after a wait for a short-lane slot (load.py's default bound, 15 min). This clock starts
-# before both, so it covers both and a margin (the guards, the rebase): at 30 min it fired first on
-# a busy box, and its kill read "the pre-land tests failed (exit -15)" -- GOH.NITS3 and
-# GOH.ROADMAPIDS twice, each 1800 s after its pre-step started (GOH.PRESTEPDETACH).
+# land.sh bounds the set at its share's deadline (lib/pre_deadline.py: GOH_LAND_PRE_CEIL, 25 min)
+# after a short-lane slot wait (15 min); this clock covers both and a margin: at 30 min it fired
+# first on a busy box, read as "pre-land tests failed (exit -15)" twice (GOH.PRESTEPDETACH).
 TIMEOUT_MARGIN_S = 5 * 60
 TIMEOUT = int(gates_in_flight.DEFAULT_WAIT_S + pre_deadline.CEILING_S) + TIMEOUT_MARGIN_S
 # The words a pre-step this clock stopped is given: no verdict, like land.sh's own deadline.
@@ -333,8 +332,9 @@ def run_kept(req: dict, q: Path, script: Path, bindings: tuple[str, ...]) -> flo
         onto.append(f"GOH_LAND_PRE_CARRY={carry}")
     slug = landq_inflight.slug(req.get("item") or Path(req["repo"]).name)
     log = q / "logs" / f"prestep-{time.time_ns():020d}-{slug}.log"  # GOH.TERSEOUT: its output
-    took = run(Path(req["worktree"]), req["sha"], script, bindings, keep,
-               [*land_slot.label(req), *onto], noted, did, ran, log)  # fmt: skip
+    with run_ends.prestep(log.stem, req, ran, noted, did, Red):  # its row: GOH.TIMEACCOUNT
+        took = run(Path(req["worktree"]), req["sha"], script, bindings, keep,
+                   [*land_slot.label(req), *onto], noted, did, ran, log)  # fmt: skip
     # The pre-step's wait, run, limit, workers and cpu_s: the SPD's figures (GOH.LANDPROFILEFIX),
     # always present (GOH.PREWIDTH) -- zeros, and why, when land.sh ran no pre-step at all.
     req["pre_run"] = ran or skipped("land.sh ran no pre-step (the repo declares no GOH_LAND_PRE)")

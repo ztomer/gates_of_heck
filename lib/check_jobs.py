@@ -127,6 +127,9 @@ class Guard:
         self.record = {"door": door, "repo": repo, "sha": sha, "epoch": time.time(),
                        "pid": os.getpid()}  # fmt: skip
         self._lock = threading.Lock()
+        import run_ends  # lib/: its start row before any job (GOH.TIMEACCOUNT)
+
+        run_ends.begin("check", run_of(self.record), repo)
         self.proc = subprocess.Popen(
             [sys.executable, "-c", WATCH, str(ROOT / "lib"), json.dumps(self.record)],
             stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, start_new_session=True,
@@ -252,16 +255,25 @@ def _end(proc: subprocess.Popen, me: pid_owner.Stamp | None) -> None:
     proc.wait()
 
 
+def run_of(record: dict) -> str:
+    return f"{record['pid']}-{record['epoch']:.3f}"
+
+
 def note(record: dict, rc: int) -> None:
-    """The run's row (module doc, THE RECORD); never the reason a check fails."""
+    """The run's row (module doc, THE RECORD) and its start's end (lib/run_ends.py); never the
+    reason a check fails."""
+    import run_ends
     import timing_ledger  # lib/: goh.db's spans, through their one writer
 
     door = record["door"]
     with contextlib.suppress(Exception):
+        out = run_ends.outcome_of_exit(rc)
+        run_ends.end("check", run_of(record), out, None if rc == 0 else f"exit {rc}")
+    with contextlib.suppress(Exception):
         timing_ledger.append(timing_ledger.row_for(
             f"{KIND}:{door}" if door else KIND, timing_ledger.repo_name(record["repo"]),
             time.time() - record["epoch"], ok=rc == 0, exit=rc, sha=record["sha"][:12],
-            ref=f"{record['pid']}-{record['epoch']:.3f}",
+            ref=run_of(record),
         ))  # fmt: skip
 
 

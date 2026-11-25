@@ -338,7 +338,13 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--guards", action="store_true", help="red lands counted by refusing guard")
     ap.add_argument("--checks", action="store_true", help="goh land --check runs: s, outcomes")
     ap.add_argument("--landq", help="the landing queue dir (default $GOH_LANDQ_DIR)")
+    ap.add_argument("--account", action="store_true", help="the closed time account, thrown-away "
+                    "seconds, step yields, five readings (lib/time_account.py)")  # fmt: skip
     a = ap.parse_args(argv)
+    if a.account:
+        import time_account
+
+        return time_account.main(a.since, a.json)
     q = Path(a.landq or state_paths.landq_dir())
     if a.guards:
         import land_check

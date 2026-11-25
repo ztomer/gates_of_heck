@@ -63,7 +63,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import state_paths  # noqa: E402 -- lib/, on the path from the line above
+import cpu_owners  # noqa: E402 -- lib/, on the path from the line above
+import state_paths  # noqa: E402
 
 sys.path.insert(1, str(HERE.parent))
 from proc_table import Proc, Snapshot, reader  # noqa: E402
@@ -463,6 +464,7 @@ def sample(interval: float, duration: float, d: Path) -> int:
         u1 = used()
         append(d, record(prev, cur, resolve, u1 - u0))
         prune(d, cur.t)
+        cpu_owners.every(cur)  # GOH.TIMEACCOUNT: CPU by owner, from this table, each period
         u0, prev = u1, cur
     return 0
 
