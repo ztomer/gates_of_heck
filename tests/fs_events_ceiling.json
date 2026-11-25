@@ -1,7 +1,7 @@
 {
- "per_test": 17000,
- "per_test_run": 110,
- "bytes_per_test_run": 125000,
+ "per_test": 15500,
+ "per_test_run": 90,
+ "bytes_per_test_run": 65000,
  "mean_from": 2000,
  "new": {
   "events": 150,
@@ -13,13 +13,10 @@
  },
  "named": {
   "tests/test_binary_source_identity.py": {
-   "events": 3200
+   "events": 3000
   },
   "tests/test_coverage_shared_build.py": {
    "bytes": 15000000
-  },
-  "tests/test_estate_corpus_cache.py": {
-   "events": 7000
   },
   "tests/test_fs_ceilings.py": {
    "events": 600
@@ -33,21 +30,21 @@
   },
   "tests/test_land_driver.py": {
    "bytes": 40000000,
-   "events": 10500
+   "events": 9500
   },
   "tests/test_land_identity.py": {
    "bytes": 32000000,
-   "events": 8500
+   "events": 7800
   },
-  "tests/test_push_gate_runs.py": {
-   "events": 6500
+  "tests/test_quiet_git.py": {
+   "events": 450
   },
   "tests/test_self_hosted_hook.py": {
    "bytes": 40000000,
-   "events": 16500
+   "events": 15500
   },
   "tests/test_ship_pinned.py": {
-   "events": 2800
+   "events": 2600
   },
   "tests/test_state_cutover.py": {
    "bytes": 5500000,

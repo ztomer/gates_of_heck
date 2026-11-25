@@ -21,7 +21,7 @@ pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="clonefile(2) i
 
 def _build(tree: Path) -> None:
     fast_init(tree, "main")
-    for n in range(16):
+    for n in range(14):
         write(tree, f"d{n % 4}/f{n}.txt", f"file {n:02}\n")
     for n in range(2):
         write(tree, f"d{n}/same.txt", "x" * n)
