@@ -78,6 +78,8 @@ HOOK_BUSY_MS = 5000  # a hook's write waits this long for goh.db, then lets the 
 # what one row of the spill can meet that no other row would: it is dead-lettered, never retried
 REFUSED = (spawn_columns.Refused, sqlite3.IntegrityError, sqlite3.DataError, OverflowError)
 
+HELD = (sqlite3.Error, OSError, lock_order.OrderError, goh_db.Uncut)  # goh.db takes no row now
+
 
 def cache_dir() -> Path:
     return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "goh"
@@ -104,12 +106,12 @@ def _kv(con: sqlite3.Connection, name: str) -> Any:
 def _kv_put(con: sqlite3.Connection, name: str, value: object) -> None:
     con.execute("INSERT INTO kv(name, body, at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET "
                 "body=excluded.body, at=excluded.at",
-                (name, _dump(state_paths.put(con, name, value)), time.time()))  # fmt: skip
+                (name, _dump(state_paths.put(name, value)), time.time()))  # fmt: skip
 
 
 def insert(con: sqlite3.Connection, table: str, row: dict) -> None:
     """ROW as TABLE's next row (SPAWNS or LANES; lib/state_retire.py's import uses it too)."""
-    row = state_paths.put(con, table, row)
+    row = state_paths.put(table, row)
     if table == SPAWNS:
         spawn_columns.write(con, row)
     else:
@@ -219,7 +221,7 @@ def append(table: str, row: dict) -> str | None:
             if why := _taken(con, table, row):
                 letters.append((table, row, why))
         _bury(letters)  # the COMMIT is done: until here the spill still holds them
-    except (sqlite3.Error, OSError, lock_order.OrderError) as e:  # an ancestor holding goh.db: open
+    except HELD as e:  # an ancestor holding goh.db, or a file from before the cutover: open
         for mine in claimed:  # rolled back: its rows go back to the spill
             for t, r in _spilled(mine):
                 _spill(t, r)

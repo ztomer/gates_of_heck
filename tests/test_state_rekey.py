@@ -1,21 +1,24 @@
 """lib/state_rekey.py (GOH.ABSDATA): a moved file is the file a writer of tokens makes, byte for
-byte; the way back; what it refuses."""
+byte; what it refuses."""
 
 from __future__ import annotations
 
 import contextlib
 import json
+import os
 import sqlite3
 from pathlib import Path
 
 import _body_fixture as bf
 import goh_db
 import kv_rows
+import pid_owner
 import pytest
+import state_columns
 import state_paths
 import state_rekey
 import state_shape
-from _contract_fixture import NUMBERS, RUN, contracts, write_all
+from _contract_fixture import NUMBERS, RUN, contracts, old_all, write_all
 
 PUSH = {"repos": {"/r/goh": {"status": "pushed", "said": "s", "sweep": "/s/w.json", "where": "goh",
                              "log": "/s/w.log", "at": "2026-11-18T11:06:40+00:00"}},
@@ -50,23 +53,31 @@ def at(con: sqlite3.Connection, monkeypatch) -> sqlite3.Connection:
 
 
 def made(home: str, monkeypatch, token: bool, runs: bool = False) -> sqlite3.Connection:
-    """Every store's rows with HOME's paths in them, written absolute or as tokens."""
-    con = at(bf.memory(), monkeypatch)
-    contracts(con, *NUMBERS)
+    """Every store's rows with HOME's paths in them: written as tokens, or written whole by an older
+    goh and contracted, the paths still absolute."""
+    con = at(bf.memory() if token else bf.memory(bf.UNCUT), monkeypatch)
     if token:
-        con.execute("INSERT INTO meta VALUES ('paths', 'token')")
-    write_all(con, home, runs)
+        write_all(con, home, runs)
+    else:
+        old_all(con, home, runs)
+        con.execute("UPDATE ships SET repo = ?", (home + "/r/goh",))
+        for t in state_columns.TABLES:
+            if t != "selection_misses":
+                con.execute(f"UPDATE {t} SET body = '{{}}'")
+        contracts(con, *NUMBERS)
     root = home + "/Projects"
+    encode = state_paths.encode if token else str
     for name, whole in (("pin_push", PUSH), ("pin_sweeps", SWEEPS), ("wf_pin.pins", PINS)):
         doc = json.loads(
             json.dumps(whole).replace('"/r/', f'"{root}/').replace('"/s', f'"{home}/s')
         )
-        kept = kv_rows.put(con, name, state_paths.put(con, name, doc))
-        con.execute("INSERT INTO kv(name, body, at) VALUES (?, ?, 5)",
-                    (name, json.dumps(kept, sort_keys=True)))  # fmt: skip
-    for t in ("wf_pins", "pin_sweep_repos"):  # their writer's clock
+        kv_rows.put(con, name, state_paths.put(name, doc) if token else doc)
+    doc = {"root": root, "registry": home + "/i"}
+    text = json.dumps(state_paths.put("estate_audit", doc) if token else doc, sort_keys=True)
+    con.execute("INSERT INTO kv(name, body, at) VALUES ('estate_audit', ?, 5)", (text,))
+    for t in ("wf_pins", "pin_sweep_repos", "pin_pushes"):  # their writer's clock
         con.execute(f"UPDATE {t} SET at = 5")
-    log = [state_paths.column(con, f"{home}/.local/state/goh/{x}") for x in ("slot", "a.jsonl")]
+    log = [encode(f"{home}/.local/state/goh/{x}") for x in ("slot", "a.jsonl")]
     con.execute("INSERT INTO slot_owners VALUES (?, 0, 't', 1, NULL, 5)", log[:1])
     con.execute("INSERT INTO imports(store, source, sha256, rows, at) VALUES ('s', ?, '', 1, 5)",
                 log[1:])  # fmt: skip
@@ -94,57 +105,33 @@ def test_a_moved_file_is_the_file_a_writer_of_tokens_makes(home, monkeypatch) ->
     assert state_rekey.run() == {}  # again: nothing to do
 
 
-def test_the_way_back_gives_every_row_again(home, monkeypatch) -> None:
-    con = made(home, monkeypatch, token=False)
-    was = rows(con)
-    assert sum(state_rekey.run().values()) > 50
-    assert state_rekey.run(undo=True) and state_rekey.run(undo=True) == {}
-    again = rows(con)
-    assert {t for t in was if was[t] != again[t]} == set()
-    assert not state_paths.tokens(con)
-
-
 def test_every_path_field_a_store_names_is_a_column_moved(home, monkeypatch) -> None:
     """A field added to lib/state_paths.py with no column here would stay absolute in a moved file:
-    written as a token and moved from the absolute form, the two files differ."""
-    con = made(home, monkeypatch, token=False, runs=True)
-    requests = rows(con)["requests"]
-    con.execute("DELETE FROM requests")
-    con.execute("DELETE FROM early")
+    written as a token and moved from the absolute form, the two files differ. The requests too,
+    which move where they wait."""
+    bare = made(home, monkeypatch, token=True, runs=True)
+    moved = made(home, monkeypatch, token=False, runs=True)
+    assert home in json.dumps(rows(moved)["requests"])
     state_rekey.run()
-    assert home in json.dumps(requests)
-    bare = bf.memory()
-    contracts(bare, *NUMBERS)
-    bare.execute("INSERT INTO meta VALUES ('paths', 'token')")
-    write_all(bare, home, True)
-    moved = bf.memory()
-    contracts(moved, *NUMBERS)
-    write_all(moved, home, True)
-    state_rekey._codecs(moved, False)
-    for table, col, where, kind in state_rekey._cells(moved):
-        if table in ("requests", "early", "request_nodes", "request_cov_files"):
-            moved.execute(f'UPDATE {table} SET "{col}" = goh_{kind}("{col}") WHERE {where}')
     for t in ("requests", "early", "request_nodes", "request_cov_files"):
         assert rows(moved)[t] == rows(bare)[t], t
 
 
 def test_what_it_refuses(home, monkeypatch) -> None:
-    con = at(bf.memory(), monkeypatch)
+    con = at(bf.memory(bf.UNCUT), monkeypatch)
     contracts(con, 17, 18)
     was = rows(con)
-    with pytest.raises(state_rekey.RekeyRefused, match=r"contracts \[19, 20\] are not applied"):
+    with pytest.raises(state_rekey.RekeyRefused, match=r"contracts \[19, 20, 21\] are not applied"):
         state_rekey.run()
     assert rows(con) == was
     con = made(home, monkeypatch, token=False, runs=True)
-    with pytest.raises(state_rekey.RekeyRefused, match="requests: 3, early: 2"):
-        state_rekey.run()
-    con.execute("DELETE FROM requests")
-    con.execute("DELETE FROM early")
-    con.execute("UPDATE ships SET status = 'bisecting'")
+    con.execute("UPDATE ships SET status = 'bisecting', pid = ?, pid_stamp = ?",
+                (os.getpid(), pid_owner.stamp_line(os.getpid())))  # fmt: skip
     with pytest.raises(state_rekey.RekeyRefused, match="ships still running: 1"):
         state_rekey.run()
     con.execute("UPDATE ships SET status = 'ok'")
-    con.execute("INSERT INTO lands(queue, run, at, rest) VALUES ('$HOMEDIR/q', ?, 5, '{}')", (RUN,))
+    for queue in (home + "/q2", "$HOMEDIR/q2"):
+        con.execute("INSERT INTO lands(queue, run, at, rest) VALUES (?, ?, 5, '{}')", (queue, RUN))
     was = rows(con)
     with pytest.raises(state_rekey.RekeyRefused, match=r"lands.queue: a row is there under both"):
         state_rekey.run()

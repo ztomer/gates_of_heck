@@ -113,8 +113,10 @@ def safe_numbers(meta: dict[str, str]) -> set[int]:
 LATE = re.compile(r"(?:--[^\n]*\n|\s)*(?:CREATE|DROP)\s+(?:VIEW|TRIGGER)\b", re.IGNORECASE)
 
 
-def fresh(con: sqlite3.Connection, files: dict[int, Path], stamp: str, safe: set[int]) -> bool:
-    """FILES, all of them, into a file that holds no number; False when it holds one by now."""
+def fresh(con: sqlite3.Connection, files: dict[int, Path], stamp: str, safe: set[int],
+          born: tuple[tuple[str, str], ...] = ()) -> bool:  # fmt: skip
+    """FILES, all of them, into a file that holds no number, and its BORN meta rows; False when it
+    holds one by now."""
     con.execute("BEGIN IMMEDIATE")
     try:
         if con.execute("SELECT 1 FROM schema_version").fetchone():
@@ -125,6 +127,7 @@ def fresh(con: sqlite3.Connection, files: dict[int, Path], stamp: str, safe: set
             apply(con, n, p, stamp, n in safe, late)
         for stmt in late:
             con.execute(stmt)
+        con.executemany("INSERT INTO meta(key, value) VALUES (?, ?)", born)
         con.execute("COMMIT")
     except BaseException:
         con.execute("ROLLBACK")

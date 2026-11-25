@@ -63,6 +63,17 @@ def test_the_root_defaults_under_state_and_a_relative_one_is_refused(tmp_path, m
     assert done.returncode == 2 and "absolute" in done.stderr
 
 
+def test_the_configs_state_root_moves_no_run_path(tmp_path, monkeypatch):
+    """One lock directory for every goh on the host: the shell face reads no config.toml."""
+    conf = tmp_path / "conf" / "goh" / "config.toml"
+    conf.parent.mkdir(parents=True)
+    conf.write_text('state_root = "/elsewhere"\n')
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "conf"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.delenv("GOH_RUN_DIR", raising=False)
+    assert run_path.run_root() == tmp_path / "state" / "goh" / "run"
+
+
 def test_the_index_tree_answers_while_index_lock_is_held(repo: Path, tmp_path: Path) -> None:
     run = tmp_path / "run"
     (repo / "staged.txt").write_text("staged\n")

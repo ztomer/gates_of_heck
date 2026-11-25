@@ -48,12 +48,14 @@ from types import ModuleType
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, on the path from the line above
+import kv_rows
 import state_commands  # `goh state`'s other words
 import state_paths
 import state_retire_lands as lands  # the land records' half (GOH.STATEDB S1)
 import state_retire_ships  # the ship records' half (GOH.STATEDB S2), beside this file
 import state_retire_verdicts  # GOH.VERDICTDB's stores, beside this one in the seam
 import state_rows  # a row as a document, whatever the file's shape
+from remote_rates import PACES
 
 state_dir = state_paths.state_root
 
@@ -105,7 +107,7 @@ def _lines(p: Path) -> list[dict]:
 
 def _ledger(con: sqlite3.Connection, store: str, p: Path, rows: int, source: str = "") -> None:
     sha = hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else ""
-    row = (store, source or state_paths.column(con, str(p)), sha, rows, time.time())
+    row = (store, source or state_paths.encode(str(p)), sha, rows, time.time())
     con.execute("INSERT OR IGNORE INTO imports(store, source, sha256, rows, at) VALUES (?,?,?,?,?)",
                 row)  # fmt: skip
 
@@ -117,11 +119,10 @@ def _subset(con: sqlite3.Connection, table: str, p: Path) -> str | None:
 
 
 def _kv_equal(con: sqlite3.Connection, name: str, p: Path) -> str | None:
-    """P's whole document is kv NAME's body, or NAME was written after P was (it moved on)."""
-    row = con.execute("SELECT body, at FROM kv WHERE name=?", (name,)).fetchone()
-    if row is None:
+    """P's whole document is NAME's, or NAME was written after P was (it moved on)."""
+    if (have := state_rows.kv_have(con, name)) is None:
         return f"no kv row {name}"
-    if json.loads(row[0]) == _json(p) or float(row[1] or 0) > p.stat().st_mtime:
+    if have[0] == state_paths.put(name, _json(p)) or have[1] > p.stat().st_mtime:
         return None
     return f"kv {name} differs and is older than the file"
 
@@ -151,9 +152,7 @@ def _hook_load(con: sqlite3.Connection, files: list[Path]) -> None:
 
     for p in files:
         if (table := _hook_table(p)) == "model-choice-watch":
-            if (doc := _json(p)) is not None:
-                con.execute("INSERT OR IGNORE INTO kv(name, body, at) VALUES (?, ?, ?)",
-                            (table, _dump(doc), p.stat().st_mtime))  # fmt: skip
+            state_rows.kv_load(con, table, _json(p), p)
             continue
         have, added = Counter(state_rows.said(table, d) for d in state_rows.docs(con, table)), 0
         for r in _lines(p):  # in line order; a line the table already holds is taken once
@@ -231,10 +230,7 @@ def _small_load(con: sqlite3.Connection, files: list[Path]) -> None:
 
     for p in files:
         if p.suffix == ".json":
-            if (doc := _json(p)) is not None:
-                name = p.name.removesuffix(".json")
-                con.execute("INSERT OR IGNORE INTO kv(name, body, at) VALUES (?, ?, ?)",
-                            (name, _dump(doc), p.stat().st_mtime))  # fmt: skip
+            state_rows.kv_load(con, p.name.removesuffix(".json"), _json(p), p)
             continue
         table, rows = _small_rows(p)
         n = 0
@@ -279,8 +275,8 @@ def _numbers(data: object) -> dict[str, float]:
 
 def _dur_load(con: sqlite3.Connection, files: list[Path]) -> None:
     """As lib/durations.py's first write once took them: a table file's entries as readings at
-    its mtime under the run `import:<sha12>`, a kv file's value unless the key has one; once per
-    file's bytes (the imports ledger, source the bare file name)."""
+    its mtime under the run `import:<sha12>`, a kv file's value as its rows; once
+    per file's bytes (the imports ledger, source the bare file name)."""
     for p in files:
         what, raw = _dur_what(p), p.read_bytes()
         sha = hashlib.sha256(raw).hexdigest()
@@ -295,23 +291,28 @@ def _dur_load(con: sqlite3.Connection, files: list[Path]) -> None:
                             "VALUES (?, ?, ?, ?, 0, ?)",
                             [(run, k, what, v, at) for k, v in got.items()])  # fmt: skip
             n = len(got)
-        else:
-            n = 0 if data is None else con.execute(
-                "INSERT OR IGNORE INTO duration_kv(key, value, at) VALUES (?, ?, ?)",
-                (what, json.dumps(data), at)).rowcount  # fmt: skip
+        elif what == "linux_unsafe":
+            kv_rows.put_unsafe(con, {**kv_rows.texts(data), **(kv_rows.unsafe(con) or {})}, at)
+            n = len(kv_rows.texts(data))
+        else:  # its tests' seconds are a cache, measured again by the next land
+            got = {f"remote_{k}": v for k, v in _numbers(data).items()}
+            n = con.executemany("INSERT OR IGNORE INTO duration_kv(key, value, at) VALUES "
+                                "(?, ?, ?)", [(k, json.dumps(v), at) for k, v in got.items()
+                                              if k in PACES]).rowcount  # fmt: skip
         _ledger(con, "durations", p, n, p.name)
 
 
 def _dur_check(con: sqlite3.Connection, p: Path) -> str | None:
-    """A kv file's value is its row's, or the row is newer; a table file's every reading is its
+    """A kv file's every part has its row; a table file's every reading is its
     import's row, or its node has a newer reading or a prune (the table moved on: KEEP)."""
     what, at = _dur_what(p), p.stat().st_mtime
-    if what not in ("dur", "pole", "pole_cpu"):
-        row = con.execute("SELECT value, at FROM duration_kv WHERE key=?", (what,)).fetchone()
-        if row is None:
-            return f"no duration_kv row {what}"
-        same = json.loads(row[0]) == _json(p) or float(row[1] or 0) > at
-        return None if same else f"duration_kv {what} differs and is older than the file"
+    if what == "linux_unsafe":
+        miss = len(kv_rows.texts(_json(p)).keys() - (kv_rows.unsafe(con) or {}).keys())
+        return f"{miss} of its modules have no linux_unsafe row" if miss else None
+    if what == "remote_rates":
+        have = {k for (k,) in con.execute("SELECT key FROM duration_kv")}
+        miss = {f"remote_{k}" for k in _numbers(_json(p))} & set(PACES) - have
+        return f"no duration_kv row {', '.join(sorted(miss))}" if miss else None
     run = f"import:{hashlib.sha256(p.read_bytes()).hexdigest()[:12]}"
     miss = 0
     for node, v in _numbers(_json(p)).items():

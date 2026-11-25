@@ -5,25 +5,26 @@
                       $XDG_STATE_HOME/goh (absolute), else ~/.local/state/goh
     repos_root(env)   GOH_REPOS_ROOT, else `repos_root`, else ~/Projects
     loop_queue(env)   GOH_LOOP_QUEUE, else `loop_queue`, else repos_root/.loop/queue.json
+    pool_db(env)      GOH_POOL_DB, else `pool_db`, else $XDG_STATE_HOME/token-pool/pool.db
+    backup(env)       {key: value} of the `backup_*` keys the config says, each a text; not paths
     landq_dir() loopctl() seed_dir() estate_root()   GOH_LANDQ_DIR, GOH_LOOPCTL, GOH_SEED_DIR,
                       GOH_ESTATE_ROOT, else under those
     encode(v) decode(v)        a PATH: absolute <-> `$STATE/..`, `$REPOS/..`, `$HOMEDIR/..`
     repo_key(v) repo(v)        a REPO: absolute <-> `group/name` in the repos root, `~/..` outside
-    forms(p) repo_forms(p)     every spelling a row may hold P under, absolute first
-    where(col, forms)          (`col IN (?, ?)`, args) to look such a row up by
-    column(con, v), repo_column(con, v)     V as a column of CON's file stores it
-    put(con, store, rec)       REC as STORE's document stores it in CON's file
+    tokens(con)                whether CON's file holds tokens (the cutover's; every door asks it)
+    put(store, rec)            REC as STORE's row stores it
     got(store, rec)            REC with STORE's paths absolute on this host; also a list's records
 
 THE CONFIG is $XDG_CONFIG_HOME/goh/config.toml (~/.config): keys state_root, repos_root,
-loop_queue, each absolute or `~/..`. crates/goh/src/goh_config.rs reads the same keys, and .loop's
-tools/loop_roots.py, with the same meaning. A file or value that says nothing usable is BadConfig,
-never a silent default.
+loop_queue, pool_db, each absolute or `~/..`, and the backup's own (BACKUP: a host, a user, a
+directory there, two lists of text). crates/goh/src/goh_config.rs reads the roots, and .loop's
+tools/loop_roots.py, with the same meaning. The run root (lib/run_path.py) reads none of it. A file
+or value that says nothing usable is BadConfig, never a silent default.
 
-TWO FORMS. A token stands only at the START of a path FIELD, named per store in PATHS/REPOS/NAMES
-below: text is never touched, whatever it starts with. Readers take both forms. Writers write the
-absolute form until the file's `meta.paths` is `token` (goh.db's rekey, the plan's S7, sets it in
-the transaction that moves every row); each store's own insert asks, so no caller knows.
+ONE FORM IS STORED, the token (GOH.OLDFORMS): a path under none of the roots is itself. It stands
+only at the START of a path FIELD, named per store in PATHS/REPOS/NAMES below: text is never
+touched, whatever it starts with. A row is looked up by its token (`encode`, `repo_key`); a file
+from before the cutover is refused at the door (lib/goh_db.py `Uncut`).
 Pinned by tests/test_state_paths.py and tests/test_state_paths_stores.py.
 """
 
@@ -37,6 +38,9 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+BACKUP = ("backup_host", "backup_user", "backup_dir", "backup_recipient_files",
+          "backup_recipient_subkeys")  # fmt: skip
+LISTS = ("backup_recipient_files", "backup_recipient_subkeys")
 TOKEN = "token"  # meta.paths once the file's rows are tokens
 REPO = re.compile(r"(~/)?[\w.][\w.+-]*(/[\w.+-]+)*")
 
@@ -68,15 +72,19 @@ def _parsed(at: str, _mtime_ns: int, _size: int) -> dict[str, Any]:
         raise BadConfig(f"{at}: {e}") from None
 
 
-def _config(key: str, env: Mapping[str, str]) -> str | None:
+def _whole(env: Mapping[str, str]) -> dict[str, Any]:
     at = config_path(env)
     try:
         st = os.stat(at)
     except (FileNotFoundError, NotADirectoryError):
-        return None
+        return {}
     except OSError as e:
         raise BadConfig(f"{at}: {e}") from None
-    raw = _parsed(str(at), st.st_mtime_ns, st.st_size).get(key)
+    return _parsed(str(at), st.st_mtime_ns, st.st_size)
+
+
+def _config(key: str, env: Mapping[str, str]) -> str | None:
+    at, raw = config_path(env), _whole(env).get(key)
     if raw is not None and not (isinstance(raw, str) and raw.startswith(("/", "~/"))):
         raise BadConfig(f"{at}: {key} is {raw!r}, not an absolute path")
     return raw
@@ -111,6 +119,27 @@ def loop_queue(env: Mapping[str, str] | None = None) -> Path:
     if raw := env.get("GOH_LOOP_QUEUE"):
         return Path(raw)
     return _named("", "loop_queue", env) or repos_root(env) / ".loop" / "queue.json"
+
+
+def pool_db(env: Mapping[str, str] | None = None) -> Path:
+    env = os.environ if env is None else env
+    if at := _named("GOH_POOL_DB", "pool_db", env):
+        return at
+    xdg = env.get("XDG_STATE_HOME") or ""
+    state = Path(xdg) if os.path.isabs(xdg) else _home(env) / ".local" / "state"
+    return state / "token-pool" / "pool.db"
+
+
+def backup(env: Mapping[str, str] | None = None) -> dict[str, Any]:
+    env = os.environ if env is None else env
+    whole = _whole(env)
+    out = {k: whole[k] for k in BACKUP if k in whole}
+    for k, v in out.items():
+        texts = v if k in LISTS and isinstance(v, list) else [v]
+        if not all(isinstance(x, str) and x for x in texts) or (k in LISTS) != isinstance(v, list):
+            want = "a list of text" if k in LISTS else "text"
+            raise BadConfig(f"{config_path(env)}: {k} is {v!r}, not {want}")
+    return out
 
 
 def landq_dir() -> Path:
@@ -190,22 +219,6 @@ def _home_name(v: Any) -> Any:
     return repo(full) if isinstance(full, str) and full.startswith("~/") else full
 
 
-def forms(p: str | Path) -> list[str]:
-    full = str(decode(str(p)))
-    return list(dict.fromkeys((full, encode(full))))
-
-
-def repo_forms(p: str | Path) -> list[str]:
-    """Absolute, key, token, and the spelling a ship's row had (its directory: `group_name`)."""
-    key = str(repo_key(str(p)))
-    full = str(repo(key))
-    return list(dict.fromkeys((full, key, encode(full), key.replace("/", "_"))))
-
-
-def where(col: str, values: list[str]) -> tuple[str, tuple[str, ...]]:
-    return f"{col} IN ({', '.join('?' * len(values))})", tuple(values)
-
-
 # -- one row -------------------------------------------------------------------------------------
 
 
@@ -220,16 +233,8 @@ def tokens(con: sqlite3.Connection) -> bool:
     return row is not None and row[0] == TOKEN
 
 
-def column(con: sqlite3.Connection, v: Any) -> Any:
-    return encode(v) if tokens(con) else v
-
-
-def repo_column(con: sqlite3.Connection, v: Any) -> Any:
-    return repo_key(v) if tokens(con) else v
-
-
 # Each store's path fields: `a.b` a key, `*` every value, `[]` every item, `{}` every key. PATHS are
-# paths; REPOS are repos (a path today, a key after); NAMES are repos named by key today already.
+# paths; REPOS are repos (a path here, a key in the row); NAMES are named by key here already.
 PATHS: dict[str, tuple[str, ...]] = {
     "lands": ("log", "red_logs.[]", "worktree", "lane", "pre_keep"),
     "requests": ("worktree", "lane", "pre.keep", "pre_keep", "log", "slot.worktree"),
@@ -247,11 +252,9 @@ PATHS: dict[str, tuple[str, ...]] = {
     "wf_pin.pins": ("sweep",),
     "estate_audit": ("registry", "root"),
     "model-choice-watch": ("candidates_file", "rules"),
-    "hook-ledgers.imported": ("{}",),
 }  # fmt: skip
 REPOS: dict[str, tuple[str, ...]] = {
     "lands": ("repo",),
-    "guards": ("repo",),
     "requests": ("repo",),
     "ships": ("repo",),
     "flakes": ("repo",),
@@ -286,8 +289,8 @@ def _each(store: str, rec: Any, path: Callable, rep: Callable, name: Callable) -
     return rec
 
 
-def put(con: sqlite3.Connection, store: str, rec: Any) -> Any:
-    return _each(store, rec, encode, repo_key, repo_key) if tokens(con) else rec
+def put(store: str, rec: Any) -> Any:
+    return _each(store, rec, encode, repo_key, repo_key)
 
 
 def got(store: str, rec: Any) -> Any:

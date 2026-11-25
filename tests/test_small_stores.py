@@ -18,6 +18,12 @@ TEST = "tests/test_x.py::test_y"
 KEY = "deadbeef"
 
 
+PUSHED = {"at": "2026-11-23T04:55:42+00:00", "said": "behind", "status": "committed",
+          "sweep": "/s/1", "where": "a"}  # fmt: skip
+PINNED = {"/p/a": {"status": "committed", "said": "ok"}}
+PINS = {"schema": 2, "tag": "v1.0.0", "ruff": "0.1", "repos": PINNED, "sweep": None}
+
+
 def _state(d: Path) -> Path:
     """A state directory shaped like today's live one (2026-11-23), small."""
     d.mkdir(parents=True, exist_ok=True)
@@ -26,16 +32,14 @@ def _state(d: Path) -> Path:
             {"repos": {"/p/a": {"findings": ["x"]}}, "release_canary": {"verdict": "ok"}}, indent=2
         )
     )
-    (d / "pin_push.json").write_text(
-        json.dumps({"schema": 1, "repos": {"/p/a": {"where": "/p/a", "why": "behind"}}}, indent=1)
-    )
+    (d / "pin_push.json").write_text(json.dumps({"schema": 1, "repos": {"/p/a": PUSHED}}, indent=1))
     (d / "pin_sweeps.json").write_text(
         json.dumps({"schema": 1, "sweeps": [{"path": "/s/1", "repos": ["/p/a"]}]})
     )
     (d / "cache-evict.json").write_text(
         json.dumps({"L": 12.5, "objs": {"/c/o": {"uses": 2.0, "at": 1.0, "l": 0.0}}}, indent=1)
     )
-    (d / "wf_pin.pins.json").write_text(json.dumps({"tag": "v1.0.0", "repos": {"/p/a": "ok"}}))
+    (d / "wf_pin.pins.json").write_text(json.dumps(PINS))
     (d / "commit-gated.jsonl").write_text(
         "".join(
             json.dumps(
@@ -99,8 +103,9 @@ def test_a_store_never_reads_its_file(state) -> None:
     assert small_stores.get(p) is None  # the file is there, and read by nothing
     assert small_stores.gated(state / "commit-gated.jsonl") == []
     assert small_stores.flakes(state / "flakes") == []
-    small_stores.update(p, lambda old: {"was": old})
-    assert small_stores.get(p) == {"was": None}
+    seen: list[object] = []
+    small_stores.update(p, lambda old: seen.append(old) or {"schema": 1, "repos": {"/p/a": PUSHED}})
+    assert seen == [None] and small_stores.get(p)["repos"] == {"/p/a": PUSHED}
 
 
 def test_the_database_is_beside_the_store_unless_goh_db_names_one(
@@ -155,14 +160,14 @@ def test_the_evictors_ledger_the_commit_stamps_and_the_flakes_write_goh_db(
 
 
 def test_wf_pins_own_record_is_goh_dbs(state) -> None:
-    """`goh wf-pin` run by no ship records into goh.db's kv `wf_pin.pins` (beside the pin ledger),
+    """`goh wf-pin` run by no ship records into goh.db's `wf_pins` (beside the pin ledger),
     no sidecar file; a ship's record is lib/ship_records.py's (GOH.STATEDBS2)."""
     import consumer_pins
 
     where = state / "wf_pin.json"
     (state / "wf_pin.pins.json").unlink()
-    consumer_pins.write_record(str(where), "v9.9.9", "0.1", {"/p/a": {"commit": "ok"}}, ship=False)
+    consumer_pins.write_record(str(where), "v9.9.9", "0.1", PINNED, ship=False)
     assert not (state / "wf_pin.pins.json").exists()
     assert small_stores.get(state / "wf_pin.pins.json") == {
-        "schema": 2, "tag": "v9.9.9", "ruff": "0.1", "repos": {"/p/a": {"commit": "ok"}},
+        "schema": 2, "tag": "v9.9.9", "ruff": "0.1", "repos": PINNED,
         "sweep": None}  # fmt: skip

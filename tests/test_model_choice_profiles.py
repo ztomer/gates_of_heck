@@ -160,7 +160,7 @@ def test_opus_medium_checkable_known_fix_with_no_pool_line_passes_under_ultra(
     out = guard(tmp_path, "opus", "medium", "checkable, known-fix")
     assert denied(out) is None, denied(out)
     (line,) = ledger(tmp_path)
-    assert line["profile"] == "ultra" and line["pool"] is None
+    assert line["profile"] == "ultra" and "pool" not in line
     assert line["meter"]["7d"] == 95
 
 

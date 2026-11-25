@@ -1,5 +1,5 @@
-"""lib/state_shape.py and the writers over every shape of goh.db (GOH.ABSDATA): with documents,
-under a cutover's fence, and after the contracts 0017 to 0020."""
+"""lib/state_shape.py and the writers of a table that had a document (GOH.ABSDATA), and what the
+contracts 0017 to 0020 refuse of a file that still has them."""
 
 from __future__ import annotations
 
@@ -22,27 +22,23 @@ import state_retire_verdicts
 import state_rows
 import state_shape
 from _columns_fixture import AT, LAND, OUTCOME, PINS, RESULT, SHIP, SPAWN
-from _contract_fixture import NUMBERS, RUN, contracts, fenced, read_all, write_all
+from _contract_fixture import NUMBERS, RUN, contracts, old_all, read_all, write_all
 from body_tables import AUDIT, LANES, TABLES
 
 DOCUMENTS = ("lands", "ships", "ship_pins", "agent_spawns", "fault_candidates", "commit_gated",
              *(t.name for t in TABLES))  # fmt: skip
-SHAPES = ["documents", "fenced", "contracts"]
 
 
-def shaped(shape: str) -> sqlite3.Connection:
-    con = bf.memory()
-    if shape == "fenced":
-        fenced(con)
-    if shape == "contracts":
-        contracts(con, *NUMBERS)
+def columned(upto: int = NUMBERS[-1]) -> sqlite3.Connection:
+    """An older goh's whole file, moved by the contracts up to UPTO."""
+    con = bf.memory(bf.UNCUT)
+    old_all(con)
+    for t in DOCUMENTS:
+        if t not in ("selection_misses", "commit_gated"):
+            con.execute(f"UPDATE {t} SET body = '{{}}'")
+    con.execute("UPDATE ships SET repo = ?", (SHIP["repo"],))  # the strip's own
+    contracts(con, *(n for n in NUMBERS if n <= upto))
     return con
-
-
-def bodies(con: sqlite3.Connection, table: str) -> set[str]:
-    if "body" not in state_shape.columns(con, table):
-        return set()
-    return {b for (b,) in con.execute(f"SELECT body FROM {table}")}
 
 
 @pytest.fixture
@@ -52,23 +48,15 @@ def letters(monkeypatch) -> list[tuple]:
     return out
 
 
-@pytest.mark.parametrize("shape", SHAPES)
-def test_every_writer_writes_and_its_reader_reads_every_shape(shape, letters) -> None:
-    plain, con = shaped("documents"), shaped(shape)
-    for c in (plain, con):
-        write_all(c)
-    want, got = read_all(plain), read_all(con)
-    if shape != "documents":  # a ship's record names its repo by key once no document has its path
-        for (_, a), (_, b) in zip(want["ships"], got["ships"], strict=True):
-            assert (a.pop("repo"), b.pop("repo")) == ("/r/goh", "goh")
-    assert got == want and all(want.values()) and letters == []
-    left = {t for t in DOCUMENTS if bodies(con, t) - {"{}"}}
-    assert left == (set(DOCUMENTS) if shape == "documents" else
-                    {"selection_misses"} if shape == "fenced" else set())  # fmt: skip
+def test_a_writers_rows_are_what_the_contracts_make_of_the_documents(letters) -> None:
+    con = bf.memory()
+    write_all(con)
+    got, want = read_all(con), read_all(columned())
+    assert got == want and all(got.values()) and letters == []
 
 
 def test_the_contracts_leave_one_body_and_no_table_of_red_causes_or_guards() -> None:
-    con = shaped("contracts")
+    con = bf.memory()
     tables = {t for (t,) in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert {t for t in tables if "body" in state_shape.columns(con, t)} == {"kv"}
     assert not {"red_causes", "land_guards"} & tables
@@ -107,10 +95,9 @@ ODD = [("lands", {"pre_s": "soon"}, {"pre_s": "soon"}),
        ("lane_starts", {"at": "soon"}, {"at": "soon"})]  # fmt: skip
 
 
-@pytest.mark.parametrize("shape", SHAPES[1:])
 @pytest.mark.parametrize(("table", "odd", "buried"), ODD)
-def test_a_value_of_the_wrong_type_is_buried_or_refused(shape, table, odd, buried, letters) -> None:
-    con = shaped(shape)
+def test_a_value_of_the_wrong_type_is_buried_or_refused(table, odd, buried, letters) -> None:
+    con = bf.memory()
     if buried is None:
         with pytest.raises(spawn_columns.Refused):
             put(con, table, odd)
@@ -123,20 +110,16 @@ def test_a_value_of_the_wrong_type_is_buried_or_refused(shape, table, odd, burie
     assert json.loads(rest) == ({"pre_run": {"new": 1}} if "pre_run" in odd else {})
 
 
-def test_before_the_fence_a_wrong_value_stays_in_rest_and_an_unknown_key_always(letters) -> None:
-    for shape in SHAPES:
-        con = shaped(shape)
-        put(con, "lands", {"later": [1]})
-        assert con.execute("SELECT rest FROM lands").fetchone() == ('{"later":[1]}',)
-    con = shaped("documents")
-    put(con, "lands", {"pre_s": "soon"})
-    assert con.execute("SELECT rest FROM lands").fetchone() == ('{"pre_s":"soon"}',)
+def test_an_unknown_key_stays_in_rest(letters) -> None:
+    con = bf.memory()
+    put(con, "lands", {"later": [1]})
+    assert con.execute("SELECT rest FROM lands").fetchone() == ('{"later":[1]}',)
     assert letters == []
 
 
 @pytest.fixture(scope="module")
 def sealed() -> sqlite3.Connection:
-    con = shaped("contracts")
+    con = bf.memory()
     write_all(con)
     return con
 
@@ -156,7 +139,7 @@ def test_a_contracts_rest_refuses_every_field_that_has_a_column(table, sealed) -
 
 
 def test_the_check_and_the_backfill_know_the_contracts_file(letters, monkeypatch) -> None:
-    con = shaped("contracts")
+    con = bf.memory()
     write_all(con)
     monkeypatch.setattr(hook_ledgers, "dead", list)
     assert state_columns.check(con) == []
@@ -177,7 +160,7 @@ GUARD = json.dumps({"sha": "gone", "item": "A.B"})
 @pytest.mark.parametrize(
     ("n", "sql"),
     [
-        *((n, None) for n in NUMBERS),  # every document still there
+        *((n, None) for n in NUMBERS[:-1]),  # every document still there
         (17, "UPDATE lands SET rest = NULL"),
         (17, "UPDATE lands SET rest = '{\"guards\": 3}'"),
         (17, "INSERT INTO red_causes SELECT queue, run, 'x', 1, '{}' FROM lands"),
@@ -189,8 +172,8 @@ GUARD = json.dumps({"sha": "gone", "item": "A.B"})
     ],
 )
 def test_a_contract_refuses_what_a_column_does_not_hold(n, sql) -> None:
-    con = shaped("documents")
-    write_all(con)
+    con = bf.memory(bf.UNCUT)
+    old_all(con)
     for clear in CLEAR if sql else ():
         con.execute(clear)
     contracts(con, *(k for k in NUMBERS if k < n and sql))
@@ -204,31 +187,25 @@ def test_a_contract_refuses_what_a_column_does_not_hold(n, sql) -> None:
     assert con.execute("SELECT name, sql FROM sqlite_master").fetchall() == was
 
 
-def test_an_update_under_the_fence_keeps_what_the_columns_hold(letters) -> None:
-    """The wide refill of reuse_audit must not fill the row from the {} this writer leaves."""
-    con = shaped("documents")
+def test_an_update_keeps_what_the_columns_hold(letters) -> None:
+    con = bf.memory()
     body_columns.write(con, AUDIT, bf.OFF, bf.own(AUDIT, bf.OFF))
-    fenced(con)
     assert body_columns.update(con, AUDIT, bf.ON, {"at": AT + 1}, "path = ?", ("carry",)) == 1
     assert [d for _, d in body_columns.read(con, AUDIT, order="path")] == [bf.ON]
-    assert bodies(con, "reuse_audit") == {"{}"}
 
 
-def test_the_contracts_file_has_no_ledger_of_guards_and_no_red_causes(monkeypatch) -> None:
+def test_a_lands_red_cause_is_in_its_row(monkeypatch) -> None:
     import contextlib
 
-    con = shaped("contracts")
+    con = bf.memory()
     put(con, "lands", {})
     monkeypatch.setattr(land_records, "_reader", lambda: contextlib.nullcontext(con))
-    q = Path("/q")
-    assert land_records.ledger(q, "guards") == []
-    assert land_records.insert(con, "/q", "guards", [{"guard": "g", "at": "x"}]) == 0
-    assert land_records.causes(q) == {f"{RUN}.json": LAND["red_cause"]}
+    assert land_records.causes(Path("/q")) == {f"{RUN}.json": LAND["red_cause"]}
 
 
 def test_the_old_files_imports_name_no_document(tmp_path, letters) -> None:
     """`goh state retire`'s hook, small and reuse files, into the contracts' file, read back."""
-    con = shaped("contracts")
+    con = bf.memory()
     (shadow := tmp_path / "shadow.jsonl").write_text(
         json.dumps({**bf.SAMPLE, "outcome": "agreed"}) + "\n"
     )

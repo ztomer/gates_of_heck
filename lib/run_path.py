@@ -9,6 +9,11 @@ lock a Python process waits on:
     index_tree(repo)  the tree of the index git would commit, written from a private copy under the
                       root, so it never takes the shared `index.lock`
 
+THE CONFIG'S `state_root` MOVES NONE OF IT (GOH.OLDFORMS): a lock is one directory for every goh on
+the host, the shell face and an older copy included, and neither reads TOML; a state root may be on
+another disk or a synced one, where a lock or a staging rename says nothing. What is here is this
+host's and this boot's, never state a database names, so no stored path points into it.
+
 Pinned by tests/test_run_path.py (the three faces agree on the key).
 """
 

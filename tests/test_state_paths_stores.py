@@ -1,9 +1,10 @@
-"""Every store of goh.db reads its rows in both forms (GOH.REPOKEY): rows written as today, then
-moved to tokens and keys by SQL alone (never by the codec under test), read back equal; a file whose
-`meta.paths` is `token` takes tokens from the same callers and reads back equal too."""
+"""Every store of goh.db keeps a path as a token and a repo as its key (GOH.REPOKEY, GOH.OLDFORMS):
+no cell holds a path of this host, the same callers read their own paths back, and a host with other
+roots reads the same file at its own."""
 
 from __future__ import annotations
 
+import shutil
 import sqlite3
 import sys
 from collections.abc import Callable
@@ -47,11 +48,9 @@ class Host:
 def lands(h: Host) -> Callable[[], Any]:
     land_records.write(h.q, RUN, h.land())
     land_records.set_causes(h.q, {f"{RUN}.json": {"cause": "test"}})
-    land_records.append(h.q, "guards", [{"guard": "g", "repo": h.repo, "at": "2026-11-24"}])
-    land_records.append(h.q, "misses", [{"day": "2026-11-24", "test": "t"}])
+    land_records.append_misses(h.q, [{"day": "2026-11-24", "test": "t"}])
     return lambda: [land_records.records(h.q), land_records.get(h.q, RUN), land_records.runs(h.q),
-                    land_records.causes(h.q), land_records.ledger(h.q, "guards"),
-                    land_records.ledger(h.q, "misses")]  # fmt: skip
+                    land_records.causes(h.q), land_records.misses(h.q)]  # fmt: skip
 
 
 def requests(h: Host) -> Callable[[], Any]:
@@ -92,9 +91,13 @@ def ships(h: Host) -> Callable[[], Any]:
 
 def small(h: Host) -> Callable[[], Any]:
     s = h.state
-    small_stores.put(s / "pin_push.json", {"repos": {h.repo: {"sweep": f"{s}/a.json"}}})
-    small_stores.put(s / "pin_sweeps.json", {"sweeps": [{"path": f"{s}/a", "repos": [h.repo]}]})
-    small_stores.put(s / "wf_pin.pins.json", {"repos": {"app": "ok"}, "sweep": f"{s}/a.json"})
+    push = {"status": "pushed", "said": "s", "where": "app", "at": "2026-11-18T11:06:40+00:00",
+            "sweep": f"{s}/a.json", "log": f"{s}/a.log"}  # fmt: skip
+    small_stores.put(s / "pin_push.json", {"schema": 1, "repos": {h.repo: push}})
+    sweeps = [{"path": f"{s}/a", "repos": [h.repo]}]
+    small_stores.put(s / "pin_sweeps.json", {"schema": 1, "sweeps": sweeps})
+    small_stores.put(s / "wf_pin.pins.json", {"repos": {"app": {"status": "ok", "said": "s"}},
+                     "schema": 2, "ruff": "1", "tag": "v1", "sweep": f"{s}/a.json"})  # fmt: skip
     small_stores.put(s / "estate_audit.json", {"root": str(h.repos), "registry": f"{s}/i",
                                                "problems": ["$STATE/a is gone"]})  # fmt: skip
     small_stores.gated_add(s / "commit-gated.jsonl", {"tree": "t", "repo": h.repo, "at": 1.0})
@@ -151,62 +154,42 @@ def cells() -> list[tuple[str, str, str]]:
     return out
 
 
-def to_tokens(h: Host) -> int:
-    """Every path cell of the file as a token and every repo as its key, by SQL text alone."""
-    con = sqlite3.connect(goh_db.path())
-    n = 0
-    for t, c, _ in {(t, c, "") for t, c, _ in cells()}:
-        for old, new in ((f'"{h.repo}"', '"group/app"' if t in KEYED else '"$REPOS/group/app"'),
-                         (f'"{h.state}/', '"$STATE/'), (f'"{h.repos}/', '"$REPOS/'),
-                         (f'"{h.repos}"', '"$REPOS"')):  # fmt: skip
-            n += con.execute(f"UPDATE {t} SET {c} = replace({c}, ?, ?) WHERE instr({c}, ?)",
-                             (old, new, old)).rowcount  # fmt: skip
-        for old, new in ((str(h.state), "$STATE"), (str(h.repos), "$REPOS")):
-            if KEYED.get(t) == c:
-                n += con.execute(
-                    f"UPDATE {t} SET {c} = 'group/app' WHERE {c} = ?", (h.repo,)
-                ).rowcount
-            n += con.execute(f"UPDATE {t} SET {c} = ? || substr({c}, ?) "
-                             f"WHERE substr({c}, 1, ?) = ?",
-                             (new, len(old) + 1, len(old), old)).rowcount  # fmt: skip
-    con.commit()
-    con.close()
-    return n
+def swapped(v: Any, frm: Host, to: Host) -> Any:
+    """V with one host's paths for another's, a key of a mapping and a file's name aside."""
+    if isinstance(v, dict):
+        return {swapped(k, frm, to): swapped(x, frm, to) for k, x in v.items() if k != "at"}
+    if isinstance(v, list | tuple):
+        return [swapped(x, frm, to) for x in v]
+    text = str(v) if isinstance(v, Path) else v
+    if not isinstance(text, str) or " " in text:
+        return text
+    return text.replace(str(frm.state), str(to.state)).replace(str(frm.repos), str(to.repos))
 
 
 @pytest.mark.parametrize("store", STORES, ids=lambda s: s.__name__)
-def test_planted_tokens_and_keys_read_back_as_the_absolute_rows_did(store, host: Host):
-    read = store(host)
-    was = read()
-    assert to_tokens(host) > 0
-    assert read() == was
-
-
-@pytest.mark.parametrize("store", STORES, ids=lambda s: s.__name__)
-def test_a_file_of_tokens_takes_tokens_from_the_same_callers(store, host: Host, monkeypatch):
-    read = store(host)
-    was = read()
-    monkeypatch.setenv("GOH_DB", str(host.state / "two" / "goh.db"))
-    with goh_db.transaction() as con:
-        con.execute("INSERT OR REPLACE INTO meta VALUES ('paths', 'token')")
-    read = store(host)
-
-    def stable(v: Any) -> Any:  # a slot's claim time is its own write's
-        if isinstance(v, dict):
-            return {k: stable(x) for k, x in v.items() if k != "at"}
-        return [stable(x) for x in v] if isinstance(v, list | tuple) else v
-
-    assert stable(read()) == stable(was)
+def test_its_rows_hold_no_path_of_this_host(store, host: Host):
+    store(host)
     left = [c for c in cells() if str(host.state) in c[2] or str(host.repos) in c[2]]
     assert [c for c in left if "$STATE/y" not in c[2]] == []  # a ship's tail is text
-    for t, c, v in cells():
-        if (t, c) in KEYED.items() or (t, c) == ("ships", "repo"):
-            assert v == "group/app", (t, c)
+    keyed = [v for t, c, v in cells() if (t, c) in {*KEYED.items(), ("ships", "repo")}]
+    assert set(keyed) <= {"group/app"}
+
+
+@pytest.mark.parametrize("store", STORES, ids=lambda s: s.__name__)
+def test_a_host_with_other_roots_reads_the_same_file_at_its_own(store, host, monkeypatch, tmp_path):
+    was = store(host)()
+    other = Host(tmp_path.resolve() / "two")
+    shutil.copy(goh_db.path(), other.state / "copy.db")
+    for var, at in (("STATE_ROOT", other.state), ("REPOS_ROOT", other.repos)):
+        monkeypatch.setenv(f"GOH_{var}", str(at))
+    monkeypatch.setenv("GOH_DB", str(other.state / "goh.db"))
+    read = store(other)  # its own rows, in another file: only the reader is wanted
+    monkeypatch.setenv("GOH_DB", str(other.state / "copy.db"))
+    assert swapped(read(), other, host) == swapped(was, host, host)
 
 
 def test_a_request_lives_its_whole_life_on_a_row_of_tokens(host: Host):
     requests(host)
-    to_tokens(host)
     path = landq_state.name(host.q, "pending", RUN)
     assert landq_state.update(path, {**host.request(), "mode": "push"})
     path = landq_state.move(path, "running")
@@ -217,9 +200,8 @@ def test_a_request_lives_its_whole_life_on_a_row_of_tokens(host: Host):
     assert landq_state.listing(host.q, "early") == []
 
 
-def test_a_slot_claimed_in_tokens_is_held_and_freed(host: Host):
+def test_a_slot_claimed_is_held_and_freed(host: Host):
     slots(host)
-    to_tokens(host)
     owner = host.q / "slots" / "app-1" / "0.owner"
     assert not land_slot._take(host.q, owner, "other")
     assert land_slot._take(host.q, owner, "tok")
@@ -227,10 +209,9 @@ def test_a_slot_claimed_in_tokens_is_held_and_freed(host: Host):
     assert land_slot.owners(host.q) == []
 
 
-def test_a_record_rewritten_over_its_token_row_reads_as_the_new_one(host: Host):
+def test_a_record_rewritten_over_its_row_reads_as_the_new_one(host: Host):
     lands(host)
     ships(host)
-    to_tokens(host)
     land_records.write(host.q, RUN, {**host.land(), "item": "X.TWO"})
     got = land_records.get(host.q, RUN)
     assert got is not None and got["item"] == "X.TWO"
@@ -243,9 +224,8 @@ def test_a_record_rewritten_over_its_token_row_reads_as_the_new_one(host: Host):
     assert [r["status"] for _, r in ship_records.every()] == ["ok"]
 
 
-def test_dropping_test_rows_drops_both_forms(host: Host):
+def test_dropping_test_rows_drops_the_ones_under_the_root_alone(host: Host):
     ships(host)
-    to_tokens(host)
     assert ship_records.drop_test_rows((str(host.state / "ship/group_app"),)) == 0  # a real ship's
     con = sqlite3.connect(goh_db.path())
     con.execute("UPDATE ships SET result = '$STATE/tmp/x.json'")

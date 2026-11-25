@@ -5,9 +5,11 @@ they became (GOH.KVBLOBS).
              (lib/cache_rows.py); it may be killed anywhere and run again, and adds nothing twice
     left()   one line per document with a part no row holds
 
-THE DOCUMENTS STAY until the contract, but one that only a cache needs is gone with its next write
-(the canaries' memo_records, the evictor's objs, the watch's fault_candidates); agent-verify.json is
-removed here, once its rows read back equal. Pinned by tests/test_cache_rows.py.
+CONTRACT 0021 DROPS THE DOCUMENTS (GOH.OLDFORMS), but one that only a cache needs is gone with its
+next write (the canaries' memo_records, the evictor's objs, the watch's fault_candidates);
+agent-verify.json is removed here, once its rows read back equal. `remote_rates` goes into
+goh-cache.db's rows first and then into its four paces, so a kill in between leaves it in force, and
+the paces are there only when it is in the rows. Pinned by tests/test_cache_rows.py.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cache_evict  # lib/, on the path from the line above
 import cache_rows
 import canary_memo
+import durations
 import estate_registry
 import goh_db
 import hook_ledgers
@@ -28,6 +31,29 @@ import remote_rates
 import small_stores
 
 VERIFIED = "agent-verify.json"
+RATES = "remote_rates"  # duration_kv: the document the paces and the tests' seconds were
+
+
+def rates_unfilled() -> bool:
+    was = durations.scalars(remote_rates.PACES)
+    return not was and isinstance(durations.get(RATES), dict)
+
+
+def fill_rates() -> bool:
+    """`remote_rates` into remote_secs, then the paces, once; False when the cache took no row."""
+    if not rates_unfilled():
+        return True
+    doc = durations.get(RATES)
+    known = remote_rates.Rates.__dataclass_fields__
+    try:
+        old = remote_rates.Rates(**{k: v for k, v in doc.items() if k in known})
+    except TypeError:
+        old = remote_rates.Rates()
+    if not cache_rows.put_secs(old.tests, durations.written(RATES)):
+        return False
+    paces = {k: getattr(old, k.removeprefix(remote_rates.P)) for k in remote_rates.PACES}
+    durations.update_scalars(remote_rates.PACES, lambda was: paces | was)
+    return True
 
 
 def _memos() -> dict[str, dict[str, dict]]:
@@ -51,10 +77,11 @@ def _verified() -> Path:
     return hook_ledgers.cache_dir() / VERIFIED
 
 
+@goh_db.uncut()
 def run() -> dict[str, int]:
     with goh_db.transaction() as con:
         done = kv_rows.fill(con)
-    remote_rates.fill()
+    fill_rates()
     for entry, found in _memos().items():
         if found:
             canary_memo.keep(estate_registry.state_file(), entry, {"memo_records": found})
@@ -70,11 +97,12 @@ def run() -> dict[str, int]:
     return done
 
 
+@goh_db.uncut()
 def left() -> list[str]:
     with goh_db.known() as con:
         out = kv_rows.left(con)
-    if remote_rates.unfilled():
-        out.append(f"duration_kv {remote_rates.RATES}: not in remote_secs")
+    if rates_unfilled():
+        out.append(f"duration_kv {RATES}: not in remote_secs")
     for entry, found in _memos().items():
         rows = cache_rows.memo(estate_registry.state_file(), canary_memo.KINDS[entry])
         live = [k for k, v in found.items() if canary_memo.live(v) and k not in rows]

@@ -60,7 +60,6 @@ import body_tables
 import goh_db
 import kv_rows
 import state_paths
-import state_shape
 
 # kv names: each was the file `<name>.json` (kv_name), beside the database (the estate audit's,
 # the pin push ledger's and the sweep registry's dir is GOH_ESTATE_STATE's)
@@ -111,24 +110,30 @@ def _write(p: Path) -> Iterator[sqlite3.Connection]:
         yield con
 
 
-# -- kv: the whole-file JSON stores --------------------------------------------------------------
+# -- the whole-file JSON stores: kv documents, and the three pin stores' rows ----------------------
 
 
-def _kept(con: sqlite3.Connection, name: str, body: str) -> object:
-    """NAME's value: its rows' when its document says they hold it (lib/kv_rows.py)."""
-    return state_paths.got(name, kv_rows.got(con, name, json.loads(body)))
+def _value(con: sqlite3.Connection, name: str) -> object:
+    """NAME's value, from its rows (lib/kv_rows.py) or its kv document; None for none."""
+    if name in kv_rows.STORES:
+        return state_paths.got(name, kv_rows.got(con, name))
+    row = con.execute("SELECT body FROM kv WHERE name=?", (name,)).fetchone()
+    return state_paths.got(name, json.loads(row[0])) if row else None
+
+
+def _keep(con: sqlite3.Connection, name: str, value: object) -> None:
+    doc = state_paths.put(name, value)
+    if name in kv_rows.STORES:
+        return kv_rows.put(con, name, doc)
+    con.execute("INSERT INTO kv(name, body, at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET "
+                "body=excluded.body, at=excluded.at", (name, _dump(doc), time.time()))  # fmt: skip
 
 
 def get(p: Path | str) -> object:
-    """The store whose path is P: its kv row, else None."""
+    """The store whose path is P, else None."""
     p = Path(p)
     with _read(p) as con:
-        if con is not None:
-            con.execute("BEGIN")  # a document and its rows are one snapshot
-            row = con.execute("SELECT body FROM kv WHERE name=?", (kv_name(p),)).fetchone()
-            if row is not None:
-                return _kept(con, kv_name(p), row[0])
-    return None
+        return None if con is None else _value(con, kv_name(p))
 
 
 def update(p: Path | str, change: Callable[[object], object]) -> object:
@@ -137,14 +142,8 @@ def update(p: Path | str, change: Callable[[object], object]) -> object:
     p = Path(p)
     try:
         with _write(p) as con:
-            row = con.execute("SELECT body FROM kv WHERE name=?", (kv_name(p),)).fetchone()
-            name = kv_name(p)
-            new = change(_kept(con, name, row[0]) if row else None)
-            kept = kv_rows.put(con, name, state_paths.put(con, name, new))
-            con.execute("INSERT INTO kv(name, body, at) VALUES (?, ?, ?) "
-                        "ON CONFLICT(name) DO UPDATE SET "
-                        "body=excluded.body, at=excluded.at",
-                        (name, _dump(kept), time.time()))  # fmt: skip
+            new = change(_value(con, kv_name(p)))
+            _keep(con, kv_name(p), new)
     except goh_db.db_core.NewerFile as e:  # this copy may not write it: the value, unkept
         goh_db.refused(e)
         return change(get(p))
@@ -180,16 +179,13 @@ def gated_add(p: Path | str, row: dict) -> None:
 
 
 def gated_row(con: sqlite3.Connection, row: dict) -> None:
-    doc = _dump(state_paths.put(con, "commit_gated", row))
-    cols = {"at": _epoch(row.get("at")), "tree": str(row["tree"]),
-            **state_shape.document(con, "commit_gated", doc)}  # fmt: skip
-    con.execute(f"INSERT INTO commit_gated({', '.join(cols)}) VALUES "
-                f"({', '.join('?' * len(cols))})", list(cols.values()))  # fmt: skip
+    con.execute("INSERT INTO commit_gated(at, tree) VALUES (?, ?)",
+                (_epoch(row.get("at")), str(row["tree"])))  # fmt: skip
 
 
 def gated(p: Path | str) -> list[dict]:
     """The commit-gated rows of the ledger whose path is P, oldest first: {tree, at}, their columns
-    (the document's `repo`, a worktree's path, is read by nothing: GOH.BODYCOLS)."""
+    (a row's `repo`, a worktree's path, is read by nothing: GOH.BODYCOLS)."""
     with _read(Path(p)) as con:
         if con is None:
             return []
@@ -207,7 +203,7 @@ def flake_add(d: Path | str, test: str, row: dict) -> None:
     d = Path(d)
     own = {"epoch": float(row.get("epoch") or time.time()), "test": test}
     with goh_db.refusable(), goh_db.transaction(db(d)) as con:
-        body_columns.write(con, body_tables.FLAKES, state_paths.put(con, "flakes", row), own)
+        body_columns.write(con, body_tables.FLAKES, state_paths.put("flakes", row), own)
 
 
 def flakes(d: Path | str, test: str | None = None) -> list[dict]:

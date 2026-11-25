@@ -1,17 +1,16 @@
 """GOH.KVBLOBS: a fault candidate's fields as columns and child rows (lib/candidate_columns.py),
-written as 0015's triggers write an older copy's, read back the same on every shape of the file."""
+written as 0015's triggers wrote an older copy's, read back the same."""
 
 from __future__ import annotations
 
 import json
 import sqlite3
 
+import _body_fixture as bf
 import candidate_columns as cc
-import goh_db
 import pytest
 import state_backfill
 import state_columns
-from _kv_fixture import memory
 
 FULL = {"id": "FAULTS.x", "item": "triage", "phase": "FX", "repo": "?", "status": "todo",
         "done_state": "each", "depends": ["A.B"], "faults": ["one", "two"]}  # fmt: skip
@@ -31,7 +30,7 @@ def old(con: sqlite3.Connection, doc: dict, at: float = 2.0) -> int:
 
 
 def held(con: sqlite3.Connection, n: int) -> tuple:
-    cols = f"at, rest, body, {', '.join(cc.TEXT)}"
+    cols = f"at, rest, {', '.join(cc.TEXT)}"
     row = con.execute(f"SELECT {cols} FROM fault_candidates WHERE n = ?", (n,)).fetchone()
     kids = con.execute("SELECT kind, ord, value, at FROM fault_candidate_lists WHERE n = ? "
                        "ORDER BY 1, 2", (n,)).fetchall()  # fmt: skip
@@ -44,38 +43,21 @@ def bare(doc: dict) -> dict:
 
 @pytest.mark.parametrize("doc", DOCS)
 def test_the_writer_and_the_trigger_leave_the_same_row(doc) -> None:
-    con = memory(goh_db)
-    a, b = cc.write(con, doc, 2.0), old(con, doc)
-    ours, theirs = held(con, a), held(con, b)
+    con, before = bf.memory(), bf.memory(bf.UNCUT)
+    b = old(before, doc)
+    theirs = held(before, b)
+    try:
+        a = cc.write(con, doc, 2.0)
+    except cc.Refused:
+        assert bare(theirs[1])
+        return
+    ours = held(con, a)
     assert (ours[0], bare(theirs[1])) == (theirs[0], ours[1]) and ours[2:] == theirs[2:]
-    assert cc.read(con) == [bare(doc)] * 2
-
-
-def test_every_shape_of_the_file_reads_the_same() -> None:
-    before = memory(goh_db, 14)
-    for d in DOCS:
-        cc.write(before, d, 2.0)
-    want = [bare(d) for d in DOCS]
-    assert cc.read(before) == want and cc.read(before, "n = ?", (1,)) == want[:1]
-    con = memory(goh_db)
-    con.execute("DROP TRIGGER fault_candidates_fill")
-    for d in DOCS:
-        old(con, d)
-    assert cc.read(con) == want  # not filled
-    con = memory(goh_db)
-    for d in DOCS:
-        cc.write(con, d, 2.0)
-    con.execute("UPDATE fault_candidates SET body = '{}'")  # stripped
-    assert cc.read(con) == want
-    for t in ("fill", "refill", "bad"):
-        con.execute(f"DROP TRIGGER fault_candidates_{t}")
-    con.execute("ALTER TABLE fault_candidates DROP COLUMN body")
-    n = cc.write(con, FULL, 3.0)
-    assert cc.read(con) == [*want, FULL] and cc.read(con, "n = ?", (n,)) == [FULL]
+    assert cc.read(con) == [bare(doc)] == cc.read(con, "n = ?", (a,))
 
 
 def test_a_shrinking_candidate_leaves_no_old_row_and_a_gone_one_none() -> None:
-    con = memory(goh_db)
+    con = bf.memory(bf.UNCUT)
     n = old(con, FULL)
     con.execute("INSERT OR REPLACE INTO fault_candidates(n, at, body) VALUES (?, 2.0, ?)",
                 (n, json.dumps({**FULL, "faults": ["one"], "depends": []})))  # fmt: skip
@@ -86,10 +68,10 @@ def test_a_shrinking_candidate_leaves_no_old_row_and_a_gone_one_none() -> None:
 
 
 def test_the_backfill_fills_and_the_document_is_rendered_again() -> None:
-    con = memory(goh_db)
+    con = bf.memory(bf.UNCUT)
     con.execute("DROP TRIGGER fault_candidates_fill")
     sql = "SELECT sql FROM sqlite_master WHERE name='fault_candidates_fill'"
-    made = memory(goh_db).execute(sql).fetchone()[0]
+    made = bf.memory(bf.UNCUT).execute(sql).fetchone()[0]
     for d in DOCS:
         old(con, d)
     con.execute(made)
@@ -101,6 +83,6 @@ def test_the_backfill_fills_and_the_document_is_rendered_again() -> None:
 
 
 def test_text_no_column_holds_is_written_as_one_that_does() -> None:
-    con = memory(goh_db)
+    con = bf.memory()
     cc.write(con, {"id": "a\udc80", "faults": ["b\udc80"]}, 1.0)
     assert cc.read(con) == [{"id": "a?", "faults": ["b?"]}]

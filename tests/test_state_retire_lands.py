@@ -16,6 +16,7 @@ from conftest import REPO_ROOT
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import land_records
 import landq_state
+import state_paths
 import state_retire as sr
 
 DAY = "2026-11-24"
@@ -58,13 +59,9 @@ def _files(q: Path) -> dict[str, Path]:
     return out
 
 
-def test_a_record_with_no_instant_is_imported_into_a_file_of_tokens(q: Path) -> None:
+def test_a_record_with_no_instant_is_imported(q: Path) -> None:
     path = q / "done" / "01795100000000000000-GOH.A.json"
     path.write_text(json.dumps({"state": "landed", "log": f"{q}/logs/a.log"}))
-    import goh_db
-
-    with goh_db.transaction() as con:
-        con.execute("INSERT OR REPLACE INTO meta VALUES ('paths', 'token')")
     said: list[str] = []
     assert sr.retire("lands", day=DAY, say=said.append) is True, said
     assert land_records.records(q) == [(path.stem, {
@@ -82,12 +79,12 @@ def test_the_land_files_are_imported_archived_and_deleted(q: Path) -> None:
     for k, p in files.items():
         assert (to / p.relative_to(q)).read_bytes() == before[k], k
     assert land_records.records(q) == [
-        ("01795100000000000000-GOH.A", RED),
+        ("01795100000000000000-GOH.A", {**RED, "red_cause": {"cause": "flake", "rule": "r"}}),
         ("01795100000000000001-GOH.A", LANDED),
     ]
-    assert land_records.causes(q) == json.loads(before["causes"])
-    assert land_records.ledger(q, "guards") == [GUARD], "the torn line is no record"
-    assert land_records.ledger(q, "misses") == [MISS]
+    assert {r: {**c, "tests": []} for r, c in land_records.causes(q).items()} == json.loads(
+        before["causes"])  # fmt: skip
+    assert land_records.misses(q) == [MISS]
     assert sr.stray() == []
     assert sr.retire("lands", day=DAY, say=said.append) is True
     assert said[-1] == "lands: no file left to retire"
@@ -125,7 +122,7 @@ def test_the_import_reads_back_the_live_records_json_equal(q: Path) -> None:
         sources = {r[0] for r in con.execute("SELECT source FROM imports")}
     finally:
         con.close()
-    assert n == 2 and {str(p) for p in files.values()} <= sources
+    assert n == 2 and {state_paths.encode(str(p)) for p in files.values()} <= sources
     assert sr.retire("lands", dry=True, day=DAY, say=lambda s: None) is True
     con = sqlite3.connect(q.parent / "goh.db")
     try:

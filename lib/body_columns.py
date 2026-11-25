@@ -2,24 +2,18 @@
 (GOH.BODYCOLS; goh.db 0016): the one writer and the one reader of the fields lib/body_tables.py
 names, for the table's one store module.
 
-    write(con, t, doc, own, ignore=False)   a new row: the table's OWN columns, DOC's fields, and
-                             the document while the table has a `body`; False: IGNOREd, it is there
+    write(con, t, doc, own, ignore=False)   a new row: the table's OWN columns and DOC's fields;
+                             False: IGNOREd, it is there
     update(con, t, doc, own, where, args)   the row WHERE names, rewritten as DOC; how many (0 or 1)
     read(con, t, where, args, order)        [(own columns, document)], from the columns
-    Refused                                 a value no column takes, and no document to keep it in
+    Refused                                 a value no column takes
 
 WHO CALLS. lane_starts: lib/hook_ledgers.py; flakes: lib/small_stores.py; selection_misses:
 lib/land_records.py; reuse_shadow, reuse_audit: lib/reuse_audit_store.py; requests, early:
 lib/landq_state.py. Each inside its own transaction.
 
-ONE HOME. What no column takes (an unknown key, a value of the wrong type) stays in `rest`, which
-`goh state check` names. From a cutover on (lib/state_shape.py), a known key of the wrong type is
-Refused instead: no document would explain it.
-
-`rest` IS WRITTEN, never NULL, so 0016's fill triggers (older code's) do not run on an insert. A row
-they have not filled (`rest` NULL: `goh state backfill`) and a file from before 0016 are read from
-the document. reuse_audit, requests and early are written again in place: 0016's refill, made for an
-older copy's UPDATE, then fills that row from the same document, and leaves what is written here.
+ONE HOME. An unknown key stays in `rest`, which `goh state check` names; a known key of the wrong
+type is Refused: no column takes it, and nothing would explain it in `rest`.
 Pinned by tests/test_body_columns.py.
 """
 
@@ -40,7 +34,6 @@ from body_tables import BOOL, INTEGER, REAL, TEXT, Fields, Kid, Table, get  # li
 from spawn_columns import Refused, _text
 
 Own = dict[str, Any]
-KEYED = "selection_misses"  # its document is its key (UNIQUE) until contract 0020 remakes it
 
 
 def _whole(v: object) -> bool:
@@ -182,22 +175,17 @@ def columns(con: sqlite3.Connection, table: str) -> list[str]:
 
 def _whole_row(con: sqlite3.Connection, t: Table, doc: dict, own: Own
                ) -> tuple[Own, dict[Kid, list[tuple]]]:  # fmt: skip
-    have = columns(con, t.name)
     doc = _text(doc)
     cols, kids, rest = _split(t, doc, own)
     known = [*t.fields, *(x[0] for x in t.tuples), *(k.path for k in t.kids)]
     odd = sorted(p for p in known if get(rest, p) is not None
                  and not any(q.startswith(f"{p}.") for q in known))  # fmt: skip
-    if odd and state_shape.closing(con, t.name):
+    if odd:
         raise Refused(f"{t.name}: {', '.join(odd)}: not a type its column takes")
-    rest, buried = state_shape.sift(con, t.name, rest)
+    rest, buried = state_shape.sift(t.name, rest)
     if buried:  # a key the row says itself (its `at`), said another way
         state_shape.bury(t.name, {**own, **buried}, "a field its row's columns say otherwise")
-    row = {**own, **cols, "rest": json.dumps(rest, sort_keys=True),
-           **state_shape.document(con, t.name, json.dumps(doc, sort_keys=True))}  # fmt: skip
-    if t.name == KEYED and "body" in have:
-        row["body"] = json.dumps(doc, sort_keys=True)
-    return {c: v for c, v in row.items() if c in have}, kids if "rest" in have else {}
+    return {**own, **cols, "rest": json.dumps(rest, sort_keys=True)}, kids
 
 
 def _rows(con: sqlite3.Connection, t: Table, key: Own, at: float,
@@ -308,41 +296,25 @@ def _document(t: Table, own: Own, cols: Own, kids: dict[str, Any], rest: dict) -
 
 def read(con: sqlite3.Connection, t: Table, where: str = "1", args: Sequence[Any] = (),
          order: str = "n") -> list[tuple[Own, dict]]:  # fmt: skip
-    """One snapshot: a row and its child rows, whoever writes meanwhile. A document that is no JSON
-    object, in a row no trigger filled, is no row."""
-    have = columns(con, t.name)
+    """One snapshot: a row and its child rows, whoever writes meanwhile."""
     mine = not con.in_transaction
     if mine:
         con.execute("BEGIN")
     try:
-        filled = "rest" in have
         added = [c for c, _ in t.fields.values()] + [c for x in t.tuples for c in x[1]]
-        base = [c for c in have if c not in (*added, "rest", "body")]
-        body = "body" if "body" in have else "NULL"
-        rest = f"rest, CASE WHEN rest IS NULL THEN {body} END" if filled else f"NULL, {body}"
-        sql = (f"SELECT {', '.join([*base, rest, *(added if filled else [])])} FROM {t.name} "
-               f"WHERE {where} ORDER BY {order}")  # fmt: skip
+        base = [c for c in columns(con, t.name) if c not in (*added, "rest")]
+        sql = (f"SELECT {', '.join([*base, 'rest', *added])} FROM {t.name} WHERE {where} "
+               f"ORDER BY {order}")  # fmt: skip
         rows = con.execute(sql, args).fetchall()
-        kids = _kids(con, t, where, args) if filled and rows and t.kids else {}
+        kids = _kids(con, t, where, args) if rows and t.kids else {}
     finally:
         if mine:
             con.execute("ROLLBACK")
     out = []
     for r in rows:
         own = dict(zip(base, r, strict=False))
-        left, unfilled = r[len(base) : len(base) + 2]
-        doc = _parsed(unfilled if left is None else left)
-        if left is not None and doc is not None:
-            cols = dict(zip(added, r[len(base) + 2 :], strict=True))
-            doc = _document(t, own, cols, kids.get(tuple(own[k] for k in t.key), {}), doc)
-        if doc is not None:
-            out.append((own, doc))
+        rest = json.loads(r[len(base)] or "{}")
+        cols = dict(zip(added, r[len(base) + 1 :], strict=True))
+        mine_kids = kids.get(tuple(own[k] for k in t.key), {})
+        out.append((own, _document(t, own, cols, mine_kids, rest)))
     return out
-
-
-def _parsed(body: str | None) -> dict | None:
-    try:
-        doc = json.loads(body or "{}")
-    except ValueError:
-        return None
-    return doc if isinstance(doc, dict) else None

@@ -1,9 +1,10 @@
 """goh.db in memory on each side of its contracts (GOH.ABSDATA): every writer's whole document in,
-the rows read back, and the contracts 0017 to 0020 as `goh state contract` runs them.
+the rows read back, and the contracts 0017 to 0021 as `goh state contract` runs them.
 
     fenced(con)          a cutover's fence put up
     contracts(con, *n)   those numbers applied, each in one transaction
-    write_all(con)       one whole document through each table's one writer
+    write_all(con)       one whole document through each table's one writer, into a cut file
+    old_all(con)         the same documents as an older goh inserts them, into an uncut one
     read_all(con, root)  {table: what its one reader gives}
 """
 
@@ -11,6 +12,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import _body_fixture as bf
@@ -28,7 +31,8 @@ from _columns_fixture import AT, LAND, OUTCOME, PINS, RESULT, SHIP, SPAWN
 from body_tables import TABLES
 
 STORES = {"early": "requests", "selection_misses": "misses"}  # its name in lib/state_paths.py
-NUMBERS = (17, 18, 19, 20)
+NUMBERS = (17, 18, 19, 20, 21)
+SHIP_RUN = Path(RESULT).stem
 RUN = "01795000000000000000-A.B"
 CANDIDATE = {"id": "FAULTS.x", "item": "triage", "phase": "FX", "repo": "?", "status": "todo",
              "done_state": "d", "faults": ["f", "g"], "depends": ["A.B"]}  # fmt: skip
@@ -55,41 +59,74 @@ def contracts(con: sqlite3.Connection, *numbers: int) -> None:
         con.execute("COMMIT")
 
 
-def write_all(con: sqlite3.Connection, root: str = "", runs: bool = True) -> None:
-    """ROOT is put before every path of the documents; no RUNS, no request and no early run."""
+def _rooted(root: str, doc: Any) -> Any:
+    return json.loads(json.dumps(doc).replace('"/', f'"{root}/')) if root else doc
 
-    def rooted(doc: Any) -> Any:
-        return json.loads(json.dumps(doc).replace('"/', f'"{root}/')) if root else doc
 
-    def store(name: str, doc: Any) -> Any:
-        return state_paths.put(con, name, rooted(doc))
-
-    result = state_paths.column(con, root + RESULT)
-    ship_columns.put_pins(con, store("ship_pins", PINS), result, AT)
-    ship = rooted(SHIP)
-    keyed = root and state_shape.closing(con, "ships")  # as lib/ship_records.py has it
-    ship_columns.put(con, state_paths.put(con, "ships", ship), result,
-                     state_paths.repo_key(ship["repo"]) if keyed else "goh", AT)  # fmt: skip
-    land_columns.put(con, root + "/q", RUN, rooted(LAND), AT)
-    for row in (SPAWN, OUTCOME):
-        spawn_columns.write(con, store("agent_spawns", row))
-    candidate_columns.write(con, CANDIDATE, AT)
+def _rows(root: str, runs: bool) -> Iterator[tuple[Any, int, dict]]:
+    """(table, n, document) of each in lib/body_tables.py; no RUNS, no request and no early run."""
     for t in TABLES:
-        if not runs and t.name in ("requests", "early"):
-            continue
-        first = 10 if t.name == "early" else 0  # a run is in requests or in early, never in both
-        for n, whole in enumerate(bf.DOCS[t.name], first):
-            name = STORES.get(t.name, t.name)
-            doc = state_paths.put(con, name, bf.named(t, rooted(whole), n))
-            own = {k: v if k != "queue" else state_paths.column(con, root + v)
-                   for k, v in bf.own(t, doc, n).items()}  # fmt: skip
-            body_columns.write(con, t, doc, own)
+        if runs or t.name not in ("requests", "early"):
+            first = 10 if t.name == "early" else 0  # a run is in one of the two
+            for n, whole in enumerate(bf.DOCS[t.name], first):
+                yield t, n, bf.named(t, _rooted(root, whole), n)
+
+
+def write_all(con: sqlite3.Connection, root: str = "", runs: bool = True) -> None:
+    """Every table's one writer; ROOT is put before every path of the documents."""
+    result = state_paths.encode(root + RESULT)
+    queue = state_paths.encode(root + "/q")
+    ship_columns.put_pins(con, state_paths.put("ship_pins", _rooted(root, PINS)), result, AT)
+    ship = _rooted(root, SHIP)
+    ship_columns.put(con, state_paths.put("ships", ship), result,
+                     state_paths.repo_key(ship["repo"]), AT)  # fmt: skip
+    land_columns.put(con, queue, RUN, state_paths.put("lands", _rooted(root, LAND)), AT)
+    for row in (SPAWN, OUTCOME):
+        spawn_columns.write(con, state_paths.put("agent_spawns", _rooted(root, row)))
+    candidate_columns.write(con, CANDIDATE, AT)
+    for t, n, whole in _rows(root, runs):
+        doc = state_paths.put(STORES.get(t.name, t.name), whole)
+        own = bf.own(t, doc, n)
+        own |= {"queue": state_paths.encode(root + own["queue"])} if "queue" in own else {}
+        body_columns.write(con, t, doc, own)
     small_stores.gated_row(con, {"tree": "t0", "repo": f"{root}/r", "at": LAND["at"]})
 
 
+def insert(con: sqlite3.Connection, table: str, **row: Any) -> None:
+    row = {k: json.dumps(v, sort_keys=True) if isinstance(v, dict) else v for k, v in row.items()}
+    con.execute(f"INSERT INTO {table}({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",
+                list(row.values()))  # fmt: skip
+
+
+def old_all(con: sqlite3.Connection, root: str = "", runs: bool = True) -> None:
+    """The same rows as an older goh writes them into an uncut file: whole documents, its paths
+    absolute, each row's columns the triggers'."""
+    ship, result = _rooted(root, SHIP), root + RESULT
+    insert(con, "ship_pins", result=result, run=SHIP_RUN, at=AT, body=_rooted(root, PINS))
+    plain = {k: ship[k] for k in ("item", "sha", "status", "started", "finished", "version")}
+    insert(con, "ships", result=result, run=SHIP_RUN, repo="goh", at=AT, body=ship, **plain)
+    old_land(con, root + "/q", RUN, _rooted(root, LAND))
+    for row in (SPAWN, OUTCOME):
+        insert(con, "agent_spawns", at=AT, event=row["event"], agent=row.get("agent_id"),
+               item=(row.get("items") or [None])[0], body=_rooted(root, row))  # fmt: skip
+    insert(con, "fault_candidates", at=AT, body=CANDIDATE)
+    for t, n, doc in _rows(root, runs):
+        own = bf.own(t, doc, n)
+        bf.old(con, t, doc, {**own, "queue": root + own["queue"]} if "queue" in own else own)
+    insert(con, "commit_gated", tree="t0", at=AT, body={"tree": "t0", "repo": f"{root}/r"})
+
+
+def old_land(con: sqlite3.Connection, queue: str, run: str, land: dict) -> None:
+    plain = ("item", "sha", "enqueued", "repo", "mode", "state", "attempt", "requested", "started",
+             "finished", "k")  # fmt: skip
+    insert(con, "lands", queue=queue, run=run, at=AT, body=land,
+           **{k: land[k] for k in plain if k in land})  # fmt: skip
+
+
 def read_all(con: sqlite3.Connection, root: str = "") -> dict[str, list]:
+    queue = root + "/q"
     out: dict[str, list] = {
-        "lands": list(land_columns.read(con, root + "/q").values()),
+        "lands": list(land_columns.read(con, queue).values()),
         "ships": ship_columns.read(con),
         "ship_pins": ship_columns.read_pins(con),
         "agent_spawns": spawn_columns.read(con),

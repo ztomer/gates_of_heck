@@ -10,4 +10,4 @@ refused by name, never a silent default. Every seam below them (`GOH_DB`, `GOH_S
 `GOH_LANDQ_DIR`, `GOH_SEED_DIR`, `GOH_LOOPCTL`, `GOH_ESTATE_ROOT`) keeps its name and takes its
 default from them. The file is `$XDG_CONFIG_HOME/goh/config.toml` (`~/.config`); the environment
 wins over it. A stored path may be a token at its start (`$STATE/..`, `$REPOS/..`, `$HOMEDIR/..`)
-and a stored repo its key under the repos root (`~/..` outside): every reader takes both forms.
+and a stored repo its key under the repos root (`~/..` outside): goh.db holds no other form.

@@ -34,12 +34,13 @@ SQL = {
 def seam(tmp_path: Path, monkeypatch, body: str = "{}") -> db_core.Seam:
     d = tmp_path / "schema"
     d.mkdir()
-    for n, sql in SQL.items():
-        (d / f"{n:04d}_m.sql").write_text(sql)
     monkeypatch.setenv("GOH_DB", str(tmp_path / "goh.db"))
-    s = dataclasses.replace(goh_db.SEAM, schema=d)
-    with db_core.transaction(s) as con:
-        con.execute("INSERT INTO t(x, body) VALUES (1, ?)", (body,))
+    s = dataclasses.replace(goh_db.SEAM, schema=d, born=())
+    for n, sql in SQL.items():
+        if n == 3:  # the contracts are shipped later: a new file has every number
+            with db_core.transaction(s) as con:
+                con.execute("INSERT INTO t(x, body) VALUES (1, ?)", (body,))
+        (d / f"{n:04d}_m.sql").write_text(sql)
     return s
 
 

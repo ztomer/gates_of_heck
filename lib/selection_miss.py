@@ -168,7 +168,7 @@ def append(q: Path, rows: list[dict]) -> int:
     have = {_key(r) for r in read(q)}
     new = [r for r in rows if _key(r) not in have]
     if new:
-        land_records.append(q, "misses", new)
+        land_records.append_misses(q, new)
     return len(new)
 
 
@@ -177,7 +177,7 @@ def _key(row: dict) -> tuple:
 
 
 def read(q: Path) -> list[dict]:
-    return land_records.ledger(q, "misses")
+    return land_records.misses(q)
 
 
 def _measure(q: Path, source: str, item: str, repo: Path, base: str, sha: str,

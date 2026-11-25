@@ -1,25 +1,23 @@
 """lib/ship_columns.py -- a ship's record and its pins as goh.db's typed columns and child rows
 (GOH.STEPTIMES, the plan's S4c): `ships`, `ship_pins` and their child tables (schema file 0012).
 
-    put(con, res, key, repo, at)     RES as KEY's row of ships, its child rows, and its document
-                                     while the table has a `body`
-    put_pins(con, body, key, at)     a ship's pins, the same
+    put(con, res, key, repo, at)     RES as KEY's row of ships and its child rows
+    put_pins(con, doc, key, at)      a ship's pins, the same
     read(con, where, args)           (result, record) per row of ships WHERE takes
     read_pins(con, where, args)      (result, pins)
 
 A WRITER NAMES EVERY COLUMN. A scalar of its column's type is its column, a list or an object whose
 every element fits is its child rows (the ones before it go first), and `rest` is what is left: an
-unknown key, or a value no column takes, which `goh state check` names. `rest` is never NULL, so
-0012's triggers (older code's) fill nothing: what they would have put there is what this puts there,
-row for row (tests/test_ship_columns.py).
+unknown key, which `goh state check` names. What 0012's triggers put there from an older goh's
+document is what this puts there, row for row (tests/test_ship_columns.py).
 
 A READER READS THE COLUMNS, by the SQL that renders them (lib/state_sql/doc_ships.sql), so every
-reader of every language gives one document. A row with `rest` NULL (`goh state backfill` has not
-filled it) is read from its document. A record's `repo` is its path: the document's while there is
-one, the column's key after. Null, {} and [] are an absent key, but for what a reader indexes: what
-a record is planned with (PLANNED, PLANNED_LISTS), a grace's `count`, a run step's `idle_pct`.
+reader of every language gives one document. A record's `repo` is the column's key
+(lib/state_paths.py gives its path). Null, {} and [] are an absent key, but for what a reader
+indexes: what a record is planned with (PLANNED, PLANNED_LISTS), a grace's `count`, a run step's
+`idle_pct`.
 
-TWO FORMS OF A PATH (lib/state_paths.py): the caller gives RES in the file's form and reads it back.
+PATHS ARE THE CALLER'S (lib/state_paths.py): RES comes with its tokens, and is read with them.
 """
 
 from __future__ import annotations
@@ -176,13 +174,15 @@ def _split(doc: dict, repo: str) -> tuple[dict[str, Any], list[tuple[str, dict]]
     nothing = [p for p, *_ in (*LISTS, *OBJECTS)] + ["diffcov_red.faults", "grace_over.repos"]
     for path in (p for p in nothing if _get(doc, p) is None):
         _drop(rest, path)
+    asked = doc.get("quiet_settings")
     quiet = [_get(doc, "quiet.min_idle_pct"), _get(doc, "quiet.max_s")]
-    if json.dumps(quiet) == json.dumps(doc.get("quiet_settings")):
+    if doc.get("quiet") is None and isinstance(asked, list) and len(asked) == 2 and all(
+            type(x) in (int, float) for x in asked):  # fmt: skip
+        cols["quiet_min_idle_pct"], cols["quiet_max_s"] = quiet = asked  # planned, not waited yet
+    if json.dumps(quiet) == json.dumps(asked):
         _drop(rest, "quiet_settings")
     where = doc.get("repo")
-    if where is None or (isinstance(where, str) and repo and (
-            state_paths.repo_key(where) == repo
-            or where.replace("/", "_").endswith(repo.replace("/", "_")))):  # fmt: skip
+    if where is None or (isinstance(where, str) and repo and state_paths.repo_key(where) == repo):
         _drop(rest, "repo")
     for k in ("result", *HAVE, "schema", "consumer_pins", "quiet_settings", "repo"):
         if k not in ("quiet_settings", "repo") or rest.get(k) is None:
@@ -196,21 +196,15 @@ def _json(rest: dict) -> str:
     return json.dumps(rest, ensure_ascii=False, separators=(",", ":"))  # as SQLite writes it
 
 
-def _rest(con: sqlite3.Connection, table: str, key: str, rest: dict) -> str:
-    """REST as it is kept; from a cutover on a known key of the wrong type is buried instead."""
-    rest, buried = state_shape.sift(con, table, rest)
+def _rest(table: str, key: str, rest: dict) -> str:
+    """REST as it is kept; a known key of the wrong type is buried instead."""
+    rest, buried = state_shape.sift(table, rest)
     if buried:
         state_shape.bury(table, {"result": key, **buried}, "a value of another type")
     return _json(rest)
 
 
-def _columns(con: sqlite3.Connection, table: str) -> set[str]:
-    return set(state_columns.columns(con, table))
-
-
 def _upsert(con: sqlite3.Connection, table: str, cols: dict[str, Any]) -> None:
-    have = _columns(con, table)
-    cols = {c: v for c, v in cols.items() if c in have}  # `body` leaves with a contract
     sets = ", ".join(f"{c} = excluded.{c}" for c in cols if c != "result")
     con.execute(f"INSERT INTO {table}({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))}) "
                 f"ON CONFLICT(result) DO UPDATE SET {sets}", list(cols.values()))  # fmt: skip
@@ -231,17 +225,16 @@ def _children(
 def put(con: sqlite3.Connection, res: dict, key: str, repo: str, at: float) -> None:
     cols, kids, rest = _split(res, repo)
     cols |= {"result": key, "run": Path(key).stem, "repo": repo, "at": at,
-             "rest": _rest(con, "ships", key, rest),
-             **state_shape.document(con, "ships", json.dumps(res)),
+             "rest": _rest("ships", key, rest),
              **{c: None if res.get(c) is None else str(res[c]) for c in HAVE}}  # fmt: skip
     _upsert(con, "ships", cols)
     _children(con, key, CHILDREN, kids, at)
 
 
-def put_pins(con: sqlite3.Connection, body: dict, key: str, at: float) -> None:
-    rest = {k: v for k, v in body.items() if k != "schema"}
-    cols = _scalars(body, rest, PINS)
-    repos = body.get("repos")
+def put_pins(con: sqlite3.Connection, doc: dict, key: str, at: float) -> None:
+    rest = {k: v for k, v in doc.items() if k != "schema"}
+    cols = _scalars(doc, rest, PINS)
+    repos = doc.get("repos")
     got = {r: _cells(v, PIN) for r, v in repos.items()} if isinstance(repos, dict) else {}
     kids: list[tuple[str, dict]] = []
     if all(c is not None for c in got.values()) and (repos is None or isinstance(repos, dict)):
@@ -255,8 +248,7 @@ def put_pins(con: sqlite3.Connection, body: dict, key: str, at: float) -> None:
             "result": key,
             "run": Path(key).stem,
             "at": at,
-            "rest": _rest(con, "ship_pins", key, rest),
-            **state_shape.document(con, "ship_pins", json.dumps(body)),
+            "rest": _rest("ship_pins", key, rest),
         },
     )
     _children(con, key, ("ship_pin_repos",), kids, at)
@@ -264,31 +256,18 @@ def put_pins(con: sqlite3.Connection, body: dict, key: str, at: float) -> None:
 
 def _rendered(
     con: sqlite3.Connection, table: str, where: str, args: tuple | list
-) -> Iterator[tuple[str, str | None, dict | None, dict]]:
-    """(result, rest, the document, the one the columns render) per row of TABLE WHERE takes."""
-    have = _columns(con, table)
-    body = "x.body" if "body" in have else "'{}'"
-    if "rest" not in have:  # a file no writer of this goh has opened yet
-        docs = con.execute(f"SELECT x.result, {body} FROM {table} x WHERE {where}", args)
-        for result, doc in docs.fetchall():
-            yield result, None, json.loads(doc), {}
-        return
-    sql = (state_columns.SQL / f"doc_{table}.sql").read_text(encoding="utf-8")
-    _, _, tail = sql.partition("x.body,")
-    sql = f"SELECT x.result, x.rest, {body},{tail} WHERE {where} ORDER BY x.result"
-    for result, rest, doc, again in con.execute(sql, args):
-        kept = json.loads(doc) if doc and (rest is None or doc != "{}") else None
-        yield result, rest, kept, json.loads(again)
+) -> Iterator[tuple[str, dict]]:
+    """(result, the record its columns render) per row of TABLE WHERE takes."""
+    sql = f"SELECT x.result, {state_columns.rendering(table)} WHERE {where} ORDER BY x.result"
+    for result, again in con.execute(sql, args):
+        yield result, json.loads(again)
 
 
 def read(con: sqlite3.Connection, where: str = "1", args: tuple | list = ()) -> list:
     out = []
-    for result, rest, doc, again in _rendered(con, "ships", where, args):
-        if rest is None:
-            out.append((result, doc or {}))
-            continue
-        if doc and doc.get("repo") is not None:  # the column holds its name until it is the key
-            again["repo"] = doc["repo"]
+    for result, again in _rendered(con, "ships", where, args):
+        if set(again.get("quiet", ())) == {"min_idle_pct", "max_s"}:  # its settings: not waited yet
+            del again["quiet"]
         if "grace_over" in again:  # not judged is a count of None, said beside its why
             again["grace_over"].setdefault("count", None)
         for step in again.get("steps", ()):
@@ -301,5 +280,5 @@ def read(con: sqlite3.Connection, where: str = "1", args: tuple | list = ()) -> 
 
 
 def read_pins(con: sqlite3.Connection, where: str = "1", args: tuple | list = ()) -> list:
-    return [(result, (doc or {}) if rest is None else {"repos": {}, **again})
-            for result, rest, doc, again in _rendered(con, "ship_pins", where, args)]  # fmt: skip
+    return [(result, {"repos": {}, **again})
+            for result, again in _rendered(con, "ship_pins", where, args)]  # fmt: skip

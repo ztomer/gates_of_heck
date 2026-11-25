@@ -1,5 +1,5 @@
 """GOH.KVBLOBS: goh.db's kv documents as rows (lib/kv_rows.py, schema file 0015), through the stores
-that write and read them, beside an older copy that knows only the document."""
+that write and read them; an older file's documents filled into them, and 0021 that drops those."""
 
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ import kv_rows
 import pytest
 import small_stores
 import state_columns
+from _body_fixture import UNCUT
+from _contract_fixture import contracts
 from _kv_fixture import Held, duration_kv, kv, memory
 
 PUSH = {"schema": 1, "repos": {
@@ -40,49 +42,30 @@ def rows(held: Held, name: str) -> list[tuple]:
     return held.goh.execute(f"SELECT * FROM {kv_rows.STORES[name].table} ORDER BY 1, 2").fetchall()
 
 
-def body(held: Held, name: str) -> dict:
-    return json.loads(held.goh.execute("SELECT body FROM kv WHERE name=?", (name,)).fetchone()[0])
-
-
 @pytest.mark.parametrize("name", DOCS)
 def test_a_document_is_rows_read_back_as_it_was(held, name) -> None:
     p = f"/st/{small_stores.KV_FILES[name]}"
     small_stores.put(p, DOCS[name])
     assert len(rows(held, name)) == COUNT[name]
-    assert small_stores.get(p) == DOCS[name] and kv_rows.left(held.goh) == []
-    assert {k: v for k, v in body(held, name).items() if k != kv_rows.MARK} == DOCS[name]
-    kv(held.goh, name, json.dumps({kv_rows.MARK: kv_rows.NUMBER}))  # the rows alone
-    assert small_stores.get(p) == DOCS[name] and len(kv_rows.left(held.goh)) == 1
-
-
-@pytest.mark.parametrize("name", DOCS)
-def test_what_an_older_copy_wrote_is_read_and_rows_again_at_the_next_write(held, name) -> None:
-    p = f"/st/{small_stores.KV_FILES[name]}"
-    small_stores.put(p, DOCS[name])
-    less = json.loads(json.dumps(DOCS[name]))
-    if name == "pin_sweeps":
-        less["sweeps"].pop()
-    else:
-        less["repos"].pop(next(iter(less["repos"])))
-    kv(held.goh, name, json.dumps(less))
-    assert small_stores.get(p) == less and "backfill" in kv_rows.left(held.goh)[0]
-    small_stores.update(p, lambda old: old)
-    assert len(rows(held, name)) == COUNT[name] - 1 and small_stores.get(p) == less
-    assert body(held, name).get(kv_rows.MARK) == (None if name == "wf_pin.pins" else 15)
+    assert small_stores.get(p) == DOCS[name]
+    assert held.goh.execute("SELECT name FROM kv").fetchall() == []
+    with pytest.raises(sqlite3.IntegrityError):
+        kv(held.goh, name, "{}")  # an older copy's write
 
 
 @pytest.mark.parametrize("odd", [
     {"schema": 1, "repos": {"/p/a": {**PUSH["repos"]["/p/a"], "new": 1}}},  # no column has it
     {"schema": 1, "repos": {"/p/a": {"at": "2026-11-23T04:55:43Z", "status": "x"}}},  # spelling
     {"schema": 1, "repos": {"/p/a": {"at": None, "status": "x"}}},
-    {"schema": True, "repos": {}},
+    {"schema": True, "repos": PUSH["repos"]},
     {"schema": 1, "repos": {"/p/a": "ok"}}, {"was": None}, [1], None,
 ])  # fmt: skip
-def test_what_no_column_holds_stays_the_document_with_no_row(held, odd) -> None:
+def test_what_no_column_holds_is_refused_and_the_rows_stand(held, odd) -> None:
     small_stores.put("/st/pin_push.json", PUSH)
-    small_stores.put("/st/pin_push.json", odd)
-    assert small_stores.get("/st/pin_push.json") == odd and rows(held, "pin_push") == []
-    assert body(held, "pin_push") == odd
+    was = rows(held, "pin_push")
+    with pytest.raises(kv_rows.Unfit, match="pin_push"):
+        small_stores.put("/st/pin_push.json", odd)
+    assert small_stores.get("/st/pin_push.json") == PUSH and rows(held, "pin_push") == was
 
 
 def test_the_sweeps_keep_their_order_and_a_repo_in_two_of_them(held) -> None:
@@ -91,26 +74,12 @@ def test_the_sweeps_keep_their_order_and_a_repo_in_two_of_them(held) -> None:
     assert got.fetchall() == [("/s/z", 0, "/p/a"), ("/s/z", 1, "/p/b"), ("/s/a", 0, "/p/b")]
 
 
-def test_a_file_from_before_0015_keeps_documents_alone(monkeypatch) -> None:
-    held = Held(14).lay(monkeypatch)
-    small_stores.put("/st/pin_push.json", PUSH)
-    assert body(held, "pin_push") == PUSH == small_stores.get("/st/pin_push.json")
-    durations.update("linux_unsafe", lambda _was: {"test_a": "why"})
-    assert durations.get("linux_unsafe") == {"test_a": "why"}
-    hook_ledgers.record_watch({"spend": {"first_seen_done": {"A.B": "t"}}}, [{"id": "F"}])
-    assert hook_ledgers.watch() == {"spend": {"first_seen_done": {"A.B": "t"}}}
-    assert hook_ledgers.candidates() == [{"id": "F"}]
-
-
-def test_the_unsafe_ledger_joins_two_writers_and_an_older_copys(held) -> None:
+def test_the_unsafe_ledger_joins_two_writers(held) -> None:
     durations.update("linux_unsafe", lambda was: {**(was or {}), "m1": "a"})
-    duration_kv(held.goh, "linux_unsafe", json.dumps({"m1": "b", "m3": "old"}))
     durations.update("linux_unsafe", lambda was: {**was, "m2": "c"})
-    want = {"m1": "b", "m2": "c", "m3": "old"}
+    want = {"m1": "a", "m2": "c"}
     assert durations.get("linux_unsafe") == want
     assert dict(held.goh.execute("SELECT module, why FROM linux_unsafe")) == want
-    held.goh.execute("DELETE FROM duration_kv")
-    assert durations.get("linux_unsafe") == want
     at = held.goh.execute("SELECT at FROM linux_unsafe WHERE module='m2'").fetchone()
     durations.update("linux_unsafe", lambda was: was)  # the same again is the same row
     assert held.goh.execute("SELECT at FROM linux_unsafe WHERE module='m2'").fetchone() == at
@@ -133,17 +102,11 @@ def test_the_first_time_an_item_was_seen_done_stands(held) -> None:
 def test_a_document_and_its_rows_are_read_in_one_snapshot(held, monkeypatch) -> None:
     """A writer between the two reads would leave the mark of one and the rows of another."""
     seen = []
-    for name in ("got", "unsafe", "first_done"):
-        was = getattr(kv_rows, name)
-        monkeypatch.setattr(kv_rows, name, lambda con, *a, was=was: (
-            seen.append(con.in_transaction), was(con, *a))[1])  # fmt: skip
-    small_stores.get("/st/pin_push.json")
-    small_stores.put("/st/pin_push.json", PUSH)
-    seen.clear()
-    small_stores.get("/st/pin_push.json")
-    durations.get("linux_unsafe")
+    was = kv_rows.first_done
+    monkeypatch.setattr(kv_rows, "first_done", lambda con, *a: (
+        seen.append(con.in_transaction), was(con, *a))[1])  # fmt: skip
     hook_ledgers.watch()
-    assert seen == [True] * 3
+    assert seen == [True]
 
 
 def _lay(con: sqlite3.Connection) -> None:
@@ -154,7 +117,7 @@ def _lay(con: sqlite3.Connection) -> None:
 
 
 def test_the_fill_is_every_entry_a_row_and_a_second_run_changes_nothing() -> None:
-    con = memory(goh_db)
+    con = memory(goh_db, UNCUT)
     _lay(con)
     assert len(kv_rows.left(con)) == 5
     n = {"pin_pushes": 2, "pin_sweep_repos": 3, "wf_pins": 1, "linux_unsafe": 1,
@@ -169,7 +132,7 @@ def test_the_fill_is_every_entry_a_row_and_a_second_run_changes_nothing() -> Non
 
 
 def test_a_fill_killed_at_each_statement_and_run_again_is_one_clean_run() -> None:
-    clean = memory(goh_db)
+    clean = memory(goh_db, UNCUT)
     _lay(clean)
     kv_rows.fill(clean)
     want = "\n".join(clean.iterdump())
@@ -197,7 +160,7 @@ def test_a_fill_killed_at_each_statement_and_run_again_is_one_clean_run() -> Non
             self._one(sql)
             return self.con.executemany(sql, *a)
 
-    con, n = memory(goh_db), 0
+    con, n = memory(goh_db, UNCUT), 0
     _lay(con)
     while True:
         con.execute("BEGIN")
@@ -212,10 +175,30 @@ def test_a_fill_killed_at_each_statement_and_run_again_is_one_clean_run() -> Non
     assert n > 12 and "\n".join(con.iterdump()) == want
 
 
+def test_0021_refuses_a_document_its_rows_do_not_hold_and_drops_the_rest() -> None:
+    con = memory(goh_db, UNCUT)
+    _lay(con)
+    kv(con, "estate_audit", "{}")
+    with pytest.raises(sqlite3.IntegrityError):
+        contracts(con, 21)
+    assert con.execute("SELECT count(*) FROM kv").fetchone() == (5,)
+    kv_rows.fill(con)
+    want = {name: kv_rows.got(con, name) for name in DOCS}
+    contracts(con, 21)
+    assert [n for (n,) in con.execute("SELECT name FROM kv ORDER BY 1")] == [
+        "estate_audit", "model-choice-watch"]  # fmt: skip
+    assert con.execute("SELECT count(*) FROM duration_kv").fetchone() == (0,)
+    assert {name: kv_rows.got(con, name) for name in DOCS} == want == DOCS
+    with pytest.raises(sqlite3.IntegrityError, match="its rows hold it"):
+        kv(con, "pin_push", "{}")
+    with pytest.raises(sqlite3.IntegrityError, match="its rows hold it"):
+        duration_kv(con, "linux_unsafe", "{}")
+
+
 def test_goh_db_0015_is_safe_bounded_and_taken_by_a_file_that_has_0016() -> None:
     file = db_schema.migrations(goh_db.SEAM)[15].read_text(encoding="utf-8")
     assert db_schema.old_writers(file) == "safe" and db_safe.faults(goh_db.SEAM, 15) == []
-    con = memory(goh_db)
+    con = memory(goh_db, UNCUT)
     new = {"pin_pushes", "pin_sweep_repos", "wf_pins", "linux_unsafe", "spend_first_done",
            "fault_candidate_lists"}  # fmt: skip
     assert new - {"fault_candidate_lists"} <= set(db_bounds.bounds(goh_db.SEAM))

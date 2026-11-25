@@ -22,8 +22,6 @@ as files under a ship directory, which nothing reads.
 
 from __future__ import annotations
 
-import json
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -31,6 +29,8 @@ from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import goh_db
+import hook_ledgers
+import land_columns
 import land_records  # lib/, on the path from the line above
 import ship_records
 import span_store
@@ -65,21 +65,14 @@ def landed(q: Path, run: str) -> dict | None:
 
 def unland(q: Path, run: str) -> None:
     with goh_db.transaction() as con:
-        con.execute(
-            "DELETE FROM lands WHERE queue = ? AND run = ?", (land_records.queue_key(q), run)
-        )
+        mine, args = land_columns.ours(land_records.queue_key(q))
+        con.execute(f"DELETE FROM lands WHERE {mine} AND run = ?", (*args, run))
 
 
 def ledger(db: Path, table: str = "agent_spawns") -> list[dict]:
     """TABLE's rows in a test's own goh.db DB, in the order written (lib/hook_ledgers.py,
     GOH.STATEDBS4: agent_spawns, lane_starts); [] when there is no file."""
-    if not db.exists():
-        return []
-    con = sqlite3.connect(db)
-    try:
-        return [json.loads(b) for (b,) in con.execute(f"SELECT body FROM {table} ORDER BY n")]
-    finally:
-        con.close()
+    return hook_ledgers.rows(table, db) if db.exists() else []
 
 
 def ship(result: Path | str, rec: dict) -> Path:

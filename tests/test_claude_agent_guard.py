@@ -341,7 +341,7 @@ def test_status_is_read_from_the_first_line_only(tmp_path: Path, last: str, stat
 def test_an_outcome_without_a_transcript_is_still_recorded(tmp_path: Path) -> None:
     assert _run(_stop(tmp_path / "gone.jsonl", "Status: landed"), tmp_path) is None
     (line,) = _ledger(tmp_path)
-    assert line["status"] == "landed" and line["tokens"] is None and line["tool_use_id"] is None
+    assert line["status"] == "landed" and not {"tokens", "tool_use_id"} & line.keys()
 
 
 @pytest.mark.load_sensitive
@@ -495,4 +495,4 @@ def test_a_report_whose_faults_section_cannot_be_read_says_so_at_the_stop(tmp_pa
     report = "Status: landed\nabc1234 x\nFaults seen:\nsee the narrative above"
     out = _run(_stop(None, report), tmp_path / "cache")
     assert out and "no bullet list follows it" in out["systemMessage"], out
-    assert _ledger(tmp_path / "cache")[0]["faults"] is None
+    assert "faults" not in _ledger(tmp_path / "cache")[0]

@@ -1,5 +1,5 @@
-"""GOH.BODYCOLS: each store over the file its contract leaves (no document, no trigger of an older
-copy): what its module writes, its module reads, from the columns and child rows alone."""
+"""GOH.BODYCOLS: what each store's module writes, its module reads, from the columns and child rows
+alone."""
 
 from __future__ import annotations
 
@@ -31,19 +31,13 @@ from _body_fixture import (
     SAMPLE,
     STARVED,  # fmt: skip
     STEP,
-    contract,
 )
-from body_tables import TABLES
 
 
 @pytest.fixture
 def db(tmp_path: Path, monkeypatch) -> Path:
     monkeypatch.setenv("GOH_DB", str(tmp_path / "state" / "goh.db"))
     monkeypatch.setattr(reuse_audit_store, "NAMED", goh_db.path())
-    with goh_db.transaction() as con:
-        for t in TABLES:
-            contract(con, t)
-        con.execute("ALTER TABLE commit_gated DROP COLUMN body")
     return goh_db.path()
 
 
@@ -60,8 +54,6 @@ def test_every_store_writes_and_reads_the_contracts_file(db, tmp_path) -> None:
     assert selection_miss.append(tmp_path / "q", rows) == 0
     assert selection_miss.read(tmp_path / "q") == rows
     assert selection_miss.read(tmp_path / "other") == []
-    assert land_records.append(tmp_path / "q", "guards", [{"guard": "g", "at": "x"}] * 2) == 1
-    assert land_records.append(tmp_path / "q", "guards", []) == 0
     reuse_audit_store.shadow_add({**SAMPLE, "outcome": "agreed"})
     assert reuse_audit_store.shadow() == [{**SAMPLE, "outcome": "agreed"}]
     for rec in (OFF, ON, STARVED):
@@ -108,8 +100,8 @@ def test_a_requests_whole_life(db, tmp_path) -> None:
 
 def test_a_miss_is_one_row_however_often_it_is_written(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("GOH_DB", str(tmp_path / "goh.db"))
-    assert [land_records.append(tmp_path, "misses", [JUDGED, MISS]) for _ in "ab"] == [2, 0]
-    assert land_records.ledger(tmp_path, "misses") == [JUDGED, MISS]
+    assert [land_records.append_misses(tmp_path, [JUDGED, MISS]) for _ in "ab"] == [2, 0]
+    assert land_records.misses(tmp_path) == [JUDGED, MISS]
 
 
 def test_the_commit_gated_rows_are_their_two_columns(tmp_path, monkeypatch) -> None:

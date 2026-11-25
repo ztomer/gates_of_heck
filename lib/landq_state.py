@@ -80,8 +80,8 @@ def queue_key(q: Path) -> str:
 
 
 def _ours(queue: str) -> tuple[str, tuple[str, ...]]:
-    """(clause, args) naming QUEUE's rows, under either form of its path (lib/state_paths.py)."""
-    return state_paths.where("queue", state_paths.forms(queue))
+    """(clause, args) naming QUEUE's rows."""
+    return "queue = ?", (state_paths.encode(queue),)
 
 
 def name(q: Path, state: str, run: str) -> Path:
@@ -115,7 +115,7 @@ def _filed(run: str) -> float:
 def insert(con: sqlite3.Connection, queue: str, run: str, req: dict, state: str,
            at: float | None = None, ignore: bool = False) -> bool:  # fmt: skip
     """REQ as RUN's row in STATE, in CON's transaction (an early one filed AT)."""
-    queue, req = state_paths.column(con, queue), state_paths.put(con, "requests", req)
+    queue, req = state_paths.encode(queue), state_paths.put("requests", req)
     own = {"queue": queue, "run": run}
     if state == EARLY:
         own["at"] = time.time() if at is None else at
@@ -237,7 +237,7 @@ def update(path: Path, req: dict) -> bool:
     queue, state, run = key(path)
     ours, args = _ours(queue)
     with goh_db.transaction() as con:
-        req = state_paths.put(con, "requests", req)
+        req = state_paths.put("requests", req)
         ours, args = f"{ours} AND run = ? AND state = ?", (*args, run, state)
         return body_columns.update(con, body_tables.REQUESTS, req, _cols(req), ours, args) == 1
 

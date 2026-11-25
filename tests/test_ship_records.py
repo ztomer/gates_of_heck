@@ -66,9 +66,9 @@ def test_the_rows_are_every_record_and_a_file_beside_them_is_read_by_nothing(
     assert pins is not None and pins["tag"] == "v1"
     with goh_db.ro() as con:
         assert con.execute("SELECT run, repo, status FROM ships_v1 ORDER BY run").fetchall() == [
-            ("20261120T000000Z-aaaaaaaa", "alpha", "ok"),
-            ("20261121T000000Z-bbbbbbbb", "alpha", "failed"),
-            ("v0.1.0", "beta", "ok"),
+            ("20261120T000000Z-aaaaaaaa", "/r/alpha", "ok"),
+            ("20261121T000000Z-bbbbbbbb", "/r/alpha", "failed"),
+            ("v0.1.0", "/r/beta", "ok"),
         ]
 
 
@@ -107,9 +107,8 @@ def test_a_ship_step_writes_its_row_and_no_file(db: Path, tmp_path: Path) -> Non
     res["status"] = "running"
     ship_status.save(res)
     with goh_db.ro() as con:
-        row = con.execute("SELECT status, body FROM ships WHERE result=?", (res["result"],))
-        status, body = row.fetchone()
-    assert status == "running" and json.loads(body) == res
+        row = con.execute("SELECT status FROM ships WHERE result=?", (res["result"],)).fetchone()
+    assert row == ("running",) and ship_records.get(res["result"]) == res
     assert not Path(res["result"]).exists()  # its directory is made: the step logs live there
     assert [p.name for p in Path(res["result"]).parent.iterdir()] == []
 
@@ -119,11 +118,8 @@ def test_the_install_writes_its_pins_row_and_no_sidecar(db: Path, tmp_path: Path
 
     result = tmp_path / "ship" / "alpha" / "20261120T000000Z-aaaaaaaa.json"
     consumer_pins.write_record(str(result), "v1", "0.1", {"one": {"status": "committed"}})
-    with goh_db.ro() as con:
-        (body,) = con.execute(
-            "SELECT body FROM ship_pins WHERE result=?", (str(result),)
-        ).fetchone()
-    assert json.loads(body)["repos"] == {"one": {"status": "committed"}}
+    pins = ship_records.get_pins(result)
+    assert pins is not None and pins["repos"] == {"one": {"status": "committed"}}
     assert not consumer_pins.record_path(result).exists()
     res = {"result": str(result)}
     consumer_pins.carry(res)  # the row alone carries it into the result

@@ -64,6 +64,7 @@ import kv_rows
 ENV = "GOH_TEST_DURATIONS"
 KINDS = ("dur", "pole", "pole_cpu")
 KEEP = 5
+FAULTS = (OSError, sqlite3.Error, goh_db.Uncut)  # they cost a run its order, never its verdict
 
 
 def path(environ: Mapping[str, str] | None = None) -> Path:
@@ -88,7 +89,7 @@ def _read(db: Path, named: bool) -> Iterator[sqlite3.Connection | None]:
         try:
             con = stack.enter_context(goh_db.ro(db, named))
             con.execute("SELECT 1 FROM durations LIMIT 1")
-        except (OSError, sqlite3.Error):
+        except FAULTS:
             con = None
         yield con
 
@@ -136,15 +137,15 @@ def get(key: str, db: Path | None = None) -> object:
     db, named = _where(db, False)
     with _read(db, named) as con:
         if con is not None:
-            con.execute("BEGIN")  # a document and its rows are one snapshot
             return _value(con, key)
     return None
 
 
 def _value(con: sqlite3.Connection, key: str) -> object:
+    if key == kv_rows.UNSAFE:
+        return kv_rows.unsafe(con)
     row = con.execute("SELECT value FROM duration_kv WHERE key=?", (key,)).fetchone()
-    doc = json.loads(row[0]) if row else None
-    return kv_rows.unsafe(con, doc) if key == kv_rows.UNSAFE else doc
+    return json.loads(row[0]) if row else None
 
 
 def scalars(keys: Iterable[str], db: Path | None = None) -> dict[str, float]:
@@ -180,7 +181,7 @@ def record(
     write costs the next run its order, never its verdict."""
     (db, named), now, run = _where(db, named), time.time(), run_id()
     loads = loads or {}
-    with contextlib.suppress(OSError, sqlite3.Error), goh_db.transaction(db, named) as con:
+    with contextlib.suppress(*FAULTS), goh_db.transaction(db, named) as con:
         con.executemany(
             "INSERT INTO readings(run, node, kind, seconds, load, loaded, at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -210,7 +211,8 @@ def update(key: str, change: Callable[[object], object], db: Path | None = None)
         new = change(_value(con, key))
         if key == kv_rows.UNSAFE:
             kv_rows.put_unsafe(con, new)
-        _keep(con, {key: new})
+        else:
+            _keep(con, {key: new})
 
 
 def _keep(con: sqlite3.Connection, values: Mapping[str, object]) -> None:

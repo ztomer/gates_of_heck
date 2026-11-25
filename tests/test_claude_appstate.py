@@ -128,7 +128,7 @@ def test_an_app_still_running_and_one_never_running_are_left_alone(world: World)
     out = world.stop()
     assert world.launched() == []
     assert out is None
-    assert world.ledger()[-1]["apps"]["missing"] == []
+    assert world.ledger()[-1]["apps"].get("missing", []) == []
 
 
 def test_an_unreadable_login_item_list_launches_nothing(world: World) -> None:
@@ -137,7 +137,7 @@ def test_an_unreadable_login_item_list_launches_nothing(world: World) -> None:
     world.set_running([])
     assert world.stop() is None
     assert world.launched() == []
-    assert world.ledger()[0]["apps"] is None
+    assert world.ledger()[0].get("apps") is None
 
 
 def test_the_snapshot_is_spent_by_its_stop(world: World) -> None:
@@ -187,7 +187,7 @@ def test_an_app_no_longer_a_login_item_is_neither_relaunched_nor_reported(world:
     world.set_running([OSAURUS])
     assert world.stop() is None
     assert world.launched() == []
-    assert world.ledger()[-1]["apps"]["missing"] == []
+    assert world.ledger()[-1]["apps"].get("missing", []) == []
 
 
 def test_an_uninstalled_app_is_neither_relaunched_nor_reported(world: World) -> None:

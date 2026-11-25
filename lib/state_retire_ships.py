@@ -77,6 +77,12 @@ def keep(p: Path) -> str | None:
     return None
 
 
+def _put(con: sqlite3.Connection, rec: dict, result: str, at: float) -> None:
+    """REC as ship_records.put writes it, at AT."""
+    ship_columns.put(con, state_paths.put("ships", rec), state_paths.encode(result),
+                     ship_records.repo_of({**rec, "result": result}), at)  # fmt: skip
+
+
 def load(con: sqlite3.Connection, paths: list[Path]) -> None:
     """Each file's record in (unless its result has a row: that is newer than its file), a
     dead worker's running result settled in its row, each file's bytes in `imports`."""
@@ -87,34 +93,35 @@ def load(con: sqlite3.Connection, paths: list[Path]) -> None:
         if not isinstance(rec, dict):
             continue
         if table == "ships" and ship_status._gone(rec):
-            have = ship_columns.read(con, "x.result = ?", (result,))
+            have = ship_columns.read(con, "x.result = ?", (state_paths.encode(result),))
             live = have[0][1] if have else rec
             if ship_status._gone(live):  # its row says running too (or there is none): settle
-                done = ship_status.abandoned(live, result)
-                ship_columns.put(con, done, result, p.parent.name, now)
-        if con.execute(f"SELECT 1 FROM {table} WHERE result = ?", (result,)).fetchone():
+                _put(con, ship_status.abandoned(live, result), result, now)
+        ours = (state_paths.encode(result),)
+        if con.execute(f"SELECT 1 FROM {table} WHERE result = ?", ours).fetchone():
             pass  # a row is newer than its file
         elif table == "ships":
-            ship_columns.put(con, rec, result, p.parent.name, p.stat().st_mtime)
+            _put(con, rec, result, p.stat().st_mtime)
         else:
-            ship_columns.put_pins(con, rec, result, p.stat().st_mtime)
+            ship_columns.put_pins(con, state_paths.put(table, rec), *ours, p.stat().st_mtime)
         con.execute("INSERT OR IGNORE INTO imports(store, source, sha256, rows, at) "
                     "VALUES (?, ?, ?, ?, ?)",
-                    (table, state_paths.column(con, str(p)), hashlib.sha256(raw).hexdigest(),
-                     1, now))  # fmt: skip
+                    (table, state_paths.encode(str(p)), hashlib.sha256(raw).hexdigest(), 1,
+                     now))  # fmt: skip
 
 
 def check(con: sqlite3.Connection, p: Path) -> str | None:
-    """P's record is its row's body, or its row was written after P (a later step, a settle)."""
+    """P's record is its row's, or its row was written after P (a later step, a settle)."""
     table, result = key(p)
-    ours, args = state_paths.where("result", state_paths.forms(result))
-    row = con.execute(f"SELECT result, at FROM {table} WHERE {ours}", args).fetchone()
+    result = state_paths.encode(result)
+    row = con.execute(f"SELECT result, at FROM {table} WHERE result = ?", (result,)).fetchone()
     if row is None:
         return f"no {table} row"
-    (doc,) = state_rows.docs(con, table, "x.result = ?", (row[0],))
+    (doc,) = state_rows.docs(con, table, "x.result = ?", (result,))
     want = _json(p)
-    named = {"result": result, "repo": p.parent.name} if table == "ships" else {}
-    want = {**named, **want} if isinstance(want, dict) else want  # the row says both
+    if isinstance(want, dict):
+        named = {"result": result, "repo": p.parent.name} if table == "ships" else {}
+        want = {**named, **state_paths.put(table, want)}  # the row says both
     differ = state_columns.differs(table, json.dumps(want), json.dumps(doc))
     if not {*differ} - {"consumer_pins"} or float(row[1] or 0) > p.stat().st_mtime:
         return None

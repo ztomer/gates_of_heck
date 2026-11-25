@@ -46,7 +46,7 @@ def _may() -> None:
                            f"{CONTRACT:04d}")  # fmt: skip
     state_columns.writable()
     with goh_db.known() as con:
-        n = con.execute(f"SELECT count(*) FROM ships WHERE {state_columns.IN_FLIGHT}").fetchone()[0]
+        n = len(state_columns.running(con))
     if n:
         raise StripRefused(f"ships still running: {n}")
 
@@ -57,12 +57,11 @@ def _batch(
     """The next BATCH rows past rowid AFTER: (the last one seen or None, stripped, why not)."""
     done, kept = 0, []
     with goh_db.transaction() as con:
-        busy = f"SELECT rowid FROM ships WHERE {state_columns.IN_FLIGHT}"
         wait, held = "", set()
         if table == "lands":
             wait, held = "its red cause is not folded in", state_columns.unfolded(con)
         elif table == "ships":
-            wait, held = "it runs", {r for (r,) in con.execute(busy)}
+            wait, held = "it runs", set(state_columns.running(con))
         rows = list(state_columns.rendered(
             con, table, f"x.rowid IN (SELECT rowid FROM {table} WHERE rowid > ? AND body <> '{{}}' "
             f"AND json_valid(body) ORDER BY rowid LIMIT {BATCH})", (after,)))  # fmt: skip
@@ -81,6 +80,7 @@ def _batch(
     return (rows[-1][0] if rows else None), done, kept
 
 
+@goh_db.uncut()
 def run(repo_key: Callable[[str], str]) -> tuple[int, list[str]]:
     """Every row of every table: (rows stripped, one line per row that stays whole)."""
     _may()
@@ -109,7 +109,8 @@ def main(repo_key: Callable[[str], str] | None = None) -> int:
     from tui.lib import err, ok
 
     try:
-        _may()
+        with goh_db.uncut():
+            _may()
         if repo_key is None:
             raise StripRefused("the cutover runs it, and hands it the codec of a repo")
         n, whole = run(repo_key)

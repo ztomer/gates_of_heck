@@ -4,9 +4,9 @@ goh's code writes, as its writer leaves it, and goh.db's schema in memory.
     DOCS                   {table name: [whole document, ...]}
     OWN                    {table name: the table's own columns for its first document}
     named(t, doc, n)       DOC as row N's document
-    memory(upto)           a connection holding goh.db's schema files numbered up to UPTO
-    old(con, t, doc, own)  DOC as a copy that knows no columns writes it
-    contract(con, t)       T as its contract leaves it: no triggers of old writers, no document
+    memory(upto)           goh.db as it is made; UPTO: an older goh's, its schema files numbered up
+                           to it, uncut (GOH.OLDFORMS)
+    old(con, t, doc, own)  DOC as a copy that knows no columns writes it, into an uncut file
     held(con, t)           every row of T and its child rows, numbers left out
 """
 
@@ -130,11 +130,16 @@ def own(t: Table, doc: dict, n: int = 1) -> dict:
     }[t.name]
 
 
-def memory(upto: int = 16) -> sqlite3.Connection:
+UNCUT = 16  # the last schema file an older goh's open applied
+
+
+def memory(upto: int | None = None) -> sqlite3.Connection:
     con = sqlite3.connect(":memory:", isolation_level=None)
     con.executescript(db_core.BOOT)
     files = db_schema.migrations(goh_db.SEAM).items()
-    assert db_schema.fresh(con, {n: p for n, p in files if n <= upto}, "t", set())
+    born = goh_db.SEAM.born if upto is None else ()
+    some = {n: p for n, p in files if upto is None or n <= upto}
+    assert db_schema.fresh(con, some, "t", set(), born)
     return con
 
 
@@ -144,25 +149,13 @@ def old(con: sqlite3.Connection, t: Table, doc: dict, mine: dict) -> None:
                 list(row.values()))  # fmt: skip
 
 
-def contract(con: sqlite3.Connection, t: Table) -> None:
-    for x in ("fill", "refill", "bad"):
-        con.execute(f"DROP TRIGGER {t.name}_{x}")
-    if t.name == "selection_misses":  # its contract remakes the table, without UNIQUE (.., body)
-        con.execute("CREATE TABLE misses AS SELECT * FROM selection_misses")
-        con.execute("DROP TABLE selection_misses")
-        keep = [c for c in body_columns.columns(con, "misses") if c not in ("n", "body")]
-        con.execute(f"CREATE TABLE selection_misses(n INTEGER PRIMARY KEY, {', '.join(keep)})")
-        con.execute(f"INSERT INTO selection_misses SELECT n, {', '.join(keep)} FROM misses")
-        return
-    con.execute(f"ALTER TABLE {t.name} DROP COLUMN body")
-
-
 def held(con: sqlite3.Connection, t: Table) -> list[dict]:
     rows = []
     kids = sorted({k.table for k in t.kids})
     cols = body_columns.columns(con, t.name)
     for r in con.execute(f"SELECT * FROM {t.name} ORDER BY rowid"):
         row = dict(zip(cols, r, strict=True))
+        row.pop("body", None)
         row["rest"] = json.loads(row["rest"])
         ours = " AND ".join(f"{k} = ?" for k in t.key)
         for kid in kids:

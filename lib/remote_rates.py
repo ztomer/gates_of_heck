@@ -3,12 +3,10 @@
 
     load_rates()        the rates the next split reads
     put(tests, change)  one land's: its tests' seconds, and the paces CHANGEd, in a transaction
-    fill(), unfilled()  `remote_rates`, the one document they were, into PACES and the rows
 
 PACES are four numbers of goh.db's duration_kv, beside the duration table (lib/durations.py); the
-tests' seconds are goh-cache.db's remote_secs (lib/cache_rows.py). PACES are written after the rows,
-so a kill in between leaves the document in force, and they are there only when it is in the rows.
-The document itself stays (an older copy of goh's) and is read no more.
+tests' seconds are goh-cache.db's remote_secs (lib/cache_rows.py). The one document they were is an
+older file's, put there by the cutover (lib/kv_fill.py) and read by nothing else.
 Pinned by tests/test_cache_rows.py.
 """
 
@@ -24,7 +22,6 @@ import cache_rows  # lib/, on the path from the line above
 import durations
 
 P = "remote_"
-RATES = "remote_rates"  # duration_kv: the document the paces and the tests' seconds were
 PACES = tuple(P + k for k in ("mac_width", "worker_width", "overhead_s", "ratio"))
 SMOOTH = 0.5  # each land's measurement weighs half against the rates before it
 
@@ -58,47 +55,19 @@ class Rates:
 
 
 def load_rates() -> Rates:
-    """The rates the next split reads, the defaults when there are none: the paces and remote_secs,
-    or the one document they were until `fill` has put it there."""
+    """The rates the next split reads, the defaults when there are none: the paces, remote_secs."""
     if was := durations.scalars(PACES):
         return Rates(**_paces(was), tests=cache_rows.secs())
-    return _rates(durations.get(RATES))
+    return Rates()
 
 
 def _paces(got: dict[str, float]) -> dict[str, float]:
     return {k.removeprefix(P): v for k, v in got.items()}
 
 
-def unfilled() -> bool:
-    return not durations.scalars(PACES) and isinstance(durations.get(RATES), dict)
-
-
-def fill() -> bool:
-    """`remote_rates` into remote_secs, then PACES, once; False when the cache did not take it.
-    The document stays (an older copy's) and is read no more."""
-    if not unfilled():
-        return True
-    old = _rates(durations.get(RATES))
-    if not cache_rows.put_secs(old.tests, durations.written(RATES)):
-        return False
-    durations.update_scalars(
-        PACES, lambda was: {k: getattr(old, k.removeprefix(P)) for k in PACES} | was
-    )
-    return True
-
-
-def _rates(data: object) -> Rates:
-    if not isinstance(data, dict):
-        return Rates()
-    try:
-        return Rates(**{k: data[k] for k in Rates.__dataclass_fields__ if k in data})
-    except TypeError:
-        return Rates()
-
-
 def put(tests: dict[str, float], change: Callable[[Rates], Rates]) -> None:
-    """Nothing of it when the cache takes no row: the paces would hide the document's."""
-    if not fill() or not cache_rows.put_secs(tests):
+    """Nothing of it when the cache takes no row."""
+    if not cache_rows.put_secs(tests):
         return
 
     def fold(was: dict[str, float]) -> dict[str, float]:

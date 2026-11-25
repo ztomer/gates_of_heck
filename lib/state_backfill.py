@@ -38,6 +38,7 @@ def steps() -> list[tuple[str, str]]:
     return list(zip(STEPS, db_schema.statements(SQL.read_text(encoding="utf-8")), strict=True))
 
 
+@goh_db.uncut()
 def run() -> dict[str, int]:
     """Every step to its end; {step: the rows it changed}."""
     state_columns.writable()
@@ -66,6 +67,7 @@ def run() -> dict[str, int]:
     return done
 
 
+@goh_db.uncut()
 def main() -> int:
     from tui.lib import err, ok
 

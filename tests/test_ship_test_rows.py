@@ -19,6 +19,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 import goh_db
 import ship_records
 import ship_test_rows as st
+import state_paths
 
 sys.path.pop(0)
 
@@ -41,7 +42,7 @@ def _row(result: str, item: str = "A.0") -> str:
 
 def _results() -> list[str]:
     with goh_db.ro() as con:
-        return sorted(r for (r,) in con.execute("SELECT result FROM ships"))
+        return sorted(state_paths.decode(r) for (r,) in con.execute("SELECT result FROM ships"))
 
 
 def test_a_row_under_a_temp_root_is_listed_and_only_deleted_with_delete(db, capsys):

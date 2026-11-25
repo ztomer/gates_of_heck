@@ -30,9 +30,8 @@ def test_a_write_is_a_row_and_no_file_and_get_reads_it(tmp_path, monkeypatch):
     assert path == land_records.ref(q, "0001-X.Y") and not path.exists(), "a reference, no file"
     assert not (q / "done").exists(), "no done/ file is written"
     with sqlite3.connect(db) as con:
-        row = con.execute("SELECT item, state, attempt, at, body FROM lands").fetchone()
-    assert row[:3] == ("X.Y", "landed", 2) and json.loads(row[4]) == rec
-    assert row[3] == 1795428000.0
+        row = con.execute("SELECT item, state, attempt, at FROM lands").fetchone()
+    assert row == ("X.Y", "landed", 2, 1795428000.0)
     assert land_records.get(q, "0001-X.Y") == rec, "the row answers"
     assert land_records.get(q, "0002-X.Y") is None
 
@@ -113,31 +112,18 @@ def test_every_reader_reads_a_record_that_is_only_a_row(tmp_path, monkeypatch):
     assert [r["item"] for r in land_check.records(q)] == ["GOH.B", "GOH.A"]
 
 
-def test_the_ledgers_are_rows_and_their_files_are_read_by_nothing(tmp_path, monkeypatch):
-    import land_check
+def test_the_misses_are_rows_and_their_file_is_read_by_nothing(tmp_path, monkeypatch):
     import selection_miss
 
-    db = gdb.use(monkeypatch, tmp_path)
+    gdb.use(monkeypatch, tmp_path)
     q = tmp_path / "landq"
     q.mkdir()
-    g1 = {"state": "red", "guard": "tests/a.py::test_a", "guards": ["tests/a.py::test_a"],
-          "repo": "/x/r", "at": "2026-11-20T10:00:00Z"}  # fmt: skip
     miss = {"kind": "judged", "day": "2026-11-19", "item": "GOH.A", "sha": "a", "test": "t"}
-    (q / "guards.jsonl").write_text(json.dumps(g1) + "\n")  # an old goh's ledger files
-    (q / "selection_misses.jsonl").write_text(json.dumps(miss) + "\n")
-    assert (land_records.ledger(q, "guards"), selection_miss.read(q)) == ([], [])
-    assert land_records.append(q, "guards", [g1]) == 1
+    (q / "selection_misses.jsonl").write_text(json.dumps(miss) + "\n")  # an old goh's ledger file
+    assert selection_miss.read(q) == []
     assert selection_miss.append(q, [miss]) == 1
     assert selection_miss.append(q, [miss]) == 0, "each row once"
-    assert (land_records.ledger(q, "guards"), selection_miss.read(q)) == ([g1], [miss])
-    land_check.learn(q, {"repo": "/x/r", "item": "GOH.B", "sha": "b"},
-                     "refused (failing: tests/b.py::test_b)")  # fmt: skip
-    assert (q / "guards.jsonl").read_text() == json.dumps(g1) + "\n", "the file is untouched"
-    assert [r["guard"] for r in land_check.records(q)][:1] == ["tests/b.py::test_b"]
-    with sqlite3.connect(db) as con:
-        assert con.execute("SELECT test FROM land_guards ORDER BY n DESC").fetchone() == (
-            "tests/b.py::test_b",
-        )
+    assert selection_miss.read(q) == [miss]
 
 
 def test_a_red_row_carries_its_cause_class_or_is_refused(tmp_path, monkeypatch):

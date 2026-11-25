@@ -115,7 +115,7 @@ def _read(p: Path) -> dict | None:
 
 def _has(con: sqlite3.Connection, table: str, queue: str, run: str) -> bool:
     sql = f"SELECT 1 FROM {table} WHERE queue = ? AND run = ?"
-    return con.execute(sql, (queue, run)).fetchone() is not None
+    return con.execute(sql, (state_paths.encode(queue), run)).fetchone() is not None
 
 
 def _landed(con: sqlite3.Connection, queue: str, run: str) -> bool:
@@ -140,7 +140,7 @@ def load(con: sqlite3.Connection, paths: list[Path]) -> None:
         sha = hashlib.sha256(p.read_bytes()).hexdigest()
         con.execute("INSERT OR IGNORE INTO imports(store, source, sha256, rows, at) "
                     "VALUES (?, ?, ?, ?, ?)",
-                    (table, state_paths.column(con, str(p)), sha, n, now))  # fmt: skip
+                    (table, state_paths.encode(str(p)), sha, n, now))  # fmt: skip
 
 
 def check(con: sqlite3.Connection, p: Path) -> str | None:

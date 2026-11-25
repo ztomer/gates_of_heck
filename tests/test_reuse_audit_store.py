@@ -56,8 +56,7 @@ def test_a_record_and_a_sample_are_goh_db_rows_and_no_file(store, monkeypatch):
     monkeypatch.setitem(reuse.PATHS, "carry", dataclasses.replace(reuse.PATHS["carry"], every=1))
     _off()
     db = store / "goh.db"  # beside the named root, as reuse_store's goh-cache.db
-    (body,) = _q(db, "SELECT body FROM reuse_audit WHERE path='carry'")[0]
-    assert json.loads(body)["state"] == "off"
+    assert _q(db, "SELECT state FROM reuse_audit WHERE path='carry'") == [("off",)]
     assert [p for (p,) in _q(db, "SELECT path FROM reuse_shadow")] == ["carry"]
     assert not (store / "audit" / "carry.json").exists()
     assert not (store / "audit" / "shadow.jsonl").exists()

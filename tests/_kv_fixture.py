@@ -18,14 +18,13 @@ MADE: dict[tuple[str, int], bytes] = {}
 
 
 def memory(mod, last: int = 9999) -> sqlite3.Connection:
-    """MOD's schema up to file LAST, in memory."""
+    """MOD's file as it is made, in memory; LAST: an older goh's, its schema up to that file."""
     key = (mod.SEAM.name, last)
     con = sqlite3.connect(":memory:", isolation_level=None)
     if key not in MADE:
         con.executescript(db_core.BOOT)
-        for n, p in sorted(db_schema.migrations(mod.SEAM).items()):
-            if n <= last and not db_schema.by_command(p.read_text(encoding="utf-8")):
-                db_schema.apply(con, n, p, "", False)
+        files = {n: p for n, p in db_schema.migrations(mod.SEAM).items() if n <= last}
+        db_schema.fresh(con, files, "", set(), mod.SEAM.born if last == 9999 else ())
         MADE[key] = con.serialize()
     else:
         con.deserialize(MADE[key])

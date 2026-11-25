@@ -56,7 +56,7 @@ def test_the_file_carries_its_version(tmp_path, monkeypatch) -> None:
         v = db_core.version(con)
         rows = con.execute("SELECT version, name, writer FROM schema_version").fetchall()
     assert set(v["meta"]) == {"db", "schema_version", "created_by", "last_migrated_by",
-                              "created_at"}, v  # fmt: skip
+                              "created_at", "paths"}, v  # fmt: skip
     assert v["meta"]["created_by"].startswith("goh ") and rows == [(1, "0001_a", rows[0][2])]
     raw = (tmp_path / "goh.db").read_bytes()[60:64]  # the header's user_version, no table parse
     assert int.from_bytes(raw, "big") == 1

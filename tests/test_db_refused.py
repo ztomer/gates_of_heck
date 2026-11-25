@@ -52,7 +52,7 @@ WRITERS = {
         d / "commit-gated.jsonl", {"tree": "t", "repo": "/r", "at": 1.0}
     ),
     "small_stores.flake_add": lambda d: small_stores.flake_add(d / "flakes", "t", {"epoch": 1.0}),
-    "land_records.append": lambda d: land_records.append(d / "q", "misses", [{"a": 1}]),
+    "land_records.append_misses": lambda d: land_records.append_misses(d / "q", [{"a": 1}]),
     "land_records.set_causes": lambda d: land_records.set_causes(d / "q", {"r.json": {}}),
     "ship_records.put_pins": lambda d: ship_records.put_pins(d / "r.json", {}),
 }

@@ -1,5 +1,5 @@
 """GOH.KVBLOBS: the cached parts of the kv documents as rows of goh-cache.db (lib/cache_rows.py),
-through the modules that write and read them, beside an older copy that knows only the document."""
+through the modules that write and read them, and the backfill of an older file's documents."""
 
 from __future__ import annotations
 
@@ -14,12 +14,14 @@ import canary_memo
 import durations
 import estate_registry
 import goh_cache_db
+import goh_db
 import kv_fill
 import pytest
 import remote_rates
 import small_stores
 import state_paths
-from _kv_fixture import Held, duration_kv, kv
+from _body_fixture import UNCUT
+from _kv_fixture import Held, duration_kv, kv, memory
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
@@ -126,32 +128,35 @@ def rates() -> dict:
     return vars(remote_rates.load_rates())
 
 
-def test_the_rates_document_is_read_until_it_is_rows_and_paces(held) -> None:
-    assert remote_rates.load_rates() == remote_rates.Rates() and not remote_rates.unfilled()
-    remote_rates.fill()  # nothing to take: the defaults hide no document of a later fill
+def old_file(held: Held) -> Held:
+    held.goh = memory(goh_db, UNCUT)
+    return held
+
+
+def test_the_rates_document_becomes_rows_and_paces(held) -> None:
+    assert remote_rates.load_rates() == remote_rates.Rates() and not kv_fill.rates_unfilled()
+    old_file(held)
+    kv_fill.fill_rates()  # nothing to take: the defaults hide no document of a later fill
     duration_kv(held.goh, "remote_rates", json.dumps(RATES), 50.0)
-    assert rates() == RATES and remote_rates.unfilled()
+    assert kv_fill.rates_unfilled() and rates() == vars(remote_rates.Rates())
     held.down = True
-    assert not remote_rates.fill() and rates() == RATES
+    assert not kv_fill.fill_rates() and kv_fill.rates_unfilled()
     held.down = False
-    assert remote_rates.fill() and remote_rates.fill() and rates() == RATES
+    assert kv_fill.fill_rates() and kv_fill.fill_rates() and rates() == RATES
     assert held.cache.execute("SELECT DISTINCT repo, at FROM remote_secs").fetchall() == [
         ("gates_of_heck", 50.0)]  # fmt: skip
-    duration_kv(held.goh, "remote_rates", json.dumps({**RATES, "ratio": 9.0, "tests": {}}))
-    assert rates() == RATES  # an older copy's fold is its own from here
 
 
-def test_a_land_folds_its_paces_into_what_the_document_held(held) -> None:
-    duration_kv(held.goh, "remote_rates", json.dumps(RATES), 50.0)
+def test_a_land_folds_its_paces_into_what_the_last_left(held) -> None:
+    def first(_old: remote_rates.Rates) -> remote_rates.Rates:
+        return remote_rates.Rates(7.5, 6.25, 27.0, 1.5)
 
     def change(old: remote_rates.Rates) -> remote_rates.Rates:
         assert (old.ratio, old.tests) == (1.5, {})
         return remote_rates.Rates(old.mac_width, old.worker_width, old.overhead_s, 2.0)
 
-    held.down = True
-    remote_rates.put({"tests/a.py::t": 0.25}, change)
-    assert rates() == RATES and remote_rates.unfilled()
-    held.down = False
+    remote_rates.put(RATES["tests"], first)
+    assert rates() == RATES
     remote_rates.put({"tests/a.py::t": 0.25}, change)
     assert rates() == {**RATES, "ratio": 2.0, "tests": {**RATES["tests"], "tests/a.py::t": 0.25}}
     assert cache_rows.put_secs({"tests/a.py::t": 99.0}, 50.0)  # a stale upsert
@@ -205,6 +210,7 @@ def test_the_backfill_puts_every_part_in_its_rows_and_twice_adds_nothing(
     (tmp_path / "goh" / "agent-verify.json").write_text(json.dumps({"s/t": ["a", "b"]}))
     monkeypatch.setattr(estate_registry, "state_file", lambda: Path("/st/estate_audit.json"))
     monkeypatch.setattr(cache_evict, "state_path", lambda: "/st/cache-evict.json")
+    old_file(held)
     estate(held, release_canary={"memo_records": {"k": REC, "old": DEAD}}, grace_watch={
         "memo_records": {"g": REC}})  # fmt: skip
     kv(held.goh, "cache-evict", json.dumps({"L": 3.5, "objs": OBJS}))

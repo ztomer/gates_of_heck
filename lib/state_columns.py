@@ -15,7 +15,7 @@ or its document is not JSON. A `rest` that holds a field: a key no column has, o
 wrong type, kept there until it is looked at. A document its columns do not give back. A red cause
 not folded into its land. A row its table refused (hook_ledgers.dead). A child row whose parent is
 gone. A kv document its rows do not give back (lib/kv_rows.py).
-A running ship is not compared: its steps write its record and its pins in turn.
+A running ship is not compared: its steps wrote its record and its pins in turn.
 
 EQUAL, BUT SPELLED ANOTHER WAY: null, {} and [] are an absent key; a land's `at` and a spawn's
 `time` are one instant in any spelling; a lane start's `v` is a constant and its room's `why` the
@@ -45,6 +45,7 @@ import db_schema
 import goh_db
 import hook_ledgers
 import kv_rows
+import pid_owner
 import state_shape
 
 SQL = Path(__file__).resolve().with_name("state_sql")
@@ -59,6 +60,24 @@ UNFOLDED = """SELECT l.rowid FROM red_causes r JOIN lands l ON l.queue = r.queue
 WHERE l.red_class IS NULL AND l.body <> '{}' AND CASE WHEN json_valid(r.body) THEN
 json_type(r.body) = 'object' END AND CASE WHEN json_valid(l.body) THEN
 coalesce(json_type(l.body, '$.red_cause'), 'null') = 'null' END"""
+
+
+def rendering(table: str) -> str:
+    """lib/state_sql/doc_TABLE.sql after its document: `(the columns as one) AS doc FROM ..`."""
+    head, mark, tail = (SQL / f"doc_{table}.sql").read_text(encoding="utf-8").partition("x.body,")
+    if not (head.startswith("SELECT ") and mark):
+        raise ValueError(f"doc_{table}.sql: not SELECT key, x.body, its rendering AS doc")
+    return tail
+
+
+def running(con: sqlite3.Connection) -> list[int]:
+    """The rowids of the ships a live worker still writes; a dead one's is a row as any other (the
+    next ship settles it, lib/ship_status.py)."""
+    pid = "coalesce(pid, body ->> '$.pid')" if documents(con, "ships") else "pid"
+    stamp = "coalesce(pid_stamp, body ->> '$.pid_stamp')" if documents(con, "ships") else (
+        "pid_stamp")  # fmt: skip
+    rows = con.execute(f"SELECT rowid, {pid}, {stamp} FROM ships WHERE {IN_FLIGHT}").fetchall()
+    return [n for n, p, line in rows if not p or pid_owner.alive_line(str(line or p))]
 
 
 def unfolded(con: sqlite3.Connection) -> set[int]:
@@ -90,13 +109,9 @@ def rendered(
     JSON and WHERE (over alias `x`) takes, in rowid order."""
     if not documents(con, table):
         return
-    doc = (SQL / f"doc_{table}.sql").read_text(encoding="utf-8")
     names = " || ' ' || ".join(f"x.{k}" for k in key(con, table))
-    head, _, tail = doc.partition("x.body,")
-    sql = (f"SELECT x.rowid, {names}, x.body,{tail}\nWHERE x.body <> '{{}}' AND json_valid(x.body) "
-           f"AND {where} ORDER BY x.rowid")  # fmt: skip
-    if not head.startswith("SELECT "):
-        raise ValueError(f"doc_{table}.sql: not SELECT key, x.body, its rendering AS doc")
+    sql = (f"SELECT x.rowid, {names}, x.body,{rendering(table)}\nWHERE x.body <> '{{}}' "
+           f"AND json_valid(x.body) AND {where} ORDER BY x.rowid")  # fmt: skip
     sql = sql.replace(" AS doc\nFROM", " AS doc, x.rest\nFROM", 1)
     yield from con.execute(sql, args)
 
@@ -221,6 +236,7 @@ def check(con: sqlite3.Connection) -> list[str]:
     return out + kv_rows.left(con) + orphans(con)
 
 
+@goh_db.uncut()
 def main(portable: bool = False) -> int:
     from tui.lib import err, ok, warn
 
@@ -248,6 +264,7 @@ def main(portable: bool = False) -> int:
     return 1 if found else 0
 
 
+@goh_db.uncut()
 def writable() -> None:
     """Raise unless this copy may move rows in the file (a shared one: main's code alone)."""
     import db_core

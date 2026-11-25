@@ -1,27 +1,21 @@
-"""lib/state_shape.py -- which shape goh.db is in while its documents leave it (GOH.ABSDATA), as one
-open file says it, for every writer of a table that had a `body`.
+"""lib/state_shape.py -- the cutover's fence (GOH.ABSDATA), and what a row's `rest` may hold, for
+every writer of a table that had a document.
 
     columns(con, t)      table T's columns
-    paused()             why a new land or ship waits: a cutover's fence, up or left by a dead one
+    has(con, t)          whether CON's file has table T
+    paused()             why a new land or ship waits: a cutover's fence, up or left by a dead one,
+                         or a file from before the cutover
     wait(say, sleep)     until it is down, said once (the lander, before it takes a request)
-    closing(con, t)      T's documents are leaving or gone: a cutover's fence is up, or no `body`
-    document(con, t, text)   {'body': TEXT}; {} as its text under a fence; nothing with no `body`
     fence(con)           the fence's line (`<pid> <start>`, lib/state_cutover.py), or None
-    promoted(t)          the paths a row's `rest` may not hold once T's contract is applied, read
-                         from that contract's own trigger, so no second list can differ from it
-    sift(con, t, rest)   (REST without them, {path: value} of the ones that held something), once
-                         T is closing; before that a wrong value stays in `rest` and is named
+    promoted(t)          the paths a row of T's `rest` may not hold, read from its contract's own
+                         trigger, so no second list can differ from it
+    sift(t, rest)        (REST without them, {path: value} of the ones that held something)
     bury(t, row, why)    a line in the dead-letter file beside goh.db, which `goh state check` names
 
-THE FENCE IS WHERE WRITERS STOP KEEPING DOCUMENTS. It is read inside the writer's own transaction,
-so every document is either committed before the cutover's strip or never written. Every reader of
-this goh reads the columns, so a row without one reads the same.
-
-A VALUE OF THE WRONG TYPE in a field that has a column fits no column, and from the contract on no
-`rest` (the sealing trigger). A land or a ship is never refused over one: its row is written without
-it, and the value is buried. A hook's row is buried whole (lib/hook_ledgers.py). Both from the fence
-on: what was left in `rest` before it, the cutover itself buries after its strip, so no such value
-refuses the contract.
+A VALUE OF THE WRONG TYPE in a field that has a column fits no column and no `rest` (the sealing
+trigger). A land or a ship is never refused over one: its row is written without it, and the value
+is buried. A hook's row is buried whole (lib/hook_ledgers.py). What an older file left in `rest` the
+cutover itself buries, so no such value refuses the contract.
 Pinned by tests/test_state_shape.py.
 """
 
@@ -66,11 +60,13 @@ def fence(con: sqlite3.Connection) -> str | None:
 def paused() -> str | None:
     """None too when goh.db cannot be read: its own reader says that."""
     try:
-        with goh_db.ro() as con:
-            held = fence(con)
+        with goh_db.uncut(), goh_db.ro() as con:
+            held, old = fence(con), goh_db.not_cut(con)
     except (OSError, sqlite3.Error):
         return None
-    return held and (f"goh.db is in a cutover (pid {held}): new lands and ships wait; `goh state "
+    if held is None:
+        return old
+    return (f"goh.db is in a cutover (pid {held}): new lands and ships wait; `goh state "
                      "cutover` goes on with one that died, `--abort` lifts its fence")  # fmt: skip
 
 
@@ -81,16 +77,6 @@ def wait(say: Callable[[str], None], sleep: Callable[[float], None] | None = Non
             say(why)
         said = True
         (sleep or time.sleep)(POLL_S)
-
-
-def closing(con: sqlite3.Connection, table: str) -> bool:
-    return "body" not in columns(con, table) or fence(con) is not None
-
-
-def document(con: sqlite3.Connection, table: str, text: str) -> dict[str, str]:
-    if "body" not in columns(con, table):
-        return {}
-    return {"body": text if fence(con) is None else "{}"}
 
 
 @functools.lru_cache(maxsize=1)
@@ -109,23 +95,20 @@ def promoted(table: str) -> tuple[str, ...]:
     return _promoted().get(table, ())
 
 
-def sift(con: sqlite3.Connection, table: str, rest: dict) -> tuple[dict, dict[str, Any]]:
-    if not rest or not closing(con, table):
-        return rest, {}
-    return _sifted(table, rest)
-
-
-def _sifted(table: str, rest: dict) -> tuple[dict, dict[str, Any]]:
+def sift(table: str, rest: dict) -> tuple[dict, dict[str, Any]]:
     rest, odd = json.loads(json.dumps(rest)), {}
     for path in promoted(table):
         *up, last = path.split(".")
-        at: Any = rest
+        held: list[Any] = [rest]
         for k in up:
-            at = at.get(k) if isinstance(at, dict) else None
-        if isinstance(at, dict) and last in at:
-            v = at.pop(last)
+            held.append(held[-1].get(k) if isinstance(held[-1], dict) else None)
+        if isinstance(held[-1], dict) and last in held[-1]:
+            v = held[-1].pop(last)
             if v not in (None, {}, []):
                 odd[path] = v
+            for k, parent, child in reversed(list(zip(up, held, held[1:], strict=False))):
+                if child == {}:  # it held nothing more
+                    del parent[k]
     return rest, odd
 
 

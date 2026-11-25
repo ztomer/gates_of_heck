@@ -102,18 +102,11 @@ def test_each_bound_keeps_what_its_readers_need() -> None:
         assert rule.why, rel
 
 
-def test_the_guard_ledger_is_rows_and_a_left_file_is_unbounded(tmp_path, monkeypatch) -> None:
-    # GOH.GUARDSBOUND: landq/guards.jsonl (lib/land_check.py learn) was the one unlisted file.
-    # GOH.STATEDB wave 3: learn writes goh.db's land_guards (a table bound) and the file's bound
-    # is gone with it: a guards.jsonl still on disk is named, and `goh state retire lands` takes it.
-    import land_check
-    import land_records
-
-    monkeypatch.setenv("GOH_DB", str(tmp_path / "goh.db"))
+def test_a_left_guards_file_is_unbounded(tmp_path) -> None:
+    # GOH.GUARDSBOUND: a guard is its red land's own row; a guards.jsonl still on disk is named, and
+    # `goh state retire lands` takes it.
     q = tmp_path / "landq"
     q.mkdir()
-    land_check.learn(q, {"item": "T.G"}, "refused: tests/test_x.py::test_y failed")
-    assert [r["guard"] for r in land_records.ledger(q, "guards")] == ["tests/test_x.py::test_y"]
-    assert not (q / "guards.jsonl").exists() and "landq/guards.jsonl" not in sf.FILES
+    assert "landq/guards.jsonl" not in sf.FILES
     (q / "guards.jsonl").write_text('{"at": "2026-11-20T00:00:00Z"}\n')  # an old goh's file
     assert sb.unbounded(tmp_path, NOW) == ["landq/guards.jsonl: an append-only file and no bound"]

@@ -140,7 +140,6 @@ def prestep(req: dict) -> None:
     try:  # its seconds: the e2e's pre-step share (lib/land_e2e.py)
         req["pre_s"] = land_prestep.run_kept(req, qdir(), land_script(wt), git_bindings())
     except land_prestep.Red as e:
-        land_check.learn(qdir(), req, str(e))  # its guards, for the next check (GOH.LANDCHECK)
         raise Refused(str(e)) from None
 
 

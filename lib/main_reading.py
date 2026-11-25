@@ -63,7 +63,7 @@ def record(repo: str | Path, sha: str, source: str, ran: list[str] | str, red: l
     with goh_db.transaction() as con:
         cur = con.execute(
             "INSERT INTO main_readings(repo, sha, source, ran, outcome, at) VALUES (?,?,?,?,?,?)",
-            (state_paths.repo_column(con, _repo(repo)), sha, source,
+            (state_paths.repo_key(_repo(repo)), sha, source,
              ran if ran == "*" else json.dumps(sorted(set(ran))),
              "red" if red else "green", at),
         )  # fmt: skip
@@ -77,9 +77,9 @@ def _readings(repo: str | Path, sha: str) -> list[tuple[int, str, set[str]]]:
     """(id, ran, red nodes) of every reading at SHA, oldest first; [] without a goh.db."""
     try:
         with goh_db.known() as con:
-            mine, args = state_paths.where("repo", state_paths.repo_forms(_repo(repo)))
-            rows = con.execute(f"SELECT id, ran FROM main_readings WHERE {mine} AND sha=? "
-                               "ORDER BY id", (*args, sha)).fetchall()  # fmt: skip
+            rows = con.execute("SELECT id, ran FROM main_readings WHERE repo=? AND sha=? "
+                               "ORDER BY id", (state_paths.repo_key(_repo(repo)), sha)
+                               ).fetchall()  # fmt: skip
             out = []
             for rid, ran in rows:
                 red = {n for (n,) in con.execute(

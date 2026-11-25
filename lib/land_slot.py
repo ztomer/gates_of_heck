@@ -90,8 +90,8 @@ def _queued(con: sqlite3.Connection, q: Path, token: str) -> bool:
 
 
 def _ours(key: str) -> tuple[str, tuple[str, ...]]:
-    """(clause, args) naming the rows of slots root KEY, under either form of its path."""
-    return state_paths.where("repo_key", state_paths.forms(key))
+    """(clause, args) naming the rows of slots root KEY."""
+    return "repo_key = ?", (state_paths.encode(key),)
 
 
 def _owner(owner: Path) -> dict:
@@ -132,7 +132,7 @@ def _take(q: Path, owner: Path, token: str) -> bool:
             return False  # held: live, queued, or claimed by another since the read
         con.execute(f"DELETE FROM slot_owners WHERE {ours} AND n = ?", (*args, n))
         con.execute("INSERT INTO slot_owners (repo_key, n, token, pid, pid_stamp, at) "
-                    "VALUES (?, ?, ?, ?, ?, ?)", (state_paths.column(con, key), n, token, me,
+                    "VALUES (?, ?, ?, ?, ?, ?)", (state_paths.encode(key), n, token, me,
                                                   stamp, time.time()))  # fmt: skip
     return True
 
@@ -148,14 +148,13 @@ def _free(owner: Path, token: str) -> None:
 def owners(q: Path) -> list[dict]:
     """Every slot owner row under queue Q: {repo_key, n, token, pid, pid_stamp, at, alive}."""
     base = os.path.realpath(q / "slots") + os.sep
-    starts = [x for f in state_paths.forms(base) for x in (len(f), f)]
-    under = " OR ".join(["substr(repo_key, 1, ?) = ?"] * (len(starts) // 2))
+    under = state_paths.encode(base)
     try:
         with goh_db.ro() as con:  # a prefix, never a LIKE pattern: a path's `_` is any character
             rows = con.execute(
                 "SELECT repo_key, n, token, pid, pid_stamp, at FROM slot_owners "
-                f"WHERE {under} ORDER BY repo_key, n",
-                starts,
+                "WHERE substr(repo_key, 1, ?) = ? ORDER BY repo_key, n",
+                (len(under), under),
             ).fetchall()
     except (OSError, sqlite3.Error):
         return []
@@ -216,7 +215,7 @@ def import_owners(q: Path) -> int:
         before = con.total_changes
         con.executemany("INSERT OR IGNORE INTO slot_owners (repo_key, n, token, pid, pid_stamp, "
                         "at) VALUES (?, ?, ?, ?, ?, ?)",
-                        [(state_paths.column(con, r[0]), *r[1:]) for _, r in rows])  # fmt: skip
+                        [(state_paths.encode(r[0]), *r[1:]) for _, r in rows])  # fmt: skip
         added = con.total_changes - before
     for f, _ in rows:
         if _owner(f):

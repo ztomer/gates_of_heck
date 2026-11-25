@@ -213,8 +213,8 @@ def split(doc: dict, at: float) -> tuple[dict, list[tuple], dict]:
 
 
 def ours(queue: str) -> tuple[str, tuple[str, ...]]:
-    """(clause, args) naming QUEUE's rows, under either form of its path."""
-    return state_paths.where("queue", state_paths.forms(queue))
+    """(clause, args) naming QUEUE's rows."""
+    return "queue = ?", (state_paths.encode(queue),)
 
 
 def put(
@@ -222,16 +222,14 @@ def put(
 ) -> None:
     """RUN's record in CON's transaction, replacing one before it (KEEP: leaving it)."""
     mine, args = ours(queue)
-    queue = state_paths.column(con, queue)
-    if not keep:
-        con.execute(f"DELETE FROM lands WHERE {mine} AND run = ? AND queue <> ?",
-                    (*args, run, queue))  # fmt: skip  # its child rows go with it (lands_gone)
-    elif con.execute(f"SELECT 1 FROM lands WHERE {mine} AND run = ?", (*args, run)).fetchone():
+    queue = state_paths.encode(queue)
+    sql = f"SELECT 1 FROM lands WHERE {mine} AND run = ?"
+    if keep and con.execute(sql, (*args, run)).fetchone():
         return
     doc = plain(rec if rec.get("at") else {**rec, "at": instant(at)})
-    doc = state_paths.put(con, "lands", doc)
+    doc = state_paths.put("lands", doc)
     cols, kids, rest = split(doc, at)
-    rest, buried = state_shape.sift(con, "lands", rest)
+    rest, buried = state_shape.sift("lands", rest)
     if odd := sorted({k.partition(".")[0] for k in buried} | (KEYS & rest.keys())):
         kept = state_shape.DEAD if buried else "`rest`"
         db_core.warn(f"goh.db: lands {run}: {', '.join(odd)}: not of its column's type, kept in "
@@ -239,7 +237,6 @@ def put(
     if buried:
         state_shape.bury("lands", {"queue": queue, "run": run, **buried}, "a value of another type")
     row = {"queue": queue, "run": run, **cols, "at": at,
-           **state_shape.document(con, "lands", json.dumps(doc)),
            "rest": json.dumps(rest, separators=(",", ":"))}  # fmt: skip
     sets = ", ".join(f"{c} = excluded.{c}" for c in row if c not in KEY)
     con.execute(f"INSERT INTO lands ({', '.join(row)}) VALUES ({', '.join('?' * len(row))}) "
@@ -294,16 +291,6 @@ def _said(words: list, cells: Iterable) -> dict:
             if v is not None}  # fmt: skip
 
 
-def columned(con: sqlite3.Connection) -> bool:
-    return "rest" in state_shape.columns(con, "lands")
-
-
-def _body(con: sqlite3.Connection, stale: str) -> str:
-    """The document of a row no one filled; none is left once the contract dropped the column."""
-    body = "body" in state_shape.columns(con, "lands")
-    return f"CASE WHEN {stale} THEN body END" if body else "'{}'"
-
-
 def read(
     con: sqlite3.Connection, queue: str, keys: Collection[str] | None = None,
     runs: Iterable[str] | None = None,
@@ -316,31 +303,20 @@ def read(
     def want(path: str) -> bool:
         return keys is None or path.partition(".")[0] in keys
 
-    filled = columned(con)
     mine = [c for c in HAVE if want(c)]
-    some = [w for w in SCALARS if want(w[0])] if filled else []
+    some = [w for w in SCALARS if want(w[0])]
     where, args = ours(queue)
     if runs is not None:
         where, args = f"{where} AND run IN (SELECT value FROM json_each(?))", (
             *args, json.dumps(list(runs)))  # fmt: skip
     cols = [*mine, *(c for _, c, _ in some)]
-    stale = "rest IS NULL" if filled else "1"
-    head = ["queue", "run", "at", "rest" if filled else "NULL", _body(con, stale)]
-    sql = f"SELECT {', '.join(head + cols)} FROM lands WHERE {where} ORDER BY queue"
+    sql = f"SELECT {', '.join(['queue', 'run', 'at', 'rest', *cols])} FROM lands WHERE {where}"
     out: dict[str, dict] = {}
-    own: dict[tuple[str, str], dict] = {}  # (queue, run): the rows read from their columns
-    kept = 0.0 if "body" in state_shape.columns(con, "lands") else time.time() - PURGE_DAYS * 86400
+    own: dict[tuple[str, str], dict] = {}  # (queue, run): its record
+    kept = time.time() - PURGE_DAYS * 86400
     judged: set[tuple[str, str]] = set()  # whose coverage rows are still all there
     rests: dict[tuple[str, str], dict] = {}
-    for at_queue, run, at, rest, body, *cells in con.execute(sql, args):
-        if rest is None:
-            try:
-                doc = json.loads(body)
-            except ValueError:
-                continue  # `goh state check` names it
-            if isinstance(doc, dict):
-                out[run] = {k: v for k, v in doc.items() if want(k)}
-            continue
+    for at_queue, run, at, rest, *cells in con.execute(sql, args):
         rec = {c: v for c, v in zip(mine, cells, strict=False) if v is not None}
         for (path, _, kind), v in zip(some, cells[len(mine) :], strict=True):
             if v is not None:
@@ -349,7 +325,7 @@ def read(
             rec["at"] = instant(at)
         out[run] = own[at_queue, run] = rec
         judged |= {(at_queue, run)} if at >= kept else set()
-        rests[at_queue, run] = json.loads(rest) if rest != "{}" else {}
+        rests[at_queue, run] = json.loads(rest or "{}")
     if own:
         _children(con, want, own, where, args, judged)
     for key, rest in rests.items():
@@ -410,13 +386,10 @@ def _children(
 
 
 def purge() -> int:
-    """lib/state_sql/purge.sql, once 0017 is applied (until then the document holds them too); rows
-    gone. Nothing of a file this copy may not write, and none of one that is not there."""
+    """lib/state_sql/purge.sql; rows gone. Nothing of a file this copy may not write, and none of
+    one that is not there."""
     if not goh_db.path().is_file():
         return 0
-    with goh_db.ro() as con:
-        if not columned(con) or "body" in state_shape.columns(con, "lands"):
-            return 0
     with goh_db.refusable(), goh_db.transaction() as con:
         return sum(con.execute(sql).rowcount for sql in db_schema.statements(
             PURGE.read_text(encoding="utf-8")))  # fmt: skip

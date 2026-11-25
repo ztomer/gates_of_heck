@@ -11,6 +11,8 @@ by a `-- bound:` header (lib/db_bounds.py): past it, the oldest rows move to goh
     waits     busy_timeout 30 s (GOH_DB_BUSY_MS); synchronous=FULL: it holds the land queue
     missing   a read is OSError (`known()`: Unknown, never zero); a corrupt file fails loudly and
               is never recreated
+    uncut     a file from before the cutover is refused at every door (`Uncut`) but the
+              cutover's own
     budget    256 MB for the whole file (owner 2026-11-23: "need also size limit")
 
 VIEWS ARE THE INTERFACE to other readers (handover plan (d)): goh publishes versioned views
@@ -55,6 +57,7 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
     del _sys.path[0]
 
 import contextlib
+import contextvars
 import os
 import sqlite3
 import sys
@@ -65,28 +68,68 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db_core  # the lib directory, on the path from the line above
 import lock_order
+import state_paths
 
 SEAM = db_core.Seam(
     name="goh", env="GOH_DB", xdg="XDG_STATE_HOME", fallback=".local/state", file="goh.db",
     schema=Path(__file__).resolve().with_name("goh_db_schema"), busy_env="GOH_DB_BUSY_MS",
     busy_ms=30_000, synchronous="FULL", budget=256 << 20, over="archive",
+    born=(("paths", state_paths.TOKEN),),
 )  # fmt: skip
+_UNCUT = contextvars.ContextVar("goh_db_uncut", default=False)
+
+
+class Uncut(RuntimeError):
+    """The file is from before the cutover (documents, absolute paths). No sqlite3.Error: no reader
+    takes it for a file without rows."""
+
+
+def not_cut(con: sqlite3.Connection) -> str | None:
+    """Why CON's file is refused, or None. Tokens come last, so a file of tokens is whole; one that
+    holds no schema number yet has nothing to cut."""
+    if state_paths.tokens(con):
+        return None
+    try:
+        held = con.execute("SELECT 1 FROM schema_version LIMIT 1").fetchone()
+    except sqlite3.OperationalError as e:
+        if "no such table" not in str(e):
+            raise
+        held = None
+    return held and (f"{con.execute('PRAGMA database_list').fetchone()[2] or 'goh.db'} is from "
+                     "before the cutover: neither read nor written until `goh state cutover` has "
+                     "run on it")  # fmt: skip
+
+
+@contextlib.contextmanager
+def uncut() -> Iterator[None]:
+    """The block may open such a file: the cutover's own modules alone."""
+    was = _UNCUT.set(True)
+    try:
+        yield
+    finally:
+        _UNCUT.reset(was)
+
+
+def _cut(con: sqlite3.Connection) -> sqlite3.Connection:
+    if not _UNCUT.get() and (why := not_cut(con)):
+        raise Uncut(why)
+    return con
 
 
 def path() -> Path:
     return db_core.path(SEAM)
 
 
-def connect(
-    at: Path | None = None, named: bool = False
-) -> contextlib.AbstractContextManager[sqlite3.Connection]:
-    return db_core.connect(SEAM, at, named)
+@contextlib.contextmanager
+def connect(at: Path | None = None, named: bool = False) -> Iterator[sqlite3.Connection]:
+    with db_core.connect(SEAM, at, named) as con:
+        yield _cut(con)
 
 
-def ro(
-    at: Path | None = None, named: bool = False
-) -> contextlib.AbstractContextManager[sqlite3.Connection]:
-    return db_core.ro(SEAM, at, named)
+@contextlib.contextmanager
+def ro(at: Path | None = None, named: bool = False) -> Iterator[sqlite3.Connection]:
+    with db_core.ro(SEAM, at, named) as con:
+        yield _cut(con)
 
 
 def migrate(con: sqlite3.Connection) -> set[int]:
@@ -101,7 +144,7 @@ def _order() -> None:
 def transaction(at: Path | None = None, named: bool = False) -> Iterator[sqlite3.Connection]:
     """One write to goh.db (AT: a file a caller names, e.g. lib/durations.py's)."""
     with db_core.transaction(SEAM, _order, at, named) as con:
-        yield con
+        yield _cut(con)
 
 
 class Unknown(FileNotFoundError):

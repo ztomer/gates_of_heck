@@ -5,6 +5,7 @@
 //!
 //! * `root()` -- `$GOH_RUN_DIR`, else `$XDG_STATE_HOME/goh/run`, else `~/.local/state/goh/run`;
 //!   a relative `GOH_RUN_DIR` is refused (`None`), never joined to the cwd (`crate::cache_root`).
+//!   goh's config.toml moves none of it, in any face: `lib/run_path.py` says why.
 //! * `dir_for(tree)` -- `<root>/<basename>-<sha256(physical tree)[:16]>`, created.
 //! * `index_tree(repo)` -- the tree of the index git would commit, written from a private copy
 //!   under the root, so the shared `index.lock` is never taken (GOH.REFRESHINDEXLOCK).

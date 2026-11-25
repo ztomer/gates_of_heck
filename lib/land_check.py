@@ -43,10 +43,8 @@ done record, and `goh land-profile --guards` counts refusals by guard. The enque
 
 from __future__ import annotations
 
-import contextlib
 import os
 import re
-import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -147,16 +145,12 @@ def declared(root: Path) -> list[str]:
 
 
 def records(q: Path | None, newest: int | None = None) -> list[dict]:
-    """The red records naming guards: the land records (the NEWEST that many, newest first) and
-    the pre-step refusals `learn` kept (lib/land_records.py, GOH.STATEDB)."""
+    """The red land records naming guards (of the NEWEST that many), newest first."""
     if q is None:
         return []
-    out: list[dict] = []
     keys = ("state", "repo", "item", "sha", "guard", "guards")
-    out += [dict(rec) for _, rec in land_records.records(q, reverse=True, keys=keys)[:newest]]
-    learned = land_records.ledger(q, "guards")
-    out += reversed(learned[-newest:] if newest else learned)
-    named = [r for r in out if isinstance(r, dict) and r.get("state") == "red"]
+    out = [dict(rec) for _, rec in land_records.records(q, reverse=True, keys=keys)[:newest]]
+    named = [r for r in out if r.get("state") == "red"]
     return [
         {**r, "guard": r.get("guard") or r["guards"][0]}
         for r in named
@@ -427,19 +421,3 @@ def cli(worktree: str, q: Path, rules: bool = False) -> int:
     from lib import land_check_cli
 
     return land_check_cli.cli(worktree, q, rules)
-
-
-NODE = re.compile(r"tests/[^\s:,()]+\.py::[^\s,()]+")
-
-
-def learn(q: Path, req: dict, refusal: str) -> None:
-    """A pre-step's refusal at enqueue, which files no land record: the test nodes it names, in
-    goh.db's land_guards for `count` (never a reason the refusal is not said)."""
-    found = list(dict.fromkeys(map(fast_tests._base, NODE.findall(refusal))))[:10]
-    if not found:
-        return
-    row = {"repo": req.get("repo", ""), "item": req.get("item", ""), "sha": req.get("sha", ""),
-           "stage": "pre", "state": "red", "guard": found[0], "guards": found,
-           "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}  # fmt: skip
-    with contextlib.suppress(OSError, sqlite3.Error):
-        land_records.append(q, "guards", [row])

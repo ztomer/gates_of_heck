@@ -5,20 +5,25 @@ one command, run once (GOH.ABSDATA, the data plan's S7). Killed anywhere, run ag
     lift()        `goh state cutover --abort`: the fence of a dead cutover down
     plan(con)     the steps the file still needs ([]: it is done, and a run does nothing)
 
-THE STEPS. fence: `meta.fence` = this pid and its start. New lands and ship starts wait for it
-(lib/state_shape.py `paused`), and every writer stops keeping documents; hooks always write. busy:
-refused while a request or an early run is in the queue, or a ship runs. fill: every row's columns
-from its document (lib/state_backfill.py) and every red cause in its land. strip: a document goes
-where its columns give it back (lib/state_strip.py); one that stays refuses the cutover, named.
-bury: a value of the wrong type out of `rest` into the dead-letter file, which `goh state check`
-names. promote: a spawn's old `item` as its last item row. contracts: 0017 to 0020 in order, each
-with its copy of the file (lib/db_contract.py). rekey: the paths (lib/state_rekey.py). The fence
-goes down, and VACUUM gives the space back when the file is idle.
+WHAT IT IS RUN ON. A file of a goh from before GOH.OLDFORMS: an uncut one, a backup taken before its
+cutover, or one a kill left between two steps. A new file is born cut (lib/db_core.py `migrate`), so
+such a file is opened by nothing else: every door refuses it, naming this command (lib/goh_db.py
+`Uncut`), a hook's row waits in the spill, and lands and ships wait (lib/state_shape.py `paused`).
 
-A REFUSAL LIFTS THE FENCE and changes nothing more: the code that ships this file reads and writes
-every state between two steps, so lands go on and the next run continues. A KILL leaves it up with a
-dead pid: lands and ships still wait, `goh state cutover` takes the fence over, `--abort` lifts it.
-A second cutover while one runs is refused with its pid.
+THE STEPS. fence: `meta.fence` = this pid and its start; an older goh's lands and ships wait for it.
+busy: refused while a ship's worker lives (a request moves where it waits, and a dead worker's ship
+is settled by the next one). fill: every row's columns from its document (lib/state_backfill.py) and
+every red cause in its land. strip: a document goes where its columns give it back
+(lib/state_strip.py); one that stays refuses the cutover, named. bury: a value of the wrong type out
+of `rest` into the dead-letter file, which `goh state check` names. promote: a spawn's old `item` as
+its last item row. kv: the kv documents into their rows (lib/kv_fill.py). contracts: 0017 to 0021 in
+order, each with its copy of the file (lib/db_contract.py). rekey: the paths (lib/state_rekey.py).
+The fence goes down, and VACUUM gives the space back when the file is idle. A file that lacks 0021
+alone is cut already: its kv documents go, and no fence is put up.
+
+A REFUSAL LIFTS THE FENCE and changes nothing more, so the next run continues. A KILL leaves it up
+with a dead pid: `goh state cutover` takes it over, `--abort` lifts it. A second cutover while one
+runs is refused with its pid.
 
 BEFORE THE FIRST RUN no process, worktree or installed goh older than this one may be left (`goh
 state olds --since`): from contract 0017 on, older code opens the file read-only.
@@ -27,7 +32,6 @@ Pinned by tests/test_state_cutover.py.
 
 from __future__ import annotations
 
-import functools
 import json
 import os
 import sqlite3
@@ -39,8 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db_contract  # lib/, on the path from the line above
 import db_schema
 import goh_db
-import land_columns
-import land_records
+import kv_fill
 import lock_order
 import pid_owner
 import state_backfill
@@ -52,6 +55,8 @@ import state_strip
 
 PROMOTE = state_columns.SQL / "promote_items.sql"
 VACUUM_MS = 60_000
+DOCUMENTS = (17, 18, 19, 20)  # the contracts that drop a `body`; 0021 drops the kv documents
+KV_ALONE = ({"kv", "0021"}, {"kv", "0021", "vacuum"}, {"vacuum"})  # nothing a fence is for
 DONE, REFUSED, RUNS = 0, 1, 2  # exit codes
 Say = Callable[[str], None]
 
@@ -71,7 +76,7 @@ def passed(step: str) -> None:
 def plan(con: sqlite3.Connection) -> list[str]:
     have = set(db_schema.version(con)["applied"])
     out = [f"{n:04d}" for n in state_rekey.CONTRACTS if n not in have]
-    out = ["documents", *out] if out else out
+    out = ["documents"] * any(n not in have for n in DOCUMENTS) + ["kv"] * bool(out) + out
     out += ["rekey"] * (not state_paths.tokens(con))
     out += ["fence"] * (state_shape.fence(con) is not None)
     return out + ["vacuum"] * _loose(con)
@@ -100,6 +105,7 @@ def _lower(me: str) -> None:
         con.execute("DELETE FROM meta WHERE key = ? AND value = ?", (state_shape.FENCE, me))
 
 
+@goh_db.uncut()
 def lift() -> str:
     """The fence lifted; what it was. Refused while its cutover lives, or with none up."""
     with goh_db.transaction() as con:
@@ -128,13 +134,29 @@ def _fill() -> int:
         if not state_shape.has(con, "red_causes"):
             return n
         left = con.execute(
-            "SELECT r.queue, r.run, r.body FROM red_causes r JOIN lands l ON l.queue = r.queue AND "
-            "l.run = r.run WHERE l.red_class IS NULL AND json_valid(r.body) AND "
-            "json_type(r.body) = 'object'").fetchall()  # fmt: skip
-        for queue, run, body in left:
-            n += land_columns.add_cause(con, queue, run, json.loads(body), functools.partial(
-                land_records.epoch, run=run))  # fmt: skip
-    return n
+            "SELECT r.queue, r.run, r.body, l.at FROM red_causes r JOIN lands l ON l.queue = "
+            "r.queue AND l.run = r.run WHERE l.red_class IS NULL AND l.body = '{}' AND "
+            "json_valid(r.body) AND json_type(r.body, '$.cause') = 'text'").fetchall()  # fmt: skip
+        for queue, run, body, at in left:
+            _fold(con, (queue, run), json.loads(body), at)
+    return n + len(left)
+
+
+def _fold(con: sqlite3.Connection, key: tuple[str, str], cause: dict, at: float) -> None:
+    """CAUSE as the columns and rows of a land that has no document left to take it."""
+    rest = dict(cause)
+    rule, tests = rest.get("rule"), rest.get("tests")
+    rest.pop("cause")
+    if isinstance(rule, str):
+        rest.pop("rule")
+    if isinstance(tests, list) and all(isinstance(t, str) for t in tests):
+        con.executemany("INSERT INTO land_lists(queue, run, kind, ord, value, at) VALUES "
+                        "(?, ?, 'red_test', ?, ?, ?)",
+                        [(*key, i, t, at) for i, t in enumerate(rest.pop("tests"))])  # fmt: skip
+    con.execute("UPDATE lands SET red_class = ?, red_rule = ?, rest = json_patch(rest, ?) WHERE "
+                "queue = ? AND run = ?",
+                (cause["cause"], rule if isinstance(rule, str) else None,
+                 json.dumps({"red_cause": rest} if rest else {}), *key))  # fmt: skip
 
 
 def _bury() -> int:
@@ -145,7 +167,7 @@ def _bury() -> int:
         for table in state_columns.TABLES:
             rows = con.execute(f"SELECT rowid, rest FROM {table} WHERE rest <> '{{}}'").fetchall()
             for rowid, text in rows:
-                rest, odd = state_shape.sift(con, table, json.loads(text))
+                rest, odd = state_shape.sift(table, json.loads(text))
                 if not odd:
                     continue
                 key = dict(zip(names := state_columns.key(con, table), con.execute(
@@ -179,6 +201,12 @@ def _documents(say: Say) -> None:
     passed("promote")
 
 
+def _kv(say: Say) -> None:
+    kv_fill.run()
+    say("kv: the documents are in their rows")
+    passed("kv")
+
+
 def _contracts(say: Say) -> None:
     for n in state_rekey.CONTRACTS:
         with goh_db.known() as con:
@@ -203,6 +231,7 @@ def vacuum() -> str:
         return f"{pages} pages to {con.execute('PRAGMA page_count').fetchone()[0]}"
 
 
+@goh_db.uncut()
 def run(say: Say) -> int:
     state_columns.writable()
     with goh_db.known() as con:
@@ -210,7 +239,11 @@ def run(say: Say) -> int:
     if not todo:
         say("done already: nothing to do")
         return DONE
-    if todo != ["vacuum"]:
+    if set(todo) in KV_ALONE:
+        if todo != ["vacuum"]:
+            _kv(say)
+            _contracts(say)
+    else:
         me, t0 = str(pid_owner.stamp_line(os.getpid())), time.monotonic()
         _raise(me)
         passed("fence")
@@ -218,8 +251,10 @@ def run(say: Say) -> int:
             _busy()
             if todo[0] == "documents":
                 _documents(say)
+            if "kv" in todo:
+                _kv(say)
             _contracts(say)
-            moved = state_rekey.run(queued=True)
+            moved = state_rekey.run()
             say(f"rekey: {sum(moved.values())} cells in {len(moved)} columns")
             passed("rekey")
         finally:

@@ -100,6 +100,26 @@ def roots(host: Path, monkeypatch) -> None:
     monkeypatch.setenv("GOH_REPOS_ROOT", str(host / "hm/src"))
 
 
+def test_the_pools_database_and_the_backups_keys(host: Path, monkeypatch):
+    env = {"HOME": "/h", "XDG_CONFIG_HOME": str(host / "conf")}
+    assert state_paths.pool_db(env) == Path("/h/.local/state/token-pool/pool.db")
+    assert state_paths.pool_db({**env, "XDG_STATE_HOME": "/x"}) == Path("/x/token-pool/pool.db")
+    assert state_paths.backup(env) == {}
+    conf = host / "conf" / "goh" / "config.toml"
+    conf.parent.mkdir(parents=True)
+    conf.write_text('pool_db = "~/d/p.db"\nbackup_host = "far"\nbackup_dir = "b/l"\n'
+                    'backup_recipient_files = ["k"]\nother = 1\n')  # fmt: skip
+    assert state_paths.pool_db(env) == Path("/h/d/p.db")
+    assert state_paths.pool_db({**env, "GOH_POOL_DB": "/g.db"}) == Path("/g.db")
+    assert state_paths.backup(env) == {"backup_host": "far", "backup_dir": "b/l",
+                                       "backup_recipient_files": ["k"]}  # fmt: skip
+    for bad in ("backup_host = 3", 'backup_host = ""', 'backup_recipient_files = "k"',
+                "backup_recipient_files = [1]", 'backup_user = ["u"]'):  # fmt: skip
+        conf.write_text(f"{bad}\n# {bad}\n")
+        with pytest.raises(state_paths.BadConfig, match="not "):
+            state_paths.backup(env)
+
+
 def test_a_path_goes_to_its_token_and_back_the_longest_root_first(host: Path, monkeypatch):
     roots(host, monkeypatch)
     for path, token in (("hm/state/ship/a.json", "$STATE/ship/a.json"), ("hm/state", "$STATE"),
@@ -108,7 +128,6 @@ def test_a_path_goes_to_its_token_and_back_the_longest_root_first(host: Path, mo
         full = str(host / path)
         assert state_paths.encode(full) == token
         assert state_paths.decode(token) == full
-        assert state_paths.forms(full) == state_paths.forms(token) == [full, token]
     for other in ("/elsewhere/a", "a/b", "$STATELY/a", "the log $STATE/a", "", None, 5):
         assert state_paths.encode(other) == other
         assert state_paths.decode(other) == other
@@ -120,7 +139,6 @@ def test_a_root_that_is_a_link_is_the_same_root(host: Path, monkeypatch):
     monkeypatch.setenv("GOH_STATE_ROOT", str(host / "link"))
     real = str((host / "disk").resolve())
     assert state_paths.encode(f"{real}/landq") == "$STATE/landq"
-    assert state_paths.forms(f"{real}/landq") == [f"{real}/landq", "$STATE/landq"]
 
 
 def test_a_repo_goes_to_its_key_and_back_under_every_spelling(host: Path, monkeypatch):
@@ -131,9 +149,6 @@ def test_a_repo_goes_to_its_key_and_back_under_every_spelling(host: Path, monkey
         assert state_paths.repo_key(str(path)) == key
         assert state_paths.repo(key) == state_paths.repo(str(path)) == str(path)
     assert state_paths.repo("$REPOS/group/app") == str(home / "src/group/app")
-    full, key, token, slug = state_paths.repo_forms(home / "src/group/app")
-    assert (full, key) == (str(home / "src/group/app"), "group/app")
-    assert (token, slug) == ("$REPOS/group/app", "group_app")
     for other in ("", "two words", "?", None):
         assert state_paths.repo(other) == other
     assert state_paths.repo_key("/elsewhere/app") == "/elsewhere/app"
@@ -142,18 +157,13 @@ def test_a_repo_goes_to_its_key_and_back_under_every_spelling(host: Path, monkey
 def test_another_home_reads_the_same_rows_at_its_own_paths(host: Path, monkeypatch):
     roots(host, monkeypatch)
     rec = {"repo": str(host / "hm/src/app"), "log": str(host / "hm/state/l.log")}
-    con = sqlite3.connect(":memory:")
-    con.execute("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT)")
-    assert state_paths.put(con, "lands", rec) == rec  # meta.paths unset: today's form
-    con.execute("INSERT INTO meta VALUES ('paths', 'token')")
-    stored = state_paths.put(con, "lands", rec)
+    stored = state_paths.put("lands", rec)
     assert stored == {"repo": "app", "log": "$STATE/l.log"}
     for var in ("GOH_STATE_ROOT", "GOH_REPOS_ROOT"):
         monkeypatch.delenv(var)
     monkeypatch.setenv("HOME", "/h2")
     assert state_paths.got("lands", stored) == {"repo": "/h2/Projects/app",
                                                 "log": "/h2/.local/state/goh/l.log"}  # fmt: skip
-    con.close()
 
 
 def test_a_token_in_text_is_left_alone(host: Path, monkeypatch):
@@ -166,5 +176,5 @@ def test_a_token_in_text_is_left_alone(host: Path, monkeypatch):
     rec = {"why": "$STATE/a.log is gone", "guards": [said], "cov_risk": {"said": said}, "log": 5,
            "red_logs": "$STATE"}  # fmt: skip
     assert state_paths.got("lands", rec) == rec
-    assert state_paths.put(con, "lands", rec) == rec
+    assert state_paths.put("lands", rec) == rec
     con.close()

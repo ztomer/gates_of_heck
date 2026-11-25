@@ -34,7 +34,7 @@ import state_rekey
 import state_shape
 import state_strip
 from _columns_fixture import AT, LAND, SHIP
-from _contract_fixture import CANDIDATE, contracts, read_all, write_all
+from _contract_fixture import CANDIDATE, contracts, old_all, old_land, read_all
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
@@ -53,14 +53,14 @@ def home(tmp_path: Path, monkeypatch) -> str:
 def filled(home: str) -> sqlite3.Connection:
     """A file of documents: every store's rows, 450 spawns more, an `item` in no row, a red cause in
     no land, a value no column takes."""
-    con = bf.memory()
-    write_all(con, home, runs=False)
+    con = bf.memory(bf.UNCUT)
+    old_all(con, home)
     spawn = json.dumps({"event": "spawn", "time": "2026-11-18T11:06:40+00:00", "tags": ["a"]})
     con.executemany("INSERT INTO agent_spawns(at, event, body) VALUES (?, 'spawn', ?)",
                     [(AT, spawn)] * 450)  # fmt: skip
     con.execute("UPDATE agent_spawns SET item = 'OLD.ITEM' WHERE n = 5")
     land = {k: v for k, v in LAND.items() if k not in ("red_cause", "cov_risk")}
-    land_columns.put(con, home + "/q", "1-RED", {**land, "slot_s": "soon"}, AT)
+    old_land(con, home + "/q", "1-RED", {**land, "slot_s": "soon"})
     con.execute("INSERT INTO red_causes(queue, run, cause, at, body) VALUES (?, '1-RED', 'x', 1, "
                 "?)", (home + "/q", json.dumps(LAND["red_cause"])))  # fmt: skip
     return con
@@ -128,7 +128,13 @@ def decoded(con: sqlite3.Connection) -> dict[str, list[str]]:
 def compared(home: str, after: sqlite3.Connection) -> tuple[dict, dict]:
     """(what there was before, what is in AFTER), but for what the cutover says it changes."""
     before = filled(home)
-    land_columns.add_cause(before, home + "/q", "1-RED", LAND["red_cause"], lambda _: AT)
+    land = {k: v for k, v in LAND.items() if k not in ("cov_risk", "slot_s")}
+    before.execute("DELETE FROM lands WHERE run = '1-RED'")
+    old_land(before, home + "/q", "1-RED", land)
+    before.execute("UPDATE ships SET repo = ?", (home + SHIP["repo"],))
+    state_rekey._codecs(before)  # the readers look a row up by its token
+    for table, col, rows, kind in state_rekey._cells(before):
+        before.execute(f'UPDATE "{table}" SET "{col}" = goh_{kind}("{col}") WHERE {rows}')
     for c in (before, after):
         c.execute("UPDATE lands SET rest = '{}'")
         c.execute("DELETE FROM spawn_lists WHERE value = 'OLD.ITEM'")
@@ -158,12 +164,10 @@ def refuses(match: str, con: sqlite3.Connection) -> None:
     assert state_shape.fence(con) is None and not state_paths.tokens(con)
 
 
-def test_what_is_in_flight_refuses_and_lifts_the_fence(con, home, letters) -> None:
+def test_a_ship_whose_worker_lives_refuses_and_lifts_the_fence(con, home, letters) -> None:
     body = {b for (b,) in con.execute("SELECT body FROM lands")}
-    landq_state.insert(con, home + "/q", "1795000000000000000-A.B", {"item": "A.B"}, "pending")
-    refuses("in flight: requests: 1", con)
-    con.execute("DELETE FROM requests")
-    con.execute("UPDATE ships SET status = 'bisecting'")
+    con.execute("UPDATE ships SET status = 'bisecting', pid = ?, pid_stamp = ?",
+                (os.getpid(), pid_owner.stamp_line(os.getpid())))  # fmt: skip
     refuses("in flight: ships still running: 1", con)
     assert {b for (b,) in con.execute("SELECT body FROM lands")} == body and letters == []
 
@@ -216,15 +220,17 @@ def test_two_cutovers_a_dead_fence_and_the_abort(con, letters, capsys) -> None:
     assert state_shape.fence(con) == other
     fenced(con, "999999 Thu Jan  1 00:00:00 1970")
     assert state_shape.paused() and state_cutover.main(abort=True) == 0
-    assert state_shape.paused() is None
+    assert "goh state cutover" in (state_shape.paused() or "")  # uncut still: lands and ships wait
     assert state_cutover.main(abort=True) == 1 and "no cutover's fence" in capsys.readouterr().err
     fenced(con, "999999 Thu Jan  1 00:00:00 1970")
     run()  # it takes a dead one's over
-    assert state_shape.fence(con) is None
+    assert state_shape.fence(con) is None and state_shape.paused() is None
 
 
 def test_the_fence_holds_the_lander_and_a_ship_and_no_hook(con, home, letters, monkeypatch) -> None:
     q = Path(home) / "q"
+    run()
+    con.execute("DELETE FROM requests")
     landq_state.insert(con, str(q), "1795000000000000000-A.B",
                        {"item": "A.B", "mode": "ship", "repo": "/r"}, "pending")  # fmt: skip
     fenced(con, "999999 x")
@@ -249,11 +255,10 @@ def test_the_fence_holds_the_lander_and_a_ship_and_no_hook(con, home, letters, m
     assert ship_verify.reopen(red, dry=True)
 
 
-def test_the_purge_only_after_its_contract(con, home, letters, tmp_path, monkeypatch) -> None:
+def test_the_purge_of_old_lines(con, home, letters, tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(goh_db, "path", lambda: Path(__file__))
     for t in ("lands", "land_cov_carry", "land_cov_files"):
         con.execute(f"UPDATE {t} SET at = {AT - 30 * 86400}")
-    assert land_columns.purge() == 0
     con.execute("UPDATE lands SET body = json_set(body, '$.at', '2026-10-19T11:06:40Z')")
     run()
     count = "SELECT (SELECT count(*) FROM land_cov_carry) + (SELECT count(*) FROM land_cov_files)"
@@ -296,22 +301,25 @@ if at == "in-rekey": state_rekey._kv = die
 state_cutover.run(lambda said: print(said, flush=True))
 """
 POINTS = ("fence", "fill", "strip-2", "strip-7", "strip", "bury", "promote", "17", "18", "19", "20",
-          "in-rekey", "rekey")  # fmt: skip
+          "kv", "21", "in-rekey", "rekey")  # fmt: skip
 
 
-def probe(q: Path, n: int) -> None:
-    """What lands, hooks and ships do meanwhile, by this goh, on the file as a kill left it."""
+def probe(q: Path, n: int, cut: bool) -> None:
+    """What a land, a hook and a ship do meanwhile, by this goh, on the file as a kill left it: an
+    uncut one takes no row, a hook's waits in the spill."""
     run = f"17950000000000000{n:02d}-A.B"
+    hook_ledgers._spill(hook_ledgers.LANES, {**bf.LANE, "item": f"S.{n}"})
+    if not cut:
+        for write in (lambda: landq_state.put(q, run, bf.LAND), lambda: ship_records.put(SHIP)):
+            with pytest.raises(goh_db.Uncut):
+                write()
+        spawn = {"event": "spawn", "lane": f"l{n}"}
+        assert hook_ledgers.append(hook_ledgers.SPAWNS, spawn) is not None
+        return
     path = landq_state.put(q, run, bf.LAND)
-    assert landq_state.get(path) == bf.LAND and landq_state.update(
-        path, {**bf.LAND, "red_last": "r2"}
-    )
     path = landq_state.move(path, "running")
     land_records.write(q, run, {**LAND, "item": f"P.{n}"}, request=path)
     assert land_records.get(q, run)["item"] == f"P.{n}" and landq_state.get(path) is None
-    assert hook_ledgers.append(hook_ledgers.SPAWNS, {"event": "spawn", "lane": f"l{n}"}) is None
-    hook_ledgers._spill(hook_ledgers.LANES, {**bf.LANE, "item": f"S.{n}"})
-    assert hook_ledgers.append(hook_ledgers.LANES, bf.LANE) is None
     ship = {**SHIP, "result": str(q.parent / f"r/goh/{n}.json"), "status": "ok"}
     ship_records.put(ship)
     assert ship_records.get(ship["result"])["steps"] == SHIP["steps"]
@@ -332,12 +340,11 @@ def test_killed_at_every_point_it_goes_on_and_loses_nothing(home) -> None:
                              stdin=subprocess.DEVNULL, check=False)  # fmt: skip
         assert got.returncode == KILLED, (at, got.stdout, got.stderr)
         assert state_shape.paused(), at
-        probe(q, n)
+        probe(q, n, at == "rekey")
         seen.append(at)
     assert tuple(seen) == POINTS
-    with goh_db.ro() as con:
-        assert state_paths.tokens(con)
     assert state_cutover.run(seen.append) == 0 and state_shape.paused() is None
+    assert hook_ledgers.append(hook_ledgers.LANES, bf.LANE) is None  # and the spill with it
     with goh_db.ro() as con:
         assert [x for x in state_columns.check(con) if "dead.jsonl" not in x] == []
         assert state_rekey.left(con) == {} and state_cutover.plan(con) in ([], ["vacuum"])
@@ -346,11 +353,11 @@ def test_killed_at_every_point_it_goes_on_and_loses_nothing(home) -> None:
         spilled = con.execute("SELECT count(*) FROM lane_starts WHERE item LIKE 'S.%'").fetchone()[
             0
         ]
-        assert (ours, spilled) == (len(POINTS), len(POINTS))
+        assert (ours, spilled) == (1, len(POINTS))
         with contextlib.closing(sqlite3.connect(":memory:")) as copy:
             con.backup(copy)
             before, after = compared(home, copy)
-        assert len(con.execute("SELECT 1 FROM agent_spawns").fetchall()) == 452 + len(POINTS)
+        assert len(con.execute("SELECT 1 FROM agent_spawns").fetchall()) == 452 + len(POINTS) - 1
         assert {"OLD.ITEM"} <= {v for (v,) in con.execute("SELECT value FROM spawn_lists")}
         red = con.execute("SELECT red_class FROM lands WHERE run = '1-RED'").fetchone()
     assert red == (LAND["red_cause"]["cause"],)

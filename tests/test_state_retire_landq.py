@@ -9,7 +9,6 @@ from __future__ import annotations
 import fcntl
 import json
 import os
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -54,22 +53,9 @@ def _plant(q: Path, files: dict[str, dict] = STRAY) -> dict[str, Path]:
 
 
 def _rows(q: Path) -> dict[str, tuple[str, dict]]:
-    con = sqlite3.connect(q.parent / "goh.db")
-    try:
-        got = {
-            run: (state, json.loads(b))
-            for run, state, b in con.execute(
-                "SELECT run, state, body FROM requests WHERE queue = ?", (os.path.realpath(q),)
-            )
-        }
-        got |= {
-            run: ("early", json.loads(b))
-            for run, b in con.execute(
-                "SELECT run, body FROM early WHERE queue = ?", (os.path.realpath(q),)
-            )
-        }
-    finally:
-        con.close()
+    got = {}
+    for state in ("enqueuing", "pending", "running", "early"):
+        got |= {ref.stem: (state, rec) for ref, rec in landq_state.rows(q, state)}
     return got
 
 
@@ -94,11 +80,11 @@ def test_the_stray_request_files_go_in_as_rows_and_are_archived_and_deleted(q: P
 
 def test_an_in_flight_row_is_left_as_it_is(q: Path) -> None:
     run = "01795100000000000001-GOH.A"
-    landq_state.put(q, run, {**REQ, "slot": 3}, "running")
+    landq_state.put(q, run, {**REQ, "slot": "3"}, "running")
     files = _plant(q, {f"pending/{run}.json": REQ})
     said: list[str] = []
     assert sr.retire("landq", day=DAY, say=said.append) is True, said
-    assert _rows(q) == {run: ("running", {**REQ, "slot": 3})}, "never moved, never rewritten"
+    assert _rows(q) == {run: ("running", {**REQ, "slot": "3"})}, "never moved, never rewritten"
     assert not files[f"pending/{run}.json"].exists(), "its row holds the request"
 
 

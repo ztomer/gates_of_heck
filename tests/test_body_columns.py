@@ -1,6 +1,6 @@
 """GOH.BODYCOLS: the documents of goh.db's seven small body tables as columns and child rows
 (lib/body_columns.py, lib/body_tables.py, schema file 0016): written as 0016's triggers write an
-older copy's, read back as the document was, on every shape of the file."""
+older copy's, read back as the document was."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ import goh_db
 import pytest
 import reuse
 import state_columns
+import state_shape
 from _body_fixture import (
     AT,
     DOCS,
@@ -31,7 +32,7 @@ from _body_fixture import (
     READING,
     SAMPLE,
     STARVED,
-    contract,
+    UNCUT,
     held,
     memory,
     named,
@@ -63,8 +64,23 @@ def docs(con: sqlite3.Connection, t: Table) -> list[dict]:
     return [doc for _, doc in read(con, t, order="rowid")]
 
 
+@pytest.fixture(scope="module")
+def uncut() -> Iterator[sqlite3.Connection]:
+    con = memory(UNCUT)
+    yield con
+    con.close()
+
+
+@pytest.fixture
+def older(uncut) -> Iterator[sqlite3.Connection]:
+    """A file an older goh wrote, as the cutover finds it."""
+    uncut.execute("BEGIN")
+    yield uncut
+    uncut.execute("ROLLBACK")
+
+
 def rendered(con: sqlite3.Connection, t: Table) -> list[list[str]]:
-    """What `goh state check` finds wrong with each row."""
+    """What the cutover's strip finds wrong with each row of an uncut file."""
     return [state_columns.differs(t.name, doc, again)
             for _, _, doc, again, _ in state_columns.rendered(con, t.name)]  # fmt: skip
 
@@ -129,20 +145,29 @@ SHAPES = [(t.name, d) for t in TABLES for d in [*DOCS[t.name], *ODD[t.name]]]
 
 @pytest.mark.parametrize(("name", "doc"), SHAPES, ids=[f"{n}{i}" for i, (n, _) in
                                                        enumerate(SHAPES)])  # fmt: skip
-def test_the_writer_and_an_older_copys_trigger_leave_the_same_row(con, name, doc) -> None:
-    """Columns, child rows, `rest` and document; and both are read back as the document was."""
-    t = NAMES[name]
-    one, two = named(t, doc, 1), named(t, doc, 2)
-    old(con, t, one, own(t, one, 1))
-    assert write(con, t, two, own(t, two, 2))
-    a, b = held(con, t)
-    assert (json.loads(a.pop("body")), json.loads(b.pop("body"))) == (one, two)
-    assert json.loads(json.dumps(a, default=str).replace('"p1"', '"p2"')) == json.loads(
-        json.dumps(b, default=str)
-    )
-    assert rendered(con, t) == [[], []]
-    for said, got in zip((one, two), docs(con, t), strict=True):
-        assert state_columns.differs(name, json.dumps(said), json.dumps(got)) == []
+def test_the_writer_and_an_older_copys_trigger_leave_the_same_row(
+    con, older, monkeypatch, name, doc
+) -> None:
+    """Columns, child rows and `rest`, less the values the cutover buries: the writer buries or
+    refuses a document over those, and over no other."""
+    t, letters = NAMES[name], []
+    monkeypatch.setattr(state_shape, "bury", lambda *a: letters.append(a))
+    doc = named(t, doc, 1)
+    old(older, t, doc, own(t, doc, 1))
+    (a,) = held(older, t)
+    assert rendered(older, t) == [[]]
+    a["rest"], odd = state_shape.sift(t.name, a["rest"])
+    try:
+        write(con, t, doc, own(t, doc, 1))
+    except Refused:
+        assert odd and letters == []
+        return
+    (b,) = held(con, t)
+    assert json.dumps(a, default=str) == json.dumps(b, default=str)
+    assert bool(letters) == bool(odd)
+    if not odd:
+        (got,) = docs(con, t)
+        assert state_columns.differs(name, json.dumps(doc), json.dumps(got)) == []
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -165,7 +190,7 @@ def test_the_names_here_are_the_files_columns(con) -> None:
     before, kin = memory(15), db_bounds_with.withs(goh_db.SEAM)
     for t in TABLES:
         assert sorted(kin.get(t.name, [])) == sorted({k.table for k in t.kids}), t.name
-        was = set(body_columns.columns(before, t.name))
+        was = set(body_columns.columns(before, t.name)) - {"body"}
         mine = [c for c, _ in t.fields.values()] + [c for x in t.tuples for c in x[1]]
         assert set(body_columns.columns(con, t.name)) - was == {*mine, "rest"}, t.name
         assert len(mine) == len(set(mine)), t.name
@@ -193,11 +218,13 @@ def test_every_field_a_reuse_path_names_and_every_key_a_request_gets_has_a_colum
 
 
 @pytest.mark.parametrize("new", [False, True], ids=["an older copy", "this copy"])
-def test_a_request_written_again_leaves_nothing_of_the_first(con, new) -> None:
+def test_a_request_written_again_leaves_nothing_of_the_first(con, older, new) -> None:
+    put = write if new else old
+    con = con if new else older
     for t in (REQUESTS, EARLY):
         for doc in (LAND, {**PUSH, "main_red": {"sha": "n", "nodes": ["t::c"]}, "x": 1}):
             if doc is LAND:
-                write(con, t, doc, own(t, doc))
+                put(con, t, doc, own(t, doc))
             elif new:
                 mine = {k: v for k, v in own(t, doc).items() if k in ("item", "repo", "sha")}
                 mine = mine if t is REQUESTS else {}
@@ -212,13 +239,15 @@ def test_a_request_written_again_leaves_nothing_of_the_first(con, new) -> None:
         assert row["rest"] == {"x": 1} and row["slot"] is None and row["pre_s"] is None
         assert row["summary"] == "say" and row["main_red_sha"] == "n"
         assert row["request_nodes"] == [(0, "t::c", AT)] and row["request_cov_carry"] == []
-        assert rendered(con, t) in ([[]], [["mode"]])
+        assert rendered(con, t) in ([[]], [["mode"]], [] if new else None)
         con.execute(f"DELETE FROM {t.name}")
         assert con.execute("SELECT count(*) FROM request_nodes").fetchone() == (0,)
 
 
 @pytest.mark.parametrize("new", [False, True], ids=["an older copy", "this copy"])
-def test_a_reuse_record_written_again_leaves_nothing_of_the_first(con, new) -> None:
+def test_a_reuse_record_written_again_leaves_nothing_of_the_first(con, older, new) -> None:
+    con = con if new else older
+
     def put(doc: dict) -> None:
         mine = {"path": "carry", "at": AT}
         if new and not update(con, AUDIT, doc, mine, "path = ?", ("carry",)):
@@ -235,10 +264,11 @@ def test_a_reuse_record_written_again_leaves_nothing_of_the_first(con, new) -> N
     (row,) = held(con, AUDIT)
     assert row["reuse_windows"] == [] and [k[0] for k in row["reuse_evidence"]] == ["was"]
     assert (row["state"], row["cause"], row["was_cause"]) == ("on", None, "disagree")
-    assert row["rest"] == {"later": 1} and rendered(con, AUDIT) == [[]]
+    assert row["rest"] == {"later": 1} and rendered(con, AUDIT) == [[]] * (not new)
     put(STARVED)
     (row,) = held(con, AUDIT)
-    assert row["reuse_evidence"] == [] and row["rest"] == {} and docs(con, AUDIT) == [STARVED]
+    assert row["reuse_evidence"] == [] and row["rest"] == {}
+    assert docs(con, AUDIT) == [STARVED] if new else rendered(con, AUDIT) == [[]]
 
 
 def test_evidence_outlives_its_shadow(con) -> None:
@@ -249,20 +279,13 @@ def test_evidence_outlives_its_shadow(con) -> None:
 
 
 @pytest.mark.parametrize("name", NAMES)
-def test_the_contracts_file_is_written_and_read_whole(con, name) -> None:
+def test_a_wrong_type_is_refused_and_an_unknown_key_is_kept(con, name) -> None:
     t, want = NAMES[name], DOCS[name]
     for n, doc in enumerate(want, 1):
         write(con, t, named(t, doc, n), own(t, named(t, doc, n), n))
-    before = docs(con, t)
-    contract(con, t)
-    assert docs(con, t) == before
-    late = [named(t, doc, n) for n, doc in enumerate(want, 11)]
-    for n, doc in enumerate(late, 11):
-        write(con, t, doc, own(t, doc, n))
-    assert docs(con, t)[len(want) :] == late
     if t in (REQUESTS, EARLY):
-        assert update(con, t, MARK, {}, "run LIKE ?", ("%-11",)) == 1
-        assert con.execute("SELECT count(*) FROM request_nodes WHERE run LIKE '%-11'"
+        assert update(con, t, MARK, {}, "run LIKE ?", ("%-1",)) == 1
+        assert con.execute("SELECT count(*) FROM request_nodes WHERE run LIKE '%-1'"
                            ).fetchone() == (0,)  # fmt: skip
     with pytest.raises(Refused, match="not a type its column takes"):
         wrong = {"lane_starts": "mode", "flakes": "site", "selection_misses": "kind",
@@ -270,24 +293,6 @@ def test_the_contracts_file_is_written_and_read_whole(con, name) -> None:
         write(con, t, named(t, {**want[0], wrong: 9}, 99), own(t, named(t, want[0], 99), 99))
     last = named(t, {**want[0], "unknown": 9}, 100)
     assert write(con, t, last, own(t, last, 100)) and docs(con, t)[-1]["unknown"] == 9
-
-
-def test_a_row_not_filled_yet_and_a_file_from_before_the_columns_read_their_documents(con) -> None:
-    before = memory(15)
-    for t in TABLES:
-        want = [named(t, doc, n) for n, doc in enumerate(DOCS[t.name], 1)]
-        for n, doc in enumerate(want, 1):
-            old(before, t, doc, own(t, doc, n))
-            old(con, t, doc, own(t, doc, n))
-        con.execute(f"UPDATE {t.name} SET rest = NULL")
-        assert docs(before, t) == docs(con, t) == want
-        doc = DOCS[t.name][0]
-        assert write(before, t, doc, own(t, doc, 9)) and docs(before, t)[-1] == doc  # no 0016 yet
-        con.execute(f"DELETE FROM {t.name}")
-        assert read(con, t, order="rowid") == []
-    con.execute("INSERT INTO flakes(epoch, test, body) VALUES (1, 't', 'torn'), (1, 't', '[]')")
-    assert docs(con, FLAKES) == [] and not before.in_transaction
-    before.close()
 
 
 def test_a_read_is_one_snapshot_of_its_own_and_takes_only_what_is_asked(con) -> None:
@@ -318,7 +323,7 @@ def test_a_request_childs_parent_is_either_of_its_two_tables(con) -> None:
 
 def test_text_no_column_holds_is_replaced(con) -> None:
     write(con, FLAKES, {**FLAKE, "site": "cut \ud83d"}, own(FLAKES, FLAKE))
-    assert docs(con, FLAKES)[0]["site"] == "cut ?" and rendered(con, FLAKES) == [[]]
+    assert docs(con, FLAKES)[0]["site"] == "cut ?"
 
 
 def test_a_lane_start_is_read_whole_without_its_constants_kept_twice(con) -> None:

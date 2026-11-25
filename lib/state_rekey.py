@@ -1,20 +1,18 @@
 """lib/state_rekey.py -- every stored path of goh.db as a token (`$STATE/..`, `$REPOS/..`,
 `$HOMEDIR/..`) and every repo as its key, in one transaction with `meta.paths` (GOH.ABSDATA).
 
-    run(undo, queued)   {column: cells moved}; {} when the file holds that form already
+    run()             {column: cells moved}; {} when the file holds tokens already
     left(con)         {column: cells that hold a path of this host where a token belongs}
     prose(con)        {column: cells whose TEXT names such a path: said as it was, never moved}
-    main(undo)        `goh state rekey [--undo]`; portable() is `goh state check --portable`'s part
+    main()            `goh state rekey`; portable() is `goh state check --portable`'s part
 
 ONE CODEC: the writers' own (lib/state_paths.py encode, repo_key), called from SQL, so a moved cell
-is what a writer of the moved file writes (tests/test_state_rekey.py compares the two files whole).
-From this transaction on every writer asks `meta.paths` inside its own and writes tokens; readers
-take both forms in every file.
+is what a writer writes (tests/test_state_rekey.py compares the two files whole). From this
+transaction on the file opens (lib/goh_db.py `Uncut`).
 
-REFUSED until 0017 to 0020 are applied (a document would still hold the paths), while a request or
-an early run is in the queue or a ship runs (their owners hold what they read), and when a row
-exists under both forms (named; two rows are never made one here). The way back is --undo; a repo
-a ship's grace names is not turned back (that table held both spellings before).
+REFUSED until 0017 to 0021 are applied (a document would still hold the paths), while a ship runs
+(its worker writes absolute ones), and when a row exists under both forms (named; two rows are never
+made one here). The way back is the copy its contracts took (lib/db_contract.py).
 """
 
 from __future__ import annotations
@@ -24,8 +22,6 @@ import json
 import os
 import sqlite3
 import sys
-from collections.abc import Callable
-from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db_schema  # lib/, on the path from the line above
@@ -33,7 +29,7 @@ import goh_db
 import state_columns
 import state_paths
 
-CONTRACTS = (17, 18, 19, 20)
+CONTRACTS = (17, 18, 19, 20, 21)
 SHIP = ("ships", "ship_steps", "ship_lists", "ship_bisect", "ship_diffcov_lines",
         "ship_diffcov_faults", "ship_grace", "ship_pins", "ship_pin_repos")  # fmt: skip
 LAND = ("lands", "land_lists", "land_flakes", "land_remote_shares", "land_cov_files",
@@ -66,7 +62,6 @@ PATHS: tuple[tuple[str, str, str], ...] = (
 REPOS: tuple[tuple[str, str], ...] = tuple(
     (t, "repo") for t in ("lands", "ships", *RUNS, "flakes", "main_readings", "pin_pushes",
                           "pin_sweep_repos", "ship_grace"))  # fmt: skip
-FORWARD = ("ships", "ship_grace")  # these held a repo's key or name before too
 KV = tuple({*state_paths.PATHS, *state_paths.REPOS, *state_paths.NAMES})
 
 
@@ -82,38 +77,31 @@ def _cells(con: sqlite3.Connection) -> list[tuple[str, str, str, str]]:
     return [x for x in all_of if x[1] in have.get(x[0], ())]
 
 
-def _codecs(con: sqlite3.Connection, undo: bool) -> None:
-    path, repo = (state_paths.decode, state_paths.repo) if undo else (
-        state_paths.encode, state_paths.repo_key)  # fmt: skip
-    for name, fn in (("path", path), ("repo", repo)):
+def _codecs(con: sqlite3.Connection) -> None:
+    for name, fn in (("path", state_paths.encode), ("repo", state_paths.repo_key)):
         con.create_function(f"goh_{name}", 1, functools.lru_cache(maxsize=None)(fn),
                             deterministic=True)  # fmt: skip
 
 
-def why_not(con: sqlite3.Connection, queued: bool = False) -> str | None:
-    """What keeps goh.db from a move now, or None. QUEUED: a request may wait (the cutover's fence
-    holds it where it is, and its owner reads both forms)."""
-    held = [f"{t}: {n}" for t in (() if queued else RUNS)
-            if (n := con.execute(f"SELECT count(*) FROM {t}").fetchone()[0])]  # fmt: skip
-    n = con.execute(f"SELECT count(*) FROM ships WHERE {state_columns.IN_FLIGHT}").fetchone()[0]
-    held += [f"ships still running: {n}"] * bool(n)
-    return ", ".join(held) or None
+def why_not(con: sqlite3.Connection) -> str | None:
+    """What keeps goh.db from a move now, or None: a ship's live worker. A request moves where it
+    waits."""
+    n = len(state_columns.running(con))
+    return f"ships still running: {n}" if n else None
 
 
-def run(undo: bool = False, queued: bool = False) -> dict[str, int]:
-    to = "absolute" if undo else state_paths.TOKEN
+@goh_db.uncut()
+def run() -> dict[str, int]:
     moved: dict[str, int] = {}
     with goh_db.transaction() as con:
-        if not state_paths.tokens(con) if undo else state_paths.tokens(con):
+        if state_paths.tokens(con):
             return {}
         if missing := sorted(set(CONTRACTS) - set(db_schema.version(con)["applied"])):
             raise RekeyRefused(f"contracts {missing} are not applied: a document holds the paths")
-        if why := why_not(con, queued):
+        if why := why_not(con):
             raise RekeyRefused(why)
-        _codecs(con, undo)
+        _codecs(con)
         for table, col, rows, kind in _cells(con):
-            if undo and kind == "repo" and table in FORWARD:
-                continue
             fn = f'goh_{kind}("{col}")'
             try:
                 n = con.execute(f'UPDATE "{table}" SET "{col}" = {fn} WHERE ({rows}) AND '
@@ -123,23 +111,20 @@ def run(undo: bool = False, queued: bool = False) -> dict[str, int]:
             if n:
                 moved[f"{table}.{col}"] = n
         con.execute("INSERT INTO meta(key, value) VALUES ('paths', ?) ON CONFLICT(key) DO UPDATE "
-                    "SET value = excluded.value", (to,))  # fmt: skip
-        if n := _kv(con, undo):
+                    "SET value = excluded.value", (state_paths.TOKEN,))  # fmt: skip
+        if n := _kv(con):
             moved["kv.body"] = n
     return moved
 
 
-def _kv(con: sqlite3.Connection, undo: bool) -> int:
+def _kv(con: sqlite3.Connection) -> int:
     """The paths in the kv documents lib/state_paths.py names, whatever else they hold."""
-    codec: Callable[[str, Any], Any] = (
-        state_paths.got if undo else lambda name, doc: state_paths.put(con, name, doc)
-    )
     n = 0
     for name, body in con.execute("SELECT name, body FROM kv").fetchall():
         if name not in KV:
             continue
         doc = json.loads(body)
-        if (to := codec(name, doc)) != doc:
+        if (to := state_paths.put(name, doc)) != doc:
             con.execute("UPDATE kv SET body = ? WHERE name = ?",
                         (json.dumps(to, sort_keys=True), name))  # fmt: skip
             n += 1
@@ -153,7 +138,7 @@ def _texts(con: sqlite3.Connection) -> list[tuple[str, str]]:
 
 
 def left(con: sqlite3.Connection) -> dict[str, int]:
-    _codecs(con, False)
+    _codecs(con)
     out: dict[str, int] = {}
     for table, col, rows, kind in _cells(con):
         n = con.execute(f'SELECT count(*) FROM "{table}" WHERE ({rows}) AND "{col}" IS NOT '
@@ -185,15 +170,15 @@ def portable(con: sqlite3.Connection) -> tuple[list[str], list[str]]:
     return bad, [f"{c}: {n} cells name one in their text" for c, n in prose(con).items()]
 
 
-def main(undo: bool = False) -> int:
+def main() -> int:
     from tui.lib import err, ok
 
     try:
         state_columns.writable()
-        moved = run(undo)
+        moved = run()
     except (OSError, sqlite3.Error) as e:
         err(f"state rekey: nothing moved: {e}")
         return 1
     said = f"{sum(moved.values())} cells in {len(moved)} columns"
-    ok(f"state rekey: {said}" if moved else "state rekey: the file holds that form already")
+    ok(f"state rekey: {said}" if moved else "state rekey: the file holds tokens already")
     return 0

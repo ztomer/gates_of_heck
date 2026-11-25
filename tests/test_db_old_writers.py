@@ -143,6 +143,8 @@ def test_an_older_copy_neither_sweeps_nor_judges_a_safe_files_tables(tmp_path, m
 
 def test_an_open_never_applies_a_contract(tmp_path, monkeypatch) -> None:
     """Nor does its absence make a lane's copy read-only."""
+    with db_core.connect(seam(tmp_path, monkeypatch, BASE, "old")):
+        pass
     new = seam(tmp_path, monkeypatch, {**BASE, 3: REFUSE, 4: SAFE}, "new")
     f = new.schema / "0003_m.sql"
     f.write_text(f.read_text().replace("refuse\n", f"refuse\n{db_schema.BY_COMMAND}\n"))

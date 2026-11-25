@@ -8,7 +8,7 @@ is the command; split at its line cap, GOH.OLDWRITERS).
     goh state strip                  the documents the columns give back, dropped (in the cutover)
     goh state cutover [--abort]      every document out, every path a token, once
                                      (lib/state_cutover.py); --abort: a dead one's fence down
-    goh state rekey [--undo]         the paths alone (lib/state_rekey.py); --undo: absolute again
+    goh state rekey                  the paths alone (lib/state_rekey.py)
 """
 
 from __future__ import annotations
@@ -31,8 +31,7 @@ def add(sub: argparse._SubParsersAction) -> None:
     sub.add_parser("strip", help="documents the columns give back, dropped (in the cutover)")
     u = sub.add_parser("cutover", help="every document out of goh.db, every path a token; once")
     u.add_argument("--abort", action="store_true", help="lift the fence of a cutover that died")
-    r = sub.add_parser("rekey", help="every stored path a token, every repo its key")
-    r.add_argument("--undo", action="store_true", help="absolute again")
+    sub.add_parser("rekey", help="every stored path a token, every repo its key")
 
 
 def run(a: argparse.Namespace) -> int | None:
@@ -64,5 +63,5 @@ def run(a: argparse.Namespace) -> int | None:
     if a.cmd == "rekey":
         import state_rekey
 
-        return state_rekey.main(a.undo)
+        return state_rekey.main()
     return None

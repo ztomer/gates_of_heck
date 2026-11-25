@@ -17,6 +17,8 @@
 #                             one a hook carried, `goh_bind_hook_index`), written from a PRIVATE copy under the run root, so it
 #                             never takes, and never waits on, the shared `index.lock`
 #
+# goh's config.toml moves none of it, in any face: lib/run_path.py says why.
+#
 # The Python face is lib/run_path.py and the Rust face crates/goh/src/run_path.rs: one root, one key.
 # A new raw temp, lock or staging path under a work tree is refused by `goh run-paths`
 # (crates/goh/src/runpaths.rs). tests/test_run_path.py, tests/test_entry_points_leave_no_strays.py.

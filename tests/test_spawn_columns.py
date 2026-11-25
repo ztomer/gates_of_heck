@@ -1,6 +1,6 @@
 """GOH.SPAWNKEY: a spawn's and an outcome's fields as columns and child rows (lib/spawn_columns.py),
-written as 0013's triggers write an older copy's, read back as the document was, on every shape of
-the file; and the row its table refuses (hook_ledgers.DEAD)."""
+written as 0013's triggers wrote an older copy's, read back as the document was; and the row its
+table refuses (hook_ledgers.DEAD)."""
 
 from __future__ import annotations
 
@@ -11,12 +11,13 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import _body_fixture as bf
 import goh_db
 import hook_ledgers as hl
 import pytest
 import spawn_columns
 import state_columns
-from _columns_fixture import AT, OUTCOME, SPAWN, old_file
+from _columns_fixture import AT, OUTCOME, SPAWN
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "hooks" / "claude"))
@@ -37,39 +38,26 @@ def q(sql: str, *args: object) -> list[tuple]:
         return con.execute(sql, args).fetchall()
 
 
-def old(row: dict) -> None:
+def old(con: sqlite3.Connection, row: dict) -> None:
     """As code of schema 10 writes it: the document alone, its columns the trigger's."""
-    with goh_db.transaction() as con:
-        con.execute("INSERT INTO agent_spawns(at, event, agent, body) VALUES (?, ?, ?, ?)",
-                    (spawn_columns.instant(row.get("time")) or 0.0, row.get("event") or "",
-                     row["agent_id"] if isinstance(row.get("agent_id"), str) else None,
-                     json.dumps(row, sort_keys=True)))  # fmt: skip
+    con.execute("INSERT INTO agent_spawns(at, event, agent, body) VALUES (?, ?, ?, ?)",
+                (spawn_columns.instant(row.get("time")) or 0.0, row.get("event") or "",
+                 row["agent_id"] if isinstance(row.get("agent_id"), str) else None,
+                 json.dumps(row, sort_keys=True)))  # fmt: skip
 
 
 def new(row: dict) -> None:
     assert hl.append(hl.SPAWNS, row) is None
 
 
-def held(n: int) -> dict:
+def held(con: sqlite3.Connection, n: int = 1) -> dict:
     """Row N with its child rows, without its key."""
-    with goh_db.ro() as con:
-        con.row_factory = sqlite3.Row
-        row = dict(con.execute("SELECT * FROM agent_spawns WHERE n = ?", (n,)).fetchone())
-        row["rest"] = json.loads(row["rest"])
-        for t in ("spawn_lists", "spawn_app_exits"):
-            kids = con.execute(f"SELECT * FROM {t} WHERE n = ? ORDER BY 2, 3", (n,))
-            row[t] = [tuple(r)[1:] for r in kids]
-    return {k: v for k, v in row.items() if k not in ("n", "item")}
-
-
-def contract() -> None:
-    """The file as contract 0019 leaves it."""
-    with goh_db.transaction() as con:
-        for x in ("fill", "refill", "bad"):
-            con.execute(f"DROP TRIGGER agent_spawns_{x}")
-        con.execute("ALTER TABLE agent_spawns DROP COLUMN body")
-        con.execute("DROP INDEX agent_spawns_item")
-        con.execute("ALTER TABLE agent_spawns DROP COLUMN item")
+    cur = con.execute("SELECT * FROM agent_spawns WHERE n = ?", (n,))
+    row = dict(zip([c[0] for c in cur.description], cur.fetchone(), strict=True))
+    row["rest"] = json.loads(row["rest"])
+    for t in ("spawn_lists", "spawn_app_exits"):
+        row[t] = con.execute(f"SELECT * FROM {t} WHERE n = ? ORDER BY 2, 3", (n,)).fetchall()
+    return {k: v for k, v in row.items() if k not in ("n", "item", "body")}
 
 
 def found() -> list[str]:
@@ -97,22 +85,28 @@ SHAPES = [SPAWN, OUTCOME, BARE, *({**BARE, **odd} for odd in ODD)]
 
 
 @pytest.mark.parametrize("doc", SHAPES, ids=[str(n) for n in range(len(SHAPES))])
-def test_the_writer_and_an_older_copys_trigger_leave_the_same_row(db, doc) -> None:
-    """Columns, child rows, `rest` and document; and both are read back as the document was."""
-    old(copy.deepcopy(doc))
-    new(copy.deepcopy(doc))
-    assert held(2) == held(1)
-    assert [x for x in found() if "give back" in x] == []
-    for got in hl.spawns():
-        assert state_columns.differs("agent_spawns", json.dumps(doc), json.dumps(got)) == []
+def test_the_writer_and_an_older_copys_trigger_leave_the_same_row(doc) -> None:
+    """Columns, child rows and `rest`; and it is read back as the document was. A value that fits no
+    column the writer refuses."""
+    ours, theirs = bf.memory(), bf.memory(bf.UNCUT)
+    old(theirs, copy.deepcopy(doc))
+    want = held(theirs)
+    try:
+        spawn_columns.write(ours, copy.deepcopy(doc))
+    except spawn_columns.Refused:
+        assert want["rest"] not in ({}, None)
+        return
+    assert held(ours) == want
+    (got,) = spawn_columns.read(ours)
+    assert state_columns.differs("agent_spawns", json.dumps(doc), json.dumps(got)) == []
 
 
 def test_every_field_of_a_new_row_is_in_a_column(db) -> None:
     """B of the data plan: `rest` empty, every column of its kind filled, the document equal."""
     for row in (SPAWN, OUTCOME):
         new(row)
-    filled = {k for n in (1, 2) for k, v in held(n).items() if v is not None}
     with goh_db.ro() as con:
+        filled = {k for n in (1, 2) for k, v in held(con, n).items() if v is not None}
         assert filled >= set(state_columns.columns(con, "agent_spawns")) - {"n", "item"}
     assert q("SELECT rest FROM agent_spawns") == [("{}",), ("{}",)] and found() == []
     assert q("SELECT kind, count(*) FROM spawn_lists GROUP BY 1 HAVING kind = 'item'") == [
@@ -125,8 +119,8 @@ def test_two_items_share_a_spawns_tokens_and_none_takes_no_row(db) -> None:
     new(OUTCOME)
     new({**SPAWN, "tool_use_id": "U", "items": None, "no_item_why": "a probe"})
     new({**OUTCOME, "tool_use_id": "U"})
-    assert q("SELECT item, no_item_why FROM agent_spawns WHERE event = 'spawn'") == [
-        ("A.B", "n"), (None, "a probe")]  # fmt: skip
+    assert q("SELECT no_item_why FROM agent_spawns WHERE event = 'spawn'") == [
+        ("n",), ("a probe",)]  # fmt: skip
     assert sorted(q("SELECT item, tokens FROM spend_items_v1")) == [("A.B", 5.0), ("C.D", 5.0)]
 
 
@@ -151,26 +145,21 @@ def test_an_old_spill_is_drained_with_its_item_as_a_row(db, row, items) -> None:
     assert [v for (v,) in q("SELECT value FROM spawn_lists WHERE n = 1 AND kind = 'item'")] == (
         items or []
     )
-    assert q("SELECT item FROM agent_spawns WHERE n = 1") == [(items[0] if items else None,)]
     assert [x for x in found() if "give back" in x] == []
     assert hl.spawns()[0].get("items") == items
 
 
-def test_a_wrong_type_is_kept_in_rest_until_the_document_is_gone_then_dead_lettered(db) -> None:
-    wrong = {"event": "spawn", "time": SPAWN["time"], "items": None, "effort": 9, "apps": 3}
-    new(wrong)
-    assert q("SELECT effort, rest FROM agent_spawns") == [(None, '{"apps": 3, "effort": 9}')]
-    assert hl.dead() == [] and hl.spawns()[0]["effort"] == 9
-    contract()
-    hl._spill(hl.SPAWNS, {**wrong, "apps": None})
+def test_a_wrong_type_is_dead_lettered_and_holds_no_other_row_back(db) -> None:
+    wrong = {"event": "spawn", "time": SPAWN["time"], "items": None, "effort": 9}
+    hl._spill(hl.SPAWNS, wrong)
     hl._spill(hl.SPAWNS, SPAWN)
     said = hl.append(hl.SPAWNS, {"event": "outcome", "time": 9, "tool_use_id": "V"})
     assert said and "effort: not a type its column takes" in said and "time" in said
     assert [(r["row"].get("effort"), r["why"].split(":")[0]) for r in hl.dead()] == [
         (9, "effort"), (None, "time")]  # fmt: skip
-    assert not hl.spill_file().exists() and [r["event"] for r in hl.spawns()] == ["spawn", "spawn"]
-    new(OUTCOME)  # neither holds another row back
-    assert len(hl.spawns()) == 3 and hl.busy()["count"] == 2
+    assert not hl.spill_file().exists() and [r["event"] for r in hl.spawns()] == ["spawn"]
+    new(OUTCOME)
+    assert len(hl.spawns()) == 2 and hl.busy()["count"] == 2
 
 
 def test_a_row_the_table_refuses_is_dead_lettered_whole_and_named(db, capsys) -> None:
@@ -221,33 +210,12 @@ def test_a_dead_letter_waits_for_the_commit(db, monkeypatch) -> None:
     assert len(hl.dead()) == 1 and len(hl.spawns()) == 3
 
 
-def test_the_contracts_file_is_written_and_read_whole(db) -> None:
-    new(SPAWN)
-    before = hl.spawns()
-    contract()
-    assert hl.spawns() == before
-    new(OUTCOME)
-    new({**BARE, "nobody": 1})
-    got = hl.spawns()
-    for doc, again in zip((SPAWN, OUTCOME, {**BARE, "nobody": 1}), got, strict=True):
+def test_a_row_with_an_unknown_key_is_read_whole(db) -> None:
+    docs = (SPAWN, OUTCOME, {**BARE, "nobody": 1})
+    for doc in docs:
+        new(doc)
+    for doc, again in zip(docs, hl.spawns(db), strict=True):
         assert state_columns.differs("agent_spawns", json.dumps(doc), json.dumps(again)) == []
-
-
-def test_a_reader_reads_columns_and_the_document_of_a_row_not_filled_yet(db) -> None:
-    new(SPAWN)
-    old(OUTCOME)
-    with goh_db.transaction() as con:  # stripped; and from before the columns
-        con.execute("UPDATE agent_spawns SET body = '{}' WHERE n = 1")
-        con.execute("UPDATE agent_spawns SET rest = NULL, status = NULL WHERE n = 2")
-    one, two = hl.spawns()
-    assert state_columns.differs("agent_spawns", json.dumps(SPAWN), json.dumps(one)) == []
-    assert two == OUTCOME
-    assert hl.spawns(db) == [one, two]
-
-
-def test_a_file_from_before_the_columns_is_read_from_its_documents(db, tmp_path) -> None:
-    old_file(tmp_path)  # a read never migrates it
-    assert [r["n"] for r in hl.spawns()] == [0, 1, 2]
 
 
 def test_text_no_column_holds_is_replaced(db) -> None:
@@ -256,11 +224,12 @@ def test_text_no_column_holds_is_replaced(db) -> None:
     assert q("SELECT report, rest FROM agent_spawns") == [("cut ?", "{}")] and found() == []
 
 
-def test_a_time_no_clock_has_is_kept_and_read(db) -> None:
-    for at in (1e20, float(1 << 80), -5, AT):
-        new({**BARE, "time": at})
-    assert q("SELECT at FROM agent_spawns") == [(0.0,), (0.0,), (0.0,), (AT,)]
-    assert [r["time"] for r in hl.spawns()] == [1e20, float(1 << 80), -5, AT]
+def test_a_time_no_clock_has_is_dead_lettered(db) -> None:
+    for at in (1e20, float(1 << 80), -5):
+        assert "time: not a type" in (hl.append(hl.SPAWNS, {**BARE, "time": at}) or "")
+    new(BARE)
+    assert q("SELECT at FROM agent_spawns") == [(AT,)]
+    assert [r["row"]["time"] for r in hl.dead()] == [1e20, float(1 << 80), -5]
 
 
 def test_the_reports_over_the_columns_equal_the_reports_over_the_documents(db) -> None:
@@ -290,8 +259,7 @@ def test_the_reports_over_the_columns_equal_the_reports_over_the_documents(db) -
         faults = agent_audit.fault_rows(records, None)
         return json.dumps([review, usage_review.render(review), audit, faults], default=str)
 
-    kept = [json.loads(b) for (b,) in q("SELECT body FROM agent_spawns ORDER BY n")]
-    assert said(hl.spawns()) == said(kept)
+    assert said(hl.spawns()) == said(rows)
     assert '"min_7d": 72}' in said(hl.spawns())
 
 

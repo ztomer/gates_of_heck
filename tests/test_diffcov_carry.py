@@ -18,6 +18,7 @@ refuses no ship: the ship's own diff coverage judges it after the suite.
 
 from __future__ import annotations
 
+import datetime
 import json
 import sqlite3
 import subprocess
@@ -90,12 +91,16 @@ def _land(tmp_path: Path, monkeypatch, measured: bool = True) -> tuple[Path, Pat
     return main, wt
 
 
+def diffcov_now() -> str:
+    return datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")
+
+
 def _landed(q: Path, main: Path, wt: Path, rec: dict, item: str, filed: str = "") -> dict:
     """The landing record the lander writes: WT's tip fast-forwarded onto main."""
     sha = _git(wt, "rev-parse", "HEAD")
     _git(main, "merge", "-q", "--ff-only", sha)
     out = {"sha": sha, "enqueued": sha, "landed": sha, "repo": str(main), "mode": "land",
-           "state": "landed", "item": item, "cov_risk": rec,
+           "state": "landed", "item": item, "cov_risk": rec, "at": diffcov_now(),
            **({"diffcov_item": {"id": filed, "said": "filed"}} if filed else {})}  # fmt: skip
     gdb.land(q, f"{len(land_records.runs(q)):04d}-{item}", out)
     return out
@@ -332,9 +337,8 @@ def test_the_lander_files_the_item_and_names_it_on_the_landing_record(tmp_path, 
     landq.record(path, outcome, "GOH.LANE")
     done = land_records.get(q, path.stem)
     with sqlite3.connect(db) as con:  # the record's row in goh.db (GOH.STATEDB)
-        row = con.execute("SELECT run, item, state, body FROM lands").fetchall()
-    assert [r[:3] for r in row] == [("01-GOH.LANE", "GOH.LANE", "landed")], row
-    assert json.loads(row[0][3]) == done, "the row and the file are one record"
+        row = con.execute("SELECT run, item, state, diffcov_item FROM lands").fetchall()
+    assert row == [("01-GOH.LANE", "GOH.LANE", "landed", "GOH.DIFFCOVFEDCBA98")], row
     assert done["diffcov_item"] == {"id": "GOH.DIFFCOVFEDCBA98", "said": "filed"}, done
     calls = [json.loads(x) for x in (tmp_path / "calls").read_text().splitlines()]
     assert any("file" in c for c in calls) and any("set" in c for c in calls), calls

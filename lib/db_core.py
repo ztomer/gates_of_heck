@@ -115,6 +115,7 @@ class Seam:
     synchronous: str  # FULL | NORMAL
     budget: int  # the whole file's byte budget (lib/db_bounds.py)
     over: str  # what a table past its bound does: "archive" (history) | "evict" (cache)
+    born: tuple[tuple[str, str], ...] = ()  # the meta rows a new file is made with
 
 
 def path(seam: Seam, env: Mapping[str, str] | None = None) -> Path:
@@ -266,20 +267,24 @@ def _safe(seam: Seam, n: int, fresh: bool) -> bool:
 
 def migrate(con: sqlite3.Connection, seam: Seam) -> set[int]:
     """Apply every shipped migration missing from schema_version but a by-command contract
-    (lib/db_contract.py); the numbers applied."""
+    (lib/db_contract.py); the numbers applied. A file that holds none takes them all, contracts too:
+    it has no row a contract moves, so a new file is born in the last shape (GOH.OLDFORMS)."""
     names = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     if not set(BOOT_TABLES) <= names:  # an existing file's open takes no write lock here
         con.executescript(BOOT)
     known = migrations(seam)
     have = {r[0] for r in con.execute("SELECT version FROM schema_version")}
+    stamp = ""
+    if known and not have:
+        stamp = writer()
+        safe_ones = {n for n in known if _safe(seam, n, True)}
+        if db_schema.fresh(con, known, stamp, safe_ones, seam.born):
+            _stamp(con, seam, stamp)
+            return set(known)
+        have = {r[0] for r in con.execute("SELECT version FROM schema_version")}
     missing = db_schema.on_open(known, have)
-    stamp = writer() if missing or not have else ""
-    todo = missing
-    if missing and not have:
-        safe_ones = {n for n in missing if _safe(seam, n, True)}
-        if db_schema.fresh(con, {n: known[n] for n in missing}, stamp, safe_ones):
-            todo = []
-    for n in todo:
+    stamp = stamp or (writer() if missing or not have else "")
+    for n in missing:
         safe = _safe(seam, n, not have)
         con.execute("BEGIN IMMEDIATE")
         try:

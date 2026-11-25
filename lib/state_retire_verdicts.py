@@ -87,8 +87,8 @@ def _ledger(con: sqlite3.Connection, store: str, p: Path, rows: int) -> None:
 
     con.execute("INSERT OR IGNORE INTO imports(store, source, sha256, rows, at) "
                     "VALUES (?, ?, ?, ?, ?)",
-                (store, str(p), hashlib.sha256(p.read_bytes()).hexdigest(), rows,
-                 time.time()))  # fmt: skip
+                (store, state_paths.encode(str(p)), hashlib.sha256(p.read_bytes()).hexdigest(),
+                 rows, time.time()))  # fmt: skip
 
 
 # -- reuse records (goh-cache.db 0002 verdicts) --------------------------------------------------

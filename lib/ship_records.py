@@ -39,7 +39,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, beside this file: the one door to goh.db
 import ship_columns
 import state_paths
-import state_shape
 
 PINS = ".pins.json"
 
@@ -55,27 +54,23 @@ def pins_path(result: Path | str) -> Path:
     return Path(result).with_suffix(PINS)
 
 
-def _repo(con: sqlite3.Connection, res: dict) -> str:
-    """The repo column of RES: its key in a file of tokens, or with no document to hold its path;
-    else its directory's name."""
-    keyed = state_paths.tokens(con) or state_shape.closing(con, "ships")
-    key = str(state_paths.repo_key(res.get("repo")) or "") if keyed else ""
-    return key or Path(str(res["result"])).parent.name
+def repo_of(res: dict) -> str:
+    """The repo column of RES: its key; a record that names none, its directory's name."""
+    return str(state_paths.repo_key(res.get("repo")) or "") or Path(str(res["result"])).parent.name
 
 
 def put(res: dict) -> None:
     """Write RES (a whole ship record) as its result's row; a file this copy may not write is
     raised, never skipped (the ship's one record is no side record: lib/ship_status.py save)."""
     with goh_db.transaction() as con:
-        ship_columns.put(con, state_paths.put(con, "ships", res),
-                         state_paths.column(con, str(res["result"])), _repo(con, res),
-                         time.time())  # fmt: skip
+        key = state_paths.encode(str(res["result"]))
+        ship_columns.put(con, state_paths.put("ships", res), key, repo_of(res), time.time())
 
 
-def put_pins(result: Path | str, body: dict) -> None:
+def put_pins(result: Path | str, doc: dict) -> None:
     with goh_db.refusable(), goh_db.transaction() as con:
-        ship_columns.put_pins(con, state_paths.put(con, "ship_pins", body),
-                              state_paths.column(con, str(result)), time.time())  # fmt: skip
+        ship_columns.put_pins(con, state_paths.put("ship_pins", doc),
+                              state_paths.encode(str(result)), time.time())  # fmt: skip
 
 
 @contextlib.contextmanager
@@ -95,18 +90,20 @@ def _read(one: bool = False) -> Iterator[sqlite3.Connection | None]:
         yield con
 
 
+def _named(result: Path | str) -> tuple[str, tuple[str]]:
+    return "x.result = ?", (state_paths.encode(str(result)),)
+
+
 def get(result: Path | str) -> dict | None:
     """RESULT's record (its row), else None."""
-    at, args = state_paths.where("x.result", state_paths.forms(result))
     with _read(one=True) as con:
-        rows = ship_columns.read(con, at, args) if con else []
+        rows = ship_columns.read(con, *_named(result)) if con else []
     return state_paths.got("ships", rows[-1][1]) if rows else None
 
 
 def get_pins(result: Path | str) -> dict | None:
-    at, args = state_paths.where("x.result", state_paths.forms(result))
     with _read(one=True) as con:
-        rows = ship_columns.read_pins(con, at, args) if con else []
+        rows = ship_columns.read_pins(con, *_named(result)) if con else []
     return state_paths.got("ship_pins", rows[-1][1]) if rows else None
 
 
@@ -115,10 +112,11 @@ def in_dir(directory: Path) -> list[tuple[Path, dict]]:
     there."""
     directory = Path(directory)
     out: dict[str, dict] = {}
-    ends = [f + end for f in state_paths.forms(directory) for end in (os.sep, chr(ord(os.sep) + 1))]
-    span = " OR ".join(["x.result >= ? AND x.result < ?"] * (len(ends) // 2))
+    at = state_paths.encode(str(directory))
+    ends = [at + os.sep, at + chr(ord(os.sep) + 1)]
     with _read() as con:
-        for result, rec in ship_columns.read(con, f"({span})", ends) if con else ():
+        for result, rec in ship_columns.read(con, "x.result >= ? AND x.result < ?",
+                                             ends) if con else ():  # fmt: skip
             full = state_paths.decode(result)
             if Path(full).parent == directory:
                 out[full] = state_paths.got("ships", rec)
@@ -187,5 +185,5 @@ def drop_test_rows(roots: tuple[str, ...] | None = None) -> int:
     with goh_db.transaction() as con:
         for table in ("ships", "ship_pins"):
             con.executemany(f"DELETE FROM {table} WHERE result=?",
-                            [(f,) for r in gone for f in state_paths.forms(r)])  # fmt: skip
+                            [(state_paths.encode(r),) for r in gone])  # fmt: skip
     return len(gone)

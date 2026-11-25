@@ -4,17 +4,23 @@ before this goh ships the contract that drops the column."""
 from __future__ import annotations
 
 import json
+import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import goh_db
-import hook_ledgers
-import land_records
 import pytest
-import ship_records
 import state_backfill
 import state_columns
 import state_strip
-from _columns_fixture import LAND, PINS, RESULT, SHIP, dump, old_file
+from _columns_fixture import AT, LAND, RESULT, SHIP, dump, old_file
+from _contract_fixture import insert, old_land
+
+
+@pytest.fixture(autouse=True)
+def an_uncut_file() -> Iterator[None]:
+    with goh_db.uncut():
+        yield
 
 
 def key(path: str) -> str:
@@ -30,6 +36,12 @@ def db(tmp_path: Path, monkeypatch) -> Path:
     with goh_db.transaction() as con:  # the row the backfill leaves in `rest`: a key with no column
         con.execute("UPDATE agent_spawns SET rest = NULL, body = json_remove(body, '$.n')")
     return p
+
+
+def insert_ship(result: str, doc: dict, repo: str = "x") -> None:
+    with goh_db.transaction() as con:
+        insert(con, "ships", result=result, run="r", repo=repo, at=AT, status=doc["status"],
+               body={"result": result, **doc})  # fmt: skip
 
 
 @pytest.fixture
@@ -50,25 +62,29 @@ def test_refused_while_this_goh_reads_the_documents(db, capsys, monkeypatch) -> 
 
 
 def test_refused_while_a_ship_runs(db, on, capsys) -> None:
-    ship_records.put({"result": "/s/results/goh/x.json", "status": "bisecting"})
+    insert_ship("/s/results/goh/x.json", {"status": "bisecting", "pid": os.getpid()})
     assert state_strip.main() == 1
     assert "ships still running: 1" in capsys.readouterr().err and left("lands") == 4
 
 
 def test_every_document_the_columns_give_back_goes(db, on, tmp_path) -> None:
-    ship_records.put_pins(RESULT, PINS)
-    ship_records.put(SHIP)
-    ship_records.put({"result": "/s/results/Fin_z/x.json", "status": "ok", "repo": "/r/Fin/z"})
-    land_records.write(tmp_path, "01795000000000000000-A.B", LAND)
-    lane = {"at": LAND["at"], "verdict": "room", "v": 1, "why": ["w"]}
-    assert hook_ledgers.append(hook_ledgers.LANES, lane) is None
+    with goh_db.transaction() as con:
+        mine = {k: SHIP[k] for k in ("item", "sha", "status", "started", "finished", "version")}
+        con.execute("DELETE FROM ships")
+        insert(con, "ships", result=RESULT, run="r", repo="goh", at=AT, body=SHIP, **mine)
+        old_land(con, "/r/q", "01795000000000000000-A.B", LAND)
+        lane = {"at": LAND["at"], "verdict": "room", "v": 1, "why": ["w"]}
+        insert(con, "lane_starts", at=AT, body=lane)
+    insert_ship("/s/results/Fin_z/x.json", {"status": "ok", "repo": "/r/Fin/z"}, "Fin_z")
     with goh_db.ro() as con:
         docs = [(t, k, body) for t in state_columns.TABLES
                 for _, k, body, _, _ in state_columns.rendered(con, t)]  # fmt: skip
-    land_records.append(tmp_path, "misses", [{"kind": "miss", "test": t} for t in "ab"])
+    with goh_db.transaction() as con:
+        for t in "ab":
+            miss = {"kind": "miss", "test": t}
+            insert(con, "selection_misses", queue="/r/q", at=AT, body=miss)
     assert len(docs) == 459 and state_strip.run(key) == (459, [])
     assert {t: left(t) for t in state_columns.TABLES if left(t)} == {"selection_misses": 2}
-    assert hook_ledgers.lanes()[0]["why"] == ["w"]
     with goh_db.ro() as con:
         repos = con.execute("SELECT repo FROM ships ORDER BY repo").fetchall()
         assert repos == [("Fin/z",), ("goh",)]  # the keys: the first was Fin_z
@@ -120,7 +136,7 @@ def test_what_changes_under_it_stays_whole(db, on, monkeypatch) -> None:
     Stripped, the class could be folded in by nothing."""
     monkeypatch.setattr(state_strip, "_may", lambda: None)
     with goh_db.transaction() as con:
-        con.execute("UPDATE ships SET status = 'running', body = '[]'")
+        con.execute("UPDATE ships SET status = 'running', pid = ?, body = '[]'", (os.getpid(),))
         con.execute("INSERT INTO red_causes(queue, run, cause, at, body) VALUES "
                     "('/q', '3-old', 'conflict', 1, '{\"cause\": \"conflict\"}')")  # fmt: skip
     n, whole = state_strip.run(key)

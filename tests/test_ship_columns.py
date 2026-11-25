@@ -1,6 +1,6 @@
 """lib/ship_columns.py: a ship's record and its pins written as columns and child rows, and read
-from them (GOH.STEPTIMES, the plan's S4c). The tables are the migrations' own SQL in memory; what
-0012's triggers make of a document is what the writer is held to, row for row.
+from them (GOH.STEPTIMES, the plan's S4c). The file is in memory; what 0012's triggers made of an
+older copy's document is what the writer is held to, row for row.
 """
 
 from __future__ import annotations
@@ -10,13 +10,15 @@ import json
 import sqlite3
 from typing import Any
 
+import _body_fixture as bf
 import pytest
 import ship_columns
 import state_columns
+import state_shape
 from _columns_fixture import AT, PINS, RESULT, SHIP, STEP
-from conftest import REPO_ROOT
+from _contract_fixture import insert
 
-SCHEMA = REPO_ROOT / "lib" / "goh_db_schema"
+REPO = "/r/goh"
 TABLES = ("ships", "ship_pins", *ship_columns.CHILDREN, "ship_pin_repos")
 PLANNED = {
     "schema": 1, "repo": "/r/goh", "name": "goh", "item": None, "summary": "", "progress": False,
@@ -27,23 +29,15 @@ PLANNED = {
 }  # fmt: skip
 
 
-def memory() -> sqlite3.Connection:
-    con = sqlite3.connect(":memory:", isolation_level=None)
-    for n in ("0003_ships", "0009_ships_v2", "0012_ships_columns"):
-        con.executescript((SCHEMA / f"{n}.sql").read_text(encoding="utf-8"))
-    return con
-
-
 def put(con: sqlite3.Connection, doc: dict, at: float = AT) -> None:
-    ship_columns.put(con, doc, RESULT, "goh", at)
+    ship_columns.put(con, doc, RESULT, REPO, at)
 
 
 def fill(con: sqlite3.Connection, doc: dict) -> None:
     """DOC as goh wrote one before the columns, for 0012's triggers to fill."""
-    vals = [None if doc.get(c) is None else str(doc[c]) for c in ship_columns.HAVE]
-    con.execute("INSERT OR REPLACE INTO ships(result, run, repo, item, sha, status, started, "
-                "finished, version, body, at) VALUES (?, ?, 'goh', ?, ?, ?, ?, ?, ?, ?, ?)",
-                (RESULT, "20261118T110640Z-c1", *vals, json.dumps(doc), AT))  # fmt: skip
+    plain = {c: str(doc[c]) for c in ship_columns.HAVE if doc.get(c) is not None}
+    run = "20261118T110640Z-c1"
+    insert(con, "ships", result=RESULT, run=run, repo=REPO, at=AT, body=doc, **plain)
 
 
 def dump(con: sqlite3.Connection) -> dict[str, list[dict]]:
@@ -52,8 +46,24 @@ def dump(con: sqlite3.Connection) -> dict[str, list[dict]]:
         cols = state_columns.columns(con, t)
         rows = [dict(zip(cols, r, strict=True)) for r in con.execute(f"SELECT * FROM {t}")]
         for r in rows:
-            r |= {k: json.loads(r[k]) for k in ("rest", "body") if r.get(k)}
+            r |= {k: json.loads(r[k]) for k in ("rest",) if r.get(k)}
+            r.pop("body", None)
         out[t] = sorted(rows, key=lambda r: json.dumps(r, sort_keys=True))
+    return out
+
+
+def sifted(rows: dict[str, list[dict]]) -> dict[str, list[dict]]:
+    """As the cutover leaves them: what fits no column out of `rest`."""
+    for t in ("ships", "ship_pins"):
+        for r in rows[t]:
+            r["rest"] = state_shape.sift(t, r["rest"])[0]
+    return rows
+
+
+@pytest.fixture(autouse=True)
+def letters(monkeypatch) -> list[tuple]:
+    out: list[tuple] = []
+    monkeypatch.setattr(state_shape, "bury", lambda *a: out.append(a))
     return out
 
 
@@ -81,21 +91,27 @@ ODD = [("pid", "7"), ("land_wait_s", "soon"), ("land_wait_s", True), ("release_p
     SHIP, PLANNED, {"status": "ok", "result": RESULT}, *(changed(p, v) for p, v in ODD)],
     ids=["whole", "planned", "bare", *(f"{p}={v}"[:30] for p, v in ODD)])  # fmt: skip
 def test_the_writer_puts_what_the_triggers_put(doc: dict) -> None:
-    old, new = memory(), memory()
+    old, new = bf.memory(bf.UNCUT), bf.memory()
     fill(old, doc)
     put(new, doc)
-    assert dump(new) == dump(old)
+    want, got = sifted(dump(old)), dump(new)
+    if doc.get("quiet") is None and doc.get(
+        "quiet_settings"
+    ):  # the triggers had no column for it: 0018 refuses it in `rest`
+        want["ships"][0] |= {"quiet_min_idle_pct": 70.0, "quiet_max_s": 600.0}
+    assert got == want
 
 
 @pytest.mark.parametrize("pins", [PINS, {"tag": "v1", "repos": {}}, {"tag": 1, "repos": {"r": 3}},
                                   {"repos": None, "odd": 1}])  # fmt: skip
 def test_the_pins_writer_puts_what_the_triggers_put(pins: dict) -> None:
-    old, new = memory(), memory()
+    old, new = bf.memory(bf.UNCUT), bf.memory()
     old.execute("INSERT INTO ship_pins(result, run, body, at) VALUES (?, ?, ?, ?)",
                 (RESULT, "20261118T110640Z-c1", json.dumps(pins), AT))  # fmt: skip
     ship_columns.put_pins(new, pins, RESULT, AT)
-    assert dump(new) == dump(old)
-    assert ship_columns.read_pins(new) == ship_columns.read_pins(old)
+    assert dump(new) == sifted(dump(old))
+    ((_, got),) = ship_columns.read_pins(new)
+    assert got.get("tag") == (pins.get("tag") if isinstance(pins.get("tag"), str) else None)
 
 
 def whole(con: sqlite3.Connection) -> dict:
@@ -105,41 +121,35 @@ def whole(con: sqlite3.Connection) -> dict:
 
 
 def test_the_record_reads_back_whole_from_its_columns() -> None:
-    con = memory()
+    con = bf.memory()
     ship_columns.put_pins(con, PINS, RESULT, AT)
     put(con, SHIP)
-    want = {k: v for k, v in SHIP.items() if k != "schema"}
+    want = {k: v for k, v in SHIP.items() if k != "schema"} | {"repo": REPO}
     assert whole(con) == want
-    con.execute("UPDATE ships SET body = '{}'")  # the document is gone: the plan's S7
-    assert whole(con) == {**want, "repo": "goh"}  # its key, which state_paths gives a path
     assert dict(ship_columns.read_pins(con))[RESULT] == {k: v for k, v in PINS.items()
                                                          if k != "schema"}  # fmt: skip
 
 
-def test_a_table_with_no_document_is_written_and_read() -> None:
-    con = memory()
-    con.execute("DROP VIEW ships_v2")
-    con.execute("DROP VIEW IF EXISTS ships_v1")
-    for t in ("fill", "refill", "bad"):
-        con.execute(f"DROP TRIGGER ships_{t}")
-        con.execute(f"DROP TRIGGER ship_pins_{t}")
-    con.execute("ALTER TABLE ships DROP COLUMN body")
-    con.execute("ALTER TABLE ship_pins DROP COLUMN body")
-    ship_columns.put_pins(con, PINS, RESULT, AT)
-    put(con, SHIP)
-    assert whole(con)["steps"] == SHIP["steps"]
-    assert dict(ship_columns.read_pins(con))[RESULT]["repos"] == PINS["repos"]
-
-
 def test_a_planned_ship_has_every_key_it_was_planned_with() -> None:
     """A step's code indexes them: `res["steps"]` of a ship that has run none yet."""
-    con = memory()
+    con = bf.memory()
     put(con, PLANNED)
     assert whole(con) == {k: v for k, v in PLANNED.items() if k != "schema"}
 
 
+def test_a_planned_ship_keeps_the_quiet_wait_it_was_planned_with(letters) -> None:
+    """Its worker reads the wait from the row it was planned in (lib/ship_status.py quiet_wait)."""
+    con = bf.memory()
+    put(con, PLANNED)
+    assert whole(con)["quiet_settings"] == [70.0, 600.0] and "quiet" not in whole(con)
+    waited = {"quiet": True, "min_idle_pct": 70.0, "max_s": 600.0}
+    put(con, {**PLANNED, "quiet": waited})
+    assert whole(con)["quiet"] == waited and whole(con)["quiet_settings"] == [70.0, 600.0]
+    assert letters == []
+
+
 def test_a_null_a_reader_indexes_is_there() -> None:
-    con = memory()
+    con = bf.memory()
     ran = {"name": "push", "status": "ok", "load1_end": 1.0, "idle_pct": None}
     skipped = {"name": "x", "status": "skipped"}
     put(con, {**PLANNED, "grace_over": {"why": "w", "count": None}, "steps": [ran, skipped]})
@@ -148,7 +158,7 @@ def test_a_null_a_reader_indexes_is_there() -> None:
 
 
 def test_a_second_write_leaves_nothing_of_the_first() -> None:
-    con = memory()
+    con = bf.memory()
     put(con, SHIP)
     put(con, {**PLANNED, "status": "ok", "steps": [{"name": "push", "status": "ok"}]}, AT + 1)
     got = dump(con)
@@ -157,25 +167,8 @@ def test_a_second_write_leaves_nothing_of_the_first() -> None:
     assert got["ships"][0]["bisect_base"] is None and got["ships"][0]["at"] == AT + 1
 
 
-def test_a_row_nobody_filled_is_read_from_its_document_and_filled_by_its_next_write() -> None:
-    con = memory()
-    con.execute("DROP TRIGGER ships_fill")
-    fill(con, SHIP)
-    assert whole(con) == SHIP
-    put(con, whole(con))
-    assert dump(con)["ships"][0]["rest"] == {}
-
-
-def test_an_older_writer_s_row_replaces_this_one_s() -> None:
-    con, clean = memory(), memory()
-    put(con, SHIP)
-    fill(con, PLANNED)
-    fill(clean, PLANNED)
-    assert dump(con) == dump(clean)
-
-
 def test_where_names_the_rows() -> None:
-    con = memory()
+    con = bf.memory()
     put(con, SHIP)
     ship_columns.put(con, {**PLANNED, "result": "/s/other.json"}, "/s/other.json", "goh", AT)
     got = ship_columns.read(con, "x.status IN ('running', 'bisecting')")

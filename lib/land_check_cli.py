@@ -13,25 +13,24 @@ its pre-step (GOH.LANDCHECK): the land's structural guards over the committed ti
 by side -- the tree's `.gatesrc` GOH_LAND_CHECK_STEPS (each verbatim one of GOH_CI_STEPS; a
 `--no-pre` enqueue adds GOH_LAND_NOPRE_STEPS, its Rust coverage deferred, GOH.NOPREBATCH) and the
 guard tests: every rule test by its shape (`rule_tests.py`: a plain `test_every_*`/`test_no_*`
-function with no temporary tree, GOH.RULESLEFT), every function of a `# goh-reads-staged:` file,
-the functions a `# goh-land-guard: NAME...` line names (none named: the whole file), each kept
-while the suite's measurement costs it at most 10 s (the list once learned from past refusals is
-retired), run by the tree's own `tools/pytest.sh`, as its gate runs them (plain pytest for a tree
-with none; a run stopped before pytest is no verdict, by its reason), in up to three serial runs
-balanced by that cost; a job past its deadline (300 s stretched by the clamp measured on the
-check's own thread, `proc_deadline.stretch`, at most 1500 s) or a pytest with no verdict REFUSES by
-its name (GOH.CHECKGIVEUP300). A refusal is recorded red at enqueue naming its `guards` (`stage:
-check`); every red land's record gets `guard`/`guards` read from its log (failing test nodes, `✗
-[subgate]` names, failing gate steps), and a pre-step's refusal at enqueue, which files no land
-record, is recorded in goh.db's land_guards (`learn`); both feed `goh land-profile --guards`, never
-the check's choice of guards. `goh land --check` alone adds every judge the diff can break
-(GOH.LANDCHECK2, `judge_tests`): the pre-step's whole-tree judges (`tools/affected_tests.py --only
-judges`) and table judges, each under 120 s by measurement, within a 480 s budget in all
-(`land_judges.py`: table judges first, then the cheapest; the rest named by count and left to the
-pre-step, GOH.RULESLEFT), over 8 runs, plus the pre-step's diff coverage judge run alone (`--only
-diff-cov`); every job runs to its verdict, so one pass names every refusal. `goh land --check
---rules` runs the steps and the rule tests alone over 8 runs, with no judge (`land_check_cli.py`);
-the enqueue's own check runs the rule tests too. Invoked by `tools/landq.py`.
+function with no temporary tree, GOH.RULESLEFT), every function of a `# goh-reads-staged:` file, the
+functions a `# goh-land-guard: NAME...` line names (none named: the whole file), each kept while the
+suite's measurement costs it at most 10 s (the list once learned from past refusals is retired), run
+by the tree's own `tools/pytest.sh`, as its gate runs them (plain pytest for a tree with none; a run
+stopped before pytest is no verdict, by its reason), in up to three serial runs balanced by that
+cost; a job past its deadline (300 s stretched by the clamp measured on the check's own thread,
+`proc_deadline.stretch`, at most 1500 s) or a pytest with no verdict REFUSES by its name
+(GOH.CHECKGIVEUP300). A refusal is recorded red at enqueue naming its `guards` (`stage: check`);
+every red land's record gets `guard`/`guards` read from its log (failing test nodes, `✗ [subgate]`
+names, failing gate steps), which feeds `goh land-profile --guards`, never the check's choice of
+guards. `goh land --check` alone adds every judge the diff can break (GOH.LANDCHECK2,
+`judge_tests`): the pre-step's whole-tree judges (`tools/affected_tests.py --only judges`) and table
+judges, each under 120 s by measurement, within a 480 s budget in all (`land_judges.py`: table
+judges first, then the cheapest; the rest named by count and left to the pre-step, GOH.RULESLEFT),
+over 8 runs, plus the pre-step's diff coverage judge run alone (`--only diff-cov`); every job runs
+to its verdict, so one pass names every refusal. `goh land --check --rules` runs the steps and the
+rule tests alone over 8 runs, with no judge (`land_check_cli.py`); the enqueue's own check runs the
+rule tests too. Invoked by `tools/landq.py`.
 """
 
 from __future__ import annotations

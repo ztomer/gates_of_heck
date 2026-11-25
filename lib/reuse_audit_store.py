@@ -93,7 +93,7 @@ def get(name: str) -> dict | None:
 def put(rec: dict) -> None:
     """REC written whole as the record of its path (`rec["path"]`)."""
     with goh_db.refusable(), goh_db.transaction(db(), _named()) as con:
-        doc, own = state_paths.put(con, "reuse_audit", rec), {"path": str(rec["path"])}
+        doc, own = state_paths.put("reuse_audit", rec), {"path": str(rec["path"])}
         own["at"], key = time.time(), (own["path"],)
         if not body_columns.update(con, body_tables.AUDIT, doc, own, "path = ?", key):
             body_columns.write(con, body_tables.AUDIT, doc, own)
@@ -103,7 +103,7 @@ def shadow_add(row: dict) -> None:
     """One compared sample (`row["path"]`, `row["epoch"]`)."""
     with goh_db.refusable(), goh_db.transaction(db(), _named()) as con:
         own = {"epoch": float(row.get("epoch") or time.time()), "path": str(row.get("path") or "")}
-        body_columns.write(con, body_tables.SHADOW, state_paths.put(con, "reuse_shadow", row), own)
+        body_columns.write(con, body_tables.SHADOW, state_paths.put("reuse_shadow", row), own)
 
 
 def shadow() -> list[dict]:

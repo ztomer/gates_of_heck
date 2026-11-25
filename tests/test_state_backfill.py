@@ -4,6 +4,7 @@ and run again it is the same file as one clean run."""
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
 
 import body_tables
@@ -19,6 +20,12 @@ from _columns_fixture import copied, dump, killed, old_file
 def db(tmp_path: Path, monkeypatch) -> Path:
     monkeypatch.setenv("GOH_DB", str(tmp_path / "state" / "goh.db"))
     return old_file(tmp_path, 1200)
+
+
+@pytest.fixture(autouse=True)
+def an_uncut_file() -> Iterator[None]:
+    with goh_db.uncut():
+        yield
 
 
 def found() -> list[str]:
