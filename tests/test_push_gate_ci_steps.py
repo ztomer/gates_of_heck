@@ -14,19 +14,19 @@ import subprocess
 from pathlib import Path
 
 from _fast_git import fast_init
-from _gatesrc_kit import write_gatesrc
+from _gatesrc_kit import STRUCTURAL_RAN, write_gatesrc
 from test_push_gate_race import _push
 
 GAP = "without running the steps .gatesrc declares"
-STRUCTURAL = 'bash "$GOH_DIR/gates/structural.sh" --full\n'
-SKIPS = "#!/usr/bin/env bash\nset -euo pipefail\n" + STRUCTURAL
+SKIPS = "#!/usr/bin/env bash\nset -euo pipefail\n" + STRUCTURAL_RAN
 CALLS = (
     "#!/usr/bin/env bash\nset -euo pipefail\n"
-    'exec bash "$GOH_DIR/gates/local_ci.sh" "$(cd "$(dirname "$0")/.." && pwd)"\n'
+    + STRUCTURAL_RAN
+    + 'exec bash "$GOH_DIR/gates/local_ci.sh" "$(cd "$(dirname "$0")/.." && pwd)"\n'
 )
 ELSEWHERE = (
     "#!/usr/bin/env bash\nset -euo pipefail\n"
-    + STRUCTURAL
+    + STRUCTURAL_RAN
     + 'bash "$GOH_DIR/gates/local_ci.sh" --step true "$SCRATCH_FIXTURE"\n'
 )
 
@@ -45,8 +45,8 @@ def _consumer(tmp_path: Path, gate: str, steps: str | None) -> Path:
     repo = tmp_path / "repo"
     (repo / "tools").mkdir(parents=True)
     fixture = tmp_path / "fixture"
-    fixture.mkdir()
-    fast_init(fixture)
+    if "$SCRATCH_FIXTURE" in gate:
+        fast_init(fixture)
     (repo / "tools" / "gate.sh").write_text(gate.replace("$SCRATCH_FIXTURE", str(fixture)))
     (repo / "README.md").write_text("consumer\n")
     write_gatesrc(repo, "" if steps is None else f"GOH_CI_STEPS='{steps}'\n")
@@ -76,8 +76,10 @@ def test_a_gate_that_skips_its_declared_steps_names_the_gap_when_they_pass(tmp_p
 
 
 def test_a_gate_that_runs_its_declared_steps_runs_them_once_and_says_nothing(tmp_path):
-    code, text = _run(tmp_path, CALLS, '"$GOH_DIR/gates/structural.sh" --full:true')
+    ran = tmp_path / "ran"
+    code, text = _run(tmp_path, CALLS, f"echo once >>{ran}:true")
     assert code == 0 and GAP not in text, text
+    assert ran.read_text() == "once\n"
 
 
 def test_a_repo_that_declares_no_steps_is_not_asked_for_them(tmp_path):

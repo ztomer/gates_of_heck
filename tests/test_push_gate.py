@@ -12,15 +12,15 @@ import subprocess
 from pathlib import Path
 
 from _fast_git import fast_init
-from _gatesrc_kit import write_gatesrc
+from _gatesrc_kit import STRUCTURAL_RAN, write_gatesrc
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PUSH_GATE = REPO_ROOT / "gates" / "push_gate.sh"
 
 # A gate that reports the tree it ran in: the tracked marker, the ignored one, and its cwd.
-GATE = """#!/usr/bin/env bash
+GATE = f"""#!/usr/bin/env bash
 set -euo pipefail
-out="$GATE_REPORT"
+{STRUCTURAL_RAN}out="$GATE_REPORT"
 printf 'tracked=%s\\n' "$(cat marker.txt)" >> "$out"
 printf 'ignored=%s\\n' "$(cat local.cfg 2>/dev/null || echo ABSENT)" >> "$out"
 printf 'cwd=%s\\n' "$PWD" >> "$out"

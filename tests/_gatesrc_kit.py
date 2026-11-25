@@ -19,6 +19,16 @@ ROADMAP_NONE = "GOH_ROADMAP=none\n"
 _DECLARES = re.compile(r"^\s*(?:export\s+)?GOH_ROADMAP=", re.MULTILINE)
 
 
+# A fixture gate.sh line: the mark gates/structural.sh leaves for the scope ($1) and tree judged,
+# with nothing judged. A commit or push gate finding no mark runs the structural layer itself,
+# after the gate (2 to 4 s a commit or push); a test of anything else says it was run.
+# tests/test_commit_gate_structural.py is the test of the mark and of what runs without it.
+STRUCTURAL_RAN = (
+    '[ -z "${GOH_STRUCTURAL_MARK:-}" ] || '
+    'printf \'%s\\t%s\\n\' "$1" "$(git rev-parse --show-toplevel)" >>"$GOH_STRUCTURAL_MARK"\n'
+)
+
+
 def declared(body: str = "") -> str:
     """`body` with a roadmap declaration: as written when it has one, else with `none` appended."""
     if _DECLARES.search(body):
@@ -37,6 +47,21 @@ def write_gatesrc(repo: Path, body: str = "", encoding: str = "utf-8") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(declared(body), encoding=encoding)
     return path
+
+
+def write_message_hook(repo: Path, body: str = "") -> None:
+    """`repo` with goh's stock commit-msg as its ONLY hook, and a `.gatesrc` of `body`.
+
+    What install.sh leaves for a message check, less the pre-commit: a test of the message layer
+    committed through the whole structural gate too, 2 to 3 s a commit. install.sh writing the hook
+    is tests/test_install_atomic.py's; the pre-commit's gate tests/test_install.py's."""
+    hook = Path(repo) / ".githooks" / "commit-msg"
+    hook.parent.mkdir(exist_ok=True)
+    hook.write_bytes((Path(__file__).resolve().parents[1] / "hooks" / "commit-msg").read_bytes())
+    hook.chmod(0o755)
+    with (Path(repo) / ".git" / "config").open("a", encoding="utf-8") as config:
+        config.write("[core]\n\thooksPath = .githooks\n")
+    write_gatesrc(repo, body)
 
 
 def as_fixture(rel: str, content: str | bytes) -> str | bytes:

@@ -103,6 +103,9 @@ def test_every_full_push_gate_records_its_checks_and_leaves_no_timings_file(tmp_
     from test_push_gate import PUSH_GATE, _repo
 
     repo = _repo(tmp_path)
+    # A gate that leaves structural to the push: its steps are the checks the row must name.
+    (repo / "tools" / "gate.sh").write_text("#!/usr/bin/env bash\nexit 0\n")
+    git(repo, "commit", "-qam", "a gate with no structural layer")
     sha = git(repo, "rev-parse", "HEAD").strip()
     tmp = tmp_path / "tmp"
     tmp.mkdir()
