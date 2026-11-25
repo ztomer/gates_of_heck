@@ -272,7 +272,9 @@ def test_the_sweeps_estate_is_as_empty_as_its_tree(tmp_path: Path, monkeypatch) 
     real = REPO_ROOT / "checks" / "check_estate_corpus.py"
     r = subprocess.run(
         [sys.executable, str(real)], capture_output=True, text=True, check=False,
-        stdin=subprocess.DEVNULL, env=hermetic_env(GOH_ESTATE_HOME=given[0], TMPDIR=str(tmp_path)),
+        stdin=subprocess.DEVNULL, env=hermetic_env(
+            GOH_ESTATE_HOME=given[0], TMPDIR=str(tmp_path),
+            GITHUB_ACTIONS=""),  # a hosted run says NOT APPLICABLE (78); the sweep's answer is here
     )  # fmt: skip
     assert r.returncode == 1 and "a sweep of nothing" in r.stdout + r.stderr, r.stdout + r.stderr
     assert not list(tmp_path.glob("**/goh-estate.*")), "no corpus was copied"
