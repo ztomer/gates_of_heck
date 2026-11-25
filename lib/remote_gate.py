@@ -62,7 +62,7 @@ import xml.etree.ElementTree as ET
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
-from lib import durations, proc_deadline, remote_saved
+from lib import cache_rows, durations, proc_deadline, remote_saved
 from lib.remote_lane import (
     FALLBACK,
     LINUX_SAFE,
@@ -108,21 +108,20 @@ def shadowed(draw: Callable[[int], int] = random.randrange) -> bool:
 
 
 @contextlib.contextmanager
-def table(path: Path | None) -> Iterator[None]:
+def table(path: Path | None, kept: str = "") -> Iterator[None]:
     """The suite's real duration table for the call (the session popped it, tests/_schedule.py
-    `take`, the goh.db GOH_TEST_DURATIONS names), so the balance reads, and `measure` writes, the
-    rates beside it (lib/durations.py `duration_kv`)."""
-    was = os.environ.get("GOH_TEST_DURATIONS")
-    if path is not None:
-        os.environ["GOH_TEST_DURATIONS"] = str(path)
+    `take`, the goh.db GOH_TEST_DURATIONS names) and the real goh-cache.db beside it (KEPT, popped
+    by tests/_kept_store.py), so the balance reads, and `measure` writes, the rates beside it
+    (lib/durations.py `duration_kv`) and the tests' seconds (lib/cache_rows.py `rates`)."""
+    named = {"GOH_TEST_DURATIONS": str(path), cache_rows.KEPT_ENV: kept} if path else {}
+    named = {k: v for k, v in named.items() if v}
+    was = {k: os.environ.get(k) for k in named}
+    os.environ.update(named)
     try:
         yield
     finally:
-        if path is not None:
-            if was is None:
-                os.environ.pop("GOH_TEST_DURATIONS", None)
-            else:
-                os.environ["GOH_TEST_DURATIONS"] = was
+        for k, v in was.items():
+            os.environ.pop(k, None) if v is None else os.environ.update({k: v})
 
 
 def choose(root: Path, skip: set[str], durations: dict[str, float]) -> tuple[list[str], float]:

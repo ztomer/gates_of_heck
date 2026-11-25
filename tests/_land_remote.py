@@ -18,6 +18,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import _kept_store
 import _land_verdicts as lv
 import _schedule
 import _whole_run
@@ -52,7 +53,7 @@ def _decide(config) -> dict:
                           bool(_schedule._shard_spec), _table() is not None)  # fmt: skip
     if why:
         return _state["d"]
-    with remote_gate.table(_table()):
+    with remote_gate.table(_table(), _kept_store._REAL):
         files, mac_s = remote_gate.choose(ROOT, set(lv._plan(config)["skip"]),
                                           fast_tests.load())  # fmt: skip
         if not files:
@@ -110,7 +111,8 @@ def _run_local(files: list[str]) -> int:
     keys left this environment when tests/_land_verdicts.py loaded: it records nothing)."""
     workers = os.environ.get("GOH_GATE_WORKERS") or "4"
     argv = [sys.executable, "-m", "pytest", "-q", "-n", workers, *files]
-    return subprocess.run(argv, cwd=ROOT, stdin=subprocess.DEVNULL, check=False).returncode
+    env = {k: v for k, v in os.environ.items() if k != _kept_store.KEPT_ENV}  # it merges nothing
+    return subprocess.run(argv, cwd=ROOT, stdin=subprocess.DEVNULL, check=False, env=env).returncode
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -122,7 +124,7 @@ def pytest_sessionfinish(session) -> None:
     if session.exitstatus not in (pytest.ExitCode.OK, pytest.ExitCode.NO_TESTS_COLLECTED):
         remote_lane.cancel(share)  # red already: the worker's verdict is not needed
         return
-    with remote_gate.table(_table()):
+    with remote_gate.table(_table(), _kept_store._REAL):
         green, lines = remote_gate.finish(ROOT, share, d["shadow"], _mac, _run_local)
     _say(session.config, lines)
     # its figure beside the verdict record, for the land's log (tools/land.sh, GOH.REMOTESAVED)

@@ -5,6 +5,7 @@ disagree takes the module out of tests/linux_safe.txt by itself."""
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import ClassVar
@@ -205,6 +206,13 @@ def test_the_plugin_deselects_the_share_and_the_workers_verdict_decides(tree, mo
     monkeypatch.setattr(_schedule, "_shard_spec", None)  # nor a hosted CI shard (remote_gate.off)
     monkeypatch.setattr(rg, "start", lambda root, files, mac_s: _share(
         tree, planted, FAILED if planted else JUNIT))  # fmt: skip
+    real = (
+        tree / "goh-cache.db"
+    )  # the real home's, whose name the session took from its environment
+    monkeypatch.setattr(lr._kept_store, "_REAL", str(real))
+    monkeypatch.setattr(rg.cache_rows.db_core, "real_dirs", lambda *_: [tree.resolve()])
+    asked, choose = [], rg.choose
+    monkeypatch.setattr(rg, "choose", lambda *a: asked.append(rg.cache_rows.rates()) or choose(*a))
     config = _Config()
     _Config.hook.dropped = []
     items = [_Item("tests/test_a.py::test_one"), _Item("tests/test_c.py::test_x")]
@@ -214,6 +222,7 @@ def test_the_plugin_deselects_the_share_and_the_workers_verdict_decides(tree, mo
     lr.pytest_sessionfinish(session)
     assert session.exitstatus == status
     assert plan["other"] == 2  # passed by another verdict: never a full Mac record
+    assert asked == [(real, True)] and rg.cache_rows.KEPT_ENV not in os.environ
 
 
 class _Hung:
