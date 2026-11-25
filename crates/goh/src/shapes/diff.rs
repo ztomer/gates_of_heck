@@ -223,12 +223,15 @@ pub fn report(scanner: &str, t: &Tally, repos: usize) -> (bool, String) {
 /// beside the audit state `GOH_ESTATE_STATE` names). `None` when no registry exists.
 #[must_use]
 pub fn estate() -> Option<Vec<PathBuf>> {
-    let state = std::env::var_os("GOH_ESTATE_STATE")
-        .map(PathBuf::from)
-        .or_else(|| {
-            let root = goh_config::or_said(goh_config::state_root(&goh_config::process))?;
-            Some(root.join("estate_audit.json"))
-        })?;
+    estate_in(&goh_config::process)
+}
+
+/// [`estate`] of the environment `env` reads.
+pub(super) fn estate_in(env: goh_config::Env) -> Option<Vec<PathBuf>> {
+    let state = env("GOH_ESTATE_STATE").map(PathBuf::from).or_else(|| {
+        let root = goh_config::or_said(goh_config::state_root(env))?;
+        Some(root.join("estate_audit.json"))
+    })?;
     let text = std::fs::read_to_string(state.parent()?.join("installed_repos")).ok()?;
     Some(
         text.lines()

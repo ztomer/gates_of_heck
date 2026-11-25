@@ -394,3 +394,22 @@ fn a_worktree_and_its_main_checkout_are_one_repository_to_dedup() {
     diff::dedup_repos(&mut roots);
     assert_eq!(roots, vec![wt, other.path().to_path_buf()]);
 }
+
+#[test]
+fn the_estate_is_read_beside_the_audit_state_or_under_the_state_root() {
+    let repo = goh_testkit::repo_with(&[("a.txt", "x\n")]).unwrap_or_else(|e| panic!("{e}"));
+    let root = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+    let listed = format!("# the registry\n\n{}\n/gone\n", repo.path().display());
+    std::fs::write(root.path().join("installed_repos"), listed).unwrap_or_else(|e| panic!("{e}"));
+    let at = root.path().to_string_lossy().into_owned();
+    let state = format!("{at}/estate_audit.json");
+    let read = |key: &str, value: &str| diff::estate_in(&|k| (k == key).then(|| value.to_owned()));
+    let want = Some(vec![repo.path().to_path_buf()]);
+    assert_eq!(read("GOH_STATE_ROOT", &at), want);
+    assert_eq!(read("GOH_ESTATE_STATE", &state), want);
+    assert_eq!(
+        read("GOH_STATE_ROOT", "rel"),
+        None,
+        "an unusable root is no estate"
+    );
+}
