@@ -57,7 +57,6 @@ def made(home: str, monkeypatch, token: bool, runs: bool = False) -> sqlite3.Con
         con.execute("INSERT INTO meta VALUES ('paths', 'token')")
     write_all(con, home, runs)
     root = home + "/Projects"
-    monkeypatch.setattr(kv_rows.time, "time", lambda: 5.0)
     for name, whole in (("pin_push", PUSH), ("pin_sweeps", SWEEPS), ("wf_pin.pins", PINS)):
         doc = json.loads(
             json.dumps(whole).replace('"/r/', f'"{root}/').replace('"/s', f'"{home}/s')
@@ -65,6 +64,8 @@ def made(home: str, monkeypatch, token: bool, runs: bool = False) -> sqlite3.Con
         kept = kv_rows.put(con, name, state_paths.put(con, name, doc))
         con.execute("INSERT INTO kv(name, body, at) VALUES (?, ?, 5)",
                     (name, json.dumps(kept, sort_keys=True)))  # fmt: skip
+    for t in ("wf_pins", "pin_sweep_repos"):  # their writer's clock
+        con.execute(f"UPDATE {t} SET at = 5")
     log = [state_paths.column(con, f"{home}/.local/state/goh/{x}") for x in ("slot", "a.jsonl")]
     con.execute("INSERT INTO slot_owners VALUES (?, 0, 't', 1, NULL, 5)", log[:1])
     con.execute("INSERT INTO imports(store, source, sha256, rows, at) VALUES ('s', ?, '', 1, 5)",

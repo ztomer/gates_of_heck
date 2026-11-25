@@ -169,6 +169,41 @@ def test_the_check_and_the_backfill_know_the_contracts_file(letters, monkeypatch
                    "land_lists: 1 of its rows have no lands row"]  # fmt: skip
 
 
+CLEAR = [f"UPDATE {t} SET body = '{{}}'" for t in DOCUMENTS if t not in (
+    "selection_misses", "commit_gated")]  # fmt: skip
+GUARD = json.dumps({"sha": "gone", "item": "A.B"})
+
+
+@pytest.mark.parametrize(
+    ("n", "sql"),
+    [
+        *((n, None) for n in NUMBERS),  # every document still there
+        (17, "UPDATE lands SET rest = NULL"),
+        (17, "UPDATE lands SET rest = '{\"guards\": 3}'"),
+        (17, "INSERT INTO red_causes SELECT queue, run, 'x', 1, '{}' FROM lands"),
+        (17, f"INSERT INTO land_guards(queue, at, body) VALUES ('/q', 1, '{GUARD}')"),
+        (18, "UPDATE ship_pins SET rest = '{\"repos\": {}}'"),
+        (19, "UPDATE agent_spawns SET item = 'OLD.ITEM' WHERE n = 1"),
+        (20, "UPDATE flakes SET rest = NULL WHERE n = 1"),
+        (20, "UPDATE selection_misses SET rest = '{\"changed\": 1}' WHERE n = 1"),
+    ],
+)
+def test_a_contract_refuses_what_a_column_does_not_hold(n, sql) -> None:
+    con = shaped("documents")
+    write_all(con)
+    for clear in CLEAR if sql else ():
+        con.execute(clear)
+    contracts(con, *(k for k in NUMBERS if k < n and sql))
+    if sql and "red_causes" in sql:
+        con.execute("UPDATE lands SET red_class = NULL")
+    if sql:
+        con.execute(sql)
+    was = con.execute("SELECT name, sql FROM sqlite_master").fetchall()
+    with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed: n = 0"):
+        contracts(con, n)
+    assert con.execute("SELECT name, sql FROM sqlite_master").fetchall() == was
+
+
 def test_an_update_under_the_fence_keeps_what_the_columns_hold(letters) -> None:
     """The wide refill of reuse_audit must not fill the row from the {} this writer leaves."""
     con = shaped("documents")
