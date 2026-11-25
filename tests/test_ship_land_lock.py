@@ -14,14 +14,14 @@ import fcntl
 import os
 import subprocess
 import sys
-import time
+import threading
 from pathlib import Path
 
 import pytest
 import test_ship
 from conftest import REPO_ROOT, git
 from test_ship import SHIP, _env, _result
-from timing_bounds import GiveUp, patience
+from timing_bounds import patience
 
 shipped = test_ship.shipped  # the fixture, by assignment
 LAND = REPO_ROOT / "tools" / "land.sh"
@@ -48,13 +48,20 @@ def test_a_ship_waits_while_a_land_holds_the_lock(shipped: Path, tmp_path: Path)
         held.write(f"lane-x @ 0123abcd (pid {os.getpid()}, since 00:00:00)\n")
         held.flush()
         p = _popen(shipped, tmp_path)
-        give_up = GiveUp(10)  # long enough for an unqueued ship's push and release (~1 s here)
-        while not give_up.passed() and p.poll() is None and _remote_main(shipped) != head:
-            time.sleep(0.2)
+        assert p.stdout is not None
+        overdue = threading.Timer(patience(120), p.kill)  # neither waiting nor done: ends the read
+        overdue.start()
+        said: list[str] = []  # up to the wait it says, or its end: an unqueued ship runs to it
+        for line in p.stdout:
+            said.append(line)
+            if "waiting for the land lock" in line:
+                break
         pushed_while_held = _remote_main(shipped) == head
         steps_while_held = list(_result(tmp_path).get("steps", []))
         fcntl.flock(held, fcntl.LOCK_UN)
-    out, _ = p.communicate(timeout=patience(120))
+    out = "".join(said) + p.stdout.read()
+    p.wait(timeout=patience(120))
+    overdue.cancel()
     assert not pushed_while_held, f"the ship pushed while a land held the lock:\n{out}"
     assert steps_while_held == [], steps_while_held
     assert p.returncode == 0, out
