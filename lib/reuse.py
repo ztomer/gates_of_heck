@@ -75,12 +75,13 @@ import os
 import subprocess
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gate_identity  # lib/, beside this file: the one identity (GOH.VERDICTKEY)
+import read_sets  # ... what its suite records' tests read (GOH.READUNION)
 import reuse_store  # ... and where its records live (goh-cache.db, GOH.VERDICTDB)
 
 FORMAT = "reuse v1"
@@ -401,14 +402,16 @@ def carry_fields(repo: Path, tree: str, tools: str) -> dict[str, str]:
 def record_suite(repo: Path, tree: str, tools: str, passed: dict[str, bool], failed: set[str],
                  full: bool, by: str, carried: int = 0, instrumented: bool = False,
                  measured: dict[str, bool] | None = None, judged: set[str] | None = None,
-                 reads: dict[str, list[str]] | None = None) -> str:  # fmt: skip
+                 reads: Iterable[read_sets.Part] = ()) -> str:  # fmt: skip
     """Merge one run's verdicts on `tree` into its record: `passed` ({node: it ran the binary})
     joins the passes, a node in `failed` leaves them. `full`: this run judged every test of the tree
     itself (none carried, nothing failed), so an old pass it neither made nor found judged leaves
     (GOH.SHIPTREEFULL). A record stays full while no later run fails and every pass in it is
     `judged` (GOH.CARRYASFULL). `instrumented`: a run drove the INSTRUMENTED binary, a carrying land
     too; its WHOLE judgement did: `full_instrumented`, a ship's need (GOH.PROFKEYMISS). `measured`
-    ({node: ran the binary; True stays: GOH.PLAINBINMARK}): coverage carries it; `judged`: here."""
+    ({node: ran the binary; True stays: GOH.PLAINBINMARK}): coverage carries it; `judged`: here.
+    `reads`: the parts this run's passes come from (lib/read_sets.py), joined here with the record
+    it merges into, read once: a pass and its reads are the same write."""
     old = lookup(CARRY, fields := carry_fields(repo, tree, tools))[0] or {}
     mine = (set(old.get("judged") or ()) | (set(passed) if judged is None else judged)) - failed
     merged = {n: bool(b) for n, b in old.get("passed", {}).items()
@@ -420,7 +423,8 @@ def record_suite(repo: Path, tree: str, tools: str, passed: dict[str, bool], fai
     seen.update((n, bool(b) or seen.get(n, False)) for n, b in (measured or {}).items())
     extra = {"passed": merged, "full": whole, "carried": carried, "full_instrumented": inst,
              "instrumented": instrumented or bool(old.get("instrumented")),
-             "measured": seen, "judged": sorted(mine & set(merged)), "reads": reads}  # fmt: skip
+             "measured": seen, "judged": sorted(mine & set(merged)),
+             **read_sets.stamped(merged, [*reads, read_sets.part(old)])}  # fmt: skip
     out = record(CARRY, fields, "red" if failed else "green", by, extra)
     prune(CARRY)
     return out

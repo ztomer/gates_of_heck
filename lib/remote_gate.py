@@ -76,6 +76,7 @@ from lib.remote_lane import (
     measure,
     module,
     split,
+    unfinished,
 )
 
 SHADOW_EVERY = 10
@@ -165,14 +166,18 @@ def settle(root: Path, share: Share, clock: Callable[[], float] = time.time) -> 
     said = share.log.read_text(errors="replace")
     share.said = said
     got: dict[str, str] = {}
+    lost: list[str] = []
     try:
         text = share.junit.read_text() if rc in (0, 1) else ""
         got = kinds(root, text) if text else {}
         if got:
             measure(root, share, text, mac_end)
+            lost = unfinished(root, share.nodes, text, got, rc)
     except (OSError, ET.ParseError):
         got = {}
     _cleanup(share)
+    if lost:  # its workers died: what did not run there runs on the Mac (GOH.READUNION)
+        return "fallback: unfinished", got
     if rc == 1 and any(k == "failed" for k in got.values()):
         return "failed", got
     if rc == 0 and got:

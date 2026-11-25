@@ -17,6 +17,7 @@ from pathlib import Path
 
 import _same_tree
 import pytest
+from _reads_kit import seen
 from conftest import REPO_ROOT, commit_all, hermetic_env, write
 from test_verdict_carry import SESSION_CONFTEST, _gate
 
@@ -117,7 +118,7 @@ def test_a_plain_gate_records_what_it_judged_and_not_what_it_carried(
     """T0's three passes carry to T1 across a diff choosing test_s.py: T1's record names S (run
     here) as judged, and neither carried node."""
     reuse.record_suite(REPO_ROOT, "T0", "TOOLS", {S: False, OK: False, BIN: False}, set(), True,
-                       "gate")  # fmt: skip
+                       "gate", reads=seen((S, OK, BIN)))  # fmt: skip
     r = _gate(session, store, CHOSEN="test_s.py", TREE="T1")
     assert r.returncode == 0 and "2 deselected, carried from" in r.stdout, r.stdout
     assert _t1()["judged"] == [S], _t1()

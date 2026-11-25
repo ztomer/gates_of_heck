@@ -18,6 +18,7 @@ from pathlib import Path
 
 import _land_verdicts as lv
 import pytest
+from _reads_kit import seen
 from conftest import REPO_ROOT, commit_all, git, hermetic_env
 from timing_bounds import patience
 
@@ -163,7 +164,7 @@ def session(tmp_path: Path, store: Path) -> Path:
     (d / "conftest.py").write_text(SESSION_CONFTEST)
     (d / "test_s.py").write_text(TEST_S)
     (d / "test_t.py").write_text(TEST_T)
-    reuse.record_suite(REPO_ROOT, "T0", "TOOLS", T0, set(), True, "gate")
+    reuse.record_suite(REPO_ROOT, "T0", "TOOLS", T0, set(), True, "gate", reads=seen(T0))
     return d
 
 

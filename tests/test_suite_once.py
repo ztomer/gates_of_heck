@@ -23,6 +23,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _reads_kit import seen
 from conftest import REPO_ROOT, git
 from test_landq import env  # noqa: F401  -- the queue's fixture
 from timing_bounds import patience
@@ -66,7 +67,8 @@ def land(repo: Path, tmp_path: Path, monkeypatch):
     base = _commit(repo, "main", **files)
     tools = gate_identity.suite_tools()
     reuse.record_suite(repo, git(repo, "rev-parse", "HEAD^{tree}").strip(), tools,
-                       {A: False, B: False}, set(), True, "land gate")  # fmt: skip
+                       {A: False, B: False}, set(), True, "land gate",
+                       reads=seen((A, B)))  # fmt: skip
     tip = _commit(repo, "lane", **{"b.txt": "the lane's\n"})
     rec = tmp_path / "verdicts"
     rec.write_text(json.dumps({"identity": gate_identity.suite(repo), "sha": tip,

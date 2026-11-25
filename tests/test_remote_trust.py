@@ -79,6 +79,7 @@ def test_a_worker_failure_keeps_the_worker_s_passes_in_the_record(tree: Path):
 
     junit = (
         '<?xml version="1.0"?><testsuites><testsuite name="pytest" time="1">'
+        '<properties><property name="goh_collected" value="2"/></properties>'
         '<testcase classname="tests.test_a" name="test_x" time="0.1"/>'
         '<testcase classname="tests.test_b" name="test_x" time="0.1">'
         '<failure message="linux only"/></testcase></testsuite></testsuites>'

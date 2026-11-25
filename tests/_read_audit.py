@@ -16,29 +16,40 @@ past green. So every run that records (the land's keys) watches what its tests o
     it refuses each node whose file read a path the diff changed though the selector did not
     choose it (`refused`): it runs, and the line names the test and the path.
 
+Records made of several runs are joined in one place, lib/read_sets.py (GOH.READUNION): the lists
+united, a file any of whose passed tests nobody watched left out, and no older record believed.
 More than SPAN paths of one file are kept as their directories (two levels): coarser, so a carry
-refuses more, never less. What it cannot see: a read made by a CHILD process (a gate script a test
-runs; its own reads are the selector's closure of that script), and one a SESSION fixture made
-before the first test (the clone templates, tests/_tree_clone.py, built from declared copies).
+refuses more, never less. The Linux worker's shard watches too, and its junit carries back what
+each test read (tests/_shard_run.py). What it cannot see: a read made by a CHILD process (a gate
+script a test runs; its own reads are the selector's closure of that script), and one a SESSION
+fixture made before the first test (the clone templates, tests/_tree_clone.py, built from declared
+copies).
 Pinned by tests/test_read_audit.py.
 """
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import sys
 from pathlib import Path
 
+import _shard_run  # tests/: a remote shard's session, watched too, says what it collected
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+read_sets = importlib.import_module("lib.read_sets")  # the one join (GOH.READUNION)
+sys.path.pop(0)
+kept = read_sets.kept
 
 READS_PROP = "goh_reads"  # a teardown report's user property: the paths its file's test read
 WORKER_KEY = "goh_read_audit"  # the controller -> worker word: audit this worker's tests
-SPAN = 64  # more paths than this of one file are kept as their directories
 SKIP = (".git/", "target/", ".pytest_cache/")
 
 _state: dict[str, object] = {"on": False, "roots": (), "current": None, "hooked": False}
 _reads: dict[str, set[str]] = {}  # the controller's: test file -> what its tests read
+_blind: set[str] = set()  # ... and the files a test of which reported no reads
 
 
 def _note(event: str, args: tuple) -> None:
@@ -80,17 +91,6 @@ def start(root: str) -> None:
         _state["hooked"] = True
 
 
-def kept(paths: set[str]) -> list[str]:
-    """PATHS as stored: each path, or past SPAN their directories, two levels deep."""
-    if len(paths) <= SPAN:
-        return sorted(paths)
-    dirs = set()
-    for p in paths:
-        parts = p.rstrip("/").split("/")
-        dirs.add("/".join(parts[: min(2, len(parts) - 1)]) + "/" if len(parts) > 1 else p)
-    return sorted(dirs)
-
-
 def hits(read: str, path: str) -> bool:
     """Whether a kept READ covers PATH: the file itself, or a directory above it."""
     return path == read or (read.endswith("/") and path.startswith(read))
@@ -114,68 +114,55 @@ def refused(nodes: set[str], reads: dict[str, list[str]],
 
 
 def collected() -> dict[str, list[str]]:
-    """{test file: what it read, as stored} for every file the controller heard from."""
-    return {f: kept(paths) for f, paths in _reads.items()}
+    """{test file: what it read, as stored} for every file the controller heard from; a file one of
+    whose tests reported no reads at all was not watched, and is left out."""
+    return {f: kept(paths) for f, paths in _reads.items() if f not in _blind}
 
 
-def merged(passed, own: dict, kept_from: dict | None = None,
-           old: dict | None = None) -> dict[str, list[str]]:  # fmt: skip
-    """{test file: what it read} for the files of PASSED and of OLD's passes (the tree's record
-    before this run), joined per file: what this run's tests read (OWN, `collected`), what the
-    source records of the nodes it skipped kept (KEPT_FROM), and OLD's. A file none of them names
-    stays out: it was never watched, and no carry takes it (`refused`)."""
-    old = old or {}
-    files = {n.split("::")[0] for n in (*passed, *(old.get("passed") or {}))}
-    out: dict[str, set[str]] = {}
-    for src in (old.get("reads") or {}, kept_from or {}, own):
-        for f, paths in src.items():
-            if f in files:
-                out.setdefault(f, set()).update(paths)
-    return {f: sorted(p) for f, p in sorted(out.items())}
+def own(passed) -> dict[str, object]:
+    """The `reads` a land record keeps of this process's own PASSED."""
+    return read_sets.stamped(passed, parts(passed, {}))
 
 
-def ours(passed, kept_from: dict | None = None, old: dict | None = None) -> dict[str, list[str]]:
-    """`merged` with this process's own watched reads (`collected`)."""
-    return merged(passed, collected(), kept_from, old)
+def parts(ran, plan: dict) -> list[read_sets.Part]:
+    """What this run's record is joined from (lib/read_sets.py): the nodes it RAN, with what they
+    were seen reading, and each record PLAN skipped nodes by, with what that record kept."""
+    return [(ran, collected()), *plan.get("reads", ())]
 
 
-def of_record(path: str) -> dict[str, list[str]]:
-    """The `reads` of the land record at PATH; {} for none."""
+def of_record(path: str, nodes: set[str]) -> read_sets.Part:
+    """NODES, skipped by the land record at PATH, and the reads it kept; none for no record."""
     try:
         rec = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return {}
-    reads = rec.get("reads") if isinstance(rec, dict) else None
-    return reads if isinstance(reads, dict) else {}
+        rec = None
+    return nodes, read_sets.of(rec)
 
 
 def keep(plan: dict, rec: dict, nodes: set[str]) -> None:
-    """The reads REC kept for the files of NODES, which a carry skips, into PLAN's `reads`."""
-    reads = rec.get("reads") if isinstance(rec.get("reads"), dict) else {}
-    for f in {n.split("::")[0] for n in nodes} & set(reads):
-        plan.setdefault("reads", {}).setdefault(f, reads[f])
+    """REC's reads of NODES, which a carry skips: a part of PLAN's own, so no other run's reads of
+    the same file stand in for them (GOH.READUNION)."""
+    plan.setdefault("reads", []).append((nodes, read_sets.of(rec)))
 
 
 def undeclared(lines: list[str], rec: dict, nodes: set[str], changed: list[str],
                sha: str) -> set[str]:  # fmt: skip
     """The NODES the selector would carry from REC whose test file read a changed path no rule of
     the selector declares, or was never watched (`refused`): they run, and a line in LINES says
-    why. A record from before the audit (no `reads` at all) refuses none, for its one-day TTL."""
-    reads = rec.get("reads")
-    if not isinstance(reads, dict) or not nodes:
-        return set()
-    out = refused(nodes, reads, changed)
+    why. A record of an older read set (lib/read_sets.py `of`) kept none to believe: all refused."""
+    out = refused(nodes, read_sets.of(rec), changed)
     if out:
         hit = next(((f, p) for f, p in sorted(out.values()) if p), None)
         why = (f"{hit[0]} read {hit[1]}, which the diff changes and no rule of the selector "
-               "declares" if hit else "their files' reads were never watched")  # fmt: skip
+               "declares" if hit else "their files' reads were never watched, or an older goh "
+               "kept them")  # fmt: skip
         lines.append(f"land verdicts: {len(out)} not carried from {sha[:8]}: {why}")
     return set(out)
 
 
 def pytest_configure(config) -> None:
     worker = getattr(config, "workerinput", None)
-    if worker is not None and worker.get(WORKER_KEY):
+    if _shard_run.on(config) or (worker is not None and worker.get(WORKER_KEY)):
         start(str(config.rootpath))
 
 
@@ -200,7 +187,7 @@ def pytest_runtest_setup(item) -> None:
 def pytest_runtest_makereport(item, call):
     if _state["on"] and call.when == "teardown" and _state["current"] is not None:
         got, _state["current"] = _state["current"], None
-        item.user_properties.append((READS_PROP, sorted(got)))  # type: ignore[arg-type]
+        item.user_properties.append((READS_PROP, json.dumps(sorted(got))))  # type: ignore[arg-type]
     yield
 
 
@@ -208,8 +195,7 @@ def pytest_runtest_logreport(report) -> None:
     if not _state["on"] or report.when != "teardown":
         return
     f = report.nodeid.split("::")[0]
-    for name, value in report.user_properties:
-        if name == READS_PROP:
-            _reads.setdefault(f, set()).update(value)
-            return
-    _reads.setdefault(f, set())
+    got = [value for name, value in report.user_properties if name == READS_PROP]
+    if not got:
+        _blind.add(f)
+    _reads.setdefault(f, set()).update(*map(json.loads, got))

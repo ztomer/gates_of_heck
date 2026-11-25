@@ -21,6 +21,7 @@ from typing import ClassVar
 import _carry_shadow as cs
 import _tree_graph
 import pytest
+from _reads_kit import seen
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
@@ -151,7 +152,7 @@ def gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     (d / "conftest.py").write_text(SESSION_CONFTEST)
     (d / "test_s.py").write_text(TEST_S)
     (d / "test_t.py").write_text(TEST_T)
-    reuse.record_suite(REPO_ROOT, "T0", "TOOLS", T0, set(), True, "gate")
+    reuse.record_suite(REPO_ROOT, "T0", "TOOLS", T0, set(), True, "gate", reads=seen(T0))
     record = d / "kept.json"
     record.write_text(json.dumps({"identity": "OTHER", "passed": {}, "mode": "gate"}))
 

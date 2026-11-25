@@ -241,7 +241,7 @@ def pytest_sessionfinish(session) -> None:
         tmp, was = Path(f"{path}.{os.getpid()}.tmp"), _state.get("identity")
         # Its identity is the tree the run STARTED and ENDED on (GOH.SUITEONCE, GOH.LANDSNAPSHOT).
         rec = {"identity": was if was == identity() else None, "sha": _state.get("sha"),
-               "passed": passed, "reads": _read_audit.ours(passed)}  # fmt: skip
+               "passed": passed, **_read_audit.own(passed)}  # fmt: skip
         tmp.write_text(json.dumps(rec))
         tmp.replace(path)  # atomic: a reader sees a whole record or the old one
     if (shadow := (_state.get("plan") or {}).get("shadow")) and _on(REUSE) != os.devnull:
@@ -275,7 +275,7 @@ def _record_store(session) -> None:
         by = _same_tree.by(_on(REUSE), _on(RECORD), _whole(session.config))  # what ran
         reuse.record_suite(REPO_ROOT, me[0], me[1], passed, set(_failed), full, by, other,
                            instrumented(), measured, judged,
-                           _read_audit.ours(passed, plan.get("reads"), old))  # fmt: skip
+                           _read_audit.parts(_called - _failed, plan))  # fmt: skip
 
 
 def _shadows() -> None:
@@ -341,7 +341,7 @@ def _plan(config) -> dict:
     if same:  # each node one use of the audited `test` path, decided here for every worker
         same = _land_audit.audited(plan, same, identity(), str(config.rootpath), _store_or_none())
     plan["skipped"] = {n: b for n, b in _land_trees.file_passed(path).items() if n in same}
-    plan["reads"] = _read_audit.of_record(path)  # what the skipped files read, kept on
+    plan["reads"] = [_read_audit.of_record(path, same)]  # what the skipped files read, kept on
     plan["judged"] = set(plan["skipped"])  # the pre-step's passes of THIS tree (its identity)
     plan["shadow"] = _carry_shadow.Shadow(plan, path)  # F against what ran (GOH.CARRYSHADOW)
     if path:

@@ -258,6 +258,7 @@ def run_remote(c: dict[str, str], tag: str, tests: list[str], workers: int, slot
               f"-o cache_dir={w}/cache/pytest-{slot} -n {workers} --junitxml={w}/out/{rid}.xml "
               f"@{w}/out/{rid}.args")  # fmt: skip
     run = ["docker", "exec", "-e", f"GOH_DIR={t}", "-e", f"RUSTC_WRAPPER={t}/lib/goh-rustc",
+           "-e", "GATES_OF_HECK_REMOTE_SHARD=1",  # tests/_shard_run.py: what its junit must tell
            c["container"], "bash", "-c", pytest]  # fmt: skip
     # The registry needs the network the worker has not: once per Cargo.lock, a networked
     # short-lived container with the same limits fills $HOME/.cargo (`cargo fetch --locked`).

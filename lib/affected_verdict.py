@@ -363,11 +363,16 @@ def merge_records(record: Path, first: Path) -> None:
     # once failed both reads, and the judges' record was dropped with it (GOH.TIMINGDETECT's land).
     a, b = read(first), read(record)
     if a and b and (a.get("identity"), a.get("sha")) == (b.get("identity"), b.get("sha")):
-        b["passed"] = {**a.get("passed", {}), **b.get("passed", {})}
-        if "reads" in a or "reads" in b:  # what each file read (tests/_read_audit.py)
-            b["reads"] = {**(a.get("reads") or {}), **(b.get("reads") or {})}
+        sets = _lib("read_sets")  # what each file read, joined one way (GOH.READUNION)
+        passed = {**a.get("passed", {}), **b.get("passed", {})}
+        joined = sets.stamped(passed, [sets.part(a), sets.part(b)])
         if "remote" in a or "remote" in b:  # the worker's passes (GOH.REMOTETRUST), never dropped
-            b["remote"] = sorted({*a.get("remote", []), *b.get("remote", [])} - set(b["passed"]))
+            far = sorted({*a.get("remote", []), *b.get("remote", [])} - set(passed))
+            joined[sets.REMOTE] = sets.joined(
+                far, [sets.part(r, sets.REMOTE, "remote") for r in (a, b)]
+            )
+            joined["remote"] = far
+        b.update(joined, passed=passed)
         record.write_text(json.dumps(b))
     elif a and not record.is_file():
         first.replace(record)

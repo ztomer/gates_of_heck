@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _reads_kit import seen
 from conftest import REPO_ROOT
 from test_verdict_carry import SESSION_CONFTEST, _gate
 
@@ -50,7 +51,7 @@ def test_a_gate_on_its_own_record_of_carried_passes_is_no_full_verdict(
     (d / "test_s.py").write_text("def test_pass():\n    pass\n")
     (d / "test_t.py").write_text("def test_ok():\n    pass\n\ndef test_also():\n    pass\n")
     reuse.record_suite(REPO_ROOT, "T0", "TOOLS", dict.fromkeys((S, OK, B), False), set(), True,
-                       "gate")  # fmt: skip
+                       "gate", reads=seen((S, OK, B)))  # fmt: skip
     first = _gate(d, store, CHOSEN="test_s.py", SRC="T0")  # T1's gate: S run, OK and B carried
     assert first.returncode == 0 and "2 deselected, carried from" in first.stdout, first.stdout
     assert _t1()["judged"] == [S] and not _t1()["full"], _t1()

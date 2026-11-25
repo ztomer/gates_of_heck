@@ -44,6 +44,7 @@ from typing import NamedTuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pre_reuse  # lib/, beside this file: the one reader of the tree's selection
+import read_sets
 
 RECORD, REUSE = "GOH_LAND_VERDICTS_RECORD", "GOH_LAND_VERDICTS_REUSE"  # tests/_land_verdicts.py
 ENQUEUE = "GOH_LAND_PRE_ONLY"  # the enqueue's pre-step (tools/land.sh)
@@ -158,11 +159,9 @@ def settle(record: Path, owed: Path | None, left: list[str]) -> bool:
         mine, its = ((r.get("identity"), r.get("sha")) for r in (rec, got))
         if mine[0] is None or mine != its:
             return False
-        rec["passed"] = {**rec["passed"], **got["passed"]}
-        reads = rec.get("reads") or {}
-        for f, paths in (got.get("reads") or {}).items():
-            reads[f] = sorted({*reads.get(f, ()), *paths})
-        rec["reads"] = reads
+        passed = {**rec["passed"], **got["passed"]}
+        rec.update(read_sets.stamped(passed, [read_sets.part(rec), read_sets.part(got)]))
+        rec["passed"] = passed
     rec[SETTLED] = sorted({*(rec.get(SETTLED) or ()), *left})
     tmp = Path(f"{record}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(rec), encoding="utf-8")

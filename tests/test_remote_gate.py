@@ -20,6 +20,7 @@ from lib import durations, remote_gate as rg, remote_lane as rl
 
 JUNIT = (
     '<?xml version="1.0"?><testsuites><testsuite name="pytest" time="1">'
+    '<properties><property name="goh_collected" value="2"/></properties>'
     '<testcase classname="tests.test_a" name="test_one" time="0.1"/>'
     '<testcase classname="tests.test_b" name="test_two" time="0.1"/>'
     "</testsuite></testsuites>"

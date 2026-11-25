@@ -19,6 +19,7 @@ TREE_READS = ("tests/linux_safe.txt", "tests/mac_skips.txt")  # goh's own record
 
 JUNIT = (
     '<?xml version="1.0"?><testsuites><testsuite name="pytest">'
+    '<properties><property name="goh_collected" value="3"/></properties>'
     '<testcase classname="tests.test_a" name="test_one" time="0.1"/>'
     '<testcase classname="tests.test_a.TestC" name="test_two[x]" time="0.1"/>'
     '<testcase classname="tests.test_a" name="test_skip"><skipped message="no tool"/></testcase>'

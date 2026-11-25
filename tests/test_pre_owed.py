@@ -26,6 +26,7 @@ import affected_verdict as av
 import gate_identity
 import pre_owed
 import pre_reuse
+import read_sets
 import reuse
 import reuse_audit
 
@@ -34,6 +35,7 @@ from lib import declared_reads, step_timings
 A, B, BIN = "tests/test_a.py::test_a", "tests/test_b.py::test_b", "tests/test_bin.py::test_bin"
 GONE = "tests/test_b.py::test_old[x]"
 BASE, TIP = "b" * 40, "c" * 40
+VERSION = read_sets.VERSION
 
 
 class Table:  # tools/affected_tests.py in small: `<x>.txt` chooses tests/test_<x>.py
@@ -55,6 +57,7 @@ class Land:
             (tmp_path / "tests" / f"test_{name}.py").touch()
         self.here, self.changed = "ID", ["b.txt"]
         self.main = {"verdict": "green", "passed": {A: False, B: False},
+                     "reads_v": VERSION,
                      "reads": {"tests/test_a.py": ["lib/a.txt"], "tests/test_b.py": [],
                                "tests/test_bin.py": []}}  # fmt: skip
         self.own: dict = {}
@@ -102,7 +105,7 @@ class Land:
         got = dict.fromkeys(nodes if self.passes is None else self.passes, False)
         Path(words[pre_owed.RECORD]).write_text(json.dumps(
             {"identity": self.owed_id, "sha": TIP, "passed": got,
-             "reads": {"tests/test_a.py": ["lib/a.txt"]}}))  # fmt: skip
+             "reads_v": VERSION, "reads": {"tests/test_a.py": ["lib/a.txt"]}}))  # fmt: skip
         return self.rc
 
     def pre_step(self) -> int:

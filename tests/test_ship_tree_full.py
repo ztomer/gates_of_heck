@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _reads_kit import seen
 from conftest import REPO_ROOT, hermetic_env
 from test_verdict_carry import SESSION_CONFTEST, _gate
 
@@ -90,7 +91,7 @@ def test_an_idle_full_run_then_the_ships_run_on_one_tree_leave_it_full(
     here = f"test_t.py::test_here[{push.resolve()}]"
     # T0's gate ran in the push checkout; T1's land does too, and the full runs in two others.
     reuse.record_suite(REPO_ROOT, "T0", "TOOLS", dict.fromkeys((S, OK, here), False), set(), True,
-                       "gate")  # fmt: skip
+                       "gate", reads=seen((S, OK, here)))  # fmt: skip
     land = _gate(push, store, CHOSEN="test_s.py")  # T1's land: S runs, OK and `here` carried
     assert land.returncode == 0 and "2 deselected, carried from" in land.stdout, land.stdout
     assert here in _t1()["passed"] and _t1()["judged"] == [S], _t1()

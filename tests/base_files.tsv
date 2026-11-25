@@ -94,6 +94,7 @@ lib/proc_deadline.py	base-code
 lib/proc_table.py	base-code
 lib/prune_kept.py	base-code
 lib/queue_read.py	base-code
+lib/read_sets.py	base-code
 lib/remote_lane.py	base-code
 lib/remote_rates.py	base-code
 lib/remote_saved.py	base-code
@@ -155,6 +156,7 @@ tests/_same_tree.py	base-code
 tests/_schedule.py	base-code
 tests/_setup_work.py	base-code
 tests/_shard.py	base-code
+tests/_shard_run.py	base-code
 tests/_tree_clone.py	base-code
 tests/_tree_guard.py	base-code
 tests/_tree_pool.py	base-code

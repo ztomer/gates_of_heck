@@ -24,6 +24,7 @@ from pathlib import Path
 
 import _cov_claims
 import pytest
+from _reads_kit import seen
 from conftest import REPO_ROOT, git, hermetic_env
 from test_suite_once import A, B, land  # noqa: F401  -- the SUITEONCE fixture
 from test_verdict_carry import SESSION_CONFTEST, _gate
@@ -68,7 +69,7 @@ def session(tmp_path: Path, store: Path) -> Path:
     (d / "test_s.py").write_text(TEST_S)
     (d / "test_t.py").write_text(TEST_T)
     reuse.record_suite(REPO_ROOT, "T0", "TOOLS", T0, set(), True, "idle", instrumented=True,
-                       measured=dict(T0))  # fmt: skip
+                       measured=dict(T0), reads=seen(T0))  # fmt: skip
     return d
 
 
@@ -130,7 +131,8 @@ def test_a_reused_pre_step_verdict_records_the_measurement_it_carries(land, monk
     tools = gate_identity.suite_tools()
     main_tree = git(repo, "rev-parse", f"{base}^{{tree}}").strip()
     reuse.record_suite(repo, main_tree, tools, {A: False, B: False}, set(), True, "idle",
-                       instrumented=True, measured={A: False, B: False})  # fmt: skip
+                       instrumented=True, measured={A: False, B: False},
+                       reads=seen((A, B)))  # fmt: skip
     ok, why, _ = pre_reuse.suite(repo, rec, base)
     assert ok, why
     got, _ = reuse.lookup_suite(repo, git(repo, "rev-parse", "HEAD^{tree}").strip(), tools)

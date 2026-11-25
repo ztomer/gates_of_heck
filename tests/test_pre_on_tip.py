@@ -26,6 +26,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _reads_kit import seen
 from conftest import REPO_ROOT, git, hermetic_env
 from env_probe import print_safe
 from test_landq import env, landq, recorded  # noqa: F401  -- `env` is the queue's fixture
@@ -115,7 +116,8 @@ def kit(repo: Path, tmp_path: Path, env: dict, monkeypatch) -> dict:  # noqa: F8
 def _main_record(repo: Path) -> None:
     """Main's tree passed every test, in the store: the invariant every land's gate keeps."""
     tree = git(repo, "rev-parse", "HEAD^{tree}").strip()
-    reuse.record_suite(repo, tree, gate_identity.suite_tools(), NODES, set(), True, "land gate")
+    reuse.record_suite(repo, tree, gate_identity.suite_tools(), NODES, set(), True, "land gate",
+                       reads=seen(NODES))  # fmt: skip
 
 
 def _enqueue(env: dict, wt: Path, item: str) -> None:  # noqa: F811
@@ -233,7 +235,8 @@ def test_the_gates_suite_carries_from_each_source_beside_its_record(tmp_path: Pa
     probe = (
         "import os, sys; sys.path.insert(0, sys.argv[1]); import reuse; "
         "reuse.record_suite(sys.argv[2], 'T5', 'TOOLS', "
-        "{'test_u.py::test_s': False, 'test_u.py::test_t': False}, set(), True, 'pre-land')"
+        "dict.fromkeys(nodes := ['test_u.py::test_s', 'test_u.py::test_t'], False), set(), True, "
+        "'pre-land', reads=[(nodes, {'test_u.py': []})])"
     )
     subprocess.run([sys.executable, "-c", probe, str(REPO_ROOT / "lib"), str(REPO_ROOT)],
                    env=run_env, check=True, stdin=subprocess.DEVNULL,

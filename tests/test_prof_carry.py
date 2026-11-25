@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _reads_kit import seen
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -138,7 +139,7 @@ def test_off_the_coverage_run_reuses_nothing(tmp_path: Path, store: Path, monkey
     (d / "test_t.py").write_text("def test_ok():\n    pass\n")
     node = {"test_t.py::test_ok": False}
     reuse.record_suite(REPO_ROOT, "T0", "TOOLS", node, set(), True, "idle", instrumented=True,
-                       measured=node)  # fmt: skip
+                       measured=node, reads=seen(node))  # fmt: skip
     cov = {"GOH_COVERAGE_BIN_DIR": str(tmp_path), "LLVM_PROFILE_FILE": str(tmp_path / "g.profraw")}
     on = _gate(d, store, **cov)
     assert "1 deselected, carried from" in on.stdout, on.stdout

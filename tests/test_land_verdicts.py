@@ -266,6 +266,7 @@ def test_the_pre_steps_passes_are_recorded_and_the_gates_suite_skips_them(tmp_pa
     _session(tmp_path, *WORKERS, GOH_LAND_VERDICTS_RECORD=str(rec))
     got = json.loads(rec.read_text())
     assert got.pop("sha")  # the commit the pre-step judged: the gate carries from its tree
+    assert got.pop("reads_v") == 2  # a joined list, believed (lib/read_sets.py)
     assert set(got.pop("reads")) == {"test_s.py"}  # what it read, watched (GOH.READKEYVERDICT)
     assert got == {
         "identity": "ID",

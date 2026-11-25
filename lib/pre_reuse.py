@@ -352,7 +352,7 @@ def suite(root: Path, record: Path, base: str) -> tuple[bool, str, str]:
     if left := found.left:
         more = f" (+{len(left) - 1} more)" if len(left) > 1 else ""
         return False, f"{left[0]}{more} passed on main is neither judged here nor carried", ""
-    reuse, lv = _kit("reuse", "lib"), _kit("_land_verdicts", "tests")
+    reuse = _kit("reuse", "lib")
     rec, got, own, carried, tools = found.rec, found.got, found.own, found.carried, found.tools
     fields = reuse.carry_fields(root, found.main_tree, tools)
     if (use := _kit("reuse_audit", "lib").use("carry", fields)) != "reuse":
@@ -362,11 +362,13 @@ def suite(root: Path, record: Path, base: str) -> tuple[bool, str, str]:
     seen = got.get("measured") if isinstance(got.get("measured"), dict) else {}
     seen = {**seen, **(own.get("measured") if isinstance(own.get("measured"), dict) else {})}
     measured = dict.fromkeys((n for n in carried if seen.get(n) is False), False)
-    kept = {**(got.get("reads") or {}), **(rec.get("reads") or {})}  # GOH.READKEYVERDICT
+    sets = _kit("read_sets", "lib")  # each node's reads from the run that answers it
+    mains = found.carried - set(own.get("passed") or ()) - {*rec["passed"], *rec.get("remote", ())}
     reuse.record_suite(root, found.tree, tools, found.union, set(), False,
                        "land gate (suite reused)", len(carried), measured=measured,
                        judged=set(rec["passed"]),
-                       reads=lv._read_audit.merged(found.union, {}, kept, own))  # fmt: skip
+                       reads=[sets.part(rec), sets.part(rec, sets.REMOTE, "remote"),
+                              (mains, sets.of(got)), sets.part(own)])  # fmt: skip
     vid = f"{str(rec.get('sha') or '')[:12]}:{found.here[:12]}"
     return True, (f"the pre-step judged this tree ({len(rec['passed'])} tests), main "
                   f"{base[:8]}'s record carries {len(carried)}"), vid  # fmt: skip

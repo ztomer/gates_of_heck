@@ -51,7 +51,7 @@ def test_a_listed_directory_covers_every_path_under_it() -> None:
 
 
 def test_past_its_span_a_files_reads_are_kept_as_their_directories_coarser_never_finer() -> None:
-    many = {f"lib/deep/f{i}.py" for i in range(ra.SPAN + 1)} | {"README.md"}
+    many = {f"lib/deep/f{i}.py" for i in range(ra.read_sets.SPAN + 1)} | {"README.md"}
     kept = ra.kept(many)
     assert kept == ["README.md", "lib/deep/"], kept
     assert all(any(ra.hits(k, p) for k in kept) for p in many)  # every read still covered
@@ -78,12 +78,6 @@ def test_the_hook_notes_a_file_or_a_listing_under_the_root_and_no_fd_relative_na
     assert got == {"lib/a.txt", "lib/"}, got
 
 
-def test_a_tree_record_joins_each_files_reads_and_drops_the_files_it_no_longer_passes() -> None:
-    old = {"passed": {"t_a.py::x": False, "t_b.py::y": False}, "reads": {"t_a.py": ["a"]}}
-    got = ra.merged({"t_a.py::x2": False}, {"t_a.py": ["a2"], "t_c.py": ["c"]}, {}, old)
-    assert got == {"t_a.py": ["a", "a2"]}, got  # t_c.py passed nothing; t_b.py was never watched
-
-
 def test_a_recording_run_carries_and_a_run_without_a_record_does_not(monkeypatch) -> None:
     monkeypatch.delenv("GOH_LAND_VERDICTS_REUSE", raising=False)
     assert av.carrying("/x/rec.json") == ["env", f"GOH_LAND_VERDICTS_REUSE={os.devnull}"]
@@ -102,7 +96,7 @@ sys.path.insert(0, {str(REPO_ROOT / "lib")!r})
 import _land_verdicts as lv
 lv.identity = lambda root=None: "ID-" + os.environ.get("TREE", "T0")
 lv.here = lambda root=None: (os.environ.get("TREE", "T0"), "TOOLS")
-lv.trees = lambda root, pre: [("c0" * 20, "T0")]
+lv.trees = lambda root, pre: [("c0" * 20, t) for t in os.environ.get("FROM", "T0").split()]
 lv.diff = lambda root, sha: os.environ.get("DIFF", "").split()
 lv.choose = lambda root, changed, *a, **k: (set(os.environ.get("CHOSEN", "").split()), "")
 
@@ -133,17 +127,20 @@ def session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return d
 
 
-def _pre_step(d: Path, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
-    """The pre-step's suite: its record, and the REUSE word `carrying` gives a recording run."""
-    got = av.carrying(str(d / "rec.json"))
-    words = dict([got[1].split("=", 1)]) if got else {}
+def _suite(d: Path, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-rA", *args],
         cwd=d, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=False,
         env=hermetic_env(drop_git=True, GOH_REUSE_DIR=os.environ["GOH_REUSE_DIR"],
-                         GOH_LOOPCTL=os.environ["GOH_LOOPCTL"],
-                         GOH_LAND_VERDICTS_RECORD=str(d / "rec.json"), **words, **env),
+                         GOH_LOOPCTL=os.environ["GOH_LOOPCTL"], **env),
     )  # fmt: skip
+
+
+def _pre_step(d: Path, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
+    """The pre-step's suite: its record, and the REUSE word `carrying` gives a recording run."""
+    got = av.carrying(str(d / "rec.json"))
+    words = dict([got[1].split("=", 1)]) if got else {}
+    return _suite(d, *args, GOH_LAND_VERDICTS_RECORD=str(d / "rec.json"), **words, **env)
 
 
 @pytest.mark.parametrize("workers", [[], ["-n", "2"]], ids=["serial", "xdist"])
@@ -171,3 +168,37 @@ def test_an_undeclared_read_that_changed_is_rerun_red_not_carried_green(session,
             "no rule of the selector declares") in out, out  # fmt: skip
     assert f"2 deselected, carried from {'c0' * 4}" in out, out
     assert "FAILED test_u.py::test_reads" in out and again.returncode == 1, out
+
+
+PAIR = """
+from pathlib import Path
+
+HERE = Path(__file__).parent
+
+def test_one():
+    assert (HERE / "data_one.txt").read_text() == "good"
+
+def test_two():
+    assert (HERE / "data_two.txt").read_text() == "good"
+"""
+
+
+def test_a_partial_run_never_drops_the_reads_of_the_siblings_a_carry_takes(session: Path) -> None:
+    """GOH.READUNION, the whole chain: main's record, a pre-step that runs ONE test of a file, a
+    gate on another tree that carries the file from main, and the next land, which edits what only
+    the carried sibling reads. The record of the gate's tree once named test_one's read alone
+    (the pre-step's file won), so the edit carried test_two green."""
+    (session / "test_p.py").write_text(PAIR)
+    for name in ("one", "two"):
+        (session / f"data_{name}.txt").write_text("good")
+    assert _pre_step(session, TREE="T0").returncode == 0
+    one = _pre_step(session, "test_p.py::test_one", TREE="T1", FROM="T9", CHOSEN="test_p.py")
+    assert one.returncode == 0, one.stdout
+    gate = _suite(session, GOH_LAND_VERDICTS_REUSE=str(session / "rec.json"), TREE="T2", DIFF="x")
+    assert "5 deselected, carried from c0c0c0c0" in gate.stdout, gate.stdout
+    both = {"test_p.py": ["data_one.txt", "data_two.txt"]}
+    rec, _ = reuse.lookup_suite(REPO_ROOT, "T2", "TOOLS")
+    (session / "data_two.txt").write_text("broken")
+    later = _pre_step(session, TREE="T3", FROM="T2", DIFF="data_two.txt").stdout
+    assert "FAILED test_p.py::test_two" in later and "data_two.txt" in later, later
+    assert rec["reads"] == {**{f"test_{n}.py": [f"data_{n}.txt"] for n in "abu"}, **both}, rec
