@@ -52,7 +52,6 @@ tests/test_check_probes_pass.py
 tests/test_check_shell_lint.py
 tests/test_claude_agent_guard.py
 tests/test_coverage_gate.py
-tests/test_gate_calibration.py
 tests/test_gate_slot.py
 tests/test_landq.py
 tests/test_load_reap.py

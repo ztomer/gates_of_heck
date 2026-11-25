@@ -44,7 +44,7 @@
  "test_estate_commit.py": 1,
  "test_estate_registry.py": 1,
  "test_fixed_sleep.py": 1,
- "test_gate_calibration.py": 2,
+ "test_gate_calibration.py": 1,
  "test_gate_environment.py": 1,
  "test_gate_profile.py": 2,
  "test_gate_runtime_path.py": 1,
