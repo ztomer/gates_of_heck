@@ -9,11 +9,10 @@ and require that probe to go red, and pin the count rule on a fixture rendering 
 
 from __future__ import annotations
 
-import os
-import subprocess
 import sys
 
 import pytest
+from _mutated_check import mutated_probe
 from conftest import REPO_ROOT as ROOT
 
 CHECKS = ROOT / "checks"
@@ -124,32 +123,9 @@ RULES = (
 
 
 @pytest.mark.parametrize(("label", "old", "new"), RULES, ids=[r[0] for r in RULES])
-def test_the_probe_goes_red_when_one_frames_rule_is_dropped(tmp_path, label, old, new):
+def test_the_probe_goes_red_when_one_frames_rule_is_dropped(label, old, new):
     source = FRAMES.read_text(encoding="utf-8")
     assert old in source, f"the rule this case drops is not in the module: {old!r}"
-    work = tmp_path / "checks"
-    work.mkdir()
-    (work / "_display_frames.py").write_text(source.replace(old, new, 1), encoding="utf-8")
-    for name in (
-        "check_display_seam.py",
-        "_display_seam_probe.py",
-        "_marker_reason.py",
-        "_gitutil.py",
-        "_swift_text.py",
-        "_prose_mask.py",
-        "_display_seam_tiers.py",
-        "_goh_tmp.py",
-        "_display_seam_fixtures.py",
-    ):
-        (work / name).write_text((CHECKS / name).read_text(encoding="utf-8"), "utf-8")
-    got = subprocess.run(
-        [sys.executable, str(work / "check_display_seam.py"), "--probe"],
-        capture_output=True,
-        text=True,
-        check=False,
-        cwd=tmp_path,
-        env=dict(os.environ, PYTHONPATH=str(ROOT)),
-        stdin=subprocess.DEVNULL,
-    )
+    got = mutated_probe("_display_frames", source.replace(old, new, 1))
     assert got.returncode == 1, f"the probe stayed green without the {label} rule:\n{got.stdout}"
     assert "frames:" in got.stderr, got.stderr

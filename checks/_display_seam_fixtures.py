@@ -1,28 +1,21 @@
-"""The display-seam probe's case trees, written once per content and shared (GOH.FSCHURN3).
+"""The display-seam probe's case trees, in memory (GOH.FSCHURN3, GOH.FSEVQUIET).
 
-Split out of checks/_display_seam_probe.py (the file-length cap). Each probe wrote ~600 files and
-dirs and removed them again, and one suite runs it ~50 times (each rule-drop calibration, in
-tests/test_display_seam.py and tests/test_display_frames.py, is a whole probe): 4% of the suite's
-file events. The checker only reads a case, so inside a run that removes its own temp root (the
-goh suite's: GATES_OF_HECK_SUITE_TMP is this TMPDIR, tests/suite_tmp.py) every listed-directly
-case is written ONCE per content into `goh_tmp()` and read by every later probe. Anywhere else (a
-real gate, a test with a TMPDIR of its own) they go in the probe's own directory and leave with it:
-a gate leaves nothing in the temp directory (tests/test_gate_temp_leaks.py).
+Split out of checks/_display_seam_probe.py (the file-length cap). Each probe wrote ~500 files and
+dirs and removed them again: 1,036 file events of every `structural.sh --full`, and a suite's ~50
+probes (each rule-drop calibration, in tests/test_display_seam.py and tests/test_display_frames.py,
+is a whole probe) shared one copy of them. The checker only reads a case, through four names of its
+own: `held_in_memory` answers those for one tree, and nothing is written. One case per probe is
+still a directory read through real git.
 
-Lib of `_display_seam_probe.py` (GOH.FSCHURN3): the probe's case trees, written once per content
-under `goh_tmp()` and read by every later probe, instead of ~600 files made and removed by each of
-~50 probes a suite.
+Lib of `_display_seam_probe.py` (GOH.FSCHURN3): the probe's case trees, which the checker's own
+readers are handed from memory; one case is a directory, read through real git.
 """
 
 from __future__ import annotations
 
-import hashlib
+import contextlib
 import json
 import os
-import shutil
-import tempfile
-
-from _goh_tmp import goh_tmp
 
 
 def case_tree(files, policy, seam, base):
@@ -36,51 +29,40 @@ def case_tree(files, policy, seam, base):
     return tree
 
 
+def config_tree(policy, quiet, seam, base):
+    """A config case's: TWO clean files, so that with a config rule dropped the run still has
+    something to examine. One file, when that file is the excluded one, made the zero-scan refusal
+    produce the same exit 2 the case was asserting -- two rules, one verdict."""
+    return case_tree({"Core/quiet.swift": quiet, "UI/win.swift": quiet}, policy, seam, base)
+
+
 def write_tree(root, tree):
     for rel, body in tree.items():
         path = os.path.join(root, rel)
         os.makedirs(os.path.dirname(path) or root, exist_ok=True)
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(body)
-    return list(tree)
 
 
-RUN_TMP = "GATES_OF_HECK_SUITE_TMP"  # tests/suite_tmp.py MARKER: the run's root, removed by it
-
-
-def _run_owned() -> bool:
-    run = os.environ.get(RUN_TMP, "")
-    return bool(run) and os.path.realpath(run) == os.path.realpath(tempfile.gettempdir())
-
-
-def shared_cases(cases, config_cases, quiet, seam, base, workdir):
-    """(the cases' directory, {case name: its listed files}) for every case but case 0 and every
-    config case: the run's shared copy (`_run_owned`), named for the trees' own hash and published
-    by one rename, so a directory that exists is whole and right; else under `workdir`."""
-    trees = {
-        f"case{n:02d}": case_tree(f, p, seam, base) for n, (_, f, p, _) in enumerate(cases) if n
+@contextlib.contextmanager
+def held_in_memory(checker, tree):
+    """The checker's rules over `tree`, which is on no disk: its listing (what `ls-files --cached
+    --others` lists for a fixture with no ignores), its reads and its policy are the tree's. Each
+    case cost two git spawns and a `.git` copy -- 31 cases, and the rule-drop calibration runs the
+    whole probe 24 more times: 44 s of the suite (tools/session_bench.py, 2026-10-06) -- and then
+    its files. The listing is `_gitutil`'s, proven by its own tests; a file's absence is asked on a
+    real disk by tests/test_display_seam.py."""
+    blobs = {rel: body.encode("utf-8") for rel, body in tree.items()}
+    stand_ins = {
+        "repo_root": lambda: None,  # main() falls back to the working directory
+        "listed_files": lambda root, staged=False: sorted(blobs),
+        "content_bytes": lambda root, rel, staged=False: blobs.get(rel),
+        "is_file": lambda root, rel: rel in blobs,
+        "policy_text": lambda path: tree[path],
     }
-    trees.update(
-        (
-            f"cfg{n:02d}",
-            case_tree({"Core/quiet.swift": quiet, "UI/win.swift": quiet}, p, seam, base),
-        )
-        for n, (_, p) in enumerate(config_cases)
-    )
-    key = hashlib.sha256(json.dumps(trees, sort_keys=True).encode()).hexdigest()[:16]
-    if not _run_owned():
-        done = os.path.join(workdir, "cases")
-        for name, tree in trees.items():
-            write_tree(os.path.join(done, name), tree)
-        return done, {name: list(tree) for name, tree in trees.items()}
-    done = os.path.join(goh_tmp(), f"goh-display-seam-cases.{key}")
-    if not os.path.isdir(done):
-        stage = f"{done}.build-{os.getpid()}"
-        shutil.rmtree(stage, ignore_errors=True)
-        for name, tree in trees.items():
-            write_tree(os.path.join(stage, name), tree)
-        try:
-            os.rename(stage, done)
-        except OSError:  # another probe published it first: the same bytes
-            shutil.rmtree(stage, ignore_errors=True)
-    return done, {name: list(tree) for name, tree in trees.items()}
+    saved = {name: getattr(checker, name) for name in stand_ins}
+    vars(checker).update(stand_ins)
+    try:
+        yield
+    finally:
+        vars(checker).update(saved)

@@ -26,16 +26,16 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 import contextlib
 import io
 import os
-import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import check_display_seam
 from _display_frames import FRAMES_CASES
-from _display_seam_fixtures import case_tree, shared_cases, write_tree
+from _display_seam_fixtures import case_tree, config_tree, held_in_memory, write_tree
 from _display_seam_tiers import TIER_CASES
-from _gitutil import foreign_repo_env, scratch_git
+from _gitutil import scratch_git
 from _goh_tmp import goh_tmp  # the ONE temp parent (GOH.FSCHURN3)
 
 SEAM = "func present() { w.orderFrontRegardless() }\n"
@@ -357,109 +357,61 @@ CONFIG_CASES = (
 )
 
 
-def _git(root, *args):
-    return subprocess.run(
-        ["git", "-C", root, *args],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=foreign_repo_env(),
-        stdin=subprocess.DEVNULL,
-    ).returncode
+def _drive(argv, root=None):
+    """main() over a FIXTURE, with its own reporting swallowed.
 
-
-def _tree(files, policy):
-    return case_tree(files, policy, SEAM, BASE)
-
-
-def _build(root, files, policy, through_git):
-    written = write_tree(root, _tree(files, policy))
-    # A COPY of one freshly initialised `.git`, and nothing else. The probe drives FULL mode, which
-    # lists the worktree (`ls-files --cached --others`), so an index is not what is under test, and
-    # no case commits, so no identity is read. Measured 2026-10-05: the git spawns were the whole
-    # cost of this probe -- 4.2 s, run once per probe and 23 more times by the rule-drop
-    # calibration -- and `init` + `config` x2 + `add` per fixture were four of them. A fresh case
-    # directory per case is unchanged; only the empty repository it starts from is shared.
-    if through_git:
-        scratch_git(root)  # one empty .git copied (checks/_gitutil.py)
-    return written
-
-
-@contextlib.contextmanager
-def _listed_directly(files):
-    """The gate's rules, without git under every case. Each case cost two git spawns (`rev-parse`,
-    `ls-files`) and a `.git` copy -- 31 cases, and the rule-drop calibration runs the whole probe 24
-    more times: 44 s of the suite, nearly all of it sys time, the class that serializes across
-    sessions (tools/session_bench.py, 2026-10-06). The listing is `_gitutil`'s, proven by its own
-    tests; ONE case per probe still drives it through real git, so a probe cannot pass over a
-    listing that lost the files."""
-    saved = check_display_seam.repo_root, check_display_seam.listed_files
-    check_display_seam.repo_root = lambda: None  # main() falls back to the working directory
-    # What `ls-files --cached --others` lists for a fixture with no ignores: every file the case
-    # wrote (`_build` returns them), so no walk of the disk stands in for git either.
-    check_display_seam.listed_files = lambda root, staged=False: sorted(files)
-    try:
-        yield
-    finally:
-        check_display_seam.repo_root, check_display_seam.listed_files = saved
-
-
-def _drive(root, argv):
-    """main() in a FIXTURE repo, with its own reporting swallowed.
-
-    os.chdir is the only way in: the checker resolves its root the way every checker does, from
-    the working directory. The output is swallowed because these are 19 fixture repos and their
-    findings would bury the case verdicts; the code is what is under test, not the prose.
+    os.chdir is the only way into one on disk: the checker resolves its root the way every checker
+    does, from the working directory. The output is swallowed because these are 19 fixture repos
+    and their findings would bury the case verdicts; the code is what is under test, not the prose.
     """
     saved = os.getcwd()
     sink = io.StringIO()
     try:
-        os.chdir(root)
+        os.chdir(root or saved)
         with contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
             return check_display_seam.main(argv)
     finally:
         os.chdir(saved)
 
 
-def probe():
-    import tempfile
+def _through_git(tree, argv):
+    """The ONE case per probe that is a repository on disk: the listing and the reads are the real
+    ones, so a probe cannot pass over a listing that lost the files. Its `.git` is a COPY of one
+    freshly initialised (checks/_gitutil.py); the probe drives FULL mode, which lists the worktree
+    (`ls-files --cached --others`), so no index is under test, and no case commits."""
+    with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-display-seam.") as root:
+        write_tree(root, tree)
+        scratch_git(root)
+        return _drive(argv, root)
 
+
+def probe():
     from tui.lib import counted, err, ok
 
     bad = 0
-    with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-display-seam.") as td:
-        shared, listed = shared_cases(CASES, CONFIG_CASES, QUIET, SEAM, BASE, td)
-        for n, (label, files, policy, want) in enumerate(CASES):
-            # A directory per case. Reusing one made a case see the PREVIOUS case's files, which
-            # is a fixture that cannot disagree with anything -- the exact shape R3 names. Only
-            # case 0, the one that proves the real listing through git (_listed_directly), is
-            # written fresh; the rest are the shared, read-only `shared_cases`.
-            through_git = n == 0
-            if through_git:
-                root = os.path.join(td, f"case{n:02d}")
-                written = _build(root, files, policy, through_git)
-            else:
-                root, written = os.path.join(shared, f"case{n:02d}"), listed[f"case{n:02d}"]
-            with contextlib.nullcontext() if through_git else _listed_directly(written):
-                code = _drive(root, ["--policy", "policy.json"])
-            if code == want:
-                ok(f"probe: {label}")
-            else:
-                err(f"probe: {label} — wanted exit {want}, got {code}")
-                bad += 1
-        for n, (label, _policy) in enumerate(CONFIG_CASES):
-            # TWO clean files (`shared_cases`), so that with a config rule dropped the run still has
-            # something to examine. One file, when that file is the excluded one, made the
-            # zero-scan refusal produce the same exit 2 the case was asserting -- two rules, one
-            # verdict.
-            root, written = os.path.join(shared, f"cfg{n:02d}"), listed[f"cfg{n:02d}"]
-            with _listed_directly(written):
-                refused = _drive(root, ["--policy", "policy.json"]) == 2
-            if refused:
-                ok(f"probe: {label}")
-            else:
-                err(f"probe: {label} — the config error was not refused")
-                bad += 1
+    argv = ["--policy", "policy.json"]
+    for n, (label, files, policy, want) in enumerate(CASES):
+        # A tree per case. Reusing one made a case see the PREVIOUS case's files, which is a
+        # fixture that cannot disagree with anything -- the exact shape R3 names.
+        tree = case_tree(files, policy, SEAM, BASE)
+        if n == 0:
+            code = _through_git(tree, argv)
+        else:
+            with held_in_memory(check_display_seam, tree):
+                code = _drive(argv)
+        if code == want:
+            ok(f"probe: {label}")
+        else:
+            err(f"probe: {label} — wanted exit {want}, got {code}")
+            bad += 1
+    for label, policy in CONFIG_CASES:
+        with held_in_memory(check_display_seam, config_tree(policy, QUIET, SEAM, BASE)):
+            refused = _drive(argv) == 2
+        if refused:
+            ok(f"probe: {label}")
+        else:
+            err(f"probe: {label} — the config error was not refused")
+            bad += 1
     if bad:
         err(
             f"display-seam probe: {counted(bad, 'case')} wrong — the gate does not measure its rule"

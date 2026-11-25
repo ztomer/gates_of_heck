@@ -218,7 +218,7 @@ class Policy:
             self.frames_flag = re.compile(str(raw.get("frames_flag", DEFAULT_FRAMES_FLAG)))
         except re.error as exc:
             raise ValueError(f"frames_flag is not a pattern: {exc}") from exc
-        missing = [p for p in self.seam if not os.path.isfile(os.path.join(root, p))]
+        missing = [p for p in self.seam if not is_file(root, p)]
         if missing:
             raise ValueError(f"the policy names a seam that does not exist: {', '.join(missing)}")
 
@@ -231,6 +231,15 @@ class Policy:
             if any(is_justified(probe, marker) for marker in self.markers):
                 return True
         return False
+
+
+def is_file(root, rel):
+    return os.path.isfile(os.path.join(root, rel))
+
+
+def policy_text(path):
+    with open(path, encoding="utf-8") as handle:
+        return handle.read()
 
 
 def in_scan(rel, policy):
@@ -382,8 +391,7 @@ def main(argv=None):
 
     root = repo_root() or os.getcwd()
     try:
-        with open(args.policy, encoding="utf-8") as handle:
-            raw = json.load(handle)
+        raw = json.loads(policy_text(args.policy))
     except (OSError, ValueError) as exc:
         err(f"[no_display_seam] cannot read the policy at {args.policy}: {exc}")
         info("A policy that will not parse is not a policy. Fix it, or the gate is not running.")
