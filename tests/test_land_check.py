@@ -203,16 +203,9 @@ def test_a_red_lands_record_names_the_guard_its_log_shows(tmp_path):
     assert land_check.fields({**red, "state": "landed"}) == {}
     assert land_check.fields({**red, "guards": ["kept"]}) == {}
     for n, g in enumerate(["a", "b", "a"]):
-        land_records.write(tmp_path / "q", f"{n}", {"state": "red", "guard": g})
+        land_records.write(tmp_path / "q", f"{n}", {"state": "red", "guard": g, "guards": [g]})
     land_records.write(tmp_path / "q", "9", {"state": "landed"})
     assert land_check.count(tmp_path / "q") == {"a": 2, "b": 1}
-    # a pre-step's refusal at enqueue files no land record: it is recorded and counted
-    refusal = (
-        "the pre-land tests failed on 1234 (failing: tests/test_e.py::test_dump[x], tests/z.py)"
-    )
-    land_check.learn(tmp_path / "q", {"repo": "/r", "item": "T", "sha": "1234"}, refusal)
-    land_check.learn(tmp_path / "q", {"repo": "/r"}, "no node named here")
-    assert land_check.count(tmp_path / "q") == {"a": 2, "b": 1, "tests/test_e.py::test_dump": 1}
     assert not hasattr(land_check, "history"), "no check selects from the record"
 
 

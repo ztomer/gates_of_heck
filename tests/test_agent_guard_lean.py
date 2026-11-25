@@ -82,4 +82,4 @@ def test_a_read_only_lookup_of_any_type_is_not_steered(tmp_path: Path, agent_typ
 def test_a_write_spawn_of_a_lean_type_runs(tmp_path: Path, agent_type: str) -> None:
     _allowed(_run(_spawn(dict(GOOD, subagent_type=agent_type)), tmp_path))
     (line,) = _ledger(tmp_path)
-    assert line["subagent_type"] == agent_type and line["agent_type_escape"] is None
+    assert line["subagent_type"] == agent_type and "agent_type_escape" not in line

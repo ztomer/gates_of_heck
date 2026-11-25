@@ -74,7 +74,7 @@ def _spawned(tmp_path: Path, said: str, title: str) -> list[tuple]:
     con = sqlite3.connect(tmp_path / "goh.db")
     try:
         return con.execute(
-            "SELECT s.tool_use_id, s.item, s.no_item_why, s.rest, s.first_line, group_concat("
+            "SELECT s.tool_use_id, s.no_item_why, s.rest, s.first_line, group_concat("
             "l.value) FROM agent_spawns s LEFT JOIN spawn_lists l ON l.n = s.n AND l.kind = 'item'"
             " GROUP BY s.n").fetchall()  # fmt: skip
     finally:
@@ -84,6 +84,6 @@ def _spawned(tmp_path: Path, said: str, title: str) -> list[tuple]:
 def test_the_guard_writes_a_spawns_items_and_tool_id_as_columns(tmp_path: Path) -> None:
     first = "Model-choice: sonnet@high because checkable, known-fix"
     got = _spawned(tmp_path, "Items: GOH.A GOH.B", "x")
-    assert got == [("T", "GOH.A", None, "{}", first, "GOH.A,GOH.B")]
+    assert got == [("T", None, "{}", first, "GOH.A,GOH.B")]
     got = _spawned(tmp_path, "Fix it.", "fix")
-    assert got[1:] == [("T", None, spawn_items.NONE, "{}", first, None)]
+    assert got[1:] == [("T", spawn_items.NONE, "{}", first, None)]

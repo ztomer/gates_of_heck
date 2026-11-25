@@ -11,6 +11,7 @@ import pytest
 import state_columns
 from conftest import REPO_ROOT
 
+TREE_READS = ("crates/", "hooks/", "lib/", "scripts/", "tools/")
 TABLES = {*state_columns.TABLES, "commit_gated", "red_causes", "land_guards"}
 NAMES = re.compile(rf"\b(?:{'|'.join(sorted(TABLES))})\b")
 SQL = re.compile(r"\b(?:SELECT|INSERT|UPDATE|DELETE|REPLACE|FROM|JOIN)\b")
