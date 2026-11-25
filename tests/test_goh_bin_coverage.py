@@ -11,11 +11,14 @@ built from other source is never taken, and a parent's answer made without it is
 
 from __future__ import annotations
 
+import hashlib
 import subprocess
 from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT, hermetic_env
+from test_binary_source_identity import _fake, _head_stamp, private_store
+from test_gate_environment import _clean_checkout_of_todays_gates
 from timing_bounds import patience
 
 RESOLVE = f'. "{REPO_ROOT}/gates/_goh_bin.sh"; goh_resolve_native; printf %s "$goh_native"'
@@ -34,7 +37,7 @@ def _instrumented(tmp_path: Path, stamp: str) -> Path:
     """A goh that says it was built from `stamp` and, run, leaves a raw profile where
     LLVM_PROFILE_FILE points, as the instrumented build does."""
     fake = tmp_path / "cov-bins" / "goh"
-    fake.parent.mkdir()
+    fake.parent.mkdir(parents=True)
     fake.write_text(
         "#!/bin/sh\n"
         f'[ "$1" = source-tree ] && echo "{stamp}"\n'
@@ -81,10 +84,19 @@ def test_a_parents_answer_without_it_is_not_inherited(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("stamp", ["dirty", "some other source"])
 def test_an_instrumented_build_of_other_source_is_never_taken(tmp_path, monkeypatch, stamp):
+    """On a checkout of its own, its release build in the store: on this one the answer was a build
+    some other test of the run had made of HEAD, and red when none had (GOH.FSEVQUIET)."""
     fake = _instrumented(tmp_path, stamp)
-    env, _ = _env(tmp_path, monkeypatch, fake)
-    r = _run(RESOLVE, env, tmp_path)
-    assert r.stdout and r.stdout != str(fake), r.stdout + r.stderr
+    gates = _clean_checkout_of_todays_gates(tmp_path / "gates", rust=False)
+    head = _head_stamp(gates)
+    name = hashlib.sha1(head.encode()).hexdigest()  # gates/_goh_bin.sh goh_store_path
+    release = _fake(gates / "bin" / "by-stamp" / name / "goh", "1.2.3", head)
+    env, _ = _env(tmp_path, monkeypatch, fake, GOH_BIN_STORE=str(private_store(gates)))
+    r = _run(RESOLVE.replace(str(REPO_ROOT), str(gates)), env, tmp_path)
+    assert r.stdout and Path(r.stdout).resolve() == release.resolve(), r.stdout + r.stderr
+    asked = {**env, "GOH_COV_GOH": str(_instrumented(tmp_path / "head", head))}
+    r = _run(RESOLVE.replace(str(REPO_ROOT), str(gates)), asked, tmp_path)
+    assert r.stdout == asked["GOH_COV_GOH"], "calibration: the checkout's own source is taken"
 
 
 def test_every_variable_the_coverage_run_hands_the_suite_survives_its_entry():
