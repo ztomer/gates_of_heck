@@ -10,26 +10,34 @@ keeps the lock wait apart from its own run, which is what `goh budget` judges (l
 
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import json
 import os
 import subprocess
 import sys
-import time
+import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import _goh_db_fixture as gdb
 import pytest
 import test_ship
 from conftest import REPO_ROOT, commit_all, git, write
 from test_ship import SHIP, _env
-from timing_bounds import GiveUp, patience
+from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import budget
 import gate_identity
+import land_lock
 import reuse
 import ship_full_run
+import ship_lock
+import ship_status
+
+sys.path.insert(0, str(REPO_ROOT / "tools"))
+import ship
 
 shipped = test_ship.shipped  # the fixture, by assignment
 
@@ -69,7 +77,8 @@ def _declare(repo: Path) -> None:
 
 def _env_for(tmp_path: Path) -> dict[str, str]:
     return _env(tmp_path, GOH_SHIP_RELEASE=KIT, GOH_REUSE_DIR=str(tmp_path / "store"),
-                STAND_IN_LOG=str(tmp_path / "judged"), GOH_LIVE="1")  # fmt: skip
+                STAND_IN_LOG=str(tmp_path / "judged"), GOH_LIVE="1",
+                PYTHONUNBUFFERED="1")  # fmt: skip
 
 
 def _ship(repo: Path, tmp_path: Path) -> subprocess.Popen[str]:
@@ -83,6 +92,21 @@ def _ship(repo: Path, tmp_path: Path) -> subprocess.Popen[str]:
 def _judged(tmp_path: Path) -> list[str]:
     log = tmp_path / "judged"
     return log.read_text().split() if log.exists() else []
+
+
+def _until_it_waits(p: subprocess.Popen[str]) -> str:
+    """What the ship said up to the line that says it waits for the land lock."""
+    said: list[str] = []
+    stop = threading.Timer(patience(60), p.kill)  # a ship that never waits ends the reading too
+    stop.start()
+    try:
+        for line in p.stdout:
+            said.append(line)
+            if "waiting for the land lock" in line:
+                return "".join(said)
+    finally:
+        stop.cancel()
+    raise AssertionError(f"the ship never waited for the land lock:\n{''.join(said)}")
 
 
 def _record_run(repo: Path, store: Path) -> None:
@@ -108,16 +132,12 @@ def test_lands_keep_arriving_and_the_ship_still_releases_a_tip_with_its_run(
         held.write(f"lane-x @ 0123abcd (pid {os.getpid()}, since 00:00:00)\n")
         held.flush()
         p = _ship(shipped, tmp_path)
-        give_up = GiveUp(30)
-        while not give_up.passed() and p.poll() is None:
-            path = tmp_path / "ship.json"
-            if path.exists() and json.loads(path.read_text()).get("pid"):
-                break  # the worker is up, waiting on the lock
-            time.sleep(0.1)
+        # (until 2026-11-25 this polled for a result FILE no ship writes since STATEDB S2, so every
+        # run sat out the whole 30 s give-up, stretched by the load: 50 s of a 63 s test)
+        _until_it_waits(p)
         for n in range(3):  # lands keep arriving: main moves past the tip that run judged
             write(shipped, f"land{n}.txt", f"{n}\n")
             commit_all(shipped, f"fix: land {n}")
-        time.sleep(0.3)
         fcntl.flock(held, fcntl.LOCK_UN)
     out, _ = p.communicate(timeout=patience(120))
     res = gdb.shipped(tmp_path / "ship.json")
@@ -125,28 +145,37 @@ def test_lands_keep_arriving_and_the_ship_still_releases_a_tip_with_its_run(
     assert p.returncode == 0, f"{out}\n{res.get('tail')}"
     assert git(shipped, "rev-parse", "v1.1.0^{commit}").strip() == tip  # the tip released
     assert _judged(tmp_path) == [tip], _judged(tmp_path)  # judged by the ship's own run
-    assert (res["steps"][0]["name"], res["steps"][0]["status"]) == ("suite", "ok"), res["steps"]
-    assert res["land_wait_s"] >= 0.3, res
-    assert 0 <= res["own_s"] <= res["land_wait_s"] + res["own_s"], res
+    suite = res["steps"][0]
+    assert (suite["name"], suite["status"]) == ("suite", "ok"), res["steps"]
+    assert suite["profiles"] == COUNTS, suite  # GOH.COVPROFILEREUSE: reused vs fresh, per binary
     assert res["sha"] == tip
 
 
-@pytest.mark.load_sensitive
-def test_a_tip_with_the_idle_landers_run_is_still_judged_by_the_ship(
-    shipped: Path, tmp_path: Path
-) -> None:
-    """GOH.COVOFFLAND: the ship judges every coverage floor, its diff coverage based at the last
-    ship; a full record of the tip with no idle verdict of that base stands for none of it."""
-    _declare(shipped)
-    _record_run(shipped, tmp_path / "store")
-    p = _ship(shipped, tmp_path)
-    out, _ = p.communicate(timeout=patience(120))
-    res = gdb.shipped(tmp_path / "ship.json")
-    assert p.returncode == 0, f"{out}\n{res.get('tail')}"
-    suite = res["steps"][0]
-    assert (suite["name"], suite["status"]) == ("suite", "ok"), res["steps"]
-    assert _judged(tmp_path) == [git(shipped, "rev-parse", "HEAD").strip()]
-    assert suite["profiles"] == COUNTS, suite  # GOH.COVPROFILEREUSE: reused vs fresh, per binary
+def test_the_wait_for_the_queue_is_never_the_ships_own_time(tmp_path, monkeypatch) -> None:
+    """A clock of its own: 100 s for the lock, 7 s of steps. `own_s` is what `goh budget` judges."""
+    clock = [1000.0]
+
+    @contextlib.contextmanager
+    def held(lock, who, say):
+        clock[0] += 100
+        yield
+
+    def run_steps(res, first=""):
+        clock[0] += 7
+        ship.own_run(res)
+        return 0
+
+    res = {"result": str(tmp_path / "r.json"), "repo": str(tmp_path), "name": "x", "sha": "b" * 40}
+    monkeypatch.setattr(ship, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(ship, "save", lambda res: None)
+    monkeypatch.setattr(ship, "run_steps", run_steps)
+    monkeypatch.setattr(ship_status, "record", lambda result: res)
+    monkeypatch.setattr(ship_status, "quiet_wait", lambda res, resume: None)
+    monkeypatch.setattr(ship_lock, "take", lambda held, result: "")
+    monkeypatch.setattr(land_lock, "path", lambda repo: None)
+    monkeypatch.setattr(land_lock, "held", held)
+    assert ship.worker(res["result"]) == 0
+    assert (res["land_wait_s"], res["own_s"]) == (100.0, 7.0), res
 
 
 def test_the_budget_judges_the_ships_own_run_not_its_wait_for_the_queue() -> None:
@@ -194,6 +223,11 @@ def test_the_ship_adopts_a_finished_green_idle_run_of_its_tree_and_base(
     monkeypatch.setenv("GOH_PROF_REUSE_OUT", str(tmp_path / "profiles.out"))
     ran = tmp_path / "ran"
     argv = [sys.executable, "-c", f"open({str(ran)!r}, 'a').write('ran\\n')"]
+    # GOH.COVOFFLAND: the ship judges every coverage floor, its diff coverage from the last ship; a
+    # full record of the tip with no idle verdict of that base stands for none of it.
+    ship_full_run.run(shipped, tmp_path / "suite-wt", argv=argv)
+    assert ran.read_text().split() == ["ran"]
+    ran.unlink()
     state = _idle_verdict(q, sha, "green", base)
     assert ship_full_run.run(shipped, tmp_path / "suite-wt", argv=argv) == ship_full_run.GREEN
     assert not ran.exists(), "the ship re-made the run it could adopt"

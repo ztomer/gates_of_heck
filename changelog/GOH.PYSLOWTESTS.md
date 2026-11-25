@@ -2,3 +2,4 @@
 * GOH.PYSLOWTESTS: `test_rust_cov_reuse` and `test_rust_cov_env` judge the measurement's key in process and the shell half of it in one bash, and run the gate only where its decision is the subject (25 and 12 cases, two to six gate runs each).
 * GOH.PYSLOWTESTS: `test_check_lock_order` scans the whole tree twice, not 16 times: a four-line plant is judged beside the four files its edge runs through.
 * GOH.PYSLOWTESTS: `test_rust_gate_scoped_cache` runs the whole Rust gate two ways (both groups, the compiler's dep-info) and what a scope keys beside a group that says it ran.
+* GOH.PYSLOWTESTS: `test_ship_starve` waits for the line that says the ship waits for the land lock (it sat out a 30 s give-up on a file no ship writes since the state database), judges `own_s` on a clock of its own (the old assertion could not fail), and `test_ship`'s hung-step test no longer meets its bound in the push.

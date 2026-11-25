@@ -134,10 +134,17 @@ def _sleepers(marker: str) -> list[str]:
 
 @pytest.mark.load_sensitive
 def test_the_bound_kills_a_hung_step_and_its_whole_group_leaving_no_orphan(shipped, tmp_path):
+    # The 2 s bound is every step's, and a starved push met it first: the kit
+    # pushes (GOH_SHIP_RELEASE_PUSHES): the hung release is the first step, and a slow push no red.
+    hook = shipped / ".git" / "hooks" / "pre-push"
+    hook.parent.mkdir(exist_ok=True)
+    hook.write_text("#!/bin/sh\nsleep 4\n")
+    hook.chmod(0o755)
     marker = f"sleep 731.{os.getpid() % 1000}"
     hung = f"{marker} & {marker} & ( {marker} & wait ) & wait"
     t0 = time.monotonic()
-    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_RELEASE=hung, GOH_SHIP_TIMEOUT="2")
+    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_RELEASE=hung, GOH_SHIP_TIMEOUT="2",
+              GOH_SHIP_RELEASE_PUSHES="1")  # fmt: skip
     # the pass: the 2 s bound, then up to the 5 s grace; the failure: the sleeps run out (731 s)
     assert_sooner(time.monotonic() - t0, 8, 731, "a hung step under a 2 s bound")
     assert r.returncode == 1, r.stdout + r.stderr
