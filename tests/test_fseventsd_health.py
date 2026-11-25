@@ -3,7 +3,7 @@
 2026-11-23: fseventsd sat at 6.9 GB RSS and 105.7% CPU after 2 d 18 h, and the suite's fs churn
 tests had read it only as red or unmeasured; the owner restarted it by hand (10 MB fresh). Every
 whole run now ends with one line about the daemon every file event costs: quiet under the bound, a
-`✗` naming the RSS, the bound and the restart command over it (restarting it stays the owner's).
+`⚠` naming the RSS, the bound and the restart command over it (restarting it stays the owner's).
 """
 
 from __future__ import annotations
@@ -21,7 +21,8 @@ import fseventsd_health as fh
 def test_under_the_bound_is_quiet_and_over_it_is_a_fault_with_its_restart() -> None:
     assert fh.verdict(10_240) is None
     line = fh.verdict(6_900 * 1024)
-    assert line is not None and line.startswith("✗"), line
+    assert line is not None and line.startswith("⚠"), line
+    assert "✗" not in line, "the gate refuses a ✗ beside the suite's exit 0 (GOH.FSEVCHURNX)"
     assert "6.7 GB" in line and "1.0 GB" in line, line
     assert fh.RESTART in line, line
 

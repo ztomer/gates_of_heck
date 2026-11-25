@@ -3,8 +3,10 @@
 THE CASE (2026-11-23). fseventsd sat at 6.9 GB RSS and 105.7% CPU after 2 d 18 h; the suite's fs
 churn tests read the stuck daemon only as red or unmeasured, and the owner restarted it by hand (the
 fresh one read 10 MB). A stuck fseventsd slows every file event on the machine, so a whole suite
-run (tools/pytest.sh) ends by asking this: quiet under the bound, else a `✗` line on stderr naming
+run (tools/pytest.sh) ends by asking this: quiet under the bound, else a `⚠` line on stderr naming
 the RSS, the bound and the restart command. Restarting it is the owner's call; this only says so.
+Never a `✗`: the suite's own verdict stands, and a `✗` beside exit 0 is refused by the gate
+(lib/xexit.py), so one saturated daemon turned a green land red (2026-11-24, GOH.FSEVCHURNX).
 
 WHY NOT A QUIET LOCATION (probe 2026-11-23, 100k files a window, 4 rounds, 40 s windows, fseventsd's
 own cputime): no place on this Mac is ignored by fseventsd. Internal $TMPDIR/goh.noindex cost a mean
@@ -46,7 +48,7 @@ def verdict(rss_kb: int, limit_kb: int = LIMIT_KB) -> str | None:
     if rss_kb <= limit_kb:
         return None
     return (
-        f"✗ fseventsd is saturated: {_gb(rss_kb)} RSS, over the {_gb(limit_kb)} bound -- every"
+        f"⚠ fseventsd is saturated: {_gb(rss_kb)} RSS, over the {_gb(limit_kb)} bound -- every"
         f" file event on this Mac waits on it. Restart it (the owner's call): {RESTART}"
     )
 

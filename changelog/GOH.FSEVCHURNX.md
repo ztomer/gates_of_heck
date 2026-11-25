@@ -1,0 +1,1 @@
+* GOH.FSEVCHURNX: a saturated fseventsd after a whole suite is said as `⚠`, never `✗`: the suite's verdict stands, and the gate refuses a `✗` beside exit 0, so the machine's state turned a green land red.
