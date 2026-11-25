@@ -60,6 +60,10 @@ class Refused(sqlite3.OperationalError):
     """The cutover stops here: named, the fence lifted, the file as the steps before left it."""
 
 
+class Running(Refused):
+    """Another cutover holds the fence."""
+
+
 def passed(step: str) -> None:
     """STEP is done (a test's kill point)."""
 
@@ -86,7 +90,7 @@ def _raise(me: str) -> None:
     with goh_db.transaction() as con:
         held = state_shape.fence(con)
         if held is not None and held != me and pid_owner.alive_line(held):
-            raise Refused(f"another cutover runs: pid {held}")
+            raise Running(f"another cutover runs: pid {held}")
         con.execute("INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET "
                     "value = excluded.value", (state_shape.FENCE, me))  # fmt: skip
 
@@ -238,6 +242,6 @@ def main(abort: bool = False) -> int:
         code = run(lambda s: info(f"state cutover: {s}"))
     except (OSError, sqlite3.Error) as e:
         err(f"state cutover: stopped, the file as the steps before left it: {e}")
-        return RUNS if "pid " in str(e) and not abort else REFUSED
+        return RUNS if isinstance(e, Running) else REFUSED
     ok("state cutover: done")
     return code

@@ -22,6 +22,7 @@ from pathlib import Path
 
 import db_core
 import db_record
+import db_schema
 from _tree_clone import from_template
 from conftest import REPO_ROOT, git, hermetic_env
 from timing_bounds import patience
@@ -63,6 +64,13 @@ def _main_copy(tmp_path_factory, tmp_path: Path) -> Path:
     return from_template(tmp_path_factory, "db-record-main", _build_main, tmp_path / "main")
 
 
+def _on_open(copy: Path) -> list[int]:
+    """The numbers COPY ships that an open applies (a contract is applied by command)."""
+    files = (copy / "lib" / "goh_db_schema").glob("*.sql")
+    return sorted(int(p.name[:4]) for p in files
+                  if not db_schema.by_command(p.read_text(encoding="utf-8")))  # fmt: skip
+
+
 def _commit(where: Path, msg: str) -> None:
     git(where, "add", "-A")
     git(where, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false",
@@ -96,7 +104,7 @@ def _file(tmp_path: Path) -> tuple[list[int], str | None]:
 
 def test_only_the_code_of_record_migrates_the_shared_file(tmp_path_factory, tmp_path) -> None:
     main = _main_copy(tmp_path_factory, tmp_path)
-    shipped = sorted(int(p.name[:4]) for p in (main / "lib" / "goh_db_schema").glob("*.sql"))
+    shipped = _on_open(main)
     assert _write(tmp_path, main, "m1") == "wrote"  # main creates and migrates it
     assert _file(tmp_path) == (shipped, "m1")
 
@@ -154,7 +162,7 @@ def test_a_head_copy_of_a_commit_not_on_main_never_migrates_the_shared_file(
     applied 0009 to the real goh.db at 00:35:25 ("goh unknown"), before 0009 was on main: the rule
     read a directory with no `.git` as an install. A copy is of record by its COMMIT."""
     main = _main_copy(tmp_path_factory, tmp_path)
-    shipped = sorted(int(p.name[:4]) for p in (main / "lib" / "goh_db_schema").glob("*.sql"))
+    shipped = _on_open(main)
     assert _write(tmp_path, main, "m1") == "wrote"
     lane = tmp_path / "lane"
     git(main, "worktree", "add", "-q", "-b", "lane", str(lane))
@@ -178,7 +186,7 @@ def test_a_head_copy_of_mains_tip_migrates_the_shared_file(tmp_path_factory, tmp
     """The other side: main's own commit, run from its export (a consumer's gate runs goh's HEAD
     from ~/.cache/goh/head/<sha>), is the code of record, and an ancestor of main's tip is too."""
     main = _main_copy(tmp_path_factory, tmp_path)
-    shipped = sorted(int(p.name[:4]) for p in (main / "lib" / "goh_db_schema").glob("*.sql"))
+    shipped = _on_open(main)
     assert _write(tmp_path, main, "m1") == "wrote"
     old = _export(main, "HEAD", tmp_path / "head" / "old", main)
     (main / "lib" / "goh_db_schema" / "0098_main.sql").write_text("CREATE TABLE landed(x);\n")
