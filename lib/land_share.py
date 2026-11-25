@@ -38,6 +38,13 @@ it at its REAL width -- the busy cores of the suite-carried land rows in the tim
 cpu_s / wall_s (`real_width`; 2.4-4.3 measured 2026-11-21, SUITELESS_SEED before any) -- taken
 off the cores before the rest are split. THE BOUND holds with it: the shares plus the real widths
 sum to at most the cores.
+
+THE LAND PATH'S SHARE AND THE LANES' CLAMP (GOH.LANDSHARE): while a land-path gate (class `pre` --
+a land's pre-step and the lander's pre-land --, `land`, `ship`) is admitted, those split
+`GOH_LAND_SHARE` of the cores (0.75) and every other gate the rest, at least 1 each, read live from
+each held slot's recorded class; a lane/work gate's `tools/load.py 0` command and its
+`tools/pytest.sh` suite exec under `taskpolicy -c utility` (macOS) or nice + ionice (Linux), behind
+the `GOH_QOS_OS` seam; `qos --class C` is the shell's reading.
 """
 
 from __future__ import annotations

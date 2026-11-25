@@ -8,6 +8,12 @@ calls `bash $GOH_DIR/gates/goh.sh js-syntax` -- the one binary resolution, the
 same arguments, the same exit code. The rule it enforces is in
 `docs/contracts.md`; the scope it measures and the template rule are in the
 native module's own docstring.
+
+A BY-PATH ENTRY POINT for the native `goh js-syntax`, not a Python checker: it execs `gates/goh.sh
+js-syntax` with the same arguments, so a consumer that calls this file by path gets the one binary
+resolution, the same arguments and the same exit code. The gate itself is native
+(`crates/goh/src/jssyntax/`); this file exists because a consumer calls the shared gates by path.
+Pinned by `test_check_js_syntax.py`, `test_canary.py`.
 """
 
 import os

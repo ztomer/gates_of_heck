@@ -3,6 +3,9 @@
 # delegates; it holds no gate logic of its own.
 #   --staged : pre-commit scope (fast) — layer 1 only
 #   --full   : pre-push scope — every layer
+#
+# this repo's own gate entry (layer 1 + parallel pytest on `--full`: `-n 12 --dist loadgroup`;
+# pytest-xdist is a goh-suite manifest pin, refused when absent).
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 set -euo pipefail

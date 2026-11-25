@@ -17,6 +17,11 @@ published evidence finds 45-76% of agent failures look like success. For each la
 
 Offline-safe: gh missing, the network down, or `offline=True` makes the outcome `unverified` --
 never a pass. Only an explicit HTTP 404/422 from GitHub counts as "the remote does not have it".
+
+The report's shas located in the estate's repos, then each on its GitHub default branch and CI
+concluded success on it (or on the first run that contains it). A mismatch is `silent-failure`; gh
+missing, the network down or offline is `unverified`, never a pass. Read by
+`scripts/agent_audit.py`. Pinned by `test_agent_audit_verify.py`.
 """
 
 from __future__ import annotations

@@ -16,6 +16,13 @@ plus new files git would not ignore (so a module is counted before its first `gi
 no test touched is recorded in the data as measured with no lines run -- then coverage's own
 report, the repo's own omit lists and coverage's own fail-under rule decide, so nothing about
 what "covered" means is re-implemented here.
+
+Helper: the Python coverage floor over EVERY repo `.py` (tracked, or new and unignored), not only
+what a test imported -- coverage discovers unexecuted files only inside packages, so a script in a
+plain directory was invisible until a test imported it, and that test LOWERED the total. Touches
+each unseen file into the data at 0%, then coverage's own report, the repo's omit/include and
+fail-under decide. Args: `<floor>`, run in the package dir after `pytest --cov`. Called by
+`py_gate.sh`, not directly. Invoked by via py_gate. Pinned by `test_cwd_and_py_gate.py`.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

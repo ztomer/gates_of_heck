@@ -1,5 +1,12 @@
 # shellcheck shell=bash
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+#
+# Each proven step's goh closure line (GOH.PROVENCLOSURE), sourced by `_proven.sh`:
+# `proven_closures_prime` asks `lib/step_closure.py` for every step's line in one call (memoised in
+# `GOH_PROVEN_CLOSURES`, and on disk under `goh-proven-closure/` by tree, step and goh content);
+# `_proven_closure_line` gives a key its step's line, `closure full` for a key outside the step
+# runners (`PROVEN_BY_CLOSURE`, set unexported by `local_ci.sh` and `proven.sh`). Sourced, never
+# run. Pinned by `test_proven_closure.py`, `test_proven.py`.
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_proven_closure.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # _proven_closure.sh — a proven step's goh closure line, sourced by gates/_proven.sh (its callers

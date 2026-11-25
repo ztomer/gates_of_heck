@@ -218,13 +218,13 @@ def test_a_failing_step_names_the_checker_and_the_docs(goh: Path, tmp_path: Path
     absolute path. A session hitting a surprising house gate had no way to find
     the file from what it was told, and neither tier said where the RULE is
     written. Both facts are now in the failure: the path the OS was handed, and
-    the docs page that documents the gate.
+    the command and page that document the gate.
     """
     repo = make_repo(tmp_path, FULL_CASES["md_link_red"])
     result = _run_goh(goh, repo, False)
     out = result.stdout + result.stderr
     assert str(ROOT / "crates" / "goh" / "src" / "mdlinks.rs") in out, out
-    assert str(ROOT / "docs" / "map.md") in out and str(ROOT / "docs" / "config.md") in out, out
+    assert "`goh map NAME` says" in out and str(ROOT / "docs" / "config.md") in out, out
 
 
 def test_staged_marker_agrees(goh: Path, tmp_path: Path) -> None:

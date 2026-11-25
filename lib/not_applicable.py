@@ -16,6 +16,11 @@ It is narrow on purpose (engineering rule 13, probe-first):
   * it exits `EXIT` (78, EX_CONFIG: "the configuration this needs is not here"), which
     gates/local_ci.sh reports as its own line and accepts only on a hosted run, so a step that says
     it off a hosted runner is RED there (tests/test_not_applicable.py, both directions).
+
+The third verdict for a step that needs the owner's estate (CI.PUBLIC2): a step that probed its
+prerequisite and found it absent says NOT APPLICABLE and exits 78 on a hosted run only
+(`GITHUB_ACTIONS=true`); anywhere else it judges as it always did. Used by
+`check_estate_corpus.py`, `check_probes_pass.py`, `_estate_sweep.py` and `release_canary.py`.
 """
 
 from __future__ import annotations

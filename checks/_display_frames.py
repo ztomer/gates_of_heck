@@ -24,6 +24,14 @@ Two halves, because the class has two sites:
 
 Split from `check_display_seam.py` so neither file crowds the 500-line cap; the gate imports the
 rule rather than restating it, and the probe imports `FRAMES_CASES` from here.
+
+Lib: the seam gate's third rule, a render that counts frames must be able to deliver them. An
+`MTKView` drawn by hand (`view.draw()`, receivers found tree-wide by declaration or construction)
+is an offscreen render paced by an on-screen view and routes through the seam; a Python harness
+that hands the app the policy's `frames_flag` (`--golden-frames`) must call `frames_helper`
+(`require_frames_drawn`) with the renderer's own count, and a literal or the request read back is
+refused. Its probe rows (`FRAMES_CASES`) run inside the seam gate's `--probe`. From ZeroThunder's
+45-of-90 golden frames (BACKLOG 4.6).
 """
 
 from __future__ import annotations

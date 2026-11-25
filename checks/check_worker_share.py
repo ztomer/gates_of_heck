@@ -32,6 +32,15 @@ not add. A repo is keyed by its origin's name (a lane worktree's directory is no
 a private repo this public tree must not name, by `root:<its first commit>`. A file over its count
 is red; one under it is told to lower the entry, and the entry goes when the repo reads the share --
 the seed only shrinks (close-the-class).
+
+A consumer's gate script sizing a pool to the machine (GOH.POOLSHARE2): `lib/worker_share.py`
+MACHINE_SIZED -- xdist's auto count, swift's parallel flag with no `--num-workers`, a build
+runner's `-j` with no count, `nproc`, `sysctl hw.ncpu` -- over the tracked `.gatesrc`, root
+Makefile, every `*.mk` and the shell and Python under `tools/` (never a test file, never a comment
+line). Red unless the line says `# workers-ok: <reason>` (on it or the comment lines directly
+above) or `worker_share_seed.json` still holds that file's count for the repo (by origin name; it
+only shrinks, and a file under its count is asked to lower it). Run by `structural.sh --full` in
+every repo goh gates; `--probe` replays planted files.
 """
 
 from __future__ import annotations

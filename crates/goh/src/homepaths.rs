@@ -13,6 +13,10 @@
 //! Line splitting follows `str::lines`; the reference uses `splitlines`
 //! (additionally breaks on vertical tab and form feed). No tracked file
 //! relies on those as line breaks — accepted, same as the emoji port.
+//
+// `goh home-paths`: A tracked file hard-coding a path under someone's HOME (`/Users/<name>/`,
+// `~/Projects/`); opt-in `GOH_NO_HOME_PATHS`. Pinned by `test_check_no_home_paths.py`,
+// `test_goh_homepaths_parity.py`.
 
 use goh_tui::{ERR, OK};
 

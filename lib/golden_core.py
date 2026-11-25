@@ -59,6 +59,8 @@ image, size mismatch, malformed tolerances). --json prints one object with
 
 IDENTICAL FAST PATH: byte-equal images short-circuit to an exact verdict
 (sha-style, as ZeroThunder does) without running metric arithmetic.
+
+Pixel-diff math only (no render, no bless, no `--update`).
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

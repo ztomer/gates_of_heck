@@ -9,6 +9,12 @@
                         lock, so no row is appended to the inode the rename replaces.
 
 Pinned by tests/test_state_files_bound.py.
+
+GOH.LEDGERBOUND: the one append path for a bounded state ledger: `append(path, data)` writes
+holding the sidecar `.<name>.lock` (lock `state_file`) shared; `trimming(path)` is its exclusive
+try-lock, which `state_bounds.trim` renames the kept tail over the file under. Used by
+`timing_ledger.py`, `selection_miss.py`, `hooks/claude/lane_room.py`. Invoked by
+`lib/state_bounds.py`.
 """
 
 from __future__ import annotations

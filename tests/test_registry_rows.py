@@ -7,7 +7,7 @@ docs/config.md held GOH_STEP_TIMEOUT and GOH_STEP_GRACE twice, in two sections, 
 something the other did not.
 """
 
-# goh-reads-staged: .gitattributes docs/map.md docs/config.md gates/verdict_free_keys.txt
+# goh-reads-staged: .gitattributes docs/config.md gates/verdict_free_keys.txt
 # goh-reads-staged: crates/goh/house_scripts.tsv
 
 from __future__ import annotations
@@ -44,7 +44,6 @@ def _check(*paths: str) -> subprocess.CompletedProcess:
 def test_the_registries_are_row_merged() -> None:
     assert sorted(_row_merged()) == sorted(
         [
-            "docs/map.md",
             "docs/config.md",
             "gates/verdict_free_keys.txt",
             "crates/goh/house_scripts.tsv",

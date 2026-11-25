@@ -6,6 +6,10 @@ test red there is a DISAGREEMENT: the reach did not see that the change reaches 
 goes red (a red test is never carried past), a row joins <reuse root>/binreach/audit.jsonl, each
 disagreement files a fault item, and `goh land-profile` prints the count (`audit_line`).
 GOH_BINREACH_AUDIT=always|never forces it. Pinned by tests/test_bin_reach.py.
+
+GOH.BINREACH: one tree in ten also runs what the reach left out after the verdict; a red there is a
+disagreement (the pre-step red, a row in `<reuse root>/binreach/audit.jsonl`, a fault item each),
+counted by `goh land-profile`. `GOH_BINREACH_AUDIT=always. Invoked by never`.
 """
 
 from __future__ import annotations

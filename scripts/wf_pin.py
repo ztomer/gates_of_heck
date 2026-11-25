@@ -39,6 +39,36 @@ gates were 2010 s of v0.124.0's 2037 s install). An owner's unpushed commit is n
 the pin then waits on it, named. A set-aside repo stays stale and a pin commit the sweep could not
 push stays ahead (pin_sweep's ledger says why, with its log); the listing names both, so the bump
 exits 0 unless it could not read the estate.
+
+`goh wf-pin` (GOH.WFPIN): every estate workflow pinning a goh release older than the newest tag
+(`repository:`+`ref:`, `GOH_TAG:`, `git clone --branch`), exit 1 when any is, and each goh checkout
+pinned to none (named, never rewritten); `--bump` rewrites the tags and commits the pin files
+through `lib/estate_commit.py`, and moves goh's ruff pin too (the manifest, `lib/consumer_pins.py`)
+and records each repo's outcome in the ship's record (GOH.PINPROPAGATE); every pin commit ahead of
+its upstream it hands to the detached push sweep (`lib/pin_sweep.py`, GOH.PINPUSHGATE: each through
+the repo's full push gate, after the ship; `--sweep wait|none`). The listing also names each repo
+still ahead with a pin commit, with the sweep's reason and log. goh ship runs it after each goh
+release (`tools/ship_install_goh.sh`). Pinned by `test_wf_pin.py`, `test_consumer_pins.py`,
+`test_pin_sweep.py`.
+
+`scripts/release_canary.py`: the release canary (GOH.CANARY), the last step of this repo's
+GOH_CI_STEPS, so `tools/land.sh` runs it before main moves (consumers run main's HEAD at their next
+push, so landing IS the release to them) and the push runs it again. It replays `goh structural
+--full --keep-going` of the LAST RELEASE (the newest `v*` tag before HEAD; its binary from the
+store or `build-goh.sh --rev`, its gates from an export carrying `.goh-head`) and of HEAD over a
+clean clone of every gated consumer in the estate (registry unioned with the walk, gates_of_heck
+itself excluded) and compares the verdicts step by step: a step green under the release and red
+under HEAD REFUSES, naming the repo, the step and its seed (`goh shell-lint --seed` and the other
+ratchets) or fix; a step red on both sides is named as the consumer's own debt. Fail closed: a
+consumer it cannot judge, or an estate with no consumer, refuses. A range that changes only docs,
+tests or prose sweeps nothing. Records `release_canary` in the estate state file, which the daily
+audit keeps (`lib/estate_registry.py` `update_state`, one lock, each writer its own keys). While
+`crate::grace` runs (`--grace auto`; `on`/`off` force it), HEAD's pass runs once more per consumer
+at GOH_GRACE=over and every step red only there is NAMED under `grace_over` (count, repos, steps,
+the pass's summed seconds), never refused before the date; `goh ship` carries it for the commit it
+ships (`lib/canary_grace.py`, GOH.CANARYGRACE). The sides are built by `lib/canary_sides.py`.
+Pinned by `test_release_canary.py` (v0.57.4's shell-lint change replayed over a fixture estate) and
+`test_release_canary_grace.py` (a planted grace-held bare open).
 """
 
 from __future__ import annotations

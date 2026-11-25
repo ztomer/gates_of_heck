@@ -1,6 +1,11 @@
 """`check_estate_corpus.py`'s ESTATE table (split out by concern, GOH.CAPHEADROOM): per checker,
 the real corpus it is judged on and the plant that must turn it red. Pinned by
-tests/test_estate_corpus.py."""
+tests/test_estate_corpus.py.
+
+`check_estate_corpus.py`'s ESTATE table, split out by concern (GOH.CAPHEADROOM): per checker, the
+real corpus it is judged on, the plant that must turn it red, and why that corpus. Re-exported as
+`check_estate_corpus.ESTATE`. Pinned by `test_estate_corpus.py`.
+"""
 
 # Per entry: the checker, where its corpus really lives, the subtree to take, the file extension
 # the plant goes into, the plant itself, extra argv, and WHY this corpus for this checker.

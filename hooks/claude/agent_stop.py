@@ -24,6 +24,12 @@ no such task") or None. Stopped is finished. None means UNKNOWN -- nothing on di
 -- and a reader must never call that alive. Only a record carrying the tool's own `toolUseResult`
 counts, so a prompt or reply quoting the words stops nothing. Read-only; a file it cannot read says
 nothing. Pinned by tests/test_agent_stalls.py.
+
+THE stopped-agent rule, `stop_marker(transcript) -> str | None` (LOOP.LINGERSTOP): "interrupted"
+(the record a stop mid-turn appends), "TaskStop" (a TaskStop tool_result naming the id in the
+session transcript or a sibling subagent's, the only trace a stop after the turn's end leaves),
+"TaskStop: no such task", or None: unknown, never alive. `agent_stalls.py` and `.loop`'s tick read
+it. Pinned by `test_agent_stalls.py`.
 """
 
 from __future__ import annotations

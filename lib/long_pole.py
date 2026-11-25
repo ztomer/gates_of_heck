@@ -35,6 +35,22 @@ pre-step triples some tests: 14 s alone, 47 s in it, and the land gate's own run
 8 s), so "cut" cannot be read from one number; `report` names such an entry for a person to delete.
 The first two lands of this ratchet (2026-11-21) went red on exactly that: a line at the target
 flapped with the load of the last run, and RED_S is the line a reading cannot cross by load alone.
+
+GOH.PRELONGPOLE: the longest test every enqueue runs. The standing set is what the enqueue's
+pre-step chooses for an empty diff (`tools/affected_tests.py` `affected(root, [], enqueue=True)`),
+its floor whatever the worker count; `measured` costs it from the suite's long-pole table
+(`fast_tests.poles()`, beside the duration table: each test's QUIET seconds, `pole` summed over its
+phases from wall, process-tree CPU and the stretch `tests/_drift_guard.py` `pole_stretch` measures
+on the test's own thread, GOH.LONGPOLELOAD: the wall read the machine's load as the test's, 168.2 s
+against a 150 s allowance at load ~50) one test CASE at a time (a parametrized test's cases are
+tests of their own under xdist; a cached id the file no longer defines, or one with no parameters
+beside the same function's parametrized ones, is stale and left out); `judge` is the ratchet over
+`tests/long_pole_allow.json` (file -> `limit_s`, `why`: a test over `RED_S` (60 s: the table is a
+last run's, under that run's load, 14 s alone and 47 s in a 16-worker pre-step) with no entry, or
+over its file's limit, is red; an entry for a file the set no longer RUNS is stale and red (not one
+the table has not measured yet); the 30 s target is `report`'s); `python3 lib/long_pole.py
+[--check]` prints the longest single test, the serial sum and the offenders (2026-11-21: 69.7 s,
+tests/test_self_walk.py's walks; sum 587 s). Invoked by `tests/test_long_pole.py`.
 """
 
 from __future__ import annotations

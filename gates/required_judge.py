@@ -4,6 +4,13 @@ Split from required_tools.py at its line cap. `judge` reads one manifest row's t
 text the CALLER read, `--found`) against its floor; a PINNED row's floor is its pin, and in a goh
 checkout it must be exactly the pin (required_pins.off_pin). `check` judges a selection and prints
 each refusal; required_tools.py's `--check` calls it.
+
+Helper of `required_tools.py` (`--check`), split from it at its line cap: `judge` reads one
+manifest row's tool, or the version the caller read (`--found`), against its floor, and `check`
+judges a selection. A PINNED row's floor is its pin (at least it in a consumer), exactly its pin in
+a goh checkout (`required_pins.off_pin`, the judgement `--pins-held` makes) (GOH.PINCHECKFLOOR). A
+pip row's version is read from its distribution metadata. Invoked by via required_tools.py, every
+gate's `goh_require_floor`. Pinned by `test_required_tools_floors.py`.
 """
 
 from __future__ import annotations

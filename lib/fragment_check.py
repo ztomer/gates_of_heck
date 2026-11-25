@@ -5,6 +5,12 @@ release and refused on an empty Unreleased (a coordinator worktree, commit and e
 In a repository whose tip tracks a `changelog/` directory, `goh land --check` names each item id a
 commit subject of HEAD's own range starts with (`GOH.X: ...`) that has no `changelog/<ID>.md` at
 the tip and whose commits carry no `Changelog: none` trailer (work no user sees).
+
+Every item a land's range names has its changelog fragment (GOH.FRAGMENTATLAND): in a repository
+whose tip tracks `changelog/`, `goh land --check` names each item id a commit subject of HEAD's own
+range starts with (`GOH.X: ...`) with no `changelog/<ID>.md` at the tip and no `Changelog: none`
+trailer, refusing the check where the lane can still add it rather than at the release. Invoked by
+`lib/land_check.py`.
 """
 
 from __future__ import annotations

@@ -11,6 +11,12 @@ tool calls WROTE -- a Write or Edit `file_path`, or a redirect (`>`, `>>`, `&>`)
 `-o`/`--output` target of every tool `lib/shell_tools.py` lists. A path under a subdirectory (the
 item's own) is not loose; a read is not a write. agent_guard.py calls it at SubagentStop and names what it found to the session and on the
 ledger's outcome line (`scratch_loose`). Pinned by tests/test_agent_guard_scratch.py.
+
+`loose_writes()`: each file a subagent's transcript WROTE straight into the shared scratchpad root
+(a Write/Edit `file_path`, or a redirect, `tee` or `-o` target of a `shell_tools.py` tool), never
+one under a per-item dir; `agent_guard.py` names them at SubagentStop on the outcome line
+(`scratch_loose`) and to the session, with `loopctl scratch <ITEM-ID>` as the way
+(GOH.AGENTSCRATCH). Pinned by `test_agent_guard_scratch.py`.
 """
 
 from __future__ import annotations

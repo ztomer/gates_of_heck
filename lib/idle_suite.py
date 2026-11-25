@@ -45,6 +45,20 @@ A READING OF MAIN (GOH.MAINREDWAIVE). Each green or red run is kept in goh.db as
 at its tip (`reading`, lib/main_reading.py): the only evidence a land may waive a red by.
 
 Pinned by tests/test_idle_suite.py.
+
+GOH.GATEBUDGET2 (owner 2026-11-17: "the lander runs the full suite on main when idle"): after the
+landing queue drains, when the lander's repository declares `GOH_SHIP_FULL_SUITE=on` and main's tip
+has no full suite record (`reuse.py full-suite`), the lander runs the suite INSTRUMENTED
+(`INSTRUMENTED`: the tip's coverage gate in Rust mode with its external suite, GOH.COVCARRY) with
+`GOH_LAND_VERDICTS_RECORD=/dev/null` in a kept detached worktree at that tip
+(`<landq>/idle-suite/wt`), admitted through `tools/load.py 0` (class `work`), holding no lock; the
+first pending request stops its whole process group (TERM, then KILL) and the lander drains again.
+One run at a time (`idle-suite/lock`); a tip judged green or red (`last.json`) is not run again
+until main moves. GOH.IDLESUITERETIRE: it makes the ship's own judgement (`full_run.judge_env`:
+diff coverage based at the last version tag, `last.json` `base`), starts none while a ship of the
+repository is in flight and stops when one starts (`shipping`); a ship adopts a finished green run
+of its tip and base (`full_run.adoptable`). Off with `GOH_LANDQ_IDLE_SUITE=off` and inside any goh
+suite.
 """
 
 from __future__ import annotations

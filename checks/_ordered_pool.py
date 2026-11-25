@@ -4,6 +4,10 @@ For a sweep whose items are independent subprocess-bound jobs that REPORT as the
 check_estate_corpus.py prints through tui.lib). Threads, because the work is waiting on children;
 a per-thread stream, because redirect_stdout is process-global and would interleave the reports.
 Measured 2026-10-05: the estate sweep went 9.4 s -> 5.2 s, bounded by its longest corpus.
+
+Lib: run a function over items concurrently and replay each call's printed output in item order (a
+per-thread stream; `redirect_stdout` is process-global). Used by the estate sweep: 9.4 s -> 5.2 s,
+output byte-identical to serial.
 """
 
 from __future__ import annotations

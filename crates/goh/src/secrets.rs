@@ -15,6 +15,14 @@
 //! (`app_updates`, 2026-10-08). A path pattern written for style cannot say anything about a
 //! leak; a credential in vendored code is as committed as one anywhere else. The one way past a
 //! finding is the line-level, reasoned marker above.
+//
+// `goh secrets`: Narrow secrets gate: known key prefixes + private-key headers + a credential-named
+// key (`api_key`, `password`, …) with a 32+ char quoted value + a credential put into a URL's
+// userinfo by expansion (any expansion in the password slot, or a credential-named one in the user
+// slot: `${X_TOKEN}`, `${{ secrets.X }}`; `${USER}` passes; prose files are not read for it),
+// staged + full. No path exemption: takes no `--exclude`, and `GOH_EXCLUDE` does not reach it.
+// Source: `crates/goh/src/secrets.rs`, `crates/goh/src/urlexpand.rs`. Pinned by
+// `test_check_no_secrets.py`.
 
 use goh_tui::ERR;
 

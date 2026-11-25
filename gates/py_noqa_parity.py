@@ -16,6 +16,11 @@ unused; whether a used one should stand is a reading, not this check.
     py_noqa_parity.py --linters pyflakes --runner "python3 -m" --all     # every tracked .py here
 
 Exit 0 pass, 1 a finding, 2 a precondition (an unknown linter in the key, a linter not runnable).
+
+Helper: a `# noqa` ruff honours that a second linter the repo runs still reports
+(`GOH_PY_NOQA_PARITY=pyflakes`); exit 2 on a linter it cannot read. Called by `py_staged.sh`
+(staged files) and `py_gate.sh` (`--all`, every tracked file), not directly. Invoked by via
+py_staged, py_gate.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

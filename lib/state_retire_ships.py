@@ -11,6 +11,13 @@ only the shipped repo's) is settled first, as lib/ship_status.py settles one: it
 `failed` at `abandoned`, written now, so it reads back as newer than its file and the archived file
 stays the record as it was. A result whose worker still runs is kept, named, until it ends. In the
 seam with lib/state_retire.py (tests/_state_seam_scan.py): the one other module naming the files.
+
+GOH.STATEDB S2: `goh state retire ships`, the ship records' half of `state_retire.py`: each result
+and `.pins.json` file under `ship_records.ship_dir()` in as its `ships`/`ship_pins` row (INSERT OR
+IGNORE), a result saying running whose worker is gone (any repo's) settled in its row as
+`ship_status.abandoned` writes it, a live ship's file kept until it ends; `check` passes a row
+equal to its file or written after it. The step logs, sweep records, profiles and covsrc.json stay.
+In the seam beside `state_retire.py`. Pinned by `test_state_retire.py`.
 """
 
 from __future__ import annotations

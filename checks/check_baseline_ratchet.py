@@ -27,6 +27,8 @@ Exit codes: 0 pass · 1 violation · 2 precondition missing (with reason).
 --record rewrites the baseline from current values — after printing exactly
 what changed, so the diff is reviewed, never silent. Only ever run it when a
 shrink is landing; running it to absorb growth is how a ratchet dies.
+
+Shrink-only ceilings (JSON or line baselines).
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

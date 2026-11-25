@@ -10,6 +10,11 @@
 //! `0.3 -> 0.4` is a major. The ratchet is one triaged crate per line,
 //! `name  # why it may stand`; an entry with no reason fails, and so does an
 //! entry whose crate is no longer behind a major -- the list can only shrink.
+//
+// `goh deps`: Dependency currency: a direct dependency pinned below the version a transitive parent
+// resolves is FATAL (offline, never cached); one behind crates.io's latest is reported (cached per
+// crate name, asked concurrently). Pinned by `test_check_dep_currency.py`,
+// `test_crates_io_cache.py`.
 
 pub mod cratesio;
 pub mod semver;

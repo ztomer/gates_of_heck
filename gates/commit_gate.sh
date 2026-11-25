@@ -41,6 +41,12 @@
 # plural_hedge entries for files then reverted). Every check run under this hook journals its settle
 # in GOH_SEED_PENDING instead, and `goh seed-settle` applies the journal only after every step below
 # has passed; a refused commit's journal goes with its directory. tests/test_seed_refused.py.
+#
+# What the stock pre-commit runs (the hook only delegates, so a change here reaches every repo
+# without a re-install): the repo's `tools/gate.sh --staged` with the hook's git variables dropped,
+# then the house structural layer when that gate passed without running it for this tree (read off
+# `GOH_STRUCTURAL_MARK`), the gap named. No `tools/gate.sh`: structural alone. Invoked by stock
+# pre-commit.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"

@@ -25,6 +25,11 @@ hard-linked (copied across devices) into `$CARGO_LLVM_COV_TARGET_DIR/cov-view/de
 each run, and `_coverage_rust.sh` points the report's CARGO_LLVM_COV_BUILD_DIR there. A previous
 build's binary, or a sibling crate's, is simply not in the view. The TARGET dir is the crate's own,
 and is pruned as before.
+
+Rust coverage: deletes the instrumented binaries of a member's name that the current build's own
+artifact list (cargo's JSON messages) does not name, under the directories the report reads
+(`show-env`'s target and build dirs); refuses when the build is not under them. Pinned by
+`test_coverage_incremental.py`.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

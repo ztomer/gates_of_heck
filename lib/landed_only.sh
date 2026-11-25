@@ -24,6 +24,11 @@
 #                             time, HEAD, reason) and said on stderr (GOH.MAINCOMMIT, 2026-11-11).
 # Pinned by tests/test_landed_only_commit.py.
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+#
+# The commit half of `GOH_LANDED_ONLY` (GOH.LANDONLY): `commit_gate.sh` refuses a commit in the
+# PRIMARY checkout while HEAD is the named branch, unless `tools/land.sh` is the caller
+# (`GOH_LAND_CALLER=land.sh`, set on its merge only) or `GOH_MAIN_COMMIT_OK=<reason>`. A linked
+# worktree, another branch and a repo naming no branch are untouched.
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/landed_only.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 goh_refuse_unlanded_commit() {

@@ -1,6 +1,11 @@
 # shellcheck shell=bash
 # lib/sleep_mark.sh -- did the machine sleep during a gate run? Sourced by gates/push_gate.sh and
 # gates/round.sh after tui/lib.sh (it prints through `warn`).
+#
+# Sourced by `push_gate.sh` and `round.sh`: marks the last sleep (`sysctl kern.sleeptime`, or
+# `GOH_SLEEPTIME_FILE` in tests) before a gate, and after a RED run names a sleep that happened
+# during it, since a suite run in a dark wake fails like a code defect. A green run says nothing.
+# Pinned by `test_push_gate_runs.py`.
 
 # goh_sleep_mark — when the machine last went to sleep, in epoch seconds, or nothing where the
 # OS does not say (macOS's kern.sleeptime; Linux has no such counter, so it is blank there).

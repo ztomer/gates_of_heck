@@ -3,7 +3,11 @@
 working; call `$GOH_DIR/gates/goh.sh subprocess-stdin` instead. It has no entry in
 tests/reference_kit.py and needs none: unlike its siblings it has no retired Python behind it. The
 rule, the incident and the ratchet are in crates/goh/src/substdin/; the specification is the test
-table beside it."""
+table beside it.
+
+Forwarder (Phase N3): execs `gates/goh.sh subprocess-stdin` with the same arguments, for a consumer
+that calls it by path; imported, it raises. Pinned by `test_retired_shims.py`.
+"""
 
 import os
 import sys

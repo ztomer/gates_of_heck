@@ -12,6 +12,13 @@ read from the index; at full every such file in the tree. No fragment is nothing
 passes.
 
 Exit 0: every fragment is entries only. Exit 1: findings, one per fragment. Exit 2: not a repo.
+
+Every `changelog/*.md` (and `docs/changelog/*.md`) fragment, the README excepted, is one the
+release step accepts: `* ` entries only, no heading. The rule is the release kit's own
+(`tools/release-kit/changelog_fragments.py` `refusal`), imported, never copied; it ran only at ship
+time until the ship of 93d3c7aa refused a landed fragment (GOH.FRAGGATE). A STRUCTURAL step at both
+scopes (`--staged` judges the index's added or changed fragments). Pinned by
+`test_goh_structural.py`.
 """
 
 from __future__ import annotations

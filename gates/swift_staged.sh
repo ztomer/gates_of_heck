@@ -20,6 +20,12 @@
 # binding on explicit paths, as it binds the push's directory walk.
 #
 # Exits 0 when nothing Swift is staged, and when every staged file is excluded by its config.
+#
+# `swiftlint lint --strict --force-exclude` on the STAGED `*.swift` only; the cheap half of
+# `swift_gate.sh` at commit time. Each file is linted from its nearest `.swiftlint.yml` directory
+# under that directory's `GOH_SWIFT_LINT_BASELINE` (through `swift_lint_baseline.py --scope`); a
+# group an ancestor config excludes is skipped. `commit_gate.sh` runs it for every repo whose index
+# holds a `.swift` (`tests/test_staged_parity.py`). Args: `[repo]`. Invoked by every commit.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

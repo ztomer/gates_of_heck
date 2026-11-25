@@ -34,6 +34,24 @@ A `--no-pre` land
 
 Each wait is one line in lander.log as it starts and one as it ends, naming the markers it waited
 on and the seconds it took. Pinned by tests/test_landq_window.py, on a fake clock.
+
+The lander's batch window (GOH.BATCHWINDOW): before it picks a batch, a pending land waits while
+`enqueuing/` holds a live marker of another land of its repo (its own marker and a dead pid's never
+count), until that land files, the batch is full, or `GOH_LANDQ_WINDOW` seconds (default 120, 0
+off) past the head's filing, so lanes told to enqueue at once share ONE land gate; each wait is
+logged in lander.log. Adaptive (GOH.ONEVERDICTTREE3): a marker due soon (its start plus its repo's
+median `pre_s`) stretches the wait, never past `GOH_LANDQ_WINDOW_MAX` (300 s); a land holds only
+for a marker DUE inside that window (GOH.WINDOWDUE).
+
+`lib/landq_batch.py`: The landing queue's batch (GOH.LANDBATCH): the queue's head land request
+takes up to k-1 more of its repo (k: `GOH_LANDQ_BATCH`, else `lib/landq_size.py`) (a push or ship
+of that repo ends the take, and a `--no-pre` land is taken alone, `alone`, GOH.NOPREBATCH); holding
+the land lock it stacks them (each branch rebased onto the one below by `tools/land.sh`'s stacking
+mode, a conflict dropping only that item, red `conflict`) and runs the tip's `land.sh` once. Green
+lands every item at its own commit; red bisects (halves restacked and gated, the second on main
+beside the first, `lib/landq_spec.py`; a tree already gated red not gated again), a lone red item
+red with its own log and its branch back at its enqueued commit; a timeout is not bisected. Each
+record carries `batch` {id, items, gates}. Pinned by `test_landq_batch.py`.
 """
 
 from __future__ import annotations

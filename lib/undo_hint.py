@@ -4,6 +4,10 @@ The discard guard (`hooks/claude/discard_guard.py`) refuses `git checkout -- <fi
 and `git reset --hard` over uncommitted work, and agents met that refusal 44 times in 7 days while
 undoing their OWN edits. The refusal now names the safe way to do exactly that: `goh undo <files>`
 (`tools/undo.py`), which restores only the caller's own files in its own worktree and keeps a copy.
+
+The `goh undo <files>` command the discard guard's "would throw away uncommitted work" refusal
+prints (GOH.UNDOMINE): the files it would lose, relative to where the command runs, and in a repo's
+main checkout the note that `goh undo` refuses there. Pinned by `test_goh_undo.py`.
 """
 
 from __future__ import annotations

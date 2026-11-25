@@ -7,6 +7,9 @@ to give the module a function's code lives in -- an impl's methods where the imp
 its function's module, a generic by its definition, a default trait method by its trait -- and
 None for anything it cannot read, which its caller reads as "unknown, choose the test". Pinned by
 tests/test_bin_reach.py.
+
+GOH.BINREACH: the module a Rust v0 symbol's code sits in (an impl's methods where the impl is,
+closures, generics, backrefs), None for what it cannot read.
 """
 
 from __future__ import annotations

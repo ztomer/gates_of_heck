@@ -53,6 +53,12 @@
 #
 # NOTE: sccache is expected via RUSTC_WRAPPER (see ~/.zshenv). fmt and clippy
 # are largely cache-hostile; the real cache win is on build/test steps.
+#
+# Biting `cargo audit` on EVERY tracked `Cargo.lock` of the repo, each from its nearest
+# `.cargo/audit.toml` (`lib/rust_locks.py`; the repo group, so `--each-crate` runs it once) +
+# `cargo fmt --check` + `clippy -D warnings` + `check_no_allow` + `check_no_empty_assert` +
+# coverage floor when `GOH_COV_FLOOR_RUST`/`GOH_COV_FLOORS_JSON` is set (via `coverage_gate.sh
+# --lang rust`, explicit argv). Args: `[repo] [cargo_dir]`. Invoked by `--full`, opt-in.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

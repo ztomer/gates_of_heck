@@ -43,6 +43,20 @@ content, the tools) is taken by that profile, not run (tests/_prof_reuse.py, GOH
 FILE gets the reused and fresh counts per binary, which tools/ship.py puts in the ship record.
 
 Pinned by tests/test_ship_starve.py and tests/test_ship_cov_bisect.py.
+
+GOH.SHIPSTARVE, GOH.COVOFFLAND: `goh ship`'s first step, `suite`, run holding the land lock so main
+cannot move past it: when the repo declares `GOH_SHIP_FULL_SUITE=on`, the instrumented full run
+(`full_run.INSTRUMENTED`) on the tip, never skipped, with `GOH_CHANGE_BASE` at the last ship's tag
+so the diff coverage judges every line landed since, `GOH_LAND_VERDICTS_RECORD=/dev/null` and
+`GOH_LAND_VERDICTS_REUSE=@tree`, in a kept detached worktree (`<ship dir>/suite-wt`), admitted as
+class `ship`. The ONLY coverage measurement on the path to a release: a land runs the coverage
+step's tests plain (`gates/rust_gate.sh` `GOH_RUST_COVERAGE=plain`, set by `lib/land_gate.sh`). A
+red run releases nothing; `after_red`, from the ship's worker: a diff coverage red is blamed per
+uncovered line to its land (`diffcov_red`, a fault per land), never bisected (GOH.SHIPBISECTCOV);
+any other red, the land lock given back, bisects the lands since the last ship (`goh-landed`) to
+the first red one, on the failing tests it names alone when it names any, the record `bisecting`
+with `bisect_step` meanwhile, and files a fault item naming it (`loopctl file`). Invoked by
+`lib/reuse_fault.py`, `tests/_same_tree.py`. Pinned by `test_ship_red_cause.py`.
 """
 
 from __future__ import annotations

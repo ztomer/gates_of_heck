@@ -15,6 +15,12 @@ unless what is left is under MIN_GAP_S: a 2 s phase with 0.5 s of interpreter st
 Children that ran side by side can sum past their parent; the sum is capped at it, so a parallel
 fan-out over a gap still hides the gap -- the rows carry no start time, and this is the most a sum
 can say. A label run more than once (one check in two gates) pools its runs and its children.
+
+GOH.RELEASELANDGATE: every timed step's seconds are named by the rows under it. `gaps(rows)` finds
+each parent row whose children (rows naming it their parent) sum under 90% of its wall time by more
+than 5 s (a leaf attributes itself; side-by-side children are capped at their parent); `check
+FILE...` prints each and exits 1. `lib/ship_profile.py` prints them under `goh ship --status`'s
+table.
 """
 
 from __future__ import annotations

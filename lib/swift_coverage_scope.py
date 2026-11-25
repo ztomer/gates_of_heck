@@ -30,6 +30,9 @@ from `swift package describe --type json` (the manifest's answer, never a tree
 walk), and a file outside every one of those target directories is not code
 under test. A tree with no Package.swift (an Xcode project) has no such list
 and keeps the marker rule alone.
+
+What counts as "the code under test" in a Swift coverage measurement -- ONE definition both
+measurement paths import.
 """
 
 import json

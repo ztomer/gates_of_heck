@@ -16,6 +16,14 @@ pid its owner wrote to `.goh-owner` is alive (a long suite only writes deep in i
 `--backstop` is the other half: a trap or an atexit does not run on SIGKILL, so any of our own
 `goh-*` entries untouched for 12 hours is a killed run's and goes. local_ci.sh runs it on every
 push and the suite's controller at every session start (tests/test_temp_claimable.py), one spelling.
+
+Bounds what a tool keeps on failure: the newest 20 `<prefix>*` entries and anything touched within
+the hour stay, the rest go; `--max-bytes N` also bounds the kept total by size, and an entry whose
+`.goh-owner` pid is alive or whose top three levels moved within the hour is live and never cut.
+`local_ci.sh` (its red-run logs) and `tools/session_bench.py` (its work dir) call it before they
+create one; 619 and 41 had piled up in one temp dir (a private Swift app, 2026-10-06). `--backstop`
+removes any `goh-*` entry untouched for 12 h (a killed run's), beside and under `goh.noindex`:
+`local_ci.sh` runs it per push, the suite's controller per session.
 """
 
 from __future__ import annotations

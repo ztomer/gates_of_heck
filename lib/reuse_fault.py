@@ -7,6 +7,13 @@ naming its class as rules.class_first asks (`class_of: none`) and the fields its
 each off is a new instance: an id the queue already holds is an EARLIER off's item, done or open,
 and the next free id is filed, naming it. `unfiled` lists the paths off with no filed item, for
 SessionStart (hooks/claude/estate_advisories.py). Pinned by tests/test_reuse_fault.py.
+
+The fault item a reuse path turned OFF files (GOH.REUSEOFFLANDED2, split from `reuse_audit.py`):
+`file_fault` runs `loopctl file` as `class_of: none` with the `metric` and `predicted` a phase
+contract requires, into the first open phase whose `requires` it meets (GOH.REUSEOFFLANDED3); an id
+the queue already holds is an earlier off's item, done or open, so the next free one
+(`GOH.REUSEOFF<PATH>2` and on) is filed naming it, never read as filed; `unfiled` lists paths off
+with no filed item for SessionStart; imported by `reuse_audit.py`. Pinned by `test_reuse_audit.py`.
 """
 
 from __future__ import annotations

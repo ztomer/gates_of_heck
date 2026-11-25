@@ -27,6 +27,32 @@ every migration the copy ships; a file lacking one (the lane's own, or main's ne
 run) opens READ-ONLY and says which (`NotOfRecord` on a write), and a missing one is never created.
 A pre-step never migrates: after the land main ships the migration, and main's next run applies it.
 Any other file (a test's tmp_path) migrates from any copy.
+
+GOH.HEADCOPYRECORD: which copy of goh is the code of record that may migrate or create the shared
+goh.db and goh-cache.db, decided by its COMMIT (`why_not`): the primary checkout on main, or an
+export (`.goh-head`) of a commit on main's tip in the checkout `.goh-live` (or `GOH_LIVE_ROOT`)
+names; a linked worktree, an export of a staged tree or a lane commit, and a copy naming no commit
+are not. Kept per process (~8 us cached; first call 0.02 ms checkout, 0.2 ms tip export, ~10 ms one
+`git merge-base`).
+
+`lib/db_core.py`: GOH.DBSEAM: the mechanics every goh SQLite file shares, no store knowledge.
+`path` (the seam's env override, absolute, else its XDG default), `connect` (WAL, busy_timeout, the
+seam's synchronous, migrated on open), `ro` (`mode=ro`; a missing file is OSError, never created),
+`migrate` (every `NNNN_name.sql` missing from `schema_version`, by SET DIFFERENCE, so a lane's 0003
+landing before another's 0002 never strands 0002), `transaction` (BEGIN IMMEDIATE, its wait one
+`$GOH_TIMINGS` line `{db, pid, wait_s}`). The version is kept twice: `PRAGMA user_version` (the
+highest number with every lower one applied) and a `meta` table (db, schema_version, created_by,
+last_migrated_by, created_at); a file holding a number this goh does not ship opens read-only and
+says so, never migrating down (`NewerFile`, naming the migration). Only the code of record, decided
+by its COMMIT (`why_not_of_record`, kept per process: the primary checkout on main, or an export,
+`.goh-head`, of a commit on main's tip; never a staged tree's or a lane commit's export, nor a copy
+naming no commit, GOH.HEADCOPYRECORD) migrates or creates a SHARED file (the account's goh state or
+cache directory, `shared`): a linked worktree (a lane, a landq slot's pre-step) writes one only
+when it already holds every migration the copy ships, else opens it read-only (`NotOfRecord`,
+GOH.LANEMIGRATE). Under a suite (`GATES_OF_HECK_SUITE_REAL_HOME`) a file directly in the real
+home's goh state or cache directory raises `RealHomeOpen`, unless the caller passes the file its
+runner NAMED (`named=True`: the duration table `tools/pytest.sh` hands its top-level run,
+GOH.DURATIONSDB). Pinned by `test_db_refused.py`.
 """
 
 from __future__ import annotations

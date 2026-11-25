@@ -6,6 +6,11 @@ below" ARM. `goh budget --json` carries `breaches`: each BREACHED subject (lib/b
 dicts) with the figure its kind judges (the last run, or the median of five) and the
 self-improvement item it calls for, which the coordinator files; the table prints the same line.
 Pinned by tests/test_land_e2e.py.
+
+A BREACHED subject never sits silent (GOH.LANDTARGET): `goh budget --json`'s `breaches`, each
+BREACHED subject with the figure its kind judges and the self-improvement item it calls for, which
+the coordinator files; the table prints the same line. Also the table's seconds format. Pinned by
+`test_land_e2e.py`.
 """
 
 from __future__ import annotations

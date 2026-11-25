@@ -42,6 +42,13 @@
 #            each record keeps its lines under .id/, so a later miss names what moved (GOH.PROOFKEY)
 # Exit: the step's code; 0 when skipped; 2 on a usage or configuration error.
 # GOH_PROVEN=0 disables the cache (always run, never record).
+#
+# `proven.sh [--label L] [--log F] -- '<step>'`: run one step unless that exact step string already
+# passed on this exact clean tree (same gates, toolchains, keyed env) within `GOH_PROVEN_TTL_S`.
+# For a repo hook whose step also appears in `GOH_CI_STEPS`, so the push-time run is a hit. The
+# step string may carry an artifact declaration (`[produces=...]`): the KEY is the whole string,
+# the COMMAND that runs is what is after the prefix, and a declared artifact that is not there is
+# exit 2. Invoked by repo hooks.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

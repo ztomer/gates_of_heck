@@ -21,6 +21,17 @@ pushes every pin commit ahead of its upstream -- this one's and any an earlier b
 detached, bounded sweep after the ship returns, and records each outcome where `goh ship --status`
 and the next `goh wf-pin` listing read it. An owner's unpushed commit is never pushed by goh: the
 pin commit then waits on it, named.
+
+THE MANIFEST of the pins goh owns in a consumer (GOH.PINPROPAGATE): `PINS` names each (the goh
+release a workflow checks out; `ruff==X.Y.Z` in the root pyproject/requirements or a workflow, its
+uv.lock relocked and .venv given that ruff) and where its version is written (goh's tag;
+`required_tools.tsv` via `ruff_house.RUFF`), never a second copy. `push` lands the pin commits
+ahead of a consumer's upstream through its own push gate, never an owner's commit (named instead),
+its gate's log kept when asked (a refusal names it); `sweep` moves the consumers `width` at a time
+(the machine's gate slots, GOH.SHIPPROFILE; the push sweep passes `at_once=1`, GOH.LOADSOURCE), one
+profile row `ROW WHERE` each (`commit` in the install, `push` in the sweep); `land_held` takes its
+land lock without waiting; `record_path`/`carry`/`line`: the install's record beside the ship
+result (its commits and the push sweep's record), carried as `consumer_pins`.
 """
 
 from __future__ import annotations

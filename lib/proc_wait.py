@@ -16,6 +16,13 @@ own command line (`lib/self_match.py`). A wait names the THING it waits on, neve
 Every kind takes `--timeout S` (default 7200: no agent outlives about two hours).
 Exit: 0 met; 1 the land or ship finished red; 2 usage or an unreadable target; 3 timed out;
 4 the ship's worker is gone while its record says running (`goh ship --status`'s codes).
+
+`goh wait pid N... | file PATH | json PATH KEY=VALUE[,..] | land ITEM | ship RECORD [--timeout S]`
+(GOH.WAITSTOP): block until the named thing is so, bounded (default 7200 s), never a pattern a
+shell's own command line can match: a pid or stamp gone (`pid_owner.gone`), a file there, whole
+JSON holding dotted values, a land finished (`goh land --wait`'s exit), a ship record no longer
+running (`goh ship --status`'s marks and exit). Exit 0 met, 1 red, 2 usage, 3 timed out, 4 a ship's
+worker gone. Invoked by `crates/goh/house_scripts.tsv`.
 """
 
 from __future__ import annotations

@@ -22,6 +22,15 @@ module never creates the mount path or `cache.noindex`: only children of a verif
 through `open_root`'s directory fd (lib/cache_move.py), so a drive leaving mid-copy fails the copy
 (ENOENT, EIO) instead of landing it on the internal disk.
 
+`goh cache-root [--json]` (GOH.CACHEEVICT): the cache root to use NOW, decided at use time, never
+written into static config -- the removable large tier `<mount>/cache.noindex` only when the volume
+is a mount point (st_dev differs from /), its `.goh-cache-volume` marker's `volume_uuid=` equals
+the volume's own UUID (diskutil; and `GOH_CACHE_VOLUME_UUID` when set), it is writable and above
+its floor (max(50 GiB, 5 %)); else the internal root, with a one-line reason. Found by marker
+across every mount under /Volumes (a "1TB 1" remount resolves); present-but-locked reads absent.
+Never creates the mount path or `cache.noindex`; `open_root` hands out the directory fd every write
+on the drive goes through.
+
 usage: cache_tier.py [root] [--json]     print `<root>\t<tier>: <reason>`; exit 0 either way
 """
 

@@ -22,6 +22,15 @@ land retries) stay; this is the whole the user waits for.
                   `goh budget` and by tools/landq.py after each record.
 
 Pinned by tests/test_land_e2e.py.
+
+GOH.LANDTARGET (owner target 2026-11-18: a goh land end to end in 5 min plain, 10 min instrumented;
+breach lines owner's: "yes, 7.5 and 15 for the breach"): one `<repo> land e2e plain` or `<repo>
+land e2e instrumented` ledger row per landed item of mode `land`, from landq done/ and logs/: its
+first request (the done record's `requested`, taken before the enqueue's pre-step; older records
+start at their filing, `from: filed`) to the landing's `finished`, its retries inside it;
+instrumented when its log or its batch gate's log has the coverage step's timing row (logs gone: no
+row); a batch of N is N rows; `cpu_s` the land gate's, for the relative guard. `backfill` runs from
+`tools/landq.py` after each record and from `goh budget`.
 """
 
 from __future__ import annotations

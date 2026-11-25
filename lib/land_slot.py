@@ -33,6 +33,16 @@ replaces only the owner it read (its token), so a claim made meanwhile is never 
 The reuse paths (SUITEONCE's suite_reused, verdict carry, the enqueue's kept verdict) are keyed on
 tree and sha, never on the checkout's path, so they hold across the slot as they did in the lane.
 Pinned by tests/test_land_slot.py.
+
+A land judges the COMMIT, never the lane's tree (GOH.LANDSNAPSHOT): `goh land --enqueue --land`
+claims a slot, a detached checkout of the enqueued sha under `<landq>/slots/<repo key>/<n>` (a
+linked worktree of main), and makes it the request's `worktree` (the lane's path kept as `lane`);
+the enqueue's pre-step and the lander's pre-step, stack, rebase and gate run there, so a lane edit
+changes no verdict, the lander never moves a lane's tip, and two items of one worktree never share
+a checkout. Ownership is `<n>.owner` made by one link(2), stale when its pid is gone and no
+pending/running request names its token; `ready` checks the slot out at the sha again before the
+lander runs it, the record releases it, and numbers past `KEEP` (4) are removed (reused slots keep
+warm build output).
 """
 
 from __future__ import annotations

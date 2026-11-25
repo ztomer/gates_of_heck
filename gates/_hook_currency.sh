@@ -8,6 +8,12 @@
 # goh ship ask (GOH.HOOKCURRENCYDUP: this file was a second, narrower rule). GOH_ROOT names the
 # gates checkout whose retired_hooks.sha256 and hooks/ are read. Sourced, never run.
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+#
+# Sourced: `goh_stale_hooks` prints each repo hook that is a STALE stock copy carrying gate logic
+# of its own (refused); `goh_aging_hooks` the stale copies that delegate to the runtime gate
+# (warned with `goh hooks --refresh`, GOH.HOOKSWEEP). Both run `lib/hook_currency.py`, the one
+# reading (GOH.HOOKCURRENCYDUP), so structural.sh, goh ship and `goh hooks` never disagree. Pinned
+# by `test_hook_currency.py`.
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_hook_currency.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=lib/house_python.sh

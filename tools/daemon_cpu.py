@@ -24,6 +24,20 @@ tree's exact CPU (its wait4 rusage) beside what the samples attributed to the tr
 gap is a number, not a guess. Per-FILE attribution (which paths fseventsd lstat()s, who issued
 each write) needs `sudo fs_usage -w -f filesys`, which this probe never runs. Pinned by
 tests/test_daemon_cpu.py.
+
+`tools/daemon_cpu.py idle N | run [--path P] -- CMD`: what the system daemons our work drives
+(fseventsd, mds/mds_stores/mdworker, mediaanalysisd, ReportCrash, WindowServer) burned over a
+window, and the processes that burned CPU beside them, with the share inside CMD's own tree (exact
+tree CPU by wait4 beside it) and each `--path`'s size change. No sudo: per-file attribution stays
+with `sudo fs_usage`. It measures; it is not a gate (EST.FSEVENTSCHURN). Pinned by
+`test_daemon_cpu.py`.
+
+`tools/spawn_profile.py`: `tools/spawn_profile.py run --out D [--sample S] -- CMD | report D
+[--costs CAL] | calibrate --out D`: every process CMD starts through PATH or
+`GOH_PY`/`sys.executable` (a compiled C shim per kind: python3, bash, sh, git, goh, cargo; one
+ledger row each with caller pid, wall, rusage), ranked by calling script x calibrated start cost;
+`--sample` names what absolute paths hid (the blind share). No sudo; `tools/spawn_ledger.py` reads
+the ledger. It measures; it is not a gate (GOH.SPAWNPROFILE). Pinned by `test_spawn_profile.py`.
 """
 
 from __future__ import annotations

@@ -20,6 +20,11 @@ it fires as the tool returns, before the coordinator's next turn.
 
 Seam: GOH_LOOP_QUEUE (queue_hold.queue_path). Exit 0 on a no-op; a loopctl that refuses or fails
 is exit 1 with its words on stderr: a visible, non-blocking hook error. Never exit 2.
+
+a Claude Code PostToolUse hook (matcher `Agent|Task`, GOH.SPAWNREGISTER): as a spawn returns, the
+brief's `Item <ID>` still `pending-spawn` in the loop queue is registered to the response's
+`agentId` through `.loop`'s `loopctl start` (one writer). A write racing it is told `registration
+pending: retry in a few seconds` (`lib/queue_hold.py`). Pinned by `test_spawn_register.py`.
 """
 
 from __future__ import annotations

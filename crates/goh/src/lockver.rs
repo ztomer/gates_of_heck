@@ -7,6 +7,11 @@
 //! workspace member's version (inheritance resolved) with its lock entry;
 //! arm 2 compares the release version a source OUTSIDE the manifests declares
 //! (`GOH_TAG_VERSION_SOURCES`) with what the members declare and lock.
+//
+// `goh lock-version`: A committed `Cargo.lock` must agree with the manifests it was generated from:
+// every workspace member's lockfile version against its own manifest (with `version.workspace =
+// true` RESOLVED, never compared as the literal `true`), plus the declared release version where a
+// source OUTSIDE the manifests declares one. Pinned by `test_check_lock_version.py`.
 
 mod release;
 

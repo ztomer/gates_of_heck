@@ -20,6 +20,10 @@ both over `~/.claude/projects/**/subagents/**/*.jsonl` (`--projects DIR`), split
     scripts/claude_cache_probe.py {reads|ttl} --cut ISO [--days N] [--projects DIR] [--json]
 
 Exit 0; 2 on a bad argument. Pinned by tests/test_claude_cache_probe.py.
+
+`scripts/claude_cache_probe.py {reads|ttl} --cut ISO`: the measurement the managed read cap and
+subagent cache TTL are chosen by: Read result sizes per candidate cap, and each TTL's cost on the
+same subagent turns. Pinned by `test_claude_cache_probe.py`.
 """
 
 from __future__ import annotations

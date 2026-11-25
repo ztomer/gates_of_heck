@@ -13,6 +13,13 @@ the ship's land, not a rival: the worker exports OWNER_ENV naming the lock and i
 skips the wait only when that pid is alive and is the one the lock file names (the holder line), so
 an inherited variable from a dead ship takes the lock as usual.
 Pinned by tests/test_ship_land_lock.py.
+
+The repository's land lock from Python (GOH.CLASS.CHECKOUT): `goh-land.lock` in the common git dir,
+the kernel flock tools/land.sh takes; the ship worker holds it for its pipeline, so a land waits
+behind a ship (naming it) and a ship behind a land; GOH_LAND_LOCK_OWNER lets a land the ship's own
+release kit runs proceed under the ship's hold, judged by `lib/land_lock.sh` `goh_land_lock_ours`
+(the holder line's pid, still the process that wrote it). Pinned by
+`test_entry_points_leave_no_strays.py`.
 """
 
 from __future__ import annotations

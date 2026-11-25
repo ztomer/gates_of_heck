@@ -44,6 +44,20 @@ it.
 lib/land_check.py, GOH.LANDCHECK): which structural guard keeps costing lands.
 
 Pinned by tests/test_land_profile.py.
+
+`goh land-profile [--since ISO. Invoked by COMMIT] [--last N] [--normal-since ISO] [--min-s S]
+[--json]` (GOH.LANDPROFILE, owner 2026-11-18: "we need to get the ci problem solved"): where a land
+end to end goes, stage by stage, from landq done/ and logs/ and the ledger's `land` rows: enqueue
+pre-step, queue wait, retries, the lander run (pre-land, gate: slot wait, each gate step summed
+over its passes with nested steps under their parent, the coverage phases, then the lander's
+remainder); grouped by mode (lib/land_e2e.instrumented) and, with `--normal-since`, loaded before /
+normal after; per stage n, median and max wall, median cpu-s, share of the summed e2e, median start
+load. A batch's shared runs (pre-land, gate, slot wait, steps) count once, on the batch's owner
+(`lib/land_spd.py` `once`); the e2e starts at the first enqueue attempt, red ones and a refusal's
+enqueue log included, with an `earlier attempts` stage; `--last N` and `--since COMMIT` (lands
+whose landed commit descends from it) print the SPD figures (GOH.LANDPROFILEFIX). The steps come
+from the gate's timings file, else the log's last step table (a nested row's parent then reads `?`
+unless another land's timings named it).
 """
 
 from __future__ import annotations

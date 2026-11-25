@@ -8,6 +8,13 @@
 //! -- a relative bundle, `/usr/local/bin/x`, a `..` segment, an empty value -- is a declaration that
 //! verifies nothing and still reads like one. A repo with no key is not judged. A structural step
 //! at both scopes (the key is one line of one file; there is nothing to scope).
+//
+// `goh installs`: A `GOH_INSTALLS` entry the umbrella's installed-version reader cannot read: an
+// empty value, an `.app` not at `/Applications/...` or `~/Applications/...` (or with an
+// empty/`.`/`..` segment), a CLI that is not a bare name, a name declared twice. A structural step
+// only when the key is present; both scopes. Lies: a well-formed name of something the repo never
+// installs passes (the umbrella's verify reds that, by reading the machine). Pinned by
+// `test_installs_key.py`.
 
 use goh_tui::{ERR, OK};
 use std::collections::BTreeSet;

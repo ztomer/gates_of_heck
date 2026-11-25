@@ -53,6 +53,14 @@ lands, 2026-11-19 22:22Z to 11-20 09:25Z: 5 took the lane's verdict, pre_s 26-35
 lane had already run on that tree, the audit's shadow, 865 s, and a recommit, 550 s, keyed by tree
 since; the other 17 had the pre-step's run alone). The parser lives beside the lines it reads,
 pinned by tests/test_affected_verdict.py with the rest.
+
+ONE run of a change's test set before the batch gate (GOH.ONEVERDICTTREE3):
+`tools/affected_tests.py --run`'s green whole-set run is kept in the one store (`affected`: repo,
+the commit's tree (not its sha: a recommit of the tree takes it, GOH.PRESTEPVERDICTMISS), the
+chosen nodes, the suite identity, the suite's declared GOH_* inputs by value with GOH_PY resolved,
+its shape), and the next run of that set on that tree -- the enqueue's pre-step after the lane's
+run -- takes it, handing its record to the caller; every miss says why in one line; a lane's run
+gets a land record, so it runs in the land's shape. Audited inline, 1 in 10.
 """
 
 from __future__ import annotations

@@ -16,6 +16,12 @@ Each orphan held a gate slot while other lanes waited 900 s and ended with no ve
 
 A pre-step whose stamp no longer matches (its pid reused) is not signalled: nothing of ours is
 there. Pinned by tests/test_landq_supersede.py.
+
+A re-enqueue of an item supersedes the earlier enqueue's pre-step, and `goh land --cancel ITEM`
+does the same on demand (GOH.REENQUEUECANCEL): a tombstone beside the in-flight marker (an enqueuer
+that finds its own files nothing), then the enqueuer and the pre-step's process group stopped by
+their recorded pid and birth (TERM, then KILL; never by name), then the checkout slot freed.
+Invoked by `lib/landq_background.py`.
 """
 
 from __future__ import annotations

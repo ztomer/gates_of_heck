@@ -10,6 +10,9 @@
 //! clause must be derived from a commit, a clock and the working tree's state.
 //! `.gates-version-baseline.json` may only shrink, and an entry that
 //! suppresses nothing is a finding.
+//
+// `goh version-provenance`: A `--version` flag carrying no commit. Pinned by
+// `test_check_version_provenance.py`.
 
 use goh_tui::{ERR, OK, WARN};
 use std::collections::BTreeSet;

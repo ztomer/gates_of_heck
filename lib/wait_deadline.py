@@ -14,6 +14,10 @@ masked by `busyloop.mask`), a `while`/`until` loop whose body sleeps is refused 
 The refusal points at `goh wait` (pid, file, json, land, ship; each with `--timeout`). The escape
 is `# wait-ok: <reason>`. A loop inside a quoted string (`timeout 600 bash -c '...'`) is text at
 the top level, so the wrapped form passes.
+
+A Bash `until`/`while` loop that sleeps with no `timeout N` wrapper and no deadline check
+(`$SECONDS`, `deadline`, `date +%s`, `((..))`, `-lt`/`-ge`) is refused, naming `goh wait`
+(GOH.WAITDEADLINE). Monitor commands are judged alike (GOH.MONGUARD). Escape `# wait-ok: <reason>`.
 """
 
 from __future__ import annotations

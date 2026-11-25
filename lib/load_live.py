@@ -10,6 +10,25 @@ looks: `goh agent-stalls` and the SessionStart advisories.
 A run is LIVE when its registry names spinners and its owner is not gone (a dead owner's registry is
 the backstop's to reap, lib/load_reap.py; naming it here would call residue an experiment). A
 registry written before the why existed says so rather than hiding the run.
+
+The load runs burning cores NOW, each named with its why and its owner's directory (GOH.LOADWHY,
+2026-11-19: load ~110 on 16 cores and nobody could say whose; twelve spinners had sat beside a test
+run that needed none). `tools/load.py` refuses N>0 without `--why` and records it (with the owner's
+cwd) in the registry; `lines()` reads the registries back, live only (a registry whose owner is
+gone is the backstop's, not an experiment), for `goh agent-stalls` and the SessionStart advisories
+(`estate_advisories.py`). A registry written before the why existed says "no why recorded".
+
+`lib/load_sources.py`: GOH.LOADSOURCES: what burns the machine's CPU. `sample` (the launchd job
+`com.ztomer.goh-load-sources`, every 30 s for an hour, then KeepAlive starts the next from HEAD)
+appends one line per interval to `$GOH_LOAD_SOURCES_DIR/sources-<UTC day>.jsonl` (14 days kept):
+cpu-s and rss by process family (a daemon by name; else the OUTERMOST house context in the ancestry
+-- land, ship, push-gate, commit-gate, gate, pin-sweep, sccache; else an app bundle; else the
+nearest tool, `agent:` prefixed under an agent), repo and worktree of the cwd, and executable
+basename -- never a path or an argument -- with the machine's busy cpu-s, the 1-minute load and the
+sampler's own cpu-s. A child born and reaped between samples is counted through its parent's reaped
+time, less what was seen of the children that vanished (`attribute`). `goh load --report [--since]
+[--by family|repo|exe|family+repo] [--json]` ranks against the busy cpu-s and names the coverage
+and the unattributed rest.
 """
 
 from __future__ import annotations

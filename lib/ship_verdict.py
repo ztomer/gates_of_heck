@@ -17,6 +17,12 @@ worker above the caller), and the store holds a green full-gate verdict on SHA's
 gates and tools of today (lib/reuse.py lookup_gate: a land's record counts too). Anything else is
 no (exit 1, the miss's reason on stderr); a bad invocation is 2. Pinned by
 tests/test_ship_verdict.py.
+
+`goh ship verdict --sha SHA [--repo DIR]`: the RECORDED gate verdict of the running ship above the
+caller: a green full-gate verdict on SHA's tree in the one verdict store (`lib/reuse.py`, written
+by `push_gate.sh` on every push, or a land's record); exit 0 and the ship record path, else 1 and
+the miss's reason (GOH.VERDICTAPI, GOH.ONEVERDICT, contracts section 29). Pinned by
+`test_ship_verdict.py`.
 """
 
 from __future__ import annotations

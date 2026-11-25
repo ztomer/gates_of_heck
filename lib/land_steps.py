@@ -3,6 +3,15 @@
 Split from lib/land_profile.py (GOH.LANDPROFILEFIX: its 450-line headroom): a land's log files
 (its record's, its own, its batch gate's), the gate timings kept beside them, a step table's rows
 and the coverage step's phases. Pinned by tests/test_land_profile.py and test_land_residue.py.
+
+The readers of a land's logs and gate timings for `goh land-profile` (split from `land_profile.py`,
+GOH.LANDPROFILEFIX): the land's log files (its record's, its own, its batch gate's), the timings
+kept beside them, a step table's rows, the coverage phases. Pinned by `test_land_profile.py`.
+
+`lib/land_prestep.py`: The land pre-step run at ENQUEUE (GOH.ENQUEUEPRE): `goh land --enqueue
+--land` runs `tools/land.sh` with `GOH_LAND_PRE_ONLY=1` in the request's slot (`lib/land_slot.py`),
+so the lander's own set, short lane and deadline decide before a tip joins the serial queue; a red
+set refuses the tip naming the failing tests, a deadline is no verdict and queues.
 """
 
 from __future__ import annotations

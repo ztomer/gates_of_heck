@@ -26,6 +26,16 @@ shellcheck over SHELLCHECK_FILES or more operands, a glob, or under xargs (one f
 the gates' own shellcheck tokens stay theirs, D-0010). Anything a command only quotes is text.
 `# admit-ok: <reason>` in the command is the escape; GOH_GATE_SLOTS=0 takes nothing.
 Pinned by tests/test_heavy_admit.py.
+
+A heavy job from ANY session comes in by the one admission (GOH.ADMISSION): `heavy` names a
+command's heavy family (a lock-taking build tool as `load_locks.py` defines it -- cargo, swift,
+xcodebuild, gradle, go -- or a shellcheck over 4+ files, a glob or xargs);
+`hooks/claude/discard_guard.py` rewrites such a Bash command (`updatedInput`) to start with `eval
+"$(heavy_admit.py take --owner $$ --label 'session <id>: <command>')"`, which admits the tool's
+shell as a gate (`gate_slot.py hold --for-caller`, its class `lane` or `work`), names every holder
+while it waits, exports `GOH_GATE_SLOT` so a gate inside nests, and frees the slot when the shell
+exits. Past `GOH_HEAVY_ADMIT_WAIT` (300 s) it runs anyway, naming beside whom; `# admit-ok:
+<reason>` is the escape.
 """
 
 from __future__ import annotations

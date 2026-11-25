@@ -46,6 +46,22 @@ installs nothing reads as a green setup.
 
 A STEP'S TOOL IS IN A TABLE, OR THE STEP IS REFUSED (GOH.REQTOOLS): `--unnamed`, and every `--repo`
 mode, judge the tools `GOH_CI_STEPS` runs against the tables (gates/step_tools.py has the rule).
+
+`gates/required_tools.tsv`: The ONE list of tools a gate refuses without (one row per refusal
+site), and the reader CI workflows install from: `gates/required_tools.py --repo . --install`
+prints `brew install ...` / `cargo install --locked ...` for the layers the repo declares. A
+hand-kept workflow list drifted the day v0.20.0 made shellcheck a hard requirement (antiknob CI).
+Its `floor` column (G2b) is the OLDEST version a gate accepts -- a floor, never a pin: newer is
+green, always -- each floor's kind (HARD/PROVEN) and reason above the rows; a `=X.Y.Z` floor cell
+is a PIN (ruff), and this table is the ONLY place a house tool's version is written --
+`ruff_house.py`, the hosted workflow (`required_tools.py --pin ruff`), the Rust callers
+(`crates/goh/src/tool_versions.rs`, `include_str!`) and the tests (`tests/_tool_versions.py`) read
+it, and `test_tool_version_manifest.py` is red on a copy anywhere else (GOH.CLASS.PARITY);
+`goh_require`, the coverage gate's `need` and `goh_py_require` refuse a tool below it by name with
+both versions (`goh_require_floor`), `--check` judges a repo's layers or one `--tool` (a pinned
+tool: at least its pin in a consumer, exactly its pin in a goh checkout, GOH.PINCHECKFLOOR), and
+`--floors` publishes the table for a consumer's own record (sys_updater's). Invoked by CI
+workflows, every gate's requirement check.
 """
 
 from __future__ import annotations

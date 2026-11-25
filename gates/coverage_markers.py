@@ -8,6 +8,9 @@ with the binary discovery and llvm-cov processing that remain there.
 A marker without a reason, or a start without an end, is a gate error rather
 than a silent forgiveness: an exclusion nobody has to justify is not an
 exclusion, it is a hole.
+
+`cov:ignore` marker handling for the Swift coverage gate: which source lines the repo has excluded,
+and why.
 """
 
 import glob

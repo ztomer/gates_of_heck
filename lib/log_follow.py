@@ -11,6 +11,11 @@ phases' ends (GOH.LANDLEAKS). It
 is bounded by its owner, never by hope: it exits when PID (the profile) is gone or when it is
 TERMed, draining what is already written first, so a killed profile leaves no follower behind
 (tests/test_gate_profile.py).
+
+Prints a gate log's STEP lines as they land (local CI's `[i/n]` lines and section titles) while the
+log keeps everything: `tools/gate_profile.sh`, land.sh's gate, starts it after printing the log's
+path, so a long land shows progress instead of silence (GOH.LANDPROGRESS). Bounded by its owner's
+pid; a TERM drains what is written and exits.
 """
 
 from __future__ import annotations

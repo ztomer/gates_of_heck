@@ -4,6 +4,11 @@
 //! `||||||| ` (the diff3 base marker), each followed by whitespace or
 //! end-of-line. `=======` alone is ordinary Markdown underlining, not a
 //! marker. Binary blobs (NUL in the shared scan window) are skipped.
+//
+// `goh markers`: Fails on merge markers: the tree, `--staged` the index, or `--commits REV...` what
+// each commit changed against its first parent, read from the commit (`gates/sequencer_gate.sh`).
+// Source: `crates/goh/src/markers.rs`, `revblobs.rs`. Pinned by `test_file_length_and_markers.py`,
+// `test_sequencer_markers.py`.
 
 use goh_tui::ERR;
 

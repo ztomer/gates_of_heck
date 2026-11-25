@@ -23,6 +23,10 @@ lead_in, n_slots, slot_w, z_slot, r_core (outer radius up to z_core_top), z_core
 lead_in - this), strain_max. Or "r_in" / "r_out" as [[z, r], ...] tables (piecewise linear). Exit 2:
 unreadable spec. Standard library only; ported from ZSUS CAD/build_part_a_v21.py check_leaf_strain
 (numpy), same numbers.
+
+Peak bending strain in a printed snap socket's leaves against its limit (cantilever with the real
+section at each height, an imposed tip deflection); the generator writes the spec from its own
+constants. 0.99 % on ZSUS's socket, 3.07 % on the one that broke.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

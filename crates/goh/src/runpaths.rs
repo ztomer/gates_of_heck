@@ -29,6 +29,12 @@
 //! WIRING: opt-in, `GOH_RUN_PATHS=on` (goh's own `.gatesrc`). The sites standing when it landed
 //! are seeded in `run_paths_seed.json` (`crate::estate_seed`): seeded files warn, anything else,
 //! and a stale entry, is red. It landed with an empty seed: every known site moved first.
+//
+// `goh run-paths`: A temp, lock or stage name rooted at a work tree, a path in a work tree's
+// `build/`, or a `git write-tree` on the shared index, in a shell, Python or Rust source, is a
+// finding (GOH.CLASS.CHECKOUT part 2; opt-in `GOH_RUN_PATHS`, seed `run_paths_seed.json`, escape
+// `run-path-ok: <reason>`). Every such path comes from `lib/run_path.sh` / `lib/run_path.py` /
+// `crates/goh/src/run_path.rs`. Pinned by `crates/goh/tests/cli_run_paths.rs`.
 
 use crate::estate_seed::{self, Kind, Report, Sites};
 use regex::Regex;

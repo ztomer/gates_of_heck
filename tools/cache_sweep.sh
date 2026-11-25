@@ -5,6 +5,12 @@
 # Always `run`: the job exists to act; a dry run is `goh cache-sweep plan`. Every object a live
 # build holds is left alone (lib/cache_evict.py `held`), so the schedule needs no idle window of
 # its own. The log launchd hands it is bounded here: past 256 KiB it moves to <log>.1 first.
+#
+# `tools/cache_sweep.sh` / `tools/install_cache_sweep.sh` (GOH.CACHEEVICT, 2026-11-22): the ONE
+# cache evictor on a schedule: the launchd job `com.ztomer.goh-cache-sweep` runs
+# `lib/cache_sweep.py run` from HEAD every 30 min (LowPriorityIO, nice 10), logging to
+# `~/Library/Logs/goh-cache-sweep.log` (moved to `.1` past 256 KiB). Installed by `bash
+# tools/install_cache_sweep.sh install`. Pinned by `test_install_launchagent.py`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/../gates/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

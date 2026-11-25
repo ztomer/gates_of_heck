@@ -7,6 +7,9 @@ installed, lightweight required/type/additionalProperties fallback with NO
 coercion), _python_type_to_json_schema (tool_from_function annotations).
 mcp_scaffold re-exports every name, so both `lib.mcp_schema` and
 `lib.mcp_scaffold` import paths keep working.
+
+The scaffold's tool-schema helper (Python annotations to JSON Schema). Same lifetime as
+`mcp_scaffold.py`. Pinned by `test_mcp_scaffold.py`.
 """
 
 from __future__ import annotations

@@ -42,6 +42,16 @@ too: the guard for a command and for a file, and the check for a tracked file.
 One definition, so the three cannot drift: a rule the guard applies and the check does not is
 two rules, and the house has been bitten by exactly that (a checker that is written but not
 wired is still gate source).
+
+The spinner's and the busy-wait's shapes, ONE definition (`busyloop_shapes.json`, read by this
+module with `re` and by `busyloop.rs` through `include_str!` and fancy-regex), for the three levels
+that judge them: the Claude Code guard (a COMMAND or a FILE that runs a backgrounded busy loop or a
+busy-wait), the house check (`goh busy-loop`, a tracked file), and the backstop (an orphaned
+process burning a core on one). A busy loop is a `while`/`until` whose body is nothing but
+`:`/`true`/`false`; TEXT is not CODE (a loop inside a string, a heredoc body or a comment is text);
+a loop RUNS when the line carrying it also carries a background operator. One definition, so the
+three cannot drift: a rule the guard applies and the check does not is two rules. Pinned by
+`test_load_reap.py`.
 """
 
 from __future__ import annotations

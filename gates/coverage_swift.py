@@ -39,6 +39,17 @@ from here, so the dependency runs one way.
 `bundle_executables` and `pick_binary` are imported here, unused by this file's
 own body, because the tests load this file directly and drive those two by name
 (they are engine selection, and their reasoning belongs beside the rest of it).
+
+Helper: swift coverage engine behind `coverage_gate.sh --lang swift` (llvm-cov export / xccov).
+Invoked by via coverage gate.
+
+Which coverage file to touch: `coverage_gate.sh` = CLI/floor plumbing for all languages;
+`coverage_swift.py` = swift engine only; `checks/check_swift_coverage.py` = legacy swift-gate
+helper used by `swift_gate.sh` (not by `coverage_gate.sh`); `lcov_merge.py` = rust lcov merge only.
+The two swift implementations measure differently (codecov-JSON aggregation vs llvm-cov line level)
+and are NOT merged — instead `tests/test_swift_coverage_parity.py` runs both against one 50%
+fixture and pins identical verdicts, so arithmetic drift goes red. New per-language logic goes in
+the engine; new floor/CLI semantics go in `coverage_gate.sh`.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

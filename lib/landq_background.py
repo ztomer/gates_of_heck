@@ -15,6 +15,14 @@ background unannounced. So without `--wait` or `--foreground` the enqueue
 `--foreground` is the enqueue as it was (the pre-step here, its verdict the exit: lib/ruff_bump.py
 reads it); `--enqueue ... --wait` runs here too, then blocks on the request it filed.
 Pinned by tests/test_landq_background.py.
+
+`goh land --enqueue --land` in the background (GOH.TOOLTIMEOUT): the enqueue's pre-step runs up to
+30 min, past the Bash tool's timeout, so without `--wait` or `--foreground` it refuses what refuses
+at once (REPO SHA or --ship beside --land, the main checkout, uncommitted changes), re-runs itself
+detached (`--detached`, log `<landq>/logs/enqueue-*.log`) and returns once the child's in-flight
+marker is up; the child's red pre-step is recorded red like an early conflict, so `goh land --wait
+ITEM` reads it. Also the land-enqueue flags and the mode check (`--wait` alone, or with `--enqueue`
+the foreground enqueue's own wait).
 """
 
 from __future__ import annotations

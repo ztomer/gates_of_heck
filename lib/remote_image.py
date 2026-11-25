@@ -1,7 +1,13 @@
 """The remote test worker's image and its pins (GOH.REMOTEWORKERS; split out of
 tools/remote_shard.py for its line cap, GOH.REMOTEWIRE): the build args read from goh's ONE
 version manifest (gates/required_tools.tsv), the image tag that changes with them, and the parity
-check of what a running worker says it carries against the manifest and the Mac's Python."""
+check of what a running worker says it carries against the manifest and the Mac's Python.
+
+The remote test worker's image and pins (GOH.REMOTEWORKERS, split from `tools/remote_shard.py` for
+its cap): the build args read from `gates/required_tools.tsv`, the image tag that changes with
+them, and the parity check of a running worker's recorded versions against the manifest and the
+Mac's Python. Pinned by `test_remote_shard.py`, `test_remote_worker_image.py`.
+"""
 
 from __future__ import annotations
 

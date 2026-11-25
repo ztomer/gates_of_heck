@@ -7,6 +7,10 @@ commit, a prover that does not claim the gate, an entry that is both proven and 
 checker the registry does not name. A
 checker that cannot fail is the thing this whole layer exists to prevent, and a calibration reader
 that cannot fail would be the most ironic instance of it in the repo.
+
+Lib: the self-proof for `_calibration.py`, split out so neither file crowds the 500-line cap. Runs
+from `check_probes_pass.py --probe`; asserts every way the registry can lie goes red and the sound
+registry comes back clean.
 """
 
 from __future__ import annotations

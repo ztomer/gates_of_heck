@@ -26,6 +26,15 @@ An explicit GOH_LANDQ_BATCH still wins. The lander logs k and why at each pick, 
 writes carries `k` and `k_why`, and `goh land --report` shows k per batch.
 
 Pinned by tests/test_landq_size.py.
+
+The batch size k (GOH.ADAPTBATCH): unless `GOH_LANDQ_BATCH` is set, the k a land request takes is
+the one that minimises expected gates per landed item at its repo's red rate p over the newest 20
+attempts a gate judged (`landq_report.gated`: an enqueue pre-step's, a check's or a conflict's red
+never counts), computed exactly by running the lander's own bisect (halves, the second on main
+beside the first, a tree known red not gated again) over every red/green pattern of k items: the
+smallest k within 0.02 of the least, up to 6; 1 when p is about 0.30 or more; 3 with fewer than 10
+on record. The lander logs k and why at each pick; each record carries `k` and `k_why`. Invoked by
+`lib/landq_window.py`.
 """
 
 from __future__ import annotations

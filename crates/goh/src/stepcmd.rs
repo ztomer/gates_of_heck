@@ -15,6 +15,13 @@
 //! * with `GOH_TIMINGS` set, one JSON line, tier `step`, and the child learns its parent's label;
 //!   the line carries the step tree's CPU (`cpu_ms`, from the rusage of what this wrapper reaped)
 //!   beside its wall time, because on a box that is never quiet the wall measures the box too.
+//
+// `goh step`: The step wrapper, native (`lib/bounded_run.py`'s CLI, same contract): the step's own
+// group, TERM->grace->KILL on the ceiling or a TERM/INT/HUP (an ignored-at-entry signal stays
+// ignored), a leak named, a GOH_TIMINGS line. `goh_step` and every delegated structural step use
+// it; 4.3 ms a step against the Python's 26-79 ms. `goh-sys` is the workspace's only `unsafe` (libc
+// `sigaction`, `killpg`). Source: `crates/goh/src/stepcmd.rs`, `crates/goh-sys/`. Pinned by
+// `test_step_wrapper_cli.py` (both wrappers), `test_unsafe_scope.py`.
 
 use std::os::unix::process::CommandExt;
 use std::process::{Command, ExitStatus, Stdio};

@@ -1,6 +1,10 @@
 # shellcheck shell=bash disable=SC2034,SC2154  # ship_timings: read by tools/land.sh, which sources this; pre_*: its land_pre's
 # lib/land_row.sh -- sourced by tools/land.sh (GOH_PY, GOH); pinned by tests/test_ship_profile.py.
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+#
+# GOH.RELEASELANDGATE: `land_row LABEL T0 RC`, one profile row for a part of a land (its pre-step,
+# its gate) under a caller's `GOH_TIMINGS` only, so `lib/step_attribution.py` can name a release
+# land's seconds. Pinned by `test_ship_profile.py`.
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/land_row.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # THE LAND'S OWN ROWS (GOH.RELEASELANDGATE): under a caller's profile (goh ship's GOH_TIMINGS, the

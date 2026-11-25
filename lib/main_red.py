@@ -24,6 +24,13 @@ whole land cycle, on a fault none of them made.
 A lane whose change does not touch them is not billed for them: the run waives each one a reading
 ON MAIN at its base saw red (GOH.MAINREDWAIVE), and a test it turns red at a green base still reds.
 Pinned by tests/test_main_red.py.
+
+GOH.MAINREDNOTICE: a red idle full suite on main (`last.json` `red`, kept across a run that is no
+verdict, cleared by a green one: `carry`) is said by every enqueue before its pre-step (`notice`,
+from `lib/land_check.py` `at_enqueue`) when main still holds that tip, and its FAILED nodes (from
+`<landq>/logs/idle-suite-<sha>.log`) join the pre-step's set through `GOH_LAND_PRE_MAIN_RED`
+(`env`, `also`: the ones the tree still defines). Invoked by `lib/land_check.py`,
+`lib/land_prestep.py`, `tools/affected_tests.py`. Pinned by `test_idle_suite.py`.
 """
 
 from __future__ import annotations

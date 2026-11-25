@@ -23,6 +23,9 @@
 #
 #   . "$GOH_DIR/gates/swift_toolchain.sh"; goh_swift_resolve
 #   "$SWIFT" build -c release …
+#
+# Sourced: resolves THE `swift` a house script builds with, once (`goh_swift_resolve` sets `SWIFT`
+# and its provenance). Invoked by `coverage_gate.sh`.
 
 # Sourced from zsh there is no BASH_SOURCE to find lib/ by, and the body is bash: refuse in words.
 [ -n "${BASH_VERSION-}" ] || { printf '✗ %s\n' "gates/swift_toolchain.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }

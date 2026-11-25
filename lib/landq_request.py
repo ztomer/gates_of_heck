@@ -1,6 +1,24 @@
 """The landing queue's requests (split from tools/landq.py, GOH.CAPHEADROOM): what `goh land
 --enqueue` writes for a push/ship of REPO SHA or a land of a worktree's tip, refused where the
-checkout cannot land it. Pinned by tests/test_landq.py."""
+checkout cannot land it. Pinned by tests/test_landq.py.
+
+The landing queue's requests, split from `tools/landq.py` (GOH.CAPHEADROOM): `request` (push/ship
+of REPO SHA) and `land_request` (a worktree's tip), each `Refused` where the checkout cannot land
+it. Invoked by `tools/landq.py`.
+
+`tools/landq.py`: `goh land`: the landing queue (GOH.LANDQUEUE, D-0006). `--enqueue REPO SHA --item
+ID [--ship]` writes a request and starts a detached lander; ONE lander (flock `lander.lock`) runs
+each request in order -- `git push REMOTE SHA:refs/heads/BRANCH` through the pre-push gate, or `goh
+ship --wait` -- bounded by `GOH_LAND_TIMEOUT`, and records `loopctl set ID landing {...}`; a
+request a dead lander left running is run again. `--enqueue --land WORKTREE --item ID`
+(GOH.LANDQLAND) runs `tools/land.sh` bare on that worktree's tip in goh's own checkout of it
+(GOH.LANDSNAPSHOT, `lib/land_slot.py`: the land lock, the land gate, the fast-forward; the lane's
+tree is never read or moved), and judges up to k land requests (`GOH_LANDQ_BATCH`, else sized from
+the repo's gated red rate, GOH.ADAPTBATCH `lib/landq_size.py`) of one repo with one stacked gate,
+bisecting a red with its halves gated at once (GOH.LANDBATCH, `lib/landq_batch.py`;
+GOH.LANDBISECTPAR, `lib/landq_spec.py`); `--wait ID` blocks until the outcome and exits 0 landed /
+1 red. Pinned by `test_landq.py`, `test_landq_batch.py`, `test_landq_bisect_par.py`.
+"""
 
 from __future__ import annotations
 

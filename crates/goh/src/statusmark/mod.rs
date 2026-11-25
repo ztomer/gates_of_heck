@@ -6,6 +6,15 @@
 //! `[ ==> ]`, `[ Wrn ]`, `[ Err ]`, `[ Ok  ]`, and 27 tracked files in five repos carried them. The
 //! finder is `scan.rs`; the debt is a per-repo shrink-only seed, `status_marker_seed.json`
 //! (`crate::seedcount`). A repo opts in by calling the command from its own gate.
+//
+// `goh status-markers`: A hand-rolled status marker (`"[ Ok ]"`, `"[ PASS ]"`, `[ ==> ]`, inside a
+// string) or colour escape (`\033[`, `\x1b[`, `\e[`, `\u{1b}[`) in source is a finding, as an emoji
+// is: status prints through `tui/lib.sh`/`tui.lib`/`goh-tui`. Line-based over every source
+// language; a whole-line comment and a doc are not uses. Against a per-repo shrink-only
+// `status_marker_seed.json` (`--seed` writes it), whose rules are `seedcount.rs`'s, shared with
+// `goh fixed-sleep`. NOT a structural step: a repo adopts it from its own gate (BACKLOG 4.9).
+// Source: `crates/goh/src/statusmark/`, `crates/goh/src/seedcount.rs`. Pinned by
+// `statusmark/tests.rs`, `test_status_markers.py`.
 
 pub mod scan;
 

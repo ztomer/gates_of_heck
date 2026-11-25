@@ -36,6 +36,12 @@ ATTACHes read-only.
 runs, which goh, public, must expect -- raises OSError, and one that does not parse ValueError (a
 SQLite error is re-raised as ValueError); every caller catches both and answers "no queue" (no
 hold, no phase, no items), never a crash (tests/test_queue_read.py holds each to it).
+
+THE LOOP QUEUE, READ (LOOP.QUEUEARCHIVE): goh's one reader of the loop's umbrella queue and the
+store's documented layout -- the loop's SQLite `loop.db` beside the named path (`GOH_LOOP_QUEUE`),
+opened read-only, when it exists, else the JSON file; `load`, `items`, `items_or_empty` (fails
+open). Read by `queue_hold.py`, `reuse_fault.py`, `spawn_register.py`, `model_choice_watch.py` and
+`spend_watch.py`; a direct parse anywhere else is refused.
 """
 
 from __future__ import annotations

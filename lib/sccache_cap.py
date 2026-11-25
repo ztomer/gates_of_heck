@@ -16,6 +16,12 @@ rises 10 points, else CAP_GIB goes back with the numbers. The VALUE is the one e
 leaves sccache's own LRU as the backstop at this cap.
 
 usage: sccache_cap.py apply|check        (SCCACHE_CONF names another config file)
+
+sccache's disk cap, its ONE owner (GOH.SCCACHECAP): `apply` writes `CAP_GIB` into the config file's
+`[cache.disk] size` (SCCACHE_CONF, else the per-OS default), keeping every other line; `check`
+exits 1 naming each disagreement, an environment `SCCACHE_CACHE_SIZE` included;
+`lib/sccache_dir.sh` drops an inherited one, so a gate-started server reads the file. Invoked by
+(run by hand: `python3 lib/sccache_cap.py apply`).
 """
 
 from __future__ import annotations

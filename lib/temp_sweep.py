@@ -17,6 +17,11 @@ comments are not commands):
 So is `rm -r` of their one parent, `$TMPDIR/goh.noindex` (GOH.TMPNOINDEX), by name or not.
 One NAMED root (`rm -rf "$TMPDIR/goh-pytest.ab12CD"`) is one run's and runs. The escape is
 `# temp-sweep-ok: <reason>`.
+
+The discard guard's refusal of a recursive `rm` (or `find -delete`/`-exec rm`) whose glob can reach
+goh's per-run temp roots (`$TMPDIR/goh-pytest.*`): one agent's `rm -rf $TMPDIR/goh-pytest.*/`
+deleted every live gate's root and a land failed with 1281 FileNotFoundError errors
+(GOH.FLAKYENVCOV). One named root runs. Escape:
 """
 
 from __future__ import annotations

@@ -28,6 +28,11 @@ another directory may keep the caller's environment, `shell` a shell script that
 census reads Python only; each is said here, and one that no longer mentions git is stale). Every
 declaration carries a reason, and one that no longer matches anything is a finding: a permission
 nobody uses is the next site's permission.
+
+Every git spawn in a consumer goes through its seam or says why (6.1): `_gitcensus.census` over
+git's listing, configured by `<gate dir>/git_env.json` (sources, and `exempt`/`inherit`/`shell`
+declarations each with a reason); refuses a census that read no Python, and a declaration that
+matches nothing.
 """
 
 from __future__ import annotations

@@ -7,6 +7,11 @@ that holds the command is `command` in each.
 
 A tool that runs a shell command and is missing here is a tool the guards never see: Monitor was
 exactly that until a private Swift app agent's first Monitor wait was a self-matching `pgrep -f`.
+
+The ONE list of Claude Code tools whose input holds a shell command (`Bash`, `Monitor`; the field
+is `command`): the command guards (`discard_guard.py`, `hold_guard.py`) judge each exactly as Bash
+and `registrations.json` registers each command judge on every member. A shell-running tool missing
+here is a tool the guards never see.
 """
 
 from __future__ import annotations

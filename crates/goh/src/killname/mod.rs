@@ -10,6 +10,11 @@
 //! comments and bare-string statements, as `ast` + `tokenize` see them).
 //! Exemptions are a ratchet in `kill_by_name_allow.json`: one file, one exact
 //! call (whitespace-insensitive; `callkey`), a reason; a stale entry fails.
+//
+// `goh kill-by-name`: A process killed BY NAME (`pkill`/`killall`, or a `pgrep`/`pidof` feeding a
+// `kill` on the line): a name is not an owner (a private consumer, 2026-09-23: another session's
+// browser SIGKILLed mid-reply). Pinned by `test_check_no_kill_by_name.py` (both tiers),
+// `test_kill_by_name_native_parity.py`.
 
 mod report;
 

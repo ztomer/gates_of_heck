@@ -6,6 +6,10 @@ state is the kind of detail it drops. SessionStart stdout is added to the contex
 compaction this prints the branch, the uncommitted paths and the last commits of the session's
 directory, read from git rather than from the summary's memory of them. Any other source, or a
 directory outside a repository, prints nothing (tests/test_claude_compact_hooks.py).
+
+a Claude Code SessionStart hook (matcher `compact`): prints the branch, uncommitted paths and
+recent commits from git into the context after a compaction. Pinned by
+`test_claude_compact_hooks.py`.
 """
 
 from __future__ import annotations

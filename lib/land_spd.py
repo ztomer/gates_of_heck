@@ -37,6 +37,13 @@ every member. This module is the one definition, three parts:
                        audit shadowed (it ran anyway) that F did not choose (GOH.CARRYBASECODE)
 
 Pinned by tests/test_land_spd.py and tests/test_carry_shadow.py.
+
+What `goh land-profile` adds for the SPD exit (GOH.LANDPROFILEFIX, owner 2026-11-21: the 10-min
+land): a batch's shared runs counted once; the e2e's start at the first enqueue attempt; `summary`:
+commit to landed (the landed commit's author date to the record's `finished`), the share of lands
+whose lander ran the whole pre-land again (its log's verdict kind), the enqueue pre-step's
+ran/took, and its wait, run and workers (the record's `pre_run`, else the enqueue log's `pre-land
+green in N s: waited W s, ran R s ... workers` line).
 """
 
 from __future__ import annotations

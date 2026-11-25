@@ -20,6 +20,12 @@ as its pre-commit would have: a detached worktree at its parent with the commit'
 one refuses the check. A green run stamps the tree, so the next check does not run it again.
 
     commit_stamp.py record REPO     # commit_gate.sh: stamp the index being committed
+
+Which commits a commit gate judged (GOH.CHERRYPICKGATE): `gates/commit_gate.sh` stamps the tree it
+passed in `$XDG_STATE_HOME/goh/commit-gated.jsonl`, and `goh land --check` runs the commit gate, as
+that commit's pre-commit would have (a detached worktree at its parent, the change staged), on
+every commit of the range whose tree is unstamped -- a cherry-pick, a rebase, `--no-verify` --
+naming each; a red one refuses the check, a green one is stamped. Invoked by `lib/land_check.py`.
 """
 
 from __future__ import annotations

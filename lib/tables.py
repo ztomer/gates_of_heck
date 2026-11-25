@@ -1,25 +1,24 @@
 """lib/tables.py -- goh's mechanical tables, written from the tree (GOH.TABLEGEN).
 
-    python3 lib/tables.py --check [ROOT]   # exit 1 naming each table not as written, and its faults
+    python3 lib/tables.py --check [ROOT]   # exit 1 naming each table not as written
     python3 lib/tables.py --write [ROOT]   # rewrite each stale table
     python3 lib/tables.py --list           # each table, generated or why not
 
 WHY. A rule that only asks a lane to copy a fact the code already holds is a red a lane can miss,
-and lanes did, one per land (2026-11-17..24, goh.db `lands`): a script with no docs/map.md row
-(4), a lock_order.tsv row naming a file that no longer takes the lock, a 450-line headroom entry no
-longer over the line, a base file with no row in tests/base_files.tsv (4). Each such table, or its
+and lanes did, one per land (2026-11-17..24, goh.db `lands`): a lock_order.tsv row naming a file
+that no longer takes the lock, a 450-line headroom entry no longer over the line, a base file with
+no row in tests/base_files.tsv (4). Each such table, or its
 mechanical part, is written here; tests/test_tables.py holds every committed copy to what this
 writes, so the fix for every one of those reds is `--write`.
 
 THE TABLES.
-  docs/map.md                   lib/map_table.py: a row per script, none for a gone one, every row
-                                as wide as its header; the rows' prose stays the author's.
   lib/lock_order.tsv            the files column: exactly the files checks/check_lock_order.py
                                 finds taking each lock (rank, scope and the prose are a design).
   tests/cap_headroom_allow.txt  its stale direction: an entry no longer over 450 lines leaves. A
                                 file newly over is the rule's own refusal (split it), never a row.
   tests/base_files.tsv          a row per file pytest loads before every test, in the class its
                                 rule computes (tests/test_base_table.py).
+The script map is no table here: `goh map` renders it on demand (lib/map_table.py, GOH.MAPGEN).
 NOT_GENERATED names every other table a rule demands, with why.
 """
 
@@ -44,7 +43,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT)]
-from lib import map_table  # noqa: E402
 
 HEADROOM = 450
 FIX = "python3 lib/tables.py --write"
@@ -69,7 +67,6 @@ class Table:
     name: str
     path: str
     render: Callable[[Path, str], str]  # (root, the committed text) -> the text it should be
-    faults: Callable[[str], list[str]] = lambda text: []  # what no generator can fix
 
 
 def lock_rows(text: str, holders: dict[str, set[str]]) -> str:
@@ -161,7 +158,6 @@ def _base_render(root: Path, text: str, graph: object | None = None) -> str:
 
 
 TABLES = (
-    Table("map rows", "docs/map.md", map_table.render, map_table.faults),
     Table("lock files", "lib/lock_order.tsv", _lock_render),
     Table(
         "headroom", "tests/cap_headroom_allow.txt", lambda r, t: headroom_rows(t, over_headroom(r))
@@ -176,7 +172,6 @@ def check(root: Path, tables: Iterable[Table] = TABLES) -> list[str]:
         text = (root / t.path).read_text(encoding="utf-8")
         if t.render(root, text) != text:
             out.append(f"{t.path}: not as lib/tables.py writes it ({t.name}); run `{FIX}`")
-        out += t.faults(text)
     return out
 
 

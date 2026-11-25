@@ -1,5 +1,13 @@
 # shellcheck shell=bash disable=SC2154  # cargo_dir, PROVEN_ON, PROVEN_GOH_ROOT, GOH_PY: the sourcing gate's
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+#
+# GOH.GATEFLOOR: the keys of `rust_gate.sh`'s groups keyed on THEIR OWN inputs, sourced by
+# `_rust_proven.sh`. `compile` (the crate group: fmt, clippy, the manifest lints) keys `goh
+# rust-scope --compile` (what the compiler reads: packages, config, `include!`, build scripts;
+# dep-info checked and learned after a green run); `tests` (a land's `cargo test (plain)`) keys the
+# tree minus `GOH_RUST_TEST_UNREAD`. Both key the gates by `rust_gate.sh`'s closure
+# (`lib/rust_runner_id.py`), not the whole goh content, plus the resolved goh's stamp and the
+# environment. Pinned by `test_rust_gate_scoped_cache.py`.
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_rust_inputs.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # gates/_rust_inputs.sh -- the keys of rust_gate.sh's groups that are keyed on THEIR OWN inputs, not on

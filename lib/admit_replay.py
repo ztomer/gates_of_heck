@@ -30,6 +30,13 @@ alone, never starves).
 THE FIGURES per rule: wait_s (summed queue time), gate_s (summed run time: a gate's wall), lane_s
 (their sum: what the lanes spent from arrival to verdict), makespan_s, and peak concurrency.
 Pinned by tests/test_admit_replay.py.
+
+GOH.CPUADMIT, D-0009: a UTC day of gate admissions replayed under `count:N` (today's slots) and
+`cpu:CORES` (admit while the weights in flight fit), from the timing record's push and land rows
+(arrival at the span's start, work = cpu-s, demand = cpu-s per run second x `--scale`, weight = the
+median ratio of the repo's EARLIER runs) and the landing queue's `slot_wait_s`, on a fluid share of
+`--cores` with `--background` cores of other work, first come first served. Prints per rule the
+summed wait, gate (run) and lane (wait + gate) seconds, makespan and peak concurrency; `--json`.
 """
 
 from __future__ import annotations

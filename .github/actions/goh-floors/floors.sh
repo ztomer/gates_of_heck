@@ -33,6 +33,15 @@
 # checksums), GOH_FLOORS_FETCH (one download attempt, `<cmd> <url> <out>`; default curl),
 # GOH_FLOORS_ATTEMPTS / GOH_FLOORS_BACKOFF (the retry), GOH_FLOORS_CACHE (the tarball cache). Platforms: Linux x86_64 and aarch64, macOS on Apple silicon. Anything else is
 # refused -- never a fallback build.
+#
+# `.github/actions/goh-floors`: `.github/actions/goh-floors` (`action.yml` +
+# `floors.sh` + `shellcheck.sha256`) — the ONE way a CI runner meets goh's tool floors (G7): reads python3's
+# and shellcheck's floors from `gates/required_tools.tsv`, installs the Python floor (setup-python) and
+# a shellcheck at or above its floor (the runner's, else a checksum-verified release), then asks
+# goh's own judges (`lib/house_python.sh`, `required_tools.py --check`), which fail naming the
+# floor. Consumers `uses: ./goh/.github/actions/goh-floors` (goh checked out into the workspace) or
+# `ztomer/gates_of_heck/.github/actions/goh-floors@<release commit>` with `goh-dir`.
+# `test_goh_floors_action.py`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../../../lib/bash5.sh" || exit; goh_bash5 "$@"
 set -euo pipefail

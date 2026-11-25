@@ -15,6 +15,11 @@ file:line, and its worker then bisected the lands since the last ship, a full in
     probe(wt, ids)       those tests alone, plain, in the ship's worktree: 0 green, 1 red, 2 none
 
 Pinned by tests/test_ship_red_cause.py.
+
+GOH.SHIPBISECTCOV: what a ship's red suite log already names: `uncovered` (the diff coverage red's
+file:line rows), `attribute` (per row the `git blame` commit at the tip and the first land since
+the last ship carrying it), `failed_tests` (pytest's FAILED node ids), `probe` (those tests alone,
+plain, in the ship's worktree: one narrow bisect step). Pinned by `test_ship_red_cause.py`.
 """
 
 from __future__ import annotations

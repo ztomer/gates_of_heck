@@ -10,6 +10,10 @@ each consumer's push of the sweep after the ship (GOH.PINPUSHGATE) -- appends on
 `load1`, and `goh ship --status RESULT` prints the rows as one table, costliest first. Rows nest
 (a check inside the land gate inside the release): a row's parent is named beside it, and the table
 is read as "where does it go", never summed.
+
+Where a `goh ship` spent its time (GOH.SHIPPROFILE): `profile` points `GOH_TIMINGS` at each step's
+file beside the result (recorded as the step's `timings`); `table` is `--status`'s costliest
+sub-steps, each with the 1-min load at its start (`load1`) and the step it nests under.
 """
 
 from __future__ import annotations

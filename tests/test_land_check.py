@@ -1,12 +1,13 @@
 """`goh land --check WORKTREE` and the enqueue's check (lib/land_check.py, GOH.LANDCHECK).
 
 GOH.STRAYSIGNAL3 was refused three times at land, each after a 200-900 s pre-step, by guards that
-read the tree and need no suite: a missing docs/map.md row (fc0cfd24), a stale 450-line headroom
-entry (07f6a53d), and the env-spread and declared-reads guards (5deebdba). The replay plants each
-of those three defects back into a clone of this tree and asks the check, which must name every
-one of the four guards -- and nothing else, so a guard the clone already failed is no proof --
-in seconds. The rest pins the parts: the steps are the land gate's own, the guard tests are the
-declared and the measured ones, a red land's record names its guard, and the enqueue refuses.
+read the tree and need no suite: a script that says nothing of itself (fc0cfd24's map row), a stale
+450-line headroom entry (07f6a53d), and the env-spread and declared-reads guards (5deebdba). The
+replay plants each of those three defects back into a clone of this tree and asks the check, which
+must name every one of the four guards -- and nothing else, so a guard the clone already failed is
+no proof -- in seconds. The rest pins the parts: the steps are the land gate's own, the guard tests
+are the declared and the measured ones, a red land's record names its guard, and the enqueue
+refuses.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from timing_bounds import assert_sooner, patience
 sys.path.insert(0, str(REPO_ROOT))
 from lib import durations, land_check, land_judges, land_records
 
-TREE_READS = ("docs/map.md", "tests/", ".gatesrc")  # a clone of the whole tree, planted
+TREE_READS = ("lib/", "tests/", ".gatesrc")  # a clone of the whole tree, planted
 
 # Each STRAYSIGNAL3 refusal, planted back, ONE CASE EACH (GOH.PRELONGPOLE): the guard the check must
 # name, and the plants that break it (file, the fix's text, the text before the fix). The three
@@ -32,9 +33,9 @@ TREE_READS = ("docs/map.md", "tests/", ".gatesrc")  # a clone of the whole tree,
 # clone, five cheap steps and the guard tests, which xdist spreads over the workers.
 TABLES = "tests/test_tables.py::test_every_generated_table_is_as_its_generator_writes_it"
 REFUSALS = {
-    "map-row": (  # the table generator's check refuses the map too (GOH.TABLEGEN)
-        ("tests/test_wiring.py::test_every_script_has_a_row_in_the_map", TABLES),
-        (("docs/map.md", "| `load_reap_code.py` |", ""),),  # the whole row
+    "map-row": (
+        "tests/test_wiring.py::test_every_script_says_what_it_is",
+        (("lib/load_reap_code.py", '"""', '_SAID = """'),),  # its docstring, a plain string now
     ),
     "headroom": (
         ("tests/test_cap_headroom.py::test_stale_entries_fail", TABLES),

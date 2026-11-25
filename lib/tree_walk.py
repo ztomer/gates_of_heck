@@ -21,6 +21,12 @@ hands a walked parameter of a GIVEN def a ROOTED path: based at a root name, a n
 (module- or def-level), `__file__`, or a literal (a path from the cwd).
 tests/wall_clock_lint.py's `census(REPO_ROOT / "tests")` stays a reader; `from_template(factory,
 "key", build, dst)` is not one.
+
+What a tests/ helper's walk reads (GOH.CLONENOTJUDGE): each def that lists or walks a tree walks
+the ROOT (it names `REPO_ROOT`, takes no parameter, or walks a path no parameter gives) or only
+what it is GIVEN (the parameters it walks, recorded); a file is a tree reader through a helper only
+when it uses a ROOT def or hands a walked parameter a path based at the root (`census(REPO_ROOT /
+"tests")`), so importing `tests/_tree_clone.py` (which walks its own templates) makes no judge.
 """
 
 from __future__ import annotations

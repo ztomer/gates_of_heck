@@ -29,6 +29,11 @@ NOW (`pgrep -fl`), so the caller sees the process it would have hit. A scoped ki
 THE PAVED PATH FIRST (GOH.WAITSTOP, 2026-11-21). The refusal opens with `Run instead:` and the
 `goh stop` line for what the name matches now (`goh stop` refuses a process the caller did not
 start), or the stamp route when nothing matches (`lib/paved_path.py`).
+
+The discard guard's refusal of a kill BY NAME (GOH.PKILLNAME; widened to every name by
+GOH.NOPKILL): an unscoped pattern kill, an all-of-a-name kill, or a pgrep/pidof feeding `kill`,
+whatever it names, with what the pattern matches right now (`pgrep -fl`) and the kill-by-PID /
+TaskStop route. A numeric pid, a job, a scoped kill (`-P`/`-g`/`-s`) or quoted text runs. Escape:
 """
 
 from __future__ import annotations

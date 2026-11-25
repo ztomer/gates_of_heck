@@ -26,9 +26,10 @@ xcode reads the newest `*.xcresult` under the pinned derived-data tree
       that without `--legacy`, so the mode is unrunnable without the
       fallback path below. Measured 2026-10-15.
 
-Honesty rules (house rule #9): a MISSING payload is exit 2 with a named
-reason — it must never masquerade as "0% coverage" or as success. Only an
-actual measurement below the floor is exit 1.
+Honesty rules (house rule #9): a MISSING payload is exit 2 with a named reason — it must never
+masquerade as "0% coverage" or as success. Only an actual measurement below the floor is exit 1.
+
+Legacy helper for `swift_gate.sh` (SPM codecov JSON + xcresult walk).
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

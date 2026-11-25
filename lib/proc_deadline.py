@@ -8,6 +8,16 @@ HALF of its timeout is a `TimeoutExpired` at the moment it ends. Two enqueue pre
 "killed by their deadline" at 879 s of 1500 s and 804 s of 1560 s, their green verdict already
 kept, their real exit status thrown away. `Popen.poll()` (one `waitpid(WNOHANG)`) has no such
 path, so the house waits by it: `wait(proc, seconds)`. Pinned by tests/test_prestep_outcome.py.
+
+WAIT FOR A CHILD WITHIN A DEADLINE (GOH.PRESTEPMSGS): `wait(proc, seconds)` polls `Popen.poll()`
+and gives the status, or None when the child still runs at the deadline (one last ask first: the
+exit wins). CPython 3.15's `Popen.wait(timeout=)` on macOS counts the time already waited twice
+when the child's exit event precedes its being reapable, so a child ending after half its deadline
+read as expired, status lost (two enqueue pre-steps, 879 s of 1500 s, 804 s of 1560 s). `stretch()`
+times the drift guard's fixed loop on the caller's thread: what the QoS clamp and the run queue
+cost it, which a deadline stretches by (GOH.CHECKGIVEUP300). Used by `tools/load.py`,
+`pre_deadline.py`, `bounded_run.py`, `landq_spec.py`, `land_check.py`, `pin_sweep.py` and the MCP
+wire check; `tests/test_prestep_outcome.py` pins every other timed wait to a grace or a poll.
 """
 
 from __future__ import annotations

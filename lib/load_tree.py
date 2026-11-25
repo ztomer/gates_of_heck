@@ -2,6 +2,11 @@
 
 Split out of tools/load.py (GOH.LOADWAIT, 2026-11-08) when the tool reached its 500-line cap; the
 behaviour is G1c's (2026-10-25: a 10h14m run nobody ended) and is pinned by test_load_tool.py.
+
+`tools/load.py`'s command tree, killed whole: SIGTERM to its process group and to every descendant
+snapshotted BEFORE anything dies (one that left the group too), then SIGKILL to those whose start
+time still matches (a recycled pid is not ours). Split out of `load.py` at its 500-line cap
+(GOH.LOADWAIT). Pinned by `test_load_tool.py`.
 """
 
 from __future__ import annotations

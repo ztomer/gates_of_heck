@@ -24,6 +24,22 @@
 //! red, a stale entry is red. Done is no entry.
 //!
 //! WIRING: a structural step in EVERY repo, at both scopes, beside `goh workflow-pins`.
+//
+// `goh goh-pins`: A workflow (or composite action) that runs goh at no named release -- a
+// `repository: OWNER/gates_of_heck` checkout with no `ref:` or a non-tag one, a `git clone` of goh
+// with no `--branch vX.Y.Z` -- or at a release (`ref:`, `GOH_TAG:` under any `env:`, `--branch`)
+// more than `scan::WINDOW` (10) minor releases behind the RUNNING goh; and, in a repo with
+// `CHANGELOG.md` or `docs/CHANGELOG.md`, a job whose `run:` reaches a tag-reading gate
+// (`gates/structural.sh`, `gates/local_ci.sh`, `goh structural`, `goh changelog-tags`; directly, or
+// in the one tracked script or Make target the `run:` names, comment lines not counted) while its
+// own `actions/checkout` lacks `fetch-depth: 0`, so `goh changelog-tags` prints NOT JUDGED and
+// passes (GOH.TAGLESSCI). The DV-4 sweep (2026-11-12) found every estate workflow on goh v0.95.0 or
+// v0.96.0 and sys_updater and ztools judging no tags (GOH.WFPIN); `goh wf-pin --bump` moves the
+// pins after each release, and this refuses what it could not move. Seeded per repo in
+// `goh_pins_seed.json` (`crates/goh/src/estate_seed.rs`). Every repo, both scopes. Lies: in CI the
+// running goh is the pin, so the pin half passes there by construction and bites on the machine; a
+// reader reached two scripts down is not seen; a job that checks out with `fetch-depth: 1` plus
+// `fetch-tags: true` is still shallow and is refused. Pinned by the tables in `gohpin/tests.rs`.
 
 pub mod scan;
 pub mod shapes;

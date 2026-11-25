@@ -1,4 +1,10 @@
-"""Process-group CPU time (including reaped descendants) and runnable-thread probe."""
+"""Process-group CPU time (including reaped descendants) and runnable-thread probe.
+
+Process-group CPU time (including reaped descendants) via
+`proc_listpids`/`proc_pid_rusage`/`proc_pidinfo` (macOS) or `/proc` (Linux), runnable-thread probe,
+and `--cpu-timeout`/`--stall` wait loop + CLI helpers for `bounded_run.py` and `orphan_canary.py`.
+Pinned by `test_bounded_run.py`, `test_step_wrapper_cli.py`.
+"""
 
 from __future__ import annotations
 

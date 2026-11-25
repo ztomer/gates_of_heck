@@ -35,6 +35,23 @@ A repo-wide judge (test_every_/test_no_, a tree walker, test_self_walk.py) is ch
 diff already (affected_tests.tree_readers). tests/test_declared_reads.py is the ratchet: a test
 that joins REPO_ROOT with a non-literal declares TREE_READS, or is on gates/undeclared_reads.txt,
 the list of today's that only shrinks (a listed file that declares, or joins no more, is stale).
+
+GOH.SELECTAUDIT: what a test reads from the tree at run time, for `tools/affected_tests.py`: a
+directory spelled from `REPO_ROOT`/`ROOT`/`GOH_DIR` with literal parts (directly or through a
+module-level name) that is globbed (`SRC.glob("*.rs")` -> `crates/goh/src/*.rs`), iterated or
+copied whole (`copytree`, `listdir`, `walk`), plus a module-level `TREE_READS = ("pattern", ...)`
+(fnmatch from the root; a trailing `/` is everything under it). A change a read covers chooses the
+test whole. A test also reads what it drives (GOH.SELECTLOCKORDER): a tests/ helper's reads on a
+chain of tests/ files, and the `TREE_READS` of a scanner such a chain points at the root
+(`REPO_ROOT` as an argv word, a positional argument or `cwd=`). The reads no spelling shows are
+kept declared by `gates/undeclared_reads.txt`'s and `gates/undeclared_scanners.txt`'s ratchets.
+`standing` says why a tree reader still judges every diff at the enqueue (GOH.JUDGESBYREADS): a
+walk or whole-checkout run (`git ls-files`/`ls-tree`/`grep`, `cwd=REPO_ROOT`) no inferred read
+explains (prose blanked), a tests/ helper's walk of the root, an undeclared non-literal join, or
+the root pointed at anything but scanners declaring `TREE_READS`; a reader with none of these runs
+at the enqueue only when the diff touches its reads. A module-level `JUDGE_READS` declares a
+judge's whole read of the tree (GOH.SUITEDIET): it lifts every standing reason, and the judge is
+chosen when a changed path matches.
 """
 
 from __future__ import annotations

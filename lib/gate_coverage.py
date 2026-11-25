@@ -25,6 +25,26 @@ A command's directory is the repo root, or the literal `cd X` before it on the s
 that goh cannot read -- a shell variable (`cd "$rust_core"`, `cargo audit -f "$crate/Cargo.lock"`) -- is
 UNRESOLVED: a lock no resolved step covers is then `undetermined`, never called unaudited on a guess.
 Pinned by tests/test_estate_gate_coverage.py.
+
+Which tracked `Cargo.lock` a repo's PUSH gate audits, and with which tool, READ from the gate:
+`GOH_CI_STEPS`, `tools/gate.sh`, `.pre-commit-config.yaml`, `.githooks/pre-push` and every tracked
+script or Makefile they name. `rust_gate.sh [repo [dir]]` / `--each-crate` (every tracked lock
+under repo, by `rust_locks.py`, so a variable `dir` is readable), `cargo audit [--file]` and `cargo
+deny ... check [advisories]`, in the directory a literal `cd` gives them; a target behind a shell
+variable is UNRESOLVED, never guessed (queue GOH.EA2).
+
+`lib/gate_identity.py`: GOH.VERDICTKEY: the one identity of a gate verdict besides its tree -- the
+mode (`full`, a GOH_LAND_GATE string), the content of the gates root's gates/ checks/ lib/ tools/
+tui/ scripts/ (`run_rule.CODE_PARTS`) and the goh binary's build inputs crates/ Cargo.toml
+Cargo.lock rust-toolchain.toml (path, kind and bytes: one formula for a checkout and its head
+export, GOH.VERDICTKEYDRIFT; a checkout running HEAD's build over moved Rust also by HEAD's trees,
+GOH.PROVENIDENTITY), and every tool a step may invoke (rustc, cargo, python, swift, shellcheck,
+ruff, cargo-llvm-cov, xcodebuild: PATH hit, resolved binary, size, mtime; a rustup proxy also by
+the toolchain binary `rustup which` resolves, never the RUSTUP_TOOLCHAIN spelling; the selected
+Xcode). `proven` feeds `gates/_proven.sh`'s step identity (each goh root by content, then the
+tools, an explicit GOH_BIN among them by its bytes) and `keyed` its `proven_keyed_roots`; `key`
+keys the `<sha> <identity>` line `tools/land.sh` appends to goh-landed, which the push's release
+rule requires to be the full gate's. Pinned by `test_push_release_reuse.py`.
 """
 
 from __future__ import annotations

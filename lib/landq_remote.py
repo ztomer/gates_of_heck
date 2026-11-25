@@ -8,6 +8,10 @@ WHAT THEY SAVED (GOH.REMOTESAVED, lib/remote_saved.py): `shares` reads every sha
 land's log carries (the lander's pre-land, the gate's suite) into the record's `remote_shares`;
 `of` hands the report those with the enqueue's, and `count` sums them per row (`saved`), each
 share once across a batch's records. Pinned by tests/test_remote_saved.py.
+
+`goh land --report`'s count of the pre-steps' worker shares (GOH.REMOTEMUX, split from
+`landq_report.py` for its cap): each record's `pre_run.remote` is one share; a row's `remote` is
+`{shares, fallbacks: {cause: n}, fresh}` and one line under it. Pinned by `test_landq_report.py`.
 """
 
 from __future__ import annotations

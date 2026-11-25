@@ -1,5 +1,11 @@
 # shellcheck shell=bash disable=SC2154,SC2034  # verdicts, tip, ship_timings, land_timings, ship_full: land.sh's, set before this is sourced; suite_why: its ledger field
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+#
+# `land_gate ROOT WHOSE GATE`, the land's gate run (moved out of `tools/land.sh`,
+# GOH.PREWAITVERDICT): admitted by a gate slot under `tools/load.py`, red exits 1, and a slot wait
+# that expired with the gate never started (load.py exit 3, no start stamp) is `the gate never ran
+# ... no verdict`, exit 75 -- never `the gate failed`; `GOH_LAND_GATE_WAIT` bounds the wait. Pinned
+# by `test_land_prewait.py`.
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/land_gate.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # lib/land_gate.sh -- the land's gate run, sourced by tools/land.sh (GOH_PY, GOH, tip, verdicts,

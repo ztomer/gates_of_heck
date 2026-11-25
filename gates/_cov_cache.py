@@ -18,6 +18,11 @@ headroom (DEFAULT_GIB, the table in tests/test_cov_cache_budget.py), under two b
 Every run appends one row to `.runs.jsonl` in the cache (key, root, hit, bytes): the hit rate per
 run is the metric, read by `python3 gates/_cov_cache.py report [CACHE]`. A run HITS when its
 entry's build dir existed when it started.
+
+Rust coverage: the build cache's policy (GOH.COVCACHECHURN): the budget sized from the estate's
+working set (40 GiB) under the lanes' disk floor, orphans (root gone, no push `.source`) evicted
+first, then `_head_cache.py`'s LRU; each run's hit appended to `.runs.jsonl`, `report` prints the
+hit rate. Pinned by `test_cache_bounds.py`.
 """
 
 from __future__ import annotations

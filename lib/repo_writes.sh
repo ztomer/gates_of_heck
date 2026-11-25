@@ -18,6 +18,12 @@
 #
 #   . "$GOH/lib/repo_writes.sh"
 #   before="$(goh_repo_snapshot "$root")"  ...gate...  goh_repo_writes "$root" "$before" || exit 1
+#
+# Sourced by `commit_gate.sh` and `push_gate.sh`: snapshots the repository's own `git config
+# --local` and its refs (not `refs/remotes`) before a gate and compares after it, pass or fail. A
+# config write refuses, each key named with userinfo redacted; a moved ref is named, not refused
+# (another session may commit meanwhile), and so is a `branch.<name>.*` key of a branch another
+# worktree has checked out (the config is shared: Pinned by `test_commit_gate_repo_writes.py`.
 
 # goh_repo_snapshot ROOT -- the repository's own config and its refs, sorted: `config KEY=VALUE`
 # lines, then `ref NAME SHA` lines.

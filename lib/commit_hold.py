@@ -16,6 +16,12 @@ commit gate: in a repo an in-progress item holds (`lib/queue_hold.py`, the same 
 tools get), a commit by a stamped agent that is not the holder is refused, naming the holder. An
 unstamped commit passes, as does any commit when the queue is missing or unreadable (fail open,
 like the tool guard). Pinned by tests/test_commit_hold.py.
+
+the queue hold judged at COMMIT, whoever runs git (GOH.HOLDSUBPROC): `stamp` (called by
+`hooks/claude/discard_guard.py`, the one Bash rewriter) prefixes a subagent's command with `export
+GOH_LOOP_AGENT=<agent id>`, which every process it starts inherits; `check`, run by
+`gates/hook.sh`'s pre-commit before the commit gate, refuses a stamped commit in a repo another
+agent's item holds. Unstamped and queue-less commits pass. Pinned by `test_commit_hold.py`.
 """
 
 from __future__ import annotations

@@ -20,6 +20,11 @@ clean-tree run (89.67). An entry may record its runs of one tree, `"measured": [
 at that low end reds an unchanged tree. goh's own number does not move: two ship-shaped
 instrumented runs of 2c9ae35f (2026-11-20, load 34-46) covered the same 26381 of 28310 lines, line
 for line, and lib/prof_carry.py's 22 fresh-against-claim compares agree at a band of 0.
+
+Helper of `lcov_merge.py` (GOH.CRATEFLOOR): the `crate_floors` / `file_floors` maps of the floors
+file -- one crate or file lowered below the uniform floor, each entry with a reason; an entry that
+lowers nothing or names nothing fails, and one whose floor is above the lowest of its `measured`
+runs is refused (GOH.COVNONDET). Invoked by via lcov_merge.py. Pinned by `test_lcov_floor_maps.py`.
 """
 
 from __future__ import annotations

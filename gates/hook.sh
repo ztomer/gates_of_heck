@@ -18,6 +18,14 @@
 # process is stale; restart it) and GOH_DIR is EXPORTED at this checkout, so every gate the hook
 # starts agrees with the one that judged it. Like every gate entry point it then re-runs from HEAD's
 # export (gates/_from_head.sh, C4), so an uncommitted edit here judges nobody.
+#
+# What every stock hook does, read at run time (GOH.CLASS.ROLLOUT): the stock hook is a POSIX shim,
+# the same bytes under every name, that finds this checkout (GOH_DIR or GOH, GOH_LIVE_ROOT, the
+# house default, the repo itself) and runs `hook.sh HOOK-PATH ARG...`; it says when that is not the
+# GOH_DIR it was handed (a pruned export, a goh older than it), exports GOH_DIR at itself, and
+# dispatches pre-commit, pre-push, commit-msg, post-rewrite and pre-applypatch to their gates. A
+# logic change here reaches every consumer with no refresh; the shim's bytes are pinned. Invoked by
+# every stock hook (the shim).
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 set -euo pipefail

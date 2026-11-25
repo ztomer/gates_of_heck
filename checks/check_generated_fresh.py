@@ -30,6 +30,8 @@ should contain nothing else, because it is unreadable by design.
 
     check_generated_fresh.py --generator '...' <artifacts...>   # verify
     check_generated_fresh.py --generator '...' <artifacts...> --write
+
+Artifact freshness: regenerate to sandbox, hash-compare.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

@@ -1,4 +1,9 @@
-"""goh ship's release-effect check (GOH.RELEASEUNPUSHED): is the kit's release on the remote?"""
+"""goh ship's release-effect check (GOH.RELEASEUNPUSHED): is the kit's release on the remote?
+
+goh ship's release-effect check, run after the release kit (GOH.RELEASEUNPUSHED): HEAD on the
+remote branch and HEAD's version tag on the remote (read at the push URL), else the release step
+fails naming the unpushed commit or tag and the fix.
+"""
 
 from __future__ import annotations
 

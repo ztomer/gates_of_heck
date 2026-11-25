@@ -8,6 +8,11 @@
 #
 #   goh.sh home-paths --staged --exclude '^tests/fixtures/'
 #   goh.sh golden a.png b.png --tolerances '{"ssim_min": 0.99}' --json
+#
+# `goh.sh <check> [args]`: the one way a consumer runs a house checker — native, same arguments;
+# with no binary it refuses (exit 2). Only a flag the native lacks (`--probe`, `--selftest`,
+# `--fresh-derivations`) still runs the Python reference, and says so. Consumers call this, never
+# `checks/*.py` or `bin/goh` directly. Invoked by `rust_gate.sh`, consumer repos.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

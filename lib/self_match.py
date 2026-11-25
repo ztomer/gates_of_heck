@@ -53,6 +53,15 @@ refusals in a week were rewritten by hand, often into the next refused shape.
 
 Not judged: a file. A script's command line is `bash script.sh`, which does not contain the
 script's patterns, so the loop is not a self-match there.
+
+A wait loop whose condition matches ITS OWN shell, and so never ends (2026-11-01: three background
+shells ran `until ! pgrep -f "git push origin main"; do sleep 30; done` for 8-9 hours -- `pgrep -f`
+skips itself, never the parent whose command line holds the pattern). The Bash guard refuses a
+`while`/`until` whose condition is `pgrep -f`, `pkill -0 -f` or `ps | grep` on a pattern that
+regex-matches the command's own text (so the bracket trick passes by itself), reading quoted spans,
+heredoc bodies and comments as TEXT (`busyloop.mask`) and a `sh -c '<script>'` string as a command;
+a `grep -v` that drops the shell's line is accepted. Ways out named in the refusal: wait on the
+PID, the bracket trick, `wait`. The escape is `# pgrep-ok: <reason>`.
 """
 
 from __future__ import annotations

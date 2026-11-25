@@ -36,14 +36,15 @@ Pre-push runs `tools/gate.sh --full`. Escape hatch: `git commit --no-verify`.
 * `tui/` — output style source of truth (`stylerc`, `lib.sh`, `lib.py`).
 * `tools/` — `gate.sh` (this repo's own gate entry), `release-kit/`, `profiling/`.
 * `hooks/` — stock `pre-commit` / `pre-push` installed by `install.sh`.
-* `docs/` — `map.md` (script inventory), `config.md` (every `GOH_*` key),
+* `docs/` — `config.md` (every `GOH_*` key),
   `contracts.md` (load-bearing invariants), `new-checker.md` (add a check),
   `harnesses.md` (screen + golden cookbook), `BACKLOG.md` (open work).
 * `tests/` — pytest suite; `conftest.py` has fixture-repo builders.
   `test_wiring.py` is the meta-gate (referenced scripts must exist;
   config keys must be documented).
 
-Details: `docs/map.md`.
+What each script does: `goh map` (every one), `goh map NAME` (its header, callers and tests),
+rendered from the files' own headers; a new script says what it is in its docstring or top comment.
 
 ## Rules
 

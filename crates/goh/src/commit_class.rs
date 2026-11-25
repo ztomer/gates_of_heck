@@ -17,6 +17,14 @@
 //! own trailer block, the message's last paragraph, so `%(trailers)` and every other tool read what
 //! the gate read. HISTORY is read leniently (a `Class:` line anywhere), so classes committed before
 //! the port still count.
+//
+// `goh commit-class`: A `fix:`/`perf:` commit names its Class and Siblings in its trailer block; a
+// third instance of a class carries `Systemic:`/`Filed:`. `FILE` (a commit-msg hook) or `--range
+// REV...` (`--report` to replay history; `--clusters` to group the range's fixes by Class and
+// shared files, each group a hardening candidate). Run by `gates/commit_msg.sh` (the stock
+// `hooks/commit-msg`) and `push_gate.sh`, both only under `GOH_COMMIT_CLASS`. Source:
+// `crates/goh/src/commit_class.rs`, `commit_class_words.rs`, `commit_class_clusters.rs`. Pinned by
+// `test_commit_class.py`.
 
 use goh_tui::{ERR, OK};
 use std::collections::{BTreeMap, BTreeSet};

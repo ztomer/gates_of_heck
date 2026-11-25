@@ -10,6 +10,10 @@ The class this fixes: every checker used to open() working-tree paths even in
 --staged mode, so a file staged clean then dirtied in the editor could block
 an innocent commit, and a file staged dirty then cleaned in the editor could
 slip one through. One implementation, all checkers.
+
+Lib: repo root, NUL-delimited file lists, index bytes via `git show :path`, `foreign_repo_env()`
+for git on any repo but the gated one, `is_work_tree()` (git's own answer, so a linked worktree's
+`.git` FILE counts).
 """
 
 import functools

@@ -24,6 +24,17 @@ THE OTHER STATE FILES (`write`/`read`, GOH.CIRED01310): every other record is a 
 or absent: `write` puts it in place by one rename, `read` answers None for a file not there or not
 whole, so a reader re-reads it next tick and never crashes on one. Pinned by
 tests/test_landq_state.py.
+
+The landing queue's requests as goh.db rows (GOH.LANDQDB, migration 0007 `requests`): one row per
+request, its `state` enqueuing, pending or running, still named `<q>/<state>/<run>.json` (a key,
+never a file). `put` files one (replacing the enqueue's pre-step marker in the same transaction),
+`move` is one UPDATE (FileNotFoundError when another mover won), `get`/`listing`/`rows`/`any_in`
+read, `drop` removes, `finish` deletes it inside the land record's own transaction
+(`land_records.write(..., request=)`), so a SIGKILL anywhere leaves a request in exactly one state;
+an older goh's request files are no request (`state_retire_landq.py` imports them). `early`
+requests (red at enqueue) are rows of `early`. The other state records keep `write` (one rename)
+and `read` (None for a record moved on or not whole) (GOH.CIRED01310). Invoked by
+`lib/land_prestep.py`.
 """
 
 from __future__ import annotations

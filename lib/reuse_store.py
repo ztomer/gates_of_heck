@@ -27,6 +27,14 @@ NAMED. A suite's controller records its land's verdicts into the CALLER's store
 (tests/_land_verdicts.py `_in_store`): the runner names that file, and the controller sets `NAMED`
 for the call only (in-process, so no child inherits it), the one real-home goh-cache.db a suite may
 open (lib/db_core.py `guard`). Pinned by tests/test_reuse_store_db.py.
+
+GOH.VERDICTDB V1: where `reuse.py`'s records live, one row of goh-cache.db's `verdicts` per (path,
+key); `put`/`get`/`rows`/`drop`/`cap`, every database error a miss or a skipped write with one
+stderr line. `db()`: `GOH_CACHE_DB`, else beside a named `GOH_REUSE_DIR`, else goh-cache.db's own;
+`NAMED` is the caller's file a land suite's controller records into (`tests/_land_verdicts.py`).
+Files from before the switch are read by nothing (`state_retire_verdicts.py` imports and removes
+them). `root()` stays the reuse root of what stays files, each registered in `state_bounds.py` with
+why (`profstore`, `profreach`, `binreach`; `test_reuse_root_files.py`). Pinned by `test_reuse.py`.
 """
 
 from __future__ import annotations

@@ -12,6 +12,11 @@ and `ps -A`, which is setuid and reads every process's CPU time, for the ones li
 users': root's daemons, `_windowserver`, `_mds_stores`); those carry no reaped-children time and no
 working directory. The machine's busy CPU is `host_statistics(HOST_CPU_LOAD_INFO)`'s ticks.
 Linux: `/proc`. Pinned through lib/load_sources.py's tests (tests/test_load_sources.py).
+
+The process table for `load_sources.py`, without privilege: libproc (`proc_pid_rusage` v2 whole,
+`proc_pidinfo` cwd, `proc_pidpath`, `KERN_PROCARGS2` for an interpreter's script basename, then
+dropped) for the caller's processes and `ps -A` for other users'; `host_statistics` ticks for the
+machine's busy CPU; `/proc` on Linux.
 """
 
 from __future__ import annotations

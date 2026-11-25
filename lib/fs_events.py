@@ -27,6 +27,14 @@ it is unavailable (exit 3). Under load fseventsd can also lose a run of records 
 all (d255-d344 of 400 planted dirs, end mark delivered, 2026-11-23): a clean window is a lower
 bound, so a caller that planted a known count checks it read at least that (tests/test_fs_churn.py).
 Pinned by tests/test_fs_events.py and tests/test_fs_churn.py.
+
+GOH.FSCHURN2: the file events a window makes under some roots, as fseventsd counts them -- an
+FSEvents stream (CoreServices through ctypes, file-level, no sudo) folded into a `Tally` (records,
+dirs created, dropped-event flags) whose `creator()` names each path's maker: the pytest test whose
+tmp_path it is, a mkdtemp `<prefix>.*`, a reused `<prefix><worker>` dir. `tests/_fs_churn.py` runs
+it over a suite run's own roots and holds the count under `tests/fs_events_ceiling.json`;
+`tools/fs_events.py run -- CMD` is the by-hand door. A clonefile(2) of a 1000-file tree is 3 events
+and its removal 1021 (measured 2026-11-20): the cost of a fixture is what it leaves to delete.
 """
 
 from __future__ import annotations

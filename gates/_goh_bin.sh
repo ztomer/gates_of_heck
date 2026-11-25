@@ -22,6 +22,12 @@
 #
 # Sets `goh_native` (the binary, or empty) and `goh_native_why` (why it is empty, for the one line
 # the caller prints; empty when GOH_NO_NATIVE asked for Python on purpose).
+#
+# The ONE resolution of the native `goh` binary (`GOH_BIN` trusted or reported, then the build of
+# the commit the gate pinned from the stamp-keyed store `bin/by-stamp/` -- adopting a current
+# `bin/goh`, or building that commit with `build-goh.sh --rev` when the live checkout has moved
+# past it -- then `PATH`; `GOH_NO_NATIVE` is retired and only named). The answer is the store's
+# immutable copy, so a goh land mid-run cannot change what a gate executes. Sourced, never run.
 
 # Its git on the gates checkout drops a hook's repository variables (contract #12); sourced here
 # too, because a probe sources this file alone (tests/_drift_guard.py).

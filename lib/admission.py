@@ -10,6 +10,15 @@ gate slot inside it -- two counters for one CPU -- and waited 900 s on the place
 sat free. A suite run by hand (tools/pytest.sh outside a gate) comes in here too, through
 lib/gate_slot.sh with a bound (GOH.ADMITSUITE). Still apart: the shellcheck tokens, which count
 CHILDREN, not gates (docs/decisions/D-0010), and the bench lock's registry (GOH.ADMITREGISTRY).
+
+THE ADMISSION (GOH.ONEADMISSION, D-0008): the one entry every gate comes in by -- memory first
+(`mem_admit.py`), then a gate slot (`gate_slot.py`), then the holder's record. `admit` serves
+`gate_slot.py`'s shell holder (every shell gate, and `tools/pytest.sh` run by hand, bounded by
+`GOH_SUITE_WAIT_MAX`: GOH.ADMITSUITE); `admit_here`/`run_admitted` serve `tools/load.py 0 --
+<gate>` (a land's gate) in-process, bounded by `--wait-max`, marking `GOH_GATE_SLOT` and
+`GOH_HELD_LOCKS` so the gate it runs takes no second slot; the class (`GOH_GATE_CLASS`,
+GOH.SLOTFAIR) picks the lane and the rank in its queue, consumed so the gate inherits none. Pinned
+by `test_gate_slot.py`.
 """
 
 from __future__ import annotations

@@ -1,6 +1,13 @@
 """The two sides a release canary compares (scripts/release_canary.py), split from it at its line
 cap: the native goh a revision builds, that revision's gates, exported as a consumer gets them,
-and how one side's run over a consumer reads (its Verdict, kept by lib/canary_memo.py)."""
+and how one side's run over a consumer reads (its Verdict, kept by lib/canary_memo.py).
+
+The two sides the release canary compares, split from `scripts/release_canary.py` at its line cap:
+`resolve` (a revision's native goh, from the store or built), `export` (its gates as a consumer
+gets them, `.goh-head` naming the commit), `_failed` (a failed step's exit and stderr, never an
+empty reason); one side's run as a `Verdict` (`parse`, and `kept`/`restored`, its form in the
+memo), `common_dir`, `fresh`.
+"""
 
 from __future__ import annotations
 

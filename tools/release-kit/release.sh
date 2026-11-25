@@ -72,6 +72,20 @@
 # Run HEAD, not the tree (C4) -- once: the self-buffered copy below runs from $TMPDIR, where
 # `../../gates` is nothing, and its parent already chose the tree (tests/test_release_kit.py). The
 # bash 5 guard runs first too (lib/bash5.sh); the buffered copy is exec'd by its "$BASH".
+#
+# `tools/release-kit/`: `release.sh` (HEAD declares the version → CI on HEAD → gate → stanza
+# (Unreleased empty, no repeated entry: `changelog_cut.py check`) → tag → push → release (backfill
+# above `GOH_RELEASE_BACKFILL_FLOOR`) → tap; step 0 is `ci_step.sh`: an unpushed HEAD is pushed
+# through the gated push, then its runs are read once: red refuses, pending is advisory over goh's
+# push gate, GOH.CIWAIT), `tap_bump.sh` (the house tap bump: clone, edit, the TAP's own
+# `tools/gate.sh --full`, a pinned push read back; `release.sh` calls it, and so may a product's
+# own release script), `version_step.sh` (step 0a and the backfill floor, sourced),
+# `changelog_day.py` (the cut's day: `GOH_TODAY`, else today; the clock seam a test pins,
+# GOH.MIDNIGHTDATE), `changelog_cut.py` (`cut` makes the new stanza FROM Unreleased in the file's
+# heading style, or merges into a hand-written one; `check` is release.sh's), `gen_app_icons.py`,
+# `update_dev.sh`. Pinned by `test_release_kit.py` (+ `test_release_kit_version.py`,
+# `test_release_kit_ci.py`, `test_release_kit_tap.py`, `test_release_hardening.py`,
+# `test_changelog_cut.py`).
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; [ -n "${GOH_RELEASE_BUFFERED:-}" ] || { . "$_goh_d/../../lib/bash5.sh" || exit; goh_bash5 "$@"; . "$_goh_d/../../gates/_from_head.sh" || exit; goh_from_head "${BASH_SOURCE[0]}" "$@"; }
 set -euo pipefail
 

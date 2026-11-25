@@ -26,6 +26,10 @@ is the common git dir -- the checkout every session shares; a linked worktree is
 Refused with the way forward: a worktree of your own (`git worktree add build/<name> -b <branch>`),
 or `git restore --staged <your paths>`. The one escape is `# reset-ok: <reason>`, never for a
 stash (GOH.STASHNOESCAPE).
+
+The discard guard's refusal of `git stash`, `git reset` (any form), a branch switch and a
+whole-index `git restore --staged` in a PRIMARY checkout, the one every session shares; a linked
+worktree is its creator's (GOH.NORESET). Escape: `# reset-ok: <reason>`.
 """
 
 from __future__ import annotations

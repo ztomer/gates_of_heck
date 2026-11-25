@@ -20,6 +20,11 @@
 # no pre-land runs beside it (land_par, below); the gate's one run fails fast in its place.
 # Pinned by tests/test_land_par.py (both at once, each red first, each hanging to its deadline, one run).
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+#
+# `land_par`, a land's pre-land tests and its gate AT ONCE under the land lock (GOH.GATEPARALLEL):
+# each a branch with its own admission and deadline, the first red stops the other whole
+# (`goh_pid_tree_kill`) and is named, the pre-land records into its own file and hands its ledger
+# fields back. Pinned by `test_land_par.py`.
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/land_par.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=lib/pid_owner.sh

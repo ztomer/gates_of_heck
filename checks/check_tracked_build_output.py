@@ -38,6 +38,18 @@ WHAT IT IS NOT. It reads the TRACKED files (`git ls-files`), so it says nothing 
 directory that is merely ON DISK: that is what `.gitignore` is for, and `goh`'s tracked-ignored
 step already covers a file that is tracked AND ignored. And a repository that tracks nothing is
 REFUSED, not passed: a scan that found no subject has not judged anything.
+
+A TRACKED file that is build output: the shape a build leaves behind, committed by accident
+(koffee_oss, 2026-10-19: six files under `DerivedDataTests/` came in with the history flatten, and
+the `.gitignore` check cannot see a file that is ALREADY tracked). It reads `git ls-files`, so a
+build directory that is merely ON DISK is `.gitignore`'s business; a repository that tracks NOTHING
+is refused, not passed. Since OW.29 (BACKLOG 7.4) it is a STRUCTURAL step, run by `structural.sh`
+at both scopes (`--staged` judges only what the commit adds or changes, from the index, so an old
+red never blocks an unrelated commit); it stays Python because it is delegated, not ported (one
+implementation). An extension that names both an object file and a text format (`.obj`:
+COFF/ELF/Mach-O or a Wavefront mesh) is decided by CONTENT (a magic number or a NUL byte), never by
+name alone: ZeroThunder's 244 `assets/meshes/*.obj` were refused as "a compiled file" on
+2026-10-31. Pinned by `test_goh_structural.py`.
 """
 
 from __future__ import annotations

@@ -17,6 +17,16 @@ For every NON-ARCHIVED repository of an owner:
 Bounded: every `gh` call has a timeout (--timeout, default 60 s). One repository's failure is
 reported and does not stop the rest; the exit is 1 if any repository failed, 0 otherwise. Output is
 only what was done -- a quiet run is one line.
+
+`scripts/actions_sweep.py` / `tools/actions_sweep.sh` (G14, 2026-10-26): GitHub Actions storage
+cleans itself: for every non-archived repo of the owner, artifacts older than 14 days go, caches go
+when off the default branch or unused for more than 7 days (a default-branch cache in use stays),
+and artifact-and-log retention is set to 14 days when higher, so a new repo is covered too. Dry run
+unless `--apply`; every gh call is bounded (`--timeout`); one repo's failure is reported, the rest
+still run, and the exit is 1. The daily launchd job `com.ztomer.goh-actions-sweep` (04:15 and at
+load; wrapper runs an export of HEAD with `--apply`; log `~/Library/Logs/goh-actions-sweep.log`,
+only what it did) is installed by `tools/install_actions_sweep.sh`. Pinned by
+`test_actions_sweep.py`.
 """
 
 from __future__ import annotations

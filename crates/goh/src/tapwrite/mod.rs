@@ -13,6 +13,22 @@
 //! WIRING: a structural step in EVERY repo, a hard gate at both scopes. No `--exclude`, like
 //! `goh checkout-credentials`: the defect is a gate bypass, which is not a style a path can be
 //! exempt from; the one escape is the reasoned per-line `# tap-write-ok: <reason>`.
+//
+// `goh tap-writes`: A script (`*.sh|bash|zsh|ksh|py|mk`, a shebang file, `Makefile`, `Justfile`) or
+// workflow (`*.yml|yaml`) that writes a `homebrew-*` repo around the tap's own gate: `gh api` with
+// a non-GET method (or fields and no method, which `gh` sends as POST) or `curl` with a write
+// method or a body, to `repos/<owner>/homebrew-<name>/contents/`; or a `git push` after a `git
+// clone` / `gh repo clone` of a `homebrew-*` repo in the same file. A simple assignment naming the
+// tap (`TAP="o/homebrew-tap"`, Python `TAP = "..."`) is substituted into `$TAP`, `${TAP}`,
+// `${TAP:-...}` and an f-string's `{TAP}` first; a backslash-continued command is one line; a
+// comment line is never a write. The house route is `tools/release-kit/tap_bump.sh`, which runs the
+// tap's `tools/gate.sh --full` before a pinned push; until 2026-10-17 antiknob, monitor and
+// CadGoose went around it (homebrew-tap T2.1), and all three pre-migration files are red under it.
+// The one escape is **`# tap-write-ok: <reason>`** on the line or in the comment lines directly
+// above it; an empty reason and a marker with no write under it are findings. Every repo, both
+// scopes, a hard gate; no path exemption. Lies: a Python call whose arguments span lines is read
+// line by line, so a list split across lines can hide the write. Pinned by
+// `test_check_tap_writes.py`, the table in `tapwrite/tests.rs`.
 
 pub mod scan;
 

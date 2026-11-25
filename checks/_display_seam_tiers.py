@@ -9,6 +9,12 @@ tier is opt-in: its default is "", and a policy that never named it must get no 
 Each row is (label, files, policy overrides, WANTED EXIT CODE), the shape of
 `_display_seam_probe.CASES`; the probe writes the seam file into every fixture itself. They live
 here so the probe stays under the 500-line cap, and `check_display_seam.py --probe` runs them.
+
+Lib: the seam gate's declared-harness tier rows (`TIER_CASES`), run inside its `--probe`. A harness
+that drives the real screen calls `live_helper`; one that drives the real input session may call
+the policy's `ingress_helper` instead (opt-in, default empty, so no consumer inherits the
+exemption). Both tiers are held to call-not-mention and a real reason, and an unnamed tier must not
+leave an empty alternative in the helper pattern. From ZeroThunder 1.9.
 """
 
 from __future__ import annotations

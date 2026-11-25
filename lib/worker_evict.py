@@ -23,6 +23,19 @@ What the run just used is stamped (`.goh-used`) and held for cache_evict.GRACE_S
 takes the slot that just ran; a cargo lock held by another slot's build holds that slot.
 
 usage: worker_evict.py [plan|run] --root DIR [--ceiling-gib N] [--floor-gib N] [--json]
+
+`lib/cache_evict.py`'s ranking over the worker's caches (each lane slot's cargo target, the cargo
+home, llvm-cov entries; sccache counted, never swept) under its own budget `min(80 GB ceiling, held
++ free - 100 GB floor)` on the scratch disk the host's transcodes share. `goh remote-shard` runs it
+in the container after every run, what the run used stamped first.
+
+`lib/worker_share.py`: `worker_share.py`, `worker_share.sh`: THE WORKER SHARE (GOH.POOLSHARE): how
+WIDE an admitted gate runs, where admission says how many -- cores / the gates admitted now (either
+lane, itself included), exported at admission as `GOH_GATE_WORKERS` and the variables runners read
+(xdist, cargo, libtest, nextest; never one that widens a serial runner), split among
+`local_ci.sh`'s concurrent steps, counted afresh by a run under no slot (`tools/pytest.sh` as a
+land's pre-step) and by a layer under a consumer gate.sh (`goh_workers_ensure`); `goh_workers` is
+the flag for swift, xcodebuild and make.
 """
 
 from __future__ import annotations

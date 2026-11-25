@@ -5,6 +5,9 @@ rule is driven red against a fixture, and the shapes are the ones that were WRON
 multi-line `subprocess.run([...])` (what `ruff format` emits), a live-tier helper NAMED in prose
 rather than called, and a bare `screen-ok:` marker with no reason. A gate that cannot fail in the
 shape it was written for is not a gate (SUPERSOTA R3).
+
+Lib: the self-proof for `check_display_seam.py`, split out so neither file crowds the 500-line cap.
+One case per pattern in the Swift and live-command vocabularies, plus the config refusals.
 """
 
 from __future__ import annotations

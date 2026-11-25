@@ -26,6 +26,15 @@ marker lock via gates/_head_cache.py's `_evict`), so no build starts in a direct
 a demotion copies while holding the cargo locks, so a cargo that starts meanwhile waits for it.
 One sweep at a time (a lock beside the ledger); a second exits 0 at once.
 
+`goh cache-sweep [--json]`, with `plan`, `run` or `hold` (GOH.CACHEEVICT): the evictor's sweep --
+finds the cargo build dirs (`~/.cargo/build/<h>/<h>`), the llvm-cov entries, the sccache dir and
+the large tier's demoted copies, folds their last-use stamps into the ledger, ranks them once
+(`lib/cache_evict.py`) and, with `run`, acts: a delete renames the object away under the locks a
+build would take, a demotion copies while holding the cargo locks. One sweep at a time; `plan` (the
+default) changes nothing. `stamp PATH` marks a use. Each run lets sccache follow the resolver and
+sweeps the internal default dir a server has left; `hold HOURS WHY` is the expiring opt-out
+(GOH.SCCACHEROOTFOLLOW).
+
 usage: cache_sweep.py [plan|run] [--json]     plan (default) prints, run acts
        cache_sweep.py stamp PATH              mark PATH used now
        cache_sweep.py hold HOURS WHY          leave sccache on the root it serves, for HOURS (<=72)

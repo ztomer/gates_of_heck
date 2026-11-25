@@ -4,6 +4,10 @@ Split out of check_probes_pass.py under the 500-line cap. NOT APPLICABLE (lib/no
 a case of its own, in both directions: off a hosted run a probe that exits 78 and says it is BROKEN
 -- that is how a probe could pass silently on the owner's machine -- and on one it is neither a
 pass nor a failure (CI.PUBLIC2).
+
+Lib: the self-proof for `check_probes_pass.py`, split out under the 500-line cap: a passing, a
+BROKEN, a NOT APPLICABLE (both directions) and an undeclared self-proof. Pinned by
+`test_check_probes_pass.py`, `test_not_applicable.py`.
 """
 
 from __future__ import annotations

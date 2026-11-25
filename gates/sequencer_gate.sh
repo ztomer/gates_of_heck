@@ -13,6 +13,15 @@
 #                         commit -- and the push gate refuses what it names.
 #   post-rewrite amend    nothing: the amend ran pre-commit, or skipped it with --no-verify.
 #   pre-applypatch        the index the patch made; non-zero REFUSES it (`git am --no-verify` skips).
+#
+# The stock `post-rewrite` and `pre-applypatch` hooks' body: the conflict-marker check for commits
+# git makes WITHOUT pre-commit (measured, git 2.56). `post-rewrite rebase` runs `goh markers
+# --commits` over each rewritten commit -- a rebase pick, conflicted or clean, runs no pre-commit
+# -- and reports loudly, naming `<commit>:<path>:<line>` (git ignores the exit; the push gate
+# refuses them); `amend` is left to pre-commit and its `--no-verify`. `pre-applypatch` (`git am`,
+# `rebase --apply`) runs `goh markers --staged` and REFUSES the patch; `git am --continue
+# --no-verify` skips it. Invoked by `hooks/post-rewrite`, `hooks/pre-applypatch`. Pinned by
+# `test_sequencer_markers.py`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

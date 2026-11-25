@@ -21,6 +21,12 @@ idle over that step's own run (tick counters at its start and end, nothing sampl
 
 SEAMS: `wait(sample=, sleep=, clock=, say=)` for a test's fakes; capacity's GOH_CPU_IDLE_READING and
 GOH_CPU_IDLE_WINDOW_S for the sampler a child ship reads. Pinned by tests/test_ship_quiet.py.
+
+GOH.SHIPQUIET: before the land lock, `goh ship` waits (`wait`, bounded by GOH_SHIP_QUIET_MAX_S, 600
+s; 0 off) while the measured CPU idle (`capacity` tick counters) is under GOH_SHIP_QUIET_IDLE_PCT
+(30), and records it in the result's `quiet`; `ticks`/`idle_since` give each step entry its
+`idle_pct` over its own run. An unreadable idle never holds a ship. Called through
+`ship_status.quiet_wait`/`step_load`.
 """
 
 from __future__ import annotations

@@ -2,6 +2,9 @@
 remaining Python gates share (`check_display_seam.py`). It came from the retired
 `check_no_screen_presentation.py` (now `goh screen`, `crates/goh/src/screen.rs`) when Phase N3
 deleted that checker; the native port carries its own copy of the same contract.
+
+Lib: Swift source with comments and string literals masked, line count preserved -- the one Swift
+reader the remaining Python gates share (`check_display_seam.py`).
 """
 
 from __future__ import annotations

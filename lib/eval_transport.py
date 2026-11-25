@@ -12,6 +12,8 @@ Posture inherited from the ancestors:
     broken pipeline average garbage into "results".
 
 No provider SDK: urllib from the standard library only.
+
+Grader/model-agnostic eval transport. Pinned by `test_eval_transport.py`.
 """
 
 from __future__ import annotations

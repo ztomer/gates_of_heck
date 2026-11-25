@@ -28,6 +28,9 @@
 # imported it, and that test then LOWERED the total (ZeroThunder, 2026-10-18:
 # 67.03% against 68 with no test failing). The floor is therefore decided by
 # gates/py_cov_floor.py over every file the repo holds, the repo's omit honoured.
+#
+# `ruff check` + `ruff format --check` + pytest with coverage floor. Args: `[repo] [pkg_dir]`.
+# Invoked by `--full`, opt-in.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

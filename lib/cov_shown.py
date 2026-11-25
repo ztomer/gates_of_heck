@@ -7,6 +7,11 @@ shows cannot be read off the report. So the value is shown to max(2, the floor's
 (never rounded up, which would show a pass the comparison refuses), and the verdict is taken on
 exactly that shown value: writing the shown number as the floor passes, and one unit more in its
 last place fails. Pinned by tests/test_cov_shown.py.
+
+A measured coverage at the precision its floor is compared at (GOH.COVSHOW): cut (never rounded up)
+to max(2, the floor's own places), and the verdict taken on that shown value, so the number a
+passing gate shows, written as the floor, passes, and one unit more in its last place fails. Used
+by `check_swift_coverage.py` and `coverage_swift.py`.
 """
 
 from __future__ import annotations

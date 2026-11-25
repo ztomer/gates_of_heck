@@ -17,6 +17,12 @@ WHY NO GIT. The guard runs on every tool call, so the config is PARSED here, not
 config`: walk up from the path to each `.git` (a directory, or a worktree's/submodule's `gitdir:`
 file whose `commondir` names the shared directory), read `config`, take the `[goh]` section. Every
 enclosing repo is read, not just the nearest: a submodule inside a held repo is inside the hold.
+
+THE HOLD: is this path inside a repo whose local git config carries `goh.hold` (or the legacy
+`goh.archived`)? Parsed, never asked of git (the Claude guard runs on every tool call); worktrees'
+`commondir` and enclosing repos followed; `holds_below` for a recursive verb on an ancestor,
+bounded. `check`/`show` CLI for the gates (`lib/repo_hold.sh`: commit, commit-msg, pre-applypatch,
+push refuse a held repo). Pinned by `test_hold_gates.py`.
 """
 
 from __future__ import annotations

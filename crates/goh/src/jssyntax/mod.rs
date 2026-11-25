@@ -35,6 +35,24 @@
 //! count, and the templates that were judged by their substituted form. What a red run says:
 //! every violation as `file:line: why`, and every source the engine could not measure, with the
 //! reason it could not.
+//
+// `goh js-syntax`: Every JavaScript source the repository TRACKS (`.js`, `.mjs`, `.cjs`) parses --
+// with the goal the BROWSER gives that file, and the goal is named BEFORE the engine: a `.js` file
+// is a CLASSIC SCRIPT (what a `<script src>` is, and it refuses a top-level `return`, a top-level
+// `await`, `import` and `export`), a `.mjs` file is a MODULE (what a `<script type="module">` is),
+// a `.cjs` file is node's COMMONJS. The goal comes from the file's NAME, because a browser's goal
+// is decided by the HTML that loads it and the HTML is not in the repository. Two engines, in the
+// house's order: node is PRIMARY (`vm.Script` IS the classic-script goal, `vm.compileFunction` is
+// the CommonJS goal, `node --check` on a `.mjs` file is the module goal; nothing is run), and
+// macOS's `JavaScriptCore` through `jsc` is the FALLBACK for a machine with nothing installed -- it
+// reaches the classic goal in TWO probes, because `new Function` builds a function body and a
+// function body may `return` where a classic script may not. The scope is printed every run (count,
+// shape, every path the vendor/build list took out, and the goal each source was judged with). A
+// TEMPLATE is judged by its SUBSTITUTED form: the placeholders the tree's own convention defines
+// are replaced with a neutral expression and the RESULT is parsed, because excluding a template
+// hides the subject. A source the engine cannot read is refused (exit 2), never passed. Opt-in
+// structural step: `GOH_JS_SYNTAX=on`. Pinned by `test_check_js_syntax.py`,
+// `test_goh_structural.py`.
 
 pub mod command;
 pub mod engines;

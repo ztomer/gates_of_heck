@@ -20,6 +20,15 @@ So a write into a consumer goes through ONE door, which owns both halves:
 
 The owned paths must be clean before the write (the caller checks and sets the repo aside), so
 putting them back as HEAD has them drops only what the writer wrote.
+
+The one door goh writes into ANOTHER estate repo through (GOH.CLASS.ROLLOUT, GOH.REFRESHLEAVES):
+`set_aside` (on hold, off its default branch, the owned paths uncommitted) and `commit_paths`,
+which snapshots the status and the bytes of every uncommitted file, runs the writer, puts back and
+names anything it wrote outside its paths, and commits the rest with `git commit -- <paths>`
+through the repo's own hooks, or restores them; "left as it was" is said only after the status is
+read again. Used by `scripts/hooks_refresh.py` and `scripts/wf_pin.py`. `env()` is that repo's
+environment, unbound from any hook's and from the goh ship that runs it (`GOH_SHIP_*`,
+`GOH_LAND_LOCK_OWNER`). Pinned by `test_hooks_refresh.py`, `test_wf_pin.py`.
 """
 
 from __future__ import annotations

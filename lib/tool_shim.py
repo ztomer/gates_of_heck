@@ -8,6 +8,12 @@ which binary it runs on one of its first lines, `SHIM_MARK` and an absolute path
 follows it; a nested suite's shim runs the outer suite's, so the chain is followed (a bounded
 number of hops). Read from the script's first bytes only: no spawn. Pinned by
 tests/test_verdict_carry_hermetic.py.
+
+GOH.VERDICTCARRY3: a tool on PATH as a verdict identity keys it -- `fingerprint` (where it
+resolves, size, mtime: no spawn) and `past_shims`, which follows a wrapper naming the binary it
+runs (`# goh-shim-execs: PATH`, a nested suite's chain included) to that binary: the suite's
+per-run cargo drift shim (`tests/_drift_guard.py`) gave every suite run its own tools key, so no
+full-suite record was ever found. Read by `gate_identity.py tools()`.
 """
 
 from __future__ import annotations

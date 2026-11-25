@@ -31,6 +31,12 @@ it is written (GOH.CLASS.PARITY); adds the changelog fragment; and commits those
 through the repo's own hooks. The commit is the same bytes in every land that makes it, so when two
 lanes both carry it, the second's rebase onto main drops its copy as already applied. A tree that
 moved the pin itself, or a box that is not ahead, is left alone: no output, exit 0.
+
+A ruff on this box newer than a tree's manifest pin is a bump, never a red (GOH.RUFFCURRENCY):
+`--bump-tree ROOT` brings the house interpreter's ruff to the box's newest through the manifest's
+pip line, then commits every ruff row, the pin's comment and a changelog fragment as their own
+commit; no argument prints the newer release, or nothing. An older box ruff never moves the pin.
+Invoked by tools/land.sh, before its pre-step (so the enqueue's pre-step too).
 """
 
 from __future__ import annotations

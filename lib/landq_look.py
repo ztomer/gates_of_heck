@@ -19,7 +19,32 @@ ends the wait or turns it red. The last line names the exit, so the output alone
 zsh tool shell's `${PIPESTATUS[0]}` is empty and `cmd | tail` exits with tail's 0. A state that
 does not change is said again every `heartbeat` seconds with how long, so a batch member's wait
 shows its gate and its time (GOH.DIFFCOVCARRY's said "gate 1 of a batch of 3" for 15 min).
-Pinned by tests/test_landq_wait_exit.py."""
+Pinned by tests/test_landq_wait_exit.py.
+
+Reading the landing queue, split from `tools/landq.py` (GOH.CAPHEADROOM): `goh land --status`, and
+`--wait`, which finds a request by path, name or item ID wherever it is now and blocks until done
+(exit 0 landed, 1 red with the log tail, 3 timed out); an enqueue of the item still in its pre-step
+is waited for until it files, and exit 2 means none runs and none is filed (GOH.WAITUNFILED).
+Invoked by `tools/landq.py`. Pinned by `test_landq_inflight.py`.
+
+`lib/landq_report.py`: `goh land --report` (GOH.LANDREPORT): where the landing queue's wall time
+goes, read from `done/*.json` and their logs. Per repo and UTC day of the finish: attempts, landed,
+red and `cause` (the reds counted by `lib/land_cause.py`'s reading, the commonest in the text
+table's column and all of them on the line under it), queue wait (enqueue to start), gate (start to
+done) split into slot wait and run, mean load at start, gates per landed, `unknown` (attempts with
+no trustworthy start: an older record whose log was born before its request or after its finish, or
+shared by two records, is never summed as a negative). The lander writes `started`/`finished` (ISO,
+ms), `slot_wait_s`, `load_start`, `load_end` into each new done record. JSON: `{since, unloaded_s,
+rows: [{repo, day, attempts, landed, red, cause, queue_wait_s, gate_s, slot_wait_s, run_s,
+load_avg, gates, gates_per_landed, unknown, remote}], totals, unclassified: [{item, repo, day,
+log}], gate_steps: {step: n}}`; `remote` (GOH.REMOTEMUX) counts the pre-steps' worker shares from
+each record's `pre_run.remote`: `{shares, fallbacks: {cause: n}, fresh}`, printed under the row;
+`gates` counts a batch's shared gate runs once (GOH.LANDBATCH); `unloaded_s` is the shortest green
+run in the window. `selection` (GOH.SELECTAUDIT): the selection-miss ledger by day, `{day: {judged,
+missed, tests, full, full_missed}}`, also printed under the table. Not yet in `goh budget`: its
+`landq wait` / `landq run` kinds have no writer, which needs the lander to append ledger rows with
+`GOH_TIMING_DIR` isolated in every test that drives it.
+"""
 
 from __future__ import annotations
 

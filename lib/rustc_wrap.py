@@ -12,6 +12,13 @@ is gone. Env changes live only in the zsh files: ~/.bashrc imports them. `check`
 each disagreement.
 
 usage: rustc_wrap.py apply|check     (ZDOTDIR, CARGO_HOME and GOH_RUSTC_BIN name other places)
+
+goh's rustc wrapper wired machine-wide, its ONE owner (GOH.RUSTCWRAPWIRE): `apply` writes a
+trampoline (`GOH_RUSTC_BIN`, default `~/.local/bin/goh-rustc`) that runs the main checkout's
+`lib/goh-rustc`, or plain sccache when that is gone, and points `~/.zshenv`'s `RUSTC_WRAPPER`
+(falling back to sccache when the trampoline is gone) and `~/.cargo/config.toml`'s
+`build.rustc-wrapper` at it, keeping every other line; Invoked by (run by hand: `python3
+lib/rustc_wrap.py apply`).
 """
 
 from __future__ import annotations

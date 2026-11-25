@@ -40,6 +40,17 @@ in GOH_GATE_SLOT_DIR is recorded to an ancestor of this process: that gate.sh ho
 checks/check_lock_order.py is the static half: every acquisition site in the tree goes through
 this module or lib/lock_order.sh, and the held-while-acquiring graph sorts topologically.
 Pinned by tests/test_lock_order.py.
+
+`lock_order.py` / `lock_order.sh` / `lock_order.tsv`: The ONE acquire path for goh's locks
+(GOH.LOCKORDER, after the 2026-11-15 ship/land deadlock): the table ranks every lock, and a WAIT is
+refused (exit 78, naming both locks and the table) unless its rank is above every lock this process
+or an ancestor holds (`GOH_HELD_LOCKS`, `name@pid:key`, dead holders ignored); a try-lock is never
+refused; a re-entrant lock held by an ancestor is its own nesting rule's. A `repo`-scoped lock (the
+table's scope column) is ordered only against marks of its own repository (the key: its git common
+dir) or of none, and a wait ranked below the gate slot also sees a slot recorded to an ancestor
+(the one structural.sh takes for a `tools/gate.sh`) Python `flock`/`check`/`holding`, shell
+`goh_lock_take`/`goh_lock_check`/`goh_lock_mark`. Pinned by `test_lock_order_deadlock.py`,
+`test_check_lock_order.py`.
 """
 
 from __future__ import annotations

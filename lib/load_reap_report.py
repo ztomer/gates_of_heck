@@ -1,5 +1,11 @@
 """What one backstop sweep did, and the words the log needs (GOH.REAPLOG, split out of
-load_reap.py for the 500-line cap): the report, the kill it records, the rule names."""
+load_reap.py for the 500-line cap): the report, the kill it records, the rule names.
+
+What one backstop sweep did (split out of `load_reap.py` for the 500-line cap): `Report`, `Kill`
+(pid, rule, command), `Seen` (a pid that carries the command line the sweep read back, an `int`
+subclass so the exempted `kill(pid)` lines stay as the kill-by-name rule pins them), `record`, and
+the rule names `RULE_REGISTRY` / `RULE_HOUSE` / `RULE_HAND`. Pinned by `test_load_reap.py`.
+"""
 
 from __future__ import annotations
 

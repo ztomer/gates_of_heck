@@ -32,6 +32,16 @@ GOH.LEDGERBOUND); sweep and unbounded run it too, and lib/db_bounds.py's for goh
 goh-cache.db (GOH.DBSEAM: each table's TableBound, each file's budget).
 
 Pinned by tests/test_state_bounds.py and tests/test_state_files_bound.py.
+
+GOH.LANDLOGPRUNE: every directory under goh's state root (`~/.local/state/goh`) in one `REGISTRY`,
+a `Bound` (age and count, sized from the measured cadence: 48 lands a day, 14 days of history) or a
+`Kept` naming the writer that bounds it. `sweep(root)` prunes every Bound, a run's files together
+(a land's log, its gate logs and their timings), never one touched within the hour or a run
+directory whose `*.lock` is held; `land_prestep.discard` runs it once per recorded land.
+`unbounded(root)` is the check: an unregistered directory of 50 or more entries, or a Bound past
+its bound, named at every SessionStart by `hooks/claude/estate_advisories.py`. GOH.LEDGERBOUND:
+`sweep` and `unbounded` also run `state_files.py`'s table for the single append-only files.
+`state_bounds.py sweep|check [ROOT]`.
 """
 
 from __future__ import annotations

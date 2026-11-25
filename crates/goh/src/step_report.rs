@@ -241,13 +241,13 @@ pub(crate) fn ported(source: &str) -> String {
 /// house gate had no way to find the file from the message it was given — the
 /// Python tier printed an absolute path and the native one did not.
 ///
-/// Both pages, because they answer different questions: `map.md` says what a
-/// gate or checker DOES, `config.md` says what a `GOH_*` key MEANS, and a step
+/// Both, because they answer different questions: `goh map` says what a gate or
+/// checker DOES (rendered from its own header, GOH.MAPGEN), `config.md` says what a `GOH_*` key MEANS, and a step
 /// that failed on configuration needs the second more than the first.
 fn docs_route() -> String {
     let root = crate::goh_root();
     let root = root.display();
-    format!("{root}/docs/map.md documents this gate; its GOH_* keys are in {root}/docs/config.md")
+    format!("`goh map NAME` says what this gate does; its GOH_* keys are in {root}/docs/config.md")
 }
 
 /// The command line as it was run, with the checker's FULL path in argument 0.

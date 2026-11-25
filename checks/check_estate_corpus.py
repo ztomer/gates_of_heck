@@ -43,6 +43,15 @@ checker CORRECT, only that it still refuses a violation in the shape the estate 
 is the claim R3 makes and the only one that is checkable without a live system. The cross-repo
 survey that measures coverage (`games/game_asset_factory/tools/check_gate_calibration.py`) is a
 different question and stays there.
+
+SUPERSOTA R3: every declared house checker, handed a REAL subtree copied out of a real consumer
+repo with one violation planted inside it, must still go red and name the planted file. Six
+entries, each with the corpus and the reason it was chosen — the `check_no_empty_assert` entry
+replays the 2026-10-02 receiver bug in the exact shape it failed in (a string literal INSIDE the
+receiver). A corpus below a file floor, a corpus that is not CLEAN under the checker before the
+plant lands (so a red cannot be credited to the plant), and a plant that would land in a stub are
+all refusals. Copies, never runs in place: these are other people's working trees. `--probe` proves
+a checker that cannot fail is caught.
 """
 
 from __future__ import annotations

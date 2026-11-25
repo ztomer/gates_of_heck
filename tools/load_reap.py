@@ -28,6 +28,43 @@ RECORDED EXEMPTIONS in `kill_by_name_allow.json` (the house forbids killing by n
 `goh kill-by-name`): the lookup and the kill sit on one line, so the rule sees it, and every
 candidate is read back and matched before it is touched. A spinner with a LIVE parent is an
 experiment in progress and is left alone; a process that is not burning a loop was never ours.
+
+`tools/load_reap.py` / `tools/load_reap.sh`: the backstop: the minute job that reads the load
+registry and kills the pids in it whose parent is 1, that recognises the house's own spinner shape
+-- EXACTLY that shape, orphaned only, owner gone -- for the orphans whose registry was pruned with
+the directory that held it, and that recognises a HAND-ROLLED spinner -- an orphan that has burned
+a core on a busy loop, whoever wrote it (2026-10-21: twenty-four of them, four cores each, four and
+a half hours old, and the backstop knew only the house's own command line, so it left every one
+alone) (`lib/load_reap.py`). The shell wrapper re-runs itself from an export of HEAD (C4), so an
+unattended job never runs an uncommitted edit. Pinned by `test_load_reap.py`.
+
+`tools/load.py`: `tools/load.py [N -- CMD...]`: the ONE way to make load on this machine, and it
+reaps itself. It takes the registry slot (`GOH_LOAD_DIR`, default `~/.cache/goh/load`), refusing a
+second experiment while one holds it; starts N spinners, REGISTERING each one (pid + start time)
+BEFORE it is allowed to burn (a spinner waits on a release pipe, and exits if the pipe closes
+first, so one that was never released never spins); runs the command under the load; kills exactly
+the spinners it registered on the way out (EXIT/TERM/INT/HUP), VERIFIES that none survived, and
+drops the registry. It also watches for its OWN owner dying and cleans up then. It is BOUNDED by
+its own clock (G1c): a deadline is always in force (30 min unless `--max 90m` / `--max 2h` names
+another), and on expiry the command's whole tree (its process group, and every descendant, one that
+left the group too) and every spinner are killed and it exits 124 naming the deadline; a signal or
+a dead owner kills the command's tree as well. N above the core count is refused unless
+`--oversubscribe` is passed (`GOH_LOAD_NCPU` is the test seam). A command run at BACKGROUND
+priority (G1f: `taskpolicy -b`, a QoS clamp, `nice`/`renice` >= 10, `chrt --idle`, after
+env/sudo-style prefixes and inside `sh -c`) is refused before any spinner starts: N spinners starve
+it by construction (`lib/load_priority.py`); `--background-ok <reason>` is the escape. A build tool
+that takes a machine-wide lock (cargo, xcodebuild, swift, gradle, go, npm/pnpm install:
+`lib/load_locks.py`, GOH.LOADLOCK) is refused the same way; build first, put only the prebuilt
+binary under load; It refuses (exit 75) while another session's GATE is in flight
+(`lib/gates_in_flight.py`, GOH.LOADX), naming repo, stage, pid and elapsed; `--wait` starts once
+the gates in flight when it asked are done -- gates that start meanwhile are named, not waited on
+-- bounded by its OWN `--wait-max` (default 15m, never `--max`); on expiry it names the gates still
+ahead, the late ones and the load average (GOH.LOADWAIT). It prints the load average it started on
+(the baseline, also in the registry) rather than waiting for a quiet one. `--despite-gate`
+overrides, and its own ancestor gate does not count. To simulate a slow CI runner, throttle the
+process under test (Chromium CPU throttling over CDP / Playwright), not the shared machine.
+`--status` says who holds the slot; `--reap` clears a slot whose owner is gone. Pinned by
+`test_load_tool.py`.
 """
 
 from __future__ import annotations

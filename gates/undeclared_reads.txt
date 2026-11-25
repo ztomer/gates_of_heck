@@ -1,3 +1,8 @@
+# The tests that join `REPO_ROOT` with a non-literal part (`REPO_ROOT / rel`) and declare no
+# `TREE_READS = (...)` yet: what they read is invisible to the selector (lib/declared_reads.py,
+# GOH.SELECTAUDIT). Seeded with the 70 of 2026-11-17; it only shrinks: a new such test declares its
+# reads, and a listed file that declares or joins no more is stale and fails. Invoked by
+# `test_declared_reads.py`.
 tests/test_advisory_db.py
 tests/test_affected_tests.py
 tests/test_bash32_empty_array.py

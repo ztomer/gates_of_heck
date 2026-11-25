@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# a Claude Code PostToolUse hook (wired in `~/.claude/settings.json`, matcher
+# `Write|Edit|MultiEdit|Bash|Monitor`): an edit inside the skills corpus -- or a Bash command
+# naming it -- runs `goh skills` at once and a finding is exit 2 back to the writer. Not copied by
+# `install.sh`. Pinned by `test_claude_skill_hook.py`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../../lib/bash5.sh" || exit; goh_bash5 "$@"
 # hooks/claude/skill_edit.sh -- a Claude Code PostToolUse hook: judge the skills corpus the moment

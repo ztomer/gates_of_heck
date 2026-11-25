@@ -27,6 +27,13 @@ read and written only under its marker lock (`.goh-running.lock`, the lock _head
 takes without waiting), so a give never swaps it under a take, and the cache's prune never evicts
 it mid-copy. It is a plain entry to the prune otherwise: least recently used, and an orphan once
 its common dir is gone. Pinned by tests/test_cov_seed.py.
+
+Rust coverage: one seed per REPOSITORY (git's common dir, `seed-<hash>` in the coverage cache)
+holding the last green build of any checkout of a repo with linked worktrees; a checkout whose
+entry has no build takes an APFS clone of it (`take`), every package whose units compiled a
+relative path or a path under the seed's checkout removed first; a green run gives its build back
+when the seed is missing, a day old or from another Cargo.lock/toolchain (`give`); both under the
+seed's marker lock (GOH.COVCACHEWARM).
 """
 
 from __future__ import annotations

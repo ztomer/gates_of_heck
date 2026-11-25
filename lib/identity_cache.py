@@ -18,6 +18,12 @@ Anything unreadable makes the key None and the caller spawns as before. The memo
 `memo` table (GOH.VERDICTDB; the goh-cache.db in $GOH_IDENTITY_CACHE when a caller names one), at
 most KEEP rows per kind (oldest dropped); a database error is a miss or a skipped write.
 Pinned by tests/test_identity_cache.py.
+
+GOH.IDENTITYPORT: `gate_identity.py`'s `git ls-files` listing and `goh_version.sh --inputs` answer
+kept across processes (goh-cache.db's `memo`, 512 rows per kind, GOH.VERDICTDB;
+`$GOH_IDENTITY_CACHE` names another file's directory), the listing keyed on the index, every
+directory's stat under the parts and every ignore rule, the inputs on HEAD's commit (read from the
+refs, no spawn) and the scripts' bytes; anything unreadable is no key and the spawn runs.
 """
 
 from __future__ import annotations

@@ -15,6 +15,9 @@ travel. Each layer's extrusion is drawn on a CELL mm raster; a travel sample is 
 drawn cell lies within NEAR mm of its own cell (cell-centre distance, the exact Euclidean distance
 transform's). Standard library only; ported from ZSUS CAD/gcode_travel.py (numpy + scipy), same
 numbers.
+
+Travel more than 2 mm from anything its layer extrudes, in sliced G-code: where PLA strings. A
+stdlib port of ZSUS's numpy original, identical on its five plates.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

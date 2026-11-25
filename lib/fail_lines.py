@@ -16,6 +16,13 @@ A line names the failure only when it can be ATTRIBUTED to the sub-step that fai
   nothing in its log can be attributed. Say so rather than assert it, and put first the failing
   sub-step the command named itself (make's `*** [target] Error N`).
 * A plain command: the grep it always was.
+
+The failure block `goh_step` prints before a red step's tail: only lines ATTRIBUTABLE to the
+sub-step that failed. A nested goh_step's own dump is quoted alone (the innermost, named) and the
+other matching lines are COUNTED, never listed -- a red `make verify-clean` had listed a
+calibration plant's quoted `✗` row, from a recipe that exited 0, as its failure (a private Swift
+app H2, BACKLOG C5). An unframed log (one `make` over many recipes) says so, and puts make's own
+`*** [target] Error N` first.
 """
 
 from __future__ import annotations

@@ -6,6 +6,12 @@
 # commit that adds a test names the mutation that turned it red. The repo's own message layer,
 # tools/commit_msg.sh, runs last when it exists. `git commit --no-verify` skips
 # this, and push_gate.sh asks again over the pushed range, so the skip does not survive the push.
+#
+# The stock `commit-msg` hook's body: `goh red-run` when `.gatesrc` sets `GOH_RED_RUN`, and `goh
+# commit-class` on the message when `.gatesrc` sets `GOH_COMMIT_CLASS` (read by name, in a child),
+# then the repo's own message layer `tools/commit_msg.sh` when the file exists, else nothing. The
+# hook warns and passes when the gates checkout predates it. Invoked by `hooks/commit-msg`. Pinned
+# by `test_commit_class.py`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

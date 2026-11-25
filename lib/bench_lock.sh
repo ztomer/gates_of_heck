@@ -42,6 +42,13 @@
 # (lib/gates_in_flight.py, the one reader) and refuses to starve a live gate (GOH.LOADX).
 #
 # Pinned by tests/test_bench_lock.py and tests/test_load_gate_inflight.py.
+#
+# The host held for a measurement: every gate registers (`goh_init`, `commit_gate.sh`,
+# `push_gate.sh`, `local_ci.sh`; bash builtins only; the entry holds its stage and repo), a
+# measurement takes it exclusive and waits for them. A nested gate, the measurement's own, and a
+# dead, recycled or overdue holder never deadlock it; a measurement nested in a gate drains every
+# gate but its own ancestors, and `bench_lock_nested` is the public "am I inside a gate" question
+# (GOH.BENCHNEST, D-0004).
 
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/bench_lock.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }

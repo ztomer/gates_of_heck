@@ -18,6 +18,23 @@ repo to add beside it (`~/.claude/skills` is the one that lives outside the esta
 The seed is ADDITIVE and idempotent: running it twice registers the same estate twice over, and
 never removes a line -- a repo that moved is a gone path and a new one, and the owner is told
 both.
+
+the estate's registry, read and seeded (BACKLOG 6.14): `list` says what `install.sh` recorded and
+which of those paths is gone, `seed` registers the estate root's walk plus the consumer outside it
+(`~/.claude/skills`) once, `record` adds one repo. Additive and idempotent. Pinned by
+`test_estate_registry.py`.
+
+`scripts/estate_audit.py`: the house Rust audit (`rust_gate.sh`'s biting `cargo audit`) over every
+tracked `Cargo.lock` under `~/Projects` (`GOH_ESTATE_ROOT`), nested repositories included, minus
+each repo's own `GOH_EXCLUDE`, from each workspace root so its exemptions apply. The estate is that
+walk UNIONED with the registry (`lib/estate_registry.py`), so a consumer outside the root is
+audited too, and a registered path that is gone is named. Records into
+`~/.local/state/goh/estate_audit.json` (`GOH_ESTATE_STATE`); the first run is a baseline, not news.
+`--install` writes and loads a daily launchd job. The verdict is the PUSH's
+(`lib/gate_coverage.py`): a lock a gate step audits is judged by that step's tool and policy
+(cargo-audit with its `.cargo/audit.toml`, cargo-deny RUN with its `deny.toml`); a lock no step
+audits is `unaudited` ("not audited at push"), never red; one a step goh cannot read might cover is
+`undetermined`. Pinned by `test_estate_audit.py` and `test_estate_gate_coverage.py`.
 """
 
 from __future__ import annotations

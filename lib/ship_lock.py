@@ -7,6 +7,11 @@ The holder now writes {"result", "pid"} into the lock file once it holds it (`cl
 try-locks the file and, held, reads that record's state: its status and, bisecting, its step.
 
 Pinned by tests/test_ship_red_cause.py.
+
+GOH.SHIPBISECTCOV: `.ship.lock` names its holder: `claim` (the worker, holding it, writes its
+record path and pid into it), `holder` (a try-lock; held, the holder's record, pid, status and
+bisect step, one line), so a second `goh ship` refuses before starting, naming them. Pinned by
+`test_ship_red_cause.py`.
 """
 
 from __future__ import annotations

@@ -17,6 +17,11 @@ re-derive:
     or, when nothing matches, the wait is already over;
   * a kill is `goh stop P...` for what the pattern matches now (`goh stop` refuses a process the
     caller did not start), or the stamp route when nothing matches.
+
+The exact `goh wait` / `goh stop` line a refused hand-written wait or kill names first
+(GOH.WAITSTOP): a pattern naming a land of an item is `goh wait land ITEM`, a ship `goh wait ship
+RESULT`, any other wait `goh wait pid` of what it matches now (or "already over"), a kill `goh
+stop` of what it matches now (or the stamp route).
 """
 
 from __future__ import annotations

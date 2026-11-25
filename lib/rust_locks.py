@@ -22,6 +22,12 @@ shared ignore entry is stale only when it fires against none of them; and `lib/g
 models `rust_gate.sh` with `plan` too. One rule, three readers, no copy.
 
     python3 lib/rust_locks.py plan <repo> [<extra lock>]
+
+The ONE rule for which locks `rust_gate.sh` audits: every tracked `Cargo.lock` under the repo (plus
+the gate's own workspace lock), each from the nearest directory at or above it holding a
+`.cargo/audit.toml` (cargo-audit reads only its cwd's), else its own. Asked by `rust_gate.sh`
+(`plan`), `check_audit_ignores.py` (`governed`) and `gate_coverage.py` (queue GOH.EA2). Pinned by
+`test_rust_audit.py`.
 """
 
 from __future__ import annotations

@@ -24,6 +24,13 @@ THREE WAYS THIS CAN LIE, each with a test in `tests/test_estate_registry.py`:
 THE FILE is one absolute path per line, beside the audit's state file. `GOH_ESTATE_STATE` names
 that state file, so it names the registry's directory too: a test that names its own state file
 gets its own registry, and the machine's registry is never a test's business.
+
+The estate is every repo `install.sh` installed into, not one directory (BACKLOG 6.14): the
+registry `install.sh` writes beside the audit's state file, the walk of the estate root, and the
+UNION of the two -- a registered path that is gone is named, never skipped. `~/.claude/skills` is a
+consumer outside `~/Projects` and no sweep read it. `update_state` rewrites the estate state file
+whole under a lock, keeping every key the writer does not own (the daily audit and the release
+canary share it). Pinned by `test_release_canary.py`.
 """
 
 from __future__ import annotations

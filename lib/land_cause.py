@@ -40,6 +40,19 @@ leave their failing nodes only in the record's `why`, or in the pre-step's own l
 both are read with the same node rules as a gate log (GOH.REDOTHER). Telling a defect from a
 load-flaky failure needs a rerun, which a log does not hold: `pre-test` and `gate-test` say
 where it failed, never which.
+
+Why a land went red (GOH.PREPARITY), read from its done record and log: `tip-moved`, `conflict`,
+`canary` (a consumer's red), `deadline` (the pre-land tests reached their deadline with nothing
+failed), `structural` (a `structural.sh` step), `ratchet` (only repo-wide judges failed: a
+`test_every_`/`test_no_` test, `test_self_walk.py`, `test_gate_temp_leaks.py`), `pre-test` (a test
+the pre-step chose failed), `gate-test` (a test failed in the full gate after a green pre-step: not
+chosen, or load-flaky), `main-moved` (main moved between the gate and the merge), `killed` (the
+pre-land tests died to a signal, `exit -15`), `diff-cov` (the pre-step's diff-coverage judge),
+`gate-step` (a gate step failed with no test or structural line: `detail` names it), `unclassified`
+(a fault of the classifier, never a bucket: `--report` names each one's log; GOH.REDOTHER); an
+enqueue-stage red (a pre-step or guard check) is read from the record's `why` and the pre-step log
+it points at with the same node rules as a gate log; the first that applies wins. A log cannot tell
+a defect from a load-flaky failure, so the last two say where, not which.
 """
 
 from __future__ import annotations

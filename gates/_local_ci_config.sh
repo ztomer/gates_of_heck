@@ -4,6 +4,11 @@
 # runner (the slot, the scheduler, the report) and this is its configuration. Sourced, never run.
 # shellcheck shell=bash
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+#
+# `local_ci.sh`'s CONFIGURATION, split out by concern at the 500-line cap (GOH.LOCALCISPLIT):
+# `lci_limit` reads the per-step ceiling (`GOH_LCI_TIMEOUT`, 900 s by default, `0` opts out) and
+# `lci_collect_steps` the step list (`GOH_CI_STEPS`, then each `--step`) with push_gate.sh's mark.
+# Pinned by `test_local_ci.py`.
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_local_ci_config.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 

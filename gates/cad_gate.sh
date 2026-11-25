@@ -19,6 +19,12 @@
 #
 # Config (.gatesrc): GOH_CAD_LAYOUT (required), GOH_CAD_BAMBU (the Bambu Studio CLI; default the macOS
 # app). Exit: 0 green, 1 a step failed, 2 the layer is not configured.
+#
+# The CAD layer (GOH.CAD): a repo of FDM parts made by code, judged as the slicer and the printer
+# see them, from ONE layout file (`GOH_CAD_LAYOUT`): every STL the layout places read as admesh
+# reads it (`checks/cad_mesh.py`), every snap it names by bending strain (`checks/cad_strain.py`),
+# and the Bambu Studio project built in a temp dir and every plate sliced and gated
+# (`checks/cad_bambu.py`). Stdlib only. Not configured is exit 2. Invoked by `--full`, opt-in.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

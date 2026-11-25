@@ -28,6 +28,16 @@ undone, so the repo is left exactly as it was -- read again, never assumed (GOH.
 
 Since GOH.CLASS.ROLLOUT a stock hook is a shim holding no logic (gates/hook.sh is read at run time),
 so a refresh is needed only when the shim itself changes: once per consumer, then never.
+
+`goh hooks` (GOH.HOOKREFRESH): every estate repo (the walk unioned with the registry) whose stock
+hooks are stale, one line each, exit 1 when any is; `--refresh` runs install.sh in each
+(`GOH_SKIP_BUILD=1`) and commits `.githooks` alone through the repo's own hooks, through
+`lib/estate_commit.py` (a write outside `.githooks` is put back and named; a refusal leaves the
+tree as it was); since the shim (GOH.CLASS.ROLLOUT) only a shim ABI change needs one; `--except
+<repo>` lists one but never touches it. A repo whose `.githooks` has uncommitted changes, or that
+lacks the `tools/gate.sh`/`.gatesrc` install.sh would write as starters, is set aside, named. The
+daily estate audit records the same list (`stale_hooks`) and the session hook says it. Pinned by
+`test_hooks_refresh.py`.
 """
 
 from __future__ import annotations

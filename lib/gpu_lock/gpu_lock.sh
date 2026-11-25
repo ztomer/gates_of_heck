@@ -88,6 +88,10 @@
 #     source "$GOH_DIR/lib/gpu_lock/gpu_lock.sh"
 #     trap 'gpu_lock_release' EXIT INT TERM
 #     gpu_lock_acquire "osaurus_one.sh --restart"
+#
+# `lib/gpu_lock/`: Machine-wide GPU mutex (bash + Python halves, one record format with ztools' Rust
+# client; heartbeat ceiling, refuses rather than steals). Moved from ztools 2026-10-10;
+# `tools/quiet.sh` holds it. Invoked by `lib/bench_lock.sh`. Pinned by `test_bench_lock.py`.
 
 # That requirement is ENFORCED, not just documented. tui/lib.sh was deleted by
 # 29ddbac along with the Python TUI while five scripts still sourced it, and the

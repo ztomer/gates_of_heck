@@ -28,6 +28,11 @@ Not judged: a FILE. The fleet's scripts capture the render into a variable to ha
 (`compose_converge_lib.sh`); what reaches a transcript is a command's output.
 
 The one escape is `# secrets-ok: <reason>`.
+
+The discard guard's refusal of a command that prints a stack's RESOLVED secrets into the transcript
+(SRV.NTFYROTATE): a `docker compose ... config` that renders values, or a `docker inspect` with no
+narrow `--format`, in the command's code and in the code it hands to ssh or a shell (a quoted
+script, a heredoc body); prose is not judged. Escape:
 """
 
 from __future__ import annotations

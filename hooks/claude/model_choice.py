@@ -13,6 +13,12 @@ profile is the one the owner declared (`profiles.declared`), dropped one step al
 `profiles.order` by the budget guard (`profiles.budget_guard`) when token-pool's meter says the
 plan's headroom is not there or cannot be seen (`active_profile`). `Rules(..., profile=name)`
 gives one profile's rules without asking the meter (the review weighs each).
+
+`hooks/claude/model_choice.json`: THE model-choice rules: the tier table, the exempt agent types,
+exploration, the verdict's `min_n`, and the facts they rest on (prices, Claude Code default
+efforts, the Agent tool's aliases and efforts, the Claude Code version), each with its measured
+date, source and how the weekly watch re-checks it. The owner's file: nothing writes it. Read only
+through `hooks/claude/model_choice.py`. Pinned by `test_model_choice_rules.py`.
 """
 
 from __future__ import annotations

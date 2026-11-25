@@ -4,6 +4,9 @@
 # sha256 digest of a file's contents, via whichever tool exists. All three
 # produce the same SHA-256 digest, so records stay comparable across the chain.
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+#
+# Sourced: the ONE sha256 of an installed hook, so the record `install.sh` writes and the
+# comparison `doctor.sh` makes cannot drift. Invoked by `install.sh`.
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_hash.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 hash_hex() {

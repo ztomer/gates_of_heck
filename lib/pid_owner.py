@@ -24,6 +24,21 @@ them (a whole wrap of the pid space in microseconds) is not caught. A zombie rea
 cannot be signalled into doing anything anyway. checks/check_saved_pid_kill.py refuses a new
 `os.kill`/`os.killpg` of a pid that is neither a child handle's nor stamped here; lib/pid_owner.sh
 is the shell half (`ps -o lstart=`, one-second resolution). tests/test_pid_owner.py.
+
+`pid_owner.py`, `pid_owner.sh`: Signal a SAVED pid only while it names its process
+(GOH.STRAYSIGNAL): `stamp(pid)` records its birth (macOS `proc_pidinfo`, Linux `/proc/PID/stat`)
+and process group, `signal`/`signal_group` refuse a pid whose birth changed, `read_stamp` proves a
+pidfile written with its start time (`stamp_line`, the shell's `goh_pid_stamp`), and
+`signal_child_group` signals a child's group through its `Popen` handle, refused once it is reaped
+and a stranger holds the number. `alive(stamp)` and `alive_line("<pid> <lstart>")` are the liveness
+probe for a saved pid (GOH.STRAYSIGNAL2). `alive_since_file(pid, record)` is the probe for a pid a
+record FILE names that the process wrote itself: a process at the number that started after the
+file was written is a stranger (GOH.STRAYSIGNAL3). The shell half: `goh_pid_stamp PID`,
+`goh_pid_kill SIG STAMP`, `goh_pid_alive STAMP` (`ps -o stat=,lstart=`: a zombie is gone, as in
+Python; one-second resolution), `goh_pid_alive_since PID FILE`, and `goh_pid_tree_kill SIG STAMP`
+(the stamped process and every descendant it has now, leaves first: GOH.GATEPARALLEL stops one
+branch of a land). Pinned by `test_pid_owner.py` (the recycle, faked with a stand-in at the saved
+pid), `test_pid_owner_cases.py` (one case table, both halves), `test_saved_pid_probes.py`.
 """
 
 from __future__ import annotations

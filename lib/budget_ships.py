@@ -7,6 +7,10 @@ under the 450-line headroom): one place knows how a result becomes rows.
     backfill_ships()   the rows of every finished result on disk that has none (GOH_SHIP_DIR)
 
 lib/budget.py re-exports each. Pinned by tests/test_budget.py.
+
+A ship result's ledger rows, split from `lib/budget.py` (GOH.LANDTARGET, headroom): `ship_rows`,
+`record_ship`, `ship_dir`, `backfill_ships`, each re-exported by `lib/budget.py`. Pinned by
+`test_budget.py`, `test_ship_starve.py`.
 """
 
 from __future__ import annotations

@@ -29,6 +29,9 @@
 #
 # It does NOT copy the checkers: hooks delegate to this checkout at runtime,
 # so a fix here reaches every installed repo with zero re-install steps.
+#
+# wires `.githooks/` + starter `tools/gate.sh` / `.gatesrc` into a consumer repo, all-or-nothing.
+# Pinned by `test_install.py`, `test_install_atomic.py`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/lib/bash5.sh" || exit; goh_bash5 "$@"
 set -euo pipefail

@@ -33,6 +33,16 @@ assignment) only when ALL hold; anything else is the full gate, and the push say
 
 A floor push that passes records its commit too, so successive floor pushes chain. Pinned by
 tests/test_push_config_reuse.py, each refusal by the reason it names.
+
+GOH.CFGPUSHSCOPE: the push's floor rule. `decide --root DIR --base SHA` (from `push_config_base` in
+`lib/push_runs.sh`, BASE the remote's tip of the ref) prints `config BASE` when the diff
+BASE..commit is `.gatesrc` alone, every line it adds or removes is blank, a comment or
+`KEY=<digits>` with KEY a scanner floor (`crate::subject`'s keys, read from
+`crates/goh/src/subject.rs`), no other tracked file names a changed key, and BASE has a green push
+verdict in the one store's `pushed` path (`lib/reuse.py`, the tree alone, recorded by every green
+push; a base in the retired `goh-pushed` file counts); `gates/push_gate.sh` then runs
+`gates/structural.sh --full` alone. Else `full REASON` (said) or `quiet REASON` (a new ref, a diff
+without `.gatesrc`): the full gate.
 """
 
 from __future__ import annotations

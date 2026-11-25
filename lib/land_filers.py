@@ -6,6 +6,9 @@ off its cap as filers are added (GOH.CAPAHEAD).
 
     diffcov_carry.file_item   the land's own uncovered changed lines (GOH.DIFFCOVCARRY)
     cap_ahead.file_items      each file the land grew into its cap's band (GOH.CAPAHEAD)
+
+The items a landing files, in the lander's one call (`tools/landq.py`): `diffcov_carry.file_item`,
+then `cap_ahead.file_items`. Pinned by `test_diffcov_carry.py`.
 """
 
 from __future__ import annotations

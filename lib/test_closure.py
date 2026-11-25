@@ -8,6 +8,18 @@ its code opens included (LOAD_READ); a base file a test imports itself brings it
 A test module another file imports is reached as the SLICE the importer uses (lib/test_slice.py,
 GOH.SELECTTESTIMPORTS): its imports whole, but only the slice's code names or reads a path.
 Pinned by tests/test_affected_tests.py.
+
+The dependency graph `tools/affected_tests.py` chooses a land's tests by (split out of it at its
+500-line cap, GOH.PREPARITY): what a file imports or sources (`source_closure.py`), the scripts a
+test or a tests/ or checks/ helper names by path, and what a reached SHELL script runs by a
+variable-rooted path (`"$GOH_PY" "$ROOT/lib/x.py"`; a bare path in a message is a mention, no run),
+or a Python tool's code runs by path (`tools/landq.py` -> `tools/land.sh`); an imported test module
+is the slice its importer uses (`test_slice.py`). `Closure.base()` is what pytest loads before
+every test, the data its code opens included (a `# load-read: PATH` comment on the line that opens
+it: lib/lock_order.tsv, tests/shard_weights.json, tui/stylerc; a change to one chooses every test);
+a base file a test imports itself, not through tests/conftest.py, brings its imports within the
+base (`base_reach`), so a base file keeps its readers (GOH.BASEDATAREADS). Invoked by
+`tests/_land_verdicts.py`. Pinned by `test_affected_tests.py`.
 """
 
 from __future__ import annotations

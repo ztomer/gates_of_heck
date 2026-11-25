@@ -5,6 +5,20 @@ SUB runs, and a detached call forms no edge.
 `"$GOH/bin/goh" land`) or a Python argv `[goh, "land", ...]` refers to it; a word in prose or a
 tuple of names is neither. A call whose child starts a session of its own -- `--detach`, `setsid`,
 `start_new_session=True` -- holds none of the caller's locks, so its references are dropped.
+
+`check_lock_order.py`'s reading of calls (GOH.LOCKORDERBIN2): a `goh SUB` shell command or `[goh,
+"SUB", ...]` argv is the house script SUB runs (`crates/goh/house_scripts.tsv`), and a detached
+call (`--detach`, `setsid`, `start_new_session=True`) forms no edge: its child holds none of the
+caller's locks. Pinned by `test_check_lock_order.py`.
+
+`checks/check_lock_order.py`: The static half of the lock order (GOH.LOCKORDER): every flock in the
+tree goes through `lib/lock_order.py`/`.sh` (a raw `fcntl.flock`, or a Rust file lock with no
+`lock-order:` mark, is red); `lib/lock_order.tsv` names exactly the files that take each lock; and
+the held-while-acquiring graph -- a lock held over the rest of a shell script or of a Python
+function (and the same-file functions it calls), every goh script, import, `.gatesrc` key command
+and `X ... -- G` wrapper run there -- sorts topologically: a cycle is red, named edge by edge, and
+so is an edge against the ranks. A `GOH_CI_STEPS` step. Pinned by `test_check_lock_order.py`
+(calibrated: the 2026-11-15 land-inside-the-slot invocation re-planted is red).
 """
 
 from __future__ import annotations

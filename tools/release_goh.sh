@@ -24,6 +24,14 @@
 # Unreleased, and the release commit deletes the fragments it folded.
 #
 # It pushes, so .gatesrc says GOH_SHIP_RELEASE_PUSHES=1. Pinned by tests/test_release_goh.py.
+#
+# `tools/release_goh.sh VERSION`: goh's own `goh ship` release kit (`.gatesrc` GOH_SHIP_RELEASE,
+# GOH_SHIP_RELEASE_PUSHES=1; GOH.SHIPKIT): refuses a dirty tree, an existing tag and an empty
+# Unreleased before anything moves; in a `build/` worktree bumps `[workspace.package]` and
+# Cargo.lock, cuts Unreleased into `## vVERSION` and commits; lands through `tools/land.sh`, gated
+# by `lib/release_gate.py` (the structural gate and the release files' readers for a
+# release-files-only commit, R3); pushes main; tags `vVERSION` with the stanza as its message and
+# pushes the tag. Pinned by `test_release_goh.py`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 set -euo pipefail

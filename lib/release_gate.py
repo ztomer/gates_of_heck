@@ -53,6 +53,17 @@ land record read again, and only a repeated red turns `landed` off. The fresh si
 gate of the pushed commit: another machine's shape, which the owner ruled advisory, so a red only
 CI saw (v0.139.6's pytest ids; REUSEOFFLANDED4) switched this local reuse off and every ship's
 release step ran the full gate (v0.139.14: 581.4 s, 478.1 s of it gates/rust_gate.sh).
+
+GOH.SHIPRELREUSE R3: the release land's gate. `run --base TIP --full CMD` (from
+`tools/release_goh.sh`, as `GOH_LAND_GATE`): a diff since TIP of CHANGELOG.md and `changelog/` only
+runs `gates/structural.sh --full` and the tests that read those files; any other diff, an empty one
+or a TIP that is no ancestor runs CMD, the full gate. `names --base TIP` is the set
+(tools/affected_tests.py `readers` of the diff: a test reading `REPO_ROOT / "CHANGELOG.md"`, not
+one writing a fixture's; plus its `TEXT_JUDGES`, the self-walk, which reads every tracked file's
+text: GOH.REUSEOFFLANDED5); each part is a timed row (`step_timings.timed`), `decide` prints
+`release` or `full`. `push-decide` is the push's rule (`GOH_PUSH_RELEASE_REUSE`,
+`push_release_base` in `lib/push_runs.sh`): `release PARENT` for release files only on one parent
+`goh-landed` records, else `full REASON`.
 """
 
 from __future__ import annotations

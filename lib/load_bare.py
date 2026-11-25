@@ -26,6 +26,12 @@ body is its owner's stdin, so `cat > rg.sh <<'EOF' ... cargo clippy ... EOF` the
 rg.sh` writes a build and runs it in the slot, and is not refused; a body is judged as commands only
 when its owner is a shell reading its script from stdin (`sh <<EOF`, `bash -s <<EOF`) with no
 `load.py` in front of it, so a bare `cargo build` there is still refused.
+
+A build or a gate run BARE while the load slot is held: the Bash guard refuses a lock-taking build
+(`load_locks.py`'s definition) or a `gate.sh` outside `load.py` while a live experiment that is not
+the hook's own ancestor holds the slot, naming the holder and `load.py --wait 0 -- <cmd>`
+(GOH.LOADBUILDLOCK, 2026-11-11). Escape `# bare-ok: <reason>`. Invoked by
+hooks/claude/discard_guard.py. Pinned by `test_load_bare.py`.
 """
 
 from __future__ import annotations

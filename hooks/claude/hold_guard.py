@@ -40,6 +40,14 @@ Read-only commands (ls, cat, rg, git log/status/diff/show) run. A command it can
 unjudged: the guard must never be what breaks an ordinary command. The read-only layer still
 stands behind it. The way out is the hold's lift command (`scripts/release_hold.sh`, or
 `scripts/unarchive_repo.sh` for an archive), which is not a write verb and so is never refused.
+
+a Claude Code PreToolUse hook (matcher `Bash|Monitor|Write|Edit|MultiEdit|NotebookEdit`): nothing
+inside a held repo (`lib/repo_hold.py`) changes -- edits, writing git verbs, file verbs,
+redirections, chmod/chflags (so the read-only layer cannot be undone), `release_hold.sh` -- and the
+denial names the hold's reason and lift. Read-only commands run. Pinned by `test_repo_hold.py`. For
+a SUBAGENT it also keeps the loop queue's holds (`lib/queue_hold.py`, LOOP.FOREIGNEDIT) and refuses
+a direct gh CI poll naming `loopctl ci` (`ci_door.calls_in`, LOOP.GHDOOR). Pinned by
+`test_foreign_edit.py`.
 """
 
 from __future__ import annotations

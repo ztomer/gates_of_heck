@@ -7,6 +7,17 @@
 //! checkers these port are retired (Phase N3); `gates/structural.sh` execs
 //! this binary and refuses without it. `tests/test_goh_structural.py` pins
 //! the pipeline's verdicts and its step inventory.
+//
+// Every structural checker is native since Phase N3; the Python checkers they port are retired, and
+// their measured behaviour is the frozen spec the parity suites run (`tests/reference_kit.py`,
+// pinned to commit `96018bd`). `goh <check> --help` is each one's usage.
+//
+// `goh` (dispatch, flags): The entry point (`main.rs`: platform check, house scripts, the core
+// commands), the Phase N1 ports and line scanners with their shared `--exclude` resolution
+// (`ported.rs`), the subcommand list (`cli.rs`) and grouped flag structs (`cli_args.rs`; the ported
+// path checks' in `cli_scan_args.rs`), split at the cap by concern (GOH.CAPHEADROOM). Source:
+// `crates/goh/src/main.rs`, `ported.rs`, `cli.rs`, `cli_args.rs`, `cli_scan_args.rs`. Pinned by
+// `crates/goh/tests/cli.rs`.
 
 #![deny(unsafe_code)]
 

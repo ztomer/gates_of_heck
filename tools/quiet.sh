@@ -39,6 +39,17 @@
 # load), GOH_BENCH_POLL (seconds between reads, 15), GOH_BENCH_DESKTOP_LOCK_DIR.
 #
 #   tools/quiet.sh -- python3 tools/session_bench.py --repo . --cmd 'gates/structural.sh --full'
+#
+# `tools/quiet.sh [--max-load N] [--settle S] [--retry R] [--hold H] [--deadline D] -- CMD...`: a
+# measurement QUEUED for a quiet host that takes its PLACE first: it holds every goh gate off
+# (`lib/bench_lock.sh`: new gates wait, running ones drain), the desktop and the GPU
+# (`lib/gpu_lock/`; a GPU another session holds is refused by name, not waited on), waits up to S
+# seconds (300) for the 1-minute load under N (8, from the measured floor), and, if the box is
+# still busy with what goh cannot hold, lets go for R seconds (300) naming the busiest processes,
+# and claims again; it refuses after D seconds (4 h). CMD holds the host for at most H seconds
+# (`GOH_BENCH_MAX_HOLD`, 900), which a waiting gate prints; a longer hold is refused, and a run
+# that outlives its hold fails, named (BACKLOG 3.2). Waiting holding nothing starved it (BACKLOG
+# 3.1). Pinned by `test_bench_lock.py`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/../gates/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

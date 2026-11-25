@@ -48,6 +48,13 @@ The records live in goh-cache.db's `verdicts` table, through lib/reuse_store.py 
 (GOH.VERDICTDB; its root, GOH_REUSE_DIR, holds the profile store and the audit). Nothing else reads
 or writes them, nor the legacy record files named in LEGACY (tests/test_reuse_store.py). Pinned by
 tests/test_reuse.py.
+
+The ONE verdict store and the ONE reuse API (GOH.ONEVERDICT, `docs/reuse.md`): a reuse path
+registers its name and key fields (`register`), records and looks up through `record`/`lookup` (a
+partial key raises; an old, unreadable or foreign record misses), and every reuse goh makes is a
+registered path with its sites, store and shadow (GOH.REUSEAUDIT), whatever store its records live
+in. Its `gate` path is (repo, tree, gate identity): `record-gate` from the push gate, `lookup-gate`
+for `goh ship verdict`; it alone reads the land record `goh-landed` (`landed_identity`).
 """
 
 from __future__ import annotations

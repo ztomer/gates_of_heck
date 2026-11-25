@@ -42,6 +42,21 @@ A STARVED SAMPLER IS NEVER CLEAN. Each path's counters run in a window (WINDOW_S
 closes with fewer compared samples than min(min_samples, the samples it drew), the shadows never
 ran: the path turns off (cause "starved"). A window that drew fewer samples than min_samples reads
 "thin" in the report, never "clean". Pinned by tests/test_reuse_audit.py.
+
+The reuse auditor (GOH.REUSEAUDIT, `docs/reuse.md`): a site asks `use(path, fields)` (reuse, shadow
+or off; one use in the path's `every` is a shadow, counted); `compare` re-runs both sides of a
+disagreement and turns a repeated one's path OFF in one recorded state, the path's row of goh.db's
+`reuse_audit` (`reuse_audit_store.py`) with a fault item filed (`loopctl file`); a starved window
+turns it off too; `enable` needs the fix and its calibrated-miss test; every shadow is local, at
+its site, never hosted CI (GOH.LANDEDREUSEON); `report [--json]` counts uses, samples,
+disagreements and flakes per path.
+
+`lib/crate_reach.py`: GOH.AFFECTEDBINARY2: which goh subcommands a crates/ change reaches, read
+from the crate (a per-file module graph: paths, `use` bindings, a constant read as no call, an
+`impl` reached through its type's file; main.rs's `Commands::` dispatch arms through its helpers).
+`subcommands(path)` is None (every one) for main.rs, Cargo files, other crates and what main()
+reaches before dispatch; empty for a test-only source; `binary_runners.choose` keeps the runners
+whose argv words name a reached subcommand.
 """
 
 from __future__ import annotations

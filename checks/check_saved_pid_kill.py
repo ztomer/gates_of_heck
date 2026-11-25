@@ -46,6 +46,16 @@ NOT READ (stated limits, GOH.STRAYSIGNAL2):
     is proof only when taken while the process is known to be ours (at the spawn, or as its
     pidfile first appears); that is a property of the data flow, which a per-call scan cannot see.
 Calibrated by tests/test_check_saved_pid_kill.py, which plants each shape and watches it go red.
+
+No signal to a SAVED pid without proof it is still its process (GOH.STRAYSIGNAL): an
+`os.kill`/`os.killpg` whose target is not a child handle (`X.pid`) or this process, a shell `kill`
+whose target is not `$$`/a job, or a Rust `libc::kill`/`goh_sys::killpg`, outside
+`lib/pid_owner.py`/`.sh`, is red unless `checks/saved_pid_kill_allow.json` lists it (`legitimate`
+with how it is owned, or `bare` debt that only shrinks; a stale entry is red). A liveness PROBE
+(signal 0, `kill -0`) is judged the same way (GOH.STRAYSIGNAL2): it reads a reused pid as alive.
+Stated limits: shell inside a Python string, `subprocess` kills, and WHEN a stamp was taken (one
+taken at the kill proves nothing). A `GOH_CI_STEPS` step. Pinned by `test_check_saved_pid_kill.py`
+(calibrated: each of the 46 sites' shapes planted is red).
 """
 
 from __future__ import annotations

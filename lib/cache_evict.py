@@ -30,6 +30,17 @@ internal tier keeps only its HOT_GIB hot set and overflow DEMOTES; the large tie
 
 The ledger (uses, last use, l per object, and L) is JSON keyed by the object's path, a stable
 identity, at GOH_CACHE_EVICT_STATE (default ~/.local/state/goh/cache-evict.json).
+
+The ONE value-aware evictor's ranking and budget (GOH.CACHEEVICT phase 2), replacing three fighting
+policies (the scripts build-root ceiling, the llvm-cov byte budget, sccache's own LRU): GDSF `H = l
++ F x C / S` -- S bytes, C the seconds to get the object back (a rebuild, or the promote copy when
+it would be demoted), F uses decayed with a 24 h half-life and read from last-use stamps (recency
+of use, never of write), l the clock L at the last use, L raised to each evicted H. Never an object
+a live build holds (`held`: a cargo `.cargo-lock` flock taken, a live llvm-cov `.goh-running` pid,
+a use within 10 min) nor the sccache dir (counted, its server owns it). Internal budget `min(0.5 x
+(held+free), held+free - GOH_LANE_MIN_FREE_GIB - 10 GiB)`, held to `HOT_GIB` (60) with the large
+tier present, whose overflow demotes; the large tier's `EXT_GIB` (250) under its own floor, whose
+overflow deletes. Ledger at GOH_CACHE_EVICT_STATE, keyed by path.
 """
 
 from __future__ import annotations

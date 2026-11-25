@@ -7,6 +7,12 @@
 //! finding that prints the command producing the truth. Exemptions are a
 //! ratchet in `claim_derivation_allow.json`; opt in with
 //! `GOH_CLAIM_DERIVATION`. The grammar is `text`, the derivations `derive`.
+//
+// `goh claim-derivation`: A MARKED number in prose, re-derived from the tree: three adversarial
+// reviews of the games estate converged on this class (2026-10) — `roadmap_state.py` "64 declared
+// gates" against 70, `check_mcp_server.py` "477 lines and 18 tests" for 321 and 20, `gaf/README.md`
+// "86 files / 1059 tests" for 101 / 1732, all found by hand at hours each. Pinned by
+// `test_check_claim_derivation.py`.
 
 pub mod derive;
 mod report;

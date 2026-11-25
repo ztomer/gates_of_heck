@@ -14,6 +14,13 @@
 //! tracked file when it stages a `.gitignore` (a new rule can ignore a file committed long ago).
 //! A disagreement already committed is the full gate's: a pre-commit red on it would block
 //! every unrelated commit until someone fixed it.
+//
+// (structural step): A tracked file an in-tree `.gitignore` matches: the rules and the tree
+// disagree, so the rule is stale or the file should not be committed. Each finding names its rule
+// and both fixes (`git rm --cached`, or `!<path>` under the rule). Machine-local rules
+// (`.git/info/exclude`, `core.excludesFile`) do not count. `--staged` judges the files the commit
+// brings, or every tracked file when it stages a `.gitignore`; full scope judges all. Every repo,
+// no key. Pinned by `test_goh_tracked_ignored.py`, `test_goh_structural.py`.
 
 use goh_tui::ERR;
 use std::collections::BTreeSet;

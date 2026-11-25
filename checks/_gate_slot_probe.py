@@ -34,6 +34,14 @@ and then everything). The difference between the two shapes is therefore measure
 
 `shape="legacy"` puts the writer BACK to the two-write shape, so the probe can be SHOWN to
 still catch it. An instrument that cannot fail proves nothing: that arm is the calibration.
+
+Lib: the gate-slot race probe's kit -- the INSTRUMENTED writer (a copy of lib/ and tui/ whose write
+primitives pause before every write and stamp when each happened) and the trial that runs a holder
+and a waiter against it and reads the waiter's output the way the suite's helper does.
+`shape="legacy"` puts the copy BACK to the two-write shape, so the probe can be shown to still
+catch the race -- an instrument that cannot fail proves nothing. It is what makes E39 red-provable:
+a race that cannot be red-proven is not fixable in a release. Pinned by
+`tools/gate_slot_race_probe.py`.
 """
 
 from __future__ import annotations

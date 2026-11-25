@@ -1,6 +1,11 @@
 """The `Faults seen:` section of an agent's report, read as a list (agent_guard's outcome line).
 
 Split out of agent_guard.py (its 500-line cap) when the section grew bullets (LOOP.FAULTBULLETS).
+
+`read_faults()`: a subagent report's `Faults seen:` section as a list, the line's top-level `;`
+faults plus each `- `/`* `/`1. ` bullet under it; an empty line with no list is not stated (None)
+with a warning `agent_guard.py` passes to the session (LOOP.FAULTBULLETS). Pinned by
+`tests/test_agent_guard_faults.py`.
 """
 
 from __future__ import annotations

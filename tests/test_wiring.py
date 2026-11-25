@@ -19,6 +19,10 @@ from pathlib import Path
 
 from conftest import REPO_ROOT
 
+from lib import map_table
+
+TREE_READS = map_table.TREE_READS  # every file's header, and the paths headers speak for
+
 REF = re.compile(
     r"((?:checks|tools|hooks|gates|scripts)/[A-Za-z0-9_.-]+\.(?:py|sh)|"
     r"\$(?:CHECKS|\{CHECKS\})/[A-Za-z0-9_.-]+\.(?:py|sh))"
@@ -163,38 +167,12 @@ def test_install_sh_exists_and_wires_hooks():
         assert needed in body, f"installer must wire {needed}"
 
 
-def test_every_script_has_a_row_in_the_map():
-    """`docs/map.md` is the inventory, and an inventory that silently drops entries is the class
-    `check_claim_derivation.py` exists for. Found 2026-10-05 porting Phase N1: fifteen scripts --
-    `check_python_formatted.py`, `check_dep_currency.py`, `_from_head.sh` among them -- had no row,
-    so the doc route a failing step prints led to a page that did not mention the step."""
-    text = (REPO_ROOT / "docs" / "map.md").read_text(encoding="utf-8")
-    scripts = [
-        *(REPO_ROOT / "checks").glob("check_*"),
-        *(REPO_ROOT / "gates").glob("*.py"),
-        *(REPO_ROOT / "gates").glob("*.sh"),
-        *(REPO_ROOT / "lib").glob("*.py"),
-    ]
-    missing = sorted(p.name for p in scripts if f"`{p.name}`" not in text)
-    assert not missing, (
-        f"no row in docs/map.md for: {missing}; `python3 lib/tables.py --write` adds one"
-    )
-
-
-def test_every_row_in_the_map_names_a_file_that_exists():
-    """The other direction of the inventory: a row for a deleted file routes a reader to nothing.
-    Phase N3 deleted 40 Python files, and their rows outlived them until this asked."""
-    import re as _re
-
-    text = (REPO_ROOT / "docs" / "map.md").read_text(encoding="utf-8")
-    sections = {"Gates": "gates", "Checks": "checks", "Lib": "lib"}
-    stale = []
-    for heading, base in sections.items():
-        body = text.split(f"## {heading}", 1)[1].split("\n## ", 1)[0]
-        for name in _re.findall(r"^\| `([^`/]+\.(?:py|sh|tsv|json))`", body, _re.MULTILINE):
-            if not (REPO_ROOT / base / name).exists():
-                stale.append(f"{base}/{name}")
-    assert not stale, (
-        f"docs/map.md rows for files that do not exist: {stale}; "
-        "`python3 lib/tables.py --write` drops them"
-    )
+def test_every_script_says_what_it_is():
+    """`goh map` renders each script's row from its own header (GOH.MAPGEN), so a script with none
+    would be a row that says nothing. Found 2026-10-05 porting Phase N1, when the map was one
+    committed table: fifteen scripts -- `_from_head.sh` among them -- had no row, so the doc route
+    a failing step prints led to a page that did not mention the step. The other direction, Phase
+    N3's rows that outlived the 40 Python files it deleted, has no committed row to be stale; what
+    is left of it is a header that speaks for a path the tree does not hold."""
+    found = map_table.faults(REPO_ROOT)
+    assert found == [], "\n".join(found)

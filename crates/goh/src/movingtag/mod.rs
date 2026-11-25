@@ -40,6 +40,41 @@
 //! reproducible, but it does not follow its upstream either -- every upstream fix waits for
 //! someone to move the pin, and a branch follows its upstream and can move under the build. That
 //! is the owner's ruling, not the gate's.
+//
+// `goh moving-tags`: A container image pinned to a tag its maintainer re-points, or to no tag: a
+// Dockerfile/Containerfile `FROM` or `COPY --from=` (`ARG` defaults substituted; a stage name, a
+// stage index and `scratch` are not pulls), and in every `*.yml`/`*.yaml` (read through `saphyr`,
+// so script text in a `run: |` block is not a key) an `image:` -- compose, workflow
+// `container.image` and `services.*.image`, Kubernetes -- plus a workflow's `container:` and any
+// `uses: docker://`. Compose's `${VAR:-default}` is judged by its default. Passes: a digest
+// (`@sha256:...`, whatever the tag says), a tag that names one build, or a COMMIT ID
+// (`:f93290b3ab1a`: the other pin nothing can move -- nobody can re-point a build's own commit; the
+// house names the two apart because a gate that cannot EXPRESS a pin cannot accept one, which is
+// what blocked Adv360-Pro-ZMK's base-pin row, P1.3. A commit pin cannot move, so a build is
+// reproducible, but it does not follow its upstream either: every upstream fix waits for someone to
+// move the pin. The house does NOT rule which pin a repository must use -- the owner does). Moving:
+// a tag with no digit (`latest`, `stable`, `alpine`, `bookworm`: a channel, never a release), or a
+// digit-bearing tag spelling a channel word as a part (`3.5-branch`, `v2-latest`, `1.2-dev`) with
+// no date, full `x.y.z` or commit id beside it. From 2026-11-23 (GOH.MOVINGTAGCOARSE, owner ruling
+// 2026-11-15, D-0007) also a RELEASE LINE: any digit-bearing tag with no date, full `x.y.z` or
+// commit id (`rust:1`, `node:22`, `alpine:3`, `redis:7.4`, `postgres:18-alpine`), distro versions
+// included (`ubuntu:24.04`, `debian:13.1`: pin the dated tag or a digest); the report names it as a
+// release line. Not a reference: an `image:` beside `build:` (compose names what it builds), a
+// path, URL, picture or an action's local `Dockerfile`. Adv360-Pro-ZMK's `:stable` build image
+// (P0.2) is the incident row. One escape, **`# moving-tag-ok: <reason>`** on the line or the
+// comment lines directly above; an empty reason and a marker with no moving image under it are
+// findings. Every repo, both scopes, a hard gate; no path exemption. Floor
+// `GOH_MOVING_TAGS_MIN_REFS` (references read). Shell scripts (by name or shebang) and Makefiles
+// are judged narrowly from 2026-11-23 (`movingtag/shell.rs`, GOH.MOVINGTAGSH), and read before it
+// so `GOH_MOVING_TAGS_MIN_REFS` counts them on both sides; a reasoned marker over an image that
+// moves only from that day (a script's, or a release line) is accepted before it, never stale
+// (GOH.GRACEFWD): an image variable's assignment at a command's start and the image argument of
+// `docker`/`podman` `run`/`create`/`pull` past the CLI's flag grammar (an unknown short flag is
+// unreadable, never guessed); a name the script builds pulls nothing. Lies: compose YAML a script
+// writes in a heredoc is not read; a full `x.y.z` tag its maintainer rebuilds in place passes (only
+// a digest is immune); a Helm values `repository:`/`tag:` pair is not joined; a reference in an
+// unresolved variable is counted as unreadable, not judged. Pinned by `test_check_moving_tags.py`,
+// the tables in `movingtag/tests.rs`.
 
 pub mod dockerfile;
 pub mod reference;

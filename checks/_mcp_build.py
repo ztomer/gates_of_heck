@@ -4,6 +4,11 @@ checks/check_mcp_wire.py times each server from its start to its last tools/list
 named as `cargo run` builds inside that bound, so the build was timed as the answer: token-pool
 751531b's push failed "no answer to server/discover within 300s" at load ~120 (GOH.MCPWIRELOAD).
 Here the build is derived, run under its own bound, and said as `build:` when it fails.
+
+Lib of `check_mcp_wire.py` (GOH.MCPWIRELOAD): `build_command()` derives `cargo build` from a
+server's one `cargo [+toolchain] run` (env prefix kept, server ARGS dropped), `build()` runs it in
+its own session and scratch under `GOH_MCP_BUILD_TIMEOUT`, `server_env()` pins
+`CARGO_HOME`/`RUSTUP_HOME` for build and server alike. Pinned by `test_check_mcp_wire_build.py`.
 """
 
 from __future__ import annotations

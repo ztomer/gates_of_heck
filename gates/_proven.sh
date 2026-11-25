@@ -9,6 +9,18 @@
 # made from the cwd and honours GIT_INDEX_FILE: in a pre-commit hook it names the index being
 # committed, the tree to key on. A git call on a goh checkout strips GIT_* first.
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+#
+# The proven-step cache itself (key, lookup, record, prune), sourced by `proven.sh` and
+# `local_ci.sh` so the key a hook records and the key local CI looks up cannot drift. THE ARTIFACTS
+# a step declares (`[produces=...]`/`[consumes=...]`): a record is written only when every declared
+# artifact is THERE, and a hit is only a hit while every declared artifact is still there,
+# unchanged -- the class the cache carried (divoom-control, 2026-10-20: a skipped build left no
+# binary, and the step that consumed it failed for a reason that had nothing to do with the tree).
+# And a BUILD that declares NOTHING (`cargo build`, `swift build`, `go build`, `xcodebuild ...
+# build`, `cmake --build`, `npm run build`, read as words after env assignments) is never looked up
+# at all (`proven_undeclared_build`, G1b(b)): the consumer the class was found in never declared
+# its build, so the safe state is the default, and `[produces=PATH]` makes a build cacheable.
+# Sourced, never run. Invoked by via the two above.
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_proven.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=gates/_hash.sh

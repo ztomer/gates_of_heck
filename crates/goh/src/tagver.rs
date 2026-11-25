@@ -9,6 +9,12 @@
 //!
 //! With `--remote`, a local release tag the pushed branches carry must be in
 //! the push or already on that remote ([`crate::tagpush`]).
+//
+// `goh tag-version`: A pushed `refs/tags/v<semver>` must name the version its OWN COMMIT declares
+// (never the working tree); with `--remote`, a local release tag a pushed branch carries must be in
+// the push or on the remote. Source: `crates/goh/src/tagver.rs`, `tagpush.rs`. Pinned by
+// `test_check_tag_version.py`, `test_check_tag_version_push_gate.py`,
+// `test_tag_version_unpushed.py`.
 
 use goh_tui::{ERR, OK, START};
 use std::io::{IsTerminal, Read};

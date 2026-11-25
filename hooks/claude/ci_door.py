@@ -20,6 +20,11 @@ file`, a commit message or a heredoc body that quotes the rule is not one. Two c
   names each call it tried, to the session and on the ledger's outcome line (`ci_direct`).
 
 Pinned by tests/test_agent_guard_ci_door.py and tests/test_foreign_edit.py.
+
+`direct_calls()`: each `gh run watch/view/list` or `gh api .../actions` a subagent's transcript RAN
+at command position (GOH.GHDOOR); `agent_guard.py` names them at SubagentStop (`ci_direct`) with
+loopctl's one CI door, `loopctl.py ci <sha> --repo OWNER/NAME [--wait]`. Pinned by
+`tests/test_agent_guard_ci_door.py`.
 """
 
 from __future__ import annotations

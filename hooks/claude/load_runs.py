@@ -4,6 +4,12 @@
 spinner run with its why and its owner's directory; the reading is lib/load_live.py's. This is the
 hooks' one door to it: a hook never fails for what it cannot read, so a missing lib, an unreadable
 registry or a bad record says nothing.
+
+the hooks' one door to `lib/load_live.py` (GOH.LOADWHY): every live spinner run with its why and
+its owner's directory, printed by `goh agent-stalls` (never in `--json`, never changing its exit
+status) and by the SessionStart advisories (`estate_advisories.py`). A hook never fails for what it
+cannot read, so a missing lib, a bad record or a load directory inside a work tree (`InWorkTree`)
+says nothing. Pinned by `test_load_why.py`.
 """
 
 from __future__ import annotations

@@ -41,6 +41,13 @@ It fails OPEN: anything it cannot read is `None` (unknown), never "nothing runni
 unreadable state reports nothing.
 
 CLI: `appstate.py running` prints the login-item apps running now, one per line.
+
+the owner's login-item apps, snapshotted at each spawn by `agent_guard.py` and named at
+SubagentStop when one ran at spawn and not at stop, never relaunched (GOH.APPSTATE,
+GOH.APPRESTOREOWNER); seams for the item list and the process table; inert under goh's suite
+without them. Pinned by `test_claude_appstate.py`. An app the owner removed (no longer a login item
+or installed) is dropped; the message names the agent and the exit window from `seen.json`
+(GOH.APPCLOSE).
 """
 
 from __future__ import annotations

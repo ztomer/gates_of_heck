@@ -12,6 +12,11 @@ release step; when it fails, `undo` takes back what it made that no remote holds
   those commits changed.
 
 Each returns the lines the result's `undo` carries. Pinned by tests/test_ship_undo.py.
+
+HEAD snapshotted before the release step; when it fails, the version tags it cut and the commits it
+made that no remote holds are taken back (`git reset --keep`, which refuses rather than overwrite
+an edit); a pushed commit is never reset, and the result's `undo` says what was left. Pinned by
+`test_ship_undo.py`.
 """
 
 from __future__ import annotations

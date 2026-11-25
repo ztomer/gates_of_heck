@@ -10,6 +10,11 @@ GOH_LAND_PRE_CPU (tools/land.sh: beside the pre-step's start mark). A finished p
 by its reaper (RUSAGE_CHILDREN around the run: the run's whole tree, its xdist workers included); a
 run killed at the deadline has no reaper that lives to count it, so the deadline wrapper reads the
 live tree first. Pinned by tests/test_pre_width.py.
+
+THE PRE-STEP'S CPU (GOH.PREWIDTH): user+system seconds of the pre-step's pytest tree, for the land
+record's `pre_run.cpu_s` -- added by `tools/affected_tests.py` after each run it reaped, read from
+the live tree by `pre_deadline.py` before a deadline kill, read back by `tools/land.sh`
+(GOH_LAND_PRE_CPU).
 """
 
 from __future__ import annotations

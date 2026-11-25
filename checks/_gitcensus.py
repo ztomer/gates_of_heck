@@ -29,6 +29,9 @@ process that drops git's local variables at its start). A named environment buil
 The result carries how many files it READ, so a census aimed at the wrong directory says it read
 none instead of reporting a clean tree, and the exemptions no site matched any more, so a
 declaration cannot outlive its call.
+
+Lib for consumers: the census of raw git spawns (by CALLEE, per call) outside a repo's git seam,
+with files read, unreadable files and stale declarations reported.
 """
 
 from __future__ import annotations

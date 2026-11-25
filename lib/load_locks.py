@@ -29,6 +29,15 @@ sudo, timeout, caffeinate, xcrun, ... and a shell's `-c` script):
 `cargo fmt`, `cargo --version`, `npm run x`, `go version` and a prebuilt test binary take no such
 lock and are left alone. A command name that is only an ARGUMENT (`./prebuilt cargo test`) is no
 command at all.
+
+ONE answer for `tools/load.py` and the Bash guard (GOH.LOADLOCK, 2026-11-08: `load.py 32 --
+taskpolicy -b cargo test` starved cargo to 0.36 s of CPU in 21 min, but cargo had first taken
+`~/.cargo/.package-cache`, and nine other agents' cargo runs waited on it). A load experiment over
+a build tool that acquires shared locks (cargo build/test/run/check/clippy/metadata/bench/nextest,
+xcodebuild, swift build/test/run, gradle, go build/test, npm/pnpm install) is refused before any
+spinner starts, looked for through `load_priority.operands` (taskpolicy, nice, env, timeout,
+caffeinate, `sh -c`). The way forward: build first (`cargo test --no-run`), put only the prebuilt
+binary under load.
 """
 
 from __future__ import annotations

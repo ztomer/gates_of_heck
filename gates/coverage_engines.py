@@ -27,6 +27,8 @@ coming along -- they are policy, and this half makes no policy.
 
 Exit codes are unchanged by the move: 0 pass | 1 below floor | 2 usage/config/
 precondition error, and every refusal below still names what it could not do.
+
+The two coverage ENGINES that produce a report; Split out at the line cap.
 """
 
 import glob

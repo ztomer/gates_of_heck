@@ -23,6 +23,13 @@ prepends `-C repo`; tests/test_git_deadline_class.py refuses a `-C` spelled by h
 `run_reader` raises `subprocess.TimeoutExpired` like `subprocess.run` (a killed reader strands
 nothing); `run_writer` returns None when it had to stop the writer, never a half result. The writer
 runs in its own session so the TERM reaches its hooks too (`lib/killtree.py stop_group`).
+
+git under a deadline without stranding `index.lock` (GOH.GITKILL): `run_reader`
+(`GIT_OPTIONAL_LOCKS=0`, `TimeoutExpired` as `subprocess.run`) and `run_writer` (own session, TERM
+then KILL, None when stopped). A literal `["git", ..]` spawn with `timeout=` anywhere else that is
+not a no-lock reader (bar `checks/_gitutil.py git_read`, the checks tier's twin, escaped) is red in
+`goh git-deadline`, as is a shell `git status`/work-tree `diff` without the setting; a SIGKILL
+group kill outside `stop_group` is a red test. Pinned by `test_git_deadline_native.py`.
 """
 
 from __future__ import annotations

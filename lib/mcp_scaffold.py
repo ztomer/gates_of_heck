@@ -22,6 +22,10 @@ support as absent — one documented refusal, never a silent misread. An "id"
 member that is PRESENT is honored even when null (spec note: respond with
 id null); ids that decode to NaN/Infinity are sanitized to null so no bare
 NaN token ever goes back over the wire.
+
+A Python MCP server's registry and newline-delimited stdio loop (`McpServer`, `serve`,
+`run_subprocess`). Kept ONLY for ZeroThunder's `tools/zerothunder_mcp_server.py`; deleted once that
+moves to app-mcp-bridge (BACKLOG, 2026-10-31). Pinned by `test_mcp_scaffold.py`.
 """
 
 from __future__ import annotations

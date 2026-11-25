@@ -5,6 +5,11 @@
 gates/_rust_inputs.sh keys rust_gate.sh's `compile` and `tests` groups with these lines beside the
 group's own inputs. Split from lib/gate_identity.py (its formulas) for the line headroom. Pinned by
 tests/test_rust_gate_floor.py.
+
+GOH.GATEFLOOR: the identity lines of what runs a Rust group keyed on its own inputs
+(`gates/_rust_inputs.sh`): each gates root's `rust_gate.sh` closure by content, PYTHONPATH as those
+scripts read it, the tools -- `lib/gate_identity.py`'s formulas, not its whole goh content. Pinned
+by `test_rust_gate_floor.py`.
 """
 
 from __future__ import annotations

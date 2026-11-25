@@ -21,6 +21,14 @@
 # parse_step_prefix <index> <cmd> — sets RUN[index] (the command that runs) and TAGS[index] (the
 # comma-delimited tag list, comma-delimited and TRAILING-COMMA'd: the scheduler's `_tags_free`
 # walks it with `${rest#*,}` and needs that comma to end the list).
+#
+# The step list's PARSING, sourced by `local_ci.sh`: a step's bracket prefix carries the RESOURCE
+# TAGS (`[db,screen]`, two steps sharing one never overlap) and the ARTIFACT DECLARATIONS
+# (`[produces=target/debug/app]`, `[consumes=...]`, gates/_proven.sh). A declaration is not a tag:
+# it names a file, and it is part of the step string, so it is part of the proven cache's key.
+# Under `GOH_CI_JOBS>1` a `consumes=` step starts only after every earlier step that `produces=`
+# one of its paths is done (`_deps_done`, GOH.PROVENBUILD). Sourced, never run. Pinned by
+# `test_local_ci.py`, `test_proven_artifacts.py`.
 
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_steps.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }

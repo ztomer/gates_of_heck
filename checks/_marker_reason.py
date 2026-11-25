@@ -23,6 +23,11 @@ bypass; it cannot stop a plausible one, because a fabricated reason is the same 
 sentence as a true one. Only a shrink-only ceiling on the total catches that.
 
     _marker_reason.py            # the cases
+
+Lib: an escape-hatch marker must carry a real justification — a bare `// screen-ok:` silences
+nothing. Moved here from `games/ZeroThunder/tools/marker_reason.py`, where eight of that repo's
+gates imported it, rather than copied for the seam gate. Gates INTENT, not EFFECT: a fabricated
+reason is the same KIND of sentence as a true one. Pinned by `test_marker_reason.py`.
 """
 
 from __future__ import annotations

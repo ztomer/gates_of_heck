@@ -3,6 +3,11 @@
 `check_probes_pass.py` runs every self-proof in parallel over the live tree; a probe that plants a
 file and restores it keeps the bytes (and git status) but changes the inode and mtime a parallel
 reader held (koffee_big, 2026-10-08). Stamped before and after, the change is seen.
+
+Lib: `(inode, mtime_ns, size)` of every file a tree holds, for `check_probes_pass.py`: the parallel
+self-proofs must leave the tree they ran over as they found it -- a plant-and-restore keeps the
+bytes, not the inode a parallel reader held -- and the probe that changed it is named by a serial
+re-run. Pinned by `test_check_probes_pass.py`.
 """
 
 from __future__ import annotations

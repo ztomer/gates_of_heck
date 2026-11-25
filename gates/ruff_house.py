@@ -31,6 +31,9 @@ runner that is machine state (gates/_py.sh goh_py_ruff_pinned), hosted CI instal
 (.github/workflows/gate.yml GOH_CI_RUFF, the manifest's ruff rows), and tools/pytest.sh holds every
 ruff on the machine to it (gates/ruff_agree.py --pin). The newest release, named; raise it in its
 own commit, in gates/required_tools.tsv, the one place it is written (GOH.CLASS.PARITY).
+
+The ONE house ruff rule set, passed as `--extend-select` by every goh ruff step under
+`GOH_PY_LINT_CEILINGS` (RUFF.RULES). Invoked by via py_lint_ceiling, _py.sh.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

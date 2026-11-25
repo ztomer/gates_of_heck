@@ -14,6 +14,23 @@ or B its bundle id (`appstate`'s login-item seam; the id from the app's Info.pli
 is no login item -- the agent's own build, a test fixture -- quits as before. The escape is
 `# quit-ok: <reason>` on the command. An unreadable login-item list refuses nothing (fail open).
 Called by `hooks/claude/discard_guard.py`; pinned by tests/test_app_quit.py.
+
+a `discard_guard.py` rule (GOH.APPCLOSE): an `osascript` quit of a login-item app (by name or
+bundle id) is refused; `# quit-ok: <reason>` escapes. Pinned by `test_app_quit.py`.
+
+`hooks/claude/discard_guard.py`: a Claude Code PreToolUse hook (matcher
+`Bash|Monitor|Write|Edit|MultiEdit`): refuses a git command that would discard uncommitted work (`#
+discard-ok: <reason>` is the escape) and a command OR A FILE that runs a backgrounded busy loop or
+a busy-wait (`# load-ok: <reason>` is the escape, in the command or in the file). The file half is
+the 2026-10-21 incident: twenty-four orphaned spinners, four cores each, and the loop arrived in a
+hand-written script the Bash-only guard could not see. The shape is the house's ONE definition
+(`lib/busyloop.py`), shared with the check and the backstop. It also refuses a `tools/load.py`
+command line whose wrapped command runs at background priority (G1f, `lib/load_priority.py`, the
+definition the tool shares) or takes a machine-wide build lock (`lib/load_locks.py`), and a wait
+loop whose `pgrep -f` / `ps | grep` condition matches its own shell and so never ends (`# pgrep-ok:
+<reason>` is the escape, `lib/self_match.py`). Pinned by `test_claude_discard_guard.py`,
+`test_claude_load_guard.py`, `test_load_priority.py`, `test_load_locks.py`,
+`test_self_match_wait.py`.
 """
 
 from __future__ import annotations

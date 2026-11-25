@@ -10,6 +10,17 @@ scanned everything and found nothing: `no_allow` reported "0 files clean" on a r
 never reads, and `tests_registered` passed an unregistered file not named `test*`. Each time the
 gate was fine and the fixture was out of scope, which is why a case is worth nothing unless the
 violating tree goes RED -- a red is only possible if the check read the file.
+
+Lib: the gate canary -- `run_case` runs a gate over a tree that violates it (must go RED, or the
+gate did not bite or the fixture is out of its scope) and a clean one (must stay green), in a
+throwaway repo under `foreign_repo_env`; `uncanaried` finds an installed `check_*` no case drives
+and no exemption names, and a case or exemption naming a gate that is gone. Moved from
+game_asset_factory 2026-10-19 so a gate and its case land in one commit; GAF's
+`tools/check_gate_canary.py` imports it.
+
+`checks/_canary_cases.py`: Data: one case per shared gate (label, gate, argv, violating tree, clean
+tree), or an `UNCOVERED` reason it cannot be fixtured. A new `check_*` without its entry is red in
+`test_canary.py`, in the commit that adds it.
 """
 
 from __future__ import annotations

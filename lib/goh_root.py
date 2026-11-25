@@ -7,6 +7,16 @@ head export cache. A GOH_DIR that is not a directory -- a pruned `~/.cache/goh/h
 long-lived process inherited -- falls back to its live root when it was an export, then the default
 checkout, with a line on stderr. A GOH_DIR that exists, and the default when none is set, are
 returned as they are. Pinned by tests/test_live_root_rule.py and tests/test_dead_goh_dir.py.
+
+`goh_root.py` / `goh_root.sh`: The ONE rule for GOH_LIVE_ROOT: an EXPORT's, honoured only for a
+directory holding `.goh-head` or, pruned, one that sat in the head cache (`goh_is_export`,
+`goh_live_root_for`, `goh_head_cache`; The binary resolver, an export's `bin/goh`, `_from_head.sh`
+and `gates/hook.sh` ask here. And the repair: a GOH_DIR naming a REMOVED HEAD export (a pruned
+`~/.cache/goh/head/<sha>` a long-lived process inherited) resolves to its live root, then the
+default checkout, said on stderr (GOH.TRANSIENTDIR). One rule in three languages:
+`goh_root()`/`is_export` (Python, repo_hold), `goh_dir_repair` (shell; the stock hook shim carries
+none, `gates/hook.sh` applies it), `crates/goh/src/goh_dir.rs` (native, re-runs itself repaired;
+`gitutil::root_commit` asks it too).
 """
 
 from __future__ import annotations

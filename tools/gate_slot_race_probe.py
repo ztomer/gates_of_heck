@@ -45,6 +45,15 @@ The probe reports:
 The probe is a measurement, not a gate: it says what it saw. What it saw is the input to the
 decision, and the decision is a commit. The kit it drives is checks/_gate_slot_probe.py; the
 suite's regression test drives the same kit.
+
+`tools/gate_slot_race_probe.py [--trials N] [--poll S] [--stamp] [--pause S]`: the race probe for
+the gate-slot wait report: the real holder and the real waiter, read the way the suite's helper
+reads them. It reports how often a reader that waits for the report's HEADER sees the report
+without the holder's line (the window between the report's two writes), and how wide that window is
+(`--stamp`, measured at the writer, ~50 us on a quiet box). `--pause` runs an INSTRUMENTED writer
+that pauses between the two writes, which makes the window wide enough to be caught every time --
+the deterministic proof. It measures; it is not a gate. The kit is `checks/_gate_slot_probe.py`;
+pinned by `test_gate_slot_race.py`.
 """
 
 from __future__ import annotations

@@ -16,6 +16,12 @@ window) sees them without reading the queue's records:
                is no mark.
 
 Pinned by tests/test_landq_alone.py.
+
+Who the landing queue judges alone (GOH.REDALONE, GOH.NOPREBATCH): the enqueue marks a request
+`no_pre` (its `--no-pre` reason, `land_check.py` `at_enqueue`) or `red_last` (`red_last`: the why
+of the item's newest record when it is red on its own code; a conflict, a moved tip, a timeout or
+no verdict is no mark), and `landq_batch.py` `alone` takes such a land into no batch until it lands
+once. Invoked by `lib/landq_request.py`.
 """
 
 from __future__ import annotations

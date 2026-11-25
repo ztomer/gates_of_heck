@@ -14,6 +14,13 @@ up to 400 lines) and the log's last 30 lines; the foreground pre-step streamed e
 under LIMIT lines in all. `--full` (GOH_FULL=1, which the flag sets) prints the log whole.
 `next_gap` is the wait's heartbeat: an unchanged state said every 60 s is 30 lines over a 30 min
 land, so the gap doubles (full keeps it fixed). Pinned by tests/test_terse.py.
+
+The ONE output contract of a lane-facing goh command's red (GOH.TERSEOUT): the verdict line, each
+failing test id with its first assertion line (pytest's FAILED and E lines; with none, the log's
+marked lines and then its last ones), and the log path, under 30 lines. `goh land --wait` (whose
+heartbeat gap now doubles), `goh land --check`'s refused guards and the foreground enqueue pre-step
+(its output to `<landq>/logs/prestep-*.log`, named by the red) print it; `--full` (GOH_FULL=1)
+prints the log whole. Invoked by `lib/land_check.py`.
 """
 
 from __future__ import annotations

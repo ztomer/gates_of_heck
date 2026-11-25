@@ -26,6 +26,16 @@ edits to ONE row come out as two rows, merged silently. This driver merges by KE
 a union or a hand merge leaves behind). Registered by `.gitattributes` (`merge=goh-rows`) and, for a
 rebase, by `tools/land.sh` (`-c merge.goh-rows.driver=...`); where no driver is defined git merges
 the file as text, so a missing registration conflicts as before and never merges wrongly.
+
+The `goh-rows` merge driver (GOH.LANDUNION): a three-way merge by KEY of the registries every lane
+appends to (`.gitattributes` `merge=goh-rows`: docs/map.md, docs/config.md,
+gates/verdict_free_keys.txt, crates/goh/house_scripts.tsv). A table row is keyed by its first cell,
+a bullet by its leading backticked name, any other line by its first word; git's text merge first,
+then by row on its conflict: each side's independent rows (added, edited, deleted) both kept; two
+edits to one row, an edit against a delete, or a repeated key keep git's conflict markers (exit 1).
+`--check FILE...` names a key on two lines (what a union or hand merge leaves). `tools/land.sh`
+defines the driver for its rebase; undefined, git merges the files as text. Pinned by
+`test_land_serial.py`.
 """
 
 from __future__ import annotations

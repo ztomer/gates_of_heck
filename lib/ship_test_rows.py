@@ -6,6 +6,18 @@ which every ship statistic counted. A test's row is one whose result path sits u
 temp root and not in the ship directory (lib/ship_records.py `test_rows`, the one door to the
 `ships` table). Listed by default, a dry run that deletes nothing; `--delete` removes them with
 their pin rows in one write, never by hand. Pinned by tests/test_ship_test_rows.py.
+
+GOH.FAKESHIPROWS: `goh test-ships [--delete]`, the ship rows a test left in goh.db:
+`ship_records.test_rows` names each row whose result path sits under a system temp root (`/tmp`,
+`/private/tmp`, `/var/folders`, `/private/var/folders`, the temp dir this process names) and not in
+the ship directory; listed by default (a dry run), `--delete` removes them with their pin rows in
+one write (`drop_test_rows`). Invoked by `ship_records.py`.
+
+`tools/ship.py`: `goh ship`: the detached, time-bounded local landing pipeline an agent hands off
+to (GOH.SHIP): push through the pre-push gate, the repo's release kit (`GOH_SHIP_RELEASE`), install
+(`GOH_SHIP_INSTALL`), the `loopctl verify` card, then `loopctl done ID --shipped RESULT`; one
+result JSON, a ✓/✗ mark per step, a failed step named with its last 40 log lines, each step bounded
+by `lib/bounded_run.py` (whole process group killed). Pinned by `test_ship.py`.
 """
 
 from __future__ import annotations

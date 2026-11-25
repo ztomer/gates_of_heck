@@ -20,7 +20,7 @@
 # on a clean tree leaves a record. A dirty working tree has no key. GOH_PROVEN=0 turns it off.
 #
 # Exit codes: 0 all green · 1 any step failed · 2 usage/config error. A step exiting 78 is NOT
-# APPLICABLE: its own line, accepted on a hosted run only (gates/_not_applicable.sh).
+# APPLICABLE: its own line, accepted on a hosted run only (gates/_not_applicable.sh). Declarative step runner: steps from `GOH_CI_STEPS` + `--step`. Fail accumulator, logs on failure, and a per-step ceiling that is ON BY DEFAULT (`GOH_LCI_TIMEOUT`, 900s; `0` opts out). Each step runs through `lib/bounded_run.py` in its own process group, and each step is bracketed by `lib/orphan_canary.py`, so a child the step leaked fails the step that leaked it. Every step goes through the proven-step cache, and a step that DECLARES an artifact and does not produce it is RED (`gates/_steps.sh` parses the declaration). Invoked by opt-in.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

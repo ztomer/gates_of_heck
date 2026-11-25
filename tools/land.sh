@@ -48,7 +48,7 @@
 #
 # Nothing is pushed. The gated SHA is recorded in the common git dir (`goh-landed`), which a repo
 # that sets GOH_LANDED_ONLY=<branch> has its push read: a tip that did not come through here is
-# refused (BACKLOG 1.5). Pinned by tests/test_land.py.
+# refused (BACKLOG 1.5). Pinned by tests/test_land.py. from a worktree: gate the branch tip (`GOH_LAND_GATE` from the environment or the repo's `.gatesrc`, else the kit's `gate_profile.sh .` by path), then fast-forward the main checkout to THAT SHA; a red gate, a tip that moved while gated, or a main moved outside it lands nothing. Lands queue (GOH.LANDSERIAL): one land holds `goh-land.lock` in the common git dir from rebase through fast-forward, a waiter names the holder, then rebases onto the main just landed, the registries merged by row (`lib/row_merge.py`, the `goh-rows` driver defined for that rebase; a conflict aborts naming its files, nothing landed) and gates that, with the rebased tip's own head export when the rebased checkout is the gates checkout (GOH.VERDICTKEYDRIFT). The merge is made with `GOH_LAND_CALLER=land.sh` (see `lib/landed_only.sh`). Pinned by `test_land.py`, `test_land_serial.py`, `test_land_identity.py`, `test_landed_only_commit.py`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/../gates/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

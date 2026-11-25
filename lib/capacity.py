@@ -48,6 +48,19 @@ in place of sampling the CPU ticks (`cpu_ticks` is the sampler a test fakes); GO
 (mem_admit's); GOH_TIMING_DIR (timing_ledger's); GOH_GATE_SLOT_DIR / GOH_GATE_SLOTS (the
 slots'). The reading try-locks each slot file for an instant (gate_slot.held): a gate polling at
 that instant retries at its next poll. Pinned by tests/test_capacity.py.
+
+`goh capacity [--json]` (GOH.ADAPTLANES, owner 2026-11-17): the ONE reading of the machine's room
+for another write lane -- the gate slots' own state (held `slot-<i>` files, live `waiting/` tickets
+per lane; no second registry), load average per core, memory (`mem_admit.reading`), free disk on
+the build volume, and the CPU weight of the gates in flight (`gate_weight`: a holder's median cpu-s
+per wall-s in the one timing record, the machine's median when its repo has none; the weight
+GOH.CPUADMIT replayed; a holder is named by its record's repository key among the registered repos,
+so a lane worktree's gate is its repo's, not `wt`'s) -- and ONE rule (`room`: at most
+`GOH_LANE_MAX_WAITING` long-lane waiters, measured CPU idle (tick counters sampled over
+`GOH_CPU_IDLE_WINDOW_S`) at or over `GOH_LANE_MIN_IDLE_PCT`, the 5-min load per core under
+`GOH_LANE_LOAD_PER_CORE` only when the idle is unmeasured, disk over `GOH_LANE_MIN_FREE_GIB`,
+memory not low); a reading with an unread part is room. Exit 0 room, 1 none.
+`hooks/claude/lane_room.py` applies it to every session's write spawns.
 """
 
 from __future__ import annotations

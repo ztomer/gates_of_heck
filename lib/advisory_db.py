@@ -41,6 +41,15 @@ rmcp). So `run -- cargo audit` adds `--ignore ID` for each ruling that covers th
 (`--file`/`-f`, else ./Cargo.lock) exactly as the gate does (lib/shared_advisories.py: only where
 the blocker still reaches the advised crate), and refuses, naming it, a ruling whose blocker
 dropped the crate.
+
+The advisory database every goh `cargo audit` reads -- goh's own copy (`GOH_ADVISORY_DB`, default
+`~/.cache/goh/advisory-db`, seeded from `~/.cargo/advisory-db`), which nothing outside goh writes
+-- held under a flock on `<db>.goh-lock`: shared to read (`--no-fetch`), exclusive to refresh. A
+refresh beside a read tore the read ("unexpected start of advisory", 2026-10-12). `run
+--fetch|--no-fetch -- cargo audit ...` for the shell gate and a consumer's own step, which adds
+goh's shared rulings for the lock it reads (`--file`/`-f`, else `./Cargo.lock`) and refuses one
+whose blocker dropped the crate (GOH.AUDITONCE); `held()` and `audit_args()` for the Python
+callers.
 """
 
 from __future__ import annotations

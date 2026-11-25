@@ -4,7 +4,7 @@ GOH.LANDCHECK.
 
 WHY. 59 of 257 goh lands since 2026-11-01 went red, mostly on a structural guard the land runs
 and the lane never did, found after a 200-900 s pre-land run: GOH.STRAYSIGNAL3 was refused for a
-missing docs/map.md row, a stale 450-line headroom entry, and the env-spread and declared-reads
+script the map did not name, a stale 450-line headroom entry, and the env-spread and declared-reads
 guards, one per try. None of those needs the suite; each is a read of the tree.
 
 THE GUARDS, run in the checkout as the land runs them, side by side:

@@ -29,6 +29,14 @@ left under how many rules.
 
 Exit 0 pass, 1 a finding, 2 a precondition (ruff did not run, the table is missing or malformed,
 or ruff read no Python file: zero findings over zero files is no "clean", GOH.DIFFCOVEMPTY).
+
+A repo's declared ruff rule set, gated whole, with the debt held to a per-rule COUNT in
+`ruff_ratchet.json` that only falls: a rule over its count (or with findings and no count) is red
+and names every finding; a count above the truth is red too ("lower it", `--lower`, refused while
+anything rose), so the table always says exactly what is left; `--list` prints every finding still
+owed; `--seed` is first adoption only. A missing or malformed table, or a ruff that refused its
+config, is exit 2. No fingerprint baseline, no blanket ignore (G17c). Called by a consumer's own
+gate from its repo root. Invoked by consumer gates (a private Swift app, monitor).
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

@@ -15,6 +15,14 @@ which loads the machine just the same and is tracked by nothing. So the right pa
   round;
 * a refusal names the holder (pid, start, spinners, command) and prints the exact rerun line,
   `--wait` added, for an experiment with spinners that did not ask to wait.
+
+The load slot an EXPERIMENT takes (GOH.LOADREFUSE, D-0002): a run with spinners holds it alone;
+`--wait` waits for it under `--wait-max`, and a refusal names the holder and prints the exact rerun
+line with `--wait`. A run with no spinners is a gate and never takes it: it is admitted by a gate
+slot (`admission.py` `admit`, GOH.ONEADMISSION, D-0008, which retired D-0003's shared places). A
+wait that ends without running the command exits nonzero (EXIT_BUSY) naming the holder: a wrapped
+`git push` that never ran is never green. The registry record carries `why` and `cwd`
+(GOH.LOADWHY). Pinned by `test_load_refusal.py`, `test_one_admission.py`, `test_load_why.py`.
 """
 
 from __future__ import annotations

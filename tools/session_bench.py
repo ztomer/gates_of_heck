@@ -28,6 +28,11 @@ Usage:
 
 The default workload is `structural.sh --full`, the gate every session pays per commit; pass
 `--workload 'tools/gate.sh --full'` for a push. Pinned by tests/test_session_bench.py.
+
+`tools/session_bench.py <repo>`: how much N concurrent sessions' gates serialize on each other: one
+clone per session, makespan and speedup per N, the USL fit (sigma = serialized fraction, kappa =
+interference), every lock wait by name, and the steps that inflated most. Pinned by
+`test_session_bench.py`.
 """
 
 from __future__ import annotations

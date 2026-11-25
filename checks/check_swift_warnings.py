@@ -32,6 +32,9 @@ The upstream is what the cold pre-push gate last judged, so everything else was 
   check_swift_warnings.py --log FILE           # judge a saved build log
   check_swift_warnings.py --selftest           # prove the parser catches the real byte formats
   check_swift_warnings.py --list-changed       # the files a warm build is made to recompile
+
+One `swift build --build-tests`; any warning in the repo's own dirs fails, colours and OSC 8
+hyperlinks stripped first (for repos that judge build output instead of `-warnings-as-errors`).
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

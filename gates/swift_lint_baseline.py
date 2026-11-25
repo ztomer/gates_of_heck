@@ -49,6 +49,9 @@ thing from any checkout directory.
 Exit codes: 0 clean, 1 new or stale violations (named), 2 unusable input
 (missing/malformed baseline or report — with the swiftlint exit status named,
 since a crashed swiftlint must fail the gate, not silently pass it).
+
+Helper: reconciles swiftlint JSON report against baseline (shrink-only). Called by `swift_gate.sh`,
+not directly. Invoked by via swift gate.
 """
 
 from __future__ import annotations

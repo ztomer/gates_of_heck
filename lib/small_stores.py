@@ -19,6 +19,15 @@ small-stores` (lib/state_retire.py) imported each file, read it back equal and a
 store's path is its identity (the database beside it, and its kv name), never a file read. No
 database yet reads as no value: each store starts empty, as its file once did.
 Pinned by tests/test_small_stores.py.
+
+GOH.STATEDBS3: goh's small state stores in goh.db (0004): `kv` (one JSON document per name:
+`estate_audit`, `pin_push`, `pin_sweeps`, `cache-evict`, `wf_pin.pins`; `get`/`update`/`put`, a
+read-change-write in one transaction), `commit_gated` (`gated_add`/`gated`: every tree a commit
+gate passed) and `flakes` (`flake_add`/`flakes`: the flake register's records and filings, in the
+order written). A store keeps its file's path (its env override) and its rows live in the goh.db
+beside it (`db(p)`: `GOH_DB` when set), so a caller naming its own file has its own database. The
+path is identity only: no store reads or writes its file (retired by `state_retire.py`); no
+database reads as no value. `small_stores.py export [STATE_DIR] [--to DIR]`.
 """
 
 from __future__ import annotations

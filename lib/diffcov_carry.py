@@ -30,6 +30,14 @@ Only MEASURED lines count (GOH.DIFFCOVUNMEASURED, cov_risk.measured): a line of 
 the profile was never measured by any land, so it files no item and refuses no ship; the ship's
 own diff coverage judges it after the suite.
 Pinned by tests/test_diffcov_carry.py.
+
+A land's carried uncovered lines to the next ship (GOH.DIFFCOVCARRY): a landing with its own
+carried lines files `<PREFIX>.DIFFCOV<sha>` through `loopctl file` (answering a closed class and an
+open carry item's repeat refusal), and `goh ship`'s preflight refuses in seconds, before the suite,
+while a land since the base tag carried a line still uncovered at HEAD (not deleted or edited, its
+item not landed, no later judgment of a tip holding it dropping it), unless `--allow-diffcov
+REASON`; only MEASURED lines file or refuse (GOH.DIFFCOVUNMEASURED), an unmeasured one is the
+ship's own diff coverage's to judge. Invoked by `tools/landq.py`.
 """
 
 from __future__ import annotations

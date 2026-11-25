@@ -8,6 +8,14 @@ code asks for the `goh` or `native_goh` fixture, calls `run_goh` or `native_goh_
 GOH_TEST_BIN, GOH_BIN or GOH_RESOLVED_BIN, or names `bin/goh`; or when a helper or script it
 reaches does (a gate script runs `goh step`). Prose is blanked before the read, so a docstring that
 mentions one runs nothing.
+
+GOH.AFFECTEDBINARY: which code runs the goh binary (the `goh`/`native_goh` fixture, `run_goh`,
+`native_goh_path`, `GOH_TEST_BIN`/`GOH_BIN`/`GOH_RESOLVED_BIN`, `bin/goh`; prose blanked) and which
+paths build it (`build_input`: the four roots and each file a crate embeds, derived by
+`gate_identity.build_inputs`, one reader for the affected edge and the verdict carry,
+GOH.BUILDINCLUDES); `runners` is the set `tools/affected_tests.py` chooses for a build-input
+change: a test runs the binary itself or through a helper or script it reaches. Pinned by
+`test_affected_binary.py`, `test_build_includes.py`.
 """
 
 from __future__ import annotations

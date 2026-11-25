@@ -17,6 +17,9 @@
 //! (additionally breaks on vertical tab, form feed, bare carriage
 //! return). No tracked file relies on those as line breaks — accepted,
 //! same as the emoji and home-paths ports.
+//
+// `goh no-allow`: No `#[allow]` in Rust (repo-local twin; structural twin lives in consumer
+// `tools/`). Pinned by `test_check_no_allow.py`.
 
 use goh_tui::{ERR, OK};
 

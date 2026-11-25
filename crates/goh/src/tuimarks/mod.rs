@@ -32,6 +32,19 @@
 //! before it the step judges nothing, as the last release did not, so a consumer is not red before
 //! its seed exists. The estate's sites on the day it landed are seeded in `tui_marks_seed.json`
 //! (`crate::estate_seed`): seeded files warn, anything else is red.
+//
+// `goh tui-marks`: A shell `echo`/`printf` or Python `print` whose text opens with a Kare mark (`→
+// · ✓ ✗ ⚠`) is a finding (GOH.TUIMARKS, house rule 2): `tui/lib.sh` / `tui.lib` print it. One
+// opening with an ANSI escape or a bracketed marker, `goh status-markers`' tokens, is its FALLBACK
+// (GOH.ESCAPEOWNER): judged unless the repo's push runs status-markers and status-markers counts
+// that line, so each site has one owner and none has none. Line-based; whole-line comments are not
+// read; the reasoned escape is `# tui-mark-ok: <reason>` on the line. Exempt: goh's own
+// `tui/lib.sh`/`tui/lib.py` (by goh's root commit) and git hooks (`.githooks/<hook>`,
+// `hooks/<hook>`), the bootstrap path that reports goh missing. Reads bare-open's subject through
+// its selectors, so `GOH_BARE_OPEN_MIN_FILES` is its floor. A structural step in every repo judged
+// from 2026-11-23 (`crate::grace`), against the root-commit-keyed estate seed
+// `tui_marks_seed.json`; replaces koffee_big's local `tools/check_tui_marks.py`. Pinned by
+// `tuimarks/tests.rs`.
 
 pub mod scan;
 

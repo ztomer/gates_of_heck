@@ -24,6 +24,12 @@
 #
 #   executed:  . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"
 #   sourced:   . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head_lib "${BASH_SOURCE[0]}" && return
+#
+# Sourced FIRST by every entry point (C4): re-runs the gate from an immutable export of the gates
+# checkout's HEAD (`~/.cache/goh/head/<sha>`, `GOH_HEAD_CACHE`), so an uncommitted edit in the
+# shared checkout judges no consumer; `GOH_LIVE=1` runs the working tree on purpose.
+# `goh_export_rev` builds an export of any commit or tree. Invoked by every `gates/*.sh` entry
+# point.
 
 # _goh_head_dir <file> -- sets _goh_copy to the export's copy of <file> (and exports GOH_DIR,
 # GOH_LIVE_ROOT, PYTHONPATH for it); fails when <file> itself should run. Never in a $(...): the

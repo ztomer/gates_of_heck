@@ -16,6 +16,11 @@ SIGKILL cannot be caught; lib/landq_inflight.py `died` records that case from ou
 The handler is Python's (`signal.signal`): it runs in the main thread between bytecodes, never in
 the kernel's signal context, so it may run `ps`. The process still dies of the signal it got, so a
 supersede or a `--cancel` stops it exactly as before.
+
+A detached enqueue that a signal ends names the signal and the processes alive then, the sender
+among them (GOH.ENQUEUEVANISH): `install` gives SIGTERM, SIGHUP, SIGINT, SIGQUIT, SIGUSR1/2,
+SIGALRM and SIGXCPU a handler that writes a full-width `ps` table to the enqueue log, then dies of
+the same signal. Installed by `note_child`, in an enqueuer only.
 """
 
 from __future__ import annotations

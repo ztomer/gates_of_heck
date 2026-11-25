@@ -4,6 +4,14 @@ A kill the log cannot place in time is a kill nobody can match to the moment a t
 its process. So every line the minute job writes starts with an ISO-8601 UTC timestamp, and a kill
 line carries the pid, the process's command (truncated), and the rule that killed it. The log is
 bounded: `rotate` moves a log past its cap to `<log>.1`, so it holds at most two caps' worth.
+
+The backstop's log lines (GOH.REAPLOG, 2026-11-02): every line the minute job writes starts with an
+ISO-8601 UTC timestamp, and a kill line carries the pid, the process's command (one line, truncated
+to 120 characters) and the rule that killed it (`registry`, `house-shape`, `hand-rolled-shape`;
+`load_reap.RULE_*`). A pass that kills and removes nothing writes nothing. `rotate` moves a log
+past its cap (256 KiB, `--max-log-bytes`) to `<log>.1` after the pass, so
+`~/Library/Logs/goh-load-reap.log` holds at most two caps; `tools/load_reap.sh` passes
+`--log-path`.
 """
 
 from __future__ import annotations

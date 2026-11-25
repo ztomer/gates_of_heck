@@ -5,6 +5,12 @@ as one JSON row: to $GOH_TIMINGS (the step ledger's file) and to $GATES_OF_HECK_
 name a measurement across a whole suite sets (GOH.VERDICTDB step 5). A write that gave up at its
 busy timeout is a row too, `busy`. Split from lib/db_core.py for its line cap. Pinned by
 tests/test_db_core.py.
+
+GOH.DBSEAM's lock-wait instrument, split from `db_core.py` for its line cap: `row` appends one JSON
+line per `BEGIN IMMEDIATE` (`db`, `pid`, `wait_s`; `busy` when the write gave up at its busy
+timeout) to `GOH_TIMINGS` and to `GATES_OF_HECK_DB_WAITS`, the name a whole-suite measurement sets
+(a suite drops `GOH_TIMINGS` from its workers, `hermetic_env` every `GOH_` key; Pinned by
+`test_db_core.py`.
 """
 
 from __future__ import annotations

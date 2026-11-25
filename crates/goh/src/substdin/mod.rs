@@ -38,6 +38,31 @@
 //! brings, so a commit touching one helper sees one call and would be red for its own
 //! scope. The stage that matters -- "did this commit add an undeclared call" -- is exact
 //! at both scopes, because an unallowed finding is unallowed wherever it is read from.
+//
+// `goh subprocess-stdin`: Every `subprocess`/`asyncio` child process a tracked `.py` starts must
+// say where its stdin comes from (`stdin=` or `input=`), read from the AST (`ruff_python_parser`),
+// so a call named in a docstring is not a call. A child that inherits a stdin it did not ask for
+// HANGS instead of failing: `ZeroThunder`'s bare `md5sum` probe hung the games metarepo's
+// `tools/check_claims.py` on 2026-10-05, and fixing that caller left the gate armed. The rule is
+// uniform rather than a list of tools that read stdin, because that list rots; `stdin=None` is
+// legal and means "inherit, on purpose", so inheriting is a decision someone wrote down.
+// Declarable: `subprocess.{run,Popen,call,check_call,check_output}`,
+// `asyncio.create_subprocess_{exec,shell}`; refused outright (no keyword exists):
+// `subprocess.{getoutput,getstatusoutput}`, `os.{system,popen}`; a `**kwargs` call is a finding.
+// One level of attribute only, as the reference read it. On by default at both scopes since
+// 2026-10-13 (BACKLOG 3.4; only a written `GOH_SUBPROCESS_STDIN=off` skips it, any other value is
+// exit 2 naming the key), because the defect is universal, the fix is one keyword, and the only
+// scope where refusing it is still cheap is the commit that adds it; the estate repos still
+// carrying debt clear it in their own sessions (3.3). Four ways it could pass without having
+// looked, each with its own verdict: no Python at all (says what it looked for), every `.py`
+// excluded (a blind scanner, not a clean one), a `.py` it cannot parse (a finding), and a scan that
+// stopped seeing calls (`GOH_SUBPROCESS_STDIN_MIN_CALLS`, full scope only; a non-number is exit 2
+// naming the key). Ratchet: `subprocess_stdin_allow.json` at the root or
+// `subprocess_stdin_allow.d/*.json` beside it, one entry per call site, written by `--seed` (new
+// entries `unreviewed`, counted as debt on the passing line; refused over uncommitted Python), a
+// stale entry FAILS, and a malformed allowlist is a problem rather than an empty list. Pinned by
+// `test_subprocess_stdin_scope.py`, `test_subprocess_stdin_seed.py`, the tables in
+// `substdin/tests.rs` and `substdin/calls/tests.rs`.
 
 pub mod allow;
 pub mod calls;

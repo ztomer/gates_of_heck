@@ -12,6 +12,10 @@ carries another id and stays refused; a process with no id (started outside any 
 
 How the start environment is read: Linux `/proc/PID/environ`; macOS `sysctl` KERN_PROCARGS2 (the
 kernel gives it for one's own processes only). Unreadable means "not the session's".
+
+The agent session a process was started under: `CLAUDE_CODE_SESSION_ID` in its start environment
+(macOS KERN_PROCARGS2, Linux `/proc/PID/environ`). `goh stop` accepts this session's earlier-call
+processes, and the kill-by-name refusal names `goh stop` only for them (GOH.STOPOWNSHELL).
 """
 
 from __future__ import annotations

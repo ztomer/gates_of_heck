@@ -28,6 +28,20 @@ THE CLASSES, in rule order (lib/land_cause.py is the other reading: WHERE a land
     pinned-text        a test that reads a source file's text and runs nothing: it pins old text
     real-bug           any other failing test
     other              no test named: a kill, a timeout, a slot that never came (read the log)
+
+Every red land record's failing tests and cause class (GOH.REDREVIEW, owner 2026-11-22: 107 of 362
+reds said only `exit 1` or `pre-land tests failed`): the lander writes `red_cause: {cause, rule,
+tests}` into each red done record (`tools/landq.py` `record`), the tests from the record's
+`failing:` list and the log's FAILED lines, the class by deterministic rules over the record, its
+log and each failing test's function at the record's commit, first match wins: `tip-moved`,
+`conflict`, `flake` (in the flake register, or the same commit landed later), `consistency-table`
+(a structural step, a `test_every_`/`test_no_` ratchet, a test or assertion naming a table, row,
+manifest, allowlist, seed or map), `env-leak` (a test of the environment, or one reading a variable
+the failing gate step sets), `pinned-text` (a test that reads a source file's text and runs
+nothing), `real-bug` (any other failing test), `other` (no test named). `goh land-reds [--last N]
+[--json] [--backfill]` counts the classes with example records; `--backfill` classifies the records
+already written into `<landq>/red_causes.json`, never writing a record. Invoked by
+`tools/landq.py`. Pinned by `test_landq.py`.
 """
 
 from __future__ import annotations

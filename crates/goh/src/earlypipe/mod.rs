@@ -30,6 +30,14 @@
 //! adopts with, and a pipe that is safe (its producer cannot outlive the reader) is said there.
 //! `GOH_NO_EARLY_EXIT_PIPE=1` ignores the seed: every finding fails, at both scopes.
 //! `goh early-exit-pipe` itself is always strict.
+//
+// `goh early-exit-pipe`: An early-exit consumer (`grep -q`, `grep -m`, `head`, awk `exit`, sed `q`)
+// reading a pipe in any shell source (`*.sh`, `*.sh.tmpl`, `*.bash`, `*.zsh`, shell shebangs; not
+// gated on the file's own pipefail line -- a sourced library runs under its caller's): the
+// producer's SIGPIPE becomes the pipeline's status, so the verdict depends on load. A structural
+// step in every repo (new findings refused at `--staged`; at full scope each file held to
+// `early_exit_pipe_seed.json`, written by `--seed`, which may only fall; `GOH_NO_EARLY_EXIT_PIPE=1`
+// fails all). Pinned by `test_check_no_early_exit_pipe.py`, the unit table in `earlypipe/tests.rs`.
 
 pub mod consumer;
 pub mod lex;

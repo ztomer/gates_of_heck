@@ -15,6 +15,31 @@ by a `-- bound:` header (lib/db_bounds.py): past it, the oldest rows move to goh
 
 VIEWS ARE THE INTERFACE to other readers (handover plan (d)): goh publishes versioned views
 (`lands_v1`, ...) in a migration and changes one only by adding `_v2` beside it.
+
+`goh_db.py` / `goh_cache_db.py`: GOH.DBSEAM: the one door to each database, `db_core`'s API bound
+to it. goh.db (`GOH_DB`, else `$XDG_STATE_HOME/goh/goh.db`): durable state, busy_timeout 30 s
+(`GOH_DB_BUSY_MS`), synchronous=FULL, a missing or corrupt file fails loudly; migrations in
+`goh_db_schema/`. goh-cache.db (`GOH_CACHE_DB`, else `$XDG_CACHE_HOME/goh/goh-cache.db`):
+disposable, busy_timeout 2 s (`GOH_CACHE_DB_BUSY_MS`), synchronous=NORMAL, `missable()` turns an
+error into a miss with one stderr line; migrations in `goh_cache_schema/`. `goh_db.refusable()`: a
+store writer's NewerFile/NotOfRecord is one stderr line, never a raise (GOH.HEADCOPYRECORD). Each
+`transaction` waits on its `lib/lock_order.tsv` lock (`goh_db`, `goh_cache_db`: innermost).
+`goh_db.py path|migrate|version|dump TABLE [--json]|check`. `tests/test_state_seam.py` is the
+ratchet of every store the database plan still has to move into them. Invoked by the store lanes of
+the database move.
+
+`lib/goh_db_schema/`: GOH.DBSEAM: one `NNNN_name.sql` per migration (numbers assigned per lane, so
+no two lanes edit one file), each table under a `-- bound:` header. goh.db 0001 `imports` (the
+import ledger every store move writes), 0002 `lands`, `land_guards`, `red_causes`,
+`selection_misses` and the view `lands_v1` (GOH.STATEDB S1), 0003 `ships`, `ship_pins` and the
+`ships_v1` view (`ship_records.py`), 0005 `agent_spawns`, `lane_starts` and `fault_candidates`
+(`hook_ledgers.py`), 0006 `readings`, `pruned`, `duration_kv` and the `durations` view
+(`durations.py`), 0007 `requests`, `slot_owners`, `early` and the `landq_v1` view (GOH.LANDQDB,
+`landq_state.py`, `land_slot.py`), 0008 `reuse_audit` and `reuse_shadow` (`reuse_audit_store.py`,
+GOH.VERDICTDB V1); goh-cache.db 0001 `kv`, 0002 `verdicts` (`reuse_store.py`), `kept` and `memo`
+(GOH.VERDICTDB V1), 0003 `shell_verdicts` (the goh binary's per-file verdicts,
+`crates/goh/src/verdict_cache.rs`, GOH.VERDICTDB V2). Pinned by `test_db_bounds.py` (every shipped
+table bounded).
 """
 
 from __future__ import annotations

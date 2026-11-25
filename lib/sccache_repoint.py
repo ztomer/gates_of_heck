@@ -21,6 +21,16 @@ drive that came or went or a server somebody started on the default dir, is appl
 sweep (GOH.CACHEEVICT2, GOH.SCCACHEROOTFOLLOW). `start` starts a MISSING server on the resolver's
 root: lib/goh-rustc, and the gates' entry through it, call it when none answers.
 
+`goh sccache-repoint check`, `apply` and `start` (GOH.CACHEEVICT): the sccache server follows the
+cache root `lib/cache_tier.py` chooses now -- `<large tier>/sccache` with the removable drive
+present, the internal per-OS root without it. sccache reads SCCACHE_DIR once and 0.19 chains one
+disk level, so a change is a restart: wait until compile_requests holds still for `--idle` s (30)
+with no rustc running (`busy`, exit 3, at `--timeout`), `--stop-server`, `--start-server` from cwd
+`/` with SCCACHE_DIR set and SCCACHE_CACHE_SIZE / SCCACHE_BASEDIRS dropped; `check` exits 1 and
+prints the command when they differ. `start` starts a missing server on that root
+(GOH.SCCACHEROOTFOLLOW); `follow`, each sweep's step, applies any difference, past an hour with no
+idle window too.
+
 usage: sccache_repoint.py check                  exit 1 (and the command to run) when it differs
        sccache_repoint.py apply [--idle S] [--timeout S]
        sccache_repoint.py start [INTERNAL]    start a missing server; INTERNAL is the fallback dir

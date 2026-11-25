@@ -19,6 +19,13 @@
 # atomic only within one filesystem, so when the run root is on another device than the destination
 # the stage falls back to `<dest>.<pid>.staging` beside it (ignored, reaped) rather than let `mv`
 # degrade to a copy a reader could see half of. Both homes are reaped.
+#
+# `goh_place SRC DEST`: the ONE way a binary is put in place (`gates/_goh_bin.sh`,
+# `scripts/build-goh.sh`): copied whole to `<base>.<pid>.staging` in the destination directory's
+# run directory (`lib/run_path.sh`, outside the work tree; beside DEST, ignored, only when the run
+# root is on another filesystem), renamed in; a failed copy removes its stage, and each placement
+# reaps the stages beside DEST whose process is gone, so a copy killed mid-way leaves no untracked
+# file (GOH.STAGINGSTRAY).
 
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/place.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }

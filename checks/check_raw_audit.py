@@ -27,6 +27,14 @@ Exit 0 clean, 1 a raw audit (or a stale seed entry), 2 nothing to judge (no GOH_
 tracked tools/ script, or a tree tracking only shape files: a scan of nothing is not clean).
 `--empty-ok` is rust_gate.sh's call, where a crate with neither has nothing that could run an
 audit of its own; the sweep (check_empty_scope.py) runs it without.
+
+No `cargo audit` outside goh's advisory-db wrapper (GOH.AUDITONCE): a `GOH_CI_STEPS` step (sourced
+as the runner sources it) or a tracked `tools/` script whose COMMAND is `cargo [+tc] audit`, or a
+`tools/` Python argv `["cargo", "audit", ...]` in a file that never names `advisory_db`, is red;
+comments and messages naming it are not commands. A raw audit beside rust_gate.sh's skipped the
+shared rulings and refused the v0.130.0 pin pushes. A `rust_gate.sh` step (`--empty-ok`); a tree
+with nothing to judge is exit 2 otherwise. `--estate DIR` ratchets `checks/raw_audit_seed.json`
+(stale entries red); `--probe` proves it red.
 """
 
 from __future__ import annotations

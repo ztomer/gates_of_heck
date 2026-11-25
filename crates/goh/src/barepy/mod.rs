@@ -18,6 +18,14 @@
 //!
 //! WIRING: a structural step in every repo, a hard gate at both scopes. The fix is mechanical
 //! (`python3 X` becomes `bash "$GOH/gates/python.sh" X`), and the class broke three repos in a day.
+//
+// `no bare python in a hook or gate`: An interpreter NAME (`python`, `python3`, `python3.N`) at
+// command position in `.githooks/*` or `tools/gate.sh` (plus whatever the repo names in
+// `GOH_BARE_PYTHON_SCOPE`), read off the masked text (so `$(python3 ...)` inside double quotes
+// counts; a comment, a string, a heredoc body, a path such as `.venv/bin/python`, and the name as
+// an argument do not). The fix is `bash "$GOH/gates/python.sh" ...` (BACKLOG 6.2). A HARD
+// structural step in every repo at both scopes; no `goh` subcommand of its own. Pinned by
+// `test_python_seam.py`, the table in `barepy/tests.rs` (the stock hooks included).
 
 use goh_tui::{ERR, OK};
 use std::fmt::Write as _;

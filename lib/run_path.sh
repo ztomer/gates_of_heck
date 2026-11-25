@@ -20,6 +20,12 @@
 # The Python face is lib/run_path.py and the Rust face crates/goh/src/run_path.rs: one root, one key.
 # A new raw temp, lock or staging path under a work tree is refused by `goh run-paths`
 # (crates/goh/src/runpaths.rs). tests/test_run_path.py, tests/test_entry_points_leave_no_strays.py.
+#
+# `run_path.sh`, `run_path.py`: The ONE place goh's temp, lock and stage paths come from
+# (GOH.CLASS.CHECKOUT part 2), rooted outside every work tree (`GOH_RUN_DIR`): `goh_run_dir TREE`
+# (one directory per tree, the same each call), `goh_index_tree` (the tree of the index git would
+# commit, from a private copy: never the shared `index.lock`, GOH.REFRESHINDEXLOCK). The Rust face
+# is `crates/goh/src/run_path.rs`; `goh run-paths` refuses a path minted by hand.
 
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/run_path.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }

@@ -38,6 +38,11 @@ THE KNOB, GOH_COV_DIFF: `on` (the default), `warn` (named, never red: a consumer
 
 Usage: diff_cov.py --repo DIR [--base REV] [--include RE] PARTS_DIR
 Exit codes: 0 pass | 1 an uncovered changed line or a stale entry | 2 usage, config or input error.
+
+Helper: every executable Rust line the change adds or edits is covered (new side of `git diff -M`
+from the change base, read from the same run's lcov parts; reasoned ratcheted allowlist). Rust
+only. Called by coverage gate rust path after the floor. Invoked by via coverage gate. Pinned by
+`test_diff_cov_rust.py`.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

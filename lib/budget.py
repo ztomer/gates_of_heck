@@ -42,6 +42,22 @@ kind measures the same span. Subjects no writer feeds yet (`writer` false) are l
 never silently absent; so is a repo that ships through goh but has no row.
 
 Pinned by tests/test_budget.py.
+
+`goh budget [--json]` (GOH.GATEBUDGET, owner 2026-11-15: "once we reach the 10m mark, going above
+15m will trigger a self improvement cycle until we are back below 10m"): per subject a hysteresis
+state over its ledger rows (UNARMED, ARMED at <= 10 min, BREACHED above 15, CLEARED at <= 10
+again), every threshold in ONE table (`KINDS`: 10/15 min; commit gates 30/60 s on the median of
+five; pre-land 2/3 min), a fast red counts for nothing and a red over BREACH counts; the regression
+verdict is cpu-s over the median of the runs before it (+25%, voided by a control that drifted over
+15%, `loaded` when only the wall moved), a relative guard that needs no ARM. Ship results become
+`<repo> ship` and `<repo> release` rows (`ship_rows`, written by `tools/ship.py` and backfilled
+from the result JSONs, never doubled). A kind no writer feeds, and a repo that ships with no row,
+are listed UNMEASURED. GOH.GATEBUDGET2: a subject's runs are its rows in TIME order (a backfill
+appends rows older than live ones); `goh suite` / `goh suite:carried` (tools/pytest.sh's whole
+runs, cpu-s of the reaped tree); `<repo> land retries` from `lib/land_attempts.py`; the CIP lanes'
+push gates backfilled from `lib/cip_history.py` and the queue's attempts from done/ on every read;
+below them, each reuse path's audit window (uses, sampled, compared, disagreed, flakes;
+`lib/reuse_audit.py report`, GOH.REUSEAUDIT2)
 """
 
 from __future__ import annotations

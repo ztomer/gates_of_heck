@@ -12,6 +12,64 @@
 # Config, all optional, read from the TARGET repo's .gatesrc:
 #   GOH_MAX_LINES=500          # file-length cap; unset disables the check
 #   GOH_LINE_EXCLUDE="re1|re2" # paths exempt from the cap
+#
+# Layer 1, every repo. `54` lines in `crates/goh/structural_steps.txt`, one step per line (a marked
+# claim, re-derived on every push; the binary embeds that file, `goh structural --list-steps`
+# prints it, and the gate names any step it lists that the running binary lacks), measured by
+# running it: emoji, conflict markers, markdown-link resolution, Cargo.lock/manifest agreement, the
+# ruff format check (opt-in), `requires-call` (opt-in), the file-length cap, the skills corpus
+# (opt-in), shell lint, early-exit pipes (a new one refused at commit; at full scope each file held
+# to `early_exit_pipe_seed.json`, which may only fall; all of them with
+# `GOH_NO_EARLY_EXIT_PIPE=1`), code after an `exec` that replaced the shell, the hook's carried
+# index read outside `goh_bind_hook_index`, a bare `python3` in a hook or `tools/gate.sh`, a
+# release script's gate/test/install step sending its output to /dev/null
+# (`release_quiet_seed.json`), a BSD-only `mktemp -t` with no X (`mktemp_port_seed.json`), a bare
+# `open` that hands the app the caller's environment (`bare_open_seed.json`; the fix is `goh
+# launch-app`, by path, name or `-b` bundle id, and from Python `tui.launch`; a Python argv list is
+# judged as argv), a temp, lock or stage path minted in a work tree or a `git write-tree` on the
+# shared index (opt-in, `GOH_RUN_PATHS`, `run_paths_seed.json`; the fix is `lib/run_path.sh`), a
+# git stopped at a deadline holding `index.lock` or a work-tree reader taking it (`goh
+# git-deadline`, `git_deadline_seed.json`, judged from the grace's end), a test whose dead endpoint
+# is a literal loopback port in the ephemeral range (`goh dead-port`, `dead_port_seed.json`, judged
+# from 2026-12-07; the fix is a port the test holds, `docs/contracts.md` section 30), the whole
+# changelog against the `v*` tags (`changelog_tags_seed.json`; the four seeds are
+# `crates/goh/src/estate_seed.rs` ratchets), no line under the changelog's Unreleased when the repo
+# keeps one fragment file per change (opt-in, `GOH_CHANGELOG_FRAGMENTS`), committed secrets, a
+# credential in git config and the `actions/checkout` step that would put one there, a direct write
+# to a Homebrew tap, a container image on a moving tag (or no tag), a `*-latest` runner label or an
+# action on a moving ref in a workflow (`goh workflow-pins`), a workflow running goh at no release
+# or one more than ten minor releases behind the running goh, or a tag-reading gate job on a
+# shallow clone (`goh goh-pins`, `goh_pins_seed.json`), a tracked shell file that runs a
+# backgrounded busy loop (the house has ONE way to make load), home paths (opt-in), tracked files
+# the repo's own `.gitignore` ignores, tracked build output
+# (`checks/check_tracked_build_output.py`, delegated; at commit scope only what the commit brings,
+# read from the index, OW.29), a changelog fragment the release step would refuse
+# (`checks/check_changelog_fragments.py`, delegated to the release kit's own rule, GOH.FRAGGATE),
+# kill-by-name (opt-in), unreaped spawns in tests, every tracked Python process call naming its
+# stdin (on unless `GOH_SUBPROCESS_STDIN=off`), prose-claim derivation (opt-in), every tracked
+# JavaScript source parses (opt-in), no vendored copies of house files, one roadmap of open entries
+# (`goh roadmap`: `GOH_ROADMAP`, debt in `roadmap_seed.json`), -- at commit scope only -- the Rust
+# source policies (no `#[allow]`/`#[expect]`, no emptiness asserts) over the staged `.rs` files and
+# the release gate's `cargo fmt --check` over EVERY staged `.rs`, tests included (G1e: the staged
+# blob through rustfmt with its package's edition and nearest `rustfmt.toml`,
+# `crates/goh/src/rustfmt_staged.rs`), the push's `rust_gate.sh` checks brought forward so a commit
+# is never let through on what its push refuses, and -- at full scope only -- the empty-tree
+# refusal, the gate self-proofs, and last, every scanner's read count against its floor
+# (`GOH_<SCANNER>_MIN_<UNIT>`, `crates/goh/src/subject.rs`: red under a declared floor, and one
+# advisory line naming every scanner that ran with none). Version provenance runs when the repo
+# ships `.gates-version-baseline.json`. The row used to name eight of them, which is the class
+# `check_claim_derivation.py` exists for: a stale inventory in the one table whose whole job is
+# being the inventory. Execs the native `bin/goh` (`scripts/build-goh.sh`), the only tier since
+# Phase N3; with no binary it refuses. `--staged` = pre-commit. `--full --keep-going` = every step,
+# every red, exit 1 if any (6.16); a refusal (exit 2) still stops, because every later step would
+# report on a configuration the run could not read. `--only STEP` (repeated, one step per flag: a
+# carried name holds a comma) = only the named steps, the rest skipped before any work
+# (`crates/goh/src/structural/pipeline.rs` is the one table of steps and the names they run under);
+# a name the binary does not carry is refused (exit 2) by name, so a typo never prints the pass
+# line over a tree nobody judged (GOH.SELFWALKFILTER: the self-walk splits its run into parts xdist
+# spreads). (Disk hygiene was removed from this gate in v0.8.0 and from this repo in v0.8.1 — it
+# lives in `~/Projects/scripts`.) Invoked by `tools/gate.sh`, hooks. Pinned by
+# `test_file_length_and_markers.py`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

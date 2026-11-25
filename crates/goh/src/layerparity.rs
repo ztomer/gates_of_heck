@@ -27,6 +27,20 @@
 //! judged from `crate::grace::OVER_FROM` (2026-11-23). The estate's gaps on the day it landed are
 //! seeded in `layer_parity_seed.json` (`crate::estate_seed`), one entry per `tools/gate.sh:<lang>`:
 //! a seeded gap warns, an unseeded one is red, a seeded gap that is closed is stale.
+//
+// `goh layer-parity`: A language goh's commit gate lints (Rust, Python, Swift: `commit_gate.sh`'s
+// staged twins and the Rust staged step) is judged WHOLE at push (GOH.LAYERPARITY, GOH.CLASS.PARITY
+// check 3): the full gate's text -- `tools/gate.sh` and `GOH_CI_STEPS`, comment lines dropped, and
+// the repo's own scripts they name two levels deep -- must run that language's goh push layer
+// (`rust_gate.sh`; `py_gate.sh` or `py_staged.sh --all`; `swift_gate.sh`). A language is held when
+// a tracked file of its extension is outside `GOH_EXCLUDE` (Swift: and outside the root
+// `.swiftlint.yml`'s `excluded`). A repo-local lint under another name (a Makefile target) is not
+// goh's layer. Both scopes read the whole tree (the index at a commit). A structural step in every
+// repo judged from 2026-11-23 (`crate::grace`), against the root-commit-keyed estate seed
+// `layer_parity_seed.json`, one entry per `tools/gate.sh:<lang>`.
+// `layerparity_tests.rs::every_commit_twin_has_a_row` reads `commit_gate.sh`, so a twin for a new
+// language without a row is red. Lies: a layer named in a script the gate never reaches (dead code
+// after an `exit`) counts as run. Pinned by `layerparity_tests.rs`.
 
 use crate::estate_seed::{self, Kind, Report, Scope, Sites};
 use crate::pathfilter::PathFilter;

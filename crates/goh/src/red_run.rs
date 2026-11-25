@@ -19,6 +19,13 @@
 //! though this parser is stricter than git. A `git revert` (`This reverts commit <sha>.`) that
 //! restores a test the reverted commit deleted needs no new claim for it: that test was red-proven
 //! where it was first added; any test the revert does not restore is judged as ever.
+//
+// `goh red-run`: A commit whose diff adds a test declaration carries a `Red-run:` trailer naming
+// the mutation that turned the test red ("prove a new test can fail", enforced at the one place it
+// cannot be skipped). Reads the trailer block with `commit-class`'s parser; `FILE` reads the staged
+// diff, `--range` each commit's own. Presence and substance, not truth. Opt-in by `GOH_RED_RUN`;
+// the commit-msg hook and `push_gate.sh` run it (BACKLOG 4.11). Pinned by `red_run_tests.rs`,
+// `test_red_run.py`.
 
 use crate::commit_class::{cleaned, final_trailers};
 use goh_tui::ERR;

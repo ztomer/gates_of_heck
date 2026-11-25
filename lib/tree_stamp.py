@@ -27,6 +27,9 @@ Usage:
 
 `check` exits 0 when the tree is where it was, 1 when it moved (naming up to
 MAX_NAMED paths), 2 when it cannot answer (not a repo, no stamp).
+
+A stamp taken before and after; a gate certifying bytes that changed under it says so (a private
+Swift app 2c.9).
 """
 
 from __future__ import annotations

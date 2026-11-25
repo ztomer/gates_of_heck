@@ -13,6 +13,12 @@ an unchosen test sees therefore lands, and the idle run is where it turns red; t
 
 GOH_LOOPCTL and GOH_LOOP_QUEUE are the seams (lib/reuse_fault.py `_file`). Pinned by
 tests/test_idle_suite.py.
+
+GOH.CARRYBASECODE: the land gate judges a base-code change by its readers (`tests/_carry_shadow.py`
+`choose`), so the whole suite is its backstop on main. A red idle full run files
+`GOH.IDLERED<sha8>` (`loopctl file`, seams `GOH_LOOPCTL`/`GOH_LOOP_QUEUE`) naming the failed tests
+and the first-parent lands since the last green full run (`last.json` `green`). Pinned by
+`test_idle_suite.py`.
 """
 
 from __future__ import annotations

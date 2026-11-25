@@ -31,6 +31,15 @@ runner, any Mac under 16 cores; GOH.SPECONESLOT): B's run took the only slot fir
 behind it, so the bisect is serial there and lander.log names why.
 Every run started counts in the batch's `gates`, discarded ones too: `goh land --report` reads
 gates per landed item and the wall from them.
+
+A red batch's halves gate at once (GOH.LANDBISECTPAR): when a red stack splits into halves A and B,
+B is stacked on main too and its tip's `land.sh` runs in the second gate slot (admitted like any
+land; one such run in flight) while A settles. Nothing of A landed: that run is B's gate -- the
+batch writes `go` on `GOH_LAND_HOLD_FD`, and a held green fast-forwards with no further gate; red,
+its tree is known red. Anything of A landed: main is not its base, the run is discarded (a held
+green exits 3, a gating one is stopped) and B settles on the new main. A conflict stacking B on
+main, a tree known red, or a `land.sh` without the hold starts no run. Every run started counts in
+`batch.gates`.
 """
 
 from __future__ import annotations

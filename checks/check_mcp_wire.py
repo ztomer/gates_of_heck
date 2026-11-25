@@ -60,6 +60,21 @@ push goes red until its server speaks the new version -- which is the point.
 
 Exit 0 every server is compliant, 1 a rule is broken (or a server failed), 2 a precondition (no
 GOH_MCP_SERVERS, a bad timeout, an exemption with no reason).
+
+An MCP server judged by what it SAYS on the wire, in any language (queue MCP.G): every stdio
+command `GOH_MCP_SERVERS` names is started in its own session with a scratch `GOH_MCP_SCRATCH`
+home, asked `server/discover` with the newest version in `_meta` (falling back to `initialize` +
+`notifications/initialized`), then `tools/list`, every page; no tool is ever called. Red, each for
+its named reason: the negotiated version is not `NEWEST_PROTOCOL` (the one place goh spells it,
+with how to bump it), a tool without `annotations` stating readOnlyHint AND destructiveHint, a
+destructiveHint-true tool listed by default, a tool with no `outputSchema` (or one not `type:
+object`) that `GOH_MCP_UNSTRUCTURED` does not name with a reason (a both-ways ratchet). A `cargo
+run` server is built first (`cargo build`, same words) under `GOH_MCP_BUILD_TIMEOUT`, so the wire
+bound times only the answer; a failed or late build is red as `build:`. Also red: no answer within
+`GOH_MCP_TIMEOUT`, an early exit (with the server's stderr tail), and any process the server left
+running after its stop -- the whole group and every descendant is reaped, pass or fail. Run by
+`structural.sh --full` when the key is set; Python in `checks/` because it drives other programs'
+processes, not file contents.
 """
 
 from __future__ import annotations

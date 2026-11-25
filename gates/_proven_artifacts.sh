@@ -2,6 +2,14 @@
 # _proven_artifacts.sh -- the ARTIFACTS a proven step declares, and the builds that declare none.
 # Sourced by gates/_proven.sh (split out of it at the 500-line cap); the cache's key, lookup and
 # record live there, and call these. Pure bash, no spawn except the artifact hash, bash 3.2 safe.
+#
+# The artifact half of the proven cache, sourced by `_proven.sh` (split at the 500-line cap):
+# `proven_decl`/`proven_decl_valid` parse a step's `[produces=...]`/`[consumes=...]`,
+# `proven_artifacts_present` voids a hit whose artifact is gone or changed, and
+# `proven_undeclared_build` names a build that declares nothing, which the lookup never skips.
+# Sourced, never run. `proven_decl_scope` reads a step's `[scope=P1+P2]` declaration: its inputs,
+# on which `proven_key` keys it alone (`proven_scoped_key`, GOH.PROVENSCOPE). Pinned by
+# `test_proven_artifacts.py`.
 
 # ── THE ARTIFACTS A STEP DECLARES ───────────────────────────────────────────────────────────────
 #

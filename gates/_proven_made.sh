@@ -27,6 +27,15 @@
 # is skipped (a ship push of a tree its land proved whole keeps rust_gate skipped). proven.sh sees
 # one step and never a later one, so it re-runs every hollow hit.
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+#
+# What a proven step MADE, measured (GOH.PROVENBUILD), sourced by `_proven_artifacts.sh`: the
+# ignored entries after a real run and not before (`proven_ignored`/`proven_made`, tool caches
+# dropped), kept per step string beside the records (`goh-proven-made/<hash>`); only a run that
+# began with no ignored file (`proven_fresh_tree`: a push export) writes `fresh`, which lets an
+# empty list mean "makes nothing". `proven_owed` names a HOLLOW hit (a product not here, or never
+# measured from a fresh tree): `local_ci.sh` re-runs it when a later step will really run and skips
+# it when none does; `proven.sh` re-runs it. A wrapper-script build needs no `produces=`. Sourced,
+# never run.
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_proven_made.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 PROVEN_CACHES="__pycache__ .pytest_cache .ruff_cache .mypy_cache .hypothesis .DS_Store"

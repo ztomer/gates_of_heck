@@ -26,6 +26,15 @@ What it refuses, before it changes anything (one refused FILE changes none of th
 The replaced text is kept at `<worktree>/.goh-undo/<path>` (`.goh-undo/` ignores itself), one step
 deep: the next undo of the same FILE replaces it, and `--back` swaps the two, so a second `--back`
 redoes. A file that did not exist is kept as that fact, and restoring it removes the file.
+
+`goh undo FILE...` (GOH.UNDOMINE): puts back only the caller's own edits in its own linked worktree
+-- to HEAD, or to the lane's base with `--base` -- keeping the replaced text under
+`<worktree>/.goh-undo/` for one step back (`--back`, which swaps). Refuses, changing nothing, a
+path outside the caller's worktree, a repo's main checkout, a held repo, a worktree goh's lane
+records (landq requests, a loop lane's `claim.json`) give to another item, and a file with nothing
+of the caller's in it. The discard guard and the stash refusal name it. Pinned by
+`test_goh_undo.py`. It also refuses a file the worktree's edit ledger shows another item or agent
+wrote after the caller's own last write (GOH.UNDOOWNER, `edit_ledger.py`).
 """
 
 from __future__ import annotations

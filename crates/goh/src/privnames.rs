@@ -18,6 +18,13 @@
 //!
 //! WIRING: a structural step behind `GOH_NO_PRIVATE_NAMES=on` in `.gatesrc`, which a public repo
 //! sets. NOT SEEN: a name split across lines, or spelled with different case.
+//
+// `goh private-names`: A private repository's name in a public tree's tracked lines or paths,
+// against the owner's list in the private store (`private_names.txt`), which no tree holds
+// (GOH.FINANCENAMES); behind `GOH_NO_PRIVATE_NAMES=on`. The list grows through `goh private-names
+// --add NAME` (`crates/goh/src/privnames_add.rs`), which refuses, writing nothing, while the work
+// tree or `origin/HEAD` still names it: a name listed before its sweep lands turns every land red
+// (GOH.PRIVLISTORDER). Pinned by `test_estate_corpus.py`, `test_self_walk.py`.
 
 use goh_tui::{ERR, WARN};
 use std::fmt::Write as _;

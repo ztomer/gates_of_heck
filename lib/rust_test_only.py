@@ -3,6 +3,12 @@
 lib/gate_identity.py keys the goh binary the gates run by its build inputs' content. A change to a
 test module alone was a new key in every consumer's proven step, though the release binary is the
 same program. These are left out -- PROVEN from the declaring source, never guessed from a name.
+
+The Rust sources of a gates root no release build compiles (GOH.PROOFKEY): `find` proves them from
+the declaring source (`#[cfg(test)] mod x;`, `#[path]` honoured, the module's tree, a crate's
+`tests/`), never by name, and keeps any a built source `include!`s or the crate embeds;
+`gate_identity.test_only` leaves them out of the gates' identity, so a test-only goh change keeps
+every proven key. Pinned by `test_proven_lane_reuse.py`.
 """
 
 from __future__ import annotations

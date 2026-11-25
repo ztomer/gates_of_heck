@@ -34,6 +34,15 @@ again: a disagreement repeats, and one is enough.
 
 A missing claim (a tree no land judged, a claim past its TTL) compares nothing and says so.
 Pinned by tests/test_prof_carry.py.
+
+GOH.COVCARRY2 (the owner's term 3 for D-0011's profile carry): a land's coverage step CLAIMS its
+per-crate summary (`gates/lcov_merge.py --summary`) for its tree under the `profcarry` path (repo,
+tree, tools), and a rustcov reuse claims the summary kept with the measurement it reuses; the fresh
+full instrumented run (`full_run.INSTRUMENTED`, `GOH_PROFCARRY_AUDIT=fresh`) compares its own with
+the claim through `reuse_audit.compare`: equal coverable lines per crate, covered within a noise
+band. A disagreement turns `profcarry` off: `on()` is false, so the coverage run carries nothing
+(`tests/_land_verdicts.py`) and `ask` tells rustcov to measure. Invoked by
+`gates/_coverage_rust.sh`, `tests/_land_verdicts.py`.
 """
 
 from __future__ import annotations

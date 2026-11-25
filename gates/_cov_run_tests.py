@@ -23,6 +23,11 @@ JOBS: GOH_COV_RUST_JOBS, else 6; 1 is the old serial run. The biggest binaries s
 first (a long one started last is the whole step's tail). A build that names NO test executable is
 refused: a run of nothing is not a pass. The line at the end says how many ran, at what width,
 and the wall time against the sum of the binaries' own (the speedup, on the log).
+
+Rust coverage: runs the instrumented test executables a `--no-run` build's JSON names up to
+`GOH_COV_RUST_JOBS` at a time, each as cargo runs it (cwd, `CARGO_*`, library path, `[env]`, the
+configured runner), failures printed last, exit 101 when one is red; refuses a build that names
+none.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

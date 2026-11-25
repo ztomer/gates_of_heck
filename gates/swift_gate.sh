@@ -53,6 +53,10 @@
 #       linting. Semantics match swiftlint's own --baseline (probed 0.65.1):
 #       a violation is "the same one" by file + rule + reason, NOT line or
 #       severity.
+#
+# swiftlint (+ optional baseline ratchet) + cold build + test + coverage floor. `spm` or `xcode`
+# mode. `--lint-only` stops after the lint, for a repo whose own full gate builds and measures
+# (GOH.SWIFTLINTONLY). Invoked by `--full`, opt-in.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

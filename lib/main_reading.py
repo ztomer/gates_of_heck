@@ -22,6 +22,12 @@ so: never the test's name, never a flake guess. This module keeps those readings
 
 A missing goh.db is no reading (nothing waived); a reading never raises into a land. The waiver
 that reads them is lib/land_waive.py. Pinned by tests/test_main_red_waive.py.
+
+GOH.MAINREDWAIVE: readings of main's tests at one sha, goh.db 0010 (`main_readings`,
+`main_red_tests`): the idle full suite's run of main's tip (`record`, from `lib/idle_suite.py`
+`reading`) and a probe of named tests on a clean checkout of main (`probe`); `red_at` is the nodes
+red at a sha by the newest reading that ran them; `ensure`, before a land's gate, probes the idle
+suite's red nodes at main's tip when no reading there ran them.
 """
 
 from __future__ import annotations

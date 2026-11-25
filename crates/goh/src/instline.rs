@@ -17,6 +17,17 @@
 //! `docs/decisions/D-*` record -- so the wider subject turned no repo red, and koffee's copy went.
 //! The count read is floored (`GOH_INSTALLED_VERSION_MIN_FILES`, `crate::subject`). A structural
 //! step in every repo, at both scopes.
+//
+// `goh installed-version`: A tracked `.md` that is not dated history with a line stating the
+// INSTALLED version: `installed` within 20 characters of `vN.N`, `build N` or `versionCode N`
+// (koffee's rule, `ff18e06`). Such a line rots at the next release; what a machine runs is read
+// from the machine, releases by their tags. Dated history is not read: a `CHANGELOG`, `HISTORY`,
+// `DECISIONS` or `NEWS` word in the name, a numbered record (`D-0248-...`, `ADR-0003-...`), or a
+// file under `decisions/`, `adr/`, `changelog/`, `releases/`, `release-notes/`. Until GOH.VENDOR it
+// read only plans; the estate's only hits outside plans were history, so the wider subject turned
+// no repo red and koffee dropped its own copy. Floored by `GOH_INSTALLED_VERSION_MIN_FILES`. Every
+// repo, both scopes. Lies: a doc that spells the claim another way ("the Mac runs 2.13") passes.
+// Pinned by `test_installed_version_line.py`.
 
 use goh_tui::{ERR, OK};
 use regex::Regex;

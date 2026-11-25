@@ -35,6 +35,10 @@
 # and catching it would mean a second full check; if that trade ever changes,
 # add a second pass rather than swapping this one's flags and silently losing
 # the case above.
+#
+# Cargo's OWN lints, as a step separate from clippy: built without `--all-targets`, so a
+# `[dependencies]` entry only tests use is flagged (clippy's all-targets run counts it as used).
+# Pinned by `test_rust_gate.py`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

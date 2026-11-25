@@ -16,6 +16,14 @@
 # line's verdict is its best count over the parts (gates/lcov_merge.py), so N shards of the suite and
 # the suite in one run read the same covered lines (tests/test_coverage_parts.py).
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+#
+# Rust coverage, sourced by `_coverage_rust.sh`: hosted CI's coverage PARTS and their MERGE
+# (GOH.CIWALL). `GOH_COV_PART=workspace` makes only the workspace's part, `GOH_COV_PART=K/N` only
+# the external suite's K-th of N shards (`part-external-K-of-N.info`, the suite run with
+# `GOH_SUITE_SHARD`), neither judging the floor; `GOH_COV_PARTS_IN=DIR` builds nothing and judges
+# DIR's parts (floor, summary, diff coverage), red unless the workspace's and every shard 1..N of
+# one N arrived with their markers. Invoked by `_coverage_rust.sh`; `rust_gate.sh` runs a part or
+# merge unproven. Pinned by `test_suite_shard.py`.
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_coverage_parts.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 

@@ -13,6 +13,12 @@
 # is the work's tree; a daemon nobody reaps is not in it. The record is written by
 # lib/timing_ledger.py, which never fails: a ledger that cannot be written leaves a gate's exit alone.
 # Sourced, never run. Pinned by tests/test_timing_ledger.py.
+#
+# The shell side of a ledger row: `goh_span_start` and `goh_span_record KIND REPO OK` bracket the
+# work with wall time, the CPU of every child the shell reaped (bash `times`, read in the shell
+# itself: in a `$( )` it is the substitution's) and the 1-min load; `goh_repo_id` names the
+# repository whichever worktree runs (a lane's `wt` is its repo). Sourced by `gates/push_gate.sh`
+# and `tools/land.sh`, never run.
 
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/timing_ledger.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }

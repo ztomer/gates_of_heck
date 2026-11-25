@@ -17,6 +17,13 @@ a refusal is the one form nobody has to remember to act on. The record:
 
 `count` is None when no pass ran (`why` says why); `seconds` is the grace pass's runs summed over
 the consumers, `head_seconds` the day's HEAD pass's, so their ratio is the pass's cost.
+
+The release canary's grace-end finding, its one owner (GOH.CANARYGRACE): whether the canary runs
+HEAD once more at GOH_GRACE=over (`grace_pass`), the `grace_over` record it folds and says, and
+what `goh ship` carries from it -- `carry` copies the count and names for the shipped (or
+handed-off) commit into the result after each step (a gates tree with no record for either commit:
+`count: None` and why), `line` is the one line `--status` and the verify card say. Pinned by
+`test_ship_grace.py`.
 """
 
 from __future__ import annotations

@@ -3,6 +3,11 @@
 Spotlight never indexes a directory whose name ends in `.noindex`, and goh's pytest temp trees were
 94% of what mds resolved during gates (2026-11-17, EST.MDSCRAWL). The shell twin is lib/tmp_root.sh;
 tests/tmp_root_lint.py refuses a temp root in gates/, lib/ or tools/ made outside either.
+
+`tmp_root.py` / `tmp_root.sh`: `goh_tmp`: the ONE parent of every temp root goh makes,
+`$TMPDIR/goh.noindex`, which Spotlight never indexes (GOH.TMPNOINDEX: goh's pytest trees were 94%
+of what mds resolved during gates). `tests/tmp_root_lint.py` refuses a `mktemp` or tempfile maker
+in checks/, gates/, lib/, tools/ that bypasses it.
 """
 
 from __future__ import annotations

@@ -11,6 +11,15 @@ that carries the crate some other way is not covered, and one whose blocker drop
     python3 lib/shared_advisories.py dropped LOCK   # exit 1: an entry's blocker no longer needs it
 
 GOH_SHARED_ADVISORIES names another file (a test's fixture).
+
+The estate's ONE ruling per advisory every consumer inherits through one upstream
+(GOH.SHAREDADVISORY, `docs/shared-advisories.md`): reads `gates/shared_advisories.toml` (id, crate,
+blocker, reason, re-open condition); `ignores LOCK` names the `--ignore ID` args for the entries
+whose blocker still reaches the crate in that lock (`lib/advisory_db.py run -- cargo audit` adds
+them itself, for every goh audit and a consumer's own step through it, GOH.AUDITONCE), `dropped
+LOCK` exits 1 when a lock's blocker no longer does (the re-open condition met).
+`checks/check_audit_ignores.py --shared` judges an entry stale when it fires in no estate lock;
+`scripts/estate_audit.py` honours the same entries.
 """
 
 from __future__ import annotations

@@ -11,6 +11,14 @@ THE STATE is goh-cache.db's `kv` row `cpu_idle` (GOH.STATEDBS3: 300 s of samples
 5 s, disposable): one read-change-write per sample in one transaction, so two readers never lose
 each other's sample. GOH_CPU_IDLE_STATE (a test's) names the state, and the goh-cache.db beside it
 holds it; else goh-cache.db's own path. A cache error is a cold window: the 2 s fallback.
+
+The CPU idle's rolling window (GOH.CAPWINDOW): every capacity reading records its tick sample in
+goh-cache.db's `kv` row `cpu_idle` (GOH.STATEDBS3; one read-change-write transaction per sample, so
+no reader loses another's; beside `GOH_CPU_IDLE_STATE` when a test names one; samples kept 300 s),
+one self-exiting sampler (`capacity.py --sampler`, every 5 s, gone 900 s after the last reader)
+keeps it warm, and `lib/capacity.py` judges the mean since the newest sample
+`GOH_CPU_IDLE_ROLLING_S` (60 s) old, naming the window and sample count. Pinned by
+`test_capacity_window.py`.
 """
 
 from __future__ import annotations

@@ -3,6 +3,10 @@
 # (gates/_rust_proven.sh, checks/_estate_cache.py), so a key does not vary with where a gate was
 # started or what its parent already resolved. Pinned to docs/config.md's "Not a setting" rows by
 # tests/test_verdict_free_keys.py: a new internal key cannot slip into a cache key unnoticed.
+#
+# The GOH_* keys that never change a verdict (bookkeeping, the timing instrument):
+# `goh_config_hash` (`_hash.sh`) and `checks/_estate_cache.py` leave exactly these out of a cache
+# key. Pinned to config.md's "Not a setting" rows.
 GOH_TIMINGS
 GOH_TIMINGS_PARENT
 GOH_TIMINGS_CWD

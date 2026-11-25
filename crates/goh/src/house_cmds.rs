@@ -3,6 +3,13 @@
 //! GOH.LANDUNION: adding one is one line of that table, never a shared line of `cli.rs` or
 //! `main.rs`, so two lanes adding a subcommand each no longer conflict (the table merges by row,
 //! `lib/row_merge.py`). Each takes every argument, `--help` included (GOH.SHIPADOPT).
+//
+// `goh ship`, `goh land`, `goh budget`...: The subcommands that run one house script, one line each
+// in the table (`NAME[|ALIAS] TAB SCRIPT TAB ABOUT`, embedded; order is the help order); each
+// passes every argument, `--help` included, to the script on the house interpreter. Adding one
+// touches no shared line of `cli.rs` or `main.rs`, and the table merges by row (GOH.LANDUNION).
+// Source: `crates/goh/house_scripts.tsv`, `crates/goh/src/house_cmds.rs`. Pinned by
+// `house_cmds_tests.rs`, `test_ship.py`.
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
 

@@ -18,6 +18,12 @@ So this splitter judges the command that runs:
 The heredoc finder is `secret_render.spans`, the one that rule already trusts for the same
 question. A command shlex cannot split raises ValueError, which every caller treats as "unjudged":
 the guard must never be the thing that breaks an ordinary command.
+
+How the Bash guard splits a command into the simple commands that RUN: newlines separate, a heredoc
+body is cut out as its owner's stdin (code only for a shell reading its script from stdin), quotes
+stay words (GOH.HEREDOCBUILD); a here-string (`<<<`) opens no body, and `split_ops` keeps the
+operator ending each command (GOH.STDINHANG). Pinned by `test_load_bare.py`,
+`test_shared_checkout_guard.py`.
 """
 
 from __future__ import annotations

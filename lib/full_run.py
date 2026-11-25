@@ -6,6 +6,12 @@ INSTRUMENTED, the coverage gate's Rust mode with its external suite. Split from 
 the ship's run (under the land lock) reaches no module that takes the idle lock, which ranks below
 it (lib/lock_order.tsv; the lock order check follows imports and named files). Takes no lock.
 Pinned by tests/test_ship_starve.py (and the idle lander's own tests).
+
+GOH.SHIPSTARVE: the instrumented full run's lock-free parts, shared by the idle lander and goh
+ship's own run: `declares_full` (the tip's `.gatesrc` GOH_SHIP_FULL_SUITE), `prepare` (a kept
+detached worktree at the tip), `INSTRUMENTED` (the coverage gate's Rust mode with its external
+suite). Split from `idle_suite.py` so the ship's run, under the land lock, reaches no module that
+takes the idle lock (rank 6 < land 20). Pinned by `test_idle_suite.py`.
 """
 
 from __future__ import annotations

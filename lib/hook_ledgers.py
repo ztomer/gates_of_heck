@@ -19,6 +19,16 @@ THE FILES THEY WERE. goh.db alone holds them since the database plan's wave 3: `
 hook-ledgers` (lib/state_retire.py) imported each file, read it back equal and archived it. No
 goh.db reads as unknown (goh_db.Unknown), never as an empty ledger.
 Pinned by tests/test_hook_ledgers.py.
+
+GOH.STATEDBS4: the hook and cache ledgers in goh.db (0005): `agent_spawns` (the model-choice hook's
+spawn and outcome rows, was `agent-spawns.jsonl`), `lane_starts` (lane admission's verdicts, was
+`lane-starts.jsonl`), `fault_candidates` (the weekly watch's, newest run) and `kv`
+`model-choice-watch` (the watch's record). `append(table, row)` is the hooks' one write: goh.db's
+busy timeout drops to 5 s (`HOOK_BUSY_MS`), and past it the row goes to `hook-ledgers.spill.jsonl`
+beside goh.db, the spawn goes on, and the next write drains it in order and counts it (`kv`
+`hook-ledgers.busy`). The files they were are retired (`state_retire.py`);
+`rows`/`spawns`/`lanes`/`watch`/`candidates` read goh.db alone, and no goh.db raises
+`goh_db.Unknown` (unknown, never an empty ledger). `hook_ledgers.py watch`.
 """
 
 from __future__ import annotations

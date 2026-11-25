@@ -34,6 +34,12 @@ a 2x load on this box (three A-B-B-A profiles of this repo's push gate, 2026-10-
 CONCURRENCY. One `os.write` of one line under `O_APPEND`, shorter than `PIPE_BUF`: concurrent
 writers (a 4-way crate fan-out) interleave whole lines, never halves. A write that fails is
 dropped silently ON PURPOSE -- the instrument must never be the reason a gate goes red.
+
+The P0 perf instrument: `record()` appends one JSON line per step to `$GOH_TIMINGS` (ms, rc, tier,
+parent label, cwd, `load1` the load at its start), called by `bounded_run.py` and, for its
+in-process steps, by the native tier (`step_report.rs`); `report FILE` prints the slowest steps and
+each label summed across every place it ran; `time LABEL -- CMD` makes a phase that is no bounded
+step one row its children nest under (`tools/release_goh.sh`). Pinned by `test_goh_structural.py`.
 """
 
 from __future__ import annotations

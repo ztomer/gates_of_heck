@@ -13,6 +13,13 @@ not inside a word) is refused, naming the text the comment swallowed. The escape
 or the rest of the command on a line of its own, admits as before. Run first by the Bash guard
 (hooks/claude/discard_guard.py), ahead of every rule an escape would excuse.
 Pinned by tests/test_escape_line.py.
+
+The discard guard's FIRST rule (GOH.ADMITOKLINE): every `# x-ok: <reason>` escape a Bash guard
+reads (`admit-ok`, `quit-ok`, `discard-ok`, `load-ok`, `secrets-ok`, `reset-ok`, `kill-ok`, ...) is
+a shell comment, so code after it on its line never runs; a command whose escape, in its code
+(`busyloop.mask`: not quoted, a heredoc body or an earlier comment), is followed on its line by
+`;`, `&&`, `||`, `|` or a background `&` is refused, naming the swallowed text. The escape last on
+its line, or the rest on a line of its own, admits as before.
 """
 
 from __future__ import annotations

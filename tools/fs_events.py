@@ -6,6 +6,10 @@
 
 It measures; the suite's own count and ceiling are tests/_fs_churn.py's (GOH.FSCHURN2). Exit: CMD's,
 or 3 where FSEvents is unavailable. Pinned by tests/test_fs_churn.py.
+
+`tools/fs_events.py run --root DIR [--json F] -- CMD`: the FSEvents records CMD made under each
+root and the top creators by path (`lib/fs_events.py`), no sudo. The suite counts its own every
+whole run (`tests/_fs_churn.py`, GOH.FSCHURN2). Pinned by `test_fs_churn.py`.
 """
 
 from __future__ import annotations

@@ -14,6 +14,20 @@
 //! `goh credential-urls` (the same defect, caught where it is written instead of where it lands).
 //! No path exemption, like `goh secrets`: a workflow under `.github/` is the repo's own by
 //! construction, and the one escape is the reasoned per-step marker.
+//
+// `goh checkout-credentials`: An `actions/checkout@...` step (any ref, a pinned sha included) in
+// `.github/workflows/*.yml|yaml` or a composite action (`.github/actions/**/action.yml|yaml`) whose
+// `with:` does not set `persist-credentials` to the literal `false` (the boolean, or the string in
+// any quoting; `true`, `no` and an expression are findings). checkout's default writes the job
+// token into `.git/config` as `http.*.extraheader`, readable by every later step and refused by
+// `goh credential-urls` -- which, run in CI after a default checkout, turned monitor red
+// 2026-10-05..08 and nowhere else. A job that must push with that token keeps it on purpose with
+// **`# persist-credentials-ok: <reason>`** on the step or in the comment lines directly above its
+// `-`; an empty reason is a finding, and so is the marker on a checkout that already sets `false`.
+// The YAML is parsed (`saphyr`: a `uses:` inside a `run: |` block is script text, an alias
+// resolves). Every repo, both scopes, a hard gate; no path exemption (`GOH_EXCLUDE` does not reach
+// it, like `goh secrets`). Pinned by `test_check_checkout_credentials.py`, the table in
+// `checkoutcreds/tests.rs`.
 
 pub mod scan;
 

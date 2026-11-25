@@ -74,6 +74,9 @@
 #     <process start time, whitespace-normalised>   (see _desktop_lock_start_time)
 #     <human label> (pid <pid>)
 # The Python half (desktop_lock.py) writes and reads the SAME bytes.
+#
+# `lib/desktop_lock/`: Machine-wide desktop mutex. Invoked by `lib/gpu_lock/gpu_lock.sh`. Pinned by
+# `test_desktop_lock.py`.
 
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/desktop_lock/desktop_lock.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }

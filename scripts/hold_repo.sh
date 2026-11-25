@@ -10,6 +10,12 @@
 #
 # Uses: an archived repo (archive_repo.sh), an upstream clone that belongs to someone else, a
 # repo frozen during a release, a repo an owner ruling parks.
+#
+# `scripts/hold_repo.sh`, `scripts/release_hold.sh`: put a repo on hold (`goh.hold` = `<date>:
+# <why> -- lift: <cmd>`, `--read-only` adds `chmod -R a-w`) and lift it. `scripts/archive_repo.sh`
+# / `scripts/unarchive_repo.sh` — the archive use: refuse unless nothing exists only in the clone,
+# archive the OWNER's GitHub repo (`scripts/_github_repo.sh`, never an upstream's), hold read-only;
+# lift only once GitHub says unarchived. Pinned by `test_hold_scripts.py`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 set -euo pipefail

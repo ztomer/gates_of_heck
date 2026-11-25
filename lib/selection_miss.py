@@ -25,6 +25,17 @@ pre-step ran it (PRE_RAN), the changed files; one the pre-step never ran is a mi
 summary()'s `missed` and `steps` (GOH.MISSLEDGERGATE). A test the selection chose is never a miss,
 wherever it went red (a red pre-step is the selection working; a chosen test red only in the gate is
 the rebase or load). Pinned by tests/test_selection_miss.py.
+
+GOH.SELECTAUDIT (the OpenClaw CI write-up's shadow comparison): the selection-miss ledger
+`<landq>/selection_misses.jsonl`. On every red land attempt the lander reads the log's `FAILED
+tests/...` lines against the selection the tip's OWN `tools/affected_tests.py` makes (over `git
+archive`) for its diff from main: one `judged` row {source, item, sha, day, changed, selected,
+failed, missed} and one `miss` row per failed test the selection did not choose (a chosen test is
+never a miss, wherever it went red). The idle full run is shadowed the same way for the diff since
+the previous run (`source: full`): a measure, never a skip. `--replay --since DAY` judges done/
+records, main from its reflog at the enqueue (2026-11-17: 2 of 19 reds, 11 tests:
+GOH.BUILDINCLUDES' 10 in test_rust_gate.py, GOH.GRACESHAPES' 1, both closed since). `goh land
+--report` prints the misses per day. Invoked by `tools/landq.py`.
 """
 
 from __future__ import annotations

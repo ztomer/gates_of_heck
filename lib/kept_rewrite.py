@@ -20,6 +20,13 @@ The allowlist sits at the repo's top level, tracked, so the push gate's export c
 
 Output: one `warn <text>` or `err <text>` line per finding, for the caller's tui. Exit 0 green, 1
 red, 2 when the allowlist cannot be read.
+
+GOH.KEEP1: the verdict on a green proven step that REWROTE a path `GOH_EXPORT_KEEP` keeps (which
+moves its own key, so it is never recorded): `proven_kept_check` in `_proven.sh` calls it from
+`proven.sh`, `local_ci.sh` and `rust_gate.sh`'s groups. A rewrite the repo's tracked
+`kept_rewrite_allow.json` carries is a warning naming repo, step and path; one it does not is red;
+an entry whose step ran green without the rewrite, or whose path is no longer kept, is red. Pinned
+by `test_proven_moved.py`, `test_rust_gate_scoped_cache.py`.
 """
 
 from __future__ import annotations

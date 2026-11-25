@@ -24,6 +24,14 @@ ARCHIVE OR DROP (`drop`, the reason each store's files go with no archive):
     value, which their readers stopped reading when each moved (V1, V2): the next run recomputes a
     missing one. Importing 190k files (the shell verdicts' 1.4 GB) to read back what is recomputed
     in seconds is the waste V2 refused (the cache started cold); they are dropped unread.
+
+GOH.VERDICTDB wave 3: `state_retire.py`'s stores for the verdict caches, split out at its line cap
+and in the seam beside it. `reuse-records` (reuse/<path>/<kk>/<key>.json into goh-cache.db
+`verdicts`, read back, then dropped with no archive: the rows hold them and are a cache),
+`reuse-audit` (reuse/audit into goh.db `reuse_audit`/`reuse_shadow`, read back and archived:
+durable), and the pure caches dropped unread (`parse-findings`, `shell-verdicts`:
+self-walk-verdicts, tree-lint-verdicts and ~/.cache/goh/verdicts, `identity-memo`). `goh state
+retire verdict-caches` retires all five; each emptied directory goes (`prune_dirs`).
 """
 
 from __future__ import annotations

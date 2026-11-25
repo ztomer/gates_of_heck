@@ -10,6 +10,9 @@
 //! additionally breaks on `\v`, `\f`, `\u{85}`, `\u{2028}` and friends; a
 //! file relying on those as line breaks would number lines differently —
 //! accepted, since no tracked file does.
+//
+// `goh emoji`: Emoji policy gate (allow-list in `ALLOWED_ORDERED`). Pinned by
+// `test_check_no_emoji.py`.
 
 use goh_tui::ERR;
 use std::collections::BTreeSet;

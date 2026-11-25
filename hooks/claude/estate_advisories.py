@@ -28,6 +28,16 @@ The state is a day old by design, and a lock can move on in that day (GOH.EA3: a
 any lock is called red, the lock is RE-READ as it is now: one that no longer carries any crate
 version the run named is said to be "fixed since the run", never red. A lock that is gone or will
 not parse proves nothing, so it keeps the run's verdict -- it is never reported fixed.
+
+a Claude Code SessionStart hook (any source): what the last `scripts/estate_audit.py` run found.
+Silent when that run is fresh and clean; a line per advisory first seen in the last 48 h, one
+summary line for the standing ones, one for the locks no gate step audits (NOT AUDITED AT PUSH) and
+one for those it cannot read, and a line saying so when the state file is missing or older than 36
+h -- a job that stopped reads exactly like a clean estate. It also says what the last
+`scripts/release_canary.py` run found: a refusal (each consumer, step and seed), what it could not
+judge, consumers red under the last release too, and the consumers the grace's end turns red
+(GOH.CANARYGRACE). Pinned by `test_estate_audit.py`, `test_release_canary.py` and
+`test_release_canary_grace.py`.
 """
 
 from __future__ import annotations

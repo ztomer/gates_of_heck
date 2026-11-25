@@ -8,6 +8,12 @@ Mac. ssh exits 255 BEFORE the remote command starts when the multiplexer refuses
 fresh connection (no master, no socket) is retried once, and the rest of this run stays off the
 multiplexer. Any other 255 (the host down) is still a fallback. The host is the caller's
 (GOH_REMOTE_HOST, tools/remote_shard.py `conf`): nothing here names one.
+
+The remote worker's ssh transport (GOH.REMOTEMUX, split from `tools/remote_shard.py` for its cap):
+one shared ControlMaster connection; a multiplexer that refuses a session (ssh exit 255 with
+`mux_client`/`mm_send_fd`) is retried once over a fresh connection, and the rest of the run stays
+off it, so a broken multiplexer never sends a share back to the Mac. Pinned by
+`test_remote_shard.py`.
 """
 
 from __future__ import annotations

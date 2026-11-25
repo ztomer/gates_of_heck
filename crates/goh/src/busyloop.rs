@@ -53,6 +53,22 @@
 //! WIRING: a structural step in EVERY repo, a hard gate at both scopes. No path exemption: a
 //! busy loop is not a style, so `GOH_EXCLUDE` does not reach it -- the one escape is the reasoned
 //! per-line marker, like `goh secrets`'.
+//
+// `goh busy-loop`: A tracked shell file that RUNS a backgrounded busy loop (`while :; do :; done
+// &`) or a busy-wait (`until [ -f ready ]; do :; done`, any condition, foreground too, `read`
+// drains excepted; G17) is refused: the spinner has nothing to reap it, and when the shell that
+// owns it is killed the spinner is re-parented to launchd and burns a core for hours (twenty-four
+// of them, four cores each, four and a half hours old, on 2026-10-21). The scope is the TRACKED set
+// (the index at `--staged`) and among it the shell sources (`crate::shellsrc`), and the scope is
+// PRINTED on every run, so a scan that stopped reading its subject reads like a clean tree instead
+// of one. TEXT is not CODE: a loop inside a string, a heredoc body or a comment is not judged, so
+// the writer of a fixture that plants the form is not refused by it. The one escape is **`#
+// load-ok: <reason>`** on the line or on the comment lines directly above it; an empty reason and a
+// marker nothing needs are findings. The house's way is named in every refusal: `python3
+// "$GOH_DIR/tools/load.py" N -- <command>`. Every repo, both scopes, a hard gate; no path exemption
+// (`GOH_EXCLUDE` does not reach it: a busy loop is not a style). Floor `GOH_BUSY_LOOP_MIN_FILES`
+// (shell sources read). Source: `crates/goh/src/busyloop.rs` (the by-path entry point is
+// `check_busy_loop.py`). Pinned by `test_check_busy_loop.py`, `test_goh_structural.py`.
 
 use fancy_regex::Regex;
 use goh_tui::{ERR, OK};

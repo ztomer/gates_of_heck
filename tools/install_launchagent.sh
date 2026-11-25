@@ -17,6 +17,14 @@
 # is a plist and a caller, not a third copy of this logic.
 #
 # LAUNCHAGENTS_DIR redirects the copy and skips launchctl (tests/test_install_launchagent.py).
+#
+# `tools/install_launchagent.sh LABEL|PLIST [install|remove|check]`: the ONE installer for a
+# repo-owned launchd job (`launchagents/LABEL.plist`, or another repo's plist given by path, whose
+# file name and `Label` must agree, copied into `~/Library/LaunchAgents`, idempotently; `check`
+# compares content and names drift; `remove` DELETES it, the house deletes, it does not trash).
+# `tools/install_load_reap.sh`, `tools/install_load_sources.sh` and
+# `tools/install_actions_sweep.sh` are one-line callers naming their job; `.loop`'s tick installs
+# through the PLIST form (GOH.STALLS2). Pinned by `test_install_launchagent.py`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 set -euo pipefail

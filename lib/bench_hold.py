@@ -23,6 +23,13 @@ it runs inside a registered gate -- claims nothing and says so (`Hold.nested`): 
 wait on its own parent, the lock's deadlock rule 1.
 
 Pinned by tests/test_bench_hold.py.
+
+`with held(label, hold_s=...)`: `bench_lock.sh` held for a Python BLOCK, in a bash child that keeps
+the claim until its stdin closes (a SIGKILLed caller releases). For a measurement longer than the
+900 s cap, held a piece at a time so other sessions' gates run between pieces (a private Swift
+app's census, 2026-10-11). Raises `BenchBusy` naming the holder; `Hold.void` names a claim voided
+under the block; `Hold.nested` a block an ancestor's hold or a running gate already covers, which
+claims nothing (a claim there waits on its own parent).
 """
 
 from __future__ import annotations

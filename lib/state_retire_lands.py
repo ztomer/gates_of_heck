@@ -10,6 +10,14 @@ pre-step run directories and lander.lock stay files (handover plan (e)); they ar
 A done record whose run is still a request in the queue (pending, running, early: its land is in
 flight, an older lander may still rewrite it) is kept, named, until it ends. In the seam with
 lib/state_retire.py (tests/_state_seam_scan.py): the one other module naming these files.
+
+GOH.STATEDB S1: `goh state retire lands`, the land records' half of `state_retire.py`: each
+`done/<run>.json` of the land queue (GOH_LANDQ_DIR, else the state's `landq/`) in as its `lands`
+row, `red_causes.json` as `red_causes` rows and `guards.jsonl`/`selection_misses.jsonl` as
+`land_guards`/`selection_misses` rows (INSERT OR IGNORE, each file's bytes in `imports`); a record
+whose run is still a request of the queue (its land in flight) is kept until it ends; `check`
+passes a record equal to its row and a ledger line its queue holds. The logs, slots, pre-step
+directories and lander.lock stay. In the seam beside `state_retire.py`.
 """
 
 from __future__ import annotations

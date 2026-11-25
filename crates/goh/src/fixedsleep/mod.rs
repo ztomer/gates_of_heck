@@ -13,6 +13,15 @@
 //! a fixed site cannot leave headroom for a new one; and an entry for a file the scan no longer
 //! reads is stale. A repo opts in by calling the command from its own gate. The seed's rules are
 //! `crate::seedcount`'s, shared with `goh status-markers`.
+//
+// `goh fixed-sleep`: A fixed sleep never stands in for a readiness signal: a
+// `time.sleep`/`asyncio.sleep` outside a loop whose very next statement reads `poll()`,
+// `returncode` or a marker file (`exists`, `read_text`, ...) is a finding, read from the AST.
+// Against a per-repo shrink-only `fixed_sleep_seed.json` (`--seed` writes it): a file over its
+// count is red with its sites, a file under it is red until the seed is lowered, an entry for a
+// clean file is stale, a corrupt seed is exit 2. NOT a structural step: a repo adopts it by calling
+// it from its own gate (BACKLOG 4.10, from a private Swift app). Pinned by `fixedsleep/tests.rs`,
+// `test_fixed_sleep.py`.
 
 pub mod scan;
 

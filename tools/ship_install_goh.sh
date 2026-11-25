@@ -10,6 +10,13 @@
 # pushes, each through that consumer's full push gate, run in a detached, bounded sweep after the
 # ship returns (lib/pin_sweep.py, GOH.PINPUSHGATE; `goh ship --status` prints its rows apart). A
 # repo that refuses does not fail the ship; the records and the next listing name it.
+#
+# goh's `goh ship` install step (`.gatesrc` GOH_SHIP_INSTALL): moves every pin goh owns in a
+# consumer (the workflow's goh tag, the ruff pin + uv.lock) to the release just pushed and commits
+# it (`scripts/wf_pin.py --bump --tag vGOH_SHIP_VERSION`, GOH.WFPIN, GOH.PINPROPAGATE); each repo's
+# outcome lands in the result as `consumer_pins`; the pushes run after the ship in the detached
+# sweep `lib/pin_sweep.py` (GOH.PINPUSHGATE). Pinned by `test_wf_pin.py`, `test_consumer_pins.py`,
+# `test_pin_sweep.py`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 set -euo pipefail

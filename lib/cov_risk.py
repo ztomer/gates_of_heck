@@ -44,6 +44,17 @@ next ship until --allow-diffcov, so every ship carrying new Rust needed the flag
 says `measured` (`measured(c)` reads a record kept before the field from its `why`): only a
 measured one files an item or refuses a ship; an unmeasured one is noted and left to the ship's
 own diff coverage, which judges it after the suite.
+
+The land's diff coverage WARNING (GOH.DIFFCOVLAND), never a verdict: the ship's suite step keeps
+its run's per-line coverage sources (`<ship dir>/<repo>/covsrc.json`: executable lines, and those
+an in-process `part-*` covered, not `part-external*`), and `goh land --check` and the enqueue name
+the Rust lines changed since the last v-tag that no in-process test ran in that profile (external
+suite only, no test, an untested neighbourhood, or a file not in it), keeping them as `cov_risk` on
+the land record, in well under 5 s with no instrumented build; with `carry` (GOH.DIFFCOVCARRY),
+each line the ship's diff coverage would refuse as file, line and text, `own` for the land's own
+commits' lines (the profile's `cov` drops lines the external suite covered), `measured: false` for
+a line of a file new since the profile (GOH.DIFFCOVUNMEASURED: unmeasured is not uncovered; noted,
+never filed or refused). Invoked by `tools/landq.py`.
 """
 
 from __future__ import annotations

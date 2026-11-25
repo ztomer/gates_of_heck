@@ -5,6 +5,13 @@
 # remote_name, remote_url, zero, tag_check, export_root) at call time. Sourced, never run.
 # shellcheck shell=bash
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+#
+# `push_gate.sh`'s REFUSALS before any export, split out by concern at the 500-line cap
+# (GOH.CAPHEADROOM): `tag_check_run` (the tag check with `.gatesrc` in a subshell's environment)
+# and `push_refusals` (a release tag that does not hold, `GOH_MIN_FREE_GIB`,
+# `GOH_COMMIT_CLASS`/`GOH_RED_RUN` over the pushed range, `GOH_LANDED_ONLY`). Reads push_gate.sh's
+# globals; sourced, never run. Pinned by `test_check_tag_version_push_gate.py`,
+# `test_push_gate.py`.
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_push_refusals.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 

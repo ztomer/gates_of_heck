@@ -5,6 +5,14 @@ at exactly its pin (`required_tools.py --install` writes `tool==X.Y.Z`); a box o
 runs another gate. v0.139.6's release CI was red on a test id pytest 9.2.0 changed while the box
 ran 9.1.1, and the local gate had passed the tree. tools/pytest.sh refuses to run on a box that
 fails this, so goh's local suite is CI's.
+
+Helper of `required_tools.py` (`--layer L --pins-held`): red, naming both releases, for each pinned
+pip row whose distribution in THIS interpreter is missing or not exactly its pin -- the release
+hosted CI installs (GOH.PYTESTPIN). `tools/pytest.sh` refuses to run on a box that fails it, so
+goh's local suite is CI's; `tests/test_ci_install_pins.py` holds CI's install lines to the same
+pins. `plugins_off_manifest` reds a loaded pytest plugin no pin installs, or a pin's `pytest11`
+plugin not loaded; `manifest_plugins` is the set `--pytest-plugins` prints for tools/pytest.sh's
+`PYTEST_PLUGINS` (GOH.PLUGINPARITY). Invoked by via required_tools.py, tools/pytest.sh.
 """
 
 from __future__ import annotations

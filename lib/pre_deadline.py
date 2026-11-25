@@ -37,6 +37,25 @@ of its own at the deadline: tools/land.sh's one line names the run, the wait and
 The mark file gets `<start epoch> <workers> <deadline s>` as the command starts; at the deadline the
 live pytest runs' CPU joins GOH_LAND_PRE_CPU's file before the kill (lib/pre_cpu.py, GOH.PREWIDTH).
 Pinned by tests/test_pre_deadline.py.
+
+THE PRE-STEP DEADLINE (GOH.PRESTEPSHARE): `tools/land.sh` runs its pre-step through it inside the
+slot, so the deadline is taken from the share admission gave -- `min(GOH_LAND_PRE_CEIL,
+max(GOH_LAND_PRE_MAX, 1.5 x WORK / workers))`, WORK the worker-seconds of the costliest recent
+verdict in the timing ledger (`pre_run_s` x `pre_workers` of land rows) -- and the set is killed
+whole at it (exit 124, no verdict).
+
+`lib/pre_reuse.py`: `pre_reuse.py`, `land_pre_reuse.sh`: A land pre-step's verdict REUSED
+(GOH.PRELANDTWICE): `goh land --enqueue` keeps its green verdict on the request, and
+`tools/land.sh` does not run the set again when the rebased tip differs from the judged sha only in
+paths no test reads (`tools/affected_tests.py` `readers`, the selection's own notion); moved paths
+some tests read run those alone, a merged file (both sides changed it) included; a move to the
+pre-step's own code (`pre_step_code`: the selection, the pytest entry, the structural gates and all
+they import, source or run, read from the tip's sources; GOH.PRESTEPMOVED) or to a file pytest
+loads before every test asks the tip's selector in the enqueue's mode against the set the record
+judged (`chosen`; GOH.PRESTEPSELFMOVE, GOH.SUITEONCEMISS): what it adds runs (`--also`), the moved
+files' readers run, a move the structural gates reach runs them first; `pyproject.toml`, a
+`conftest.py`, a moved `GOH_LAND_PRE`, no recorded set, or no kept verdict runs the set. Each
+decision's reason goes on the land's ledger row (`pre_why`; the gate suite's, `suite_why`).
 """
 
 from __future__ import annotations

@@ -33,6 +33,14 @@ goh.db's `lane_starts` (lib/hook_ledgers.py, GOH.STATEDBS4: a 5 s wait, then spi
 the mode, the queue item the prompt names (`Queue item <ID>`, so the weekly review joins a spawn
 to its land without the transcript) and the whole reading.
 Pinned by tests/test_agent_guard_lanes.py.
+
+agent_guard's lane-start rule (GOH.ADAPTLANES): a write spawn (a judged tier that is not read-only)
+asks `lib/capacity.py`'s reading whether the machine has room for another lane; `GOH_LANE_ADMIT`
+`refuse` (default, GOH.ADAPTLANES2) defers it naming what the reading lacked, `warn` admits and
+says why not, `off` asks nothing; an `Owner-asked:` prompt line is deferred the same way (refused
+above the hard ceiling: load1 over 4x the cores or idle under 5%, GOH.OWNERASKCAP) and a reading
+that fails admits with a warning. Each judged spawn is a line of goh.db's `lane_starts` (verdict,
+reasons, queue item, the reading; `hook_ledgers.py`). Pinned by `test_agent_guard_lanes.py`.
 """
 
 from __future__ import annotations

@@ -26,6 +26,11 @@ counts both, so a repo adopting the house rules carries today's findings and add
     py_lint_ceiling.py --seed tools/py_lint_ceilings.json [--runner "python3 -m"]   # every tracked .py
 
 Exit 0 pass, 1 a finding, 2 a precondition (the key names no committed file, ruff unreadable).
+
+Helper: ruff findings (the repo's rules plus `ruff_house.py`'s) judged against per-file ceilings
+that only fall (`GOH_PY_LINT_CEILINGS`, read from the index; a raised or deleted ceilings file is a
+finding). `--seed OUT` writes today's counts. Called by `py_staged.sh`, not directly. Invoked by
+via py_staged.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

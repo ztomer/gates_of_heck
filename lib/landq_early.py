@@ -31,6 +31,14 @@ reds the rest within the same lander pass: the brief's bound, "within a minute o
 
 COST (measured 2026-11-18, the GOH.EARLYCONFLICT changelog): tens of ms per pending item, against
 the minutes an item waits in the queue. Pinned by tests/test_landq_early.py.
+
+The early conflict check (GOH.EARLYCONFLICT): after every lander pass (a land moved main) each
+pending land is replayed onto main in objects only (`git merge-tree --write-tree` per own commit,
+land.sh's row merge driver, `commit-tree`; no worktree moved, no gate) and one that conflicts is
+red at once with the batch's `conflict: did not stack on` record, its log naming the files and the
+commits on main that touch them; `--enqueue --land` does the same before filing, a red one recorded
+and never queued. Judged against main only: a conflict with a request still pending is no verdict.
+Invoked by `tools/landq.py`.
 """
 
 from __future__ import annotations

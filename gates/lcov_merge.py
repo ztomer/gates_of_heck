@@ -28,6 +28,9 @@ defects fixed:
 
 Usage: lcov_merge.py --floor N <parts-dir>   (parts named part-*.info)
 Exit codes: 0 pass | 1 below floor / nothing coverable | 2 malformed input.
+
+Helper: unions the lcov parts' line rows by best count (no span forgiveness). Called by coverage
+gate rust path. Invoked by via coverage gate.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

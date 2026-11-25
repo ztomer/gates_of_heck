@@ -15,6 +15,10 @@ GOH.CAD).
   more than `reach` mm (in XY) from one.
 
 Standard library only.
+
+Imported by `cad_bambu.py`: slicing warnings from result.json and the log, support enforcer volumes
+in an object's mesh frame, support moves read from G-code, and the region gate (support under each
+region, none beyond the reach).
 """
 
 from __future__ import annotations

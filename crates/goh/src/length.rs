@@ -5,6 +5,11 @@
 //! (a trailing newline terminates, it does not begin another). Unlike the
 //! markers scan, binary blobs are NOT skipped here — the reference counts
 //! whatever bytes a source-suffixed file holds.
+//
+// `goh length`: `--max N` file-length cap over source suffixes and build-script names; Markdown and
+// data are out of scope by its shape row (GOH.LINECAPDOCS), shebang-only scripts are a named gap.
+// Source: `crates/goh/src/length.rs`, `length_shapes.rs`. Pinned by
+// `test_file_length_and_markers.py`.
 
 use goh_tui::ERR;
 

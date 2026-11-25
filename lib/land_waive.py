@@ -29,6 +29,13 @@ in 24 h, 2.94 attempts per item):
 
 Never raises into a land: a waiver that cannot be computed waives nothing.
 Pinned by tests/test_main_red_waive.py and tests/test_rule_inflight.py.
+
+GOH.MAINREDWAIVE and GOH.RULEINFLIGHT: which reds are an item's own. `words` hands land.sh's runs
+`GOH_LAND_WAIVE` -- main's reds by reading id at main's tip and each item's fork, and the rule
+tests (`is_rule`) main gained after every item forked, less those a landed land of the item already
+carried (`warned`: one land's grace); `tests/_land_waive.py` xfails them against the run's real
+base; `fields` is the land record's `waived`. Invoked by `lib/land_prestep.py`,
+`lib/landq_ratchet.py`.
 """
 
 from __future__ import annotations

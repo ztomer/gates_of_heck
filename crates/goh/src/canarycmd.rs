@@ -7,6 +7,12 @@
 //! repo or `CARGO_TARGET_DIR`, `[under <root>]`; a concurrent gate's wrapper is never a leak;
 //! `--snapshot` records the survivors and their start-time stamps as JSON for a red push; `--log`
 //! takes the step's output.
+//
+// `goh canary`: The step wrapper plus the leak report, native (`lib/orphan_canary.py wrap`, same
+// contract): the step's code wins, a green step that left processes is 125, each survivor named
+// with `[under <root>]`, `--snapshot` JSON, `--log`, output to /dev/null otherwise. `local_ci.sh`
+// runs every step under it when the binary resolved. Pinned by `test_orphan_canary.py` (both
+// canaries).
 
 use goh_tui::ERR;
 use std::collections::BTreeMap;

@@ -7,7 +7,7 @@
 //! ERROR always fails. Below it, down to `.gatesrc`'s `GOH_SHELL_LINT_SEVERITY` (default
 //! `warning`), a finding is debt held by `shell_lint_seed.json` (`crate::shell_lint_seed`): it
 //! may only fall, and a stale entry fails. A missing shellcheck is a refusal, not a pass. Every
-//! spawn runs under the step ceiling (`crate::bounded`).
+//! spawn runs under the step ceiling (`crate::bounded`). `goh shell-lint`: `bash -n` + shellcheck over tracked `*.sh` + the extensionless files under `hooks/` (a `hooks/claude/*.py` is Python). An error always fails; warnings (`GOH_SHELL_LINT_SEVERITY`, default `warning`) are held to `shell_lint_seed.json`, a per-`file#code` count that may only fall (`shell_lint_seed.rs`, GOH.SHSEV). Pinned by `test_check_shell_lint.py`.
 
 use crate::shell_lint_scope::Files;
 use goh_tui::{ERR, OK};

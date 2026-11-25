@@ -28,6 +28,12 @@
 # whole tree is measured. Exits 0 when nothing Python is staged.
 #
 # The runner resolution is gates/_py.sh's, shared with py_gate.sh (GOH_PY_RUNNER, else .venv, else python3).
+#
+# `ruff check` + `ruff format --check` on the STAGED `*.py` only; the cheap half of `py_gate.sh` at
+# commit time. `--all` runs the same checks over every tracked `*.py` (minus `GOH_EXCLUDE`; none
+# tracked is red): the push half for a repo with no pytest suite, whose push never runs
+# `py_gate.sh` and so never saw a ruff bump's drift in files nobody staged. Args: `[--all] [repo]`.
+# Invoked by every commit, opt-in; `--all` at push.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

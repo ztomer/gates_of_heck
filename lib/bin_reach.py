@@ -36,6 +36,14 @@ nested class), and every runner when no profile is stored at all.
 THE AUDIT: one land in ten also runs the binary tests the reach left out (lib/bin_reach_audit.py).
 GOH_BINREACH=off chooses every runner again.
 Pinned by tests/test_bin_reach.py.
+
+GOH.BINREACH: at the ENQUEUE only, a Rust change's binary tests by their stored profiles' reach:
+each `profstore` key's profiles read once (`llvm-profdata show --all-functions`, cached in `<reuse
+root>/profreach/`, a ship key mapped back by its `index.json`), a test's reach the union over keys;
+a change reaches its file, every file naming it and, transitively, every reader of a constant of
+those (`touched`; a macro or an unplaceable path narrows nothing). Always chosen: a test with no
+stored profile, an unread symbol, a file whose nodes its source cannot tell; left out: a node the
+suite records measured starting no goh. `GOH_BINREACH=off`.
 """
 
 from __future__ import annotations

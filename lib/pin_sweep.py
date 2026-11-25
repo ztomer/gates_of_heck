@@ -41,6 +41,19 @@ and its profile rows (`<result>.sweep.timings.jsonl`) in the table as step `swee
 but pushed also goes to the estate's ledger (ledger_path(), beside the estate audit's state), which
 the next `goh wf-pin` listing reads to name each repo still holding an unpushed pin commit with its
 log, and the next ship's sweep pushes it: no pin commit is left unpushed in silence.
+
+The consumers' pin PUSHES out of goh ship (GOH.PINPUSHGATE, ruling 2026-11-15: v0.124.0's install
+was 2037 s, 2010 s of it consumer push gates): `start` records a sweep beside the ship result
+(`<result>.sweep.json`) and detaches `supervise`, which waits for the ship to return (bounded),
+runs `run` under `tools/load.py` (a gate's slot place, a deadline, reaped by the supervisor) and
+names what the run never reached; `run` pushes each through its FULL push gate one at a time, and a
+sweep registered after it (`pin_sweeps.json`, `register`/`newer`/`older`) takes over a repo it
+lists (`superseded`) while `supervise` starts no gate until every older sweep has ended
+(GOH.LOADSOURCE), each gate's log kept (`<result>.sweep.pushes/`), each outcome written as it ends,
+profile rows `push WHERE` in `<result>.sweep.timings.jsonl`; every outcome but pushed goes to the
+ledger beside the estate audit's state (`pin_push.json`), which the `goh wf-pin` listing names;
+`lines`/`say`: the sweep's rows on `goh ship --status`, apart from the install. Pinned by
+`test_ship_profile.py`.
 """
 
 from __future__ import annotations

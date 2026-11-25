@@ -8,6 +8,13 @@ record_suite, `full_instrumented`); and `reuse.py full-suite` -- the release kit
 (tools/release_goh.sh) -- asks `full_suite` here, which refuses a tip whose full record drove the
 plain binary. Split from lib/reuse.py for its line cap; it reads the `carry` path's record through
 that module only.
+
+GOH.COVCARRY (the owner's term 2 for the coverage profile carry, D-0011): `full_suite(repo, sha)`,
+the fresh full INSTRUMENTED run a ship stands on -- the `carry` path's record of the tip's tree,
+`full` (nothing carried, nothing failed) and `full_instrumented` (that whole judgement drove the
+coverage step's instrumented binary; `instrumented` alone says some run on the tree did, a carrying
+land's too: GOH.PROFKEYMISS); a plain full run is refused. `reuse.py full-suite` (the release kit's
+check, `tools/release_goh.sh`) and the idle lander ask it.
 """
 
 from __future__ import annotations

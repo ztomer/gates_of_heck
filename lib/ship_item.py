@@ -11,6 +11,12 @@
   record, pid and state (lib/ship_lock.py, GOH.SHIPBISECTCOV).
 
 Each returns why the ship is refused, or None. Pinned by tests/test_ship_item.py.
+
+goh ship's refusals of what its LAST steps refused (GOH.SHIPITEM), asked before its first: an
+`--item` that `loopctl shippable ID --repo NAME` refuses (unknown, done, or another repo's;
+RM.MONITOR shipped three goh releases and only done refused) and an OLDER stock hook in the repo
+(`lib/hook_currency.py`, structural.sh's own reading), which the release's commits met after the
+push. Pinned by `test_ship_item.py`.
 """
 
 from __future__ import annotations

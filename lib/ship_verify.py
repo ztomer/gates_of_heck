@@ -12,6 +12,14 @@ after its steps never got a runner and judged nothing: `hosted CI unavailable`, 
 way (GOH.SHIPVERIFYCI); one job that ran a step and failed keeps the red a finding. The card
 reads the same run, so with an advisory CI its CI line is the one failing line it may carry.
 Pinned by tests/test_ship.py and tests/test_ship_ciwait.py.
+
+goh ship's verify step (GOH.CIWAIT): HEAD's hosted CI read ONCE through `loopctl ci`, never waited
+on -- red or unread fails, pending or throttled passes ADVISORY over goh's push gate (refused
+without one), as `loopctl done` reads it -- then the `loopctl verify` card, run on
+`ship_export.py`'s clean export of the shipped sha, whose CI line is the one failing line an
+advisory CI excuses. `reopen`: a ship failed AT verify, re-run by hand with `--verify RESULT`,
+resumes there (verify again, then done; the result reads ok, the first verify kept under `retried`,
+GOH.SHIPREVERIFY). Pinned by `test_ship.py`, `test_ship_reverify.py`.
 """
 
 from __future__ import annotations

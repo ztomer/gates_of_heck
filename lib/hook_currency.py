@@ -22,6 +22,23 @@ Askers: scripts/hooks_refresh.py and scripts/estate_audit.py (`stale`), lib/ship
 (`refused`), and structural.sh through gates/_hook_currency.sh, which runs this file:
 
     hook_currency.py --refused|--aging [--goh ROOT] [REPO]   # one `.githooks/<name>` per line
+
+THE reading of a stale stock hook (GOH.HOOKREFRESH, GOH.HOOKCURRENCYDUP): byte-identical to a stock
+copy goh once shipped (`retired_hooks.sha256`) or to the one install.sh recorded writing, and not
+today's -- exactly the hooks install.sh overwrites without `--force`, so a hook a repo edited is
+never called stale; only `.githooks` is read. A stale hook is REFUSED when some `exec` in it runs
+no script of the shared `gates/` and its entry is not `same-logic`, else AGING (warned). `stale`
+for `scripts/hooks_refresh.py` and `scripts/estate_audit.py`, `refused` for `lib/ship_item.py`, the
+`--refused`/`--aging` CLI for `gates/_hook_currency.sh`. Pinned by `test_hooks_refresh.py`.
+
+`retired_hooks.sha256`: digest of every stock hook ever shipped; a repo hook matching one is
+pristine to `install.sh`, and `structural.sh` refuses it, naming `install.sh "$PWD"`
+
+`hooks/`: stock `pre-commit` (only delegates, to `gates/commit_gate.sh`), `pre-push` (only
+delegates, to `gates/push_gate.sh`), `commit-msg` (`gates/commit_msg.sh`), and `post-rewrite` +
+`pre-applypatch` (one body: `gates/sequencer_gate.sh`, the marker check for rebase picks and `git
+am` patches, which run no pre-commit). Every file here is installed; `gates/doctor.sh` checks the
+same list.
 """
 
 from __future__ import annotations

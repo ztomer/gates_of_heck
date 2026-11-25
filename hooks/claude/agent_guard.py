@@ -63,6 +63,21 @@ is sent and the permission system decides exactly what it would have without thi
 
 It fails OPEN: input it cannot read, a rules file it cannot read, or a ledger it cannot write,
 never blocks a spawn.
+
+a Claude Code PreToolUse hook (matcher `Agent|Task`) and SubagentStop hook: a spawn must name model
+AND effort and declare them (`Model-choice: <model>@<effort> because <tags>`) as the rules file's
+`tiers` accept, else it is denied with the table; an allowed one gets the report contract
+(`Status:` first) appended once and a row in goh.db's `agent_spawns` (`hook_ledgers.py`) (a spawn
+on a tier the active profile's `pool_first` names -- every tier under max and pro, lookups only
+under ultra -- must also carry `Pool: tried <...>` or `Pool: unfit because <...>`: token-pool's
+`ask` before a Claude subagent), which SubagentStop completes with tokens, status and the report.
+Bounded exploration: a cheap-tier spawn runs on the cheap tier its prompt sha's parity picks
+(`explored: true`); the opus->cheap fraction is off until the owner turns it on, and nothing
+without `checkable` is ever routed down, nor to a `never` tier. The tables in force are a profile
+(pro, max, ultra: the rules file's `profiles`), the owner's declared one dropped one step when
+token-pool's Claude 7-day meter is low, stale or unreadable; every refusal names it and why
+(GOH.ULTRARULES). Fails open. Pinned by `test_claude_agent_guard.py`,
+`test_agent_guard_exploration.py`, `test_model_choice_profiles.py`.
 """
 
 from __future__ import annotations

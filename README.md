@@ -23,7 +23,7 @@
 Shared quality gates for Rust, Python, Swift, C++, and Kotlin projects. Runs locally via git hooks (`pre-commit` and `pre-push`) so you don't need a CI server.
 
 > Working here as an agent? Start at `AGENTS.md` (commands, layout, rules).
-> Script inventory: `docs/map.md`. Every `GOH_*` key: `docs/config.md`.
+> Script inventory: `goh map` (rendered from the tree). Every `GOH_*` key: `docs/config.md`.
 > Load-bearing invariants: `docs/contracts.md`. Adding a check:
 > `docs/new-checker.md`.
 

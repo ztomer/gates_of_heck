@@ -26,6 +26,12 @@ which run inside a suite already admitted.
 THE SEAM. GOH_MEM_READING names a file of `key=value` words (`avail_pct=5 swap_used_mb=40000
 mem_total_mb=65536`), read at every poll in place of the OS, so a test can fake a low reading and
 then lift it. Pinned by tests/test_mem_admit.py.
+
+Memory admission (GOH.MEMADMIT): a new gate (the gate slot's holder, before it takes a slot) and a
+suite with the gate slots off (`tools/pytest.sh`; one run by hand is admitted by a gate slot, which
+asks memory first, GOH.ADMITSUITE) wait while available memory is under `GOH_MEM_MIN_PCT` or swap
+is at `GOH_SWAP_MAX_PCT` of memory, bounded by `GOH_MEM_WAIT_MAX` and saying why; `GOH_MEM_READING`
+is the test seam.
 """
 
 from __future__ import annotations

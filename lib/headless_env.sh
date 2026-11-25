@@ -22,6 +22,8 @@
 #   env $(headless_env) ./bin/MyApp --render-one    # child stays offscreen
 #
 # Truthiness matches the Python convention: "", 0, false, no, off mean OFF.
+#
+# `GOH_HEADLESS=1` contract; `headless_require_live` exits 3 when enforced.
 
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/headless_env.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }

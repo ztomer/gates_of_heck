@@ -8,6 +8,10 @@ goh suite's: GATES_OF_HECK_SUITE_TMP is this TMPDIR, tests/suite_tmp.py) every l
 case is written ONCE per content into `goh_tmp()` and read by every later probe. Anywhere else (a
 real gate, a test with a TMPDIR of its own) they go in the probe's own directory and leave with it:
 a gate leaves nothing in the temp directory (tests/test_gate_temp_leaks.py).
+
+Lib of `_display_seam_probe.py` (GOH.FSCHURN3): the probe's case trees, written once per content
+under `goh_tmp()` and read by every later probe, instead of ~600 files made and removed by each of
+~50 probes a suite.
 """
 
 from __future__ import annotations

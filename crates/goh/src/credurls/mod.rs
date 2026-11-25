@@ -11,7 +11,7 @@
 //!
 //! The URL split is Python's `urlsplit`, reproduced: the measured table of
 //! remote-URL shapes in the retired `checks/_credential_urls_probe.py` (frozen in `tests/reference_kit.py`) is the spec, and
-//! `tests/test_credential_urls_native_parity.py` runs it through both.
+//! `tests/test_credential_urls_native_parity.py` runs it through both. `goh credential-urls`: A credential in a **git remote URL** — the class `check_no_secrets.py` cannot reach, because `.git/config` is untracked by definition. Pinned by `test_check_no_credential_urls.py`.
 
 use goh_tui::{ERR, OK, START};
 use std::path::{Path, PathBuf};

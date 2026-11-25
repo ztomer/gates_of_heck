@@ -22,6 +22,14 @@
 # suite needs that export's binary, so there the export is the view.
 #
 #   staged_guards.sh [<repo>]   # commit_gate.sh runs it for every repo; exits 0 when nothing is due
+#
+# A repo's SOURCE GUARDS at commit: every tracked pytest file with a `# goh-reads-staged:
+# <pathspec>...` line (several lines are one list; none means every commit) runs over the index
+# (`goh_index_view`; a goh commit's own staged-tree export) when the commit stages a file a
+# pathspec matches, or the test file itself. A test that reads the repo's source text is a check of
+# the staged files, and lived only at push: goh's `test_config_schema.py` (GOH.CONFIGKEYCOMMIT) and
+# token-pool's widget-defaults guard (GOH.SWIFTGUARDCOMMIT). `commit_gate.sh` runs it for every
+# repo; it exits 0 at once where none is declared. Args: `[repo]`. Invoked by every commit.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

@@ -45,6 +45,18 @@ reused a consumer's doctor or structural verdict. DATA is the one declaration of
 reads of goh's own tree outside CODE_PARTS (tests/test_step_data_key.py finds every goh-rooted read
 and holds this to it, both ways): the whole-content key keys `data_files`, and run_closure adds a
 reader's data to its closure.
+
+The run rule (GOH.RUNRULEROOTS): the file a shell script's `$VAR/x.sh` names, placed only through a
+DECLARED root -- the script's own directory or `SELF_VARS`, a variable it assigns from its
+directory or a root (`source_closure.assigned`), or `ROOT_VARS` (GOH_DIR GOH_ROOT GOH
+PROVEN_GOH_ROOT); a `FILE_ROOTS` name, declared as its file's own directory (`gates/_goh_bin.sh`'s
+`$here`), the file known by its path in the tree it is read from, GOH_DIR another tree or not
+(GOH.FULLKEYSCRIPTS); any other variable is a hole. `run_closure` is the proven step closure's run
+edge (re-exported by `gate_identity.py` for `step_closure.py`); it and `rust_cov_scripts.py` both
+refuse (LookupError) a hole the shared `DECLARED` table does not name (GOH.STEPCLOSUREREFUSE), a
+script path, or a `source` word `source_holes` cannot place (GOH.FULLKEYSCRIPTS); the coverage key
+refuses a declared root to no file too. `CODE_PARTS` is goh's code, the parts every proven key mode
+reads (`gate_identity.PARTS`). Pinned by `test_run_rule_roots.py`, `test_proven_closure.py`.
 """
 
 from __future__ import annotations

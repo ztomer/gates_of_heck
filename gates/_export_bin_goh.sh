@@ -10,6 +10,12 @@
 # the binary and the source it runs agree. The resolver asks git for the commit's stamp, which an
 # export cannot answer: the live checkout is GOH_LIVE_ROOT, else the one that made the export
 # (`.goh-live`). Pinned by tests/test_ship_pinned.py.
+#
+# `bin/goh` of every HEAD export (C4): `_from_head.sh` copies it in, with `.goh-live` naming the
+# checkout that made the export. It runs the native build of the export's own commit through
+# `_goh_bin.sh`, GOH_DIR at the export, so a step under a pinned `goh ship` (a release kit, a
+# pre-push gate) or a leaked export GOH_DIR finds a goh that matches its source. Never run from the
+# checkout. Invoked by `_from_head.sh` (copied into each export). Pinned by `test_ship_pinned.py`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_export_bin_goh.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }

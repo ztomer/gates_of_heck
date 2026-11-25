@@ -2,7 +2,7 @@
 
     goh budget gates [--json]
 
-The first step of the CIP method (docs/map.md, under tools/gate_profile.sh; CLS.CIPROFILE): which
+The first step of the CIP method (`goh map gate_profile`; CLS.CIPROFILE): which
 repo's push gate is slow, and on which check. Read only, from what this machine already recorded:
 
 * the ESTATE is the registry `install.sh` writes (lib/estate_registry.py); a registered repo with
@@ -15,6 +15,13 @@ repo's push gate is slow, and on which check. Read only, from what this machine 
 
 TARGET is the CIP one: 10 min or less at normal load (ARM, lib/budget.py), aim for 5. Nothing is
 gated and nothing is backfilled (`goh budget` itself backfills). Pinned by tests/test_gate_times.py.
+
+`goh budget gates [--json]` (CLS.CIPROFILE): every estate repo (the registry, `estate_registry.py`)
+by its NEWEST `push` ledger row, slowest first: wall, load at start, passed or not, against the CIP
+target (10 min, aim 5); under each, the `top_steps` of its newest push row that carries them (dated
+when older than the wall), else `not recorded`; then every registered repo with no push row. Read
+only. The checks are there because `gates/push_gate.sh` times its own steps into a file of its own
+when no `GOH_TIMINGS` was handed to it (removed after the row).
 """
 
 from __future__ import annotations
@@ -107,7 +114,7 @@ def render(snap: dict) -> str:
     for line in snap["unreadable"]:
         out.append(f"⚠ estate registry line not read: {line}")
     out.append(
-        "→ profile one repo per check: tools/gate_profile.sh <repo> (the CIP method: docs/map.md)"
+        "→ profile one repo per check: tools/gate_profile.sh <repo> (method: goh map gate_profile)"
     )
     return "\n".join(out)
 

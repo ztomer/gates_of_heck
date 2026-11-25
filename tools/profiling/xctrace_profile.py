@@ -12,6 +12,10 @@ Every thread, process, weight, backtrace, frame and binary in it is written in f
 streamed and each row cleared once read: an all-processes recording exports to hundreds of MB.
 
     xctrace_profile.py tp.xml --process MyApp --under readNow --tree 6
+
+`tools/profiling/`: the generic trace ranker only (app harnesses live in their repo; pinned by
+`test_profiling_generic.py`). `analyze_trace.sh` + `xctrace_profile.py` rank any Time Profiler
+trace (the `time-profile` export, id/ref resolved, streamed); pinned by `test_xctrace_profile.py`.
 """
 
 from __future__ import annotations

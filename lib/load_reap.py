@@ -49,6 +49,29 @@ BURNING a core on a busy loop. Four questions, and none of them alone is enough:
 This is the RECORDED EXEMPTION too, and the second one: a name lookup feeds it (`pgrep`), the
 lookup and the kill sit on ONE line, and its reason is in `kill_by_name_allow.json`. The lookup
 returns CANDIDATES and nothing else; every candidate is read back, and the four questions decide.
+
+A registered orphan (ppid 1) is killed; a spinner with a LIVE parent is an experiment in progress
+and is kept; a pid whose start time no longer matches the record is dropped, not killed; a process
+no registry names was never ours. The SECOND shape (2026-10-20): a registry can VANISH -- it lives
+in the experiment's directory, and that directory is pruned -- so the backstop also recognises the
+house's own spinner shape, orphaned only, and only while the owner the release pipe names is gone.
+The THIRD shape (2026-10-21): twenty-four HAND-ROLLED spinners burned four cores each for four and
+a half hours, and the second shape knew only the house's own command line, so it left every one of
+them alone. So the backstop asks a shape it can NAME without owning it, and asks four questions:
+the parent is 1 (nobody will ever reap it), it has BURNED (its CPU time is over the floor), it is
+STILL burning (the CPU time grew between two samples, so a worker that finished is left alone), and
+the code a SHELL runs contains a busy loop (the inline `-c` argument, or the script the command
+line names, read as CODE -- a quoted loop is text). Both questions need a name lookup, which is the
+RECORDED EXEMPTION in `kill_by_name_allow.json`: the lookup and the kill sit on ONE line, so the
+house's rule sees them, and every candidate is read back and asked its questions before it is
+touched. Kills by PID, never by name. A registry pass is two phases: the kills (seconds per pid)
+run OUTSIDE the registry lock, from a plain read; the prune runs INSIDE it, on a re-read
+(`load_registry.settle`), so a spinner the tool registered meanwhile is kept and a registry it
+removed meanwhile is not brought back. A slow machine BLINDS a shape, never ends the pass
+(2026-10-25: eleven passes died on a `pgrep`/`ps -ax` timeout): a lookup that times out raises
+`Blind`, the minute job runs each shape alone, states the blind spot and exits 0; a per-pid read
+that times out is UNKNOWN, and an unknown never kills, drops an entry or calls an owner gone; any
+other fault in a shape is reported after the rest ran, exit 1.
 """
 
 from __future__ import annotations

@@ -40,6 +40,22 @@ that read before the tool removed the file brought a dead experiment's slot back
 mutation of the load directory -- `write`, `create`, `remove` -- takes the directory's lock
 itself, and a read-modify-write holds `locked()` across its re-read and its write. The lock is
 the default, not a habit: a writer cannot mutate the registry without it.
+
+The load registry: the record of who owns which spinner, and the facts a reaper needs (a pid is not
+an identity -- the process's START TIME is recorded with it, so a reused pid is dropped, never
+killed; a pid's PARENT is the orphan signal: 1 means the kernel re-parented it to launchd). One
+JSON file per experiment in the load directory (`GOH_LOAD_DIR`), taken with an exclusive create so
+two experiments never share a slot. It also holds the house's ONE definition of the spinner:
+`SPINNER_COMMAND` (the command a spinner runs), `RELEASE_NAME` (a release pipe's name carries the
+owner's pid) and `SHAPE` (the whole command line, anchored at both ends, matched exactly -- a
+prefix or a mention is somebody else's process). ONE LOCK (2026-10-25): the registry has two
+writers (the tool and the backstop), so every mutation of the load directory -- `write`, `create`,
+`remove` -- takes the directory's flock (`.registry.lock`) itself, re-entrant within a process so
+the tool's signal-handler cleanup cannot deadlock on its own hold; `settle` is the backstop's
+read-modify-write, a re-read under the lock that drops exactly the entries the pass judged, and
+removes a registry naming no spinner only when its owner is gone too. A load directory inside a git
+work tree (a `.git` in it or above it) is REFUSED before anything is created there (`checked`,
+`InWorkTree`; GOH.STRAYLOCK: a stray `.registry.lock` at the goh root held every goh item).
 """
 
 from __future__ import annotations

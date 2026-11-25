@@ -6,6 +6,11 @@ the plant lands in, and runs the checker. The owner's `GOH_EXCLUDE` belongs here
 fact about how the corpus is judged: app_updates vendored a crate whose docs carry a dead anchor,
 its own gate exempts the tree, and the sweep -- running the check bare -- called the corpus "NOT
 clean" and went red on a repo that was green (2026-10-08).
+
+How `check_estate_corpus.py` builds a corpus and runs a checker over it, as the corpus's OWNER
+would: the scratch copy, the file the plant lands in, and the owner's `GOH_EXCLUDE` (read from its
+`.gatesrc` without running it) passed to every house check whose `--help` takes `--exclude`. A
+plant never lands in an exempt file. Pinned by `test_estate_corpus.py`.
 """
 
 from __future__ import annotations

@@ -25,6 +25,12 @@
 #   once and ran them 29 times. So they are one step of their own (GOH_RUST_GROUPS=repo) and each
 #   crate runs only its own groups (GOH_RUST_GROUPS=crate,coverage).
 # * GOH_RUST_JOBS (.gatesrc, default 4) crates at once.
+#
+# `rust_gate.sh --each-crate [repo]`: the house Rust gate over EVERY tracked top-level crate (a
+# nested testkit manifest is its crate's business), biggest first, `GOH_RUST_JOBS` at a time,
+# through `local_ci.sh`'s scheduler -- and the repo-wide scans ONCE (`GOH_RUST_GROUPS=repo`), not
+# once per crate. Replaces a private server workspace's hand-rolled `xargs -P 4`. Invoked by
+# opt-in. Pinned by `test_rust_each_crate.py`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

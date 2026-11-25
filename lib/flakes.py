@@ -30,6 +30,14 @@ since the test's last filing that are at most DAYS old, two or more, file `GOH.F
 through `loopctl file --json` (lib/reuse_fault.py `_file`: the GOH_LOOPCTL and GOH_LOOP_QUEUE
 seams) carrying them, and the filing is marked, so one test files one item. `goh flakes` lists
 the register. Pinned by tests/test_flakes.py.
+
+`goh flakes [--days N] [--json]`, the flake register (GOH.FLAKEREGISTER): every pass-on-retry -- a
+sampled reuse whose red fresh run went green again (`reuse_audit.py compare`: the proven step
+shadow, the pre-land set shadow, the release push sample) and a landing whose item went red on the
+same enqueued commit (`tools/landq.py`) -- is one appended record (test, repo, sha, load, both
+outcomes, logs) in `~/.local/state/goh/flakes/register.jsonl` (`GOH_FLAKE_DIR`); a test with two
+records in 14 days files `GOH.FLAKE<key>` once through `loopctl file`, carrying them, and the
+lander names the register entry. Invoked by `tools/landq.py`.
 """
 
 from __future__ import annotations

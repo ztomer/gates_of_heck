@@ -26,6 +26,16 @@
 //! WHAT IT NO LONGER DOES: judge only the commit's files. A finding in a file
 //! the commit does not touch is now a finding, because the leak it names is in
 //! the tree the commit produces -- which is the tree the step is about.
+//
+// `goh unreaped-spawn`: A TEST that spawns a child nothing reaps **on the panic path**. Its SCOPE
+// is the repository's whole TEST SCOPE at both tiers -- the tiers differ in where the files are
+// read from, not in how many there are: `--staged` reads the INDEX (the tree the commit produces),
+// full scope reads the WORKTREE. A guard is a CROSS-FILE contract (`tests/common/` defines it, the
+// other test files rely on it), and a scope of "the files this commit brings" could not see it in
+// either direction: it reported a file that USES a shared guard as an unreaped spawn, and it passed
+// a commit that BROKE one. Pinned by `test_check_no_unreaped_spawn.py`,
+// `test_check_no_unreaped_spawn_scope.py`, `test_no_unreaped_spawn_estate.py` (both tiers),
+// `test_unreaped_spawn_native_parity.py`.
 
 pub mod guard;
 pub mod lex;

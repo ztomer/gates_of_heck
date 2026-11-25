@@ -1,6 +1,11 @@
 """`goh ship`'s release preflights (split from tools/ship.py by concern, GOH.CAPHEADROOM): goh's
 changelog reading, then the repo's GOH_SHIP_PREFLIGHT, each run before anything is pushed; the
-first refusal stops the ship. Pinned by tests/test_ship*.py."""
+first refusal stops the ship. Pinned by tests/test_ship*.py.
+
+goh ship's release preflights, split from `tools/ship.py` (GOH.CAPHEADROOM): goh's changelog
+reading then the repo's `GOH_SHIP_PREFLIGHT`, run under the ship's bound before anything is pushed;
+the first refusal stops the ship. Pinned by `test_ship_preflight_audit.py`.
+"""
 
 from __future__ import annotations
 

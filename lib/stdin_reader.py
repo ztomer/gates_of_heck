@@ -44,6 +44,14 @@ The detector for the readers already hung is `hooks/claude/stdin_hangs.py` (`goh
 and it asks `reads_stdin` the same question of a live process's argv: one definition of a reader.
 A read BUILTIN has no process of its own (the shell is the reader); `shell_reads` names it in the
 text a blocked shell evals, for the detector to name the shell itself.
+
+The discard guard's refusal of a stdin reader nothing feeds (a filter whose argv names no input
+file, judged by ONE rule over each filter's argv grammar in `FILTERS`: `cat`, `grep`, `jq`, `sed`,
+`awk`, `sort`, `wc`, `head`, `xargs`, `tee`, ...; the read builtins; `python3 -`; `sh -s`;
+GOH.STDINFILTERS): the Bash tool feeds `< /dev/null` unless the command holds a heredoc, and then
+fd 0 is the harness's socket, which never closes; `cat > /tmp/x.py` beside a `python3 - <<'EOF'`
+hung 5h51m (GOH.STDINHANG). A heredoc, here-string, pipe or `<` on the command, or on the compound
+around it, feeds it. `reads_stdin` is also the stall detector's definition of a reader. Escape:
 """
 
 from __future__ import annotations

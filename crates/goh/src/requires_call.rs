@@ -24,6 +24,12 @@
 //! call deleted -- its docstring named it. An exemption goes STALE, and fails, when its file is
 //! gone, no longer calls X, or now calls Y. A rule that finds nothing to judge -- no file calls X,
 //! or no file matches -- is a floor (exit 2), never a pass: the pattern moved.
+//
+// `goh requires-call`: A Python file that CALLS X must also CALL Y, by rows in the TOML file
+// `GOH_REQUIRES_CALL` names; read from the AST (`ruff_python_parser`: the same 29,973 call sites as
+// Python's `ast` over 457 files); a stale exemption and an empty rule fail. Opt-in structural step.
+// Source: `crates/goh/src/requires_call.rs`, `requires_call_py.rs`. Pinned by
+// `test_check_requires_call.py`, `test_goh_structural.py`.
 
 use goh_tui::{ERR, OK};
 use std::collections::BTreeMap;

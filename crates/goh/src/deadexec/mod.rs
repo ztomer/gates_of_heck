@@ -14,6 +14,15 @@
 //! WIRING: a structural step in EVERY repo, and a hard gate at both scopes -- not a ratchet. Dead
 //! code after `exec` has one fix (delete it, or drop the first `exec`), it is rare, and the estate
 //! sweep that preceded this check found too few sites to justify a migration period.
+//
+// `goh dead-after-exec`: A statement after an `exec CMD` in the same block (case arm, `if`,
+// function, group, subshell, or top level) in any shell source (`crate::shellsrc`, the same scope
+// as early-exit-pipe): the `exec` replaced the shell, so the line never runs. shellcheck 0.11.0 is
+// silent on it; app_updates' gate.sh ran a second `exec` that never ran, so its full gate never
+// judged ROADMAP.md. Not findings: a redirect-only `exec >log 2>&1`, an `exec` joined by
+// `||`/`&&`/`|` or backgrounded or ended by `)`, and one bare `exit`/`exit N` after it (the
+// parse-guard). A HARD structural step in every repo at both scopes -- the estate sweep found no
+// site to migrate. Pinned by `test_check_dead_after_exec.py`, the table in `deadexec/tests.rs`.
 
 pub mod dead;
 pub mod parse;

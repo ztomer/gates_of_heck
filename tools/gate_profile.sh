@@ -4,7 +4,7 @@
 #   tools/gate_profile.sh <repo> [top]    # profile <repo>'s push gate on HEAD; nothing is pushed
 #   GOH_PROFILE_PROVEN=1 tools/gate_profile.sh <repo>   # keep the proven-step cache (default: off)
 #
-# Step 2 of the CIP method (docs/map.md, under this tool): `goh budget gates` finds the slow repos.
+# Step 2 of the CIP method (this header): `goh budget gates` finds the slow repos.
 #
 # Feeds gates/push_gate.sh the ref line git would, for a remote that has nothing (so no ref is
 # skipped as already-held), with GOH_TIMINGS set: every step of every nested gate appends one JSON
@@ -20,6 +20,24 @@
 #
 # The proven cache is OFF by default because the question is what the work COSTS; a profile of
 # cache hits measures the cache. Exit: the push gate's own code (the report prints either way).
+#
+# `tools/gate_profile.sh <repo>`: profile a repo's push gate on HEAD (nothing pushed) with
+# `GOH_TIMINGS` set; prints the slowest steps and per-label totals. THE CIP METHOD (CLS.CIPROFILE,
+# owner 2026-11-15: "add a ci profiling and optimization phase for each of the repos ... we need to
+# go fast"), one `CIP.<repo>` item per repo: 1. Find the slow ones from what is already recorded:
+# `goh budget gates` (`lib/gate_times.py`) prints every estate repo's newest push gate (wall, load
+# at its start, passed or not), its costliest checks, and the repos with no recorded run. It runs
+# nothing. 2. Profile the repo's push gate: `tools/gate_profile.sh <repo>`, which gates HEAD and
+# pushes nothing, each check timed with the load beside it (a Rust repo's steps divided by the
+# control run under the same load). Read the box's load while it runs; a figure taken at load 100
+# measures the box, not the gate (`goh budget`'s cpu-s trend is the regression judge). 3. Name the
+# top costs: the report's slowest steps and per-label totals (a 7 s step repeated in 29 crates is
+# one cost), each with seconds. 4. Target 10 min or less at normal load (`goh budget`'s ARM), aim
+# for 5. 5. Fix the repo-local costs in the repo (its tests, its `.gatesrc` steps, its build). File
+# each cost that is goh's (a house gate, the structural layer, the push gate's own work) as a goh
+# item; never work around it in the repo. 6. Re-run `tools/gate_profile.sh` and record the before
+# and after seconds and loads in the item's result; the push after the fix writes the ledger row
+# `goh budget gates` shows.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/../gates/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

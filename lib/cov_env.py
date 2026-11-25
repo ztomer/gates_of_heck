@@ -32,6 +32,12 @@ configuration (WHOLESALE, pinned by tests/test_rust_cov_env.py, so a new wholesa
 The suite's shape (tests/suite_home.py `shape`) is not keyed, by the owner's rule that the suite
 is no input of the measurement (GOH.RUSTCOVSKIP): it moves what is exercised, and the plain run
 of every reuse runs the whole suite in its own shape, so a red test is still red.
+
+The GOH_* the Rust coverage measurement can READ, by value (GOH.ONEVERDICTTREE): every GOH_ name
+the keyed files' bytes spell (`gate_identity.py rust`'s inputs, scripts and runner; a trailing `_`
+is a prefix) plus the suite's declared `CALLER_INPUTS` (`tests/suite_home.py`), less GOH_DIR,
+GOH_COV_* and the verdict-free keys; a suite that declares none keys every GOH_*.
+`WHOLESALE`/`BUILT` pin where a bare or built name appears.
 """
 
 from __future__ import annotations

@@ -22,6 +22,14 @@ branch goes back to its enqueued commit as any red item's does, and the phase ru
 rest, restacked without it. Main red, or a run with no verdict (a timeout, a node a tree lacks):
 nothing is evicted and the gate decides as before -- the phase removes only an item it proved red.
 Pinned by tests/test_landq_ratchet.py.
+
+A batch's ratchet phase (GOH.STACKRATCHETFIRST): before a stack of two or more lands gates, the
+stack's tip gets `goh land --check`'s run (`land_check.py` `run`, no diff coverage): the cheap
+steps (structural --full), the guard tests, and the whole-tree judges the pre-step chooses for the
+stack's diff (test_self_walk, the test_every_/test_no_ ratchets) -- minutes, where the gate is
+20-40. Red: the refused judges are re-run on each lower item's stacked tip and on main (a checkout
+of its own); the item whose own diff turns them red is red with its own log and evicted, and the
+phase runs again on the rest. Main red, or a run with no verdict, evicts nothing: the gate decides.
 """
 
 from __future__ import annotations

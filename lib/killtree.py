@@ -11,6 +11,9 @@ kill the WHOLE group (os.killpg SIGKILL, falling back to p.kill() where
 killpg is unavailable), then drain the pipes so no grandchild holding an fd
 can block the caller. subprocess.TimeoutExpired is re-raised unchanged, so
 every existing caller's except-clause keeps working.
+
+Stop whole process groups on timeout: `stop_group` is SIGTERM, a grace, then SIGKILL, so a git
+killed at a deadline removes its own lock files (GOH.GITKILL).
 """
 
 from __future__ import annotations  # lazy: a consumer may patch Popen (GOH.KILLTREEPOPEN)

@@ -41,6 +41,18 @@
 //! ship days away); before it the scan reads (the floor counts it) and judges nothing. The sites a
 //! consumer keeps are seeded in `dead_port_seed.json` (`crate::estate_seed`): seeded files warn,
 //! anything else is red.
+//
+// `goh dead-port`: A TEST whose "unreachable" endpoint is a literal port in 32768-65535 (macOS
+// 49152-65535 and Linux 32768-60999, the ephemeral ranges) on
+// `localhost`/`127.0.0.1`/`[::1]`/`0.0.0.0`: as `HOST:PORT`, a quoted host then the port, or Rust's
+// `Ipv4Addr::LOCALHOST, N`/`[127, 0, 0, 1], N` (GOH.DEADPORTSCAN, class EST.DEADPORT: ztools'
+// `http://127.0.0.1:59999` answered on a busy machine and refused its v0.124.0 pin push). Only test
+// code is read: the house test-path rule (`crate::unreaped::is_test_path`), Swift's `...Tests`
+// layout, and Rust `#[cfg(test)]` regions; a service port in non-test code is never judged. A port
+// below 32768 or read from a socket passes; `dead-port-ok: <reason>` escapes one line, and a bare
+// escape is a finding. Seeded in `dead_port_seed.json`, floor `GOH_DEAD_PORT_MIN_FILES`, judged
+// from its own grace end `deadport::OVER_FROM` (2026-12-07). The fix it names is
+// `docs/contracts.md` section 30. Pinned by `test_dead_port_native.py`, `deadport/tests.rs`.
 
 use crate::estate_seed::{self, Kind, Report, Sites};
 use regex::Regex;

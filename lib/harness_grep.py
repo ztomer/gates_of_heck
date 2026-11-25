@@ -20,6 +20,12 @@ THE LIFT. `goh shell-check` (SessionStart) runs the repro against the harness bi
 record says 0 for the binary in use now, the bug is gone and the refusal is lifted; a new binary
 (a Claude Code update) is unprobed and refused until the next shell-check. The escape is
 `# grep-vq-ok: <reason>`.
+
+The tool shell's `grep` is Claude Code's ugrep, whose `-v -q` exits 1 while a non-matching line
+exists (GOH.UGREPVQ, 2026-11-21: an `until ... Invoked by grep -vq OLD` wait ran 2 h 50 min). The
+Bash guard refuses a `grep` call with both -v and -q; `command grep` and `/usr/bin/grep` pass; `goh
+shell-check`'s record (`$XDG_STATE_HOME/goh/harness_grep.json`, `toolshell/grep_probe.rs`) of exit
+0 for the binary in use lifts it. Escape `# grep-vq-ok: <reason>`.
 """
 
 from __future__ import annotations

@@ -25,6 +25,12 @@ is not gone yet; a zombie is), then SIGKILL to the survivors, each signal throug
 `pid_owner.signal`, which refuses a pid that names another process by then.
 
 Exit: 0 every target stopped or already gone; 1 something outlived SIGKILL; 2 refused or usage.
+
+`goh stop TARGET...` (GOH.WAITSTOP): stop only what the CALLER started -- a descendant of the shell
+that ran it, or a stamp `goh stop --stamp $!` printed while it was one -- with its descendants,
+TERM then `--grace` then KILL, each signal through `pid_owner.signal`; every target judged first,
+one refusal stops nothing (exit 2), a reused stamp is gone and signals nothing. Invoked by
+`crates/goh/house_scripts.tsv`.
 """
 
 from __future__ import annotations

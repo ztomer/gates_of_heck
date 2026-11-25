@@ -1,6 +1,12 @@
 """`goh ship`'s version and git plumbing (split from tools/ship.py by concern, GOH.CAPHEADROOM): the
 newest release tag, the next version (git-cliff's answer, or --version / --bump), and the
-environment a step runs in without git's repository bindings. Pinned by tests/test_ship*.py."""
+environment a step runs in without git's repository bindings. Pinned by tests/test_ship*.py.
+
+goh ship's version and git plumbing, split from `tools/ship.py` (GOH.CAPHEADROOM): the newest
+v-tag, the next version (git-cliff's `--bumped-version`, or `--version`/`--bump`), `Refused`, and
+the environment without git's repository bindings. Pinned by `test_ship_firsttag.py`,
+`test_ship_ciwait.py`.
+"""
 
 from __future__ import annotations
 

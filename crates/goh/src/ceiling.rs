@@ -6,6 +6,10 @@
 //! under the cap anyway, waived by nature (`GOH_LINE_UNBOUNDED`), or
 //! carries a ceiling in the ratchet baseline — an exemption from the cap
 //! is not an exemption from every bound.
+//
+// `goh ceiling`: Every file exempted from the line cap (`GOH_LINE_EXCLUDE`) must still have a
+// CEILING in the baseline, so an exemption is a bound and not a blank cheque. Pinned by
+// `test_check_exclusion_has_ceiling.py`, `test_goh_ceiling_parity.py`.
 
 use goh_tui::{ERR, OK, START, WARN};
 use std::collections::BTreeSet;

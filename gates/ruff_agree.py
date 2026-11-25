@@ -24,6 +24,13 @@ its unpinned pip row, and the split surfaced as a coverage loss. .github/workflo
 installs one ruff, GOH_CI_RUFF, and asks this in that provisioning step, so a runner that carries
 another ruff fails there, named. tools/pytest.sh gives goh's own pin (gates/ruff_house.py RUFF,
 GOH.RUFFVERSION), so the local suite and the runner hold every ruff to the same release.
+
+Every way the machine runs ruff (`"$GOH_PY" -m ruff` and each distinct `ruff` on PATH) reports ONE
+version, or exit 1 naming each with its version and its upgrade (GOH.TOOLHYGIENE: 0.17.0 beside
+0.17.4 made a verdict depend on the invocation). `--pin VERSION`: every one IS that release
+(GOH.CIRUFF; the hosted workflow installs one ruff, `GOH_CI_RUFF`, and asks this in its
+provisioning step). Invoked by tools/pytest.sh, before the suite; `.github/workflows/gate.yml` with
+`--pin`.
 """
 
 from __future__ import annotations

@@ -41,6 +41,17 @@ from the cadence (2026-11-18/19): 48 instrumented lands in 23 h, a median 25 min
 min), so drift is red within about 75 min of lands; 9% of 150 main commits touched a build input
 and are never owed, so a row owed and unmatched is drift or a pruned source -- one or two of those
 in a row is noise, three is the path not working.
+
+GOH.COVCARRY3 (part c of D-0011's profile carry): each binary-running test's merged profile from
+the instrumented run (`tests/_prof_record.py`), kept under (repo, tree, tools, `bin_id`: the
+content hash of `$GOH_COVERAGE_BIN_DIR`'s executables); a later land whose diff leaves the binary's
+bytes alone carries such a node tools/affected_tests.py does not choose, its stored profile linked
+where the report reads it and kept again under the new tree (`tests/_land_verdicts.py` `_carry`).
+`GOH_PROFCARRY_TESTS=off` stores and carries nothing; the newest 8 trees are kept. Its
+`ledger.jsonl` (GOH.PROFKEYMISS) holds a row per instrumented recording run (tree, binary, key,
+kept, owed, matched): the third owed land in a row that matched none of its source's stored
+profiles is red, naming both binaries. Invoked by `tests/_prof_record.py`,
+`tests/_land_verdicts.py`.
 """
 
 from __future__ import annotations

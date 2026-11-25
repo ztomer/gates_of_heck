@@ -31,6 +31,24 @@ at load 0.7 on 16 cores while the Mac sat at 72 on 16). Only the land PRE-STEP s
 * WHEN. Only the land gate's whole run (the carry's GOH_LAND_VERDICTS_REUSE named, no narrowing),
   never the coverage step's instrumented run (a remote test leaves no Mac profile), never one shard
   of hosted CI's suite, never under GOH_LAND_REMOTE=off. The glue is tests/_land_remote.py.
+
+The land GATE's remote share (GOH.REMOTEGATE): the gate's whole suite run (tests/_land_remote.py,
+its pytest glue) sends the Linux-safe test files it still has to run after the carry to the worker
+through `remote_lane`'s own split, launcher and junit reading; their files leave the Mac's run and
+the worker's verdict counts for the land (a failure there is re-run on the Mac: red on both is red,
+Mac-green is a disagreement; a fallback runs them on the Mac). The worker's passes are counted as
+another verdict's, so the store's record is never `full` and the ship reruns everything on the Mac.
+One gate in ten is a SHADOW (`GOH_REMOTE_SHADOW`): the Mac runs the files too, and a module the
+platforms disagree on joins goh.db's `linux_unsafe` (`durations.py`), which `remote_lane.split`
+reads.
+
+`lib/remote_lane.py`: The land pre-step's remote share (GOH.REMOTEWIRE): the chosen tests whose
+module `tests/linux_safe.txt` records run on the worker (`goh remote-shard --no-local`) beside the
+Mac's, skip parity against `tests/mac_skips.txt`; the share sized each land from both sides'
+measured pace (`Rates`, GOH.REMOTESHARE); passes kept apart in the record (`remote`), so the gate
+reruns them on the Mac; a fallback or a worker-only failure is run on the Mac, whose verdict
+stands. `record LINUX.xml [MAC.xml]` rewrites both lists (the Mac need run only the files the
+worker skipped in). Invoked by `lib/pre_reuse.py`.
 """
 
 from __future__ import annotations

@@ -6,6 +6,10 @@ outside any root a run owns, removes or counts (GOH.FSCHURN3: `goh-empty-scope.*
 tempfile maker in checks/ names `dir=goh_tmp()`, which tests/tmp_root_lint.py holds. Loaded from
 lib/ by path, so lib/ is never put on a check's import path (its module names would shadow the
 check's own).
+
+Lib: `goh_tmp()` for checks/, lib/tmp_root.py loaded by path (GOH.FSCHURN3): every tempfile maker
+in checks/ names `dir=goh_tmp()`, so a probe's or sweep's scratch is never made in the bare
+`$TMPDIR` outside a run's roots. Pinned by `test_tmp_noindex.py`.
 """
 
 from __future__ import annotations

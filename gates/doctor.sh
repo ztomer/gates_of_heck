@@ -10,6 +10,9 @@
 # gate reads. This script checks each layer and names the fix.
 #
 # Exit 0 when healthy (warnings allowed), 1 naming each hard problem.
+#
+# Wiring diagnosis for one repo: GOH resolution, hooksPath, unknown `.gatesrc` keys (derived from
+# `config.md`), toolchains. Exit 0 healthy / 1 problems named. Invoked by `gate.sh --doctor`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

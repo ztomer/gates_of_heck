@@ -20,6 +20,19 @@
 //! WHERE IT WRITES (GOH.GRACEFWD): where the entry's repository keeps its other seeds
 //! (`route.rs`). An entry for a repository whose seeds are tracked goes to that repository's own
 //! tracked file (left for it to commit) and leaves the store; every other entry goes to the store.
+//
+// `goh seed-add`: The private store's one ADDING writer (GOH.GRACEEND): `goh seed-add --file
+// <kind>_seed.json PENDING.json` merges a sweep's pending entries (a seed file's shape, or the bare
+// `entries` array) into `$GOH_SEED_DIR/<file>` (else the XDG/HOME store), under the lock on the
+// store directory `goh seed-settle` takes. Every entry is checked first (full root commit, path,
+// count above 0, reason, none twice); one bad entry writes nothing. A missing file is created from
+// the input's `why`; an entry the store holds is replaced and named with both counts. The judge
+// still refuses a store entry for a repository whose CI runs goh (GOH.STORECI). An entry goes where
+// its repository keeps its seeds (GOH.GRACEFWD, `estate_seed/add/route.rs`): routed by root commit
+// to the repository the command runs in or one the estate registry names, it is written to that
+// repository's own tracked file when the repository tracks a `<kind>_seed.json` at its root or its
+// CI runs goh (a store duplicate moves out), else to the store. Pinned by `estate_seed/add.rs`
+// tests, `tests/test_seed_add_home.py`.
 
 mod route;
 

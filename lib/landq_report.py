@@ -18,7 +18,7 @@ A birth time is no start when the log was born BEFORE the request (a log a later
 or AFTER the finish: that attempt's queue wait, gate and run are UNKNOWN, counted in `unknown`,
 never summed as a negative or a guess. Rows are per repo and UTC day of the finish.
 
-JSON shape (`--json`; docs/map.md): {"since", "unloaded_s", "rows": [row...], "totals": row,
+JSON shape (`--json`): {"since", "unloaded_s", "rows": [row...], "totals": row,
 "unclassified": [{item, repo, day, log}], "gate_steps": {step: n}}; a row is {"repo", "day",
 "attempts", "landed", "red", "cause", "queue_wait_s", "gate_s", "slot_wait_s", "run_s", "load_avg",
 "gates", "gates_per_landed", "k", "unknown", "remote"} (lib/landq_remote.py). `gates` is the land

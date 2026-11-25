@@ -19,6 +19,13 @@ AN ENTRY IS A GATE IN FLIGHT only while:
     identity, and a number the kernel handed to a later process is not the gate that registered;
   * it is not an ANCESTOR of the reader -- a gate that runs load.py inside its own suite chose
     that load (and this repo's suite, run by its own pre-push, would otherwise refuse itself).
+
+The machine's "gate in flight" registry, read: the live entries of `bench_lock.sh`'s `gates/`
+(stage, repo, pid, elapsed), and the held gate slots (`slot_holders`: a `load.py 0` gate joins no
+bench lock). A dead pid, a recycled one (the process started after the entry was written) and the
+reader's own ancestors are not gates; dead and recycled entries are pruned. `tools/load.py` refuses
+to starve one (GOH.LOADX: 15 spinners at load 137 beside a private consumer's pre-push,
+2026-11-01).
 """
 
 from __future__ import annotations

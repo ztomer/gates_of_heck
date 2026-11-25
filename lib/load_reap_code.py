@@ -5,6 +5,11 @@ shape asks whether an orphan is burning a core on a busy loop, and these are the
 question rests on -- `ps`'s CPU-time format, and a command line's shell code (an inline `-c`
 argument, or the script file it names), which lib/busyloop.py then reads as code. Nothing here
 spawns, signals or decides; lib/load_reap.py does. Pinned by tests/test_load_burning.py.
+
+What a process RUNS, read from `ps` (split out of `load_reap.py` for the 500-line cap,
+GOH.STRAYSIGNAL3): `cpu_seconds` (`ps`'s `[[dd-]hh:]mm:ss` CPU time) and `shell_code` (the code a
+shell in a command line runs: its inline `-c` argument, or the script file it names), the pure
+readers the backstop's third shape rests on. Spawns, signals and decides nothing.
 """
 
 from __future__ import annotations

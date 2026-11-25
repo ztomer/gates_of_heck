@@ -23,6 +23,11 @@ STALE-SAFE. A marker counts only while its pid is alive and it is younger than i
 (the pre-step's bound plus a margin): a killed enqueue, or a pid the system reused, leaves a
 marker every reader treats as gone, and the reader deletes it. Pinned by
 tests/test_landq_inflight.py.
+
+An enqueue in its pre-step, visible to the lander and `--wait` (GOH.IDLEYIELDPRE): `mark` writes
+`<landq>/enqueuing/<pid>-<item>.json` until the enqueuing process exits, `live` lists the ones
+whose pid is alive and bound unpassed (a stale one is deleted). The idle full suite stops for one
+(`deferred`). Invoked by `tools/landq.py`.
 """
 
 from __future__ import annotations

@@ -23,6 +23,15 @@ They are found where they would act: at the head of the argv, after the prefixes
 operand (`env [-i] [VAR=val...]`, `sudo [-u user...]`, `nohup`, `time`, `command`, `exec`,
 `timeout DUR`, `caffeinate [-dimsu]`), after another priority wrapper, and inside a shell's `-c`
 script (`sh -c 'taskpolicy -b x'`), whose simple commands are each judged.
+
+ONE answer for `tools/load.py` and the Bash guard (G1f, 2026-10-25: `load.py 32 -- taskpolicy -b
+loop.sh` ran 10h14m, and a `taskpolicy -b` pytest under 16 spinners was killed by its deadline).
+Such a command under N normal-priority spinners gets a core only when one is idle, and the spinners
+exist so that none is: starved by construction. It names `taskpolicy -b` / `-c
+background|utility|maintenance`, `nice` and `renice` at `NICE_FLOOR` (10) or more in every
+spelling, and `chrt --idle`, found after the prefixes that run their operand (`env`, `sudo`,
+`nohup`, `time`, `timeout`, `caffeinate`, ...) and inside a shell's `-c` script. The escape is
+`--background-ok <reason>`; an empty reason excuses nothing.
 """
 
 from __future__ import annotations

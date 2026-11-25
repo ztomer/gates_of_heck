@@ -21,6 +21,13 @@ repository's own index is never written.
 With no path it lints what a lane changed: every tracked file that differs from HEAD and every
 untracked file git does not ignore, so the one entrypoint needs no list typed by hand. A finding the
 file carried at HEAD is labelled `baseline` by the gate's own lint step: it is not the change's.
+
+`goh lint <path>...`: the commit gate's verdict on these paths before the commit
+(GOH.CLASS.PARITY). No second implementation: `gates/commit_gate.sh` itself, over the index `git
+commit -- <path>...` would commit (a temporary index file, carried as the hook carries one), under
+`GOH_COMMIT_LINT=1`, which skips only the hold and landed-only refusals and the seed settle. Pinned
+by `test_goh_lint.py` (same verdict as the real commit on a planted E501, a planted SIM105 and a
+clean file).
 """
 
 from __future__ import annotations

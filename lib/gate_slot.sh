@@ -10,6 +10,24 @@
 #         # the wait and its end. class: short | pre | land | ship | lane | work (lib/gate_lanes.py CLASSES,
 #         # GOH.SLOTFAIR, GOH.SLOTPRIORITY);
 #         # none given, GOH_GATE_CLASS (gates/commit_gate.sh sets `short` for the gate.sh it runs),
+#
+# `gate_slot.sh`, `gate_slot.py`, `gate_lanes.py`: The machine-wide gate slots, the slots of THE
+# ONE ADMISSION every gate takes (`admission.py`): a counting semaphore of `GOH_GATE_SLOTS` flock'd
+# files under `~/.cache/goh/slots`, taken by `push_gate.sh` before its export, `tools/load.py 0` (a
+# land's gate, `admit_here`), `local_ci.sh`, `round.sh`, the starter gate.sh, and `structural.sh
+# --full` on behalf of the `tools/gate.sh` that ran it (`gate_slot_acquire_for_caller`: held until
+# that gate.sh exits, watched by kqueue on macOS, by a pidfd on Linux, by the pid poll where the
+# kernel has neither -- the mechanism is NAMED and reported in the handshake, because a branch that
+# has never run is the one that is wrong). The holder is a Python process that ends with the gate's
+# shell (a SIGKILL frees the slot; a daemon cannot inherit it); a waiting gate names each holder
+# and how long it has waited; a gate nested in a holder (`GOH_GATE_SLOT`, else by ancestry) takes
+# none -- and the ancestry INCLUDES pid 1, because in a container the `tools/gate.sh` that holds
+# the slot IS the container's init process. FAIR (GOH.SLOTFAIR): a gate's class (`GOH_GATE_CLASS`:
+# `short` from `commit_gate.sh`, `ship` from `push_gate.sh` and `land.sh`, else `work`) picks its
+# lane -- the commit gate's own `short-<i>` slots, which no long gate takes -- and its rank
+# (`gate_lanes.py`); each waiter holds a flock'd ticket in `waiting/`, and only the first live
+# ticket (rank, then arrival) takes a freed slot, a dead waiter's ticket reaped. Pinned by
+# `test_gate_slot_consumer.py`.
         # else `lane` in a loop lane's worktree (GOH.LANECLASS),
 #         # consumed by the acquire so nothing this gate starts inherits it; neither: work. A max
 #         # wait (seconds, the memory wait counted inside it) bounds it: past it, the holders are

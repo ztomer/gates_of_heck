@@ -27,6 +27,14 @@ tests/test_agent_audit_verify.py.
     python3 scripts/agent_audit.py             # the report (asks GitHub about landed shas)
     python3 scripts/agent_audit.py --offline   # no network: landed shas are `unverified`
     python3 scripts/agent_audit.py --json      # the same, machine-readable
+
+reads agent_guard's spawn ledger: LANDED (each landed report's shas on GitHub's default branch with
+CI concluded success, via `lib/landed_verify.py`; a mismatch is `silent-failure`, no network
+`unverified`), UNDER (a cheap-tier spawn that ended blocked/failed, was escalated or failed
+silently), OVER (an opus-tier spawn that landed under the median tokens of landed cheap-tier
+spawns), VERDICT (a cheap class holds while redo < 1 - cheap/opus cost per attempt, priced from the
+rules file) and PROPOSED rule changes; no verdict below `min_n`. Never writes the rules file.
+Pinned by `test_agent_audit.py`, `test_agent_audit_verify.py`.
 """
 
 from __future__ import annotations

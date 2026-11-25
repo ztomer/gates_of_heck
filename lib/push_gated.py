@@ -25,6 +25,12 @@ refuses an untagged pre-push line it has not been told about, and refuses a new 
 a hook for a gate script's name.
 
     push_gated.py [--goh ROOT] [REPO]   # prints the hook (as git names it) when gated, else nothing
+
+THE reading of whether a checkout's pre-push hook runs goh's push gate (GOH.SHIMPUSHGATED): the
+hook git resolves is judged by its BYTES -- today's stock shim, or a retired stock pre-push tagged
+`push-gate` in `retired_hooks.sha256` -- never by a gate script's name grepped out of it (the shim
+names none). The CLI for `tools/release-kit/ci_step.sh`, `push_gated` for `lib/ship_verify.py` and
+.loop's `loopadvisory.py`; `name_greps` is the class check that refuses a new name grep.
 """
 
 from __future__ import annotations

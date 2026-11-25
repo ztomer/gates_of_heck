@@ -4,6 +4,9 @@ A consumer that calls `python3 $GOH_DIR/checks/check_no_emoji.py` by path keeps 
 is now three lines that exec `gates/goh.sh <check>` with the same arguments, so it gets the one
 binary resolution and the one refusal when no binary exists. EVERY retired entry point is kept
 (see SHIMS); the behaviour each had is the frozen spec in `tests/reference_kit.py`.
+
+`NATIVE` (every retired checker -> its `goh` check, spelled once; read by `_calibration.py` and the
+suite's `run_check`), `SHIMS` (the forwarders kept on disk) and `forward()`.
 """
 
 from __future__ import annotations

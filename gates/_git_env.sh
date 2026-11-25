@@ -28,6 +28,14 @@
 # staged scope must judge THAT tree (tests/test_commit_hook_git_env.py). So it travels as
 # GOH_HOOK_INDEX_FILE, which git does not read, beside GOH_HOOK_GIT_DIR, the repository it belongs
 # to: a gate a test runs on a fixture inherits both and binds nothing.
+#
+# Sourced: the variables that bind git to one repository (contract #12). `goh_unbind_git` drops
+# them (one foreign git call, in a subshell); `goh_hook_unbind` drops them at a hook's ENTRY,
+# carrying a non-default index being committed as `GOH_HOOK_INDEX_FILE`; `goh_bind_hook_index`
+# binds it again for a staged reader, only in its own repository. Invoked by `_from_head.sh` (so
+# every gate), `_goh_bin.sh`, `_proven.sh`, `hook.sh` (post-rewrite, pre-applypatch),
+# `push_gate.sh`; `goh_unbind_git` also starts every test suite a gate launches (`goh_step`,
+# `local_ci.sh`, `coverage_gate.sh`, `_coverage_rust.sh`). Pinned by `test_hook_git_env.py`.
 
 # The list is git's own (`--local-env-vars`, what it clears entering a submodule), never a copy:
 # a hand-kept one had drifted to 7 of git's 15. Asked ONCE per process tree and exported -- it was

@@ -20,6 +20,10 @@ consumers) was never asked before the push and `cut` was refused there (GOH.SHIP
 A repo whose `.gatesrc` says GOH_CHANGELOG_FRAGMENTS=on keeps each change's entry in its own file
 under `changelog/` beside the changelog (GOH.CLASS.CHECKOUT): the reading folds them in as the cut
 will, so a release whose Unreleased is empty and whose fragments hold its entries is ready.
+
+goh ship's CHANGELOG.md reading under the contract the release kit DECLARES (`.gatesrc`
+GOH_SHIP_CHANGELOG: `cut`, `unreleased` or `kit`, GOH.SHIPCHANGELOG): the preflight it asks before
+any gate or push, and a refusal when a repo with a CHANGELOG.md declares none or an unknown one.
 """
 
 from __future__ import annotations

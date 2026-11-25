@@ -18,6 +18,13 @@ one verdict: whether it SHOULD fail is its own gate's question, not this one's.
 
 Exit 0 one verdict, 1 the verdict depends on the spelling, 2 a precondition (no command, not a git
 checkout, a host that offers one spelling only -- which proves nothing, so it never passes).
+
+A gate's verdict must not depend on how the tree's path is spelled: clones HEAD to scratch and runs
+`-- <command>` under every spelling of the clone the host offers (a symlink one where it offers no
+alias, GOH.WORKERFAILS; canonical `/private/...`, the `/var` or `/tmp` symlink, the
+`/System/Volumes/Data` firmlink), each with `PWD` set and `{root}` replaced; two exit codes are a
+finding. Exit 2 with no command, outside a checkout, or on a host with one spelling. A consumer
+runs it as a `GOH_CI_STEPS` step around its own gate. Invoked by consumer `GOH_CI_STEPS`.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

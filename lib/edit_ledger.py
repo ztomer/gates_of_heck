@@ -13,6 +13,11 @@ per-worktree git dir: never in the tree, never committed, gone with the worktree
 `goh undo` (tools/undo.py) asks `foreign_since_mine`: a later write of the path by another agent
 or item than the caller's -- after the caller's own last write of it, or ever when the caller
 never wrote it -- refuses the undo. A ledger it cannot read judges nothing (fail open).
+
+who edited which file, recorded at the write (GOH.UNDOOWNER): `hooks/claude/hold_guard.py` appends
+each subagent Write/Edit/MultiEdit/NotebookEdit it lets through (time, agent, its in-progress
+items, path, sha256 before the write) to `<git dir>/goh-edits.jsonl`, the per-worktree git dir;
+`foreign_since_mine` is `goh undo`'s ownership question. Pinned by `test_edit_ledger.py`.
 """
 
 from __future__ import annotations

@@ -24,6 +24,12 @@ in-progress item's agent is refused (GOH.GUARDSCRATCH, 2026-11-11).
 Seams: GOH_LOOP_QUEUE names the queue file (default ~/Projects/.loop/queue.json); repo tokens are
 read under the queue's own projects directory (the queue's grandparent), `~/` tokens under $HOME.
 A queue that is missing or does not parse holds nothing: the guard fails OPEN.
+
+THE LOOP QUEUE'S HOLD (LOOP.FOREIGNEDIT): which in-progress item of `~/Projects/.loop/queue.json`
+(`GOH_LOOP_QUEUE`) holds the repo whose nearest git worktree encloses a path, judged against the
+subagent whose write it is (`agent_id`, which `loopctl start ID AGENTID` records); its own items'
+repos, an unheld repo and the main thread pass; `holds_below` for a recursive verb. Read by
+`hold_guard.py`; a missing queue holds nothing.
 """
 
 from __future__ import annotations

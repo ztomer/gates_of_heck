@@ -18,6 +18,50 @@ is a usage error, not a red.
 
 The pre-step's other cheap phases live here too: `structural` (gates/structural.sh --full) and
 `collects` (the whole suite collected when base code changes, GOH.BASECODESELECT).
+
+GOH.PRESTEPFAILFAST: the land pre-step's CHEAP judges, run first: the judges of an empty diff
+(`tools/affected_tests.py` `affected(root, [])`) cut to test functions and costed by the suite's
+own duration table (`cache()`: `GOH_TEST_DURATIONS`, else goh.db, the one spelling of the path;
+`tools/pytest.sh` hands it to its top-level run, the only writer, whose readings
+`tests/_schedule.py` records through `durations.py`, GOH.DURATIONSSTALE, GOH.DURATIONSDB), cheapest
+first while each costs at most `EACH_S` (0.5 s) and the sum stays within `BUDGET_S` (4 s);
+unmeasured tests and cached ids the file no longer defines are not chosen. `run` runs them serially
+(`-n 0`) before the structural gates, a red (pytest's 1) the only verdict: a missing map row on
+goh's tree was refused by `tools/land.sh`'s pre-step in 10.7 s and 15.6 s at load ~25, where
+BATCHWINDOW's took 473 s; a green land pays the set's run, 8-17 s at that load (2026-11-18).
+
+`tools/affected_tests.py`: the pre-land test set, chosen from the diff (GOH.TREETESTSFIRST): every
+`tests/test_*.py` that names a changed path (the path, or each of its components as a quoted
+literal) or imports a changed module (ast), the changed tests, the tests whose TRANSITIVE closure
+holds a changed file or a file whose code names one (imports at any depth and a script a test or
+helper names with what it sources, read by `lib/source_closure.py`; prose masked by
+`checks/_prose_mask.py`; what `tests/conftest.py` loads for every test is the base and chooses
+nothing, GOH.AFFECTEDTRANSITIVE), and, for a change to the binary's build inputs (`crates/`,
+`Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml` and each file a crate embeds, e.g.
+`lib/busyloop_shapes.json`), every test that runs the goh binary (`lib/binary_runners.py`,
+GOH.AFFECTEDBINARY: GRACESHAPES' scanner change was green here and red in the gate on
+`test_check_moving_tags.py`) whose subcommands the change reaches (`lib/crate_reach.py`,
+GOH.AFFECTEDBINARY2) -- at the enqueue only those whose stored profile reaches it
+(`lib/bin_reach.py`, GOH.BINREACH, audited one land in ten by `lib/bin_reach_audit.py`) --, and
+every tree reader (a `test_every_`/`test_no_` test, a test or tests/ helper that lists or walks the
+tree, plus `ALWAYS`). `--why` says why each is chosen; `--run` runs them with `tools/pytest.sh` (an
+empty set runs nothing). A tree reader the diff does not choose runs only its reading tests, as
+node ids (`reader_nodes`: a test_every_/test_no_ test, or one whose source reaches a walk through
+the file's own names, fixtures and decorators; the whole file when they cannot be told apart,
+GOH.LANDPREDUP). A test that runs a tool with `cwd=REPO_ROOT` is a tree reader too
+(`test_gate_temp_leaks.py` runs `structural.sh --full` over the checkout). `--run` runs the JUDGES
+first, in a pytest run of their own -- the tree readers' chosen nodes, which judge every file or
+key whatever the diff names -- then the rest, the two records joined into one; before all of it,
+the cheap judges the duration table measures (`lib/fast_tests.py`, serial, GOH.PRESTEPFAILFAST: a
+red one is refused in seconds, not after the ~500 s judges phase); with `--structural`,
+`gates/structural.sh --full` runs before both (GOH.PREPARITY: one run of both reached the 600 s
+deadline at load 175 with no verdict and two judges it held went red in the land, ADAPTLANES; the
+500-line cap met only the land gate, AFFECTEDBINARY). After the tests, `--run` runs the release
+canary when a consumer names a changed path (`lib/consumer_reads.py`, GOH.LANDMISS1119:
+GOH.PYTESTPIN's pre-step was green and the land gate's canary red). `tools/land.sh` runs it as
+goh's `GOH_LAND_PRE` (`--run --structural`), at enqueue and before the land lock and the gate.
+Pinned by `test_affected_tests.py`, `test_prestep_judges.py`, `test_prestep_fast.py`,
+`test_affected_binary.py`, `test_affected_binary_reach.py` and `test_land_verdicts.py`.
 """
 
 from __future__ import annotations
@@ -33,7 +77,7 @@ RECORD, REUSE = "GOH_LAND_VERDICTS_RECORD", "GOH_LAND_VERDICTS_REUSE"  # lib/aff
 
 # Summed measured seconds of the set, and the most one test may cost to join it. The cut is a
 # serial run (`-n 0`: an xdist bring-up costs ~7 s on this box, more than the set), so its wall
-# is the sum plus one interpreter's start (measured: see docs/map.md's row).
+# is the sum plus one interpreter's start (measured: this module's header).
 BUDGET_S = 4.0
 EACH_S = 0.5
 

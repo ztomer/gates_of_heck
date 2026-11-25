@@ -25,6 +25,13 @@ usage: _push_build_dirs.py <export tree>                prints one build dir per
        _push_build_dirs.py --in-tree <tree> <DIRS          the stdin build dirs inside the tree
        _push_build_dirs.py --shared <checkout> <sha>    the checkout's one build dir, or nothing
        _push_build_dirs.py --touch-changed <checkout>   now-mtime every tracked file off HEAD
+
+Push gate: prints the cargo build dir of each workspace in a stable export (tracked manifests,
+members skipped, each `cargo metadata` bounded), appended to `<run dir>.source` as `build-dir`
+lines so a reclaimer can claim the export's warm build dir between pushes. `--in-tree TREE`
+(GOH.PUSHINTREEBUILD) names the build dirs on stdin that sit inside TREE: the push gate warns on
+each, since the export (and an in-tree `.build`) is deleted after every push. Pinned by
+`test_push_gate_runs.py`.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

@@ -15,6 +15,22 @@ As every store's, a dry run imports too; only the files stay.
 and lib/pre_reuse.py read it by path), reaped per request by lib/land_prestep.py `reap`. The slot
 owners' files are lib/land_slot.py's `import_owners`. In the seam with lib/state_retire.py
 (tests/_state_seam_scan.py).
+
+GOH.LANDQDB: `goh state retire landq`, the land queue requests' half of `state_retire.py`: each
+stray `<q>/{enqueuing,pending,running}/<run>.json` (an older goh's request) in as its `requests`
+row and each `early/<run>.json` as its `early` row, under `lander.lock` (a lander holding it keeps
+every file, said; `Locked` is the store's `db`, its import taken under the lock); INSERT OR IGNORE,
+so an in-flight row is never rewritten nor moved, and a run whose land is recorded is not queued
+again; `check` passes a run that is a row or a recorded land; each emptied directory goes.
+`pre/*.record` stays a file (0007), reaped by `land_prestep.reap`. In the seam beside
+`state_retire.py`. Invoked by `state_retire.py`.
+
+`lib/state_retire.py`: GOH.STATEDB wave 3: `goh state retire [STORE...] [--dry-run]` imports a
+moved store's files (INSERT OR IGNORE), reads every record back from goh.db (equal, or its row
+newer than its file), copies them under `<state>/retired/<YYYY-MM-DD>/<store>/{state,cache}/`,
+byte-compares each copy, and only then deletes them; one unequal record keeps every file of its
+store (exit 1). `goh state stray` names a retired store's file still on disk. The one module that
+names the moved files (in the seam, `tests/_state_seam_scan.py`). Invoked by `goh_db.py`.
 """
 
 from __future__ import annotations

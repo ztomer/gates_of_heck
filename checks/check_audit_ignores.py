@@ -30,6 +30,11 @@ EVERY tracked lock of the repo (lib/rust_locks.py), and one `.cargo/audit.toml` 
 `rust_locks` says are audited from this directory, and an entry is stale only when it fires against
 NONE of them. `--lock` adds the workspace lock the gate was pointed at, when git does not track it
 yet.
+
+`rust_gate.sh`'s second advisory step, one per `.cargo/audit.toml`: every ignore entry carries a `#
+reason` on its line and still fires against at least one lock that config governs (`--repo`: the
+locks `lib/rust_locks.py` audits from its directory; else the workspace's `Cargo.lock`), re-audited
+from a scratch directory, nothing ignored. cargo-audit accepts a stale entry silently.
 """
 
 from __future__ import annotations

@@ -49,6 +49,17 @@ disabled rule, which is the only safe direction for a file that decides what is 
 display.
 
 `--staged` reads THE INDEX via checks/_gitutil.py, never the worktree.
+
+The OTHER screen gate, and not a copy of the one above: that one refuses screen APIs in TEST
+TARGETS, this one refuses them in APP SOURCE unless they route through a seam the consumer's JSON
+policy names. Input is the same problem as presentation (a real pointer read, an event tap, a
+cursor warp all compete with the user for their own mouse), so both share `swift_code_only`. A
+live-tier harness must CALL the policy's helper with a substantive, non-placeholder reason, and the
+executor may sit on an earlier line than the command — the shape `ruff format` emits. Every tracked
+`*.sh` is scanned whatever `scan` says. A policy that will not parse, names a key this checker does
+not know, names a seam that does not exist, or matches zero source is exit 2, never a pass.
+`--probe` proves every rule red-first. Came from `games/ZeroThunder`'s repo-local gate (SUPERSOTA
+R5/R6).
 """
 
 from __future__ import annotations

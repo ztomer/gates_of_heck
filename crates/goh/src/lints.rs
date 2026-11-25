@@ -9,6 +9,9 @@
 //! here with `(?m)`/`(?s)` flags inline, since the `regex` crate has no
 //! flag arguments. `--staged` is accepted and ignored, exactly like the
 //! reference (the audit is whole-workspace by nature).
+//
+// `goh lints`: A crate silently exempt from its workspace's lint policy (no `[lints] workspace =
+// true`). Pinned by `test_check_lints_optin.py`, `test_goh_lints_parity.py`.
 
 use goh_tui::{ERR, OK, START};
 use std::fmt::Write as _;

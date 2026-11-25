@@ -29,6 +29,11 @@ timeout does.
 BOUNDED, AND REPORTED. Expiry prints `TIMED OUT after Ns` on stderr and returns 124 -- never
 silence. A ceiling nobody gave a number is a suggestion; a ceiling that expires quietly is the
 2026-10-03 incident again with a shorter fuse.
+
+Run one command under a CEILING (`--timeout`, optional `--cpu-timeout` and `--stall`), in its OWN
+process group, and sweep the whole subtree on expiry (TERM, grace, KILL) — then print `TIMED OUT
+after Ns` and return 124 with the surviving pids named. Plain `--timeout` waits cleanly without
+polling; `--cpu-timeout`/`--stall` delegate PGID CPU+runnable probing to `lib/pgid_cpu.py`.
 """
 
 from __future__ import annotations

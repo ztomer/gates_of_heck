@@ -15,6 +15,12 @@ THE RULE, in the CODE of a Bash command (`lib/shell_segments.py`):
 A target diskutil cannot read runs: the unmount would fail on it too. `diskutil` is the program
 named by `GOH_DISKUTIL` when set (the tests' fake; nothing here ever unmounts). The escape is
 `# unmount-ok: <reason>`.
+
+The discard guard's refusal of `diskutil unmount`, `unmountDisk`, `eject`, `diskutil apfs
+lockVolume`, `hdiutil detach` and `umount` of a FileVault APFS volume (read with `diskutil info
+-plist`; a whole-disk verb also reads `diskutil apfs list -plist` for every volume on that disk):
+an unmount locked the owner's drive and only their password reopened it (LOOP.MISTAKEGUARDS,
+2026-11-22). `GOH_DISKUTIL` names the diskutil (the tests' fake). Escape:
 """
 
 from __future__ import annotations

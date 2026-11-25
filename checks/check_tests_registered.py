@@ -27,6 +27,8 @@ exists to catch).
     check_tests_registered.py --buildsystem cmake --tests-dir tests --makefile CMakeLists.txt
 
 Exit codes: 0 all registered · 1 orphaned test files · 2 usage/config error.
+
+Every test source must be registered in a build block.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

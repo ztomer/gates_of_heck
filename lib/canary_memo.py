@@ -22,6 +22,11 @@ starved (TIMED OUT) is run again next time. A record lives one day (an advisory 
 without the key), in the estate state file's `release_canary` entry beside the sweep it came from,
 so a reuse names that sweep. The reuse is not yet on lib/reuse.py's path table (its owner lane
 held the file): GOH.CANARYMEMO2 registers it there.
+
+The release canary's memo (GOH.CANARYMEMO): a side's verdict over a consumer kept under the side's
+gate content, binary, tools, seed store and grace and the consumer's committed HEAD (`side_key`,
+`key`), a day, in the estate state's `release_canary.memo_records`; `Runs` answers each side from
+it or runs it in a clone made at the first miss; `say` names the sweep a land reused.
 """
 
 from __future__ import annotations

@@ -1,5 +1,13 @@
 # shellcheck shell=bash
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+#
+# The proven key's identity, sourced by `_proven.sh` (split at the 500-line cap, GOH.PREPARITY):
+# the run-constant half (`_proven_identity_slow`: every gates root by content through
+# `lib/gate_identity.py proven`, the toolchains by `_proven_tool`, stdout only), asked once per
+# gate and memoised (`proven_identity_prime`, `_proven_memo_key`); the live half
+# (`_proven_identity_live`: the keyed env and the `GOH_EXPORT_KEEP` files, hashed in one batch by
+# `_proven_keep_lines`); `proven_keyed_roots`. Sourced, never run. Pinned by
+# `test_proven_identity_once.py`, `test_proven_tool_line.py`.
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_proven_identity.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # _proven_identity.sh — the proven key's identity, sourced by gates/_proven.sh (split out of it at

@@ -41,6 +41,15 @@ The report (plates: hours, grams, objects, warnings, open-air travel; the header
 Relative "stl" paths resolve against --root (default: the layout's directory). Exit codes: 0 every
 plate sliced clean · 1 a gate failed (each named) · 2 the layout, a profile, an STL or the CLI is
 missing or broken. Standard library only.
+
+`cad_gate.sh`'s slicer step, and a repo's own build of its committed project (`run(layout, root,
+out_dir)`): builds a multi-plate Bambu Studio 3MF from a layout (`cad_project.py`: the profile
+`inherits` chain flattened, objects placed per plate, per-object settings, support enforcers),
+slices every plate with the CLI, and fails on any slicing warning (result.json and the log, never
+slice_info alone: ZSUS v21.2.0's floating cantilever passed that), a support request with no
+support in the G-code, support missing under a named region or far from every one, the wrong nozzle
+or bed in the header, open-air travel over its cap. Python by design: a consumer runs it with
+arguments. Pinned by `test_cad_gate.py` (Bambu end to end, slow), `test_cad_supports.py`.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

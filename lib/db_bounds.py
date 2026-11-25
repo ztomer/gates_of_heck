@@ -22,6 +22,16 @@ BYTES are the table's pages and its indexes' (the dbstat table), or, where SQLit
 without it, the sum of its columns' lengths; the FILE's are its used pages (page_count minus the
 free list), so a sweep's deletions count before the vacuum hands the pages back.
 Pinned by tests/test_db_bounds.py.
+
+GOH.DBSEAM (owner 2026-11-23: "need also size limit"): `TableBound(days, rows, bytes, stamp_col)`
+from each schema file's `-- bound: TABLE days= rows= bytes= stamp=` header, and each file's budget
+(goh.db 256 MB, goh-cache.db 2 GB, used pages). `sweep(seam)`: a table past its bound, then the
+file past its budget, gives up its OLDEST rows -- moved to `goh-archive-YYYY.db` beside a history
+file (the year of each row's stamp; versioned like every file; written before the live rows go, so
+a kill leaves a duplicate, never a loss), evicted from a cache -- then `incremental_vacuum` and
+`wal_checkpoint(TRUNCATE)`. `unbounded(seam)` names a table with no header, past its bound, or the
+file past its budget. `state_bounds.py` runs both for every seam at goh's state root. Invoked by
+`state_bounds.py`, `db_core.py` (`check`).
 """
 
 from __future__ import annotations

@@ -11,6 +11,16 @@ ships` (lib/state_retire.py) imported each, read it back equal and archived it. 
 module still names under ship_dir() is where the step logs stay (handover plan (e)). No goh.db
 reads as no record for one result's lookup and raises goh_db.Unknown for a reader of many
 (goh_db.known: unknown, never none). Pinned by tests/test_ship_records.py.
+
+GOH.STATEDB S2: goh ship's records in goh.db (0003), replacing the per-run result JSON under
+`ship/<repo>/` and its `<result>.pins.json` sidecar. `ships` and `ship_pins` are keyed by the
+RESULT path every caller names a record by (`GOH_SHIP_RESULT`, `goh ship --status RESULT`), with
+its stem as `run` (the join key); `ships_v1` is the view other readers use. `put`/`put_pins` write
+a row; `get`, `get_pins`, `in_dir`, `every` and `live` (every repo's running records, which
+`ship_status.settle_all` settles at each ship start) read the rows alone; with no goh.db a reader
+of many raises `goh_db.Unknown`, one result's lookup reads None (the files are retired by
+`state_retire_ships.py`, which first settles a result whose worker is gone). `ship_dir()` is the
+one spelling of the ship directory (`GOH_SHIP_DIR`). Invoked by `tools/ship.py`.
 """
 
 from __future__ import annotations

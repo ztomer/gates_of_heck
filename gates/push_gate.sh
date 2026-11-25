@@ -49,6 +49,17 @@
 # scrollback that no longer existed. Every run is now teed to a log under ~/.cache/goh/push-logs
 # (GOH_PUSH_LOGS overrides). A green run deletes its log; a red one keeps it, prints its path, and
 # the newest `keep_failed_logs` are kept. The cost: the gate writes to a pipe, so no colours.
+#
+# The pre-push gate every installed hook delegates to: refuses a release tag its own commit does
+# not declare (`goh tag-version`, over the refs git hands the hook) BEFORE any worktree is made,
+# then takes a machine-wide gate slot (`lib/gate_slot.sh`, `GOH_GATE_SLOTS`), runs `tools/gate.sh
+# --full` in a clean export of each pushed commit (and refuses a run that wrote the repository's
+# own `.git/config`, naming each key with userinfo redacted, while a ref that moved during the run
+# is named, not refused: `lib/repo_writes.sh`, `test_push_gate_repo_writes.py`), skips a commit the
+# remote already has, and refuses a branch that moved while it was gated. The steps the repo's
+# `.gatesrc` declares in `GOH_CI_STEPS` run too: a gate that passed without `local_ci.sh` marking
+# this tree (`GOH_CI_STEPS_MARK`) gets them run after it, the gap named. Invoked by
+# `hooks/pre-push`. Pinned by `test_push_gate_ci_steps.py`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

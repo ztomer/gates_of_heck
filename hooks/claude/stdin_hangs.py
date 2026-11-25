@@ -24,6 +24,38 @@ signals a process: the coordinator kills it.
 
 Seams: the process table (`procs`), the fd-0 reader (`stdin`), the harness's pids and the
 finished-agent lookup (`ended`) are arguments of `hangs()`. Pinned by tests/test_stdin_hangs.py.
+
+the Bash-tool readers blocked on the harness's stdin, which `goh agent-stalls` and its hook print
+as `kill <pid>: ...` (GOH.STDINHANG): a descendant of a `claude` process's shell whose argv is a
+stdin reader by `lib/stdin_reader.reads_stdin` (the Bash guard's definition), under a second of
+CPU, whose fd 0 (`lsof -F ftd -d 0`) is the shell's own harness socket or pipe, once its agent has
+finished (its Bash command found in a finished subagent's transcript) or past 2 h. A read BUILTIN
+has no process: a shell with no descendant, no CPU, fd 0 still the harness socket and a `read` in
+the text it evals (`stdin_reader.shell_reads`) is named by its own pid (GOH.STDINFILTERS). Probed:
+a command with a heredoc gets no `< /dev/null`, so its fd 0 is the harness's unix socket. `--procs`
+is the process-table seam (`/dev/null`: none). Never signals a process. Pinned by
+`test_stdin_hangs.py`.
+
+`hooks/claude/agent_stalls.py`: `goh agent-stalls` and the coordinator's UserPromptSubmit hook
+(`--hook`): each live subagent (not stopped -- `stop_marker()`, THE stopped-agent rule `.loop`'s
+tick shares: its interrupt record, or a TaskStop tool_result naming its id in its session,
+LOOP.LINGERSTOP; a transcript that just ends with no marker is `unknown`, never alive -- not done:
+a `finished` meta is per stop, so a finished agent that stopped with a background job pending and
+no `Status:` report still counts, GOH.STALLS2; `is_waiting`/`full_said` are what `.loop`'s tick
+shares) whose transcript has not been written for `GOH_AGENT_STALL_MINUTES` (20), with what it last
+said and each background job it launched and was never notified about, alive (the pids `lsof` finds
+holding the job's `.output`) or gone. The hook reads only the event's own session's `subagents/`
+and speaks to the coordinator (`additionalContext`) and the owner (`systemMessage`); exit 1 from
+the command when any is stalled (GOH.STALLAGENT). Probed on 2026-11-08 (Claude Code 2.1.317,
+stream-json): a task-notification and a ScheduleWakeup each fire the coordinator's
+UserPromptSubmit, so any wake shows a stall. `--notify` is a one-shot pass that posts one macOS
+notification per stall whose every pending job is gone (nothing will ever wake it), once per stall
+(`--state`), to a stamped, bounded log (GOH.STALLNOTIFY); the launchd job that ran it
+(`com.ztomer.goh-agent-stalls`) is RETIRED into `.loop`'s `com.ztomer.loopctl-tick` and its plist
+and installer are gone. Never signals a process. The hook also prints `.loop`'s stale-agent lines
+(a closed item's agent still running, an agent past 2 h), asked of its CLI, `loopctl stale
+--projects <root>`, by `hooks/claude/loop_stale.py` (`GOH_LOOPCTL`; a failing or slow CLI is said
+on stderr only; GOH.STALEHOOK). Pinned by `test_agent_stalls.py`, `test_agent_stalls_loop.py`.
 """
 
 from __future__ import annotations

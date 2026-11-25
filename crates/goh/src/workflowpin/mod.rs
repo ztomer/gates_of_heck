@@ -17,6 +17,26 @@
 //! (the same class one layer up). No `--exclude`: a workflow is the repo's own by construction and
 //! what CI runs on is not a style; the one escape is the reasoned per-reference
 //! `# workflow-pin-ok: <reason>`. `scan.rs` reads the YAML.
+//
+// `goh workflow-pins`: A GitHub workflow (`.github/workflows/*.yml|yaml`) or composite action
+// (`.github/actions/**/action.yml|yaml`), read through `saphyr` (so script text in a `run: |` block
+// is not a key), whose runner or actions MOVE under an unchanged file: any `*-latest` runner label
+// (`ubuntu-latest`, `macos-latest`, `windows-latest`, and sized variants) wherever a scalar spells
+// one -- `runs-on`, a matrix list, a `workflow_call` default, a word inside an expression -- and
+// any `uses: owner/repo@ref` whose ref is a branch (`@stable`, `@main`) or a major-only tag (`@v4`,
+// `@v4.1`), or has no ref. Passes: a named image (`ubuntu-24.04`, `macos-26`), a 40- or 64-hex
+// commit id, a full release tag (`@v7.0.1`), a path in this repo (`./.github/actions/x`), and
+// `docker://` (judged by `goh moving-tags`). The house rule (2026-10-06) is that "latest" is a
+// named release; CI warned `ubuntu-latest` was moving to Ubuntu 26 (M.FLOODREAP) and monitor pinned
+// its actions by hand (M.CIPARITY) with nothing to refuse the next floating tag (GOH.RUNNERPIN). An
+// action that publishes no releases is pinned by commit with a comment saying so. One escape, **`#
+// workflow-pin-ok: <reason>`** on the line or the comment lines directly above; an empty reason and
+// a marker with no moving reference under it are findings. Every repo, both scopes, a hard gate; no
+// path exemption. Floor `GOH_WORKFLOW_PINS_MIN_REFS` (runner labels and action references read).
+// Lies: a full release tag is a name its maintainer COULD re-point (a commit id cannot be); a label
+// an expression builds from an input is unreadable, not judged; reusable-workflow `uses:` at job
+// level is judged like an action; a `ref:` input of a checkout is not judged. Pinned by
+// `test_check_workflow_pins.py`, the tables in `workflowpin/tests.rs`.
 
 pub mod scan;
 

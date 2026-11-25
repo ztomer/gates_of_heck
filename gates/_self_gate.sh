@@ -15,6 +15,11 @@
 # it happens once per commit and a fixture commit a test makes inside it is judged on its own.
 # GOH_LIVE in the very checkout being committed is its developer's on purpose, and is kept.
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+#
+# Sourced by `commit_gate.sh`: a commit IN a goh checkout is handed to an export of its STAGED tree
+# (`git write-tree` of the index being committed, `goh_export_rev`), whose commit gate and
+# `tools/gate.sh` judge it with the binary of that tree's own stamp (GOH.SELFGATE); a consumer is
+# never handed anywhere. Pinned by `test_self_gate.py`.
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_self_gate.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=lib/run_path.sh

@@ -7,6 +7,13 @@
 # `ruff check` and failed it with "No module named ruff" -- a finding about the code read off a
 # missing tool, with no install line (2026-10-10, Homebrew python3 3.14 -> 3.15). Each tool is
 # probed before any step runs, and a missing one is a named refusal (gates/required_tools.tsv).
+#
+# Sourced by both Python gates and `python.sh`, never run: the one runner resolution
+# (`GOH_PY_RUNNER`, else `.venv`, else the pinned interpreter, else `python3 -m`), the pin
+# (`goh_py_pin`: `GOH_PYTHON_VERSION`, else a committed `.python-version`; found by version and
+# read back, BACKLOG 6.2) and `goh_py_require`, which refuses a runner that cannot run a tool the
+# gate needs, naming the install line, before any step runs. Invoked by sourced. Pinned by
+# `test_required_tools.py`.
 
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_py.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }

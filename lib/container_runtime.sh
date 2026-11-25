@@ -10,6 +10,10 @@
 #   . "$GOH_DIR/lib/container_runtime.sh"
 #   trap 'goh_container_runtime_down' EXIT
 #   goh_container_runtime_up "my-label" || exit 1
+#
+# Sourced by consumers (`goh_container_runtime_up`, `goh_container_runtime_down`): starts colima if
+# docker is down, takes reference-counted leases, and stops colima when the last lease releases if
+# goh started it.
 
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "lib/container_runtime.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }

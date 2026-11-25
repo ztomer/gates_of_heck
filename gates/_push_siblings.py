@@ -9,6 +9,11 @@ The manifests are the TRACKED ones (`git ls-files`, no walk), so an untracked sc
 never decides what the export holds. A path that climbs past the checkout's parent names no
 sibling and is left to the build to refuse in its own words.
 
+Push gate: prints each sibling checkout a TRACKED `Cargo.toml` or `Package.swift` (any depth) names
+by a path dependency, so the export links it beside its tree (`export_siblings`,
+`lib/push_runs.sh`): gates_of_heck to `$GOH`, any other to the checkout of that name beside the
+real one. Invoked by `push_gate.sh`. Pinned by `test_push_gate_runs.py`.
+
 usage: _push_siblings.py <export tree>     prints one sibling name per line
 """
 

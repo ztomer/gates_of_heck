@@ -8,6 +8,15 @@
 # pytest this shell starts prunes only inside its own. The caller removes it after a passing run with `goh_rm_tree`, NEVER a bare
 # `rm -rf`: a test that leaves a read-only tree failed a gate with no `✗` line (2026-11-12).
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+#
+# Sourced by every script that starts pytest (`tools/pytest.sh`, `py_gate.sh`, `coverage_gate.sh`),
+# never run: `goh_pytest_root` exports `PYTEST_DEBUG_TEMPROOT` to a temp root of the run's own,
+# because pytest prunes all but the three newest `pytest-of-<user>/pytest-N` when ANY session
+# starts, and two concurrent suites deleted each other's temp dirs mid-run (2277 errors,
+# 2026-10-10). The root is bounded: it records its owner's pid in `.goh-owner`, pytest keeps only a
+# FAILED test's `tmp_path` (`-o tmp_path_retention_policy=failed` in `PYTEST_ADDOPTS`), and older
+# kept roots are cut to the newest `GOH_PYTEST_KEEP` (3) within `GOH_PYTEST_KEEP_BYTES` (1 GiB)
+# first (GOH.PYTESTTMP: 55.3 GiB of kept roots). Invoked by sourced.
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_pytest_root.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=lib/rm_tree.sh

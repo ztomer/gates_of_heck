@@ -20,6 +20,11 @@ is the only lever.
 
 GOH_FSEVENTSD_RSS_KB replaces the reading (a number, or `none` for no daemon) for the tests;
 GOH_FSEVENTSD_LIMIT_KB moves the bound. Pinned by tests/test_fseventsd_health.py.
+
+GOH.FSEVCHURN: one line after a whole suite (tools/pytest.sh) naming a saturated fseventsd -- RSS
+over 1 GB (the stuck daemon read 6.9 GB, 2026-11-23) -- with its restart command, the owner's call.
+Its docstring holds the probe that found no location fseventsd ignores on the owner's Mac: a no_log
+volume costs the same CPU per event as $TMPDIR.
 """
 
 from __future__ import annotations

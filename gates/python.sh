@@ -12,6 +12,12 @@
 # the house libraries on its path and the shell's PYTHONPATH dropped -- so `import tui` works in
 # every hook without an export in ~/.zshrc, and a hook run from a GUI client behaves as one run
 # from a terminal. The structural step "no bare python in a hook or gate" refuses the other way.
+#
+# The ONE way a hook or gate script runs Python (BACKLOG 6.2): `bash "$GOH/gates/python.sh"
+# tools/x.py ...` runs the repo's interpreter (`_py.sh`: a `.venv`, else the pinned version found
+# and read back, else `python3`) with the house libraries on `PYTHONPATH` and the shell's dropped,
+# so `import tui` works in every hook. The structural step `no bare python in a hook or gate`
+# refuses the other way. Invoked by hooks, `tools/gate.sh`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

@@ -4,6 +4,10 @@
 `cargo test` adds from `.cargo/config.toml` has to be added by it: the `[env]` table
 (`_cargo_env_table`, GOH.SWEEPREDS130) and the RUNNER a binary is started through
 (`_cargo_runner`; ztools' HOME sandbox never ran under the coverage gate, GOH.COVRUNNER).
+
+What cargo's config files make of a process cargo would run: the `[env]` table and the configured
+runner (`target.<triple>.runner`, `CARGO_TARGET_<TRIPLE>_RUNNER`, the one matching
+`target.'cfg(..)'.runner`), GOH.COVRUNNER.
 """
 
 from __future__ import annotations

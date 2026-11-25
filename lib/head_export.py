@@ -32,6 +32,11 @@ with the hook's repository variables dropped (contract #12): under a pre-push ho
 `git -C SRC rev-parse HEAD` would otherwise answer the CONSUMER's HEAD. Refuses, exit 2 with a line
 on stderr, when SRC is not a checkout with a HEAD commit: a gate that cannot name the commit it
 judges with must not judge with an unnamed one.
+
+`head_export.py` / `head_export.sh`: A SIBLING repo at its HEAD commit for a consumer's gate, never
+its working tree (GOH.HEADEXPORT): `goh_head_export VAR SRC [CACHE] [KEEP]` sets VAR to a read-only
+clone of SRC's HEAD at `~/.cache/goh/sibling/<name>/<sha>/` (`.head-export` names sha and source),
+pruned by `gates/_head_cache.py`'s policy through `goh_rm_tree`.
 """
 
 from __future__ import annotations

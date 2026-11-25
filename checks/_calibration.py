@@ -26,6 +26,12 @@ reality, and an entry that cannot be is a finding.** Concretely, per entry:
 WHAT IT IS NOT. It is not a second survey of which gates are proven. That is the external
 reader's job and duplicating it here would make two numbers that could disagree. This module reads
 one file -- the house registry -- and holds it to the estate.
+
+Lib: reads `checks/gate_calibration.json` and holds every claim to the estate -- the key names a
+gate that exists, a cited prover resolves, is COMMITTED, and either ran a self-proof green in this
+sweep or (outside this repo) lists the key among what it proves. Called by `check_probes_pass.py`,
+which is what runs in every repo, so the registry is read on every gate run and a consumer repo
+with no registry is reported rather than failed.
 """
 
 from __future__ import annotations

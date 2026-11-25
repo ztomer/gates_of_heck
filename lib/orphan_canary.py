@@ -35,6 +35,13 @@ at all. (This header used to promise the opposite: that a repo-named process NOT
 step was reported too. `judge` never did that, and must not: under GOH_CI_JOBS two concurrent steps
 of one repo would each report the other's live `cargo test` as its own leak.) The house's runner
 machinery (`orphan_canary.py`, `bounded_run.py`) is excluded: a concurrent gate run is not a leak.
+
+Before/after diff of the live process table, so a child a suite LEAKED is reported instead of
+inferred from the next run's hang — the case a ceiling cannot see, because the step exits 0 and the
+server outlives it. Attributable when the command line names this repo (checkout, a `target/` under
+it, `$CARGO_TARGET_DIR`) or when the pid is ORPHANED (`ppid 1`, measured). Everything else is
+counted in one line and never failed on: on a shared machine another program's processes are noise,
+and a canary that cries wolf is one nobody leaves switched on.
 """
 
 from __future__ import annotations

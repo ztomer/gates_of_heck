@@ -18,6 +18,13 @@ bash helper, so there is one definition of it: this file only asks for it and ex
 
 FREE where it should be: the gates already run checkers from the export, which carries
 `.goh-head`, and that is one stat. `GOH_LIVE=1` runs the working tree on purpose, as for bash.
+
+The Python entry points' half of C4: every script entry point (`checks/check_*.py`, `gates/*.py`,
+`lib/*.py` run as a script) starts with a stanza that, run from the shared CHECKOUT, execs HEAD's
+copy from the export `_from_head.sh` builds -- a direct `python3
+"$GOH_DIR/checks/check_no_emoji.py"` judged with uncommitted edits before. One stat when already
+the export; `GOH_LIVE=1` runs the tree. Invoked by every Python entry point. Pinned by
+`test_python_from_head.py`.
 """
 
 from __future__ import annotations

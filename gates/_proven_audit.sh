@@ -1,5 +1,11 @@
 # shellcheck shell=bash
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
+#
+# The proven-step cache under the reuse audit (GOH.REUSEAUDIT2), sourced by `_proven.sh`: a hit
+# `proven.sh` or `local_ci.sh` is about to skip asks `proven_audit_use` first (lib/reuse_audit.py,
+# the `step` path: reuse, shadow, off, or unasked, which runs); `proven_audit_judge` compares a
+# shadow's run with the reused green, a red one run again and its record looked up again first;
+# `proven_backed` (a tracked GitHub workflow) picks the rate. Sourced, never run.
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_proven_audit.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # _proven_audit.sh — the reuse audit of the proven-step cache (GOH.REUSEAUDIT2), sourced by

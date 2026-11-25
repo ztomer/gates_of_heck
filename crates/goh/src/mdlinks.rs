@@ -8,6 +8,10 @@
 //! `href` paths of HTML tags (`Fences::html_refs_in`, GOH.MDHTMLREFS).
 //! Out of scope: links with a scheme, protocol-relative and site-absolute
 //! ones; fenced blocks and inline code spans are not scanned.
+//
+// `goh md-links`: Every relative markdown link resolves to an existing file AND an existing anchor:
+// GitHub heading slugs with duplicate counters, explicit `{#id}`, `<a id=…>`. Pinned by
+// `test_check_md_links.py`.
 
 use goh_tui::{ERR, OK, START};
 use std::collections::{BTreeSet, HashMap};

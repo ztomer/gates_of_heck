@@ -13,6 +13,13 @@ whole; the source is removed only after that. A demoted directory sits at
 `<root>/demoted/<kind>/<sha256(internal path)[:24]>/`, with `.goh-origin` beside it naming the
 internal path, so promotion needs no index.
 
+Demote, not delete (GOH.CACHEEVICT): a cold build dir or llvm-cov entry is copied to `<large
+tier>/demoted/<kind>/<sha256(path)[:24]>` (`.goh-origin` names the internal path) and back, keeping
+bytes, modes, mtimes and links (cargo stays Fresh); every write on the drive goes through a
+directory fd opened after the resolver's checks, a `.part` name renamed when whole, the source
+removed only after. `promote-for CARGO_DIR` (gates/rust_gate.sh, before cargo) brings the
+workspace's build dir back, asking cargo nothing when nothing is demoted.
+
 usage: cache_move.py promote PATH [--kind K]   bring PATH back from the large tier if it is there
        cache_move.py promote-for CARGO_DIR       the workspace's build dir, before a cargo run
 """

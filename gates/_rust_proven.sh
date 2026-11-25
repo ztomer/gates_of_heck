@@ -25,6 +25,8 @@
 #   * the inputs are keyed again after the group ran; if they moved, nothing is recorded;
 #   * no native goh, or a scope it cannot name: the group simply runs, uncached, and says so.
 # GOH_PROVEN=0 turns all of it off.
+#
+# `rust_gate.sh`'s proven cache, sourced: the crate, repo and coverage groups each proven once on their own inputs. Crate scope from `goh rust-scope` (the workspace + its `path =` packages + the config they read; a runtime `../` widens it to the tree), and a green group is recorded only if the compiler's dep-info read nothing outside it. Pinned by `test_rust_gate_scoped_cache.py`.
 
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
 [ -n "${BASH_VERSION-}" ] || { printf '%s\n' "gates/_rust_proven.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }

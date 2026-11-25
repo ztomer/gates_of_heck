@@ -23,6 +23,13 @@ skipped with one stderr line (goh_db.refusable): the audit's count is lost, neve
 NAMED: a land suite's controller counts its reuses into the caller's goh.db, which the runner
 names (tests/_land_verdicts.py, GOH_LAND_VERDICTS_AUDIT_DB), the one real-home goh.db it may open.
 Pinned by tests/test_reuse_audit_store.py.
+
+GOH.VERDICTDB V1: where `reuse_audit.py`'s records live, durable state in goh.db (migration 0008),
+never the disposable cache: one `reuse_audit` row per path (`get`/`put`) and one `reuse_shadow` row
+per compared sample (`shadow_add`/`shadow`). `db()`: `NAMED` (a land suite's controller: the
+caller's goh.db, `GOH_LAND_VERDICTS_AUDIT_DB`), else beside a named `GOH_REUSE_DIR`, else goh.db's
+own. Files from before the switch are read by nothing (`state_retire_verdicts.py` imports, reads
+back and archives them); `lock_path()` is `reuse/audit.lock`.
 """
 
 from __future__ import annotations

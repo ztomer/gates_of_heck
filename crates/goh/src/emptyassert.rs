@@ -10,6 +10,13 @@
 //! failing means the value is empty, so there is nothing left to show), and the receiver must be
 //! ONE postfix expression (`a.is_empty() == b.is_empty()` compares two things). The measured table is the crate's
 //! own test below.
+//
+// `goh empty-assert`: No `assert!(x.is_empty())` / `x.len() == 0` in `assert!`, where clippy's own
+// suggestions (`assert_eq!(x.len(), 0)`, `assert_ne!`) and the negated `assert!(!x.is_empty())` are
+// left alone. Strings are masked by `rustlex`'s `masked` view, so a backslash-continued or raw
+// string's later lines are data. A layer scanner in the shape registry (`shapes::LAYER_SCANNERS`).
+// Source: `crates/goh/src/emptyassert.rs`, `emptyassert_shapes.rs`. Pinned by
+// `test_check_no_empty_assert.py`.
 
 use goh_tui::{ERR, OK};
 use regex::Regex;

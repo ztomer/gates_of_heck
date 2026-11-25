@@ -14,6 +14,10 @@ met for real on the ZSUS mount:
     turns it on for itself, and only there (support enforcers + tree(manual) from the plate).
 
 Standard library only.
+
+Imported by `cad_bambu.py`: the Bambu project build (profiles flattened and asserted against
+`expect`, CLI import from a temp dir, placement, settings, plates, enforcers). `LayoutError` is the
+exit-2 class. Pinned by `test_cad_gate.py`.
 """
 
 from __future__ import annotations

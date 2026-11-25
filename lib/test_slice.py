@@ -20,6 +20,15 @@ module and used other than as `M.name`, M loaded by a name no static import show
 (`importlib.import_module`), a file that does not parse, or a slice that calls `globals()`,
 `vars()`, `eval` or `exec` or reads `sys.modules`. A def M does not export is left out with its
 decorators: they shape only that test, which the importer does not collect.
+
+The part of a test module another file uses when it imports names from it (GOH.SELECTTESTIMPORTS):
+`slice_of(text, names)` is the module's imports, its import-time calls, and the definitions the
+names reach through the module's own names (a fixture's argument fixtures, a class whole);
+`taken(text, target)` the names an importer takes (`from test_x import a`, `test_x.a`); the whole
+module for `import *`, a module handed on, a run-time name, `globals()`/`sys.modules`.
+`test_closure.py` reaches an imported test module as that slice, except for a test on
+`gates/undeclared_reads.txt` (or a slice holding such a join), which keeps the whole file: a change
+to gates/push_gate.sh chose 114 test files, 87 after.
 """
 
 from __future__ import annotations

@@ -13,6 +13,19 @@
 //!
 //! WIRING: a structural step in EVERY repo. The estate's sites on the day it landed are seeded in
 //! `plural_hedge_seed.json` (`crate::estate_seed`): seeded files warn, anything else is red.
+//
+// `goh plural-hedge`: A hedged plural (`file(s)`, `process(es)`, `entr(ies)`, `{unit}(s)`) inside a
+// string literal of a `.py`, `.sh` (or shell by shebang), `.rs` or `.swift` file is a finding
+// (GOH.PLURALHEDGE): a count meets its noun through `counted`/`noun` (`tui.lib`),
+// `counted`/`plural_noun` (`tui/plural.sh`, which `tui/lib.sh` and every gate source) or
+// `goh_tui::counted`/`noun`. Line-based; whole-line and trailing comments are not read; `http(s)`,
+// a call in a code fragment (`x.log(s)`, `def close(s):`) and a builtin shown called (`print(s)`,
+// `len(s)`) are not hedges; a `"$(...)"` substitution's own strings are read; a middle line of a
+// multi-line string is not seen. A structural step in every repo, against the root-commit-keyed
+// estate seed `plural_hedge_seed.json`. Lifted from a private Rust app's `plural::tests`. A seeded
+// file's warning lists five sites and counts the rest; `--all` lists every one (GOH.HEDGELIST).
+// Source: `crates/goh/src/pluralhedge/`, `crates/goh/src/estate_seed.rs`. Pinned by
+// `pluralhedge/tests.rs`, `test_plural_hedge.py`.
 
 pub mod scan;
 

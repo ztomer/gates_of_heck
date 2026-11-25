@@ -14,6 +14,12 @@ whose `git status` shows modified, staged or deleted TRACKED files is named with
 the command is refused. Untracked files are not the rule's: `git worktree remove` drops them too.
 The walk is bounded (WALK_LIMIT directories): a tree too large to read in a hook runs, unjudged, as
 every unparseable command does. The escape is `# rm-ok: <reason>`.
+
+The discard guard's refusal of a recursive `rm` whose operand (expanded as the shell would,
+relative to the `cd` before it or the session cwd) holds a git work tree -- a linked worktree's
+`.git` file or a checkout's `.git` directory -- with uncommitted TRACKED changes, naming the tree
+and its files: the coordinator's `rm -rf` of a scratch dir took two worktrees' edits with it
+(LOOP.MISTAKEGUARDS, 2026-11-22). A walk past 20000 directories runs unjudged. Escape:
 """
 
 from __future__ import annotations

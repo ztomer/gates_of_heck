@@ -7,6 +7,10 @@ this hook speaks there: once the session's context passes `GOH_COMPACT_NUDGE_AT`
 `systemMessage` naming the size and `/compact`, then stays quiet until the context grows another
 `GOH_COMPACT_NUDGE_STEP`. A compaction re-arms it. It never blocks the stop and never fails one:
 an unreadable event or transcript is silence (tests/test_claude_compact_hooks.py).
+
+a Claude Code Stop hook: when a turn ends with the context past `GOH_COMPACT_NUDGE_AT`, a
+`systemMessage` says `/compact` now lands on a task boundary (no hook can start a compaction
+itself). Once per `GOH_COMPACT_NUDGE_STEP`; never blocks. Pinned by `test_claude_compact_hooks.py`.
 """
 
 from __future__ import annotations

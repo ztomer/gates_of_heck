@@ -16,6 +16,8 @@
 # binaries (or .o/.dylib objects) after the suite builds.
 #
 # Exit codes: 0 clean · 1 forbidden symbol linked · 2 usage/config error.
+#
+# Dynamic half: `nm -u` on built test binary must not import screen symbols.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 set -euo pipefail

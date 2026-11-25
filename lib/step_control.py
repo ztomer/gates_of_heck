@@ -26,6 +26,11 @@ under a step in the middle, so `tools/gate_profile.sh` also runs `watch`: a cont
 while the gate runs, and each step is divided by the controls around it (`step_timings._sampled`).
 One control at a time on the box (LOCK): every land's controls build the same four copies in the
 cache, and two at once would each find the other's build fresh.
+
+The control a rust step's CPU is divided by (BACKLOG 5.3): `run rust` runs clippy of a pinned
+crate, four copies at once, and records it as a `control` row; `tools/gate_profile.sh` runs it
+before and after a Rust repo's gate, and `step_timings.py report` divides by it. The native kind
+needs none (`RAW_KINDS`).
 """
 
 from __future__ import annotations

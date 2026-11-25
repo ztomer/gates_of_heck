@@ -15,6 +15,12 @@ nothing; `lib/budget.py` runs it with the ship backfill. A row's `at` is its day
 results name a day, not a time: `at_day` says so) except where the result named its minute.
 
 Pinned by tests/test_budget_backfill.py.
+
+GOH.GATEBUDGET2: the done CIP lanes' push-gate times (after the lane, slot wait excluded), loads,
+shas and days, read once from each item's result into `cip_history.json` in the owner's private
+seed store (`GOH_SEED_DIR`: the lanes name private repositories); `backfill()` appends each as a
+`<repo> push` row with `ref` the CIP item (never doubled), so a repo a CIP lane brought under 10
+min is ARMED from day one (owner 2026-11-16).
 """
 
 from __future__ import annotations

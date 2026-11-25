@@ -8,6 +8,19 @@
 //!
 //! Consumed from `$GOH_DIR` as the shell and Python libraries are: a path dependency on this
 //! crate in the checkout, never a copy and never a git pin of one.
+//
+// Rust status lines (`goh-tui`): The house TUI for Rust (BACKLOG 4.14): `build.rs` reads
+// `tui/stylerc` and emits its glyphs and colours as constants (a missing key fails the build), so
+// `format!("{OK} ...")` prints what `tui/lib.sh` and `tui.lib` print and a stylerc edit reaches goh
+// on its next build. Colour is decided where a line is printed
+// (`outln`/`eoutln`/`out`/`eout`/`say`, and the `outln!`/`eoutln!`/`out!`/`eout!` macros shaped
+// like `println!`), per stream, `NO_COLOR` and non-tty aware. Consumed by path from `$GOH_DIR`,
+// never copied. It keeps its OWN version line, moved only when its API or dependencies move, never
+// goh's release number: a consumer's Cargo.lock records it, and while it inherited the workspace's
+// every goh release staled antiknob's `--locked` gate (G8). Pinned by `goh-tui/src/tests.rs`,
+// `test_rust_status_style.py` (no shipped Rust spells a status glyph),
+// `test_goh_tui_version_line.py` (a simulated release leaves a path consumer's `--locked` build
+// green; the inheriting setup goes red).
 #![deny(unsafe_code)]
 
 use std::io::IsTerminal;

@@ -15,6 +15,12 @@
 //!
 //! Opt-in (`GOH_DECISIONS=on`), because most of the estate keeps no ledger. At `--staged` the
 //! records and the tree are the index's, so a commit that deletes a path a record names is red.
+//
+// `goh decisions`: The decision ledger (`docs/decisions/D-NNNN-<slug>.md`) is whole: not empty,
+// each record's heading id its filename's, the seven fields present and non-empty, every `Lives in`
+// path tracked (any other token a symbol found outside the ledger), ids unique, no Question twice,
+// every cited `D-NNNN` a record. Opt-in structural step: `GOH_DECISIONS=on`. Pinned by
+// `decisions_tests.rs`, `test_goh_structural.py`.
 
 use goh_tui::{ERR, OK};
 use regex::Regex;

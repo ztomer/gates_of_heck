@@ -28,6 +28,10 @@ the gap before the marker lands. Without a marker the hour stands.
 
 A LIBRARY, not an entry point: it is part of the C4 mechanism itself (the export it prunes is
 what every other entry point re-runs from), so `_from_head.sh` imports it and calls `prune`.
+
+Prunes the HEAD export cache whenever `_from_head.sh` makes a new export: by LAST USE (each use
+truncates the export's `.goh-used`), unused 7 days, or beyond the 20 most recently used and idle an
+hour; an export used within the hour is never removed.
 """
 
 from __future__ import annotations

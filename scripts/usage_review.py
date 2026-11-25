@@ -12,6 +12,34 @@ cadence to fit the actual usage". `scripts/model_choice_watch.py` (weekly) runs 
 It PROPOSES -- a profile to declare, and the values that would change -- by the thresholds in the
 rules file's `profiles.review`; the owner applies. Nothing here writes the rules file.
 Pinned by tests/test_usage_review.py.
+
+the weekly usage review `model_choice_watch.py` runs: the week's spawns, pool lines, redo,
+escalation and spend per class, the Claude meter's minimum and the load when agents landed propose
+a profile and the values it changes (a macOS notice); it never edits the rules file. Pinned by
+`test_usage_review.py`.
+
+`scripts/model_choice_watch.py`: the weekly no-token job: re-checks every rules-file fact against
+its source (pricing/model-config pages, the binary's Agent enums, `claude --version`) and marks a
+changed one and its tiers `re-research`; on a new Claude Code version re-runs the hook's live proof
+once (one capped haiku `claude -p`); a canary goes red when spawns stopped reaching the ledger or
+settings.json's goh hooks differ from `registrations.json`; runs the audit and the SPEND section
+(`scripts/spend_watch.py`). Writes `~/.cache/goh/model-choice-findings.md`, and its record and
+fault candidates to goh.db (`kv` `model-choice-watch`, `fault_candidates`; `hook_ledgers.py`),
+prints the spend table and one summary line. `--install` loads the weekly launchd job. Pinned by
+`test_model_choice_watch.py`.
+
+`scripts/spend_watch.py`: the weekly watch's SPEND section (GOH.SPENDWATCH): per week, from the
+subagent transcripts (read by `claude_cache_probe.api_turns`, one usage per `message.id`),
+cost-unit shares, first-turn context per agent type and of write agents, context share from the
+first push/release on by turn kind, idle-gap cache writes, Read bytes and share of text results,
+image results by tool and image tokens per agent (`scripts/image_cost.py`: width * height / 750
+from the image header, never its bytes; GOH.IMGREAD), repeated calls, turns per agent, CLAUDE.md
+bytes; deltas against the week before. ccusage (`npx -y ccusage@20.0.48`, MIT) calibrates the
+reader each run (token totals over the window's whole UTC days must agree). A worse week, and a
+landed `EC` item whose `metric` is a `METRICS` label and whose measurement is no better than its
+`predicted` baseline, are filed with `loopctl --queue <the queue it read> file`; the verdict
+(confirmed/short/regressed) is set as the item's `spend_check` 7 days after it landed. Agents'
+unfiled `Faults seen` become candidate items (listed, not filed). Pinned by `test_spend_watch.py`.
 """
 
 from __future__ import annotations

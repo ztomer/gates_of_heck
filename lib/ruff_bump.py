@@ -23,6 +23,15 @@ that clears it. Both are cheap when nothing is owed (a version read per ruff, on
 Off with GOH_LANDQ_RUFF_BUMP=off, and inside a goh suite (lib/idle_suite.py IN_SUITE).
 
 Pinned by tests/test_ruff_bump.py.
+
+A ruff on the box newer than goh's pin starts its own bump-only land (GOH.RUFFBUMPLAND): when
+main's tip pins an older ruff than the box's newest, no land is pending, running or in its pre-step
+and no goh ship is in flight, it claims the release (`<landq>/ruff-bump/<ver>.json`, first, so a
+release is tried once), commits the bump alone on a fresh branch in `<landq>/ruff-bump/wt`
+(`ruff_currency.bump_tree`) and enqueues it as `GOH.RUFF<digits>` through the normal queue. Run by
+the lander's idle pass and by `goh land --ruff-bump [--detach]`, which `gates/_py.sh`
+`goh_py_ruff_pinned` starts when it meets a ruff other than the pin. Off with
+`GOH_LANDQ_RUFF_BUMP=off` and inside any goh suite.
 """
 
 from __future__ import annotations

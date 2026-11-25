@@ -127,7 +127,7 @@ def _structural(step_output: str) -> str:
         "· no disallowed emoji (≤1800s)\n✓ no disallowed emoji\n"
         f"· {LABEL} (≤1800s)\n\n{step_output}\n\n"
         f"✗ structural: {LABEL} failed (command: python3 check_empty_scope.py)\n"
-        "  → docs/map.md documents this gate\n✗ 1 structural step failed\n"
+        "  → `goh map NAME` says what this gate does\n✗ 1 structural step failed\n"
     )
 
 

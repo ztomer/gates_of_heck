@@ -23,6 +23,11 @@ out), and `--overhang-max A` caps it.
 
 Exit codes: 0 every file passes · 1 a file fails (named, with each defect) · 2 usage: no file,
 a missing or unreadable file. Standard library only, so it runs wherever goh does.
+
+Every STL as a slicer's reader rebuilds it (exact float32 merge, as admesh): boundary, pinched and
+miswound edges, inside-out bodies, zero-area triangles, zero stored normals (Bambu Studio refuses
+such a file), the body count each object declares; reports and can cap the overhang area. Red on
+ZSUS v21.0.0's three pinched parts.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

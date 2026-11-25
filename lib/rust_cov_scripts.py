@@ -24,6 +24,17 @@ the closure is DECLARED below with what it reaches and why that is keyed or no i
 one raises LookupError, so the measurement has no identity and runs (gate_identity.py `rust` exits
 1), and tests/test_cov_key_closure.py fails on it. A Python file of the closure that runs a script
 by path is RUNS_BY_NAME; the test reads every script a closure .py names and holds the mentions.
+
+The Rust coverage measurement's scripts (GOH.COVKEYGAP): `rust_gate_scripts` is every file
+`gates/rust_gate.sh` reaches, transitively -- what it sources and imports (`source_closure.py`) and
+what a shell script's code names by a variable-rooted or script-relative path, read from its
+directory or the gates root under goh's code parts (a root-level name is the gated repo's own);
+`runner_files` the same for the external suite's runner, and `runner_goh_files` what that runner
+reaches in goh by `$GOH_DIR` (its own `runner-goh` line, GOH.RUNRULEROOTS); a script path is placed
+through a declared root only (`run_rule.py`). A hole (a `source` nothing places, a run of a bare
+variable) is `DECLARED` with why it is keyed or no input, else LookupError: no key, the measurement
+runs. `env_readers` leaves data files out of `cov_env.py`'s name scan. Re-exported by
+`gate_identity.py`. Pinned by `test_rust_cov_reuse.py`.
 """
 
 from __future__ import annotations

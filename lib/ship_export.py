@@ -10,6 +10,11 @@ is quick) with the ship's remote under the same name and URL, the shipped branch
 the shipped sha and tracking that remote's branch, the repository's own pre-push hook (the card
 reads it as the local gate record), and runs the card with LOOPCTL_ROOT at `<temp>`. The temp root
 sits outside every work tree and is removed after. Pinned by tests/test_ship_export.py.
+
+The checkout goh ship's verify judges (GOH.CLASS.CHECKOUT): a `git clone --shared` of the repo
+under a temp root, at the shipped sha, on the shipped branch tracking the ship's remote (same name
+and URL), with the repo's pre-push hook; the card runs with LOOPCTL_ROOT there, so a stray in the
+live checkout never fails a ship.
 """
 
 from __future__ import annotations

@@ -11,6 +11,10 @@
 //! first on `PATH` (GOH.RUFFPIN): `GOH_PY_RUNNER` names the runner, else a tracked `uv.lock` runs
 //! `uv run --frozen ruff`, else a `.venv` runs its own (`.venv/bin/python -m ruff`), else `PATH`.
 //! A verdict that depends on the shell it was launched from is not a gate.
+//
+// `goh python-formatted`: The repo's Python is `ruff format`-clean by its own declared settings, at
+// full scope or over the staged blobs; a missing ruff is a missing gate. Pinned by
+// `test_check_python_formatted.py` (both tiers).
 
 use goh_tui::{ERR, OK, START};
 use std::path::{Path, PathBuf};

@@ -16,6 +16,12 @@
 #   * GOH_ROUND_PREFLIGHT, when set, runs before the commit: a WARM verify fails in seconds where
 #     the push's cold one takes minutes (a private Swift app's `make verify`, 25 min cold);
 #   * the push is PINNED (`<sha>:refs/heads/<branch>`), and the remote is read back afterwards.
+#
+# One round end to end (ported from a private Swift app): `-m <message> <path>...` commits ONLY the
+# named paths (`git commit --only`, so anything else staged stays out), with the repo's own hooks
+# as the gates, then pushes the commit pinned and reads the remote back. Refuses a round with no
+# message or paths, a flag for a path, an unknown path, a `GOH_ROUND_NEVER` path; checks
+# `GOH_MIN_FREE_GIB`; ruff-formats named `.py` under `GOH_PYTHON_FORMATTED`. Invoked by consumers.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

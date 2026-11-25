@@ -11,6 +11,12 @@ with `-n` (alone or in a short-option cluster before a letter that takes a value
 any git verb run with `-c core.hooksPath=...` (case-insensitive). An option's VALUE is not an
 option (`git commit -m -n`, `-m 'mentions --no-verify'`), nothing after `--` is, and push's `-n`
 is `--dry-run`. The escape is `# no-verify-ok: <reason>`.
+
+The discard guard's refusal of a `git commit`/`git push` that skips the hooks: `--no-verify`,
+commit's `-n` (alone or in a short-option cluster), or `-c core.hooksPath=...` on the command line;
+an option's value, a quoted message and anything after `--` are not flags, and push's `-n` is
+`--dry-run`. GOH.PREPARITY's two `--no-verify` commits carried a defect the commit hook would have
+caught in seconds, found by the enqueue pre-step 200 s later (GOH.NOVERIFYGUARD). Escape:
 """
 
 from __future__ import annotations

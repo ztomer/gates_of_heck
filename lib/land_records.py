@@ -21,6 +21,18 @@ A ROW IS KEYED BY (queue, run), a ledger row by (queue, body): `queue` is the la
 realpath, so a test's queue under tmp_path never reads the lander's rows, nor another test's. No
 goh.db yet, or one an older goh wrote without the tables, reads as no rows; `known()` says
 whether there is a goh.db at all (a report says "unknown" without one, never zero).
+
+GOH.STATEDB S1: the land records' one door, goh.db's `lands` and `red_causes` keyed by (queue
+realpath, run); since wave 3 the rows are the one record and no `done/` file is read or written.
+`write` (the row, the request it finishes gone in the same transaction; a row that cannot be
+written is tried once more, then said and raised by `goh_db.must`), `records` (every row of the
+queue), `get` (`goh land --wait`), `runs` (names only), `ref` (a record's reference: a name, no
+file), `known` (whether there is a goh.db: `goh land --report` says unknown without one),
+`causes`/`set_causes`, `ledger`/`append`/`insert` (`land_guards`, `selection_misses`; a body once
+per queue). No goh.db yet reads as no rows. The old files are archived by `state_retire_lands.py`.
+Invoked by `landq.py` `record`, `land_reds.py`, `land_check.py` `learn`, `selection_miss.py`, every
+land-record reader. Pinned by `test_land_records.py`, `test_record_must.py`
+(`tests/_goh_db_fixture.py`).
 """
 
 from __future__ import annotations

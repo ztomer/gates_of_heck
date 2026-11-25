@@ -18,6 +18,12 @@ From 2026-11-23 (`crates/goh/src/grace.rs`, the ambient `GOH_GRACE`) an unnamed 
 refused: `required_tools.py --repo . --unnamed` and every `--repo` mode exit 1 naming it, and
 local_ci.sh runs `--unnamed` before its steps, so the local gate and the hosted install refuse the
 same step. Before it, the same lines warn. Pinned by tests/test_step_tools.py.
+
+Helper of `required_tools.py`: a `GOH_CI_STEPS` step's tool (its leading command, a `python3 -m X`
+module, a non-builtin `cargo X`'s `cargo-X`) must be in a table: `required_tools.tsv`, `SYSTEM`, or
+the repo's `GOH_STEP_TOOLS` (GOH.REQTOOLS). From 2026-11-23 (`grace.rs`) `required_tools.py --repo`
+and `local_ci.sh` (via `_steps.sh` `lci_step_tools`) refuse an unnamed one; a warning before.
+Invoked by via required_tools.py, local_ci.sh.
 """
 
 from __future__ import annotations

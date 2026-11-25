@@ -30,6 +30,14 @@ the reason a gate goes red), and `record` returns None so a test can see it.
 
 The ledger's root: GOH_TIMING_DIR (absolute), else $XDG_STATE_HOME/goh/timing, else
 ~/.local/state/goh/timing. Pinned by tests/test_timing_ledger.py.
+
+GOH.GATEBUDGET: the ONE timing record (the first writer of the shape GOH.ONETIMING moves the others
+onto): one JSON line per measured run of a subject (`<repo> push`, `<repo> land`, `<repo> ship`,
+`<repo> release`) at `$GOH_TIMING_DIR/ledger.jsonl`, with wall_s, cpu_s (the run's reaped tree),
+load1, ok, ref, the gate's own control drift and its costliest steps. One atomic append; a write
+that fails is dropped (the instrument is never the reason a gate goes red). `record` is the shell's
+door (`timing_ledger.sh`), `row_for`/`append`/`read` Python's; `timings_facts` reads control drift
+and top steps from a `GOH_TIMINGS` file (`step_timings.control_drifts`).
 """
 
 from __future__ import annotations

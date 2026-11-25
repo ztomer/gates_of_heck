@@ -22,6 +22,10 @@ turned off is never reused.
 Only a VERIFIED entry is recorded; "blind" and "unavailable" are asked again. A record older than
 TTL_S, or one that does not parse, is a miss. GOH_PROVEN=0 or GOH_ESTATE_CACHE=off (or 0, false, no) turns it off;
 GOH_ESTATE_CACHE=<absolute dir> moves it; a relative one turns it off (default ~/.cache/goh/estate-corpus).
+
+`check_estate_corpus.py`'s memory of VERIFIED entries, keyed on the entry, every corpus file's
+path/size/mtime, the checker's source, the native binary and the GOH_* environment; red and
+unavailable entries are never recorded.
 """
 
 from __future__ import annotations

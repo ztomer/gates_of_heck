@@ -9,7 +9,7 @@
   structural checker in `checks/` is a second tier nobody runs.
 * A gate-side tool a consumer runs with arguments (`check_baseline_ratchet.py`,
   `check_display_seam.py`) may still be Python in `checks/`; say why in its
-  `docs/map.md` row.
+  docstring (its `goh map` row).
 * New runner/plumbing over toolchains: `gates/<name>.sh` (rare; prefer a
   checker under an existing gate).
 * Shared math/transport both sides use: `lib/` (comparison only — see the
@@ -69,7 +69,7 @@ Helpers live in `tests/conftest.py`: `repo` fixture (throwaway git repo),
 * New `GOH_*` key? Document it in `docs/config.md` (+ `.gatesrc.example`
   when consumer-facing) or `test_config_schema_covers_keys` goes red.
 * New invariant? Add a row to `docs/contracts.md` naming the pinning test.
-* List the checker in `docs/map.md`.
+* Say what the checker does at the top of its file: `goh map` renders that, nothing lists it by hand.
 
 ## 5. Verify
 

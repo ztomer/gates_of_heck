@@ -23,6 +23,15 @@
 //! grace was a hole with nothing left in it. At `--staged` every file the commit brings is judged, an
 //! edit included: an edit to a copy is still a copy. `gates_of_heck` itself -- any checkout,
 //! worktree or export of it -- is the one tree where those files belong.
+//
+// (structural step): No vendored copy of a house file (SUPERSOTA R5, GOH.VENDOR): a file NAMED
+// after one of `$GOH_DIR/checks/*` or a retired checker, or whose CONTENT holds most of a house
+// file's distinctive lines (`tui/lib.sh`, `tui/lib.py`, `tui/stylerc`, every `checks/*` script: at
+// least 40 % and 8 lines, so a renamed or edited copy is still one -- divoom's drifted copies held
+// 64-100 %, no consumer's own file over 14 %), is REFUSED at both scopes: the estate held no copy
+// when the full-scope grace ended (2026-11-08). A `GOH_DIR` without the house TUI is a refusal
+// (exit 2), never a scan against nothing. `gates_of_heck` itself is exempt. Pinned by
+// `test_vendored_copies.py`.
 
 use goh_tui::ERR;
 use std::collections::{BTreeSet, HashMap, HashSet};

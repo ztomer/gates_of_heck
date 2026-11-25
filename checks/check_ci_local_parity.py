@@ -31,6 +31,14 @@ The match is by NAME in the step string. A local step that runs a CI script thro
 
 Exit 0 every CI script runs locally, 1 a script does not (or an exemption is stale or the scan is
 under its floor), 2 a precondition (no workflows, no GOH_CI_STEPS, an exemption with no reason).
+
+Every repo script CI runs (`scripts/` or `tools/`, from `.github/workflows` and composite actions),
+the local pre-push gate runs too: a script only CI names is red, because a local gate weaker than
+CI lets a push pass here and fail there. `GOH_CI_PARITY_EXEMPT` is a both-ways ratchet,
+`GOH_CI_PARITY_MIN_SCRIPTS` the scan's floor; no workflows or no `GOH_CI_STEPS` is exit 2. `--list`
+names CI's scripts, `--probe` proves the gate red. Python in `checks/` because a consumer runs it
+as a `GOH_CI_STEPS` step and it reads the consumer's own config (CadGoose's
+`check_ci_local_parity.py`, lifted).
 """
 
 from __future__ import annotations

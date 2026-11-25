@@ -13,6 +13,12 @@ excused (GOH.LEDGERBOUND); lib/state_bounds.py's table for directories, beside i
 
 On 2026-11-19 six of them grew with no bound (timing/ledger.jsonl 1544 rows in 2.5 days,
 reuse/audit/shadow.jsonl 6478). Pinned by tests/test_state_files_bound.py.
+
+GOH.LEDGERBOUND: every single append-only file under goh's state root in one `FILES` table, a
+`FileBound` (row age by a stamp field, and line count, each naming the readers whose window it
+keeps) or a `FileKept` naming the writer that bounds it; `trim` under its writers' lock (a
+try-lock; a stdout log in place); `unbounded_in` names an unlisted non-empty `*.jsonl`/`*.log` or
+one past its bound.
 """
 
 from __future__ import annotations

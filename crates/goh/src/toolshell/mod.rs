@@ -14,6 +14,33 @@
 //!
 //! Both judge the shell the harness REALLY runs (`observed`), never only the setting: the Claude
 //! desktop app runs zsh whatever `CLAUDE_CODE_SHELL` names (GOH.SHELLCHECKREAL).
+//
+// `goh shell-check`, `goh zsh-split-guard`: The agent tool shell (GOH.ZSHSPLITGUARD, owner
+// 2026-11-21). zsh does not word-split an unquoted `$VAR`, and three commands ran wrong in one day
+// (`F="a b"; git commit -- $F`; `L="env A=1 python x.py"; $L done X` ran nothing 20 times; `for f
+// in $FILES` overwrote a lane's uncommitted edits). The cause is removed by running agent commands
+// in bash 5 (`CLAUDE_CODE_SHELL`, `BASH_ENV=~/.bashrc` in settings.json). `goh shell-check`
+// (SessionStart hook, `check.rs`) exits 1 naming each fix unless `CLAUDE_CODE_SHELL` is a bash >=
+// 5, `BASH_ENV` is a file, and a `<shell> -c` under it in an EMPTY environment yields `GOH_DIR`, a
+// `PYTHONPATH` holding it and `AGENT_ENV_LOADED=1`; env, file test and probe are seams. `goh
+// zsh-split-guard` (PreToolUse on Bash and Monitor, `split.rs`) parses the command with
+// `brush-parser` and, ONLY while the tool shell (`CLAUDE_CODE_SHELL`, else `SHELL`) is zsh, denies
+// an unquoted plain `$VAR`/`${VAR}` used as a command word, a `for` list or an argument after the
+// same command assigned VAR a whitespace-holding value (standalone or
+// `export`/`local`/`typeset`/`declare`/`readonly`; an array assignment or a whitespace-free one
+// clears it; a prefix `F=.. cmd` is cmd's env, not the shell's). The refusal names the fixes: an
+// array, a function, the words inline. Escape `# zsh-split-ok: <reason>`. What does not parse runs,
+// unjudged. Both judge the shell the harness REALLY runs (`observed.rs`, GOH.SHELLCHECKREAL), not
+// the setting: the Claude desktop app runs zsh whatever `CLAUDE_CODE_SHELL` names. A tool-shell
+// ancestor (`<shell> -c source <config>/shell-snapshots/snapshot-...`, this config's only) wins,
+// else the newest `snapshot-<shell>-*.sh` under `CLAUDE_CONFIG_DIR` or `~/.claude`, else the
+// setting; `shell-check` is red naming the remedy when the seen shell is not bash, and the guard
+// also refuses `$PIPESTATUS` under zsh (use `${pipestatus[1]}` or capture rc before the pipe). Both
+// are `"$GOH_DIR/bin/goh" <sub>` entries in `hooks/claude/registrations.json`, which
+// `scripts/apply_claude_hooks.py` keys as `goh <sub>`. Lies: a list built by command substitution
+// (`F=$(git ls-files)`) is not seen; nor a use inside `$(...)` or `eval`. Pinned by
+// `toolshell/tests.rs`, `toolshell/observed_tests.rs`, `test_zsh_split_guard.py`,
+// `test_claude_hook_registrations.py`, `test_apply_claude_hooks.py`.
 
 pub mod check;
 pub mod grep_probe;

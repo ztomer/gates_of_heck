@@ -8,6 +8,10 @@ before it makes the export (`GOH_MIN_FREE_GIB`), and `gates/round.sh` before it 
 names the free space and the need instead. Exit 1 short, 0 with room, 2 for a usage error.
 
 A preflight, never a `check_*` gate: its subject is the machine, not the tree.
+
+`<path> <need-GiB>`: exit 1 naming the free space and the need when the volume is short; run by
+`push_gate.sh` and `round.sh` under `GOH_MIN_FREE_GIB`. A preflight, not a `check_*` gate: its
+subject is the machine.
 """
 
 from __future__ import annotations

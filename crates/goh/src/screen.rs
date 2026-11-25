@@ -26,6 +26,9 @@
 //! Line splitting is `split("\n")` on both the masked and original text
 //! (never `lines()`/`splitlines()`: masking can erase a `\v` inside a
 //! literal and desync the two lists — the reference's 1:1 contract).
+//
+// `goh screen`: Static half: test sources must not ask for screen APIs. Pinned by
+// `test_screen_presentation.py`.
 
 use crate::screen_mask::mask_swift;
 use crate::screen_shapes::{

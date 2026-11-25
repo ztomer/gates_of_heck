@@ -1,5 +1,14 @@
 """`goh ship --status RESULT`: the marks a ship result holds; and the result's writing and a step
-log's tail (split from tools/ship.py at its 500-line cap)."""
+log's tail (split from tools/ship.py at its 500-line cap).
+
+`goh ship --status RESULT`: the marks a ship result holds (and the grace-end line,
+`canary_grace.line`, and the consumers' pins, `consumer_pins.line`, then the push sweep's rows
+apart, `pin_sweep.say`); `carry` folds both into the result after each step; 3 while running, 4
+when the worker is gone and the result still says running. Also the result's whole write (`save`)
+and a step log's `tail`; then the profile table (`ship_profile.table`); and the quiet-host glue
+(`quiet_settings`, `quiet_wait`, `step_load`, `ship_quiet.py`). Pinned by `test_ship.py`,
+`test_ship_profile.py`, `test_ship_quiet.py`.
+"""
 
 from __future__ import annotations
 

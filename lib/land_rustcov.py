@@ -25,6 +25,16 @@ before its suite but still cost a fix land after the queue; red here costs the l
 NOT RUN (`plan` returns None, said) for a change touching no `.rs` file, a tree that declares no
 external suite, or inside a running goh suite. No floor and no coverage claim (--diff-only), no
 stored per-test profile (GOH_PROFCARRY_TESTS=off). Pinned by tests/test_land_rustcov.py.
+
+GOH.LANDRUSTCOV: a land measures the diff coverage of its own changed Rust lines. When the land
+changes a `.rs` file, the pre-step's second run (`tools/affected_tests.py --run --rust-cov`, goh's
+`GOH_LAND_PRE`; the chosen tests that run the binary moved into it from the judges' run,
+`selected`) runs under `gates/coverage_gate.sh --lang rust --diff-only` (`argv`: the ship's
+coverage machinery as a SUBSET run, no floor, no claim): the instrumented build, the workspace's
+tests, then `GOH_COV_RUST_EXTERNAL` over those tests against the instrumented goh, its verdict
+record kept; `gates/diff_cov.py` judges every changed Rust line since the merge base with main, red
+naming `file:line`. Replaces the plain run of the same tests, so the added wall is the builds and
+the workspace's tests. Not run when no `.rs` file changed (`plan`).
 """
 
 from __future__ import annotations

@@ -20,6 +20,11 @@ needs the room. The record names each as `cap_items`. A repo with no cap files n
 lines (at or within 25 of the cap): today's files, once.
 
 Pinned by tests/test_cap_ahead.py.
+
+A land that grows a measured file over its cap's band (the last 50 lines under `GOH_MAX_LINES`;
+goh's 450 headroom) files `<PREFIX>.SPLIT<NAME>` through `loopctl file`, naming the file, its count
+and its top-level definitions, so the split is its own change before the next edit needs the room
+(GOH.CAPAHEAD); `sweep REPO...` files the same for every file within 25 lines of the cap.
 """
 
 from __future__ import annotations

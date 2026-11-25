@@ -13,6 +13,10 @@ so both ask this ONE predicate after a step exits 0; the Rust tier's delegated s
 (crates/goh/src/step_report.rs `cross_lines`). A status line is one whose first visible
 character, after indentation and colour escapes, is `✗`; a `✗` quoted mid-line (a calibration
 plant's row, a docs table) is text, not a verdict. An advisory says `⚠`.
+
+`goh_step` and `local_ci.sh` refuse a step that printed a `✗` status line (first visible character,
+after indentation and colour) and exited 0 -- a private Swift app's census_bench void hold and
+three render selftests did (GOH.XEXIT). An advisory says `⚠`; a `✗` quoted mid-line is text.
 """
 
 from __future__ import annotations

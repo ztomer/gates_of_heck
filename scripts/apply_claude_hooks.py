@@ -30,6 +30,20 @@ GOH.READCAP / GOH.CACHETTL (2026-11-08): `registrations.json`'s `settings` holds
 Code settings goh manages (`env` vars merged one by one, top-level keys set); every other key and
 env var is the owner's and is never touched. Why each value is what it is, measured:
 docs/config.md "Managed Claude Code settings".
+
+`hooks/claude/registrations.json`: the goh hook entries for `~/.claude/settings.json` as they
+should be registered; a python one ends `|| exit 1` (python3 exits 2 on a missing script, and exit
+2 blocks). Pinned by `test_claude_hook_registrations.py`.
+
+writes `registrations.json` into `~/.claude/settings.json` (`--dry-run` Also installs
+`hooks/claude/agents/*.md` (the lean subagent types `repo-worker`, `repo-worker-ui`) into
+`~/.claude/agents/` (`--agents-dir`); `--check` counts their drift. prints the diff, `--check`
+exits 1 on drift). Creates or widens only a group whose hooks are ALL goh's; a goh hook in a group
+with a foreign hook (`rtk hook claude`) is split out first and the foreign group's matcher is
+untouched. Backs up first, writes through a temp file, idempotent. `is_goh` is the ownership test
+`model_choice_watch.py`'s drift check shares. Also writes `registrations.json`'s `settings` (the
+managed plain settings: `env` merged var by var, keys set; docs/config.md). Pinned by
+`test_apply_claude_hooks.py`.
 """
 
 from __future__ import annotations

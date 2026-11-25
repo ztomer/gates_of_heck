@@ -12,6 +12,8 @@
 //! which `str.split()` treats as breaks and `split_whitespace` does not.
 //! No authored prose relies on those as word breaks — accepted, same
 //! class as the earlier ports' line-splitting notes.
+//
+// `goh skills`: Structural gate for an agent SKILLS corpus (`~/.claude/skills`): frontmatter, word ceilings, dead cross-links -- code nothing compiles, so every defect is silent. Pinned by `test_check_skills_corpus.py`, `test_goh_skills_parity.py`.
 
 use std::collections::{BTreeMap, BTreeSet};
 

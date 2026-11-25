@@ -22,6 +22,17 @@ GOH.DURATIONSSTALE), else lib/goh_db.py `path()`.
 THE JSON FILES THEY WERE (test-durations*.json, remote-rates.json, linux-unsafe.json) are read by
 nothing since the database plan's wave 3: `goh state retire durations` (lib/state_retire.py)
 imported each, read it back and archived it.
+
+GOH.DURATIONSDB: the suite's timing tables in goh.db (0006), replacing `test-durations.json` and
+its `.poles` / `.poles-cpu` siblings, which every top-level run read, merged and replaced with no
+lock (two runs ending together kept one run's readings). `record` INSERTs one row per reading
+(`readings`: run, node, kind `dur`/`pole`/`pole_cpu`, seconds, loaded, at) in ONE transaction with
+its prunes (`pruned` rows, lifted by a later reading) and keeps the newest `KEEP` (5) per (kind,
+node); `load(kind)` reads the `durations` view (each newest unpruned reading). `get`/`update` hold
+the split's ledgers (`duration_kv`: `remote_rates`, `linux_unsafe`; not `kv`, which 0004 owns). The
+file is `GOH_TEST_DURATIONS` when named, else goh.db. No JSON file beside it is read (retired by
+`state_retire.py`). `durations.py path|dump [kind]`. Invoked by `tests/_schedule.py`,
+`long_pole.py`.
 """
 
 from __future__ import annotations

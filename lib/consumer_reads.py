@@ -16,6 +16,14 @@ path tracked in goh and NOT in the consumer itself (its own `$ROOT/tools/load.py
 Prose (*.md, docs/, changelog/) mentions, never reads. The changed paths a gate never runs --
 tests/, docs/, *.md, release_canary's NOT_GATE_INPUTS -- are never looked for.
 Pinned by tests/test_consumer_reads.py.
+
+GOH.LANDMISS1119: which consumers NAME a changed goh path from their own files (`<root>/<path>`,
+the root a shell variable spelled any way or `gates_of_heck`, the path tracked in goh and not in
+the consumer; prose and what no gate runs excepted), over the release canary's estate (registry +
+`GOH_ESTATE_ROOT` walk, goh out). No goh test runs a consumer's own script (sys_updater's
+`check_gate_floors.sh` reads `required_tools.py --floors`; GOH.PYTESTPIN was green in the pre-step
+and red at the land gate's canary), so `tools/affected_tests.py --run` runs
+`scripts/release_canary.py` after the tests when one does.
 """
 
 from __future__ import annotations

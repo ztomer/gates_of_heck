@@ -65,7 +65,7 @@
 #           coverage's --omit (pytest-cov has no omit flag; the alternative
 #           would be dropping the regex on the floor, i.e. inventing policy).
 #
-# Exit codes: 0 pass · 1 coverage below floor · 2 usage/config error.
+# Exit codes: 0 pass · 1 coverage below floor · 2 usage/config error. ONE parameterized coverage gate: `--lang rust|swift|cpp|py --floor N [--ignore RE] [--include RE] [--floors-json P] [--marker-ceiling P] [--engine E] [path]`. Floor: flag, then `GOH_COV_FLOOR_<LANG>`, else exit 2. Rust mode lives in the sourced `_coverage_rust.sh` (line cap): `show-env`, one build with its artifact list, the prune of a previous build's binaries, one run, one report. Invoked by opt-in.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)

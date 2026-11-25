@@ -21,6 +21,12 @@
 //! found two sites, both fixed in their own repos). Unbound index reads are judged against the
 //! estate seed (`seed.rs`, `hook_index_seed.json`): `koffee_big`'s two sites WARN until fixed there;
 //! any other is red.
+//
+// `goh bare-hook-index`: An expansion of the hook's carried index (`$GOH_HOOK_INDEX_FILE`,
+// `$GOH_HOOK_GIT_DIR`; in code, double quotes or an unquoted heredoc) in any shell source but the
+// one defining `goh_bind_hook_index` (`gates/_git_env.sh`). Read bare, a gate a test runs on a
+// fixture binds the outer commit's index there (contract #12). Every repo, both scopes, a hard
+// gate; `GOH_EXCLUDE` applies. Pinned by `test_check_bare_hook_index.py`, `test_hook_git_env.py`.
 
 pub mod index;
 pub mod scan;

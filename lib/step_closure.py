@@ -5,6 +5,16 @@
 
 gates/_proven_closure.sh puts each step's line in its proven key; lib/gate_identity.py keeps the
 run-constant half (PYTHONPATH's other entries, the tools). Pinned by tests/test_proven_closure.py.
+
+The goh files that can decide ONE proven step (GOH.PROVENCLOSURE): the runner's closure
+(`local_ci.sh`, `proven.sh`, the binary's build inputs) and what the step string reaches through
+sources, imports, runs and names, across the consumer's own scripts into goh; a step it cannot
+place (it dispatches the goh binary, builds a goh path at runtime, imports by a runtime name) is
+`closure full`, the whole content; one whose closure runs a script no reading places is `closure
+refused <nonce>`, never cached, so it runs (GOH.STEPCLOSUREREFUSE). Keys `gate_identity.PARTS`, the
+whole-content key's own parts (`run_rule.CODE_PARTS`, `scripts/` among them, and the build inputs:
+one list for every key mode, GOH.FULLKEYSCRIPTS). `gates/_proven_closure.sh` puts its line in each
+step's key.
 """
 
 from __future__ import annotations

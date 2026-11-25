@@ -1,5 +1,12 @@
 # shellcheck shell=bash
 # _proven_why.sh — sourced by gates/_proven.sh: why a proven key missed (GOH.PROOFKEY).
+#
+# Why a proven key missed (GOH.PROOFKEY), sourced by `_proven.sh`: `proven_note_identity` keeps
+# each record's identity lines beside it (`goh-proven/.id/<key>`) and the goh manifest once per goh
+# content (`.id/m-<hash>`, `lib/gate_identity.py manifest`); `proven_miss_reason` finds the newest
+# record for the same tree and step and names what moved -- the goh files, or the other lines (`env
+# CI`, `tool rustc`). The step still re-runs. Sourced, never run. Pinned by
+# `test_proven_lane_reuse.py`.
 
 # ── why a key missed (GOH.PROOFKEY) ──
 # A record is a bare sha256: when a pass in a lane worktree was not reused by the push from the

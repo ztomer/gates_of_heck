@@ -8,6 +8,11 @@ asked while it exists), less any the main checkout also uses (a repo that names 
 shares it) and any inside the tree (they go with it). `owned` is asked BEFORE the removal, cargo
 cannot name a missing path's; `remove` after it, and never one a running cargo holds: it renames
 each away under its cargo locks, as the evictor does (GOH.BUILDDIRVANISH).
+
+The cargo build dirs a checkout uses ALONE (GOH.BUILDDIRSHARE): asked of cargo before removal
+(`gates/_push_build_dirs.py`), less the main checkout's and any inside the tree; `lib/land_slot.py`
+removes them with a slot past `KEEP`, so a removed checkout leaves no orphan copy for a reclaimer
+to find. Pinned by `test_land_slot.py`.
 """
 
 from __future__ import annotations

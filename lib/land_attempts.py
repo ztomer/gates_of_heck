@@ -20,6 +20,15 @@ held only the land that took the lock, so the red one was nobody's cost. Here:
                              (ok False): like any failed run it counts only once it is past BREACH.
 
 Pinned by tests/test_land_attempts.py.
+
+GOH.GATEBUDGET2 (owner 2026-11-15: "apply the budget to the land queue retries too"): every
+landing-queue request is one `<repo> land attempt` ledger row (started to finished, ok when landed,
+`item`, `attempt`, `mode`, `why`), written by `tools/landq.py` as it records each outcome (red and
+timed-out ones too) and backfilled from done/ records that carry their times; `attempt_of` numbers
+a request as one more than its item's reds since its last landing, so a re-enqueue is attempt n+1.
+`retry_runs` turns each item's chain (first attempt to the one that lands) into one `<repo> land
+retries` run of the summed wall, which `goh budget` judges and prints as `ITEM: 2 attempts: red 537
+s, landed 300 s = 837 s`; a chain still red is an open failed run.
 """
 
 from __future__ import annotations

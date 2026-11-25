@@ -10,6 +10,12 @@
 //!   files a build reads, builtins in bash -- arrives on stdin;
 //! * the record format is the bash one: `epoch=`, `label=`, `tree=`, `step=` lines, under the COMMON
 //!   git dir's `goh-proven/`, pruned of expired records on every write.
+//
+// `goh proven`: The proven cache's key, scoped key, lookup and record in-process --
+// `gates/_proven.sh` delegates when the gate resolved its binary (and, for a key, its identity memo
+// is this directory's). Byte-identical keys and the same record format as the bash, either side
+// finding the other's records -- the DECLARED ARTIFACTS included, so a record either side writes
+// names the files the proof was about. Pinned by `test_proven_native.py`.
 
 use std::fmt::Write as _;
 use std::io::{Read, Write as _};

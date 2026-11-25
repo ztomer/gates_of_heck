@@ -97,7 +97,7 @@ pub fn judge(
         let _ = writeln!(
             s,
             "{START} {TAG} {}: one forward-looking file, open entries only, each with an id and a \
-             `Done when:` (gates_of_heck docs/map.md, `goh roadmap`)",
+             `Done when:` (`goh map roadmap`)",
             g.roadmap
         );
         return (1, s);
