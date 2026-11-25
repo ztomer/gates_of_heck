@@ -15,7 +15,7 @@ import subprocess
 
 from conftest import REPO_ROOT, hermetic_env
 
-from lib import config_ref
+from lib import config_decls
 
 LIST = REPO_ROOT / "gates" / "verdict_free_keys.txt"
 
@@ -27,7 +27,9 @@ def _listed() -> set[str]:
 
 
 def test_every_internal_key_is_on_the_list() -> None:
-    internal = {k for d in config_ref.Ref(REPO_ROOT).decls if d.kind == "internal" for k in d.keys}
+    internal = {
+        k for d in config_decls.Ref(REPO_ROOT).decls if d.kind == "internal" for k in d.keys
+    }
     judged = _listed() | set(EXPORTED_AND_KEYED) | set(PASSED_AND_KEYED) | set(INTERNAL_AND_KEYED)
     assert internal and internal <= judged, sorted(internal - judged)
     stale = sorted(k for k in INTERNAL_AND_KEYED if k not in internal or k in _listed())
@@ -37,9 +39,10 @@ def test_every_internal_key_is_on_the_list() -> None:
 def test_a_key_is_internal_exactly_when_its_text_says_it_is_no_setting() -> None:
     """The kind and the words are one fact, said in two places: neither can drift."""
     said = {
-        d.path: "Not a setting" in f"{d.default} {d.text}" for d in config_ref.Ref(REPO_ROOT).decls
+        d.path: "Not a setting" in f"{d.default} {d.text}"
+        for d in config_decls.Ref(REPO_ROOT).decls
     }
-    kind = {d.path: d.kind == "internal" for d in config_ref.Ref(REPO_ROOT).decls}
+    kind = {d.path: d.kind == "internal" for d in config_decls.Ref(REPO_ROOT).decls}
     assert said == kind, sorted(p for p in said if said[p] != kind[p])
 
 
@@ -216,7 +219,7 @@ def test_a_fixture_with_an_inline_per_push_key_goes_red() -> None:
 
 
 def test_every_listed_key_is_documented() -> None:
-    ref = config_ref.Ref(REPO_ROOT)
+    ref = config_decls.Ref(REPO_ROOT)
     prefixes = {k for k in _listed() if k.endswith("_") and f"| `{k}` |" in ref.render()}
     missing = sorted(_listed() - set(ref.by_key()) - prefixes)
     assert not missing, missing

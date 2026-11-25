@@ -35,7 +35,7 @@ from _gatesrc_kit import write_gatesrc
 from _tree_clone import clone_tree, process_template
 from conftest import hermetic_env, native_goh_path
 
-from lib import config_ref
+from lib import config_decls
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -97,7 +97,7 @@ def test_every_documented_structural_key_is_dropped_from_the_environment() -> No
     makes the environment agree with the file about), pinned against docs/config/, both
     ways. The drift that hurts is a key added to a step, declared, and on no list: an ambient
     value then enables that step again. A key gone stale hides the next one."""
-    ref = config_ref.Ref(ROOT)
+    ref = config_decls.Ref(ROOT)
     documented = {k for d in ref.decls if d.area == "structural" for k in d.keys}
     source = (ROOT / "crates" / "goh" / "src" / "gatesrc.rs").read_text(encoding="utf-8")
     match = DROP_LIST_RE.search(source)
