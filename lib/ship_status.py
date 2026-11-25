@@ -121,7 +121,12 @@ def settle(path: Path, res: dict | None = None) -> bool:
     res = ship_records.get(path) if res is None else res
     if res is None or not _gone(res):
         return False
-    save(abandoned(res, path))
+    # Read again now that its worker is gone: it may have written its end and exited between RES's
+    # read and the pid's (GOH.SETTLERACE), and nothing writes the record after it.
+    now = ship_records.get(path)
+    if now is None or not _gone(now):
+        return False
+    save(abandoned(now, path))
     return True
 
 

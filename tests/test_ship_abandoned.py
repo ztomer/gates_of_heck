@@ -70,6 +70,23 @@ def test_settling_reaches_every_repos_dead_records(monkeypatch, tmp_path) -> Non
     assert {gdb.shipped(p)["failed_step"] for p in dead} == {ship_status.ABANDONED}
 
 
+def test_a_worker_that_wrote_its_end_after_the_read_is_never_overwritten(
+    monkeypatch, tmp_path
+) -> None:
+    """GOH.SETTLERACE: the records are read in one list, then each worker's pid is asked. A worker
+    that wrote `ok` and exited in between was recorded as abandoned, over its own end (seen as an
+    extra line in another test's ship at load 90, 2026-11-25)."""
+    gdb.made(monkeypatch, tmp_path)
+    rec = tmp_path / "ship.json"
+    _record(rec, 1, DEAD)
+    stale = ship_status.ship_records.get(rec)
+    _record(rec, 1, DEAD, status="ok")
+    monkeypatch.setattr(ship_status.ship_records, "live", lambda: [(rec, stale)])
+    said: list[str] = []
+    assert ship_status.settle_all(said.append) == [] and said == []
+    assert gdb.shipped(rec)["status"] == "ok"
+
+
 def test_no_goh_db_settles_nothing_and_says_the_ships_are_unknown(monkeypatch, tmp_path) -> None:
     gdb.use(monkeypatch, tmp_path)  # no file: unknown, never "no ship running"
     assert ship_status.settle_all() == []
