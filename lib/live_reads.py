@@ -4,7 +4,7 @@
 A reuse key names the tree and the tools. These modules read the loop's live queue and rules, which
 move between a land's pre-step and its gate, so a pass reused there is a claim no key backs: on
 2026-11-23 one passed, the rules moved, and the `test` reuse path turned itself off for every land.
-So the pre-step chooses them on every diff (tools/affected_tests.py ALWAYS: nothing carries them)
+So the pre-step chooses them on every diff (tools/affected_tests.py WHOLE: nothing carries them)
 and no same-tree pass of theirs is reused (tests/_land_audit.py `audited`). LIVE is held to the tree
 by tests/test_live_reads.py, which derives the set from each module's code.
 """

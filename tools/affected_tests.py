@@ -23,7 +23,7 @@ THE SET is the union of
     function, or whose source lists or walks the tracked tree (`git ls-files`, `rglob(`,
     `os.walk(`, a glob or iterdir of a REPO_ROOT directory), or reaches a tests/ helper's walk OF
     THE ROOT -- importing a helper that walks only what it is handed (tests/_tree_clone.py's
-    templates) is no tree read (lib/tree_walk.py, GOH.CLONENOTJUDGE) -- plus ALWAYS (readers no
+    templates) is no tree read (lib/tree_walk.py, GOH.CLONENOTJUDGE) -- plus WHOLE (readers no
     pattern sees). A changed path can break a tree reader whatever it names, so the land gate
     runs them all; the enqueue runs one whose reads are known only for a diff touching them.
   * the TRANSITIVE closure of each test (GOH.AFFECTEDTRANSITIVE): what a test imports, what that
@@ -87,11 +87,11 @@ from lib import (
 from lib.step_timings import timed
 from tui.lib import counted, info, ok
 
-# Readers of every diff no pattern sees: of the tree, and of the live loop (lib/live_reads.py).
-ALWAYS = ("tests/test_self_walk.py", "tests/test_python_from_head.py", *live_reads.LIVE)
+# Tree readers that neither a test name nor a tree-walking call in their own source gives away.
+ALWAYS = ("tests/test_self_walk.py", "tests/test_python_from_head.py")
+WHOLE = (*ALWAYS, *live_reads.LIVE)  # run whole on every diff: those, and the live loop's readers
 # The tree readers that judge the TEXT of every tracked file, whatever its kind: a diff of any file
-# is theirs to read, release text included (lib/release_gate.py `names`, GOH.REUSEOFFLANDED5: the
-# release set left the self-walk out, and v0.140.3's changelog heading broke its home-path count).
+# is theirs, release text too (lib/release_gate.py `names`: v0.140.3's heading, REUSEOFFLANDED5).
 TEXT_JUDGES = ("tests/test_self_walk.py",)
 SKIPPED: list[str] = []  # what the last enqueue choice's binary reach left out (GOH.BINREACH)
 CHOSEN_FOR: list[tuple] = []  # the (root, change) SKIPPED was chosen for: `run` audits no other
@@ -239,8 +239,8 @@ def tree_readers(root: Path, tests: dict[str, str] | None = None) -> dict[str, s
     walking = _walking(root)
     found: dict[str, str] = {}
     for rel, text in tests.items():
-        if rel in ALWAYS:
-            found[rel] = "a reader no pattern sees (ALWAYS)"
+        if rel in WHOLE:
+            found[rel] = "a reader no pattern sees (WHOLE)"
         elif TREE_NAMED.search(text):
             found[rel] = "defines a test_every_/test_no_ test"
         elif TREE_READ.search(text):
@@ -304,9 +304,9 @@ def affected(
     for rel, why in tree_readers(root, tests).items():
         if rel in chosen:
             continue  # chosen whole by the diff
-        if enqueue and rel not in ALWAYS and not standing(graph, rel, tests[rel], root, walking):
+        if enqueue and rel not in WHOLE and not standing(graph, rel, tests[rel], root, walking):
             continue  # its reads are known, and the diff touches none of them
-        nodes = None if rel in ALWAYS else reader_nodes(tests[rel], walking)
+        nodes = None if rel in WHOLE else reader_nodes(tests[rel], walking)
         if nodes is None:
             chosen[rel] = why
         else:

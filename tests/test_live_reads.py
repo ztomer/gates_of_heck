@@ -64,4 +64,4 @@ def test_no_same_tree_pass_of_a_live_module_is_reused(monkeypatch) -> None:
 
 
 def test_a_live_module_is_chosen_whole_on_every_diff() -> None:
-    assert set(live_reads.LIVE) <= set(at.ALWAYS)
+    assert set(live_reads.LIVE) <= set(at.WHOLE)
