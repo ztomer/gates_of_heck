@@ -118,10 +118,12 @@ def test_a_number_that_only_says_safe_is_recorded_as_refuse(tmp_path, monkeypatc
     assert "recorded as refuse" in capsys.readouterr().err
 
 
-def test_no_shipped_number_is_safe_yet(tmp_path, monkeypatch) -> None:
+def test_the_shipped_safe_numbers_are_the_columns_files(tmp_path, monkeypatch) -> None:
+    """GOH.LANDCOLS: 0011 to 0014, and no number before them."""
     monkeypatch.setenv("GOH_DB", str(tmp_path / "goh.db"))
     with goh_db.connect() as con:
-        assert db_schema.SAFE_KEY not in db_core.version(con)["meta"]
+        meta = db_core.version(con)["meta"]
+    assert db_schema.safe_numbers(meta) == {11, 12, 13, 14}
 
 
 def test_an_older_copy_neither_sweeps_nor_judges_a_safe_files_tables(tmp_path, monkeypatch) -> None:

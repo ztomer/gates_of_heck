@@ -1,6 +1,6 @@
 """lib/db_bounds_with.py (GOH.OLDWRITERS, L7): the rows a sweep takes, their `-- with:` children
 and the archive part they go to. Rows in equal rows out, whatever the archive's shape, killed or
-not. The plan's 0011 and 0012 (tests/fixtures/goh_db_plan) are the shapes; they are not shipped."""
+not. Schema 10 and the shipped 0011 and later (GOH.LANDCOLS) are the shapes."""
 
 from __future__ import annotations
 
@@ -22,7 +22,6 @@ import pytest
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
-PLAN = Path(__file__).parent / "fixtures" / "goh_db_plan"
 NOW = 1_795_000_000.0  # 2026-11-18, UTC
 DAY = 86400.0
 
@@ -57,7 +56,7 @@ def part(s: db_core.Seam, tail: str = "") -> Path:
     return db_bounds_with.archive_path(s, "2026", tail)
 
 
-# -- L7: the plan's own shapes --------------------------------------------------------------------
+# -- L7: the shapes of schema 10 and later --------------------------------------------------------
 
 
 def land(run: int, **more) -> tuple:
@@ -69,20 +68,21 @@ PUT = "INSERT INTO lands(queue, run, item, state, at, body) VALUES (?, ?, ?, ?, 
 
 
 def plan(tmp_path: Path, monkeypatch) -> tuple[db_core.Seam, db_core.Seam]:
-    """Schema 10 as shipped, and the same with the plan's 0011 and 0012 beside it; lands keep 3."""
+    """Schema 10, and every file this goh ships; lands keep 3."""
     for name in ("ten", "more"):
         shutil.copytree(goh_db.SEAM.schema, tmp_path / name)
         f = tmp_path / name / "0002_lands.sql"
         f.write_text(f.read_text().replace("bound: lands bytes=128MB", "bound: lands rows=3"))
-    for p in PLAN.glob("*.sql"):
-        shutil.copy(p, tmp_path / "more")
+    for p in (tmp_path / "ten").glob("*.sql"):
+        if int(p.name[:4]) > 10:
+            p.unlink()
     monkeypatch.setenv("GOH_DB", str(tmp_path / "state" / "goh.db"))
     return (dataclasses.replace(goh_db.SEAM, schema=tmp_path / "ten"),
             dataclasses.replace(goh_db.SEAM, schema=tmp_path / "more"))  # fmt: skip
 
 
 def test_a_widened_lands_never_goes_into_a_schema_10_archive(tmp_path, monkeypatch) -> None:
-    """L7: an archive made at schema 10, then a sweep of lands with 52 more columns and five child
+    """L7: an archive made at schema 10, then a sweep of lands with its columns and child
     tables. A part `-b` opens, every row, column and child row is in exactly one file."""
     ten, more = plan(tmp_path, monkeypatch)
     with db_core.transaction(ten) as con:
@@ -111,13 +111,13 @@ def test_a_widened_lands_never_goes_into_a_schema_10_archive(tmp_path, monkeypat
 
 
 def test_the_older_copy_never_sweeps_the_widened_file(tmp_path, monkeypatch) -> None:
-    """It may write it (0011 and 0012 are safe); its DELETE would fire lands_gone and take the
+    """It may write it (0011 to 0014 are safe); its DELETE would fire lands_gone and take the
     child rows it does not know to archive."""
     ten, more = plan(tmp_path, monkeypatch)
     with db_core.connect(ten):  # the numbers are judged: the file was there before them
         pass
     with db_core.connect(more) as con:
-        assert "11, 12" in db_core.version(con)["meta"]["old_writers_safe"]
+        assert "11, 12, 13, 14" in db_core.version(con)["meta"]["old_writers_safe"]
     with db_core.transaction(ten) as con:
         con.executemany(PUT, [land(i) for i in range(9)])
     assert db_bounds.sweep(ten, NOW) == {}

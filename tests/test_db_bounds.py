@@ -146,12 +146,15 @@ def test_the_headers(tmp_path) -> None:
 
 
 def test_every_shipped_table_is_bounded() -> None:
-    """Each table a shipped migration creates has a `-- bound:` header (a new table cannot be
-    unbounded), and each seam has its budget."""
+    """Each table a shipped migration creates has a `-- bound:` header, or leaves with a bounded
+    parent's rows (a new table cannot be unbounded), and each seam has its budget."""
     for s in (goh_db.SEAM, goh_cache_db.SEAM):
         sql = "".join(p.read_text() for p in db_core.migrations(s).values())
         made = set(re.findall(r"CREATE TABLE (\w+)", sql))
         bounded = set(db_bounds.bounds(s))
+        kin = db_bounds.db_bounds_with.withs(s)
+        for _ in kin:  # a child of a child of ...
+            bounded |= {kid for parent in bounded & set(kin) for kid in kin[parent]}
         assert made and made <= bounded, (s.file, made - bounded)
     assert (goh_db.SEAM.budget, goh_cache_db.SEAM.budget) == (256 << 20, 2 << 30)
     assert (goh_db.SEAM.over, goh_cache_db.SEAM.over) == ("archive", "evict")

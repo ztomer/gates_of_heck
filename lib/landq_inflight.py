@@ -38,6 +38,7 @@ import os
 import sqlite3
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -158,12 +159,12 @@ def died(q: Path, m: dict) -> None:
     GOH.ENQUEUEVANISH). Written once, by the reader that finds it dead; never over a record of the
     item filed after the marker (the enqueue settled, then exited)."""
     item = str(m.get("item") or "")
-    gone = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    gone = datetime.now().astimezone().isoformat(timespec="seconds")  # `+HH:MM`: a stored instant
     how = "overran its bound" if alive(int(m.get("pid") or 0), m.get("pid_stamp")) else "died"
     stamp = m.get("pid_stamp") or "no stamp"
     why = (f"enqueue {how} in its pre-step: pid {m.get('pid')} ({stamp}) seen gone by {gone} "
            "with no verdict and no request filed; its pre-step log may be empty "
            "(GOH.ENQUEUEVANISH) -- enqueue again")  # fmt: skip
     rec = {"item": item, "repo": m.get("repo", ""), "mode": "land", "state": "red", "why": why,
-           "at": time.time(), "recorded": gone, "sha": ""}  # fmt: skip
+           "at": gone, "sha": ""}  # fmt: skip
     land_reds.file_vanished(q, rec, slug(item), since=float(m.get("at") or 0))

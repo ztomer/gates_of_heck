@@ -1,6 +1,6 @@
 """lib/db_safe.py (GOH.OLDWRITERS, L11): what a schema file that says `-- old-writers: safe` may
-hold. Each forbidden statement is planted and named; the data plan's 0011 and 0012 pass as they
-are (tests/fixtures/goh_db_plan, not shipped); a view's columns are compared in order."""
+hold. Each forbidden statement is planted and named; every shipped file passes as it is; a view's
+columns are compared in order."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ import goh_cache_db
 import goh_db
 import pytest
 
-PLAN = Path(__file__).parent / "fixtures" / "goh_db_plan"
 BASE = """CREATE TABLE p(q TEXT, r TEXT, st TEXT, body TEXT NOT NULL, at REAL, PRIMARY KEY (q, r));
 CREATE TABLE other(n INTEGER PRIMARY KEY, x TEXT);
 CREATE VIEW p_v1 AS SELECT q, r, st, at FROM p;
@@ -148,12 +147,10 @@ def test_every_shipped_file_is_what_its_head_says(s) -> None:
     assert db_safe.check(s) == []
 
 
-def test_the_plans_files_are_safe_and_a_reordered_lands_v1_is_not(tmp_path) -> None:
+def test_lands_v1_with_its_columns_in_another_order_is_not_safe(tmp_path) -> None:
     d = tmp_path / "schema"
     shutil.copytree(goh_db.SEAM.schema, d)
     s = dataclasses.replace(goh_db.SEAM, schema=d)
-    for p in PLAN.glob("*.sql"):
-        shutil.copy(p, d)
     assert db_safe.check(s) == []
     f = d / "0011_lands_columns.sql"
     sql = f.read_text()

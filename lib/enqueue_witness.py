@@ -29,7 +29,7 @@ import contextlib
 import os
 import signal
 import subprocess
-import time
+from datetime import datetime
 
 FATAL = ("SIGTERM", "SIGHUP", "SIGINT", "SIGQUIT", "SIGUSR1", "SIGUSR2", "SIGALRM", "SIGXCPU")
 PS_TIMEOUT_S = 10.0
@@ -53,7 +53,7 @@ def _say(text: str) -> None:
 
 def _witness(number: int, _frame: object) -> None:
     name = signal.Signals(number).name
-    stamp = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    stamp = datetime.now().astimezone().isoformat(timespec="seconds")
     _say(f"enqueue pid {os.getpid()} got {name} at {stamp} (GOH.ENQUEUEVANISH); "
          "the processes alive then, the sender among them:\n")  # fmt: skip
     _say(table())
