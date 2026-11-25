@@ -3,8 +3,9 @@ store that moved into goh.db 0003 (GOH.STATEDB S2), as lib/state_retire.py retir
 
 A ship directory (lib/ship_records.py ship_dir(): GOH_SHIP_DIR, else the state's `ship/`) held one
 result JSON per run, rewritten at each step, and a `<result>.pins.json` sidecar beside it. Both are
-rows now (`ships`, `ship_pins`), keyed by the result path. The step logs, the sweep's record, the
-suite's profiles and the coverage summary stay files (handover plan (e)); they are no record here.
+rows now (`ships`, `ship_pins`), keyed by the result path. The sweep's record is
+lib/state_retire_sweeps.py's; the step logs, the suite's profiles and the coverage summary stay
+files (handover plan (e)); they are no record here.
 
 A result that says running while its worker is gone (in ANY repo's directory: goh ship settled
 only the shipped repo's) is settled first, as lib/ship_status.py settles one: its row becomes
@@ -16,8 +17,8 @@ GOH.STATEDB S2: `goh state retire ships`, the ship records' half of `state_retir
 and `.pins.json` file under `ship_records.ship_dir()` in as its `ships`/`ship_pins` row (INSERT OR
 IGNORE), a result saying running whose worker is gone (any repo's) settled in its row as
 `ship_status.abandoned` writes it, a live ship's file kept until it ends; `check` passes a row
-equal to its file or written after it. The step logs, sweep records, profiles and covsrc.json stay.
-In the seam beside `state_retire.py`. Pinned by `test_state_retire.py`.
+equal to its file or written after it. The step logs, profiles and covsrc.json stay (sweeps:
+`state_retire_sweeps.py`). In the seam beside `state_retire.py`. Pinned by `test_state_retire.py`.
 """
 
 from __future__ import annotations

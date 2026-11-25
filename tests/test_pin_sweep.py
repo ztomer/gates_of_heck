@@ -20,11 +20,12 @@ from pathlib import Path
 
 import _goh_db_fixture as gdb
 import pid_owner  # lib/, on the path since conftest imported load_kit
+import push_sweep_rows
 import pytest
 import steps_store
 from _small_store import estate_state
 from conftest import REPO_ROOT, hermetic_env
-from test_consumer_pins import SCRIPT, TAG, WF, _ahead, _consumer
+from test_consumer_pins import SCRIPT, TAG, WF, _ahead, _consumer, sweep_wait
 from timing_bounds import GiveUp, patience
 
 HOOK = """#!/bin/sh
@@ -36,7 +37,7 @@ echo "$(basename "$PWD") ran" >>{log}
 def _env(tmp_path: Path, **extra: str) -> dict[str, str]:
     return hermetic_env(drop_git=True, GOH_ESTATE_STATE=str(tmp_path / "state" / "estate.json"),
                         GOH_LOAD_DIR=str(tmp_path / "load"), GOH_GATE_SLOTS="2",
-                        **extra)  # fmt: skip
+                        GOH_PIN_SWEEP_QUIET="0", **extra)  # fmt: skip
 
 
 def _consumers(tmp_path: Path, hooks: dict[str, str]) -> dict[str, Path]:
@@ -71,14 +72,12 @@ def _until(what, seconds: float):
 def _alive(rec: dict) -> bool:
     """The record's supervisor still runs, by the start time beside its pid: a zombie and a pid
     handed to another process since both read as gone (GOH.STRAYSIGNAL2)."""
-    return pid_owner.alive_line(rec["pid_stamp"])
+    return pid_owner.alive_line(rec["supervisor"])
 
 
 def _read(path: Path) -> dict:
-    try:
-        return json.loads(path.read_text())
-    except (OSError, ValueError):
-        return {}
+    assert not list(path.parent.glob("*.sweep.json")), "a sweep's record is rows, never a file"
+    return push_sweep_rows.read(path)
 
 
 @pytest.mark.load_sensitive
@@ -116,7 +115,7 @@ def test_the_install_commits_and_returns_before_any_consumer_push_gate_runs(tmp_
 
 def test_a_refusing_consumer_is_recorded_with_its_log_and_named_by_the_next_listing(tmp_path):
     repos = _consumers(tmp_path, {"good": "exit 0", "bad": "echo 'gate says no' >&2; exit 1"})
-    r = _wf_pin(tmp_path, "--bump", "--sweep", "wait", GOH_SHIP_RESULT=str(tmp_path / "s.json"))
+    r = _wf_pin(tmp_path, "--bump", *sweep_wait(), GOH_SHIP_RESULT=str(tmp_path / "s.json"))
     out = r.stdout + r.stderr
     assert r.returncode == 0, out
     rec = _read(tmp_path / "s.sweep.json")
@@ -131,9 +130,16 @@ def test_a_refusing_consumer_is_recorded_with_its_log_and_named_by_the_next_list
     assert "bad: a pin commit is not pushed" in said and bad["log"] in said, said
     assert "good" not in said, said
     (repos["bad"] / ".git" / "hooks" / "pre-push").write_text("#!/bin/sh\nexit 0\n")
-    again = _wf_pin(tmp_path, "--bump", "--sweep", "wait", GOH_SHIP_RESULT=str(tmp_path / "t.json"))
+    again = _wf_pin(tmp_path, "--bump", *sweep_wait(), GOH_SHIP_RESULT=str(tmp_path / "t.json"))
     assert again.returncode == 0, again.stdout + again.stderr
-    assert _read(tmp_path / "t.sweep.json")["repos"]["bad"]["status"] == "pushed"
+    bad = _read(tmp_path / "t.sweep.json")["repos"]["bad"]
+    assert bad["status"] == "held" and "refused at" in bad["said"], bad  # nothing it reads moved
+    assert (tmp_path / "gates.log").read_text().split().count("bad") == 1, bad  # no second gate
+    listing = _wf_pin(tmp_path)
+    said = listing.stdout + listing.stderr
+    assert "held: not retried" in said and bad["log"] in said, said
+    push = ["git", "-C", str(repos["bad"]), "push", "-q", "--no-verify"]  # its owner's own
+    subprocess.run(push, check=True, env=_env(tmp_path), stdin=subprocess.DEVNULL)
     last = _wf_pin(tmp_path)  # pushed: named no more
     assert last.returncode == 0 and "bad" not in last.stdout + last.stderr, last.stdout
 
@@ -156,12 +162,14 @@ def test_ship_status_shows_the_install_row_and_the_sweeps_rows_apart(tmp_path):
         "repos": {"good": {"status": "committed", "said": "pinned"},
                   "bad": {"status": "committed", "said": "pinned"}},
     })  # fmt: skip
-    sweep.write_text(json.dumps({
-        "status": "done", "started": "s", "finished": "f", "repos": {
-            "good": {"status": "pushed", "said": "pushed 1 pin commit to origin/main"},
-            "bad": {"status": "refused", "said": f"NOT pushed: its push gate refused; log {log}",
-                    "log": str(log)}},
-    }))  # fmt: skip
+    push_sweep_rows.put(sweep, {
+        "run": "r", "status": "done", "created": 1.0, "quiet": 0.0, "every": 0.0, "budget": 1.0,
+        "started": 2.0, "finished": 3.0, "repos": {
+            "good": {"repo": "/p/good", "status": "pushed", "slot_wait_s": 61.0,
+                     "said": "pushed 1 pin commit to origin/main"},
+            "bad": {"repo": "/p/bad", "status": "refused", "log": str(log),
+                    "said": f"NOT pushed: its push gate refused; log {log}"}},
+    })  # fmt: skip
     sys.path.insert(0, str(REPO_ROOT / "lib"))
     import ship_status
 
@@ -183,7 +191,8 @@ def test_ship_status_shows_the_install_row_and_the_sweeps_rows_apart(tmp_path):
     assert "1 of 2 consumers pushed" in lines[head], out
     bad = next(x for x in lines[head:] if "push bad" in x)
     assert "refused" in bad and str(log) in bad, out
-    table = next(x for x in lines if "push good" in x and " s " in x)
+    assert any("push good: pushed" in x and "[61 s for a gate slot]" in x for x in lines), out
+    table = next(x for x in lines if "push good" in x and "sweep" in x and "400" in x)
     assert "sweep" in table and "400.0" in table, out  # the sweep's own row, never the install's
     assert any("commit good" in x and "install" in x for x in lines), out
 
@@ -206,7 +215,7 @@ def test_the_sweep_runs_one_consumer_gate_at_a_time_each_in_a_slot_of_its_own(tm
         f'echo "end {name} $GOH_GATE_SLOT" >>{spans}'
     )
     _consumers(tmp_path, {"one": body, "two": body, "three": body})
-    r = _wf_pin(tmp_path, "--bump", "--sweep", "wait", GOH_SHIP_RESULT=str(tmp_path / "s.json"))
+    r = _wf_pin(tmp_path, "--bump", *sweep_wait(), GOH_SHIP_RESULT=str(tmp_path / "s.json"))
     out = r.stdout + r.stderr
     assert r.returncode == 0, out
     rec = _read(tmp_path / "s.sweep.json")
@@ -220,12 +229,12 @@ def test_the_sweep_runs_one_consumer_gate_at_a_time_each_in_a_slot_of_its_own(tm
 
 
 @pytest.mark.load_sensitive
-def test_a_newer_sweep_takes_over_an_older_ones_unstarted_pushes_and_waits_for_it(tmp_path):
+def test_a_newer_sweep_takes_over_an_older_ones_unstarted_pushes(tmp_path):
     # GOH.LOADSOURCE: releases come every five lands now (rules.ship_every_lands), and a sweep
     # spans 20-58 min; two sweeps ran at once at 19:56 today and four consumer gates ran twice for
     # one pin. A newer sweep's push carries every older pin commit of a repo it lists, so the older
-    # sweep leaves those repos to it (`superseded`, naming it) and the newer one starts its gates
-    # only once the older has ended: one sweep at a time, whatever the release rate.
+    # sweep leaves those repos to it (`superseded`, naming it). That no two run at once is
+    # push_sweep_rows.begin's (tests/test_push_sweep_rows.py).
     repos = _consumers(tmp_path, {"one": "exit 0", "two": "exit 0"})
     ship = tmp_path / "old.json"  # the older release's ship, still running: its sweep waits
     gdb.ship(ship, {"status": "running", "pid": os.getpid()})
@@ -239,18 +248,15 @@ def _two_sweeps(tmp_path: Path, repos: dict[str, Path], ship: Path) -> None:
     r = _wf_pin(tmp_path, "--bump", GOH_SHIP_RESULT=str(ship))
     assert r.returncode == 0, r.stdout + r.stderr
     older = tmp_path / "old.sweep.json"
-    assert _until(lambda: _read(older).get("pid"), 30), _read(older)
+    assert _until(lambda: _read(older).get("supervisor"), 30), _read(older)
     again = _wf_pin(tmp_path, "--bump", GOH_SHIP_RESULT=str(tmp_path / "new.json"))
     assert again.returncode == 0, again.stdout + again.stderr
     newer = tmp_path / "new.sweep.json"
-    said = newer.with_suffix(".log")
-    assert _until(lambda: said.exists() and "waiting for the older sweep" in said.read_text(), 60)
-    assert not (tmp_path / "gates.log").exists(), said.read_text()  # no gate while the older lives
+    new = _until(lambda: (b := _read(newer)).get("status") == "done" and b, 120)
     gdb.ship(ship, {"status": "ok", "pid": os.getpid()})  # the older ship returns
     old = _until(lambda: (b := _read(older)).get("status") == "done" and b, 120)
     assert {v["status"] for v in old["repos"].values()} == {"superseded"}, old
     assert all(str(newer) in v["said"] for v in old["repos"].values()), old
-    new = _until(lambda: (b := _read(newer)).get("status") == "done" and b, 120)
     assert {v["status"] for v in new["repos"].values()} == {"pushed"}, new
     assert all(_ahead(x) == 0 for x in repos.values()), new
     assert sorted((tmp_path / "gates.log").read_text().splitlines()) == ["one ran", "two ran"]
@@ -260,23 +266,3 @@ def _two_sweeps(tmp_path: Path, repos: dict[str, Path], ship: Path) -> None:
 
 def pin_sweep_unpushed(tmp_path: Path) -> dict:
     return estate_state(tmp_path / "state" / "pin_push.json").get("repos") or {}
-
-
-def test_a_sweep_that_never_got_its_supervisor_holds_no_newer_sweep_back(tmp_path, monkeypatch):
-    # GOH.LOADSOURCE: start() registers a sweep before it starts the supervisor, so a record with
-    # no pid yet counts as running -- but only while it is young. A start whose supervisor never
-    # started (its fork refused) leaves a pending record with no pid for good, and every newer
-    # sweep would wait out its whole bound behind it.
-    monkeypatch.setenv("GOH_ESTATE_STATE", str(tmp_path / "state" / "estate.json"))
-    sys.path.insert(0, str(REPO_ROOT / "lib"))
-    import pin_sweep
-
-    old, new = tmp_path / "a.sweep.json", tmp_path / "b.sweep.json"
-    for rec in (old, new):
-        rec.write_text(json.dumps({"status": "pending", "created": pin_sweep.now(), "repos": {}}))
-        pin_sweep.register(rec, ["/r"])
-    assert pin_sweep.older(new) == str(old)  # still starting: the newer one waits for it
-    stale = pin_sweep.dt.datetime.now(pin_sweep.dt.UTC) - pin_sweep.dt.timedelta(minutes=5)
-    old.write_text(json.dumps({"status": "pending", "created": stale.isoformat(), "repos": {}}))
-    assert pin_sweep.older(new) is None
-    assert pin_sweep.newer(old, "/r") == str(new)  # the newer one is young and pid-less: live

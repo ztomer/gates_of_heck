@@ -35,7 +35,8 @@ the push log text instead of calling `goh ship verdict`; until it does, it misse
 Where a goh change is judged on its way from a lane to the estate, what each stage reads, what
 its verdict is keyed by, and what it costs. Sources: `~/.local/state/goh/landq/lander.log` and
 `done/*.json` (the last 48 goh lands), the land gates' kept `logs/*.timings.jsonl`, and the ship
-records `~/.local/state/goh/ship/gates_of_heck/*.release.timings.jsonl` and `*.sweep.json`.
+records `~/.local/state/goh/ship/gates_of_heck/*.release.timings.jsonl` and the pin sweeps' (goh.db
+`push_sweeps` since GOH.PINSWEEP).
 
 | # | Stage | Reads | Key today | Measured |
 | --- | --- | --- | --- | --- |
@@ -74,7 +75,7 @@ GOH.ONEVERDICTTREE4 (measured on the ship records, `~/.local/state/goh/ship/gate
   key forces). The skip is gone (GOH.COVOFFLAND): the ship's run is the only coverage measurement
   on the path to a release, judging every floor since the last ship, so no other run stands for it.
 * The release step (581.4 s in v0.139.14, 866.2 s in v0.139.13) is NOT the pin sweep, which runs
-  detached after the ship (`*.sweep.json`, its own `created`): it is the release push's full gate,
+  detached after the ship (goh.db `push_sweeps`, its own `created`): it is the release push's full gate,
   478.1 s and 731.0 s of `gates/rust_gate.sh` (the plain external suite 427.9 s), run because the
   audit turned `landed` off ("the audit turned the land verdict's reuse off", GOH.REUSEOFFLANDED4).
   `landed`'s fresh side was hosted CI, so a CI-only red turned a local reuse off; it is the

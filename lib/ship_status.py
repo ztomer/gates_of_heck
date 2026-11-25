@@ -160,6 +160,9 @@ def settle_all(say=None) -> list[Path]:
     except goh_db.Unknown:
         return []
     done = [p for p, rec in live if settle(p, rec)]
+    swept = pin_sweep.settle()  # a push sweep whose supervisor is gone (GOH.PINSWEEP)
+    for p in swept if say else ():
+        say(f"goh ship: an earlier push sweep's supervisor is gone; recorded it as failed: {p}")
     for p in done if say else ():
         say(f"goh ship: an earlier ship's worker is gone; recorded it as failed: {p}")
     return done

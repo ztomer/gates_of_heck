@@ -14,7 +14,6 @@ be pushed is named in the sweep's record, never silent.
 
 from __future__ import annotations
 
-import json
 import os
 import stat
 import subprocess
@@ -29,6 +28,7 @@ from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import consumer_pins
+import push_sweep_rows
 import pytest
 
 sys.path.pop(0)
@@ -141,12 +141,19 @@ def _estate(tmp_path: Path) -> dict[str, Path]:
     return {"ruffy": ruffy, "wfy": wfy, "busy": busy, "stranded": stranded}
 
 
+def sweep_wait() -> tuple[str, str]:
+    """`--sweep wait`: its pushes are a script SCRIPT's closure only names, named here so a change
+    to it, or to what it reads, runs the tests that run it."""
+    assert (REPO_ROOT / "lib" / "pin_push.py").is_file()
+    return "--sweep", "wait"
+
+
 def _bump(tmp_path: Path, record: Path, *args: str) -> subprocess.CompletedProcess:
     env = _env(tmp_path)
     env["GOH_SHIP_RESULT"] = str(record)
     return subprocess.run(
         [sys.executable, str(SCRIPT), "--root", str(tmp_path / "estate"), "--slug",
-         "owner/gates_of_heck", "--tag", TAG, "--bump", "--sweep", "wait", *args],
+         "owner/gates_of_heck", "--tag", TAG, "--bump", *sweep_wait(), *args],
         capture_output=True, text=True, check=False, env=env, timeout=patience(120),
         stdin=subprocess.DEVNULL,
     )  # fmt: skip
@@ -196,7 +203,7 @@ def test_one_bump_leaves_no_consumer_stale_and_none_ahead_with_a_pin_commit(tmp_
     assert rec["tag"] == TAG and rec["ruff"] == RUFF, rec
     status = {k: v["status"] for k, v in rec["repos"].items()}  # the install: commits only
     assert status == dict.fromkeys(("ruffy", "wfy", "busy"), "committed"), rec
-    pushes = json.loads(Path(sweep).read_text())  # the sweep: each pin commit ahead, pushed
+    pushes = push_sweep_rows.read(sweep)  # the sweep: each pin commit ahead, pushed
     status = {k: v["status"] for k, v in pushes["repos"].items()}
     assert status == {"ruffy": "pushed", "wfy": "pushed", "stranded": "pushed",
                       "busy": "committed"}, pushes  # fmt: skip
@@ -204,7 +211,7 @@ def test_one_bump_leaves_no_consumer_stale_and_none_ahead_with_a_pin_commit(tmp_
     assert "the owner's work" in pushes["repos"]["busy"]["said"], pushes
     again = _bump(tmp_path, record)
     rec = gdb.pinned(record)
-    pushes = json.loads(Path(rec["sweep"]).read_text())
+    pushes = push_sweep_rows.read(rec["sweep"])
     assert again.returncode == 0 and not rec["repos"], again.stdout + again.stderr
     assert set(pushes["repos"]) == {"busy"}, pushes
 
@@ -214,7 +221,7 @@ def test_a_spent_push_budget_commits_and_names_what_the_next_sweep_pushes(tmp_pa
     repos = _estate(tmp_path)
     r = _bump(tmp_path, tmp_path / "ship.json", "--budget", "0")
     rec = gdb.pinned(tmp_path / "ship.json")
-    rec = json.loads(Path(rec["sweep"]).read_text())
+    rec = push_sweep_rows.read(rec["sweep"])
     assert r.returncode == 0 and rec["repos"]["wfy"]["status"] == "committed", r.stdout + r.stderr
     assert "budget is spent" in rec["repos"]["wfy"]["said"], rec
     assert _ahead(repos["wfy"]) == 1

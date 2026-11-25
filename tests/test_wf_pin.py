@@ -206,3 +206,41 @@ def test_the_bump_moves_a_goh_action_to_the_releases_commit(tmp_path):
     text = (stale / ".github/workflows/ci.yml").read_text()
     assert f"goh-floors@{sha} # {tag}\n" in text, text
     assert f"goh-floors@{tag}\n" in text, text
+
+
+def test_the_owners_listing_names_whose_unpushed_commit_holds_a_pin_back(
+    tmp_path, monkeypatch, capsys
+):
+    """GOH.PINSWEEP: a release commits its pin beside an owner's unpushed commit and can push
+    neither; goh ship's preflight names those before it starts, and never refuses for one."""
+    ahead = {
+        "held": [("p", "ci: pin"), ("o2", "feat: newest"), ("o1", "feat: older")],
+        "clear": [("p", "ci: pin")],
+        "unpinned": [("o1", "feat: theirs")],
+    }
+    repos = [tmp_path / n for n in (*ahead, "goh")]
+    monkeypatch.setattr(wf_pin, "GOH", tmp_path / "goh")
+    monkeypatch.setattr(wf_pin.estate_registry, "walk_repos", lambda *_: repos)
+    monkeypatch.setattr(wf_pin.estate_registry, "union", lambda found, _reg: (found, []))
+    monkeypatch.setattr(wf_pin, "stale", lambda r, _s, _t: (
+        {"ci.yml": [1]} if r.name in ("held", "clear") else {}, {}))  # fmt: skip
+    monkeypatch.setattr(wf_pin.consumer_pins, "stale_ruff", lambda *_: {})
+    monkeypatch.setattr(wf_pin, "workflows", lambda _r: [])
+    monkeypatch.setattr(wf_pin.consumer_pins, "ahead", lambda r: ("origin/main", ahead[r.name]))
+    monkeypatch.setattr(wf_pin.consumer_pins, "is_pin_commit", lambda _r, sha, _s: sha == "p")
+    argv = ["--root", str(tmp_path), "--slug", SLUG, "--tag", "v0.118.0", "--owners"]
+    assert wf_pin.main(argv) == 0
+    said = "".join(capsys.readouterr())
+    assert "held: 2 commits ahead of origin/main are its owner's (feat: newest)" in said, said
+    assert "clear" not in said and "unpinned" not in said and len(said.splitlines()) == 1, said
+
+
+def test_a_schedule_that_is_no_number_refuses_before_anything_is_committed(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setenv("GOH_PIN_SWEEP_QUIET", "six hours")
+    monkeypatch.setattr(wf_pin.estate_registry, "walk_repos", lambda *_: [])
+    monkeypatch.setattr(wf_pin.estate_registry, "union", lambda found, _reg: (found, []))
+    argv = ["--root", str(tmp_path), "--slug", SLUG, "--tag", "v0.118.0", "--bump"]
+    assert wf_pin.main(argv) == 2
+    assert "GOH_PIN_SWEEP_QUIET='six hours' is not seconds" in "".join(capsys.readouterr())

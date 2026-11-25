@@ -8,7 +8,8 @@
 # one commit per repo through its own hooks, or set aside and named in the ship's record
 # (GOH_SHIP_RESULT's goh.db ship_pins row, carried in as consumer_pins). It only COMMITS: the
 # pushes, each through that consumer's full push gate, run in a detached, bounded sweep after the
-# ship returns (lib/pin_sweep.py, GOH.PINPUSHGATE; `goh ship --status` prints its rows apart). A
+# ship returns, one a day (lib/pin_sweep.py, GOH.PINPUSHGATE, GOH.PINSWEEP; `goh ship --status`
+# prints its rows apart). A
 # repo that refuses does not fail the ship; the records and the next listing name it.
 #
 # goh's `goh ship` install step (`.gatesrc` GOH_SHIP_INSTALL): moves every pin goh owns in a

@@ -230,7 +230,7 @@ def _preflight(repo: Path, tmp_path: Path) -> subprocess.CompletedProcess[str]:
 def test_ship_asks_the_release_commit_of_its_gate_before_the_suite() -> None:
     """GOH.SHIPEARLY: `goh ship` runs GOH_SHIP_PREFLIGHT before its suite (tools/ship.py plan)."""
     rc = (REPO_ROOT / ".gatesrc").read_text()
-    assert "GOH_SHIP_PREFLIGHT='tools/release_goh.sh --preflight {version}'" in rc
+    assert "GOH_SHIP_PREFLIGHT='tools/release_goh.sh --preflight {version} && {" in rc
 
 
 def test_a_release_commit_its_gate_refuses_is_refused_by_the_preflight(

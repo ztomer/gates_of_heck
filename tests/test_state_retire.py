@@ -169,7 +169,7 @@ def test_the_ship_files_are_settled_imported_archived_and_deleted(home: Path) ->
         assert rec["status"] == "failed" and rec["failed_step"] == ship_status.ABANDONED, rec
         assert json.loads((to / "consumer" / f[k].name).read_text())["status"] == "running"
     assert ship_records.get(f["live"]) is None  # left to its worker, whose save writes the row
-    assert sr.stray() == [f["live"]]
+    assert sr.stray() == [f["live"], f["side"]]  # the sweep's is another store's
     assert sr.retire("ships", day=DAY, say=said.append) is True  # again: only the live one
 
 

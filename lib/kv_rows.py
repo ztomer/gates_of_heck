@@ -16,8 +16,9 @@ NO DOCUMENT IS KEPT (GOH.OLDFORMS): contract 0021 drops the ones an older goh le
 one. Such a document's MARK says its rows held it, whole; `fill` (the cutover's, and `goh state
 backfill`) makes rows of one with none. linux_unsafe and first_seen_done only grow.
 
-THE ORDER of pin_sweep_repos' sweeps (older, newer: lib/pin_sweep.py) is their `at`, apart by a
-millisecond. Paths and repos are in the document's own spelling (lib/state_paths.py).
+pin_sweep_repos is an older goh's sweep registry: push_sweeps (0022, GOH.PINSWEEP) says which sweep
+is newer, and nothing writes it. THE ORDER of its sweeps is their `at`, apart by a millisecond.
+Paths and repos are in the document's own spelling (lib/state_paths.py).
 Pinned by tests/test_kv_rows.py.
 """
 

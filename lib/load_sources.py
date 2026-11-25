@@ -93,7 +93,7 @@ CONTEXTS = (  # matched on an exe or script basename; the OUTERMOST in the ances
     ("ship", {"ship.py"}),
     ("push-gate", {"push_gate.sh", "pre-push", "ci_hook.sh"}),  # ci_hook.sh: a pre-push hook body
     ("commit-gate", {"pre-commit", "commit-msg", "commit_msg.sh"}),
-    ("pin-sweep", {"pin_sweep.py"}),
+    ("pin-sweep", {"pin_sweep.py", "pin_push.py"}),
     ("gate", {"gate.sh", "structural.sh", "local_ci.sh", "coverage_gate.sh"}),
     ("load-experiment", {"load.py"}),  # only its spinners and itself when N>0 (`_is_spinner`)
     ("load-sources", {"load_sources.py", "load_sources.sh"}),

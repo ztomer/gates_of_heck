@@ -3,7 +3,8 @@
     small_stores.py export [STATE_DIR]
 
 WHY. Seven stores were files rewritten whole or appended per line: five whole-file JSON
-documents (the estate audit's state, the pin push ledger and sweep registry, the cache evictor's
+documents (the estate audit's state, the pin push ledger and sweep registry (an older goh's, see
+lib/kv_rows.py), the cache evictor's
 ledger, wf-pin's consumer pin record), the commit-gated ledger and the flake register. They move
 into goh.db's `kv`, `commit_gated` and `flakes` tables (lib/goh_db_schema/0004_small_stores.sql),
 the pin ledger, the sweep registry and the pin record in rows too (lib/kv_rows.py, GOH.KVBLOBS);

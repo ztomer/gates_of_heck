@@ -28,6 +28,7 @@ SEAM = {
     "lib/state_retire_ships.py",  # its ship records' half (GOH.STATEDB S2)
     "lib/state_retire_verdicts.py",  # ... GOH.VERDICTDB's stores, split out at its line cap
     "lib/state_retire_lands.py",  # its land records' half (GOH.STATEDB S1)
+    "lib/state_retire_sweeps.py",  # its pin push sweeps' half (GOH.PINSWEEP)
     "lib/state_retire_landq.py",  # its land queue requests' half (GOH.LANDQDB)
     "tests/_state_seam_scan.py",
 }  # and this scanner, whose table names every store
@@ -38,6 +39,7 @@ STORES: dict[str, tuple[str, tuple[str, ...]]] = {
     "selection misses": ("S1 goh.db 0002 selection_misses", ("selection_misses.jsonl",)),
     "ship records": ("S2 goh.db 0003 ships", ("ship",)),
     "ship pins": ("S2 goh.db 0003 ship_pins", (".pins.json",)),
+    "push sweeps": ("goh.db 0022 push_sweeps", (".sweep.json",)),
     "small stores": (
         "S3 goh.db 0004 kv",
         (

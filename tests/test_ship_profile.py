@@ -25,9 +25,10 @@ import sys
 from pathlib import Path
 
 import _goh_db_fixture as gdb
+import push_sweep_rows
 import steps_store
 from conftest import REPO_ROOT, hermetic_env
-from test_consumer_pins import SCRIPT, TAG, WF, _consumer
+from test_consumer_pins import SCRIPT, TAG, WF, _consumer, sweep_wait
 from test_ship import _result, _ship, make_shipped
 from timing_bounds import patience
 
@@ -103,7 +104,7 @@ def test_the_sweep_pushes_its_consumers_one_after_another_each_profiled(tmp_path
                        GOH_SHIP_RESULT=str(tmp_path / "ship.json"), GOH_GATE_SLOTS="3",
                        GOH_TIMINGS=str(timings))  # fmt: skip
     r = subprocess.run([sys.executable, str(SCRIPT), "--root", str(tmp_path / "estate"), "--slug",
-                        "owner/gates_of_heck", "--tag", TAG, "--bump", "--sweep", "wait"],
+                        "owner/gates_of_heck", "--tag", TAG, "--bump", *sweep_wait()],
                        capture_output=True,
                        text=True, check=False, env=env, timeout=patience(120),
                        stdin=subprocess.DEVNULL)  # fmt: skip
@@ -111,7 +112,7 @@ def test_the_sweep_pushes_its_consumers_one_after_another_each_profiled(tmp_path
     assert r.returncode == 0, out
     rec = gdb.pinned(tmp_path / "ship.json")
     assert {k: v["status"] for k, v in rec["repos"].items()} == dict.fromkeys(names, "committed")
-    rec = json.loads(Path(rec["sweep"]).read_text())
+    rec = push_sweep_rows.read(rec["sweep"])
     assert {k: v["status"] for k, v in rec["repos"].items()} == dict.fromkeys(names, "pushed"), rec
     said = log.read_text()
     assert "leaked" not in said, said  # a consumer's gate is its own, never the ship's profile

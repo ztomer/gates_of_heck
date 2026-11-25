@@ -50,6 +50,9 @@ PATHS: tuple[tuple[str, str, str], ...] = (
     ("wf_pins", "sweep", "1"),
     *(("pin_pushes", c, "1") for c in ("sweep", "log")),
     ("pin_sweep_repos", "sweep", "1"),
+    *(("push_sweeps", c, "1") for c in ("sweep", "ship", "log")),
+    *(("push_sweep_repos", c, "1") for c in ("sweep", "log")),
+    ("push_sweep_steps", "sweep", "1"),
     ("imports", "source", "1"),
     ("spawn_lists", "value", "kind LIKE 'app%'"),
     ("spawn_app_exits", "app", "1"),
@@ -61,7 +64,7 @@ PATHS: tuple[tuple[str, str, str], ...] = (
 )  # fmt: skip
 REPOS: tuple[tuple[str, str], ...] = tuple(
     (t, "repo") for t in ("lands", "ships", *RUNS, "flakes", "main_readings", "pin_pushes",
-                          "pin_sweep_repos", "ship_grace"))  # fmt: skip
+                          "pin_sweep_repos", "push_sweep_repos", "ship_grace"))  # fmt: skip
 KV = tuple({*state_paths.PATHS, *state_paths.REPOS, *state_paths.NAMES})
 
 

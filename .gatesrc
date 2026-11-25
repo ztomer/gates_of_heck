@@ -246,7 +246,9 @@ GOH_SHIP_RELEASE='tools/release_goh.sh {version}'
 # ... and asks the kit's release commit of its land's gate BEFORE the suite (GOH.SHIPEARLY): a
 # release text the structural gate refuses is refused in seconds, not after the suite, and the
 # green is recorded for that tree, so the release land reuses it.
-GOH_SHIP_PREFLIGHT='tools/release_goh.sh --preflight {version}'
+# Then the consumers an owner's unpushed commit holds back are named, never refused (GOH.PINSWEEP):
+# the release's pin waits there for that owner's push, so the push belongs before the ship.
+GOH_SHIP_PREFLIGHT='tools/release_goh.sh --preflight {version} && { bin/goh wf-pin --owners || true; }'
 # goh's version IS its tag (lib/goh_version.sh, GOH.SHIPRELREUSE): no file a build reads names it,
 # so a pushed release tag is held to the stanza its own commit cut, CHANGELOG.md's newest heading.
 GOH_TAG_VERSION_SOURCES='changelog:CHANGELOG.md'

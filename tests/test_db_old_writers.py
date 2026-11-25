@@ -119,11 +119,11 @@ def test_a_number_that_only_says_safe_is_recorded_as_refuse(tmp_path, monkeypatc
 
 
 def test_the_shipped_safe_numbers_are_the_columns_files(tmp_path, monkeypatch) -> None:
-    """GOH.LANDCOLS, GOH.KVBLOBS: 0011 to 0015, and no number before them."""
+    """GOH.LANDCOLS, GOH.KVBLOBS: 0011 to 0016, and no number before them; GOH.PINSWEEP: 0022."""
     monkeypatch.setenv("GOH_DB", str(tmp_path / "goh.db"))
     with goh_db.connect() as con:
         meta = db_core.version(con)["meta"]
-    assert db_schema.safe_numbers(meta) == {11, 12, 13, 14, 15, 16}
+    assert db_schema.safe_numbers(meta) == {11, 12, 13, 14, 15, 16, 22}
 
 
 def test_an_older_copy_neither_sweeps_nor_judges_a_safe_files_tables(tmp_path, monkeypatch) -> None:

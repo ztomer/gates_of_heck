@@ -18,9 +18,9 @@ and records each outcome in the ship's record (`record_path`), which goh ship ca
 result as `consumer_pins`. The PUSHES are not the ship's (GOH.PINPUSHGATE, ruling 2026-11-15): each
 runs that consumer's FULL push gate (v0.124.0: 2010 s of the install's 2037 s), so lib/pin_sweep.py
 pushes every pin commit ahead of its upstream -- this one's and any an earlier bump left -- in a
-detached, bounded sweep after the ship returns, and records each outcome where `goh ship --status`
-and the next `goh wf-pin` listing read it. An owner's unpushed commit is never pushed by goh: the
-pin commit then waits on it, named.
+detached, bounded sweep, one a day (GOH.PINSWEEP), and records each outcome where `goh ship
+--status` and the next `goh wf-pin` listing read it. An owner's unpushed commit is never pushed by
+goh: the pin commit then waits on it, named.
 
 THE MANIFEST of the pins goh owns in a consumer (GOH.PINPROPAGATE): `PINS` names each (the goh
 release a workflow checks out; `ruff==X.Y.Z` in the root pyproject/requirements or a workflow, its
@@ -53,6 +53,7 @@ import estate_commit
 import gate_slot
 import land_lock
 import lock_order
+import push_refusal
 import ship_records
 import small_stores
 import step_timings
@@ -239,19 +240,38 @@ def ahead(repo: Path, fetch: bool = False) -> tuple[str | None, list[tuple[str, 
     return ref, _commits(repo, f"{ref}..HEAD")
 
 
-def push(repo: Path, said: str, log: Path | None = None) -> tuple[str, str]:
+def owners(repo: Path, span: list[tuple[str, str]]) -> list[str]:
+    """The subjects of SPAN's commits that are their owner's, never pushed by goh."""
+    return [s for sha, s in span if not is_pin_commit(repo, sha, s)]
+
+
+def oldest(repo: Path) -> float:
+    """When REPO's oldest commit ahead of its upstream was made, as the last fetch left the
+    upstream: the sweep pushes the one that has waited longest first."""
+    span = ahead(repo)[1]
+    if not span:
+        return time.time()
+    at = estate_commit.git(repo, "log", "-1", "--format=%ct", span[-1][0]).stdout.strip()
+    return float(at) if at.isdigit() else 0.0
+
+
+def push(repo: Path, said: str, log: Path | None = None,
+         hold: Callable[[], str | None] = lambda: None,
+         facts: dict | None = None) -> tuple[str, str]:  # fmt: skip
     """Push the pin commits ahead of REPO's upstream through its own push gate: ("pushed", why),
     ("refused", why, its gate's log named) or ("committed", why not). Only goh's pin commits are
     ever pushed: an owner's commit in the span leaves it all for the owner's push, named. LOG keeps
-    the gate's output (a refusal names it); without one it goes to a temporary file."""
+    the gate's output (a refusal names it); without one it goes to a temporary file. HOLD, asked
+    once nothing else is in the way: why its gate is not run again ("held", why; lib/push_hold.py).
+    FACTS is filled with what a push that ran measured: `seconds`, `slot_wait_s`, and a refused
+    one's `refusal`."""
     lead = f"{said}; " if said else ""
     ref, span = ahead(repo, fetch=True)
     if ref is None:
         return "committed", f"{lead}not pushed: its branch tracks no upstream"
     if not span:
         return "pushed", f"{lead}{ref} already has it"
-    theirs = [s for sha, s in span if not is_pin_commit(repo, sha, s)]
-    if theirs:
+    if theirs := owners(repo, span):
         n = counted(len(theirs), "commit")
         return "committed", (f"{lead}not pushed: {n} ahead of {ref} are its owner's "
                              f"({theirs[-1]}); their push carries the pin")  # fmt: skip
@@ -267,6 +287,8 @@ def push(repo: Path, said: str, log: Path | None = None) -> tuple[str, str]:
             "committed",
             f"{lead}not pushed: the sweep's push budget is spent; the next ship's sweep pushes it",
         )
+    if why := hold():
+        return "held", f"{lead}{why}"
     remote, branch = ref.split("/", 1)
     with tempfile.TemporaryDirectory(dir=goh_tmp(), prefix="goh-pins-push.") as tmp:
         path = Path(log) if log is not None else Path(tmp) / "push.log"
@@ -288,7 +310,7 @@ def push(repo: Path, said: str, log: Path | None = None) -> tuple[str, str]:
         started = mark.read_text().strip() if mark.exists() else ""
         waited = int(started) - int(t0) if started.isdigit() else took
         text = path.read_text(encoding="utf-8", errors="replace")
-        tail = " | ".join([ln for ln in text.splitlines() if ln.strip()][-3:])
+    (facts if facts is not None else {}).update(seconds=took, slot_wait_s=max(0, waited))
     # A push the sweep's budget killed is no verdict of its gate (GOH.SWEEPTIMEOUT): the log's tail
     # is then bash echoing the killed hook job, so it is never quoted as a reason.
     if out.timed_out:
@@ -298,7 +320,11 @@ def push(repo: Path, said: str, log: Path | None = None) -> tuple[str, str]:
         )
     if out.code:
         kept = f"; log {path}" if log is not None else ""
-        return "refused", f"{lead}NOT pushed: its push gate refused ({tail or out.code}){kept}"
+        r = push_refusal.refusal(text)
+        if facts is not None:
+            facts["refusal"] = r
+        by = "its push gate refused" if r.judged else "its push failed, judged by no gate"
+        return "refused", f"{lead}NOT pushed: {by} ({r.said or f'exit {out.code}'}){kept}"
     return "pushed", f"{lead}pushed {counted(len(span), 'pin commit')} to {ref}"
 
 

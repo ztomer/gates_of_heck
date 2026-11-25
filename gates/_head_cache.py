@@ -49,6 +49,15 @@ BUILD_LEFTOVER_S = 86400  # a `.build.*` temp dir a crashed export left behind
 STAMPS = (".goh-used", ".goh-head")  # last-use stamp first, then the marker it falls back to
 
 
+def use(path: str) -> None:
+    """A use of the export at PATH by a process that outlives its start (lib/pin_sweep.py, hours
+    asleep): its stamp now. A checkout has none."""
+    try:
+        os.utime(os.path.join(path, STAMPS[0]))
+    except OSError:
+        return
+
+
 def _rmtree(path: str) -> None:
     shutil.rmtree(path, ignore_errors=True)
 

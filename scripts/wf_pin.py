@@ -15,6 +15,7 @@ What the bump could not move, each repo's own gate refuses: `goh goh-pins`, a st
 checkout at no release, and a tag-reading gate job on a shallow clone.
 
     goh wf-pin                    # list each stale pin and unpushed pin commit; exit 1 if any
+    goh wf-pin --owners           # name each consumer an owner's unpushed commit holds back; exit 0
     goh wf-pin --bump [--tag vX.Y.Z] [--except REPO]... [--sweep detach|wait|none]
                                   # rewrite and commit each repo's; the pushes are the sweep's
 
@@ -34,11 +35,11 @@ uncommitted), and each repo's outcome goes to the ship's record (GOH_SHIP_RESULT
 its goh.db ship_pins row), which goh ship carries into its result. Then it hands every pin commit
 ahead of its upstream -- this bump's, and any an earlier one left (GOH.PINPROPAGATE: after v0.121.0
 seventeen repos sat ahead of origin with one) -- to lib/pin_sweep.py, which pushes each through the
-repo's own FULL push gate in a detached, bounded sweep after the ship returns (GOH.PINPUSHGATE: the
-gates were 2010 s of v0.124.0's 2037 s install). An owner's unpushed commit is never pushed by goh;
-the pin then waits on it, named. A set-aside repo stays stale and a pin commit the sweep could not
-push stays ahead (pin_sweep's ledger says why, with its log); the listing names both, so the bump
-exits 0 unless it could not read the estate.
+repo's own FULL push gate in a detached, bounded sweep after the ship returns, one a day
+(GOH.PINPUSHGATE: the gates were 2010 s of v0.124.0's 2037 s install; GOH.PINSWEEP). An owner's
+unpushed commit is never pushed by goh; the pin then waits on it, named. A set-aside repo stays
+stale and a pin commit the sweep could not push stays ahead (pin_sweep's ledger says why, with its
+log); the listing names both, so the bump exits 0 unless it could not read the estate.
 
 `goh wf-pin` (GOH.WFPIN): every estate workflow pinning a goh release older than the newest tag
 (`repository:`+`ref:`, `GOH_TAG:`, `git clone --branch`), exit 1 when any is, and each goh checkout
@@ -90,6 +91,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import consumer_pins
 import estate_commit
 import estate_registry
+import pin_schedule
 import pin_sweep
 import state_paths
 from consumer_pins import Pin
@@ -264,8 +266,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--slug", help="goh's GitHub OWNER/NAME (default: from goh's origin)")
     ap.add_argument("--bump", action="store_true", help="rewrite and commit each stale pin")
     ap.add_argument("--sweep", choices=("detach", "wait", "none"), default="detach",
-                    help="with --bump: the pushes' sweep detached (default), in the foreground, "
-                         "or not started (the next one pushes)")  # fmt: skip
+                    help="with --bump: the pushes' sweep detached until it is due (default), now "
+                         "and in the foreground, or not started (the next one pushes)")  # fmt: skip
     ap.add_argument(
         "--record",
         default=os.environ.get("GOH_SHIP_RESULT"),
@@ -277,6 +279,8 @@ def main(argv: list[str] | None = None) -> int:
         default=consumer_pins.BUDGET,
         help="seconds the push sweep may take in all (default %(default)s)",
     )
+    ap.add_argument("--owners", action="store_true", help="name each consumer an owner's unpushed "
+                    "commit holds back, and nothing else; always 0")  # fmt: skip
     ap.add_argument("--except", dest="kept", action="append", type=Path, default=[],
                     help="a repo to list but never bump (repeatable)")  # fmt: skip
     a = ap.parse_args(argv)
@@ -293,15 +297,23 @@ def main(argv: list[str] | None = None) -> int:
     repos, _ = estate_registry.union(
         walked, estate_registry.registry_path(estate_registry.state_file())
     )
+    mine = [r for r in repos if r.resolve() != GOH.resolve()]
+    if a.owners:
+        owners_ahead(mine, root, slug)
+        return 0
+    try:
+        a.schedule = pin_schedule.settings(GOH)
+    except ValueError as e:  # before anything is committed
+        err(f"wf-pin: {e}")
+        return 2
+    pin_sweep.settle()
     kept = {p.expanduser().resolve() for p in a.kept}
     ruff = consumer_pins.ruff_pin()
     commit = release_commit(GOH, tag)
     n_stale = n_ahead = 0
     jobs: list[tuple[str, Callable[[], tuple[str, str]]]] = []
     record: dict[str, dict[str, str]] = {}
-    for repo in repos:
-        if repo.resolve() == GOH.resolve():
-            continue  # goh's own workflow runs this checkout, not a release
+    for repo in mine:  # goh's own workflow runs this checkout, not a release
         old, loose = stale(repo, slug, tag)
         rold = consumer_pins.stale_ruff(repo, workflows(repo), ruff)
         where = estate_registry_rel(repo, root)
@@ -332,7 +344,7 @@ def main(argv: list[str] | None = None) -> int:
 
     record |= consumer_pins.sweep(jobs, said, row="commit", ok="committed")
     if a.bump:
-        handoff(a, repos, root, kept, tag, ruff, record)
+        handoff(a, mine, root, kept, tag, ruff, record)
     if n_ahead and not a.bump:
         info(f"push them: the next goh ship's sweep, or goh wf-pin --bump "
              f"({counted(n_ahead, 'repo')} ahead with a pin commit)")  # fmt: skip
@@ -345,6 +357,23 @@ def main(argv: list[str] | None = None) -> int:
             info(f"move them: goh wf-pin --bump  ({counted(n_stale, 'repo')} behind {tag})")
         return 1
     return 0
+
+
+def owners_ahead(repos: list[Path], root: Path, slug: str) -> int:
+    """Name each consumer whose span holds its owner's commit (GOH.PINSWEEP): the release about to
+    start commits its pin there and cannot push it. As the last fetch left the upstream; how many.
+    A line of the ship's preflight, never a refusal of it."""
+    n = 0
+    for repo in repos:
+        if not (stale(repo, slug, "")[0] or consumer_pins.stale_ruff(repo, workflows(repo), "")):
+            continue  # it holds no pin of goh's
+        ref, span = consumer_pins.ahead(repo)
+        if theirs := consumer_pins.owners(repo, span):
+            n += 1
+            warn(f"{estate_registry_rel(repo, root)}: {counted(len(theirs), 'commit')} ahead of "
+                 f"{ref or 'no upstream'} are its owner's ({theirs[0]}); its pin waits for their "
+                 "push")  # fmt: skip
+    return n
 
 
 def unpushed_said(repo: Path) -> str:
@@ -360,20 +389,20 @@ def handoff(a: argparse.Namespace, repos: list[Path], root: Path, kept: set[Path
             ruff: str, record: dict[str, dict[str, str]]) -> None:  # fmt: skip
     """Write the install's record and hand every repo ahead of its upstream with a pin commit to
     the push sweep (lib/pin_sweep.py), detached unless --sweep says otherwise."""
-    mine = [r for r in repos if r.resolve() != GOH.resolve() and r.resolve() not in kept]
-    ahead = {estate_registry_rel(r, root): r for r in mine if stranded(r)}
+    ahead = {estate_registry_rel(r, root): r for r in repos
+             if r.resolve() not in kept and stranded(r)}  # fmt: skip
     where = a.record or str(pin_sweep.ledger_path().with_name("wf_pin.json"))
-    sweep = str(pin_sweep.sweep_path(where)) if ahead and a.sweep != "none" else None
+    sweep = str(pin_sweep.place(where)) if ahead and a.sweep != "none" else None
     consumer_pins.write_record(where, tag, ruff, dict(sorted(record.items())), sweep,
                                ship=a.record is not None)  # fmt: skip
     if not ahead:
         return
-    if a.sweep == "none":
+    if sweep is None:
         info(f"{counted(len(ahead), 'repo')} ahead with a pin commit; no push sweep (--sweep none)")
         return
-    path = pin_sweep.start(where, ahead, a.budget, wait=a.sweep == "wait")
+    pin_sweep.start(Path(sweep), where, ahead, a.budget, a.schedule, wait=a.sweep == "wait")
     info(f"push sweep of {counted(len(ahead), 'repo')} "
-         f"{'done' if a.sweep == 'wait' else 'started, detached'}: {path}")  # fmt: skip
+         f"{'done' if a.sweep == 'wait' else 'detached until it is due'}: {sweep}")  # fmt: skip
 
 
 def estate_registry_rel(repo: Path, root: Path) -> str:

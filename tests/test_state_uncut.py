@@ -44,6 +44,7 @@ def test_a_new_file_is_born_as_the_cutover_leaves_one() -> None:
             "m.name) c WHERE m.type = 'table' AND c.name = 'body'")] == ["kv"]  # fmt: skip
     cut = bf.memory(bf.UNCUT)
     contracts(cut, *NUMBERS)
+    db_core.migrate(cut, goh_db.SEAM)  # what came after the last contract
     assert schema(con) == schema(cut)
 
 
@@ -58,7 +59,8 @@ def test_a_file_made_meanwhile_by_an_older_goh_gets_no_contract(monkeypatch) -> 
 
     monkeypatch.setattr(db_schema, "fresh", raced)
     db_core.migrate(con, goh_db.SEAM)
-    assert db_schema.version(con)["applied"] == list(range(1, 17)) and not state_paths.tokens(con)
+    rest = sorted(set(db_schema.migrations(goh_db.SEAM)) - set(NUMBERS))
+    assert db_schema.version(con)["applied"] == rest and not state_paths.tokens(con)
 
 
 @pytest.mark.parametrize("door", ["connect", "ro", "known", "transaction"])

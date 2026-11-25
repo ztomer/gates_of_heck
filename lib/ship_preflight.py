@@ -16,10 +16,13 @@ import tempfile
 from pathlib import Path
 
 import bounded_run
+import fail_lines
 import ship_changelog
 from ship_status import tail
 from ship_version import SEMVER, Refused, git, git_bindings
 from tmp_root import goh_tmp  # every temp root under $TMPDIR/goh.noindex (GOH.TMPNOINDEX)
+
+from tui.lib import warn
 
 
 def preflights(repo: Path, cfg: dict[str, str], version: str, summary="") -> list[tuple[str, str]]:
@@ -43,7 +46,8 @@ def preflights(repo: Path, cfg: dict[str, str], version: str, summary="") -> lis
 
 def run_preflights(repo: Path, cmds: list[tuple[str, str]], version: str, args: argparse.Namespace,
                    timeout: int, grace: int = 5) -> None:  # fmt: skip
-    """Run each preflight under the ship's bound; the first refusal raises Refused, naming it."""
+    """Run each preflight under the ship's bound; the first refusal raises Refused, naming it, and
+    what one that passed warned of is said (GOH.PINSWEEP)."""
     env = ["env", *(f"-u{k}" for k in git_bindings()), f"GOH_SHIP_VERSION={version}",
            f"GOH_SHIP_SUMMARY={args.summary or ''}",
            f"GOH_SHIP_ITEM={args.item or ''}"]  # fmt: skip
@@ -56,10 +60,13 @@ def run_preflights(repo: Path, cmds: list[tuple[str, str]], version: str, args: 
             argv = [*env, "bash", "-c", cd + cmd]
             out = bounded_run.run_step(argv, timeout, grace, "ship preflight",
                                        str(log))  # fmt: skip
-            said = [ln for ln in tail(log) if ln.strip()][-8:]
+            kept = [fail_lines.ANSI.sub("", ln) for ln in tail(log) if ln.strip()]
+            said, warned = kept[-8:], [ln[2:] for ln in kept if ln.startswith("⚠ ")]
         finally:
             log.unlink(missing_ok=True)
         if out.code == 0 and not out.timed_out:
+            for ln in warned:
+                warn(ln)
             continue
         what = f"timed out after {timeout}s" if out.timed_out else f"exit {out.code}"
         raise Refused(

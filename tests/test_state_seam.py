@@ -26,6 +26,9 @@ ALLOWED: dict[str, set[str]] = {
         "lib/state_bounds.py",  # LEFT: ship/* bounds the step logs (handover plan (e))
     },
     "ship pins": set(),  # S2 goh.db 0003 ship_pins: moved; the files retired (state_retire_ships)
+    "push sweeps": {  # goh.db 0022: moved (lib/push_sweep_rows.py); the files retired
+        "lib/pin_sweep.py",  # LEFT: sweep_path(), the name every record has for a sweep, no file
+    },
     "small stores": set(),  # S3 goh.db 0004 kv: moved (lib/small_stores.py, GOH.STATEDBS3)
     "commit gated": set(),  # S3 goh.db 0004 commit_gated: moved (lib/small_stores.py)
     "flakes": set(),  # S3 goh.db 0004 flakes: moved; the files retired (lib/state_retire.py)

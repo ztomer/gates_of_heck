@@ -268,8 +268,7 @@ def _dur_what(p: Path) -> str:
 
 
 def _numbers(data: object) -> dict[str, float]:
-    if not isinstance(data, dict):
-        return {}
+    data = data if isinstance(data, dict) else {}
     return {k: float(v) for k, v in data.items() if isinstance(v, (int, float))}
 
 
@@ -356,6 +355,7 @@ STORES: dict[str, Store] = {
     ),
     **{n: Store(**kw) for n, kw in state_retire_verdicts.STORES.items()},
     "landq": Store(**__import__("state_retire_landq").STORE),  # GOH.LANDQDB, beside this one
+    "sweeps": Store(**__import__("state_retire_sweeps").STORE),  # GOH.PINSWEEP, beside this one
 }
 GROUPS = dict([state_retire_verdicts.GROUP])  # a name for several stores
 

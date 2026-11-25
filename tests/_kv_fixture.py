@@ -20,7 +20,8 @@ MADE: dict[tuple[str, int], bytes] = {}
 def memory(mod, last: int = 9999) -> sqlite3.Connection:
     """MOD's file as it is made, in memory; LAST: an older goh's, its schema up to that file."""
     key = (mod.SEAM.name, last)
-    con = sqlite3.connect(":memory:", isolation_level=None)
+    # one thread at a time: a push sweep's pool of one (lib/pin_sweep.py) writes the test's
+    con = sqlite3.connect(":memory:", isolation_level=None, check_same_thread=False)
     if key not in MADE:
         con.executescript(db_core.BOOT)
         files = {n: p for n, p in db_schema.migrations(mod.SEAM).items() if n <= last}
