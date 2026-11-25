@@ -16,6 +16,7 @@ from pathlib import Path
 
 import _land_verdicts as lv
 import pytest
+from _small_rust import SMALL
 from conftest import REPO_ROOT, git, hermetic_env
 from test_verdict_carry import SESSION_CONFTEST, _gate
 
@@ -155,7 +156,7 @@ def test_an_unmarked_test_that_ran_the_binary_is_measured_and_its_profile_reache
     assert llvm is not None
     (tmp_path / "prog.rs").write_text(PROG)
     exe = tmp_path / "prog"
-    subprocess.run(["rustc", "-C", "instrument-coverage", "-o", str(exe), "prog.rs"],
+    subprocess.run(["rustc", "-C", "instrument-coverage", *SMALL, "-o", str(exe), "prog.rs"],
                    cwd=tmp_path, check=True, capture_output=True,
                    stdin=subprocess.DEVNULL)  # fmt: skip
     d, prof = tmp_path / "s", tmp_path / "profiles"

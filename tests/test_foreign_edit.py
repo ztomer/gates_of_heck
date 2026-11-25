@@ -23,6 +23,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _tree_clone import process_template
 from conftest import REPO_ROOT, hermetic_env
 
 GUARD = REPO_ROOT / "hooks" / "claude" / "hold_guard.py"
@@ -30,9 +31,24 @@ ME, OTHER = "a1111111111111111", "a2222222222222222"
 
 
 @pytest.fixture
-def estate(tmp_path: Path) -> Path:
-    """~/Projects in miniature: four repos; OTHER's item holds `theirs`, ME's holds `mine`."""
-    projects = tmp_path / "Projects"
+def estate() -> Path:
+    """The run's one estate (`_estate`), which a hook only reads."""
+    return process_template("foreign-edit-estate", _estate) / "Projects"
+
+
+@pytest.fixture
+def own_estate(tmp_path: Path) -> Path:
+    """An estate for the test that writes in it."""
+    _estate(tmp_path)
+    return tmp_path / "Projects"
+
+
+def _estate(tree: Path) -> None:
+    """~/Projects in miniature: four repos; OTHER's item holds `theirs`, ME's holds `mine`; and the
+    two items' scratch dirs."""
+    projects = tree / "Projects"
+    for item in ("X.MINE", "X.THEIRS"):
+        (tree / "state" / "loop" / "scratch" / item).mkdir(parents=True)
     for name in ("mine", "theirs", "free", "games/nested"):
         (projects / name / ".git").mkdir(parents=True)
     _queue(projects, [
@@ -41,7 +57,6 @@ def estate(tmp_path: Path) -> Path:
         {"id": "X.DONE", "repo": "free", "status": "done", "agent": OTHER},
         {"id": "X.TODO", "repo": "games/nested", "status": "todo"},
     ])  # fmt: skip
-    return projects
 
 
 def _queue(projects: Path, items: list[dict]) -> None:
@@ -108,38 +123,40 @@ def test_an_agent_no_item_records_is_refused_in_a_held_repo_and_told_why(estate:
     assert reason and "X.MINE" in reason and "loopctl start ID a9999999999999999" in reason
 
 
-def test_a_linked_worktree_inside_a_held_checkout_is_its_own_repo(estate: Path) -> None:
-    wt = estate / "theirs" / "build" / "wt"
+def test_a_linked_worktree_inside_a_held_checkout_is_its_own_repo(own_estate: Path) -> None:
+    wt = own_estate / "theirs" / "build" / "wt"
     wt.mkdir(parents=True)
     (wt / ".git").write_text("gitdir: ../../.git/worktrees/wt\n")
-    assert _verdict(estate, "Write", {"file_path": str(wt / "lib" / "x.py")}) is None
+    assert _verdict(own_estate, "Write", {"file_path": str(wt / "lib" / "x.py")}) is None
     assert _verdict(
-        estate, "Write", {"file_path": str(estate / "theirs" / "build" / "x")}
+        own_estate, "Write", {"file_path": str(own_estate / "theirs" / "build" / "x")}
     )  # beside it: held
 
 
-def test_an_estate_item_holds_every_repo_unless_narrowed(estate: Path) -> None:
-    _queue(estate, [
+def test_an_estate_item_holds_every_repo_unless_narrowed(own_estate: Path) -> None:
+    _queue(own_estate, [
         {"id": "E.ALL", "repo": "estate", "status": "in_progress", "agent": OTHER},
         {"id": "X.MINE", "repo": "mine", "status": "in_progress", "agent": ME},
     ])  # fmt: skip
-    assert "E.ALL" in (_verdict(estate, "Write", {"file_path": str(estate / "free" / "x")}) or "")
+    assert "E.ALL" in (
+        _verdict(own_estate, "Write", {"file_path": str(own_estate / "free" / "x")}) or ""
+    )
     assert (
-        _verdict(estate, "Write", {"file_path": str(estate / "mine" / "x")}) is None
+        _verdict(own_estate, "Write", {"file_path": str(own_estate / "mine" / "x")}) is None
     )  # my own still mine
-    _queue(estate, [{"id": "E.SOME", "repo": "estate", "holds": "theirs, games/nested",
+    _queue(own_estate, [{"id": "E.SOME", "repo": "estate", "holds": "theirs, games/nested",
                      "status": "in_progress", "agent": OTHER}])  # fmt: skip
     assert "E.SOME" in (
-        _verdict(estate, "Write", {"file_path": str(estate / "games/nested/x")}) or ""
+        _verdict(own_estate, "Write", {"file_path": str(own_estate / "games/nested/x")}) or ""
     )
-    assert _verdict(estate, "Write", {"file_path": str(estate / "free" / "x")}) is None
+    assert _verdict(own_estate, "Write", {"file_path": str(own_estate / "free" / "x")}) is None
 
 
-def test_a_missing_or_broken_queue_holds_nothing(estate: Path) -> None:
-    (estate / ".loop" / "queue.json").write_text("{not json")
-    assert _verdict(estate, "Write", {"file_path": str(estate / "theirs" / "x")}) is None
-    (estate / ".loop" / "queue.json").unlink()
-    assert _verdict(estate, "Write", {"file_path": str(estate / "theirs" / "x")}) is None
+def test_a_missing_or_broken_queue_holds_nothing(own_estate: Path) -> None:
+    (own_estate / ".loop" / "queue.json").write_text("{not json")
+    assert _verdict(own_estate, "Write", {"file_path": str(own_estate / "theirs" / "x")}) is None
+    (own_estate / ".loop" / "queue.json").unlink()
+    assert _verdict(own_estate, "Write", {"file_path": str(own_estate / "theirs" / "x")}) is None
 
 
 # ---- LOOP.FOREIGNEDIT: the shell -----------------------------------------------------------------
@@ -266,7 +283,6 @@ def test_my_own_scratch_write_passes_from_a_cwd_inside_a_held_repo(
     estate: Path, command: str
 ) -> None:
     scratch = estate.parent / "state" / "loop" / "scratch"
-    (scratch / "X.MINE").mkdir(parents=True)
     assert _scratch_bash(estate, command.format(s=scratch), cwd=estate / "theirs") is None
 
 
@@ -284,7 +300,6 @@ def test_a_write_into_a_held_repo_or_another_items_scratch_is_still_refused(
     estate: Path, command: str
 ) -> None:
     scratch = estate.parent / "state" / "loop" / "scratch"
-    (scratch / "X.THEIRS").mkdir(parents=True)
     reason = _scratch_bash(estate, command.format(p=estate, s=scratch), cwd=estate / "theirs")
     assert reason and "X.THEIRS" in reason, reason
 

@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _small_rust import small_builds
 from conftest import REPO_ROOT, hermetic_env
 
 pytestmark = pytest.mark.skipif(
@@ -47,6 +48,7 @@ def _cov(crate: Path) -> str:
 
 
 def test_an_incremental_report_is_the_clean_builds(tmp_path: Path) -> None:
+    small_builds(tmp_path)
     crate = tmp_path / "stale"
     (crate / "src").mkdir(parents=True)
     (crate / "tests").mkdir()
@@ -80,6 +82,7 @@ def test_a_binary_of_another_build_never_counts(tmp_path: Path) -> None:
     old source: removed code reads uncovered, at line numbers the current file may not have
     (sys_updater, 2026-10-17: 96.44% read 92.32%, misses at config.rs:287-465 of a 290-line file).
     Bump and remove at once: the old binary holds `a`, the current tree does not."""
+    small_builds(tmp_path)
     crate = tmp_path / "stale"
     (crate / "src").mkdir(parents=True)
     manifest = '[package]\nname = "stale"\nversion = "0.1.0"\nedition = "2021"\n\n[workspace]\n'
@@ -106,6 +109,7 @@ def test_a_recreated_tree_reuses_its_dependencies_build(tmp_path: Path) -> None:
     CPU per push). Now the build dir is keyed on the path and kept outside the tree: a dependency
     outside the recreated tree (as a registry crate is) is not compiled again, and the report is the
     same."""
+    small_builds(tmp_path)
     (tmp_path / "base" / "src").mkdir(parents=True)
     (tmp_path / "base" / "Cargo.toml").write_text(
         '[package]\nname = "base"\nversion = "0.1.0"\nedition = "2021"\n\n[workspace]\n'

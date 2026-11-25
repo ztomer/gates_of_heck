@@ -19,15 +19,15 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 import pytest
 from prune_kept import prune
 
-MIB = 1 << 20
+UNIT = 1 << 16  # the bounds are judged on sizes, whatever the unit
 OLD = time.time() - 7200
 
 
-def _root(parent: Path, name: str, mib: int, age: float) -> Path:
+def _root(parent: Path, name: str, units: int, age: float) -> Path:
     root = parent / name
     deep = root / "pytest-of-u" / "pytest-0" / "popen-gw0"
     deep.mkdir(parents=True)
-    (deep / "blob").write_bytes(b"\0" * (mib * MIB))
+    (deep / "blob").write_bytes(b"\0" * (units * UNIT))
     for d in (deep, deep.parent, deep.parent.parent, root):
         os.utime(d, (age, age))
     return root
@@ -36,7 +36,7 @@ def _root(parent: Path, name: str, mib: int, age: float) -> Path:
 def test_kept_roots_are_bounded_by_size_as_well_as_count(tmp_path) -> None:
     for i in range(5):
         _root(tmp_path, f"goh-pytest.{i}", 1, OLD + i)  # .4 is the newest
-    removed = prune(str(tmp_path), "goh-pytest.", keep=3, idle=3600, max_bytes=int(2.5 * MIB))
+    removed = prune(str(tmp_path), "goh-pytest.", keep=3, idle=3600, max_bytes=int(2.5 * UNIT))
     left = sorted(p.name for p in tmp_path.iterdir())
     assert left == ["goh-pytest.3", "goh-pytest.4"], left  # the count allowed 3; the size, 2
     assert sorted(os.path.basename(r) for r in removed) == [f"goh-pytest.{i}" for i in range(3)]

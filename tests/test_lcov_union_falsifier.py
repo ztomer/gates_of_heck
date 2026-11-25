@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _small_rust import SMALL
 from conftest import REPO_ROOT
 
 
@@ -60,8 +61,8 @@ def _run(*cmd: str, **kw) -> subprocess.CompletedProcess:
 
 def test_a_zero_count_clone_never_zeroes_a_line_another_instantiation_ran(tmp_path: Path) -> None:
     (tmp_path / "main.rs").write_text(SRC)
-    _run("rustc", "--crate-name", "prog", "-C", "instrument-coverage", "-o", "prog", "main.rs",
-         cwd=tmp_path)  # fmt: skip
+    _run("rustc", "--crate-name", "prog", "-C", "instrument-coverage", *SMALL, "-o", "prog",
+         "main.rs", cwd=tmp_path)  # fmt: skip
     _run(str(tmp_path / "prog"), env={"LLVM_PROFILE_FILE": str(tmp_path / "run.profraw")})
     _run(str(LLVM / "llvm-profdata"), "merge", "-o", "run.profdata", "run.profraw", cwd=tmp_path)
     lcov = _run(str(LLVM / "llvm-cov"), "export", "-format=lcov", "prog",

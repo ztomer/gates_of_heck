@@ -19,6 +19,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _small_rust import SMALL
 
 
 def _llvm_bin() -> Path | None:
@@ -48,8 +49,8 @@ def _build(root: Path, name: str, limit: int, step: int) -> tuple[Path, Path]:
     src = root / "main.rs"
     src.write_text(SRC.format(limit=limit, step=step))
     exe = d / "prog"
-    subprocess.run(["rustc", "--crate-name", "prog", "-C", "instrument-coverage", "-o", str(exe),
-                    "main.rs"], cwd=root, check=True, capture_output=True,
+    subprocess.run(["rustc", "--crate-name", "prog", "-C", "instrument-coverage", *SMALL, "-o",
+                    str(exe), "main.rs"], cwd=root, check=True, capture_output=True,
                    stdin=subprocess.DEVNULL)  # fmt: skip
     raw = d / "run.profraw"
     subprocess.run([str(exe)], env={"LLVM_PROFILE_FILE": str(raw)}, check=True,

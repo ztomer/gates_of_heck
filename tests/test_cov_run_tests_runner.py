@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _small_rust import CONFIG
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
@@ -140,7 +141,7 @@ def _crate(root: Path) -> Path:
     run = root / "tools" / "run.sh"
     run.write_text('#!/bin/bash\nexport COV_FROM_RUNNER=runner\nexec "$@"\n')
     run.chmod(0o755)
-    _cfg(root, "[target.'cfg(unix)']\nrunner = \"tools/run.sh\"\n")
+    _cfg(root, "[target.'cfg(unix)']\nrunner = \"tools/run.sh\"\n" + CONFIG)
     subprocess.run(
         ["cargo", "generate-lockfile", "-q"], cwd=root, check=True, stdin=subprocess.DEVNULL
     )

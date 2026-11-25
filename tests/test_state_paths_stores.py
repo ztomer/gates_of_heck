@@ -4,7 +4,7 @@ roots reads the same file at its own."""
 
 from __future__ import annotations
 
-import shutil
+import os
 import sqlite3
 import sys
 from collections.abc import Callable
@@ -179,7 +179,7 @@ def test_its_rows_hold_no_path_of_this_host(store, host: Host):
 def test_a_host_with_other_roots_reads_the_same_file_at_its_own(store, host, monkeypatch, tmp_path):
     was = store(host)()
     other = Host(tmp_path.resolve() / "two")
-    shutil.copy(goh_db.path(), other.state / "copy.db")
+    os.link(goh_db.path(), other.state / "copy.db")  # the same file, at the other host's path
     for var, at in (("STATE_ROOT", other.state), ("REPOS_ROOT", other.repos)):
         monkeypatch.setenv(f"GOH_{var}", str(at))
     monkeypatch.setenv("GOH_DB", str(other.state / "goh.db"))

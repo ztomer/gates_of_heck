@@ -24,6 +24,7 @@ ENV = "GATES_OF_HECK_DB_THROWAWAY"  # lib/db_settings.py THROWAWAY_ENV
 SEEDS = "GATES_OF_HECK_DB_SEEDS"  # lib/db_settings.py SEED_ENV
 # The tests of how a file is made and migrated: each makes its own, as production does.
 MAKERS = ("test_db_",)
+NO_MAKER = ("test_db_refused.py",)  # a file it may not write is its subject, made or cloned
 
 
 @functools.cache
@@ -72,5 +73,6 @@ def pytest_unconfigure(config) -> None:
 def _db_journal(request, monkeypatch):
     if request.node.nodeid.split("[")[0] in on_disk():
         monkeypatch.delenv(ENV, raising=False)
-    if request.node.nodeid.rsplit("/", 1)[-1].startswith(MAKERS):
+    name = request.node.nodeid.rsplit("/", 1)[-1]
+    if name.startswith(MAKERS) and not name.startswith(NO_MAKER):
         monkeypatch.delenv(SEEDS, raising=False)

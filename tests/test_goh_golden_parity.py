@@ -190,7 +190,6 @@ CASES = [
     ("gray_alpha", 64, 64, "LA", 16),
     ("palette", 120, 90, "P", 17),
     ("one_bit", 64, 64, "1", 18),
-    ("big_1mpx", 1000, 1000, "RGB", 12),
 ]
 
 
@@ -233,10 +232,16 @@ def test_a_failing_mean_prints_its_tolerance_as_python_does(goh: Path, tmp_path:
     assert_same_verdict(py, rs)
 
 
-@pytest.mark.slow
+@pytest.mark.parametrize(
+    "name,w,h,seed",
+    [
+        ("big_1mpx", 1000, 1000, 12),
+        pytest.param("huge_6mpx", 3000, 2000, 20, marks=pytest.mark.slow),
+    ],
+)
 @needs_reference
-def test_six_megapixels_agree(goh: Path, tmp_path: Path) -> None:
-    pa, pb = make_pair_numpy(tmp_path, "huge_6mpx", 3000, 2000, 20)
+def test_megapixels_agree(goh: Path, tmp_path: Path, name: str, w: int, h: int, seed: int) -> None:
+    pa, pb = make_pair_numpy(tmp_path, name, w, h, seed)
     code_py, py, _ = run_py(pa, pb)
     code_goh, rs, _ = run_goh(goh, pa, pb)
     assert code_py == code_goh

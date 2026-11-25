@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _small_rust import SMALL
 from conftest import REPO_ROOT, hermetic_env
 from test_cov_carry import PROG, RUNS_IT, _llvm_bin
 from test_verdict_carry import SESSION_CONFTEST, _gate
@@ -33,7 +34,7 @@ RUNS = "test_r.py::test_runs_it"
 def _build(bins: Path, src: str) -> Path:
     bins.mkdir()
     (bins / "prog.rs").write_text(src)
-    subprocess.run(["rustc", "-C", "instrument-coverage", "-o", "prog", "prog.rs"],
+    subprocess.run(["rustc", "-C", "instrument-coverage", *SMALL, "-o", "prog", "prog.rs"],
                    cwd=bins, check=True, capture_output=True,
                    stdin=subprocess.DEVNULL)  # fmt: skip
     return bins / "prog"

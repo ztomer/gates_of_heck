@@ -47,21 +47,21 @@ def keys(p: Path) -> list[int]:
 
 
 def test_an_oversized_history_table_moves_its_oldest_rows_to_the_archive(tmp_path, monkeypatch):
-    """A planted 1000-row table of 1 KB rows under a 256 KB budget: the oldest rows move to the
+    """A planted 250-row table of 1 KB rows under a 64 KB budget: the oldest rows move to the
     yearly archive of their stamp, the newest stay, nothing is lost."""
-    s = seam(tmp_path, monkeypatch, "bytes=256KB")
-    stamps = [LAST_YEAR + i for i in range(200)] + [NOW + i for i in range(800)]
+    s = seam(tmp_path, monkeypatch, "bytes=64KB")
+    stamps = [LAST_YEAR + i for i in range(50)] + [NOW + i for i in range(200)]
     fill(s, stamps)
     assert db_bounds.unbounded(s, NOW)  # past its bound before the sweep
     moved = db_bounds.sweep(s, NOW)
     live = keys(db_core.path(s))
     a25 = keys(db_bounds.archive_path(s, "2025"))
     a26 = keys(db_bounds.archive_path(s, "2026"))
-    assert moved["h"] == len(a25) + len(a26) and a25 == list(range(200)), moved
-    assert sorted(live + a25 + a26) == list(range(1000))  # every row in exactly one file
-    assert live == list(range(1000 - len(live), 1000)) and 0 < len(live) < 300
+    assert moved["h"] == len(a25) + len(a26) and a25 == list(range(50)), moved
+    assert sorted(live + a25 + a26) == list(range(250))  # every row in exactly one file
+    assert live == list(range(250 - len(live), 250)) and 0 < len(live) < 75
     with db_core.ro(s) as con:
-        assert db_bounds.table_bytes(con, "h") <= 256 << 10
+        assert db_bounds.table_bytes(con, "h") <= 64 << 10
     arch = sqlite3.connect(db_bounds.archive_path(s, "2025"))
     meta = dict(arch.execute("SELECT key, value FROM meta"))
     assert meta["db"] == "goh-archive-2025" and meta["schema_version"] == "1", meta
@@ -88,13 +88,13 @@ def test_days_and_rows(tmp_path, monkeypatch) -> None:
 
 def test_the_file_budget_takes_from_its_largest_table(tmp_path, monkeypatch) -> None:
     s = seam(tmp_path, monkeypatch, "days=3650")
-    fill(s, [NOW + i for i in range(800)])
+    fill(s, [NOW + i for i in range(200)])
     with db_core.ro(s) as con:
         used = db_bounds.used_bytes(con)
     moved = db_bounds.sweep(s, NOW, budget=used // 2)
     with db_core.ro(s) as con:
         assert db_bounds.used_bytes(con) <= used // 2, moved
-    assert moved["h"] > 0 and keys(db_core.path(s))[-1] == 799
+    assert moved["h"] > 0 and keys(db_core.path(s))[-1] == 199
 
 
 def test_unbounded_names_a_table_with_no_bound_and_the_file_past_its_budget(tmp_path, monkeypatch):

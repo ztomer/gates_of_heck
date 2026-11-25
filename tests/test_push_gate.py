@@ -6,6 +6,7 @@ repo whose `tools/gate.sh` records what it saw, then push a commit while the wor
 something else.
 """
 
+import functools
 import json
 import os
 import subprocess
@@ -13,6 +14,7 @@ from pathlib import Path
 
 from _fast_git import fast_init
 from _gatesrc_kit import STRUCTURAL_RAN, write_gatesrc
+from _grown import built, keyed
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PUSH_GATE = REPO_ROOT / "gates" / "push_gate.sh"
@@ -40,8 +42,11 @@ def _git(repo: Path, *args: str) -> str:
 
 
 def _repo(tmp_path: Path, gatesrc: str = "", version: str | None = "1.0.0") -> Path:
-    repo = tmp_path / "repo"
-    repo.mkdir()
+    key = keyed("push-repo", GATE, gatesrc, version)
+    return built(tmp_path / "repo", key, functools.partial(_make_repo, gatesrc, version))
+
+
+def _make_repo(gatesrc: str, version: str | None, repo: Path) -> None:
     fast_init(repo, "main")
     _git(repo, "config", "user.email", "t@t")
     _git(repo, "config", "user.name", "t")
@@ -57,7 +62,6 @@ def _repo(tmp_path: Path, gatesrc: str = "", version: str | None = "1.0.0") -> P
         (repo / "VERSION").write_text(f"{version}\n")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "one")
-    return repo
 
 
 def _push(repo: Path, sha: str, tmp_path: Path) -> tuple[int, str, str]:

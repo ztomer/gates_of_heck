@@ -13,6 +13,7 @@ and main's own new migration still applies, from main only.
 
 from __future__ import annotations
 
+import io
 import shutil
 import sqlite3
 import subprocess
@@ -55,6 +56,9 @@ def _build_main(main: Path) -> None:
         src, dst = REPO_ROOT / rel, main / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         (shutil.copytree if src.is_dir() else shutil.copy2)(src, dst)
+    # Its first migrations: the record rule reads their numbers, and all of them are 0.7 MB a copy.
+    for late in sorted((main / "lib" / "goh_db_schema").glob("*.sql"))[3:]:
+        late.unlink()
     git(main, "init", "-q", "-b", "main")
     _commit(main, "goh.db's seam")
 
@@ -140,10 +144,10 @@ def _export(src: Path, rev: str, dest: Path, live: Path | None) -> Path:
     """A copy shaped as gates/_from_head.sh makes one: `git archive REV` with no `.git`, the rev in
     `.goh-head` and the checkout that made it in `.goh-live` (NONE: canary_sides' export)."""
     sha = git(src, "rev-parse", rev).strip()
-    tar = dest.parent / f"{dest.name}.tar"
     dest.parent.mkdir(parents=True, exist_ok=True)
-    git(src, "archive", "-o", str(tar), sha)
-    with tarfile.open(tar) as t:
+    tar = subprocess.run(["git", "-C", str(src), "archive", sha], check=True, capture_output=True,
+                         stdin=subprocess.DEVNULL).stdout  # fmt: skip
+    with tarfile.open(fileobj=io.BytesIO(tar)) as t:
         t.extractall(dest, filter="data")
     (dest / ".goh-head").write_text(f"{sha}\n")
     if live is not None:

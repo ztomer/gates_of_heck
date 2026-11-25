@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _small_rust import CONFIG
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
@@ -96,7 +97,9 @@ def _crate(root: Path, names: list[str], *, bad: bool = False) -> Path:
     if bad:
         (root / "tests" / "zbad.rs").write_text(BAD)
     (root / ".cargo").mkdir()
-    (root / ".cargo" / "config.toml").write_text('[env]\nCOV_FROM_CONFIG = "from-config"\n')
+    (root / ".cargo" / "config.toml").write_text(
+        '[env]\nCOV_FROM_CONFIG = "from-config"\n' + CONFIG
+    )
     subprocess.run(
         ["cargo", "generate-lockfile", "-q"], cwd=root, check=True, stdin=subprocess.DEVNULL
     )
