@@ -6,9 +6,11 @@ import shutil
 import site
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from _this_tree import this_tree
+from _tree_exports import export_of
 from conftest import git, hermetic_env
 
 
@@ -30,6 +32,19 @@ def _hook_toolchain_env() -> dict[str, str]:
     return env
 
 
+def _no_origin(repo: Path) -> None:
+    """`git remote remove origin` of a fresh clone: the one file its refs are in, rewritten once;
+    git takes and drops a lock for each ref it removes, 452 of this checkout's (GOH.FSEVQUIET)."""
+    config, packed = repo / ".git" / "config", repo / ".git" / "packed-refs"
+    git(repo, "config", "--remove-section", "remote.origin")
+    kept = [ln for ln in packed.read_text().splitlines(True) if " refs/remotes/" not in ln]
+    packed.write_text("".join(kept))
+    shutil.rmtree(repo / ".git" / "refs" / "remotes", ignore_errors=True)
+    assert "origin" not in git(repo, "for-each-ref") + git(repo, "remote"), config.read_text()
+
+
+# HEAD's export hands the commit to the staged tree's: it reads none of these.
+_NO_HOOK_OF_HEAD = ("tests", "docs", "changelog", "CHANGELOG.md", "crates")
 _HOOK_CONFIG = (".gatesrc", "tools/gate.sh")
 
 
@@ -85,7 +100,7 @@ def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
     # one (tests/_this_tree.py), which its own git made of this checkout's HEAD, diff and new files.
     this_tree(copy)
     git(copy, "checkout", "-q", "-B", "work")
-    git(copy, "remote", "remove", "origin")
+    _no_origin(copy)
     present = git(copy, "ls-files").splitlines()
     sample = _self_host_sample(present)
     # The base: the rest of the tree, committed with no hook (hooksPath=/dev/null keeps a global one
@@ -110,6 +125,11 @@ def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
     git(copy, "add", "-A")
     staged = set(git(copy, "diff", "--cached", "--name-only").splitlines())
     assert set(sample) <= staged, f"the sample is not what the hook judges: {set(sample) - staged}"
+    # The exports the hook would make of HEAD and of the tree it commits: 10,400 of this test's file
+    # events, and not its subject (tests/test_self_gate.py, tests/test_gates_from_head.py).
+    cache = tmp_path / ".cache" / "goh" / "head"
+    export_of(copy, git(copy, "rev-parse", "HEAD").strip(), cache, *_NO_HOOK_OF_HEAD)
+    export_of(copy, git(copy, "write-tree").strip(), cache)
     # The hook's formatters and linters, from wherever THIS machine keeps them, without the rest of
     # that directory: a hosted runner's rustfmt is a rustup proxy in ~/.cargo/bin (beside cargo,
     # which this PATH must not hold), and the hook said "rustfmt is not installed" (run
@@ -151,5 +171,6 @@ def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
         check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
+    assert len(list(cache.iterdir())) == 2, "the hook judged from an export of its own"
     for layer in ("structural", "python (staged)", "source guards (staged)"):
         assert f"all {layer} gates passed" in r.stdout + r.stderr, f"the {layer} layer never ran"

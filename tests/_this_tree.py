@@ -49,6 +49,11 @@ def _build(tree: Path) -> None:
     _git(tree, "add", "-A")  # the edits in the index: each clone's `add -A` finds nothing to hash
 
 
+def tree_template() -> Path:
+    """The run's one, to clone parts of, never to write in."""
+    return process_template("this-tree", _build)
+
+
 def this_tree(dest: Path) -> Path:
-    clone_tree(process_template("this-tree", _build), dest)
+    clone_tree(tree_template(), dest)
     return dest
