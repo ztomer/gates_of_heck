@@ -1,6 +1,5 @@
 {
  "files": {
-  "_drift_guard.py": 1,
   "conftest.py": 1,
   "fixtures/screen_presentation/guarded.py": 1,
   "test_actions_sweep.py": 1,

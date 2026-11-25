@@ -16,7 +16,7 @@ from pathlib import Path
 import _drift_guard
 import _prebuild
 import pytest
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import GiveUp, patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -58,12 +58,13 @@ def controller(monkeypatch):
 def test_the_controller_resolves_the_binary_every_gate_will_ask_for(tmp_path, controller):
     """The working tree's build under GOH_LIVE with a Rust delta, otherwise HEAD's."""
     called = tmp_path / "resolved"
-    _resolver(tmp_path, f': > "{called}"; goh_native=/bin/true; goh_native_why=""')
+    _resolver(tmp_path, f'printf %s "$DRIFT_BUILD_OK" > "{called}"; goh_native=/bin/true')
     config = _Config()
     build = _drift_guard.prebuild_live(config, root=tmp_path)
     assert config.plugins == [build], "nothing would join it"
     assert build.pytest_runtestloop(session=None) is None, "an answer skips every test"
     assert called.exists(), "the controller left the first gate to build goh behind the session"
+    assert called.read_text() == "1", "the cargo shim would refuse the one build it allows"
 
 
 def test_a_build_that_fails_is_the_runs_usage_error_in_its_own_words(tmp_path, controller):
@@ -123,8 +124,7 @@ def test_no_test_runs_before_the_build_is_there(tmp_path, workers):
     (suite / "test_it.py").write_text(
         f"from pathlib import Path\ndef test_it():\n    assert Path({str(built)!r}).exists()\n"
     )
-    env = dict(os.environ, GOH_LIVE="1", PYTEST_DISABLE_PLUGIN_AUTOLOAD="1")
-    env.pop("PYTEST_PLUGINS", None)
+    env = hermetic_env(GOH_LIVE="1", PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", PYTEST_PLUGINS="")
     done = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "xdist.plugin", "-p", "no:cacheprovider",
          "-n", workers, str(suite)],

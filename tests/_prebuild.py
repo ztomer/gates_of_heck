@@ -20,9 +20,9 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parents[1]
 BUILD_S = 900
-ASK = (
-    'source "$1/gates/_goh_bin.sh"; goh_resolve_native; [ -n "$goh_native" ] '
-    '|| { echo "$goh_native_why" >&2; false; }'
+ASK = (  # DRIFT_BUILD_OK: the one build tests/_drift_guard.py's cargo allows
+    'export DRIFT_BUILD_OK=1; source "$1/gates/_goh_bin.sh"; goh_resolve_native; '
+    '[ -n "$goh_native" ] || { echo "$goh_native_why" >&2; false; }'
 )
 
 
@@ -33,7 +33,7 @@ class Prebuild:
         self.proc = subprocess.Popen(
             ["bash", "-c", ASK, "_", str(root)],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
-            env=dict(os.environ, DRIFT_BUILD_OK="1"), start_new_session=True,
+            start_new_session=True,
         )  # fmt: skip
         self.joined = False
 
