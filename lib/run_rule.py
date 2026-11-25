@@ -39,7 +39,7 @@ no reading places (`. "$_goh_copy"`, `. "$ROOT/.gatesrc"`) without a word: `sour
 coverage key's reading of one, and run_closure refuses one DECLARED does not name.
 
 DATA TOO (GOH.STEPDATAKEY). Every key mode still dropped the goh DATA a step reads outside the code
-parts: gates/doctor.sh reads `"$GOH_ROOT"/hooks/*`, retired_hooks.sha256 and docs/config.md, and
+parts: gates/doctor.sh reads `"$GOH_ROOT"/hooks/*`, retired_hooks.sha256 and docs/config/, and
 structural.sh's hook currency (lib/hook_currency.py) the first two, so an edit to a stock hook
 reused a consumer's doctor or structural verdict. DATA is the one declaration of what goh's code
 reads of goh's own tree outside CODE_PARTS (tests/test_step_data_key.py finds every goh-rooted read
@@ -75,7 +75,7 @@ CODE_PARTS = ("gates", "checks", "lib", "tools", "tui", "scripts")  # goh's code
 # `dir/*` each file directly in dir (hooks/claude/ is no stock hook). The ONE list: gate_identity's
 # whole content keys every file it names, a step's closure the files its readers name.
 DATA = {
-    "gates/doctor.sh": ("hooks/*", "retired_hooks.sha256", "docs/config.md"),
+    "gates/doctor.sh": ("hooks/*", "retired_hooks.sha256", "docs/config/*"),
     "lib/hook_currency.py": ("hooks/*", "retired_hooks.sha256"),
     # Its `goh / "hooks" / HOOK` is the pre-push alone: spelled whole here, this file would NAME the
     # hook, and every closure holding it would follow the hook's runs as code (source_closure).

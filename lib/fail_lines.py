@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The failure block goh_step prints before a red step's tail: which lines name the failure.
 
-usage: fail_lines.py LOG   (GOH_FAIL_PATTERN, GOH_FAIL_LINES as in docs/config.md)
+usage: fail_lines.py LOG   (GOH_FAIL_PATTERN, GOH_FAIL_LINES as `goh config` says)
 Prints the block, or nothing when there is nothing to name.
 
 It used to be one grep over the whole log, and the whole log of an outer step is every sub-step's

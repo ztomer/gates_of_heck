@@ -10,9 +10,9 @@ GOH_LANE_ADMIT picks what no room does:
   warn    admit, and tell the session why there was no room
   off     ask nothing, record nothing
 REFUSE IS THE DEFAULT since GOH.ADAPTLANES2 (owner 2026-11-17, "Yes, make it enforce"): the
-ceilings (GOH_LANE_*, docs/config.md "Adaptive lanes") were calibrated from this ledger joined with
-what each admitted lane then did (landq done records, the timing ledger, `goh land --report`). A
-refusal starts nothing and loses nothing: its text says what the reading lacked and that the
+ceilings (GOH_LANE_*, docs/config/_areas/claude-hooks.md) were calibrated from this ledger joined
+with what each admitted lane then did (landq done records, the timing ledger, `goh land --report`).
+A refusal starts nothing and loses nothing: its text says what the reading lacked and that the
 coordinator re-dispatches the spawn when `goh capacity` exits 0. Any other mode word is warn, said
 as such.
 

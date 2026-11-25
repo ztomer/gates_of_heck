@@ -23,7 +23,7 @@
 Shared quality gates for Rust, Python, Swift, C++, and Kotlin projects. Runs locally via git hooks (`pre-commit` and `pre-push`) so you don't need a CI server.
 
 > Working here as an agent? Start at `AGENTS.md` (commands, layout, rules).
-> Script inventory: `goh map` (rendered from the tree). Every `GOH_*` key: `docs/config.md`.
+> Script inventory: `goh map` (rendered from the tree). Every `GOH_*` key: `goh config` (one file each, `docs/config/`).
 > Load-bearing invariants: `docs/contracts.md`. Adding a check:
 > `docs/new-checker.md`.
 
@@ -115,7 +115,7 @@ every commit that stages what it reads runs it over the index, not only the push
 
 ## Configuration (`.gatesrc`)
 
-Put repo settings in `.gatesrc`. Full schema: `docs/config.md`;
+Put repo settings in `.gatesrc`. Full schema: `goh config` (`docs/config/`);
 commented starter with every key: `.gatesrc.example`.
 
 ```bash
@@ -128,7 +128,7 @@ Machine disk watch lives outside the gates since v0.8.0:
 `~/Projects/scripts/bin/disk_hygiene.sh` (watch) +
 `reclaim_build_space.sh` (fix). Its ceilings (`GOH_MAX_SCRATCH_GB`,
 `GOH_MAX_CACHE_GB`, `GOH_MIN_FREE_GB`, `GOH_WATCH_PATHS`,
-`GOH_SCRATCH_ROOTS`) are documented in `docs/config.md`.
+`GOH_SCRATCH_ROOTS`) are documented in `docs/config/` (`goh config KEY`).
 
 # Python
 GOH_PY_COV_MIN=95                    # Coverage minimum (%)

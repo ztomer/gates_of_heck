@@ -18,7 +18,7 @@ from conftest import REPO_ROOT, commit_all, git, write
 DRIVER = f"{sys.executable} {REPO_ROOT / 'lib' / 'row_merge.py'} %O %A %B %P"
 WHO = ("-c", "user.name=t", "-c", "user.email=t@t")
 ATTRS = (REPO_ROOT / ".gitattributes").read_text(encoding="utf-8")
-ATTRS += "docs/inventory.md merge=goh-rows\n"
+ATTRS += "docs/inventory.md merge=goh-rows\ndocs/table.md merge=goh-rows\n"
 
 MAP = """\
 # map
@@ -48,7 +48,7 @@ KEYS = "# never a verdict\nGOH_ONE\nGOH_TWO\n"
 TABLE = "# name script about\nbudget\tlib/budget.py\tBudget\nland|landq\ttools/landq.py\tLand\n"
 FILES = {
     "docs/inventory.md": MAP,
-    "docs/config.md": CONFIG,
+    "docs/table.md": CONFIG,
     "gates/verdict_free_keys.txt": KEYS,
     "crates/goh/house_scripts.tsv": TABLE,
 }
@@ -93,7 +93,7 @@ A_ROWS = {
         "| (structural step)",
         "| `c.py` | C, lane A. | `test_c.py` |\n| (structural step)",
     ),
-    "docs/config.md": ("| `GOH_B` | 1 | B. |\n", "| `GOH_B` | 1 | B. |\n| `GOH_C` | 2 | C. |\n"),
+    "docs/table.md": ("| `GOH_B` | 1 | B. |\n", "| `GOH_B` | 1 | B. |\n| `GOH_C` | 2 | C. |\n"),
     "gates/verdict_free_keys.txt": ("GOH_TWO\n", "GOH_TWO\nGOH_THREE\n"),
     "crates/goh/house_scripts.tsv": ("Budget\n", "Budget\ncapacity\tlib/capacity.py\tCapacity\n"),
 }
@@ -102,7 +102,7 @@ B_ROWS = {
         "| (structural step)",
         "| `d.py` | D, lane B. | `test_d.py` |\n| (structural step)",
     ),
-    "docs/config.md": ("| `GOH_B` | 1 | B. |\n", "| `GOH_B` | 1 | B. |\n| `GOH_D` | 3 | D. |\n"),
+    "docs/table.md": ("| `GOH_B` | 1 | B. |\n", "| `GOH_B` | 1 | B. |\n| `GOH_D` | 3 | D. |\n"),
     "gates/verdict_free_keys.txt": ("GOH_TWO\n", "GOH_TWO\nGOH_FOUR\n"),
     "crates/goh/house_scripts.tsv": ("Budget\n", "Budget\nwf-pin\tscripts/wf_pin.py\tPins\n"),
 }
@@ -189,12 +189,12 @@ def test_two_edits_to_one_row_still_conflict(repo: Path) -> None:
 def test_a_union_merge_of_one_row_is_caught_by_the_check(repo: Path) -> None:
     """Why not git's `merge=union`: it merges two edits to one row SILENTLY, keeping both. The
     registries' own check (`--check`, tests/test_registry_rows.py) names the key it left twice."""
-    lane_a = {"docs/config.md": ("| `GOH_B` | 1 |", "| `GOH_B` | 2 |")}
-    lane_b = {"docs/config.md": ("| `GOH_B` | 1 |", "| `GOH_B` | 3 |")}
-    _lanes(repo, lane_a, lane_b, attrs="docs/config.md merge=union\n")
+    lane_a = {"docs/table.md": ("| `GOH_B` | 1 |", "| `GOH_B` | 2 |")}
+    lane_b = {"docs/table.md": ("| `GOH_B` | 1 |", "| `GOH_B` | 3 |")}
+    _lanes(repo, lane_a, lane_b, attrs="docs/table.md merge=union\n")
     assert _rebase(repo).returncode == 0
     check = subprocess.run(
-        [sys.executable, str(REPO_ROOT / "lib" / "row_merge.py"), "--check", "docs/config.md"],
+        [sys.executable, str(REPO_ROOT / "lib" / "row_merge.py"), "--check", "docs/table.md"],
         cwd=repo,
         capture_output=True,
         text=True,
@@ -202,4 +202,4 @@ def test_a_union_merge_of_one_row_is_caught_by_the_check(repo: Path) -> None:
         check=False,
     )
     assert check.returncode == 1
-    assert "docs/config.md: the key `GOH_B` is on two lines" in check.stderr
+    assert "docs/table.md: the key `GOH_B` is on two lines" in check.stderr

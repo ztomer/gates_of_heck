@@ -73,12 +73,13 @@ byte-for-byte unchanged. `pre-push` names a missing `tools/gate.sh`
 instead of exec-failing.
 Pin: `tests/test_install.py`, `tests/test_install_atomic.py`, `tests/test_wiring.py`.
 
-## 9. Config schema cannot drift (`docs/config.md`, `.gatesrc.example`)
+## 9. Config schema cannot drift (`docs/config/`, `.gatesrc.example`)
 
-Every `GOH_*` key read in `gates/ checks/ lib/ tools/ hooks/` appears
-in `docs/config.md`; `.gatesrc.example` invents none. Adding a key
-without documenting it fails the suite.
-Pin: `tests/test_config_schema.py`.
+Every `GOH_*` key the code reads (`lib/config_ref.py` `SCAN`: gates, checks, lib, tools, hooks, tui,
+scripts, bin, the crates, install.sh, .github) is declared in one file of `docs/config/`, as a whole
+word; every declared key is read (or names the reader outside this tree); `.gatesrc.example` sets
+only declared settings. Who reads a key is computed (`goh config KEY`), never written down.
+Pin: `tests/test_config_schema.py`, `tests/test_goh_config.py`.
 
 ## 10. Parallel suite shares nothing mutable (`tools/gate.sh --full`)
 `--full` runs `tools/pytest.sh` (`pytest -n 12 --dist loadgroup`). Files sharing an

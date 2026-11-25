@@ -36,7 +36,7 @@ Pre-push runs `tools/gate.sh --full`. Escape hatch: `git commit --no-verify`.
 * `tui/` — output style source of truth (`stylerc`, `lib.sh`, `lib.py`).
 * `tools/` — `gate.sh` (this repo's own gate entry), `release-kit/`, `profiling/`.
 * `hooks/` — stock `pre-commit` / `pre-push` installed by `install.sh`.
-* `docs/` — `config.md` (every `GOH_*` key),
+* `docs/` — `config/` (a file per `GOH_*` key; `goh config` renders them),
   `contracts.md` (load-bearing invariants), `new-checker.md` (add a check),
   `harnesses.md` (screen + golden cookbook), `BACKLOG.md` (open work).
 * `tests/` — pytest suite; `conftest.py` has fixture-repo builders.
@@ -50,7 +50,7 @@ rendered from the files' own headers; a new script says what it is in its docstr
 
 * Emoji are a failure state. Only `→ · ✓ ✗ ⚠ ↔ ↑ ↓ ← ⌘ ⌥ ⌨ ⇧ ⌃ ⏎ ⎋ ↵ ⇒ ⇄`
   plus `© ® ™` (bare forms; VS16 forms fail). Enforced by
-  `goh emoji` (`crates/goh/src/emoji.rs`). See `docs/config.md` for `GOH_ALLOW`.
+  `goh emoji` (`crates/goh/src/emoji.rs`). See `goh config GOH_ALLOW`.
 * 500-line cap (`GOH_MAX_LINES`) on SOURCE files only -- `crates/goh/src/length.rs`
   `SOURCE_SUFFIXES` (plus `Makefile`/`CMakeLists.txt`/`Justfile` by name). Markdown, data
   and lockfiles are never measured; a long doc is not a gate failure.
@@ -69,8 +69,10 @@ rendered from the files' own headers; a new script says what it is in its docstr
 * A change's CHANGELOG entry is its own file, `changelog/<ITEM-ID>.md` (`* ` entries, no
   heading; `changelog/README.md`), never a line under `## Unreleased`: the commit gate refuses
   that (GOH_CHANGELOG_FRAGMENTS=on), and the release folds the fragments into its stanza.
-* Config: all `GOH_*` keys documented in `docs/config.md` + `.gatesrc.example`.
-  Adding a key without documenting it fails `test_config_schema_covers_keys`.
+* Config: a `GOH_*` key is declared in its own file, `docs/config/<KEY>.md` (the form:
+  `docs/config.md`), plus `.gatesrc.example` when a consumer sets it. `goh config` prints the
+  reference, `goh config KEY` one key with its readers and tests. `tests/test_config_schema.py`
+  refuses a key read and not declared, declared and not read, or a file that breaks the form.
 * Contracts in `docs/contracts.md` each name their pinning test. Do not
   "fix" a contract without updating its test and the doc.
 * New checker? Follow `docs/new-checker.md` (test-first, red-proven both
@@ -79,5 +81,5 @@ rendered from the files' own headers; a new script says what it is in its docstr
 ## Config
 
 Target-repo settings live in `<repo>/.gatesrc` (this repo's own: `.gatesrc`).
-Full key reference: `docs/config.md`. Starter template: `.gatesrc.example`
+Full key reference: `goh config`. Starter template: `.gatesrc.example`
 (consumers get it via `install.sh`; never overwrite an existing file).

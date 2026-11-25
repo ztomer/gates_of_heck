@@ -46,7 +46,7 @@ Helpers live in `tests/conftest.py`: `repo` fixture (throwaway git repo),
   check. `GOH_EXCLUDE` exempts what is not ours to re-style; a leak is not
   a style, so a credential scanner takes no exclusion at all (`goh secrets`),
   and its one escape is a reasoned per-line marker. Add the checker's name to
-  the `GOH_EXCLUDE` row of `docs/config.md` when it honours the key
+  `docs/config/GOH_EXCLUDE.md` when it honours the key
   (`tests/test_exclude_scope_doc.py` holds the two lists equal).
 * Exit codes: `0` pass, `1` violation found, `2` usage/config error
   (missing binary, unparsable payload, zero measurable files — never a
@@ -66,8 +66,8 @@ Helpers live in `tests/conftest.py`: `repo` fixture (throwaway git repo),
 * `tests/test_wiring.py` parses `gates/*.sh` + `hooks/` for referenced
   scripts: guarded references must still resolve. A typo'd path fails
   the suite — that is the point.
-* New `GOH_*` key? Document it in `docs/config.md` (+ `.gatesrc.example`
-  when consumer-facing) or `test_config_schema_covers_keys` goes red.
+* New `GOH_*` key? Declare it in `docs/config/<KEY>.md` (the form: `docs/config.md`; +
+  `.gatesrc.example` when consumer-facing) or `tests/test_config_schema.py` goes red.
 * New invariant? Add a row to `docs/contracts.md` naming the pinning test.
 * Say what the checker does at the top of its file: `goh map` renders that, nothing lists it by hand.
 

@@ -35,7 +35,7 @@ pub(crate) fn take_reds() -> Vec<String> {
 }
 
 /// `GOH_TAIL`'s default: lines of a failing step's captured output shown
-/// (documented in `docs/config.md`, as `gates/_common.sh` sets it).
+/// (documented in `docs/config/`, as `gates/_common.sh` sets it).
 const DEFAULT_TAIL_LINES: usize = 60;
 
 /// The status a shell gives a command it could not start (POSIX 127),
@@ -242,12 +242,12 @@ pub(crate) fn ported(source: &str) -> String {
 /// Python tier printed an absolute path and the native one did not.
 ///
 /// Both, because they answer different questions: `goh map` says what a gate or
-/// checker DOES (rendered from its own header, GOH.MAPGEN), `config.md` says what a `GOH_*` key MEANS, and a step
+/// checker DOES (rendered from its own header, GOH.MAPGEN), `goh config` says what a `GOH_*` key MEANS, and a step
 /// that failed on configuration needs the second more than the first.
 fn docs_route() -> String {
     let root = crate::goh_root();
     let root = root.display();
-    format!("`goh map NAME` says what this gate does; its GOH_* keys are in {root}/docs/config.md")
+    format!("`goh map NAME` says what this gate does; `goh config KEY` a GOH_* key ({root}/docs/config/)")
 }
 
 /// The command line as it was run, with the checker's FULL path in argument 0.

@@ -2,7 +2,7 @@
 
 GOH.FULLKEYSCRIPTS keyed every CODE file a step runs (run_rule.CODE_PARTS) and dropped the rest:
 gates/doctor.sh reads `"$GOH_ROOT"/hooks/*`, `$GOH_ROOT/retired_hooks.sha256` and
-`$GOH_ROOT/docs/config.md`, and gates/structural.sh's hook currency (lib/hook_currency.py) the
+`$GOH_ROOT/docs/config/`, and gates/structural.sh's hook currency (lib/hook_currency.py) the
 first two, so an edit to a stock hook reused a doctor or structural verdict a consumer had: the
 probe (2026-11-19) turned doctor from healthy (exit 0) to "1 problem" (exit 1) by one appended line
 in hooks/pre-commit, with every key unchanged. run_rule.DATA is the one declaration of what goh's
@@ -28,13 +28,13 @@ import step_closure as sc
 
 # What the real-tree tests read (lib/declared_reads.py): goh's code, the data it reads, a doc.
 TREE_READS = ("gates/", "checks/", "lib/", "tools/", "tui/", "scripts/", "crates/", "hooks/",
-              "retired_hooks.sha256", "docs/config.md", "docs/BACKLOG.md")  # fmt: skip
+              "retired_hooks.sha256", "docs/config/", "docs/BACKLOG.md")  # fmt: skip
 DOCTOR = 'bash "$GOH_DIR/gates/doctor.sh" .'
 DOCTOR_SH = (
     "#!/usr/bin/env bash\n"
     'for stock in "$GOH_ROOT"/hooks/*; do cmp -s x "$GOH_ROOT/hooks/${stock##*/}"; done\n'
     'grep -q x "$GOH_ROOT/retired_hooks.sha256"\n'
-    'grep -o GOH_ "$GOH_ROOT/docs/config.md"\n'
+    'keys="$GOH_ROOT/docs/config"; grep -o GOH_ "$keys"/GOH_*.md\n'
 )
 
 
@@ -58,7 +58,8 @@ def _goh(root: Path) -> Path:
         "hooks/pre-commit": "#!/bin/sh\none\n",
         "hooks/claude/registrations.json": "{}\n",
         "retired_hooks.sha256": "abc  pre-commit\n",
-        "docs/config.md": "GOH_ONE\n",
+        "docs/config/GOH_ONE.md": "# GOH_ONE\n",
+        "docs/config/_areas/one.md": "# One\n",
         "docs/BACKLOG.md": "one\n",
     })  # fmt: skip
     return root
@@ -76,14 +77,15 @@ def _key(mode: str, goh: Path, repo: Path) -> str:
 
 
 MODES = ("off", "full", "on")
-READ = ("hooks/pre-commit", "retired_hooks.sha256", "docs/config.md", "hooks/pre-rebase")
+READ = ("hooks/pre-commit", "retired_hooks.sha256", "docs/config/GOH_ONE.md",
+        "docs/config/GOH_TWO.md", "hooks/pre-rebase")  # fmt: skip
 
 
 @pytest.mark.parametrize("mode", MODES)
 @pytest.mark.parametrize("rel", READ)
 def test_an_edit_to_data_doctor_reads_misses_its_step_key(tmp_path, mode, rel) -> None:
     """A stock hook edited (or added: `hooks/*` is every file directly in hooks/), the retired
-    hooks' table or the config schema: doctor's verdict may change, so its key must."""
+    hooks' table or a key's declaration: doctor's verdict may change, so its key must."""
     goh, repo = _goh(tmp_path / "goh"), tmp_path / "repo"
     repo.mkdir()
     before = _key(mode, goh, repo)
@@ -94,7 +96,8 @@ def test_an_edit_to_data_doctor_reads_misses_its_step_key(tmp_path, mode, rel) -
 
 
 @pytest.mark.parametrize("mode", MODES)
-@pytest.mark.parametrize("rel", ["docs/BACKLOG.md", "hooks/claude/registrations.json"])
+@pytest.mark.parametrize("rel", ["docs/BACKLOG.md", "hooks/claude/registrations.json",
+                                 "docs/config/_areas/one.md"])  # fmt: skip
 def test_a_data_file_no_step_reads_moves_no_key(tmp_path, mode, rel) -> None:
     """docs/BACKLOG.md and hooks/claude/ (below hooks/, not a stock hook) decide no step: keying
     them would only miss."""
@@ -119,7 +122,7 @@ def test_githooks_does_not_name_hooks() -> None:
 
 
 # THE REAL TREE. What doctor and structural's hook currency read of goh's own tree.
-DOCTOR_READS = {"retired_hooks.sha256", "docs/config.md"}
+DOCTOR_READS = {"retired_hooks.sha256", "docs/config/GOH_BIN.md"}
 
 
 def _stock() -> set[str]:

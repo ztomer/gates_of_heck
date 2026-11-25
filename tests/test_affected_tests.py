@@ -35,7 +35,7 @@ COST_A_LAND = (
     "tests/test_no_env_spread.py",  # GOH.SHIPRELREUSE land1
     "tests/test_wiring.py",  # GOH.SHIPRELREUSE land3 (a script's map row)
     "tests/test_wall_clock_ratchet.py",  # GOH.SHIPRELREUSE land3
-    "tests/test_config_schema.py",  # ba09c92 (a GOH_ key with no docs/config.md row)
+    "tests/test_config_schema.py",  # ba09c92 (a GOH_ key nothing declared)
 )
 
 

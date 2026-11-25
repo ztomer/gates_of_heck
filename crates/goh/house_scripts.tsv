@@ -24,4 +24,5 @@ state	lib/state_retire.py	Retire the files of a store that moved into goh.db: `r
 test-ships	lib/ship_test_rows.py	The ship rows a test left in goh.db (a result under a temp root), listed; `--delete` removes them (`lib/ship_test_rows.py`)
 land-reds	lib/land_reds.py	Every red land record's cause class by count, with example records: `--last N`, `--json`, `--backfill` (`lib/land_reds.py`)
 remote-shard	tools/remote_shard.py	Run a Linux-safe test shard in the worker container on another host, local fallback with the reason (`tools/remote_shard.py`)
+config	lib/config_ref.py	Every config key, rendered from `docs/config/`: all, or `config KEY` with its readers and tests (`lib/config_ref.py`)
 map	lib/map_table.py	What each script does, rendered from the files' own headers: every one, or `map NAME` (`lib/map_table.py`)

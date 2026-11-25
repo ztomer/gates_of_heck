@@ -27,8 +27,8 @@ MIB = 1 << 20
 
 # MiB per instrumented build, measured 2026-11-18: every repo with a Rust coverage step that pushed
 # 2026-11-16..18 (the timing ledger's push rows), goh's three land slots, and eight goh lanes live
-# at once (the most a day of lanes held, docs/config.md): a lane's worktree is its own key. 14.7 GiB
-# of repos plus 11.6 GiB of lanes.
+# at once (the most a day of lanes held, docs/config/GOH_COV_CACHE_MAX_GIB.md): a lane's
+# worktree is its own key. 14.7 GiB of repos plus 11.6 GiB of lanes.
 ESTATE_MIB = {
     "monitor": 2684,
     "divoom-control": 2541,

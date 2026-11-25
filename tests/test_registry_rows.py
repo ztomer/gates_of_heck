@@ -3,11 +3,11 @@
 A merge by row is only sound while a key names one line: a hand merge or a `merge=union` that
 keeps both sides of one edited row leaves the key twice, which `lib/row_merge.py --check` names.
 Checked at commit over the index (the directive below) and with the suite at push and land.
-docs/config.md held GOH_STEP_TIMEOUT and GOH_STEP_GRACE twice, in two sections, each saying
-something the other did not.
+docs/config.md, one of them until GOH.CONFIGMD, held GOH_STEP_TIMEOUT and GOH_STEP_GRACE twice, in
+two sections, each saying something the other did not.
 """
 
-# goh-reads-staged: .gitattributes docs/config.md gates/verdict_free_keys.txt
+# goh-reads-staged: .gitattributes gates/verdict_free_keys.txt
 # goh-reads-staged: crates/goh/house_scripts.tsv
 
 from __future__ import annotations
@@ -44,7 +44,6 @@ def _check(*paths: str) -> subprocess.CompletedProcess:
 def test_the_registries_are_row_merged() -> None:
     assert sorted(_row_merged()) == sorted(
         [
-            "docs/config.md",
             "gates/verdict_free_keys.txt",
             "crates/goh/house_scripts.tsv",
         ]

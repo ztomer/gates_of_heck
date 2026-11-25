@@ -3,7 +3,7 @@
 # the repo's own source text, run over the INDEX being committed, when the commit stages what it reads.
 #
 # THE SHAPE (GOH.CONFIGKEYCOMMIT, GOH.SWIFTGUARDCOMMIT). A test that judges source text -- goh's
-# tests/test_config_schema.py (every GOH_* key a gate reads has a docs/config.md row), token-pool's
+# tests/test_config_schema.py (every GOH_* key a gate reads is declared in docs/config/), token-pool's
 # tests/test_widget_defaults_guard.py (no widget test builds a panel on the shared xctest defaults
 # domain) -- is a check of the STAGED files, but it lived in the pytest suite, which runs only at
 # push. So a commit adding GOH_LAND_LOCK_OWNER with no row went in green and was refused ~20 minutes
@@ -12,7 +12,7 @@
 #
 #     # goh-reads-staged: <pathspec> [<pathspec>...]
 #
-# on a line of its own (several such lines are one list). The pathspecs are git's (`*.swift`, `widget/Tests/`, `docs/config.md`); a
+# on a line of its own (several such lines are one list). The pathspecs are git's (`*.swift`, `widget/Tests/`, `docs/config/`); a
 # commit staging a file one matches -- or the test file itself -- runs the file here; a directive
 # with none runs it on every commit. The file still runs at push with the rest of the suite.
 #

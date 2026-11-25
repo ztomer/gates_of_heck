@@ -1,5 +1,5 @@
 # gates_of_heck configuration. All keys optional; delete what you don't use.
-# Full reference: docs/config.md in the shared checkout.
+# Full reference: `goh config` (docs/config/ in the shared checkout).
 GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # GOH_EXCLUDE='^vendor/|\.generated\.'  # not ours to re-style (never exempts the secrets scan)
 # GOH_LINE_EXCLUDE='third_party/'       # length-only exemption (additive)
@@ -55,7 +55,7 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # GOH_CAD_LAYOUT=cad/layout.json  # the CAD layer's one input (gates/cad_gate.sh; keys: checks/cad_bambu.py)
 # GOH_CAD_BAMBU=''                # the Bambu Studio CLI (default: the macOS app)
 # GOH_COV_FLOOR_RUST=95           # or _SWIFT / _CPP / _PY; --floor flag beats these
-# GOH_COV_FLOORS_JSON=''          # per-file floors file; crate_floors/file_floors lower ONE crate/file, each with a reason (docs/config.md)
+# GOH_COV_FLOORS_JSON=''          # per-file floors file; crate_floors/file_floors lower ONE crate/file, each with a reason (goh config GOH_COV_FLOORS_JSON)
 # GOH_COV_INCLUDE_RE=''           # positive filter, applied before --ignore
 # GOH_COV_MARKER_CEILING=''       # cap on cov:ignore forgiven lines (shrink-only)
 # GOH_COV_SWIFT_ENGINE=spm        # or xcodebuild (swift coverage only)

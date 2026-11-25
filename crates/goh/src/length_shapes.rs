@@ -9,8 +9,8 @@
 //!
 //! MARKDOWN IS NOT CAPPED (decided 2026-11-15, GOH.LINECAPDOCS). The cap bounds how much code one
 //! change has to hold in view; a doc is read by its headings, and its length is its subject's
-//! (`docs/config.md` is one row per key, so it grows with the tree and splitting it would put one
-//! lookup in two files). `length.rs` measured source suffixes only from the start; this row
+//! (`CHANGELOG.md` is every release, so it grows with the tree and splitting it would put one lookup
+//! in two files). `length.rs` measured source suffixes only from the start; this row
 //! is where that exemption is named.
 
 use crate::shapes::table::DOCS;
@@ -60,7 +60,7 @@ pub const SHAPES: Declared = Declared {
             line: "",
             verdict: Verdict::OutOfScope(
                 "a doc is read by its headings and is as long as its subject; the cap bounds the code \
-                 one change holds in view (docs/config.md is one row per key)",
+                 one change holds in view (a CHANGELOG is every release)",
             ),
             fixture: ("docs/map.md", "# Map\n\n```sh\n#!/bin/sh\n```\n"),
         },

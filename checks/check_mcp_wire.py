@@ -44,7 +44,7 @@ RUSTUP_HOME pinned to the owner's (when those directories exist and the environm
 a server that moves HOME into its scratch (monitor's `HOME="$GOH_MCP_SCRATCH" cargo run`) would
 otherwise have rustup download a whole toolchain into it on every run (measured 2026-11-14).
 
-Keys in `.gatesrc` (docs/config.md):
+Keys in `.gatesrc` (`goh config KEY`):
   GOH_MCP_SERVERS       one stdio start command per line (`#` lines ignored). Setting it is the
                         opt-in: `structural.sh --full` then runs this gate.
   GOH_MCP_UNSTRUCTURED  one `tool: reason` per line, for replies that are not structured.

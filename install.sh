@@ -265,8 +265,8 @@ fi
 if [ ! -f "$target/.gatesrc" ]; then
     cat >"$target/.gatesrc" <<'SRC'
 # gates_of_heck configuration. All keys optional; delete what you don't use.
-# Full key reference: docs/config.md in the gates_of_heck checkout
-# (or .gatesrc.example there for a commented starter with every key).
+# Full key reference: `goh config` (docs/config/ in the gates_of_heck checkout;
+# or .gatesrc.example there for a commented starter with every key).
 GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # GOH_EXCLUDE='^vendor/|\.generated\.'  # not ours to re-style (never exempts the secrets scan)
 # GOH_ALLOW='<glyph>'                          # extra permitted characters (keep minimal)

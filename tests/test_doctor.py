@@ -2,7 +2,7 @@
 
 Red-proofed: a healthy wired repo exits 0; each broken layer (missing
 gate entry, unset hooksPath, unknown .gatesrc key, non-repo) is exercised
-and names itself. Unknown-key detection derives from docs/config.md, so a
+and names itself. Unknown-key detection derives from docs/config/, so a
 new key needs no doctor change (same single-source rule as the schema
 drift gate)."""
 
@@ -72,6 +72,17 @@ def test_unknown_gatesrc_key_warns_but_passes(repo):
     r = run_doctor(repo)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "GOH_BOGUS_KEY" in (r.stdout + r.stderr)
+
+
+@pytest.mark.parametrize("key", ["GOH_MAX_LINE", "GOH_MAX_LINES2", "GOH_LIVE_ROOT"])
+def test_a_prefix_an_extension_or_an_internal_key_is_no_setting(repo, key):
+    """The known set is the declared settings as whole names (GOH.CONFIGMD): a prefix of one, one
+    with a digit after it, and a key of the gates' own (Kind internal) are named."""
+    _wire(repo)
+    write_gatesrc(repo, f"GOH_MAX_LINES=500\n{key}=1\n")
+    r = run_doctor(repo)
+    out = r.stdout + r.stderr
+    assert r.returncode == 0 and f"stale name): {key}\n" in out, out
 
 
 def test_all_known_keys_pass_silently_on_that_point(repo):

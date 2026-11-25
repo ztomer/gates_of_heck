@@ -35,6 +35,8 @@ from _gatesrc_kit import write_gatesrc
 from _tree_clone import clone_tree, process_template
 from conftest import hermetic_env, native_goh_path
 
+from lib import config_ref
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -54,7 +56,7 @@ def _porcelain(repo: Path) -> str:
     ).stdout
 
 
-# What docs/config.md documents in its STRUCTURAL table that is NOT pipeline config: the
+# What docs/config/ declares of area STRUCTURAL that is NOT pipeline config: the
 # first two say WHICH BINARY runs, the rest belong to the push gate, install.sh or
 # build-goh.sh. Absent from the drop list is safe only while somebody has said so.
 #
@@ -92,23 +94,22 @@ DROP_LIST_RE = re.compile(r"pub const PIPELINE_KEYS: \[&str; \d+\] = \[(.*?)\];"
 
 def test_every_documented_structural_key_is_dropped_from_the_environment() -> None:
     """The native pipeline's key list (`gatesrc::PIPELINE_KEYS`, the keys `adopt_into_env`
-    makes the environment agree with the file about), pinned against docs/config.md, both
-    ways. The drift that hurts is a key added to a step, to config.md and to no list: an ambient
+    makes the environment agree with the file about), pinned against docs/config/, both
+    ways. The drift that hurts is a key added to a step, declared, and on no list: an ambient
     value then enables that step again. A key gone stale hides the next one."""
-    doc = (ROOT / "docs" / "config.md").read_text(encoding="utf-8")
-    section = doc.split("## Structural", 1)[1].split("\n## ", 1)[0]
-    documented = set(re.findall(r"`(GOH_[A-Z][A-Z_]*)`", section))
+    ref = config_ref.Ref(ROOT)
+    documented = {k for d in ref.decls if d.area == "structural" for k in d.keys}
     source = (ROOT / "crates" / "goh" / "src" / "gatesrc.rs").read_text(encoding="utf-8")
     match = DROP_LIST_RE.search(source)
     assert match, "gatesrc.rs no longer lists the pipeline's config keys"
     dropped = set(re.findall(r'"(GOH_[A-Z_]+)"', match.group(1)))
     pipeline = documented - NOT_PIPELINE_CONFIG
     assert not dropped & NOT_PIPELINE_CONFIG, (
-        f"PIPELINE_KEYS drops {sorted(dropped & NOT_PIPELINE_CONFIG)}, which config.md "
-        "documents as NOT pipeline configuration -- say why above"
+        f"PIPELINE_KEYS drops {sorted(dropped & NOT_PIPELINE_CONFIG)}, which docs/config/ "
+        "declares as NOT pipeline configuration -- say why above"
     )
     assert dropped == pipeline, (
-        "PIPELINE_KEYS and docs/config.md's structural key set disagree.\n"
+        "PIPELINE_KEYS and docs/config/'s structural key set disagree.\n"
         f"  documented, never dropped: {sorted(pipeline - dropped)}\n"
         f"  dropped, never documented: {sorted(dropped - pipeline)}\n"
         "An undocumented value in the environment would enable that step again."

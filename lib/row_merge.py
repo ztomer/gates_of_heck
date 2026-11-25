@@ -1,10 +1,11 @@
 """lib/row_merge.py: `goh-rows`, the merge driver that merges a registry by ROW (GOH.LANDUNION).
 
 OWNER, 2026-11-17: "we need to optimize the overall process." Every goh item appends to the same
-registries -- docs/map.md and docs/config.md rows, gates/verdict_free_keys.txt, the house-script
-subcommand table -- and two lanes landing back to back conflicted there although their rows were
-independent: 3 reds that day (LANDREPORT against AFFECTEDBINARY2: two ADJACENT bullets of
-docs/map.md, each edited by one side), each a full queue wait to rebase and re-queue.
+registries -- docs/map.md and docs/config.md rows (both rendered since: GOH.MAPGEN, GOH.CONFIGMD),
+gates/verdict_free_keys.txt, the house-script subcommand table -- and two lanes landing back to back
+conflicted there although their rows were independent: 3 reds that day (LANDREPORT against
+AFFECTEDBINARY2: two ADJACENT bullets of docs/map.md, each edited by one side), each a full queue
+wait to rebase and re-queue.
 
 git's built-in `merge=union` is not enough: it keeps both sides of a conflicting hunk, so two edits
 to adjacent rows come out as four rows (each edited row beside the other side's stale copy), and two
@@ -28,8 +29,8 @@ rebase, by `tools/land.sh` (`-c merge.goh-rows.driver=...`); where no driver is 
 the file as text, so a missing registration conflicts as before and never merges wrongly.
 
 The `goh-rows` merge driver (GOH.LANDUNION): a three-way merge by KEY of the registries every lane
-appends to (`.gitattributes` `merge=goh-rows`: docs/map.md, docs/config.md,
-gates/verdict_free_keys.txt, crates/goh/house_scripts.tsv). A table row is keyed by its first cell,
+appends to (`.gitattributes` `merge=goh-rows`: gates/verdict_free_keys.txt,
+crates/goh/house_scripts.tsv). A table row is keyed by its first cell,
 a bullet by its leading backticked name, any other line by its first word; git's text merge first,
 then by row on its conflict: each side's independent rows (added, edited, deleted) both kept; two
 edits to one row, an edit against a delete, or a repeated key keep git's conflict markers (exit 1).

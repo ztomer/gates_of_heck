@@ -12,7 +12,7 @@
 # Exit 0 when healthy (warnings allowed), 1 naming each hard problem.
 #
 # Wiring diagnosis for one repo: GOH resolution, hooksPath, unknown `.gatesrc` keys (derived from
-# `config.md`), toolchains. Exit 0 healthy / 1 problems named. Invoked by `gate.sh --doctor`.
+# the declared keys), toolchains. Exit 0 healthy / 1 problems named. Invoked by `gate.sh --doctor`.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
@@ -105,13 +105,16 @@ else
 fi
 
 # 5. .gatesrc: unknown keys are typos or stale names no gate reads. The known
-# set derives from docs/config.md itself, so the schema cannot drift from
-# this check (same single-source rule as test_config_schema_covers_keys).
+# set is the declarations themselves, docs/config/GOH_*.md (`goh config`), so the
+# schema cannot drift from this check: a key a repo may set is one of Kind setting.
 if [ ! -f "$repo/.gatesrc" ]; then
     warn "no .gatesrc — all defaults apply (set GOH_MAX_LINES=500 to enable the length cap)"
 else
-    known="$(grep -o 'GOH_[A-Z][A-Z_]*' "$GOH_ROOT/docs/config.md" 2>/dev/null | sort -u || true)"
-    used="$(grep -o '^GOH_[A-Z][A-Z_]*' "$repo/.gatesrc" 2>/dev/null | sort -u || true)"
+    keys="$GOH_ROOT/docs/config"
+    known="$(awk 'FNR == 1 { head = 1; names = substr($0, 3); gsub(", ", "\n", names) }
+        /^$/ { head = 0 }
+        head && $0 == "Kind: setting" { print names }' "$keys"/GOH_*.md 2>/dev/null || true)"
+    used="$(grep -o '^GOH_[A-Z0-9_]*' "$repo/.gatesrc" 2>/dev/null | sort -u || true)"
     unknown=""
     for k in $used; do
         grep -qx "$k" <<<"$known" || unknown="${unknown}${unknown:+ }$k"   # not a pipe: goh early-exit-pipe

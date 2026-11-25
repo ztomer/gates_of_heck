@@ -39,7 +39,7 @@ FIELDS = ("item", "repo", "wall_s", "load1", "load_end", "sha", "at")
 
 
 def seed_dir() -> Path:
-    """The owner's PRIVATE seed store (GOH_SEED_DIR, docs/config.md): the lanes name private
+    """The owner's PRIVATE seed store (GOH_SEED_DIR, `goh config`): the lanes name private
     repositories, which this public tree never does (the private_names gate)."""
     return state_paths.seed_dir()
 

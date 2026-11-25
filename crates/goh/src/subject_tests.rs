@@ -21,7 +21,7 @@ fn every_key_is_one_scanners_and_the_pipeline_owns_it() {
         );
         assert!(
             crate::gatesrc::PIPELINE_KEYS.contains(&s.key),
-            "{} is a .gatesrc key the pipeline does not adopt, and config.md cannot document",
+            "{} is a .gatesrc key the pipeline does not adopt, and docs/config/ cannot declare",
             s.key
         );
     }

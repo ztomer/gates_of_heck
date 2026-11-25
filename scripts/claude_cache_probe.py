@@ -2,7 +2,7 @@
 """Measure what two managed Claude Code settings cost, from subagent transcripts (GOH.READCAP, GOH.CACHETTL).
 
 The values in `hooks/claude/registrations.json` `settings` are chosen from these numbers, not
-guessed; docs/config.md "Managed Claude Code settings" records the 2026-11-08 run. Two reports,
+guessed; docs/config/_areas/claude-settings.md records the 2026-11-08 run. Two reports,
 both over `~/.claude/projects/**/subagents/**/*.jsonl` (`--projects DIR`), split at `--cut`
 (the ISO time a setting landed) into a before and an after window (`--days` back from the cut):
 

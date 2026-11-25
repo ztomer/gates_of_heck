@@ -2,7 +2,7 @@
 GOH.SWIFTGUARDCOMMIT; gates/staged_guards.sh).
 
 Two guards over source text lived only in their repos' pytest suites, which run at push: goh's
-tests/test_config_schema.py let a new GOH_* key with no docs/config.md row commit green and be
+tests/test_config_schema.py let a new GOH_* key nothing declares commit green and be
 refused ~20 minutes into a land gate (ba09c92), and token-pool's tests/test_widget_defaults_guard.py
 did the same for a WidgetPanel built on the shared xctest defaults domain (ef13840). One property
 closes both: a `# goh-reads-staged: <pathspec>...` line in the test file, and the commit gate runs
@@ -14,7 +14,6 @@ test_config_schema.py carries no directive.
 
 from __future__ import annotations
 
-import re
 import subprocess
 from pathlib import Path
 
@@ -131,14 +130,12 @@ def _directive_specs(path: Path) -> list[str]:
 
 def test_the_config_schema_guard_declares_every_tree_it_scans():
     """goh's own instance (GOH.CONFIGKEYCOMMIT): the schema test runs at commit whenever a commit
-    stages a file it scans, or the two files it reads the keys' rows from."""
+    stages a file it scans, a declaration, or the starter template."""
     schema = REPO_ROOT / "tests" / "test_config_schema.py"
     specs = set(_directive_specs(schema))
-    scan = re.search(r"^SCAN = \(([^)]*)\)", schema.read_text(), re.MULTILINE)
-    assert scan, "test_config_schema.py lost its SCAN tuple"
-    scanned = set(re.findall(r'"([^"]+)"', scan.group(1)))
-    assert scanned, "SCAN names nothing"
-    missing = sorted((scanned | {"docs/config.md", ".gatesrc.example"}) - specs)
+    from lib import config_ref
+
+    missing = sorted({*config_ref.SCAN, "docs/config", ".gatesrc.example"} - specs)
     assert missing == [], f"the # goh-reads-staged: line misses {missing}"
 
 

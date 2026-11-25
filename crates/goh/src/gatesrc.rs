@@ -260,7 +260,7 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
 /// [`adopt_into_env`] makes the environment AGREE with the file for exactly these
 /// keys, so a step that reads one from the environment (`GOH_STEP_TIMEOUT`, and
 /// every child it spawns) sees the file's value, never an inherited one.
-/// Pinned against `docs/config.md` by `tests/test_gate_environment.py`.
+/// Pinned against the declared keys of area `structural` by `tests/test_gate_environment.py`.
 pub const PIPELINE_KEYS: [&str; 56] = [
     "GOH_MAX_LINES",
     "GOH_LINE_EXCLUDE",

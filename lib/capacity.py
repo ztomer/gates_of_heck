@@ -103,7 +103,7 @@ from tui.lib import counted, err, info, ok, warn
 GIB = 1024**3
 WEIGHT_RUNS = 10  # a repo's newest runs its weight is the median of
 # name: (default, parse). Calibrated from the lane ledger joined with each lane's land
-# (GOH.ADAPTLANES2; the join and the numbers are in docs/config.md); read at every reading.
+# (GOH.ADAPTLANES2; the join and the numbers: docs/config/_areas/claude-hooks.md); read each time.
 SETTINGS: dict[str, tuple[float, type]] = {
     "GOH_LANE_MAX_WAITING": (1, int),
     "GOH_LANE_LOAD_PER_CORE": (2.5, float),

@@ -103,7 +103,7 @@ def materialise(source, files, dest):
 @functools.cache
 def takes_exclude(checker):
     """Whether a house check reads `GOH_EXCLUDE` -- asked of the binary's own `--help`, so no list
-    here can drift from the checks (docs/config.md's GOH_EXCLUDE row names the same set)."""
+    here can drift from the checks (docs/config/GOH_EXCLUDE.md names the same set)."""
     got = subprocess.run(
         ["bash", os.path.join(GOH, "gates", "goh.sh"), checker, "--help"],
         capture_output=True,

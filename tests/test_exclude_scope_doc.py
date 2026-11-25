@@ -1,6 +1,6 @@
 """`GOH_EXCLUDE`'s documented scope is the scope the code applies.
 
-docs/config.md said the key exempted three checks; the code applied it to ten, the secrets scan
+The key's row said it exempted three checks; the code applied it to ten, the secrets scan
 among them, and a repo that excluded a vendored crate from house style lost its credential scan
 over that tree without a word (app_updates, 2026-10-08). Two lists that must agree, kept by hand,
 drift; this test holds them equal. A new consumer of the key goes red here until it is named in
@@ -52,8 +52,7 @@ READS_KEY = re.compile(r"cfg\.exclude\b|length_exclude\(cfg\)|\$\{?GOH_EXCLUDE\b
 
 
 def _row() -> str:
-    text = (ROOT / "docs/config.md").read_text(encoding="utf-8")
-    return next(line for line in text.splitlines() if line.startswith("| `GOH_EXCLUDE` |"))
+    return " ".join((ROOT / "docs/config/GOH_EXCLUDE.md").read_text(encoding="utf-8").split())
 
 
 def _readers() -> set[str]:
@@ -68,7 +67,7 @@ def _readers() -> set[str]:
 def test_every_reader_of_the_key_is_listed() -> None:
     assert _readers() == set(CONSUMERS), (
         "the files that read GOH_EXCLUDE changed; name each new one in CONSUMERS and in the "
-        f"GOH_EXCLUDE row of docs/config.md:\n  found:  {sorted(_readers())}\n"
+        f"docs/config/GOH_EXCLUDE.md:\n  found:  {sorted(_readers())}\n"
         f"  listed: {sorted(CONSUMERS)}"
     )
 
@@ -76,7 +75,7 @@ def test_every_reader_of_the_key_is_listed() -> None:
 def test_the_doc_row_names_every_exempted_check() -> None:
     exempt = _row().split("**Exempt from**", 1)[1].split("**Never", 1)[0]
     missing = sorted({n for names in CONSUMERS.values() for n in names if n not in exempt})
-    assert not missing, f"docs/config.md's GOH_EXCLUDE row does not name: {missing}"
+    assert not missing, f"docs/config/GOH_EXCLUDE.md does not name: {missing}"
 
 
 def test_the_secrets_scan_cannot_take_a_path_exemption() -> None:

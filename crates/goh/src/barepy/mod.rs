@@ -13,7 +13,7 @@
 //! `/usr/bin/python3`) is not ambient and not a finding; nor is the name as an argument
 //! (`command -v python3`, `need python3 "..."`).
 //!
-//! Widened per repo by `GOH_BARE_PYTHON_SCOPE` (a path regex, `docs/config.md`): a repo's local CI
+//! Widened per repo by `GOH_BARE_PYTHON_SCOPE` (a path regex, `goh config`): a repo's local CI
 //! and build scripts are the same class, and only the repo knows which they are.
 //!
 //! WIRING: a structural step in every repo, a hard gate at both scopes. The fix is mechanical

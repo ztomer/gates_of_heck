@@ -129,7 +129,8 @@ pub struct Read {
 ///
 /// A `ROADMAP`, `BACKLOG`, `TODO` or `PLAN(S)` `.md` (the name whole, any case, or an UPPER-CASE name with that word between `_`/`-`: `FEATURE_PLAN.md`), or any `.md`
 /// under a `plans/` or `roadmap(s)/` directory. A lower-case `weekend_plan.md` or `timeplan.md` is
-/// a document about a plan, not the repo's plan.
+/// a document about a plan, not the repo's plan, and `GOH_ROADMAP.md` declares the key of that name
+/// (GOH.CONFIGMD).
 #[must_use]
 pub fn is_plan_file(rel: &str) -> bool {
     const WORDS: [&str; 5] = ["ROADMAP", "BACKLOG", "TODO", "PLAN", "PLANS"];
@@ -151,7 +152,7 @@ pub fn is_plan_file(rel: &str) -> bool {
     if WORDS.contains(&upper.as_str()) {
         return true;
     }
-    stem == upper && stem.split(['_', '-']).any(|w| WORDS.contains(&w))
+    stem == upper && !stem.starts_with("GOH_") && stem.split(['_', '-']).any(|w| WORDS.contains(&w))
 }
 
 /// The text a rule may read: fenced code blanked (line count kept), inline code spans blanked.

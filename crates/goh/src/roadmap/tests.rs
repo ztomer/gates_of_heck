@@ -140,6 +140,7 @@ fn plan_files_are_named_plans_not_documents_about_one() {
         "ROADMAP.txt",
         "CHANGELOG.md",
         "docs/planning.md",
+        "docs/config/GOH_ROADMAP.md",
     ] {
         assert!(!scan::is_plan_file(p), "{p}");
     }

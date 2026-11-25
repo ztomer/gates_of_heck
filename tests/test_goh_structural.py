@@ -224,7 +224,7 @@ def test_a_failing_step_names_the_checker_and_the_docs(goh: Path, tmp_path: Path
     result = _run_goh(goh, repo, False)
     out = result.stdout + result.stderr
     assert str(ROOT / "crates" / "goh" / "src" / "mdlinks.rs") in out, out
-    assert "`goh map NAME` says" in out and str(ROOT / "docs" / "config.md") in out, out
+    assert "`goh map NAME` says" in out and f"({ROOT / 'docs' / 'config'}/)" in out, out
 
 
 def test_staged_marker_agrees(goh: Path, tmp_path: Path) -> None:

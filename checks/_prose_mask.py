@@ -57,7 +57,7 @@ def python_code_only(text):
 HEREDOC_QUOTED = re.compile(r"<<-?\s*(?:'(\w+)'|\"(\w+)\"|\\(\w+))")
 
 
-def _strip_comment(line):
+def strip_comment(line):
     """`line` with a `#` comment removed: one that starts a word outside quotes."""
     quote = None
     for i, ch in enumerate(line):
@@ -81,7 +81,7 @@ def shell_code_only(text):
             if line.strip() == closing:
                 closing = None
             continue
-        code = _strip_comment(line)
+        code = strip_comment(line)
         heredoc = HEREDOC_QUOTED.search(code)
         if heredoc:
             closing = next(g for g in heredoc.groups() if g)

@@ -4,8 +4,8 @@ Two cache keys hash "the GOH_* configuration" (gates/_rust_proven.sh's step, che
 identity), each with its own exclusions, and the internal keys added since -- GOH_RESOLVED_*, and
 GOH_PROVEN_IDENTITY_FOR, which holds a $PWD -- went into both: a key varied with where a gate was
 started, so a pre-commit proof and a pre-push lookup could not meet. gates/verdict_free_keys.txt is
-the one list; every key docs/config.md calls "Not a setting" must be on it, and every key on it must
-be documented.
+the one list; every key docs/config/ declares of Kind internal must be on it, and every key on
+it must be declared.
 """
 
 from __future__ import annotations
@@ -14,6 +14,8 @@ import re
 import subprocess
 
 from conftest import REPO_ROOT, hermetic_env
+
+from lib import config_ref
 
 LIST = REPO_ROOT / "gates" / "verdict_free_keys.txt"
 
@@ -25,9 +27,17 @@ def _listed() -> set[str]:
 
 
 def test_every_internal_key_is_on_the_list() -> None:
-    doc = (REPO_ROOT / "docs" / "config.md").read_text()
-    internal = set(re.findall(r"^\| `(GOH_[A-Z_]+)` \|[^\n]*Not a setting", doc, re.MULTILINE))
+    internal = {k for d in config_ref.Ref(REPO_ROOT).decls if d.kind == "internal" for k in d.keys}
     assert internal and internal <= _listed(), sorted(internal - _listed())
+
+
+def test_a_key_is_internal_exactly_when_its_text_says_it_is_no_setting() -> None:
+    """The kind and the words are one fact, said in two places: neither can drift."""
+    said = {
+        d.path: "Not a setting" in f"{d.default} {d.text}" for d in config_ref.Ref(REPO_ROOT).decls
+    }
+    kind = {d.path: d.kind == "internal" for d in config_ref.Ref(REPO_ROOT).decls}
+    assert said == kind, sorted(p for p in said if said[p] != kind[p])
 
 
 # A key the gates EXPORT is bookkeeping for their children, not a setting -- and one that holds a
@@ -56,7 +66,7 @@ PASSED_AND_KEYED = {
     "GOH_LAND_CALLER": "set on the one `git merge` land.sh makes; no gate runs under it",
     "GOH_LAND_PRE": "the release land's empty pre-step, read by land.sh before any gate runs",
     "GOH_LAND_GATE": "the land's gate command, one value per land mode (lib/gate_identity.py)",
-    "GOH_LCI_TIMEOUT": "a setting (docs/config.md): a different ceiling can judge differently",
+    "GOH_LCI_TIMEOUT": "a setting (`goh config`): a different ceiling can judge differently",
     "GOH_PROVEN": "a setting: gate_profile.sh turns the proven cache off for its measurement",
     "GOH_STAGED_GUARD_RUN": "the constant 1, on the one pytest run of a commit's decision guards",
     "GOH_BENCH_WAIT": "a wait bound for the bench hold's children, no gate verdict",
@@ -194,8 +204,9 @@ def test_a_fixture_with_an_inline_per_push_key_goes_red() -> None:
 
 
 def test_every_listed_key_is_documented() -> None:
-    doc = (REPO_ROOT / "docs" / "config.md").read_text()
-    missing = sorted(k for k in _listed() if f"| `{k}` |" not in doc)
+    ref = config_ref.Ref(REPO_ROOT)
+    prefixes = {k for k in _listed() if k.endswith("_") and f"| `{k}` |" in ref.render()}
+    missing = sorted(_listed() - set(ref.by_key()) - prefixes)
     assert not missing, missing
 
 

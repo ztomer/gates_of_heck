@@ -57,7 +57,7 @@ WHOLESALE = {
     "checks/check_raw_audit.py": "DROPS every GOH_* from the audit's foreign-repo environment",
     "crates/goh/src/gatesrc.rs": "prose",
     "lib/db_waits.py": "prose: the prefix hermetic_env drops",
-    "crates/goh/src/step_report.rs": "a message naming docs/config.md's keys",
+    "crates/goh/src/step_report.rs": "a message naming `goh config`'s keys",
     "crates/goh/src/subject.rs": "prose: the floors' key shape, read from .gatesrc's text",
     "crates/goh/src/subject_tests.rs": "a check of those keys' spelling",
     "gates/_common.sh": "prose",

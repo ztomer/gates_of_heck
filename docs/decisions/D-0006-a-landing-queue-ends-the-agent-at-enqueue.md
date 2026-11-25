@@ -37,4 +37,4 @@
   (the on-demand start missed a case), or the estate wants landings while no agent and no
   coordinator runs (then option 2).
 - **Lives in:** `tools/landq.py`, `crates/goh/src/cli.rs` (`goh land`), `tests/test_landq.py`,
-  `docs/config.md` (GOH_LANDQ_DIR, GOH_LAND_TIMEOUT).
+  `goh config` (GOH_LANDQ_DIR, GOH_LAND_TIMEOUT).

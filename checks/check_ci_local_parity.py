@@ -17,7 +17,7 @@ WHAT. It reads every `run:` command in `.github/workflows/*.y*ml` and in composi
 repo scripts each one invokes: `scripts/...` or `tools/...` ending `.sh` or `.py`, matched after
 any `../`. A script CI runs that no local step names is red.
 
-Keys in `.gatesrc` (documented in docs/config.md):
+Keys in `.gatesrc` (`goh config KEY`):
 
     GOH_CI_PARITY_EXEMPT     one `path: reason` per line. A script CI runs that genuinely cannot
                              run before a push (packaging, a deploy). A RATCHET, red both ways: an

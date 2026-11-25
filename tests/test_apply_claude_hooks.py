@@ -394,7 +394,7 @@ def test_the_drift_watch_reads_a_managed_setting_drift_too(tmp_path: Path) -> No
 
 
 def test_the_real_registrations_carry_the_measured_read_cap_and_cache_ttl() -> None:
-    """The values and their measurements: docs/config.md "Managed Claude Code settings" (2026-11-08)."""
+    """The values and their measurements: docs/config/_areas/claude-settings.md (2026-11-08)."""
     managed = REAL_REGS["settings"]
     assert managed["env"] == {CAP: "12000", BASH_T: "600000"}
     assert managed["subagentPromptCacheTtl"] == "5m"  # 1h measured +3.5% dearer: docs
@@ -406,12 +406,13 @@ def test_the_bash_timeout_is_installed_with_its_measurement_and_sits_at_the_tool
     14 pushes. The value is the push gate's p95 with headroom, capped at the tool's maximum: Claude
     Code 2.1.330 reads BASH_DEFAULT_TIMEOUT_MS and lifts its maximum to max(600000, default), so
     above 600000 the default itself would grow every hung call's wait. Its source record is the
-    registration's `_doc` and docs/config.md; the apply step writes it and --check reads drift."""
+    registration's `_doc` and docs/config/_areas/claude-settings.md; the apply step writes it and
+    --check reads drift."""
     managed = REAL_REGS["settings"]
     assert int(managed["env"][BASH_T]) == 600_000
     assert BASH_MAX not in managed["env"]  # the default alone; no wider maximum
     assert BASH_T in managed["_doc"] and "p95" in managed["_doc"]
-    doc = (REPO_ROOT / "docs" / "config.md").read_text(encoding="utf-8")
+    doc = (REPO_ROOT / "docs/config/_areas/claude-settings.md").read_text(encoding="utf-8")
     assert f"`env.{BASH_T}`" in doc
     out, notes = ach.apply({"env": {"OWNER": "x"}}, REAL_REGS)
     assert out["env"][BASH_T] == "600000" and out["env"]["OWNER"] == "x"
