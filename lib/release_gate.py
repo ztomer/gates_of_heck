@@ -107,8 +107,9 @@ def runner() -> str:
     return f"{python} -m pytest -q -p no:cacheprovider -n {worker_share.share()} --dist loadgroup"
 
 
-def names(root: Path, paths: list[str]) -> list[str]:
-    """The tests that read a path of PATHS, relative to root: tools/affected_tests.py's readers,
+def names(root: Path, paths: list[str], graph=None) -> list[str]:
+    """The tests that read a path of PATHS, relative to root: tools/affected_tests.py's readers (on
+    GRAPH, a Closure of root, or one of their own),
     and its TEXT_JUDGES the root holds. `readers` leaves the tree readers out (the land runs them
     apart); of those, the judges of every tracked file's text read the release text too, and
     without them v0.140.3's release land ran green on a heading its full gate refused
@@ -117,7 +118,7 @@ def names(root: Path, paths: list[str]) -> list[str]:
     from tools import affected_tests  # the kit's: the one rule of "a test reads this path"
 
     judges = {t for t in affected_tests.TEXT_JUDGES if (root / t).is_file()}
-    return sorted(set(affected_tests.readers(root, paths)) | judges)
+    return sorted(set(affected_tests.readers(root, paths, graph=graph)) | judges)
 
 
 def release_only(paths: list[str]) -> bool:

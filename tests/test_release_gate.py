@@ -8,10 +8,12 @@ and a base that is no ancestor; the probe finds the real readers and not a test 
 
 from __future__ import annotations
 
+import functools
 import subprocess
 import sys
 from pathlib import Path
 
+import _tree_graph
 from conftest import REPO_ROOT, git, hermetic_env
 from timing_bounds import patience
 
@@ -112,13 +114,18 @@ def test_the_full_gates_verdict_is_the_release_gates_and_it_never_sees_the_key(r
     assert r.returncode == 7, r.stdout + r.stderr
 
 
+@functools.cache
+def _named() -> list[str]:
+    """The release set of this tree (the path spelled apart), on the run's one graph."""
+    paths = ["CHANGELOG" + ".md", "changelog/GOH.X.md"]
+    return release_gate.names(REPO_ROOT, paths, _tree_graph.real())
+
+
 def test_the_set_is_the_readers_of_goh_s_own_changelog_not_every_test_that_says_its_name() -> None:
     """The one rule of a read (tools/affected_tests.py `readers`). The text probe this replaced took
     26 files, 384 tests, 133 s at load 50: 25 of them write a fixture's CHANGELOG.md (the kit's
     tests), and their verdict on the tip holds, since nothing they read changed."""
-    found = release_gate.names(
-        REPO_ROOT, ["CHANGELOG" + ".md", "changelog/GOH.X.md"]
-    )  # spelled apart
+    found = _named()
     assert "tests/test_changelog_fragments.py" in found, found  # reads the tree's changelog
     for writer in (
         "test_changelog_cut.py",
@@ -137,7 +144,7 @@ def test_the_set_holds_the_judge_of_every_tracked_file_s_text_so_a_release_line_
     runs every scanner goh ships over every tracked file, the release text included, but it is a
     tree reader, and `readers` leaves the tree readers out: the reuse would have pushed a red
     commit. The judges of every file's text join the set (tools/affected_tests.py TEXT_JUDGES)."""
-    found = release_gate.names(REPO_ROOT, ["CHANGELOG" + ".md", "changelog/GOH.X.md"])
+    found = _named()
     assert "tests/test_self_walk.py" in found, found
 
 
@@ -176,11 +183,19 @@ def test_each_part_of_the_release_gate_is_a_timed_row_the_land_s_seconds_are_nam
 
 
 def test_the_release_kit_hands_its_land_this_gate_with_the_tip_it_cut_from(repo: Path) -> None:
-    seen = repo.parent / "land-gate.txt"
+    """And no pre-step, its gate is the short one. GOH.RELEASELANDGATE: .gatesrc's GOH_LAND_PRE ran
+    925 tree-reader tests before this gate reused them -- 139 of v0.139.4's 160 s land. The kit
+    hands land.sh GOH_LAND_PRE set and empty, which land.sh reads as "no pre-step" over the tree's
+    .gatesrc (gatesrc_var)."""
+    seen, seen_pre = repo.parent / "land-gate.txt", repo.parent / "land-pre.txt"
     tools = repo / "tools"
     tools.mkdir()
-    (tools / "land.sh").write_text(f'#!/bin/bash\nprintf %s "$GOH_LAND_GATE" >"{seen}"\nexit 1\n')
+    (tools / "land.sh").write_text(
+        f'#!/bin/bash\nprintf %s "$GOH_LAND_GATE" >"{seen}"\n'
+        f'printf %s "${{GOH_LAND_PRE-unset}}" >"{seen_pre}"\nexit 1\n'
+    )
     (tools / "land.sh").chmod(0o755)
+    (repo / ".gatesrc").write_text("GOH_LAND_PRE='echo a pre-step'\n")
     (repo / "CHANGELOG.md").write_text("# CHANGELOG\n\n## Unreleased\n\n* **Two.** b\n")
     tip = _commit(repo, "feat: two")
     r = subprocess.run(["bash", str(KIT), "0.2.0"], cwd=repo, env=hermetic_env(drop_git=True),
@@ -190,24 +205,5 @@ def test_the_release_kit_hands_its_land_this_gate_with_the_tip_it_cut_from(repo:
     gate = seen.read_text()
     assert "lib/release_gate.py" in gate and f"--base {tip}" in gate, gate
     assert "gate_profile.sh" in gate, f"the full gate it falls back to is land's own: {gate}"
-
-
-def test_the_release_land_runs_no_pre_step_its_gate_is_the_short_one(repo: Path) -> None:
-    """GOH.RELEASELANDGATE: .gatesrc's GOH_LAND_PRE ran 925 tree-reader tests before this gate
-    reused them -- 139 of v0.139.4's 160 s land. The kit hands land.sh GOH_LAND_PRE set and empty,
-    which land.sh reads as "no pre-step" over the tree's .gatesrc (gatesrc_var)."""
-    seen = repo.parent / "land-pre.txt"
-    tools = repo / "tools"
-    tools.mkdir()
-    (tools / "land.sh").write_text(
-        f'#!/bin/bash\nprintf %s "${{GOH_LAND_PRE-unset}}" >"{seen}"\nexit 1\n'
-    )
-    (tools / "land.sh").chmod(0o755)
-    (repo / ".gatesrc").write_text("GOH_LAND_PRE='echo a pre-step'\n")
-    (repo / "CHANGELOG.md").write_text("# CHANGELOG\n\n## Unreleased\n\n* **Two.** b\n")
-    _commit(repo, "feat: two")
-    r = subprocess.run(["bash", str(KIT), "0.2.0"], cwd=repo, env=hermetic_env(drop_git=True),
-                       capture_output=True, text=True, timeout=patience(60),
-                       stdin=subprocess.DEVNULL, check=False)  # fmt: skip
-    assert seen.is_file(), r.stdout + r.stderr
-    assert seen.read_text() == "", f"the release land was handed a pre-step: {seen.read_text()!r}"
+    pre = seen_pre.read_text()
+    assert pre == "", f"the release land was handed a pre-step: {pre!r}"

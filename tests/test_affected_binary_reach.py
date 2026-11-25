@@ -12,6 +12,7 @@ arm for every variant cli.rs declares (a variant it missed would be reached by n
 
 from __future__ import annotations
 
+import functools
 import sys
 
 import _tree_graph
@@ -81,6 +82,11 @@ def _tree(tmp_path, extra: dict[str, str] | None = None):
         (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / rel).write_text(text)
     return tmp_path
+
+
+@functools.cache
+def _real() -> crate_reach.Crate:
+    return crate_reach.Crate(REPO_ROOT)
 
 
 def _runners(chosen: dict[str, str]) -> set[str]:
@@ -169,7 +175,7 @@ def test_an_impl_naming_nothing_it_can_resolve_is_reached_by_every_run(tmp_path)
 
 
 def test_the_dispatch_table_has_an_arm_for_every_variant_on_the_real_tree() -> None:
-    crate = crate_reach.Crate(REPO_ROOT)
+    crate = _real()
     arms, _ = crate.dispatch
     variants = {crate_reach.kebab(v) for v in crate.variants}
     assert len(variants) > 60, sorted(variants)
@@ -196,10 +202,10 @@ def test_the_scanner_change_chooses_its_runners_and_not_every_binary_test() -> N
     "path", ["crates/goh/src/cli.rs", "crates/goh/Cargo.toml", "Cargo.lock", "crates/goh/build.rs"]
 )
 def test_a_shared_input_still_chooses_every_binary_test_on_the_real_tree(path) -> None:
-    assert crate_reach.Crate(REPO_ROOT).subcommands(path) is None
+    assert _real().subcommands(path) is None
 
 
 def test_a_file_the_binary_includes_reaches_its_includer() -> None:
-    crate = crate_reach.Crate(REPO_ROOT)
+    crate = _real()
     assert crate.subcommands("lib/busyloop_shapes.json") >= {"busy-loop"}
     assert crate.subcommands("lib/no_such_file.json") == set()

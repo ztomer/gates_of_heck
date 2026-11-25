@@ -7,3 +7,4 @@
 * GOH.PYSLOWTESTS: `test_bench_lock` re-checks the lock every 0.1 s and waits for the line a process prints, not for a guess at how long the lock takes.
 * GOH.PYSLOWTESTS: `test_rust_gate` runs a scenario in the group its rule is in (`GOH_RUST_GROUPS`) over a clone of one crate; the whole gate runs in the end-to-end test and from a subdir.
 * GOH.PYSLOWTESTS: `test_landq` judges a land once, through the wait a lane uses (its record, its end-to-end row, its exit); `test_landq_alone` drains two lands a case, the marked one first or second.
+* GOH.PYSLOWTESTS: `test_carry_shadow` and `test_release_gate` ask the real tree on the run's one graph (`release_gate.names` takes one); `test_affected_binary_reach` reads the crate once.

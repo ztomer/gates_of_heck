@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import ClassVar
 
 import _carry_shadow as cs
+import _tree_graph
 import pytest
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
@@ -82,14 +83,30 @@ def test_what_pytest_reads_whole_as_it_starts_stays_wide(path: str) -> None:
     assert got is None and path in why, why
 
 
+class RealTree:
+    """tools/affected_tests.py on the run's one graph of this tree (tests/_tree_graph.py)."""
+
+    @staticmethod
+    def Closure(root: Path):
+        assert root == REPO_ROOT
+        return _tree_graph.real()
+
+    @staticmethod
+    def affected(root: Path, changed: list[str], enqueue: bool, graph=None) -> dict[str, str]:
+        assert (root, graph) == (REPO_ROOT, _tree_graph.real())
+        return _tree_graph.affected(changed, enqueue)
+
+
 def test_on_the_real_tree_a_base_code_change_runs_its_readers_not_the_suite() -> None:
     """tests/_schedule.py (base code: it orders) chose nothing to carry before; now its readers."""
-    got, why = cs.choose(REPO_ROOT, ["tests/_schedule.py"], mode=cs.ENQUEUE)
+    got, why = cs.choose(REPO_ROOT, ["tests/_schedule.py"], RealTree, cs.ENQUEUE)
     assert got is not None, why
     files = {n.split("::")[0] for n in got}
     suite = list((REPO_ROOT / "tests").glob("test_*.py"))
     assert "tests/test_schedule.py" in files, sorted(files)
     assert len(files) < len(suite) // 2, (len(files), len(suite))
+    table = cs._table(REPO_ROOT, None)  # what the plugin asks, with no table of its own
+    assert table.__file__ == str(REPO_ROOT / "tools" / "affected_tests.py")
 
 
 def test_the_mode_is_the_records_and_the_enqueues_when_it_names_none(tmp_path: Path) -> None:
