@@ -3,3 +3,4 @@
 # driver for its rebase; where `merge.goh-rows.driver` is undefined git merges these as text.
 gates/verdict_free_keys.txt merge=goh-rows
 crates/goh/house_scripts.tsv merge=goh-rows
+tests/base_files.tsv merge=goh-rows

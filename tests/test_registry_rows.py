@@ -8,7 +8,7 @@ two sections, each saying something the other did not.
 """
 
 # goh-reads-staged: .gitattributes gates/verdict_free_keys.txt
-# goh-reads-staged: crates/goh/house_scripts.tsv
+# goh-reads-staged: crates/goh/house_scripts.tsv tests/base_files.tsv
 
 from __future__ import annotations
 
@@ -46,6 +46,7 @@ def test_the_registries_are_row_merged() -> None:
         [
             "gates/verdict_free_keys.txt",
             "crates/goh/house_scripts.tsv",
+            "tests/base_files.tsv",
         ]
     )
 
