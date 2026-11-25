@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import fcntl
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -28,6 +29,8 @@ from test_ship import _calls
 from test_ship_cov_bisect import _LOG, _RECORD, _ship
 from test_ship_starve import _declare, _judged
 from timing_bounds import patience
+
+from lib import ship_status
 
 shipped = test_ship_cov_bisect.shipped  # the fixture, by assignment
 
@@ -137,10 +140,12 @@ def test_a_second_ship_finding_the_lock_held_names_the_holder_and_its_state(
 
     holder = tmp_path / "20261122T021940Z-84cbc55f.json"
     probe = {"n": 2, "lands": 3, "sha": "da695d93" * 5}
-    gdb.ship(holder, {"status": "bisecting", "pid": 77558, "bisect_step": probe})
+    alive = os.getpid()
+    gdb.ship(holder, {"status": "bisecting", "pid": alive, "bisect_step": probe})
+    ship_status.settle_all()  # every ship the suite starts does this, over every record in goh.db
     with (tmp_path / ".ship.lock").open("a+") as held:
         fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        held.write(json.dumps({"result": str(holder), "pid": 77558}))
+        held.write(json.dumps({"result": str(holder), "pid": alive}))
         held.flush()
         argv = [sys.executable, str(REPO_ROOT / "tools" / "ship.py"), "--repo", str(shipped),
                 "--out", str(tmp_path / "ship.json"), "--wait"]  # fmt: skip
@@ -149,6 +154,6 @@ def test_a_second_ship_finding_the_lock_held_names_the_holder_and_its_state(
                            check=False)  # fmt: skip
     said = r.stdout + r.stderr
     assert r.returncode == 2, said
-    assert str(holder) in said and "pid 77558" in said, said
+    assert str(holder) in said and f"pid {alive}" in said, said
     assert "bisecting" in said and "bisect step 2" in said and "da695d93" in said, said
     assert gdb.shipped(tmp_path / "ship.json") is None, "a refused ship left a record"
