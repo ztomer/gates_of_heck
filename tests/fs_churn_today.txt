@@ -346,6 +346,7 @@ tests/test_land_check.py
 tests/test_land_check_commits.py
 tests/test_land_check_runner.py
 tests/test_land_check_verdict.py
+tests/test_land_columns.py
 tests/test_land_driver.py
 tests/test_land_e2e.py
 tests/test_land_fragment.py

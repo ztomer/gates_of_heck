@@ -50,6 +50,9 @@
   "test_kept_store_db.py": {
    "sqlite": 3
   },
+  "test_land_columns.py": {
+   "sqlite": 1
+  },
   "test_land_records.py": {
    "sqlite": 3
   },

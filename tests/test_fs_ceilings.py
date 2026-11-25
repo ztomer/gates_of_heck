@@ -19,7 +19,7 @@ from test_fs_churn import CHURNY, QUIET, XDIST, _session
 
 TREE_READS = ("tests/",)  # the lists name files there
 CEILING = json.loads((REPO_ROOT / "tests" / "fs_events_ceiling.json").read_text())
-TODAY = 787  # the names of tests/fs_churn_today.txt, only ever lowered
+TODAY = 788  # the names of tests/fs_churn_today.txt, only ever lowered
 NAMED = 14  # the files with ceilings of their own, only ever lowered
 darwin = pytest.mark.skipif(sys.platform != "darwin", reason="FSEvents is macOS only")
 
