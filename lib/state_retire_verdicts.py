@@ -48,6 +48,7 @@ import goh_cache_db  # lib/, on the path from the line above
 import goh_db
 import reuse_store  # lib/: the reuse root (GOH_REUSE_DIR)
 import state_paths
+import state_rows
 
 RECORD_DIRS = ("affected", "carry", "gate", "pushed", "profcarry", "relset")  # reuse paths' files
 AUDIT = "reuse audit"  # the imports ledger's store, as lib/reuse_audit_store.py named it
@@ -158,29 +159,46 @@ def _audit_load(con: sqlite3.Connection, files: list[Path]) -> None:
     for p in files:
         if p.suffix == ".json":
             rec = _json(p)
-            n = 0 if not isinstance(rec, dict) else con.execute(
-                "INSERT OR IGNORE INTO reuse_audit(path, body, at) VALUES (?, ?, ?)",
-                (p.stem, _dump(rec), p.stat().st_mtime)).rowcount  # fmt: skip
+            n = (
+                0
+                if not isinstance(rec, dict)
+                else int(
+                    state_rows.add(
+                        con,
+                        "reuse_audit",
+                        rec,
+                        {"path": p.stem, "at": p.stat().st_mtime},
+                        ignore=True,
+                    )
+                )
+            )
         else:
-            have = {b for (b,) in con.execute("SELECT body FROM reuse_shadow")}
-            fresh = [(float(r.get("epoch") or 0), str(r.get("path") or ""), b)
-                     for r in _lines(p) if (b := _dump(r)) not in have]  # fmt: skip
-            con.executemany("INSERT INTO reuse_shadow(epoch, path, body) VALUES (?, ?, ?)", fresh)
+            have = {state_rows.said("reuse_shadow", d) for d in state_rows.docs(
+                con, "reuse_shadow")}  # fmt: skip
+            fresh = [r for r in _lines(p) if state_rows.said("reuse_shadow", r) not in have]
+            for r in fresh:
+                state_rows.add(
+                    con,
+                    "reuse_shadow",
+                    r,
+                    {"epoch": float(r.get("epoch") or 0), "path": str(r.get("path") or "")},
+                )
             n = len(fresh)
         _ledger(con, AUDIT, p, n)
 
 
 def _audit_check(con: sqlite3.Connection, p: Path) -> str | None:
     if p.suffix != ".json":
-        have = {b for (b,) in con.execute("SELECT body FROM reuse_shadow")}
-        short = sum(_dump(r) not in have for r in _lines(p))
+        short = state_rows.missing(con, "reuse_shadow", _lines(p))
         return f"{short} lines have no reuse_shadow row" if short else None
     if (rec := _json(p)) is None:
         return None
-    row = con.execute("SELECT body, at FROM reuse_audit WHERE path=?", (p.stem,)).fetchone()
+    row = con.execute("SELECT at FROM reuse_audit WHERE path=?", (p.stem,)).fetchone()
     if row is None:
         return "no reuse_audit row"
-    same = json.loads(row[0]) == rec or float(row[1] or 0) > p.stat().st_mtime
+    (doc,) = state_rows.docs(con, "reuse_audit", "path = ?", (p.stem,))
+    same = state_rows.said("reuse_audit", doc) == state_rows.said("reuse_audit", rec)
+    same = same or float(row[0] or 0) > p.stat().st_mtime
     return None if same else "its reuse_audit row differs and is older than the file"
 
 

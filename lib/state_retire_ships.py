@@ -34,7 +34,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ship_columns  # lib/, on the path from the line above
 import ship_records
 import ship_status
+import state_columns
 import state_paths
+import state_rows
 
 # a ship directory's files that are no record: the sweep's record, the suite's profiles, the
 # coverage summary (the step logs are .log and .jsonl and stay, handover plan (e))
@@ -105,9 +107,15 @@ def load(con: sqlite3.Connection, paths: list[Path]) -> None:
 def check(con: sqlite3.Connection, p: Path) -> str | None:
     """P's record is its row's body, or its row was written after P (a later step, a settle)."""
     table, result = key(p)
-    row = con.execute(f"SELECT body, at FROM {table} WHERE result=?", (result,)).fetchone()
+    ours, args = state_paths.where("result", state_paths.forms(result))
+    row = con.execute(f"SELECT result, at FROM {table} WHERE {ours}", args).fetchone()
     if row is None:
         return f"no {table} row"
-    if json.loads(row[0]) == _json(p) or float(row[1] or 0) > p.stat().st_mtime:
+    (doc,) = state_rows.docs(con, table, "x.result = ?", (row[0],))
+    want = _json(p)
+    named = {"result": result, "repo": p.parent.name} if table == "ships" else {}
+    want = {**named, **want} if isinstance(want, dict) else want  # the row says both
+    differ = state_columns.differs(table, json.dumps(want), json.dumps(doc))
+    if not {*differ} - {"consumer_pins"} or float(row[1] or 0) > p.stat().st_mtime:
         return None
     return f"its {table} row differs and is older than the file"

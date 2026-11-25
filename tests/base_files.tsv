@@ -118,6 +118,7 @@ lib/spawn_columns.py	base-code
 lib/state_append.py	base-code
 lib/state_columns.py	base-code
 lib/state_paths.py	base-code
+lib/state_shape.py	base-code
 lib/step_timings.py	base-code
 lib/steps_store.py	base-code
 lib/suite_cache_guard.sh	base-code

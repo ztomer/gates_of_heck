@@ -60,6 +60,7 @@ import land_cause
 import land_columns
 import landq_state
 import state_paths
+import state_shape
 
 
 def queue_key(q: Path) -> str:
@@ -171,13 +172,14 @@ def get(q: Path, run: str) -> dict | None:
 
 def causes(q: Path) -> dict[str, dict]:
     """{`<run>.json`: cause} for queue Q: each land's own, else the one `red_causes` holds for it
-    (an older goh wrote it there, and `goh state backfill` has not folded it in yet)."""
+    (an older goh wrote it there, and `goh state backfill` has not folded it in yet; contract 0017
+    drops the table once none is left)."""
     out: dict[str, dict] = {}
     with _reader() as con:
         if con is not None:
             ours, args = _ours(q)
             sql = f"SELECT run, body FROM red_causes WHERE {ours} ORDER BY queue"
-            for run, body in con.execute(sql, args):
+            for run, body in con.execute(sql, args) if state_shape.has(con, "red_causes") else ():
                 with contextlib.suppress(ValueError):
                     out[f"{run}.json"] = json.loads(body)
             own = land_columns.read(con, queue_key(q), ("red_cause",)).items()
@@ -219,7 +221,7 @@ def ledger(q: Path, name: str) -> list[dict]:
             ours, args = _ours(q)
             if name == "misses":
                 out = [doc for _, doc in body_columns.read(con, body_tables.MISSES, ours, args)]
-            else:
+            elif state_shape.has(con, table):
                 sql = f"SELECT body FROM {table} WHERE {ours} ORDER BY n"
                 bodies = [b for (b,) in con.execute(sql, args)]
     for body in bodies:
@@ -237,6 +239,8 @@ def insert(con: sqlite3.Connection, key: str, name: str, rows: list[dict]) -> in
         return sum(body_columns.write(con, body_tables.MISSES, r,
                                       {"queue": q, "at": at, "day": day}, ignore=True)
                    for r, (q, at, day, _) in own)  # fmt: skip
+    if not state_shape.has(con, table):  # contract 0017: each guard is its red land's own row
+        return 0
     sql = f"INSERT OR IGNORE INTO {table} (queue, at, {col}, body) VALUES (?, ?, ?, ?)"
     kept = [_ledger_row(key, name, state_paths.put(con, name, r)) for r in rows]
     return con.executemany(sql, kept).rowcount  # total_changes counts a trigger's rows too

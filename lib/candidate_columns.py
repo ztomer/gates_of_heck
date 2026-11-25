@@ -6,7 +6,8 @@ rows (GOH.KVBLOBS; goh.db 0015), the one writer and the one reader of its fields
     read(con, where, args)   the candidates WHERE names as documents, in the order written
 
 What no column takes (an unknown key, a value of the wrong type) stays in `rest`, which `goh state
-check` names. `rest` IS WRITTEN, never NULL, so 0015's fill trigger (older code's) does not run on
+check` names; from a cutover on (lib/state_shape.py) such a row is Refused, for its caller to bury.
+`rest` IS WRITTEN, never NULL, so 0015's fill trigger (older code's) does not run on
 these rows; a row it has not filled (`rest` NULL: `goh state backfill`), and a file from before
 0015, are read from the document. A null, an empty list and an absent key read the same: absent.
 Pinned by tests/test_candidate_columns.py.
@@ -21,7 +22,11 @@ import sys
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from spawn_columns import _text as utf8  # lib/: a lone surrogate is no text a column holds
+import state_shape  # lib/, on the path from the line above
+from spawn_columns import (
+    Refused,
+    _text as utf8,  # a lone surrogate is no text a column holds
+)
 
 TEXT = ("id", "item", "phase", "repo", "status", "done_state")
 LISTS = {"faults": "fault", "depends": "depend"}
@@ -35,7 +40,7 @@ def _columns(con: sqlite3.Connection) -> set[str]:
 def write(con: sqlite3.Connection, doc: dict, at: float) -> int:
     doc = utf8(doc)
     rest = {k: v for k, v in doc.items() if v not in EMPTY}
-    cols: dict[str, Any] = {"at": at, "body": json.dumps(doc, sort_keys=True)}
+    cols: dict[str, Any] = {"at": at}
     for k in TEXT:
         cols[k] = rest.pop(k) if isinstance(rest.get(k), str) else None
     lists = []
@@ -45,6 +50,10 @@ def write(con: sqlite3.Connection, doc: dict, at: float) -> int:
             lists += [(kind, i, x) for i, x in enumerate(rest.pop(k))]
     cols["rest"] = json.dumps(rest, sort_keys=True)
     have = _columns(con)
+    if (odd := sorted({*TEXT, *LISTS} & rest.keys())) and (
+            state_shape.closing(con, "fault_candidates")):  # fmt: skip
+        raise Refused(f"{', '.join(odd)}: not a type its column takes")
+    cols |= state_shape.document(con, "fault_candidates", json.dumps(doc, sort_keys=True))
     names = [c for c in cols if c in have]
     sql = f"INSERT INTO fault_candidates({', '.join(names)}) VALUES ({', '.join('?' * len(names))})"
     n = int(con.execute(sql, [cols[c] for c in names]).lastrowid or 0)

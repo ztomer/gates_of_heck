@@ -60,6 +60,7 @@ import body_tables
 import goh_db
 import kv_rows
 import state_paths
+import state_shape
 
 # kv names: each was the file `<name>.json` (kv_name), beside the database (the estate audit's,
 # the pin push ledger's and the sweep registry's dir is GOH_ESTATE_STATE's)
@@ -175,9 +176,15 @@ def gated_add(p: Path | str, row: dict) -> None:
     """One commit-gated row ({tree, repo, at}) for the ledger whose file is P."""
     p = Path(p)
     with goh_db.refusable(), _write(p) as con:
-        con.execute("INSERT INTO commit_gated(at, tree, body) VALUES (?, ?, ?)",
-                    (_epoch(row.get("at")), str(row["tree"]),
-                     _dump(state_paths.put(con, "commit_gated", row))))  # fmt: skip
+        gated_row(con, row)
+
+
+def gated_row(con: sqlite3.Connection, row: dict) -> None:
+    doc = _dump(state_paths.put(con, "commit_gated", row))
+    cols = {"at": _epoch(row.get("at")), "tree": str(row["tree"]),
+            **state_shape.document(con, "commit_gated", doc)}  # fmt: skip
+    con.execute(f"INSERT INTO commit_gated({', '.join(cols)}) VALUES "
+                f"({', '.join('?' * len(cols))})", list(cols.values()))  # fmt: skip
 
 
 def gated(p: Path | str) -> list[dict]:

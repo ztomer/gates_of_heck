@@ -39,6 +39,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, beside this file: the one door to goh.db
 import ship_columns
 import state_paths
+import state_shape
 
 PINS = ".pins.json"
 
@@ -55,8 +56,10 @@ def pins_path(result: Path | str) -> Path:
 
 
 def _repo(con: sqlite3.Connection, res: dict) -> str:
-    """The repo column of RES: its key in a file of tokens, else its directory's name."""
-    key = str(state_paths.repo_key(res.get("repo")) or "") if state_paths.tokens(con) else ""
+    """The repo column of RES: its key in a file of tokens, or with no document to hold its path;
+    else its directory's name."""
+    keyed = state_paths.tokens(con) or state_shape.closing(con, "ships")
+    key = str(state_paths.repo_key(res.get("repo")) or "") if keyed else ""
     return key or Path(str(res["result"])).parent.name
 
 

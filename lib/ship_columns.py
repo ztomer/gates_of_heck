@@ -35,6 +35,8 @@ from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import state_columns  # lib/, beside this file: where a document's rendering is
+import state_paths
+import state_shape
 
 HAVE = ("item", "sha", "status", "started", "finished", "version")  # text since 0003
 TEXT, REAL, INT, BOOL = "text", "real", "int", "bool"
@@ -178,8 +180,9 @@ def _split(doc: dict, repo: str) -> tuple[dict[str, Any], list[tuple[str, dict]]
     if json.dumps(quiet) == json.dumps(doc.get("quiet_settings")):
         _drop(rest, "quiet_settings")
     where = doc.get("repo")
-    if where is None or (isinstance(where, str) and repo
-                         and where.replace("/", "_").endswith(repo.replace("/", "_"))):  # fmt: skip
+    if where is None or (isinstance(where, str) and repo and (
+            state_paths.repo_key(where) == repo
+            or where.replace("/", "_").endswith(repo.replace("/", "_")))):  # fmt: skip
         _drop(rest, "repo")
     for k in ("result", *HAVE, "schema", "consumer_pins", "quiet_settings", "repo"):
         if k not in ("quiet_settings", "repo") or rest.get(k) is None:
@@ -191,6 +194,14 @@ def _split(doc: dict, repo: str) -> tuple[dict[str, Any], list[tuple[str, dict]]
 
 def _json(rest: dict) -> str:
     return json.dumps(rest, ensure_ascii=False, separators=(",", ":"))  # as SQLite writes it
+
+
+def _rest(con: sqlite3.Connection, table: str, key: str, rest: dict) -> str:
+    """REST as it is kept; from a cutover on a known key of the wrong type is buried instead."""
+    rest, buried = state_shape.sift(con, table, rest)
+    if buried:
+        state_shape.bury(table, {"result": key, **buried}, "a value of another type")
+    return _json(rest)
 
 
 def _columns(con: sqlite3.Connection, table: str) -> set[str]:
@@ -219,8 +230,9 @@ def _children(
 
 def put(con: sqlite3.Connection, res: dict, key: str, repo: str, at: float) -> None:
     cols, kids, rest = _split(res, repo)
-    cols |= {"result": key, "run": Path(key).stem, "repo": repo, "at": at, "rest": _json(rest),
-             "body": json.dumps(res),
+    cols |= {"result": key, "run": Path(key).stem, "repo": repo, "at": at,
+             "rest": _rest(con, "ships", key, rest),
+             **state_shape.document(con, "ships", json.dumps(res)),
              **{c: None if res.get(c) is None else str(res[c]) for c in HAVE}}  # fmt: skip
     _upsert(con, "ships", cols)
     _children(con, key, CHILDREN, kids, at)
@@ -235,8 +247,18 @@ def put_pins(con: sqlite3.Connection, body: dict, key: str, at: float) -> None:
     if all(c is not None for c in got.values()) and (repos is None or isinstance(repos, dict)):
         kids = [("ship_pin_repos", {"repo": r, **(c or {})}) for r, c in got.items()]
         rest.pop("repos", None)
-    _upsert(con, "ship_pins", {**cols, "result": key, "run": Path(key).stem, "at": at,
-                               "rest": _json(rest), "body": json.dumps(body)})  # fmt: skip
+    _upsert(
+        con,
+        "ship_pins",
+        {
+            **cols,
+            "result": key,
+            "run": Path(key).stem,
+            "at": at,
+            "rest": _rest(con, "ship_pins", key, rest),
+            **state_shape.document(con, "ship_pins", json.dumps(body)),
+        },
+    )
     _children(con, key, ("ship_pin_repos",), kids, at)
 
 

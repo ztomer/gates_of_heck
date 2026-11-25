@@ -45,10 +45,11 @@ def left(table: str) -> int:
         return con.execute(f"SELECT count(*) FROM {table} WHERE body <> '{{}}'").fetchone()[0]
 
 
-def test_refused_while_this_goh_reads_the_documents(db, capsys) -> None:
+def test_refused_while_this_goh_reads_the_documents(db, capsys, monkeypatch) -> None:
     was = dump(db)
+    monkeypatch.setattr(state_strip, "CONTRACT", 99)
     assert state_strip.main() == 1
-    assert "ships no contract 0017" in capsys.readouterr().err and dump(db) == was
+    assert "ships no contract 0099" in capsys.readouterr().err and dump(db) == was
 
 
 def test_refused_while_a_ship_runs(db, on, capsys) -> None:

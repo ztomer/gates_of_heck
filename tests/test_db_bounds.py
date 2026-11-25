@@ -5,7 +5,6 @@ rows to goh-archive-YYYY.db, a cache table evicts them."""
 from __future__ import annotations
 
 import dataclasses
-import re
 import sqlite3
 from pathlib import Path
 
@@ -149,8 +148,8 @@ def test_every_shipped_table_is_bounded() -> None:
     """Each table a shipped migration creates has a `-- bound:` header, or leaves with a bounded
     parent's rows (a new table cannot be unbounded), and each seam has its budget."""
     for s in (goh_db.SEAM, goh_cache_db.SEAM):
-        sql = "".join(p.read_text() for p in db_core.migrations(s).values())
-        made = set(re.findall(r"CREATE TABLE (\w+)", sql))
+        made = db_bounds.created(s) - set(db_core.BOOT_TABLES)
+        assert not {t for t in made if t.startswith("refuse_")} and "misses" not in made
         bounded = set(db_bounds.bounds(s))
         kin = db_bounds.db_bounds_with.withs(s)
         for _ in kin:  # a child of a child of ...

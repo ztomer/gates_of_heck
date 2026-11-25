@@ -36,6 +36,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import land_columns  # lib/, on the path from the line above
 import land_records  # lib/, on the path from the line above
 import state_paths
+import state_rows
+import state_shape
 
 DONE = "done"
 CAUSES = "red_causes.json"
@@ -117,8 +119,14 @@ def load(con: sqlite3.Connection, paths: list[Path]) -> None:
             rows = [(key, name.removesuffix(".json"), _cause(c),
                      land_records.epoch({}, name.removesuffix(".json")), json.dumps(c))
                     for name, c in sorted(side.items())]  # fmt: skip
-            con.executemany("INSERT OR IGNORE INTO red_causes (queue, run, cause, at, body) "
-                            "VALUES (?, ?, ?, ?, ?)", rows)  # fmt: skip
+            if state_shape.has(con, "red_causes"):
+                con.executemany("INSERT OR IGNORE INTO red_causes (queue, run, cause, at, body) "
+                                "VALUES (?, ?, ?, ?, ?)", rows)  # fmt: skip
+            else:  # contract 0017: a class is its land's own
+                for name, c in side.items():
+                    run = name.removesuffix(".json")
+                    land_columns.add_cause(con, key, run, c, lambda rec, run=run: (
+                        land_records.epoch(rec, run)))  # fmt: skip
             n, table = len(rows), "red_causes"
         else:
             name = LEDGERS[p.name]
@@ -136,24 +144,35 @@ def check(con: sqlite3.Connection, p: Path) -> str | None:
     row of the queue."""
     key = _key()
     if p.parent.name == DONE:
-        ours, args = state_paths.where("queue", state_paths.forms(key))
-        row = con.execute(f"SELECT body FROM lands WHERE {ours} AND run = ?",
-                          (*args, p.stem)).fetchone()  # fmt: skip
-        if row is None:
+        have = land_columns.read(con, key, runs=[p.stem]).get(p.stem)
+        if have is None:
             return "no lands row"
-        have = state_paths.got("lands", json.loads(row[0]))
         want = _json(p)
         if isinstance(want, dict) and not want.get("at") and "at" in have:
             want = {**want, "at": have["at"]}  # a row written by name is never without one
-        return None if have == want else "its lands row differs"
+        same = state_rows.said("lands", have) == state_rows.said("lands", want)
+        return None if same else "its lands row differs"
     if p.name == CAUSES:
         side = _json(p)
+        if not state_shape.has(con, "red_causes"):
+            own = land_columns.read(con, key, ("red_cause",))
+            bad = [n for n in (side if isinstance(side, dict) else ())
+                   if (r := own.get(n.removesuffix(".json"))) is not None
+                   and not r.get("red_cause")]  # fmt: skip  # one with a class keeps its own
+            return f"{len(bad)} of its causes are in no land" if bad else None
         have = {r: (json.loads(b), at) for r, b, at in con.execute(
             "SELECT run, body, at FROM red_causes WHERE queue = ?", (key,))}  # fmt: skip
         bad = [n for n, c in (side.items() if isinstance(side, dict) else ())
                if (got := have.get(n.removesuffix(".json"))) is None or got[0] != c]  # fmt: skip
         return f"{len(bad)} of its causes read back unequal or gone" if bad else None
     table = land_records.LEDGERS[LEDGERS[p.name]][0]
-    have = Counter(b for (b,) in con.execute(f"SELECT body FROM {table} WHERE queue = ?", (key,)))
-    miss = [r for r in _lines(p) if have[land_records._body(r)] == 0]
+    if table == "land_guards" and not state_shape.has(con, table):
+        return None  # contract 0017: each is its red land's own rows, counted there
+    if table == "land_guards":
+        have = [json.loads(b) for (b,) in con.execute(f"SELECT body FROM {table} WHERE queue = ?",
+                                                      (key,))]  # fmt: skip
+    else:
+        have = state_rows.docs(con, table, *land_columns.ours(key))
+    texts = Counter(state_rows.said(table, d) for d in have)
+    miss = [r for r in _lines(p) if texts[state_rows.said(table, r)] == 0]
     return f"{len(miss)} of its lines have no {table} row" if miss else None

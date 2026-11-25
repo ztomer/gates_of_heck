@@ -13,7 +13,7 @@ lib/land_records.py; reuse_shadow, reuse_audit: lib/reuse_audit_store.py; reques
 lib/landq_state.py. Each inside its own transaction.
 
 ONE HOME. What no column takes (an unknown key, a value of the wrong type) stays in `rest`, which
-`goh state check` names. Once the contract has dropped `body`, a known key of the wrong type is
+`goh state check` names. From a cutover on (lib/state_shape.py), a known key of the wrong type is
 Refused instead: no document would explain it.
 
 `rest` IS WRITTEN, never NULL, so 0016's fill triggers (older code's) do not run on an insert. A row
@@ -35,10 +35,12 @@ from collections.abc import Sequence
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import state_shape  # lib/, beside this file
 from body_tables import BOOL, INTEGER, REAL, TEXT, Fields, Kid, Table, get  # lib/, line above
 from spawn_columns import Refused, _text
 
 Own = dict[str, Any]
+KEYED = "selection_misses"  # its document is its key (UNIQUE) until contract 0020 remakes it
 
 
 def _whole(v: object) -> bool:
@@ -186,10 +188,15 @@ def _whole_row(con: sqlite3.Connection, t: Table, doc: dict, own: Own
     known = [*t.fields, *(x[0] for x in t.tuples), *(k.path for k in t.kids)]
     odd = sorted(p for p in known if get(rest, p) is not None
                  and not any(q.startswith(f"{p}.") for q in known))  # fmt: skip
-    if odd and "body" not in have:
+    if odd and state_shape.closing(con, t.name):
         raise Refused(f"{t.name}: {', '.join(odd)}: not a type its column takes")
+    rest, buried = state_shape.sift(con, t.name, rest)
+    if buried:  # a key the row says itself (its `at`), said another way
+        state_shape.bury(t.name, {**own, **buried}, "a field its row's columns say otherwise")
     row = {**own, **cols, "rest": json.dumps(rest, sort_keys=True),
-           "body": json.dumps(doc, sort_keys=True)}  # fmt: skip
+           **state_shape.document(con, t.name, json.dumps(doc, sort_keys=True))}  # fmt: skip
+    if t.name == KEYED and "body" in have:
+        row["body"] = json.dumps(doc, sort_keys=True)
     return {c: v for c, v in row.items() if c in have}, kids if "rest" in have else {}
 
 

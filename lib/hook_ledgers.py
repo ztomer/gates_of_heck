@@ -53,7 +53,7 @@ import os
 import sqlite3
 import sys
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -66,13 +66,14 @@ import kv_rows
 import lock_order
 import spawn_columns
 import state_paths
+import state_shape
 
 STORE = "hook ledgers"  # the imports ledger's store
 SPAWNS, LANES, CANDIDATES = "agent_spawns", "lane_starts", "fault_candidates"
 WATCH = "model-choice-watch"  # kv: the weekly watch's record
 BUSY = "hook-ledgers.busy"  # kv: {count, last}: rows a write spilled past HOOK_BUSY_MS
 SPILL = "hook-ledgers.spill.jsonl"  # beside goh.db: {table, row} lines a busy write left
-DEAD = "hook-ledgers.dead.jsonl"  # beside goh.db: {table, row, why, at}, a row its table refuses
+DEAD = state_shape.DEAD  # beside goh.db: {table, row, why, at}, a row its table refuses
 HOOK_BUSY_MS = 5000  # a hook's write waits this long for goh.db, then lets the spawn through
 # what one row of the spill can meet that no other row would: it is dead-lettered, never retried
 REFUSED = (spawn_columns.Refused, sqlite3.IntegrityError, sqlite3.DataError, OverflowError)
@@ -104,14 +105,6 @@ def _kv_put(con: sqlite3.Connection, name: str, value: object) -> None:
     con.execute("INSERT INTO kv(name, body, at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET "
                 "body=excluded.body, at=excluded.at",
                 (name, _dump(state_paths.put(con, name, value)), time.time()))  # fmt: skip
-
-
-def kept(table: str) -> tuple[Callable[[dict], str], Callable[[str], str]]:
-    """How two copies of one TABLE row compare: (a row's text, a stored document's text)."""
-    if table != SPAWNS:
-        return _dump, str
-    return (lambda r: _dump(spawn_columns.normal(r))), lambda b: _dump(
-        spawn_columns.normal(json.loads(b)))  # fmt: skip
 
 
 def insert(con: sqlite3.Connection, table: str, row: dict) -> None:
@@ -166,9 +159,8 @@ def _taken(con: sqlite3.Connection, table: str, row: dict) -> str | None:
 
 
 def _bury(letters: list[tuple[str, dict, str]]) -> None:
-    for table, row, why in letters:
-        _line(goh_db.path().with_name(DEAD),
-              {"table": table, "row": row, "why": why, "at": time.time()})  # fmt: skip
+    for letter in letters:
+        state_shape.bury(*letter)
 
 
 def dead() -> list[dict]:
@@ -311,7 +303,10 @@ def record_watch(state: dict, candidates: list[dict] | None) -> None:
         kv_rows.put_first_done(con, state)
         at = time.time()
         for row in candidates if candidates is not None else []:
-            candidate_columns.write(con, row, at)
+            try:
+                candidate_columns.write(con, row, at)
+            except REFUSED as e:
+                _bury([(CANDIDATES, row, str(e))])
 
 
 def candidates() -> list[dict]:

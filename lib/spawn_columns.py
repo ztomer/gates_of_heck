@@ -11,8 +11,8 @@
 
 ONE HOME. A field is a column or a child row, its name in SCALARS, LISTS, `load` or `apps.exits`.
 What no column takes (an unknown key, a value of the wrong type) stays in `rest`, which `goh state
-check` names. Once contract 0019 has dropped `body`, a known key of the wrong type is Refused
-instead: nothing would look at a `rest` no document can explain.
+check` names. From a cutover on (lib/state_shape.py), a known key of the wrong type is Refused
+instead: no document would explain its `rest`.
 
 `rest` IS WRITTEN, never NULL, so 0013's fill trigger (older code's) does not run on these rows. A
 row it has not filled yet (`rest` NULL: `goh state backfill`) is read from its document.
@@ -23,10 +23,15 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import sqlite3
+import sys
 from datetime import UTC, datetime
 from typing import Any
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import state_shape  # lib/, on the path from the line above
 
 # the key of the document (dotted: inside an object): its column, per type
 TEXT = {k: k for k in (
@@ -166,6 +171,10 @@ def _split(doc: dict) -> tuple[dict[str, Any], list[tuple], list[tuple], dict]:
     return cols, lists, exits, {k: v for k, v in rest.items() if v not in (None, {}, [])}
 
 
+def _json(doc: dict) -> str:
+    return json.dumps(doc, sort_keys=True)
+
+
 def _columns(con: sqlite3.Connection) -> set[str]:
     return {r[1] for r in con.execute("PRAGMA table_info(agent_spawns)")}
 
@@ -177,11 +186,11 @@ def write(con: sqlite3.Connection, row: dict) -> int:
     known = {"event", "time", "load", "apps.exits", *SCALARS, *LISTS}
     odd = sorted(p for p in known if _get(rest, p) is not None and p != "apps")
     odd += ["apps"] * (not isinstance(rest.get("apps", {}), dict))
-    if odd and "body" not in have:
+    if odd and state_shape.closing(con, "agent_spawns"):
         raise Refused(f"{', '.join(odd)}: not a type its column takes")
     items = [v for kind, _, v in lists if kind == "item"]
-    cols |= {"rest": json.dumps(rest, sort_keys=True), "item": items[0] if items else None,
-             "body": json.dumps(doc, sort_keys=True)}  # fmt: skip
+    cols |= {"rest": _json(rest), "item": items[0] if items else None,
+             **state_shape.document(con, "agent_spawns", _json(doc))}  # fmt: skip
     names = [c for c in cols if c in have]  # `item` and `body` leave with contract 0019
     sql = f"INSERT INTO agent_spawns({', '.join(names)}) VALUES ({', '.join('?' * len(names))})"
     n = con.execute(sql, [cols[c] for c in names]).lastrowid

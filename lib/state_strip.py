@@ -58,14 +58,16 @@ def _batch(
     done, kept = 0, []
     with goh_db.transaction() as con:
         busy = f"SELECT rowid FROM ships WHERE {state_columns.IN_FLIGHT}"
-        wait = {"lands": ("its red cause is not folded in", state_columns.UNFOLDED),
-                "ships": ("it runs", busy)}.get(table)  # fmt: skip
-        held = {r for (r,) in con.execute(wait[1])} if wait else set()
+        wait, held = "", set()
+        if table == "lands":
+            wait, held = "its red cause is not folded in", state_columns.unfolded(con)
+        elif table == "ships":
+            wait, held = "it runs", {r for (r,) in con.execute(busy)}
         rows = list(state_columns.rendered(
             con, table, f"x.rowid IN (SELECT rowid FROM {table} WHERE rowid > ? AND body <> '{{}}' "
             f"AND json_valid(body) ORDER BY rowid LIMIT {BATCH})", (after,)))  # fmt: skip
         for rowid, key, doc, again, rest in rows:
-            why = wait[0] if wait and rowid in held else "not filled" if rest is None else ""
+            why = wait if rowid in held else "not filled" if rest is None else ""
             if not why and (keys := state_columns.differs(table, doc, again)):
                 why = f"its columns do not give back {', '.join(keys)}"
             if why:
@@ -83,7 +85,10 @@ def run(repo_key: Callable[[str], str]) -> tuple[int, list[str]]:
     """Every row of every table: (rows stripped, one line per row that stays whole)."""
     _may()
     total, whole = 0, []
-    for t in (t for t in state_columns.TABLES if t not in KEPT):
+    with goh_db.known() as con:
+        todo = [t for t in state_columns.TABLES
+                if t not in KEPT and state_columns.documents(con, t)]  # fmt: skip
+    for t in todo:
         after: int | None = -(1 << 62)
         while after is not None:
             after, done, kept = _batch(t, after, repo_key)

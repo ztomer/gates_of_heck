@@ -53,6 +53,7 @@ import state_paths
 import state_retire_lands as lands  # the land records' half (GOH.STATEDB S1)
 import state_retire_ships  # the ship records' half (GOH.STATEDB S2), beside this file
 import state_retire_verdicts  # GOH.VERDICTDB's stores, beside this one in the seam
+import state_rows  # a row as a document, whatever the file's shape
 
 state_dir = state_paths.state_root
 
@@ -109,12 +110,10 @@ def _ledger(con: sqlite3.Connection, store: str, p: Path, rows: int, source: str
                 row)  # fmt: skip
 
 
-def _subset(con: sqlite3.Connection, table: str, p: Path, body=_dump, row=str) -> str | None:
+def _subset(con: sqlite3.Connection, table: str, p: Path) -> str | None:
     """Every line of P is a row of TABLE (as many times as P holds it), else why not."""
-    have = Counter(row(b) for (b,) in con.execute(f"SELECT body FROM {table}"))
-    want = Counter(body(r) for r in _lines(p))
-    short = sum((want - have).values())
-    return f"{short} of {sum(want.values())} lines have no {table} row" if short else None
+    short = state_rows.missing(con, table, rows := _lines(p))
+    return f"{short} of {len(rows)} lines have no {table} row" if short else None
 
 
 def _kv_equal(con: sqlite3.Connection, name: str, p: Path) -> str | None:
@@ -156,14 +155,12 @@ def _hook_load(con: sqlite3.Connection, files: list[Path]) -> None:
                 con.execute("INSERT OR IGNORE INTO kv(name, body, at) VALUES (?, ?, ?)",
                             (table, _dump(doc), p.stat().st_mtime))  # fmt: skip
             continue
-        body, row = hook_ledgers.kept(table)
-        have, added = Counter(row(b) for (b,) in con.execute(f"SELECT body FROM {table}")), 0
+        have, added = Counter(state_rows.said(table, d) for d in state_rows.docs(con, table)), 0
         for r in _lines(p):  # in line order; a line the table already holds is taken once
-            if have[body(r)] > 0:
-                have[body(r)] -= 1
+            if have[said := state_rows.said(table, r)] > 0:
+                have[said] -= 1
             elif table == "fault_candidates":
-                con.execute("INSERT INTO fault_candidates(at, body) VALUES (?, ?)",
-                            (p.stat().st_mtime, _dump(r)))  # fmt: skip
+                state_rows.add(con, table, r, {"at": p.stat().st_mtime})
                 added += 1
             else:
                 hook_ledgers.insert(con, table, r)
@@ -172,11 +169,9 @@ def _hook_load(con: sqlite3.Connection, files: list[Path]) -> None:
 
 
 def _hook_check(con: sqlite3.Connection, p: Path) -> str | None:
-    import hook_ledgers
-
     if (table := _hook_table(p)) == "model-choice-watch":
         return _kv_equal(con, table, p)
-    return _subset(con, table, p, *hook_ledgers.kept(table))
+    return _subset(con, table, p)
 
 
 # -- small stores (GOH.STATEDBS3, goh.db 0004) ---------------------------------------------------
@@ -223,11 +218,17 @@ def _epoch(at: object) -> float:
         return 0.0
 
 
-def _small_key(table: str) -> str:
-    return "tree" if table == "commit_gated" else "test"
+def _small_have(con: sqlite3.Connection, table: str, k: str, epoch: float, r: dict) -> bool:
+    if table == "commit_gated":
+        return bool(con.execute("SELECT 1 FROM commit_gated WHERE tree = ? AND at = ?",
+                                (k, epoch)).fetchone())  # fmt: skip
+    mine = state_rows.docs(con, table, "test = ?", (k,))
+    return state_rows.said(table, r) in {state_rows.said(table, d) for d in mine}
 
 
 def _small_load(con: sqlite3.Connection, files: list[Path]) -> None:
+    import small_stores
+
     for p in files:
         if p.suffix == ".json":
             if (doc := _json(p)) is not None:
@@ -236,14 +237,15 @@ def _small_load(con: sqlite3.Connection, files: list[Path]) -> None:
                             (name, _dump(doc), p.stat().st_mtime))  # fmt: skip
             continue
         table, rows = _small_rows(p)
-        key, at = _small_key(table), "at" if table == "commit_gated" else "epoch"
         n = 0
         for epoch, k, r in sorted(rows, key=lambda t: t[0]):
-            if not con.execute(f"SELECT 1 FROM {table} WHERE {key}=? AND body=?",
-                               (k, _dump(r))).fetchone():  # fmt: skip
-                con.execute(f"INSERT INTO {table}({at}, {key}, body) VALUES (?, ?, ?)",
-                            (epoch, k, _dump(r)))  # fmt: skip
-                n += 1
+            if _small_have(con, table, k, epoch, r):
+                continue
+            n += 1
+            if table == "commit_gated":
+                small_stores.gated_row(con, {**r, "tree": k})
+            else:
+                state_rows.add(con, table, r, {"epoch": epoch, "test": k})
         _ledger(con, "small stores", p, n)
 
 
@@ -251,11 +253,9 @@ def _small_check(con: sqlite3.Connection, p: Path) -> str | None:
     if p.suffix == ".json":
         return _kv_equal(con, p.name.removesuffix(".json"), p)
     table, rows = _small_rows(p)
-    key = _small_key(table)
-    miss = [r for _, k, r in rows if not con.execute(
-        f"SELECT 1 FROM {table} WHERE {key}=? AND body=?", (k, _dump(r))).fetchone()]  # fmt: skip
+    miss = [r for epoch, k, r in rows if not _small_have(con, table, k, epoch, r)]
     if p.parent.name == "by-test":  # an id line names a record the register holds
-        ids = {json.loads(b).get("id") for (b,) in con.execute("SELECT body FROM flakes")}
+        ids = {i for (i,) in con.execute("SELECT flake FROM flakes")}
         miss += [r for r in _lines(p) if "id" in r and "filed" not in r and r["id"] not in ids]
     return f"{len(miss)} of its lines have no {table} row" if miss else None
 

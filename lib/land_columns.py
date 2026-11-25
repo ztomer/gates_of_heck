@@ -9,9 +9,10 @@
 A WRITER NAMES EVERY COLUMN. `put` is an upsert whose `rest` is never NULL, so no trigger of 0011
 fills the row: a scalar that has its column's type is its column, a list whose every element fits is
 its child rows (the ones before it go first), and `rest` is what is left. A value of the wrong type
-is in no column: it stays in `rest`, said on one stderr line and by `goh state check`, for a land's
-record has no other home and is never refused over a field (the columns' CHECKs refuse it, and
-`rest`'s CHECK refuses a value that has a column).
+is in no column: it stays in `rest`, or from a cutover on in the dead-letter file
+(lib/state_shape.py), said on one stderr line and by `goh state check`, for a land's record has no
+other home and is never refused over a field (the columns' CHECKs refuse it, and `rest`'s CHECK
+refuses a value that has a column).
 
 A READER NAMES THE KEYS IT READS, and pays for their columns and child tables alone. A row that
 `goh state backfill` has not filled yet (`rest` NULL) and a file from before 0011 are read from the
@@ -42,6 +43,7 @@ from typing import Any, NoReturn
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db_core  # lib/, on the path from the line above
 import state_paths
+import state_shape
 
 HAVE = ("item", "sha", "enqueued", "repo", "mode", "state", "attempt", "requested", "started",
         "finished", "k")  # fmt: skip
@@ -221,10 +223,15 @@ def put(
     doc = plain(rec if rec.get("at") else {**rec, "at": instant(at)})
     doc = state_paths.put(con, "lands", doc)
     cols, kids, rest = split(doc, at)
-    if odd := sorted(KEYS & rest.keys()):
+    rest, buried = state_shape.sift(con, "lands", rest)
+    if odd := sorted({k.partition(".")[0] for k in buried} | (KEYS & rest.keys())):
+        kept = state_shape.DEAD if buried else "`rest`"
         db_core.warn(f"goh.db: lands {run}: {', '.join(odd)}: not of its column's type, kept in "
-                     "`rest` (goh state check)")  # fmt: skip
-    row = {"queue": queue, "run": run, **cols, "at": at, "body": json.dumps(doc),
+                     f"{kept} (goh state check)")  # fmt: skip
+    if buried:
+        state_shape.bury("lands", {"queue": queue, "run": run, **buried}, "a value of another type")
+    row = {"queue": queue, "run": run, **cols, "at": at,
+           **state_shape.document(con, "lands", json.dumps(doc)),
            "rest": json.dumps(rest, separators=(",", ":"))}  # fmt: skip
     sets = ", ".join(f"{c} = excluded.{c}" for c in row if c not in KEY)
     con.execute(f"INSERT INTO lands ({', '.join(row)}) VALUES ({', '.join('?' * len(row))}) "
@@ -280,7 +287,13 @@ def _said(words: list, cells: Iterable) -> dict:
 
 
 def columned(con: sqlite3.Connection) -> bool:
-    return any(r[1] == "rest" for r in con.execute("PRAGMA table_info(lands)"))
+    return "rest" in state_shape.columns(con, "lands")
+
+
+def _body(con: sqlite3.Connection, stale: str) -> str:
+    """The document of a row no one filled; none is left once the contract dropped the column."""
+    body = "body" in state_shape.columns(con, "lands")
+    return f"CASE WHEN {stale} THEN body END" if body else "'{}'"
 
 
 def read(
@@ -304,7 +317,7 @@ def read(
             *args, json.dumps(list(runs)))  # fmt: skip
     cols = [*mine, *(c for _, c, _ in some)]
     stale = "rest IS NULL" if filled else "1"
-    head = ["queue", "run", "at", "rest" if filled else "NULL", f"CASE WHEN {stale} THEN body END"]
+    head = ["queue", "run", "at", "rest" if filled else "NULL", _body(con, stale)]
     sql = f"SELECT {', '.join(head + cols)} FROM lands WHERE {where} ORDER BY queue"
     out: dict[str, dict] = {}
     own: dict[tuple[str, str], dict] = {}  # (queue, run): the rows read from their columns

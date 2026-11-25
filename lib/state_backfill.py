@@ -27,6 +27,7 @@ import db_schema  # lib/, on the path from the line above
 import goh_db
 import kv_fill
 import state_columns
+import state_shape
 
 SQL = state_columns.SQL / "backfill.sql"
 STEPS = ("repaired", "folded", *state_columns.TABLES)
@@ -43,6 +44,12 @@ def run() -> dict[str, int]:
     done = {}
     for name, sql in steps():
         done[name] = 0
+        with goh_db.known() as con:
+            table = "lands" if name in ("repaired", "folded") else name
+            there = state_columns.documents(con, table)
+            there = there and (name != "folded" or state_shape.has(con, "red_causes"))
+        if not there:  # its contract has run: no document is left to put anywhere
+            continue
         before = None
         while True:
             with goh_db.transaction() as con:

@@ -95,13 +95,16 @@ def bounds(seam: db_core.Seam) -> dict[str, TableBound]:
 
 CREATES = re.compile(r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[\"`]?([A-Za-z_][A-Za-z0-9_]*)",
                      re.IGNORECASE)  # fmt: skip
+LEAVES = re.compile(r"DROP\s+TABLE\s+(\w+)|ALTER\s+TABLE\s+(\w+)\s+RENAME\s+TO\s", re.IGNORECASE)
 
 
 def created(seam: db_core.Seam) -> set[str]:
-    """The tables this goh's own migrations create (BOOT's included)."""
+    """The tables this goh's own migrations create (BOOT's included), less what a contract makes
+    for its own statements and drops again."""
     out = set(db_core.BOOT_TABLES)
     for p in db_core.migrations(seam).values():
-        out |= set(CREATES.findall(p.read_text(encoding="utf-8")))
+        sql = p.read_text(encoding="utf-8")
+        out |= set(CREATES.findall(sql)) - {a or b for a, b in LEAVES.findall(sql)}
     return out
 
 

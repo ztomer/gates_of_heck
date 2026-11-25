@@ -45,12 +45,14 @@ import db_schema
 import goh_db
 import hook_ledgers
 import kv_rows
+import state_shape
 
 SQL = Path(__file__).resolve().with_name("state_sql")
 TABLES = ("lands", "ship_pins", "ships", "agent_spawns", *(t.name for t in body_tables.TABLES),
           "fault_candidates")  # fmt: skip
 INSTANT = {"lands": "at", "agent_spawns": "time", "lane_starts": "at", "flakes": "at"}
 RUNS = (body_tables.REQUESTS.name, body_tables.EARLY.name)  # one run is in one of them
+columns = state_shape.columns
 IN_FLIGHT = "status IN ('running', 'bisecting')"  # a ship its worker still writes
 # a red cause no document of its land has, which the fold would put there (backfill.sql's second)
 UNFOLDED = """SELECT l.rowid FROM red_causes r JOIN lands l ON l.queue = r.queue AND l.run = r.run
@@ -59,14 +61,21 @@ json_type(r.body) = 'object' END AND CASE WHEN json_valid(l.body) THEN
 coalesce(json_type(l.body, '$.red_cause'), 'null') = 'null' END"""
 
 
-def columns(con: sqlite3.Connection, table: str) -> list[str]:
-    return [r[1] for r in con.execute(f'PRAGMA table_info("{table}")')]
+def unfolded(con: sqlite3.Connection) -> set[int]:
+    """The rowids of the lands a red cause is not folded into; contract 0017 takes the table."""
+    here = documents(con, "lands") and state_shape.has(con, "red_causes")
+    return {r for (r,) in con.execute(UNFOLDED)} if here else set()
 
 
 def key(con: sqlite3.Connection, table: str) -> list[str]:
     """TABLE's primary key columns, in the key's order."""
     got = [(r[5], r[1]) for r in con.execute(f'PRAGMA table_info("{table}")') if r[5]]
     return [name for _, name in sorted(got)]
+
+
+def documents(con: sqlite3.Connection, table: str) -> bool:
+    """Whether TABLE still has documents to compare (its contract has not run)."""
+    return "body" in columns(con, table)
 
 
 def migrated(con: sqlite3.Connection) -> bool:
@@ -79,6 +88,8 @@ def rendered(
 ) -> Iterator[tuple[int, str, str, str, str | None]]:
     """(rowid, key, document, the one its columns render, rest) per row with a document that is
     JSON and WHERE (over alias `x`) takes, in rowid order."""
+    if not documents(con, table):
+        return
     doc = (SQL / f"doc_{table}.sql").read_text(encoding="utf-8")
     names = " || ' ' || ".join(f"x.{k}" for k in key(con, table))
     head, _, tail = doc.partition("x.body,")
@@ -106,7 +117,8 @@ def _instant(v: Any) -> Any:
     return v
 
 
-def _spelled(table: str, doc: Any) -> Any:
+def spelled(table: str, doc: str) -> Any:
+    """DOC (its text) as every equal document of TABLE reads."""
     doc = _bare(json.loads(doc))
     if isinstance(doc, dict):
         if table in INSTANT and INSTANT[table] in doc:
@@ -140,7 +152,7 @@ def _typed(a: Any, b: Any) -> bool:
 
 def differs(table: str, doc: str, again: str) -> list[str]:
     """The top keys the document and its rendering differ in; [] when they say the same."""
-    a, b = _spelled(table, doc), _spelled(table, again)
+    a, b = spelled(table, doc), spelled(table, again)
     if not (isinstance(a, dict) and isinstance(b, dict)):
         return [] if _typed(a, b) else ["the whole document"]
     if table == "ships" and isinstance(a.get("repo"), str) and isinstance(b.get("repo"), str):
@@ -158,6 +170,8 @@ def same(table: str, doc: str, again: str) -> bool:
 def unfilled(con: sqlite3.Connection, table: str) -> tuple[int, list[str]]:
     """(rows the backfill will fill, the keys of rows whose document is not JSON)."""
     names = " || ' ' || ".join(key(con, table))
+    if not documents(con, table):
+        return 0, []
     n = con.execute(f"SELECT count(*) FROM {table} WHERE rest IS NULL AND json_valid(body)")
     bad = con.execute(f"SELECT {names} FROM {table} WHERE NOT json_valid(body)")
     return n.fetchone()[0], [str(k) for (k,) in bad]
@@ -187,6 +201,9 @@ def check(con: sqlite3.Connection) -> list[str]:
     out: list[str] = []
     for t in TABLES:
         n, bad = unfilled(con, t)
+        none = 0 if documents(con, t) else con.execute(
+            f"SELECT count(*) FROM {t} WHERE rest IS NULL").fetchone()[0]  # fmt: skip
+        out += [f"{t}: {none} rows with no `rest`: nothing says what they held"] * bool(none)
         out += [f"{t}: {n} rows not filled (`rest` NULL): goh state backfill"] * bool(n)
         out += [f"{t}: {k}: its document is not JSON" for k in bad]
         names = " || ' ' || ".join(key(con, t))
@@ -196,7 +213,7 @@ def check(con: sqlite3.Connection) -> list[str]:
         for _, k, doc, again, _ in rendered(con, t, f"{flight}x.rest IS NOT NULL"):
             if ks := differs(t, doc, again):
                 out.append(f"{t}: {k}: its columns do not give back {', '.join(ks)}")
-    if n := len(con.execute(UNFOLDED).fetchall()):
+    if n := len(unfolded(con)):
         out.append(f"lands: {n} red causes not folded in: goh state backfill")
     for r in hook_ledgers.dead():
         row = json.dumps(r.get("row"))[:120]
