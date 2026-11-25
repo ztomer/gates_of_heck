@@ -110,9 +110,9 @@ def _run_local(files: list[str]) -> int:
     """The worker gave the files back: the Mac runs them now, a plain child pytest (the land's
     keys left this environment when tests/_land_verdicts.py loaded: it records nothing)."""
     workers = os.environ.get("GOH_GATE_WORKERS") or "4"
-    argv = [sys.executable, "-m", "pytest", "-q", "-n", workers, *files]
-    env = {k: v for k, v in os.environ.items() if k != _kept_store.KEPT_ENV}  # it merges nothing
-    return subprocess.run(argv, cwd=ROOT, stdin=subprocess.DEVNULL, check=False, env=env).returncode
+    plain = ["env", "-u", _kept_store.KEPT_ENV]  # `table` named the real cache: it merges nothing
+    argv = [*plain, sys.executable, "-m", "pytest", "-q", "-n", workers, *files]
+    return subprocess.run(argv, cwd=ROOT, stdin=subprocess.DEVNULL, check=False).returncode
 
 
 @pytest.hookimpl(tryfirst=True)
