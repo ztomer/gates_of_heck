@@ -177,19 +177,6 @@ def numbers(repo: Path, prose: str) -> tuple[int, str, str]:
     return value, kind, command
 
 
-def silent(repo: Path, prose: str) -> None:
-    """No finding at all -- the GREEN direction, asserted as an absence rather
-    than as a count, because a checker that reports zero because it matched
-    nothing and one that reports zero because the tree agrees print the same
-    thing."""
-    verdict = findings(repo, prose)
-    if (verdict.findings, verdict.stale, verdict.problems) != ([], [], []):
-        raise AssertionError(f"{prose!r} reported {[f[3] for f in verdict.findings]!r}")
-    if verdict.claims != 1:
-        claims = f"{verdict.claims} {'claim' if verdict.claims == 1 else 'claims'}"
-        raise AssertionError(f"{prose!r} was not even read: {claims} in the tree")
-
-
 def allow(repo: Path, claim: str, path: str = "docs/note.md", **extra) -> None:
     """`claim_derivation_allow.json` with ONE entry, committed."""
     write(repo, "claim_derivation_allow.json", "")

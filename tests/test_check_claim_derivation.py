@@ -27,9 +27,9 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
-import pytest
-from claim_kit import ROSTER, doc, estate, findings, numbers, parse, run_command, silent
+from claim_kit import ROSTER, doc, estate, findings, numbers, parse, run_command
 from conftest import REPO_ROOT, commit_all, run_goh, stage, write
 
 # ── the grammar ─────────────────────────────────────────────────────────────
@@ -51,12 +51,12 @@ CLAIMED = (
 )
 
 
-@pytest.mark.parametrize(("prose", "kind", "target", "name"), CLAIMED)
-def test_a_marked_claim_is_recognised_with_its_target(prose, kind, target, name) -> None:
-    got = parse(prose)
-    assert len(got) == 1, f"{prose!r} -> {got!r}"
-    assert (got[0].kind, got[0].target, got[0].name) == (kind, target, name)
-    assert got[0].malformed is None
+def test_every_marked_claim_is_recognised_with_its_target() -> None:
+    """The whole table in one text, a claim a line: one process reads it all, and each claim is
+    found on its own line (GOH.PYSLOW2)."""
+    got = parse("\n".join(prose for prose, *_ in CLAIMED))
+    want = [(n, *row[1:], None) for n, row in enumerate(CLAIMED, 1)]
+    assert [(c.line, c.kind, c.target, c.name, c.malformed) for c in got] == want
 
 
 # The negative control, and it is the reason the gate is narrow. Each of these is
@@ -80,9 +80,8 @@ UNMARKED = (
 )
 
 
-@pytest.mark.parametrize("prose", UNMARKED)
-def test_prose_that_is_not_a_marked_claim_produces_nothing(prose) -> None:
-    assert parse(prose) == []
+def test_prose_that_is_not_a_marked_claim_produces_nothing() -> None:
+    assert parse("\n".join(UNMARKED)) == []
 
 
 # The closed unit vocabulary (every unit has a derivation) is a Rust test now, beside the table:
@@ -103,65 +102,76 @@ def test_a_marked_promise_the_gate_cannot_keep_is_a_malformed_claim_not_a_skip()
 # ── red before, green after, one case per unit ───────────────────────────────
 
 
-@pytest.mark.parametrize(
-    ("true_prose", "false_prose"),
-    [
-        ("claim: 3 lines in pkg/notes.md", "claim: 99 lines in pkg/notes.md"),
-        ("claim: 2 lines in no_newline.txt", "claim: 99 lines in no_newline.txt"),
-        ("claim: 4 gates in pkg/roster.py:STEPS", "claim: 99 gates in pkg/roster.py:STEPS"),
-        ("claim: 4 tests in tests/test_thing.py", "claim: 99 tests in tests/test_thing.py"),
-        ("claim: 5 tests in tests", "claim: 99 tests in tests"),
-        ("claim: 2 *.py files under pkg", "claim: 99 *.py files under pkg"),
-        ("`3` lines in `pkg/notes.md`", "`99` lines in `pkg/notes.md`"),
-    ],
+TRUE_AND_FALSE = (
+    ("claim: 3 lines in pkg/notes.md", 3),
+    # `wc -l` reads a file with no trailing newline one line SHORT: 2 is the case that decides which
+    # command the finding carries (below).
+    ("claim: 2 lines in no_newline.txt", 2),
+    # `re.findall(r'"(P\\d+ [a-z_0-9]+)"')` sees 2 of these 4 labels (below).
+    ("claim: 4 gates in pkg/roster.py:STEPS", 4),
+    ("claim: 4 tests in tests/test_thing.py", 4),
+    ("claim: 5 tests in tests", 5),
+    ("claim: 2 *.py files under pkg", 2),
+    ("`3` lines in `pkg/notes.md`", 3),
 )
-def test_a_true_claim_is_silent_and_the_same_claim_with_another_number_is_red(
-    repo, true_prose, false_prose
-) -> None:
-    """Both directions on the SAME derivation, one fixture each. The failure mode
-    is symmetric and invisible: a rule matching everything is green on both, and a
-    regex that stopped matching is red on both."""
-    silent(estate(repo), true_prose)
-    value, kind, command = numbers(estate(repo / "second"), false_prose)
-    assert kind == "STALE" and value != 99, (kind, value)
-    assert command, "a finding must print the command that re-derives the number"
+UNANSWERABLE = (
+    ("claim: 3 lines in pkg/gone.py", "names no path in this repo"),
+    ("claim: 3 lines in outside", "names no path in this repo"),
+    ("claim: 3 lines in pkg", "is a directory"),
+    ("claim: 4 gates in pkg/roster.py", "declares 2 module-level string lists"),
+    ("claim: 4 gates in pkg/roster.py:NOPE", "declares no module-level string list"),
+    ("claim: 4 gates in tests", "is a directory"),
+    ("claim: 4 tests in pkg/notes.md", "not a Python module"),
+    ("claim: 2 files under pkg", "must name the extension"),
+    ("claim: 3 *.py files under pkg/roster.py", "is a file"),
+    ("claim: 3 tests in junk/broken.py", "does not parse as Python"),
+    # `verify.py` assigns `steps` TWICE -- the literal table, then the `--tier` filter's
+    # comprehension. Selecting by TYPE rather than by being the first `steps` assignment is the
+    # whole difference between 70 and nothing, and picking the wrong one yields an empty count.
+    (
+        "claim: 4 gates in pkg/roster.py:steps",
+        "declares no module-level string list named 'steps'",
+    ),
+)
 
 
-@pytest.mark.parametrize(
-    ("prose", "why"),
-    [
-        ("claim: 3 lines in pkg/gone.py", "names no path in this repo"),
-        ("claim: 3 lines in outside", "names no path in this repo"),
-        ("claim: 3 lines in pkg", "is a directory"),
-        ("claim: 4 gates in pkg/roster.py", "declares 2 module-level string lists"),
-        ("claim: 4 gates in pkg/roster.py:NOPE", "declares no module-level string list"),
-        ("claim: 4 gates in tests", "is a directory"),
-        ("claim: 4 tests in pkg/notes.md", "not a Python module"),
-        ("claim: 2 files under pkg", "must name the extension"),
-        ("claim: 3 *.py files under pkg/roster.py", "is a file"),
-        ("claim: 3 tests in junk/broken.py", "does not parse as Python"),
-    ],
-)
-def test_a_marked_claim_the_tree_cannot_answer_is_a_finding_named_for_why(repo, prose, why) -> None:
+def _lines(root: Path, proses: list[str]) -> list[tuple]:
+    """The findings of one pass over ROOT's one doc, whose line N+1 is the Nth of PROSES."""
+    doc(root, "\n".join(proses))
+    got = findings(root)
+    assert (got.claims, got.stale, got.problems) == (len(proses), [], []), got
+    assert {f[0] for f in got.findings} <= {"docs/note.md"}, got.findings
+    return got.findings
+
+
+def test_a_true_claim_is_silent_and_the_same_claim_with_another_number_is_red(repo) -> None:
+    """Both directions on the SAME derivation, every unit, in one tree and two passes. The failure
+    mode is symmetric and invisible: a rule matching everything is green on both, and a regex that
+    stopped matching is red on both. The printed command is EXECUTED: one that disagrees with the
+    gate is worse than none, because it looks checked."""
+    root = estate(repo)
+    assert _lines(root, [prose for prose, _ in TRUE_AND_FALSE]) == []
+    false = [re.sub(r"\d+", "99", prose, count=1) for prose, _ in TRUE_AND_FALSE]
+    red = _lines(root, false)
+    assert [(f[1].line, f[1].number, f[2], f[5]) for f in red] == [
+        (n, 99, "STALE", true) for n, (_, true) in enumerate(TRUE_AND_FALSE, 3)
+    ]
+    for _file, _claim, _kind, _message, command, value in red:
+        assert run_command(command, str(root)) == str(value), command
+    assert red[1][4] == "awk 'END{print NR}' no_newline.txt", red[1]
+    # the regex `roadmap_state.py` counted with, over the list the gate counted 4 in
+    assert len(re.findall(r'"(P\d+ [a-z_0-9]+)"', ROSTER)) == 2
+
+
+def test_a_marked_claim_the_tree_cannot_answer_is_a_finding_named_for_why(repo) -> None:
     """A claim nobody can re-derive is a number nobody is checking. Reporting
     nothing about it would be the worst answer available: it reads as verified."""
-    found = findings(estate(repo), prose).findings
-    assert len(found) == 1, [f[3] for f in found]
-    _, _, kind, message, command, value = found[0]
-    assert kind == "UNRESOLVED", kind
-    assert why in message, message
-    assert command is None and value is None
-
-
-def test_the_label_that_a_regex_cannot_match_is_counted(repo) -> None:
-    """The estate's exact defect: `re.findall(r'"(P\\d+ [a-z_0-9]+)"')` needs the
-    closing quote right after ONE lowercase token, so `P1 marker_reason selftest`
-    is invisible to it -- which is how `roadmap_state.py` read 64 against 70. The
-    fixture roster carries three such labels, so the two answers cannot coincide
-    by luck."""
-    silent(estate(repo), "claim: 4 gates in pkg/roster.py:STEPS")
-    regex = re.findall(r'"(P\d+ [a-z_0-9]+)"', ROSTER)
-    assert len(regex) == 2, regex  # the shape the old parser read, against 4 declared
+    found = _lines(estate(repo), [prose for prose, _ in UNANSWERABLE])
+    assert [(f[1].line, f[2], f[4], f[5]) for f in found] == [
+        (n, "UNRESOLVED", None, None) for n in range(3, 3 + len(UNANSWERABLE))
+    ]
+    for (prose, why), f in zip(UNANSWERABLE, found, strict=True):
+        assert why in f[3], (prose, f[3])
 
 
 def test_a_derived_claim_names_the_structure_its_command_measures(repo) -> None:
@@ -169,8 +179,6 @@ def test_a_derived_claim_names_the_structure_its_command_measures(repo) -> None:
     candidate -- forced, not guessed. The printed command must then name the same
     structure the count came from, or it prints something else, and "here is the
     command" is the half of the finding that makes it checkable."""
-    from claim_kit import numbers
-
     root = estate(repo)
     write(root, "solo.py", 'ROSTER = [\n    "a",\n    "b",\n    "c",\n]\n')
     stage(root, "solo.py")
@@ -179,16 +187,6 @@ def test_a_derived_claim_names_the_structure_its_command_measures(repo) -> None:
     assert (kind, value) == ("STALE", 3), (kind, value)
     assert command.endswith("solo.py ROSTER"), command
     assert run_command(command, str(root)) == "3"
-
-
-def test_a_comprehension_is_not_a_declared_list(repo) -> None:
-    """`verify.py` assigns `steps` TWICE -- the literal table, then the `--tier`
-    filter's comprehension. Selecting by TYPE rather than by being the first
-    `steps` assignment is the whole difference between 70 and nothing, and
-    picking the wrong one is not a crash: it yields an empty count."""
-    found = findings(estate(repo), "claim: 4 gates in pkg/roster.py:steps").findings
-    assert len(found) == 1
-    assert "declares no module-level string list named 'steps'" in found[0][3], found[0][3]
 
 
 def test_a_list_holding_a_non_literal_is_not_a_declared_list_and_does_not_crash(repo) -> None:
@@ -212,64 +210,23 @@ def test_a_claim_after_a_multi_line_string_on_its_closing_line_is_read(repo) -> 
     assert len(found) == 1 and found[0][2] == "STALE", found
 
 
-# ── the printed command is EXECUTED, not trusted ─────────────────────────────
-
-
-@pytest.mark.parametrize(
-    "prose",
-    [
-        "claim: 99 lines in pkg/notes.md",
-        "claim: 99 gates in pkg/roster.py:STEPS",
-        "claim: 99 tests in tests",
-        "claim: 99 *.py files under pkg",
-    ],
-)
-def test_every_unit_prints_a_command_that_reproduces_the_gate_s_own_number(repo, prose) -> None:
-    """A finding that hands the reader a command which disagrees with the gate is
-    worse than one that prints no command, because it looks checked."""
-    root = estate(repo / re.sub(r"\W+", "_", prose))
-    found = findings(root, prose).findings
-    assert len(found) == 1, prose
-    _, claim, _, _message, command, value = found[0]
-    printed = run_command(command, str(root))
-    assert printed == str(value), f"{prose}: command printed {printed}, gate said {value}"
-    assert printed != str(claim.number), f"{prose}: the command just echoes the claim"
-
-
-def test_a_file_with_no_trailing_newline_counts_its_last_line(repo) -> None:
-    """`wc -l` reads such a file one line SHORT, so the printed command is `awk`.
-    This case is what decides which command the finding carries -- and the true
-    claim being silent is itself half the evidence."""
-    silent(estate(repo), "claim: 2 lines in no_newline.txt")
-    value, _, command = numbers(estate(repo / "two"), "claim: 99 lines in no_newline.txt")
-    assert value == 2, value
-    assert command == "awk 'END{print NR}' no_newline.txt", command
-
-
 # ── what a hook actually reads: the exit code ────────────────────────────────
 
 
-@pytest.mark.parametrize(
-    ("prose", "want"),
-    [("claim: 99 lines in pkg/notes.md", 1), ("claim: 3 lines in pkg/notes.md", 0)],
-)
-def test_the_exit_code_follows_the_finding(repo, prose, want) -> None:
-    proc = run_goh(doc(estate(repo), prose), "claim-derivation")
-    assert proc.returncode == want, proc.stdout + proc.stderr
+def test_the_exit_code_follows_the_finding(repo) -> None:
+    proc = run_goh(doc(estate(repo), "claim: 3 lines in pkg/notes.md"), "claim-derivation")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
 def test_the_finding_names_the_file_the_line_and_the_command(repo) -> None:
-    proc = run_goh(doc(estate(repo), "claim: 99 lines in pkg/notes.md"), "claim-derivation")
+    root = doc(estate(repo), "claim: 99 lines in pkg/notes.md")
+    proc = run_goh(root, "claim-derivation")
     out = proc.stdout + proc.stderr
+    assert proc.returncode == 1, out
     assert "docs/note.md:3" in out, out
     assert "claims 99, the tree says 3" in out, out
     assert "re-derive: awk 'END{print NR}' pkg/notes.md" in out, out
-
-
-def test_json_output_carries_the_same_verdict(repo) -> None:
-    proc = run_goh(
-        doc(estate(repo), "claim: 99 lines in pkg/notes.md"), "claim-derivation", "--json"
-    )
+    proc = run_goh(root, "claim-derivation", "--json")  # the same verdict
     assert proc.returncode == 1
     payload = json.loads(proc.stdout)
     assert payload["findings"][0]["file"] == "docs/note.md", payload
