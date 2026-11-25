@@ -16,7 +16,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from _todays_gates import _clean_checkout_of_todays_gates
+from _todays_gates import gates_part
 from _tree_clone import run_head_cache
 from test_gates_from_head import _env
 
@@ -28,7 +28,8 @@ def _git(repo: Path, *args: str) -> str:
 
 @pytest.fixture(scope="module")
 def gates(tmp_path_factory) -> Path:
-    return _clean_checkout_of_todays_gates(tmp_path_factory.mktemp("hookseed"), rust=False)
+    part = ("gates/goh.sh", "checks/_tree_stamp.py", "plural_hedge_seed.json")
+    return gates_part(tmp_path_factory.mktemp("hookseed") / "gates_of_heck", *part)
 
 
 def _hedge(gates: Path, tmp_path: Path, **env: str) -> subprocess.CompletedProcess[str]:

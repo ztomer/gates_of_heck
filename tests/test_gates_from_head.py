@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
-from _todays_gates import _clean_checkout_of_todays_gates
+from _todays_gates import _clean_checkout_of_todays_gates, gates_part
 from _tree_clone import clone_tree, process_template, run_head_cache
 from conftest import REPO_ROOT, commit_all, hermetic_env, native_goh_path
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
@@ -160,7 +160,8 @@ def test_a_test_that_drops_goh_live_is_refused_not_silently_run_on_head(
     assert "GOH_LIVE" in r.stderr, r.stderr
 
 
-def test_the_export_is_built_once_per_commit(gates: Path, consumer: Path, tmp_path) -> None:
+def test_the_export_is_built_once_per_commit(consumer: Path, tmp_path) -> None:
+    gates = gates_part(tmp_path / "gates_of_heck", "gates/structural.sh", "gates/goh.sh")
     cache = tmp_path / "head-cache"
     env = _env(tmp_path)
     _structural(gates, consumer, env)

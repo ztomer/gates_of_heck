@@ -226,9 +226,10 @@ def test_goh_live_runs_the_working_trees_binary_not_heads(tmp_path: Path) -> Non
     import os
     import subprocess
 
-    from _todays_gates import _clean_checkout_of_todays_gates
+    from _todays_gates import gates_part
 
-    gates = _clean_checkout_of_todays_gates(tmp_path)
+    # ...and the gates are those goh.sh runs: HEAD's run exports them, a file event a file, twice.
+    gates = gates_part(tmp_path / "gates_of_heck", "gates/goh.sh", "crates/goh/build.rs")
     tiny_goh(gates)  # which binary answers is under test, not goh's 150 crates
     cli = gates / "crates" / "goh" / "src" / "cli.rs"
     before = cli.read_text()
