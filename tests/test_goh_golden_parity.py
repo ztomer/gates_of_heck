@@ -52,6 +52,7 @@ needs_reference = pytest.mark.skipif(
 # Fraction of pixels a fixture perturbs, and by how much.
 WOBBLE_FRACTION = 0.05
 WOBBLE = 30
+TILE = 100
 
 
 def wobble(rng: random.Random, value: int, depth_max: int) -> int:
@@ -134,14 +135,17 @@ def make_pair16(
 
 
 def make_pair_numpy(tmp_path: Path, name: str, w: int, h: int, seed: int):
-    """A large RGB pair generated with numpy — the per-pixel loop is too slow at 6 Mpx."""
+    """A large RGB pair generated with numpy — the per-pixel loop is too slow at 6 Mpx. One 100 px
+    tile of noise repeated: the same samples and counts to both engines, 36 MB of PNG made small."""
     rng = np.random.default_rng(seed)
-    a = rng.integers(0, 256, size=(h, w, 3), dtype=np.uint8)
+    full = (-(-h // TILE), -(-w // TILE), 1)
+    a = rng.integers(0, 256, size=(TILE, TILE, 3), dtype=np.uint8)
     b = a.copy()
-    mask = rng.random((h, w)) < WOBBLE_FRACTION
+    mask = rng.random((TILE, TILE)) < WOBBLE_FRACTION
     b[mask] = (
         a[mask].astype(np.int16) + rng.integers(-WOBBLE, WOBBLE + 1, size=(mask.sum(), 3))
     ) % 256
+    a, b = np.tile(a, full)[:h, :w], np.tile(b, full)[:h, :w]
     pa, pb = tmp_path / f"{name}_a.png", tmp_path / f"{name}_b.png"
     PILImage.fromarray(a).save(pa)
     PILImage.fromarray(b).save(pb)
