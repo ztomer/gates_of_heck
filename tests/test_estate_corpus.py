@@ -97,6 +97,10 @@ def test_a_store_root_is_read_from_the_private_store_never_the_tree(tmp_path, mo
     (store / sweep.STORE_ROOTS).write_text(f'{{"roots": {{"crates": "{corpus}"}}}}')
     assert sweep.resolve_root("store:crates") == str(corpus)
     assert sweep.resolve_root("store:other") is None
+    with monkeypatch.context() as another:  # another home: no store, and a path is a path
+        another.setenv("GOH_ESTATE_HOME", "/else")
+        roots = ["~/x", "store:crates", "/whole/path"]
+        assert [sweep.resolve_root(r) for r in roots] == ["/else/x", None, "/whole/path"]
     (store / sweep.STORE_ROOTS).write_text("not json")
     assert sweep.resolve_root("store:crates") is None
     entry = {

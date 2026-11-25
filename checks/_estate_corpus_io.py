@@ -179,8 +179,10 @@ def resolve_root(root):
     sweep names an empty one (GOH.FSEVQUIET: with the real estate, one sweep copied every corpus
     of this machine -- 16,131 file events -- to learn that the gate passes over nothing)."""
     home = os.environ.get("GOH_ESTATE_HOME")
-    if home:
-        return os.path.join(home, root[2:]) if root.startswith("~/") else None
+    if home and root.startswith("store:"):
+        return None
+    if home and root.startswith("~/"):
+        return os.path.join(home, root[2:])
     if not root.startswith("store:"):
         return os.path.expanduser(root)
     try:

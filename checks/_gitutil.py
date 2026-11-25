@@ -93,7 +93,9 @@ def scratch_git(dest: str) -> None:
         )
         for at, dirs, names in os.walk(top):
             rel = os.path.relpath(at, top)
-            _EMPTY_GIT.update({os.path.join(rel, d): None for d in dirs})
+            # `objects` and `refs` make it a repository; what is empty in them git makes when it
+            # has something to put there.
+            _EMPTY_GIT.update({d: None for d in dirs if at == top})
             for name in names:
                 with open(os.path.join(at, name), "rb") as handle:
                     _EMPTY_GIT[os.path.join(rel, name)] = handle.read()

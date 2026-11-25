@@ -38,7 +38,10 @@ def test_each_scratch_repository_is_gits_own_first_and_one_process_is_spawned(
         _gitutil.scratch_git(str(d))
         (d / "f").write_text("x\n")
     inits = [a for a in ran if "init" in a]
-    assert len(inits) == 1 and _tree(one) == _tree(two) != {}, inits
+    first, later = _tree(one), _tree(two)
+    files = {k: v for k, v in first.items() if v is not None}
+    assert len(inits) == 1 and later == files | {"objects": None, "refs": None}, inits
+    assert "HEAD" in files and set(later) < set(first)  # git's own, less its empty directories
     for d in (one, two):
         for argv in (
             ["add", "-A"],
@@ -46,3 +49,4 @@ def test_each_scratch_repository_is_gits_own_first_and_one_process_is_spawned(
         ):
             real(["git", "-C", str(d), *argv], check=True, capture_output=True,
                  env=hermetic_env(True), stdin=subprocess.DEVNULL)  # fmt: skip
+        real(["git", "-C", str(d), "tag", "v1"], check=True, stdin=subprocess.DEVNULL)
