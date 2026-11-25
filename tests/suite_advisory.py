@@ -52,8 +52,13 @@ def _make(shared: Path, copy: Path) -> None:
 
 
 def link(home: Path, parent: Path, shared: Path) -> Path | None:
-    """HOME's `~/.cache/goh/advisory-db`, a link to PARENT's copy of SHARED; the copy, or None."""
+    """HOME's `~/.cache/goh/advisory-db`, a link to PARENT's copy of SHARED; the copy, or None.
+    A suite a test starts has the suite's home for its own, and its copy: 2,836 files and
+    directories were checked out there again, for one nested session."""
+    outer = parent.parent / "advisory-db"
     try:
+        if outer.is_symlink() and outer.is_dir():
+            return _linked(home, outer.resolve())
         head = _git("-C", str(shared), "rev-parse", "HEAD")
         copy = parent / f"advisory-db.{head[:16]}"
         with (parent / "advisory-db.lock").open("a") as lock:
@@ -67,6 +72,10 @@ def link(home: Path, parent: Path, shared: Path) -> Path | None:
                     _remove(old)
     except (OSError, subprocess.SubprocessError):
         return None
+    return _linked(home, copy)
+
+
+def _linked(home: Path, copy: Path) -> Path:
     at = home / ".cache" / "goh" / "advisory-db"
     at.parent.mkdir(parents=True, exist_ok=True)
     at.symlink_to(copy)

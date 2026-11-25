@@ -22,12 +22,17 @@ from conftest import REPO_ROOT, hermetic_env
 TREE_READS = ("gates/",)
 
 
+# What a gate finds on PATH, by the start of its name (`cargo-clippy`, `python3.15`).
+RUN = ("bash", "cargo", "clippy", "git", "jq", "node", "python3", "ruff", "rust", "sccache",
+       "shellcheck", "shfmt", "swift")  # fmt: skip
+
+
 def path_without(tool: str, factory) -> str:
-    """A PATH that finds every executable the real PATH does, except `tool`: each PATH directory
-    holding `tool` is replaced by a shadow of its other entries, symlinks, so rustup's proxies still
-    dispatch on their own names; the rest are the real directories, in order. The shadows are a
-    template, built once per run (GOH.FSCHURN2): a mirror of EVERY executable on PATH per test,
-    ~2960 symlinks made and removed, was ~6000 file events a test."""
+    """A PATH that finds what a gate runs where the real PATH does, except `tool`: each PATH
+    directory holding `tool` is replaced by a shadow of its other entries of `RUN`, symlinks, so
+    rustup's proxies still dispatch on their own names; the rest are the real directories, in order.
+    The shadows are a template, built once per run (GOH.FSCHURN2), and a shadow of every entry was
+    ~1,600 symlinks a tool (GOH.FSEVQUIET)."""
     dirs = [d for d in os.environ["PATH"].split(os.pathsep) if os.path.isdir(d)]
     holding = [d for d in dirs if os.path.lexists(os.path.join(d, tool))]
     shadow = {d: hashlib.sha256(d.encode()).hexdigest()[:12] for d in holding}
@@ -37,7 +42,7 @@ def path_without(tool: str, factory) -> str:
         for d, name in shadow.items():
             (tree / name).mkdir()
             for entry in os.listdir(d):
-                if entry != tool:
+                if entry != tool and entry.startswith(RUN):
                     (tree / name / entry).symlink_to(os.path.join(d, entry))
 
     key = hashlib.sha256("\0".join(holding).encode()).hexdigest()[:12]

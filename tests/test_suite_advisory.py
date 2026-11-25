@@ -40,6 +40,17 @@ def test_every_run_links_the_one_copy_and_an_audit_seeds_none(
         assert (db / "README.md").is_file() and db.resolve() == one.resolve()
 
 
+def test_a_suite_in_a_suites_home_takes_that_homes_copy(
+    repo: Path, parent: Path, tmp_path: Path
+) -> None:
+    outer = suite_advisory.link(tmp_path / "home", parent, repo)
+    nested = tmp_path / "home" / ".cache" / "goh" / "suite"
+    nested.mkdir()
+    copy = suite_advisory.link(tmp_path / "inner", nested, repo)
+    assert copy.samefile(outer) and not list(nested.iterdir()), "a copy of the copy"
+    assert (tmp_path / "inner" / ".cache" / "goh" / "advisory-db" / "README.md").is_file()
+
+
 def test_a_refresh_of_it_is_refused(repo: Path, parent: Path, tmp_path: Path) -> None:
     copy = suite_advisory.link(tmp_path / "home", parent, repo)
     r = subprocess.run(["git", "-C", str(copy), "fetch", "-q", str(repo)], capture_output=True,
