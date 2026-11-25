@@ -39,32 +39,23 @@ def _push(repo, tmp_path, *pairs, extra_env=None, url="unused-url"):
     )
 
 
-def test_the_push_gate_refuses_a_lying_tag(tmp_path):
-    """End to end through gates/push_gate.sh, which is what every repo runs."""
-    repo = tmp_path / "media"
-    repo.mkdir()
-    fast_init(repo, "main")
-    write(repo, "tools/gate.sh", "#!/usr/bin/env bash\nexit 0\n")
-    write(repo, ".gatesrc", "")
-    _media_shape(repo, "1.79.1")
-    git(repo, "add", "-A")
-    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
-    git(repo, "tag", "v1.79.3")
-
-    r = _push(repo, tmp_path, ("refs/tags/v1.79.3", _sha(repo, "v1.79.3")))
-    out = r.stdout + r.stderr
-    assert r.returncode != 0, out
-    assert "1.79.1" in out and "1.79.3" in out, out
-    assert "nothing pushed" in out, out
-    # One line: the repo's own checkout. The throwaway export is gone — a
-    # refusal that exits before the worktree is made must still leave none.
-    assert len(git(repo, "worktree", "list").strip().splitlines()) == 1, git(
-        repo, "worktree", "list"
-    )
+def _private_tmp(tmp_path) -> dict[str, str]:
+    """The refs capture is a file in TMPDIR, so every push could leak one. A private TMPDIR is the
+    seam that makes this measurable: globbing the SHARED one measures the other xdist workers too,
+    and a green run would be a coincidence. Looked for at any depth: gates/push_gate.sh
+    moved it under goh.noindex, and a glob of the top alone found none whatever leaked
+    (GOH.PYSLOW4)."""
+    (tmp_path / "scratch").mkdir()
+    return {"TMPDIR": str(tmp_path / "scratch")}
 
 
-def test_the_push_gate_checks_a_tag_whose_commit_the_remote_already_has(tmp_path):
-    """The retag case, and the reason the check runs before every skip below it.
+def _leaked(tmp_path) -> list:
+    return list((tmp_path / "scratch").rglob("goh-push-refs.*"))
+
+
+def test_the_push_gate_refuses_a_lying_tag_whose_commit_the_remote_already_has(tmp_path):
+    """End to end through gates/push_gate.sh, which is what every repo runs: the retag case, and the
+    reason the check runs before every skip below it.
 
     push_gate skips a commit the remote already has (a private Swift app: six never-pushed
     tags on days-old commits, each costing a cold gate). That skip is about
@@ -83,10 +74,22 @@ def test_the_push_gate_checks_a_tag_whose_commit_the_remote_already_has(tmp_path
     git(repo, "update-ref", "refs/remotes/origin/main", old)  # remote already has it
     git(repo, "tag", "v1.79.3", old)
 
-    r = _push(repo, tmp_path, ("refs/tags/v1.79.3", _sha(repo, "v1.79.3")))
+    r = _push(
+        repo,
+        tmp_path,
+        ("refs/tags/v1.79.3", _sha(repo, "v1.79.3")),
+        extra_env=_private_tmp(tmp_path),
+    )
     out = r.stdout + r.stderr
     assert r.returncode != 0, out
-    assert "1.79.1" in out, out
+    assert "1.79.1" in out and "1.79.3" in out, out
+    assert "nothing pushed" in out, out
+    # One line: the repo's own checkout. The throwaway export is gone — a
+    # refusal that exits before the worktree is made must still leave none.
+    assert len(git(repo, "worktree", "list").strip().splitlines()) == 1, git(
+        repo, "worktree", "list"
+    )
+    assert _leaked(tmp_path) == [], "a refused push leaked its refs file"
 
 
 def test_the_push_gate_allows_a_truthful_tag_and_still_runs_the_code_gate(tmp_path):
@@ -106,9 +109,15 @@ def test_the_push_gate_allows_a_truthful_tag_and_still_runs_the_code_gate(tmp_pa
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
     git(repo, "tag", "v1.79.3")
 
-    r = _push(repo, tmp_path, ("refs/tags/v1.79.3", _sha(repo, "v1.79.3")))
+    r = _push(
+        repo,
+        tmp_path,
+        ("refs/tags/v1.79.3", _sha(repo, "v1.79.3")),
+        extra_env=_private_tmp(tmp_path),
+    )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "ran=" in (tmp_path / "report.txt").read_text(), "the code gate was skipped"
+    assert _leaked(tmp_path) == [], "a green push leaked its refs file"
 
 
 def test_a_branch_only_push_is_not_a_named_non_run_of_the_tag_check(tmp_path):
@@ -131,36 +140,6 @@ def test_a_branch_only_push_is_not_a_named_non_run_of_the_tag_check(tmp_path):
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "not applicable" in r.stdout, r.stdout
-
-
-def test_the_push_gate_leaves_no_refs_file_behind(tmp_path):
-    """The refs capture is a file in TMPDIR, so it can be leaked by every push.
-
-    A private TMPDIR is the seam that makes this measurable: globbing the SHARED
-    one measures the other xdist workers too, and a green run would be a
-    coincidence. This test passed alone and failed in the full suite for exactly
-    that reason, which is what it is here to catch about itself.
-    """
-    repo = tmp_path / "media"
-    repo.mkdir()
-    fast_init(repo, "main")
-    write(repo, "tools/gate.sh", "#!/usr/bin/env bash\nexit 0\n")
-    write(repo, ".gatesrc", "")
-    _media_shape(repo, "1.0.0")
-    git(repo, "add", "-A")
-    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
-    scratch = tmp_path / "scratch"
-    scratch.mkdir()
-
-    for green, refs in (
-        (True, [("refs/heads/main", _sha(repo, "HEAD"))]),
-        (False, [("refs/tags/v1.79.3", _sha(repo, "HEAD"))]),
-    ):
-        r = _push(repo, tmp_path, *refs, extra_env={"TMPDIR": str(scratch)})
-        assert (r.returncode == 0) is green, r.stdout + r.stderr
-        assert not list(scratch.glob("goh-push-refs.*")), (
-            f"{'a green' if green else 'a refused'} push leaked its refs file"
-        )
 
 
 def test_a_tag_check_that_cannot_run_is_not_reported_as_a_mismatch(tmp_path):
