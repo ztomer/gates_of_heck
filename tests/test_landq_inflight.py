@@ -201,3 +201,24 @@ def test_a_superseded_enqueue_leaves_no_record(tmp_path):
     assert landq_inflight.supersede_mark(path)
     assert landq_inflight.live(q) == []
     assert land_records.runs(q) == []
+
+
+def test_a_second_mark_never_leaves_the_enqueue_unmarked_between_two_writes(tmp_path, monkeypatch):
+    """GOH.WAITORDER: the pre-step's mark rewrites the early one; a drop then a put let a `--wait`
+    read none between them (exit 2, "no enqueue of it running", 2026-11-25). The old marker is
+    there until the transaction that writes the new one, and a tombstone on it survives."""
+    q = tmp_path / "landq"
+    path = landq_inflight.mark(q, "T.M")
+    seen = []
+    real = landq_inflight.landq_state.put
+    monkeypatch.setattr(
+        landq_inflight.landq_state,
+        "put",
+        lambda *a, **k: seen.append(bool(landq_inflight.live(q, "T.M"))) or real(*a, **k),
+    )
+    assert landq_inflight.mark(q, "T.M", repo="/r") == path
+    assert seen == [True]
+    assert [m["repo"] for m in landq_inflight.live(q, "T.M")] == ["/r"]
+    assert landq_inflight.supersede_mark(path)
+    landq_inflight.mark(q, "T.M", repo="/r2")
+    assert landq_inflight.superseded(path)

@@ -76,8 +76,13 @@ def mark(q: Path, item: str, pid: int | None = None, repo: str = "", slot: dict 
     }
     if slot and slot.get("slot"):
         marker["slot"] = {"worktree": slot["worktree"], "token": slot["slot"]}
-    landq_state.drop(path := landq_state.name(q, DIR, run))  # a marker this pid left before
-    path = landq_state.put(q, run, marker, DIR)
+    # a marker this pid left before is replaced in one transaction, its tombstone kept: a drop and
+    # then a put let a `--wait` look between them and exit 2, "no enqueue of it running"
+    # (GOH.WAITORDER)
+    was = landq_state.get(landq_state.name(q, DIR, run)) or {}
+    if was.get("superseded") and was.get("pid_stamp") == marker["pid_stamp"]:
+        marker["superseded"] = was["superseded"]
+    path = landq_state.put(q, run, marker, DIR, replaces=run)
     atexit.register(clear, path)
     _MINE.append(path)
     return path
