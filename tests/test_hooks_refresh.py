@@ -14,6 +14,7 @@ The old copy is a real one: the stock pre-commit as committed at OLD_STOCK.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import subprocess
 from pathlib import Path
@@ -27,9 +28,10 @@ from conftest import REPO_ROOT, hermetic_env, native_goh_path
 OLD_STOCK = "18330c7"  # a retired stock pre-commit (retired_hooks.sha256)
 SCRIPT = REPO_ROOT / "scripts" / "hooks_refresh.py"
 STOCK = {p.name: p.read_bytes() for p in (REPO_ROOT / "hooks").iterdir() if p.is_file()}
-GATE = '#!/usr/bin/env bash\nexec bash "$GOH_DIR/gates/structural.sh" "$@"\n'
+GATE = "#!/usr/bin/env bash\nexit 0\n"  # passes: the refresh of one real gate is `stale`'s, below
 
 
+@functools.cache
 def _old_pre_commit() -> bytes:
     return subprocess.run(
         ["git", "-C", str(REPO_ROOT), "cat-file", "-p", f"{OLD_STOCK}:hooks/pre-commit"],
@@ -57,16 +59,12 @@ def _git(repo: Path, *args: str) -> str:
     ).stdout
 
 
-def _consumer(root: Path, name: str, pre_commit: bytes) -> Path:
-    return built(root / name, keyed("hooks-refresh", pre_commit, STOCK, GATE),
-                 lambda repo: _build(repo, pre_commit))  # fmt: skip
-
-
-def _build(repo: Path, pre_commit: bytes) -> None:
+def _build_consumer(repo: Path) -> None:
+    """A consumer whose pre-commit is the old stock one, committed; the rest is stock."""
     hooks = repo / ".githooks"
     hooks.mkdir(parents=True)
     for h, body in STOCK.items():
-        (hooks / h).write_bytes(pre_commit if h == "pre-commit" else body)
+        (hooks / h).write_bytes(_old_pre_commit() if h == "pre-commit" else body)
         (hooks / h).chmod(0o755)
     write_gatesrc(repo, "GOH_MAX_LINES=500\n")
     (repo / "tools").mkdir()
@@ -76,8 +74,17 @@ def _build(repo: Path, pre_commit: bytes) -> None:
     _git(repo, "config", "user.email", "t@t")
     _git(repo, "config", "user.name", "t")
     _git(repo, "config", "core.hooksPath", ".githooks")
+    _commit(repo, "fixture")
+
+
+def _commit(repo: Path, message: str) -> None:
     _git(repo, "add", "-A")
-    _git(repo, "commit", "-q", "--no-verify", "-m", "fixture")
+    _git(repo, "commit", "-q", "--no-verify", "-m", message)
+
+
+def _consumer(root: Path, name: str) -> Path:
+    key = keyed("hooks-refresh", _old_pre_commit(), STOCK, GATE)
+    return built(root / name, key, _build_consumer)
 
 
 def _run(root: Path, tmp_path: Path, *args: str) -> subprocess.CompletedProcess:
@@ -94,44 +101,95 @@ def _run(root: Path, tmp_path: Path, *args: str) -> subprocess.CompletedProcess:
     )
 
 
-def _estate(tmp_path: Path) -> dict[str, Path]:
+def _audited(root: Path, tmp_path: Path) -> dict:
+    """The state one estate audit of ROOT records."""
+    state = tmp_path / "state" / "estate_audit.json"
+    env = _env()
+    env["GOH_ESTATE_STATE"] = str(state)
+    r = subprocess.run(
+        [
+            "python3",
+            str(REPO_ROOT / "scripts" / "estate_audit.py"),
+            "--root",
+            str(root),
+            "--no-fetch",
+            "--no-grace-watch",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+        timeout=300,
+        stdin=subprocess.DEVNULL,
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    return estate_state(state)
+
+
+# The starter gate.sh install.sh wrote before GOH.CLASS.ROLLOUT: its stock GOH line is what made
+# install.sh insert goh_dir_repair (2026-11-14), so a refresh of it is the case that left 14 repos
+# with an uncommitted tools/gate.sh. The fixture GATE above never carried the line, which is how the
+# suite stayed green over it.
+STOCK_LINE = (
+    "#!/usr/bin/env bash\nset -euo pipefail\n"
+    'GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"\n'
+)
+STOCK_LINE_GATE = STOCK_LINE + '"$GOH/gates/structural.sh" "$@"\n'
+
+
+def _status(repo: Path) -> str:
+    return _git(repo, "status", "--porcelain", "--untracked-files=all")
+
+
+def _stock_line_gate(repo: Path, gate: str = STOCK_LINE_GATE) -> None:
+    (repo / "tools" / "gate.sh").write_text(gate)
+    _commit(repo, "the starter gate.sh, stock GOH line")
+
+
+def test_the_listing_the_audit_and_a_refresh_over_one_estate(tmp_path):
+    """One estate, read three ways in the order an owner does: the listing names every stale repo
+    and only those, the audit records them, and the refresh brings each current and commits it."""
     root = tmp_path / "estate"
-    old = _old_pre_commit()
-    return {
-        "stale": _consumer(root, "stale", old),
-        "edited": _consumer(root, "edited", old + b"# this repo's own line\n"),
-        "current": _consumer(root, "current", STOCK["pre-commit"]),
-        "kept": _consumer(root, "kept", old),
-    }
+    e = {name: _consumer(root, name) for name in ("stale", "edited", "current", "kept")}
+    (e["edited"] / ".githooks" / "pre-commit").write_bytes(
+        _old_pre_commit() + b"# this repo's own line\n"
+    )
+    (e["current"] / ".githooks" / "pre-commit").write_bytes(STOCK["pre-commit"])
+    for name in ("stale", "edited", "current"):
+        _stock_line_gate(e[name])
+    heads = {name: _git(repo, "rev-parse", "HEAD") for name, repo in e.items()}
 
-
-def test_the_listing_names_every_stale_repo_and_only_those(tmp_path):
-    e = _estate(tmp_path)
-    r = _run(tmp_path / "estate", tmp_path)
+    r = _run(root, tmp_path)
     out = r.stdout + r.stderr
     assert r.returncode == 1, out  # a stale hook is a finding
     assert "stale: pre-commit" in out and "kept: pre-commit" in out, out
     assert "edited" not in out, out  # a hook the repo edited is its own business
     assert "current:" not in out, out
-    # The listing writes nothing.
-    assert (e["stale"] / ".githooks" / "pre-commit").read_bytes() == _old_pre_commit()
 
+    recorded = _audited(root, tmp_path)["stale_hooks"]  # named relative to the root, as all are
+    assert recorded == {"kept": ["pre-commit"], "stale": ["pre-commit"]}, recorded
+    # Neither wrote anything.
+    for name, repo in e.items():
+        assert _status(repo) == "" and _git(repo, "rev-parse", "HEAD") == heads[name], name
 
-def test_refresh_brings_a_stale_hook_current_and_commits_it_alone(tmp_path):
-    e = _estate(tmp_path)
     edited_before = (e["edited"] / ".githooks" / "pre-commit").read_bytes()
-    r = _run(tmp_path / "estate", tmp_path, "--refresh", "--except", str(e["kept"]))
+    r = _run(root, tmp_path, "--refresh", "--except", str(e["kept"]))
     out = r.stdout + r.stderr
     assert r.returncode == 0, out
+    assert "stale: refreshed" in out, out
     # The stale repo: current, committed, clean, and the commit carries .githooks only.
     assert (e["stale"] / ".githooks" / "pre-commit").read_bytes() == STOCK["pre-commit"], out
-    assert _git(e["stale"], "status", "--porcelain") == "", out
     changed = _git(e["stale"], "show", "--name-only", "--format=", "HEAD").split()
     assert changed and all(p.startswith(".githooks/") for p in changed), changed
     # A hook the repo edited is never clobbered; a repo set aside is named, not touched.
     assert (e["edited"] / ".githooks" / "pre-commit").read_bytes() == edited_before
     assert (e["kept"] / ".githooks" / "pre-commit").read_bytes() == _old_pre_commit()
     assert "kept" in out and "set aside" in out, out
+    # GOH.CLASS.ROLLOUT: a refresh writes only what it commits. Every repo it touched is clean,
+    # and the repo's own tools/gate.sh is byte for byte what it committed.
+    for name in ("stale", "edited", "current"):
+        assert _status(e[name]) == "", f"{name}: {_status(e[name])}\n{out}"
+        assert (e[name] / "tools" / "gate.sh").read_text() == STOCK_LINE_GATE, name
     # And the gate that refused the old copy now passes the refreshed one.
     g = subprocess.run(
         ["bash", str(REPO_ROOT / "gates" / "structural.sh"), "--staged"],
@@ -146,144 +204,45 @@ def test_refresh_brings_a_stale_hook_current_and_commits_it_alone(tmp_path):
     assert "OLDER stock hook" not in g.stdout + g.stderr, g.stdout + g.stderr
 
 
-def test_a_repo_with_uncommitted_hook_edits_is_not_refreshed(tmp_path):
-    e = _estate(tmp_path)
-    (e["stale"] / ".githooks" / "commit-msg").write_bytes(STOCK["commit-msg"] + b"# wip\n")
-    r = _run(tmp_path / "estate", tmp_path, "--refresh", "--except", str(e["kept"]))
+def test_a_repo_set_aside_or_refused_is_left_as_it_was_and_the_rest_refreshed(tmp_path):
+    """One refresh over an estate holding a repo for each rule, each named with its own reason:
+    * `wip`: uncommitted hook edits;
+    * `held`: on hold;
+    * `feature` (GOH.HOOKSBRANCH): the refresh commits on whatever is checked out, so a repo
+      mid-feature got its hooks commit on the feature branch;
+    * `trunk`: the default branch is origin/HEAD's when it names one, so this one IS refreshed;
+    * `refused` (GOH.REFRESHLEAVES): its commit gate refuses, and git status -- another agent's
+      uncommitted edit to tools/gate.sh and an untracked file -- is byte for byte what it was."""
+    root = tmp_path / "estate"
+    names = ("wip", "held", "feature", "trunk", "refused")
+    e = {name: _consumer(root, name) for name in names}
+    (e["wip"] / ".githooks" / "commit-msg").write_bytes(STOCK["commit-msg"] + b"# wip\n")
+    _git(e["held"], "config", "goh.hold", "frozen for the test")
+    _git(e["feature"], "checkout", "-q", "-b", "feature")
+    _git(e["trunk"], "branch", "-m", "trunk")
+    _git(e["trunk"], "update-ref", "refs/remotes/origin/trunk", "HEAD")
+    _git(e["trunk"], "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
+    (e["refused"] / "tools" / "commit_msg.sh").write_text("#!/bin/bash\nexit 1\n")
+    _stock_line_gate(e["refused"], STOCK_LINE)
+    work = STOCK_LINE + "# another agent's uncommitted line\n"
+    (e["refused"] / "tools" / "gate.sh").write_text(work)
+    (e["refused"] / "notes.txt").write_text("untracked\n")
+    before = {name: (_status(repo), _git(repo, "rev-parse", "HEAD")) for name, repo in e.items()}
+
+    r = _run(root, tmp_path, "--refresh")
     out = r.stdout + r.stderr
     assert r.returncode == 1, out
-    assert "uncommitted" in out, out
-    assert (e["stale"] / ".githooks" / "pre-commit").read_bytes() == _old_pre_commit()
-
-
-def test_the_estate_audit_records_the_stale_hooks(tmp_path):
-    e = _estate(tmp_path)
-    state = tmp_path / "state" / "estate_audit.json"
-    env = _env()
-    env["GOH_ESTATE_STATE"] = str(state)
-    r = subprocess.run(
-        [
-            "python3",
-            str(REPO_ROOT / "scripts" / "estate_audit.py"),
-            "--root",
-            str(tmp_path / "estate"),
-            "--no-fetch",
-            "--no-grace-watch",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=env,
-        timeout=300,
-        stdin=subprocess.DEVNULL,
-    )
-    assert r.returncode == 0, r.stdout + r.stderr
-    recorded = estate_state(state)["stale_hooks"]
-    assert recorded == {"kept": ["pre-commit"], "stale": ["pre-commit"]}, recorded
-    assert str(e["stale"]) not in recorded  # named relative to the root, like every audit entry
-
-
-def test_a_held_repo_is_set_aside_untouched(tmp_path):
-    e = _estate(tmp_path)
-    _git(e["stale"], "config", "goh.hold", "frozen for the test")
-    r = _run(tmp_path / "estate", tmp_path, "--refresh", "--except", str(e["kept"]))
-    out = r.stdout + r.stderr
-    assert r.returncode == 1 and "on hold" in out, out
-    assert (e["stale"] / ".githooks" / "pre-commit").read_bytes() == _old_pre_commit()
-
-
-def test_a_refused_commit_leaves_the_repo_as_it_was(tmp_path):
-    e = _estate(tmp_path)
-    (e["stale"] / "tools" / "commit_msg.sh").write_text("#!/bin/bash\nexit 1\n")
-    _git(e["stale"], "add", "-A")
-    _git(e["stale"], "commit", "-q", "--no-verify", "-m", "a commit-msg rule that refuses all")
-    head = _git(e["stale"], "rev-parse", "HEAD")
-    r = _run(tmp_path / "estate", tmp_path, "--refresh", "--except", str(e["kept"]))
-    out = r.stdout + r.stderr
-    assert r.returncode == 1 and "NOT refreshed" in out, out
-    assert _git(e["stale"], "rev-parse", "HEAD") == head
-    assert _git(e["stale"], "status", "--porcelain") == "", out
-    assert (e["stale"] / ".githooks" / "pre-commit").read_bytes() == _old_pre_commit()
-
-
-def test_a_repo_off_its_default_branch_is_set_aside(tmp_path):
-    """GOH.HOOKSBRANCH: the refresh commits on whatever is checked out, so a repo mid-feature got
-    its hooks commit on the feature branch. One off its default branch is named, never touched."""
-    e = _estate(tmp_path)
-    _git(e["stale"], "checkout", "-q", "-b", "feature")
-    r = _run(tmp_path / "estate", tmp_path, "--refresh", "--except", str(e["kept"]))
-    out = r.stdout + r.stderr
-    assert r.returncode == 1 and "not its default branch" in out and "feature" in out, out
-    assert (e["stale"] / ".githooks" / "pre-commit").read_bytes() == _old_pre_commit()
-    assert _git(e["stale"], "rev-list", "--count", "feature").strip() == "1", out
-
-
-def test_the_default_branch_is_the_remotes_when_it_names_one(tmp_path):
-    """A clone's default is origin/HEAD's, so a repo whose default is `trunk` is refreshed there
-    and set aside on `main`."""
-    e = _estate(tmp_path)
-    repo = e["stale"]
-    _git(repo, "branch", "-m", "trunk")
-    _git(repo, "update-ref", "refs/remotes/origin/trunk", "HEAD")
-    _git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
-    r = _run(tmp_path / "estate", tmp_path, "--refresh", "--except", str(e["kept"]))
-    assert "stale: refreshed" in r.stdout + r.stderr, r.stdout + r.stderr
-
-
-# The starter gate.sh install.sh wrote before GOH.CLASS.ROLLOUT: its stock GOH line is what made
-# install.sh insert goh_dir_repair (2026-11-14), so a refresh of it is the case that left 14 repos
-# with an uncommitted tools/gate.sh. The fixture GATE above never carried the line, which is how the
-# suite stayed green over it.
-STOCK_LINE_GATE = (
-    "#!/usr/bin/env bash\nset -euo pipefail\n"
-    'GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"\n'
-    '"$GOH/gates/structural.sh" "$@"\n'
-)
-
-
-def _status(repo: Path) -> str:
-    return _git(repo, "status", "--porcelain", "--untracked-files=all")
-
-
-def _stock_line_gate(repo: Path) -> None:
-    (repo / "tools" / "gate.sh").write_text(STOCK_LINE_GATE)
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-q", "--no-verify", "-m", "the starter gate.sh, stock GOH line")
-
-
-def test_a_refresh_leaves_no_tracked_file_dirty(tmp_path):
-    """GOH.CLASS.ROLLOUT: a refresh writes only what it commits. Every repo it touched is clean,
-    and the repo's own tools/gate.sh is byte for byte what it committed."""
-    e = _estate(tmp_path)
-    for name in ("stale", "edited", "current"):
-        _stock_line_gate(e[name])
-    r = _run(tmp_path / "estate", tmp_path, "--refresh", "--except", str(e["kept"]))
-    out = r.stdout + r.stderr
-    assert "stale: refreshed" in out, out
-    for name in ("stale", "edited", "current"):
-        assert _status(e[name]) == "", f"{name}: {_status(e[name])}\n{out}"
-        assert (e[name] / "tools" / "gate.sh").read_text() == STOCK_LINE_GATE, name
-
-
-def test_a_refused_refresh_leaves_status_exactly_as_before(tmp_path):
-    """GOH.REFRESHLEAVES: the commit gate refuses, and git status -- including another agent's
-    uncommitted edit to tools/gate.sh and an untracked file -- is byte for byte what it was."""
-    e = _estate(tmp_path)
-    repo = e["stale"]
-    _stock_line_gate(repo)
-    (repo / "tools" / "commit_msg.sh").write_text("#!/bin/bash\nexit 1\n")
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-q", "--no-verify", "-m", "a commit-msg rule that refuses all")
-    wip = STOCK_LINE_GATE + "# another agent's uncommitted line\n"
-    (repo / "tools" / "gate.sh").write_text(wip)
-    (repo / "notes.txt").write_text("untracked\n")
-    before = _status(repo)
-    r = _run(tmp_path / "estate", tmp_path, "--refresh", "--except", str(e["kept"]))
-    out = r.stdout + r.stderr
-    assert r.returncode == 1 and "NOT refreshed" in out and "left as it was" in out, out
-    assert _status(repo) == before, out
-    assert (repo / "tools" / "gate.sh").read_text() == wip, out
-    assert (repo / ".githooks" / "pre-commit").read_bytes() == _old_pre_commit()
+    said = {n: next(ln for ln in out.splitlines() if f"{n}: " in ln) for n in names}
+    assert "uncommitted" in said["wip"], out
+    assert "on hold" in said["held"], out
+    assert "not its default branch" in said["feature"] and "feature" in said["feature"], out
+    assert "trunk: refreshed" in said["trunk"], out
+    assert "NOT refreshed" in said["refused"] and "left as it was" in said["refused"], out
+    for name in ("wip", "held", "feature", "refused"):
+        repo = e[name]
+        assert (_status(repo), _git(repo, "rev-parse", "HEAD")) == before[name], (name, out)
+        assert (repo / ".githooks" / "pre-commit").read_bytes() == _old_pre_commit(), name
+    assert (e["refused"] / "tools" / "gate.sh").read_text() == work, out
 
 
 def _tracking_origin(repo: Path, tmp_path: Path) -> None:
@@ -306,27 +265,22 @@ def test_a_refresh_pushes_its_commit_and_any_stranded_one(tmp_path):
     gate -- a hook commit an earlier refresh stranded included -- and an owner's commit ahead is
     never pushed by goh: that repo stays as it was, named."""
     root = tmp_path / "estate"
-    old = _old_pre_commit()
-    fresh = _consumer(root, "fresh", old)
-    stranded = _consumer(root, "stranded", old)
-    owned = _consumer(root, "owned", old)
-    for repo in (fresh, stranded, owned):
+    stranded = _consumer(root, "stranded")
+    owned = _consumer(root, "owned")
+    for repo in (stranded, owned):
         _tracking_origin(repo, tmp_path)
     # An earlier refresh's commit, never pushed: only `.githooks`, goh's subject.
     rec = stranded / ".githooks" / ".goh-installed" / "commit-msg.sha256"
     rec.parent.mkdir()
     rec.write_text(hashlib.sha256(STOCK["commit-msg"]).hexdigest() + "\n")
-    _git(stranded, "add", "-A")
-    _git(stranded, "commit", "-q", "--no-verify", "-m",
-         "chore: refresh goh's stock hooks (commit-msg) -- goh hooks --refresh")  # fmt: skip
+    _commit(stranded, "chore: refresh goh's stock hooks (commit-msg) -- goh hooks --refresh")
     (owned / "notes.txt").write_text("the owner's work\n")
-    _git(owned, "add", "-A")
-    _git(owned, "commit", "-q", "--no-verify", "-m", "the owner's commit")
+    _commit(owned, "the owner's commit")
 
     r = _run(root, tmp_path, "--refresh")
     out = r.stdout + r.stderr
 
-    assert _ahead(fresh) == 0, out
     assert _ahead(stranded) == 0, out
+    assert _git(stranded, "rev-list", "--count", "HEAD").strip() == "3", out  # both, its own too
     assert _ahead(owned) == 2, out  # its own commit and the refresh: left for the owner's push
     assert "owner's" in out, out
