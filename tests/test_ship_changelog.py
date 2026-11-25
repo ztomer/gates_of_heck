@@ -3,16 +3,23 @@
 token-pool's ship 20261112T024215Z-281911da ran the whole gate and pushed, then its kit said
 "CHANGELOG.md has no '## Unreleased' section to release": goh's reading assumed changelog_cut's
 contract, under which a file with no Unreleased heading "does not cut from one" and passed.
+
+A ship is run for what a ship does with the answer: refuse before any step, or go on (GOH.PYSLOW4:
+sixteen ships asked what `reading` and the command it names answer for a directory).
 """
 
 from __future__ import annotations
 
+import re
+import subprocess
 from pathlib import Path
 
 import _goh_db_fixture as gdb
 import pytest
-from conftest import git
+import ship_changelog
+from conftest import REPO_ROOT, git, hermetic_env
 from test_ship import _calls, _changelog, _ship, shipped_clone
+from timing_bounds import patience
 
 
 @pytest.fixture
@@ -21,70 +28,87 @@ def shipped(tmp_path: Path, tmp_path_factory) -> Path:
 
 
 NO_UNRELEASED = "# Changelog\n\n## v1.0.0 (2026-11-11)\n\n- the first\n"
+ENTRY = "# C\n\n## Unreleased\n\n- an entry\n\n## v1.0.0\n\n- x\n"
+BOTH = ("CHANGELOG.md", "docs/CHANGELOG.md")
 
 
-@pytest.mark.parametrize("contract", ["unreleased", "cut"])
-def test_a_changelog_the_declared_kit_will_refuse_is_refused_before_any_step(
-    shipped, tmp_path, contract
-):
-    _changelog(shipped, NO_UNRELEASED)
+def _ready(d: Path, declared: str, text: str, log: str = "CHANGELOG.md") -> tuple[int, str]:
+    """(exit, output) of the one preflight a ship of version 1.1.0 asks of D's changelog TEXT."""
+    (d / log).parent.mkdir(exist_ok=True)
+    (d / log).write_text(text)
+    ((whose, cmd),) = ship_changelog.reading(d, declared, "1.1.0", "s")
+    assert whose.endswith(declared)
+    r = subprocess.run(["bash", "-c", cmd], cwd=d, env=hermetic_env(), capture_output=True,
+                       text=True, stdin=subprocess.DEVNULL, timeout=patience(60),
+                       check=False)  # fmt: skip
+    return r.returncode, r.stdout + r.stderr
+
+
+def test_a_changelog_the_declared_kit_will_refuse_is_refused_before_any_step(shipped, tmp_path):
+    """Once for both of what a ship is asked here: the docs/ location it reads, and the refusal."""
+    _docs_changelog(shipped, NO_UNRELEASED)
     before = git(shipped, "ls-remote", "origin")
-    r = _ship(shipped, tmp_path, "--wait", "--item", "X.ONE", GOH_SHIP_CHANGELOG=contract,
+    r = _ship(shipped, tmp_path, "--wait", "--item", "X.ONE", GOH_SHIP_CHANGELOG="unreleased",
               GOH_SHIP_PREFLIGHT="echo ran > " + str(tmp_path / "pf"))  # fmt: skip
     assert r.returncode == 2, r.stdout + r.stderr
-    assert "Unreleased" in r.stderr and "v1.1.0" in r.stderr, r.stderr
+    assert "docs/CHANGELOG.md" in r.stderr and "Unreleased" in r.stderr, r.stderr
+    assert "v1.1.0" in r.stderr, r.stderr
     assert git(shipped, "ls-remote", "origin") == before
     assert gdb.shipped(tmp_path / "ship.json") is None and not (tmp_path / "pf").exists()
     assert [c for c in _calls(tmp_path) if c[0] != "shippable"] == []  # only the read-only item ask
 
 
-def test_a_kit_that_cuts_its_own_changelog_is_not_refused(shipped, tmp_path):
-    _changelog(shipped, NO_UNRELEASED)
-    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_CHANGELOG="kit")
-    assert r.returncode == 0, r.stdout + r.stderr
-
-
-@pytest.mark.parametrize(
-    "text",
-    [
-        "# C\n\n## Unreleased\n\n- an entry\n\n## v1.0.0\n\n- x\n",
-        "# C\n\n## v1.1.0 (2026-11-11)\n\n- by hand\n",
-    ],
-)
-def test_the_unreleased_contract_ships_an_entry_or_a_written_stanza(shipped, tmp_path, text):
-    _changelog(shipped, text)
+def test_a_changelog_with_no_declared_contract_is_refused_and_one_declared_ships(shipped, tmp_path):
+    _changelog(shipped, ENTRY)
+    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_CHANGELOG="")
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "GOH_SHIP_CHANGELOG" in r.stderr, r.stderr
+    assert gdb.shipped(tmp_path / "ship.json") is None
     r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_CHANGELOG="unreleased")
     assert r.returncode == 0, r.stdout + r.stderr
 
 
-def test_the_unreleased_contract_refuses_an_empty_or_doubled_heading(shipped, tmp_path):
+@pytest.mark.parametrize("log", BOTH)
+@pytest.mark.parametrize("contract", ["unreleased", "cut"])
+def test_either_contract_refuses_no_unreleased_and_takes_an_entry(tmp_path, contract, log):
+    """GOH.SHIPCLDOCS: in docs/ too, the location the command names."""
+    code, said = _ready(tmp_path, contract, NO_UNRELEASED, log)
+    assert code != 0 and "Unreleased" in said and "v1.1.0" in said and log in said, said
+    code, said = _ready(tmp_path, contract, ENTRY, log)
+    assert code == 0, said
+
+
+def test_the_unreleased_contract_takes_a_written_stanza_and_no_empty_or_doubled_heading(tmp_path):
+    code, said = _ready(tmp_path, "unreleased", "# C\n\n## v1.1.0 (2026-11-11)\n\n- by hand\n")
+    assert code == 0, said
     for text in (
         "# C\n\n## Unreleased\n\n## v1.0.0\n\n- x\n",
         "# C\n\n## Unreleased\n\n- a\n\n## Unreleased\n\n- b\n",
     ):
-        _changelog(shipped, text)
-        r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_CHANGELOG="unreleased")
-        assert r.returncode == 2 and "Unreleased" in r.stderr, r.stdout + r.stderr
+        code, said = _ready(tmp_path, "unreleased", text)
+        assert code != 0 and "Unreleased" in said, said
 
 
+def test_the_cut_contract_takes_a_stanza_written_by_hand(tmp_path):
+    text = "# CHANGELOG\n\n## Unreleased\n\n## v1.1.0\n\n* by hand\n"
+    code, said = _ready(tmp_path, "cut", text)
+    assert code == 0, said
+
+
+def test_a_kit_that_cuts_its_own_changelog_or_keeps_none_is_asked_nothing(tmp_path):
+    assert ship_changelog.reading(tmp_path, "", "1.1.0", "s") == []
+    (tmp_path / "CHANGELOG.md").write_text(NO_UNRELEASED)
+    assert ship_changelog.reading(tmp_path, "kit", "1.1.0", "s") == []
+
+
+@pytest.mark.parametrize("log", BOTH)
 @pytest.mark.parametrize("value", ["", "cutt"])
-def test_a_changelog_with_no_declared_or_a_bad_contract_is_refused(shipped, tmp_path, value):
-    _changelog(shipped, "# C\n\n## Unreleased\n\n- an entry\n\n## v1.0.0\n\n- x\n")
-    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_CHANGELOG=value)
-    assert r.returncode == 2, r.stdout + r.stderr
-    assert "GOH_SHIP_CHANGELOG" in r.stderr, r.stderr
-    assert gdb.shipped(tmp_path / "ship.json") is None
-
-
-def test_no_changelog_and_no_contract_ships(shipped, tmp_path):
-    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_CHANGELOG="")
-    assert r.returncode == 0, r.stdout + r.stderr
-
-
-def test_an_unreleased_entry_or_a_written_stanza_ships(shipped, tmp_path):
-    _changelog(shipped, "# CHANGELOG\n\n## Unreleased\n\n## v1.1.0\n\n* by hand\n")
-    r = _ship(shipped, tmp_path, "--wait", "--version", "1.1.0")
-    assert r.returncode == 0, r.stdout + r.stderr
+def test_a_changelog_with_no_declared_or_a_bad_contract_is_refused(tmp_path, value, log):
+    (tmp_path / log).parent.mkdir(exist_ok=True)
+    (tmp_path / log).write_text(ENTRY)
+    with pytest.raises(ValueError, match="GOH_SHIP_CHANGELOG") as said:
+        ship_changelog.reading(tmp_path, value, "1.1.0", "s")
+    assert value or log in str(said.value)
 
 
 # GOH.SHIPCLDOCS: the reading looked only for a ROOT CHANGELOG.md, so a repo whose changelog is
@@ -97,40 +121,7 @@ def _docs_changelog(repo: Path, text: str) -> None:
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "docs: changelog")
 
 
-@pytest.mark.parametrize("contract", ["unreleased", "cut"])
-def test_a_docs_changelog_the_kit_will_refuse_is_refused_at_ship_start(shipped, tmp_path, contract):
-    _docs_changelog(shipped, NO_UNRELEASED)
-    before = git(shipped, "ls-remote", "origin")
-    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_CHANGELOG=contract)
-    assert r.returncode == 2, r.stdout + r.stderr
-    assert "docs/CHANGELOG.md" in r.stderr and "Unreleased" in r.stderr, r.stderr
-    assert git(shipped, "ls-remote", "origin") == before
-    assert gdb.shipped(tmp_path / "ship.json") is None
-
-
-@pytest.mark.parametrize("contract", ["unreleased", "cut"])
-def test_a_docs_changelog_with_an_entry_ships_under_either_contract(shipped, tmp_path, contract):
-    _docs_changelog(shipped, "# C\n\n## Unreleased\n\n- an entry\n\n## v1.0.0\n\n- x\n")
-    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_CHANGELOG=contract)
-    assert r.returncode == 0, r.stdout + r.stderr
-
-
-def test_a_docs_changelog_with_no_declared_contract_is_refused(shipped, tmp_path):
-    _docs_changelog(shipped, "# C\n\n## Unreleased\n\n- an entry\n\n## v1.0.0\n\n- x\n")
-    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_CHANGELOG="")
-    assert r.returncode == 2, r.stdout + r.stderr
-    assert "GOH_SHIP_CHANGELOG" in r.stderr and "docs/CHANGELOG.md" in r.stderr, r.stderr
-
-
 def test_the_house_changelog_locations_are_the_ones_changelog_tags_reads():
-    import re
-    import sys
-
-    from conftest import REPO_ROOT
-
-    sys.path.insert(0, str(REPO_ROOT / "lib"))
-    import ship_changelog
-
     rust = (REPO_ROOT / "crates" / "goh" / "src" / "changelog_tags.rs").read_text()
     lists = {
         tuple(re.findall(r'"([^"]+)"', m))
