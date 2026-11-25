@@ -17,7 +17,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from _todays_gates import _clean_checkout_of_todays_gates
+from _todays_gates import land_gates
 from conftest import hermetic_env, native_goh_path
 from timing_bounds import patience
 
@@ -44,7 +44,7 @@ def _reader_key(main: Path, mode: str, env: dict) -> list[str]:
 
 
 def test_a_rebased_land_records_the_landed_tips_identity(tmp_path: Path) -> None:
-    main = _clean_checkout_of_todays_gates(tmp_path, rust=False)
+    main = land_gates(tmp_path)
     wt = tmp_path / "lane"
     _git(main, "worktree", "add", "-q", "-b", "feature-under-land", str(wt))
     (wt / "lane.txt").write_text("the lane's change\n")

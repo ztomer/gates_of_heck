@@ -81,9 +81,10 @@ def test_this_checkouts_snapshot_holds_what_a_copy_does_committed(tmp_path):
     sys.path.insert(0, str(ROOT / "checks"))
     from _gitutil import tree_files
 
-    want = {f for f in tree_files(str(ROOT)) if (ROOT / f).is_file() or (ROOT / f).is_symlink()}
-    assert set(tree_files(str(copy))) == want
+    gone = git(ROOT, "ls-files", "--deleted").splitlines()
+    assert set(tree_files(str(copy))) == set(tree_files(str(ROOT))) - set(gone)
     changed = git(copy, "status", "--porcelain")
     assert changed == "", f"the sweep's tree starts with changes: {changed}"
-    rel = Path(__file__).resolve().relative_to(ROOT)
-    assert (copy / rel).read_bytes() == (ROOT / rel).read_bytes()
+    assert (copy / "tests" / "calib_snapshot.py").read_bytes() == (
+        ROOT / "tests" / "calib_snapshot.py"
+    ).read_bytes()

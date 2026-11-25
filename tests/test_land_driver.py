@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from _todays_gates import _clean_checkout_of_todays_gates
+from _todays_gates import land_gates
 from conftest import commit_all, git, hermetic_env, native_goh_path, write
 from test_landq import FAKE_LOOPCTL, _land_wt, _pending, landq, recorded
 from timing_bounds import patience
@@ -85,7 +85,7 @@ PROBE = (
 def test_a_lane_that_weakens_a_gate_is_judged_by_mains_gate_too(tmp_path: Path) -> None:
     """Both directions on one checkout of today's gates: a lane that weakens the gate it would
     fail is red under main's copy; a lane that edits the gate harmlessly runs BOTH and lands."""
-    main = _clean_checkout_of_todays_gates(tmp_path, rust=False)
+    main = land_gates(tmp_path)
     (main / "gates" / "zz_land_probe.sh").write_text(PROBE.format(who="main"))
     _git(main, "add", "gates/zz_land_probe.sh")
     _git(main, "commit", "-q", "--no-verify", "-m", "main's strict probe gate")

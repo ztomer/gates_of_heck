@@ -7,6 +7,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from _fast_git import fast_init
 from _tree_clone import clone_tree, process_template
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,6 +59,33 @@ def todays_gates_read() -> Path:
 
 def _build_read(checkout: Path) -> None:
     clone_tree(process_template("todays-gates", _build_clean_checkout), checkout)
+
+
+# What a land of goh runs, and the files it reads by a name no import spells.
+_LAND = ("tools/land.sh", "tools/load.py", "lib/gate_identity.py", "lib/release_gate.py",
+         "gates/_from_head.sh")  # fmt: skip
+_LAND_DATA = ("lib/lock_order.tsv", "gates/_export_bin_goh.sh")
+_LAND_DIRS = ("lib/state_sql", "lib/goh_db_schema", "lib/goh_cache_schema")
+
+
+def land_gates(tmp_path: Path) -> Path:
+    """The gates a land of goh by goh reads, committed as they stand: 170 files. Such a land exports
+    its checkout once a commit and makes a work tree a lane; of the whole estate's 766 files, a test
+    of which commit is judged made ten copies, 8,600 file events (GOH.FSEVQUIET)."""
+    checkout = tmp_path / "gates_of_heck"
+    clone_tree(process_template("land-gates", _build_land), checkout)
+    return checkout
+
+
+def _build_land(checkout: Path) -> None:
+    import source_closure
+
+    data = [str(p.relative_to(ROOT)) for d in _LAND_DIRS for p in (ROOT / d).iterdir()]
+    data = [p for p in data if (ROOT / p).is_file()]
+    source_closure.copy_closure(checkout, *_LAND, extra=(*_LAND_DATA, *data))
+    fast_init(checkout, "main")
+    _git(checkout, "add", "-A")
+    _git(checkout, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "today")
 
 
 # THE ESTATE, not its suite (GOH.FSEVQUIET): no gate reads tests/, docs/ or the changelog's parts,
