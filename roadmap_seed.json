@@ -147,7 +147,6 @@
     "tests/test_head_export_prune.py#dead-id": 1,
     "tests/test_hook_currency.py#dead-id": 1,
     "tests/test_install.py#dead-id": 1,
-    "tests/test_land.py#dead-id": 1,
     "tests/test_lcov_merge.py#dead-id": 3,
     "tests/test_local_ci_jobs.py#dead-id": 1,
     "tests/test_lock_version_own_line.py#dead-id": 1,
