@@ -13,11 +13,16 @@ tip subject (so a test counts gate runs and reads what each judged) and fails on
 
 from __future__ import annotations
 
+import contextlib
+import functools
+import importlib.util
+import io
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from conftest import REPO_ROOT, git, git_ok, hermetic_env, write
@@ -26,6 +31,8 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 from timing_bounds import patience
 
 LANDQ = REPO_ROOT / "tools" / "landq.py"
+# What a green pre-step leaves on its request (lib/land_prestep.py).
+GREEN_PRE = {"workers": 16, "wait_s": 1.0, "run_s": 0.0, "limit_s": 600.0, "cpu_s": 0.0}
 FAKE_LOOPCTL = """\
 import json, os, sys
 with open(os.environ["FAKE_LOOPCTL_LOG"], "a") as f:
@@ -70,12 +77,41 @@ def lane(repo: Path, tmp_path: Path, name: str, files: dict[str, str]) -> Path:
     return wt
 
 
+@functools.cache
+def lander():
+    """tools/landq.py as a module of this process."""
+    spec = importlib.util.spec_from_file_location("landq_in_process", LANDQ)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def in_process(env: dict[str, str], *args: str) -> subprocess.CompletedProcess:
+    """`landq(env, *args)` without its process (0.3 s of Python and imports)."""
+    out, errs = io.StringIO(), io.StringIO()
+    with (
+        mock.patch.dict(os.environ, env, clear=True),
+        contextlib.redirect_stdout(out),
+        contextlib.redirect_stderr(errs),
+    ):
+        rc = lander().main(list(args))
+    return subprocess.CompletedProcess(args, rc, out.getvalue(), errs.getvalue())
+
+
 def enqueue_all(env: dict[str, str], wts: list[tuple[Path, str]]) -> None:
+    """Each lane enqueued as `goh land --enqueue` does, in this process (GOH.PYSLOW2), all but its
+    pre-step: a pre-step of `true` was 0.9 s of a gate slot's wait in each of ~40 enqueues, and the
+    batch judges none. Its figures stay on the request; never `--no-pre`, a land judged alone
+    (GOH.NOPREBATCH). The enqueue and its pre-step for real: tests/test_landq.py,
+    tests/test_pre_on_tip.py, tests/test_landq_batch_pre.py."""
     for wt, item in wts:
-        # a trivial pre-step, never `--no-pre`: a `--no-pre` land is judged alone (GOH.NOPREBATCH)
-        pre = {**env, "GOH_LAND_PRE": "true"}
-        done = landq(pre, "--enqueue", "--foreground", "--land", str(wt), "--item", item,
-                     "--no-start")  # fmt: skip
+        with (
+            mock.patch.object(lander(), "prestep", lambda r: r.update(pre_run=dict(GREEN_PRE))),
+            mock.patch.object(lander().landq_inflight, "_MINE", []),  # an enqueuer's own marker
+        ):
+            done = in_process(env, "--enqueue", "--foreground", "--land", str(wt), "--item", item,
+                              "--no-start")  # fmt: skip
         assert done.returncode == 0, done.stdout + done.stderr
 
 
@@ -95,7 +131,7 @@ def gate_runs(env: dict[str, str]) -> list[str]:
 
 
 def report(env: dict[str, str]) -> dict:
-    done = landq(env, "--report", "--json")
+    done = in_process(env, "--report", "--json")
     assert done.returncode == 0, done.stdout + done.stderr
     return json.loads(done.stdout)
 
@@ -131,7 +167,7 @@ def test_three_pending_lands_land_in_one_gate_run_each_naming_its_own_sha(repo, 
     assert all(on_main(repo, s) for s in shas) and git(repo, "rev-parse", "HEAD").strip() == shas[2]
     assert all(got[item]["batch"]["gates"] == 1 for _, item in wts), got
     for _, item in wts:  # --wait returns per item
-        waited = landq(env, "--wait", item, "--timeout", str(patience(30)))
+        waited = in_process(env, "--wait", item, "--timeout", str(patience(30)))
         assert waited.returncode == 0, waited.stdout + waited.stderr
     tot = report(env)["totals"]  # one gate run for three landed, not three
     assert (tot["landed"], tot["gates"], tot["gates_per_landed"]) == (3, 1, 0.33), tot
@@ -183,7 +219,7 @@ def test_a_red_middle_item_bisects_out_and_the_others_land(repo, tmp_path, meet)
     # second half gated on main beside the first (GOH.LANDBISECTPAR) it is <= 5 runs in 3 rounds.
     assert runs[0] == "three" and len(runs) <= 5, runs
     assert all(got[i]["batch"]["gates"] == len(runs) for i in ("T.ONE", "T.TWO", "T.THREE")), got
-    waited = landq(env, "--wait", "T.TWO", "--timeout", str(patience(30)))
+    waited = in_process(env, "--wait", "T.TWO", "--timeout", str(patience(30)))
     assert waited.returncode == 1 and "planted-red-in-two" in waited.stderr, waited.stderr
     enqueued = git(wts[1][0], "rev-parse", "HEAD").strip()  # the red branch is the lane's again
     assert enqueued == got["T.TWO"]["sha"] and subject(repo, f"{enqueued}~1") != "one", enqueued
@@ -207,11 +243,11 @@ def test_a_conflicting_item_is_red_conflict_and_does_not_block_the_rest(repo, tm
 
 
 def test_batch_of_one_is_the_one_by_one_queue(repo, tmp_path, env):
-    wts = three(repo, tmp_path, {"two.txt": "2\n"})
+    wts = three(repo, tmp_path, {"two.txt": "2\n"})[:2]
     env = {**env, "GOH_LANDQ_BATCH": "1"}
     enqueue_all(env, wts)
     assert landq(env, "--drain").returncode == 0
-    assert gate_runs(env) == ["one", "two", "three"], gate_runs(env)  # each alone, in queue order
+    assert gate_runs(env) == ["one", "two"], gate_runs(env)  # each alone, in queue order
     got = recorded(env)
     assert all(got[i]["state"] == "landed" and "batch" not in got[i] for _, i in wts), got
 
@@ -222,7 +258,7 @@ def test_a_stack_whose_gate_never_got_a_slot_is_not_bisected(repo, tmp_path, env
     from test_gate_slot import Gate
     from test_one_admission import _end, _env, _until
 
-    wts = three(repo, tmp_path, {"two.txt": "2\n"})
+    wts = three(repo, tmp_path, {"two.txt": "2\n"})[:2]
     enqueue_all(env, wts)
     holder = Gate(tmp_path, "push-holder", _env(tmp_path, GOH_GATE_SLOTS="1"))
     _until(lambda: "TAKEN" in holder.out() or holder.proc.poll() is not None)

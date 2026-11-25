@@ -76,12 +76,9 @@ def fail_when(monkeypatch: pytest.MonkeyPatch, when) -> list[tuple[str, ...]]:
     return seen
 
 
-def enqueue_three(repo: Path, tmp_path: Path, env: dict[str, str], middle: dict[str, str]):
-    wts = [
-        (lane(repo, tmp_path, "one", {"one.txt": "1\n"}), "T.ONE"),
-        (lane(repo, tmp_path, "two", middle), "T.TWO"),
-        (lane(repo, tmp_path, "three", {"three.txt": "3\n"}), "T.THREE"),
-    ]
+def enqueue_three(repo: Path, tmp_path: Path, env: dict[str, str], middle: dict, count: int = 3):
+    lanes = [("one", {"one.txt": "1\n"}), ("two", middle), ("three", {"three.txt": "3\n"})]
+    wts = [(lane(repo, tmp_path, n, files), f"T.{n.upper()}") for n, files in lanes[:count]]
     enqueue_all(env, wts)
     q = Path(env["GOH_LANDQ_DIR"])
     paths = []
@@ -151,10 +148,7 @@ def test_a_stack_landed_with_an_unreadable_main_is_never_recorded_with_an_empty_
 def test_a_single_land_with_an_unreadable_main_is_never_recorded_with_an_empty_sha(
     repo, tmp_path, env, lq, monkeypatch
 ):
-    q, _, paths = enqueue_three(repo, tmp_path, env, {"two.txt": "2\n"})
-    only = paths[0]
-    for other in paths[1:]:
-        landq_state.drop(other)
+    q, _, (only,) = enqueue_three(repo, tmp_path, env, {}, count=1)
     gate_log = Path(env["GATE_LOG"])
     fail_when(
         monkeypatch,
