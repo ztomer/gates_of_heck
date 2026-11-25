@@ -51,6 +51,17 @@ VERSION_A = "#[test]\nfn version() {\n    assert_eq!(a::one(), 1);\n}\n"
 VERSION_B = "#[test]\nfn version() {\n    assert_eq!(b::two() + b::three(), 5);\n}\n"
 
 
+# What cargo writes for a path-only workspace of its own, so no crate spawns it to be told.
+LOCK = """\
+version = 4
+
+[[package]]
+name = "{name}"
+version = "0.1.0"
+{deps}"""
+COMMON_DEP = 'dependencies = [\n "common",\n]\n\n[[package]]\nname = "common"\nversion = "0.1.0"\n'
+
+
 def _crate(root: Path, name: str, lib: str, test: str | None, deps: str = "") -> Path:
     d = root / "crates" / name
     (d / "src").mkdir(parents=True)
@@ -67,9 +78,7 @@ def _crate(root: Path, name: str, lib: str, test: str | None, deps: str = "") ->
     (d / "build.rs").write_text(
         'fn main() {\n    println!("cargo:rerun-if-changed=build.rs");\n}\n'
     )
-    subprocess.run(
-        ["cargo", "generate-lockfile", "-q"], cwd=d, check=True, stdin=subprocess.DEVNULL
-    )
+    (d / "Cargo.lock").write_text(LOCK.format(name=name, deps=COMMON_DEP if deps else ""))
     return d
 
 
@@ -99,52 +108,51 @@ def _cov(crate: Path, cache: Path) -> tuple[str, str, list[str]]:
     return line.split(" (floor")[0][-40:], log, files
 
 
-def _alone(tmp_path: Path, name: str) -> str:
-    """The crate's report from a repo and a cache of its own: the reference."""
-    a, b = _repo(tmp_path / f"alone-{name}")
-    return _cov(a if name == "a" else b, tmp_path / f"cache-alone-{name}")[0]
-
-
 def _builds(cache: Path) -> list[str]:
     return sorted(p.name for p in cache.iterdir() if p.is_dir() and not p.name.startswith("."))
+
+
+# Each crate's own report: 1 of LIB_A's 2 functions is reached, 2 of LIB_B's 3 (and no test file or
+# build script is counted). The first test pins them to a build dir that held that crate alone.
+REPORT = {
+    "a": "↔ [coverage] 50.0% of coverable lines",
+    "b": "↔ [coverage] 66.67% of coverable lines",
+}
 
 
 def test_the_crates_of_one_repo_share_one_build_and_keep_their_own_reports(
     tmp_path: Path,
 ) -> None:
-    alone_a, alone_b = _alone(tmp_path, "a"), _alone(tmp_path, "b")
-    assert alone_a != alone_b, "the fixture cannot tell the two reports apart"
-    a, b = _repo(tmp_path / "repo")
     cache = tmp_path / "cache"
-    got_a, _log, files_a = _cov(a, cache)
+    a, b = _repo(tmp_path / "repo")
+    got_a, _log, files_a = _cov(a, cache)  # the repo's first build: a alone
+    _, other_b = _repo(tmp_path / "other")  # b alone: another repo has a build dir of its own
+    alone_b = _cov(other_b, cache)[0]
+    assert len(_builds(cache)) == 2, f"two repos, {_builds(cache)}"
+    assert {"a": got_a, "b": alone_b} == REPORT
     got_b, log_b, files_b = _cov(b, cache)
-    assert len(_builds(cache)) == 1, f"one repo, {len(_builds(cache))} build dirs: {_builds(cache)}"
+    assert len(_builds(cache)) == 2, f"one repo, one build dir: {_builds(cache)}"
     assert "Compiling common" not in log_b, f"b rebuilt the dependency a already built:\n{log_b}"
-    assert (got_a, got_b) == (alone_a, alone_b), "a report read a sibling crate's objects"
+    assert got_b == alone_b, "a report read a sibling crate's objects"
     assert files_a and all(f.startswith(str(a.resolve())) for f in files_a), files_a
     assert files_b and all(f.startswith(str(b.resolve())) for f in files_b), files_b
     assert not [f for f in files_a + files_b if f.endswith("build.rs")], "a build script counted"
-    # Each crate again, after the other (every unit fresh now): neither run took the other's
-    # binaries away, and a fresh build script is still not counted.
-    again_a, _log, again_files_a = _cov(a, cache)
-    assert (again_a, again_files_a) == (alone_a, files_a)
-    assert _cov(b, cache)[0] == alone_b
 
 
 @pytest.mark.load_sensitive
 def test_crates_of_one_repo_run_side_by_side_on_the_shared_build(tmp_path: Path) -> None:
     """--each-crate runs four crates at once: one crate's run never deletes or reads a sibling's
-    binaries, whatever the interleaving."""
-    alone_a, alone_b = _alone(tmp_path, "a"), _alone(tmp_path, "b")
+    binaries, whatever the interleaving. The second round is each crate again after the other (every
+    unit fresh now): a fresh build script is still not counted."""
     a, b = _repo(tmp_path / "repo")
     cache = tmp_path / "cache"
     for _round in range(2):
-        got: dict[str, str] = {}
+        got: dict[str, tuple[str, str, list[str]]] = {}
         errors: list[BaseException] = []
 
-        def run(name: str, crate: Path, sink: dict[str, str] = got, errors: list = errors) -> None:
+        def run(name: str, crate: Path, sink: dict = got, errors: list = errors) -> None:
             try:
-                sink[name] = _cov(crate, cache)[0]
+                sink[name] = _cov(crate, cache)
             except BaseException as exc:  # noqa: BLE001 -- re-raised on the test's thread
                 errors.append(exc)
 
@@ -154,14 +162,6 @@ def test_crates_of_one_repo_run_side_by_side_on_the_shared_build(tmp_path: Path)
         for t in threads:
             t.join()
         assert not errors, errors
-        assert got == {"a": alone_a, "b": alone_b}
+        assert {n: said for n, (said, _, _) in got.items()} == REPORT
+        assert not [f for _, _, files in got.values() for f in files if f.endswith("build.rs")]
     assert len(_builds(cache)) == 1, _builds(cache)
-
-
-def test_two_repos_keep_two_builds(tmp_path: Path) -> None:
-    cache = tmp_path / "cache"
-    one, _ = _repo(tmp_path / "one")
-    two, _ = _repo(tmp_path / "two")
-    _cov(one, cache)
-    _cov(two, cache)
-    assert len(_builds(cache)) == 2, _builds(cache)
