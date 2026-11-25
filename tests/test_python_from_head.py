@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _tree_clone import run_head_cache
 from conftest import REPO_ROOT
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
 from test_gate_environment import _clean_checkout_of_todays_gates
@@ -54,7 +55,7 @@ def dirty(gates: Path):
 
 def _run(gates: Path, repo: Path, tmp_path: Path, **extra: str) -> subprocess.CompletedProcess:
     env = scrubbed(os.environ, ("GOH_", "GIT_", "PYTEST_"))
-    env.update(GOH_HEAD_CACHE=str(tmp_path / "head-cache"), **extra)
+    env.update(GOH_HEAD_CACHE=str(run_head_cache()), **extra)
     return subprocess.run(
         ["python3", str(gates / "checks" / "loc_of_baseline_files.py"), "b.txt"],
         cwd=repo,

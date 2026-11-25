@@ -18,6 +18,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _tree_clone import run_head_cache
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
 from test_gate_environment import _clean_checkout_of_todays_gates
@@ -52,7 +53,9 @@ def consumer(tmp_path: Path) -> Path:
 
 def _env(tmp_path: Path, **extra: str) -> dict:
     env = scrubbed(os.environ, ("GOH_", "GIT_", "PYTEST_"))
-    env["GOH_HEAD_CACHE"] = str(tmp_path / "head-cache")
+    # One export of the checkout's HEAD a RUN (GOH.FSEVQUIET): it is named for the commit and never
+    # written again. A test of the cache itself, or of a commit of its own, names a private one.
+    env["GOH_HEAD_CACHE"] = str(run_head_cache())
     # No bin/goh rebuild in a scratch clone (a cargo build per test): name the session binary.
     env["GOH_BIN"] = str(native_goh_path())
     env.update(extra)
@@ -84,7 +87,7 @@ def test_a_consumer_runs_heads_gates_not_the_working_tree(
         check=True,
         stdin=subprocess.DEVNULL,
     ).stdout.strip()
-    assert (tmp_path / "head-cache" / head / "gates" / "structural.sh").is_file()
+    assert (run_head_cache() / head / "gates" / "structural.sh").is_file()
 
 
 def test_goh_live_runs_the_working_tree_on_purpose(dirty: Path, consumer: Path, tmp_path) -> None:
@@ -141,7 +144,7 @@ def test_python_imports_resolve_into_the_export(gates: Path, consumer: Path, tmp
             cwd=consumer,
             capture_output=True,
             text=True,
-            env=_env(tmp_path, PYTHONPATH=str(gates)),
+            env=_env(tmp_path, PYTHONPATH=str(gates), GOH_HEAD_CACHE=str(tmp_path / "head-cache")),
             timeout=60,
             check=False,
             stdin=subprocess.DEVNULL,
@@ -165,9 +168,9 @@ def test_a_test_that_drops_goh_live_is_refused_not_silently_run_on_head(
 
 
 def test_the_export_is_built_once_per_commit(gates: Path, consumer: Path, tmp_path) -> None:
-    env = _env(tmp_path)
-    _structural(gates, consumer, env)
     cache = tmp_path / "head-cache"
+    env = _env(tmp_path, GOH_HEAD_CACHE=str(cache))
+    _structural(gates, consumer, env)
     exports = [p for p in cache.iterdir() if not p.name.startswith(".")]
     stamp = exports[0].stat().st_mtime_ns
     _structural(gates, consumer, env)
@@ -240,7 +243,7 @@ def test_a_tool_two_levels_down_finds_the_checkout_root(gates: Path, tmp_path) -
     )
     assert out.returncode == 0, out.stderr
     assert out.stdout.endswith("/tools/release-kit/release.sh"), out.stdout
-    assert str(tmp_path / "head-cache") in out.stdout, out.stdout
+    assert str(run_head_cache()) in out.stdout, out.stdout
 
 
 def test_a_consumers_own_pytest_runs_the_export_not_a_refusal(
@@ -398,4 +401,4 @@ def test_the_stale_hook_fix_names_the_live_install_not_the_exports(
     r = _structural(gates, consumer, _env(tmp_path))
     assert "OLDER stock hook" in r.stderr, r.stderr
     assert f"{gates}/install.sh" in r.stderr, r.stderr
-    assert str(tmp_path / "head-cache") not in r.stderr, "the fix named a HEAD export's install.sh"
+    assert str(run_head_cache()) not in r.stderr, "the fix named a HEAD export's install.sh"

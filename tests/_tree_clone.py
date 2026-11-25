@@ -20,6 +20,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -337,7 +338,9 @@ def run_head_cache() -> Path:
     renamed into place whole and never written again (gates/_from_head.sh), so the clones of one
     run-wide template share ONE export instead of each writing ~1,650 files and removing them. A
     test of the cache itself (its pruning, its build) keeps a private one."""
-    return Path(os.environ["PYTEST_DEBUG_TEMPROOT"]) / "goh-head-cache"
+    # `_RUN_ROOT`, never PYTEST_DEBUG_TEMPROOT read now: tests/suite_tmp.py points that at the
+    # worker's own dir for nested sessions, and every worker then built an export of its own.
+    return (_RUN_ROOT[0] if _RUN_ROOT else Path(tempfile.gettempdir())) / "goh-head-cache"
 
 
 def process_template(key: str, build, keep_quiet: bool = True) -> Path:

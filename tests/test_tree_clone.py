@@ -9,6 +9,7 @@ the template may see, and the template itself never changes.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -303,3 +304,12 @@ def test_a_template_is_quiescent_before_it_is_scanned_or_cloned(
 
     built = _tree_clone.template(tmp_path_factory, f"quiesce-{tmp_path.name}", build)
     assert not (built / ".git" / "objects" / "maintenance.lock").exists()
+
+
+def test_the_run_has_one_head_cache_whatever_the_worker(tmp_path, monkeypatch) -> None:
+    """GOH.FSEVQUIET: it was read from PYTEST_DEBUG_TEMPROOT, which the suite moves into each
+    worker for nested sessions, so every worker wrote an export (~2,000 files) of its own."""
+    run = _tree_clone.run_head_cache()
+    assert os.environ["PYTEST_DEBUG_TEMPROOT"] not in str(run)
+    monkeypatch.setenv("PYTEST_DEBUG_TEMPROOT", str(tmp_path))
+    assert _tree_clone.run_head_cache() == run
