@@ -72,7 +72,6 @@
   "test_hook_sweep.py": 2,
   "test_hooks_refresh.py": 3,
   "test_house_python.py": 3,
-  "test_kill_by_name_native_parity.py": 1,
   "test_killtree.py": 7,
   "test_land.py": 3,
   "test_landed_only_commit.py": 2,
