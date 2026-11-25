@@ -74,9 +74,12 @@ def test_a_retired_kept_store_left_on_disk_is_named_never_excused(tmp_path) -> N
     assert sorted(line.split(":")[0] for line in got) == list(names), got
 
 
-def test_a_lookup_counts_the_keys_it_missed(tmp_path) -> None:
+def test_a_lookup_counts_the_keys_it_missed(tmp_path, monkeypatch) -> None:
     """The drift guard reads `missed` around each phase: a phase that missed is a cold reading,
-    never a test's growth (lib/long_pole.py `settle`, GOH.LONGPOLECOLD)."""
+    never a test's growth (lib/long_pole.py `settle`, GOH.LONGPOLECOLD). The rows other workers
+    write into the run's shared kept file (`written`, read by its own tests) are held still: they
+    moved this count by -1 under a land's pre-step (GOH.KEPTMISSFLAKE)."""
+    monkeypatch.setattr(ks, "written", lambda: 0)
     db = tmp_path / "goh-cache.db"
     ks.put(pf.STORE, {"k1": "[]"}, db)
     before = ks.missed()
