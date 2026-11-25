@@ -9,6 +9,7 @@ refused BY NAME unless --force. Red proof: every refusal test below returned
 0 (hook silently clobbered) against pre-fix install.sh.
 """
 
+import hashlib
 import os
 import shutil
 import subprocess
@@ -58,33 +59,37 @@ def _commit(repo, *args):
     )
 
 
-def test_install_wires_hooks_and_starters(repo):
-    r = subprocess.run(
-        ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)],
-        capture_output=True,
-        text=True,
-        stdin=subprocess.DEVNULL,
-        check=False,
-    )
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert (repo / ".githooks" / "pre-commit").exists()
-    assert (repo / ".githooks" / "pre-push").exists()
-    assert (repo / "tools" / "gate.sh").exists()
-    assert (repo / ".gatesrc").exists()
-    assert git(repo, "config", "core.hooksPath").strip() == ".githooks"
+def test_install_wires_hooks_and_starters_and_a_second_install_changes_nothing(repo, goh):
+    """Two installs, as the house re-runs it: everything is there after the first, and the second
+    passes and leaves the stock hooks and their records as they were.
 
-
-def test_install_is_idempotent(repo):
+    What it writes is clean under the house's own checks, too. The starter .gatesrc carried
+    `~/Projects/scripts/...` in a comment, `goh home-paths` refuses a tilde checkout path, and so
+    every freshly installed repo failed the house gate on its first full run -- found when the
+    mediaremote-adapter fork's install turned goh's own estate corpus red (2026-10-12)."""
     for _ in range(2):
-        r = subprocess.run(
-            ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)],
+        r = _install(repo)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert (repo / "tools" / "gate.sh").exists()
+        assert "GOH_MAX_LINES" in (repo / ".gatesrc").read_text()
+        assert git(repo, "config", "core.hooksPath").strip() == ".githooks"
+        for name in ("pre-commit", "pre-push"):
+            hook = repo / ".githooks" / name
+            assert hook.read_text() == _stock(name)
+            rec = _record(repo, name)
+            assert rec.exists(), f"no install record for {name}"
+            assert rec.read_text().strip() == hashlib.sha256(hook.read_bytes()).hexdigest()
+    git(repo, "add", "-A")
+    for args in (["--staged"], []):  # as the first commit's hook sees it, then as a push does
+        out = subprocess.run(
+            [str(goh), "home-paths", *args],
+            cwd=repo,
             capture_output=True,
             text=True,
             stdin=subprocess.DEVNULL,
             check=False,
         )
-        assert r.returncode == 0, r.stderr
-    assert "GOH_MAX_LINES" in (repo / ".gatesrc").read_text()
+        assert out.returncode == 0, out.stdout + out.stderr
 
 
 def test_hook_blocks_violating_commit(repo):
@@ -133,6 +138,7 @@ def test_pre_commit_runs_the_repo_gate_staged_layer(repo):
     r = _commit(repo, "-m", "layer runs")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "STAGED-LAYER-RAN" in (r.stdout + r.stderr), "the staged layer did not run on commit"
+    assert "all structural gates passed" in (r.stdout + r.stderr)  # a clean commit goes through
     # ...and a red staged layer blocks the commit.
     write(repo, "more.py", "y = 2\n")
     git(repo, "add", "more.py")
@@ -148,21 +154,6 @@ def test_pre_commit_runs_the_repo_gate_staged_layer(repo):
     assert "more.py" in git(repo, "diff", "--cached", "--name-only")
 
 
-def test_hook_passes_clean_commit(repo):
-    subprocess.run(
-        ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)],
-        capture_output=True,
-        text=True,
-        stdin=subprocess.DEVNULL,
-        check=False,
-    )
-    write(repo, "ok.py", "x = 1  # → clean\n")
-    git(repo, "add", "ok.py")
-    r = _commit(repo, "-m", "clean")
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "all structural gates passed" in (r.stdout + r.stderr)
-
-
 # ── hook protection ──────────────────────────────────────────────────────────
 
 
@@ -170,43 +161,27 @@ def _record(target, name):
     return target / ".githooks" / ".goh-installed" / f"{name}.sha256"
 
 
-def test_stock_reinstall_updates_cleanly_and_records_hashes(repo):
-    for _ in range(2):
-        r = _install(repo)
-        assert r.returncode == 0, r.stdout + r.stderr
-    assert (repo / ".githooks" / "pre-commit").read_text() == _stock("pre-commit")
-    assert (repo / ".githooks" / "pre-push").read_text() == _stock("pre-push")
-    for name in ("pre-commit", "pre-push"):
-        rec = _record(repo, name)
-        assert rec.exists(), f"no install record for {name}"
-        import hashlib
-
-        digest = hashlib.sha256((repo / ".githooks" / name).read_bytes()).hexdigest()
-        assert rec.read_text().strip() == digest
-
-
-def test_hand_extended_hook_is_preserved_and_named_on_reinstall(repo):
-    """app_updates-style: a repo APPENDS a stage to the stock pre-push."""
+def test_modified_hooks_are_preserved_and_named_on_reinstall_and_force_overwrites_them(repo):
+    """app_updates-style: a repo APPENDS a stage to the stock pre-push. monitor-style: a repo
+    REPLACES the hook with its own script outright."""
     assert _install(repo).returncode == 0
-    push_hook = repo / ".githooks" / "pre-push"
+    push_hook, commit_hook = (repo / ".githooks" / n for n in ("pre-push", "pre-commit"))
     extended = push_hook.read_text() + '\necho "running repo-specific checks"\n'
     push_hook.write_text(extended)
-    r = _install(repo)
-    assert r.returncode != 0, "install clobbered a locally extended hook"
-    assert "pre-push" in (r.stdout + r.stderr), "the modified file must be named"
-    assert push_hook.read_text() == extended, "extension was lost"
-
-
-def test_replaced_hook_is_preserved_on_reinstall(repo):
-    """monitor-style: a repo REPLACES the hook with its own script outright."""
-    assert _install(repo).returncode == 0
-    commit_hook = repo / ".githooks" / "pre-commit"
     custom = "#!/bin/bash\n# monitor's own gate\nexit 0\n"
     commit_hook.write_text(custom)
     r = _install(repo)
-    assert r.returncode != 0, "install clobbered a replaced hook"
-    assert "pre-commit" in (r.stdout + r.stderr)
-    assert commit_hook.read_text() == custom
+    assert r.returncode != 0, "install clobbered a locally modified hook"
+    for name in ("pre-push", "pre-commit"):
+        assert name in (r.stdout + r.stderr), f"the modified {name} must be named"
+    assert push_hook.read_text() == extended, "extension was lost"
+    assert commit_hook.read_text() == custom, "the replaced hook was overwritten"
+    r = _install(repo, "--force")
+    assert r.returncode == 0, r.stdout + r.stderr
+    for hook in (push_hook, commit_hook):
+        assert hook.read_text() == _stock(hook.name)
+        digest = hashlib.sha256(hook.read_bytes()).hexdigest()
+        assert _record(repo, hook.name).read_text().strip() == digest
 
 
 def test_a_hook_from_an_older_stock_is_pristine_not_modified(repo):
@@ -226,21 +201,6 @@ def test_a_hook_from_an_older_stock_is_pristine_not_modified(repo):
     r = _install(repo)
     assert r.returncode == 0, r.stdout + r.stderr
     assert hook.read_text() == _stock("pre-commit")
-
-
-def test_force_overwrites_locally_modified_hooks(repo):
-    assert _install(repo).returncode == 0
-    hook = repo / ".githooks" / "pre-commit"
-    hook.write_text("#!/bin/bash\nexit 0\n")
-    r = _install(repo, "--force")
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert hook.read_text() == _stock("pre-commit")
-    import hashlib
-
-    assert (
-        _record(repo, "pre-commit").read_text().strip()
-        == hashlib.sha256(hook.read_bytes()).hexdigest()
-    )
 
 
 def test_recorded_hash_allows_update_after_a_stock_bump(tmp_path):
@@ -298,26 +258,6 @@ def test_help_exits_zero_without_side_effects(tmp_path):
     assert "--force" in (r.stdout + r.stderr)
     assert not target.exists()
     assert not (tmp_path / ".githooks").exists()
-
-
-def test_the_starters_install_writes_pass_goh_home_paths(repo, goh):
-    """What install.sh writes into a new repo is clean under the house's own checks. The starter
-    .gatesrc carried `~/Projects/scripts/...` in a comment, `goh home-paths` refuses a tilde checkout
-    path, and so every freshly installed repo failed the house gate on its first full run -- found
-    when the mediaremote-adapter fork's install turned goh's own estate corpus red (2026-10-12)."""
-    r = _install(repo)
-    assert r.returncode == 0, r.stdout + r.stderr
-    git(repo, "add", "-A")
-    for args in (["--staged"], []):  # as the first commit's hook sees it, then as a push does
-        out = subprocess.run(
-            [str(goh), "home-paths", *args],
-            cwd=repo,
-            capture_output=True,
-            text=True,
-            stdin=subprocess.DEVNULL,
-            check=False,
-        )
-        assert out.returncode == 0, out.stdout + out.stderr
 
 
 def test_the_example_gatesrc_passes_goh_home_paths(repo, goh):
