@@ -254,14 +254,16 @@ def _session(d: Path, *args: str, **env: str) -> subprocess.CompletedProcess[str
     )  # fmt: skip
 
 
-@pytest.mark.parametrize("workers", [[], ["-n", "2"]], ids=["serial", "xdist"])
-def test_the_pre_steps_passes_are_recorded_and_the_gates_suite_skips_them(
-    tmp_path: Path, workers: list[str]
-) -> None:
+WORKERS = ("-n", "2")  # as every land's suite runs: the workers' verdicts reach the controller
+
+
+def test_the_pre_steps_passes_are_recorded_and_the_gates_suite_skips_them(tmp_path: Path) -> None:
+    """Under xdist, every run of it. The plugin in one process (a run with no worker) records for
+    the two tests below, whose xdist runs read what it wrote."""
     (tmp_path / "conftest.py").write_text(SESSION_CONFTEST)
     (tmp_path / "test_s.py").write_text(SESSION_TESTS)
     rec = tmp_path / "rec.json"
-    _session(tmp_path, *workers, GOH_LAND_VERDICTS_RECORD=str(rec))
+    _session(tmp_path, *WORKERS, GOH_LAND_VERDICTS_RECORD=str(rec))
     got = json.loads(rec.read_text())
     assert got.pop("sha")  # the commit the pre-step judged: the gate carries from its tree
     assert set(got.pop("reads")) == {"test_s.py"}  # what it read, watched (GOH.READKEYVERDICT)
@@ -269,7 +271,7 @@ def test_the_pre_steps_passes_are_recorded_and_the_gates_suite_skips_them(
         "identity": "ID",
         "passed": {"test_s.py::test_pass": False, "test_s.py::test_ran_the_binary": True},
     }
-    plain = _session(tmp_path, *workers, GOH_LAND_VERDICTS_REUSE=str(rec))
+    plain = _session(tmp_path, *WORKERS, GOH_LAND_VERDICTS_REUSE=str(rec))
     assert "2 tests passed by the pre-land run are reused" in plain.stdout, plain.stdout
     assert "PASSED test_s.py::test_pass" not in plain.stdout, plain.stdout
     assert "FAILED test_s.py::test_fail" in plain.stdout, plain.stdout
@@ -280,12 +282,12 @@ def test_the_pre_steps_passes_are_recorded_and_the_gates_suite_skips_them(
     # The key is PRESENT and empty: this suite itself runs inside the instrumented part on a land,
     # and conftest's profile carry re-adds an absent LLVM_PROFILE_FILE to every child's env.
     bins = _session(
-        tmp_path, *workers, GOH_LAND_VERDICTS_REUSE=str(rec), GOH_COVERAGE_BIN_DIR="x",
+        tmp_path, *WORKERS, GOH_LAND_VERDICTS_REUSE=str(rec), GOH_COVERAGE_BIN_DIR="x",
         LLVM_PROFILE_FILE="",
     )  # fmt: skip
     assert "PASSED test_s.py::test_ran_the_binary" not in bins.stdout, bins.stdout
     cov = _session(
-        tmp_path, *workers, GOH_LAND_VERDICTS_REUSE=str(rec), GOH_COVERAGE_BIN_DIR="x",
+        tmp_path, *WORKERS, GOH_LAND_VERDICTS_REUSE=str(rec), GOH_COVERAGE_BIN_DIR="x",
         LLVM_PROFILE_FILE=str(tmp_path / "p.profraw"),
     )  # fmt: skip
     assert "PASSED test_s.py::test_ran_the_binary" in cov.stdout, cov.stdout
@@ -296,9 +298,8 @@ def test_the_pre_steps_passes_are_recorded_and_the_gates_suite_skips_them(
     assert "1 failed, 3 passed, 1 skipped" in cov.stdout, cov.stdout
 
 
-@pytest.mark.parametrize("workers", [[], ["-n", "2"]], ids=["serial", "xdist"])
 def test_a_run_whose_every_node_is_reused_exits_green_and_an_empty_one_does_not(
-    tmp_path: Path, workers: list[str]
+    tmp_path: Path,
 ) -> None:
     """GOH.CARRYALL: the v0.130.0 release gate reused or carried every node, pytest exited 5 ("no
     tests ran") and the land failed. All deselected by the plan is green; nothing collected and
@@ -307,11 +308,11 @@ def test_a_run_whose_every_node_is_reused_exits_green_and_an_empty_one_does_not(
     (tmp_path / "test_s.py").write_text("def test_pass():\n    pass\n")
     rec = tmp_path / "rec.json"
     assert _session(tmp_path, GOH_LAND_VERDICTS_RECORD=str(rec)).returncode == 0
-    reused = _session(tmp_path, *workers, GOH_LAND_VERDICTS_REUSE=str(rec))
+    reused = _session(tmp_path, *WORKERS, GOH_LAND_VERDICTS_REUSE=str(rec))
     assert "1 tests passed by the pre-land run are reused" in reused.stdout + reused.stderr
     assert reused.returncode == 0, reused.stdout + reused.stderr
     (tmp_path / "test_s.py").write_text("X = 1\n")
-    empty = _session(tmp_path, *workers, GOH_LAND_VERDICTS_REUSE=str(rec))
+    empty = _session(tmp_path, *WORKERS, GOH_LAND_VERDICTS_REUSE=str(rec))
     assert empty.returncode == 5, empty.stdout + empty.stderr
 
 
@@ -323,10 +324,7 @@ DROPS = (
 )
 
 
-@pytest.mark.parametrize("workers", [[], ["-n", "2"]], ids=["serial", "xdist"])
-def test_a_carried_run_handed_ids_it_never_ran_is_red_naming_them(
-    tmp_path: Path, workers: list[str]
-) -> None:
+def test_a_carried_run_handed_ids_it_never_ran_is_red_naming_them(tmp_path: Path) -> None:
     """GOH.CARRYEXIT5: GOH.SHAREZERO's carried pre-step group exited 5 and counted green without
     running a test. Ids handed to a run that none ran nor carried are red, each named; ids all
     carried stay green, and a run handed no ids is GOH.CARRYALL's (the test above)."""
@@ -337,12 +335,12 @@ def test_a_carried_run_handed_ids_it_never_ran_is_red_naming_them(
     rec = tmp_path / "rec.json"
     assert _session(tmp_path, GOH_LAND_VERDICTS_RECORD=str(rec)).returncode == 0
     env = {"GOH_LAND_VERDICTS_REUSE": str(rec)}
-    lost = _session(tmp_path, *workers, "test_s.py::test_pass", "test_s.py::test_gone", **env)
+    lost = _session(tmp_path, *WORKERS, "test_s.py::test_pass", "test_s.py::test_gone", **env)
     said = lost.stdout + lost.stderr
     assert lost.returncode == 1, said[-1500:]
     assert "ERROR test_s.py::test_gone - handed to this run, neither run nor carried" in said
     assert "test_s.py::test_pass -" not in said, said[-1500:]
-    held = _session(tmp_path, *workers, "test_s.py::test_pass", **env)
+    held = _session(tmp_path, *WORKERS, "test_s.py::test_pass", **env)
     assert held.returncode == 0, (held.stdout + held.stderr)[-1500:]
 
 

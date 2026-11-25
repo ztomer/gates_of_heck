@@ -167,11 +167,13 @@ def session(tmp_path: Path, store: Path) -> Path:
     return d
 
 
-@pytest.mark.parametrize("workers", [[], ["-n", "2"]], ids=["serial", "xdist"])
+WORKERS = ("-n", "2")  # as every land's suite runs: the workers' verdicts reach the controller
+
+
 def test_a_rebased_gate_reruns_only_what_the_diff_chooses_and_a_chosen_file_goes_red(
-    session: Path, store: Path, workers: list[str]
+    session: Path, store: Path
 ) -> None:
-    r = _gate(session, store, *workers, CHOSEN="test_s.py")
+    r = _gate(session, store, *WORKERS, CHOSEN="test_s.py")
     out = r.stdout
     assert f"2 deselected, carried from {'c0' * 4}" in out, out
     assert "FAILED test_s.py::test_broken" in out and r.returncode == 1, out
@@ -182,18 +184,17 @@ def test_a_rebased_gate_reruns_only_what_the_diff_chooses_and_a_chosen_file_goes
     assert "test_t.py::test_ok" in rec["passed"] and "test_s.py::test_broken" not in rec["passed"]
 
 
-@pytest.mark.parametrize("workers", [[], ["-n", "2"]], ids=["serial", "xdist"])
 def test_the_audits_shadow_runs_a_planted_under_keyed_carry_red_and_turns_carry_off(
-    session: Path, store: Path, workers: list[str]
+    session: Path, store: Path
 ) -> None:
-    shadow = _gate(session, store, *workers, CHOSEN="test_s.py", EVERY="1")
+    shadow = _gate(session, store, *WORKERS, CHOSEN="test_s.py", EVERY="1")
     out = shadow.stdout
     assert "RUN anyway: the audit's shadow" in out, out
     assert "FAILED test_t.py::test_planted" in out and shadow.returncode == 1, out
     state = reuse_audit.state("carry")
     assert state["state"] == "off" and state["cause"] == "disagree", state
     assert state["evidence"]["again"] == {"reused": "green", "fresh": "red"}, state
-    after = _gate(session, store, *workers, CHOSEN="test_s.py")
+    after = _gate(session, store, CHOSEN="test_s.py")  # serial: the same plugin, one process
     assert "the audit turned `carry` off" in after.stdout, after.stdout
     assert "PASSED test_t.py::test_ok" in after.stdout, after.stdout
 
