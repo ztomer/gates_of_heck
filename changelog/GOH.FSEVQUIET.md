@@ -1,0 +1,1 @@
+* GOH.FSEVQUIET: the remote-worker tests clone their advisory database from a one-commit upstream of the run, not RustSec over the network (about 3,850 file events a test, 27% of a pre-step under the pytest trees).

@@ -8,8 +8,6 @@ from __future__ import annotations
 import os
 import re
 
-from _fast_git import fast_init
-from _tree_clone import from_template
 from source_closure import copy_closure
 from test_remote_shard import DOCKERFILE, TOOL, _git, _log, _run, _slot_tree, rig
 
@@ -138,29 +136,23 @@ def test_the_tags_travel_and_a_tree_synced_without_them_gets_them_whole(rig):
     assert _git(remote, "rev-parse", "HEAD").stdout == _git(tree, "rev-parse", "HEAD").stdout
 
 
-def _build_advisory_upstream(path):
-    """The advisory database's upstream: one commit, built once per run (never written in)."""
-    fast_init(path)
-    (path / "README.md").write_text("advisories\n")
-    _git(path, "add", "-A")
-    _git(path, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "db")
+def test_a_run_of_the_rig_fetches_its_advisories_from_the_run_never_the_network(rig):
+    """GOH.FSEVQUIET: the fake docker runs the clone for real, so a rig that names no upstream
+    cloned RustSec's 1,883 files over the network into every test's remote (3,850 file events a
+    test, 27% of a pre-step's under the pytest trees, 2026-11-25)."""
+    assert _run(rig, "tests/test_x.py").returncode == 0
+    rows = _log(rig).splitlines()
+    fetch = [ln for ln in rows if ln.startswith("$ docker run --rm") and "-advisories" in ln]
+    assert len(fetch) == 1 and f"file://{rig['advisories']}" in fetch[0], fetch
+    assert len(list(rig["remote"].rglob("*"))) < 200
 
 
-def test_the_advisory_database_is_fetched_once_a_day_by_a_networked_container(
-    rig, tmp_path_factory
-):
+def test_the_advisory_database_is_fetched_once_a_day_by_a_networked_container(rig):
     """The worker has no network, and the rust gate's audits the suite drives read a cached
     advisory database (GOH_DEPS_OFFLINE=1: `--no-fetch`, seeded from ~/.cargo/advisory-db): with
     none, 9 rust-gate tests failed "couldn't fetch advisory database" (GOH.WORKERFAILS). So a
     networked short-lived container clones it into the worker's HOME, again when it is a day old."""
-    upstream = from_template(
-        tmp_path_factory,
-        "advisory-upstream",
-        _build_advisory_upstream,
-        rig["tmp"] / "advisory-upstream",
-    )
-    env = {"GOH_REMOTE_ADVISORY_DB_URL": f"file://{upstream}"}
-    assert _run(rig, "tests/test_x.py", **env).returncode == 0
+    assert _run(rig, "tests/test_x.py").returncode == 0
     db = rig["remote"] / "cache" / "home" / ".cargo" / "advisory-db"
     assert (db / "README.md").read_text() == "advisories\n"
 
@@ -169,9 +161,9 @@ def test_the_advisory_database_is_fetched_once_a_day_by_a_networked_container(
         return sum(ln.startswith("$ docker run --rm") and "-advisories" in ln for ln in rows)
 
     assert fetches() == 1
-    assert _run(rig, "tests/test_x.py", **env).returncode == 0
+    assert _run(rig, "tests/test_x.py").returncode == 0
     assert fetches() == 1, "a fresh copy was fetched again"
     st = db.stat()
     os.utime(db, (st.st_atime - 2 * 86400, st.st_mtime - 2 * 86400))
-    assert _run(rig, "tests/test_x.py", **env).returncode == 0
+    assert _run(rig, "tests/test_x.py").returncode == 0
     assert fetches() == 2, "a two-day-old copy was not refreshed"

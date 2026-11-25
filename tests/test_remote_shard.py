@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _tree_clone import template
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
@@ -137,9 +138,18 @@ def _junit(skipped: tuple[str, ...] = (), failed: tuple[str, ...] = ()) -> str:
     return f'<?xml version="1.0"?><testsuites>{suite}</testsuites>'
 
 
+def _build_advisory_upstream(path: Path) -> None:
+    """The advisory database's upstream: one commit, built once per run (never written in)."""
+    fast_init(path)
+    (path / "README.md").write_text("advisories\n")
+    _git(path, "add", "-A")
+    _git(path, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "db")
+
+
 @pytest.fixture
-def rig(tmp_path: Path) -> dict[str, Path]:
-    """A tracked tree (one untracked file beside it), the fakes on PATH, and a remote dir."""
+def rig(tmp_path: Path, tmp_path_factory) -> dict[str, Path]:
+    """A tracked tree (one untracked file beside it), the fakes on PATH, a remote dir, and the
+    advisory database's upstream: the fake docker runs the clone for real."""
     tree = tmp_path / "tree"
     (tree / "tests").mkdir(parents=True)
     (tree / "tests" / "test_x.py").write_text("def test_a(): pass\n")
@@ -163,7 +173,9 @@ def rig(tmp_path: Path) -> dict[str, Path]:
     (tmp_path / "versions").write_text(_versions())
     (tmp_path / "junit.xml").write_text(_junit(skipped=("test_d",)))
     (tmp_path / "loadavg").write_text("0.50 0.40 0.30 1/500 1234\n")
-    return {"tmp": tmp_path, "tree": tree, "bin": bin_dir, "images": images, "remote": remote}
+    advisories = template(tmp_path_factory, "advisory-upstream", _build_advisory_upstream)
+    return {"tmp": tmp_path, "tree": tree, "bin": bin_dir, "images": images, "remote": remote,
+            "advisories": advisories}  # fmt: skip
 
 
 def _env(rig: dict[str, Path], **env: str) -> dict[str, str]:
@@ -177,7 +189,11 @@ def _env(rig: dict[str, Path], **env: str) -> dict[str, str]:
         GOH_REMOTE_HOST="fakehost",
         GOH_REMOTE_DIR=str(rig["remote"]),
         GOH_REMOTE_LOADAVG=str(tmp / "loadavg"),
-        **{"GOH_REMOTE_FREE_FLOOR_GB": "0", **env},
+        **{
+            "GOH_REMOTE_FREE_FLOOR_GB": "0",
+            "GOH_REMOTE_ADVISORY_DB_URL": f"file://{rig['advisories']}",
+            **env,
+        },
     )
 
 
