@@ -126,7 +126,6 @@ def _inputs(repo: Path, tmp_path: Path, *settings: str) -> list[str]:
 
 
 def _moved(repo: Path, tmp_path: Path, then: str, now: str, trees: str = "'' ''") -> str:
-    """How a miss names what differs between two keys' inputs (`_rust_cov_moved`)."""
     (tmp_path / "then").write_text(then + "\n")
     (tmp_path / "now").write_text(now + "\n")
     call = f'_rust_cov_moved "{tmp_path}/then" "$(cat "{tmp_path}/now")" {trees}'
@@ -147,9 +146,7 @@ def no_tools(monkeypatch) -> None:
 
 
 def _differ(before: list[str], after: list[str]) -> list[str]:
-    """The labels of the identity lines that differ."""
-    then, now = ({ln.split(" ")[0]: ln for ln in lines} for lines in (before, after))
-    return sorted(k for k in {*then, *now} if then.get(k) != now.get(k))
+    return sorted({ln.split(" ")[0] for ln in {*before} ^ {*after}})
 
 
 def _decision(out: str) -> str:
@@ -191,7 +188,6 @@ def test_what_the_identity_says_on_stderr_is_no_input_of_the_key(
 
 @pytest.mark.usefixtures("no_tools")
 def test_a_rust_input_change_moves_the_key(repo: Path) -> None:
-    """(That a moved key measures is test_a_miss_finds_the_record_...'s.)"""
     before = _identity(repo)
     for rel, text in (
         ("crates/a/src/lib.rs", "pub fn f() -> u64 {\n    2\n}\n"),
