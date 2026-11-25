@@ -65,9 +65,11 @@ def test_no_changelog_at_all_refuses_before_any_push(kit):
 
 
 def test_a_stanza_the_check_refuses_is_refused_before_any_push(kit):
-    head, origin = _bump(kit, f"# C\n\n## {TAG}\n\n* the same\n\n## v1.1.0\n\n* the same\n")
+    same = f"# C\n\n## {TAG}\n\n* the same\n  entry\n\n## v1.1.0\n\n* the  same entry\n"
+    head, origin = _bump(kit, same)
     r = run_release(kit)
     assert r.returncode != 0 and "duplicate entry" in r.stderr, r.stdout + r.stderr
+    assert "v1.1.0" in r.stderr, r.stderr
     _untouched(kit, head, origin)
 
 

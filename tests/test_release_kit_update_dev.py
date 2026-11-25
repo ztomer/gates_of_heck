@@ -39,6 +39,9 @@ def run_update_dev(workdir: Path, bin_dir: Path | None, *args: str) -> subproces
     env["APP_PATH"] = "stage/Demo.app"
     if bin_dir:
         env["PATH"] = f"{bin_dir}:{env['PATH']}"
+        # The kit's poll waits are counted, never waited out (GOH.PYSLOW4): nothing here is timed.
+        (bin_dir / "sleep").write_text(f'#!/bin/bash\necho "$1" >> "{workdir}/sleeps"\n')
+        (bin_dir / "sleep").chmod(0o755)
     return subprocess.run(
         ["/bin/bash", str(UPDATE_DEV), *args],
         cwd=workdir,
@@ -77,6 +80,9 @@ class TestUpdateDev:
         r = run_update_dev(tmp_path, bin_dir, "--launch")
         assert r.returncode == 0, r.stdout + r.stderr
         assert (tmp_path / "open.log").read_text().startswith(str(tmp_path / "dest"))
+        # the opened app never shows up: looked for 15 times, then said, never claimed
+        assert (tmp_path / "sleeps").read_text().split() == ["0.2"] * 15
+        assert "no Demo process showed up" in r.stdout + r.stderr, r.stdout + r.stderr
 
     def test_default_does_not_launch(self, tmp_path):
         bin_dir = tmp_path / "fakeopen"
@@ -203,6 +209,8 @@ class TestNeverAReopen:
         assert _opened(tmp_path) == []
         assert "would not quit" in r.stdout + r.stderr
         assert not (tmp_path / "dest" / "Demo.app").exists(), "replaced under a live copy"
+        # ten looks after the graceful quit, ten after the signal
+        assert (tmp_path / "sleeps").read_text().split() == ["0.3"] * 20
 
 
 class TestInstallEverythingThenLaunch:

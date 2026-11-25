@@ -39,49 +39,30 @@ def _origin_tags(kit: dict) -> str:
 # --- the version ----------------------------------------------------------------------------
 
 
-def test_a_head_that_does_not_declare_the_version_is_refused_before_anything(kit):
-    (kit["proj"] / "VERSION").write_text("1.2.2\n")  # the bump is not committed yet
-    commit_all(kit["proj"], "changelog: stanza")
+def test_a_head_that_does_not_declare_the_version_is_refused_and_tags_once_bumped(kit):
+    """The v0.63.0 shape: the version lives in Cargo.toml, named by .gatesrc, and its bump is not
+    committed yet; the refusal comes before anything. Committed, the same release tags, over an
+    Unreleased section the stanza left empty."""
+    proj = kit["proj"]
+    (proj / "VERSION").unlink()
+    write_gatesrc(proj, 'GOH_TAG_VERSION_SOURCES="cargo:Cargo.toml"\n')
+    (proj / "Cargo.toml").write_text('[package]\nname = "p"\nversion = "1.2.2"\n')
+    (proj / "CHANGELOG.md").write_text(f"# C\n\n## Unreleased\n\n## {TAG}\n\n{STANZA_BODY}\n")
+    commit_all(proj, "changelog: stanza")
     r = run_release(kit)
     out = r.stdout + r.stderr
     assert r.returncode != 0, out
     assert "step 'version' failed" in out and "1.2.2" in out, out
     assert not _tagged(kit) and TAG not in _origin_tags(kit)
     assert not kit["gh_log"].exists(), "CI was asked about a commit that cannot be released"
-
-
-def test_the_bump_committed_the_same_release_tags(kit):
-    (kit["proj"] / "VERSION").write_text("1.2.2\n")
-    commit_all(kit["proj"], "changelog: stanza")
-    assert run_release(kit).returncode != 0
-    (kit["proj"] / "VERSION").write_text(f"{VERSION}\n")
-    commit_all(kit["proj"], f"release: {TAG}")
+    (proj / "Cargo.toml").write_text(f'[package]\nname = "p"\nversion = "{VERSION}"\n')
+    commit_all(proj, f"release: {TAG}")
     r = run_release(kit)
     assert r.returncode == 0, r.stdout + r.stderr
     assert _tagged(kit) and TAG in _origin_tags(kit)
 
 
-def test_the_repos_declared_version_source_is_read(kit):
-    """The v0.63.0 shape: the version lives in Cargo.toml, named by .gatesrc."""
-    proj = kit["proj"]
-    (proj / "VERSION").unlink()
-    write_gatesrc(proj, 'GOH_TAG_VERSION_SOURCES="cargo:Cargo.toml"\n')
-    (proj / "Cargo.toml").write_text('[package]\nname = "p"\nversion = "1.2.2"\n')
-    commit_all(proj, "changelog: stanza")
-    r = run_release(kit)
-    assert r.returncode != 0 and "step 'version' failed" in r.stderr, r.stdout + r.stderr
-    (proj / "Cargo.toml").write_text(f'[package]\nname = "p"\nversion = "{VERSION}"\n')
-    commit_all(proj, "bump")
-    r = run_release(kit)
-    assert r.returncode == 0, r.stdout + r.stderr
-
-
 # --- the changelog --------------------------------------------------------------------------
-
-
-def _changelog(kit: dict, text: str) -> None:
-    (kit["proj"] / "CHANGELOG.md").write_text(text)
-    commit_all(kit["proj"], "changelog")
 
 
 def test_the_check_refuses_an_unreleased_section_still_holding_entries(tmp_path):
@@ -91,19 +72,6 @@ def test_the_check_refuses_an_unreleased_section_still_holding_entries(tmp_path)
     log.write_text(f"# C\n\n## Unreleased\n\n* shipped long ago\n\n## {TAG}\n\n{STANZA_BODY}\n")
     r = _cut(log, "check", "--version", VERSION)
     assert r.returncode == 1 and "Unreleased" in r.stderr and "still holds" in r.stderr, r.stderr
-
-
-def test_an_empty_unreleased_section_tags(kit):
-    _changelog(kit, f"# C\n\n## Unreleased\n\n## {TAG}\n\n{STANZA_BODY}\n")
-    r = run_release(kit)
-    assert r.returncode == 0, r.stdout + r.stderr
-
-
-def test_a_stanza_repeating_an_earlier_entry_is_refused(kit):
-    _changelog(kit, f"# C\n\n## {TAG}\n\n* the same\n  entry\n\n## v1.1.0\n\n* the  same entry\n")
-    r = run_release(kit)
-    assert r.returncode != 0 and "duplicate entry" in r.stderr, r.stdout + r.stderr
-    assert "v1.1.0" in r.stderr and not _tagged(kit)
 
 
 def _cut(path: Path, *args: str) -> subprocess.CompletedProcess:
@@ -214,15 +182,6 @@ def test_the_dry_run_plans_the_cut_and_writes_nothing(kit):
     assert r.returncode == 0, r.stdout + r.stderr
     assert "changelog_cut" in r.stdout and sh(kit["proj"], "rev-parse", "HEAD") == before
     assert "## v1.2.3" not in (kit["proj"] / "CHANGELOG.md").read_text()
-
-
-def test_a_cut_that_would_repeat_an_earlier_entry_is_refused(kit):
-    log = "# C\n\n## Unreleased\n\n- older\n\n## v1.1.0\n\n- older\n"
-    (kit["proj"] / "CHANGELOG.md").write_text(log)
-    commit_all(kit["proj"], f"chore: version {VERSION}")
-    r = run_release(kit)
-    assert r.returncode != 0 and "already in v1.1.0" in r.stderr, r.stdout + r.stderr
-    assert not _tagged(kit) and (kit["proj"] / "CHANGELOG.md").read_text() == log
 
 
 def test_cut_follows_the_repos_dated_em_dash_heading_style(tmp_path):

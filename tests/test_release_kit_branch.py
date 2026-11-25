@@ -35,12 +35,7 @@ def test_a_release_from_a_feature_branch_pushes_to_the_default_branch_and_no_str
     assert sh(kit["origin"], "rev-parse", "refs/heads/main").strip() == head, out
     assert sh(kit["origin"], "rev-parse", f"refs/tags/{TAG}^{{commit}}").strip() == head, out
     assert _heads(kit) == ["main"], f"a stray branch reached origin: {_heads(kit)}"
-
-
-def test_the_push_names_the_default_branch_as_its_target(kit):
-    _on_feature_branch(kit)
-    r = run_release(kit, "--skip-release")
-    assert r.returncode == 0, r.stdout + r.stderr
+    # the push NAMES its target
     pushes = [c for c in kit["git_log"].read_text().splitlines() if c.startswith("git push")]
     assert pushes == [f"git push origin HEAD:refs/heads/main {TAG}"], pushes
 
