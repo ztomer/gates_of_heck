@@ -125,8 +125,7 @@ def main() -> int:
     args = ap.parse_args()
     args.root, args.goh = args.root.resolve(), args.goh.resolve()
     rec, rc = run(args, time.time())
-    if "memo_records" not in rec:
-        rec["memo_records"] = canary_memo.records(args.state, KEY)
+    rec = canary_memo.keep(args.state, KEY, rec)
     estate_registry.update_state(args.state, lambda old: {**old, KEY: rec})
     say(rec)
     return rc

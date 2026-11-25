@@ -300,7 +300,7 @@ def settings_drift(settings: Path, registrations: Path) -> dict[str, Any]:
             "detail": f"{len(missing)} missing, {len(extra)} not in registrations.json"}  # fmt: skip
 
 
-def _findings(state: dict[str, Any], summary: str) -> str:
+def _findings(state: dict[str, Any], summary: str, cands: list[dict[str, Any]]) -> str:
     lines = [f"# Model-choice findings — {state['ran_at']}", "",
              f"{summary}", "",
              "Written by goh `scripts/model_choice_watch.py` (weekly). Every row below is a",
@@ -357,7 +357,6 @@ def _findings(state: dict[str, Any], summary: str) -> str:
             "### Fault candidates (no queue item carries them)",
             "",
         ]
-        cands = state.get("fault_candidates") or []
         lines += [f"- {json.dumps(c, ensure_ascii=False)}" for c in cands[:30]] or ["- none"]
         if len(cands) > 30:
             lines.append(f"- ... {len(cands) - 30} more in {state.get('candidates_file')}")
@@ -459,6 +458,7 @@ def main(argv: list[str] | None = None) -> int:
     }  # fmt: skip
     records = agent_audit.records(args.ledger)[0]
     state["usage_review"] = usage_review.run(records, rules, args.days)
+    cands: list[dict[str, Any]] = []
     if not args.no_spend:
         state["spend"] = spend_watch.run(
             projects=args.projects, now=dt.datetime.now(dt.UTC), queue=args.queue,
@@ -467,7 +467,7 @@ def main(argv: list[str] | None = None) -> int:
         since = (prior.get("spend") or {}).get("ran_at")
         rows = agent_audit.fault_rows(records, since)
         items = queue_read.items_or_empty(args.queue)
-        state["fault_candidates"] = spend_watch.fault_candidates(rows, items)
+        cands = spend_watch.fault_candidates(rows, items)
         state["candidates_file"] = "goh.db fault_candidates (lib/hook_ledgers.py)"
     red = (
         state["canary"]["red"]
@@ -481,10 +481,10 @@ def main(argv: list[str] | None = None) -> int:
                f"{counted(len(audit['proposals']), 'proposal')}, "
                f"{counted(len(audit['verification']['silent_failure']), 'silent failure')} -> {args.findings}")  # fmt: skip
     if args.state is None:  # the record and the candidates: goh.db (GOH.STATEDBS4)
-        cands = state.get("fault_candidates") if state.get("spend") else None
-        hook_ledgers.record_watch(json.loads(json.dumps(state, default=str)), cands)
+        kept = cands if state.get("spend") else None
+        hook_ledgers.record_watch(json.loads(json.dumps(state, default=str)), kept)
     for path, text in ((args.state, json.dumps(state, indent=1, default=str) + "\n"),
-                       (args.findings, _findings(state, summary))):  # fmt: skip
+                       (args.findings, _findings(state, summary, cands))):  # fmt: skip
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8")

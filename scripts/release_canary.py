@@ -427,8 +427,7 @@ def main() -> int:
     args = ap.parse_args()
     args.root, args.goh = args.root.resolve(), args.goh.resolve()
     rec, rc = run(args)
-    if "memo_records" not in rec:  # nothing swept: the records stay for the next land
-        rec["memo_records"] = canary_memo.records(args.state, KEY)
+    rec = canary_memo.keep(args.state, KEY, rec)
     try:
         estate_registry.update_state(args.state, lambda old: {**old, KEY: rec})
     except db_core.NewerFile as e:  # a land's push worktree ahead of goh.db: the verdict stands

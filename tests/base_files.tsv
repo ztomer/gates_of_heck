@@ -28,6 +28,7 @@ lib/bin_reach_audit.py	base-code
 lib/binary_runners.py	base-code
 lib/body_columns.py	base-code
 lib/body_tables.py	base-code
+lib/cache_rows.py	base-code
 lib/budget_ships.py	base-code
 lib/consumer_reads.py	base-code
 lib/cov_env.py	base-code
@@ -59,6 +60,7 @@ lib/hook_ledgers.py	base-code
 lib/house_python.sh	base-code
 lib/identity_cache.py	base-code
 lib/killtree.py	base-code
+lib/kv_rows.py	base-code
 lib/land_attempts.py	base-code
 lib/land_cause.py	base-code
 lib/land_columns.py	base-code
@@ -92,6 +94,7 @@ lib/proc_table.py	base-code
 lib/prune_kept.py	base-code
 lib/queue_read.py	base-code
 lib/remote_lane.py	base-code
+lib/remote_rates.py	base-code
 lib/remote_saved.py	base-code
 lib/reuse.py	base-code
 lib/reuse_audit.py	base-code

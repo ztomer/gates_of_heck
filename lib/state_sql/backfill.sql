@@ -25,3 +25,4 @@ INSERT OR REPLACE INTO reuse_shadow (n, epoch, path, body) SELECT n, epoch, path
 INSERT OR REPLACE INTO reuse_audit (path, body, at) SELECT path, body, at FROM reuse_audit WHERE rest IS NULL AND json_valid(body) LIMIT 500;
 INSERT OR REPLACE INTO requests (queue, run, item, repo, sha, mode, state, pid, pid_stamp, until, filed_at, body) SELECT queue, run, item, repo, sha, mode, state, pid, pid_stamp, until, filed_at, body FROM requests WHERE rest IS NULL AND json_valid(body) LIMIT 500;
 INSERT OR REPLACE INTO early (queue, run, at, body) SELECT queue, run, at, body FROM early WHERE rest IS NULL AND json_valid(body) LIMIT 500;
+INSERT OR REPLACE INTO fault_candidates (n, at, body) SELECT n, at, body FROM fault_candidates WHERE rest IS NULL AND json_valid(body) LIMIT 500;

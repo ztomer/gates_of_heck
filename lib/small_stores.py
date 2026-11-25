@@ -5,7 +5,8 @@
 WHY. Seven stores were files rewritten whole or appended per line: five whole-file JSON
 documents (the estate audit's state, the pin push ledger and sweep registry, the cache evictor's
 ledger, wf-pin's consumer pin record), the commit-gated ledger and the flake register. They move
-into goh.db's `kv`, `commit_gated` and `flakes` tables (lib/goh_db_schema/0004_small_stores.sql);
+into goh.db's `kv`, `commit_gated` and `flakes` tables (lib/goh_db_schema/0004_small_stores.sql),
+the pin ledger, the sweep registry and the pin record in rows too (lib/kv_rows.py, GOH.KVBLOBS);
 the CPU idle window moves into goh-cache.db's `kv` (lib/cpu_window.py), being disposable.
 
 WHERE. Each store keeps the path its file had (its env override: GOH_ESTATE_STATE,
@@ -57,6 +58,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import body_columns  # the lib directory, on the path from the line above
 import body_tables
 import goh_db
+import kv_rows
 import state_paths
 
 # kv names: each was the file `<name>.json` (kv_name), beside the database (the estate audit's,
@@ -111,14 +113,20 @@ def _write(p: Path) -> Iterator[sqlite3.Connection]:
 # -- kv: the whole-file JSON stores --------------------------------------------------------------
 
 
+def _kept(con: sqlite3.Connection, name: str, body: str) -> object:
+    """NAME's value: its rows' when its document says they hold it (lib/kv_rows.py)."""
+    return state_paths.got(name, kv_rows.got(con, name, json.loads(body)))
+
+
 def get(p: Path | str) -> object:
     """The store whose path is P: its kv row, else None."""
     p = Path(p)
     with _read(p) as con:
         if con is not None:
+            con.execute("BEGIN")  # a document and its rows are one snapshot
             row = con.execute("SELECT body FROM kv WHERE name=?", (kv_name(p),)).fetchone()
             if row is not None:
-                return state_paths.got(kv_name(p), json.loads(row[0]))
+                return _kept(con, kv_name(p), row[0])
     return None
 
 
@@ -130,11 +138,12 @@ def update(p: Path | str, change: Callable[[object], object]) -> object:
         with _write(p) as con:
             row = con.execute("SELECT body FROM kv WHERE name=?", (kv_name(p),)).fetchone()
             name = kv_name(p)
-            new = change(state_paths.got(name, json.loads(row[0])) if row else None)
+            new = change(_kept(con, name, row[0]) if row else None)
+            kept = kv_rows.put(con, name, state_paths.put(con, name, new))
             con.execute("INSERT INTO kv(name, body, at) VALUES (?, ?, ?) "
                         "ON CONFLICT(name) DO UPDATE SET "
                         "body=excluded.body, at=excluded.at",
-                        (name, _dump(state_paths.put(con, name, new)), time.time()))  # fmt: skip
+                        (name, _dump(kept), time.time()))  # fmt: skip
     except goh_db.db_core.NewerFile as e:  # this copy may not write it: the value, unkept
         goh_db.refused(e)
         return change(get(p))

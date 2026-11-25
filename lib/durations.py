@@ -17,7 +17,8 @@ GOH.DURATIONSSTALE), else lib/goh_db.py `path()`.
     keep      the newest KEEP readings per (kind, node); the schema's bound holds the 30 days
     pruned    a prune (a node the run's whole-file collection did not hold, or whose file is gone)
               is a `pruned` row in the run's transaction; a later reading brings the node back
-    kv        duration_kv: remote_rates and linux_unsafe (lib/remote_lane.py), one JSON value each
+    kv        duration_kv: the split's `remote_*` paces, one number each (lib/remote_lane.py); its
+              ledger linux_unsafe is a table of its own (lib/kv_rows.py), its document kept beside
 
 THE JSON FILES THEY WERE (test-durations*.json, remote-rates.json, linux-unsafe.json) are read by
 nothing since the database plan's wave 3: `goh state retire durations` (lib/state_retire.py)
@@ -29,7 +30,7 @@ lock (two runs ending together kept one run's readings). `record` INSERTs one ro
 (`readings`: run, node, kind `dur`/`pole`/`pole_cpu`, seconds, loaded, at) in ONE transaction with
 its prunes (`pruned` rows, lifted by a later reading) and keeps the newest `KEEP` (5) per (kind,
 node); `load(kind)` reads the `durations` view (each newest unpruned reading). `get`/`update` hold
-the split's ledgers (`duration_kv`: `remote_rates`, `linux_unsafe`; not `kv`, which 0004 owns). The
+the split's ledgers (`linux_unsafe`, rows and document; `duration_kv`'s `remote_*` paces). The
 file is `GOH_TEST_DURATIONS` when named, else goh.db. No JSON file beside it is read (retired by
 `state_retire.py`). `durations.py path|dump [kind]`. Invoked by `tests/_schedule.py`,
 `long_pole.py`.
@@ -53,11 +54,12 @@ import os
 import sqlite3
 import sys
 import time
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # the lib directory, on the path from the line above
+import kv_rows
 
 ENV = "GOH_TEST_DURATIONS"
 KINDS = ("dur", "pole", "pole_cpu")
@@ -130,14 +132,33 @@ def newest(node: str, db: Path | None = None) -> dict[str, dict[str, object]]:
 
 
 def get(key: str, db: Path | None = None) -> object:
-    """duration_kv's KEY (remote_rates | linux_unsafe), else None."""
+    """duration_kv's KEY (linux_unsafe: its rows, lib/kv_rows.py), else None."""
     db, named = _where(db, False)
     with _read(db, named) as con:
         if con is not None:
-            row = con.execute("SELECT value FROM duration_kv WHERE key=?", (key,)).fetchone()
-            if row is not None:
-                return json.loads(row[0])
+            con.execute("BEGIN")  # a document and its rows are one snapshot
+            return _value(con, key)
     return None
+
+
+def _value(con: sqlite3.Connection, key: str) -> object:
+    row = con.execute("SELECT value FROM duration_kv WHERE key=?", (key,)).fetchone()
+    doc = json.loads(row[0]) if row else None
+    return kv_rows.unsafe(con, doc) if key == kv_rows.UNSAFE else doc
+
+
+def scalars(keys: Iterable[str], db: Path | None = None) -> dict[str, float]:
+    """The numbers duration_kv has under KEYS (the split's paces, lib/remote_lane.py)."""
+    got = {k: get(k, db) for k in keys}
+    return {k: float(v) for k, v in got.items() if isinstance(v, (int, float))}
+
+
+def written(key: str, db: Path | None = None) -> float:
+    """When duration_kv's KEY was last written; 0 for never."""
+    db, named = _where(db, False)
+    with _read(db, named) as con:
+        row = con and con.execute("SELECT at FROM duration_kv WHERE key=?", (key,)).fetchone()
+    return float(row[0]) if row else 0.0
 
 
 def run_id() -> str:
@@ -186,14 +207,30 @@ def update(key: str, change: Callable[[object], object], db: Path | None = None)
     pure, handed the value (None for none) and returning the new one."""
     db, named = _where(db, False)
     with goh_db.transaction(db, named) as con:
-        row = con.execute("SELECT value FROM duration_kv WHERE key=?", (key,)).fetchone()
-        new = change(json.loads(row[0]) if row else None)
-        con.execute(
-            "INSERT INTO duration_kv(key, value, at) VALUES (?, ?, ?) "
-            "ON CONFLICT(key) DO UPDATE SET "
-            "value=excluded.value, at=excluded.at",
-            (key, json.dumps(new), time.time()),
-        )
+        new = change(_value(con, key))
+        if key == kv_rows.UNSAFE:
+            kv_rows.put_unsafe(con, new)
+        _keep(con, {key: new})
+
+
+def _keep(con: sqlite3.Connection, values: Mapping[str, object]) -> None:
+    con.executemany(
+        "INSERT INTO duration_kv(key, value, at) VALUES (?, ?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value, at=excluded.at",
+        [(k, json.dumps(v), time.time()) for k, v in values.items()],
+    )
+
+
+def update_scalars(
+    keys: Iterable[str],
+    change: Callable[[dict[str, float]], Mapping[str, float]],
+    db: Path | None = None,
+) -> None:
+    """The numbers under KEYS read, CHANGEd and written in one transaction."""
+    db, named = _where(db, False)
+    with goh_db.transaction(db, named) as con:
+        was = {k: _value(con, k) for k in keys}
+        _keep(con, change({k: float(v) for k, v in was.items() if isinstance(v, (int, float))}))
 
 
 def main(argv: list[str]) -> int:

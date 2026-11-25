@@ -56,6 +56,7 @@ from tui.lib import info, noun, ok, section, warn
 
 sys.path.insert(0, str(ROOT / "hooks" / "claude"))
 sys.path.insert(0, str(ROOT / "lib"))
+import cache_rows  # noqa: E402 -- lib/
 import estate_registry
 import landed_verify
 import model_choice
@@ -112,12 +113,9 @@ def verify_landed(
 ) -> dict[Key, landed_verify.Verdict]:
     """A verdict per landed outcome that carries its report. Only `verified` is cached: a silent
     failure is asked again, since a sha pushed late becomes true."""
-    cache_file = _cache_path()
-    try:
-        cache = json.loads(cache_file.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        cache = {}
-    before = len(cache)
+    cache_rows.take_verified(_cache_path())  # what the rows were (GOH.KVBLOBS)
+    cache = cache_rows.verified()
+    new: dict[str, list[str]] = {}
     # The estate is the walked root UNIONED with the registry (BACKLOG 6.14): a repo goh was
     # installed into outside the root is a repo a landed sha can be in, and a sha nobody can
     # find reads as unverified -- which is the same shape as a silent failure.
@@ -137,13 +135,9 @@ def verify_landed(
         v = landed_verify.verify(report, repos, gh)
         out[_key(rec)] = v
         if v.verdict == "verified":
-            cache[name] = v.shas
-    if len(cache) != before:
-        try:
-            cache_file.parent.mkdir(parents=True, exist_ok=True)
-            cache_file.write_text(json.dumps(cache, sort_keys=True), encoding="utf-8")
-        except OSError:
-            pass  # the cache only saves gh calls
+            new[name] = cache[name] = v.shas
+    if new:
+        cache_rows.put_verified(new)  # a cache: it only saves gh calls
     return out
 
 

@@ -1,8 +1,9 @@
 """lib/state_columns.py -- `goh state check`: the rows of goh.db that keep a document beside the
 columns it became (GOH.LANDCOLS), each compared with what its columns give back.
 
-    TABLES             lands, ship_pins, ships, agent_spawns (schema files 0011 to 0013) and
-                       lib/body_tables.py's seven (0016, GOH.BODYCOLS)
+    TABLES             lands, ship_pins, ships, agent_spawns (schema files 0011 to 0013),
+                       lib/body_tables.py's seven (0016, GOH.BODYCOLS) and fault_candidates (0015,
+                       GOH.KVBLOBS)
     rendered(con, t)   (rowid, key, document, the document its columns render, rest) per row of T
                        with a document, from lib/state_sql/doc_T.sql
     same(t, doc, again)   the two say the same: what section 0 of the data plan counts as equal
@@ -13,7 +14,8 @@ WHAT IT NAMES. A row with `rest` NULL: no writer's trigger filled it (`goh state
 or its document is not JSON. A `rest` that holds a field: a key no column has, or a value of the
 wrong type, kept there until it is looked at. A document its columns do not give back. A red cause
 not folded into its land. A row its table refused (hook_ledgers.dead). A child row whose parent is
-gone. A running ship is not compared: its steps write its record and its pins in turn.
+gone. A kv document its rows do not give back (lib/kv_rows.py).
+A running ship is not compared: its steps write its record and its pins in turn.
 
 EQUAL, BUT SPELLED ANOTHER WAY: null, {} and [] are an absent key; a land's `at` and a spawn's
 `time` are one instant in any spelling; a lane start's `v` is a constant and its room's `why` the
@@ -42,9 +44,11 @@ import db_bounds_with  # lib/, on the path from the line above
 import db_schema
 import goh_db
 import hook_ledgers
+import kv_rows
 
 SQL = Path(__file__).resolve().with_name("state_sql")
-TABLES = ("lands", "ship_pins", "ships", "agent_spawns", *(t.name for t in body_tables.TABLES))
+TABLES = ("lands", "ship_pins", "ships", "agent_spawns", *(t.name for t in body_tables.TABLES),
+          "fault_candidates")  # fmt: skip
 INSTANT = {"lands": "at", "agent_spawns": "time", "lane_starts": "at", "flakes": "at"}
 RUNS = (body_tables.REQUESTS.name, body_tables.EARLY.name)  # one run is in one of them
 IN_FLIGHT = "status IN ('running', 'bisecting')"  # a ship its worker still writes
@@ -197,7 +201,7 @@ def check(con: sqlite3.Connection) -> list[str]:
     for r in hook_ledgers.dead():
         row = json.dumps(r.get("row"))[:120]
         out.append(f"{r.get('table')}: in {hook_ledgers.DEAD}: {r.get('why')}: {row}")
-    return out + orphans(con)
+    return out + kv_rows.left(con) + orphans(con)
 
 
 def main() -> int:

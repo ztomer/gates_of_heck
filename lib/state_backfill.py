@@ -10,6 +10,8 @@ work (REPLACE runs it), the same one a writer of older goh fires: a filled row i
 filled. So it may be killed anywhere and run again, and any number of times: a statement picks
 only rows that still need it (`rest` NULL; a land with no red class of its own).
 
+THE KV DOCUMENTS are lib/kv_fill.py's (GOH.KVBLOBS).
+
 A row whose document is not JSON is never picked: it stays, named by `goh state check`.
 Pinned by tests/test_state_backfill.py.
 """
@@ -23,6 +25,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db_schema  # lib/, on the path from the line above
 import goh_db
+import kv_fill
 import state_columns
 
 SQL = state_columns.SQL / "backfill.sql"
@@ -60,7 +63,7 @@ def main() -> int:
     from tui.lib import err, ok
 
     try:
-        done = run()
+        done = {**run(), **kv_fill.run()}
         with goh_db.known() as con:
             bad = {t: state_columns.unfilled(con, t) for t in state_columns.TABLES}
     except (OSError, sqlite3.Error) as e:
@@ -69,6 +72,7 @@ def main() -> int:
     ok("state backfill: " + ", ".join(f"{n} {k}" for k, n in done.items()))
     left = [f"{t}: {n} not filled" for t, (n, _) in bad.items() if n]
     left += [f"{t}: {k}: its document is not JSON" for t, (_, ks) in bad.items() for k in ks]
+    left += kv_fill.left()
     for line in left:
         err(f"state backfill: {line}")
     return 1 if left else 0

@@ -50,11 +50,12 @@ import tempfile
 import time
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from lib import durations as duration_db, fast_tests, remote_saved, tmp_root
+from lib import durations as duration_db, fast_tests, remote_rates, remote_saved, tmp_root
+from lib.remote_rates import Rates, blend, load_rates
 from lib.remote_saved import cause  # how a share ended, re-exported (lib/remote_gate.py)
 from lib.step_timings import timed
 from tui.lib import info, warn
@@ -86,49 +87,6 @@ def cost(nodes: list[str], durations: dict[str, float]) -> dict[str, float]:
         f = test.split("::")[0]
         by_file[f] = by_file.get(f, 0.0) + sec
     return {n: durations.get(n) or by_file.get(n) or 1.0 for n in nodes}
-
-
-@dataclass
-class Rates:
-    """Each side's measured pace (GOH.REMOTESHARE), kept beside the duration table (goh.db
-    `remote_rates`, `load_rates`) and smoothed over lands: the Mac's width (its estimated serial
-    seconds over its wall), the worker's (its junit's case seconds over the suite's wall), the
-    worker's fixed overhead (probe, sync, build: its wall less the suite's), its per-test seconds,
-    and the ratio of its seconds to the Mac's for one test (a test it never ran is the Mac's times
-    that). The defaults are the first wired land's (2026-11-22: 57 files the table puts at 364
-    Mac-serial seconds took 139 s at -n 10, about 2.6 Mac cores, against roughly 8 from the Mac's -n
-    12)."""
-
-    mac_width: float = 8.0
-    worker_width: float = 2.6
-    overhead_s: float = 20.0
-    ratio: float = 1.0
-    tests: dict[str, float] = field(default_factory=dict)
-
-    def worker_s(self, node: str, mac_s: float) -> float:
-        own = self.tests.get(node)
-        if own is None:
-            mine = [v for k, v in self.tests.items() if k.split("::")[0] == node]
-            own = sum(mine) if mine else None
-        return mac_s * self.ratio if own is None else own
-
-
-SMOOTH = 0.5  # each land's measurement weighs half against the rates before it
-
-
-def load_rates() -> Rates:
-    """The rates the next split reads: goh.db's `remote_rates` (lib/durations.py, beside the
-    duration table, GOH.DURATIONSDB), the defaults when there are none."""
-    return _rates(duration_db.get("remote_rates"))
-
-
-def _rates(data: object) -> Rates:
-    if not isinstance(data, dict):
-        return Rates()
-    try:
-        return Rates(**{k: data[k] for k in Rates.__dataclass_fields__ if k in data})
-    except TypeError:
-        return Rates()
 
 
 def unsafe() -> set[str]:
@@ -173,10 +131,6 @@ def split(root: Path, nodes: list[str], durations: dict[str, float] | None = Non
     return [n for n in nodes if n in remote], [n for n in nodes if n not in remote]
 
 
-def _blend(old: float, new: float) -> float:
-    return old * (1 - SMOOTH) + new * SMOOTH
-
-
 def measure(root: Path, share: Share, junit: str, mac_end: float) -> None:
     """One land's paces folded into the rates the next split reads (`Rates`)."""
     try:
@@ -190,23 +144,21 @@ def measure(root: Path, share: Share, junit: str, mac_end: float) -> None:
              for tc in doc.iter("testcase")}  # fmt: skip
     mac = fast_tests.load()
 
-    def fold(was: object) -> dict:
-        old = _rates(was)
-        new = Rates(old.mac_width, old.worker_width, old.overhead_s, old.ratio,
-                    {**old.tests, **tests})  # fmt: skip
+    def fold(old: Rates) -> Rates:
+        new = Rates(old.mac_width, old.worker_width, old.overhead_s, old.ratio)
         work = sum(tests.values())
         if took > 0 and work > 0:
-            new.worker_width = _blend(old.worker_width, work / took)
-            new.overhead_s = _blend(old.overhead_s, max(0.0, landed - share.started - took))
+            new.worker_width = blend(old.worker_width, work / took)
+            new.overhead_s = blend(old.overhead_s, max(0.0, landed - share.started - took))
         both = [n for n in tests if mac.get(n)]
         if both and sum(mac[n] for n in both) > 0:
-            new.ratio = _blend(old.ratio, sum(tests[n] for n in both) / sum(mac[n] for n in both))
+            new.ratio = blend(old.ratio, sum(tests[n] for n in both) / sum(mac[n] for n in both))
         if share.mac_s > 0 and mac_end > share.started:
-            new.mac_width = _blend(old.mac_width, share.mac_s / (mac_end - share.started))
-        return asdict(new)
+            new.mac_width = blend(old.mac_width, share.mac_s / (mac_end - share.started))
+        return new
 
     with contextlib.suppress(OSError, sqlite3.Error):  # a lost fold costs the next split its pace
-        duration_db.update("remote_rates", fold)
+        remote_rates.put(tests, fold)
 
 
 @dataclass

@@ -269,7 +269,8 @@ def test_a_copy_of_goh_without_the_numbers_writes_on(db, tmp_path) -> None:
     with db_core.connect(old):
         pass
     with goh_db.connect() as con:
-        assert json.loads(db_core.version(con)["meta"]["old_writers_safe"]) == [11, 12, 13, 14, 16]
+        meta = db_core.version(con)["meta"]
+    assert json.loads(meta["old_writers_safe"]) == [11, 12, 13, 14, 15, 16]
     with db_core.transaction(old) as con:
         con.execute("INSERT INTO lands(queue, run, at, body) VALUES ('/q', '1', 1, ?)",
                     (json.dumps({"guards": ["g"], "pre_s": 2}),))  # fmt: skip

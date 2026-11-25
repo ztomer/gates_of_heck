@@ -19,8 +19,8 @@ side's verdict over a consumer is decided by:
 The base side (the last release) keys alike, so it holds until the next release; the HEAD side
 holds until a gate input moves. Only a verdict that judged is kept: a run that errored or was
 starved (TIMED OUT) is run again next time. A record lives one day (an advisory or the date moves
-without the key), in the estate state file's `release_canary` entry beside the sweep it came from,
-so a reuse names that sweep. The reuse is not yet on lib/reuse.py's path table (its owner lane
+without the key), a row of goh-cache.db's canary_memo (GOH.KVBLOBS) that names the sweep it came
+from, so a reuse names that sweep. The reuse is not yet on lib/reuse.py's path table (its owner lane
 held the file): GOH.CANARYMEMO2 registers it there.
 
 The release canary's memo (GOH.CANARYMEMO): a side's verdict over a consumer kept under the side's
@@ -41,7 +41,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import gate_identity  # lib/, beside this file
+import cache_rows  # lib/, beside this file
+import gate_identity
 import state_paths
 from canary_sides import Verdict, common_dir, foreign_repo_env, fresh, git_run, kept, restored
 
@@ -49,7 +50,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import counted, info
 
 FORMAT = "release-canary memo v1"
-TTL_S = 86400
+TTL_S = cache_rows.MEMO_S
+KINDS = {"release_canary": "release", "grace_watch": "grace"}  # the state's entry: the rows' kind
 CAP = 600  # records kept: ~36 consumers x 3 sides x a few gate contents
 SKIP_TOP = ("docs", "tests", ".git")
 
@@ -129,6 +131,13 @@ def key(side: str, repo_id: str, sha: str) -> str:
     return hashlib.sha256(f"{FORMAT}\n{side}\nrepo {repo_id}\nsha {sha}".encode()).hexdigest()
 
 
+def live(v: object, now: float | None = None) -> bool:
+    """V is a record a run may still reuse."""
+    epoch = v.get("epoch") if isinstance(v, dict) else None
+    now = int(time.time()) if now is None else now
+    return isinstance(epoch, int) and 0 <= now - epoch < TTL_S
+
+
 class Memo:
     """The run's view of the recorded verdicts: `get` a live one, `put` a fresh one; `records`
     is what the state file keeps (every live record, newest first, CAP of them)."""
@@ -142,8 +151,7 @@ class Memo:
         self.sources: set[str] = set()
 
     def _live(self, v: object) -> bool:
-        epoch = v.get("epoch") if isinstance(v, dict) else None
-        return isinstance(epoch, int) and 0 <= self.now - epoch < TTL_S
+        return live(v, self.now)
 
     def get(self, k: str, where: str, label: str) -> dict | None:
         with self.lock:
@@ -218,14 +226,27 @@ class Runs:
 
 
 def records(state: Path, entry: str) -> dict:
-    """The memo's records, as the last canary left them in the state file's `entry`."""
+    """The memo's records: ENTRY's rows beside STATE, and what the estate state's `entry` holds (a
+    canary from before the rows, or one the cache did not take)."""
     import estate_registry  # lib/'s: the estate state in goh.db (GOH.STATEDBS3)
 
     try:
         got = estate_registry.read_state(state).get(entry, {}).get("memo_records")
     except AttributeError:
-        return {}
-    return got if isinstance(got, dict) else {}
+        got = None
+    rows = cache_rows.memo(state, KINDS[entry])
+    return {**(got if isinstance(got, dict) else {}), **rows}
+
+
+def keep(state: Path, entry: str, rec: dict) -> dict:
+    """REC, a canary's record, its memo records (the last one's when it swept nothing) in ENTRY's
+    rows and no longer in it; still in it when the cache did not take them."""
+    found = rec.get("memo_records")
+    if found is None:  # nothing swept: the records stay for the next land
+        found = records(state, entry)
+    found = {k: v for k, v in found.items() if live(v)}
+    out = {k: v for k, v in rec.items() if k != "memo_records"}
+    return out if cache_rows.put_memo(state, KINDS[entry], found) else out | {"memo_records": found}
 
 
 def say(memo: dict) -> None:

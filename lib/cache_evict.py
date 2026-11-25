@@ -40,7 +40,7 @@ a live build holds (`held`: a cargo `.cargo-lock` flock taken, a live llvm-cov `
 a use within 10 min) nor the sccache dir (counted, its server owns it). Internal budget `min(0.5 x
 (held+free), held+free - GOH_LANE_MIN_FREE_GIB - 10 GiB)`, held to `HOT_GIB` (60) with the large
 tier present, whose overflow demotes; the large tier's `EXT_GIB` (250) under its own floor, whose
-overflow deletes. Ledger at GOH_CACHE_EVICT_STATE, keyed by path.
+overflow deletes. Ledger at GOH_CACHE_EVICT_STATE, its objects `evict_objs` rows, keyed by path.
 """
 
 from __future__ import annotations
@@ -54,7 +54,8 @@ import time
 from dataclasses import dataclass
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import lock_order  # lib/, beside this file
+import cache_rows  # lib/, beside this file
+import lock_order
 
 GIB = 1 << 30
 HALF_LIFE_S = 86400.0
@@ -184,14 +185,17 @@ def read_ledger(path: str) -> dict:
 
     data = small_stores.get(path)
     if isinstance(data, dict) and isinstance(data.get("objs"), dict):
-        return data
+        return {**data, "objs": cache_rows.newer(cache_rows.objs(path), data["objs"])}
     return {"L": 0.0, "objs": {}}
 
 
 def write_ledger(path: str, data: dict) -> None:
+    """The scalars to kv, the objects to evict_objs (GOH.KVBLOBS); all to kv when the cache takes
+    none. `objs` stays, empty: an older copy reads no ledger without it."""
     import small_stores
 
-    small_stores.put(path, data)
+    kept = cache_rows.put_objs(path, data["objs"])
+    small_stores.put(path, {**data, "objs": {}} if kept else data)
 
 
 def load(path: str) -> dict:

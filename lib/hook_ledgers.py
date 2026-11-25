@@ -60,7 +60,9 @@ from typing import Any
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import body_columns  # the lib directory, on the path from the line above
 import body_tables
+import candidate_columns
 import goh_db
+import kv_rows
 import lock_order
 import spawn_columns
 import state_paths
@@ -296,16 +298,20 @@ def busy() -> dict:
 def watch() -> object:
     """The weekly watch's last record (its kv row), or None before its first run."""
     with _read() as con:
-        return _kv(con, WATCH) if con is not None else None
+        if con is None:
+            return None
+        con.execute("BEGIN")  # the report and its rows are one snapshot
+        return kv_rows.first_done(con, _kv(con, WATCH))
 
 
 def record_watch(state: dict, candidates: list[dict] | None) -> None:
     """One weekly run: its record, and (when the SPEND section ran) its fault candidates."""
     with goh_db.transaction() as con:
         _kv_put(con, WATCH, state)
+        kv_rows.put_first_done(con, state)
         at = time.time()
         for row in candidates if candidates is not None else []:
-            con.execute("INSERT INTO fault_candidates(at, body) VALUES (?, ?)", (at, _dump(row)))
+            candidate_columns.write(con, row, at)
 
 
 def candidates() -> list[dict]:
@@ -313,9 +319,8 @@ def candidates() -> list[dict]:
     with _read() as con:
         if con is None:
             return []
-        return [json.loads(b) for (b,) in con.execute(
-            "SELECT body FROM fault_candidates WHERE at=(SELECT MAX(at) FROM fault_candidates)"
-            " ORDER BY n")]  # fmt: skip
+        con.execute("BEGIN")  # a candidate and its child rows are one snapshot
+        return candidate_columns.read(con, "at = (SELECT MAX(at) FROM fault_candidates)")
 
 
 def main(argv: list[str]) -> int:
