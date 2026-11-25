@@ -23,8 +23,6 @@
   "test_crates_drift.py": 1,
   "test_credential_urls_native_parity.py": 1,
   "test_dep_currency_native_parity.py": 1,
-  "test_display_frames.py": 1,
-  "test_display_seam.py": 1,
   "test_foreign_edit.py": 1,
   "test_gate_calibration.py": 1,
   "test_gate_environment.py": 1,

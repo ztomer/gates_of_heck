@@ -18,6 +18,7 @@ from pathlib import Path
 import _fake_cargo
 import pytest
 from _fast_git import fast_init
+from _grown import built
 from _tree_lint import private_copy, records, tree_lint  # noqa: F401  # tree_lint is a fixture
 from conftest import REPO_ROOT, stage, write
 from test_rust_gate import CURRENT, clone, warm_crate  # noqa: F401  # warm_crate is a fixture
@@ -57,11 +58,11 @@ def test_the_rust_gate_removes_its_scope_file(tmp_path, warm_crate) -> None:  # 
     assert [n for n in _left(tmpdir) if n.startswith("goh")] == []
 
 
-def _one_corpus(home: Path) -> Path:
+def _build_one_corpus(home: Path) -> None:
     """An estate of one: the first entry's corpus, at the floor the sweep takes. The machine's own
     were copied whole, four times each (5,000 file events), for the same two directories of TMPDIR
-    to be made and removed. An estate of none is red: the
-    sweep's green and the probe's are this one's."""
+    to be made and removed. An estate of none is red: the sweep's green and the probe's are this
+    one's."""
     entry = _estate_table.ESTATE[0]
     repo = home / entry["root"].removeprefix("~/")
     body = "".join(f"pub const LINE_{n}: u32 = {n};\n" for n in range(12))
@@ -69,7 +70,6 @@ def _one_corpus(home: Path) -> Path:
         write(repo, f"{entry['scope'][0]}/src/part_{n}{entry['ext']}", body)
     fast_init(repo)
     stage(repo, ".")
-    return home
 
 
 def test_structural_full_leaves_nothing_in_tmpdir(tmp_path, tree_lint) -> None:  # noqa: F811
@@ -82,8 +82,9 @@ def test_structural_full_leaves_nothing_in_tmpdir(tmp_path, tree_lint) -> None: 
     tmpdir.mkdir()
     own = private_copy(tree_lint, tmp_path / "verdicts")  # no other test writes this one
     before = records(own)
+    estate = built(tmp_path / "estate", "one-corpus", _build_one_corpus)
     env = {**os.environ, "TMPDIR": str(tmpdir) + "/", "GOH_CACHE_DB": str(own),
-           "GOH_ESTATE_HOME": str(_one_corpus(tmp_path / "estate"))}  # fmt: skip
+           "GOH_ESTATE_HOME": str(estate)}  # fmt: skip
     r = subprocess.run(["bash", str(REPO_ROOT / "gates" / "structural.sh"), "--full"],
                        cwd=REPO_ROOT, capture_output=True, text=True, timeout=600,
                        env=env, stdin=subprocess.DEVNULL, check=False)  # fmt: skip

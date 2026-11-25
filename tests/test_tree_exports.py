@@ -30,7 +30,7 @@ def _tree(repo: Path, rev: str) -> dict[str, tuple[str, bool]]:
     return {path: (meta.split()[2], meta.startswith("100755")) for meta, path in rows}
 
 
-def _small(tree: Path) -> None:
+def _build_small(tree: Path) -> None:
     fast_init(tree)
     write(tree, "README.md", "the tree\n")
     write(tree, "gates/_export_bin_goh.sh", (REPO_ROOT / "gates/_export_bin_goh.sh").read_text())
@@ -42,7 +42,7 @@ def _small(tree: Path) -> None:
 
 @pytest.fixture
 def copy(tmp_path: Path) -> Path:
-    copy = built(tmp_path / "copy", "export-kit", _small)
+    copy = built(tmp_path / "copy", "export-kit", _build_small)
     (copy / "README.md").write_text("another\n")
     (copy / "lib" / "a_new_one.py").write_text("NEW = 1\n")
     (copy / "gates" / "x.sh").chmod(0o644)
@@ -52,7 +52,7 @@ def copy(tmp_path: Path) -> Path:
 
 
 def _export(copy: Path, rev: str, cache: Path, *but: str) -> Path:
-    return export_of(copy, rev, cache, *but, of=process_template("export-kit", _small))
+    return export_of(copy, rev, cache, *but, of=process_template("export-kit", _build_small))
 
 
 def test_the_export_holds_the_trees_files_and_nothing_else(copy: Path, tmp_path: Path) -> None:

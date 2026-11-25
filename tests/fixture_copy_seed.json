@@ -7,8 +7,6 @@
   "test_commit_gate_structural.py": 1,
   "test_commit_hook_git_env.py": 1,
   "test_commit_msg_git_env.py": 1,
-  "test_display_frames.py": 1,
-  "test_display_seam.py": 1,
   "test_gate_calibration.py": 1,
   "test_goh_build_publish.py": 1,
   "test_goh_prefetch.py": 3,
