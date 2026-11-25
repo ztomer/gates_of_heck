@@ -32,11 +32,13 @@ LOAD = REPO_ROOT / "tools" / "load.py"
 # --- the rule -------------------------------------------------------------------------------------
 
 
-def test_a_land_path_run_beside_two_lane_gates_holds_three_quarters_of_the_cores() -> None:
+def test_a_land_path_run_beside_two_lane_gates_leaves_them_two_cores() -> None:
+    """GOH.QOSCLAMP: beside 2 unclamped lane workers a land runs within 10% of the old clamp's."""
     classes = ["pre", "lane", "lane"]
-    assert land_share.weighted(16, classes, "pre") == 12
-    assert land_share.weighted(16, classes, "lane") == 2
-    assert land_share.weighted(16, ["land", "work", "lane"], "land") == 12
+    assert land_share.weighted(16, classes, "pre") == 14
+    assert land_share.weighted(16, classes, "lane") == 1
+    assert land_share.weighted(16, ["pre", "lane"], "lane") == 2
+    assert land_share.weighted(16, ["land", "work", "lane"], "land") == 14
 
 
 def test_with_no_land_path_run_the_share_is_cores_over_admitted() -> None:
@@ -47,13 +49,13 @@ def test_with_no_land_path_run_the_share_is_cores_over_admitted() -> None:
 
 
 def test_land_path_runs_split_their_part_and_one_alone_takes_the_machine() -> None:
-    assert land_share.weighted(16, ["pre", "land", "lane"], "pre") == 6
-    assert land_share.weighted(16, ["pre", "land", "lane"], "lane") == 4
+    assert land_share.weighted(16, ["pre", "land", "lane"], "pre") == 7
+    assert land_share.weighted(16, ["pre", "land", "lane"], "lane") == 2
     assert land_share.weighted(16, ["land"], "land") == 16
     assert land_share.weighted(16, ["pre", "lane"], "pre", frac=0.5) == 8
 
 
-@pytest.mark.parametrize("frac", [0.25, 0.5, 0.75, 0.9, 1.0])
+@pytest.mark.parametrize("frac", [0.25, 0.5, 0.75, 0.875, 1.0])
 def test_the_bound_the_shares_sum_to_at_most_the_cores(frac: float) -> None:
     """THE BOUND (lib/worker_share.py): whenever the gates fit at one core each, the workers of
     every admitted gate sum to at most the cores, and none gets zero."""
@@ -69,7 +71,7 @@ def test_the_bound_the_shares_sum_to_at_most_the_cores(frac: float) -> None:
 
 
 def test_the_knob_is_one_fraction_from_the_env_or_the_gatesrc() -> None:
-    assert land_share.fraction({}) == 0.75
+    assert land_share.fraction({}) == 0.875
     assert land_share.fraction({"GOH_LAND_SHARE": "0.5"}) == 0.5
     assert land_share.fraction({}, gatesrc=lambda k: "0.6" if k == "GOH_LAND_SHARE" else "") == 0.6
     resolved = {"GOH_SHARE_LAND": "0.8", "GOH_LAND_SHARE": "0.5"}
@@ -113,13 +115,13 @@ def _pool(tmp_path: Path, env: dict[str, str], name: str) -> worker_share.Pool:
     )
 
 
-def test_a_land_path_runs_live_pool_holds_three_quarters_beside_two_lane_gates(tmp_path) -> None:
+def test_a_land_path_runs_live_pool_leaves_two_lane_gates_a_core_each(tmp_path) -> None:
     held = [_hold_as(tmp_path, "short-0", "pre"), _hold_as(tmp_path, "slot-0", "lane"),
             _hold_as(tmp_path, "slot-1", "lane")]  # fmt: skip
     try:
         pre, lane = _seams(tmp_path, "pre"), _seams(tmp_path, "lane")
-        assert _batch(_pool(tmp_path, pre, "pre")) == 12
-        assert _batch(_pool(tmp_path, lane, "lane")) == 2
+        assert _batch(_pool(tmp_path, pre, "pre")) == 14
+        assert _batch(_pool(tmp_path, lane, "lane")) == 1
     finally:
         for f in held:
             f.close()
@@ -132,7 +134,7 @@ def test_a_lane_run_shrinks_within_one_test_while_a_land_path_run_is_admitted(tm
         assert _batch(pool) == 8  # two lanes: cores // admitted
         pre = _hold_as(tmp_path, "short-0", "pre")
         try:
-            assert _batch(pool) == 2  # the pre-step takes 12: the lanes split the other 4
+            assert _batch(pool) == 1  # the pre-step takes 14: the lanes split the other 2
         finally:
             pre.close()
         assert _batch(pool) == 8  # and get them back the test after it ends
@@ -148,7 +150,7 @@ def test_a_land_path_run_outside_any_slot_counts_itself_as_land_path(tmp_path) -
             worker_share.live(_seams(tmp_path, "pre", own="1")),
             worker_share.live(_seams(tmp_path, "work", own="1")),
         )
-        assert (pre, work) == (12, 5)  # beside a lane and a work gate; no land run: 16 // 3
+        assert (pre, work) == (14, 5)  # beside a lane and a work gate; no land run: 16 // 3
     finally:
         for f in held:
             f.close()
@@ -172,7 +174,7 @@ def _admit_env(tmp_path: Path, **extra: str) -> dict[str, str]:
                         GOH_GATE_SLOT_DIR=str(tmp_path / "slots"), **extra)  # fmt: skip
 
 
-def test_the_load_admission_gives_a_pre_step_three_quarters_and_records_its_class(tmp_path) -> None:
+def test_the_load_admission_gives_a_pre_step_its_part_and_records_its_class(tmp_path) -> None:
     held = [_hold_as(tmp_path, "slot-0", "lane"), _hold_as(tmp_path, "slot-1", "lane")]
     code = (
         f"import sys; sys.path.insert(0, {str(REPO_ROOT / 'lib')!r}); import os, admission\n"
@@ -191,7 +193,7 @@ def test_the_load_admission_gives_a_pre_step_three_quarters_and_records_its_clas
         for f in held:
             f.close()
     assert got.returncode == 0, got.stdout + got.stderr
-    assert got.stdout.split() == ["taken", "pre", "12", "pre", "pre"], got.stdout + got.stderr
+    assert got.stdout.split() == ["taken", "pre", "14", "pre", "pre"], got.stdout + got.stderr
 
 
 def test_the_shell_admission_gives_a_lane_gate_the_rest_beside_a_land_gate(tmp_path) -> None:
@@ -210,7 +212,7 @@ def test_the_shell_admission_gives_a_lane_gate_the_rest_beside_a_land_gate(tmp_p
         for f in held:
             f.close()
     assert got.returncode == 0, got.stdout + got.stderr
-    assert "W=4 C=lane" in got.stdout, got.stdout + got.stderr  # 16 - 12 for the one lane gate
+    assert "W=2 C=lane" in got.stdout, got.stdout + got.stderr  # 16 - 14 for the one lane gate
 
 
 def test_the_land_pre_step_and_pre_land_declare_the_land_paths_pre_class() -> None:

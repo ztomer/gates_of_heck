@@ -279,6 +279,6 @@ GOH_GATE_SLOT_STARVE_MIN=15
 # THE LAND PATH'S SHARE of the cores (GOH.LANDSHARE, lib/land_share.py): while a land's pre-step,
 # pre-land, gate or a ship is admitted, those runs split this fraction of the cores and every other
 # gate splits the rest (at least 1 each); with none admitted every gate gets cores // admitted.
-# 0.75: 12 of 16 -- the goh suite's own worker cap -- where equal shares gave a pre-step 5 of 16
-# beside lane gates and the land path took ~30 min per land (2026-11-21, GOH.UGREPVQ).
-GOH_LAND_SHARE=0.75
+# 0.875: 14 of 16, the lanes' 2 at default QoS (GOH.QOSCLAMP: beside 2 unclamped lane workers a
+# 12-worker land-like job ran within 10% of its wall beside clamped ones, beside 4 it ran +26%).
+GOH_LAND_SHARE=0.875

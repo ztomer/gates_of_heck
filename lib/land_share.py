@@ -14,7 +14,7 @@ of every lane's work; lane and work gates are not.
 
 THE WEIGHTED SHARE. While a land-path run is admitted -- the enqueue pre-step and the lander's
 pre-land (class `pre`), a land's gate (`land`), `goh ship` (`ship`) -- the land path takes
-`GOH_LAND_SHARE` of the cores (3/4 unless the env or the repo's .gatesrc names another fraction),
+`GOH_LAND_SHARE` of the cores (7/8 unless the env or the repo's .gatesrc names another fraction),
 split equally among the land-path runs; every other gate (lane, work, a commit gate) splits the
 rest, at least 1 each. With no land-path run admitted the rule is worker_share's old one,
 `cores // admitted`. THE BOUND is kept: the land part is at least one per land run and leaves at
@@ -24,8 +24,8 @@ core each (beyond that every gate gets 1, as `divide` always did).
 THE CLAMP (QoS, GOH.QOSCLAMP). macOS sets none on a lane- or work-class gate: the share above is
 the land path's protection. Until 2026-11-25 such a gate ran under `taskpolicy -c utility`. With
 43-62% of the machine idle one CPU loop took 9.8-26.3 s under it against 1.05 s, and the idle
-suite's 17 workers sat runnable at 9% of a core each for 2,117 s. One worker, alone but on a box
-other sessions kept at load 33, 4% idle (12P+4E; mean seconds a unit of CPU / 20 spawns / memory /
+suite's 17 workers sat runnable at 9% of a core each for 2,117 s. One worker alone, on a box other
+sessions kept at load 33, 4% idle (12P+4E; mean seconds a unit of CPU / 20 spawns / memory /
 8 threads over 3 rounds; P = its CPU time on P cores; Q = runnable over running):
 
     default       .085 .031 .106 .036   P .87   Q 1.1   base priority 31
@@ -34,13 +34,31 @@ other sessions kept at load 33, 4% idle (12P+4E; mean seconds a unit of CPU / 20
     tiers -l5-t5  .084 .033 .105 .035   P .90   Q 1.1   base priority 31
     utility       .228 .188 .460 .151   P .40   Q 3.2   base priority 20: x2.7-6
 
-The clamp prefers E cores rather than confining to them, and waits. `nice` and the tiers leave a
-thread's base priority at 31, so the 2026-11-21 note's 'nice 19: no effect' stands; a task role
-(setpriority's PRIO_DARWIN_ROLE) is not inherited by a child. `GOH_LANE_QOS=utility` asks for the
-clamp by name. On Linux it is nice + ionice's lowest best-effort level, a weight that costs an idle
-box nothing (a cgroup weight needs a cgroup the gate does not own: not used). An OS outside
-the house targets is a hard refusal behind the `GOH_QOS_OS` seam; a missing tool degrades with its
-reason. `GOH_LANE_QOS=off` turns any clamp off (a timing probe that must run at default QoS).
+CONTENDED, MID-RUN (2026-11-25 09:39-09:43, load 15-51, other sessions' work beside it): a lane-like
+job of N workers of the same mix, a 12-worker land-like job started 5 s later. Land wall s, its CPU
+and spawn units' p50/p95, and the lane's units a second alone -> beside it (solo land: 5.8-6.2 s):
+
+    none/16      13.97  .215/.460  .116/.203   77 -> 48
+    nice 10/16   13.48  .189/.447  .157/.364   88 -> 51    nice 19/16  12.77   89 -> 55
+    tiers/16     13.52  .247/.458  .101/.176   86 -> 51    (the base priority decides, not nice)
+    utility/16   6.45, 6.56  .113/.21  .08/.16   23-28 -> 0.3-3
+    SIGSTOP/16   6.54   .115/.222  .089/.174   79 -> 0.2   (a stopped lock holder stalls the land)
+    none/4        8.12  .116/.259  .093/.194   60 -> 21
+    utility/4    6.46, 6.54  .105/.19  .072/.15   16-30 -> 1.1
+    none/2       6.78, 6.94  .103/.20  .077/.14   31-32 -> 12
+    none/1       6.30, 6.95  .114/.22  .074/.14   17-19 -> 6.6
+
+The clamp prefers E cores rather than confining to them, and starves a contended lane to 0.3-3
+units a second. `nice` and the tiers leave a thread's base priority at 31 and protected nothing
+(the 2026-11-21 note's 'nice 19: no effect' stands); a task role is not inherited by a child. So
+the share, not a clamp: GOH_LAND_SHARE 7/8 leaves the lanes 2 cores (+5% on the land's wall against
+the clamp's; 4 cost it +26%), live within a test, and a lane alone runs x2-4 faster. A run whose
+width was fixed at admission (a lane's plain `load.py 0 -- CMD`) keeps it when a land starts later:
+the open half. `GOH_LANE_QOS=utility` asks for the clamp by name. On Linux it is nice + ionice's
+lowest best-effort level, a weight that costs an idle box nothing (a cgroup weight needs a cgroup
+the gate does not own: not used). An OS outside the house targets is a hard refusal behind the
+`GOH_QOS_OS` seam; a missing tool degrades with its reason. `GOH_LANE_QOS=off` turns any clamp off
+(a timing probe that must run at default QoS).
 
 A GATE THAT RUNS NO SUITE (GOH.PREWIDTH). A land's gate whose suite carries the pre-step's verdict
 (tools/pytest.sh) runs only its structural, cargo and canary steps, yet it held an equal share: two
@@ -53,7 +71,7 @@ sum to at most the cores.
 
 THE LAND PATH'S SHARE AND THE LANES' CLAMP (GOH.LANDSHARE): while a land-path gate (class `pre` --
 a land's pre-step and the lander's pre-land --, `land`, `ship`) is admitted, those split
-`GOH_LAND_SHARE` of the cores (0.75) and every other gate the rest, at least 1 each, read live from
+`GOH_LAND_SHARE` of the cores (0.875) and every other gate the rest, at least 1 each, read live from
 each held slot's recorded class; a lane/work gate's `tools/load.py 0` command and its
 `tools/pytest.sh` suite exec under nice + ionice on Linux and at default QoS on macOS
 (`GOH_LANE_QOS=utility` clamps it there), behind the `GOH_QOS_OS` seam; `qos --class C` is the
@@ -81,9 +99,7 @@ from collections.abc import Callable
 LAND_PATH = frozenset({"pre", "land", "ship"})  # the runs a land waits on (lib/gate_lanes.py)
 CLAMPED = frozenset({"lane", "work"})  # the classes a clamp is for (qos_prefix)
 SHARE_ENV = "GOH_LAND_SHARE"  # the knob: the land path's fraction of the cores, (0, 1]
-SHARE_DEFAULT = (
-    0.75  # the plan's start (rules.spd_plan.strategy_20261121): 12 of 16 = the suite's cap
-)
+SHARE_DEFAULT = 0.875  # 14 of 16: the widest lane part beside which a land keeps its wall (2)
 RESOLVED_ENV = "GOH_SHARE_LAND"  # the fraction as the admission resolved it, for every runner
 CLASS_ENV = "GOH_SHARE_CLASS"  # the class this run's share is counted as (set at admission)
 QOS_ENV = "GOH_LANE_QOS"  # `off`: no clamp; `utility`: macOS's, by name; unset: the OS's default
@@ -102,7 +118,7 @@ def fraction(
 ) -> float:
     """The land path's fraction: GOH_SHARE_LAND (resolved at admission), else GOH_LAND_SHARE from
     the environment, else from `gatesrc` (the repo's .gatesrc, read only where a gate is admitted),
-    else 3/4. ValueError for anything but a number in (0, 1]."""
+    else 7/8. ValueError for anything but a number in (0, 1]."""
     env = os.environ if environ is None else environ
     raw = env.get(RESOLVED_ENV, "").strip() or env.get(SHARE_ENV, "").strip()
     if not raw and gatesrc is not None:

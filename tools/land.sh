@@ -206,7 +206,7 @@ land_pre() {
     [ -n "${1:-}" ] || pre_judged=""
     pre_base="$(git -C "$main" rev-parse HEAD)"
     info "pre-land: $cmd"
-    # Class `pre` (GOH.LANDSHARE): the land path's share of the cores (3/4, lib/land_share.py) and
+    # Class `pre` (GOH.LANDSHARE): the land path's share of the cores (7/8, lib/land_share.py) and
     # default QoS, in the SHORT lane at the commit gate's rank.
     # The SHORT lane (GOH.PRESTEPADMIT): the commit gate's slots, which no long gate takes, so the
     # pre-step starts while long gates hold every long slot -- a land queues for a long slot ONCE,
