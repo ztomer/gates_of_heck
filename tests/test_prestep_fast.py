@@ -22,7 +22,6 @@ from test_prestep_judges import MAP_JUDGE, PYTEST, _branch, _enqueue
 from timing_bounds import assert_sooner
 
 sys.path.insert(0, str(REPO_ROOT / "tools"))
-import affected_tests as at
 
 from lib import durations, fast_tests as ft
 
@@ -78,7 +77,7 @@ def test_units_are_the_functions_the_file_defines_now(tmp_path) -> None:
 
 def test_goh_s_cheap_structural_judges_are_candidates_on_its_own_tree(tmp_path, monkeypatch):
     """The judges that cost lands in seconds are among the candidates, whatever the diff."""
-    cands = ft.units(REPO_ROOT, list(at.affected(REPO_ROOT, [], graph=_tree_graph.real())))
+    cands = ft.units(REPO_ROOT, list(_tree_graph.affected([])))
     for judge in ("tests/test_wiring.py::test_every_script_has_a_row_in_the_map",
                   "tests/test_config_schema.py::test_every_declared_key_is_read"):  # fmt: skip
         assert judge in cands, judge

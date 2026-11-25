@@ -1,10 +1,8 @@
 """A goh script's dependency closure, read from its own sources -- never a hand list.
 
 GOH.CLASS.HARNESS (2026-11-15). About 28 fixture items in a month were one shape: a fixture copied
-a gate and not what the gate SOURCES. The GOH.BASH5SILENT guard broke four suites in one round
-(bcb4016) because their fixtures carried a script without lib/bash5.sh, and the empty-scope
-skeleton (abba237) answered with a second hand list (`GUARD = "lib/bash5.sh"`). A hand list is
-right until the next `. "$HERE/../lib/x.sh"` line, which nothing compares it against.
+a gate and not what the gate SOURCES (GOH.BASH5SILENT's guard broke four suites in one round,
+bcb4016). A hand list is right until the next `. "$HERE/../lib/x.sh"` line.
 
 `closure(paths, root)` follows, transitively:
 
@@ -13,31 +11,25 @@ right until the next `. "$HERE/../lib/x.sh"` line, which nothing compares it aga
     the script assigns from its own directory (`HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." &&
     pwd)"`), or chains from one (`ROOT="$(cd "$HERE/.." && pwd)"`, `ROOT="$HERE/.."`); and
     ROOT_VARS (`$GOH_DIR`, `$GOH_ROOT`, `$GOH`, `$PROVEN_GOH_ROOT`, unless assigned) against the
-    root. Any other variable is a consumer's tree or a runtime path, named unresolved, never
-    guessed; so is a bare path (`.
-    ./.gatesrc` reads the caller's working directory). An unassigned `$HERE` in a sourced sibling
-    is its caller's directory, which in goh is the sibling's own;
+    root. Any other variable is a consumer's tree or a runtime path, named unresolved; so is a
+    bare path (the caller's working directory). An unassigned `$HERE` in a sourced sibling is its
+    caller's directory, which in goh is the sibling's own;
   * a Python `import`/`from ... import`, a module found beside the file, at the root (`tui.lib`),
     or in lib/, checks/ or gates/ (the directories goh's scripts put on sys.path); and a module a
-    LITERAL names to `importlib.import_module("x")` or `__import__("x")` (GOH.PROVENCLOSURE: the
-    gap GOH.LANDERSTALECODE found, a gate that loads its scanner by name read as importing nothing);
+    LITERAL names to `importlib.import_module("x")` or `__import__("x")` (GOH.PROVENCLOSURE);
   * with `named=True`, a file of the tree the CODE of a file names by path (`names_path`: a
     literal `"lib/busyloop_shapes.json"`, or each part quoted), its prose blanked first
-    (checks/_prose_mask.py): a data file a check reads, a script it runs. One rule with
-    tools/affected_tests.py, which follows it from a test (GOH.AFFECTEDTRANSITIVE). Off by default:
-    a fixture copies what its gate sources, not every file the gate mentions.
+    (checks/_prose_mask.py): a data file a check reads, a script it runs (GOH.AFFECTEDTRANSITIVE).
+    Off by default: a fixture copies what its gate sources, not every file the gate mentions.
 
 What it does NOT follow, so a fixture that needs one says so (`extra=`): a script a gate RUNS
-rather than sources (`"$GOH_PY" "$HERE/check_x.py"`; lib/run_rule.py adds those edges, through
-the same declared roots), a path built at runtime (`$PWD/...`, `. "$_goh_copy"`,
-`import_module(name)`), and the commands a script finds on PATH (`dirname`, test_doctor's shim
-PATH).
+rather than sources (lib/run_rule.py adds those edges, through the same declared roots), a path
+built at runtime (`$PWD/...`, `import_module(name)`), and the commands a script finds on PATH.
 `unresolved` names every source line it read and could not place, so a reader sees the hole.
 
     copy_closure(dest, "tools/release_goh.sh")   # the script and what it sources, at their paths
 The ONE fixture builder for a copy of part of goh (tests/fixture_copy_lint.py refuses a hand copy
-beyond its shrink-only seed); the empty-scope skeleton carries what its shell gates source through
-it. `named_edges` adds the names-a-path edge (`names_path`).
+beyond its shrink-only seed), the empty-scope skeleton's shell gates included.
 """
 
 from __future__ import annotations
@@ -48,6 +40,7 @@ import os
 import re
 import shutil
 import subprocess
+from collections.abc import Iterator
 from functools import cache
 from pathlib import Path
 
@@ -71,8 +64,7 @@ _ASSIGN = re.compile(
 # The names goh's scripts give the goh checkout itself (GOH_DIR by the house contract;
 # gates/_proven.sh names its own PROVEN_GOH_ROOT for each script sourced after it).
 ROOT_VARS = ("GOH_DIR", "GOH_ROOT", "GOH", "PROVEN_GOH_ROOT")
-# A sourced sibling that reads its caller's HERE (gates/_rust_proven.sh): goh's callers set it to
-# their own directory, which is the sibling's.
+# A sourced sibling reads its caller's HERE, which in goh is the sibling's own directory;
 # `_goh_d` is the bash 5 guard's own directory, found with builtins (`${BASH_SOURCE[0]%/*}`).
 SELF_VARS = ("HERE", "_goh_d")
 # A keyword needs the blank before the command: `else. Build it` (a message) is no source.
@@ -198,8 +190,8 @@ _IMPORTERS = ("import_module", "__import__")
 
 
 def import_names(tree: ast.AST) -> list[str]:
-    """The module names a literal hands an importer function in `tree` (`importlib.import_module(
-    "check_x")`); a name built at runtime is no edge, and `dynamic_imports` says it is there."""
+    """The module names a literal hands an importer function in `tree`; a name built at runtime is
+    no edge, and `dynamic_imports` says it is there."""
     out = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and _importer(node) and node.args:
@@ -210,8 +202,7 @@ def import_names(tree: ast.AST) -> list[str]:
 
 
 def dynamic_imports(tree: ast.AST) -> int:
-    """How many importer calls in `tree` name their module at runtime (no literal): a reader that
-    keys on the closure cannot place them."""
+    """How many importer calls in `tree` name their module at runtime: no closure places them."""
     return sum(
         1
         for node in ast.walk(tree)
@@ -227,19 +218,29 @@ def _importer(node: ast.Call) -> bool:
     return name in _IMPORTERS
 
 
+def statements(tree: ast.AST) -> Iterator[ast.AST]:
+    # Every statement of `tree` in ast.walk's order: all a reader of imports need walk.
+    todo = [tree]
+    for node in todo:
+        yield node
+        for field in ("body", "handlers", "cases", "orelse", "finalbody"):
+            todo += getattr(node, field, ())
+
+
 def _py_deps(path: Path, root: Path, py_dirs: tuple[str, ...] = PY_DIRS) -> list[Path]:
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+        tree = ast.parse(text)
     except (SyntaxError, UnicodeDecodeError):
         return []
     deps: list[Path] = []
-    for name in import_names(tree):
+    for name in import_names(tree) if any(i in text for i in _IMPORTERS) else ():
         rel = name.replace(".", "/")
         for base in [path.parent, *(root / d for d in py_dirs)]:
             if found := _module(base, rel):
                 deps.append(found)
                 break
-    for node in ast.walk(tree):
+    for node in statements(tree):
         names: list[str] = []
         if isinstance(node, ast.Import):
             names = [a.name for a in node.names]
@@ -273,7 +274,10 @@ def _py_deps(path: Path, root: Path, py_dirs: tuple[str, ...] = PY_DIRS) -> list
 
 
 def _module(base: Path, rel: str) -> Path | None:
-    return _existing([base / f"{rel}.py", base / rel / "__init__.py"])
+    for tail in (f"{rel}.py", f"{rel}/__init__.py"):  # str paths: 95,000 lookups a tree
+        if os.path.isfile(found := os.path.join(base, tail)):
+            return Path(os.path.normpath(found))
+    return None
 
 
 def direct(
@@ -355,8 +359,7 @@ NAMER_MAX = 1 << 20
 @cache
 def tree_files(root: Path) -> list[str]:
     """Every file under root a `named` edge may reach, root-relative: git's tracked and untracked
-    ones in a checkout (never a build product like bin/goh), a walk elsewhere; bytecode and VCS
-    state left out."""
+    ones in a checkout (never a build product), a walk elsewhere; no bytecode, no VCS state."""
     if (root / ".git").exists():
         env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
         argv = ["git", "-C", str(root), "ls-files", "-z", "-co", "--exclude-standard"]
@@ -393,17 +396,14 @@ def closure(
 ) -> tuple[list[str], list[str]]:
     """Every root-relative file `paths` need (themselves included), and what could not be placed.
 
-    `goh` is the goh checkout `$GOH_DIR` names; a consumer's gate that sources goh's own files
-    needs them from goh, not from its fixture, so they are outside `root` and left out. With
-    `named_edges`, a file of the tree another's code names by path is one more edge (`named`)."""
+    `goh` is the goh checkout `$GOH_DIR` names: its files, sourced by a consumer's gate, are outside
+    `root`, left out. With `named_edges`, a file another's code names is an edge (`named`)."""
     root = Path(os.path.normpath(root))
     seen: dict[Path, None] = {}
     unresolved: list[str] = []
     todo = [Path(os.path.normpath(root / p)) for p in paths]
-    # A code file's edges are its sources, imports and runs; what a name adds is DATA (a scanner's
-    # table, a shapes file). A script named by path is followed only out of checks/ and tests/,
-    # tools/affected_tests.py's rule: lib/ and gates/ name every script in their messages, and
-    # following those names made one runner's closure the whole tree (1,663 files, 33 s).
+    # What a name adds to a code file is DATA: a script named by path is followed only from checks/
+    # and tests/, tools/affected_tests.py's rule; lib/ and gates/ name every script they print
     every = tree_files(root) if named_edges else []
     data = [c for c in every if not c.endswith(CODE)]
     scripts = [c for c in every if c.endswith(CODE)]

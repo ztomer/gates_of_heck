@@ -83,8 +83,12 @@ def _tree(tmp_path, extra: dict[str, str] | None = None):
     return tmp_path
 
 
-def _binary(root, path: str, graph=None) -> set[str]:
-    return {t for t, why in at.affected(root, [path], graph=graph).items() if "goh binary" in why}
+def _runners(chosen: dict[str, str]) -> set[str]:
+    return {t for t, why in chosen.items() if "goh binary" in why}
+
+
+def _binary(root, path: str) -> set[str]:
+    return _runners(at.affected(root, [path]))
 
 
 @pytest.mark.parametrize(
@@ -175,17 +179,17 @@ def test_the_dispatch_table_has_an_arm_for_every_variant_on_the_real_tree() -> N
 
 def test_the_scanner_change_chooses_its_runners_and_not_every_binary_test() -> None:
     """The lane's measure: GOH.AFFECTEDBINARY ran 283 whole files for a layerparity.rs change."""
-    chosen = _binary(REPO_ROOT, SCANNER, _tree_graph.real())
+    chosen = _runners(_tree_graph.affected([SCANNER]))
     assert "tests/test_tui_marks.py" in chosen  # tuimarks calls layerparity::push_text
     assert "tests/test_goh_structural.py" in chosen  # layer-parity is a structural step
     assert OTHER not in chosen
     # A share of every runner, not a count: a new test of a gate that runs the binary is one more
     # runner of both (199 on main 2026-11-17, then 200 of 295 with tests/test_proven_tool_line.py
     # red at the old `< 200`: GOH.PREPARITY's land). GOH.AFFECTEDBINARY chose every one, 283.
-    runners = _binary(REPO_ROOT, "crates/goh/src/main.rs", _tree_graph.real())
+    every = _tree_graph.affected(["crates/goh/src/main.rs"])
+    runners = _runners(every)
     assert len(chosen) < 0.75 * len(runners), (len(chosen), len(runners))
-    every = set(at.affected(REPO_ROOT, ["crates/goh/src/main.rs"], graph=_tree_graph.real()))
-    assert chosen < every and OTHER in every, sorted(chosen - every)
+    assert chosen < set(every) and OTHER in every, sorted(chosen - set(every))
 
 
 @pytest.mark.parametrize(

@@ -115,7 +115,7 @@ def test_a_reader_the_diff_chooses_runs_whole(tmp_path: Path) -> None:
 
 def test_the_real_pre_set_runs_a_slow_readers_reading_tests_not_the_file() -> None:
     """test_bench_lock.py was 101 s of the 879 s the whole-file pre-set summed (2026-11-16)."""
-    chosen = at.affected(REPO_ROOT, [], graph=_tree_graph.real())
+    chosen = _tree_graph.affected([])
     assert "tests/test_bench_lock.py" not in chosen
     assert "tests/test_bench_lock_joins.py" not in chosen
     assert "tests/test_bench_lock_joins.py::test_every_gate_joins_through_goh_init" in chosen
@@ -125,7 +125,7 @@ def test_the_real_pre_set_runs_a_slow_readers_reading_tests_not_the_file() -> No
 
 def test_every_node_the_pre_set_names_is_a_test_pytest_collects() -> None:
     """A node id naming no test is a pytest usage error, and the pre-step red for it."""
-    nodes = [n for n in at.affected(REPO_ROOT, [], graph=_tree_graph.real()) if "::" in n]
+    nodes = [n for n in _tree_graph.affected([]) if "::" in n]
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider",
          "-p", "no:xdist", *nodes],

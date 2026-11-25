@@ -48,7 +48,7 @@ def _tree(tmp_path: Path, files: dict[str, str]) -> Path:
 
 def test_a_test_that_runs_a_changed_file_by_path_is_chosen_on_the_real_tree() -> None:
     """The ONEADMISSION miss: tests/test_lock_order.py runs `REPO_ROOT / "tools" / "load.py"`."""
-    why = at.affected(REPO_ROOT, ["tools/load.py"], graph=_tree_graph.real())
+    why = _tree_graph.affected(["tools/load.py"])
     assert why.get("tests/test_lock_order.py") == "names tools/load.py", why.get(
         "tests/test_lock_order.py"
     )
@@ -75,7 +75,7 @@ def test_the_gate_slot_race_test_is_chosen_for_the_wait_text_its_probe_reads() -
     """GOH.AFFECTEDTRANSITIVE: SLOTFAIR land 1 lost 706 s. tests/test_gate_slot_race.py imports
     checks/_gate_slot_probe.py, whose instrumented copy reads lib/gate_slot.py's wait text; it names
     that path nowhere itself, and the one-level selection stopped at the test."""
-    why = at.affected(REPO_ROOT, ["lib/gate_slot.py"], graph=_tree_graph.real())
+    why = _tree_graph.affected(["lib/gate_slot.py"])
     assert "tests/test_gate_slot_race.py" in why, sorted(why)
 
 
@@ -181,7 +181,7 @@ def test_a_script_a_sourced_gate_runs_by_a_rooted_path_chooses_the_test(tmp_path
 
 
 def test_the_rust_gate_test_is_chosen_for_a_gate_identity_change_on_the_real_tree() -> None:
-    why = at.affected(REPO_ROOT, ["lib/gate_identity.py"], graph=_tree_graph.real())
+    why = _tree_graph.affected(["lib/gate_identity.py"])
     assert "tests/test_rust_gate.py" in why, sorted(k for k in why if "rust_gate" in k)
 
 
@@ -282,7 +282,7 @@ def _files(chosen: dict[str, str]) -> set[str]:
 
 
 def test_the_tree_readers_that_cost_a_land_are_chosen_on_an_empty_diff() -> None:
-    chosen = _files(at.affected(REPO_ROOT, [], graph=_tree_graph.real()))
+    chosen = _files(_tree_graph.affected([]))
     assert [t for t in COST_A_LAND if t not in chosen] == []
 
 

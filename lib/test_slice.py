@@ -132,6 +132,13 @@ def _parse(text: str) -> ast.Module | None:
         return None
 
 
+@lru_cache(maxsize=4096)
+def _import_nodes(text: str) -> tuple[ast.Import | ast.ImportFrom, ...]:
+    """TEXT's import statements, in ast.walk's order: one walk a file, not one a pair of files."""
+    tree = _parse(text) or ast.Module([], [])
+    return tuple(n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom)))
+
+
 def slice_of(text: str, names: frozenset[str]) -> tuple[str, frozenset[str]] | None:
     """(the slice's source, the module-level names it holds) of module TEXT for the NAMES an
     importer takes from it (module doc); None for the whole module."""
@@ -186,7 +193,7 @@ def taken(text: str, target: str, within: frozenset[str] | None = None):
     out: set[str] = set()
     modules: set[str] = set()  # names TARGET is bound to as a module
     seen = False
-    for node in ast.walk(tree):
+    for node in _import_nodes(text):
         if isinstance(node, ast.ImportFrom):
             if node.module in mods or (node.level and node.module == stem):
                 pairs = [(a.name, a.asname or a.name) for a in node.names]
@@ -196,13 +203,11 @@ def taken(text: str, target: str, within: frozenset[str] | None = None):
                 as_module = True
             else:
                 continue
-        elif isinstance(node, ast.Import):
+        else:
             pairs = [(a.name, a.asname or a.name) for a in node.names if a.name in mods]
             if any("." in name and name == local for name, local in pairs):
                 return None  # `import tests.test_x`: bound as `tests`, used as `tests.test_x.y`
             as_module = True
-        else:
-            continue
         if not pairs:
             continue
         seen = True

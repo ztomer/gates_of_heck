@@ -22,8 +22,8 @@ THE SET is the union of
   * the TREE READERS, chosen by what they read: a test file that defines a test_every_/test_no_
     function, or whose source lists or walks the tracked tree (`git ls-files`, `rglob(`,
     `os.walk(`, a glob or iterdir of a REPO_ROOT directory), or reaches a tests/ helper's walk OF
-    THE ROOT -- importing a helper that walks only what it is handed (tests/_tree_clone.py's
-    templates) is no tree read (lib/tree_walk.py, GOH.CLONENOTJUDGE) -- plus WHOLE (readers no
+    THE ROOT -- one that walks only what it is handed (tests/_tree_clone.py's templates) is no
+    tree read (lib/tree_walk.py, GOH.CLONENOTJUDGE) -- plus WHOLE (readers no
     pattern sees). A changed path can break a tree reader whatever it names, so the land gate
     runs them all; the enqueue runs one whose reads are known only for a diff touching them.
   * the TRANSITIVE closure of each test (GOH.AFFECTEDTRANSITIVE): what a test imports, what that
@@ -41,8 +41,7 @@ THE SET is the union of
     lib/ or tools/ module's prose, and never twice in a row: a script's own mentions are not run.
     What a reached SHELL script runs by a variable-rooted path (`"$GOH_PY" "$ROOT/lib/x.py"`) is
     an edge, a file pytest loads before every test included (GOH.PREPARITY: gates/_rust_proven.sh
-    runs lib/gate_identity.py, which tests/_land_verdicts.py imports; the pre-step missed
-    tests/test_rust_gate.py and the land gate went red on 14 of its tests).
+    runs lib/gate_identity.py, which tests/_land_verdicts.py imports; 14 land-gate reds).
   * the BINARY'S RUNNERS (GOH.AFFECTEDBINARY): a build-input change chooses every test running it.
   * the READERS of a changed path (lib/declared_reads.py, GOH.SELECTAUDIT, SELECTLOCKORDER): what
     a test, its tests/ helpers, or a scanner it points at the root globs, copies or declares.
@@ -50,8 +49,7 @@ THE SET is the union of
     for one to its CODE, its readers, the whole suite collected first (lib/fast_tests.py).
   * the RELEASE CANARY, after the tests, when a consumer NAMES a changed path from its own files
     (lib/consumer_reads.py, GOH.LANDMISS1119): no goh test runs a consumer's script, the canary
-    does (GOH.PYTESTPIN: sys_updater reads `required_tools.py --floors`; green here, red in the
-    land gate's canary at 502 s).
+    does (GOH.PYTESTPIN: green here, red in the land gate's canary at 502 s).
 A deleted file is a changed path too: a test still naming it is the one that will go red.
 """
 
@@ -59,6 +57,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import functools
 import os
 import re
 import subprocess
@@ -100,15 +99,16 @@ TREE_NAMED = re.compile(r"^\s*def (test_every_|test_no_)", re.MULTILINE)
 TREE_READ = tree_walk.TREE_READ
 
 
-def _imports(text: str) -> set[str]:
+@functools.cache  # pure in its text: one parse per file, not one per choice
+def _imports(text: str) -> frozenset[str]:
     """Every module name an import in `text` could bind: `a.b` gives {a.b, a, b}; `from a import b`
     gives {a, a.b, b}. A file that does not parse imports nothing (its own test run says why)."""
     try:
         tree = ast.parse(text)
     except SyntaxError:
-        return set()
+        return frozenset()
     names: set[str] = set()
-    for node in ast.walk(tree):
+    for node in source_closure.statements(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 names.add(alias.name)
@@ -119,7 +119,7 @@ def _imports(text: str) -> set[str]:
             for alias in node.names:
                 names.add(f"{node.module}.{alias.name}")
                 names.add(alias.name)
-    return names
+    return frozenset(names)
 
 
 def _module_names(path: str) -> set[str]:

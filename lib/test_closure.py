@@ -46,6 +46,8 @@ _names_path = source_closure.names_path
 # is a mention (GOH.PREPARITY: gates/_rust_proven.sh runs `$PROVEN_GOH_ROOT/lib/gate_identity.py`).
 ROOTED = re.compile(r"\$\{?[A-Za-z_][A-Za-z0-9_]*\}?((?:/[A-Za-z0-9_.-]+)+)")
 
+WORD = re.compile(r"[\w.-]+")
+
 # Where a test's runner finds a module: beside the file, the root, and these (tools/ is on the
 # sys.path of the tests that import a tool).
 PY_DIRS = (*source_closure.PY_DIRS, "tools")
@@ -108,6 +110,7 @@ class Closure:
         self.root = root
         self.texts = _files(root)
         self.scripts = [p for p in self.texts if not Path(p).name.startswith("test_")]
+        self._bases = {s: s.rpartition("/")[2] for s in self.scripts}
         self._edges: dict[str, list[str]] = {}
         self._named: dict[str, list[str]] = {}
         self._uses: dict[str, list[str]] = {}
@@ -115,6 +118,7 @@ class Closure:
         self._base: set[str] | None = None
         self._code: dict[str, str] = {}
         self._reach: dict[str, tuple[dict[str, tuple[str, ...]], set[str]]] = {}
+        self._bare: dict[str, tuple[dict[str, tuple[str, ...]], set[str]]] = {}  # runs=False
         self._cuts: dict[str, dict[str, tuple[str, frozenset[str]]]] = {}
         self._sliced: dict[tuple[str, frozenset[str]], tuple[str, frozenset[str]] | None] = {}
         self._cut_code: dict[tuple[str, frozenset[str]], str] = {}
@@ -143,7 +147,7 @@ class Closure:
         key = (rel, path)
         if key not in self._names:
             self._names[key] = (
-                Path(path).name in self.texts.get(rel, "")  # the cheap test first
+                path.rpartition("/")[2] in self.texts.get(rel, "")  # the cheap test first
                 and _names_path(self.code(rel), path)
             )
         return self._names[key]
@@ -174,7 +178,7 @@ class Closure:
         if rel not in self._uses:
             found: list[str] = []
             if rel.endswith(".py") and not rel.startswith(("tests/", "checks/")):
-                found = [s for s in self.scripts if _shell(s) and s != rel and self.names(rel, s)]
+                found = [s for s in self._naming(rel) if _shell(s)]
             elif rel.endswith((".sh", ".bash")) or Path(rel).parent.name == "bin":
                 here = Path(rel).parent
                 for m in ROOTED.finditer(self.code(rel)):
@@ -191,10 +195,15 @@ class Closure:
         """The scripts `rel` names by path (it runs them): tests/ and checks/ files only."""
         if rel not in self._named:
             runs = rel.startswith(("tests/", "checks/"))
-            self._named[rel] = [
-                s for s in (self.scripts if runs else []) if s != rel and self.names(rel, s)
-            ]
+            self._named[rel] = self._naming(rel) if runs else []
         return self._named[rel]
+
+    def _naming(self, rel: str) -> list[str]:
+        """The scripts `rel`'s code names. A name is whole (`names_path`), so a script is asked only
+        when its basename is a WORD of the text: 530 substring searches a file, 650,000 a tree."""
+        words = set(WORD.findall(self.texts.get(rel, "")))
+        maybe = [s for s, base in self._bases.items() if base in words or not WORD.fullmatch(base)]
+        return [s for s in maybe if s != rel and self.names(rel, s)]
 
     def slice(self, rel: str, names: frozenset[str] | None) -> tuple[str, frozenset[str]] | None:
         """(source, held names) of test module `rel` for the `names` an importer takes from it
@@ -222,7 +231,7 @@ class Closure:
 
     @staticmethod
     def _names_in(code: str, path: str) -> bool:
-        return Path(path).name in code and _names_path(code, path)
+        return path.rpartition("/")[2] in code and _names_path(code, path)
 
     def cut(self, test: str, node: str) -> tuple[str, frozenset[str]] | None:
         """The slice of `node` that `test` reaches (its own closure, `reach(test)`), or None when
@@ -336,9 +345,11 @@ class Closure:
         A test module reached by imports alone is reached as the slice its importers use
         (lib/test_slice.py): the union of their names, the whole file when any takes all of it,
         and always whole for a test with undeclared reads, or of one (UNDECLARED)."""
-        if skip is None and runs and test in self._reach:  # a test's own closure, asked twice
-            return self._reach[test]  # a land: by the closure rule, then by declared_reads
-        memo = skip is None and runs
+        # a test's own closure, asked twice a land: by the closure rule, then by declared_reads; and
+        # without its runs, by lib/binary_runners.py for each file (GOH.PYSLOWTESTS)
+        memo = (self._reach if runs else self._bare) if skip is None else None
+        if memo is not None and test in memo:
+            return memo[test]
         skip = self.base() if skip is None else skip
         chains: dict[str, tuple[str, ...]] = {}
         read: set[str] = set()  # reached by imports alone: their own code is read, so it counts
@@ -400,8 +411,9 @@ class Closure:
                     if dep != test and dep not in skip:
                         ran.add(dep)
                     visit(dep, False, used)
-        if memo:
-            self._reach[test] = (chains, read)
+        if memo is not None:
+            memo[test] = (chains, read)
+        if memo is self._reach:
             self._cuts[test] = {n: c for n, c in cuts.items() if n in read}
         return chains, read
 

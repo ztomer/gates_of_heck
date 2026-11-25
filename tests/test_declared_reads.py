@@ -51,15 +51,14 @@ CASES = [
 ]
 
 
-def test_a_change_to_what_a_test_reads_chooses_it_whole(monkeypatch):
-    """Each change ALONE chooses its reader whole; one graph of the tree serves every case (its
-    caches are by file, never by the change)."""
-    graph = _tree_graph.real()
-    monkeypatch.setattr(affected_tests, "Closure", lambda root: graph)
+def test_a_change_to_what_a_test_reads_chooses_it_whole():
+    """Each change ALONE chooses its reader whole, by the diff's rules (`readers`: no standing tree
+    reader's run counts); one graph of the tree serves every case (its caches are by file, never
+    by the change)."""
     missed = [
         (changed, reader)
         for changed, reader in CASES
-        if reader not in affected_tests.affected(REPO_ROOT, [changed], graph=_tree_graph.real())
+        if reader not in affected_tests.readers(REPO_ROOT, [changed], graph=_tree_graph.real())
     ]
     assert not missed
 

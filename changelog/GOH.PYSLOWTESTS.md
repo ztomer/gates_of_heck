@@ -1,0 +1,1 @@
+* GOH.PYSLOWTESTS: the suite's dependency graph of goh's tree is filled once a run and read by the other 11 workers, a whole selection asked by several files is asked once a run, and the graph costs half the CPU to build (9.5 s to 4.8 s: imports and prose are read from statements, names from a file's words), in a land's pre-step too.

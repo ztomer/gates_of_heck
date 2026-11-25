@@ -53,6 +53,7 @@ def build_input(root, changed: list[str]) -> str | None:
     return next(iter(build_inputs_in(root, changed)), None)
 
 
+@functools.cache  # pure in its code, asked of one file by every test that reaches it
 def names(code: str) -> bool:
     """`code` (prose blanked) names the binary or its harness."""
     return CODE.search(code) is not None

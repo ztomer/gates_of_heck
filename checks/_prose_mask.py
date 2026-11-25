@@ -36,7 +36,10 @@ def python_code_only(text):
     except (SyntaxError, tokenize.TokenError, ValueError):
         return text
     lines = text.split("\n")
-    for node in ast.walk(tree):
+    nodes = [tree]
+    for node in nodes:  # ast.walk's order, STATEMENTS only: prose is one, expressions hold none
+        for field in ("body", "handlers", "cases", "orelse", "finalbody"):
+            nodes += getattr(node, field, ())
         if (
             isinstance(node, ast.Expr)
             and isinstance(node.value, ast.Constant)

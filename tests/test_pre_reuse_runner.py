@@ -140,6 +140,8 @@ def test_the_real_tree_judges_a_runner_move_by_its_readers():
     """goh's own tree: lib/reuse.py (GOH.FLAKYSCOPEDCACHE's whole re-run) is the pre-step's code,
     which some tests read; the structural gates do not reach it."""
     table = pre_reuse._table(REPO_ROOT)
-    assert pre_reuse.pre_step_code(REPO_ROOT, table, ["lib/reuse.py"]) == ["lib/reuse.py"]
-    assert table.readers(REPO_ROOT, ["lib/reuse.py"], graph=_tree_graph.real())
-    assert pre_reuse.structural(REPO_ROOT, table, ["gates/_common.sh"])
+    graph = _tree_graph.real()
+    moved = ["lib/reuse.py"]
+    assert pre_reuse.pre_step_code(REPO_ROOT, table, moved, graph) == moved
+    assert table.readers(REPO_ROOT, moved, graph=graph)
+    assert pre_reuse.structural(REPO_ROOT, table, ["gates/_common.sh"], graph)

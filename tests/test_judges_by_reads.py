@@ -128,8 +128,8 @@ def test_the_enqueue_is_read_from_the_land_pre_step(tmp_path, monkeypatch) -> No
 
 
 def test_the_real_enqueue_set_drops_known_readers_and_keeps_the_rest() -> None:
-    full = at.affected(REPO_ROOT, [], enqueue=False, graph=_tree_graph.real())
-    enqueue = at.affected(REPO_ROOT, [], enqueue=True, graph=_tree_graph.real())
+    full = _tree_graph.affected([])
+    enqueue = _tree_graph.affected([], enqueue=True)
     assert set(enqueue) < set(full)
     for judge in (*at.ALWAYS, "tests/test_land_check.py"):  # a whole-checkout clone and its guards
         assert judge in _files(enqueue), judge

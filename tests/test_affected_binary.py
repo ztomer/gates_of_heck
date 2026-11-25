@@ -28,6 +28,7 @@ import affected_tests as at
 from checks import _prose_mask  # the root is on sys.path now (affected_tests put it there)
 
 SCANNER = "crates/goh/src/layerparity.rs"
+MAIN_RS = "crates/goh/src/main.rs"
 INCIDENT = "tests/test_check_moving_tags.py"  # GRACESHAPES, 2026-11-17: red in the land gate
 
 
@@ -39,7 +40,7 @@ def _tree(tmp_path, files: dict[str, str]):
 
 
 def test_the_scanner_change_that_went_red_in_a_land_gate_chooses_the_test_that_runs_it() -> None:
-    why = at.affected(REPO_ROOT, [SCANNER], graph=_tree_graph.real())
+    why = _tree_graph.affected([SCANNER])
     assert INCIDENT in why, sorted(why)
     assert "goh binary" in why[INCIDENT] and SCANNER in why[INCIDENT], why[INCIDENT]
 
@@ -93,7 +94,7 @@ def test_every_test_that_asks_the_binary_by_a_plain_read_is_chosen_on_the_real_t
     main.rs reaches every subcommand; a scanner's chooses only its subcommands' runners
     (GOH.AFFECTEDBINARY2, tests/test_affected_binary_reach.py)."""
     asked = re.compile(r"\b(?:run_goh|native_goh_path|native_goh|GOH_TEST_BIN)\b")
-    chosen = at.affected(REPO_ROOT, ["crates/goh/src/main.rs"], graph=_tree_graph.real())
+    chosen = _tree_graph.affected([MAIN_RS])
     missed = []
     for p in sorted((REPO_ROOT / "tests").glob("test_*.py")):
         text = p.read_text(encoding="utf-8")
@@ -110,22 +111,22 @@ def test_every_test_that_asks_the_binary_by_a_plain_read_is_chosen_on_the_real_t
 # -- the verdict carry: a passed binary test is re-run across a build change -----------------------
 
 
-@pytest.mark.parametrize("marked", [True, False])
 def test_the_carry_reruns_a_binary_test_it_had_passed_across_a_planted_crates_change(
-    marked,
+    monkeypatch,
 ) -> None:
     """GOH.VERDICTCARRY says no binary test is carried across a build change. The mark
     (`tests/_goh_request.py`) only sees a test that asks for `native_goh`; a test that runs the
     binary through a gate script or an env key records `False`, and the carry skipped it. The plan
     is the one tests/_land_verdicts.py `_carry` makes: affected_tests' choice for the diff, then
     `carried` with whether the diff changes the build."""
-    changed = ["crates/goh/src/layerparity.rs"]
-    chosen, why = lv.choose(REPO_ROOT, changed)
+    monkeypatch.setattr(at, "Closure", lambda root: _tree_graph.real())  # the run's, not a third
+    chosen, why = lv.choose(REPO_ROOT, [SCANNER])
     assert chosen is not None, why
-    passed = {
-        f"{INCIDENT}::test_the_incident_is_named_at_each_line_with_the_fix": marked,
-        "tests/test_gates_e2e.py::test_any": marked,
-        "tests/test_no_such_pure_neighbour.py::test_any": False,
-    }
-    carried = lv.carried(passed, chosen, coverage=False, binary=lv._builds(changed))
-    assert carried == {"tests/test_no_such_pure_neighbour.py::test_any"}, carried
+    for marked in (True, False):
+        passed = {
+            f"{INCIDENT}::test_the_incident_is_named_at_each_line_with_the_fix": marked,
+            "tests/test_gates_e2e.py::test_any": marked,
+            "tests/test_no_such_pure_neighbour.py::test_any": False,
+        }
+        carried = lv.carried(passed, chosen, coverage=False, binary=lv._builds([SCANNER]))
+        assert carried == {"tests/test_no_such_pure_neighbour.py::test_any"}, (marked, carried)
