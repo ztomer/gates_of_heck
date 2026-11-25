@@ -65,18 +65,35 @@ def test_enqueue_land_backgrounds_its_long_pre_step_and_the_wait_follows_it(repo
 @pytest.mark.load_sensitive
 def test_a_backgrounded_pre_step_that_goes_red_is_recorded_red_for_the_wait(repo, tmp_path, env):
     """The red a foreground enqueue printed and exited 2 on is, backgrounded, a red outcome the
-    lane's --wait reads: exit 1 with the failing test named, and nothing queued."""
+    lane's --wait reads: exit 1 with the failing test named, and nothing queued.
+
+    GOH.PRESTEPLOG: its record kept only its why line, so `goh land-reds` had no E line to read and
+    classed by name and source alone. The log keeps each failing test's section, its last lines
+    only, and the FAILED lines: the cause is read without a re-run."""
     wt, _ = _land_wt(repo, tmp_path)
-    pre = "echo 'FAILED tests/test_wiring.py::test_planted_red - planted'; exit 1"
-    env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": pre}
+    frames = "".join(f"    frame {n}\n" for n in range(60))
+    out_file = tmp_path / "pytest.out"
+    out_file.write_text(
+        f"{'_' * 20} test_planted_red {'_' * 20}\n{frames}"
+        "E       AssertionError: lib/x.py has no row in docs/map.md\n"
+        "tests/test_wiring.py:12: AssertionError\n"
+        f"{'=' * 20} short test summary info {'=' * 20}\n"
+        "FAILED tests/test_wiring.py::test_planted_red - AssertionError\n"
+    )
+    env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": f"cat {out_file}; exit 1"}
     assert (
         landq(env, "--enqueue", "--land", str(wt), "--item", "T.BR", "--no-start").returncode == 0
     )
     waited = landq(env, "--wait", "T.BR", "--timeout", str(patience(90)))
     out = waited.stdout + waited.stderr
     assert waited.returncode == 1 and "test_planted_red" in out, out
-    assert recorded(env)["T.BR"]["state"] == "red"
-    assert _pending(tmp_path) == []
+    rec = recorded(env)["T.BR"]
+    assert rec["state"] == "red" and _pending(tmp_path) == [], rec
+    log = Path(rec["log"]).read_text()
+    assert "E       AssertionError: lib/x.py has no row in docs/map.md" in log, log
+    assert "FAILED tests/test_wiring.py::test_planted_red" in log, log
+    assert "frame 59" in log and "frame 0\n" not in log, log  # the last lines, bounded
+    assert land_reds.judge({**rec, "why": rec.get("why", "")})["cause"] == "consistency-table"
 
 
 @pytest.mark.load_sensitive
@@ -140,33 +157,3 @@ def test_a_wait_beside_an_enqueue_says_pre_step_running_and_never_the_last_red(r
         if enq.stdout:
             enq.stdout.close()
     assert len(_pending(tmp_path)) == 1
-
-
-@pytest.mark.load_sensitive  # --wait is bounded
-def test_a_pre_step_red_record_keeps_each_failing_test_and_a_bounded_traceback(repo, tmp_path, env):
-    """GOH.PRESTEPLOG: a pre-step red's record kept only its why line, so `goh land-reds` had no
-    E line to read and classed by name and source alone. The log keeps each failing test's
-    section, its last lines only, and the FAILED lines: the cause is read without a re-run."""
-    wt, _ = _land_wt(repo, tmp_path)
-    frames = "".join(f"    frame {n}\n" for n in range(60))
-    pytest_out = (
-        f"{'_' * 20} test_planted_red {'_' * 20}\n{frames}"
-        "E       AssertionError: lib/x.py has no row in docs/map.md\n"
-        "tests/test_wiring.py:12: AssertionError\n"
-        f"{'=' * 20} short test summary info {'=' * 20}\n"
-        "FAILED tests/test_wiring.py::test_planted_red - AssertionError\n"
-    )
-    out_file = tmp_path / "pytest.out"
-    out_file.write_text(pytest_out)
-    env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": f"cat {out_file}; exit 1"}
-    assert (
-        landq(env, "--enqueue", "--land", str(wt), "--item", "T.PL", "--no-start").returncode == 0
-    )
-    waited = landq(env, "--wait", "T.PL", "--timeout", str(patience(90)))
-    assert waited.returncode == 1, waited.stdout + waited.stderr
-    rec = recorded(env)["T.PL"]
-    log = Path(rec["log"]).read_text()
-    assert "E       AssertionError: lib/x.py has no row in docs/map.md" in log, log
-    assert "FAILED tests/test_wiring.py::test_planted_red" in log, log
-    assert "frame 59" in log and "frame 0\n" not in log, log  # the last lines, bounded
-    assert land_reds.judge({**rec, "why": rec.get("why", "")})["cause"] == "consistency-table"

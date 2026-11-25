@@ -53,21 +53,15 @@ def _batch(
     return seen.read_text().splitlines(), logs
 
 
-def test_a_stacked_batch_whose_main_moved_only_where_no_test_reads_runs_no_second_pre_land(
-    repo: Path,
-    tmp_path: Path,
-    env: dict,  # noqa: F811
-) -> None:
-    seen, log = _batch(repo, tmp_path, env, "CHANGELOG.md", {"one.txt": "1\n"})
-    assert seen == ["full", "full"], log  # the two enqueues' runs, and none for the stack
-    assert "not run again" in log and "none read by a test" in log, log
-
-
 def test_a_stacked_batch_with_a_path_a_test_reads_leaves_that_reader_to_the_gate(
     repo: Path,
     tmp_path: Path,
     env: dict,  # noqa: F811
 ) -> None:
+    """The stack's tip is asked the enqueue's verdict, and its difference from the judged tree is
+    the LOWER item's path beside main's: read.txt's reader is named, main's CHANGELOG.md is read by
+    no test, and no second pre-land runs. What is decided where no path is read at all is
+    lib/pre_reuse.py's, in tests/test_pre_reuse.py."""
     seen, log = _batch(repo, tmp_path, env, "CHANGELOG.md", {"read.txt": "one reads\n"})
     assert seen == ["full", "full"], log  # NARROW decided, never run (GOH.LANDONERUN)
     assert "read by 1 test file: " in log and "read.txt" in log, log
