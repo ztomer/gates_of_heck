@@ -30,7 +30,8 @@ judges it, as each FILE's own does (tests/_fs_ceilings.py, GOH.FSEVQUIET).
 
 A LAND'S PRE-STEP names its tests and carries none; from `mean_from` tests it is judged by the mean
 as a whole run is (GOH.FSEVQUIET), by events where the window measured, and by the bytes each test
-left written (`bytes_per_test_run`) in any window: a drop of fseventsd's loses no byte.
+left written (`bytes_per_test_run`) in any window: a drop of fseventsd's loses no byte. Both kinds
+of run leave the byte-named files out of that mean: each holds its own ceiling (`_unnamed`).
 
 UNMEASURED WINDOWS ARE NO VERDICT (GOH.FSDROPVERDICT). A window whose stream dropped events, or
 did not deliver through the run's end (lib/fs_events.py `Stream.drain`), undercounts: 148 of 400
@@ -142,6 +143,19 @@ def judges_mean(rep: dict, tests_run: int, ceiling: dict, whole: bool) -> bool:
     return whole or (large and not rep.get("deselected"))
 
 
+def _unnamed(rep: dict, tests_run: int, ceiling: dict) -> tuple[int, int]:
+    """(bytes, tests) without the files `named` in the ceiling, which each hold a byte ceiling of
+    their own: how many of them a selection draws moved its mean 44,000 -> 76,138, not its tests."""
+    own = [
+        f for name, f in rep.get("files", {}).items()
+        if "bytes" in ceiling.get("named", {}).get(name, {})
+    ]  # fmt: skip
+    return (
+        rep.get("bytes", 0) - sum(f["all_bytes"] for f in own),
+        tests_run - sum(f["tests"] for f in own),
+    )
+
+
 def verdict(rep: dict, tests_run: int, ceiling: dict, whole: bool = True) -> list[str]:
     """Each way `rep` (a Tally report) breaks `ceiling`; empty when it holds. The means are judged
     only where `judges_mean`: the ceiling describes the whole suite, never a small selection. An
@@ -162,10 +176,11 @@ def verdict(rep: dict, tests_run: int, ceiling: dict, whole: bool = True) -> lis
             f"{total} file events (with what the run left to remove) for {tests_run} tests"
             f" ({total / tests_run:.1f} each), over the ceiling {ceiling['per_test_run']} each"
         )
-    each, most = rep.get("bytes", 0) / tests_run, ceiling.get("bytes_per_test_run", sys.maxsize)
+    size, tests = _unnamed(rep, tests_run, ceiling)
+    each, most = size / max(tests, 1), ceiling.get("bytes_per_test_run", sys.maxsize)
     if each > most:
         faults.append(
-            f"{rep['bytes']} bytes left written by a run of {tests_run} ({each:.0f} a test),"
+            f"{size} bytes left written by a run of {tests} ({each:.0f} a test),"
             f" over the ceiling {most} each"
         )
     return faults
@@ -254,8 +269,9 @@ def pytest_sessionfinish(session, exitstatus) -> None:
     rep["whole"] = whole = _whole_run.whole(session.config) and not rep["deselected"]
     ceiling = _ceiling()
     unmeasured = rep.get("unmeasured", "")
-    faults = verdict(rep, ran, ceiling, whole)
-    faults += _files(rep, tally, ceiling, _STATE.pop("nodes"), whole)
+    # rep["files"] first: verdict reads it
+    files = _files(rep, tally, ceiling, _STATE.pop("nodes"), whole)
+    faults = verdict(rep, ran, ceiling, whole) + files
     rep["ceiling"], rep["faults"] = ceiling, faults
     Path(_STATE.pop("out")).write_text(json.dumps(rep, indent=1) + "\n")
     tr = session.config.pluginmanager.get_plugin("terminalreporter")

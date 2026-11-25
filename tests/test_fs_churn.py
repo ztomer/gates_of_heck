@@ -285,6 +285,19 @@ def test_a_large_argument_run_that_carried_nothing_is_judged_by_the_means() -> N
     assert verdict({**lost, "bytes": 10_000}, 10, at, whole=False) == []
 
 
+def test_a_byte_named_file_is_out_of_the_mean_and_the_rest_is_not() -> None:
+    """A pre-step that drew the three heaviest named files read 76,138 bytes a test (2026-11-25)."""
+    at = {"per_test": 1, "per_test_run": 1, "bytes_per_test_run": 10, "mean_from": 1}
+    files = {"a.py": {"all_bytes": 9000, "tests": 1}, "b.py": {"all_bytes": 90, "tests": 9}}
+    rep = {"unmeasured": "drops", "teardown_entries": 0, "bytes": 9090, "files": files}
+    assert verdict(rep, 10, {**at, "named": {"a.py": {"bytes": 9000}}}) == []
+    (fault,) = verdict(rep, 10, {**at, "named": {"a.py": {"events": 1}}})  # no byte ceiling: in
+    assert "9090 bytes" in fault and "a run of 10" in fault
+    files["b.py"]["all_bytes"], rep["bytes"] = 91, 9091
+    (fault,) = verdict(rep, 10, {**at, "named": {"a.py": {"bytes": 9000}}})
+    assert "91 bytes left written by a run of 9 (10 a test)" in fault
+
+
 def test_a_lands_pre_step_is_counted_and_a_narrowed_run_by_hand_is_not() -> None:
     """The one line of tools/pytest.sh that says which runs are counted, run by bash itself."""
     runner = (REPO_ROOT / "tools" / "pytest.sh").read_text().splitlines()

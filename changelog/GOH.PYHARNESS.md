@@ -15,3 +15,4 @@
   cannot cost, a land's and a whole one are at the ceiling; `-n` still wins.
 * GOH.PYHARNESS: a finished suite's mark (`goh-suite.live`, never removed) no longer costs every gate
   and helper in its checkout a `ps` of every process on the machine (`gates/_from_head.sh`).
+* GOH.PYHARNESS: the mean of the bytes a test leaves written is judged without the files the ceiling names for bytes, which hold their own: a pre-step that drew three of them read 76,138 a test and went red. The ceiling falls from 65,000 to 52,000.
