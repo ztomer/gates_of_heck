@@ -9,7 +9,6 @@ remove is still one a file, so a test that needs only the gates takes todays-gat
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -41,9 +40,12 @@ def _build(tree: Path) -> None:
     if diff:
         _git(tree, "apply", "--whitespace=nowarn", data=diff)
     others = _git(REPO_ROOT, "ls-files", "-z", "--others", "--exclude-standard")
-    for rel in filter(None, others.decode().split("\0")):  # as the lane's next commit holds them
-        (tree / rel).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(REPO_ROOT / rel, tree / rel, follow_symlinks=False)
+    if others:  # as the lane's next commit holds them; whole, by tar, never a part by hand
+        pack = subprocess.run(["tar", "-C", str(REPO_ROOT), "--null", "-T", "-", "-cf", "-"],
+                              input=others, capture_output=True, check=True,
+                              timeout=patience(120)).stdout  # fmt: skip
+        subprocess.run(["tar", "-C", str(tree), "-xf", "-"], input=pack, capture_output=True,
+                       check=True, timeout=patience(120))  # fmt: skip
     _git(tree, "add", "-A")  # the edits in the index: each clone's `add -A` finds nothing to hash
 
 

@@ -12,6 +12,7 @@ file events a test of the land's); each worker holds both open, so they are made
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import sqlite3
@@ -20,7 +21,12 @@ from pathlib import Path
 import pytest
 
 ENV = "GATES_OF_HECK_DB_THROWAWAY"  # lib/db_core.py THROWAWAY_ENV
-ON_DISK: dict[str, str] = json.loads(Path(__file__).with_name("db_on_disk.json").read_text())
+
+
+@functools.cache
+def on_disk() -> dict[str, str]:
+    """The list, read at the first test: no data file is read while pytest loads."""
+    return json.loads(Path(__file__).with_name("db_on_disk.json").read_text())
 
 
 def pytest_configure(config) -> None:
@@ -59,5 +65,5 @@ def pytest_unconfigure(config) -> None:
 
 @pytest.fixture(autouse=True)
 def _db_journal(request, monkeypatch):
-    if request.node.nodeid.split("[")[0] in ON_DISK:
+    if request.node.nodeid.split("[")[0] in on_disk():
         monkeypatch.delenv(ENV, raising=False)

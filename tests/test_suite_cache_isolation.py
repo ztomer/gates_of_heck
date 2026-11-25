@@ -77,10 +77,13 @@ def test_the_suites_git_writes_no_more_than_its_tests_read(tmp_path: Path) -> No
         return subprocess.run(["git", *args], capture_output=True, text=True, check=True,
                               cwd=tmp_path, stdin=subprocess.DEVNULL).stdout  # fmt: skip
 
-    git("init", "-q", "a")
+    def _build() -> None:  # git's own `init` is the subject: no template stands in for it
+        for name in ("a", "b"):
+            git("init", "-q", name)
+
+    _build()
     assert not list((tmp_path / "a/.git/hooks").iterdir()) and (tmp_path / "a/.git/info").is_dir()
     git("-C", "a", "commit", "-q", "--allow-empty", "-m", "x")
-    git("init", "-q", "b")
     git("-C", "b", "fetch", "-q", "../a")
     kept = [p for p in (tmp_path / "b/.git/objects").rglob("*") if p.is_file()]
     assert sorted(p.suffix for p in kept) == [".idx", ".pack"], kept

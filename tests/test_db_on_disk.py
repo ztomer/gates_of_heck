@@ -10,7 +10,7 @@ from pathlib import Path
 import db_core
 import goh_db
 import pytest
-from _db_on_disk import ENV, ON_DISK, hold
+from _db_on_disk import ENV, hold, on_disk
 from conftest import REPO_ROOT
 
 TREE_READS = ("tests/",)  # each name of the list is a test of a file there
@@ -44,8 +44,8 @@ def test_a_database_outside_the_run_is_never_a_throwaway(tmp_path) -> None:
 
 
 def test_every_listed_test_stands_says_why_and_the_list_only_shrinks() -> None:
-    assert len(ON_DISK) <= LISTED, "a test of no WAL, lock or crash journals in memory"
-    for name, why in ON_DISK.items():
+    assert len(on_disk()) <= LISTED, "a test of no WAL, lock or crash journals in memory"
+    for name, why in on_disk().items():
         rel, test = name.split("::")
         tree = ast.parse((REPO_ROOT / rel).read_text(encoding="utf-8"))
         assert test in {n.name for n in tree.body if isinstance(n, ast.FunctionDef)}, name

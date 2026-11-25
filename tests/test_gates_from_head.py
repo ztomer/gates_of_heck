@@ -53,13 +53,17 @@ def consumer(tmp_path: Path) -> Path:
 
 def _env(tmp_path: Path, **extra: str) -> dict:
     env = scrubbed(os.environ, ("GOH_", "GIT_", "PYTEST_"))
-    # One export of the checkout's HEAD a RUN (GOH.FSEVQUIET): it is named for the commit and never
-    # written again. A test of the cache itself, or of a commit of its own, names a private one.
-    env["GOH_HEAD_CACHE"] = str(run_head_cache())
+    env["GOH_HEAD_CACHE"] = str(tmp_path / "head-cache")
     # No bin/goh rebuild in a scratch clone (a cargo build per test): name the session binary.
     env["GOH_BIN"] = str(native_goh_path())
     env.update(extra)
     return env
+
+
+def _shared(tmp_path: Path, **extra: str) -> dict:
+    """`_env` with the RUN's one export of the checkout's HEAD (GOH.FSEVQUIET): it is named for the
+    commit and never written again. A test of the cache, or of its own commit, takes `_env`."""
+    return _env(tmp_path, **{"GOH_HEAD_CACHE": str(run_head_cache()), **extra})
 
 
 def _structural(gates: Path, repo: Path, env: dict) -> subprocess.CompletedProcess:
@@ -78,7 +82,7 @@ def _structural(gates: Path, repo: Path, env: dict) -> subprocess.CompletedProce
 def test_a_consumer_runs_heads_gates_not_the_working_tree(
     dirty: Path, consumer: Path, tmp_path
 ) -> None:
-    r = _structural(dirty, consumer, _env(tmp_path))
+    r = _structural(dirty, consumer, _shared(tmp_path))
     assert PLANT not in r.stderr, "an uncommitted gate edit reached a consumer's gate"
     head = subprocess.run(
         ["git", "-C", str(dirty), "rev-parse", "HEAD"],
@@ -91,7 +95,7 @@ def test_a_consumer_runs_heads_gates_not_the_working_tree(
 
 
 def test_goh_live_runs_the_working_tree_on_purpose(dirty: Path, consumer: Path, tmp_path) -> None:
-    r = _structural(dirty, consumer, _env(tmp_path, GOH_LIVE="1"))
+    r = _structural(dirty, consumer, _shared(tmp_path, GOH_LIVE="1"))
     assert PLANT in r.stderr, r.stderr
 
 
@@ -104,7 +108,7 @@ def test_a_sourced_lib_is_read_from_head_too(dirty: Path, consumer: Path, tmp_pa
         cwd=consumer,
         capture_output=True,
         text=True,
-        env=_env(tmp_path),
+        env=_shared(tmp_path),
         timeout=60,
         check=False,
         stdin=subprocess.DEVNULL,
@@ -144,7 +148,7 @@ def test_python_imports_resolve_into_the_export(gates: Path, consumer: Path, tmp
             cwd=consumer,
             capture_output=True,
             text=True,
-            env=_env(tmp_path, PYTHONPATH=str(gates), GOH_HEAD_CACHE=str(tmp_path / "head-cache")),
+            env=_env(tmp_path, PYTHONPATH=str(gates)),
             timeout=60,
             check=False,
             stdin=subprocess.DEVNULL,
@@ -161,7 +165,7 @@ def test_python_imports_resolve_into_the_export(gates: Path, consumer: Path, tmp
 def test_a_test_that_drops_goh_live_is_refused_not_silently_run_on_head(
     gates: Path, consumer: Path, tmp_path
 ) -> None:
-    env = _env(tmp_path, PYTEST_CURRENT_TEST="tests/x.py::t (call)")
+    env = _shared(tmp_path, PYTEST_CURRENT_TEST="tests/x.py::t (call)")
     r = _structural(gates, consumer, env)
     assert r.returncode != 0
     assert "GOH_LIVE" in r.stderr, r.stderr
@@ -169,7 +173,7 @@ def test_a_test_that_drops_goh_live_is_refused_not_silently_run_on_head(
 
 def test_the_export_is_built_once_per_commit(gates: Path, consumer: Path, tmp_path) -> None:
     cache = tmp_path / "head-cache"
-    env = _env(tmp_path, GOH_HEAD_CACHE=str(cache))
+    env = _env(tmp_path)
     _structural(gates, consumer, env)
     exports = [p for p in cache.iterdir() if not p.name.startswith(".")]
     stamp = exports[0].stat().st_mtime_ns
@@ -237,7 +241,7 @@ def test_a_tool_two_levels_down_finds_the_checkout_root(gates: Path, tmp_path) -
         ],
         capture_output=True,
         text=True,
-        env=_env(tmp_path),
+        env=_shared(tmp_path),
         stdin=subprocess.DEVNULL,
         check=False,
     )
@@ -252,7 +256,7 @@ def test_a_consumers_own_pytest_runs_the_export_not_a_refusal(
     """The refusal is for THIS suite (it sets GATES_OF_HECK_SUITE). A consumer's pytest that runs a
     gate -- ztools' tools/tests source tui/lib.sh -- is not developing the gates: it gets the
     export like any other caller. ztools, 2026-10-06: 53 of 120 tests refused."""
-    env = _env(tmp_path, PYTEST_CURRENT_TEST="tests/x.py::t (call)")
+    env = _shared(tmp_path, PYTEST_CURRENT_TEST="tests/x.py::t (call)")
     env.pop("GATES_OF_HECK_SUITE", None)
     r = _structural(gates, consumer, env)
     assert r.returncode == 0, r.stdout + r.stderr
@@ -267,7 +271,7 @@ def test_a_live_run_names_its_own_tree_as_goh_dir(gates: Path, tmp_path) -> None
         f'. "{gates}/gates/_from_head.sh"; goh_from_head "{gates}/gates/structural.sh"; '
         'printf %s "$GOH_DIR"'
     )
-    env = _env(tmp_path, GOH_LIVE="1", GOH_DIR="/elsewhere")
+    env = _shared(tmp_path, GOH_LIVE="1", GOH_DIR="/elsewhere")
     r = subprocess.run(
         ["bash", "-c", probe],
         capture_output=True,
@@ -354,7 +358,7 @@ def test_a_script_that_sources_tui_lib_keeps_its_own_goh_dir(gates: Path, tmp_pa
         'printf "%s|%s|%s|%s" "$GOH_DIR" "${GOH_LIVE_ROOT-unset}" "$PYTHONPATH" '
         '"$(bash -c \'printf %s "${GOH_DIR-unset}"\')"'
     )
-    env = _env(tmp_path, GOH_DIR=str(gates), PYTHONPATH="/caller/py")
+    env = _shared(tmp_path, GOH_DIR=str(gates), PYTHONPATH="/caller/py")
     try:
         r = subprocess.run(
             ["bash", "-c", probe],
@@ -398,7 +402,7 @@ def test_the_stale_hook_fix_names_the_live_install_not_the_exports(
         check=True,
         stdin=subprocess.DEVNULL,
     )
-    r = _structural(gates, consumer, _env(tmp_path))
+    r = _structural(gates, consumer, _shared(tmp_path))
     assert "OLDER stock hook" in r.stderr, r.stderr
     assert f"{gates}/install.sh" in r.stderr, r.stderr
     assert str(run_head_cache()) not in r.stderr, "the fix named a HEAD export's install.sh"
