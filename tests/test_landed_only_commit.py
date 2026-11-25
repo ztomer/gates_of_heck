@@ -21,15 +21,13 @@ from pathlib import Path
 import pytest
 import test_release_kit as rk
 from _fast_git import fast_init
-from _gatesrc_kit import write_gatesrc
+from _gatesrc_kit import STRUCTURAL_RAN, write_gatesrc
 from _grown import built, keyed
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
 from test_release_kit import TAG, VERSION, run_release, sh
 
 LAND = REPO_ROOT / "tools" / "land.sh"
-STRUCTURAL_GATE = (
-    '#!/usr/bin/env bash\nset -euo pipefail\nexec bash "$GOH_DIR/gates/structural.sh" --staged\n'
-)
+GATE = "#!/usr/bin/env bash\nset -euo pipefail\n" + STRUCTURAL_RAN
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -60,7 +58,7 @@ def _landed_only_repo(tmp_path: Path, rc: str = "GOH_LANDED_ONLY=main\n") -> tup
 
 def _build(main: Path, rc: str) -> None:
     (main / "tools").mkdir(parents=True)
-    (main / "tools" / "gate.sh").write_text(STRUCTURAL_GATE)
+    (main / "tools" / "gate.sh").write_text(GATE)
     (main / "tools" / "gate.sh").chmod(0o755)
     (main / "README.md").write_text("repo\n")
     write_gatesrc(main, rc)
