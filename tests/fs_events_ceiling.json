@@ -48,6 +48,10 @@
   },
   "tests/test_ship_pinned.py": {
    "events": 2800
+  },
+  "tests/test_state_cutover.py": {
+   "bytes": 5500000,
+   "events": 1200
   }
  }
 }
