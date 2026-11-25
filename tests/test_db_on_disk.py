@@ -107,7 +107,7 @@ def _rows(path: Path) -> tuple:
 def test_a_fresh_database_is_a_clone_of_the_runs_first_and_holds_none_of_its_rows(
     tmp_path, monkeypatch
 ) -> None:
-    assert SEEDS not in os.environ, "a maker's test is never seeded (tests/_db_on_disk.py MAKERS)"
+    assert os.environ.get(SEEDS) is None, "a maker's test is never seeded (_db_on_disk.MAKERS)"
     (seeds := tmp_path / "seeds").mkdir()
     monkeypatch.setenv(SEEDS, str(seeds))
     for d in ("a", "b", "wal"):

@@ -1,5 +1,6 @@
 {
  "unreviewed": {
+  "_todays_gates.py": 1,
   "test_agent_audit.py": 1,
   "test_apply_claude_hooks.py": 1,
   "test_build_lock_ignored.py": 1,
@@ -9,7 +10,6 @@
   "test_display_frames.py": 1,
   "test_display_seam.py": 1,
   "test_gate_calibration.py": 1,
-  "test_gate_environment.py": 1,
   "test_goh_build_publish.py": 1,
   "test_goh_prefetch.py": 3,
   "test_goh_screen_parity.py": 1,

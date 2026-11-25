@@ -32,6 +32,10 @@ def made(tmp_path_factory, tmp_path: Path):
                                       tmp_path / name)  # fmt: skip
 
 
+def _served(argv: list[str], d: Path) -> bool:
+    return _quiet_git.serve(argv, d, _env(False), str(d.resolve().parent))
+
+
 def _git(repo: Path, *args: str, env: dict[str, str] | None = None) -> str:
     r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
                        env=env or _env(True), stdin=subprocess.DEVNULL, check=False)  # fmt: skip
@@ -123,8 +127,7 @@ def test_a_branch_moves_where_it_is(repo: Path) -> None:
 def test_a_setting_is_written_as_git_writes_it(made, settings) -> None:
     mine, gits = made("mine"), made("gits")
     for key, value in zip(settings[::2], settings[1::2], strict=True):
-        assert _quiet_git.serve(["git", "config", key, value], mine, _env(False),
-                                str(mine.resolve().parent))  # fmt: skip
+        assert _served(["git", "config", key, value], mine)
         _git(gits, "config", key, value)
         a, b = ((d / ".git" / "config").read_text() for d in (mine, gits))
         assert a == b, (key, value)
@@ -137,7 +140,7 @@ def test_a_setting_is_written_as_git_writes_it(made, settings) -> None:
 def test_any_other_config_is_gits(made, args) -> None:
     d = made("r")
     argv = ["git", "config", *args]
-    assert not _quiet_git.serve(argv, d, _env(False), str(d.resolve().parent))
+    assert not _served(argv, d)
 
 
 def _hook(d: Path) -> None:

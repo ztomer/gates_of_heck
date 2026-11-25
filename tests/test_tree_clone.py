@@ -223,10 +223,11 @@ def _git_sees(tree: Path, key: str) -> str:
     """What a git the build spawned would do about background work: the effective values, the
     suite's own ~/.gitconfig (which turns it off too, tests/suite_home.py) aside."""
     from conftest import hermetic_env
+    from host_locks import scrubbed
 
     out = []
     home = {"HOME": str(tree.parent / "no-home")}
-    for env in (hermetic_env(True, **home), hermetic_env(**home), {**os.environ, **home}):
+    for env in (hermetic_env(True, **home), hermetic_env(**home), scrubbed(os.environ, ()) | home):
         run = subprocess.run(
             ["git", "-C", str(tree), "config", "--get", key],
             capture_output=True, text=True, env=env, check=False, stdin=subprocess.DEVNULL,
