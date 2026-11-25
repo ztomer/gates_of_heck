@@ -11,6 +11,7 @@
   and a refused run leaves no temp root. The pins are the tree's own manifest.
 * GOH.PYHARNESS: a run narrowed to files or node ids takes the workers its tests cost
   (`lib/suite_width.py`, the suite's duration table): `-n 0` for 2 s or less, one worker per 1.5 s
-  after it. A run it cannot cost, a land's and a whole one are at the ceiling; `-n` still wins.
+  after it; a caller's own `-n 0` (every `goh land --check` job) starts no share pool. A run it
+  cannot cost, a land's and a whole one are at the ceiling; `-n` still wins.
 * GOH.PYHARNESS: a finished suite's mark (`goh-suite.live`, never removed) no longer costs every gate
   and helper in its checkout a `ps` of every process on the machine (`gates/_from_head.sh`).

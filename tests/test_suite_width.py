@@ -90,3 +90,9 @@ def test_an_empty_table_is_the_ceilings(root, monkeypatch):
 
 def test_a_collection_starts_no_worker(root):
     assert _width(root, "--collect-only") == 0 and _width(root, "tests", "--co", "-q") == 0
+
+
+def test_a_caller_that_asks_for_no_worker_starts_no_pool(root):
+    """`goh land --check` runs each of its jobs so (lib/land_check.py)."""
+    assert _width(root, "-p", "no:cacheprovider", "-n", "0", "--", f"{B}::test_slow") == 0
+    assert _width(root, "-n", "0", "-n", "4", "tests") is None, "the last -n is the caller's"

@@ -71,9 +71,16 @@ def cost(named: Sequence[str], table: Mapping[str, float], root: Path) -> float:
     return total + UNMEASURED_S * len(new)
 
 
+def _serial(args: Sequence[str]) -> bool:
+    """Does the caller ask for no worker itself (`-n 0`, its last -n)? Every `goh land --check` job
+    does, and each started a share pool for nobody."""
+    said = [args[i + 1] for i, a in enumerate(args[:-1]) if a == "-n"]
+    return said[-1:] == ["0"]
+
+
 def width(args: Sequence[str], root: Path, environ: Mapping[str, str] | None = None) -> int | None:
     env = os.environ if environ is None else environ
-    if COLLECT & set(args):
+    if COLLECT & set(args) or _serial(args):
         return 0
     if any(env.get(k) for k in LAND):
         return None
