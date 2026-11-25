@@ -8,9 +8,9 @@ import sys
 from pathlib import Path
 
 import pytest
-from conftest import REPO_ROOT
+from _fixture_copies import FIXTURES
 
-SRC = REPO_ROOT / "tests" / "fixtures" / "screen_presentation"
+SRC = Path(FIXTURES) / "screen_presentation"
 TREE_READS = ("tests/fixtures/screen_presentation/",)
 
 

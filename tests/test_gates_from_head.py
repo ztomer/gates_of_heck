@@ -21,8 +21,8 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from _todays_gates import _clean_checkout_of_todays_gates
-from _tree_clone import run_head_cache
-from conftest import REPO_ROOT, hermetic_env, native_goh_path
+from _tree_clone import clone_tree, process_template, run_head_cache
+from conftest import REPO_ROOT, commit_all, hermetic_env, native_goh_path
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -121,23 +121,23 @@ def test_a_sourced_lib_is_read_from_head_too(dirty: Path, consumer: Path, tmp_pa
     assert PLANT not in r.stderr, r.stderr
 
 
-def test_python_imports_resolve_into_the_export(consumer: Path, tmp_path) -> None:
-    """~/.zshrc exports PYTHONPATH at the live checkout; a checker started from the export must
-    import tui.lib from the export, or the Python half is still live."""
-    tiny = tmp_path / "gates"  # what the probe runs, in a checkout of its own: 1,500 events fewer
+def _build_probe(tiny: Path) -> None:
     copy_closure(tiny, "gates/_from_head.sh", "gates/_export_bin_goh.sh", "tui/lib.py")
-    probe = tiny / "gates" / "zz_probe.sh"
-    probe.write_text(
+    (tiny / "gates" / "zz_probe.sh").write_text(
         '#!/usr/bin/env bash\n. "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"\n'
         'goh_from_head "${BASH_SOURCE[0]}" "$@"\n'
         'python3 -c "import tui.lib, sys; print(tui.lib.__file__)"\n'
     )
     fast_init(tiny, "main")
-    for args in (
-        ["add", "-A"],
-        ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "p"],
-    ):
-        subprocess.run(["git", "-C", str(tiny), *args], check=True, stdin=subprocess.DEVNULL)
+    commit_all(tiny)
+
+
+def test_python_imports_resolve_into_the_export(consumer: Path, tmp_path) -> None:
+    """~/.zshrc exports PYTHONPATH at the live checkout; a checker started from the export must
+    import tui.lib from the export, or the Python half is still live."""
+    tiny = tmp_path / "gates"  # what the probe runs, in a checkout of its own: 1,500 events fewer
+    clone_tree(process_template("gates-probe", _build_probe), tiny)
+    probe = tiny / "gates" / "zz_probe.sh"
     r = subprocess.run(
         ["bash", str(probe)],
         cwd=consumer,
