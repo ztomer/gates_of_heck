@@ -173,7 +173,7 @@
   "tests/test_gate_calibration.py": 1,
   "tests/test_gate_environment.py": 2,
   "tests/test_gate_runtime_path.py": 1,
-  "tests/test_gate_slot.py": 6,
+  "tests/test_gate_slot.py": 4,
   "tests/test_gate_slot_linux.py": 1,
   "tests/test_gate_temp_leaks.py": 2,
   "tests/test_gates_from_head.py": 3,

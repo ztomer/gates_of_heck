@@ -114,15 +114,14 @@ def test_n_plus_one_gates_on_n_slots_one_waits_until_a_holder_ends(tmp_path):
     try:
         for g in gates:
             g.wait_for("TAKEN")
-        third = Gate(tmp_path, "gamma", env)
+        # It fails if it ran before alpha's release, whenever it did (no clock).
+        third = Gate(tmp_path, "gamma", env, body=f'test -e "{gates[0].release}"')
         gates.append(third)
         third.wait_for("all 2 gate slots are held")
-        time.sleep(0.5)  # long enough to have taken a free slot, had there been one
-        assert "TAKEN" not in third.out(), "a third gate ran beside two holders of two slots"
         assert gates[0].finish() == 0
-        third.wait_for("TAKEN")
+        assert third.finish() == 0, "a third gate ran beside two holders of two slots"
         assert "TAKEN" in gates[1].out() and gates[1].proc.poll() is None
-        assert third.finish() == 0 and gates[1].finish() == 0
+        assert gates[1].finish() == 0
     finally:
         for g in gates:
             g.kill()
@@ -155,10 +154,7 @@ def test_the_wait_names_each_holder_and_its_end_says_how_long(tmp_path):
         holder.wait_for("TAKEN")
         waiter = Gate(tmp_path, "games-like", env, body="true")
         line = holder_line(waiter, "consumer-like", holder.proc.pid)
-        assert "consumer-like" in line, line  # the repo
-        assert f"pid {holder.proc.pid}" in line, line  # the holder's shell
-        assert_stamped_just_now(line)  # since when
-        time.sleep(1.2)
+        assert_stamped_just_now(line)  # since when; the repo and the pid are holder_line's needle
         holder.finish()
         done = waiter.wait_for("DONE")
         assert "taken after " in done and "s waiting" in done, done
@@ -308,16 +304,24 @@ def _push_proc(repo: Path, tmp_path: Path, env: dict[str, str], log: Path) -> su
 
 @pytest.mark.load_sensitive
 def test_a_push_waits_for_a_slot_and_its_step_limit_counts_from_the_slot(tmp_path):
-    """local_ci's step ceiling (GOH_LCI_TIMEOUT=2) is shorter than the wait (>2 s) plus the step
-    (0.5 s): the push is green only if the ceiling starts when the slot is taken."""
+    """On ONE slot, held: the push waits, then its gate runs a full gate (push_gate -> tools/gate.sh
+    -> local_ci) and another repo's push gate (a metarepo, land.sh -> push gate), and neither waits
+    on its parent's slot. local_ci's step ceiling (GOH_LCI_TIMEOUT=2) is shorter than the wait
+    (>2 s) plus the step (0.5 s): green only if the ceiling starts when the slot is taken."""
     env = _env(tmp_path, 1)
     holder = Gate(tmp_path, "holder", env)
-    repo = _repo(tmp_path)
+    (tmp_path / "in").mkdir()
+    inner, repo = _repo(tmp_path / "in"), _repo(tmp_path)
+    sha = _git(inner, "rev-parse", "HEAD")
     (repo / "tools" / "gate.sh").write_text(
-        '#!/usr/bin/env bash\nexec "$GOH_DIR/gates/local_ci.sh" --steps-only --step "sleep 0.5" .\n'
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        '"$GOH_DIR/gates/local_ci.sh" --steps-only --step "sleep 0.5" .\n'
+        f"cd '{inner}'\n"
+        f"printf 'refs/heads/main {sha} refs/heads/main {'0' * 40}\\n' | "
+        f"GOH_PUSH_WORKTREES='{tmp_path}/inner-exports' bash '{PUSH_GATE}'\n"
     )
     env["GOH_LCI_TIMEOUT"] = "2"
-    _git(repo, "commit", "-qam", "a bounded step")
+    _git(repo, "commit", "-qam", "a bounded step, and the inner push gate")
     try:
         holder.wait_for("TAKEN")
         log = tmp_path / "push.log"
@@ -328,43 +332,15 @@ def test_a_push_waits_for_a_slot_and_its_step_limit_counts_from_the_slot(tmp_pat
             time.sleep(0.05)
         time.sleep(2.5)  # the wait alone outlasts the step's ceiling
         holder.finish()
-        assert push.wait(timeout=120) == 0, log.read_text()
+        assert push.wait(timeout=patience(120)) == 0, log.read_text()
         text = log.read_text()
         assert "TIMED OUT" not in text, text
         waited = int(text.split("taken after ", 1)[1].split("s waiting", 1)[0])
         assert waited >= 2, text
+        assert text.count("taken after ") == 1 and "gate slot 1/1 taken" in text, text
+        assert text.count("inside a gate that holds slot-0") == 2, text
     finally:
         holder.kill()
-
-
-@pytest.mark.load_sensitive
-def test_a_push_gate_nested_in_a_push_gate_does_not_deadlock(tmp_path):
-    """A gate that runs another repo's push gate (a metarepo, land.sh -> push gate), on ONE slot."""
-    env = _env(tmp_path, 1)
-    inner_root = tmp_path / "inner"
-    inner_root.mkdir()
-    inner = _repo(inner_root)
-    outer_root = tmp_path / "outer"
-    outer_root.mkdir()
-    outer = _repo(outer_root)
-    sha = _git(inner, "rev-parse", "HEAD")
-    (outer / "tools" / "gate.sh").write_text(
-        "#!/usr/bin/env bash\nset -euo pipefail\n"
-        f"cd '{inner}'\n"
-        f"printf 'refs/heads/main {sha} refs/heads/main {'0' * 40}\\n' | "
-        f"GOH_PUSH_WORKTREES='{tmp_path}/inner-exports' bash '{PUSH_GATE}'\n"
-    )
-    _git(outer, "commit", "-qam", "runs the inner push gate")
-    log = tmp_path / "outer.log"
-    push = _push_proc(outer, tmp_path, env, log)
-    try:
-        assert push.wait(timeout=120) == 0, log.read_text()
-        assert "inside a gate that holds slot-0" in log.read_text(), log.read_text()
-    finally:
-        try:
-            os.killpg(push.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
 
 
 def test_the_push_gate_takes_a_slot_before_the_export():
@@ -427,39 +403,15 @@ def test_n_plus_one_direct_full_gates_on_n_slots_one_waits(tmp_path):
     )
     try:
         first.wait_for("gate slot 1/1 taken")
-        second = _local_ci(tmp_path, "second", env, "echo RAN-second")
+        # Its step fails if it ran before the first's release, whenever it did (no clock).
+        second = _local_ci(tmp_path, "second", env, f'test -e "{first.release}"')
         second.wait_for("all 1 gate slots are held")
-        time.sleep(0.5)
-        assert second.proc.poll() is None, second.out()
         first.release.touch()
         assert first.proc.wait(timeout=60) == 0, first.out()
         assert second.proc.wait(timeout=60) == 0, second.out()
         assert "taken after" in second.out(), second.out()
     finally:
         first.kill()
-
-
-@pytest.mark.load_sensitive
-def test_a_push_gate_running_gate_sh_full_takes_one_slot_not_two(tmp_path):
-    """push_gate -> tools/gate.sh --full -> local_ci, on ONE slot: the inner run reuses it."""
-    env = _env(tmp_path, 1)
-    repo = _repo(tmp_path)
-    (repo / "tools" / "gate.sh").write_text(
-        '#!/usr/bin/env bash\nexec "$GOH_DIR/gates/local_ci.sh" --steps-only --step "true" .\n'
-    )
-    _git(repo, "commit", "-qam", "a full gate through local_ci")
-    log = tmp_path / "push.log"
-    push = _push_proc(repo, tmp_path, env, log)
-    try:
-        assert push.wait(timeout=120) == 0, log.read_text()
-        text = log.read_text()
-        assert text.count("gate slot 1/1 taken") == 1, text
-        assert "inside a gate that holds slot-0" in text, text
-    finally:
-        try:
-            os.killpg(push.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
 
 
 def test_the_starter_gate_sh_takes_the_slot_for_full_only():

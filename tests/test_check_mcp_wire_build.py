@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+import types
 
 import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
@@ -55,13 +56,18 @@ exit 64
 """
 
 
-def cargo_gate(repo, tmp_path, server, *, timeout, build_s, extra="", env=None, prefix=""):
-    """The gate over `cargo run ... -- <planted server>`, with the planted cargo first on PATH."""
+def _fake_cargo(tmp_path):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     fake = bin_dir / "cargo"
     fake.write_text(FAKE_CARGO, encoding="utf-8")
     fake.chmod(0o755)
+    return bin_dir
+
+
+def cargo_gate(repo, tmp_path, server, *, timeout, build_s, extra="", env=None, prefix=""):
+    """The gate over `cargo run ... -- <planted server>`, with the planted cargo first on PATH."""
+    bin_dir = _fake_cargo(tmp_path)
     line = f"{prefix}cargo run --release --locked --quiet -- {server}"
     write(repo, ".gatesrc", f"GOH_MCP_SERVERS='{line}'\nGOH_MCP_TIMEOUT={timeout}\n{extra}")
     run_env = hermetic_env(**(env or {}))
@@ -85,22 +91,37 @@ def calls(tmp_path):
 
 
 def test_a_slow_build_and_a_fast_server_is_green_the_build_is_not_timed_as_the_answer(
-    repo, tmp_path
+    repo, tmp_path, monkeypatch
 ):
-    """The build is longer than the whole wire bound; the server answers at once.
+    """The build is longer than the whole wire bound; the server answers at once. The build's time
+    is the clock's (GOH.PYSLOW2: the fake cargo slept patience(6) + 4 s, 19 s under load): a wire
+    bound that began before it has passed long since. That the gate's build IS `cargo build`, run
+    first, is the moved-HOME test's."""
+    passed = [0.0]
+    real = time.monotonic
+    clock = types.SimpleNamespace(**{n: getattr(time, n) for n in ("sleep", "time")})
+    clock.monotonic = lambda: real() + passed[0]
+    built = []
 
-    The bound is 6 s on a quiet box and stretched by the load (GOH.COVPHASESTALL): a fixed 6 s was
-    the box's answer time at load ~114, not the server's. The build stays 4 s past it."""
-    wire = int(patience(6))
-    r = cargo_gate(repo, tmp_path, server_line(tmp_path, "built"), timeout=wire, build_s=wire + 4)
-    green(r)
-    assert calls(tmp_path)[0] == "build --release --locked --quiet", calls(tmp_path)
+    def slow(derived, root, bound):
+        built.append((derived, bound))
+        passed[0] += 100_000.0
+
+    monkeypatch.setattr(mw, "time", clock)
+    monkeypatch.setattr(mw, "build", slow)
+    monkeypatch.setenv("PATH", f"{_fake_cargo(tmp_path)}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("FAKE_CARGO_DIR", str(tmp_path))
+    (tmp_path / "built").touch()
+    server = f"cargo run --quiet -- {server_line(tmp_path, 'built')}"
+    findings, tools = mw.judge_server(server, repo, int(patience(20)), {}, 900, {})
+    assert built == [("cargo build --quiet", 900)], built
+    assert findings == [] and tools, findings
 
 
 @pytest.mark.load_sensitive
 def test_a_built_server_that_never_answers_is_still_red_as_no_answer(repo, tmp_path):
-    r = cargo_gate(repo, tmp_path, server_line(tmp_path, "mute", hang=True), timeout=2, build_s=0)
-    out = red(r, "wire: no answer to server/discover within 2s")
+    r = cargo_gate(repo, tmp_path, server_line(tmp_path, "mute", hang=True), timeout=1, build_s=0)
+    out = red(r, "wire: no answer to server/discover within 1s")
     assert "build:" not in out, out
 
 
@@ -119,21 +140,6 @@ def test_a_failed_build_says_build_with_its_output_and_starts_no_server(repo, tm
         "build: cargo build --release --locked --quiet failed (status 101)",
         "planted build failure",
     )
-    assert not any(c.startswith("run") for c in calls(tmp_path)), calls(tmp_path)
-
-
-@pytest.mark.load_sensitive
-def test_a_build_past_its_own_bound_says_build_and_is_reaped(repo, tmp_path):
-    r = cargo_gate(
-        repo,
-        tmp_path,
-        server_line(tmp_path, "slow"),
-        timeout=20,
-        build_s=60,
-        extra="GOH_MCP_BUILD_TIMEOUT=2\n",
-    )
-    red(r, "build: cargo build --release --locked --quiet did not finish within 2s")
-    assert _gone(tmp_path / "build.pid"), "the timed-out build outlived the gate"
     assert not any(c.startswith("run") for c in calls(tmp_path)), calls(tmp_path)
 
 
@@ -160,8 +166,10 @@ def _signal_the_build_sleep(tmp_path, sig, deadline_s):
 
 
 @pytest.mark.load_sensitive
-def test_a_build_whose_sleep_is_signalled_still_takes_its_whole_time(repo, tmp_path):
-    """GOH.MCPWIREBUILDSKIP: in GOH.LANDMISS1119's land the 60 s fake build ended in under 2 s and
+def test_a_build_past_its_own_bound_says_build_and_is_reaped(repo, tmp_path):
+    """...though a stray signal ends its `sleep` first, which the planted build outlasts.
+
+    GOH.MCPWIREBUILDSKIP: in GOH.LANDMISS1119's land the 60 s fake build ended in under 2 s and
     the gate ran the server (exit 0). Its kept tmp_path held `calls` = build then run, `build.pid`
     at 06:30:32 and `built` at 06:30:33: the build RAN and its `sleep` ended early. The fake read
     `sleep N; : > built; exit 0`, so a `sleep` ended by any stray signal was a finished build,
@@ -183,6 +191,7 @@ def test_a_build_whose_sleep_is_signalled_still_takes_its_whole_time(repo, tmp_p
     t.join(patience(25))
     assert done == [True], "the planted signal never reached the build's sleep"
     red(r, "build: cargo build --release --locked --quiet did not finish within 3s")
+    assert _gone(tmp_path / "build.pid"), "the timed-out build outlived the gate"
     assert not any(c.startswith("run") for c in calls(tmp_path)), calls(tmp_path)
 
 
@@ -207,6 +216,7 @@ def test_a_server_that_moves_home_still_builds_with_the_real_toolchain(repo, tmp
         prefix='HOME="$GOH_MCP_SCRATCH" ',
     )
     green(r)
+    assert calls(tmp_path)[0] == "build --release --locked --quiet", calls(tmp_path)
     seen = (tmp_path / "env").read_text(encoding="utf-8").splitlines()
     want = f"CARGO_HOME={home / '.cargo'} RUSTUP_HOME={home / '.rustup'}"
     assert seen and all(s == want for s in seen), seen
