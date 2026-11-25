@@ -15,7 +15,7 @@
     "one roadmap, open entries only": "rule 4 (a cited queue item is done) reads the umbrella queue (.loop/queue.json beside the owner's checkouts), no part of goh's tree; the walk's HOME is its own and empty (GOH.SELFWALKCI), as on a hosted runner; goh's own push judges it with the queue"
   },
   "findings": {
-    "goh fixed-sleep": {"count": 6, "why": "a test sleep standing for a readiness signal; goh never runs goh fixed-sleep over itself (its GOH_CI_STEPS run status-markers only) and has no fixed_sleep_seed.json"},
+    "goh fixed-sleep": {"count": 5, "why": "a test sleep standing for a readiness signal; goh never runs goh fixed-sleep over itself (its GOH_CI_STEPS run status-markers only) and has no fixed_sleep_seed.json"},
     "goh status-markers": {"count": 25, "why": "status_marker_seed.json: tui/lib.py and the scanner's own tests print escapes by design (BACKLOG 4.9)"},
     "one roadmap, open entries only": {"count": 252, "why": "rule 5 (GOH.ROADMAPIDS): code comments and configs cite plan ids from before the 2026-11-08 rephase (a plan name and a dotted number), which docs/BACKLOG.md says resolve at 1a7c444 (`git show 1a7c444:docs/BACKLOG.md`); the entry each named is in git, not the plan, so the rule reads them dead. roadmap_seed.json holds the same sites per file; rule 5's grace ends 2026-12-01"},
     "no bare open of an app": {"count": 1, "why": "tests/test_launch_app.py, the control arm a bare open must be: the Python shape, in grace until 2026-11-23, is seeded that day (its entry would read stale before it)"},
