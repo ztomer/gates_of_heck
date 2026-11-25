@@ -8,7 +8,7 @@ a file read as if tracked, so no copy of goh is made): it must name the cycle, l
 Those two read the whole tree. A four-line plant is judged beside the four real files its edge runs
 through (`small`), not the other 900 (GOH.PYSLOWTESTS: 14 whole-tree scans, 189 s of a run).
 """
-# goh-land-guard: test_this_tree_sorts_in_the_table_order
+# goh-land-guard: test_the_clean_tree_has_no_finding
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ def small(monkeypatch) -> None:
     monkeypatch.setattr(check_lock_order, "_tracked", lambda root: list(SMALL))
 
 
-def test_this_tree_sorts_in_the_table_order() -> None:
+def test_the_clean_tree_has_no_finding() -> None:
     """The whole tree, through the command line: no finding (exit 0), and the order it sorts in."""
     done = subprocess.run([sys.executable, str(CHECK), str(REPO_ROOT)], capture_output=True,
                           text=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL,

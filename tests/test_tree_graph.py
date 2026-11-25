@@ -12,13 +12,12 @@ first to ask fills it, and that what the others read answers as a fresh graph.
 from __future__ import annotations
 
 import ast
-import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 import _tree_graph
@@ -103,7 +102,7 @@ print("reach", sorted(graph.reach("tests/test_b.py")[0]))
 @pytest.mark.load_sensitive
 def test_two_workers_of_a_run_fill_one_graph(tmp_path) -> None:
     root, store = _tree(tmp_path / "tree"), tmp_path / "store"
-    env = {**os.environ, "PYTHONPATH": f"{REPO_ROOT}:{REPO_ROOT / 'tests'}"}
+    env = hermetic_env(PYTHONPATH=f"{REPO_ROOT}:{REPO_ROOT / 'tests'}")
     workers = [
         subprocess.Popen([sys.executable, "-c", WORKER, str(root), str(store)], env=env, text=True,
                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE)

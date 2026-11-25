@@ -46,7 +46,6 @@ tests/_land_verdicts.py
 tests/conftest.py
 tests/load_kit.py
 tests/test_agent_stalls.py
-tests/test_bench_lock.py
 tests/test_check_lock_version.py
 tests/test_check_no_unreaped_spawn.py
 tests/test_check_probes_pass.py
