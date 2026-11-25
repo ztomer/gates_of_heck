@@ -31,6 +31,9 @@ did not deliver through the run's end (lib/fs_events.py `Stream.drain`), underco
 planted dirs at load 25-45 read as a verdict and refused lands (2026-11-23). Such a run writes
 `unmeasured` (why) and no count, and is judged by neither ceiling; the line says so.
 
+THE BYTES (GOH.FSEVQUIET): the same run reads what each test leaves written (tests/_fs_bytes.py) and
+the devices' write counters, and prints the 20 largest tests.
+
 The ceilings live in tests/fs_events_ceiling.json; GATES_OF_HECK_FS_EVENTS_CEILING (JSON) replaces
 them for a test of this plugin. Off where FSEvents is not (Linux): the file says `unavailable`.
 Not GOH_-prefixed: a hermetic child that drops GOH_* still carries neither; a nested session never
@@ -50,7 +53,8 @@ from pathlib import Path
 _LIB = str(Path(__file__).resolve().parent.parent / "lib")
 if _LIB not in sys.path:
     sys.path.append(_LIB)
-import _whole_run  # noqa: E402  (tests/, beside this file)
+import _fs_bytes  # noqa: E402  (tests/, beside this file)
+import _whole_run  # noqa: E402
 import fs_events  # noqa: E402
 import pytest  # noqa: E402
 
@@ -150,6 +154,11 @@ def left_behind(roots: list[str]) -> int:
     return sum(len(dirs) + len(files) for root in roots for _, dirs, files in os.walk(root))
 
 
+def pytest_configure(config) -> None:  # the bytes beside the events (GOH.FSEVQUIET)
+    if not config.pluginmanager.is_registered(_fs_bytes):
+        config.pluginmanager.register(_fs_bytes, "_fs_bytes")
+
+
 def pytest_sessionstart(session) -> None:
     out = os.environ.pop(OUT, "")
     if not out or hasattr(session.config, "workerinput"):  # an xdist worker: the controller counts
@@ -165,6 +174,8 @@ def pytest_sessionstart(session) -> None:
         Path(out).write_text(json.dumps({"unavailable": str(e)}) + "\n")
         return
     _STATE.update(tally=tally, stream=stream, t0=fs_events.time.monotonic(), ran=0)
+    _STATE["device"] = _fs_bytes.device_bytes()
+    _fs_bytes.start()
 
 
 def pytest_deselected(items) -> None:
@@ -196,6 +207,9 @@ def pytest_sessionfinish(session, exitstatus) -> None:
     stream.drain()  # delivered through the run's end, or the window is unmeasured
     stream.__exit__(None, None, None)
     rep = tally.report(fs_events.time.monotonic() - _STATE.pop("t0"), TOP)
+    rep |= _fs_bytes.finish(TOP)
+    before, after = _STATE.pop("device"), _fs_bytes.device_bytes()
+    rep["device_bytes"] = None if before is None or after is None else after - before
     ran = _STATE.pop("ran")
     rep["tests_run"] = ran
     rep["teardown_entries"] = left_behind(tally.roots)
@@ -216,6 +230,8 @@ def pytest_sessionfinish(session, exitstatus) -> None:
             f"→ file events: a partial run ({ran} ran, {rep['deselected']} deselected): the per-run"
             f" ceiling describes whole runs and is not judged (tests/_fs_churn.py)"
         )
+    for line in _fs_bytes.summary(rep):
+        (tr.write_line if tr else print)(line)
     for f in faults:
         line = f"✗ file events (GOH.FSCHURN2, tests/fs_events_ceiling.json): {f}"
         (tr.write_line if tr else print)(line)
