@@ -6,3 +6,4 @@
 * GOH.PYSLOWTESTS: `test_push_release_reuse` judges the push's decision in process over the land's own record and keeps one whole land and push, its sampled pushes and the release commit's own land.
 * GOH.PYSLOWTESTS: `test_bench_lock` re-checks the lock every 0.1 s and waits for the line a process prints, not for a guess at how long the lock takes.
 * GOH.PYSLOWTESTS: `test_rust_gate` runs a scenario in the group its rule is in (`GOH_RUST_GROUPS`) over a clone of one crate; the whole gate runs in the end-to-end test and from a subdir.
+* GOH.PYSLOWTESTS: `test_landq` judges a land once, through the wait a lane uses (its record, its end-to-end row, its exit); `test_landq_alone` drains two lands a case, the marked one first or second.

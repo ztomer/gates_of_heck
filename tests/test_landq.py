@@ -219,37 +219,40 @@ def _land_wt(repo: Path, tmp_path: Path) -> tuple[Path, str]:
     return wt, git(wt, "rev-parse", "HEAD").strip()
 
 
-def test_a_green_land_request_fast_forwards_main_and_records_landed(repo, tmp_path, env):
+def _waited(env: dict[str, str], item: str, code: int, state: str, tip: str) -> None:
+    done = landq(env, "--wait", item, "--timeout", "90")
+    said = done.stdout + done.stderr
+    assert done.returncode == code and state in said and tip[:8] in said, said
+
+
+@pytest.mark.load_sensitive
+def test_a_green_land_request_fast_forwards_main_and_is_one_e2e_row(repo, tmp_path, env):
+    """The land a lane waits for: `goh land --wait ID` is its one wait, and no lander running
+    (--no-start) is started. GOH.LANDTARGET: the done record keeps the request's time (taken before
+    the enqueue's pre-step) and the pre-step's seconds, and the lander writes the item's end-to-end
+    row."""
     wt, tip = _land_wt(repo, tmp_path)
-    env = {**env, "GOH_LAND_GATE": "true"}
+    env = {**env, "GOH_LAND_GATE": "true", "GOH_TIMING_DIR": str(tmp_path / "timing")}
     done = enq(env, "--land", str(wt), "--item", "T.L", "--no-start")
     assert done.returncode == 0, done.stdout + done.stderr
-    assert landq(env, "--drain").returncode == 0
+    _waited(env, "T.L", 0, "landed", tip)
     got = recorded(env)["T.L"]
     assert got["state"] == "landed" and got["sha"] == tip and got["mode"] == "land", got
     assert git(repo, "rev-parse", "HEAD").strip() == tip  # land.sh moved main, nothing else did
     assert "landed" in Path(got["log"]).read_text()
-
-
-def test_a_landed_request_carries_its_request_time_and_is_one_e2e_row(repo, tmp_path, env):
-    """GOH.LANDTARGET: the done record keeps the request's time (taken before the enqueue's
-    pre-step) and the pre-step's seconds, and the lander writes the item's end-to-end row."""
-    wt, _ = _land_wt(repo, tmp_path)
-    env = {**env, "GOH_LAND_GATE": "true", "GOH_TIMING_DIR": str(tmp_path / "timing")}
-    assert enq(env, "--land", str(wt), "--item", "T.E", "--no-start").returncode == 0
-    assert landq(env, "--drain").returncode == 0
     (rec,) = [r for _, r in land_records.records(tmp_path / "landq")]
     assert rec["requested"].endswith("Z") and isinstance(rec["pre_s"], float), rec
     (e2e,) = [r for r in _goh_db_fixture.timed(env["GOH_DB"]) if r["kind"].startswith("land e2e")]
-    assert (e2e["kind"], e2e["item"]) == ("land e2e plain", "T.E"), e2e
+    assert (e2e["kind"], e2e["item"]) == ("land e2e plain", "T.L"), e2e
 
 
+@pytest.mark.load_sensitive
 def test_a_red_land_gate_lands_nothing_and_records_the_log(repo, tmp_path, env):
     wt, tip = _land_wt(repo, tmp_path)
     before = git(repo, "rev-parse", "HEAD").strip()
     env = {**env, "GOH_LAND_GATE": "echo red-gate-says-why; false"}
     assert enq(env, "--land", str(wt), "--item", "T.R", "--no-start").returncode == 0
-    landq(env, "--drain")
+    _waited(env, "T.R", 1, "red", tip)
     got = recorded(env)["T.R"]
     assert got["state"] == "red" and got["sha"] == tip, got
     assert "red-gate-says-why" in Path(got["log"]).read_text(), got
@@ -284,30 +287,9 @@ def test_enqueue_land_refuses_the_main_checkout_and_a_dirty_tree(repo, tmp_path,
     assert not queued(tmp_path)
 
 
-@pytest.mark.load_sensitive
-@pytest.mark.parametrize(("gate", "code", "state"), [("true", 0, "landed"), ("false", 1, "red")])
-def test_wait_blocks_until_the_outcome_and_exits_by_it(repo, tmp_path, env, gate, code, state):
-    """`goh land --wait ID` is the lane's one wait: no lander running (--no-start) is started."""
-    wt, tip = _land_wt(repo, tmp_path)
-    env = {**env, "GOH_LAND_GATE": gate}
-    assert enq(env, "--land", str(wt), "--item", "T.W", "--no-start").returncode == 0
-    done = landq(env, "--wait", "T.W", "--timeout", "90")
-    assert done.returncode == code, done.stdout + done.stderr
-    assert state in done.stdout + done.stderr and tip[:8] in done.stdout + done.stderr
-    assert recorded(env)["T.W"]["state"] == state
-
-
 def test_wait_on_an_item_with_no_request_says_so(env):
     done = landq(env, "--wait", "T.NONE")  # refused at once: nothing to wait on
     assert done.returncode == 2 and "T.NONE" in done.stdout + done.stderr
-
-
-def test_wait_on_an_item_never_takes_another_items_request(repo, tmp_path, env):
-    """Request names are `<ns>-<item>`: an item `B` is not the request of an item `X-B`."""
-    wt, _ = _land_wt(repo, tmp_path)
-    assert enq(env, "--land", str(wt), "--item", "X-B", "--no-start").returncode == 0
-    done = landq(env, "--wait", "B")
-    assert done.returncode == 2 and "no request for B" in done.stdout + done.stderr, done.stderr
 
 
 def test_a_rebased_land_records_the_sha_on_main_as_landing_sha(repo, tmp_path, env):
@@ -408,6 +390,7 @@ def _pending(tmp_path: Path) -> list[Path]:
 
 
 def test_enqueue_refuses_a_tip_whose_pre_step_fails_and_names_the_test(repo, tmp_path, env):
+    """And `--no-pre` skips that pre-step, for a reason it is given."""
     wt, _ = _land_wt(repo, tmp_path)
     pre = "echo 'FAILED tests/test_wiring.py::test_every_doc_row - planted'; exit 1"
     env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": pre}
@@ -416,17 +399,27 @@ def test_enqueue_refuses_a_tip_whose_pre_step_fails_and_names_the_test(repo, tmp
     assert done.returncode != 0 and "tests/test_wiring.py::test_every_doc_row" in out, out
     assert "nothing enqueued" in out, out
     assert _pending(tmp_path) == []
+    done = enq(env, "--land", str(wt), "--item", "T.P", "--no-start", "--no-pre")
+    assert done.returncode == 2 and "--no-pre needs a reason" in done.stdout + done.stderr
+    assert _pending(tmp_path) == []
+    done = enq(env, "--land", str(wt), "--item", "T.P", "--no-start",
+               "--no-pre", "lane ran the set by hand")  # fmt: skip
+    assert done.returncode == 0 and "lane ran the set by hand" in done.stdout + done.stderr
+    assert len(_pending(tmp_path)) == 1
 
 
 def test_enqueue_queues_a_green_tip_after_running_the_pre_step_once(repo, tmp_path, env):
     wt, tip = _land_wt(repo, tmp_path)
     seen = tmp_path / "seen"
     env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": f"echo pre >> {seen}"}
-    done = enq(env, "--land", str(wt), "--item", "T.G", "--no-start")
+    done = enq(env, "--land", str(wt), "--item", "X-B", "--no-start")
     assert done.returncode == 0, done.stdout + done.stderr
     assert seen.read_text() == "pre\n"  # the enqueue ran it, in the worktree, and landed nothing
     assert git(repo, "rev-parse", "HEAD").strip() != tip
     assert len(_pending(tmp_path)) == 1
+    # Request names are `<ns>-<item>`: an item `B` is not the request of an item `X-B`.
+    done = landq(env, "--wait", "B")
+    assert done.returncode == 2 and "no request for B" in done.stdout + done.stderr, done.stderr
 
 
 def test_enqueue_queues_a_tip_whose_pre_step_hit_its_deadline_and_says_so(repo, tmp_path, env):
@@ -436,25 +429,13 @@ def test_enqueue_queues_a_tip_whose_pre_step_hit_its_deadline_and_says_so(repo, 
         **env,
         "GOH_LAND_GATE": "true",
         "GOH_LAND_PRE": "sleep 30",
-        "GOH_LAND_PRE_MAX": "2s",
-        "GOH_LAND_PRE_CEIL": "2s",
+        "GOH_LAND_PRE_MAX": "1s",
+        "GOH_LAND_PRE_CEIL": "1s",
     }
     done = enq(env, "--land", str(wt), "--item", "T.D", "--no-start")
     out = done.stdout + done.stderr
     assert done.returncode == 0, out
     assert "no verdict" in out and "queued" in out, out
-    assert len(_pending(tmp_path)) == 1
-
-
-def test_enqueue_no_pre_names_its_reason_and_skips_the_pre_step(repo, tmp_path, env):
-    wt, _ = _land_wt(repo, tmp_path)
-    env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": "exit 1"}
-    done = enq(env, "--land", str(wt), "--item", "T.X", "--no-start", "--no-pre")
-    assert done.returncode == 2 and "--no-pre needs a reason" in done.stdout + done.stderr
-    assert _pending(tmp_path) == []
-    done = enq(env, "--land", str(wt), "--item", "T.X", "--no-start",
-                 "--no-pre", "lane ran the set by hand")  # fmt: skip
-    assert done.returncode == 0 and "lane ran the set by hand" in done.stdout + done.stderr
     assert len(_pending(tmp_path)) == 1
 
 

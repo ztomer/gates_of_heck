@@ -47,37 +47,39 @@ def _record(env: dict[str, str], item: str, state: str, why: str) -> None:
     land_records.write(lq, f"{next(_SEQ):020d}-{item}", {"state": state, "why": why})
 
 
-def _three(repo: Path, tmp_path: Path, env: dict[str, str], *middle: str) -> list[str]:
+def _two(repo: Path, tmp_path: Path, env: dict[str, str], *second: str) -> list[str]:
+    """Two lands drained: one gate run if they stacked, two if one of them gates alone."""
     wts = [(lane(repo, tmp_path, n, {f"{n}.txt": f"{n}\n"}), f"T.{n.upper()}")
-           for n in ("one", "two", "three")]  # fmt: skip
+           for n in ("one", "two")]  # fmt: skip
     for i, (wt, item) in enumerate(wts):
-        _enqueue(env, wt, item, *(middle if i == 1 else ()))
+        _enqueue(env, wt, item, *(second if i == 1 else ()))
     assert landq(env, "--drain").returncode == 0
     return [item for _, item in wts]
 
 
-def test_a_no_pre_land_gates_alone_while_the_others_batch(repo, tmp_path, env):
-    items = _three(repo, tmp_path, env, "--no-pre", "the set ran by hand")
-    assert gate_runs(env) == ["one", "two", "three"], gate_runs(env)
+def test_a_no_pre_land_joins_no_batch_before_it(repo, tmp_path, env):
+    items = _two(repo, tmp_path, env, "--no-pre", "the set ran by hand")
+    assert gate_runs(env) == ["one", "two"], gate_runs(env)
     got = recorded(env)
     assert all(got[i]["state"] == "landed" for i in items), got
 
 
 def test_a_land_red_on_its_last_attempt_gates_alone_until_it_lands(repo, tmp_path, env):
-    _record(env, "T.TWO", "red", "exit 1")
-    items = _three(repo, tmp_path, env)
-    assert gate_runs(env) == ["one", "two", "three"], gate_runs(env)
+    """The marked land is the FIRST here: no later land joins it either."""
+    _record(env, "T.ONE", "red", "exit 1")
+    items = _two(repo, tmp_path, env)
+    assert gate_runs(env) == ["one", "two"], gate_runs(env)
     got = recorded(env)
     assert all(got[i]["state"] == "landed" for i in items), got
-    assert landq_alone.red_last(Path(env["GOH_LANDQ_DIR"]), "T.TWO") == ""  # it landed once
+    assert landq_alone.red_last(Path(env["GOH_LANDQ_DIR"]), "T.ONE") == ""  # it landed once
 
 
 def test_a_red_that_judged_no_code_and_a_landed_last_attempt_batch(repo, tmp_path, env):
     _record(env, "T.ONE", "red", "conflict: did not stack on 0123abcd")
     _record(env, "T.TWO", "red", "exit 1")
     _record(env, "T.TWO", "landed", "")
-    _three(repo, tmp_path, env)
-    assert gate_runs(env) == ["three"], gate_runs(env)  # one stack, one gate
+    _two(repo, tmp_path, env)
+    assert gate_runs(env) == ["two"], gate_runs(env)  # one stack, one gate
 
 
 def test_red_last_names_the_newest_red_of_the_items_own_code(tmp_path):
