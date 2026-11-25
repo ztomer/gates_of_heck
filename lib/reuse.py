@@ -180,8 +180,9 @@ CARRY = register(
     sites=("tests/_land_verdicts.py", "lib/pre_reuse.py"), shadow="inline",
 )  # fmt: skip
 register(
-    "affected", ("repo", "tree", "selection", "identity", "env"), DAY_S, "the pre-land set's green "
-    "run on a tree, the next run of that set on it under those inputs (lib/affected_verdict.py)",
+    "affected", ("repo", "tree", "selection", "identity", "env", "config", "base"), DAY_S,
+    "the pre-land set's green run on a tree, the next run of that set on it under those inputs, "
+    "measuring the same lines (lib/affected_verdict.py)",
     sites=("lib/affected_verdict.py",), shadow="inline",
 )  # fmt: skip
 register(

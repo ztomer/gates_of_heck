@@ -23,9 +23,19 @@ THE KEY, and why it is exact:
              (CALLER_INPUTS; it drops every other GOH_* before a test runs, tests/
              test_suite_ship_env.py) but the verdict-free ones (gates/verdict_free_keys.txt: the
              record's own path, the floor memo), GOH_PY as the interpreter it RESOLVES to
-             (lib/house_python.sh, which tools/pytest.sh sources), and the suite's shape
+             (lib/house_python.sh, which tools/pytest.sh sources), PYTEST_ADDOPTS (a `-k` run is
+             part of the set, never its verdict: GOH.RUSTPRECARRY), and the suite's shape
              (GATES_OF_HECK_SUITE_SHAPE; every keyed run carries a land record, so it is `ci`,
              the land's). A tree whose suite declares no inputs has no key: it runs.
+  config     what the run measures beside the tests: `rust_cov` when it owes the change's Rust
+             lines (lib/land_rustcov.py `plan`: --rust-cov and a changed `.rs` file), else `plain`.
+             Without it a lane's plain run was the enqueue's verdict, its lines never judged
+             (GOH.RUSTPRECARRY: 6 takes by 2026-11-25, none of a Rust change);
+  base       the merge base the change is measured from: the same tree and set on another is
+             another diff, with other lines to cover. Never main's tip, which moves under an
+             unchanged change.
+The last two take the audit's own column names (lib/body_tables.py `_NAMED`): a field with no
+column is Refused when the audit writes its evidence.
 The record kept is the run's own verdict record (tests/_land_verdicts.py), the very file the land
 gate already reuses on `identity` alone; this key is that plus four more fields, so the enqueue
 trusts it strictly less than the gate trusted it before. A reuse writes that record to the
@@ -58,9 +68,10 @@ ONE run of a change's test set before the batch gate (GOH.ONEVERDICTTREE3):
 `tools/affected_tests.py --run`'s green whole-set run is kept in the one store (`affected`: repo,
 the commit's tree (not its sha: a recommit of the tree takes it, GOH.PRESTEPVERDICTMISS), the
 chosen nodes, the suite identity, the suite's declared GOH_* inputs by value with GOH_PY resolved,
-its shape), and the next run of that set on that tree -- the enqueue's pre-step after the lane's
-run -- takes it, handing its record to the caller; every miss says why in one line; a lane's run
-gets a land record, so it runs in the land's shape. Audited inline, 1 in 10.
+its shape, what it measures and the merge base), and the next run of that set on that tree -- the
+enqueue's pre-step after the lane's run -- takes it, handing its record to the caller; every miss
+says why in one line; a lane's run gets a land record, so it runs in the land's shape. Audited
+inline, 1 in 10.
 """
 
 from __future__ import annotations
@@ -84,7 +95,8 @@ RECORD = "GOH_LAND_VERDICTS_RECORD"
 REUSE = "GOH_LAND_VERDICTS_REUSE"
 SHAPE = "GATES_OF_HECK_SUITE_SHAPE"
 GREEN = "green"  # the record's key: the identity its whole set was green on (`mark_green`)
-SIDES = (".judges", ".owed", ".mac")  # beside a record while its run lasts; a killed one leaves it
+# Beside a record while its run lasts; a killed run leaves them.
+SIDES = (".judges", ".owed", ".mac", ".kin")
 # The lines a run of the set says (`judged`), and `outcome`'s patterns for them: one place each.
 TOOK = (
     "pre-land: the set's verdict on {on} holds (same tree, set and suite inputs; {by}, {took} s, "
@@ -133,14 +145,14 @@ def env_lines(root: Path, env: dict[str, str]) -> list[str] | None:
         return None
     free = cov_env.free_keys(root)
     out = [f"shape {env.get(SHAPE, '')}", f"GOH_PY -> {house_python(root, env)}"]
+    out.append(f"PYTEST_ADDOPTS={env.get('PYTEST_ADDOPTS', '')}")
     for name in sorted(set(declared) - free - {"GOH_PY"}):
         out.append(f"{name}={env[name]}" if name in env else f"{name} unset")
     return out
 
 
-def keyed(
-    root: Path, chosen: list[str], env: dict[str, str] | None = None
-) -> tuple[dict | None, str]:
+def keyed(root: Path, chosen: list[str], env: dict[str, str] | None = None,
+          base: str | None = None, rust_cov: bool = False) -> tuple[dict | None, str]:  # fmt: skip
     """(the key of this set's run on root's commit tree, "") or (None, why it has none: it runs)."""
     env = dict(os.environ) if env is None else env
     gi, reuse = _lib("gate_identity"), _lib("reuse")
@@ -161,7 +173,10 @@ def keyed(
         return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
     return {"repo": reuse.repo_id(root), "tree": tree, "selection": digest(sorted(chosen)),
-            "identity": identity, "env": digest(lines)}, ""  # fmt: skip
+            "identity": identity, "env": digest(lines),
+            "config": "rust_cov" if rust_cov else "plain",
+            "base": (base and reuse._git(root, "merge-base", "HEAD", base)) or f"none of {base}",
+            }, ""  # fmt: skip
 
 
 def fields(root: Path, chosen: list[str], env: dict[str, str] | None = None) -> dict | None:
@@ -205,16 +220,17 @@ def own_record() -> Iterator[None]:
 
 
 def whole(root: Path, chosen: list[str], base: str | None, is_whole: bool,
-          work: Callable[[], int]) -> int:  # fmt: skip
-    """tools/affected_tests.py's run of its set: a WHOLE set's under its own record and `judged`,
-    unless it runs nothing (an empty set, or inside a running goh suite, which runs the set)."""
+          work: Callable[[], int], rust_cov: bool = False) -> int:  # fmt: skip
+    """tools/affected_tests.py's run of its set: a WHOLE set's under its own record and `judged`
+    (RUST_COV: it measures the change's Rust lines), unless it runs nothing (an empty set, or
+    inside a running goh suite, which runs the set)."""
     nested = os.environ.get("GATES_OF_HECK_SUITE_RUNNER") and not os.environ.get(
         "GATES_OF_HECK_SUITE_NESTED_OK"
     )
     if not is_whole or not chosen or nested:
         return work()
     with own_record():  # then what the gate would run for want of a verdict (lib/pre_owed.py)
-        if rc := judged(root, chosen, base, work):
+        if rc := judged(root, chosen, base, work, rust_cov):
             return rc
         mark_green(os.environ.get(RECORD, ""))
         return _lib("pre_owed").run(root, base)
@@ -280,9 +296,10 @@ def keep(root: Path, key: dict, took: float) -> bool:
     return True
 
 
-def judged(root: Path, chosen: list[str], base: str | None, work: Callable[[], int]) -> int:
+def judged(root: Path, chosen: list[str], base: str | None, work: Callable[[], int],
+           rust_cov: bool = False) -> int:  # fmt: skip
     """WORK (the set's run) unless a kept green verdict of this exact key stands; its exit."""
-    key, why = keyed(root, chosen)
+    key, why = keyed(root, chosen, None, base, rust_cov)
     if key is None:
         _say("info", NO_KEY.format(why=why))
         return work()
@@ -386,8 +403,9 @@ def carrying(record: str) -> list[str]:
     record, so tests/_land_verdicts.py deselects each chosen test that passed on another tree
     whose diff to this one the selector does not choose it by, nor touches a file it was seen to
     read (tests/_read_audit.py), as the land gate's suite does: a run after a fix runs only the
-    fix's readers. None for a run with no record, or one a caller already names REUSE for. The
-    plain run only: a Rust change's measured run (lib/land_rustcov.py) runs its set whole."""
+    fix's readers. None for a run with no record, or one a caller already names REUSE for. A Rust
+    change's measured run carries so too, a test that ran the binary by its stored profile of the
+    same instrumented bytes (lib/land_rustcov.py `kin`, GOH.RUSTPRECARRY)."""
     if not record or record == os.devnull or os.environ.get(REUSE):
         return []
     return ["env", f"{REUSE}={os.devnull}"]

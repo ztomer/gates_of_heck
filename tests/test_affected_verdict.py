@@ -73,7 +73,7 @@ def test_the_lanes_green_run_is_the_enqueues_verdict_and_the_set_runs_once(
     lane, tmp_path, monkeypatch
 ) -> None:
     work = Set(lane)
-    assert av.judged(lane, SET, "b" * 40, work) == 0
+    assert av.judged(lane, SET, "c" * 40, work) == 0
     assert work.runs == 1
     rec = _enqueue(monkeypatch, tmp_path)
     assert av.judged(lane, SET, "c" * 40, work) == 0
@@ -180,7 +180,7 @@ def test_a_lanes_run_gets_its_own_land_record_and_a_part_of_the_set_goes_straigh
 
 def test_a_recommit_of_the_same_tree_takes_the_lanes_verdict(lane, tmp_path, monkeypatch) -> None:
     work = Set(lane)
-    av.judged(lane, SET, None, work)
+    av.judged(lane, SET, "c" * 40, work)
     judged_on = git(lane, "rev-parse", "HEAD").strip()
     git(lane, "commit", "-q", "--amend", "--no-verify", "-m", "lane, reworded")
     head = git(lane, "rev-parse", "HEAD").strip()
@@ -261,7 +261,7 @@ def test_a_take_of_the_lanes_verdict_is_said_as_taken_with_the_seconds_it_saved(
     lane, tmp_path, monkeypatch
 ) -> None:
     work = Set(lane)
-    av.judged(lane, SET, None, work)
+    av.judged(lane, SET, "c" * 40, work)
     on = git(lane, "rev-parse", "HEAD").strip()[:8]
     _enqueue(monkeypatch, tmp_path)
     lines = _said(monkeypatch)

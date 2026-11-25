@@ -360,9 +360,8 @@ def main(argv: list[str]) -> int:
         whole = args.changed is None and not args.readers_only
         base = pre_reuse.base_sha(root, args.base) if whole else None  # ONE run per change: av
         rust = land_rustcov.plan(root, args.base) if args.rust_cov and whole else None
-        rc = av.whole(
-            root, list(chosen), base, whole, lambda: run(root, changed, chosen, base, rust)
-        )
+        rc = av.whole(root, list(chosen), base, whole,
+                      lambda: run(root, changed, chosen, base, rust), rust is not None)  # fmt: skip
         return rc or canary(root, changed)
     for rel, why in chosen.items():
         print(f"{rel}  # {why}" if args.why else rel)
@@ -418,23 +417,24 @@ def run(root: Path, changed: list[str], chosen: dict, base: str | None = None, r
         _ran_nothing(why)
         return 0
     judges, rest = phases(root, chosen)
-    judges, rest = land_rustcov.split(root, judges, rest) if rust else (judges, rest)
-    info(
-        f"pre-land: {counted(len(chosen), 'test')} -- {len(judges)} judging the whole tree "
-        f"first, then {len(rest)} chosen by {counted(len(changed), 'changed path')}"
-    )
+    kin = land_rustcov.kin(root) if rust else ""
+    judges, rest, far = land_rustcov.split(root, judges, rest, kin) if rust else (judges, [], rest)
+    info(f"pre-land: {counted(len(chosen), 'test')} -- {len(judges)} judging the whole tree first, "
+         f"then {len(rest) + len(far)} chosen by {counted(len(changed), 'changed path')}"
+         )  # fmt: skip
     record = os.environ.get("GOH_LAND_VERDICTS_RECORD", "")
     first = Path(f"{record}.judges") if record and record != os.devnull else None
-    rest, share = (rest, None) if rust else remote_lane.begin(root, rest, bool(judges), judges)
+    local, share = remote_lane.begin(root, far, bool(judges or rest), [*judges, *rest])
+    rest = land_rustcov.paced(share, [*rest, *local]) if rust else local
     for n, nodes in enumerate((judges, rest)):
         if not nodes and not (rust and n == 1):  # a Rust change measures its workspace's tests
             continue
         what = "judging the whole tree" if n == 0 else "the diff chose"
         plain = [*av.carrying(record), "bash", str(root / "tools" / "pytest.sh"), "-q", *nodes]
-        argv = land_rustcov.argv(root, rust, nodes) if rust and n == 1 else plain
-        with pre_cpu.counted():  # the run's tree, for the land record's `pre_run` (GOH.PREWIDTH)
+        cov = [*av.carrying(record), *land_rustcov.argv(root, rust, nodes)] if rust and n else None
+        with pre_cpu.counted(), land_rustcov.named(record, kin if n else ""):
             rc = timed(  # its own row (GOH.RELEASELANDGATE); no cwd: pytest.sh runs in its checkout
-                f"pre-land: {len(nodes)} tests {what}", argv
+                f"pre-land: {len(nodes)} tests {what}", cov or plain
             )
         if rc:
             return remote_lane.cancel(share) or rc

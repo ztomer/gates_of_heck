@@ -345,7 +345,7 @@ def _plan(config) -> dict:
     plan["judged"] = set(plan["skipped"])  # the pre-step's passes of THIS tree (its identity)
     plan["shadow"] = _carry_shadow.Shadow(plan, path)  # F against what ran (GOH.CARRYSHADOW)
     if path:
-        _carry(plan, _land_trees.file_sha(path), coverage, Path(config.rootpath), sources(path))
+        _carry(plan, _land_trees.file_sha(path), coverage, config.rootpath, sources(path, _KEYS))
     if coverage:  # a same-tree pass is skipped only when it was measured running no binary
         nobin = plan.get("nobin", set())
         dropped = {n for n in same if n not in nobin}

@@ -23,8 +23,22 @@ leaves uncovered too. Red at the land, not carried to the ship: a carry would re
 before its suite but still cost a fix land after the queue; red here costs the lane one commit.
 
 NOT RUN (`plan` returns None, said) for a change touching no `.rs` file, a tree that declares no
-external suite, or inside a running goh suite. No floor and no coverage claim (--diff-only), no
-stored per-test profile (GOH_PROFCARRY_TESTS=off). Pinned by tests/test_land_rustcov.py.
+external suite, or inside a running goh suite. No floor and no coverage claim (--diff-only).
+Pinned by tests/test_land_rustcov.py.
+
+A RETRY CARRIES (GOH.RUSTPRECARRY). A red on one node cost the whole set again: of 47 enqueue
+pre-steps of a Rust change in 7 days, 11 retried a measured run on an unchanged binary (11,429 s;
+OLDFORMS 1050 s then 1054 s). The measured run now carries as the plain one does
+(lib/affected_verdict.py `carrying`): tests/_land_verdicts.py skips a test that passed on another
+tree, that the diff between the trees does not choose and that read none of it; one that ran the
+binary only when its stored profile is of these instrumented bytes, which the report then counts
+(GOH.COVCARRY3, the land gate's rule, audited as `carry`). The tree carried from is named: `kin`,
+the nearest one measured with the same build inputs, beside the record (`named`). Named because 8
+of the 12 retries were rebased, so the tree they had failed on was no ancestor of theirs.
+
+THE WORKER'S SHARE. A chosen test that does not run the binary covers no Rust line: on a first run
+the Linux-safe ones go to the remote worker beside it (`split`; 14% of the set's seconds over four
+logs). Not on a retry, which carries them in seconds.
 
 GOH.LANDRUSTCOV: a land measures the diff coverage of its own changed Rust lines. When the land
 changes a `.rs` file, the pre-step's second run (`tools/affected_tests.py --run --rust-cov`, goh's
@@ -34,22 +48,30 @@ coverage machinery as a SUBSET run, no floor, no claim): the instrumented build,
 tests, then `GOH_COV_RUST_EXTERNAL` over those tests against the instrumented goh, its verdict
 record kept; `gates/diff_cov.py` judges every changed Rust line since the merge base with main, red
 naming `file:line`. Replaces the plain run of the same tests, so the added wall is the builds and
-the workspace's tests. Not run when no `.rs` file changed (`plan`).
+the workspace's tests. Not run when no `.rs` file changed (`plan`). A retry carries
+(GOH.RUSTPRECARRY): a test that passed on the nearest tree measured with the same build inputs
+(`kin`, the profile store's ledger) is not run again unless the diff between them reaches it, its
+stored profile counted; a first run sends the worker the chosen tests that run no binary (`split`).
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shlex
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / "lib")]
-from lib import gitrun  # noqa: E402
+from lib import binary_runners, gitrun, prof_store, test_closure  # noqa: E402
 from tui.lib import counted, info  # noqa: E402
 
+KIN = ".kin"  # beside the record the measured run writes: the tree it carries from (`named`)
+# A part of the suite, or of its coverage, the caller's environment names: never this run's.
+PARTS = ("GOH_COV_PART", "GOH_COV_PARTS_IN")
 DROP = ("GOH_LAND_VERDICTS_RECORD", "GOH_LAND_VERDICTS_REUSE")  # `judge` alone: no land's record
 
 
@@ -104,8 +126,6 @@ def plan(root: Path, base: str) -> tuple[str, str] | None:
 def selected(root: Path, chosen: list[str]) -> list[str]:
     """The entries of CHOSEN (test files or node ids) whose file runs the binary: the only tests
     that can cover a Rust line (lib/binary_runners.py `runners`, the selection's own reader)."""
-    from lib import binary_runners, test_closure
-
     tests = {
         f"tests/{p.name}": p.read_text(encoding="utf-8", errors="replace")
         for p in sorted((root / "tests").glob("test_*.py"))
@@ -116,10 +136,62 @@ def selected(root: Path, chosen: list[str]) -> list[str]:
     return [n for n in chosen if n.split("::")[0] in runs]
 
 
-def split(root: Path, judges: list[str], rest: list[str]) -> tuple[list[str], list[str]]:
-    """The pre-step's two runs with the judges that run the binary moved into the measured one."""
-    binary = set(selected(root, judges))
-    return [n for n in judges if n not in binary], [*sorted(binary), *rest]
+def split(root: Path, judges: list[str], rest: list[str],
+          kin: str = "") -> tuple[list[str], list[str], list[str]]:  # fmt: skip
+    """(the judges' run, the measured one with the judges that run the binary moved into it, the
+    tests the worker may share: those that run no binary, none of a retry's, which carries)."""
+    binary = set(selected(root, [*judges, *rest]))
+    far = [] if kin else [n for n in rest if n not in binary]
+    mine = sorted(n for n in judges if n in binary)
+    return ([n for n in judges if n not in binary],
+            [*mine, *(n for n in rest if kin or n in binary)], far)  # fmt: skip
+
+
+def paced(share, rest: list[str]) -> list[str]:
+    """REST; the worker's SHARE folds no pace of the Mac's from a run that builds and instruments
+    (lib/remote_lane.py `measure`)."""
+    if share is not None:
+        share.mac_s = 0.0
+    return rest
+
+
+def _paths(root: Path, tree: str) -> list[str] | None:
+    """The paths whose bytes differ between TREE and HEAD's; None when git cannot say."""
+    r = gitrun.run_reader(["diff", "--name-only", "--no-renames", tree, "HEAD"], repo=str(root),
+                          timeout=120)  # fmt: skip
+    return [p for p in r.stdout.splitlines() if p] if r.returncode == 0 else None
+
+
+def kin(root: Path) -> str:
+    """The tree this measured run carries from: of those whose tests' profiles the store still
+    holds (lib/prof_store.py's ledger) and whose build inputs are HEAD's, the nearest by paths, the
+    newest of those. "" for none. Only a name: each node's own verdict, diff, reads and profile
+    still decide (tests/_land_verdicts.py `_carry`), so a wrong one carries nothing."""
+    best: tuple[int, str] | None = None
+    for row in reversed(prof_store.ledger()):
+        tree = str(row.get("tree", ""))
+        if not prof_store.live(row) or (paths := _paths(root, tree)) is None:
+            continue
+        if not binary_runners.build_input(root, paths) and (best is None or len(paths) < best[0]):
+            best = (len(paths), tree)
+    if best is None:
+        return ""
+    info(f"rust diff coverage: carries from tree {best[1][:8]}, measured with the same build "
+         f"inputs ({counted(best[0], 'path')} differ)")  # fmt: skip
+    return best[1]
+
+
+@contextlib.contextmanager
+def named(record: str, tree: str) -> Iterator[None]:
+    """TREE beside RECORD while its run lasts (tests/_land_trees.py `sources`); none: nothing."""
+    on = Path(f"{record}{KIN}") if tree and record and record != os.devnull else None
+    if on:
+        on.write_text(tree, encoding="utf-8")
+    try:
+        yield
+    finally:
+        if on:
+            on.unlink(missing_ok=True)
 
 
 def argv(root: Path, planned: tuple[str, str], tests: list[str]) -> list[str]:
@@ -127,7 +199,8 @@ def argv(root: Path, planned: tuple[str, str], tests: list[str]) -> list[str]:
     the PLANNED merge base; run with the caller's environment, its land record included."""
     mb, cmd = planned
     ext = f"{cmd} -q {shlex.join(tests)}" if tests else ":"  # pytest.sh with no file is the suite
-    return ["env", f"GOH_CHANGE_BASE={mb}", "GOH_PROFCARRY_TESTS=off", "GOH_COV_DIFF=on",
+    return ["env", *(a for k in PARTS for a in ("-u", k)), f"GOH_CHANGE_BASE={mb}",
+            "GOH_COV_DIFF=on",
             "bash", str(ROOT / "gates" / "coverage_gate.sh"), "--lang", "rust", "--diff-only",
             "--external", ext, str(root)]  # fmt: skip
 

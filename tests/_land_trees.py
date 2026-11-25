@@ -47,10 +47,14 @@ def named(root: Path, shas: list[str]) -> list[tuple[str, str]]:
     return out
 
 
-def sources(record: str) -> list[str]:
-    """The shas named beside a gate's RECORD (`<record>.sources`, tools/land.sh); [] for none."""
+def sources(record: str, keys: dict[str, str] | None = None) -> list[str]:
+    """The shas named beside a gate's RECORD (`<record>.sources`, tools/land.sh); the pre-step's
+    own run (RECORD /dev/null), the tree beside the record it writes (KEYS' RECORD): the measured
+    run a Rust retry carries from (`.kin`, lib/land_rustcov.py); [] for none."""
+    own = (keys or {}).get("GOH_LAND_VERDICTS_RECORD", "")
+    path = f"{record}.sources" if record != os.devnull else f"{own}.kin" if own else ""
     try:
-        text = Path(f"{record}.sources").read_text(encoding="utf-8") if record else ""
+        text = Path(path).read_text(encoding="utf-8") if record and path else ""
     except OSError:
         return []
     return [w for w in text.split() if len(w) == 40 and all(c in "0123456789abcdef" for c in w)]

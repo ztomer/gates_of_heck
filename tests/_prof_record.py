@@ -54,6 +54,7 @@ MEASURED = "goh_measured"  # a user property: a calibrated plain worker measured
 _state: dict[str, object] = {}
 _profiled: set[str] = set()  # the controller's: the nodes whose call left a raw profile
 _measured: set[str] = set()  # the controller's: the nodes a calibrated plain worker ran
+_red: set[str] = set()  # this process's failed nodes: what one ran before it failed is no profile
 
 
 def _mode() -> str:
@@ -327,7 +328,8 @@ def _merged(item, d: Path) -> None:
     os.environ[PROFILE] = str(_state["outer"])
     raws = sorted(d.glob("*.profraw"))
     me = f"t-{node_hash(item.nodeid)}-{os.getpid()}.profraw"
-    if raws and merge(raws, dest := Path(str(_state["outer"])).with_name(me)):
+    ok = raws and merge(raws, dest := Path(str(_state["outer"])).with_name(me))
+    if ok and item.nodeid not in _red:  # part of a test is never its profile (GOH.RUSTPRECARRY)
         _keep(item.nodeid, dest)
 
 
@@ -350,6 +352,8 @@ def pytest_runtest_call(item):
 def pytest_runtest_logreport(report) -> None:
     """The controller's account of which nodes left a profile, and which a calibrated plain worker
     measured (xdist replays each report there)."""
+    if report.failed:
+        _red.add(report.nodeid)
     if (PROF_MARK, True) in report.user_properties:
         _profiled.add(report.nodeid)
     if (MEASURED, True) in report.user_properties:

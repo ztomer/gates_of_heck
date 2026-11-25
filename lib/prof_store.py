@@ -165,11 +165,15 @@ def ledger() -> list[dict]:
     return rows
 
 
+def live(row: dict) -> bool:
+    """The profiles a ledger row kept are still in the store."""
+    return bool(row.get("kept")) and _dir(str(row.get("key"))).is_dir()
+
+
 def owed(rows: list[dict], sources: list[str]) -> bool:
     """A run whose carry sources (each leaving the build inputs alone) include a tree a ledger row
     kept profiles for, its key still in the store, was owed a match."""
-    return any(r.get("tree") in sources and r.get("kept") and _dir(str(r.get("key"))).is_dir()
-               for r in rows)  # fmt: skip
+    return any(r.get("tree") in sources and live(r) for r in rows)
 
 
 def note(row: dict) -> list[dict]:
