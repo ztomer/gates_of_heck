@@ -91,12 +91,21 @@ def both(goh: Path, repo: Path, *args: str) -> tuple[tuple, tuple]:
     return py, rs
 
 
-@pytest.mark.parametrize("prose", PROSE)
-@pytest.mark.parametrize("args", [[], ["--json"]], ids=["text", "json"])
-def test_every_claim_shape_reads_the_same(goh: Path, repo: Path, prose: str, args) -> None:
-    doc(estate(repo), prose)
-    py, rs = both(goh, repo, *args)
-    assert rs == py
+def test_every_claim_shape_reads_the_same(goh: Path, repo: Path) -> None:
+    """One file a shape, all in one tree: the report names each finding's file, line and claim, so
+    a shape read differently is a line that differs (two runs a shape in each format before,
+    GOH.PYSLOW4). The tree of true claims alone holds the green exit code."""
+    estate(repo)
+    doc(repo, PROSE[0])
+    py, rs = both(goh, repo)
+    assert rs == py and py[0] == 0, py
+    for n, prose in enumerate(PROSE):
+        write(repo, f"docs/n{n:02}.md", f"# note\n\n{prose}\n")
+        stage(repo, f"docs/n{n:02}.md")
+    commit_all(repo, "shapes")
+    for args in ([], ["--json"]):
+        py, rs = both(goh, repo, *args)
+        assert rs == py and py[0] == 1, args
 
 
 def test_a_python_docstring_claim_is_read_and_a_string_literal_is_not(
