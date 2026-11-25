@@ -69,7 +69,7 @@ def _session(
         if rep.get("unmeasured"):
             assert "unmeasured, no verdict" in r.stdout, r.stdout[-1500:]
             why.append(rep["unmeasured"])
-        elif lost := _short_of_the_plant(body, rep, ceiling):
+        elif lost := _short_of_the_plant(body, rep, ceiling, drops or ()):
             why.append(lost)
         else:
             return r, rep
@@ -77,16 +77,21 @@ def _session(
     raise AssertionError("unreachable: unmeasured_skip skips")
 
 
-def _short_of_the_plant(body: str, rep: dict, ceiling: dict | None = None) -> str:
+def _short_of_the_plant(
+    body: str, rep: dict, ceiling: dict | None = None, drops: tuple[str, ...] = ()
+) -> str:
     """Why a clean window read less than the planted test made, or "": fseventsd can lose a run of
     records with no drop flag (lib/fs_events.py), and a verdict on such a window judges the loss.
     The plant is the calibration: CHURNY makes 100 dirs, QUIET one file. A loss only undercounts,
     so a window that still read the churny test past a per-test ceiling under the plant is a
     reading of that ceiling: its red is a lower bound over the line (GOH.FSCHURNFLAKE: 354 of 400
-    under load 30-110 refused a ship whose verdict was red all along)."""
+    under load 30-110 refused a ship whose verdict was red all along). A plant the session
+    deselects makes nothing, so a window without it is short of nothing (GOH.FSEVQUIET: a test
+    that dropped the churny one skipped as unmeasured in every window, at any load)."""
     per_test = (ceiling or {}).get("per_test")  # no literal default: GOH.LOADSENSEGET's lint
     floor = 100 if per_test is None else min(100, per_test + 1)
-    if CHURNY in body and rep["dirs_created"] < floor:
+    planted = CHURNY in body and "test_churny" not in drops
+    if planted and rep["dirs_created"] < floor:
         return f"the instrument lost events: read {rep['dirs_created']} of the 100 planted dirs"
     if body == QUIET and rep["events"] < 1:
         return "the instrument lost events: read none of the planted write"
@@ -139,6 +144,13 @@ def test_a_window_that_lost_events_but_read_past_the_ceiling_is_a_reading() -> N
     assert _short_of_the_plant(CHURNY, {"dirs_created": 72, "events": 145}, {"per_test": 75})
     assert _short_of_the_plant(CHURNY, lossy, {"per_test": 100_000})
     assert _short_of_the_plant(CHURNY, lossy)
+
+
+def test_a_window_whose_plant_was_deselected_is_short_of_nothing() -> None:
+    none_made = {"dirs_created": 4, "events": 10}
+    assert _short_of_the_plant(CHURNY_AND_QUIET, none_made, None, ("test_churny",)) == ""
+    assert _short_of_the_plant(CHURNY_AND_QUIET, none_made, None, ("test_quiet",))
+    assert _short_of_the_plant(CHURNY_AND_QUIET, none_made)
 
 
 @pytest.mark.load_sensitive
