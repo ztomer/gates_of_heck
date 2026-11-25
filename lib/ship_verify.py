@@ -36,6 +36,7 @@ import gitrun  # tools/ship.py, the one importer, puts goh's root and lib/ on sy
 import push_gated as gated  # the ONE reading of "this hook runs goh's push gate"
 import ship_export
 import ship_records
+import state_shape
 
 from tui.lib import err, step
 
@@ -109,6 +110,9 @@ def reopen(res: dict, dry: bool = False) -> bool:
     done step: a transient on the card (a stray another build removed) no longer leaves the round
     to be recorded by hand. DRY only answers."""
     if res.get("status") != "failed" or res.get("failed_step") != "verify":
+        return False
+    if why := state_shape.paused():  # a ship that starts again (GOH.ABSDATA): its card only
+        print(f"goh ship: {why}", file=sys.stderr)
         return False
     if not dry:
         res.setdefault("retried", []).extend(s for s in res["steps"] if s["name"] == "verify")

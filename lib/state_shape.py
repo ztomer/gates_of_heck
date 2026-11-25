@@ -2,6 +2,8 @@
 open file says it, for every writer of a table that had a `body`.
 
     columns(con, t)      table T's columns
+    paused()             why a new land or ship waits: a cutover's fence, up or left by a dead one
+    wait(say, sleep)     until it is down, said once (the lander, before it takes a request)
     closing(con, t)      T's documents are leaving or gone: a cutover's fence is up, or no `body`
     document(con, t, text)   {'body': TEXT}; {} as its text under a fence; nothing with no `body`
     fence(con)           the fence's line (`<pid> <start>`, lib/state_cutover.py), or None
@@ -32,11 +34,13 @@ import re
 import sqlite3
 import sys
 import time
+from collections.abc import Callable
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, on the path from the line above
 
+POLL_S = 2.0
 FENCE = "fence"  # its key in `meta`
 DEAD = "hook-ledgers.dead.jsonl"  # beside goh.db: {table, row, why, at}, what its table refuses
 SEAL = re.compile(r"CREATE TRIGGER (\w+)_rest_insert BEFORE INSERT ON \w+ WHEN (.*) BEGIN")
@@ -57,6 +61,26 @@ def fence(con: sqlite3.Connection) -> str | None:
         return None
     row = con.execute("SELECT value FROM meta WHERE key = ?", (FENCE,)).fetchone()
     return row[0] if row else None
+
+
+def paused() -> str | None:
+    """None too when goh.db cannot be read: its own reader says that."""
+    try:
+        with goh_db.ro() as con:
+            held = fence(con)
+    except (OSError, sqlite3.Error):
+        return None
+    return held and (f"goh.db is in a cutover (pid {held}): new lands and ships wait; `goh state "
+                     "cutover` goes on with one that died, `--abort` lifts its fence")  # fmt: skip
+
+
+def wait(say: Callable[[str], None], sleep: Callable[[float], None] | None = None) -> None:
+    said = False
+    while why := paused():
+        if not said:
+            say(why)
+        said = True
+        (sleep or time.sleep)(POLL_S)
 
 
 def closing(con: sqlite3.Connection, table: str) -> bool:

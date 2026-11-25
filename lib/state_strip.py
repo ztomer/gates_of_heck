@@ -97,6 +97,11 @@ def run(repo_key: Callable[[str], str]) -> tuple[int, list[str]]:
         with goh_db.known() as con:
             whole += [f"{t}: {k}: its document is not JSON"
                       for k in state_columns.unfilled(con, t)[1]]  # fmt: skip
+    with goh_db.known() as con:
+        for t in KEPT:  # its contract drops the documents: compared here, never stripped
+            for _, k, doc, again, rest in state_columns.rendered(con, t):
+                keys = ["anything"] if rest is None else state_columns.differs(t, doc, again)
+                whole += [f"{t}: {k}: its columns do not give back {', '.join(keys)}"] * bool(keys)
     return total, whole
 
 

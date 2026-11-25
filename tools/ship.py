@@ -390,7 +390,7 @@ def worker(result: str, resume: bool = False) -> int:
 
 def start(args: argparse.Namespace) -> int:
     try:
-        res = plan(args)
+        res = ship_status.unfenced(plan(args), Refused)
     except Refused as e:
         err(f"goh ship: {e} -- nothing started")
         return 2

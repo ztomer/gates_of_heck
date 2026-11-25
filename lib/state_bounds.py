@@ -68,6 +68,8 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db_bounds  # goh.db's and goh-cache.db's tables and budgets (GOH.DBSEAM)
+import goh_db
+import land_columns  # its purge of old lands' coverage rows (GOH.ABSDATA)
 import lock_order  # the one acquire path: a try-lock on a run directory's tree lock
 import prune_kept  # its live-entry probe and its remover, one spelling
 import state_files  # the single files' table and trim (GOH.LEDGERBOUND)
@@ -240,7 +242,9 @@ def sweep(root: Path | None = None, now: float | None = None) -> list[Path]:
                     removed.append(root / rel)
     for seam in db_bounds.under(root, state_root()):  # the databases (GOH.DBSEAM)
         with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
-            if db_bounds.sweep(seam, now):
+            mine = db_bounds.db_core.path(seam) == goh_db.path()
+            purged = mine and land_columns.purge()
+            if db_bounds.sweep(seam, now) or purged:
                 removed.append(db_bounds.db_core.path(seam))
     return removed
 

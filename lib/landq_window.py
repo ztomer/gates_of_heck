@@ -66,6 +66,7 @@ import land_records  # the land records' one door (GOH.STATEDB)
 import landq_batch
 import landq_inflight
 import landq_state
+import state_shape
 
 from tui.lib import counted
 
@@ -219,4 +220,7 @@ def pending(
     """The lander's pending requests in queue order, once the batch window closed (its one call);
     CLOCK and SLEEP as `hold` takes them (a test's fake clock, never a patch of the time module)."""
     listed = landq_state.listing(q, "pending")
+    if listed:  # a cutover of goh.db holds every new land where it is (GOH.ABSDATA)
+        state_shape.wait(say, sleep)
+        listed = landq_state.listing(q, "pending")
     return hold(q, listed, say, clock, sleep) if listed else listed

@@ -8,7 +8,7 @@ columns it became (GOH.LANDCOLS), each compared with what its columns give back.
                        with a document, from lib/state_sql/doc_T.sql
     same(t, doc, again)   the two say the same: what section 0 of the data plan counts as equal
     check(con)         one line per thing wrong; [] is the state every later step needs
-    main()             `goh state check`: exit 1 with any, 2 when there is nothing to read
+    main(portable)     `goh state check [--portable]`: exit 1 with any, 2 with nothing to read
 
 WHAT IT NAMES. A row with `rest` NULL: no writer's trigger filled it (`goh state backfill` does),
 or its document is not JSON. A `rest` that holds a field: a key no column has, or a value of the
@@ -221,19 +221,27 @@ def check(con: sqlite3.Connection) -> list[str]:
     return out + kv_rows.left(con) + orphans(con)
 
 
-def main() -> int:
-    from tui.lib import err, ok
+def main(portable: bool = False) -> int:
+    from tui.lib import err, ok, warn
 
     try:
         with goh_db.known() as con:
             con.execute("BEGIN")  # one snapshot: a writer between two reads is no mismatch
             found = check(con)
             n = {t: con.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in TABLES}
+            said: list[str] = []
+            if portable:
+                import state_rekey  # it imports this module
+
+                bad, said = state_rekey.portable(con)
+                found += bad
     except (OSError, sqlite3.Error) as e:
         err(f"state check: not read: {e}")
         return 2
     for line in found:
         err(f"state check: {line}")
+    for line in said:  # text is told, never moved
+        warn(f"state check: {line}")
     if not found:
         ok("state check: " + ", ".join(f"{v} {t}" for t, v in n.items())
            + ": every one's columns give its document back")  # fmt: skip

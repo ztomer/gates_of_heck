@@ -25,6 +25,7 @@ import pin_sweep
 import ship_profile
 import ship_quiet
 import ship_records
+import state_shape
 
 from tui.lib import err, info, ok, step
 
@@ -140,6 +141,13 @@ def abandoned(res: dict, path: Path | str) -> dict:
             f"steps done: {', '.join(done) or 'none'}")  # fmt: skip
     res.update(status="failed", failed_step=ABANDONED, tail=[said])
     res["result"] = str(path)
+    return res
+
+
+def unfenced(res: dict, refused: type[Exception]) -> dict:
+    """RES, the ship about to start; REFUSED while a cutover of goh.db runs (GOH.ABSDATA)."""
+    if why := state_shape.paused():
+        raise refused(why)
     return res
 
 

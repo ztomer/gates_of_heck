@@ -4,6 +4,7 @@
     put(con, queue, run, rec, at)    the row, its child rows, and the document while it exists
     read(con, queue, keys, runs)     {run: record} from the columns, the named keys alone
     add_cause(con, queue, run, c)    a red land's class, when it has none of its own
+    purge()                          old lands' coverage rows gone, once 0017 is applied
     Part                             a record of the named keys: any other key asked is an error
 
 A WRITER NAMES EVERY COLUMN. `put` is an upsert whose `rest` is never NULL, so no trigger of 0011
@@ -24,7 +25,8 @@ path absolute, and of two rows of one run the last by queue, its own child rows 
 
 SAID ANOTHER WAY: null, {} and [] are an absent key, and a record's `at` is its instant in UTC. One
 [] says something: a judged coverage risk (it has a `head`) that carries no line judged every line
-covered, and lib/diffcov_carry.py asks, so its `carry` is read back as the list it was.
+covered, and lib/diffcov_carry.py asks, so its `carry` is read back as the list it was, until
+`purge` may have taken its rows (PURGE_DAYS, once 0017 is applied): an older land says nothing.
 
 Pinned by tests/test_land_columns.py.
 """
@@ -36,18 +38,24 @@ import math
 import os
 import sqlite3
 import sys
+import time
 from collections.abc import Callable, Collection, Iterable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, NoReturn
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db_core  # lib/, on the path from the line above
+import db_schema
+import goh_db
 import state_paths
 import state_shape
 
 HAVE = ("item", "sha", "enqueued", "repo", "mode", "state", "attempt", "requested", "started",
         "finished", "k")  # fmt: skip
 KEY = ("queue", "run")
+PURGE_DAYS = 14  # lib/state_sql/purge.sql's own
+PURGE = Path(__file__).resolve().with_name("state_sql") / "purge.sql"
 
 
 def _words(words: str, kind: str) -> list[tuple[str, str, str]]:
@@ -321,6 +329,8 @@ def read(
     sql = f"SELECT {', '.join(head + cols)} FROM lands WHERE {where} ORDER BY queue"
     out: dict[str, dict] = {}
     own: dict[tuple[str, str], dict] = {}  # (queue, run): the rows read from their columns
+    kept = 0.0 if "body" in state_shape.columns(con, "lands") else time.time() - PURGE_DAYS * 86400
+    judged: set[tuple[str, str]] = set()  # whose coverage rows are still all there
     rests: dict[tuple[str, str], dict] = {}
     for at_queue, run, at, rest, body, *cells in con.execute(sql, args):
         if rest is None:
@@ -338,9 +348,10 @@ def read(
         if want("at"):
             rec["at"] = instant(at)
         out[run] = own[at_queue, run] = rec
+        judged |= {(at_queue, run)} if at >= kept else set()
         rests[at_queue, run] = json.loads(rest) if rest != "{}" else {}
     if own:
-        _children(con, want, own, where, args)
+        _children(con, want, own, where, args, judged)
     for key, rest in rests.items():
         _merge(own[key], {k: v for k, v in rest.items() if want(k)})
     out = {run: state_paths.got("lands", rec) for run, rec in out.items()}
@@ -349,7 +360,7 @@ def read(
 
 def _children(
     con: sqlite3.Connection, want: Callable[[str], bool], own: dict[tuple[str, str], dict],
-    where: str, args: tuple,
+    where: str, args: tuple, judged: Collection[tuple[str, str]],
 ) -> None:  # fmt: skip
     """Each record of OWN with the wanted lists, objects and maps of its child rows."""
 
@@ -391,9 +402,25 @@ def _children(
                 _set(own[key], path, {})
             _get(own[key], path)[name] = said
     if want("cov_risk"):
-        for rec in own.values():
-            if _get(rec, "cov_risk.head") is not None:  # judged: [] is every line covered
+        for key, rec in own.items():
+            if (
+                key in judged and _get(rec, "cov_risk.head") is not None
+            ):  # judged: [] is every line covered
                 rec["cov_risk"].setdefault("carry", [])
+
+
+def purge() -> int:
+    """lib/state_sql/purge.sql, once 0017 is applied (until then the document holds them too); rows
+    gone. Nothing of a file this copy may not write, and none of one that is not there."""
+    if not goh_db.path().is_file():
+        return 0
+    with goh_db.ro() as con:
+        if not columned(con) or "body" in state_shape.columns(con, "lands"):
+            return 0
+    with goh_db.refusable(), goh_db.transaction() as con:
+        return sum(con.execute(sql).rowcount for sql in db_schema.statements(
+            PURGE.read_text(encoding="utf-8")))  # fmt: skip
+    return 0
 
 
 def landed(con: sqlite3.Connection, items: Iterable[str], keys: Collection[str]) -> list[dict]:
