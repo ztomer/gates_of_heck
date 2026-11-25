@@ -169,12 +169,19 @@ BUILD_DIR_GATE = GATE.replace(
 )
 
 
-def _cargo_repo(tmp_path: Path) -> Path:
+def _names_build_dir(repo: Path, own: str) -> None:
+    (repo / ".cargo").mkdir()
+    (repo / ".cargo" / "config.toml").write_text(f'[build]\nbuild-dir = "{own}"\n')
+
+
+def _cargo_repo(tmp_path: Path, own_build_dir: str | None = None) -> Path:
     repo = _repo(tmp_path)
     (repo / "tools" / "gate.sh").write_text(BUILD_DIR_GATE)
     (repo / "Cargo.toml").write_text('[package]\nname = "x"\nversion = "1.0.0"\nedition = "2021"\n')
     (repo / "src").mkdir()
     (repo / "src" / "lib.rs").write_text("")
+    if own_build_dir is not None:
+        _names_build_dir(repo, own_build_dir)
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "a cargo package whose gate reports its build dir")
     return repo
@@ -218,8 +225,7 @@ def test_a_concurrent_push_of_the_same_repo_takes_a_private_path_and_build_dir(t
     assert "outside its tree" not in got.stdout + got.stderr, got.stdout + got.stderr
 
     own = str(tmp_path / "the-repos-own-build-dir")
-    (repo / ".cargo").mkdir()
-    (repo / ".cargo" / "config.toml").write_text(f'[build]\nbuild-dir = "{own}"\n')
+    _names_build_dir(repo, own)
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "its own build dir")
     got = _push(repo, tmp_path, export_root)
