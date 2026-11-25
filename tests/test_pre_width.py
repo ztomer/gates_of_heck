@@ -92,7 +92,7 @@ def test_two_pre_steps_split_what_a_suiteless_gate_leaves() -> None:
     assert land_share.weighted(16, ["pre", "pre"], "pre", fixed=0) == 8
     assert land_share.weighted(16, ["pre", "pre"], "pre", fixed=2) == 7
     assert land_share.weighted(16, ["pre", "pre"], "pre", fixed=3) == 6
-    assert land_share.weighted(16, ["pre", "pre", "lane"], "lane", fixed=4) == 3
+    assert land_share.weighted(16, ["pre", "pre", "lane"], "lane", fixed=4) == 2
 
 
 @pytest.mark.parametrize("fixed", [0, 1, 3, 8])
