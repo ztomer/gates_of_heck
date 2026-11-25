@@ -1,6 +1,6 @@
 # GOH_ESTATE_HOME
 Area: runtime
-Kind: internal
+Kind: setting
 Default: unset
 
 env, `checks/check_estate_corpus.py`: stands in for the home of the estate corpora's `~/` roots, and
