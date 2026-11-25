@@ -329,10 +329,14 @@ def _tidy(tree: Path) -> None:
         ):
             (git_dir / name).unlink(missing_ok=True)
         for part in ("info", "objects/info", "objects/pack", "refs"):
-            for here, _dirs, _files in os.walk(git_dir / part, topdown=False):
-                if here != str(git_dir / "refs"):
-                    with contextlib.suppress(OSError):  # not empty
-                        os.rmdir(here)
+            _drop_empty(git_dir, part)
+
+
+def _drop_empty(git_dir: Path, part: str) -> None:
+    for here, _dirs, _files in os.walk(git_dir / part, topdown=False):
+        if here != str(git_dir / "refs"):
+            with contextlib.suppress(OSError):  # not empty
+                os.rmdir(here)
 
 
 def _loose_refs(git_dir: Path) -> bool:
