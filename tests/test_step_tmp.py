@@ -65,16 +65,12 @@ def test_an_allowed_leak_passes_and_a_stale_entry_fails(box) -> None:
     r = _ci(
         repo,
         tmpdir,
-        f"GOH_TMP_LEAKS=red\nGOH_TMP_LEAK_ALLOW='leaky-test.*'\nGOH_CI_STEPS='{LEAK}'\n",
-    )
-    assert r.returncode == 0, r.stdout + r.stderr
-    r = _ci(
-        repo,
-        tmpdir,
-        "GOH_TMP_LEAKS=red\nGOH_TMP_LEAK_ALLOW='leaky-test.* gone.*'\nGOH_CI_STEPS='true'\n",
+        f"GOH_TMP_LEAKS=red\nGOH_TMP_LEAK_ALLOW='leaky-test.* gone.*'\nGOH_CI_STEPS='{LEAK}'\n",
     )
     out = r.stdout + r.stderr
+    assert "(temp leak)" not in out, out  # the step's own leak is allowed: its red is the entry's
     assert r.returncode != 0 and "'gone.*' matched no step" in out, out
+    assert "'leaky-test.*' matched no step" not in out, out
 
 
 def test_a_clean_step_is_silent_and_its_slot_is_reused(box) -> None:

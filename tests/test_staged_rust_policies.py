@@ -13,39 +13,10 @@ ALLOW = "#[" + "allow(dead_code)]\nfn f() {}\n"
 EMPTY = "#[test]\nfn t() {\n    let v: Vec<u8> = Vec::new();\n    assert!(v.is_" + "empty());\n}\n"
 
 
-def _staged(repo, rel, text):
-    write(repo, "Cargo.toml", '[package]\nname = "x"\nversion = "0.1.0"\nedition = "2021"\n')
-    commit_all(repo)
-    write(repo, rel, text)
-    stage(repo, rel)
-    return run_gate(repo, "gates/structural.sh", "--staged")
-
-
-def test_a_staged_allow_is_refused_at_commit(repo) -> None:
-    r = _staged(repo, "src/lib.rs", ALLOW)
-    assert r.returncode == 1, r.stdout + r.stderr
-    assert "src/lib.rs" in r.stdout + r.stderr
-
-
-def test_a_staged_emptiness_assert_is_refused_at_commit(repo) -> None:
-    r = _staged(repo, "src/lib.rs", EMPTY)
-    assert r.returncode == 1, r.stdout + r.stderr
-    assert "emptiness assert" in r.stdout + r.stderr
-
-
-def test_an_old_violation_in_an_untouched_file_does_not_block_a_commit(repo) -> None:
-    write(repo, "src/old.rs", ALLOW)
-    r = _staged(repo, "src/lib.rs", "pub fn g() {}\n")
-    assert r.returncode == 0, r.stdout + r.stderr
-
-
-def test_a_commit_of_only_a_manifest_is_not_a_blind_scan(repo) -> None:
-    write(repo, "src/lib.rs", "pub fn g() {}\n")
-    commit_all(repo)
-    write(repo, "Cargo.toml", '[package]\nname = "x"\nversion = "0.2.0"\nedition = "2021"\n')
-    stage(repo, "Cargo.toml")
-    r = run_gate(repo, "gates/structural.sh", "--staged")
-    assert r.returncode == 0, r.stdout + r.stderr
+MISFORMATTED = "#[test]\nfn t(){let x=1;assert_eq!(x,1);}\n"
+FORMATTED = "#[test]\nfn t() {\n    let x = 1;\n    assert_eq!(x, 1);\n}\n"
+PACKAGE = '[package]\nname = "{0}"\nversion = "0.1.0"\n{1}\n'
+ED = 'edition = "2021"'
 
 
 # ── G1e (2026-10-25): the release gate's `cargo fmt --check`, at commit ──────────────────────────
@@ -56,81 +27,63 @@ def test_a_commit_of_only_a_manifest_is_not_a_blind_scan(repo) -> None:
 # rustfmt the way `cargo fmt` judges it: the STAGED blob, the package's edition (inherited from
 # the workspace when the manifest says so), and the nearest rustfmt.toml.
 
-MISFORMATTED = "#[test]\nfn t(){let x=1;assert_eq!(x,1);}\n"
-FORMATTED = "#[test]\nfn t() {\n    let x = 1;\n    assert_eq!(x, 1);\n}\n"
 
-
-def test_a_misformatted_staged_test_file_is_refused_at_commit(repo) -> None:
-    """app_updates' shape: a test file under tests/, staged, not rustfmt-clean."""
-    r = _staged(repo, "tests/it.rs", MISFORMATTED)
-    assert r.returncode == 1, r.stdout + r.stderr
-    assert "tests/it.rs" in r.stdout + r.stderr, r.stdout + r.stderr
-    assert "cargo fmt" in r.stdout + r.stderr, r.stdout + r.stderr
-
-
-def test_a_formatted_staged_test_file_passes(repo) -> None:
-    r = _staged(repo, "tests/it.rs", FORMATTED)
-    assert r.returncode == 0, r.stdout + r.stderr
-
-
-def test_the_staged_blob_is_judged_not_the_working_tree(repo) -> None:
-    """Formatted in the index, dirty on disk: the commit carries the index."""
-    write(repo, "Cargo.toml", '[package]\nname = "x"\nversion = "0.1.0"\nedition = "2021"\n')
+def test_each_staged_violation_is_refused_at_commit_by_name(repo) -> None:
+    """app_updates' shape among them: a test file under tests/, not rustfmt-clean."""
+    write(repo, "Cargo.toml", PACKAGE.format("x", ED))
     commit_all(repo)
-    write(repo, "tests/it.rs", FORMATTED)
-    stage(repo, "tests/it.rs")
-    write(repo, "tests/it.rs", MISFORMATTED)
-    r = run_gate(repo, "gates/structural.sh", "--staged")
-    assert r.returncode == 0, r.stdout + r.stderr
+    # the step says its first refusal, shape before policy: each is put right for the next
+    for rel, bad, said, good in (
+        ("tests/it.rs", MISFORMATTED, "cargo fmt", FORMATTED),
+        ("src/allow.rs", ALLOW, "allow(dead_code)", "pub fn f() {}\n"),
+        ("src/empty.rs", EMPTY, "emptiness assert", FORMATTED),
+    ):
+        write(repo, rel, bad)
+        stage(repo, rel)
+        r = run_gate(repo, "gates/structural.sh", "--staged")
+        out = r.stdout + r.stderr
+        assert r.returncode == 1 and rel in out and said in out, out
+        write(repo, rel, good)
+        stage(repo, rel)
 
 
-def test_the_packages_edition_is_the_one_rustfmt_is_given(repo) -> None:
-    """`async fn` does not parse under rustfmt's own default (2015); cargo fmt passes the
-    package's edition, and so must this."""
-    r = _staged(repo, "src/lib.rs", "pub async fn f() {}\n")
-    assert r.returncode == 0, r.stdout + r.stderr
-
-
-def test_a_workspace_inherited_edition_is_followed(repo) -> None:
-    write(
-        repo,
-        "Cargo.toml",
-        '[workspace]\nmembers = ["crates/a"]\n\n[workspace.package]\nedition = "2021"\n',
-    )
-    write(
-        repo,
-        "crates/a/Cargo.toml",
-        '[package]\nname = "a"\nversion = "0.1.0"\nedition.workspace = true\n',
-    )
-    commit_all(repo)
-    write(repo, "crates/a/src/lib.rs", "pub async fn f() {}\n")
-    stage(repo, "crates/a/src/lib.rs")
-    r = run_gate(repo, "gates/structural.sh", "--staged")
-    assert r.returncode == 0, r.stdout + r.stderr
-
-
-def test_the_nearest_rustfmt_toml_is_honoured(repo) -> None:
-    """Tabs are refused by rustfmt's defaults and are the shape when the CRATE says hard_tabs.
-    The config sits in the crate's directory, not the root: rustfmt reading stdin finds a config
-    only from its working directory, so a root config would pass without being looked for."""
-    tabbed = "pub fn f() {\n\tlet _x = 1;\n}\n"
-    write(repo, "Cargo.toml", '[workspace]\nmembers = ["crates/a"]\n')
-    write(
-        repo, "crates/a/Cargo.toml", '[package]\nname = "a"\nversion = "0.1.0"\nedition = "2021"\n'
-    )
-    write(repo, "crates/a/rustfmt.toml", "hard_tabs = true\n")
-    commit_all(repo)
-    write(repo, "crates/a/src/lib.rs", tabbed)
-    stage(repo, "crates/a/src/lib.rs")
-    r = run_gate(repo, "gates/structural.sh", "--staged")
-    assert r.returncode == 0, r.stdout + r.stderr
-
-
-def test_an_excluded_path_is_not_judged(repo) -> None:
-    """GOH_EXCLUDE (a vendored crate) is the repo's own statement of what its gates judge."""
+def test_what_cargo_fmt_and_the_repo_allow_commits(repo) -> None:
+    """One commit of every shape the gate must not refuse; each was refused alone by a gate that
+    missed its own rule."""
+    root = '[workspace]\nmembers = ["crates/*"]\n\n[workspace.package]\nedition = "2021"\n\n'
+    write(repo, "Cargo.toml", root + PACKAGE.format("x", ED))
+    write(repo, "src/old.rs", ALLOW)  # an old violation in a file the commit does not touch
+    # `async fn` does not parse under rustfmt's own default (2015); cargo fmt passes the package's
+    # edition, its own or the workspace's, and so must this.
+    write(repo, "crates/a/Cargo.toml", PACKAGE.format("a", "edition.workspace = true"))
+    # Tabs are refused by rustfmt's defaults and are the shape when the CRATE says hard_tabs. The
+    # config sits in the crate's directory, not the root: rustfmt reading stdin finds a config only
+    # from its working directory, so a root config would pass without being looked for.
+    write(repo, "crates/b/Cargo.toml", PACKAGE.format("b", ED))
+    write(repo, "crates/b/rustfmt.toml", "hard_tabs = true\n")
+    # GOH_EXCLUDE (a vendored crate) is the repo's own statement of what its gates judge.
     write(repo, ".gatesrc", "GOH_EXCLUDE='^vendor/'\n")
-    write(
-        repo, "vendor/v/Cargo.toml", '[package]\nname = "v"\nversion = "0.1.0"\nedition = "2021"\n'
-    )
-    r = _staged(repo, "vendor/v/src/lib.rs", "pub fn f(){}\n")
+    write(repo, "vendor/v/Cargo.toml", PACKAGE.format("v", ED))
+    commit_all(repo)
+    good = {
+        "src/lib.rs": "pub async fn f() {}\n",
+        "tests/it.rs": FORMATTED,
+        "crates/a/src/lib.rs": "pub async fn f() {}\n",
+        "crates/b/src/lib.rs": "pub fn f() {\n\tlet _x = 1;\n}\n",
+        "vendor/v/src/lib.rs": "pub fn f(){}\n",
+    }
+    for rel, text in good.items():
+        write(repo, rel, text)
+    stage(repo, *good)
+    write(repo, "tests/it.rs", MISFORMATTED)  # dirty on disk only: the commit carries the index
+    r = run_gate(repo, "gates/structural.sh", "--staged")
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_commit_of_only_a_manifest_is_not_a_blind_scan(repo) -> None:
+    write(repo, "src/lib.rs", "pub fn g() {}\n")
+    commit_all(repo)
+    write(repo, "Cargo.toml", PACKAGE.format("x", ED))
+    stage(repo, "Cargo.toml")
+    r = run_gate(repo, "gates/structural.sh", "--staged")
     assert r.returncode == 0, r.stdout + r.stderr

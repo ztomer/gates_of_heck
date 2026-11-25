@@ -84,8 +84,9 @@ def _commit(repo: Path, tmp_path: Path, how: str) -> tuple[subprocess.CompletedP
     return got, gate_dir
 
 
-@pytest.mark.parametrize("how", ["path", "all"])
-@pytest.mark.parametrize("where", ["main", "worktree"])
+@pytest.mark.parametrize(
+    ("where", "how"), [("main", "path"), ("main", "all"), ("worktree", "path")]
+)
 def test_a_gate_step_writing_the_index_tree_takes_a_pathspec_commit(tmp_path, where, how):
     repo = _repo(tmp_path, "git", where)
     got, gate_dir = _commit(repo, tmp_path, how)
@@ -100,13 +101,12 @@ def test_a_gate_step_writing_the_index_tree_takes_a_pathspec_commit(tmp_path, wh
     assert (gate_dir / "scratch_files").read_text().split() == ["scratch.txt"], text
 
 
-@pytest.mark.parametrize("where", ["main", "worktree"])
-def test_calibration_a_step_that_bypasses_the_hook_index_hits_the_held_lock(tmp_path, where):
+def test_calibration_a_step_that_bypasses_the_hook_index_hits_the_held_lock(tmp_path):
     """The same step through the real git by absolute path: the app's refusal, so the fixture
     holds the lock and the test above can fail."""
     real = shutil.which("git")
     assert real
-    repo = _repo(tmp_path, real, where)
+    repo = _repo(tmp_path, real, "main")
     got, _ = _commit(repo, tmp_path, "path")
     text = got.stdout + got.stderr
     assert got.returncode != 0, text

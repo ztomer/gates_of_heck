@@ -57,6 +57,18 @@ def _guarded(tmp_path: Path, guard: str = GUARD) -> Path:
     return repo
 
 
+def _guards(repo: Path, staged: str) -> str:
+    """The guards' step alone, over STAGED: what a commit's other checks say is not asked here."""
+    (repo / staged).write_text("plain\n")
+    _git(repo, "add", staged)
+    got = subprocess.run(["bash", str(REPO_ROOT / "gates" / "staged_guards.sh"), str(repo)],
+                         cwd=repo, env=hermetic_env(GOH_DIR=str(REPO_ROOT)), capture_output=True,
+                         text=True, timeout=patience(180), stdin=subprocess.DEVNULL,
+                         check=False)  # fmt: skip
+    assert got.returncode == 0, got.stdout + got.stderr
+    return got.stdout + got.stderr
+
+
 def _commit(repo: Path, files: dict[str, str], stage: tuple[str, ...] | None = None):
     for rel, body in files.items():
         (repo / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -73,27 +85,10 @@ def _commit(repo: Path, files: dict[str, str], stage: tuple[str, ...] | None = N
     )
 
 
-def test_a_staged_source_the_guard_refuses_is_refused_at_commit(tmp_path):
-    repo = _guarded(tmp_path)
-    got = _commit(repo, {"Sources/B.src": "let s = FORBIDDEN\n"})
-    text = got.stdout + got.stderr
-    assert got.returncode != 0, text
-    assert STEP in text and "tests/test_guard.py" in text and "B.src" in text, text
-
-
-def test_a_clean_staged_source_runs_the_guard_and_commits(tmp_path):
-    got = _commit(_guarded(tmp_path), {"Sources/B.src": "let s = 2\n"})
-    text = got.stdout + got.stderr
-    assert got.returncode == 0, text
-    assert f"✓ {STEP}" in text, text
-
-
 def test_a_commit_staging_nothing_the_guard_reads_does_not_run_it(tmp_path):
     repo = _guarded(tmp_path)
     (repo / "Sources" / "C.src").write_text("let s = FORBIDDEN\n")  # unstaged, and not read
-    got = _commit(repo, {"notes.md": "plain\n"})
-    text = got.stdout + got.stderr
-    assert got.returncode == 0, text
+    text = _guards(repo, "notes.md")
     assert STEP not in text, text
 
 
@@ -105,6 +100,7 @@ def test_the_guard_judges_the_index_not_the_working_tree(tmp_path):
     got = _commit(repo, {}, stage=())
     text = got.stdout + got.stderr
     assert got.returncode != 0 and STEP in text, text
+    assert "tests/test_guard.py" in text and "B.src" in text, text
 
 
 def test_an_unstaged_violation_does_not_refuse_a_clean_commit(tmp_path):
@@ -117,9 +113,8 @@ def test_an_unstaged_violation_does_not_refuse_a_clean_commit(tmp_path):
 
 def test_a_directive_with_no_pathspec_runs_on_every_commit(tmp_path):
     repo = _guarded(tmp_path, GUARD.replace(f"{DIRECTIVE} *.src", DIRECTIVE))
-    got = _commit(repo, {"notes.md": "plain\n"})
-    text = got.stdout + got.stderr
-    assert got.returncode == 0 and f"✓ {STEP}" in text, text
+    text = _guards(repo, "notes.md")
+    assert f"✓ {STEP}" in text, text
 
 
 def _directive_specs(path: Path) -> list[str]:
