@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 import pytest
+from _this_tree import this_tree
 from conftest import REPO_ROOT, hermetic_env
 from test_landq import _land_wt, _pending, env, landq, recorded  # noqa: F401 -- `env` is a fixture
 from timing_bounds import assert_sooner, patience
@@ -81,19 +82,7 @@ def _git(repo: Path, *args: str, data: bytes | None = None) -> bytes:
 
 def _planted_clone(dest: Path, plants: tuple[tuple[str, str, str], ...]) -> Path:
     """This checkout as it stands, committed in a clone with `main` at it, then the plants."""
-    subprocess.run(["git", "clone", "-q", "--shared", str(REPO_ROOT), str(dest)], check=True,
-                   capture_output=True, stdin=subprocess.DEVNULL, timeout=patience(120),
-                   env=hermetic_env(drop_git=True))  # fmt: skip
-    diff = _git(REPO_ROOT, "diff", "HEAD", "--binary")
-    if diff:
-        _git(dest, "apply", "--whitespace=nowarn", data=diff)
-    others = _git(REPO_ROOT, "ls-files", "-z", "--others", "--exclude-standard")
-    if others:  # the untracked files too, as the lane's next commit holds them
-        pack = subprocess.run(["tar", "-C", str(REPO_ROOT), "--null", "-T", "-", "-cf", "-"],
-                              input=others, capture_output=True, check=True,
-                              timeout=patience(120)).stdout  # fmt: skip
-        subprocess.run(["tar", "-C", str(dest), "-xf", "-"], input=pack, capture_output=True,
-                       check=True, timeout=patience(120))  # fmt: skip
+    this_tree(dest)
     commit = ("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--no-verify", "-am")
     _git(dest, "add", "-A")
     _git(dest, *commit, "this tree", "--allow-empty")

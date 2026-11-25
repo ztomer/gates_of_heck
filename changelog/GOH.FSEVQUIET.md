@@ -5,3 +5,4 @@
 * GOH.FSEVQUIET: an estate corpus borrows its owner's git objects, and a file the suite copies with shutil is a clone (44.8 MB a run of the estate tests was written again).
 * GOH.FSEVQUIET: the gates a test runs as a consumer come from a checkout without tests/ and changelog/ (960 files, not 2,034), and the suite's shared HEAD export is one a run, not one a worker.
 * GOH.FSEVQUIET: the suite's git writes no template files, no loose objects of a fetch, and syncs nothing; a test's goh.db journals in memory with small pages (`tests/db_on_disk.json` names the 11 tests of WAL, locking or a crash, and only shrinks); the two tests of which source a build reads build a two-file goh, not 150 crates.
+* GOH.FSEVQUIET: a test that judges the whole tree takes a clone of one built once a run (`tests/_this_tree.py`), the calibration's copy borrows the checkout's objects, and a template of a `--shared` clone packs its own objects only (15 MB each).

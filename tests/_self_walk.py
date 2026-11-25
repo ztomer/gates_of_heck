@@ -40,6 +40,7 @@ from pathlib import Path
 
 import _kept_store
 import suite_home
+from _this_tree import this_tree
 from timing_bounds import patience
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -117,25 +118,9 @@ def restrict(seed: dict, labels: list[str]) -> dict:
 
 def walked_tree(dest: Path, seed: dict, plants: dict[str, str] | None = None) -> Path:
     """A clone of this checkout as it stands, seeds gone, opt-ins on, `plants` written in."""
-    clone = ["git", "clone", "-q", "--shared", str(REPO_ROOT), str(dest)]
-    subprocess.run(clone, check=True, capture_output=True, stdin=subprocess.DEVNULL,
-                   timeout=patience(120))  # fmt: skip
+    # The WHOLE tree: a part is the fixture-copy class (tests/fixture_copy_lint.py).
+    this_tree(dest)
     _git(dest, "checkout", "-q", "-B", "self-walk")
-    diff = subprocess.run(["git", "-C", str(REPO_ROOT), "diff", "HEAD", "--binary"],
-                          capture_output=True, check=True, stdin=subprocess.DEVNULL,
-                          timeout=patience(120)).stdout  # fmt: skip
-    if diff:
-        subprocess.run(["git", "-C", str(dest), "apply", "--whitespace=nowarn"], input=diff,
-                       check=True, capture_output=True, timeout=patience(120))  # fmt: skip
-    # The untracked files too, as `structural --full` lists them: the WHOLE tree, never a part of it
-    # (a part is the fixture-copy class, tests/fixture_copy_lint.py), carried by tar.
-    others = _git(REPO_ROOT, "ls-files", "-z", "--others", "--exclude-standard")
-    if others:
-        pack = subprocess.run(["tar", "-C", str(REPO_ROOT), "--null", "-T", "-", "-cf", "-"],
-                              input=others.encode(), capture_output=True, check=True,
-                              timeout=patience(120)).stdout  # fmt: skip
-        subprocess.run(["tar", "-C", str(dest), "-xf", "-"], input=pack, capture_output=True,
-                       check=True, timeout=patience(120))  # fmt: skip
     for p in dest.iterdir():
         if p.is_file() and SEED_FILE.match(p.name):
             p.unlink()

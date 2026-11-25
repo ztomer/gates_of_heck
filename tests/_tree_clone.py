@@ -281,14 +281,15 @@ def _pack(tree: Path) -> None:
     """Every repository in `tree` with its objects in ONE pack (GOH.FSCHURN2): a commit of the
     goh estate left ~380 loose objects in up to 256 fan-out dirs, and every clone a test took was
     removed at its teardown file by file -- one file event each, in every test that used it. A
-    repository with nothing loose is left alone (no git spawn)."""
+    repository with nothing loose is left alone (no git spawn). `-l`: never the objects a `--shared`
+    clone borrows, which were 15 MB of this checkout's history packed into each such template."""
     for git_dir in _repositories(tree):
         loose = [
             d for d in (git_dir / "objects").iterdir() if len(d.name) == 2 and any(d.iterdir())
         ]
         if loose:
             subprocess.run(
-                ["git", "--git-dir", str(git_dir), "repack", "-adq"],
+                ["git", "--git-dir", str(git_dir), "repack", "-adlq"],
                 check=True, capture_output=True, stdin=subprocess.DEVNULL, timeout=patience(60.0),
                 env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
             )  # fmt: skip

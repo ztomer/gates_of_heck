@@ -104,13 +104,13 @@ HOME_DEFAULTS = {
 }
 
 # The suite's git writes no more than its tests read (GOH.FSEVQUIET): an empty template (git's own
-# is 14 sample hooks and two notes in every `git init` and `git clone`), no background maintenance,
-# a fetched pack kept as one file, never unpacked into loose objects, and nothing synced to the SSD:
-# a fixture outlives no power cut.
+# is 14 sample hooks and two notes in every `git init` and `git clone`), a fetched pack kept as one
+# file, never unpacked into loose objects, and nothing synced to the SSD: a fixture outlives no
+# power cut.
 GITCONFIG = (
     "[user]\n\tname = goh suite\n\temail = suite@goh.test\n"
     "[init]\n\tdefaultBranch = main\n\ttemplateDir = ~/.git-template\n"
-    "[core]\n\tfsync = none\n[maintenance]\n\tauto = false\n[gc]\n\tauto = 0\n"
+    "[core]\n\tfsync = none\n"
     "[transfer]\n\tunpackLimit = 1\n[pack]\n\twriteReverseIndex = false\n"
 )
 

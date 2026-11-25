@@ -84,8 +84,7 @@ def test_the_suites_git_writes_no_more_than_its_tests_read(tmp_path: Path) -> No
     git("-C", "b", "fetch", "-q", "../a")
     kept = [p for p in (tmp_path / "b/.git/objects").rglob("*") if p.is_file()]
     assert sorted(p.suffix for p in kept) == [".idx", ".pack"], kept
-    said = [git("config", k).strip() for k in ("core.fsync", "maintenance.auto")]
-    assert said == ["none", "false"]
+    assert git("config", "core.fsync").strip() == "none"
 
 
 def test_the_push_gate_refuses_the_users_push_cache(tmp_path: Path) -> None:

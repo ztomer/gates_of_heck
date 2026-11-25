@@ -313,3 +313,20 @@ def test_the_run_has_one_head_cache_whatever_the_worker(tmp_path, monkeypatch) -
     assert os.environ["PYTEST_DEBUG_TEMPROOT"] not in str(run)
     monkeypatch.setenv("PYTEST_DEBUG_TEMPROOT", str(tmp_path))
     assert _tree_clone.run_head_cache() == run
+
+
+def test_a_template_of_a_shared_clone_packs_only_its_own_objects(repo, tmp_path) -> None:
+    """GOH.FSEVQUIET: `repack -a` copied every borrowed object in (15 MB for a clone of goh)."""
+
+    def build(tree: Path) -> None:
+        subprocess.run(["git", "clone", "-q", "--shared", str(repo), str(tree)], check=True,
+                       capture_output=True, stdin=subprocess.DEVNULL)  # fmt: skip
+        write(tree, "own.txt", "mine\n")
+        commit_all(tree, "its own")
+
+    t = process_template("borrowing-" + tmp_path.name, build)
+    (pack,) = (t / ".git" / "objects" / "pack").glob("*.idx")
+    held = {ln.split()[0] for ln in git(t, "verify-pack", "-v", str(pack)).splitlines()}
+    assert git(t, "rev-parse", "HEAD:own.txt").strip() in held
+    assert git(t, "rev-parse", "HEAD:README.md").strip() not in held
+    assert (t / "README.md").is_file() and git(t, "show", "HEAD:README.md")
