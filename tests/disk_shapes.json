@@ -1,0 +1,92 @@
+{
+ "allowed": {},
+ "seed": {
+  "_columns_fixture.py": {
+   "sqlite": 2
+  },
+  "_goh_db_fixture.py": {
+   "sqlite": 1
+  },
+  "_tree_lint.py": {
+   "sqlite": 1
+  },
+  "test_capacity_window.py": {
+   "sqlite": 1
+  },
+  "test_db_bounds.py": {
+   "sqlite": 2
+  },
+  "test_db_bounds_with.py": {
+   "sqlite": 1
+  },
+  "test_db_contract.py": {
+   "sqlite": 1
+  },
+  "test_db_record.py": {
+   "sqlite": 1
+  },
+  "test_db_refused.py": {
+   "sqlite": 2
+  },
+  "test_diffcov_carry.py": {
+   "sqlite": 1
+  },
+  "test_filer_live_rules.py": {
+   "sqlite": 1
+  },
+  "test_hook_ledgers.py": {
+   "sqlite": 1
+  },
+  "test_identity_cache.py": {
+   "sqlite": 1
+  },
+  "test_kept_store_db.py": {
+   "sqlite": 3
+  },
+  "test_land_records.py": {
+   "sqlite": 3
+  },
+  "test_long_pole.py": {
+   "sqlite": 1
+  },
+  "test_queue_read.py": {
+   "sqlite": 4
+  },
+  "test_reuse.py": {
+   "sqlite": 1
+  },
+  "test_reuse_audit_store.py": {
+   "sqlite": 1
+  },
+  "test_reuse_store_db.py": {
+   "sqlite": 3
+  },
+  "test_self_gate.py": {
+   "goh-clone": 1
+  },
+  "test_self_hosted_hook.py": {
+   "goh-clone": 1
+  },
+  "test_shell_lint_verdict_cache.py": {
+   "sqlite": 1
+  },
+  "test_shell_verdicts_db.py": {
+   "sqlite": 1
+  },
+  "test_state_columns.py": {
+   "sqlite": 1
+  },
+  "test_state_retire.py": {
+   "sqlite": 2
+  },
+  "test_state_retire_landq.py": {
+   "sqlite": 1
+  },
+  "test_state_retire_lands.py": {
+   "sqlite": 2
+  },
+  "test_state_retire_verdicts.py": {
+   "sqlite": 1
+  }
+ }
+}
