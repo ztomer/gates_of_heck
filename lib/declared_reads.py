@@ -52,6 +52,19 @@ the root pointed at anything but scanners declaring `TREE_READS`; a reader with 
 at the enqueue only when the diff touches its reads. A module-level `JUDGE_READS` declares a
 judge's whole read of the tree (GOH.SUITEDIET): it lifts every standing reason, and the judge is
 chosen when a changed path matches.
+
+`gates/undeclared_reads.txt`: The tests that join `REPO_ROOT` with a non-literal part (`REPO_ROOT /
+rel`) and declare no `TREE_READS = (...)` yet: what they read is invisible to the selector
+(lib/declared_reads.py, GOH.SELECTAUDIT). Seeded with the 70 of 2026-11-17; it only shrinks: a new
+such test declares its reads, and a listed file that declares or joins no more is stale and fails.
+Invoked by `test_declared_reads.py`.
+
+`gates/undeclared_scanners.txt`: The (test, checks/ scanner) pairs where a test that is no standing
+tree reader points a scanner that lists the tracked tree at the root, and the scanner declares no
+`TREE_READS = (...)`: what it scans would be invisible to the selector (lib/declared_reads.py,
+GOH.SELECTLOCKORDER: `checks/check_lock_order.py` reads every lib/*.py). Seeded with the 8 of
+2026-11-19, each traced to read nothing the selector misses; it only shrinks: a new pair declares,
+and a listed one gone is stale and fails. Invoked by `test_declared_reads.py`.
 """
 
 from __future__ import annotations

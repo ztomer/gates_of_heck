@@ -7,13 +7,6 @@
 # run over the root. GOH.SELECTTESTIMPORTS (2026-11-20) deleted the four pairs reached only
 # through a test module's own tests, which its importer never runs (lib/test_slice.py).
 # run over the root. It only shrinks: a new pair declares, and a listed one gone is stale.
-#
-# The (test, checks/ scanner) pairs where a test that is no standing tree reader points a scanner
-# that lists the tracked tree at the root, and the scanner declares no `TREE_READS = (...)`: what
-# it scans would be invisible to the selector (lib/declared_reads.py, GOH.SELECTLOCKORDER:
-# `checks/check_lock_order.py` reads every lib/*.py). Seeded with the 8 of 2026-11-19, each traced
-# to read nothing the selector misses; it only shrinks: a new pair declares, and a listed one gone
-# is stale and fails. Invoked by `test_declared_reads.py`.
 tests/test_check_swift_warnings.py checks/check_swift_warnings.py
 tests/test_not_applicable.py checks/check_empty_scope.py
 tests/test_not_applicable.py checks/check_estate_corpus.py

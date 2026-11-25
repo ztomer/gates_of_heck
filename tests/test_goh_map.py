@@ -129,9 +129,7 @@ def test_no_copy_of_the_map_is_committed() -> None:
 
 def test_two_branches_that_each_add_a_script_merge_clean_with_no_driver(repo) -> None:
     """The map's conflicts were two lanes each adding a row; a script is its own row now."""
-    (repo / "docs").mkdir()
     (repo / "lib").mkdir()
-    (repo / "docs/map.md").write_text((REPO_ROOT / "docs" / "map.md").read_text(encoding="utf-8"))
     (repo / "lib/base.py").write_text('"""Base."""\n')
     commit_all(repo)
     base = git(repo, "rev-parse", "HEAD").strip()

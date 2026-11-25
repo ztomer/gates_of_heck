@@ -167,7 +167,7 @@ def test_install_sh_exists_and_wires_hooks():
         assert needed in body, f"installer must wire {needed}"
 
 
-def test_every_script_says_what_it_is():
+def test_every_script_has_a_row_in_the_map():
     """`goh map` renders each script's row from its own header (GOH.MAPGEN), so a script with none
     would be a row that says nothing. Found 2026-10-05 porting Phase N1, when the map was one
     committed table: fifteen scripts -- `_from_head.sh` among them -- had no row, so the doc route

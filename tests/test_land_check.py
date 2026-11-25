@@ -34,8 +34,8 @@ TREE_READS = ("lib/", "tests/", ".gatesrc")  # a clone of the whole tree, plante
 TABLES = "tests/test_tables.py::test_every_generated_table_is_as_its_generator_writes_it"
 REFUSALS = {
     "map-row": (
-        "tests/test_wiring.py::test_every_script_says_what_it_is",
-        (("lib/load_reap_code.py", '"""', '_SAID = """'),),  # its docstring, a plain string now
+        "tests/test_wiring.py::test_every_script_has_a_row_in_the_map",
+        (("lib/load_reap_code.py", '"""', '"""`lib/gone/`: speaks for a path not there.\n\n'),),
     ),
     "headroom": (
         ("tests/test_cap_headroom.py::test_stale_entries_fail", TABLES),

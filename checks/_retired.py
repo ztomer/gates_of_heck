@@ -7,6 +7,10 @@ binary resolution and the one refusal when no binary exists. EVERY retired entry
 
 `NATIVE` (every retired checker -> its `goh` check, spelled once; read by `_calibration.py` and the
 suite's `run_check`), `SHIMS` (the forwarders kept on disk) and `forward()`.
+
+`checks/check_subprocess_stdin.py`: Forwarder (Phase N3): execs `gates/goh.sh subprocess-stdin`
+with the same arguments, for a consumer that calls it by path; imported, it raises. Pinned by
+`test_retired_shims.py`.
 """
 
 from __future__ import annotations

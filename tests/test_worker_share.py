@@ -25,6 +25,8 @@ from timing_bounds import patience
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import worker_share
 
+from checks import _prose_mask
+
 RUNNERS = (
     "GOH_GATE_WORKERS",
     "PYTEST_XDIST_AUTO_NUM_WORKERS",
@@ -276,6 +278,8 @@ def _machine_sized() -> Counter[str]:
         if rel.startswith(("tests/", "docs/")):
             continue
         text = (REPO_ROOT / rel).read_text(encoding="utf-8", errors="replace")
+        if rel.endswith(".py") and MACHINE_SIZED.search(text):  # a docstring sizes nothing
+            text = _prose_mask.python_code_only(text)
         for line in text.splitlines():
             if not line.lstrip().startswith("#") and MACHINE_SIZED.search(line):
                 found[rel] += 1

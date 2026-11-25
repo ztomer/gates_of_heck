@@ -129,16 +129,23 @@ def name_greps(root: Path, files: list[str]) -> list[str]:
     for a gate script's name: how a reader decided "this hook runs goh's gate" before this module,
     blind to the shim, which names none. Comments are not code; `# hook-bytes-ok: <reason>` excuses
     a line. Tests are the callers' to exclude: they write stand-in hooks and assert on output."""
+    sys.path.append(str(GOH_ROOT / "checks"))  # here alone: .loop loads this module by path
+    import _prose_mask
+
     found = []
     for rel in (f for f in files if f.endswith(_CODE)):
         try:
-            lines = (root / rel).read_text(encoding="utf-8", errors="replace").splitlines()
+            text = (root / rel).read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        for n, line in enumerate(lines, 1):
+        if not _GATE_NAME.search(text):
+            continue
+        prose = rel.endswith(".py")  # a docstring that names the gate searches nothing
+        lines = (_prose_mask.python_code_only(text) if prose else text).split("\n")
+        for n, (line, read) in enumerate(zip(text.split("\n"), lines, strict=True), 1):
             if _OK in line:
                 continue
-            code = _COMMENT.sub("", line)
+            code = _COMMENT.sub("", read)
             if _GATE_NAME.search(code) and _SEARCH.search(code):
                 found.append(f"{rel}:{n}: {line.strip()}")
     return found

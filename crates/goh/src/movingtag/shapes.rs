@@ -74,6 +74,13 @@ pub const SHAPES: Declared = Declared {
             fixture: ("docs/build.md", "The build runs `FROM rust:1.99.1`.\nFROM rust:1\n"),
         },
         Shape {
+            name: "SQL",
+            path: r"\.sql$",
+            line: "",
+            verdict: Verdict::OutOfScope("a query's FROM names a table; nothing pulls it"),
+            fixture: ("db/0001_view.sql", "SELECT a\nFROM readings\nGROUP BY a;\n"),
+        },
+        Shape {
             name: "program source",
             path: PROGRAM,
             line: "",
