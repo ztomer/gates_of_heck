@@ -35,14 +35,9 @@ PATH).
 `unresolved` names every source line it read and could not place, so a reader sees the hole.
 
     copy_closure(dest, "tools/release_goh.sh")   # the script and what it sources, at their paths
-
-A goh script's dependency closure, read from its own `source`/`.` lines, imports and `importlib`
-literals, never a hand list (GOH.CLASS.HARNESS); `named_edges` adds the prose-masked names-a-path
-edge, one rule (`names_path`) with `tools/affected_tests.py` (GOH.PROVENCLOSURE): `closure(paths)`
-follows the script-relative and GOH_DIR spellings and names every source line it cannot place;
-`copy_closure(dest, rel)` is the ONE fixture builder for a copy of part of goh
-(tests/fixture_copy_lint.py refuses a hand copy beyond its shrink-only seed); the empty-scope
-skeleton carries what its shell gates source through it.
+The ONE fixture builder for a copy of part of goh (tests/fixture_copy_lint.py refuses a hand copy
+beyond its shrink-only seed); the empty-scope skeleton carries what its shell gates source through
+it. `named_edges` adds the names-a-path edge (`names_path`).
 """
 
 from __future__ import annotations
