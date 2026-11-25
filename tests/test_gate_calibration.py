@@ -10,18 +10,21 @@ self-proof goes red when a rule is dropped from it.
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
 import subprocess
 import sys
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
 from calib_snapshot import snapshot
-from conftest import REPO_ROOT as ROOT
+from conftest import REPO_ROOT as ROOT, commit_all
 
 sys.path.insert(0, str(ROOT / "checks"))
 import _calibration as reader
@@ -63,19 +66,6 @@ QUIET = '"""No self-proof here."""\nprint("clean")\n'
 pytestmark = pytest.mark.xdist_group("gate_calibration")
 
 
-def green_probes(root):
-    """{repo-relative: flag} for the self-proofs this sweep runs to green, by the gate's own
-    primitives -- so the test's idea of 'ran' cannot drift from the gate's."""
-    ran = {}
-    for path, flag in gate.discover(str(root))[0]:
-        passed, _ = gate.run_one(path, flag, cwd=str(root))
-        if passed:
-            ran[os.path.relpath(path, str(root))] = flag
-        elif passed is None:  # NOT APPLICABLE, which only a hosted run may say (run_one)
-            NOT_HERE.add(os.path.relpath(path, str(root)))
-    return ran
-
-
 # The self-proofs that said NOT APPLICABLE on this (hosted) run; empty on the owner's machine.
 NOT_HERE: set[str] = set()
 
@@ -90,10 +80,39 @@ def calibration_root(tmp_path_factory) -> Path:
     return snapshot(ROOT, tmp_path_factory.mktemp("calibration") / "repo")
 
 
+class Sweep(NamedTuple):
+    code: int
+    said: str
+    ran: dict[str, str]  # {repo-relative: flag} of each self-proof the gate ran to green
+
+
 @pytest.fixture(scope="module")
-def ran_here(calibration_root) -> dict:
-    """The sweep over THIS repo, once: running every self-proof is ~8 s, and two tests read it."""
-    return green_probes(calibration_root)
+def swept(calibration_root) -> Sweep:
+    """The gate over THIS repo, once, its own runs of each self-proof recorded as it makes them
+    (so a test's idea of 'ran' cannot drift from the gate's): running every one is ~8 s, and the
+    gate's verdict and what it ran were two sweeps."""
+    ran: dict[str, str] = {}
+    run_one = gate.run_one
+
+    def recorded(path, flag, cwd):
+        passed, detail = run_one(path, flag, cwd=cwd)
+        rel = os.path.relpath(path, cwd)
+        if passed:
+            ran[rel] = flag
+        elif passed is None:  # NOT APPLICABLE, which only a hosted run may say (run_one)
+            NOT_HERE.add(rel)
+        return passed, detail
+
+    out = io.StringIO()
+    with pytest.MonkeyPatch.context() as mp, redirect_stdout(out), redirect_stderr(out):
+        mp.setattr(gate, "run_one", recorded)
+        code = gate.main(["--root", str(calibration_root)])
+    return Sweep(code, out.getvalue(), ran)
+
+
+@pytest.fixture(scope="module")
+def ran_here(swept) -> dict:
+    return swept.ran
 
 
 def test_the_house_registry_holds_against_this_repo(ran_here):
@@ -133,9 +152,9 @@ def test_a_checker_missing_from_the_registry_is_red_through_the_gate(tmp_path):
     assert "check_orphan.py" in got.stderr and "no entry" in got.stderr, got.stderr
 
 
-def test_the_gate_agrees_with_the_reader_on_this_repo(calibration_root):
-    got = run_gate(calibration_root)
-    assert got.returncode == 0, got.stdout + got.stderr
+def test_the_gate_agrees_with_the_reader_on_this_repo(swept):
+    assert swept.code == 0, swept.said
+    assert "every claim in the calibration registry holds" in swept.said, swept.said
 
 
 def test_the_snapshot_holds_what_the_tree_holds(calibration_root):
@@ -244,23 +263,7 @@ def test_the_external_note_does_not_claim_what_a_silent_prover_never_said(tmp_pa
     silent = outside / "check_gate_canary.py"
     silent.write_text("print('a full run')\n")
     fast_init(outside)
-    subprocess.run(["git", "-C", str(outside), "add", "."], check=True, stdin=subprocess.DEVNULL)
-    subprocess.run(
-        [
-            "git",
-            "-C",
-            str(outside),
-            "-c",
-            "user.name=t",
-            "-c",
-            "user.email=t@t",
-            "commit",
-            "-qm",
-            "x",
-        ],
-        check=True,
-        stdin=subprocess.DEVNULL,
-    )
+    commit_all(outside, "x")
     root = tmp_path / "repo"
     root.mkdir()
     monkeypatch.setattr(reader, "resolves_to", lambda _root, _cited: str(silent))
@@ -274,39 +277,21 @@ def test_the_external_note_does_not_claim_what_a_silent_prover_never_said(tmp_pa
 # ── a false claim goes red THROUGH THE GATE, not only through the module ──────
 
 
-def test_a_claim_naming_a_gate_this_repo_does_not_have_is_red(tmp_path):
-    root = estate(
-        tmp_path,
-        {"prover": PROBING},
-        {"proven_by": {"phantom": "checks/check_phantom.py --probe: red on a violation"}},
-    )
-    got = run_gate(root)
-    assert got.returncode == 1
-    assert "names no gate" in got.stderr
-
-
-def test_a_claim_naming_a_file_that_does_not_exist_is_red(tmp_path):
-    root = estate(
-        tmp_path,
-        {"prover": PROBING},
-        {"proven_by": {"prover": "checks/check_absent.py --probe: red"}},
-    )
-    got = run_gate(root)
-    assert got.returncode == 1
-    assert "does not exist" in got.stderr
-
-
-def test_a_claim_to_a_proof_that_does_not_run_is_red(tmp_path):
-    """The R7 shape: the checker declares no self-proof, so the sweep cannot see it, and the
-    registry goes on calling it proven."""
-    root = estate(
-        tmp_path,
-        {"quiet": QUIET},
-        {"proven_by": {"quiet": "checks/check_quiet.py --probe: red on a violation"}},
-    )
-    got = run_gate(root)
-    assert got.returncode == 1
-    assert "did not run to green" in got.stderr
+@pytest.mark.parametrize(
+    ("gates", "key", "cites", "says"),
+    [
+        ({"prover": PROBING}, "phantom", "phantom", "names no gate"),
+        ({"prover": PROBING}, "prover", "absent", "does not exist"),
+        # The R7 shape: the checker declares no self-proof, so the sweep cannot see it, and the
+        # registry goes on calling it proven.
+        ({"quiet": QUIET}, "quiet", "quiet", "did not run to green"),
+    ],
+    ids=["no such gate", "no such file", "a proof that does not run"],
+)
+def test_a_false_claim_is_red(tmp_path, gates, key, cites, says):
+    claim = {key: f"checks/check_{cites}.py --probe: red on a violation"}
+    got = run_gate(estate(tmp_path, gates, {"proven_by": claim}))
+    assert got.returncode == 1 and says in got.stderr, got.stdout + got.stderr
 
 
 def _hosted_env(hosted: str) -> dict[str, str]:
@@ -370,15 +355,6 @@ def test_a_missing_file_of_THIS_repo_stays_red_on_a_hosted_run(tmp_path):
         text=True, check=False, stdin=subprocess.DEVNULL, env=_hosted_env("true"),
     )  # fmt: skip
     assert got.returncode == 1 and "does not exist" in got.stderr, got.stdout + got.stderr
-
-
-def test_a_sound_registry_is_green_through_the_gate(tmp_path):
-    root = estate(
-        tmp_path,
-        {"prover": PROBING},
-        {"proven_by": {"prover": "checks/check_prover.py --probe: red on a violation"}},
-    )
-    assert run_gate(root).returncode == 0
 
 
 def test_a_repo_with_no_registry_is_reported_not_failed(tmp_path):
@@ -454,21 +430,17 @@ _COV_ROUTE = (
 def test_a_cited_test_suite_counts_only_when_the_push_gate_runs_pytest(tmp_path, steps, red):
     """A test file is a proof only if something RUNS it on every push; one that merely exists is a
     rumour with a filename. The push gate's step list is the one place that says so."""
-    root = tmp_path / "repo"
-    (root / "tests").mkdir(parents=True)
-    (root / "gates").mkdir()
-    (root / "gates" / "goh.sh").write_text("#!/bin/sh\n")
-    (root / "tests" / "test_x.py").write_text("def test_x():\n    pass\n")
-    write_gatesrc(root, steps)
-    subprocess.run(["git", "init", "-q", str(root)], check=True, stdin=subprocess.DEVNULL)
-    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
-    subprocess.run(
-        ["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c"],
-        check=True,
-        stdin=subprocess.DEVNULL,
-    )
+    (tmp_path / "gates").mkdir()
+    write_gatesrc(tmp_path, steps)
+    assert bool(reader.runs_pytest(str(tmp_path))) is not red
+
+
+def test_a_citation_of_a_suite_no_push_runs_is_a_finding(tmp_path):
+    (tmp_path / "gates").mkdir()
+    (tmp_path / "gates" / "goh.sh").write_text("#!/bin/sh\n")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_x.py").write_text("def test_x():\n    pass\n")
+    write_gatesrc(tmp_path, "GOH_CI_STEPS='make test'\n")
     data = {"proven_by": {"no_emoji": "tests/test_x.py (native): red on a planted glyph"}}
-    bad = reader.verify(str(root), data, set())
-    assert bool(bad) is red, bad
-    if red:
-        assert "does not run" in bad[0], bad
+    bad = reader.verify(str(tmp_path), data, set())
+    assert bad and "does not run" in bad[0], bad
