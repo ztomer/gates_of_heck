@@ -171,11 +171,11 @@ class TestSelfBuffering:
         exec, rewriting the file mid-run (the field incident) shifted every
         unread offset and crashed or garbled the rest of the run. The gate is
         the slow point: it touches a marker (proving release.sh is mid-run),
-        then sleeps while the test swaps the script for different-length
+        then waits for the test to have swapped the script for different-length
         content. The invocation must still complete with the ORIGINAL
         content's semantics: full push + GitHub release of the stanza body.
         """
-        marker = tmp_path / "gate-started"
+        marker, edited = tmp_path / "gate-started", tmp_path / "edited"
         # A COPY is the script that gets rewritten, never this repo's own: the real one moved under
         # every gate reading the tree (tests/_tree_guard.py). It sits two levels down a mirror whose
         # gates/ is ours, so `_from_head.sh` resolves the way it does for the real one.
@@ -185,6 +185,7 @@ class TestSelfBuffering:
         (mirror / "lib").symlink_to(REPO_ROOT / "lib")  # its bash guard
         script = mirror / "tools" / "release-kit" / "release.sh"
         script.write_bytes(RELEASE.read_bytes())
+        wait = f"for _ in {{1..1200}}; do [ ! -e {edited} ] || exit 0; sleep 0.05; done"
         proc = subprocess.Popen(
             [
                 "/bin/bash",
@@ -192,7 +193,7 @@ class TestSelfBuffering:
                 "--version",
                 VERSION,
                 "--gate",
-                f"touch {marker} && sleep 5",
+                f"touch {marker}; {wait}; exit 1",
             ],
             cwd=kit["proj"],
             stdout=subprocess.PIPE,
@@ -209,11 +210,12 @@ class TestSelfBuffering:
                 time.sleep(0.05)
 
             script.write_bytes(b"#!/usr/bin/env bash\necho corrupted mid-run ((\n")
+            edited.touch()
             out, err = proc.communicate(timeout=120)
         finally:
             # The reap belongs HERE, not only on the line that reads the output: the two asserts
             # above can fire, and `communicate` can raise TimeoutExpired, and this test starts a
-            # `bash --gate 'touch … && sleep 5'` that outlives all three. A `finally` that cleans up
+            # `bash --gate 'touch …; wait'` that outlives all three. A `finally` that cleans up
             # anything but the process is a finally that half does its job — found by
             # `goh unreaped-spawn`, which is the house rule for it
             # (a private server workspace 2026-10-03: nine live orphans, each holding the cargo

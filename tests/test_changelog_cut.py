@@ -63,24 +63,23 @@ def test_the_kit_cut_carries_the_release_title_and_day_in_a_dated_repo(kit):
     assert f"## Unreleased\n\n## v1.2.3 — the new thing _({TODAY})_\n\n- new thing\n" in text, text
 
 
-def test_the_kit_cut_takes_the_first_entry_for_a_title_when_none_is_given(kit):
-    _release_with(
-        kit,
+def test_a_cut_takes_the_first_entry_for_a_title_when_none_is_given(tmp_path):
+    """The kit passing no title is the second-heading release's, below."""
+    log = _log(
+        tmp_path,
         "# C\n\n## Unreleased\n\n### Fixed\n"
         "- The on-device tier asks `fm` at a laxer level (it refused two of three timelines).\n"
         f"  More.\n\n{DATED_TAIL}",
     )
-    r = run_release(kit)
-    assert r.returncode == 0, r.stdout + r.stderr
-    text = (kit["proj"] / "CHANGELOG.md").read_text()
+    assert _cut(log, "cut", "--version", VERSION).returncode == 0
     want = f"## v1.2.3 — the on-device tier asks `fm` at a laxer level _({TODAY})_\n"
-    assert want in text, text
+    assert want in log.read_text(), log.read_text()
 
 
-def test_a_file_whose_stanzas_carry_no_title_gets_a_bare_cut(kit):
-    _release_with(kit, "# C\n\n## Unreleased\n\n- new\n\n## v1.1.0\n\n- older\n")
-    assert run_release(kit).returncode == 0
-    assert "\n## v1.2.3\n\n- new\n" in (kit["proj"] / "CHANGELOG.md").read_text()
+def test_a_file_whose_stanzas_carry_no_title_gets_a_bare_cut(tmp_path):
+    log = _log(tmp_path, "# C\n\n## Unreleased\n\n- new\n\n## v1.1.0\n\n- older\n")
+    assert _cut(log, "cut", "--version", VERSION).returncode == 0
+    assert "\n## v1.2.3\n\n- new\n" in log.read_text()
 
 
 def test_a_run_of_undated_hand_headings_does_not_unlearn_the_date(tmp_path):
@@ -140,7 +139,7 @@ def test_the_kit_cuts_when_the_unreleased_entries_sit_under_a_second_heading(kit
     r = run_release(kit)
     assert r.returncode == 0, r.stdout + r.stderr
     text = (kit["proj"] / "CHANGELOG.md").read_text()
-    assert text.count("## Unreleased") == 1 and "## v1.2.3 — the fix" in text, text
+    assert text.count("## Unreleased") == 1 and f"## v1.2.3 — the fix _({TODAY})_" in text, text
     assert sh(kit["proj"], "status", "--porcelain").strip() == ""
 
 
