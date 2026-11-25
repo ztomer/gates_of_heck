@@ -77,6 +77,22 @@ _PYTEST_SLOT = re.compile(r"^pytest-\d+$")
 _TEST_DIR = re.compile(r"^(test_\w+?)(?:\d+|current)$")
 
 
+_OWN_DIR = re.compile(r"/pytest-\d+/(?:(popen-gw\d+)/)?(test_\w*?\d+)(?:/|$)")
+
+
+def own_dir(path: str, roots: list[str]) -> str:
+    """The tmp_path a record of `path` is under, as `popen-gwN/<its name>` (`/<its name>` in a
+    session with no workers), or "": the key a run's own tests are told apart by."""
+    for root in roots:
+        if path.startswith(root.rstrip("/") + "/"):
+            m = _OWN_DIR.search(path, len(root.rstrip("/")))
+            head = path[len(root.rstrip("/")) : m.start()] if m else ""
+            # a session a test started numbers its dirs under that test's own: not this run's
+            inner = "popen-gw" in head or "nested-pytest" in head
+            return f"{m[1] or ''}/{m[2]}" if m and not inner else ""
+    return ""
+
+
 def creator(path: str, roots: list[str]) -> str:
     """Who made `path`: a stable label for the subtree it sits in, derived from the path alone.
 
@@ -139,6 +155,7 @@ class Tally:
         self.by_creator: Counter[str] = Counter()
         self.dirs_by_creator: Counter[str] = Counter()
         self.per_test: Counter[str] = Counter()
+        self.per_dir: Counter[str] = Counter()  # `own_dir`: one test's own tmp_path, exactly
         # A test's events inside a HEAD export it made (`<its HOME>/.cache/goh/head/<sha>`,
         # gates/_from_head.sh): a child spawned without GOH_LIVE copies the whole goh tree.
         self.head_export: Counter[str] = Counter()
@@ -168,6 +185,8 @@ class Tally:
             self.events += 1
             who = creator(path, self.roots)
             self.by_creator[who] += 1
+            if own := own_dir(path, self.roots):
+                self.per_dir[own] += 1
             if "/pytest-N/test_" in who:
                 self.per_test[who.rsplit("/", 1)[1]] += 1
                 if "/.cache/goh/head/" in path:

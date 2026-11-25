@@ -10,8 +10,9 @@ controller, for the whole session, and at its end
 
   * writes the count, the tests run and the top creators to $GATES_OF_HECK_FS_EVENTS (a JSON file
     tools/pytest.sh names for a whole run and records in the suite's timing-ledger row);
-  * turns a green session RED when one test's own tmp_path took more than CEILING["per_test"]
-    events, or -- a WHOLE run only -- the run more than CEILING["per_test_run"] per test it ran,
+  * turns a green session RED when a file's worst test broke its file's ceilings, one test's own
+    tmp_path took more than CEILING["per_test"] events, or -- a WHOLE run only -- the
+    run more than CEILING["per_test_run"] per test it ran,
     the run's count including the entries it leaves under its roots, which the runner's removal
     of them turns into events after the stream stops (`left_behind`).
 
@@ -24,7 +25,8 @@ on 2026-11-21 and two lands went red on 185 while whole runs sat at 120-155. A r
 its arguments select the whole suite (tests/_whole_run.py) and nothing was deselected after
 collection (counted in every process through pytest's own `pytest_deselected`, each xdist worker
 telling the controller, which collects nothing). A partial run's count is still written, with
-`whole` and `deselected`, and the per-test ceiling, which holds for any selection, still judges it.
+`whole` and `deselected`, and the per-test ceiling, which holds for any selection, still
+judges it, as each FILE's own does (tests/_fs_ceilings.py, GOH.FSEVQUIET).
 
 UNMEASURED WINDOWS ARE NO VERDICT (GOH.FSDROPVERDICT). A window whose stream dropped events, or
 did not deliver through the run's end (lib/fs_events.py `Stream.drain`), undercounts: 148 of 400
@@ -54,6 +56,7 @@ _LIB = str(Path(__file__).resolve().parent.parent / "lib")
 if _LIB not in sys.path:
     sys.path.append(_LIB)
 import _fs_bytes  # noqa: E402  (tests/, beside this file)
+import _fs_ceilings  # noqa: E402
 import _whole_run  # noqa: E402
 import fs_events  # noqa: E402
 import pytest  # noqa: E402
@@ -173,9 +176,21 @@ def pytest_sessionstart(session) -> None:
     except OSError as e:
         Path(out).write_text(json.dumps({"unavailable": str(e)}) + "\n")
         return
-    _STATE.update(tally=tally, stream=stream, t0=fs_events.time.monotonic(), ran=0)
+    _STATE.update(tally=tally, stream=stream, t0=fs_events.time.monotonic(), ran=0, nodes=set())
     _STATE["device"] = _fs_bytes.device_bytes()
     _fs_bytes.start()
+
+
+def _files(rep: dict, tally, ceiling: dict, ran: set[str], whole: bool) -> list[str]:
+    """Each file's reading into the report, and the faults of tests/_fs_ceilings.py."""
+    events = _fs_ceilings.by_test(tally.per_dir, _fs_bytes.DIRS)
+    rep["files"] = _fs_ceilings.readings(events, rep.pop("all_bytes"), ran)
+    if "new" not in ceiling:  # a test of this plugin, with no file ceilings of its own
+        return []
+    before = set(ceiling["files_today"]) if "files_today" in ceiling else _fs_ceilings.today()
+    measured = not rep.get("unmeasured")
+    whole = whole and not _fs_bytes.LOST  # a crashed worker's tests read as none: no name is stale
+    return _fs_ceilings.faults(rep["files"], ceiling, before, whole, measured)
 
 
 def pytest_deselected(items) -> None:
@@ -197,6 +212,7 @@ def pytest_testnodedown(node, error) -> None:
 def pytest_runtest_logreport(report) -> None:
     if "tally" in _STATE and report.when == "call":
         _STATE["ran"] += 1
+        _STATE["nodes"].add(report.nodeid)
 
 
 def pytest_sessionfinish(session, exitstatus) -> None:
@@ -218,6 +234,7 @@ def pytest_sessionfinish(session, exitstatus) -> None:
     ceiling = _ceiling()
     unmeasured = rep.get("unmeasured", "")
     faults = [] if unmeasured else verdict(rep, ran, ceiling, whole)
+    faults += _files(rep, tally, ceiling, _STATE.pop("nodes"), whole)
     rep["ceiling"], rep["faults"] = ceiling, faults
     Path(_STATE.pop("out")).write_text(json.dumps(rep, indent=1) + "\n")
     tr = session.config.pluginmanager.get_plugin("terminalreporter")

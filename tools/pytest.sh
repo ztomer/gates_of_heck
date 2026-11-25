@@ -247,6 +247,8 @@ if "events" in r:
     print("--field", "fs_events=%d" % r["events"], "--field", "fs_dirs=%d" % r["dirs_created"],
           "--field", "fs_tests=%d" % r.get("tests_run", 0), "--field", "fs_whole=%d" % bool(r.get("whole")),
           sep="\n")' "$GATES_OF_HECK_FS_EVENTS" 2>/dev/null || true)
+    # The last report, kept: `python3 tests/_fs_ceilings.py REPORT` lowers the lists by a whole one.
+    cp -f "$GATES_OF_HECK_FS_EVENTS" "${XDG_CACHE_HOME:-$HOME/.cache}/goh/fs-events-last.json" 2>/dev/null || true
 fi
 [ "$#" -ne 0 ] || goh_span_record "$suite_kind" goh "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" --field "exit=$rc" "${fs_fields[@]}"
 # A SATURATED fseventsd IS NAMED (GOH.FSEVCHURN): it sat at 6.9 GB after 2 d 18 h (2026-11-23) and

@@ -34,6 +34,8 @@ KEY = "gates_of_heck_fs_bytes"  # the controller -> a worker (on), a worker -> i
 _ON: list[bool] = [False]
 _BYTES: Counter[str] = Counter()
 _CLONED: Counter[str] = Counter()
+LOST: list[str] = []  # the workers that went down with their readings: what they ran reads as none
+DIRS: dict[str, str] = {}  # a test's tmp_path, as lib/fs_events.py `own_dir` spells it -> node id
 
 # <sys/attr.h>: getattrlist(2) with the extended common attributes.
 _FSOPT = 0x1 | 0x20  # NOFOLLOW | ATTR_CMN_EXTENDED
@@ -112,6 +114,8 @@ def start() -> None:
     _ON[0] = True
     _BYTES.clear()
     _CLONED.clear()
+    DIRS.clear()
+    LOST.clear()
 
 
 def finish(top: int) -> dict:
@@ -122,6 +126,7 @@ def finish(top: int) -> dict:
         "cloned_bytes": sum(_CLONED.values()),
         "bytes_per_test": dict(_BYTES.most_common(top)),
         "cloned_per_test": dict(_CLONED.most_common(top)),
+        "all_bytes": dict(_BYTES),
     }
 
 
@@ -141,7 +146,9 @@ def pytest_runtest_teardown(item) -> None:
     if tmp is None:
         return
     total, cloned = written(tmp)
-    test = item.nodeid.split("[")[0]
+    test = item.nodeid
+    worker = getattr(item.config, "workerinput", {}).get("workerid")  # never an outer run's env
+    DIRS[f"{f'popen-{worker}' if worker else ''}/{tmp.name}"] = test
     if total:
         _BYTES[test] += total
     if cloned:
@@ -150,14 +157,15 @@ def pytest_runtest_teardown(item) -> None:
 
 def pytest_sessionfinish(session) -> None:
     if _ON[0] and hasattr(session.config, "workerinput"):
-        session.config.workeroutput[KEY] = [dict(_BYTES), dict(_CLONED)]
+        session.config.workeroutput[KEY] = [dict(_BYTES), dict(_CLONED), DIRS]
 
 
 @pytest.hookimpl(optionalhook=True)
 def pytest_testnodedown(node, error) -> None:
-    for into, part in zip(
-        (_BYTES, _CLONED), getattr(node, "workeroutput", {}).get(KEY, ()), strict=False
-    ):
+    sums = getattr(node, "workeroutput", {}).get(KEY, ())
+    if _ON[0] and not sums:
+        LOST.append(str(node.gateway.id))
+    for into, part in zip((_BYTES, _CLONED, DIRS), sums, strict=False):
         into.update(part)
 
 
