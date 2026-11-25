@@ -23,6 +23,7 @@ FILES = {
         '[package]\nname = "goh"\nversion = "0.0.0"\nedition = "2021"\n'
         '[[bin]]\nname = "goh"\npath = "src/main.rs"\n'
     ),
+    "docs/config.md": "no build input\n",
     "crates/goh/src/cli.rs": f'pub const HELP: &str = "{HELP}";\n',
     "crates/goh/src/main.rs": (
         "mod cli;\n"
@@ -40,7 +41,7 @@ FILES = {
 def tiny_goh(tree: Path) -> None:
     """Replace `tree`'s Rust with FILES, build.rs kept, and commit it: HEAD is the tiny goh."""
     build_rs = (tree / "crates" / "goh" / "build.rs").read_text()
-    for part in ("crates", "tests", "changelog"):  # no build input but the first
+    for part in ("crates", "tests", "changelog", "docs", "hooks"):  # no build input but the first
         shutil.rmtree(tree / part, ignore_errors=True)
     for rel, text in {**FILES, "crates/goh/build.rs": build_rs}.items():
         (tree / rel).parent.mkdir(parents=True, exist_ok=True)

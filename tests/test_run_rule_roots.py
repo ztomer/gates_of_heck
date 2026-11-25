@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _tree_clone import clone_tree
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -64,7 +65,7 @@ def goh_copy(tmp_path_factory) -> Path:
 
 def _with(goh_copy: Path, tmp_path: Path, line: str, extra: dict[str, str] | None = None) -> Path:
     root = tmp_path / "goh"
-    copy_closure(root, *gate_identity.rust_gate_scripts(goh_copy), root=goh_copy)
+    clone_tree(goh_copy, root)
     _tree(root, extra or {})
     with (root / "gates" / "_hash.sh").open("a") as fh:
         fh.write(line)

@@ -15,6 +15,7 @@ import os
 import subprocess
 from pathlib import Path
 
+from _tree_clone import run_head_cache
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
 from test_binary_source_identity import _no_store, private_store
 from test_gate_environment import _clean_checkout_of_todays_gates
@@ -33,9 +34,13 @@ class Box:
     """A clean checkout of today's gates, its stores private, and a cargo that counts builds."""
 
     def __init__(self, tmp_path: Path) -> None:
-        self.checkout = _clean_checkout_of_todays_gates(tmp_path)
-        _git(self.checkout, "add", "-A")
-        _git(self.checkout, "commit", "-q", "--allow-empty", "-m", "today's gates")
+        self.checkout = _clean_checkout_of_todays_gates(tmp_path, rust=False)
+        # The tree a build exports to compile holds what cargo reads; this cargo reads none of it.
+        unread = ("checks", "gates", "hooks", "lib", "tools", "tui", ".github", "launchagents")
+        (self.checkout / ".git" / "info").mkdir(exist_ok=True)
+        sparse = self.checkout / ".git" / "info" / "sparse-checkout"
+        sparse.write_text("/*\n" + "".join(f"!/{d}/\n" for d in unread))
+        _git(self.checkout, "config", "core.sparseCheckout", "true")
         _no_store(self.checkout)
         (self.checkout / "bin" / "goh").unlink(missing_ok=True)
         self.calls = tmp_path / "cargo.calls"
@@ -59,6 +64,7 @@ class Box:
             GOH_BIN_STORE=str(private_store(self.checkout)),
             XDG_CACHE_HOME=str(tmp_path / "cache"),
             GOH_RUN_DIR=str(tmp_path / "run"),
+            GOH_HEAD_CACHE=str(run_head_cache()),  # HEAD is the run's: one export
         )
 
     def builds(self) -> int:

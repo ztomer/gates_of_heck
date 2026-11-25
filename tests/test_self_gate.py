@@ -15,13 +15,14 @@ binary judged, with no cargo build.
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _tree_clone import run_head_cache
 from conftest import REPO_ROOT, git, hermetic_env
+from test_gate_environment import _clean_checkout_of_todays_gates
 
 MARK = "SELFGATE-STAGED-TREE-JUDGED"
 FAKE = """#!/usr/bin/env bash
@@ -50,24 +51,11 @@ chmod 755 "$dest"
 
 
 def _goh_clone(tmp_path: Path) -> tuple[Path, Path]:
-    clone = tmp_path / "goh"
-    subprocess.run(["git", "clone", "-q", "--shared", str(REPO_ROOT), str(clone)],
-                   check=True, stdin=subprocess.DEVNULL, capture_output=True)  # fmt: skip
+    # goh AT THIS CHANGE, the tree under test, committed, as a landed goh would be.
+    clone = _clean_checkout_of_todays_gates(tmp_path, rust=False)
     # A branch: main moves only through land.sh. Never "lane": a lane worktree holds lane/<ITEM>,
     # a ref that name cannot sit beside (GOH.REFRESHINDEXLOCK: this failed in every lane checkout).
     git(clone, "checkout", "-q", "-b", "scratch-branch")
-    # The clone is goh AT THIS CHANGE: the tree under test, committed, as a landed goh would be.
-    show = ["git", "-C", str(REPO_ROOT), "diff", "HEAD", "--binary"]
-    diff = subprocess.run(show, capture_output=True, check=True, stdin=subprocess.DEVNULL).stdout
-    if diff:
-        subprocess.run(["git", "-C", str(clone), "apply", "--whitespace=nowarn"], input=diff,
-                       check=True, capture_output=True)  # fmt: skip
-    for rel in git(REPO_ROOT, "ls-files", "--others", "--exclude-standard").split():
-        (clone / rel).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(REPO_ROOT / rel, clone / rel)
-    git(clone, "add", "-A")
-    git(clone, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--no-verify",
-        "--allow-empty", "-m", "the change under test")  # fmt: skip
     log = tmp_path / "built.log"
     fake = tmp_path / "fake-goh"
     fake.write_text(FAKE)
@@ -94,7 +82,7 @@ def _goh_clone(tmp_path: Path) -> tuple[Path, Path]:
 def _commit_gate(clone: Path, tmp_path: Path) -> subprocess.CompletedProcess[str]:
     env = hermetic_env()  # GOH_LIVE=1, GOH_DIR=this checkout: the code under test
     env["GOH_BIN_STORE"] = str(tmp_path / "store")  # no other run's build answers
-    env["GOH_HEAD_CACHE"] = str(tmp_path / "head")
+    env["GOH_HEAD_CACHE"] = str(run_head_cache())  # HEAD's is the run's; the staged tree's is new
     # The hand-off drops GOH_LIVE on purpose (its subject is an export, not a live tree); the
     # suite's "forgot GOH_LIVE" guard would refuse the clone's own live libs a gate sources there.
     env.pop("GATES_OF_HECK_SUITE", None)

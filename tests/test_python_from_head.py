@@ -41,7 +41,7 @@ def test_every_python_entry_point_runs_from_head() -> None:
 
 @pytest.fixture(scope="module")
 def gates(tmp_path_factory) -> Path:
-    return _clean_checkout_of_todays_gates(tmp_path_factory.mktemp("g"))
+    return _clean_checkout_of_todays_gates(tmp_path_factory.mktemp("g"), rust=False)
 
 
 @pytest.fixture

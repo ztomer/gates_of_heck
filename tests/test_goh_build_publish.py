@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 from _tiny_goh import tiny_goh
 from _tree_clone import from_template
+from conftest import git
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import source_closure
@@ -149,6 +150,10 @@ def test_the_per_root_export_cache_is_pruned(clone: Path, tmp_path: Path) -> Non
 
     xdg = tmp_path / "xdg"
     store = xdg / "goh" / "build"
+    # The build's own tree holds what its cargo reads (nothing here): the caches are the subject.
+    (clone / ".git" / "info").mkdir(exist_ok=True)
+    (clone / ".git" / "info" / "sparse-checkout").write_text("/*\n!/*/\n/crates/\n")
+    git(clone, "config", "core.sparseCheckout", "true")
     then = time.time() - 2 * 3600
     for i in range(25):
         old = store / f"{1000 + i}"

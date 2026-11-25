@@ -243,7 +243,7 @@ def test_all_gate_source_path_lists_are_the_same_list() -> None:
     assert shared == {"gates", "checks", "lib", "tui"}, sorted(shared)
 
 
-def _clean_checkout_of_todays_gates(tmp_path: Path) -> Path:
+def _clean_checkout_of_todays_gates(tmp_path: Path, rust: bool = True) -> Path:
     """A CLEAN git checkout of the gate as it stands, uncommitted work included. A clone
     of HEAD is wrong twice: it does not carry the gate under test mid-change, and every
     assertion would answer with the live tree.
@@ -253,32 +253,64 @@ def _clean_checkout_of_todays_gates(tmp_path: Path) -> Path:
     root (GOH.PYTESTTMP). The clone's own commits and the test's writes stay in its own store.
 
     Built ONCE per worker and clonefile'd per caller (GOH.FIXTURECOST): ~30 callers each cloned,
-    diffed, applied and committed the same tree."""
+    diffed, applied and committed the same tree. `rust=False`: with no Rust source, 290 files fewer
+    to remove and to export, for a test that names its binary and reads no stamp (GOH.FSEVQUIET)."""
     checkout = tmp_path / "gates_of_heck"
     checkout.parent.mkdir(parents=True, exist_ok=True)
-    clone_tree(process_template("todays-gates", _build_clean_checkout), checkout)
+    key, build = ("todays-gates", _build_clean_checkout)
+    if not rust:
+        key, build = ("todays-gates-no-rust", _build_no_rust)
+    clone_tree(process_template(key, build), checkout)
     return checkout
 
 
-def _build_clean_checkout(checkout: Path) -> None:
+# THE ESTATE, not its suite (GOH.FSEVQUIET): no gate reads tests/, docs/ or the changelog's parts,
+# and they were half the files every clone of this removes and every export writes. They are never
+# written: the index is cut first, the work tree made from it.
+_NOT_THE_ESTATE = ("tests", "changelog", "docs")
+
+
+def _build_no_rust(checkout: Path) -> None:
+    _build_clean_checkout(checkout, ("crates/*/src",))
+
+
+def _build_clean_checkout(checkout: Path, less: tuple[str, ...] = ()) -> None:
+    less = (*_NOT_THE_ESTATE, *less)
+    but = [f":(exclude,glob){p}/**" for p in less]
     subprocess.run(
-        ["git", "clone", "-q", "--shared", str(ROOT), str(checkout)],
+        ["git", "clone", "-q", "--shared", "--no-checkout", str(ROOT), str(checkout)],
         check=True,
         capture_output=True,
         stdin=subprocess.DEVNULL,
     )
+    _git(checkout, "read-tree", "HEAD")
+    _git(checkout, "rm", "-r", "-q", "--cached", "--", *(f":(glob){p}/**" for p in less))
     work = subprocess.run(
-        ["git", "-C", str(ROOT), "diff", "HEAD", "--"],
+        ["git", "-C", str(ROOT), "diff", "HEAD", "--binary", "--", ".", *but],
         check=True,
         capture_output=True,
         stdin=subprocess.DEVNULL,
     ).stdout
     if work:
-        subprocess.run(["git", "-C", str(checkout), "apply", "-"], input=work, check=True)
+        subprocess.run(
+            ["git", "-C", str(checkout), "apply", "--cached", "-"], input=work, check=True
+        )
+    _git(checkout, "checkout-index", "-a")
     # ...and the NEW files: `git diff HEAD` leaves out an untracked file, so a gate whose change
     # adds one (gates/_from_head.py did) was judged here without it -- and failed on the import.
     untracked = subprocess.run(
-        ["git", "-C", str(ROOT), "ls-files", "-z", "--others", "--exclude-standard"],
+        [
+            "git",
+            "-C",
+            str(ROOT),
+            "ls-files",
+            "-z",
+            "--others",
+            "--exclude-standard",
+            "--",
+            ".",
+            *but,
+        ],
         check=True,
         capture_output=True,
         stdin=subprocess.DEVNULL,
@@ -286,10 +318,6 @@ def _build_clean_checkout(checkout: Path) -> None:
     for rel in filter(None, (u.decode() for u in untracked)):
         (checkout / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / rel, checkout / rel)
-    # THE ESTATE, not its suite (GOH.FSEVQUIET): no gate reads tests/, docs/ or the fragments,
-    # and they were 1,074 of the 2,034 files every clone of this removes and every export writes.
-    for part in ("tests", "changelog", "docs"):
-        shutil.rmtree(checkout / part, ignore_errors=True)
     _git(checkout, "add", "-A")
     # A clean working tree has NOTHING to commit and `git commit` says so with a
     # non-zero exit — and this fixture is built from a diff, so it is empty

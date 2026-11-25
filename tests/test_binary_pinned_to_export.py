@@ -47,7 +47,7 @@ class Land:
     """The incident's state: an export pinned at A, the live checkout landed to B."""
 
     def __init__(self, tmp_path: Path) -> None:
-        self.checkout = _clean_checkout_of_todays_gates(tmp_path)
+        self.checkout = _clean_checkout_of_todays_gates(tmp_path, rust=False)
         _no_store(self.checkout)
         self.a = _git(self.checkout, "rev-parse", "HEAD")
         self.a_version, self.a_stamp = _version(self.checkout), _head_stamp(self.checkout)
@@ -156,7 +156,7 @@ def test_a_parents_answer_for_another_pin_is_not_taken(tmp_path: Path, repo: Pat
 def test_the_live_head_gate_answers_with_the_stores_copy(tmp_path: Path) -> None:
     """Unpinned (the live checkout itself), a current `bin/goh` is adopted into the store and the
     STORE's path is the answer: a land rewriting `bin/goh` cannot change what a child then runs."""
-    checkout = _clean_checkout_of_todays_gates(tmp_path)
+    checkout = _clean_checkout_of_todays_gates(tmp_path, rust=False)
     _no_store(checkout)
     stamp = _head_stamp(checkout)
     _fake(checkout / "bin" / "goh", _version(checkout), stamp)

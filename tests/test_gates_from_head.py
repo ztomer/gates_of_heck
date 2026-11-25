@@ -28,7 +28,7 @@ PLANT = "LIVE-WORKING-TREE-EDIT-5521"
 
 @pytest.fixture(scope="module")
 def gates(tmp_path_factory) -> Path:
-    return _clean_checkout_of_todays_gates(tmp_path_factory.mktemp("g"))
+    return _clean_checkout_of_todays_gates(tmp_path_factory.mktemp("g"), rust=False)
 
 
 @pytest.fixture

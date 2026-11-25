@@ -87,6 +87,10 @@ def live(tmp_path, monkeypatch) -> Path:
     return arm(live_queue(), tmp_path, monkeypatch)
 
 
+def _short(item: dict) -> dict:
+    return {k: v for k, v in item.items() if len(json.dumps(v)) < 80}
+
+
 def arm(data: dict, tmp_path: Path, monkeypatch) -> Path:
     """Point goh's filers at the real loopctl over a temp copy of queue DATA."""
     queue = tmp_path / "loop" / "queue.json"
@@ -95,7 +99,9 @@ def arm(data: dict, tmp_path: Path, monkeypatch) -> Path:
     # item whose text overlaps an open one (loopdup), so a live open ship-red item ate the test's
     # own synthetic one (2026-11-21: GOH.SHIPRED12163BB1 vs "a red land"): the test passed or
     # failed by what the queue held that day.
-    data = {**data, "items": [i for i in data["items"] if i.get("status") not in OPEN]}
+    # Of a closed one, its short fields (GOH.FSEVQUIET): ids, states and classes are what the rules
+    # ask, and the whole history's prose was 4.6 MB a test.
+    data = {**data, "items": [_short(i) for i in data["items"] if i.get("status") not in OPEN]}
     # The rules minus the owner's freezes (GOH.FILERLIVEFREEZE): FRZ.QUEUEDB-GOH froze
     # gates_of_heck on 2026-11-23, the live rules refused both probes, and every goh gate went
     # red until it lifted. A freeze is a legitimate state of the queue, never a rules regression.

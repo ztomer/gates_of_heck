@@ -27,7 +27,7 @@ def _git(repo: Path, *args: str) -> str:
 
 @pytest.fixture(scope="module")
 def gates(tmp_path_factory) -> Path:
-    return _clean_checkout_of_todays_gates(tmp_path_factory.mktemp("hookseed"))
+    return _clean_checkout_of_todays_gates(tmp_path_factory.mktemp("hookseed"), rust=False)
 
 
 def _hedge(gates: Path, tmp_path: Path) -> subprocess.CompletedProcess[str]:

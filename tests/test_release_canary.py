@@ -245,26 +245,32 @@ def test_the_estate_audit_keeps_the_canary_record(estate, monkeypatch):
     assert "ran_at" in data and data["advisories"] == {}
 
 
-def test_a_side_is_exported_as_a_consumer_gets_it(tmp_path):
+@pytest.fixture
+def goh_at_head(repo: Path) -> Path:
+    """A goh of one gate: what an export is, not what this checkout holds, is the subject."""
+    (repo / "gates").mkdir()
+    (repo / "gates" / "structural.sh").write_text("#!/usr/bin/env bash\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "one gate")
+    return repo
+
+
+def test_a_side_is_exported_as_a_consumer_gets_it(tmp_path, goh_at_head):
     # A gate script run from an export with no `.goh-head` walked up for a checkout, found none,
     # and judged differently from the consumer's push (sys_updater's empty-scope probe, red here and
     # green there). The export names its commit, as gates/_from_head.sh's does.
     spec = importlib.util.spec_from_file_location("release_canary_mod", SCRIPT)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    assert mod.export(REPO_ROOT, "HEAD", tmp_path / "side") is None
-    head = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=True,
-        stdin=subprocess.DEVNULL,
-    ).stdout.strip()
+    assert mod.export(goh_at_head, "HEAD", tmp_path / "side") is None
+    head = _git(goh_at_head, "rev-parse", "HEAD").stdout.strip()
     assert (tmp_path / "side" / ".goh-head").read_text().strip() == head
     assert (tmp_path / "side" / "gates" / "structural.sh").is_file()
 
 
-def test_an_export_survives_tar_closing_the_pipe_before_git_is_done(tmp_path, monkeypatch):
+def test_an_export_survives_tar_closing_the_pipe_before_git_is_done(
+    tmp_path, monkeypatch, goh_at_head
+):
     """GOH.SUITEFLAKES: bsdtar exits at the end marker without draining its input, so a writer still
     padding the record takes SIGPIPE -- exit 141, no stderr, and the canary refused a release with
     "exporting v0.96.0: " and nothing after it. This git writes its archive, then more, late."""
@@ -288,7 +294,7 @@ def test_an_export_survives_tar_closing_the_pipe_before_git_is_done(tmp_path, mo
     spec = importlib.util.spec_from_file_location("release_canary_mod", SCRIPT)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    assert mod.export(REPO_ROOT, "HEAD", tmp_path / "side") is None
+    assert mod.export(goh_at_head, "HEAD", tmp_path / "side") is None
     assert (tmp_path / "side" / "gates" / "structural.sh").is_file()
 
 

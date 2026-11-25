@@ -23,8 +23,8 @@ from test_gate_environment import _clean_checkout_of_todays_gates
 
 
 def test_a_second_root_of_the_same_source_takes_the_first_ones_build(tmp_path: Path) -> None:
-    first = _clean_checkout_of_todays_gates(tmp_path / "one")
-    second = _clean_checkout_of_todays_gates(tmp_path / "two")
+    first = _clean_checkout_of_todays_gates(tmp_path / "one", rust=False)
+    second = _clean_checkout_of_todays_gates(tmp_path / "two", rust=False)
     for root in (first, second):
         _no_store(root)
         (root / "bin").mkdir(exist_ok=True)  # gitignored: a clean checkout has none
@@ -49,7 +49,7 @@ def test_a_second_root_of_the_same_source_takes_the_first_ones_build(tmp_path: P
 def test_a_shared_binary_of_another_source_is_never_taken(tmp_path: Path) -> None:
     """The stamp is what is trusted, read from the binary itself: a stale one under the right key
     is rebuilt over, exactly as a stale bin/goh is."""
-    checkout = _clean_checkout_of_todays_gates(tmp_path)
+    checkout = _clean_checkout_of_todays_gates(tmp_path, rust=False)
     _no_store(checkout)
     (checkout / "bin").mkdir(exist_ok=True)
     stamp, version = _head_stamp(checkout), _version(checkout)

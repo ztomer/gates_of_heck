@@ -11,13 +11,48 @@ beyond the 20 most recently used and unused for an hour.
 from __future__ import annotations
 
 import os
+import subprocess
 import time
 from pathlib import Path
 
 import pytest
-from test_gates_from_head import _env, _structural, consumer, gates  # noqa: F401  (fixtures)
+from _fast_git import fast_init
+from _tree_clone import from_template
+from conftest import git
+from source_closure import copy_closure
+from test_gates_from_head import _env
+from timing_bounds import patience
 
 HOUR, DAY = 3600, 86400
+ENTRY = "gates/entry.sh"
+
+
+def _build_gates(root: Path) -> None:
+    """A checkout of the one entry point's closure: an export of it is ~20 files, not 600."""
+    copy_closure(
+        root, "gates/_from_head.sh", extra=("gates/_head_cache.py", "gates/_export_bin_goh.sh")
+    )
+    (root / ENTRY).write_text(
+        '#!/usr/bin/env bash\n. "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"\n'
+        'goh_from_head "${BASH_SOURCE[0]}" "$@"\necho "ran from $GOH_DIR"\n'
+    )
+    fast_init(root, "main")
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "the entry point")
+
+
+@pytest.fixture
+def gates(tmp_path_factory, tmp_path: Path) -> Path:
+    return from_template(tmp_path_factory, "prune-gates", _build_gates, tmp_path / "gates")
+
+
+def _use(gates: Path, env: dict) -> None:
+    r = subprocess.run(["bash", str(gates / ENTRY)], cwd=gates, env=env, capture_output=True,
+                       text=True, timeout=patience(120), check=False,
+                       stdin=subprocess.DEVNULL)  # fmt: skip
+    assert r.returncode == 0 and f"ran from {env['GOH_HEAD_CACHE']}" in r.stdout, (
+        r.stdout + r.stderr
+    )
 
 
 def _fake(cache: Path, name: str, used_ago: float, stamp: bool = True) -> Path:
@@ -37,48 +72,48 @@ def _exports(cache: Path) -> set[str]:
 
 
 @pytest.mark.load_sensitive
-def test_every_use_stamps_the_export(gates, consumer, tmp_path) -> None:
+def test_every_use_stamps_the_export(gates, tmp_path) -> None:
     env = _env(tmp_path)
-    _structural(gates, consumer, env)
+    _use(gates, env)
     cache = tmp_path / "head-cache"
     (export,) = [p for p in cache.iterdir() if not p.name.startswith(".")]
     os.utime(export / ".goh-used", (1, 1))
     dir_mtime = export.stat().st_mtime_ns
-    _structural(gates, consumer, env)
+    _use(gates, env)
     assert (export / ".goh-used").stat().st_mtime > time.time() - HOUR, "a use left no stamp"
     assert export.stat().st_mtime_ns == dir_mtime, "the stamp rewrote the export's directory"
 
 
 @pytest.mark.load_sensitive
-def test_an_export_unused_for_a_week_goes_and_a_recent_one_stays(gates, consumer, tmp_path) -> None:
+def test_an_export_unused_for_a_week_goes_and_a_recent_one_stays(gates, tmp_path) -> None:
     cache = tmp_path / "head-cache"
     _fake(cache, "old", 8 * DAY)
     _fake(cache, "old-unstamped", 8 * DAY, stamp=False)  # an export from before the stamp
     _fake(cache, "recent", 2 * HOUR)
-    _structural(gates, consumer, _env(tmp_path))  # a NEW export for HEAD: the prune runs
+    _use(gates, _env(tmp_path))  # a NEW export for HEAD: the prune runs
     left = _exports(cache)
     assert "old" not in left and "old-unstamped" not in left, left
     assert "recent" in left and len(left) == 2, left
 
 
 @pytest.mark.load_sensitive
-def test_beyond_the_count_the_least_recently_used_go(gates, consumer, tmp_path) -> None:
+def test_beyond_the_count_the_least_recently_used_go(gates, tmp_path) -> None:
     cache = tmp_path / "head-cache"
     for i in range(25):
         _fake(cache, f"e{i:02d}", (2 + i) * HOUR)  # e00 most recently used
-    _structural(gates, consumer, _env(tmp_path))
+    _use(gates, _env(tmp_path))
     left = _exports(cache)
     assert len(left) == 20, sorted(left)  # the new one + the 19 most recently used
     assert {f"e{i:02d}" for i in range(19)} <= left, sorted(left)
 
 
 @pytest.mark.load_sensitive
-def test_an_export_used_within_the_hour_is_never_pruned(gates, consumer, tmp_path) -> None:
+def test_an_export_used_within_the_hour_is_never_pruned(gates, tmp_path) -> None:
     """In use, as far as anything can tell: a gate may be running from it right now."""
     cache = tmp_path / "head-cache"
     for i in range(25):
         _fake(cache, f"hot{i:02d}", 10 * 60)
-    _structural(gates, consumer, _env(tmp_path))
+    _use(gates, _env(tmp_path))
     assert len(_exports(cache)) == 26, "an export used ten minutes ago was pruned"
 
 
@@ -91,9 +126,9 @@ def _prune(cache: Path, current: str, **kw) -> list[str]:
     return _head_cache.prune(str(cache), current, **kw)
 
 
-def _sized(cache: Path, name: str, used_ago: float, mib: int) -> Path:
+def _sized(cache: Path, name: str, used_ago: float, parts: int) -> Path:
     d = _fake(cache, name, used_ago)
-    (d / "blob").write_bytes(b"\1" * (mib << 20))
+    (d / "blob").write_bytes(b"\1" * (parts << 16))
     os.utime(d / ".goh-used", (time.time() - used_ago,) * 2)
     return d
 
@@ -105,7 +140,7 @@ def test_past_the_byte_budget_the_least_recently_used_go(tmp_path) -> None:
     _sized(cache, "cur", 0, 1)
     for i in range(5):
         _sized(cache, f"b{i}", (2 + i) * HOUR, 1)  # b0 most recently used
-    _prune(cache, "cur", keep=200, max_bytes=(3 << 20) + (512 << 10))
+    _prune(cache, "cur", keep=200, max_bytes=(3 << 16) + (32 << 10))
     assert _exports(cache) == {"cur", "b0", "b1"}, sorted(_exports(cache))
 
 

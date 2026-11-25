@@ -44,7 +44,7 @@ def _reader_key(main: Path, mode: str, env: dict) -> list[str]:
 
 
 def test_a_rebased_land_records_the_landed_tips_identity(tmp_path: Path) -> None:
-    main = _clean_checkout_of_todays_gates(tmp_path)
+    main = _clean_checkout_of_todays_gates(tmp_path, rust=False)
     wt = tmp_path / "lane"
     _git(main, "worktree", "add", "-q", "-b", "feature-under-land", str(wt))
     (wt / "lane.txt").write_text("the lane's change\n")

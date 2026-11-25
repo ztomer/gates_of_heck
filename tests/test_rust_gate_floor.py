@@ -56,7 +56,7 @@ def gates(tmp_path: Path) -> Path:
     """Today's gates, uncommitted work included, in a checkout of this test's own (it edits one)."""
     from test_gate_environment import _clean_checkout_of_todays_gates
 
-    return _clean_checkout_of_todays_gates(tmp_path / "gates")
+    return _clean_checkout_of_todays_gates(tmp_path / "gates", rust=False)
 
 
 @pytest.fixture

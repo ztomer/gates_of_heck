@@ -23,7 +23,6 @@
   "test_rust_gate.py": 1,
   "test_screen_presentation.py": 1,
   "test_seed_refused.py": 1,
-  "test_self_gate.py": 1,
   "test_self_match_wait.py": 1,
   "test_staged_parity.py": 2,
   "test_swift_gate_baseline.py": 1,

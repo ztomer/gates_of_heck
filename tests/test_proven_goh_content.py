@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 from _fast_git import fast_init
+from _tree_clone import clone_tree
 from conftest import REPO_ROOT, hermetic_env
 from test_proven import STEP, _git, env, goh, repo, runs  # noqa: F401  (fixtures)
 from timing_bounds import patience
@@ -46,13 +47,14 @@ def _with_crates(checkout: Path) -> Path:
 
 
 def _export(checkout: Path, tmp_path: Path) -> Path:
-    """The head export of the checkout's commit, as gates/_from_head.sh cuts one."""
+    """The head export of the checkout's commit, as gates/_from_head.sh cuts one: the tree it
+    archives, which the checkout's clean work tree is (cloned: no byte written)."""
     sha = _git(checkout, "rev-parse", "HEAD")
+    assert not _git(checkout, "status", "--porcelain"), "the work tree is not HEAD's"
     dest = tmp_path / "head" / sha
     dest.mkdir(parents=True)
-    archive = subprocess.run(["git", "-C", str(checkout), "archive", "HEAD"], capture_output=True,
-                             check=True, stdin=subprocess.DEVNULL).stdout  # fmt: skip
-    subprocess.run(["tar", "-x", "-C", str(dest)], input=archive, check=True)
+    for name in _git(checkout, "ls-tree", "--name-only", "HEAD").splitlines():
+        clone_tree(checkout / name, dest / name)
     (dest / ".goh-head").write_text(sha + "\n")
     return dest
 

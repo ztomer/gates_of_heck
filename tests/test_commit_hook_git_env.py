@@ -160,7 +160,7 @@ def test_a_worktree_commit_does_not_report_uncommitted_gates(tmp_path, hook):
     own git on their checkout has to drop them itself. The consumer's Cargo.toml is bait for the
     sibling read: `git show HEAD:Cargo.toml` in the export with the hook's GIT_DIR read THIS one,
     and the version check called the binary behind."""
-    gates = _clean_checkout_of_todays_gates(tmp_path)
+    gates = _clean_checkout_of_todays_gates(tmp_path, rust=False)
     body = (
         (REPO_ROOT / "hooks" / "pre-commit").read_bytes()
         if hook == "current"
@@ -194,7 +194,7 @@ def test_the_staged_scope_still_judges_the_index_being_committed(tmp_path, how):
     """`commit -a` and `commit <paths>` commit a TEMPORARY index (index.lock, next-index-*), named
     only by GIT_INDEX_FILE. Unbinding it without carrying it would judge the repository's own
     index -- here, without the emoji -- and pass a commit that records one."""
-    gates = _clean_checkout_of_todays_gates(tmp_path)
+    gates = _clean_checkout_of_todays_gates(tmp_path, rust=False)
     main, wt = _consumer(
         tmp_path,
         STRUCTURAL_GATE,
@@ -215,7 +215,7 @@ def test_the_staged_scope_still_judges_the_index_being_committed(tmp_path, how):
 def test_a_plain_commit_does_not_judge_an_unstaged_edit(tmp_path):
     """The converse: with nothing but the repository's own index, an unstaged violation is not
     the commit's -- the hook carried no index, and the staged scope must not invent one."""
-    gates = _clean_checkout_of_todays_gates(tmp_path)
+    gates = _clean_checkout_of_todays_gates(tmp_path, rust=False)
     main, wt = _consumer(
         tmp_path,
         STRUCTURAL_GATE,

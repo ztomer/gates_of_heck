@@ -15,6 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from _tree_clone import clone_tree
 from conftest import REPO_ROOT
 from test_proven import STEP, _git, env, goh, repo, runs  # noqa: F401  (fixtures)
 from test_proven_goh_content import _export
@@ -37,7 +38,8 @@ def _prove(goh: Path, repo: Path, env: dict, pythonpath: str | None):  # noqa: F
 def _second_export(first: Path, tmp_path: Path) -> Path:
     """The same commit's export at another path: the next land's ~/.cache/goh/head/<sha>."""
     dest = tmp_path / "head2" / first.name
-    shutil.copytree(first, dest, symlinks=True)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    clone_tree(first, dest)
     return dest
 
 
@@ -89,7 +91,8 @@ def test_a_root_behind_another_is_keyed_only_by_what_the_one_ahead_lacks(goh, tm
     never imported from it; a gates file only it has still moves the key."""
     a = goh
     live = tmp_path / "live"
-    shutil.copytree(a, live, symlinks=True)
+    live.parent.mkdir(parents=True, exist_ok=True)
+    clone_tree(a, live)
 
     def key(pp: str) -> str:
         return gate_identity.pythonpath(pp, tmp_path / "repo", gate_identity.gate_files)
@@ -114,7 +117,8 @@ def test_an_entry_that_is_not_there_is_no_input(goh, tmp_path):  # noqa: F811
     it was keyed `path <it>`, so the key moved under a running suite and the Rust coverage reuse
     tests measured twice (GOH.VERDICTCARRY2's land). Python reads nothing from a missing entry."""
     live = tmp_path / "head" / "old"
-    shutil.copytree(goh, live, symlinks=True)
+    live.parent.mkdir(parents=True, exist_ok=True)
+    clone_tree(goh, live)
 
     def key(pp: str) -> str:
         return gate_identity.pythonpath(pp, tmp_path / "repo", gate_identity.gate_files)

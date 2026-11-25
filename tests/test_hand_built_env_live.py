@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _tree_clone import run_head_cache
 from conftest import REPO_ROOT
 from timing_bounds import patience
 
@@ -62,7 +63,8 @@ def test_a_hand_built_env_that_drops_goh_live_is_refused(tmp_path: Path) -> None
 
 
 def test_a_test_that_means_head_says_so(tmp_path: Path) -> None:
-    r = _probe(_hand_built(tmp_path, GATES_OF_HECK_HEAD_OK="1"))
+    heads = str(run_head_cache())  # the run's one export of this commit
+    r = _probe(_hand_built(tmp_path, GATES_OF_HECK_HEAD_OK="1", GOH_HEAD_CACHE=heads))
     assert r.returncode == 0, r.stderr
     assert "without GOH_LIVE" not in r.stderr, r.stderr
 

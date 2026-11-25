@@ -29,6 +29,7 @@ from pathlib import Path
 
 import _goh_db_fixture as gdb
 import pytest
+from _tree_clone import run_head_cache
 from conftest import git
 from test_gate_environment import _clean_checkout_of_todays_gates
 from test_ship import _env, make_shipped
@@ -55,9 +56,7 @@ def _pinned_env(tmp_path: Path, gates: Path) -> dict[str, str]:
     env = _env(tmp_path, GOH_SHIP_RELEASE=f"bash {tmp_path / 'kit.sh'}", GOH_SHIP_TIMEOUT="300")
     for k in [k for k in env if k == "GOH_LIVE" or k.startswith("PYTEST_")]:
         del env[k]
-    env.update(
-        GOH_DIR=str(gates), GOH_HEAD_CACHE=str(tmp_path / "head-cache"), SHIP_T=str(tmp_path)
-    )
+    env.update(GOH_DIR=str(gates), GOH_HEAD_CACHE=str(run_head_cache()), SHIP_T=str(tmp_path))
     return env
 
 
@@ -72,7 +71,7 @@ def _wait(path: Path, seconds: float) -> None:
 def test_a_ship_finishes_with_its_own_goh_when_the_live_checkout_renames_a_step_flag(
     repo: Path, tmp_path: Path
 ) -> None:
-    gates = _clean_checkout_of_todays_gates(tmp_path / "g")
+    gates = _clean_checkout_of_todays_gates(tmp_path / "g", rust=False)
     started_at = git(gates, "rev-parse", "HEAD").strip()
     shipped = make_shipped(repo, tmp_path)
     (tmp_path / "kit.sh").write_text(KIT)
@@ -122,11 +121,12 @@ def test_an_export_carries_a_bin_goh_that_runs_its_own_commit(repo: Path, tmp_pa
     """`$GOH_DIR/bin/goh` in an export: the native build of the export's commit, GOH_DIR the export.
 
     GOH_BIN stands in for the build (the resolver trusts a named binary), so no cargo runs here."""
-    gates = _clean_checkout_of_todays_gates(tmp_path / "g")
+    gates = _clean_checkout_of_todays_gates(tmp_path / "g", rust=False)
     fake = tmp_path / "fake-goh"
     fake.write_text('#!/usr/bin/env bash\necho "GOH_DIR=$GOH_DIR ARGS=$*"\n')
     fake.chmod(0o755)
     env = _pinned_env(tmp_path, gates)
+    env["GOH_HEAD_CACHE"] = str(tmp_path / "head-cache")  # its .goh-live names THIS checkout
     asked = subprocess.run(
         ["bash", "-c", ASK_EXPORT,
          "_", str(gates)],

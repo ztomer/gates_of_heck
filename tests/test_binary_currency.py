@@ -10,6 +10,7 @@ source is already named, by path, by its own warning; it must not also stop the 
 import subprocess
 from pathlib import Path
 
+from _tree_clone import run_head_cache
 from conftest import hermetic_env
 from test_gate_environment import _clean_checkout_of_todays_gates, _git
 
@@ -41,9 +42,9 @@ def _head_version(checkout: Path) -> str:
 
 def _consumer_env(checkout: Path, fake: Path, tmp_path: Path) -> dict:
     """A CONSUMER's environment: no GOH_LIVE (the suite sets it for itself; a consumer never does),
-    no PYTEST_* (a gate under pytest without GOH_LIVE refuses), its own HEAD-export cache."""
+    no PYTEST_* (a gate under pytest without GOH_LIVE refuses), the run's HEAD-export cache."""
     env = {k: v for k, v in hermetic_env().items() if not k.startswith(("GOH_LIVE", "PYTEST_"))}
-    env.update(GOH_DIR=str(checkout), GOH_BIN=str(fake), GOH_HEAD_CACHE=str(tmp_path / "heads"))
+    env.update(GOH_DIR=str(checkout), GOH_BIN=str(fake), GOH_HEAD_CACHE=str(run_head_cache()))
     return env
 
 
@@ -66,7 +67,7 @@ def _structural(checkout: Path, fake: Path, tmp_path: Path):
 
 
 def test_an_uncommitted_version_bump_does_not_stop_the_estate(tmp_path):
-    checkout = _clean_checkout_of_todays_gates(tmp_path)
+    checkout = _clean_checkout_of_todays_gates(tmp_path, rust=False)
     fake = _fake_goh(tmp_path, _head_version(checkout))
     _bump(checkout, "99.0.0")  # uncommitted, in the shared checkout
     got = _structural(checkout, fake, tmp_path)
@@ -77,7 +78,7 @@ def test_an_uncommitted_version_bump_does_not_stop_the_estate(tmp_path):
 def test_a_committed_cargo_version_is_not_the_version(tmp_path):
     """GOH.SHIPRELREUSE: the version is the tag. Cargo.toml's is a placeholder a release does not
     touch, so a commit that changes it changes nothing a binary must report."""
-    checkout = _clean_checkout_of_todays_gates(tmp_path)
+    checkout = _clean_checkout_of_todays_gates(tmp_path, rust=False)
     fake = _fake_goh(tmp_path, _head_version(checkout))
     _bump(checkout, "99.0.0")
     _git(checkout, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "bump")
@@ -86,7 +87,7 @@ def test_a_committed_cargo_version_is_not_the_version(tmp_path):
 
 
 def test_a_release_tag_the_binary_is_behind_is_refused(tmp_path):
-    checkout = _clean_checkout_of_todays_gates(tmp_path)
+    checkout = _clean_checkout_of_todays_gates(tmp_path, rust=False)
     _git(checkout, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty",
          "-m", "release")  # fmt: skip
     fake = _fake_goh(tmp_path, _head_version(checkout))
@@ -100,7 +101,7 @@ def test_a_release_tag_the_binary_is_behind_is_refused(tmp_path):
 def test_a_build_of_another_commit_past_the_same_release_serves(tmp_path):
     """One build serves every commit with its source (the stamp decides which, gates/_goh_bin.sh):
     a binary built at an earlier commit past the same tag says that commit, and is current."""
-    checkout = _clean_checkout_of_todays_gates(tmp_path)
+    checkout = _clean_checkout_of_todays_gates(tmp_path, rust=False)
     # PAST a release, whatever the checkout it was cloned from has on HEAD: on a release commit
     # its own build must say the release, so this test read a tagged checkout as stale
     # (goh's CI on every release commit; GOH.PROVENTAGHEAD).
@@ -118,7 +119,7 @@ def test_a_binary_ahead_of_the_source_is_refused_and_called_ahead(tmp_path):
     """2026-10-17: a land rebuilt bin/goh (0.29.0) under a gate pinned to the commit before
     (0.28.1), and the refusal said "BEHIND" -- sending the reader after a rebuild that was never
     missing. Still refused (the binary is not this source's build), but named the right way."""
-    checkout = _clean_checkout_of_todays_gates(tmp_path)
+    checkout = _clean_checkout_of_todays_gates(tmp_path, rust=False)
     fake = _fake_goh(tmp_path, "99.0.0")
     got = _structural(checkout, fake, tmp_path)
     text = got.stdout + got.stderr
