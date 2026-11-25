@@ -1,1 +1,1 @@
-* GOH.PYSLOW4: 30 more slow test files are cut: goh.db's schema is made once for the in-memory tests, a ship, a commit or a release is run for what only it shows, and a push that leaked its refs file is seen again.
+* GOH.PYSLOW4: 48 more slow test files are cut: goh.db's schema is made once for the in-memory tests, a ship, a commit or a release is run for what only it shows, a whole-suite scan parses only the files that could hold its shape, and a push that leaked its refs file is seen again.
