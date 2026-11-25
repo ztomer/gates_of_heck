@@ -25,6 +25,8 @@ import load_sensitive as ls
 from conftest import REPO_ROOT
 
 TESTS = Path(__file__).resolve().parent
+# The census reads every tests/ module (lib/declared_reads.py).
+TREE_READS = ("tests/*.py",)
 HISTORY = TESTS / "load_history.json"
 
 

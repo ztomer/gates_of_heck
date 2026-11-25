@@ -15,6 +15,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 ENTRY = ROOT / "gates" / "goh.sh"
+# Globbed through a joinpath below, which no spelling gives away (lib/declared_reads.py).
+TREE_READS = ("tests/test_*.py",)
 
 
 def run(*args: str, **env: str) -> subprocess.CompletedProcess[str]:

@@ -211,8 +211,8 @@ def whole(root: Path, chosen: list[str], base: str | None, is_whole: bool,
     )
     if not is_whole or not chosen or nested:
         return work()
-    with own_record():
-        return judged(root, chosen, base, work)
+    with own_record():  # then what the gate would run for want of a verdict (lib/pre_owed.py)
+        return judged(root, chosen, base, work) or _lib("pre_owed").run(root, base)
 
 
 def _hand(root: Path, rec: dict, base: str | None, chosen: list[str]) -> None:

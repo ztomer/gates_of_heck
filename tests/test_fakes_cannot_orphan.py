@@ -20,6 +20,8 @@ import re
 from pathlib import Path
 
 TESTS = Path(__file__).resolve().parent
+# Every tests/ module's text, globbed below (lib/declared_reads.py).
+TREE_READS = ("tests/*.py",)
 ME = Path(__file__).name
 
 # A loop that waits on a file with no bound: shell `while [ ! -f F ]` / `until [ -e F ]`, or a

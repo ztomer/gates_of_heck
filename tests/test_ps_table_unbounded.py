@@ -23,6 +23,8 @@ import ps_table
 import pytest
 
 TESTS = Path(__file__).resolve().parent
+# Every tests/ module's text, globbed below (lib/declared_reads.py).
+TREE_READS = ("tests/*.py",)
 REAL_PS = "/bin/ps"
 WHOLE_TABLE = {"-ax", "-Ax", "-A", "-axww", "-Ao", "-ao", "-ww"}
 

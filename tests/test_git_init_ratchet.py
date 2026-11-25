@@ -12,6 +12,8 @@ from pathlib import Path
 import git_init_lint
 
 TESTS = Path(__file__).resolve().parent
+# git_init_lint.census reads every tests/ module (lib/declared_reads.py).
+TREE_READS = ("tests/*.py",)
 SEED = TESTS / "git_init_seed.json"
 INIT = "git" + " init"  # spelled apart, so this file is no site itself
 

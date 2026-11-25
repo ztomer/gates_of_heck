@@ -259,6 +259,8 @@ PRODUCERS = {
     "disk there is nothing to make",
     "lib/ship_full_run.py": "the ship's run is never skipped (GOH.COVOFFLAND); it reads the record "
     "its own green run made, and a green run with none is no verdict",
+    "lib/pre_owed.py": "it says which tests no record answers and runs them; the skip on its "
+    "answer is lib/pre_reuse.py `suite`'s, which asks the audit",
 }
 ASKS = re.compile(r"\b(?:use|use_many|compare)\(\s*\"([\w-]+)\"")
 

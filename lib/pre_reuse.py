@@ -51,8 +51,8 @@ J..tip does not choose. Pinned by tests/test_pre_reuse.py.
 
 THE GATE'S SUITE (GOH.SUITEONCE): `--suite` answers 0 (the reused verdict's id on line 2) when the
 gate's checkout is the very commit tree the record judged, against the gate's base, and main's
-recorded tree carries every other test; tools/pytest.sh then runs no pytest. Pinned by
-tests/test_suite_once.py.
+recorded tree carries every other test or the enqueue's pre-step ran it (lib/pre_owed.py,
+GOH.PREUNDECL); tools/pytest.sh then runs no pytest. Pinned by tests/test_suite_once.py.
 """
 
 from __future__ import annotations
@@ -339,65 +339,22 @@ def suite(root: Path, record: Path, base: str) -> tuple[bool, str, str]:
     commit tree and tools (lib/gate_identity.py `suite`, which a dirty checkout has none of), that
     base is the gate's, and the store holds a green suite record of the base's tree whose every
     test is either judged by the record or carried across the diff (tests/_land_verdicts.py
-    `carried`: affected_tests does not choose it). Never under the coverage step's instrumented run,
-    whose profiles a skipped test would not leave. Each reuse is one use of the audited `carry`
-    path; on a reuse the tree's own suite record is written, so the next land carries from it."""
+    `carried`: affected_tests does not choose it), or settled by the pre-step (lib/pre_owed.py:
+    `gap` is this question, asked by the enqueue too, which runs what is left). Never under the
+    coverage step's instrumented run, whose profiles a skipped test would not leave. Each reuse is
+    one use of the audited `carry` path; on a reuse the tree's own suite record is written, so the
+    next land carries from it."""
     if all(os.environ.get(k) for k in ("GOH_COVERAGE_BIN_DIR", "LLVM_PROFILE_FILE")):
         return False, "the instrumented coverage run needs its own profiles", ""
-    try:
-        rec = json.loads(record.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as e:
-        return False, f"no pre-step record ({e.__class__.__name__})", ""
-    if not isinstance(rec, dict) or not isinstance(rec.get("passed"), dict):
-        return False, "a malformed pre-step record", ""
-    if rec.get("selection") != "affected" or not isinstance(rec.get("base"), str):
-        return False, "the record is not the pre-step's whole selection", ""
-    # GOH.REMOTETRUST (lib/remote_trust.py): the worker's passes count for platform_agnostic tests
-    trusted, mac = _kit("remote_trust", "lib").split(root, rec.get("remote") or [])
-    if mac:  # macos_only: a Linux pass is another toolchain's verdict, the suite runs on the Mac
-        return False, (f"macos_only tests passed on the Linux worker: {len(mac)}, "
-                       f"{mac[0]} first: the suite runs on the Mac"), ""  # fmt: skip
-    gi, reuse = _kit("gate_identity", "lib"), _kit("reuse", "lib")
-    here = gi.suite(root)
-    if here is None:
-        return False, "the checkout is not its commit's tree (a change, an untracked file)", ""
-    if rec.get("identity") != here:
-        return False, "the pre-step judged another tree or toolchain", ""
-    if rec["base"] != base:
-        return (
-            False,
-            f"the pre-step chose against {rec['base'][:8]}, the gate's base is {base[:8]}",
-            "",
-        )
-    if _git(root, "merge-base", base, "HEAD") != base:
-        return False, f"{base[:8]} is not below HEAD", ""
-    tree, tools = _git(root, "rev-parse", "HEAD^{tree}"), gi.suite_tools()
-    main_tree = _git(root, "rev-parse", f"{base}^{{tree}}")
-    got, why = reuse.lookup_suite(root, main_tree, tools) if main_tree else (None, "no tree")
-    if got is None or got.get("verdict") != "green":
-        return False, f"no suite record of main {base[:8]}'s tree to stand on ({why})", ""
-    changed = _diff(root, base, "HEAD")
-    table = _table(root)
-    if changed is None or table is None:
-        return False, "no diff from main, or no selection table in the tree", ""
-    lv = _kit("_land_verdicts", "tests")
-    mode = _kit("_carry_shadow", "tests").mode_of(str(record))  # GOH.CARRYBASECODE
-    chosen, why = lv.choose(root, changed, table, mode)
-    if chosen is None:
-        return False, f"nothing carries across the diff: {why}", ""
-    mains = {n: bool(b) for n, b in got["passed"].items()}
-    carried = lv.carried(mains, chosen, False, lv._builds(changed, root))
-    carried -= lv._read_audit.undeclared([], got, carried, changed, base)  # an undeclared read
-    # ... and what the pre-step CARRIED onto this tree: its store record's (GOH.READKEYVERDICT)
-    own = reuse.lookup_suite(root, tree, tools)[0] or {}
-    ran = {**dict.fromkeys(trusted, False), **{n: bool(b) for n, b in rec["passed"].items()}}
-    took = {n: bool(b) for n, b in own.get("passed", {}).items() if n not in ran}
-    carried = carried | set(took)
-    union = {**{n: mains[n] for n in carried if n in mains}, **took, **ran}
-    if left := sorted(n for n in mains if n not in union and (root / n.split("::")[0]).is_file()):
+    found, why = _kit("pre_owed", "lib").gap(root, record, base)  # lib/pre_owed.py
+    if found is None:
+        return False, why, ""
+    if left := found.left:
         more = f" (+{len(left) - 1} more)" if len(left) > 1 else ""
         return False, f"{left[0]}{more} passed on main is neither judged here nor carried", ""
-    fields = reuse.carry_fields(root, main_tree, tools)
+    reuse, lv = _kit("reuse", "lib"), _kit("_land_verdicts", "tests")
+    rec, got, own, carried, tools = found.rec, found.got, found.own, found.carried, found.tools
+    fields = reuse.carry_fields(root, found.main_tree, tools)
     if (use := _kit("reuse_audit", "lib").use("carry", fields)) != "reuse":
         return False, f"the audited `carry` path says {use!r}: the suite runs", ""
     # Main's measurement of each node it carries (GOH.COVNONBIN): one that ran no binary there ran
@@ -406,10 +363,11 @@ def suite(root: Path, record: Path, base: str) -> tuple[bool, str, str]:
     seen = {**seen, **(own.get("measured") if isinstance(own.get("measured"), dict) else {})}
     measured = dict.fromkeys((n for n in carried if seen.get(n) is False), False)
     kept = {**(got.get("reads") or {}), **(rec.get("reads") or {})}  # GOH.READKEYVERDICT
-    reuse.record_suite(root, tree, tools, union, set(), False, "land gate (suite reused)",
-                       len(carried), measured=measured, judged=set(rec["passed"]),
-                       reads=lv._read_audit.merged(union, {}, kept, own))  # fmt: skip
-    vid = f"{str(rec.get('sha') or '')[:12]}:{here[:12]}"
+    reuse.record_suite(root, found.tree, tools, found.union, set(), False,
+                       "land gate (suite reused)", len(carried), measured=measured,
+                       judged=set(rec["passed"]),
+                       reads=lv._read_audit.merged(found.union, {}, kept, own))  # fmt: skip
+    vid = f"{str(rec.get('sha') or '')[:12]}:{found.here[:12]}"
     return True, (f"the pre-step judged this tree ({len(rec['passed'])} tests), main "
                   f"{base[:8]}'s record carries {len(carried)}"), vid  # fmt: skip
 
