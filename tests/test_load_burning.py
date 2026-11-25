@@ -26,7 +26,6 @@ import re
 import signal
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import load_kit
@@ -106,9 +105,6 @@ echo released > "$2"
 # BURN_CPU_S); a test cannot burn a minute of CPU, so the floor is a parameter and the test
 # asks the same four questions with a floor a fixture can reach.
 FLOOR_S = 0.3
-# How long the starved-spinner test holds its spinner off the CPU: past the 6 s wall-clock timer
-# the fixture once had, which is the starvation that timer could not survive.
-STARVED_S = 8
 
 
 def _script(tmp_path: Path, body: str, name: str = "spin.sh") -> Path:
@@ -119,17 +115,21 @@ def _script(tmp_path: Path, body: str, name: str = "spin.sh") -> Path:
     return path
 
 
-def _cpu_of(pid: int) -> float:
-    """The CPU a pid has burned, in seconds."""
-    out = subprocess.run(
-        ["ps", "-o", "cputime=", "-p", str(pid)],
+def _ps(column: str, pid: int) -> str:
+    """One column of ps for a pid."""
+    return subprocess.run(
+        ["ps", "-o", f"{column}=", "-p", str(pid)],
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
         timeout=10,
         check=False,
-    )  # fmt: skip
-    return load_reap_code.cpu_seconds(out.stdout)
+    ).stdout  # fmt: skip
+
+
+def _cpu_of(pid: int) -> float:
+    """The CPU a pid has burned, in seconds."""
+    return load_reap_code.cpu_seconds(_ps("cputime", pid))
 
 
 def _burning(pid: int, floor: float = FLOOR_S) -> bool:
@@ -173,16 +173,21 @@ def test_the_backstop_leaves_a_spinner_with_a_live_parent_alone(tmp_path: Path) 
 @pytest.mark.load_sensitive
 def test_a_starved_spinner_still_reaches_the_floor(tmp_path: Path) -> None:
     """THE FIXTURE'S BOUND (push of 0057e76, 2026-10-25). A box can hold the spinner off the CPU
-    for as long as it likes -- here, stopped outright for longer than the wall-clock timer it once
-    had -- and the spinner must still be alive to burn FLOOR_S when it is let go: its bound is its
-    own CPU, which a stopped or starved process does not spend."""
+    for as long as it likes -- here, stopped outright -- and the spinner must still be alive to burn
+    FLOOR_S when it is let go: its bound is its own CPU, which a stopped or starved process does not
+    spend. The wall-clock timer it once had (`sleep 6; kill`) is read for, not waited out: every
+    command of the script is the budget or the loop."""
+    commands = [c.strip() for c in BOUNDED_SPINNER.splitlines()[1:]]
+    assert commands == [f"ulimit -t {SPINNER_CPU_S}", "while :; do :; done"], commands
     script = _script(tmp_path, BOUNDED_SPINNER)
     with load_kit.owning(["/bin/sh", str(script)]) as child:
         pid = child.proc.pid
         # Stopped once it SPINS: its loop, and any timer started before it, are running.
         assert load_kit.wait_until(lambda: _cpu_of(pid) > 0), "the fixture never started spinning"
         child.proc.send_signal(signal.SIGSTOP)  # through the handle: never a reaped pid
-        time.sleep(STARVED_S)
+        assert load_kit.wait_until(lambda: _ps("stat", pid).startswith("T")), "it never stopped"
+        burned = _cpu_of(pid)
+        assert _cpu_of(pid) == burned, "a stopped spinner spent its budget"
         child.proc.send_signal(signal.SIGCONT)
         assert load_kit.wait_until(lambda: _burning(pid)), "a starved spinner never burned a core"
         assert SPINNER_CPU_S > FLOOR_S * 10, "the budget must leave the floor far behind"
