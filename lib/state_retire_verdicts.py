@@ -75,7 +75,8 @@ def _dump(row: object) -> str:
 def _ledger(con: sqlite3.Connection, store: str, p: Path, rows: int) -> None:
     import hashlib
 
-    con.execute("INSERT OR IGNORE INTO imports VALUES (?, ?, ?, ?, ?)",
+    con.execute("INSERT OR IGNORE INTO imports(store, source, sha256, rows, at) "
+                    "VALUES (?, ?, ?, ?, ?)",
                 (store, str(p), hashlib.sha256(p.read_bytes()).hexdigest(), rows,
                  time.time()))  # fmt: skip
 

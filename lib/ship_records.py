@@ -30,6 +30,9 @@ import goh_db  # lib/, beside this file: the one door to goh.db
 
 PINS = ".pins.json"
 COLUMNS = ("item", "sha", "status", "started", "finished", "version")
+# A write names its columns: a table a later schema widened still takes it (GOH.OLDWRITERS).
+SHIP_ROW = ", ".join(("result", "run", "repo", *COLUMNS, "body", "at"))
+PIN_ROW = "result, run, body, at"
 
 
 def ship_dir() -> Path:
@@ -54,13 +57,13 @@ def put(res: dict) -> None:
     """Write RES (a whole ship record) as its result's row; a file this copy may not write is
     raised, never skipped (the ship's one record is no side record: lib/ship_status.py save)."""
     with goh_db.transaction() as con:
-        con.execute("INSERT OR REPLACE INTO ships VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        con.execute(f"INSERT OR REPLACE INTO ships({SHIP_ROW}) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                     _row(res, str(res["result"]), time.time()))  # fmt: skip
 
 
 def put_pins(result: Path | str, body: dict) -> None:
     with goh_db.refusable(), goh_db.transaction() as con:
-        con.execute("INSERT OR REPLACE INTO ship_pins VALUES (?,?,?,?)",
+        con.execute(f"INSERT OR REPLACE INTO ship_pins({PIN_ROW}) VALUES (?,?,?,?)",
                     (str(result), Path(result).stem, json.dumps(body), time.time()))  # fmt: skip
 
 

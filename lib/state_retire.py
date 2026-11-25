@@ -2,7 +2,7 @@
 goh.db, imported, read back equal, archived and deleted (the database plan's wave 3, GOH.STATEDB).
 
     goh state retire [STORE...] [--dry-run]   each STORE (default: every one) retired
-    goh state stray                           every retired store's file still on disk
+    goh state stray      every retired store's file still on disk (other words: state_commands.py)
 
 WHY. Each store was a set of files under goh's state or cache directory; its readers and writers
 now go through goh.db alone (lib/goh_db.py), so a file left behind is read by nothing. This is
@@ -48,6 +48,7 @@ from types import ModuleType
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, on the path from the line above
+import state_commands  # `goh state`'s other words
 import state_retire_lands as lands  # the land records' half (GOH.STATEDB S1)
 import state_retire_ships  # the ship records' half (GOH.STATEDB S2), beside this file
 import state_retire_verdicts  # GOH.VERDICTDB's stores, beside this one in the seam
@@ -104,10 +105,10 @@ def _lines(p: Path) -> list[dict]:
     return out
 
 
-def _ledger(con: sqlite3.Connection, store: str, p: Path, rows: int) -> None:
+def _ledger(con: sqlite3.Connection, store: str, p: Path, rows: int, source: str = "") -> None:
     sha = hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else ""
-    con.execute("INSERT OR IGNORE INTO imports VALUES (?, ?, ?, ?, ?)",
-                (store, str(p), sha, rows, time.time()))  # fmt: skip
+    con.execute("INSERT OR IGNORE INTO imports(store, source, sha256, rows, at) VALUES (?,?,?,?,?)",
+                (store, source or str(p), sha, rows, time.time()))  # fmt: skip
 
 
 def _subset(con: sqlite3.Connection, table: str, p: Path, body=_dump) -> str | None:
@@ -156,7 +157,7 @@ def _hook_load(con: sqlite3.Connection, files: list[Path]) -> None:
         table = _hook_table(p)
         if table == "model-choice-watch":
             if (doc := _json(p)) is not None:
-                con.execute("INSERT OR IGNORE INTO kv VALUES (?, ?, ?)",
+                con.execute("INSERT OR IGNORE INTO kv(name, body, at) VALUES (?, ?, ?)",
                             (table, _dump(doc), p.stat().st_mtime))  # fmt: skip
             continue
         have, added = Counter(b for (b,) in con.execute(f"SELECT body FROM {table}")), 0
@@ -233,7 +234,7 @@ def _small_load(con: sqlite3.Connection, files: list[Path]) -> None:
         if p.suffix == ".json":
             if (doc := _json(p)) is not None:
                 name = p.name.removesuffix(".json")
-                con.execute("INSERT OR IGNORE INTO kv VALUES (?, ?, ?)",
+                con.execute("INSERT OR IGNORE INTO kv(name, body, at) VALUES (?, ?, ?)",
                             (name, _dump(doc), p.stat().st_mtime))  # fmt: skip
             continue
         table, rows = _small_rows(p)
@@ -298,10 +299,9 @@ def _dur_load(con: sqlite3.Connection, files: list[Path]) -> None:
             n = len(got)
         else:
             n = 0 if data is None else con.execute(
-                "INSERT OR IGNORE INTO duration_kv VALUES (?, ?, ?)",
+                "INSERT OR IGNORE INTO duration_kv(key, value, at) VALUES (?, ?, ?)",
                 (what, json.dumps(data), at)).rowcount  # fmt: skip
-        con.execute("INSERT OR IGNORE INTO imports VALUES (?, ?, ?, ?, ?)",
-                    ("durations", p.name, sha, n, time.time()))  # fmt: skip
+        _ledger(con, "durations", p, n, p.name)
 
 
 def _dur_check(con: sqlite3.Connection, p: Path) -> str | None:
@@ -430,7 +430,10 @@ def main(argv: list[str]) -> int:
                    "every one)")  # fmt: skip
     r.add_argument("--dry-run", action="store_true")
     sub.add_parser("stray", help="every retired store's file still on disk")
+    state_commands.add(sub)
     a = ap.parse_args(argv)
+    if (rc := state_commands.run(a)) is not None:
+        return rc
     a.store = [s for n in getattr(a, "store", []) for s in GROUPS.get(n, (n,))]
     if a.cmd == "retire" and (unknown := set(a.store) - set(STORES)):
         ap.error(f"no such store: {', '.join(sorted(unknown))} (stores: {', '.join(STORES)})")

@@ -12,11 +12,11 @@
     unbounded(seam) one line per table with no bound, past its bound, or the file past its budget;
                     on a newer goh's file, not the tables its own migrations created
 
-WHERE THE ROWS GO. A history file (goh.db: lands, ships) loses nothing: its rows move to a yearly
-archive beside it, `goh-archive-YYYY.db` (the year of each row's stamp), versioned like every
-file (meta, user_version), and ATTACHed read-only by the stats queries. The archive is written and
-committed first, then the rows leave the live file: a kill between the two leaves a row in both
-(INSERT OR IGNORE on the table's key), never in neither. A cache file (goh-cache.db) evicts them.
+WHERE THE ROWS GO. A history file (goh.db: lands, ships) loses nothing: its rows, and their `--
+with:` children's, move to a yearly archive beside it, `goh-archive-YYYY.db` (the year of each
+row's stamp) or its next part, versioned like every file (meta, user_version); the archive commits
+first (lib/db_bounds_with.py). A cache file (goh-cache.db) evicts them. A `-- with:` child needs no
+bound of its own: it leaves with its parent's rows, and its bytes count as the parent's.
 
 BYTES are the table's pages and its indexes' (the dbstat table), or, where SQLite was built
 without it, the sum of its columns' lengths; the FILE's are its used pages (page_count minus the
@@ -35,7 +35,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import db_bounds_with
 import db_core
+from db_bounds_with import archive_path, parts  # noqa: F401 -- this module's API too
 
 HEADER = re.compile(r"^--\s*bound:\s*([A-Za-z_][A-Za-z0-9_]*)\s+(.*)$")
 UNITS = {"": 1, "KB": 1 << 10, "MB": 1 << 20, "GB": 1 << 30}
@@ -121,7 +123,14 @@ def _count(con: sqlite3.Connection, table: str) -> int:
     return con.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
 
 
-def _cutoff(con: sqlite3.Connection, table: str, b: TableBound, now: float,
+def _weight(con: sqlite3.Connection, seam: db_core.Seam, table: str) -> int:
+    """TABLE's bytes and its `-- with:` children's that have no bound of their own."""
+    own = bounds(seam)
+    kids = [k for k in db_bounds_with.kids(con, seam, table) if k not in own]
+    return sum(table_bytes(con, t) for t in (table, *kids))
+
+
+def _cutoff(con: sqlite3.Connection, seam: db_core.Seam, table: str, b: TableBound, now: float,
             extra: int = 0) -> float | None:  # fmt: skip
     """The stamp at or below which TABLE's rows go (its oldest first), None when none go."""
     n, cuts = _count(con, table), []
@@ -132,7 +141,7 @@ def _cutoff(con: sqlite3.Connection, table: str, b: TableBound, now: float,
             cuts.append(old)
     drop = max(0, n - b.rows) if b.rows is not None else 0
     if b.bytes is not None and n:
-        have = table_bytes(con, table)
+        have = _weight(con, seam, table)
         if have > b.bytes:
             drop = max(drop, math.ceil(n * (1 - b.bytes / have)))
     drop = min(n, max(drop, extra))
@@ -142,104 +151,39 @@ def _cutoff(con: sqlite3.Connection, table: str, b: TableBound, now: float,
     return max(cuts) if cuts else None
 
 
-def archive_path(seam: db_core.Seam, year: str) -> Path:
-    return db_core.path(seam).with_name(f"{seam.name}-archive-{year}.db")
-
-
-def _archive(con: sqlite3.Connection, seam: db_core.Seam, table: str, year: str) -> Path:
-    """The year's archive with TABLE in it (created versioned, columns added as the live grew)."""
-    p = archive_path(seam, year)
-    db_core.guard(p)
-    live = con.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
-                       (table,)).fetchone()[0]  # fmt: skip
-    arch = sqlite3.connect(p, isolation_level=None, timeout=db_core.busy_ms(seam) / 1000)
-    try:
-        arch.executescript(db_core.BOOT)
-        arch.execute(re.sub(r"^CREATE TABLE\s+(IF NOT EXISTS\s+)?", "CREATE TABLE IF NOT EXISTS ",
-                            live, flags=re.IGNORECASE))  # fmt: skip
-        have = {r[1] for r in arch.execute(f'PRAGMA table_info("{table}")')}
-        for col in [r[1] for r in con.execute(f'PRAGMA table_info("{table}")')]:
-            if col not in have:
-                arch.execute(f'ALTER TABLE "{table}" ADD COLUMN "{col}"')
-        uv = con.execute("PRAGMA user_version").fetchone()[0]
-        if arch.execute("PRAGMA user_version").fetchone()[0] < uv:
-            arch.execute(f"PRAGMA user_version={uv}")
-        meta = {"db": f"{seam.name}-archive-{year}", "schema_version": str(uv)}
-        arch.executemany("INSERT INTO meta VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET "
-                         "value=excluded.value", meta.items())  # fmt: skip
-        arch.executemany(
-            "INSERT OR IGNORE INTO meta VALUES (?, ?)",
-            [("created_by", db_core.writer()), ("created_at", f"{time.time():.3f}")],
-        )
-    finally:
-        arch.close()
-    return p
-
-
-def _drop(con: sqlite3.Connection, seam: db_core.Seam, table: str, stamp: str, cut: float) -> int:
-    """TABLE's rows stamped at or before CUT: moved to their year's archive (a history file) or
-    evicted (a cache); how many left."""
-    where = f'"{stamp}" <= ?'
-    if seam.over == "archive":
-        years = [
-            r[0]
-            for r in con.execute(
-                f"SELECT DISTINCT strftime('%Y', \"{stamp}\", "
-                f"'unixepoch') FROM \"{table}\" WHERE {where}",
-                (cut,),
-            )
-        ]
-        for year in years:
-            p = _archive(con, seam, table, year)
-            cols = ", ".join(f'"{r[1]}"' for r in con.execute(f'PRAGMA table_info("{table}")'))
-            con.execute("ATTACH DATABASE ? AS arch", (str(p),))
-            try:
-                con.execute("BEGIN IMMEDIATE")
-                con.execute(f'INSERT OR IGNORE INTO arch."{table}" ({cols}) SELECT {cols} FROM '
-                            f"main.\"{table}\" WHERE {where} AND strftime('%Y', \"{stamp}\", "
-                            "'unixepoch') = ?", (cut, year))  # fmt: skip
-                con.execute("COMMIT")
-            except BaseException:
-                con.execute("ROLLBACK")
-                raise
-            finally:
-                con.execute("DETACH DATABASE arch")
-    con.execute("BEGIN IMMEDIATE")
-    gone = con.execute(f'DELETE FROM "{table}" WHERE {where}', (cut,)).rowcount
-    con.execute("COMMIT")
-    return gone
-
-
 def sweep(seam: db_core.Seam, now: float | None = None, budget: int | None = None) -> dict:
     """Each bounded table's oldest rows past its bound, then the file's past BUDGET (the seam's),
-    moved or evicted; {table: rows}. A missing file is never created; a newer goh's is left."""
+    moved or evicted; {table: rows}. A missing file is never created; one holding a number this
+    goh does not ship is left, a safe one's too (GOH.OLDWRITERS)."""
     now = time.time() if now is None else now
     budget = seam.budget if budget is None else budget
     if not db_core.path(seam).is_file():
         return {}
     moved: dict[str, int] = {}
     with db_core.connect(seam) as con:
-        if db_core.newer(con, seam):
+        if db_core.ahead(con, seam):  # its rows may have children this goh does not know
             return {}
         bound = {t: b for t, b in bounds(seam).items() if t in tables(con)}
         for t, b in bound.items():
             for _ in range(ROUNDS):  # bytes are pages: a pass's estimate can leave one over
-                if (cut := _cutoff(con, t, b, now)) is None:
+                if (cut := _cutoff(con, seam, t, b, now)) is None:
                     break
-                moved[t] = moved.get(t, 0) + _drop(con, seam, t, b.stamp_col, cut)
+                moved[t] = moved.get(t, 0) + db_bounds_with.drop(con, seam, t, b.stamp_col, cut)
         for _ in range(ROUNDS):
             over = used_bytes(con) - budget
             sized = sorted(
-                ((table_bytes(con, t), t) for t in bound if _count(con, t)), reverse=True
+                ((_weight(con, seam, t), t) for t in bound if _count(con, t)), reverse=True
             )
             if over <= 0 or not sized:
                 break
             have, t = sized[0]
             extra = max(1, math.ceil(_count(con, t) * min(1.0, over / max(have, 1))))
-            cut = _cutoff(con, t, TableBound(None, None, None, bound[t].stamp_col), now, extra)
+            cut = _cutoff(
+                con, seam, t, TableBound(None, None, None, bound[t].stamp_col), now, extra
+            )
             if cut is None:
                 break
-            moved[t] = moved.get(t, 0) + _drop(con, seam, t, bound[t].stamp_col, cut)
+            moved[t] = moved.get(t, 0) + db_bounds_with.drop(con, seam, t, bound[t].stamp_col, cut)
         con.execute("PRAGMA incremental_vacuum")
         con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     return {t: n for t, n in moved.items() if n}
@@ -251,17 +195,20 @@ def unbounded(seam: db_core.Seam, now: float | None = None) -> list[str]:
     out: list[str] = []
     with contextlib.suppress(FileNotFoundError), db_core.ro(seam) as con:
         known = bounds(seam)
+        with_kids = {k for t in known for k in db_bounds_with.kids(con, seam, t)}
         # A newer goh's file: the tables its migrations created are bounded by headers this goh
         # does not ship, and are that goh's to judge (an older release called 0006's three
         # tables unbounded, GOH.DURATIONSDB).
-        mine = created(seam) if db_core.newer(con, seam) else None
+        mine = created(seam) if db_core.ahead(con, seam) else None
         for t in tables(con):
             if t in db_core.BOOT_TABLES or (mine is not None and t not in mine):
                 continue
             b = known.get(t)
+            if b is None and t in with_kids:  # it leaves with its parent's rows
+                continue
             if b is None:
                 out.append(f"{seam.file}: table {t} has no `-- bound:` header")
-            elif _cutoff(con, t, b, now) is not None:
+            elif _cutoff(con, seam, t, b, now) is not None:
                 out.append(f"{seam.file}: table {t} is past its bound {b} ({_count(con, t)} rows,"
                            f" {table_bytes(con, t)} bytes)")  # fmt: skip
         if (used := used_bytes(con)) > seam.budget:

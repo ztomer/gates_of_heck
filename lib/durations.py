@@ -158,7 +158,8 @@ def record(
         if keep is not None:
             view = con.execute("SELECT kind, node FROM durations").fetchall()
             con.executemany(
-                "INSERT INTO pruned VALUES (?, ?, ?, ?) ON CONFLICT(kind, node) DO UPDATE SET "
+                "INSERT INTO pruned(kind, node, run, at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(kind, node) DO UPDATE SET "
                 "run=excluded.run, at=excluded.at",
                 [(kind, k, run, now) for kind, k in view if not keep(k)],
             )
@@ -177,7 +178,8 @@ def update(key: str, change: Callable[[object], object], db: Path | None = None)
         row = con.execute("SELECT value FROM duration_kv WHERE key=?", (key,)).fetchone()
         new = change(json.loads(row[0]) if row else None)
         con.execute(
-            "INSERT INTO duration_kv VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET "
+            "INSERT INTO duration_kv(key, value, at) VALUES (?, ?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET "
             "value=excluded.value, at=excluded.at",
             (key, json.dumps(new), time.time()),
         )

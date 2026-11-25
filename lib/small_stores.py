@@ -117,7 +117,8 @@ def update(p: Path | str, change: Callable[[object], object]) -> object:
         with _write(p) as con:
             row = con.execute("SELECT body FROM kv WHERE name=?", (kv_name(p),)).fetchone()
             new = change(json.loads(row[0]) if row else None)
-            con.execute("INSERT INTO kv VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET "
+            con.execute("INSERT INTO kv(name, body, at) VALUES (?, ?, ?) "
+                        "ON CONFLICT(name) DO UPDATE SET "
                         "body=excluded.body, at=excluded.at",
                         (kv_name(p), _dump(new), time.time()))  # fmt: skip
     except goh_db.db_core.NewerFile as e:  # this copy may not write it: the value, unkept

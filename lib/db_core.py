@@ -21,6 +21,11 @@ created_by, last_migrated_by (the goh that wrote it) and created_at. A file hold
 code does not ship was written by a newer goh: it opens READ-ONLY and says so, and never migrates
 down (`NewerFile` on a write, naming the migration it does not ship).
 
+A NEWER FILE'S NUMBERS MAY BE SAFE (GOH.OLDWRITERS). A file holding numbers this code does not ship
+is written all the same when every one of them is in meta.old_writers_safe, and is never swept by
+it (`ahead`). lib/db_schema.py has the head lines, lib/db_safe.py judges one, lib/db_contract.py
+applies the by-command ones, which an open never does. SQLite older than MIN_SQLITE is refused.
+
 ONLY THE CODE OF RECORD MIGRATES A SHARED FILE (GOH.LANEMIGRATE, GOH.HEADCOPYRECORD): which copy
 that is, and what a copy that is not may do, is lib/db_record.py's docstring.
 
@@ -41,7 +46,6 @@ import contextlib
 import json
 import os
 import pwd
-import re
 import sqlite3
 import subprocess
 import sys
@@ -50,7 +54,6 @@ from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-MIGRATION = re.compile(r"^(\d{4})_([a-z0-9_]+)\.sql$")
 REAL_HOME_ENV = "GATES_OF_HECK_SUITE_REAL_HOME"  # tests/suite_home.py MARKER
 REAL_XDG_STATE_ENV = "GATES_OF_HECK_SUITE_REAL_XDG_STATE_HOME"
 ROOT = Path(__file__).resolve().parent.parent
@@ -59,7 +62,16 @@ from tui.lib import warn  # noqa: E402 -- the root, on the path from the line ab
 
 sys.path.insert(0, str(ROOT / "lib"))
 import db_record  # noqa: E402 -- lib/, on the path from the line above
+import db_schema  # noqa: E402 -- lib/: one schema file, its head and how it is applied
 import db_waits  # noqa: E402 -- lib/: the lock-wait instrument's rows
+from db_schema import (  # noqa: E402, F401 -- lib/: this module's API too
+    ahead,
+    migrations,
+    stamp_rows,
+    statements,
+    top,
+    version,
+)
 from db_waits import WAITS_ENV  # noqa: E402, F401 -- its env name, read by tests/test_db_core.py
 
 BOOT = """
@@ -67,6 +79,7 @@ CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS schema_version(
   version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at REAL NOT NULL, writer TEXT NOT NULL);
 """
+MIN_SQLITE = (3, 44, 0)  # ORDER BY inside an aggregate, which the schema files' views use
 BOOT_TABLES = ("meta", "schema_version")  # db_core's own: bounded by what migrations exist
 
 
@@ -76,6 +89,10 @@ class RealHomeOpen(RuntimeError):
 
 class NewerFile(sqlite3.OperationalError):
     """A write to a file this code opened read-only: one a newer goh wrote."""
+
+
+class OldSQLite(sqlite3.OperationalError):
+    """This Python's SQLite is older than the schema files' SQL (MIN_SQLITE)."""
 
 
 class NotOfRecord(NewerFile):
@@ -96,20 +113,6 @@ class Seam:
     synchronous: str  # FULL | NORMAL
     budget: int  # the whole file's byte budget (lib/db_bounds.py)
     over: str  # what a table past its bound does: "archive" (history) | "evict" (cache)
-
-
-def migrations(seam: Seam) -> dict[int, Path]:
-    """Every migration the seam ships, by number; a malformed name or a number twice raises."""
-    out: dict[int, Path] = {}
-    for p in sorted(seam.schema.glob("*.sql")):
-        m = MIGRATION.match(p.name)
-        if not m:
-            raise ValueError(f"{p}: a migration is named NNNN_name.sql")
-        n = int(m.group(1))
-        if n in out:
-            raise ValueError(f"{p}: migration {n} is also {out[n].name}")
-        out[n] = p
-    return out
 
 
 def path(seam: Seam, env: Mapping[str, str] | None = None) -> Path:
@@ -186,6 +189,13 @@ def writer() -> str:
     return f"goh {out.removeprefix('v') or 'unknown'}"
 
 
+def sqlite_check() -> None:
+    """Raise OldSQLite under a SQLite that cannot read the schema files' views."""
+    if sqlite3.sqlite_version_info < MIN_SQLITE:
+        raise OldSQLite(f"SQLite {sqlite3.sqlite_version} under {sys.executable}: goh's databases "
+                        f"need {'.'.join(map(str, MIN_SQLITE))} or newer")  # fmt: skip
+
+
 def busy_ms(seam: Seam) -> int:
     raw = os.environ.get(seam.busy_env, "")
     return int(raw) if raw.isdigit() else seam.busy_ms
@@ -200,6 +210,7 @@ def _settings(con: sqlite3.Connection, seam: Seam, fresh: bool) -> None:
 
 
 def _ro(p: Path, seam: Seam) -> sqlite3.Connection:
+    sqlite_check()
     if not p.is_file():
         raise FileNotFoundError(f"{p}: no {seam.file} (a read never creates it)")
     con = sqlite3.connect(f"{p.as_uri()}?mode=ro", uri=True, isolation_level=None,
@@ -208,28 +219,21 @@ def _ro(p: Path, seam: Seam) -> sqlite3.Connection:
     return con
 
 
-def version(con: sqlite3.Connection) -> dict:
-    """{user_version, applied, meta} of an open file (an empty file: 0, [], {})."""
-    names = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    applied = sorted(r[0] for r in con.execute("SELECT version FROM schema_version")) if (
-        "schema_version" in names) else []  # fmt: skip
-    meta = dict(con.execute("SELECT key, value FROM meta")) if "meta" in names else {}
-    return {"user_version": con.execute("PRAGMA user_version").fetchone()[0],
-            "applied": applied, "meta": meta}  # fmt: skip
-
-
 def newer(con: sqlite3.Connection, seam: Seam) -> str | None:
-    """Why the file is a newer goh's (a number this code does not ship), or None."""
+    """Why this code may not write the file: it holds a number this code does not ship that is not
+    in meta.old_writers_safe (GOH.OLDWRITERS: a set check, so a `refuse` number is never hidden by
+    a `safe` one after it). None when it may."""
     known = migrations(seam)
     v = version(con)
-    if unknown := sorted(set(v["applied"]) - set(known)):
+    safe = db_schema.safe_numbers(v["meta"])
+    if unknown := sorted(set(v["applied"]) - set(known) - safe):
         rows = dict(con.execute(
             f"SELECT version, name || ' (by ' || writer || ')' FROM schema_version WHERE version IN"
             f" ({','.join('?' * len(unknown))})", unknown))  # fmt: skip
         return (f"{seam.file} holds migration {', '.join(rows[n] for n in unknown)}, which this "
                 f"goh ({ROOT}) does not ship (it ships {sorted(known)}): opened read-only, never "
                 "migrated down")  # fmt: skip
-    if v["user_version"] > max(known, default=0):
+    if v["user_version"] > max([*known, *(safe & set(v["applied"]))], default=0):
         return (f"{seam.file} is version {v['user_version']}, newer than this goh's "
                 f"{max(known, default=0)}: opened read-only, never migrated down")  # fmt: skip
     return None
@@ -238,32 +242,46 @@ def newer(con: sqlite3.Connection, seam: Seam) -> str | None:
 def not_of_record(con: sqlite3.Connection, seam: Seam) -> str | None:
     """Why this copy may not write a shared file (it lacks a migration the copy ships), or None."""
     known = migrations(seam)
-    if lacking := sorted(set(known) - set(version(con)["applied"])):
+    if lacking := db_schema.on_open(known, set(version(con)["applied"])):
         return (f"{seam.file} lacks migration {', '.join(known[n].stem for n in lacking)}, and "
                 f"{ROOT} is not the code of record ({why_not_of_record()}): only main's code "
                 "migrates the shared file; opened read-only")  # fmt: skip
     return None
 
 
+def _safe(seam: Seam, n: int, fresh: bool) -> bool:
+    """Whether number N goes into meta.old_writers_safe: it says safe and, on a file other copies
+    may have open, lib/db_safe.py finds it so (else said, and treated as refuse)."""
+    if db_schema.old_writers(migrations(seam)[n].read_text(encoding="utf-8")) != "safe":
+        return False
+    if fresh:
+        return True
+    import db_safe  # only an existing file gaining a safe number pays for the replay
+
+    bad = db_safe.faults(seam, n)
+    for why in bad:
+        warn(f"{seam.file}: recorded as refuse, not safe: {why}")
+    return not bad
+
+
 def migrate(con: sqlite3.Connection, seam: Seam) -> set[int]:
-    """Apply every shipped migration missing from schema_version; the numbers applied."""
+    """Apply every shipped migration missing from schema_version but a by-command contract
+    (lib/db_contract.py); the numbers applied."""
     names = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     if not set(BOOT_TABLES) <= names:  # an existing file's open takes no write lock here
         con.executescript(BOOT)
     known = migrations(seam)
     have = {r[0] for r in con.execute("SELECT version FROM schema_version")}
-    missing = sorted(set(known) - have)
+    missing = db_schema.on_open(known, have)
     stamp = writer() if missing or not have else ""
     for n in missing:
+        safe = _safe(seam, n, not have)
         con.execute("BEGIN IMMEDIATE")
         try:
             if n in {r[0] for r in con.execute("SELECT version FROM schema_version")}:
                 con.execute("ROLLBACK")  # another process applied it while this one waited
                 continue
-            for stmt in statements(known[n].read_text(encoding="utf-8")):
-                con.execute(stmt)
-            con.execute("INSERT INTO schema_version VALUES (?, ?, ?, ?)",
-                        (n, known[n].stem, time.time(), stamp))  # fmt: skip
+            db_schema.apply(con, n, known[n], stamp, safe)
             con.execute("COMMIT")
         except BaseException:
             con.execute("ROLLBACK")
@@ -273,39 +291,13 @@ def migrate(con: sqlite3.Connection, seam: Seam) -> set[int]:
 
 
 def _stamp(con: sqlite3.Connection, seam: Seam, stamp: str) -> None:
-    """user_version and meta: the highest number with every lower one applied."""
-    have = {r[0] for r in con.execute("SELECT version FROM schema_version")}
-    top = 0
-    while top + 1 in have:
-        top += 1
-    if con.execute("PRAGMA user_version").fetchone()[0] == top and not stamp:
+    """user_version and meta brought to the applied rows, when they are not there already."""
+    if con.execute("PRAGMA user_version").fetchone()[0] == top(con) and not stamp:
         return
+    created_by = stamp or writer()  # a subprocess: never inside the transaction
     con.execute("BEGIN IMMEDIATE")
-    con.execute(f"PRAGMA user_version={top}")
-    rows = {"db": seam.name, "schema_version": str(top)}
-    if stamp:
-        rows["last_migrated_by"] = stamp
-    con.executemany("INSERT INTO meta VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET "
-                    "value=excluded.value", rows.items())  # fmt: skip
-    con.executemany(
-        "INSERT OR IGNORE INTO meta VALUES (?, ?)",
-        [("created_by", stamp or writer()), ("created_at", f"{time.time():.3f}")],
-    )
+    stamp_rows(con, seam, stamp, created_by)
     con.execute("COMMIT")
-
-
-def statements(sql: str) -> list[str]:
-    """SQL's statements, whole (a `;` inside a trigger body or a string stays in its statement)."""
-    out, buf = [], ""
-    for line in sql.splitlines(keepends=True):
-        buf += line
-        if sqlite3.complete_statement(buf):
-            if buf.strip():
-                out.append(buf.strip())
-            buf = ""
-    if buf.strip() and not all(ln.lstrip().startswith("--") for ln in buf.strip().splitlines()):
-        raise ValueError(f"an unterminated statement: {buf.strip()[:80]!r}")
-    return out
 
 
 @contextlib.contextmanager
@@ -313,6 +305,7 @@ def _opened(
     seam: Seam, at: Path | None, named: bool
 ) -> Iterator[tuple[sqlite3.Connection, NewerFile | None]]:
     """connect()'s connection and, when it is read-only, the refusal a write raises."""
+    sqlite_check()
     p = at or path(seam)
     if not named:
         guard(p)
@@ -426,7 +419,9 @@ def main(seam: Seam, argv: list[str]) -> int:
                 print(json.dumps(dict(zip(cols, row, strict=True))) if "--json" in rest
                       else "\t".join(map(str, row)))  # fmt: skip
     elif cmd == "check":
-        found = db_bounds.unbounded(seam)
+        import db_safe
+
+        found = [*db_safe.check(seam), *db_bounds.unbounded(seam)]
         for line in found:
             print(line)
         return 1 if found else 0

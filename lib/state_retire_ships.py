@@ -80,15 +80,19 @@ def load(con: sqlite3.Connection, paths: list[Path]) -> None:
             live = json.loads(have[0]) if have else rec
             if ship_status._gone(live):  # its row says running too (or there is none): settle
                 done = ship_status.abandoned(live, result)
-                con.execute("INSERT OR REPLACE INTO ships VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                con.execute(f"INSERT OR REPLACE INTO ships({ship_records.SHIP_ROW}) "
+                            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                             ship_records._row(done, result, now))  # fmt: skip
         if table == "ships":
-            con.execute("INSERT OR IGNORE INTO ships VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            con.execute(f"INSERT OR IGNORE INTO ships({ship_records.SHIP_ROW}) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                         ship_records._row(rec, result, p.stat().st_mtime))  # fmt: skip
         else:
             pin = (result, Path(result).stem, json.dumps(rec), p.stat().st_mtime)
-            con.execute("INSERT OR IGNORE INTO ship_pins VALUES (?,?,?,?)", pin)
-        con.execute("INSERT OR IGNORE INTO imports VALUES (?, ?, ?, ?, ?)",
+            con.execute(f"INSERT OR IGNORE INTO ship_pins({ship_records.PIN_ROW}) "
+                        "VALUES (?,?,?,?)", pin)  # fmt: skip
+        con.execute("INSERT OR IGNORE INTO imports(store, source, sha256, rows, at) "
+                    "VALUES (?, ?, ?, ?, ?)",
                     (table, str(p), hashlib.sha256(raw).hexdigest(), 1, now))  # fmt: skip
 
 

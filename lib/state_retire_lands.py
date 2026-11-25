@@ -115,7 +115,8 @@ def load(con: sqlite3.Connection, paths: list[Path]) -> None:
             n = land_records.insert(con, key, name, _lines(p))
             table = land_records.LEDGERS[name][0]
         sha = hashlib.sha256(p.read_bytes()).hexdigest()
-        con.execute("INSERT OR IGNORE INTO imports VALUES (?, ?, ?, ?, ?)",
+        con.execute("INSERT OR IGNORE INTO imports(store, source, sha256, rows, at) "
+                    "VALUES (?, ?, ?, ?, ?)",
                     (table, str(p), sha, n, now))  # fmt: skip
 
 

@@ -82,7 +82,8 @@ def record(now: float, ticks: tuple[int, int], *, reader: bool, sampler: int | N
             st["read_at"] = now
         if sampler is not None:
             st.update(sampler_pid=sampler, sampler_at=now)
-        con.execute("INSERT INTO kv VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET "
+        con.execute("INSERT INTO kv(name, body, at) VALUES (?, ?, ?) "
+                    "ON CONFLICT(name) DO UPDATE SET "
                     "body=excluded.body, at=excluded.at", (NAME, json.dumps(st), now))  # fmt: skip
     return kept, st  # an unwritable state only costs the next reader its window
 

@@ -126,7 +126,8 @@ def load(con: sqlite3.Connection, paths: list[Path]) -> None:
                 n = landq_state._insert(con, queue, run, rec, state, "OR IGNORE")
         table = "early" if state == landq_state.EARLY else "requests"
         sha = hashlib.sha256(p.read_bytes()).hexdigest()
-        con.execute("INSERT OR IGNORE INTO imports VALUES (?, ?, ?, ?, ?)",
+        con.execute("INSERT OR IGNORE INTO imports(store, source, sha256, rows, at) "
+                    "VALUES (?, ?, ?, ?, ?)",
                     (table, str(p), sha, n, now))  # fmt: skip
 
 

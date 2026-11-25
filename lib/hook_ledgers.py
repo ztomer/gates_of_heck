@@ -91,7 +91,7 @@ def _kv(con: sqlite3.Connection, name: str) -> Any:
 
 
 def _kv_put(con: sqlite3.Connection, name: str, value: object) -> None:
-    con.execute("INSERT INTO kv VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET "
+    con.execute("INSERT INTO kv(name, body, at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET "
                 "body=excluded.body, at=excluded.at",
                 (name, _dump(value), time.time()))  # fmt: skip
 
