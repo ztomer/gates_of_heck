@@ -44,6 +44,7 @@ from pathlib import Path
 import _schedule  # (no HOME/TMPDIR read at import)
 import ci_shape  # (no HOME/TMPDIR read at import)
 import runner_env  # (a bare pytest run: the wrapper's bash 5 and cargo, GOH.BAREPYTEST)
+import suite_advisory  # (no HOME/TMPDIR read at import)
 
 REAL_HOME = os.path.realpath(os.path.expanduser("~"))
 MARKER = "GATES_OF_HECK_SUITE_REAL_HOME"  # not GOH_-prefixed: no env scrub drops it
@@ -401,6 +402,9 @@ def _enter() -> None:
     home = claim_home(parent)
     atexit.register(shutil.rmtree, home, True)
     furnish(home, () if ci else READ)
+    suite_advisory.link(
+        home, parent, real / ".cargo" / "advisory-db"
+    )  # lib/advisory_db.py's SHARED
     os.environ[MARKER] = REAL_HOME
     # The user's XDG_STATE_HOME, kept by name so real_state_guard.py can watch it; the suite's own
     # state (goh's estate registry, the compact-nudge state) lives in the suite home instead.

@@ -55,6 +55,7 @@ import pwd
 import sys
 import tempfile
 import time
+from collections import Counter
 from pathlib import Path
 
 _LIB = str(Path(__file__).resolve().parent.parent / "lib")
@@ -186,11 +187,17 @@ def verdict(rep: dict, tests_run: int, ceiling: dict, whole: bool = True) -> lis
     return faults
 
 
-def left_behind(roots: list[str]) -> int:
-    """The entries still under `roots` when the session ends: each one is a file event when the
-    runner removes the root, after this stream has stopped. Counted, so a cut that only moves the
-    removal from a test's teardown to the run's (a template kept for the whole run) is not free."""
-    return sum(len(dirs) + len(files) for root in roots for _, dirs, files in os.walk(root))
+def left_behind(roots: list[str]) -> Counter[str]:
+    """The entries still under `roots` when the session ends, by who made them: each one is a file
+    event when the runner removes the root, after this stream has stopped. Counted, so a cut that
+    only moves the removal from a test's teardown to the run's (a template kept for the whole run)
+    is not free."""
+    return Counter(
+        fs_events.creator(os.path.join(at, name), roots)
+        for root in roots
+        for at, dirs, files in os.walk(root)
+        for name in dirs + files
+    )
 
 
 def pytest_configure(config) -> None:  # the bytes beside the events (GOH.FSEVQUIET)
@@ -264,7 +271,8 @@ def pytest_sessionfinish(session, exitstatus) -> None:
     rep["device_bytes"] = None if before is None or after is None else after - before
     ran = _STATE.pop("ran")
     rep["tests_run"] = ran
-    rep["teardown_entries"] = left_behind(tally.roots)
+    left = left_behind(tally.roots)
+    rep["teardown_entries"], rep["teardown_by"] = left.total(), dict(left.most_common(TOP))
     rep["deselected"] = _DESELECTED[0]
     rep["whole"] = whole = _whole_run.whole(session.config) and not rep["deselected"]
     ceiling = _ceiling()

@@ -49,6 +49,17 @@ def _clean_checkout_of_todays_gates(tmp_path: Path, rust: bool = True) -> Path:
     return checkout
 
 
+def todays_gates_read() -> Path:
+    """The run's ONE checkout of today's gates, for the modules that run them and never write there:
+    a module's own was one a worker, 12,000 entries of a run's removal (GOH.FSEVQUIET). No clone of
+    the template's: what a gate may leave in it reaches no other test's."""
+    return process_template("todays-gates-read", _build_read)
+
+
+def _build_read(checkout: Path) -> None:
+    clone_tree(process_template("todays-gates", _build_clean_checkout), checkout)
+
+
 # THE ESTATE, not its suite (GOH.FSEVQUIET): no gate reads tests/, docs/ or the changelog's parts,
 # and they were half the files every clone of this removes and every export writes. They are never
 # written: the index is cut first, the work tree made from it.

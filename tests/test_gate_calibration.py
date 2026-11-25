@@ -23,7 +23,7 @@ from typing import NamedTuple
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
-from calib_snapshot import snapshot
+from calib_snapshot import this_snapshot
 from conftest import REPO_ROOT as ROOT, commit_all
 
 sys.path.insert(0, str(ROOT / "checks"))
@@ -77,7 +77,7 @@ NOT_HERE: set[str] = set()
 def calibration_root(tmp_path_factory) -> Path:
     """This repo as it is now, copied (GOH.CALIBXDIST): the sweep stamps the tree it is given, so
     it must not be the live checkout a sibling worker can write into while it runs."""
-    return snapshot(ROOT, tmp_path_factory.mktemp("calibration") / "repo")
+    return this_snapshot(tmp_path_factory.mktemp("calibration") / "repo")
 
 
 class Sweep(NamedTuple):

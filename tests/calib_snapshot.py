@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 from _fast_git import fast_init
+from _this_tree import this_tree
 
 ROOT = Path(__file__).resolve().parent.parent
 IDENTITY = ("-c", "user.name=goh-test", "-c", "user.email=goh-test@example.invalid")
@@ -48,4 +49,17 @@ def snapshot(src: Path, dest: Path) -> Path:
             env=env,
             stdin=subprocess.DEVNULL,
         )
+    return dest
+
+
+def this_snapshot(dest: Path) -> Path:
+    """`snapshot` of THIS checkout as a clone of the run's one copy of it (tests/_this_tree.py),
+    its uncommitted work committed: no file written, where a copy wrote each (GOH.FSEVQUIET)."""
+    this_tree(dest)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    subprocess.run(
+        ["git", "-C", str(dest), *IDENTITY, "commit", "-q", "--no-verify", "--allow-empty", "-m",
+         "snapshot"],
+        check=True, capture_output=True, env=env, stdin=subprocess.DEVNULL,
+    )  # fmt: skip
     return dest

@@ -206,9 +206,10 @@ def put(dst: str, clone: Clone, sealed: Sealed) -> bool:
 
 
 def reclaim(path: str, clone: Clone, sealed: Sealed) -> int:
-    """The clones under PATH (a passed test's tmp_path, about to be removed) put back and pooled;
-    how many. The innermost first: one made inside another is no part of it."""
-    under = sorted((d for d in _OUT if d.startswith(path + os.sep)), key=len, reverse=True)
+    """The clones PATH is or holds (a passed test's tmp_path, about to be removed) put back and
+    pooled; how many. The innermost first: one made inside another is no part of it."""
+    mine = (d for d in _OUT if d == path or d.startswith(path + os.sep))
+    under = sorted(mine, key=len, reverse=True)
     return sum([put(dst, clone, sealed) for dst in under])
 
 

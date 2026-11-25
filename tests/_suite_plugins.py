@@ -11,6 +11,7 @@ here, not there.
 * `_kept_store`: the kept verdict rows, seeded from and merged into the real goh-cache.db once by
   the controller (GOH.VERDICTDB).
 * `_db_on_disk`: a test's goh.db journals in memory (GOH.FSEVQUIET).
+* `_quiet_tmp`: no `current` link a test, and a module's clones are pooled (GOH.FSEVQUIET).
 * here: a `process_template` is the RUN's inside a session (tests/_tree_clone.py, GOH.FSCHURN3),
   and then a pytest a test starts takes a basetemp root of its own (tests/suite_tmp.py `own_root`,
   GOH.NESTEDBASETEMP): no conftest hook or fixture asks for the basetemp before this one runs.
@@ -26,6 +27,7 @@ from pathlib import Path
 import _closure_clones
 import _fixture_copies
 import _quiet_git
+import _quiet_tmp
 import _rewrite_store
 from _clone_copies import install
 from _tree_clone import run_wide
@@ -41,6 +43,7 @@ pytest_plugins = [
     "_kept_store",
     "_land_waive",
     "_db_on_disk",
+    "_quiet_tmp",
 ]
 
 
@@ -48,6 +51,7 @@ def pytest_configure(config) -> None:
     install()  # shutil's copies are clones (tests/_clone_copies.py, GOH.FSEVQUIET)
     _closure_clones.install()
     _fixture_copies.install()
+    _quiet_tmp.install()
     if os.environ.get("PYTEST_DEBUG_TEMPROOT"):  # the run's root (tests/suite_tmp.py)
         run_wide(Path(os.environ["PYTEST_DEBUG_TEMPROOT"]))
         _quiet_git.install(os.environ["PYTEST_DEBUG_TEMPROOT"])  # GOH.FSEVQUIET

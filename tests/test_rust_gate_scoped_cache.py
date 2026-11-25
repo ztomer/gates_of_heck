@@ -66,13 +66,13 @@ def _crate(repo: Path, name: str, deps: str = "", lib: str = LIB) -> None:
 
 
 @pytest.fixture(scope="module")
-def gates(tmp_path_factory) -> Path:
+def gates() -> Path:
     """A FROZEN clean clone of today's gates. The proven key includes the gates checkout's identity
     (its diff and untracked files), and other tests of a parallel suite briefly create files in
     the live one -- which the cache rightly refuses to trust, and which made this suite flaky."""
-    from _todays_gates import _clean_checkout_of_todays_gates
+    from _todays_gates import todays_gates_read
 
-    return _clean_checkout_of_todays_gates(tmp_path_factory.mktemp("gates"))
+    return todays_gates_read()
 
 
 @pytest.fixture(autouse=True)

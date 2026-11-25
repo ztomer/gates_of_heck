@@ -30,6 +30,7 @@ from pathlib import Path
 import _kept_store
 import _setup_work
 import pytest
+from _tree_clone import clone_tree
 from conftest import REPO_ROOT, hermetic_env
 
 # One shell file's shellcheck: 80.8 CPU s for the 114 of a cold tree (2026-11-23), rounded up.
@@ -70,14 +71,18 @@ def tree_lint(goh) -> Path:
 
 
 def private_copy(db: Path, dest: Path) -> Path:
-    """`db` copied whole (SQLite's backup, so its WAL comes along) to `dest`/goh-cache.db, a
-    GOH_CACHE_DB of its own; the copy's path."""
+    """`db` as it stands, cloned to `dest`/goh-cache.db (a GOH_CACHE_DB of its own): its path.
+    The write lock is held meanwhile: no commit moves the file or its WAL, and a checkpoint copies
+    into the file only what the WAL still holds. Copied (SQLite's backup), it wrote a month of
+    sessions' verdicts, 9 MB for the 114 rows the test reads, and more beside other workers, whose
+    rows it took too (GOH.FSEVQUIET)."""
     dest.mkdir(parents=True, exist_ok=True)
     out = dest / "goh-cache.db"
-    with _kept_store._cache().ro(db) as src:
-        to = sqlite3.connect(out)
-        try:
-            src.backup(to)
-        finally:
-            to.close()
+    with _kept_store._cache().connect(db) as con:  # what the clone's own checkpoint would write
+        con.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
+    with _kept_store._cache().transaction(db):
+        clone_tree(db, out)
+        wal = db.with_name(db.name + "-wal")
+        if wal.is_file():
+            clone_tree(wal, dest / "goh-cache.db-wal")
     return out

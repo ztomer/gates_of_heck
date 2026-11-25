@@ -6,13 +6,15 @@ calibration test sweeps a snapshot of this repo (tests/calib_snapshot.py), never
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
 from pathlib import Path
 
 import pytest
 import timing_bounds
-from calib_snapshot import snapshot
+from calib_snapshot import ROOT, snapshot, this_snapshot
+from conftest import git
 from test_gate_calibration import estate, run_gate
 
 
@@ -72,3 +74,16 @@ def test_a_sibling_write_into_the_live_tree_does_not_reach_the_sweep_of_its_snap
     got = _sibling_writes_while(live, started, lambda: run_gate(copy))
     assert got.returncode == 0, got.stdout + got.stderr
     assert not (copy / "sibling-artifact.txt").exists()
+
+
+def test_this_checkouts_snapshot_holds_what_a_copy_does_committed(tmp_path):
+    copy = this_snapshot(tmp_path / "copy")
+    sys.path.insert(0, str(ROOT / "checks"))
+    from _gitutil import tree_files
+
+    want = {f for f in tree_files(str(ROOT)) if (ROOT / f).is_file() or (ROOT / f).is_symlink()}
+    assert set(tree_files(str(copy))) == want
+    changed = git(copy, "status", "--porcelain")
+    assert changed == "", f"the sweep's tree starts with changes: {changed}"
+    rel = Path(__file__).resolve().relative_to(ROOT)
+    assert (copy / rel).read_bytes() == (ROOT / rel).read_bytes()

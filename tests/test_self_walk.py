@@ -21,6 +21,7 @@ import _kept_store
 import _self_walk as w
 import pytest
 from _self_walk import Result
+from _tree_clone import template
 from conftest import hermetic_env
 
 LABELS = ["a", "b", "c", "goh d"]
@@ -208,7 +209,8 @@ def parts(labels: list[str], steps: set[str]) -> dict[str, list[str]]:
 
 @pytest.fixture(scope="module")
 def trees(native_goh: Path, tmp_path_factory) -> dict:
-    """goh as it stands and goh with PLANTS, cloned once per worker; each part walks both.
+    """goh as it stands and goh with PLANTS, made once a RUN (two trees a worker were 38,000
+    entries of a run's removal, GOH.FSEVQUIET); each part walks both, and writes in neither.
 
     No part lints the shell sources but SHELL, and SHELL lints the clean tree ONCE before either of
     its walks (GOH.SELFWALKSC: two full walks paid two shellchecks for every file both trees hold
@@ -220,14 +222,14 @@ def trees(native_goh: Path, tmp_path_factory) -> dict:
     seed = w.load_seed()
     reg = w.registry(native_goh)
     steps = w.carried(native_goh)
-    root = tmp_path_factory.mktemp("self-walk")
+    mine = tmp_path_factory.mktemp("self-walk")
     nonce = f"# the planted walk of session {uuid.uuid4().hex}\n"
     plants = {rel: text + nonce if rel.endswith(".sh") else text for rel, text in PLANTS.values()}
     plants[EDITED] = (w.REPO_ROOT / EDITED).read_text() + nonce
     real = shutil.which("shellcheck")
     assert real, "the walk needs shellcheck on PATH"
     store = w.verdict_store()
-    shim, log = store.parent / "self-walk-shim", root / "shellcheck.log"
+    shim, log = store.parent / "self-walk-shim", mine / "shellcheck.log"
     shim.mkdir(exist_ok=True)
     text = SHIM.format(real=os.path.realpath(real))
     if not (shim / "shellcheck").is_file() or (shim / "shellcheck").read_text() != text:
@@ -237,10 +239,15 @@ def trees(native_goh: Path, tmp_path_factory) -> dict:
         tmp.replace(shim / "shellcheck")
     env = hermetic_env(GOH_CACHE_DB=str(store), SELF_WALK_SC_LOG=str(log),
                        PATH=f"{shim}{os.pathsep}{os.environ.get('PATH', '')}")  # fmt: skip
-    built = {}
-    for name, planted in (("goh", {}), ("planted", plants)):
-        tree = w.walked_tree(root / name, seed, planted)
-        built[name] = (tree, w.walk_env(env, root / f"{name}-env"))
+
+    def build(root: Path) -> None:
+        root.mkdir()
+        for name, planted in (("goh", {}), ("planted", plants)):
+            w.walked_tree(root / name, seed, planted)
+
+    root = template(tmp_path_factory, "self-walk", build)
+    built = {name: (root / name, w.walk_env(env, mine / f"{name}-env"))
+             for name in ("goh", "planted")}  # fmt: skip
     labels = [r["scanner"] for r in reg]
     return {"labels": labels, "steps": steps, "parts": parts(labels, steps), "root": root,
             "log": log, **built}  # fmt: skip
@@ -252,6 +259,7 @@ def test_the_parts_hold_every_scanner_once_and_name_no_other(trees) -> None:
     labels, split = trees["labels"], trees["parts"]
     flat = [lb for part in split.values() for lb in part if lb != SUBJECT]
     assert sorted(flat) == sorted(set(labels) - {SUBJECT}), "a scanner in no part, or in two"
+    assert trees["root"].parent.parent.name == "goh-templates", "the two trees are a worker's own"
     assert all(SUBJECT in part for name, part in split.items() if name != COMMANDS)
     stale = {lb for part in PARTS.values() for lb in part} - set(labels)
     assert not stale, f"a part names no scanner in the registry: {sorted(stale)}"
