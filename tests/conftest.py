@@ -4,7 +4,6 @@ Every disallowed glyph in this suite is built with chr(0x...) — never as a
 literal — so the suite cannot trip gates_of_heck's own emoji gate.
 """
 
-import atexit
 import fcntl
 import json
 import os
@@ -17,7 +16,7 @@ from pathlib import Path
 
 import pytest
 import suite_home  # (FIRST: the suite's own HOME and TMPDIR, before anything reads them)
-from _tree_clone import clone_tree, reused_mkdtemp, template  # (no HOME/TMPDIR read at import)
+from _tree_clone import clone_tree, template  # (no HOME/TMPDIR read at import)
 from env_probe import print_safe  # (no HOME/TMPDIR read: re, shlex)
 from suite_tmp import live_suite_mark, nested_root  # noqa: F401  (autouse: GOH.FLAKY2, FSCHURN4)
 
@@ -125,14 +124,10 @@ def repo(tmp_path: Path, _repo_template: Path) -> Path:
     return tmp_path / "proj"
 
 
-_SUITE_COV_CACHE = reused_mkdtemp("goh-suite-cov-cache.")
-atexit.register(shutil.rmtree, _SUITE_COV_CACHE, True)
-
-
 @pytest.fixture(scope="session", autouse=True)
 def _suite_estate_state(tmp_path_factory) -> None:
     """The estate's state file, for the whole suite, in a scratch directory (BACKLOG 6.14)."""
-    d = tmp_path_factory.mktemp("goh-estate-state")
+    d = tmp_path_factory.mktemp("goh-estate-state", numbered=False)
     os.environ["GOH_ESTATE_STATE"] = str(d / "estate_audit.json")
 
 
@@ -149,7 +144,7 @@ def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
     env = scrubbed(os.environ, drop, keep=suite_home.KEPT_GOH)
     # The rust coverage build dir is keyed on a project's path (gates/_coverage_rust.sh): a fixture
     # in a fresh tmp dir would leave one never-reused build per test in the user's cache.
-    env["GOH_COV_CACHE"] = _SUITE_COV_CACHE
+    env["GOH_COV_CACHE"] = _drift_guard.COV_CACHE
     # GOH_DIR is a LOCATION too, and it must be THIS checkout: without it the binary falls back to
     # ~/Projects/gates_of_heck, so a worktree's suite judged MAIN's checkers -- a new step went red
     # before landing and an edit to an old one was never tested at all (D.GOH1, 2026-10-31).

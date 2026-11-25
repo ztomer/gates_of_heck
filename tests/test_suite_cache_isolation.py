@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 from _fast_git import fast_init
-from host_locks import CACHE_ROOTS, scrubbed
+from host_locks import CACHE_ROOTS, HOST_LOCKS, scrubbed
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PUSH_GATE = REPO_ROOT / "gates" / "push_gate.sh"
@@ -28,6 +28,16 @@ def test_every_test_gets_private_push_roots() -> None:
         value = os.environ.get(name, "")
         assert value, f"{name} is not set for this test"
         assert not os.path.realpath(value).startswith(home_cache + "/push"), (name, value)
+
+
+def test_a_private_root_is_named_not_made(tmp_path_factory) -> None:
+    """GOH.FSEVQUIET: a directory per test for roots nearly no test writes was 11,058 file events a
+    pre-step. Every root is a name of this test's own in the worker's ONE directory, made by
+    whoever writes it."""
+    home = tmp_path_factory.getbasetemp() / "host-locks"
+    mine = [Path(os.environ[n]) for n in (*HOST_LOCKS, "GOH_PUSH_LOGS", "GOH_REUSE_DIR")]
+    assert {p.parent for p in mine} == {home} and home.is_dir()
+    assert len(set(mine)) == len(mine) and not [p for p in mine if p.exists()]
 
 
 def test_an_env_scrub_keeps_the_private_roots() -> None:

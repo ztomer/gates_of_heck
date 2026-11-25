@@ -187,11 +187,14 @@ try:
 finally:
     sys.path.pop(0)
 _REAL_CARGO = shutil.which("cargo")
-BUILD_DIR = reused_mkdtemp("goh-test-cargo-build.")
-atexit.register(shutil.rmtree, BUILD_DIR, True)
+# ONE directory a process (GOH.FSEVQUIET), and what most processes never use a name in it, made by
+# the cargo or coverage run that does: a build dir and a coverage cache made and removed empty by
+# each of ~540 pytest processes were 2,400 file events a pre-step.
+_shim_dir = reused_mkdtemp("goh-drift-cargo.")
+atexit.register(shutil.rmtree, _shim_dir, True)  # one per worker per run, 42 had leaked
+BUILD_DIR = os.path.join(_shim_dir, "build")
+COV_CACHE = os.path.join(_shim_dir, "cov-cache")
 if _REAL_CARGO:
-    _shim_dir = reused_mkdtemp("goh-drift-cargo.")
-    atexit.register(shutil.rmtree, _shim_dir, True)  # one per worker per run, 42 had leaked
     with open(os.path.join(_shim_dir, "cargo"), "w", encoding="utf-8") as _f:
         _f.write(
             "#!/bin/sh\n"

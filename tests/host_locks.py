@@ -46,6 +46,7 @@ _SUITE_HOME.mkdir(parents=True, exist_ok=True)
 _WORKTREES = Path(reused_mkdtemp("push.", dir=_SUITE_HOME)).resolve()
 atexit.register(shutil.rmtree, _WORKTREES, True)
 _WORKTREE_N = itertools.count()
+_ROOT_N = itertools.count()
 
 # Every variable an env scrub must KEEP: each names a private location, not an opt-in.
 PRIVATE_ROOTS = HOST_LOCKS + CACHE_ROOTS
@@ -61,9 +62,14 @@ def scrubbed(environ, prefixes: tuple[str, ...], keep: tuple[str, ...] = ()) -> 
 @pytest.fixture(autouse=True)
 def no_test_reaches_a_host_lock(tmp_path_factory, monkeypatch):
     """Every test, and every process it starts, gets private copies of the machine's locks."""
-    root = tmp_path_factory.mktemp("host-locks")
+    # NAMED, not made (GOH.FSEVQUIET): a directory and a `current` link made for each test, nearly
+    # none taking a lock, were 11,058 file events a pre-step (2026-11-25). One directory a worker;
+    # a test's roots are names of its own in it, made by the process that takes one.
+    root, mine = tmp_path_factory.getbasetemp() / "host-locks", f"t{next(_ROOT_N)}-"
+    if not root.is_dir():
+        root.mkdir()
     for name in (*HOST_LOCKS, "GOH_PUSH_LOGS", "GOH_REUSE_DIR"):
-        monkeypatch.setenv(name, str(root / name.lower()))
+        monkeypatch.setenv(name, str(root / (mine + name.lower())))
     # NAMED, not made (GOH.FSCHURN3): push_gate.sh makes its root (`mkdir -p`), and a directory
     # made for each of ~7,000 tests, nearly all never pushing, was the suite home's largest
     # creator of file events (a dir made per test, all removed at exit).
