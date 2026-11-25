@@ -13,9 +13,12 @@ that add one each are red together; the gate is red on the same count, as the fu
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
+import land_check
+import landq_ratchet
 import pytest
-from conftest import commit_all, hermetic_env, write
+from conftest import commit_all, git, hermetic_env, write
 from test_landq_batch import FAKE_LOOPCTL, enqueue_all, gate_runs, landq, lane, recorded
 
 COUNT = '[ "$(ls r-*.txt 2>/dev/null | wc -l)" -le 1 ]'
@@ -57,39 +60,58 @@ def test_a_middle_item_that_breaks_a_ratchet_is_evicted_and_the_rest_gate_once(
     assert not (repo / "r-2.txt").exists() and (repo / "three.txt").exists()
 
 
-def test_a_head_item_red_on_the_stack_is_evicted_when_main_is_green(repo, tmp_path, ratchet_env):
-    """The lowest item: its tree is main plus its diff, so main is judged too, and only a green
-    main makes the item the one to evict."""
-    env = ratchet_env
-    wts = [(lane(repo, tmp_path, "one", {"r-1.txt": "1\n"}), "T.ONE")]
-    enqueue_all(env, wts)
-    write(repo, "r-0.txt", "0\n")  # another land moved main after T.ONE's enqueue
-    commit_all(repo, "main moved")
-    more = [
-        (lane(repo, tmp_path, "two", {"two.txt": "2\n"}), "T.TWO"),
-        (lane(repo, tmp_path, "three", {"three.txt": "3\n"}), "T.THREE"),
-    ]
-    enqueue_all(env, more)
-    done = landq(env, "--drain")
-    assert done.returncode == 0, done.stdout + done.stderr
-    got = recorded(env)
-    assert got["T.ONE"]["state"] == "red" and "ratchet" in got["T.ONE"]["why"], got
-    assert got["T.TWO"]["state"] == "landed" and got["T.THREE"]["state"] == "landed", got
-    assert gate_runs(env) == ["three"], gate_runs(env)
+# Which item's own diff did it (GOH.PYSLOW4: a drain per answer before; the one above is kept).
 
 
-def test_a_stack_red_because_main_is_red_evicts_nothing(repo, tmp_path, ratchet_env):
-    """Main itself red: no item's diff turned it, so none is evicted; the gate decides."""
-    env = ratchet_env
-    wts = [
-        (lane(repo, tmp_path, "one", {"one.txt": "1\n"}), "T.ONE"),
-        (lane(repo, tmp_path, "two", {"two.txt": "2\n"}), "T.TWO"),
-    ]
-    enqueue_all(env, wts)
+def _batch(repo: Path, tmp_path: Path, said: list[str]) -> SimpleNamespace:
+    return SimpleNamespace(id="b", main=repo, q=tmp_path / "q", stack=lambda live: live,
+                           git=lambda d, *a: git(d, *a).strip(),
+                           kit=SimpleNamespace(say=said.append))  # fmt: skip
+
+
+def _items(*names: str) -> list[SimpleNamespace]:
+    return [SimpleNamespace(req={"worktree": n, "repo": "/r"}, tip=n * 8) for n in names]
+
+
+@pytest.mark.parametrize(
+    ("tips", "main", "found"),
+    [
+        ([True, True], True, 0),  # the lowest item, over a green main: its own diff
+        ([True, True], False, None),  # main red too: no item's
+        ([False, True], False, 1),  # red over a green item: main is not asked
+        ([False, False], False, 2),  # green below the top, which is the red one
+        ([None, True], True, None),  # no verdict: nobody is named
+    ],
+)
+def test_the_lowest_tip_red_over_a_green_one_names_its_item(monkeypatch, tips, main, found):
+    items = _items("one", "two", "three")
+    reds = {Path(it.req["worktree"]): red for it, red in zip(items, tips, strict=False)}
+    monkeypatch.setattr(landq_ratchet, "red_on", lambda root, _refused: reds[root])
+    monkeypatch.setattr(landq_ratchet, "main_green", lambda *_: main)
+    got = landq_ratchet.find(None, items, ["x"])
+    assert got is (None if found is None else items[found])
+
+
+def test_main_is_judged_in_a_checkout_of_its_own(repo, tmp_path, monkeypatch):
+    """The head item's question, asked of main as it stands; the checkout is gone after."""
+    monkeypatch.setenv("GOH_LAND_CHECK_STEPS", COUNT)
+    b = _batch(repo, tmp_path, [])
     write(repo, "r-0.txt", "0\n")
+    commit_all(repo, "main moved")
+    assert landq_ratchet.main_green(b, [COUNT]) is True
     write(repo, "r-1.txt", "1\n")
     commit_all(repo, "main went red")
-    assert landq(env, "--drain").returncode == 0
-    got = recorded(env)
-    assert all("ratchet" not in got[i].get("why", "") for i in ("T.ONE", "T.TWO")), got
-    assert gate_runs(env)[0] == "two", gate_runs(env)  # the stack was gated, as before
+    assert landq_ratchet.main_green(b, [COUNT]) is False
+    assert list((b.q / "ratchet-main").iterdir()) == []
+    assert "ratchet-main" not in git(repo, "worktree", "list")
+
+
+def test_a_stack_red_because_main_is_red_evicts_nothing(repo, tmp_path, monkeypatch):
+    """Main itself red: no item's diff turned it, so none is evicted; the gate decides."""
+    said: list[str] = []
+    monkeypatch.setattr(land_check, "run", lambda *_a, **_k: ["the count"])
+    monkeypatch.setattr(landq_ratchet, "red_on", lambda *_: True)
+    monkeypatch.setattr(landq_ratchet, "main_green", lambda *_: False)
+    items = _items("one", "two")
+    assert landq_ratchet.first(_batch(repo, tmp_path, said), items) == items
+    assert "the gate decides" in said[-1], said
