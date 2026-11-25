@@ -28,7 +28,10 @@ def _listed() -> set[str]:
 
 def test_every_internal_key_is_on_the_list() -> None:
     internal = {k for d in config_ref.Ref(REPO_ROOT).decls if d.kind == "internal" for k in d.keys}
-    assert internal and internal <= _listed(), sorted(internal - _listed())
+    judged = _listed() | set(EXPORTED_AND_KEYED) | set(PASSED_AND_KEYED) | set(INTERNAL_AND_KEYED)
+    assert internal and internal <= judged, sorted(internal - judged)
+    stale = sorted(k for k in INTERNAL_AND_KEYED if k not in internal or k in _listed())
+    assert stale == [], f"not internal, or on the list already: {stale}"
 
 
 def test_a_key_is_internal_exactly_when_its_text_says_it_is_no_setting() -> None:
@@ -48,6 +51,15 @@ EXPORTED_AND_KEYED = {
     "GOH_DIR": "the gates checkout that judges: a different one can judge differently",
     "GOH_RELEASE_BUFFERED": "release.sh's own self-copy; no gate runs under it",
     "GOH_PY": "the house interpreter every Python helper runs on: another can judge differently",
+}
+
+# An internal key that stays in a key, with its reason: no cached step runs under it, or its value
+# is what is judged.
+INTERNAL_AND_KEYED = {
+    "GOH_REPO_ROOT": "the repo whose index is exported: another one is another verdict",
+    "GOH_FLOORS_DIR": "the hosted floors action's own steps; no cached step under them",
+    "GOH_FLOORS_GOH": "the hosted floors action's own steps; no cached step under them",
+    "GOH_HOLD_LIFTED_BY": "the hold scripts' word to each other; no gate runs under it",
 }
 
 # The same class, passed another way: `GOH_X=v cmd` (inline) and `env GOH_X=v cmd` reach a child's

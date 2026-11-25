@@ -87,3 +87,14 @@ GOH_CACHE_DB
 GOH_CACHE_DB_BUSY_MS
 # Which SCCACHE_DIR goh pinned (GOH.SCCACHEROOTFOLLOW): where compiles are cached, never what passes.
 GOH_SCCACHE_PINNED
+# Set by the gate script before anything reads it, or the live share handed to the runners under it
+# (GOH.CONFIGMD: undeclared until then, so the last two sat in every config hash).
+GOH_COMPLETED
+GOH_NAME
+GOH_LOG
+GOH_ROOT
+GOH_GIT_ROOT
+GOH_INDEX_VIEW
+GOH_MCP_SCRATCH
+GOH_SHARE_CLASS
+GOH_SHARE_LAND

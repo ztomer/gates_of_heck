@@ -15,7 +15,7 @@ Pin: `tests/test_gates_e2e.py` (failing step exits nonzero and shows output).
 `goh_init` owns the EXIT trap. Exit 0 is honored only if `goh_done` ran
 (`GOH_COMPLETED=1`); a 0 arriving without completion (parse error, crash,
 syntax error mid-file) is re-raised as failure. A second `goh_init` must
-not orphan the first log (`GOH_LOGS` accumulates).
+not orphan the first log (`goh_cleanup_add` accumulates).
 Pin: `tests/test_goh_init_trap.py`.
 
 ## 3. Index truth (`checks/_gitutil.py`)

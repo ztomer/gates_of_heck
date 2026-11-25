@@ -6,3 +6,6 @@
   file that breaks the form. The old one asked for a substring of one 200 KB page, so a prefix of a
   declared key passed: 25 keys had no row. `--doctor` warns on a key that is no declared setting.
   Two lanes that each add a key share no file, and the row merge driver no longer holds the page.
+* GOH.CONFIGMD: GOH_SHARE_CLASS and GOH_SHARE_LAND, set at every admission and declared nowhere,
+  sat in every config hash (`goh_config_hash`): a proven step's key moved with the run's class. They
+  are verdict-free now, with seven internal names the gates set before anything reads them.

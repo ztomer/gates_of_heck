@@ -7,7 +7,6 @@ tests/test_build_includes.py
 tests/test_build_lock_ignored.py
 tests/test_check_tag_version.py
 tests/test_claude_hook_registrations.py
-tests/test_config_schema.py
 tests/test_estate_seed_home.py
 tests/test_gate_calibration.py
 tests/test_gate_environment.py

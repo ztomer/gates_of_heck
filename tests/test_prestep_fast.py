@@ -80,7 +80,7 @@ def test_goh_s_cheap_structural_judges_are_candidates_on_its_own_tree(tmp_path, 
     """The judges that cost lands in seconds are among the candidates, whatever the diff."""
     cands = ft.units(REPO_ROOT, list(at.affected(REPO_ROOT, [], graph=_tree_graph.real())))
     for judge in ("tests/test_wiring.py::test_every_script_has_a_row_in_the_map",
-                  "tests/test_config_schema.py::test_config_schema_covers_keys"):  # fmt: skip
+                  "tests/test_config_schema.py::test_every_declared_key_is_read"):  # fmt: skip
         assert judge in cands, judge
 
 

@@ -55,8 +55,9 @@ from lib import map_table  # noqa: E402
 
 SCAN = ("gates", "checks", "lib", "tools", "hooks", "tui", "install.sh", "crates", "scripts",
         "bin", ".github")  # fmt: skip
-TREE_READS = (*(f"{d}/" for d in SCAN if d != "install.sh"), "install.sh", "docs/config/",
-              "docs/config.md", ".gatesrc.example", "tests/*.py")  # fmt: skip
+TREE_READS = ("gates/", "checks/", "lib/", "tools/", "hooks/", "tui/", "install.sh", "crates/",
+              "scripts/", "bin/", ".github/", "docs/config/", "docs/config.md", ".gatesrc.example",
+              "tests/*.py")  # fmt: skip
 KEY = re.compile(r"(?<!\w)GOH_[A-Z0-9_]*[A-Z0-9](?![\w*])")
 # A name built at run time (`GOH_COV_FLOOR_$LANG`): a read of every declared key of its family.
 BUILT = re.compile(r"(?<!\w)(GOH_[A-Z0-9_]+_)[$%{]")
@@ -75,7 +76,13 @@ RUST = re.compile(
     r'r(#+)".*?"\1|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])\'|(//[^\n]*|/\*.*?\*/)', re.DOTALL
 )
 # Names of the code that are no key: each a pattern or a fixture, and why. A stale one is refused.
-PLACEHOLDERS: dict[str, str] = {}
+PLACEHOLDERS: dict[str, str] = {
+    "GOH_ACTION": "a Rust static's own name (crates/goh/src/gohpin/scan.rs): the action's pattern",
+    "GOH_COV_FLOOR": "a pattern's prefix (gates/required_tools.py): any GOH_COV_FLOOR_<LANG>",
+    "GOH_REPO": "a Rust static's own name (crates/goh/src/gohpin/scan.rs): the repo's pattern",
+    "GOH_TAG": "a consumer workflow's own variable, judged as a pin (gohpin): goh reads none",
+    "GOH_X": "a fixture line of a unit test inside crates/goh/src/localeprefix.rs",
+}
 
 
 @dataclass

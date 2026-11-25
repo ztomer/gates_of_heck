@@ -137,7 +137,7 @@ def test_a_declared_key_no_code_reads_is_dead_unless_its_reader_is_elsewhere(roo
         'pub const PIPELINE_KEYS: [&str; 1] = [\n    "GOH_GONE",\n];\n'
         'pub const OPT_IN_KEYS: [&str; 1] = ["GOH_GONE"];\n')  # fmt: skip
     assert len(faults(root)) == 1, "a list of keys reads none of them"
-    put(root, "docs/config/GOH_GONE.md", decl("GOH_GONE", kind="external ~/x.py"))
+    put(root, "docs/config/GOH_GONE.md", decl("GOH_GONE", kind="external x.py"))
     assert faults(root) == []
 
 

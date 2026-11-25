@@ -1,6 +1,6 @@
 # GOH_MIN_FREE_GB
 Area: disk-watch
-Kind: external ~/Projects/scripts/lib/disk_hygiene.py
+Kind: external disk_hygiene.py
 Order: 30
 Default: `20`
 
