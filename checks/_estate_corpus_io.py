@@ -76,6 +76,24 @@ def plant_in(files, ext, text, exclude=""):
 _IDENTITY = ("-c", "user.email=corpus@example.invalid", "-c", "user.name=corpus")
 
 
+def borrow_objects(source, dest):
+    """`dest`'s git reads `source`'s objects, so `add` there writes only what the owner has not
+    committed: a corpus was 3,100 loose objects and fan-out dirs, made and removed (FSEVQUIET)."""
+    got = subprocess.run(
+        ["git", "-C", source, "rev-parse", "--path-format=absolute", "--git-path", "objects"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=foreign_repo_env(),
+        stdin=subprocess.DEVNULL,
+    )
+    if got.returncode == 0:
+        info = os.path.join(dest, ".git", "objects", "info")
+        os.makedirs(info, exist_ok=True)
+        with open(os.path.join(info, "alternates"), "w", encoding="utf-8") as handle:
+            handle.write(got.stdout.strip() + "\n")
+
+
 def materialise(source, files, dest):
     """Copy the real subtree into a scratch repo. Nothing ever runs in another working tree."""
     os.makedirs(dest)
@@ -90,6 +108,7 @@ def materialise(source, files, dest):
             # flight): not in the tree any more, so not in the corpus. The floor still counts.
             continue
     scratch_git(dest)  # one empty .git copied, not init + config x2 (checks/_gitutil.py)
+    borrow_objects(source, dest)
     for args in (("add", "-A"), (*_IDENTITY, "commit", "-qm", "corpus")):
         subprocess.run(
             ["git", "-C", dest, *args],
@@ -155,7 +174,13 @@ def store_dir():
 
 def resolve_root(root):
     """An entry's corpus root on this machine: a `~/` path expanded, a `store:<label>` read from
-    the private store, None when the store has no such label (or no readable list)."""
+    the private store, None when the store has no such label (or no readable list).
+    GOH_ESTATE_HOME stands in for the home of the `~/` roots and has no store: the empty-scope
+    sweep names an empty one (GOH.FSEVQUIET: with the real estate, one sweep copied every corpus
+    of this machine -- 16,131 file events -- to learn that the gate passes over nothing)."""
+    home = os.environ.get("GOH_ESTATE_HOME")
+    if home:
+        return os.path.join(home, root[2:]) if root.startswith("~/") else None
     if not root.startswith("store:"):
         return os.path.expanduser(root)
     try:

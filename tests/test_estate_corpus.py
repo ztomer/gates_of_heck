@@ -19,7 +19,7 @@ import sys
 
 import pytest
 from _gatesrc_kit import as_fixture
-from conftest import REPO_ROOT as ROOT
+from conftest import REPO_ROOT as ROOT, commit_all, git, write
 
 CHECK = ROOT / "checks" / "check_estate_corpus.py"
 
@@ -238,3 +238,20 @@ def test_a_declared_entry_verifies_against_the_real_estate(index):
         pytest.skip(f"{entry['root']} is not on this machine")
     findings = []
     assert sweep.judge(entry, findings) == "verified", findings
+
+
+def test_a_corpus_borrows_its_owners_objects_and_its_commit_is_whole(repo, tmp_path):
+    """GOH.FSEVQUIET: the scratch corpus wrote every object the owner has already committed. It
+    reads the owner's, and its commit holds what it copied, the uncommitted edit too."""
+    write(repo, "src/a.py", "a = 1\n" * 50)
+    write(repo, "src/b.py", "b = 1\n" * 50)
+    git(repo, "add", "-A")
+    commit_all(repo, "two files")
+    write(repo, "src/b.py", "b = 2\n" * 50)  # not committed by its owner
+    dest = tmp_path / "corpus"
+    sweep.materialise(str(repo), ["src/a.py", "src/b.py"], str(dest))
+    assert git(dest, "show", "HEAD:src/b.py") == "b = 2\n" * 50
+    assert git(dest, "show", "HEAD:src/a.py") == "a = 1\n" * 50
+    own = [p.parent.name + p.name for p in (dest / ".git/objects").glob("??/*")]
+    blob = git(dest, "rev-parse", "HEAD:src/a.py").strip()
+    assert blob not in own and git(dest, "rev-parse", "HEAD:src/b.py").strip() in own

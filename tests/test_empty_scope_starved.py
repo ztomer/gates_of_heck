@@ -31,10 +31,11 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+import _empty_scope_run as ces_run
 import check_empty_scope as ces
 import pgid_cpu
 import source_closure
@@ -253,3 +254,27 @@ def test_the_skeleton_carries_what_a_shell_gate_sources_read_from_its_source(tmp
         capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
     ).stdout  # fmt: skip
     assert "helper.sh" not in listed and "deeper.sh" not in listed, listed
+
+
+def test_the_sweeps_estate_is_as_empty_as_its_tree(tmp_path: Path, monkeypatch) -> None:
+    """GOH.FSEVQUIET: the estate gate reads OTHER repos, so over this machine's real ones a sweep
+    copied every corpus (16,131 file events) and the gate passed "over nothing". The sweep gives
+    it an estate with nothing in it, and it refuses: no excuse in the allowlist."""
+    given: list[str] = []
+
+    def run_gate(_argv, _cwd, env, *_):
+        given.append(env["GOH_ESTATE_HOME"])
+        assert os.path.isdir(given[0]) and not os.listdir(given[0])
+        return ces_run.Ran(1, "", ""), None
+
+    monkeypatch.setattr(ces, "run_gate", run_gate)
+    _sweep(_repo(tmp_path, {"check_a.py": "raise SystemExit(1)\n"}), 5)
+    real = REPO_ROOT / "checks" / "check_estate_corpus.py"
+    r = subprocess.run(
+        [sys.executable, str(real)], capture_output=True, text=True, check=False,
+        stdin=subprocess.DEVNULL, env=hermetic_env(GOH_ESTATE_HOME=given[0], TMPDIR=str(tmp_path)),
+    )  # fmt: skip
+    assert r.returncode == 1 and "a sweep of nothing" in r.stdout + r.stderr, r.stdout + r.stderr
+    assert not list(tmp_path.glob("**/goh-estate.*")), "no corpus was copied"
+    allow = json.loads((REPO_ROOT / "checks" / "empty_scope_allow.json").read_text())
+    assert "check_estate_corpus.py" not in allow["legitimate"]

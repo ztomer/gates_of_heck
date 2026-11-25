@@ -20,6 +20,7 @@ here, not there.
 import os
 from pathlib import Path
 
+from _clone_copies import install
 from _tree_clone import run_wide
 from suite_tmp import own_root
 
@@ -34,6 +35,7 @@ pytest_plugins = [
 
 
 def pytest_configure(config) -> None:
+    install()  # shutil's copies are clones (tests/_clone_copies.py, GOH.FSEVQUIET)
     if os.environ.get("PYTEST_DEBUG_TEMPROOT"):  # the run's root (tests/suite_tmp.py)
         run_wide(Path(os.environ["PYTEST_DEBUG_TEMPROOT"]))
     own_root(config)  # after run_wide: the run's templates stay the worker's, shared

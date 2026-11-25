@@ -69,8 +69,7 @@ GATE_DIRS = ("tools", "checks")
 ALLOW_FILE = "empty_scope_allow.json"
 
 # Root files that give the skeleton its SHAPE. Without them a gate may die on "this is not a Swift
-# package" -- a legitimate refusal, but it answers a different question than the one being asked,
-# and it would hide a blind gate behind a shape complaint.
+# package": a refusal of another question, which would hide a blind gate behind a shape complaint.
 SHAPE_FILES = (
     "Package.swift",
     "Makefile",
@@ -289,8 +288,9 @@ def sweep(skeleton, gate_name, names, timeout=None, excused=()):
     # (SwiftPM's TemporaryDirectory.*, a probe's log) left five entries in the shared $TMPDIR per
     # sweep, every sweep (2026-10-06, tests/test_gate_temp_leaks.py).
     scratch = os.path.join(os.path.dirname(os.path.abspath(skeleton)), "tmp")
-    os.makedirs(scratch, exist_ok=True)
-    env = {**_runtime_env(), "TMPDIR": scratch + os.sep}
+    estate = os.path.join(scratch, "estate")  # as empty as the tree, not this machine's (FSEVQUIET)
+    os.makedirs(estate, exist_ok=True)
+    env = {**_runtime_env(), "TMPDIR": scratch + os.sep, "GOH_ESTATE_HOME": estate}
     for name in names:
         try:
             # Inside the skeleton, not the hook's repo: with the hook's GIT_DIR a gate's git calls

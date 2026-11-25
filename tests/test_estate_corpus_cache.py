@@ -98,8 +98,7 @@ def test_a_different_binary_is_a_miss(estate, tmp_path, monkeypatch) -> None:
     _judge(estate)
     built = len(estate["calls"])
     other = tmp_path / "goh-copy"
-    other.write_bytes(Path(native_goh_path()).read_bytes())
-    other.chmod(0o755)
+    shutil.copy2(native_goh_path(), other)  # a clone (tests/_clone_copies.py)
     monkeypatch.setenv("GOH_BIN", str(other))
     _judge(estate)
     assert len(estate["calls"]) > built
