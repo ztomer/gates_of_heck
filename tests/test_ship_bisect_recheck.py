@@ -81,7 +81,8 @@ def test_a_tip_green_at_its_own_failing_tests_is_a_flake_and_the_ship_retries(
     assert b["fault"].startswith("not filed: a flake"), b
     assert not [c for c in _calls(tmp_path) if "file" in c], "a flake filed a fault item"
     assert _judged(tmp_path) == [tip, tip], "the suite step was not retried once"
-    assert res["retried"] == 1 and code == 0 and res["status"] == "ok", out
+    assert [(s["name"], s["status"]) for s in res["retried"]] == [("suite", "failed")], res
+    assert code == 0 and res["status"] == "ok", out
 
 
 def test_a_culprit_red_at_its_tests_and_green_at_its_parent_is_still_named(

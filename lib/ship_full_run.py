@@ -341,10 +341,13 @@ def after_red(res: dict, save: Callable[[dict], None]) -> bool:
 
 def retry_after_red(res: dict, save: Callable[[dict], None], retried: bool) -> bool:
     """tools/ship.py, its suite step red: `after_red`; True when it found a flake and the ship has
-    not RETRIED yet, the record set running again for the suite step's one more run."""
+    not RETRIED yet, the record set running again for the suite step's one more run, its red step
+    moved to `retried` (as lib/ship_verify.py `reopen` moves a verify)."""
     if not after_red(res, save) or retried:
         return False
-    res.update(status="running", retried=res.get("retried", 0) + 1)
+    red = [s for s in res.get("steps", []) if s.get("name") == res.get("failed_step")]
+    res.update(status="running", retried=[*res.get("retried", []), *red])
+    res["steps"] = [s for s in res.get("steps", []) if s not in red]
     res.pop("failed_step", None)
     res.pop("finished", None)
     save(res)
