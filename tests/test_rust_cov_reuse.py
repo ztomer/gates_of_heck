@@ -1,20 +1,21 @@
 """A land whose diff changes no Rust input reuses the Rust coverage measurement (GOH.RUSTCOVSKIP).
 
-goh's coverage group runs its pytest suite against an INSTRUMENTED binary (GOH_COV_RUST_EXTERNAL),
-so its record keyed on the whole tree and every land re-measured: GOH.XEXITDETAIL (Python and
-shell) spent 896.62 s of a 21:37 land on it. The measurement is now keyed on its own inputs
-(`gate_identity.py rust`: the Rust build inputs and the Rust gate's coverage scripts), and a tree
-whose Rust is unchanged runs the tests plain. Both directions, on a real cargo workspace and the
-real gates/_rust_proven.sh: a Python, test or README edit reuses; a crate source, the lockfile, a
-coverage script or the suite's runner measures; a head export at a new path on PYTHONPATH does not
-(GOH.RUSTCOVKEYSCOPE); a failed, unrecorded or GOH_PROVEN=0 run never lends its verdict. A miss
-names the input that moved.
+goh's coverage group drives an INSTRUMENTED binary with its pytest suite (GOH_COV_RUST_EXTERNAL), so
+its record keyed on the whole tree and every land re-measured (896.62 s of one). It is keyed on its
+own inputs now, and a tree whose Rust is unchanged runs the tests plain. THREE LEVELS
+(GOH.PYSLOWTESTS: each case was two to five whole runs of the gate, 555 s a suite). The DECISION --
+reuse, measure, record -- runs the real gates/_rust_proven.sh on a real cargo workspace. The KEY is
+`gate_identity.rust` in process. What the SHELL adds to it (`_rust_cov_inputs`: the GOH_COV_*
+settings, the allowlist, the floors file, the arguments) and how a miss names what moved
+(`_rust_cov_moved`) are one bash each, with an identity that answers at once.
 """
 
 from __future__ import annotations
 
+import functools
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -24,10 +25,13 @@ from conftest import REPO_ROOT, hermetic_env
 from source_closure import copy_closure
 from timing_bounds import patience
 
+sys.path.insert(0, str(REPO_ROOT / "lib"))
+import gate_identity
+
 pytestmark = pytest.mark.skipif(shutil.which("cargo") is None, reason="cargo not installed")
 
-# The real reuse function, with the two seams a fixture cannot be: the measurement and the plain run
-# say which ran, and the binary match (goh's own build of these inputs) answers a fixed directory.
+# The real reuse function, with two seams: the measurement and the plain run say which ran, and the
+# binary match (goh's own build of these inputs) answers a fixed directory.
 HARNESS = """
 set -euo pipefail   # as gates/rust_gate.sh runs it: a pipeline that errs anywhere fails
 . "$ROOT/tui/lib.sh"
@@ -42,10 +46,10 @@ rust_coverage_reuse measured plain
 """
 
 
-def _git(repo: Path, *args: str) -> None:
+def _git(repo: Path, *args: str) -> str:
     env = hermetic_env(drop_git=True)
-    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, env=env,
-                   stdin=subprocess.DEVNULL)  # fmt: skip
+    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, env=env,
+                          stdin=subprocess.DEVNULL, text=True).stdout  # fmt: skip
 
 
 def _write(repo: Path, rel: str, text: str, commit: bool = True) -> None:
@@ -59,8 +63,7 @@ def _write(repo: Path, rel: str, text: str, commit: bool = True) -> None:
 
 @pytest.fixture
 def repo(tmp_path: Path, tmp_path_factory) -> Path:
-    """A goh-shaped repo: a workspace over crates/, a lockfile, Python beside it. Built once per
-    worker, cloned per test (GOH.FIXTURECOST)."""
+    """A goh-shaped repo: a workspace over crates/, a lockfile, Python beside it."""
     return from_template(tmp_path_factory, "cov-reuse", _build_repo, tmp_path / "repo")
 
 
@@ -99,6 +102,56 @@ def _run(repo: Path, **env: str) -> str:
     return _run_out(repo, **env)[0]
 
 
+# The shell half alone, its `$GOH_PY` a stub that prints its argv.
+SHELL = HARNESS[: HARNESS.index("rust_cov_plain_bins()")]
+
+
+def _shell(repo: Path, tmp_path: Path, script: str, identity: str = 'echo "argv $*"') -> str:
+    stub = tmp_path / "stub-python"
+    stub.write_text(f"#!/bin/sh\n{identity}\n")
+    stub.chmod(0o755)
+    e = hermetic_env(drop_git=True, ROOT=str(REPO_ROOT), GOH_COV_RUST_EXTERNAL="true")
+    e = {k: v for k, v in e.items() if k not in ("GOH_RESOLVED_BIN", "PYTHONPATH")}
+    argv = ["bash", "-c", f"{SHELL}GOH_PY={stub}\n{script}"]
+    r = subprocess.run(argv, cwd=repo, env=e, text=True, capture_output=True, check=False,
+                       timeout=patience(60), stdin=subprocess.DEVNULL)  # fmt: skip
+    assert r.returncode == 0, r.stdout + r.stderr
+    return r.stdout
+
+
+def _inputs(repo: Path, tmp_path: Path, *settings: str) -> list[str]:
+    # What `_rust_cov_inputs` prints under each of SETTINGS (shell, in a subshell of its own).
+    each = [f"( {s}\n_rust_cov_inputs s || true )\nprintf '\\0'\n" for s in settings]
+    return _shell(repo, tmp_path, "".join(each)).split("\0")[:-1]
+
+
+def _moved(repo: Path, tmp_path: Path, then: str, now: str, trees: str = "'' ''") -> str:
+    """How a miss names what differs between two keys' inputs (`_rust_cov_moved`)."""
+    (tmp_path / "then").write_text(then + "\n")
+    (tmp_path / "now").write_text(now + "\n")
+    call = f'_rust_cov_moved "{tmp_path}/then" "$(cat "{tmp_path}/now")" {trees}'
+    return _shell(repo, tmp_path, call).strip()
+
+
+def _identity(repo: Path, external: str = "true", **kw) -> list[str]:
+    return gate_identity.rust(repo, REPO_ROOT, external, **kw)
+
+
+_SCRIPTS = functools.cache(gate_identity.rust_gate_scripts)  # 0.3 s a closure
+
+
+@pytest.fixture
+def no_tools(monkeypatch) -> None:
+    monkeypatch.setattr(gate_identity, "tools", list)  # rustup and xcode-select processes
+    monkeypatch.setattr(gate_identity, "rust_gate_scripts", _SCRIPTS)
+
+
+def _differ(before: list[str], after: list[str]) -> list[str]:
+    """The labels of the identity lines that differ."""
+    then, now = ({ln.split(" ")[0]: ln for ln in lines} for lines in (before, after))
+    return sorted(k for k in {*then, *now} if then.get(k) != now.get(k))
+
+
 def _decision(out: str) -> str:
     """The one `↔` decision line every run prints (GOH.RUSTCOVREUSE): a passing step shows it."""
     lines = [ln for ln in out.splitlines() if ln.lstrip().startswith("↔ [rust] coverage:")]
@@ -107,23 +160,26 @@ def _decision(out: str) -> str:
 
 
 def test_a_tree_whose_rust_is_unchanged_reuses_the_measurement(repo: Path) -> None:
-    assert _run(repo) == "MEASURED"
-    assert _run(repo) == "PLAIN"
+    ran, out = _run_out(repo)
+    assert ran == "MEASURED"
+    # A miss was silent: nothing said the reuse had even been looked for (GOH.RUSTCOVREUSE).
+    assert "measuring -- no measurement of this workspace is recorded yet" in _decision(out)
     # The XEXITDETAIL shape: Python, a test, a doc -- none of the Rust gate's inputs.
-    _write(repo, "lib/x.py", "X = 2\n")
+    _write(repo, "lib/x.py", "X = 2\n", commit=False)
+    _write(repo, "README.md", "# repo\n", commit=False)
     _write(repo, "tests/test_x.py", "def test_x():\n    pass\n")
-    _write(repo, "README.md", "# repo\n")
-    assert _run(repo) == "PLAIN"
+    ran, out = _run_out(repo)
+    assert ran == "PLAIN"
+    assert "reused -- measured on these Rust inputs" in _decision(out)
 
 
 def test_what_the_identity_says_on_stderr_is_no_input_of_the_key(
     repo: Path, tmp_path: Path
 ) -> None:
     """GOH.PREPARITY: under load a head export fails now and then, and gate_identity.py says so on
-    stderr ("could not export ... running the working tree"). The key read its stderr too, so the
-    re-check after a measurement saw "moved", recorded nothing, and the next run measured again
-    where it reuses (VERDICTCARRY's land at load ~150: five of these tests red). An interpreter
-    that writes a different line to stderr on every run plays that warning here."""
+    stderr. The key read it too, so the re-check after a measurement saw "moved", recorded nothing,
+    and the next run measured again (five of these tests red at load ~150). An interpreter that
+    writes a different line to stderr on every run plays that warning here."""
     noisy = tmp_path / "noisy-python"
     noisy.write_text(
         f'#!/bin/bash\necho "noise $$ $RANDOM" >&2\nexec {shutil.which("python3")} "$@"\n'
@@ -133,22 +189,23 @@ def test_what_the_identity_says_on_stderr_is_no_input_of_the_key(
     assert _run(repo, GOH_PY=str(noisy)) == "PLAIN"
 
 
-@pytest.mark.parametrize(
-    ("rel", "text"),
-    [
+@pytest.mark.usefixtures("no_tools")
+def test_a_rust_input_change_moves_the_key(repo: Path) -> None:
+    """(That a moved key measures is test_a_miss_finds_the_record_...'s.)"""
+    before = _identity(repo)
+    for rel, text in (
         ("crates/a/src/lib.rs", "pub fn f() -> u64 {\n    2\n}\n"),
         ("crates/a/src/new.rs", "// a new source\n"),
-        ("Cargo.lock", None),
+        ("Cargo.lock", (repo / "Cargo.lock").read_text() + "\n# an edit\n"),
         ("rust-toolchain.toml", '[toolchain]\nchannel = "stable"\n'),
-    ],
-)
-def test_a_rust_input_change_measures_again(repo: Path, rel: str, text: str | None) -> None:
-    assert _run(repo) == "MEASURED"
-    if text is None:
-        text = (repo / rel).read_text() + "\n# an edit\n"
-    _write(repo, rel, text)
-    assert _run(repo) == "MEASURED"
-    assert _run(repo) == "PLAIN"
+    ):
+        _write(repo, rel, text, commit=False)
+        _git(repo, "add", "-A")
+        after = _identity(repo)
+        assert _differ(before, after) == ["inputs"], rel
+        before = after
+    (repo / "lib/x.py").write_text("X = 2\n")
+    assert _identity(repo) == before
 
 
 def test_a_failed_measurement_is_never_reused(repo: Path) -> None:
@@ -157,13 +214,15 @@ def test_a_failed_measurement_is_never_reused(repo: Path) -> None:
 
 
 def test_a_dirty_tree_or_the_cache_off_measures(repo: Path) -> None:
-    assert _run(repo) == "MEASURED"
-    assert _run(repo, GOH_PROVEN="0") == "MEASURED"
+    ran, out = _run_out(repo, GOH_PROVEN="0")
+    assert ran == "MEASURED" and "measuring -- the proven cache is off" in _decision(out)
+    assert _run(repo) == "MEASURED"  # the run before recorded nothing
     _write(repo, "lib/x.py", "X = 3\n", commit=False)
-    assert _run(repo) == "MEASURED"
+    ran, out = _run_out(repo)
+    assert ran == "MEASURED" and "measuring -- the tree is not clean" in _decision(out)
 
 
-def test_a_member_outside_the_rust_inputs_always_measures(repo: Path) -> None:
+def test_a_member_outside_the_rust_inputs_has_no_key(repo: Path, tmp_path: Path) -> None:
     """A workspace member the stamp formula does not name could change without moving the key."""
     (repo / "Cargo.toml").write_text(
         '[workspace]\nmembers = ["crates/a", "other/b"]\nresolver = "2"\n'
@@ -176,27 +235,27 @@ def test_a_member_outside_the_rust_inputs_always_measures(repo: Path) -> None:
                    capture_output=True, stdin=subprocess.DEVNULL)  # fmt: skip
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "b")
-    assert _run(repo) == "MEASURED"
-    assert _run(repo) == "MEASURED"
+    with pytest.raises(LookupError, match="outside the Rust inputs: other/b"):
+        _identity(repo)
+    # ... and no identity is no key: it measures, and records nothing.
+    said = _shell(repo, tmp_path, "! rust_cov_key s", 'echo "outside the Rust inputs" >&2; exit 1')
+    assert said == "no identity: outside the Rust inputs\n"
 
 
 def test_the_coverage_scripts_come_from_their_sources() -> None:
-    """The Rust gate's coverage scripts are read from what rust_gate.sh sources, imports and runs,
-    never a hand list. lib/xexit.py is one (GOH.COVKEYGAP): gates/_common.sh's goh_step judges the
-    coverage step through it, so this once pinned it OUT and reused a verdict another judge made."""
-    import gate_identity
-
+    """Read from what rust_gate.sh sources, imports and runs, never a hand list. lib/xexit.py is one
+    (GOH.COVKEYGAP): gates/_common.sh's goh_step judges the coverage step through it."""
     scripts = set(gate_identity.rust_gate_scripts(REPO_ROOT))
     assert {"gates/rust_gate.sh", "gates/_rust_proven.sh", "gates/coverage_gate.sh",
             "gates/_coverage_rust.sh", "gates/lcov_merge.py", "gates/_cov_prune.py",
             "gates/_lcov_floor_maps.py", "lib/bash5.sh", "gates/_proven.sh", "gates/_hash.sh",
             "gates/_common.sh", "lib/xexit.py"} <= scripts  # fmt: skip
-    assert "lib/self_match.py" not in scripts and "tools/land.sh" not in scripts
+    out = ("lib/self_match.py", "tools/land.sh", "docs/", "changelog/", "tests/")
+    assert not [s for s in scripts if s.startswith(out)]
 
 
+@pytest.mark.usefixtures("no_tools")
 def test_a_coverage_script_edit_moves_the_identity(repo: Path, tmp_path: Path) -> None:
-    import gate_identity
-
     root = tmp_path / "goh"
     copy_closure(root, *gate_identity.rust_gate_scripts(REPO_ROOT), "lib/self_match.py",
                  root=REPO_ROOT)  # fmt: skip
@@ -209,230 +268,183 @@ def test_a_coverage_script_edit_moves_the_identity(repo: Path, tmp_path: Path) -
 
 
 def test_a_push_worktree_at_another_path_reuses_the_measurement(repo: Path, tmp_path: Path) -> None:
-    """Every land gates in a push worktree of its own (~/.cache/goh/push/wt-<hash>/wt), and the step
-    named the workspace by that absolute path: the first land after GOH.RUSTCOVSKIP found no record
-    and measured for 535.36 s (GOH.RUSTCOVREUSE). A worktree of the same commit elsewhere reuses."""
+    """Every land gates in a push worktree of its own; a step naming it by that path found no
+    record, 535.36 s (GOH.RUSTCOVREUSE). The same commit elsewhere reuses."""
     assert _run(repo) == "MEASURED"
     other = tmp_path / "push" / "wt-elsewhere" / "wt"
     _git(repo, "worktree", "add", "--detach", "-q", str(other), "HEAD")
     assert _run(other) == "PLAIN"
 
 
-def test_per_push_bookkeeping_does_not_void_the_measurement(repo: Path) -> None:
-    """The push gate's marks are new temp files every push, and goh's own land runs the tip's head
-    export (a new GOH_DIR per commit, keyed by its content): none of them is configuration."""
-    a = {
-        "GOH_STRUCTURAL_MARK": "/t/mark.1",
-        "GOH_CI_STEPS_MARK": "/t/steps.1",
-        "GOH_DIR": str(REPO_ROOT),
-    }
-    b = {
-        "GOH_STRUCTURAL_MARK": "/t/mark.2",
-        "GOH_CI_STEPS_MARK": "/t/steps.2",
-        "GOH_DIR": str(REPO_ROOT) + "/.",
-    }
-    assert _run(repo, **a) == "MEASURED"
-    assert _run(repo, **b) == "PLAIN"
-    # A real setting still moves the key.
-    assert _run(repo, **b, GOH_MAX_LINES="400") == "MEASURED"
+@pytest.mark.usefixtures("no_tools")
+def test_per_push_bookkeeping_does_not_move_the_key(
+    repo: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """The push gate's marks are new temp files every push, a land's GOH_DIR a new export (keyed by
+    its content): none of them is configuration."""
+    keys = []
+    for mark in ("1", "2"):
+        monkeypatch.setenv("GOH_STRUCTURAL_MARK", f"/t/mark.{mark}")
+        monkeypatch.setenv("GOH_CI_STEPS_MARK", f"/t/steps.{mark}")
+        keys.append(_identity(repo))
+    assert keys[0] == keys[1]
+    here, spelled = _inputs(repo, tmp_path, 'export GOH_DIR="$ROOT"', 'export GOH_DIR="$ROOT/."')
+    assert here == spelled and here.startswith("rust-coverage v3\nstep s\nargv "), here
+    # A real setting still moves the key, and a miss names it (GOH.ONEVERDICTTREE).
+    monkeypatch.setenv("GOH_MAX_LINES", "400")
+    other = _identity(repo)
+    assert _moved(repo, tmp_path, "\n".join(keys[0]), "\n".join(other)) == "GOH_MAX_LINES"
 
 
-def test_a_floor_set_in_gatesrc_is_part_of_the_key(repo: Path) -> None:
-    """The plain run judges no floor, so a floor raised in .gatesrc (a shell variable, not exported)
-    reusing the old measurement would pass a floor nobody measured against."""
-    assert _run(repo, FLOOR="95") == "MEASURED"
-    assert _run(repo, FLOOR="95") == "PLAIN"
-    assert _run(repo, FLOOR="99") == "MEASURED"
-
-
-def test_the_diff_coverage_allowlist_is_part_of_the_key(repo: Path) -> None:
-    """GOH.DIFFCOV: the allowlist decides the coverage verdict (an exempted line, a stale entry),
-    and lives outside the Rust inputs: an edit to it reused the old measurement unjudged."""
-    _write(repo, "diffcov_allow.json", '{"entries": []}\n')
-    assert _run(repo) == "MEASURED"
-    assert _run(repo) == "PLAIN"
-    _write(repo, "diffcov_allow.json", '{"entries": [{"file": "f", "text": "t", "reason": "r"}]}\n')
-    assert _run(repo) == "MEASURED"
-
-
-def test_every_run_prints_its_decision_and_why(repo: Path) -> None:
-    """A miss was silent: nothing said the reuse had even been looked for."""
-    _, out = _run_out(repo)
-    assert "measuring -- no measurement of this workspace is recorded yet" in _decision(out)
-    _, out = _run_out(repo)
-    assert "reused -- measured on these Rust inputs" in _decision(out)
-    _, out = _run_out(repo, GOH_MAX_LINES="400")
-    assert "measuring -- the last measurement" in _decision(out)
-    assert "on other inputs: GOH_MAX_LINES moved" in _decision(out)  # by name (GOH.ONEVERDICTTREE)
-    _write(repo, "crates/a/src/lib.rs", "pub fn f() -> u64 {\n    3\n}\n")
-    _, out = _run_out(repo, GOH_MAX_LINES="400")
-    assert "on other inputs: the Rust build inputs (crates/a/src/lib.rs) moved" in _decision(out)
-    _, out = _run_out(repo, GOH_PROVEN="0")
-    assert "measuring -- the proven cache is off" in _decision(out)
-    _write(repo, "lib/x.py", "X = 9\n", commit=False)
-    _, out = _run_out(repo)
-    assert "measuring -- the tree is not clean" in _decision(out)
+def test_what_the_shell_adds_to_the_key(repo: Path, tmp_path: Path) -> None:
+    """A FLOOR set in .gatesrc (a shell variable, not exported): the plain run judges none, so a
+    raised one reusing the old measurement would pass a floor nobody measured against. The diff-
+    coverage ALLOWLIST (GOH.DIFFCOV) and the FLOORS FILE (GOH.CRATEFLOOR) decide the verdict, by
+    content. PYTHONPATH is handed on as the gate has it: no argument when it has none."""
+    floors, allow = tmp_path / "floors.json", tmp_path / "allow.json"
+    floors.write_text('{"file_floor": 70}')
+    allow.write_text('{"entries": []}')
+    f, a = f"GOH_COV_FLOORS_JSON={floors}", f"GOH_COV_DIFF_ALLOW={allow}"
+    edit = f"printf '{{\"file_floor\": 71}}' >{floors}; printf '{{\"entries\": [1]}}' >{allow}"
+    plain, f95, again, f99, ff, al, ff2, al2, path, size = _inputs(
+        repo, tmp_path, ":", "GOH_COV_FLOOR_RUST=95", "GOH_COV_FLOOR_RUST=95",
+        "GOH_COV_FLOOR_RUST=99", f, a, f"{f}; {edit}", a, "export PYTHONPATH=/x:/y",
+        "GOH_COV_CACHE=/elsewhere GOH_COV_RUST_JOBS=3",
+    )  # fmt: skip
+    assert "--external true\n" in plain and "--pythonpath" not in plain
+    assert "--external true --pythonpath /x:/y\n" in path
+    assert f95 == again and len({plain, f95, f99, ff, al, ff2, al2, path}) == 8
+    assert size == plain  # where, how big, how wide: no verdict
+    named = [_moved(repo, tmp_path, *pair) for pair in ((f95, f99), (ff, ff2))]
+    assert named == ["GOH_COV_FLOOR_RUST", "the floors file (GOH_COV_FLOORS_JSON)"]
+    (repo / "diffcov_allow.json").write_text("{}")  # the default allowlist, in the repo's own tree
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "allow")
+    assert "\ndiffcov-allow " in _inputs(repo, tmp_path, ":")[0]
 
 
 def test_a_miss_finds_the_record_beside_the_stores_directories(repo: Path) -> None:
-    """The store holds directories too (made/, scope-extra/), and the miss read it with a `grep
-    "$dir"/* | xargs ls -t` pipeline: grep exited 2 on them, rust_gate.sh's pipefail read that as
-    no record, and three goh lands in a row said "no measurement of this workspace is recorded
-    yet" with three records there (GOH.RUSTCOVKEYSCOPE). It names what moved, file by file."""
+    """The store holds directories too (made/, scope-extra/): a `grep "$dir"/*` exited 2 on them,
+    rust_gate.sh's pipefail read that as no record, and three goh lands in a row said "no
+    measurement of this workspace is recorded yet" (GOH.RUSTCOVKEYSCOPE). It names what moved."""
     assert _run(repo, FLOOR="95") == "MEASURED"
     store = repo / ".git" / "goh-proven"
     (store / "made").mkdir(exist_ok=True)
     (store / "made" / "x").write_text("a mark\n")
     _write(repo, "crates/a/src/lib.rs", "pub fn f() -> u64 {\n    4\n}\n")
-    _, out = _run_out(repo, FLOOR="95")
+    ran, out = _run_out(repo, FLOOR="95")
+    assert ran == "MEASURED"
     assert "no measurement of this workspace is recorded yet" not in out
     moved = "was on other inputs: the Rust build inputs (crates/a/src/lib.rs) moved"
     assert moved in _decision(out)
-    _, out = _run_out(repo, FLOOR="99")
-    assert "was on other inputs: GOH_COV_FLOOR_RUST moved" in _decision(out)
 
 
-def test_a_floors_file_edit_re_measures(repo: Path, tmp_path: Path) -> None:
-    """GOH.CRATEFLOOR: crate_floors / file_floors move the verdict, so a reuse that kept a green
-    from before an edit would pass a floor the file no longer states -- keyed by content."""
-    floors = tmp_path / "floors.json"
-    floors.write_text('{"file_floor": 70}')
-    assert _run(repo, GOH_COV_FLOORS_JSON=str(floors)) == "MEASURED"
-    assert _run(repo, GOH_COV_FLOORS_JSON=str(floors)) == "PLAIN"
-    floors.write_text('{"file_floor": 71}')
-    _, out = _run_out(repo, GOH_COV_FLOORS_JSON=str(floors))
-    assert "the floors file (GOH_COV_FLOORS_JSON) moved" in _decision(out), out
-
-
-def _gates_copy(dest: Path) -> Path:
-    """A gates root as a head export is one: the coverage scripts and the identity, at a path."""
-    import gate_identity
-
-    copy_closure(dest, *gate_identity.rust_gate_scripts(REPO_ROOT), "lib/gate_identity.py",
-                 root=REPO_ROOT)  # fmt: skip
+def _gates(dest: Path, **edits: str) -> Path:
+    """A gates root as PYTHONPATH sees one, its coverage scripts three files (`_scope`)."""
+    measure = gate_identity.rust_cov_scripts.RUST_MEASURE
+    for rel in ("lib/gate_identity.py", measure, "gates/_coverage_rust.sh", "gates/lcov_merge.py"):
+        (dest / rel).parent.mkdir(parents=True, exist_ok=True)
+        (dest / rel).write_text(edits.get(Path(rel).stem, f"{rel}\n"))
     return dest
 
 
-def _real_dirs(tmp_path: Path) -> tuple[Path, Path]:
-    """Two directories on PYTHONPATH that are no gates root: there, so keyed by path (an entry
-    that is not there is no input, gate_identity.pythonpath)."""
-    out = (tmp_path / "py", tmp_path / "other")
-    for d in out:
-        d.mkdir(exist_ok=True)
-    return out
+def _scope(root: Path) -> list[str]:
+    return sorted(p.relative_to(root).as_posix() for p in (root / "gates").iterdir())
+
+
+def _key(repo: Path, *entries: Path) -> str:
+    return gate_identity.pythonpath(":".join(map(str, entries)), repo, _scope)
 
 
 def test_a_head_export_on_pythonpath_is_keyed_by_content(repo: Path, tmp_path: Path) -> None:
-    """goh's land puts the tip's head export, ~/.cache/goh/head/<sha>, first on PYTHONPATH, and the
-    key named it by path: every land, lib/ or tests/ only, measured again for 468-476 s
-    (GOH.RUSTCOVKEYSCOPE). Two exports with the same coverage scripts are one input; one whose
-    coverage scripts differ, or another directory on the path, is another."""
-    py, other = _real_dirs(tmp_path)
-    a = _gates_copy(tmp_path / "head" / "a")
-    b = _gates_copy(tmp_path / "head" / "b")
-    assert _run(repo, PYTHONPATH=f"{a}:{py}") == "MEASURED"
-    assert _run(repo, PYTHONPATH=f"{b}:{py}") == "PLAIN"
-    c = _gates_copy(tmp_path / "head" / "c")
-    edited = c / "gates/_coverage_rust.sh"
-    edited.write_text(edited.read_text() + "\n# an edit\n")
-    assert _run(repo, PYTHONPATH=f"{c}:{py}") == "MEASURED"
-    assert _run(repo, PYTHONPATH=f"{c}:{other}") == "MEASURED"
-    _, out = _run_out(repo, PYTHONPATH=f"{b}:{other}")
-    assert "PYTHONPATH (its gates roots by content) moved" in _decision(out)
+    """goh's land puts the tip's head export first on PYTHONPATH, and keyed by path every land
+    measured again for 468-476 s (GOH.RUSTCOVKEYSCOPE). Two exports with the same coverage scripts
+    are one input; other coverage scripts, or another directory on the path, another."""
+    py, other = tmp_path / "py", tmp_path / "other"
+    for d in (py, other):
+        d.mkdir()
+    a, b = (_gates(tmp_path / "head" / n) for n in "ab")
+    c = _gates(tmp_path / "head" / "c", _coverage_rust="an edit\n")
+    assert _key(repo, a, py) == _key(repo, b, py)
+    assert len({_key(repo, *at) for at in ((a, py), (c, py), (c, other), (b, other))}) == 4
+    then, now = (f"pythonpath {_key(repo, r, py)}" for r in (a, c))
+    assert _moved(repo, tmp_path, then, now) == "PYTHONPATH (its gates roots by content)"
+
+
+@pytest.mark.usefixtures("no_tools")
+def test_the_key_reads_pythonpath_by_the_coverage_scripts(repo: Path, monkeypatch) -> None:
+    """`rust` keys it through `pythonpath` in the coverage scripts' scope; none has no line."""
+    asked = []
+    monkeypatch.setattr(gate_identity, "pythonpath", lambda *a: asked.append(a) or "KEYED")
+    assert "pythonpath KEYED" in _identity(repo, path="/x:/y")
+    assert asked == [("/x:/y", repo, gate_identity.rust_gate_scripts)]
+    assert _differ(_identity(repo), _identity(repo, path="/x")) == ["pythonpath"]
 
 
 def test_a_gates_root_behind_another_on_pythonpath_is_shadowed(repo: Path, tmp_path: Path) -> None:
-    """~/.zshrc puts the live checkout on PYTHONPATH behind the land's head export, and it is main
-    BEFORE the land: keyed whole it moved the key once after every coverage-script change. A file
-    the root ahead of it also has is never read from it; only the rest is keyed."""
-    a = _gates_copy(tmp_path / "head" / "a")
-    old = _gates_copy(tmp_path / "live")
-    assert _run(repo, PYTHONPATH=f"{a}:{old}") == "MEASURED"
-    edited = old / "gates/_coverage_rust.sh"
-    edited.write_text(edited.read_text() + "\n# main moved\n")
-    assert _run(repo, PYTHONPATH=f"{a}:{old}") == "PLAIN"
+    """~/.zshrc puts the live checkout, main BEFORE the land, on PYTHONPATH behind the land's head
+    export: a file the root ahead of it also has is never read from it; only the rest is keyed. An
+    earlier export there, pruned under a running suite, is no input either: gone, it was keyed by
+    its path (GOH.VERDICTCARRY's land, 5 red)."""
+    a, old = _gates(tmp_path / "head" / "a"), _gates(tmp_path / "live")
+    before = _key(repo, a, old)
+    _gates(old, _coverage_rust="main moved\n")
+    assert _key(repo, a, old) == before
+    shutil.rmtree(old)
+    assert _key(repo, a, old) == before
+    _gates(old)
     # A coverage-closure file only the root behind has is read from it, so it is keyed.
     (a / "gates/lcov_merge.py").unlink()
-    assert _run(repo, PYTHONPATH=f"{a}:{old}") == "MEASURED"
-
-
-def test_a_pruned_export_behind_the_tip_is_no_new_input(repo: Path, tmp_path: Path) -> None:
-    """A land's PYTHONPATH carries earlier head exports behind the tip's, and lib/head_export.py
-    prunes the oldest whenever another land exports one: shadowed, it was no input; gone, it was
-    keyed by its path, so a running suite saw "PYTHONPATH moved" between two runs of one test
-    (GOH.VERDICTCARRY's land, 5 red) and a real land measured again for nothing."""
-    a = _gates_copy(tmp_path / "head" / "a")
-    old = _gates_copy(tmp_path / "head" / "old")
-    assert _run(repo, PYTHONPATH=f"{a}:{old}") == "MEASURED"
-    shutil.rmtree(old)
-    assert _run(repo, PYTHONPATH=f"{a}:{old}") == "PLAIN"
-
-
-def test_the_callers_pythonpath_is_no_input_of_these_runs(
-    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Each run's PYTHONPATH is the test's own (none, unless it names one): the caller's held the
-    live checkout and a land's head exports, which move under a running suite."""
-    live = _gates_copy(tmp_path / "live")
-    monkeypatch.setenv("PYTHONPATH", str(live))
-    assert _run(repo) == "MEASURED"
-    edited = live / "gates/_coverage_rust.sh"
-    edited.write_text(edited.read_text() + "\n# main moved under the suite\n")
-    assert _run(repo) == "PLAIN"
+    only_behind = _key(repo, a, old)
+    _gates(old, _coverage_rust="main moved\n", lcov_merge="and again\n")
+    assert len({before, only_behind, _key(repo, a, old)}) == 3
 
 
 def test_more_copies_of_one_gates_and_their_docs_are_no_new_input(
     repo: Path, tmp_path: Path
 ) -> None:
-    """GOH.VERDICTFREEINLINE's land (tests, gates/verdict_free_keys.txt, docs, changelog) measured
-    again, 830 s, and named docs/ and changelog/ as what moved in PYTHONPATH: that PYTHONPATH held
-    one more copy of the same gates (`goh:shadowed` once more), and a line that keys no files named
-    the whole tree's diff. A wholly shadowed root and a repeated entry are no input; a gates root's
-    docs/ and changelog/ are not its coverage scripts; a real PYTHONPATH miss names no file."""
-    py, _ = _real_dirs(tmp_path)
-    a = _gates_copy(tmp_path / "head" / "a")
-    b = _gates_copy(tmp_path / "head" / "b")
-    for rel in ("docs/config.md", "changelog/GOH.X.md"):
-        (b / rel).parent.mkdir(parents=True, exist_ok=True)
-        (b / rel).write_text("prose\n")
-    assert _run(repo, PYTHONPATH=f"{a}:{py}") == "MEASURED"
-    _write(repo, "docs/note.md", "prose\n")  # the tree moves, by no input
-    assert _run(repo, PYTHONPATH=f"{b}:{a}:{py}:{b}") == "PLAIN"
-    c = _gates_copy(tmp_path / "head" / "c")
-    edited = c / "gates/_coverage_rust.sh"
-    edited.write_text(edited.read_text() + "\n# an edit\n")
-    _write(repo, "changelog/GOH.Y.md", "prose\n")
-    ran, out = _run_out(repo, PYTHONPATH=f"{c}:{py}")
-    assert ran == "MEASURED", out
-    decision = _decision(out)
-    assert "PYTHONPATH (its gates roots by content) moved" in decision, decision
-    assert "docs/" not in decision and "changelog/" not in decision, decision
+    """GOH.VERDICTFREEINLINE's land measured again, 830 s, for one more copy of the gates on
+    PYTHONPATH, and a line that keys no files named the whole tree's diff. A wholly shadowed root
+    and a repeated entry are no input; docs/ and changelog/ are no coverage scripts (above); a
+    real PYTHONPATH miss names no file."""
+    py = tmp_path / "py"
+    py.mkdir()
+    a, b = (_gates(tmp_path / "head" / n) for n in "ab")
+    assert _key(repo, b, a, py, b) == _key(repo, a, py)
+    then_tree = _tree(repo)
+    _write(repo, "changelog/GOH.Y.md", "prose\n")  # the tree moves, by no input
+    c = _gates(tmp_path / "head" / "c", _coverage_rust="an edit\n")
+    then, now = (f"pythonpath {_key(repo, r, py)}" for r in (a, c))
+    named = _moved(repo, tmp_path, then, now, f"{then_tree} {_tree(repo)}")
+    assert named == "PYTHONPATH (its gates roots by content)"
 
 
-def test_the_runner_is_an_input_and_the_suite_is_not(repo: Path) -> None:
-    """The external command runs the binary THROUGH a runner (goh's ./tools/pytest.sh): what it
-    selects and how it runs moves the number, so it and what it sources are keyed; the suite it
-    runs (tests/) is not, by the owner's rule (GOH.RUSTCOVSKIP)."""
-    ext = {"GOH_COV_RUST_EXTERNAL": 'GOH_TEST_BIN="$X/goh" ./tools/run.sh tests'}
+def _tree(repo: Path) -> str:
+    return _git(repo, "rev-parse", "HEAD^{tree}").strip()
+
+
+@pytest.mark.usefixtures("no_tools")
+def test_the_runner_is_an_input_and_the_suite_is_not(repo: Path, tmp_path: Path) -> None:
+    """The external command runs the binary THROUGH a runner (goh's ./tools/pytest.sh), keyed with
+    what it sources; the suite it runs (tests/) is not, by the owner's rule (GOH.RUSTCOVSKIP)."""
+    ext = 'GOH_TEST_BIN="$X/goh" ./tools/run.sh tests'
     _write(repo, "tools/run.sh", '. "$(dirname "${BASH_SOURCE[0]}")/helper.sh"\n')
     _write(repo, "tools/helper.sh", "K=1\n")
     _write(repo, "tests/test_x.py", "def test_x():\n    pass\n")
-    assert _run(repo, **ext) == "MEASURED"
-    _write(repo, "tests/test_x.py", "def test_x():\n    assert True\n")
-    assert _run(repo, **ext) == "PLAIN"
+    before, tree = _identity(repo, ext), _tree(repo)
+    (repo / "tests/test_x.py").write_text("def test_x():\n    assert True\n")
+    assert _identity(repo, ext) == before
     _write(repo, "tools/helper.sh", "K=2\n")
-    _, out = _run_out(repo, **ext)
-    assert "measuring" in _decision(out)
-    assert "the suite's runner (tools/helper.sh) moved" in _decision(out)
-    assert _run(repo, **ext) == "PLAIN"
+    after = _identity(repo, ext)
+    assert _differ(before, after) == ["runner"]
+    trees = f"{tree} {_tree(repo)}"
+    named = _moved(repo, tmp_path, "\n".join(before), "\n".join(after), trees)
+    assert named == "the suite's runner (tools/helper.sh)"
 
 
 def test_goh_keys_its_runner_and_not_the_scripts_its_suite_exercises() -> None:
     """goh itself (.gatesrc GOH_COV_RUST_EXTERNAL): the runner is tools/pytest.sh and its closure;
-    the lib/ file GOH.PGREPSELF changed, and every test, are in no keyed line; lib/xexit.py, which
-    judges every step, is (GOH.COVKEYGAP)."""
-    import gate_identity
-
+    the lib/ file GOH.PGREPSELF changed, and every test, are in no keyed line; lib/xexit.py is."""
     ext = 'GOH_TEST_BIN="$GOH_COVERAGE_BIN_DIR/goh" ./tools/pytest.sh'
     runner = set(gate_identity.runner_files(REPO_ROOT, ext))
     assert "tools/pytest.sh" in runner and "lib/house_python.sh" in runner

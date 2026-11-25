@@ -4,8 +4,9 @@
 Every release push re-measured what its land had just measured on the same inputs (9 of the last 9
 said "under another GOH_* configuration", 380-980 s each): the land's environment carries its own
 bookkeeping (GOH_PROFILE_PROVEN, a lane's inherited variables) and the release push's does not.
-Both directions, on the real gates/_rust_proven.sh: a variable nothing keyed spells reuses; one a
-coverage script, the crate or the suite's declaration names moves the key, and the miss names it.
+Both directions: a variable nothing keyed spells reuses (on the real gates/_rust_proven.sh); one a
+coverage script, the crate or the suite's declaration names moves the key (`gate_identity.rust`, in
+process, GOH.PYSLOWTESTS), and the miss names it.
 """
 
 from __future__ import annotations
@@ -19,7 +20,16 @@ import gate_identity
 import pytest
 import rust_cov_scripts
 from conftest import REPO_ROOT
-from test_rust_cov_reuse import _decision, _run, _run_out, _write, repo  # noqa: F401  (the fixture)
+from test_rust_cov_reuse import (  # noqa: F401  (the fixtures)
+    _decision,
+    _identity,
+    _moved,
+    _run,
+    _run_out,
+    _write,
+    no_tools,
+    repo,
+)
 
 pytestmark = pytest.mark.skipif(shutil.which("cargo") is None, reason="cargo not installed")
 
@@ -40,29 +50,30 @@ def test_the_land_gates_bookkeeping_does_not_void_the_release_pushs_reuse(declar
     land = {"GOH_PROFILE_PROVEN": "1", "GOH_LAND_PRE_FROM": "/q/pre/1.keep", "GOH_MAX_LINES": "400",
             "GOH_PROVEN": "1", "GOH_PROVEN_TTL_S": "86400"}  # fmt: skip
     assert _run(declared, **land) == "MEASURED"
-    _, out = _run_out(declared)
-    assert "PLAIN" in out, _decision(out)  # the release push: none of them
-    assert _run(declared, GOH_LAND_BRANCH="lane/x") == "PLAIN"
+    _, out = _run_out(declared, GOH_LAND_BRANCH="lane/x")  # the release push: none of the others
+    assert "PLAIN" in out, _decision(out)
 
 
-@pytest.mark.parametrize(
-    ("name", "how"),
-    [
+@pytest.mark.usefixtures("no_tools")
+def test_a_variable_the_measurement_reads_moves_the_key(
+    declared: Path, tmp_path: Path, monkeypatch
+) -> None:
+    _write(declared, "crates/a/src/lib.rs", 'pub fn f() -> u64 {\n    1\n}\n// "GOH_CRATE_KNOB"'
+           ' std::env::vars().filter(|(k, _)| k.starts_with("GOH_CRATE_FAMILY_"))\n')  # fmt: skip
+    for name, how in (
         ("GOH_TAIL", "a coverage script reads it"),
         ("GOH_SUITE_KNOB", "the suite declares it"),
         ("GOH_CRATE_KNOB", "the crate's source names it"),
         ("GOH_CRATE_FAMILY_X", "the crate's source reads its prefix"),
-    ],
-)
-def test_a_variable_the_measurement_reads_moves_the_key(
-    declared: Path, name: str, how: str
-) -> None:
-    _write(declared, "crates/a/src/lib.rs", 'pub fn f() -> u64 {\n    1\n}\n// "GOH_CRATE_KNOB"'
-           ' std::env::vars().filter(|(k, _)| k.starts_with("GOH_CRATE_FAMILY_"))\n')  # fmt: skip
-    assert _run(declared, **{name: "1"}) == "MEASURED"
-    assert _run(declared, **{name: "1"}) == "PLAIN"
-    _, out = _run_out(declared, **{name: "2"})
-    assert f"was on other inputs: {name} moved" in _decision(out), how
+    ):
+        monkeypatch.setenv(name, "1")
+        then = _identity(declared)
+        assert f"goh-env {name}=1" in then, how
+        monkeypatch.setenv(name, "2")
+        now = _identity(declared)
+        assert [ln for ln in now if ln not in then] == [f"goh-env {name}=2"], how
+        if name == "GOH_TAIL":
+            assert _moved(declared, tmp_path, "\n".join(then), "\n".join(now)) == name
 
 
 def test_a_new_read_enters_the_key_from_the_scripts_bytes(
@@ -81,11 +92,21 @@ def test_a_new_read_enters_the_key_from_the_scripts_bytes(
     assert "goh-env GOH_BRAND_NEW_KNOB=1" in gate_identity.rust(declared, root, "true")
 
 
-def test_without_a_suite_declaration_every_goh_variable_is_keyed(repo: Path) -> None:  # noqa: F811
+@pytest.mark.usefixtures("no_tools")
+def test_without_a_suite_declaration_every_goh_variable_is_keyed(
+    repo: Path,  # noqa: F811
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     """A suite that drops nothing can read anything the caller set: the old, whole key."""
-    assert _run(repo, GOH_PROFILE_PROVEN="1") == "MEASURED"
-    _, out = _run_out(repo)
-    assert "was on other inputs: GOH_PROFILE_PROVEN moved" in _decision(out)
+    without = _identity(repo)
+    monkeypatch.setenv("GOH_PROFILE_PROVEN", "1")
+    then = _identity(repo)
+    assert "goh-env GOH_PROFILE_PROVEN=1" in then
+    named = _moved(repo, tmp_path, "\n".join(then), "\n".join(without))
+    assert named == "GOH_PROFILE_PROVEN"
+    _write(repo, "tests/suite_home.py", DECL)  # declared: it is no input
+    assert "goh-env GOH_PROFILE_PROVEN=1" not in _identity(repo)
 
 
 def test_what_is_keyed_elsewhere_or_never_a_verdict_is_left_out() -> None:
