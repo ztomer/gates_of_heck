@@ -1,17 +1,18 @@
 """Which code judges a goh lane's land (GOH.PRESTEPHEAD, docs/decisions/D-0012).
 
 The queue ran the WORKTREE's own tools/land.sh (GOH.PRESTEPSHARE's enqueue printed a deadline its
-change had not landed yet), and land.sh gated with the tip's own gates: a lane that weakened
-land.sh, or a gate, was judged by its own weakened copy and passed itself. Now the queue always
-drives with main's land.sh (tools/landq.py land_script), and a goh land whose diff changes the
-gate code is gated twice: by main tip's gates on the lane's tree (the judge a lane cannot edit),
-then by the tip's own (a gate change still proves itself before main moves).
+change had not landed yet), so a lane that weakened land.sh passed itself: now the queue always
+drives with main's land.sh (tools/landq.py land_script). The gate's STEPS are the lane's own files
+under any gates, so a land runs one gate, the tip's, and main's version of each step the lane
+changed is run after it and reported beside the tip's, never a refusal (GOH.ONEGATE).
 """
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -76,46 +77,67 @@ def _git(repo: Path, *args: str) -> str:
     return r.stdout.strip()
 
 
+STEP = "./gates/zz_land_probe.sh"
+SAME = "./gates/zz_land_same.sh"
 PROBE = (
+    "#!/usr/bin/env bash\n"
+    'echo "{who} $GOH_DIR" >>"$ZZ_RAN"\n'
     '[ ! -e bad.txt ] || {{ echo "probe {who}: bad.txt is in the tree"; exit 1; }}\n'
-    'echo "probe {who} ran"\n'
 )
 
 
-def test_a_lane_that_weakens_a_gate_is_judged_by_mains_gate_too(tmp_path: Path) -> None:
-    """Both directions on one checkout of today's gates: a lane that weakens the gate it would
-    fail is red under main's copy; a lane that edits the gate harmlessly runs BOTH and lands."""
-    main = land_gates(tmp_path)
-    (main / "gates" / "zz_land_probe.sh").write_text(PROBE.format(who="main"))
-    _git(main, "add", "gates/zz_land_probe.sh")
+def test_one_gate_under_the_tips_code_and_mains_code_reports_after_it(tmp_path: Path) -> None:
+    """A lane that weakens the gate it would fail LANDS: the gate runs once, and a step is the tip's
+    file whichever gates run it (D-0012 said main's copy refused it; its old proof ran main's file
+    by path, as no step of goh's list does). Main's version of it is run after the land, red beside
+    the tip's green, and reported; a step the lane did not change runs in the land alone."""
+    main = land_gates(tmp_path, "lib/land_judge_owe.py", "lib/land_judge.py")
+    for name, who in ((STEP, "main"), (SAME, "same")):
+        (main / name).write_text(PROBE.format(who=who) if name == STEP else
+                                 f'echo "{who} $GOH_DIR" >>"$ZZ_RAN"\n')  # fmt: skip
+        (main / name).chmod(0o755)
+    (main / ".gatesrc").write_text(f"GOH_CI_STEPS='{STEP}:bash {SAME}'\n")
+    _git(main, "add", "-A")
     _git(main, "commit", "-q", "--no-verify", "-m", "main's strict probe gate")
-    env = hermetic_env(drop_git=True, GOH_LAND_GATE='bash "$GOH_DIR/gates/zz_land_probe.sh"',
-                       GOH_LAND_PRE="")  # fmt: skip
+    ran, db = tmp_path / "ran", tmp_path / "goh.db"
+    env = hermetic_env(drop_git=True, GOH_LAND_GATE=f"{STEP} && bash {SAME}", GOH_LAND_PRE="",
+                       ZZ_RAN=str(ran), GOH_DB=str(db), GOH_LANDQ_DIR=str(tmp_path / "landq"),
+                       GOH_LOAD_DIR=str(tmp_path / "load"))  # fmt: skip
     for k in ("GOH_LIVE", "GOH_LIVE_ROOT", "PYTEST_CURRENT_TEST", "PYTHONPATH"):
         env.pop(k, None)
+    # A box with room, which the drain asks for before each step (lib/land_judge_room.py).
+    env.update(GOH_CPU_IDLE_READING="90", GOH_LANE_MIN_FREE_GIB="0", GOH_LANE_MAX_WAITING="99",
+               GOH_GATE_SLOT_DIR=str(tmp_path / "slots"))  # fmt: skip
     env.update(GOH_DIR=str(main), GOH_HEAD_CACHE=str(tmp_path / "head-cache"),
                GOH_BIN=str(native_goh_path()),
                GATES_OF_HECK_SUITE_RUNNER=str(os.getpid()))  # fmt: skip
+    wt = tmp_path / "lane"
+    _git(main, "worktree", "add", "-q", "-b", "weakens-the-gate", str(wt))
+    (wt / STEP).write_text('#!/usr/bin/env bash\necho "lane $GOH_DIR" >>"$ZZ_RAN"\n')
+    (wt / "bad.txt").write_text("what main's gate refuses\n")
+    _git(wt, "add", "-A")
+    _git(wt, "commit", "-q", "--no-verify", "-m", "weakens the gate")
+    tip = _git(wt, "rev-parse", "HEAD")
 
-    def lane(name: str, probe: str, bad: bool) -> subprocess.CompletedProcess:
-        wt = tmp_path / name
-        _git(main, "worktree", "add", "-q", "-b", name, str(wt))
-        (wt / "gates" / "zz_land_probe.sh").write_text(probe)
-        if bad:
-            (wt / "bad.txt").write_text("what main's gate refuses\n")
-        _git(wt, "add", "-A")
-        _git(wt, "commit", "-q", "--no-verify", "-m", name)
-        return subprocess.run(["bash", str(wt / "tools" / "land.sh")], cwd=wt, env=env, text=True,
-                              capture_output=True, timeout=patience(300),
-                              stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+    def run(*argv: str) -> str:
+        done = subprocess.run(argv, cwd=wt, env=env, text=True, capture_output=True, check=False,
+                              timeout=patience(300), stdin=subprocess.DEVNULL)  # fmt: skip
+        assert done.returncode == 0, done.stdout + done.stderr
+        return done.stdout + done.stderr
 
-    before = _git(main, "rev-parse", "HEAD")
-    weak = lane("weakens-the-gate", "exit 0\n", bad=True)
-    out = weak.stdout + weak.stderr
-    assert weak.returncode != 0 and "probe main: bad.txt is in the tree" in out, out
-    assert _git(main, "rev-parse", "HEAD") == before
-    good = lane("edits-the-gate", PROBE.format(who="lane"), bad=False)
-    out = good.stdout + good.stderr
-    assert good.returncode == 0, out
-    assert "probe main ran" in out and "probe lane ran" in out, out
-    assert out.index("probe main ran") < out.index("probe lane ran"), out
+    # Main's driver, as the queue runs it: one gate, the lane's own files, under the tip's gates.
+    out = run("bash", str(main / "tools" / "land.sh"))
+    assert _git(main, "rev-parse", "HEAD") == tip and out.count("→ gate: ") == 1, out
+    assert [(w, Path(d).name) for w, d in map(str.split, ran.read_text().splitlines())] == [
+        ("lane", tip), ("same", tip)]  # fmt: skip
+    judge = [sys.executable, str(main / "lib" / "land_judge.py")]
+    got = json.loads(run(*judge, "report", "--json").splitlines()[0])
+    assert (got["lands"], got["waiting"], got["named"]) == (1, 1, []), out
+    run(*judge, "drain", "--main", str(main))
+    got = json.loads(run(*judge, "report", "--json").splitlines()[0])
+    assert (got["done"], got["judged"], got["no_row"]) == (1, 1, 0), got
+    assert got["steps"] == {"would_red": 1, "same": 1}, got
+    (named,) = got["named"]
+    assert (named["tip"], named["step"], named["main_rc"], named["tip_rc"]) == (tip, STEP, 1, 0)
+    assert "bad.txt" in named["reason"], named
+    assert [ln.split()[0] for ln in ran.read_text().splitlines()][2:] == ["main", "main", "lane"]

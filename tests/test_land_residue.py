@@ -5,8 +5,9 @@ Found by GOH.BATCHPREFROM on 2026-11-19, three kinds of residue:
     kept before lib/land_prestep.py `discard` existed); nothing reaped them;
   * `goh-land-timings.*` in $TMPDIR/goh.noindex: tools/land.sh removed its timings file and the
     gate's logs only when the file was EMPTY, so every gate that profiled (all of them) left three;
-  * a land that runs two gates (main's, then its own) handed both the same GOH_TIMINGS, and
-    tools/gate_profile.sh truncated `$out.log` for the second, so the first gate's output was lost.
+  * two gates on one GOH_TIMINGS (a goh land ran main's and then its own until
+    GOH.ONEGATE; a ship's parts still may): tools/gate_profile.sh truncated `$out.log` for the
+    second, so the first gate's output was lost.
 """
 
 from __future__ import annotations
@@ -120,7 +121,7 @@ def test_a_finished_land_leaves_no_files_of_its_own_and_keeps_its_timings(
 
 
 def _profile_twice(tmp_path: Path) -> tuple[Path, list[str]]:
-    """gate_profile.sh twice on one GOH_TIMINGS, as land.sh's two gates run it."""
+    """gate_profile.sh twice on one GOH_TIMINGS, as two gates of one run do."""
     outs = []
     timings = tmp_path / "timings"
     for word, code in (("FIRST", 0), ("SECOND", 1)):

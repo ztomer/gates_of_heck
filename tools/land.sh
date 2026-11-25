@@ -70,6 +70,7 @@ land_exit() {
     ! declare -F land_shadow >/dev/null || land_shadow || true   # before .why goes, red gates too (GOH.CARRYSHADOW)
     rm -f "$verdicts" "$pre_start" "$pre_start.cpu"
     [ -z "$verdicts" ] || rm -f "$verdicts.base" "$verdicts.reused" "$verdicts.why" "$verdicts.sources" "$verdicts.shares"
+    ! declare -F land_judge_owe >/dev/null || land_judge_owe "$rc" || true   # before the step rows go (GOH.ONEGATE)
     [ -z "${GOH_LAND_PRE_ONLY:-}${GOH_LAND_STACK_ONTO:-}" ] || return "$rc"   # the enqueue's pre-step run, a stacking rebase: no land, no ledger row
     goh_span_record land "$(goh_repo_id "${main:-.}")" "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" \
         ${land_timings:+--timings "${GOH_TIMINGS:-$land_timings}"} ${GOH_LAND_TIMINGS_KEEP:+--spool "$GOH_LAND_TIMINGS_KEEP"} --field "wait_lock_s=$lock_wait" \
@@ -347,20 +348,20 @@ fi
 # The pre-step judges that same tip, so the red only the merged tree has is still the pre-step's
 # (GOH.PREPARITY) -- run beside the gate, not before it (GOH.GATEPARALLEL, lib/land_par.sh).
 land_rebase
-# THE GATES THAT JUDGE A GOH LAND (GOH.PRESTEPHEAD, docs/decisions/D-0012). The queue drives every
-# land with main's land.sh (tools/landq.py land_script), but the gate code is the tree's own when the
-# tree IS the gates' repo, so a lane that weakened a gate was judged by its own weakened copy. When
-# this tree shares the driver's root commit and its diff from main changes the gate code (the gate
-# identity's content, lib/gate_identity.py) or .gatesrc, the gate runs twice: under MAIN tip's
-# gates (the judge, its land gate read from main's .gatesrc), then under the tip's own, so a gate
-# change still proves itself before main moves. A diff that changes neither has one gate code: one
-# run, under the tip's. Either way the tip's gates key the verdicts and the goh-landed line
+# ONE GATE, UNDER THE TIP'S CODE (GOH.ONEGATE, docs/decisions/D-0012). The queue drives every land
+# with main's land.sh (tools/landq.py land_script), but the gate's steps are `./gates/...` run in
+# the tip's tree, so the tip's own code judges it whoever runs the gate: the second gate, under main
+# tip's gates, that a gate-changing land ran before its own (GOH.PRESTEPHEAD) judged nothing of them.
+# When this tree shares the driver's root commit, the gate runs once, under the tip's gates, and main's
+# version of each step its diff changed is run after the land, outside its lock, its verdict a
+# row beside the tip's, never a refusal (lib/land_judge.py; land_judge_owe, lib/land_gate.sh). The
+# tip's gates key the verdicts and the goh-landed line
 # (GOH.VERDICTKEYDRIFT: b54b9d62 landed rebased from 380f48d0 with its loaded verdict recorded under
 # 380f48d0's gates, and the ship, reading under b54b9d62's, found none). A consumer's land runs the
 # kit's gates as they are. Pinned by tests/test_land_driver.py and tests/test_land_identity.py.
 goh_root_of() { if [ -s "$1/.goh-root" ]; then cat "$1/.goh-root"; elif [ -e "$1/.git" ]; then git -C "$1" rev-list --max-parents=0 HEAD; fi; }
 land_roots() {
-    tip_root="$GOH" tip_who="the kit" judge_root="" judge_gate=""
+    tip_root="$GOH" tip_who="the kit" judge_base="" judge_root="" judge_code="$GOH" judge_changed=0
     [ "$(git rev-list --max-parents=0 "$tip" 2>/dev/null)" = "$(goh_root_of "$GOH" 2>/dev/null)" ] || return 0
     local k_tip k_main
     if ! { goh_export_rev "$here" "$tip" "$tip" && tip_root="$_goh_export" && goh_export_rev "$here" "$base" "$base" \
@@ -370,15 +371,8 @@ land_roots() {
         exit 1
     fi
     tip_who="${tip:0:8}"
-    if [ "$k_tip" != "$k_main" ] || ! git diff --quiet "$base" "$tip" -- .gatesrc 7>&-; then
-        judge_root="$_goh_export"
-        judge_gate="${GOH_LAND_GATE:-}"
-        if [ -z "${GOH_LAND_GATE:-}" ] && [ -f "$main/.gatesrc" ]; then
-            judge_gate="$(cd "$main" && bash -c 'unset GOH_LAND_GATE; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_GATE-}"')" \
-                || { err "land.sh: cannot read $main/.gatesrc -- nothing landed"; exit 1; }
-        fi
-        info "the lane changes the gate code: main ${base:0:8}'s gates judge ${tip:0:8} first, then its own"
-    fi
+    judge_base="$base" judge_root="$_goh_export"
+    if [ "$k_tip" != "$k_main" ] || ! git diff --quiet "$base" "$tip" -- .gatesrc 7>&-; then judge_changed=1; fi
 }
 land_roots
 # In the gate's environment only, never exported: an exported GOH_ key is gate bookkeeping and must be

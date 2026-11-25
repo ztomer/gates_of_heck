@@ -34,6 +34,8 @@ MAX = "90m"  # a land gate's own bound
 # The tree's own passes of tests measured running no binary are not run again (tests/_same_tree.py):
 # every binary-running, carried or unmeasured test still runs instrumented (GOH.SHIPBREACH0137).
 REUSE = "@tree"
+# A goh suite, in which nothing starts a detached run (the idle lander's, the land judge's).
+IN_SUITE = ("GATES_OF_HECK_SUITE_RUNNER", "GATES_OF_HECK_SUITE_REAL_HOME")
 IDLE = "idle-suite"  # the idle lander's state under the landing queue (lib/idle_suite.py)
 PROFILES = "profiles.json"  # its run's reused and fresh binary tests, beside its worktree
 SHIP_NAME = re.compile(r"^\d{8}T\d{6}Z-[0-9a-f]+\.json$")  # a ship result, not its side files

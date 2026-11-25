@@ -90,7 +90,7 @@ OFF_ENV = "GOH_LANDQ_IDLE_SUITE"  # "off": the lander never runs it
 POLL_S = 5.0  # how often a running suite looks for a pending request
 # A lander started inside a goh suite (its runner's marker, the suite home's): a test's lander
 # never starts the real suite, however its queue was driven (tests/suite_home.py MARKER).
-IN_SUITE = ("GATES_OF_HECK_SUITE_RUNNER", "GATES_OF_HECK_SUITE_REAL_HOME")
+IN_SUITE = full_run.IN_SUITE
 
 
 def main_checkout(live: Path) -> Path | None:

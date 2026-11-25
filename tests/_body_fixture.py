@@ -146,6 +146,10 @@ def memory(upto: int | None = None) -> sqlite3.Connection:
 @functools.cache
 def _made(upto: int | None, seam: db_core.Seam) -> bytes:
     with contextlib.closing(sqlite3.connect(":memory:", isolation_level=None)) as con:
+        # as a test's own file is made (lib/db_settings.py `apply`): a file written from these bytes
+        # writes small pages, so a test's new table is not a 4 KB page more of disk (GOH.ONEGATE)
+        con.execute("PRAGMA page_size=512")
+        con.execute("PRAGMA auto_vacuum=INCREMENTAL")
         con.executescript(db_core.BOOT)
         files = db_schema.migrations(seam).items()
         born = seam.born if upto is None else ()

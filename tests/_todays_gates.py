@@ -82,10 +82,12 @@ def _key(paths: tuple[str, ...]) -> str:
     return hashlib.sha256("\0".join(paths).encode()).hexdigest()[:12]
 
 
-def land_gates(tmp_path: Path) -> Path:
+def land_gates(tmp_path: Path, *more: str) -> Path:
     """What a land of goh by goh reads: 180 files. Such a land exports its checkout once a commit
-    and makes a work tree a lane, ten copies of it (8,600 file events of the whole estate)."""
-    paths = ("tools/land.sh", "tools/load.py", "lib/gate_identity.py", "lib/release_gate.py")
+    and makes a work tree a lane, ten copies of it (8,600 file events of the whole estate). MORE:
+    what else the test runs (lib/land_judge.py)."""
+    paths = ("tools/land.sh", "tools/load.py", "lib/gate_identity.py", "lib/release_gate.py",
+             *more)  # fmt: skip
     return gates_part(tmp_path / "gates_of_heck", *paths)
 
 

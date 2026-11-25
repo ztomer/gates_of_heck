@@ -1,4 +1,4 @@
-# shellcheck shell=bash disable=SC2154,SC2034  # pre, verdicts, base, tip, gate, judge_*, tip_*, pre_*: tools/land.sh's, which sources this
+# shellcheck shell=bash disable=SC2154,SC2034  # pre, verdicts, base, tip, gate, tip_*, pre_*: tools/land.sh's, which sources this
 # lib/land_par.sh -- a land's pre-land tests and its gate AT ONCE (GOH.GATEPARALLEL), sourced by
 # tools/land.sh under the land lock, after the rebase main will fast-forward to.
 #
@@ -30,7 +30,7 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 # shellcheck source=lib/pid_owner.sh
 . "$_goh_d/pid_owner.sh" || exit 2
 
-# land_par -- the pre-land (when the repo declares one) and the gate(s), at once; exits on the first red.
+# land_par -- the pre-land (when the repo declares one) and the gate, at once; exits on the first red.
 land_par() {
     local dir name rc other left=0 i
     local -A stamp=() pid=()
@@ -58,8 +58,7 @@ land_par() {
         left=$((left + 1))
     fi
     ( set +e
-      ( set -e; [ -z "$judge_root" ] || land_gate "$judge_root" "main ${base:0:8}" "$judge_gate"
-        land_gate "$tip_root" "$tip_who" "$gate" ) 9>&-
+      ( set -e; land_gate "$tip_root" "$tip_who" "$gate" ) 9>&-
       echo "gate $?" >&9 ) 7>&- 8<&- </dev/null &
     pid[gate]=$!
     stamp[gate]="$(goh_pid_stamp "$!")" || stamp[gate]=""

@@ -1,4 +1,4 @@
-# shellcheck shell=bash disable=SC2154,SC2034  # verdicts, tip, ship_timings, land_timings, ship_full: land.sh's, set before this is sourced; suite_why: its ledger field
+# shellcheck shell=bash disable=SC2154,SC2034  # verdicts, tip, main, judge_*, ship_timings, land_timings, ship_full: land.sh's, set before this is sourced; suite_why: its ledger field
 # Sourced from zsh: refuse in words and return, never exit the caller (GOH.ZSHSOURCE).
 #
 # `land_gate ROOT WHOSE GATE`, the land's gate run (moved out of `tools/land.sh`,
@@ -100,4 +100,15 @@ land_shadow() {
     done <"$verdicts.why"
     [ -n "$seen" ] || return 0
     shadow_f=$f shadow_ran=$ran shadow_red_out=$red shadow_red=$names
+}
+
+# land_judge_owe RC -- the land's row for main's judge (GOH.ONEGATE, lib/land_judge.py), by the driver's
+# code (main's): a landed tip's, and a red gate's that named a step; any other end judged no tree. It starts
+# the judging in a session of its own, never waited on; what cannot be written is said, not silent.
+land_judge_owe() {
+    [ -n "${judge_base:-}" ] || return 0
+    case "$1" in 0|1) ;; *) return 0 ;; esac
+    (GOH="$judge_code"; GOH_DIR="$GOH" PYTHONPATH="$GOH" "$GOH_PY" "$GOH/lib/land_judge_owe.py" --main "$main" --base "$judge_base" --tip "$tip" \
+        --rc "$1" --changed "$judge_changed" --root "$judge_root" --timings "${GOH_TIMINGS:-$land_timings}" </dev/null 7>&- 8<&-) \
+        || warn "land.sh: main's judge of ${tip:0:8} is unavailable: its row was not written (lib/land_judge_owe.py)"
 }
