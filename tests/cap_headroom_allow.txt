@@ -56,7 +56,6 @@ tests/test_gate_slot.py
 tests/test_landq.py
 tests/test_load_reap.py
 tests/test_proven.py
-tests/test_push_gate_runs.py
 tests/test_required_tools_manifest.py
 tests/test_swift_gate_baseline.py
 tools/load.py
