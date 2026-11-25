@@ -8,7 +8,8 @@ import subprocess
 import sys
 
 import pytest
-from conftest import REPO_ROOT, git, hermetic_env
+from _this_tree import this_tree
+from conftest import git, hermetic_env
 
 
 def _hook_toolchain_env() -> dict[str, str]:
@@ -80,28 +81,11 @@ def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
     copy = tmp_path / "goh-copy"
     # not `main`: this tree's .gatesrc says GOH_LANDED_ONLY=main, and a commit on main in a primary
     # checkout is refused outside land.sh (GOH.LANDONLY, tests/test_landed_only_commit.py)
-    subprocess.run(
-        ["git", "clone", "-q", "--shared", "--no-checkout", str(REPO_ROOT), str(copy)],
-        check=True,
-        stdin=subprocess.DEVNULL,
-    )
+    # As the working tree holds it (a lane's uncommitted edit is judged too): a clone of the run's
+    # one (tests/_this_tree.py), which its own git made of this checkout's HEAD, diff and new files.
+    this_tree(copy)
     git(copy, "checkout", "-q", "-B", "work")
     git(copy, "remote", "remove", "origin")
-    # TRACKED files only, as the working tree holds them (a lane's uncommitted edit is judged too),
-    # laid over the clone by git itself: `add -u` with this checkout as the work tree takes its
-    # edits and deletions, then files only its index holds, then the clone's work tree is written
-    # from that index. A copy by joined path declared a read of every file, VERSION included, and a
-    # release commit then chose this test (tests/test_pre_reuse.py). `copytree(REPO_ROOT)` once
-    # walked target/ (178 MB) and brought untracked files from anything else along too.
-    here = f"--work-tree={REPO_ROOT}"
-    git(copy, here, "add", "-u")
-    gone = set(git(REPO_ROOT, "ls-files", "--deleted").splitlines())
-    new = set(git(REPO_ROOT, "ls-files").splitlines()) - set(git(copy, "ls-files").splitlines())
-    if new - gone:
-        git(copy, here, "add", "--", *sorted(new - gone))
-    git(copy, "checkout-index", "-a", "-f")
-    for rel in git(copy, "diff", "--cached", "--name-only", "--diff-filter=D", "HEAD").splitlines():
-        (copy / rel).unlink(missing_ok=True)  # deleted in the working tree, not yet committed
     present = git(copy, "ls-files").splitlines()
     sample = _self_host_sample(present)
     # The base: the rest of the tree, committed with no hook (hooksPath=/dev/null keeps a global one

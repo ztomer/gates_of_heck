@@ -98,13 +98,13 @@ def _stages(dest: Path) -> list[str]:
 @pytest.mark.load_sensitive
 def test_a_placement_killed_mid_copy_leaves_the_checkout_clean_and_is_reaped(checkout, tmp_path):
     src = tmp_path / "goh-built"
-    src.write_bytes(b"\x7fELF" + b"\0" * (4 << 20))
-    # A cp that writes the first 2 MiB and then hangs: the copy the 21:57 kill interrupted.
+    src.write_bytes(b"\x7fELF" + b"\0" * (64 << 10))
+    # A cp that writes the first half and then hangs: the copy the 21:57 kill interrupted.
     shim = tmp_path / "slow-path"
     shim.mkdir()
     started = tmp_path / "started"
     (shim / "cp").write_text(
-        f'#!/bin/bash\nhead -c 2097152 "$1" > "$2"\n: > "{started}"\nexec sleep 60\n'
+        f'#!/bin/bash\nhead -c 32768 "$1" > "$2"\n: > "{started}"\nexec sleep 60\n'
     )
     (shim / "cp").chmod(0o755)
     dest = checkout / "bin" / "goh"

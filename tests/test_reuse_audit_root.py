@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT
+from source_closure import copy_closure
 from test_reuse_audit import FIELDS, fake_loopctl, store  # noqa: F401  (fixtures)
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -38,12 +39,12 @@ def _fix_repo(tmp_path: Path) -> Path:
 
 
 def _export_copy(tmp_path: Path) -> Path:
-    """What gates/_from_head.py runs: the lib/ of an immutable export, `.goh-head` and no `.git`."""
+    """What gates/_from_head.py runs of an immutable export, `.goh-head` and no `.git`."""
     export = tmp_path / "head" / "abc123"
     export.mkdir(parents=True)
     (export / ".goh-head").write_text("abc123\n")
-    subprocess.run(["cp", "-R", str(REPO_ROOT / "lib"), str(export / "lib")], check=True,
-                   stdin=subprocess.DEVNULL)  # fmt: skip
+    schema = [str(p.relative_to(REPO_ROOT)) for p in (REPO_ROOT / "lib").glob("goh_*schema/*.sql")]
+    copy_closure(export, "lib/reuse_audit.py", extra=("lib/lock_order.tsv", *schema))
     return export
 
 

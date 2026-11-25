@@ -24,8 +24,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from _tool_versions import floor
 import pytest
+from _tool_versions import floor
 from conftest import REPO_ROOT, mk_xcrun_find_shim
 
 GATE = REPO_ROOT / "gates" / "swift_gate.sh"
@@ -430,7 +430,9 @@ def test_real_swiftlint_ratchet_green_then_red(tmp_path):
         )
 
     record_baseline()
-    env = dict(os.environ)
+    (bin_dir := tmp_path / "shims").mkdir()
+    _mk_fake_swift(bin_dir)  # the ratchet is the subject: no build (115 MB), the real swiftlint
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
     env["GOH_SWIFT_COLD"] = "0"
     env["GOH_SWIFT_LINT_BASELINE"] = str(proj / ".swiftlint-baseline.json")
     env.pop("GOH_SWIFT_COV_MIN", None)

@@ -36,10 +36,10 @@ import pytest
 HOUR = 3600
 
 
-def _entry(cache: Path, name: str, used_ago: float, mib: int = 1, pid: int | None = None) -> Path:
+def _entry(cache: Path, name: str, used_ago: float, parts: int = 1, pid: int | None = None) -> Path:
     d = cache / name
     d.mkdir(parents=True)
-    (d / "blob").write_bytes(b"\1" * (mib << 20))
+    (d / "blob").write_bytes(b"\1" * (parts << 16))
     then = time.time() - used_ago
     (d / ".goh-used").write_text("")
     os.utime(d / ".goh-used", (then, then))
@@ -64,7 +64,7 @@ def test_a_burst_of_idle_builds_is_evicted_to_the_budget(tmp_path) -> None:
     _entry(cache, "cur", 0)
     for i in range(10):
         _entry(cache, f"b{i}", (20 + i) * 60)  # 20..29 minutes ago, b0 most recent
-    gone = _head_cache.prune(str(cache), "cur", keep=200, max_bytes=3 << 20, grace=600)
+    gone = _head_cache.prune(str(cache), "cur", keep=200, max_bytes=3 << 16, grace=600)
     left = {p.name for p in cache.iterdir()}
     assert left == {"cur", "b0", "b1"}, (sorted(left), gone)
 
@@ -124,7 +124,7 @@ def test_the_default_grace_is_unchanged_for_the_head_exports(tmp_path) -> None:
 @pytest.mark.load_sensitive
 def test_the_coverage_gate_marks_its_build_as_running_and_prunes_the_idle(tmp_path) -> None:
     cache = tmp_path / "cov-cache"
-    idle = _entry(cache, "0123456789abcdef", 20 * 60, mib=2)  # inside the old hour, not running
+    idle = _entry(cache, "0123456789abcdef", 20 * 60, parts=32)  # inside the old hour, not running
     crate = tmp_path / "proj"
     (crate / "src").mkdir(parents=True)
     (crate / "Cargo.toml").write_text(
