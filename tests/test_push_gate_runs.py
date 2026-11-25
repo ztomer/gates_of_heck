@@ -27,7 +27,10 @@ from conftest import native_goh_path
 from test_push_gate import GATE, PUSH_GATE, REPO_ROOT, _git, _repo
 from timing_bounds import patience
 
-LITTER_GATE = GATE.replace("exit 0\n", 'printf x > "../$(basename "$PWD").out"\nexit 0\n')
+# It writes beside its tree, a `.cargo` too: the kit's own is only in a fallback run.
+LITTER_GATE = GATE.replace(
+    "exit 0\n", 'printf x > "../$(basename "$PWD").out"\nmkdir -p ../.cargo\nexit 0\n'
+)
 
 
 def _push(
@@ -87,57 +90,36 @@ def _abandoned_run(repo: Path, export_root: Path, name: str, owner: str) -> Path
     return run
 
 
-def test_what_a_gate_writes_beside_its_tree_is_removed_and_named(tmp_path):
-    repo = _repo(tmp_path)
-    (repo / "tools" / "gate.sh").write_text(LITTER_GATE)
-    _git(repo, "commit", "-qam", "a gate that writes beside its tree")
-    export_root = tmp_path / "exports"
-    got = _push(repo, tmp_path, export_root)
-    assert got.returncode == 0, got.stdout + got.stderr
-    assert _run_litter(export_root) == [], f"the run left: {list(export_root.rglob('*'))}"
-    assert "outside its tree" in got.stdout + got.stderr and "repo.out" in got.stdout + got.stderr
-
-
-def test_a_red_run_leaves_no_run_directory(tmp_path):
-    repo = _repo(tmp_path)
-    (repo / "fail.flag").write_text("")
-    _git(repo, "add", "fail.flag")
-    _git(repo, "commit", "-q", "-m", "red")
-    export_root = tmp_path / "exports"
-    got = _push(repo, tmp_path, export_root)
-    assert got.returncode == 1, got.stdout + got.stderr
-    assert _run_litter(export_root) == [], list(export_root.rglob("*"))
+def _cwds(tmp_path: Path) -> list[str]:
+    report = (tmp_path / "report.txt").read_text()
+    return [line.split("=", 1)[1] for line in report.splitlines() if line.startswith("cwd=")]
 
 
 @pytest.mark.load_sensitive
-def test_a_run_whose_owner_is_dead_is_reaped_by_the_next(tmp_path):
+def test_the_next_run_reaps_what_is_dead_and_leaves_what_is_live(tmp_path):
+    """One push over an export root holding each thing a past run leaves: a killed run (owner dead),
+    a run whose pid came back as someone else (a pid alone is a rumour: the start time is what makes
+    the stamp an identity), a LIVE run (two pushes at once must not delete each other's tree), the
+    marker of a checkout that is gone (one per checkout ever pushed would grow forever), and one of
+    a checkout that is here."""
     repo = _repo(tmp_path)
     export_root = tmp_path / "exports"
     dead = _abandoned_run(repo, export_root, "KILLED", _stamp(_dead_pid()))
+    reused = _abandoned_run(
+        repo, export_root, "REUSED", f"{os.getpid()} Thu Jan  1 00:00:00 1970\n"
+    )
+    live = _abandoned_run(repo, export_root, "LIVE", _stamp(os.getpid()))
+    (export_root / "gone-000000000000.source").write_text(f"{tmp_path / 'deleted-worktree'}\n")
+    (export_root / "kept-111111111111.source").write_text(f"{repo}\n")
     got = _push(repo, tmp_path, export_root)
     assert got.returncode == 0, got.stdout + got.stderr
     assert not dead.exists(), "a killed run's directory survived the next run"
-    assert _git(repo, "worktree", "list").count("\n") == 0, _git(repo, "worktree", "list")
-
-
-def test_a_reused_pid_is_not_mistaken_for_the_owner(tmp_path):
-    """A pid alone is a rumour: the owner died and the number came back as someone else. The start
-    time is what makes the stamp an identity."""
-    repo = _repo(tmp_path)
-    export_root = tmp_path / "exports"
-    dead = _abandoned_run(repo, export_root, "REUSED", f"{os.getpid()} Thu Jan  1 00:00:00 1970\n")
-    assert _push(repo, tmp_path, export_root).returncode == 0
-    assert not dead.exists()
-
-
-def test_a_live_run_is_never_reaped(tmp_path):
-    """The other direction: two pushes at once must not delete each other's tree."""
-    repo = _repo(tmp_path)
-    export_root = tmp_path / "exports"
-    live = _abandoned_run(repo, export_root, "LIVE", _stamp(os.getpid()))
-    got = _push(repo, tmp_path, export_root)
-    assert got.returncode == 0, got.stdout + got.stderr
+    assert not reused.exists(), "a reused pid was taken for the owner"
     assert (live / "repo").is_dir(), "a live run's tree was deleted under it"
+    trees = _git(repo, "worktree", "list")
+    assert trees.count("\n") == 1 and str(live) in trees, trees  # the checkout's and the live run's
+    names = {p.name for p in export_root.iterdir()}
+    assert "gone-000000000000.source" not in names and "kept-111111111111.source" in names, names
 
 
 # ── a STABLE export path per repo ─────────────────────────────────────────────────────────────
@@ -146,31 +128,18 @@ def test_a_live_run_is_never_reaped(tmp_path):
 # it behind. Measured 2026-10-05: 24 such dirs, 30 GB, in three days.
 
 
-def _cwds(tmp_path: Path) -> list[str]:
-    report = (tmp_path / "report.txt").read_text()
-    return [line.split("=", 1)[1] for line in report.splitlines() if line.startswith("cwd=")]
-
-
-def test_the_same_repo_exports_to_the_same_path_every_time(tmp_path):
-    repo = _repo(tmp_path)
-    export_root = tmp_path / "exports"
-    for _ in range(2):
-        got = _push(repo, tmp_path, export_root)
-        assert got.returncode == 0, got.stdout + got.stderr
-    first, second = _cwds(tmp_path)
-    assert first == second, f"two pushes of one repo exported to two paths: {first} vs {second}"
-
-
-def test_the_stable_export_names_the_checkout_it_serves(tmp_path):
+def test_the_same_repo_exports_to_one_path_its_marker_names_and_litter_is_removed(tmp_path):
     """The export is deleted after every push and recreated at the same path for the next, so the
     build dir keyed on that path is warm on purpose. A build-dir reclaimer that evicts a workspace
     whose sources are gone (scripts' cargo-orphan-build-dirs) cannot tell this export from a dead
     worktree by its path, and evicted it: a cold push every time (2026-10-17). `<run dir>.source`
-    names the checkout; while it exists, so does the workspace, between pushes."""
+    names the checkout; while it exists, so does the workspace, between pushes. The second push's
+    gate writes beside its tree: removed, and named."""
     repo = _repo(tmp_path)
     export_root = tmp_path / "exports"
     got = _push(repo, tmp_path, export_root)
     assert got.returncode == 0, got.stdout + got.stderr
+    assert "outside its tree" not in got.stdout + got.stderr, got.stdout + got.stderr
     run_dir = Path(_cwds(tmp_path)[0]).parent
     assert not run_dir.exists(), "the export outlived its push"
     marker = Path(f"{run_dir}.source")
@@ -178,20 +147,16 @@ def test_the_stable_export_names_the_checkout_it_serves(tmp_path):
         f"no {marker.name} beside the export root: {sorted(export_root.iterdir())}"
     )
     assert Path(marker.read_text().strip()).resolve() == repo.resolve()
-
-
-def test_a_marker_whose_checkout_is_gone_is_pruned(tmp_path):
-    """One marker per checkout ever pushed would grow forever; the next push prunes those whose
-    checkout no longer exists, and keeps the rest."""
-    repo = _repo(tmp_path)
-    export_root = tmp_path / "exports"
-    export_root.mkdir()
-    (export_root / "gone-000000000000.source").write_text(f"{tmp_path / 'deleted-worktree'}\n")
-    (export_root / "kept-111111111111.source").write_text(f"{repo}\n")
+    (repo / "tools" / "gate.sh").write_text(LITTER_GATE)
+    _git(repo, "commit", "-qam", "a gate that writes beside its tree")
     got = _push(repo, tmp_path, export_root)
-    assert got.returncode == 0, got.stdout + got.stderr
-    names = {p.name for p in export_root.iterdir()}
-    assert "gone-000000000000.source" not in names and "kept-111111111111.source" in names, names
+    said = got.stdout + got.stderr
+    assert got.returncode == 0, said
+    first, second = _cwds(tmp_path)
+    assert first == second, f"two pushes of one repo exported to two paths: {first} vs {second}"
+    assert _run_litter(export_root) == [], f"the run left: {list(export_root.rglob('*'))}"
+    (named,) = [line for line in said.splitlines() if "outside its tree" in line]
+    assert "repo.out" in named and ".cargo" in named, named
 
 
 # What the gate's cargo would ACTUALLY use, asked of cargo: the property is cargo's config
@@ -204,74 +169,63 @@ BUILD_DIR_GATE = GATE.replace(
 )
 
 
-def _cargo_repo(tmp_path: Path, own_build_dir: str | None = None) -> Path:
+def _cargo_repo(tmp_path: Path) -> Path:
     repo = _repo(tmp_path)
     (repo / "tools" / "gate.sh").write_text(BUILD_DIR_GATE)
     (repo / "Cargo.toml").write_text('[package]\nname = "x"\nversion = "1.0.0"\nedition = "2021"\n')
     (repo / "src").mkdir()
     (repo / "src" / "lib.rs").write_text("")
-    if own_build_dir is not None:
-        (repo / ".cargo").mkdir()
-        (repo / ".cargo" / "config.toml").write_text(f'[build]\nbuild-dir = "{own_build_dir}"\n')
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "a cargo package whose gate reports its build dir")
     return repo
 
 
-def _push_while_held(repo: Path, tmp_path: Path) -> tuple[Path, Path, str]:
-    """Push once to claim the stable path, hold it with a LIVE run, push again: the second push
-    takes the fallback. Returns (stable run dir, fallback run dir, the fallback's build dir)."""
-    export_root = tmp_path / "exports"
-    first = _push(repo, tmp_path, export_root)
-    assert first.returncode == 0, first.stdout + first.stderr
-    stable = Path(_cwds(tmp_path)[0]).parent
-    _abandoned_run(repo, export_root, stable.name, _stamp(os.getpid()))
-    got = _push(repo, tmp_path, export_root)
-    assert got.returncode == 0, got.stdout + got.stderr
-    fallback = Path(_cwds(tmp_path)[-1]).parent
-    build = (tmp_path / "report.txt").read_text().splitlines()[-1].split("=", 1)[1]
-    return stable, fallback, build
+def _built(tmp_path: Path) -> str:
+    """The build dir the last push's gate ran with."""
+    return (tmp_path / "report.txt").read_text().splitlines()[-1].split("=", 1)[1]
 
 
 def test_a_concurrent_push_of_the_same_repo_takes_a_private_path_and_build_dir(tmp_path):
-    stable, fallback, build = _push_while_held(_cargo_repo(tmp_path), tmp_path)
-    assert fallback != stable, "a live run's export path was taken"
-    assert build.startswith(str(fallback)), f"the fallback build-dir outlives its run: {build}"
+    """Three pushes: one claims the stable path, two run while a LIVE run holds it.
 
+    The stable one names its build dirs as cargo does. Between pushes the export does not exist, and
+    cargo cannot say which build dir a missing path keys -- it canonicalises the manifest. So a
+    reclaimer could not tell the export's warm build dir from an orphan, and its ceiling evicted
+    every one an hour after its push (2026-10-17). The gate asks cargo while the export exists and
+    records it in the marker.
 
-def test_the_fallback_runs_own_cargo_config_is_not_named_as_litter(tmp_path):
-    """ztools' release, 2026-11-08: 'the gate wrote outside its tree (removed): .cargo'. The gate
-    wrote nothing -- the KIT writes `<run dir>/.cargo/config.toml` in the private fallback, and the
-    litter report knew `.cargo-build` and the owner stamp but not that file, so it blamed the
-    consumer for the kit's own entry. What the kit writes it records (`.kit-wrote`), and the report
-    skips exactly the recorded names: a gate's own `.cargo` beside its tree is still named."""
-    repo = _cargo_repo(tmp_path)
-    export_root = tmp_path / "exports"
+    The fallback's own cargo config is not named as litter (ztools' release, 2026-11-08: 'the gate
+    wrote outside its tree (removed): .cargo'). The gate wrote nothing -- the KIT writes `<run
+    dir>/.cargo/config.toml` in the private fallback, records it (`.kit-wrote`), and the report
+    skips exactly the recorded names.
+
+    And it redirects only the build-dir the USER's ~/.cargo/config.toml keys by workspace path: a
+    repo that names its own in .cargo/config.toml keeps it (an exported CARGO_BUILD_BUILD_DIR
+    outranks every config file, so it silently replaced the repo's choice)."""
+    repo, export_root = _cargo_repo(tmp_path), tmp_path / "exports"
     first = _push(repo, tmp_path, export_root)
     assert first.returncode == 0, first.stdout + first.stderr
-    stable = Path(_cwds(tmp_path)[0]).parent
+    stable, used = Path(_cwds(tmp_path)[0]).parent, _built(tmp_path)
+    lines = Path(f"{stable}.source").read_text().splitlines()
+    assert f"build-dir {used}" in lines[1:], (used, lines)
+
     _abandoned_run(repo, export_root, stable.name, _stamp(os.getpid()))
     got = _push(repo, tmp_path, export_root)
     assert got.returncode == 0, got.stdout + got.stderr
+    fallback, build = Path(_cwds(tmp_path)[-1]).parent, _built(tmp_path)
+    assert fallback != stable, "a live run's export path was taken"
+    assert build.startswith(str(fallback)), f"the fallback build-dir outlives its run: {build}"
     assert "outside its tree" not in got.stdout + got.stderr, got.stdout + got.stderr
 
-
-def test_a_cargo_dir_the_gate_itself_writes_beside_its_tree_is_still_named(tmp_path):
-    gate = BUILD_DIR_GATE.replace("exit 0\n", "mkdir -p ../.cargo\nexit 0\n")
-    repo = _cargo_repo(tmp_path)
-    (repo / "tools" / "gate.sh").write_text(gate)
-    _git(repo, "commit", "-qam", "a gate that writes a .cargo beside its tree")
-    got = _push(repo, tmp_path, tmp_path / "exports")
-    assert got.returncode == 0, got.stdout + got.stderr
-    assert "outside its tree" in got.stdout + got.stderr and ".cargo" in got.stdout + got.stderr
-
-
-def test_the_fallback_build_dir_never_overrides_the_repos_own(tmp_path):
-    """The fallback redirects only the build-dir the USER's ~/.cargo/config.toml keys by workspace
-    path. A repo that names its own in .cargo/config.toml keeps it: an exported
-    CARGO_BUILD_BUILD_DIR outranks every config file, so it silently replaced the repo's choice."""
     own = str(tmp_path / "the-repos-own-build-dir")
-    _, _, build = _push_while_held(_cargo_repo(tmp_path, own_build_dir=own), tmp_path)
+    (repo / ".cargo").mkdir()
+    (repo / ".cargo" / "config.toml").write_text(f'[build]\nbuild-dir = "{own}"\n')
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "its own build dir")
+    got = _push(repo, tmp_path, export_root)
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert Path(_cwds(tmp_path)[-1]).parent != stable, "a live run's export path was taken"
+    build = _built(tmp_path)
     assert build == own, f"the fallback run overrode the repo's own build-dir: {build}"
 
 
@@ -301,27 +255,14 @@ def test_a_red_run_the_machine_slept_through_names_the_sleep(tmp_path):
     assert "SLEPT during this run" in got.stderr
 
 
-def test_a_red_run_with_no_sleep_says_nothing_of_one(tmp_path):
+def test_a_red_run_with_no_sleep_says_nothing_of_one_and_leaves_no_run_directory(tmp_path):
     got = _red_push(
         tmp_path, GATE.replace("[ -f fail.flag ] && exit 1\n", "exit 1\n"), tmp_path / "s"
     )
     assert got.returncode == 1, got.stdout + got.stderr
     assert "SLEPT" not in got.stdout + got.stderr
-
-
-def test_the_stable_export_names_its_build_dirs_as_cargo_does(tmp_path):
-    """Between pushes the export does not exist, and cargo cannot say which build dir a missing
-    path keys -- it canonicalises the manifest. So a reclaimer could not tell the export's warm
-    build dir from an orphan, and its ceiling evicted every one an hour after its push
-    (2026-10-17). The gate asks cargo while the export exists and records it in the marker."""
-    repo = _cargo_repo(tmp_path)
     export_root = tmp_path / "exports"
-    got = _push(repo, tmp_path, export_root)
-    assert got.returncode == 0, got.stdout + got.stderr
-    used = (tmp_path / "report.txt").read_text().splitlines()[-1].split("=", 1)[1]
-    run_dir = Path(_cwds(tmp_path)[0]).parent
-    lines = Path(f"{run_dir}.source").read_text().splitlines()
-    assert f"build-dir {used}" in lines[1:], (used, lines)
+    assert _run_litter(export_root) == [], list(export_root.rglob("*"))
 
 
 # ── the gates_of_heck sibling ─────────────────────────────────────────────────────────────────
@@ -362,30 +303,19 @@ def _report(tmp_path: Path) -> dict[str, str]:
 
 
 def test_a_consumer_that_declares_the_goh_sibling_gets_it_in_the_export(tmp_path):
-    repo, gates = _sibling_repo(tmp_path, TUI_DEP), _gates(tmp_path)
+    """Its own link is not litter. The exemption is for that link only: any other thing a gate
+    writes beside its tree is still named, so the workaround stays visible if a consumer keeps it
+    for another name."""
+    gate = SIBLING_GATE.replace("exit 0\n", 'ln -s /tmp "../other_sibling"\nexit 0\n')
+    repo, gates = _sibling_repo(tmp_path, TUI_DEP, gate), _gates(tmp_path)
     got = _push(repo, tmp_path, tmp_path / "exports", gates)
     assert got.returncode == 0, got.stdout + got.stderr
     seen = _report(tmp_path)
     assert seen["sibling"] == _git(gates, "rev-parse", "HEAD") and seen["tui"] == "found", seen
-    assert "outside its tree" not in got.stdout + got.stderr, got.stdout + got.stderr
+    (named,) = [x for x in (got.stdout + got.stderr).splitlines() if "outside its tree" in x]
+    assert "outside its tree (removed): other_sibling" in named, named
+    assert "gates_of_heck" not in named.split("(removed):")[1], named
     assert _run_litter(tmp_path / "exports") == []
-
-
-def test_a_consumer_that_does_not_declare_it_gets_no_sibling(tmp_path):
-    repo = _sibling_repo(tmp_path, '[dependencies]\nserde = "1"\n')
-    got = _push(repo, tmp_path, tmp_path / "exports")
-    assert got.returncode == 0, got.stdout + got.stderr
-    assert _report(tmp_path)["sibling"] == "NONE", _report(tmp_path)
-
-
-def test_a_sibling_the_gate_makes_itself_is_still_named_as_litter(tmp_path):
-    """The exemption is for the run's own link only: any other thing a gate writes beside its tree
-    is still named, so the workaround stays visible if a consumer keeps it for another name."""
-    gate = GATE.replace("exit 0\n", 'ln -s /tmp "../other_sibling"\nexit 0\n')
-    repo = _sibling_repo(tmp_path, TUI_DEP, gate)
-    got = _push(repo, tmp_path, tmp_path / "exports", _gates(tmp_path))
-    assert got.returncode == 0, got.stdout + got.stderr
-    assert "outside its tree (removed): other_sibling" in got.stdout + got.stderr
 
 
 # ── a sibling is gated at a named commit, never its live working tree (GOH.PUSHSIBLINGS) ──────
@@ -469,8 +399,20 @@ def test_a_sibling_checkout_a_nested_package_swift_names_is_in_the_export(tmp_pa
     assert _run_litter(tmp_path / "exports") == []
 
 
-def test_a_named_sibling_that_is_not_checked_out_gets_no_link(tmp_path):
+def test_a_sibling_not_declared_or_not_checked_out_gets_no_link(tmp_path):
+    """A manifest naming a Kit that is not here, and one that does not name gates_of_heck."""
     repo = _swift_sibling_repo(tmp_path)
+    (repo / "Cargo.toml").write_text(
+        '[package]\nname = "c"\nversion = "0.1.0"\n[dependencies]\nserde = "1"\n'
+    )
+    both = KIT_GATE.replace(
+        "exit 0\n",
+        'printf "goh=%s\\n" "$([ -e ../gates_of_heck ] && echo LINK)" >> "$out"\nexit 0\n',
+    )
+    (repo / "tools" / "gate.sh").write_text(both)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "neither sibling")
     got = _push(repo, tmp_path, tmp_path / "exports")
     assert got.returncode == 0, got.stdout + got.stderr
     assert _report(tmp_path)["sibling"] == "NONE", _report(tmp_path)
+    assert _report(tmp_path)["goh"] == "", _report(tmp_path)
