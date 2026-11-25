@@ -94,6 +94,6 @@ def test_check_rules_runs_no_judge_and_a_blind_job_is_never_called_green(
     monkeypatch.setattr(commit_stamp, "check", lambda *a, **k: [])
     monkeypatch.setattr(fragment_check, "missing", lambda *a, **k: [])
     assert land_check.cli(str(repo), repo / "q", rules=True) == 1
-    assert seen == {"q": None, "tables": False, "rules": True}, seen
+    assert seen == {"q": None, "tables": False, "rules": True, "door": "rules"}, seen
     said = "".join(capsys.readouterr())
     assert "every guard green" not in said and "by guard tests 1/8 (no verdict" in said, said

@@ -184,6 +184,11 @@ register(
     sites=("lib/affected_verdict.py",), shadow="inline",
 )  # fmt: skip
 register(
+    "check", ("repo", "tree", "base", "identity", "env"), 2 * 3600, "`goh land --check`'s green "
+    "steps and guard tests, taken by the enqueue's own check (lib/check_verdict.py)",
+    sites=("lib/check_verdict.py",), shadow="inline",
+)  # fmt: skip
+register(
     "step", ("repo", "tree", "step", "closure", "identity", "env"), DAY_S,
     "a proven gate step: skipped when its inputs and the goh files that can decide it (its "
     "closure, lib/step_closure.py, GOH.PROVENCLOSURE) are unchanged",

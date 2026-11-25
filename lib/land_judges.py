@@ -16,7 +16,6 @@ quiet deadline (land_check.STEP_TIMEOUT, 300 s) holds five times a shard's measu
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 from lib import fast_tests, land_reds
@@ -25,6 +24,10 @@ UNMEASURED_S = 1.0  # the cost of a test the suite has not measured yet
 JUDGE_EACH_S = 120.0  # the most one judge may cost, by measurement
 JUDGE_BUDGET_S = 480.0  # the most the judges may cost in all: 8 shards x 60 s
 SELECT_TIMEOUT = 120
+
+
+class Unchosen(RuntimeError):
+    """The selector answered nothing: what the change can break is unknown, never nothing."""
 
 
 def costs() -> dict[str, float]:
@@ -38,22 +41,20 @@ def costs() -> dict[str, float]:
 def chosen_by_diff(root: Path, judges: bool = False) -> list[str]:
     """What the enqueue's pre-step would choose for ROOT's diff against main: the tree's own
     tools/affected_tests.py in its enqueue mode (JUDGES: its first run alone, the whole-tree
-    judges); [] for a tree without one, or when it fails."""
+    judges); [] for a tree without one, `Unchosen` when it fails (GOH.CHECKVERDICT)."""
     tool = root / "tools" / "affected_tests.py"
     if not tool.is_file():
         return []
-    from lib import land_check  # its checkout env; land_check imports this module first
+    from lib import check_jobs, land_check  # its checkout env; land_check imports this module first
 
     env = {**land_check._env(root), "GOH_LAND_PRE_ONLY": "1"}
     argv = [env["GOH_PY"], str(tool), "--root", str(root), "--base", "main"]
     argv += ["--only", "judges"] if judges else []
-    try:
-        res = subprocess.run(argv, cwd=root, env=env, capture_output=True, text=True, check=False,
-                             stdin=subprocess.DEVNULL, timeout=SELECT_TIMEOUT)  # fmt: skip
-    except (OSError, subprocess.TimeoutExpired):
-        return []
-    lines = res.stdout.splitlines() if res.returncode == 0 else []
-    return [ln.strip() for ln in lines if ln.startswith("tests/")]
+    rc, out, took = check_jobs.run(argv, root, env, SELECT_TIMEOUT, SELECT_TIMEOUT, split=True)
+    if rc:
+        last = next((ln for ln in reversed(out.splitlines()) if ln.strip()), "it said nothing")
+        raise Unchosen(f"{took} s, exit {rc}: {last.strip()[:200]}")
+    return [ln.strip() for ln in out.splitlines() if ln.startswith("tests/")]
 
 
 def judge_tests(root: Path) -> list[str]:

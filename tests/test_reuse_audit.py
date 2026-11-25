@@ -319,10 +319,12 @@ def test_every_registered_site_exists_and_every_sampled_one_asks_the_audit():
     # slice 1, GOH.VERDICTCARRY's `carry`, GOH.REUSEAUDIT2's, GOH.COVCARRY2's `profcarry`,
     # GOH.ONEVERDICTTREE3's `affected`, GOH.COVPROFILEREUSE's `profreuse` (GOH.ONEVERDICTTREE4's
     # `fullrun` went with the skip it
-    # sampled, GOH.COVOFFLAND), GOH.SHIPSLOW01410's `relset`; the rest say why (`unsampled`)
+    # sampled, GOH.COVOFFLAND), GOH.SHIPSLOW01410's `relset`,
+    # GOH.CHECKVERDICT's `check`; the rest say why (`unsampled`)
     want = [
         "affected",
         "carry",
+        "check",
         "estate",
         "landed",
         "profcarry",

@@ -115,22 +115,31 @@ def _gate_env() -> dict[str, str]:
 def gate(top: str | Path, sha: str, argv: list[str]) -> tuple[int, str]:
     """ARGV run as SHA's pre-commit would: in a detached worktree at its parent, its change
     staged. (exit code, the output's tail)."""
-    wt = Path(tempfile.mkdtemp(prefix="goh-commit-gate-", dir=tmp_root.goh_tmp())) / "wt"
-    env = _gate_env()
-    try:
-        made = _git(top, "worktree", "add", "-q", "--detach", str(wt), f"{sha}^", env=env)
-        if made.returncode != 0:
-            return 2, f"no worktree at {sha[:10]}^: {made.stderr.strip()[:300]}"
-        picked = _git(wt, "cherry-pick", "--no-commit", sha, env=env)
-        if picked.returncode != 0:
-            return 2, f"its change does not apply to its parent: {picked.stderr.strip()[:300]}"
-        ran = subprocess.run(argv, cwd=wt, capture_output=True, text=True, check=False,
-                             stdin=subprocess.DEVNULL, env=env)  # fmt: skip
-        tail = "\n".join((ran.stdout + ran.stderr).strip().splitlines()[-15:])
-        return ran.returncode, tail
-    finally:
-        _git(top, "worktree", "remove", "--force", str(wt), env=env)
-        shutil.rmtree(wt.parent, ignore_errors=True)
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from lib import check_jobs  # the gate and its worktree die with the check (GOH.CHECKVERDICT)
+
+    tmp = Path(tempfile.mkdtemp(prefix="goh-commit-gate-", dir=tmp_root.goh_tmp()))
+    wt, env = tmp / "wt", _gate_env()
+    with check_jobs.worktree(top, wt, tmp):
+        try:
+            return _gate_in(wt, top, sha, argv, env, check_jobs)
+        finally:
+            _git(top, "worktree", "remove", "--force", str(wt), env=env)
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _gate_in(wt: Path, top: str | Path, sha: str, argv: list[str], env: dict[str, str],
+             jobs) -> tuple[int, str]:  # fmt: skip
+    """`gate`'s run in WT, under the caller's cleanup."""
+    made = _git(top, "worktree", "add", "-q", "--detach", str(wt), f"{sha}^", env=env)
+    if made.returncode != 0:
+        return 2, f"no worktree at {sha[:10]}^: {made.stderr.strip()[:300]}"
+    picked = _git(wt, "cherry-pick", "--no-commit", sha, env=env)
+    if picked.returncode != 0:
+        return 2, f"its change does not apply to its parent: {picked.stderr.strip()[:300]}"
+    code, said, _ = jobs.run(argv, wt, env, jobs.STRETCH_CAP_S)
+    return code, "\n".join(said.strip().splitlines()[-15:])
 
 
 def check(

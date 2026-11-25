@@ -43,6 +43,9 @@ it.
 `--guards` counts the red lands by the guard that refused them (`guard` on each done record,
 lib/land_check.py, GOH.LANDCHECK): which structural guard keeps costing lands.
 
+`--checks` reports every `goh land --check` (and the enqueue's own) run: how many, seconds, and how
+they ended, the stopped ones too (lib/check_jobs.py, GOH.CHECKVERDICT).
+
 Pinned by tests/test_land_profile.py.
 
 `goh land-profile [--since ISO. Invoked by COMMIT] [--last N] [--normal-since ISO] [--min-s S]
@@ -333,6 +336,7 @@ def main(argv: list[str]) -> int:
     )
     ap.add_argument("--json", action="store_true", help="the same tables as JSON")
     ap.add_argument("--guards", action="store_true", help="red lands counted by refusing guard")
+    ap.add_argument("--checks", action="store_true", help="goh land --check runs: s, outcomes")
     ap.add_argument("--landq", help="the landing queue dir (default $GOH_LANDQ_DIR)")
     a = ap.parse_args(argv)
     q = Path(a.landq or state_paths.landq_dir())
@@ -342,6 +346,12 @@ def main(argv: list[str]) -> int:
         tally = land_check.count(q)
         print(json.dumps(tally, indent=2) if a.json else "\n".join(
             f"{n:5d}  {g}" for g, n in tally.items()) or "no red land names its guard")  # fmt: skip
+        return 0
+    if a.checks:
+        import check_jobs
+
+        rows = [r for r in timing_ledger.read() if str(r["kind"]).startswith(check_jobs.KIND)]
+        print("\n".join(check_jobs.report(rows)) or "no land check is recorded")
         return 0
     gates = timing_ledger.read(kinds=("land",))
     rows = lands(q, gates)

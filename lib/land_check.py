@@ -43,11 +43,11 @@ done record, and `goh land-profile --guards` counts refusals by guard. The enque
 
 from __future__ import annotations
 
+import functools
 import os
 import re
 import subprocess
 import sys
-import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -55,6 +55,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT)]
 from lib import (  # noqa: E402
+    check_jobs,
+    check_verdict,
     cov_risk,
     fast_tests,
     land_judges,
@@ -85,7 +87,8 @@ STEP_TIMEOUT = 300
 # job's deadline stretches by the clamp measured on this thread (lib/proc_deadline.py `stretch`),
 # at most STRETCH_CAP_S, and a job past it REFUSES, by its name, here and at enqueue.
 NO_VERDICT = {"steps": {124}, "guard tests": {3, 4, 5, 124}}
-STRETCH_CAP_S = 1500  # the check's longest bound already (DIFFCOV_TIMEOUT)
+STRETCH_CAP_S = check_jobs.STRETCH_CAP_S  # the check's longest bound already (DIFFCOV_TIMEOUT)
+deadline, _run = check_jobs.deadline, check_jobs.run  # a job's run; no job outlives the check
 BLIND = " (no verdict in "  # in the name `run` refuses a job with no verdict by
 
 
@@ -94,14 +97,11 @@ def blind(refusal: str) -> bool:
     return BLIND in refusal
 
 
-def deadline(quiet_s: float, stretch: float) -> float:
-    """QUIET_S stretched by STRETCH, never below it, never over STRETCH_CAP_S."""
-    return max(quiet_s, min(STRETCH_CAP_S, quiet_s * stretch))
-
-
 GUARD = re.compile(r"^# goh-land-guard:(.*)$", re.MULTILINE)
 STAGED = re.compile(r"^# goh-reads-staged:", re.MULTILINE)
-FAILED = re.compile(r"^(?:E\s+)?(?:FAILED|ERROR) (tests/[^\s:]+\.py::[^\s]+)", re.MULTILINE)
+FAILED = re.compile(r"^(?:E\s+)?(?:FAILED|ERROR) (tests/[^\s:]+\.py(?:::[^\s]+)?)", re.MULTILINE)
+COLLECT = re.compile(r"^E   +((?:\w+\.)*\w*(?:Error|Exception|Exit)\b.*)$", re.MULTILINE)
+NOT_FOUND = re.compile(r"^ERROR: (?:not found|found no collectors for):? (\S+)", re.MULTILINE)
 SUBGATE = re.compile(r"^✗ (?:\[([a-z][\w-]*)\]|structural: (.+?) failed\b)", re.MULTILINE)
 PYTEST_SAID = re.compile(r"^(?:FAILED|ERROR) |\b\d+ (?:passed|failed|errors?)\b", re.MULTILINE)
 STEP_RED = re.compile(r"✗ \[\d+/\d+\] FAILED \([^)]*\): (.+)$", re.MULTILINE)
@@ -185,10 +185,10 @@ def shards(nodes: list[str], n: int = SHARDS) -> list[list[str]]:
     cost = land_judges.costs()
     out: list[list[str]] = [[] for _ in range(min(n, len(nodes)))]
     load = [0.0] * len(out)
-    for node in sorted(nodes, key=lambda x: -cost.get(x, 0.1)):
+    for node in sorted(nodes, key=lambda x: -cost.get(x, land_judges.UNMEASURED_S)):
         i = load.index(min(load))
         out[i].append(node)
-        load[i] += cost.get(node, 0.1)
+        load[i] += cost.get(node, land_judges.UNMEASURED_S)
     return [sorted(s) for s in out if s]
 
 
@@ -227,58 +227,45 @@ def unrun(rc: int, out: str) -> str:
     return next((ln for ln in out.splitlines() if ln.startswith("✗ ")), "it said nothing")
 
 
-def _run(
-    argv: list[str],
-    root: Path,
-    env: dict[str, str],
-    timeout: float | None = None,
-    quiet: float | None = None,
-) -> tuple[int, str, float]:
-    """ARGV in its own session, its output in a file (a child that outlives it holds no pipe), the
-    whole group stopped at TIMEOUT, else STEP_TIMEOUT (lib/killtree.py: TERM, grace, KILL). QUIET
-    (a job's quiet bound): at the deadline the clamp is measured again and the deadline moves to
-    QUIET stretched by it, while that is later (the jobs' own load is not there at the start)."""
-    from lib import killtree
-
-    limit = timeout or STEP_TIMEOUT
-    t0 = time.monotonic()
-    with tempfile.TemporaryFile() as log:
-        proc = subprocess.Popen(argv, cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=log,
-                                stderr=subprocess.STDOUT, start_new_session=True)  # fmt: skip
-        while (rc := proc_deadline.wait(proc, limit - (time.monotonic() - t0))) is None and quiet:
-            later = deadline(quiet, proc_deadline.stretch())
-            if later <= time.monotonic() - t0 + 1:
-                break
-            limit = later
-        if rc is None:
-            killtree.stop_group(killtree.session_pgid(proc), proc=proc)
-            proc.wait()
-            rc = 124
-        log.seek(0)
-        out = log.read().decode(errors="replace")
-    if rc == 124:
-        out += f"\ntimed out after {limit} s"
-    return rc, out, round(time.monotonic() - t0, 1)
+def named_stop(out: str) -> str:
+    """What pytest's output OUT says stopped it before any verdict (a collection error: exit 4 for
+    a node of a module that does not import): the error it printed and the files it names."""
+    errors = list(dict.fromkeys(m.strip() for m in COLLECT.findall(out)))
+    files = list(dict.fromkeys(FAILED.findall(out)))
+    lost = NOT_FOUND.findall(out)
+    return "; ".join([*errors[:2], *files[:3], *(f"not found: {n}" for n in lost[:2])])[:400]
 
 
 def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=False, no_pre=False,
-        cov=True, reqs: list[dict] | None = None, rules=False):  # fmt: skip
+        cov=True, reqs: list[dict] | None = None, rules=False, door=""):  # fmt: skip
     """Every guard over ROOT; the refusing guards' names ([] is green). SAY prints a line. TABLES
     (`goh land --check`) adds every judge the change can break (`judge_tests`) and, unless not COV
     (a batch's ratchet phase, lib/landq_ratchet.py), diff coverage; NO_PRE `steps`' no-pre lint,
     the Rust gate's coverage (its tests) deferred by name. REQS (a batch's stack; else ROOT's HEAD
-    as enqueued) name what its reds may waive: main's own, a newer rule (lib/land_waive.py)."""
+    as enqueued) name what its reds may waive: main's own, a newer rule (lib/land_waive.py). DOOR
+    (`check`, `rules`, `enqueue`): its green is kept, and the enqueue takes one kept for the same
+    tree, base and gate code (lib/check_verdict.py); "" (a batch's phase) does neither."""
     env = {**_env(root), **({"GOH_RUST_COVERAGE": "defer"} if no_pre else {})}
     at = ["git", "rev-parse", "HEAD"]
     rc, head, _ = _run(at, root, env, 60) if repo and not reqs else (1, "", 0)
     reqs = reqs or [{"repo": repo, "sha": head.strip()}] * (rc == 0)
     from lib import land_waive  # its reds that are main's or a newer rule's (GOH.MAINREDWAIVE)
 
-    env.update(w.split("=", 1) for w in land_waive.words(reqs))
+    waived = dict(w.split("=", 1) for w in land_waive.words(reqs))
     nodes = tests(root, q, repo, rules or tables)  # positional: a test's fake takes *args
+    cheap, mine, refused = steps(root, no_pre), list(nodes), []
+    hold = check_verdict.Hold(root, env, door, bool(waived)) if door else None
+    if hold and door == "enqueue" and hold.take(cheap, mine, say):
+        return []
+    env.update(waived)
     if tables:
         t0 = time.monotonic()
-        every = [n for n in land_judges.judge_tests(root) if n not in nodes]
+        try:
+            every = [n for n in land_judges.judge_tests(root) if n not in nodes]
+        except land_judges.Unchosen as e:  # never an empty choice, green on nothing
+            every = []
+            refused.append(f"the judges the diff can break{BLIND}{e})")
+            say(f"check: the judges the diff can break: NO VERDICT ({e}) -- red: none was chosen")
         extra, left = land_judges.budgeted(every)
         say(f"check: {counted(len(extra) + len(left), 'judge test')} the diff can break, chosen in "
             f"{time.monotonic() - t0:.1f} s")  # fmt: skip
@@ -289,7 +276,7 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=Fal
                 f"check's {budget:.0f} s budget -- left to the enqueue's pre-step, which judges "
                 "every one, run or carried")  # fmt: skip
         nodes += extra
-    jobs: dict[str, list[str]] = {s: ["bash", "-c", s] for s in steps(root, no_pre)}
+    jobs: dict[str, list[str]] = {s: ["bash", "-c", s] for s in cheap}
     py = suite_argv(root, env)
     parts = shards(nodes, JUDGE_SHARDS if tables or rules else SHARDS)  # RULES: --check --rules
     for i, part in enumerate(parts, 1):
@@ -298,7 +285,7 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=Fal
         jobs[DIFFCOV] = job
     if not jobs:
         say("check: no guard declared (GOH_LAND_CHECK_STEPS, # goh-land-guard:) -- nothing to run")
-        return []
+        return refused
     limit = deadline(STEP_TIMEOUT, slow := proc_deadline.stretch())  # before the jobs load it
     say(f"check: each job's deadline {limit:.0f} s (this thread runs x{slow:.1f} a quiet core)")
     with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
@@ -313,7 +300,6 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=Fal
             for name, argv in jobs.items()
         }
         results = {name: f.result() for name, f in done.items()}
-    refused: list[str] = []
     for name, (rc, out, took) in results.items():
         if rc == 0:
             say(f"check: {name}: green in {took} s")
@@ -321,7 +307,8 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=Fal
         pytest = name.startswith("guard tests")
         why = unrun(rc, out) if pytest else ""
         if why or rc in NO_VERDICT["guard tests" if pytest else "steps"]:
-            refused.append(f"{name}{BLIND}{took} s, exit {rc})")
+            why = why or (named_stop(out) if pytest else "")
+            refused.append(f"{name}{BLIND}{took} s, exit {rc}{': ' * bool(why)}{why})")
             say(f"check: {name}: NO VERDICT in {took} s (exit {rc}) -- red: it judged nothing"
                 + (f": {why}" if why else ""))  # fmt: skip
             continue
@@ -337,6 +324,9 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=Fal
             say(f"check: {counted(len(tabled), 'table test')} refused; the tables named: {files}")
         head = f"check: {name}: REFUSED in {took} s (exit {rc}): {', '.join(named) or name}"
         say("\n".join(terse.under(head, out, 8)))  # GOH.TERSEOUT: never a 25-line tail each
+    if hold:
+        again = functools.partial(run, root, q, say, repo, no_pre=no_pre, reqs=reqs, rules=rules)
+        hold.close(cheap, mine, refused, any(map(blind, refused)), lambda: not again())
     return refused
 
 
@@ -389,8 +379,18 @@ def at_enqueue(q: Path, req: dict, file, record, say=print, no_pre: str | None =
     # Every rule test by its shape too (GOH.RULESLEFT): 230 of them ran in 30.5 s over 8 runs, and a
     # rule no file declares no longer reaches the lander unjudged; a job past its clamp-stretched
     # deadline is red by its name (GOH.CHECKGIVEUP300), never a pass.
-    refused = run(Path(req["worktree"]), q, lambda s: (say(s), lines.append(s)), req["repo"],
-                  no_pre=no_pre is not None, reqs=[req], rules=True)  # fmt: skip
+    from lib import land_check_cli
+
+    def said(line: str) -> None:
+        say(line)
+        lines.append(line)
+
+    with check_jobs.guarded("enqueue", req["repo"], req["sha"]) as job:
+        # the commit gate and the changelog fragments, as --check judges them (GOH.CHECKVERDICT)
+        refused = land_check_cli.tip(req["worktree"], said, said, gated=True)
+        refused += run(Path(req["worktree"]), q, said, req["repo"], no_pre=no_pre is not None,
+                       reqs=[req], rules=True, door="enqueue")  # fmt: skip
+        job.rc = int(bool(refused))
     req["cov_risk"] = cov_risk.say(req["worktree"], req["repo"], say)  # kept on the land record
     if not refused:
         say(f"check: every guard green in {time.monotonic() - t0:.1f} s")

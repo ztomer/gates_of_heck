@@ -13,6 +13,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import _goh_db_fixture
 import _tree_graph
 import pytest
 from _gatesrc_kit import write_gatesrc
@@ -21,6 +22,8 @@ from test_landq import FAKE_LOOPCTL, _land_wt, _pending, landq
 
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 import affected_tests as at
+
+from lib import commit_stamp
 
 PRE = f'"$GOH_PY" {REPO_ROOT}/tools/affected_tests.py --run --structural --base "$1"'
 PYTEST = '#!/usr/bin/env bash\nexec "$GOH_PY" -m pytest -q -p no:cacheprovider "$@"\n'
@@ -42,12 +45,13 @@ def test_every_script_has_a_row_in_the_map(tmp_path):
 
 
 @pytest.fixture
-def env(tmp_path: Path) -> dict[str, str]:
+def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     """A queue of the test's own; --no-start, so no lander runs."""
     fake = tmp_path / "loopctl.py"
     fake.write_text(FAKE_LOOPCTL)
     return hermetic_env(
         drop_git=True,
+        GOH_DB=str(_goh_db_fixture.use(monkeypatch, tmp_path)),  # this test's commit stamps too
         GOH_LANDQ_DIR=str(tmp_path / "landq"),
         GOH_LOOPCTL=str(fake),
         FAKE_LOOPCTL_LOG=str(tmp_path / "loopctl.log"),
@@ -62,6 +66,8 @@ def _branch(repo: Path, tmp_path: Path, files: dict[str, str]) -> Path:
         (wt / rel).write_text(text)
     git(wt, "add", "-A")
     git(wt, "commit", "-q", "--no-verify", "-m", "branch")
+    for rev in ("HEAD", "HEAD^"):  # a commit gate passed them: the enqueue's is not under test here
+        commit_stamp.record(git(wt, "rev-parse", f"{rev}^{{tree}}").strip(), str(wt))
     return wt
 
 
