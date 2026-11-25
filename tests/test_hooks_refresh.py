@@ -28,7 +28,8 @@ from conftest import REPO_ROOT, hermetic_env, native_goh_path
 OLD_STOCK = "18330c7"  # a retired stock pre-commit (retired_hooks.sha256)
 SCRIPT = REPO_ROOT / "scripts" / "hooks_refresh.py"
 STOCK = {p.name: p.read_bytes() for p in (REPO_ROOT / "hooks").iterdir() if p.is_file()}
-GATE = "#!/usr/bin/env bash\nexit 0\n"  # passes: the refresh of one real gate is `stale`'s, below
+# The repo's own gate passes; the hook's commit gate still runs goh's structural gate before it.
+GATE = "#!/usr/bin/env bash\nexit 0\n"
 
 
 @functools.cache

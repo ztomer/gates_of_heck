@@ -16,7 +16,7 @@ import pid_owner  # lib/, on the path since conftest imported load_kit
 import pytest
 from conftest import hermetic_env, write
 from test_check_mcp_wire import CHECK, _gone, green, mw, red, server_line
-from timing_bounds import patience
+from timing_bounds import assert_sooner, patience
 
 from lib.bounded_run import _descendants
 
@@ -120,8 +120,10 @@ def test_a_slow_build_and_a_fast_server_is_green_the_build_is_not_timed_as_the_a
 
 @pytest.mark.load_sensitive
 def test_a_built_server_that_never_answers_is_still_red_as_no_answer(repo, tmp_path):
+    t0 = time.monotonic()
     r = cargo_gate(repo, tmp_path, server_line(tmp_path, "mute", hang=True), timeout=1, build_s=0)
     out = red(r, "wire: no answer to server/discover within 1s")
+    assert_sooner(time.monotonic() - t0, 1.5, 20, "a silent server given up on at its bound")
     assert "build:" not in out, out
 
 
