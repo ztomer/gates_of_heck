@@ -44,14 +44,24 @@ _proven_noted() {
 }
 
 # proven_note_identity <key> <step> — beside the record: the identity lines it was keyed under, and
-# the goh manifest for them unless one is kept already; then sidecars of pruned records go.
-proven_note_identity() (
-    local key="$1" dir rdir ident m f name keep
+# the goh manifest for them unless one is kept already. The FIRST note of a gate (of a process) also
+# drops the sidecars of pruned records, in one process (lib/proven_prune.py, GOH.PROVENSCAN: read in
+# bash after every recorded step, they were 66-88 s of a ten-step gate after its last step ended).
+proven_note_identity() {
+    local prune=1
+    [ "${_PROVEN_IDS_PRUNED:-}" != "$BASHPID" ] || prune=0
+    _proven_note_one "$1" "${2:-}" "$prune" || return 1
+    _PROVEN_IDS_PRUNED="$BASHPID"
+}
+
+# _proven_note_one <key> <step> <prune:0|1> — the note itself, then the prune when asked.
+_proven_note_one() (
+    local key="$1" dir rdir ident m
     goh_bind_hook_index
     rdir="$(proven_dir)" || return 1
     dir="$rdir/.id"
     mkdir -p "$dir" || return 1
-    ident="$(_proven_noted "${2:-}")"
+    ident="$(_proven_noted "$2")"
     if ! { printf '%s\n' "$ident" >"$dir/.tmp.$BASHPID" && mv -f "$dir/.tmp.$BASHPID" "$dir/$key"; }; then
         rm -f "$dir/.tmp.$BASHPID"
         return 1
@@ -60,21 +70,10 @@ proven_note_identity() (
     if [ ! -s "$dir/$m" ] && ! { _proven_manifest >"$dir/.tmp.$BASHPID" && mv -f "$dir/.tmp.$BASHPID" "$dir/$m"; }; then
         rm -f "$dir/.tmp.$BASHPID"
     fi
-    keep=" "
-    for f in "$dir"/*; do
-        [ -f "$f" ] || continue
-        name="${f##*/}"
-        case "$name" in m-*) continue ;; esac
-        if [ -f "$rdir/$name" ]; then
-            keep="$keep$(_proven_goh_mkey "$(cat "$f")") "
-        else
-            rm -f "$f"
-        fi
-    done
-    for f in "$dir"/m-*; do
-        [ -f "$f" ] || continue
-        case "$keep" in *" ${f##*/} "*) ;; *) rm -f "$f" ;; esac
-    done
+    if [ "$3" = 1 ] && ! "$GOH_PY" -S "$PROVEN_GOH_ROOT/lib/proven_prune.py" "$rdir" </dev/null; then
+        m="proven: could not prune the identity sidecars of $rdir"
+        if command -v warn >/dev/null 2>&1; then warn "$m"; else printf '%s\n' "$m" >&2; fi
+    fi
     return 0
 )
 
