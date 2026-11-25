@@ -13,7 +13,7 @@ import goh_db
 import pytest
 import state_backfill
 import state_columns
-from _columns_fixture import copied, dump, killed, old_file
+from _columns_fixture import copied, dump, killed, migrated, old_file
 
 # A statement fills 500 rows; here 5, so twelve rows take the three runs 1,200 took (2.7 MB a case,
 # GOH.FSEVQUIET). What is committed, and where a kill may fall, is the statement's, not its number.
@@ -30,7 +30,7 @@ def db(tmp_path: Path, monkeypatch) -> Path:
     monkeypatch.setenv("GOH_DB", str(tmp_path / "state" / "goh.db"))
     few = [(n, s.replace("LIMIT 500", "LIMIT 5")) for n, s in state_backfill.steps()]
     monkeypatch.setattr(state_backfill, "steps", lambda: few)
-    return old_file(tmp_path, 12)
+    return migrated(goh_db.path())
 
 
 @pytest.fixture(autouse=True)
@@ -142,9 +142,11 @@ def test_no_file_is_not_made(tmp_path, monkeypatch, capsys) -> None:
     assert not (tmp_path / "none.db").exists()
 
 
-def test_an_older_schema_is_refused(tmp_path, db, monkeypatch) -> None:
+def test_an_older_schema_is_refused(tmp_path, monkeypatch) -> None:
     import dataclasses
 
+    monkeypatch.setenv("GOH_DB", str(tmp_path / "ten.db"))
+    old_file(tmp_path)  # as its copy left it: no number above ten is in it
     old = dataclasses.replace(goh_db.SEAM, schema=tmp_path / "ten")
     monkeypatch.setattr(goh_db, "SEAM", old)
     with pytest.raises(sqlite3.OperationalError, match="no schema file 0011"):

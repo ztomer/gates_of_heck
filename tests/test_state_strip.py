@@ -13,7 +13,7 @@ import pytest
 import state_backfill
 import state_columns
 import state_strip
-from _columns_fixture import AT, LAND, RESULT, SHIP, dump, old_file
+from _columns_fixture import AT, LAND, RESULT, SHIP, dump, migrated
 from _contract_fixture import insert, old_land
 
 
@@ -31,11 +31,13 @@ def key(path: str) -> str:
 @pytest.fixture
 def db(tmp_path: Path, monkeypatch) -> Path:
     monkeypatch.setenv("GOH_DB", str(tmp_path / "state" / "goh.db"))
-    p = old_file(tmp_path, 450)
+    return migrated(goh_db.path(), 450, "filled", filled)
+
+
+def filled() -> None:
     state_backfill.run()
     with goh_db.transaction() as con:  # the row the backfill leaves in `rest`: a key with no column
         con.execute("UPDATE agent_spawns SET rest = NULL, body = json_remove(body, '$.n')")
-    return p
 
 
 def insert_ship(result: str, doc: dict, repo: str = "x") -> None:

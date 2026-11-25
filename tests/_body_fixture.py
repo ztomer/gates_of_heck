@@ -12,6 +12,8 @@ goh's code writes, as its writer leaves it, and goh.db's schema in memory.
 
 from __future__ import annotations
 
+import contextlib
+import functools
 import json
 import sqlite3
 
@@ -134,13 +136,22 @@ UNCUT = 16  # the last schema file an older goh's open applied
 
 
 def memory(upto: int | None = None) -> sqlite3.Connection:
+    """Made once a process and copied from its bytes: the schema files are 0.3 s of CPU a
+    connection (GOH.PYSLOW4)."""
     con = sqlite3.connect(":memory:", isolation_level=None)
-    con.executescript(db_core.BOOT)
-    files = db_schema.migrations(goh_db.SEAM).items()
-    born = goh_db.SEAM.born if upto is None else ()
-    some = {n: p for n, p in files if upto is None or n <= upto}
-    assert db_schema.fresh(con, some, "t", set(), born)
+    con.deserialize(_made(upto, goh_db.SEAM))
     return con
+
+
+@functools.cache
+def _made(upto: int | None, seam: db_core.Seam) -> bytes:
+    with contextlib.closing(sqlite3.connect(":memory:", isolation_level=None)) as con:
+        con.executescript(db_core.BOOT)
+        files = db_schema.migrations(seam).items()
+        born = seam.born if upto is None else ()
+        some = {n: p for n, p in files if upto is None or n <= upto}
+        assert db_schema.fresh(con, some, "t", set(), born)
+        return con.serialize()
 
 
 def old(con: sqlite3.Connection, t: Table, doc: dict, mine: dict) -> None:

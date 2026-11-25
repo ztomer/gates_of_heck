@@ -4,6 +4,7 @@ goh's code writes, and a file from before the columns holding rows of them.
     LAND SHIP PINS SPAWN OUTCOME   a whole document each (a key with no column shows in `rest`)
     ten(tmp_path)                  the seam at schema 10: the copy of goh that knows no columns
     old_file(tmp_path, spawns)     goh.db as that copy wrote it, N spawn rows in it
+    migrated(to)                   old_file's, migrated by this goh, at TO: made once a run
     copied(to)                     goh.db, migrated by this goh, copied whole to TO
     dump(path)                     every row of every table, for a killed run against a clean one
     killed(code, *args)            CODE run in a child that must die of SIGKILL
@@ -19,11 +20,12 @@ import signal
 import sqlite3
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import db_core
 import goh_db
-from _tree_clone import clone_tree
+from _tree_clone import clone_tree, process_template
 from conftest import REPO_ROOT, hermetic_env
 from timing_bounds import patience
 
@@ -157,6 +159,31 @@ def old_file(tmp_path: Path, spawns: int = 3) -> Path:
             ],
         )
     return goh_db.path()
+
+
+def migrated(
+    to: Path, spawns: int = 12, key: str = "rows", then: Callable[[], object] = int
+) -> Path:
+    """The schema files an old file lacks are 3 s of CPU (GOH.PYSLOW4); the tests that open one are
+    about its rows. THEN runs on it before it is kept as KEY."""
+
+    def build(tree: Path) -> None:
+        tree.mkdir()
+        was = os.environ["GOH_DB"]
+        os.environ["GOH_DB"] = str(tree / "old" / "goh.db")
+        try:
+            with goh_db.uncut():
+                old_file(tree, spawns)
+                then()
+                copied(tree / "new" / "goh.db")
+        finally:
+            os.environ["GOH_DB"] = was
+        shutil.rmtree(tree / "old")
+        shutil.rmtree(tree / "ten")
+
+    to.parent.mkdir(parents=True)
+    clone_tree(process_template(f"old-file-{key}", build) / "new" / "goh.db", to)
+    return to
 
 
 def copied(to: Path) -> Path:
