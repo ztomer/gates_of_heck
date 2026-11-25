@@ -2,7 +2,7 @@
 Area: structural
 Kind: setting
 Order: 340
-Default: `$HOME/Projects/.loop/queue.json`
+Default: the loop's queue (`lib/queue_read.py`'s)
 
 The umbrella queue `goh roadmap` asks which cited items are done (`--queue PATH` wins). When
 `loop.db` exists beside that path, the statuses come from it through `sqlite3 -readonly`

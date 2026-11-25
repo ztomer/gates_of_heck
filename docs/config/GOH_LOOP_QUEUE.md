@@ -1,7 +1,8 @@
 # GOH_LOOP_QUEUE
-Area: ship
+Area: pushes
 Kind: setting
-Default: `.loop/queue.json` under the projects root
+Order: 316
+Default: config.toml's `loop_queue`, else `.loop/queue.json` in the repos root
 
-The loop's umbrella queue, by path (`lib/queue_read.py`): the hooks, the filers and the audits read
-it there, or in the `loop.db` beside it when one exists. A test names its own.
+The loop's umbrella queue goh reads (`lib/queue_read.py`): the hooks, the filers and the audits read it
+there, or in the `loop.db` beside it when one exists. A test names its own.

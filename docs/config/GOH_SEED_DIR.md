@@ -2,7 +2,7 @@
 Area: deps
 Kind: setting
 Order: 110
-Default: `$XDG_STATE_HOME/goh/seeds`, else `~/.local/state/goh/seeds`
+Default: `seeds/` in the state root
 
 env, `lib/cip_history.py` (`cip_history.json`, the CIP lanes' push gates `goh budget` backfills,
 GOH.GATEBUDGET2), every estate-seeded check (`crates/goh/src/estate_seed.rs`: changelog-tags,
