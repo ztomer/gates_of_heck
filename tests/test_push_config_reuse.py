@@ -8,12 +8,14 @@ every green push records), the push runs the real `gates/structural.sh --full` -
 of a floor -- and reuses the tip's verdict for the rest. Anything else is the full gate, and the
 push says why.
 Each fixture is a consumer whose tools/gate.sh reports `full` to a file; the structural gate is
-the real one, so a floor the tree cannot meet goes red on the short path too.
+the real one, so a floor the tree cannot meet goes red on the short path too. The refusals are
+config_push.decide's own, asked in process.
 """
 
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -22,17 +24,21 @@ from conftest import REPO_ROOT, git, hermetic_env
 from test_reuse import recorded_hows, reuse
 from timing_bounds import patience
 
+sys.path.insert(0, str(REPO_ROOT / "lib"))
+import config_push
+
 PUSH_GATE = REPO_ROOT / "gates" / "push_gate.sh"
 ZERO = "0" * 40
 FLOORS = "GOH_EMOJI_MIN_FILES=1\nGOH_CONFLICT_MARKERS_MIN_FILES=1\nGOH_SECRETS_MIN_FILES=1\n"
 SHORT = "scanner floors only since"
 
 
+FULL_GATE = '#!/usr/bin/env bash\nprintf "full\\n" >>"$GATE_REPORT"\n'
+
+
 def _consumer(repo: Path) -> Path:
     (repo / "tools").mkdir()
-    (repo / "tools" / "gate.sh").write_text(
-        '#!/usr/bin/env bash\nprintf "full\\n" >>"$GATE_REPORT"\n'
-    )
+    (repo / "tools" / "gate.sh").write_text(FULL_GATE)
     (repo / "src.py").write_text("A = 1\n")
     write_gatesrc(repo, FLOORS)
     git(repo, "add", "-A")
@@ -83,11 +89,6 @@ def _floor(repo: Path, old: str, new: str, *touch: str) -> str:
     return git(repo, "rev-parse", "HEAD").strip()
 
 
-def _full(ran: list[str], out: str, reason: str) -> None:
-    assert ran == ["full"], (ran, out)
-    assert f"pre-push: the full gate: {reason}" in out, out
-
-
 def test_a_floor_only_commit_on_a_push_gated_tip_runs_the_structural_gate_only(
     repo, tmp_path
 ) -> None:
@@ -101,80 +102,73 @@ def test_a_floor_only_commit_on_a_push_gated_tip_runs_the_structural_gate_only(
     # Recorded like any green push, so the next floor push chains on it.
     assert sha in _pushed(tmp_path), out
     assert recorded_hows(tmp_path / "reuse", sha) == ["config"], out  # its gate: the floor rule
-
-
-def test_a_floor_the_tree_cannot_meet_is_red_on_the_short_path(repo, tmp_path) -> None:
-    tip = _gated_tip(_consumer(repo), tmp_path)
-    sha = _floor(repo, "GOH_SECRETS_MIN_FILES=1\n", "GOH_SECRETS_MIN_FILES=999\n")
-    rc, ran, out = _push(repo, tmp_path, tip)
+    # ... and the next, a floor the tree cannot meet, is red on the short path too.
+    red = _floor(repo, "GOH_SECRETS_MIN_FILES=1\n", "GOH_SECRETS_MIN_FILES=999\n")
+    rc, ran, out = _push(repo, tmp_path, sha)
     assert rc != 0 and ran == [], (ran, out)
-    assert f"{SHORT} {tip[:8]}" in out and "GOH_SECRETS_MIN_FILES" in out, out
-    assert sha not in _pushed(tmp_path), out
-
-
-def test_a_floor_plus_a_code_change_takes_the_full_gate(repo, tmp_path) -> None:
-    tip = _gated_tip(_consumer(repo), tmp_path)
-    _floor(repo, "GOH_EMOJI_MIN_FILES=1\n", "GOH_EMOJI_MIN_FILES=2\n", "src.py")
-    rc, ran, out = _push(repo, tmp_path, tip)
-    assert rc == 0, out
-    _full(ran, out, "src.py is not .gatesrc")
-
-
-def test_a_tip_with_no_recorded_push_verdict_takes_the_full_gate(repo, tmp_path) -> None:
-    _consumer(repo)
-    tip = git(
-        repo, "rev-parse", "HEAD"
-    ).strip()  # on the remote, but no gate of this push judged it
-    _floor(repo, "GOH_EMOJI_MIN_FILES=1\n", "GOH_EMOJI_MIN_FILES=2\n")
-    rc, ran, out = _push(repo, tmp_path, tip)
-    assert rc == 0, out
-    _full(ran, out, f"the remote's {tip[:8]} has no green push verdict")
+    assert f"{SHORT} {sha[:8]}" in out and "GOH_SECRETS_MIN_FILES" in out, out
+    assert red not in _pushed(tmp_path), out
 
 
 def test_a_tip_whose_push_was_red_takes_the_full_gate(repo, tmp_path) -> None:
+    """A refusal through the push gate, its reason said; every other reason is `decide`'s, below."""
     _consumer(repo)
     (repo / "tools" / "gate.sh").write_text("#!/usr/bin/env bash\nexit 3\n")
     git(repo, "commit", "-q", "--no-verify", "-am", "a red gate")
     tip = git(repo, "rev-parse", "HEAD").strip()
     rc, _, out = _push(repo, tmp_path, ZERO)
-    assert rc != 0, out
+    assert rc != 0 and _pushed(tmp_path) == [], out
+    (repo / "tools" / "gate.sh").write_text(FULL_GATE)
     _floor(repo, "GOH_EMOJI_MIN_FILES=1\n", "GOH_EMOJI_MIN_FILES=2\n")
-    _, _, out = _push(repo, tmp_path, tip)
-    assert f"pre-push: the full gate: the remote's {tip[:8]} has no green push verdict" in out, out
-
-
-def test_a_key_the_gate_reads_takes_the_full_gate(repo, tmp_path) -> None:
-    """GOH_MAX_LINES is no floor; nor is a floor spelled with a substitution the shell would run."""
-    tip = _gated_tip(_consumer(repo), tmp_path)
-    _floor(repo, "GOH_EMOJI_MIN_FILES=1\n", "GOH_EMOJI_MIN_FILES=1\nGOH_MAX_LINES=900\n")
     rc, ran, out = _push(repo, tmp_path, tip)
-    assert rc == 0, out
-    _full(ran, out, "`GOH_MAX_LINES=900` is not a scanner floor line")
-    git(repo, "reset", "-q", "--hard", tip)
-    _floor(repo, "GOH_EMOJI_MIN_FILES=1\n", "GOH_EMOJI_MIN_FILES=$(echo 2)\n")
-    rc, ran, out = _push(repo, tmp_path, tip)
-    _full(ran, out, "`GOH_EMOJI_MIN_FILES=$(echo 2)` is not a scanner floor line")
+    assert rc == 0 and ran == ["full"], (ran, out)
+    reason = f"the remote's {tip[:8]} has no green push verdict"
+    assert f"pre-push: the full gate: {reason}" in out, out
 
 
-def test_a_file_that_names_the_changed_floor_takes_the_full_gate(repo, tmp_path) -> None:
+def test_every_other_change_takes_the_full_gate_for_its_reason(repo, monkeypatch) -> None:
+    """`decide`, asked of one repository: the store is the one question stubbed, that a red or
+    unmade push left nothing there is the push gate's, above. GOH_MAX_LINES is no floor; nor is a
+    floor spelled with a substitution the shell would run."""
     _consumer(repo)
-    (repo / "check_floor.py").write_text('KEY = "GOH_EMOJI_MIN_FILES"\n')
+    (repo / "check_floor.py").write_text('KEY = "GOH_SECRETS_MIN_FILES"\n')
     git(repo, "add", "-A")
-    git(repo, "commit", "-q", "--no-verify", "-m", "a reader of the floor")
-    tip = _gated_tip(repo, tmp_path)
-    _floor(repo, "GOH_EMOJI_MIN_FILES=1\n", "GOH_EMOJI_MIN_FILES=2\n")
-    rc, ran, out = _push(repo, tmp_path, tip)
-    assert rc == 0, out
-    _full(ran, out, "check_floor.py names GOH_EMOJI_MIN_FILES, so it may read it")
+    git(repo, "commit", "-q", "--no-verify", "-m", "a reader of one floor")
+    tip = git(repo, "rev-parse", "HEAD").strip()
+    green: set[str] = {tip}
+    monkeypatch.setattr(config_push.reuse, "pushed", lambda _root, sha: sha in green)
+    two = "GOH_EMOJI_MIN_FILES=2\n"
+
+    def decided(old: str, new: str, *touch: str) -> tuple[str, str]:
+        _floor(repo, old, new, *touch)
+        got = config_push.decide(repo, tip, REPO_ROOT)
+        git(repo, "checkout", "-q", "--detach", tip)
+        return got
+
+    emoji, secrets = "GOH_EMOJI_MIN_FILES=1\n", "GOH_SECRETS_MIN_FILES=1\n"
+    assert decided(emoji, two) == ("config", tip)  # the control: the same commit, allowed
+    for got, reason in (
+        (decided(emoji, two, "src.py"), "src.py is not .gatesrc"),
+        (
+            decided(emoji, emoji + "GOH_MAX_LINES=900\n"),
+            "`GOH_MAX_LINES=900` is not a scanner floor",
+        ),
+        (
+            decided(emoji, "GOH_EMOJI_MIN_FILES=$(echo 2)\n"),
+            "`GOH_EMOJI_MIN_FILES=$(echo 2)` is not a",
+        ),
+        (
+            decided(secrets, "GOH_SECRETS_MIN_FILES=2\n"),
+            "check_floor.py names GOH_SECRETS_MIN_FILES,",
+        ),
+    ):
+        assert got[0] == "full" and reason in got[1], got
+    green.clear()
+    assert decided(emoji, two)[1].startswith(f"the remote's {tip[:8]} has no green push verdict")
 
 
 def test_the_floor_keys_are_the_scanners_own() -> None:
     """The list is read from crate::subject, never copied: every Subject's key, and only those."""
-    import sys
-
-    sys.path.insert(0, str(REPO_ROOT / "lib"))
-    import config_push
-
     src = (REPO_ROOT / config_push.SUBJECTS).read_text(encoding="utf-8")
     n = int(src.split("pub const ALL: [&Subject; ", 1)[1].split("]", 1)[0])
     keys = config_push.floor_keys(REPO_ROOT)
