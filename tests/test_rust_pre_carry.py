@@ -210,7 +210,6 @@ class _Run:
         self.argv: list[list[str]] = []
         self.kin: list[list[str]] = []
         self.sent: list[str] = []
-        self.share = type("Share", (), {"mac_s": 5.0})()
 
         def ran(_label, argv) -> int:
             self.argv.append(argv)
@@ -218,17 +217,34 @@ class _Run:
             record.write_text(json.dumps({"identity": "i", "sha": "s", "passed": {}}))
             return 0
 
-        def begin(_root, nodes, _mac, _judges):
-            self.sent = list(nodes)
-            return [], self.share if nodes else None
+        run = self
+
+        class Feed:  # lib/remote_feed.py's, its worker taking every node it may
+            def __init__(self, judges, rest, far, rust) -> None:
+                run.sent, run.rust = list(far) if rust else [], rust
+                self.mine = list(rest) if rust else [*rest, *far]
+
+            def rest(self) -> list[str]:
+                return self.mine
+
+            def words(self) -> list[str]:
+                return []
+
+            def early(self, _merge) -> int:
+                return 0
+
+            def end(self, _merge) -> int:
+                return 0
+
+        def begin(_root, judges, rest, far, _record, rust=False):
+            return Feed(judges, rest, far, rust)
 
         mp.setattr(at, "timed", ran)
         mp.setattr(at.fast_tests, "collects", lambda *_a: 0)
         mp.setattr(at, "phases", lambda _r, c: (["j"], [n for n in c if n != "j"]))
         mp.setattr(at.land_rustcov, "kin", lambda _r: kin)
         mp.setattr(at.land_rustcov, "selected", lambda _r, ns: [n for n in ns if n in binary])
-        mp.setattr(at.remote_lane, "begin", begin)
-        mp.setattr(at.remote_lane, "end", lambda *_a: 0)
+        mp.setattr(at.remote_feed, "begin", begin)
         mp.setattr(at.bin_reach_audit, "after", lambda *_a: 0)
         mp.setattr(at.pre_cpu, "counted", contextlib.nullcontext)
         mp.setenv(av.RECORD, str(record))
@@ -256,7 +272,7 @@ def test_a_first_measured_run_shares_what_covers_no_rust_line(tmp_path, monkeypa
     assert at.run(REPO_ROOT, ["crates/x.rs"], CHOSEN, None, PLAN) == 0
     ext = run.argv[1][run.argv[1].index("--external") + 1]
     assert ext.split()[2:] == ["bin"] and run.sent == ["plain"], (ext, run.sent)
-    assert run.share.mac_s == 0.0, "an instrumented run's wall is no pace of the plain Mac's"
+    assert run.rust, "an instrumented run's wall is no pace of the plain Mac's (lib/remote_feed.py)"
 
 
 # -- ... on a real instrumented binary -------------------------------------------------------------

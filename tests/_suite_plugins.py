@@ -7,6 +7,7 @@ here, not there.
 * `_share_tokens`: the live worker share (GOH.SHAREGROW).
 * `_fs_churn`: the run's file events, counted and held under a ceiling (GOH.FSCHURN2).
 * `_land_remote`: the land gate's remote share (GOH.REMOTEGATE, lib/remote_gate.py).
+* `_worker_feed`: the pre-step's run hands the Linux worker units of its queue (GOH.REMOTECARRY).
 * `_xdist_usage`: a worker's collection error is the run's (GOH.REMOTEREDSILENT).
 * `_kept_store`: the kept verdict rows, seeded from and merged into the real goh-cache.db once by
   the controller (GOH.VERDICTDB).
@@ -39,6 +40,7 @@ pytest_plugins = [
     "_share_tokens",
     "_fs_churn",
     "_land_remote",
+    "_worker_feed",
     "_xdist_usage",
     "_kept_store",
     "_land_waive",

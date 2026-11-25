@@ -197,9 +197,7 @@ def test_an_unreachable_worker_falls_back_and_the_pre_step_still_passes(tmp_path
     monkeypatch.setenv("PATH", f"{fake}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("GOH_REMOTE_HOST", "unreachable.invalid")
     nodes = ["tests/test_remote_lane.py"]
-    monkeypatch.setattr(rl, "split", lambda root, ns, *_a, **_k: (list(ns), []))
-    local, share = rl.begin(REPO_ROOT, nodes)
-    assert local == [] and share is not None
+    share = rl.launch(REPO_ROOT, nodes, 0.0)
     ran: list[list[str]] = []
     rc = rl.end(REPO_ROOT, share, "", av.merge_records, lambda ns: ran.append(ns) or 0)
     assert rc == 0 and ran == [nodes]
@@ -256,24 +254,6 @@ def test_goh_s_recorded_lists_name_only_what_exists():
     skips = rl.listed(REPO_ROOT, rl.MAC_SKIPS)
     assert sorted(s for s in skips if not any(s.startswith((d + ".", d + "::"))
                                               for d in dotted)) == []  # fmt: skip
-
-
-def test_with_no_other_mac_run_one_node_stays_on_the_mac_for_the_record(tree: Path, monkeypatch):
-    """tools/land.sh refuses a green pre-step with no verdict record, which only the Mac's pytest
-    writes: a share that would take every node leaves one behind."""
-    started: list[list[str]] = []
-
-    class Proc:
-        def __init__(self, argv, **_kw):
-            started.append(argv)
-
-    monkeypatch.setattr(rl.subprocess, "Popen", Proc)
-    local, share = rl.begin(tree, ["tests/test_a.py", "tests/test_b.py"], mac_runs=False)
-    assert local == ["tests/test_a.py"] and share is not None and share.nodes == ["tests/test_b.py"]
-    assert started[0][-1] == "tests/test_b.py"
-    rl._cleanup(share)
-    local, share = rl.begin(tree, ["tests/test_a.py"], mac_runs=False)
-    assert local == ["tests/test_a.py"] and share is None
 
 
 @pytest.mark.parametrize(

@@ -147,14 +147,6 @@ def split(root: Path, judges: list[str], rest: list[str],
             [*mine, *(n for n in rest if kin or n in binary)], far)  # fmt: skip
 
 
-def paced(share, rest: list[str]) -> list[str]:
-    """REST; the worker's SHARE folds no pace of the Mac's from a run that builds and instruments
-    (lib/remote_lane.py `measure`)."""
-    if share is not None:
-        share.mac_s = 0.0
-    return rest
-
-
 def _paths(root: Path, tree: str) -> list[str] | None:
     """The paths whose bytes differ between TREE and HEAD's; None when git cannot say."""
     r = gitrun.run_reader(["diff", "--name-only", "--no-renames", tree, "HEAD"], repo=str(root),

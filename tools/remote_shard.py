@@ -243,6 +243,19 @@ def sync(c: dict[str, str], tree: Path, slot: str) -> None:
         raise Fallback(f"the uncommitted edits did not sync: {r.stderr.decode()[-300:]}")
 
 
+def build(c: dict[str, str], slot: str) -> int:
+    """`--prepare`: the slot's bin/goh, built under its run lock before the shard that needs it."""
+    t, run = f"/work/trees/{slot}", "[ ! -f scripts/build-goh.sh ] || bash scripts/build-goh.sh"
+    argv = ["docker", "exec", *env_of(t), c["container"], "bash", "-c", f"cd {t} && {run}"]
+    out = f"{shlex.quote(c['dir'])}/out"
+    run = f"mkdir -p {out} && flock {out}/run-{slot}.lock {shlex.join(argv)} >&2"
+    return 0 if ssh(c, run, timeout=600).returncode == 0 else 3
+
+
+def env_of(t: str) -> list[str]:
+    return ["-e", f"GOH_DIR={t}", "-e", f"RUSTC_WRAPPER={t}/lib/goh-rustc"]
+
+
 def run_remote(c: dict[str, str], tag: str, tests: list[str], workers: int, slot: str,
                times: dict[str, float]) -> tuple[int, str]:  # fmt: skip
     """The shard as one `docker exec` into the running worker; (pytest's exit code, the junit)."""
@@ -251,14 +264,14 @@ def run_remote(c: dict[str, str], tag: str, tests: list[str], workers: int, slot
     t, ht = f"{w}/trees/{slot}", f"{q(d)}/trees/{slot}"  # the slot's tree, in and outside
     # goh's binary first: the tree is no checkout (no stamp), so build-goh.sh builds bin/goh from
     # the synced source, incrementally in the slot's warm target dir, offline.
+    # GATES_OF_HECK_REMOTE_SHARD is tests/_shard_run.py's: what the junit must tell.
     pytest = (f"cd {t} && t0=$(date +%s%N) && if [ -f scripts/build-goh.sh ]; then "
               "bash scripts/build-goh.sh >&2 || exit 97; fi && "
               "echo GOH-BUILD-MS=$(( ($(date +%s%N) - t0) / 1000000 )) && "
               f"exec timeout {RUN_TIMEOUT_S} python3 -m pytest -q "
               f"-o cache_dir={w}/cache/pytest-{slot} -n {workers} --junitxml={w}/out/{rid}.xml "
               f"@{w}/out/{rid}.args")  # fmt: skip
-    run = ["docker", "exec", "-e", f"GOH_DIR={t}", "-e", f"RUSTC_WRAPPER={t}/lib/goh-rustc",
-           "-e", "GATES_OF_HECK_REMOTE_SHARD=1",  # tests/_shard_run.py: what its junit must tell
+    run = ["docker", "exec", *env_of(t), "-e", "GATES_OF_HECK_REMOTE_SHARD=1",
            c["container"], "bash", "-c", pytest]  # fmt: skip
     # The registry needs the network the worker has not: once per Cargo.lock, a networked
     # short-lived container with the same limits fills $HOME/.cargo (`cargo fetch --locked`).
@@ -346,14 +359,12 @@ def run_local(tree: Path, tests: list[str], workers: str, junit: Path) -> int:
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="goh remote-shard", description=__doc__.split("\n\n")[0])
-    ap.add_argument("tests", nargs="+", help="test files or node ids, relative to the tree")
+    ap.add_argument("tests", nargs="*", help="test files or node ids, relative to the tree")
+    ap.add_argument("--prepare", action="store_true", help="sync and build only, for a later shard")
     ap.add_argument("--tree", type=Path, default=Path.cwd(), help="the checkout (default: cwd)")
     ap.add_argument("--workers", type=int, default=10, help="xdist workers in the container")
-    ap.add_argument(
-        "--local-workers",
-        default="auto",
-        help="xdist workers for a local fallback: a count, auto, or 0 for none",
-    )
+    ap.add_argument("--local-workers", default="auto",
+                    help="xdist workers for a local fallback: a count, auto, or 0")  # fmt: skip
     ap.add_argument("--junit", type=Path, help="write the shard's junit here")
     ap.add_argument(
         "--mac-junit", type=Path, help="the Mac's junit for the same tests: skip parity"
@@ -365,6 +376,8 @@ def main(argv: list[str]) -> int:
                     help="on a fallback, exit 3: the caller runs the shard")  # fmt: skip
     ap.add_argument("--manifest", type=Path, default=ROOT / "gates" / "required_tools.tsv")
     a = ap.parse_args(argv)
+    if bool(a.tests) == a.prepare:
+        ap.error("the tests of a shard, or --prepare alone")
     c, tree = conf(), a.tree.resolve()
     info(f"remote-shard: host {c['host']}")  # whose share this is (lib/remote_saved.py)
     slot = a.slot or hashlib.sha256(str(tree).encode()).hexdigest()[:10]
@@ -379,6 +392,8 @@ def main(argv: list[str]) -> int:
         t1 = time.monotonic()
         sync(c, tree, slot)
         t2 = time.monotonic()
+        if a.prepare:
+            return build(c, slot)
         rc, text = run_remote(c, tag, a.tests, a.workers, slot, runs)
         t3 = time.monotonic()
         if not text.strip():

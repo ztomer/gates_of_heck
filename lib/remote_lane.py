@@ -20,8 +20,8 @@ part, and its verdicts join the Mac's, so the pre-step costs max(Mac, worker), n
   (GOH.REMOTETRUST, lib/remote_trust.py, replacing GOH.REMOTESHARE's "accept the rerun").
   The share shortens the land's pre-step, the Mac-bound wait before the lock. The GATE's suite has
   its own share since GOH.REMOTEGATE (lib/remote_gate.py), on this module's split and launcher.
-* THE SIZE (GOH.REMOTESHARE). Each land measures both sides' pace (`Rates`, `measure`) and the
-  next split balances them (`split`), so the worker takes what it finishes by the time the Mac does.
+* THE SIZE (GOH.REMOTESHARE). Each land measures both sides' pace (`Rates`, `measure`) and `split`
+  balances by them; lib/remote_feed.py hands the pre-step's worker half of that, then more.
 
 GOH_LAND_REMOTE=off keeps the whole pre-step on the Mac; a tree with no tests/linux_safe.txt never
 sends anything, and neither does a pre-step inside a running goh suite unless it names its own
@@ -50,7 +50,7 @@ import tempfile
 import time
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -87,13 +87,29 @@ def module(node: str) -> str:
     return path[6:-3] if path.startswith("tests/") and path.endswith(".py") else ""
 
 
-def cost(nodes: list[str], durations: dict[str, float]) -> dict[str, float]:
-    """Each node's seconds from the duration table (a file: its tests' sum); 1 s when unknown."""
-    by_file: dict[str, float] = {}
+def held(durations: dict[str, float]) -> dict[str, float]:
+    """{node: the seconds of the tests it holds}: a file, a class, a parametrized function."""
+    out: dict[str, float] = {}
     for test, sec in durations.items():
-        f = test.split("::")[0]
-        by_file[f] = by_file.get(f, 0.0) + sec
-    return {n: durations.get(n) or by_file.get(n) or 1.0 for n in nodes}
+        parts = test.split("[")[0].split("::")
+        for i in range(1, len(parts) + 1):
+            node = "::".join(parts[:i])
+            out[node] = out.get(node, 0.0) + sec
+    return out
+
+
+def cost(nodes: list[str], durations: dict[str, float]) -> dict[str, float]:
+    """Each node's seconds of the duration table: its own, else its tests'; 1 s when unknown."""
+    under = held(durations)
+    return {n: durations.get(n) or under.get(n) or 1.0 for n in nodes}
+
+
+def off(runner: bool = False) -> bool:
+    """GOH_LAND_REMOTE=off, or a test that names no worker (it never reaches the real host).
+    `runner`: the caller IS the suite's runner (lib/remote_gate.py)"""
+    suite = (os.environ.get("GATES_OF_HECK_SUITE_RUNNER") and not runner
+             and not os.environ.get("GOH_REMOTE_HOST"))  # fmt: skip
+    return os.environ.get("GOH_LAND_REMOTE", "on") == "off" or bool(suite)
 
 
 def unsafe() -> set[str]:
@@ -111,12 +127,8 @@ def split(root: Path, nodes: list[str], durations: dict[str, float] | None = Non
     the costliest go first while the worker's estimated wall (`Rates`: its overhead plus its
     seconds over its width) stays within the Mac's remaining wall (its seconds, `mac_else` -- the
     judges it runs first -- included, over its width), so both sides end together.
-    GOH_REMOTE_SHARE=F instead caps the worker at a fixed fraction F of the set's seconds.
-    `runner`: the caller IS the suite's runner (the land gate's controller, lib/remote_gate.py),
-    never a test inside it, so the in-suite guard does not apply."""
-    suite = (os.environ.get("GATES_OF_HECK_SUITE_RUNNER") and not runner
-             and not os.environ.get("GOH_REMOTE_HOST"))  # fmt: skip
-    if os.environ.get("GOH_LAND_REMOTE", "on") == "off" or suite:  # a test never reaches the host
+    GOH_REMOTE_SHARE=F instead caps the worker at a fixed fraction F of the set's seconds."""
+    if off(runner):
         return [], list(nodes)
     safe = listed(root, LINUX_SAFE) - unsafe()  # module names, never paths: data, not code
     secs = cost(nodes, fast_tests.load() if durations is None else durations)
@@ -139,7 +151,9 @@ def split(root: Path, nodes: list[str], durations: dict[str, float] | None = Non
 
 
 def measure(root: Path, share: Share, junit: str, mac_end: float) -> None:
-    """One land's paces folded into the rates the next split reads (`Rates`)."""
+    """One land's paces folded into the rates the next split reads (`Rates`), each of what its
+    side RAN: the worker's of its junit, the Mac's of `share.mac_s` (0: no reading). A `later`
+    share's width and overhead are no first share's (lib/remote_feed.py), and are not folded."""
     try:
         doc = ET.fromstring(junit)
         landed = share.junit.stat().st_mtime
@@ -154,7 +168,7 @@ def measure(root: Path, share: Share, junit: str, mac_end: float) -> None:
     def fold(old: Rates) -> Rates:
         new = Rates(old.mac_width, old.worker_width, old.overhead_s, old.ratio)
         work = sum(tests.values())
-        if took > 0 and work > 0:
+        if took > 0 and work > 0 and not share.later:
             new.worker_width = blend(old.worker_width, work / took)
             new.overhead_s = blend(old.overhead_s, max(0.0, landed - share.started - took))
         both = [n for n in tests if mac.get(n)]
@@ -175,33 +189,16 @@ class Share:
     junit: Path
     log: Path
     started: float = 0.0  # time.time() at the start, for both sides' walls (`measure`)
-    mac_s: float = 0.0  # the Mac's estimated serial seconds this pre-step, judges included
+    mac_s: float = 0.0  # the estimated serial seconds of what the Mac ran meanwhile
     est_s: float = 0.0  # the share's own Mac wall at the Mac's width (lib/remote_saved.py)
     ended: tuple[float, float] = (0.0, 0.0)  # the gate's (Mac done, worker done), and its log
     said: str = ""
+    later: bool = False  # handed over after the first share ended (lib/remote_feed.py)
+    note: dict = field(default_factory=dict)  # what `note` said of it
 
 
-def begin(root: Path, nodes: list[str], mac_runs: bool = True,
-          judges: list[str] | None = None) -> tuple[list[str], Share | None]:  # fmt: skip
-    """Start the worker's share of `nodes` in the background; (the Mac's nodes, the share).
-    `mac_runs` False (no other Mac run this pre-step): one node stays on the Mac, whose pytest
-    writes the verdict record tools/land.sh requires of a green pre-step (GOH.VERDICTCARRY2).
-    `judges`: the Mac's own run before `nodes`, whose seconds the balance counts."""
-    durations = fast_tests.load()
-    before = sum(cost(judges or [], durations).values())
-    remote, local = split(root, nodes, durations, mac_else=before)
-    if remote and not local and not mac_runs:
-        remote, local = remote[1:], remote[:1]
-    if not remote:
-        return local, None
-    info(f"pre-land: {len(remote)} Linux-safe tests on the remote worker, beside the Mac's "
-         f"{len(local)}")  # fmt: skip
-    mac_s = before + sum(cost(local, durations).values())
-    return local, launch(root, remote, mac_s)
-
-
-def launch(root: Path, remote: list[str], mac_s: float,
-           env: dict[str, str] | None = None) -> Share:  # fmt: skip
+def launch(root: Path, remote: list[str], mac_s: float, env: dict[str, str] | None = None,
+           later: bool = False) -> Share:  # fmt: skip
     """`goh remote-shard --no-local` on `remote`, in the background (its log and junit in goh's
     temp root); `mac_s`, the Mac's estimated seconds meanwhile, for `measure`."""
     fd, junit = tempfile.mkstemp(prefix="goh-remote-", suffix=".xml", dir=tmp_root.goh_tmp())
@@ -214,7 +211,7 @@ def launch(root: Path, remote: list[str], mac_s: float,
         proc = subprocess.Popen(argv, stdout=out, stderr=subprocess.STDOUT,
                                 stdin=subprocess.DEVNULL, env=env)  # fmt: skip
     est = sum(cost(remote, fast_tests.load()).values()) / max(load_rates().mac_width, 1.0)
-    return Share(remote, proc, Path(junit), log, time.time(), mac_s, est)
+    return Share(remote, proc, Path(junit), log, time.time(), mac_s, est, later=later)
 
 
 def cancel(share: Share | None) -> None:
@@ -292,6 +289,23 @@ def mac_run(root: Path) -> Callable[[list[str]], int]:
     return lambda nodes: timed(f"pre-land: {len(nodes)} tests given back", [*pytest, *nodes])
 
 
+def on_mac(root: Path, nodes: list[str], record: str, merge: Callable[[Path, Path], None],
+           run_local: Callable[[list[str]], int] | None = None) -> int:  # fmt: skip
+    """The Mac's run of NODES now, its own record merged into the one before it; its exit."""
+    aside = Path(f"{record}.mac") if record and record != os.devnull else None
+    if aside and Path(record).is_file():
+        Path(record).replace(aside)
+    rc = (run_local or mac_run(root))(nodes)
+    if aside and aside.is_file():
+        merge(Path(record), aside)
+    return rc
+
+
+def leave(took: str, data: dict) -> None:
+    with contextlib.suppress(OSError):  # the instrument never fails the pre-step
+        Path(f"{took}.remote").write_text(json.dumps(data))
+
+
 def note(share: Share, rc: int, said: str, fig: dict | None = None) -> None:
     """The share's outcome beside the pre-step's figures (`$GOH_LAND_PRE_TOOK.remote`), which
     lib/land_prestep.py carries into the land record's `pre_run.remote` for --report: the tests
@@ -301,26 +315,25 @@ def note(share: Share, rc: int, said: str, fig: dict | None = None) -> None:
     if fig is not None:
         remote_saved.say(fig)
     took = os.environ.get("GOH_LAND_PRE_TOOK")
-    if not took:
-        return
     outcome = "remote" if rc == 0 else "failed" if rc == 1 else "fallback"
     data = {"tests": len(share.nodes), "outcome": outcome, **(fig or {}),
             "cause": cause(said) if outcome == "fallback" else None,
             "fresh": "a fresh connection instead" in said}  # fmt: skip
-    with contextlib.suppress(OSError):  # the instrument never fails the pre-step
-        Path(f"{took}.remote").write_text(json.dumps(data))
+    share.note = data
+    if took:
+        leave(took, data)
 
 
 def end(root: Path, share: Share | None, record: str, merge: Callable[[Path, Path], None],
         run_local: Callable[[list[str]], int] | None = None,
-        clock: Callable[[], float] = time.time) -> int:  # fmt: skip
+        clock: Callable[[], float] = time.time, mac_end: float | None = None) -> int:  # fmt: skip
     """The pre-step's verdict on the worker's share. Green: its passes join the record. A test that
     failed there is re-run on the Mac, whose verdict stands (a Linux-only failure is named, never a
     red land). A fallback: the Mac runs the whole share. The Mac's runs write their own record
     (`run_local`, pytest.sh), merged into the one before them (`merge`)."""
     if share is None:
         return 0
-    mac_end = clock()  # the Mac's side is done: its wall ends here
+    mac_end = clock() if mac_end is None else mac_end  # the Mac's side is done: its wall ends here
     rc = share.proc.wait()
     worker_end, rerun = remote_saved.ended(share.junit, clock()), 0.0
     said = share.log.read_text(errors="replace")
@@ -352,14 +365,9 @@ def end(root: Path, share: Share | None, record: str, merge: Callable[[Path, Pat
         if lost:
             why += f" ({len(lost)} of the {len(share.nodes)} sent did not run whole there)"
         info(f"pre-land: {why}: the Mac runs them now, its verdict stands")
-        aside = Path(f"{record}.mac") if record and record != os.devnull else None
-        if aside and Path(record).is_file():
-            Path(record).replace(aside)
         t = clock()
-        mac = (run_local or mac_run(root))(redo)
+        mac = on_mac(root, redo, record, merge, run_local)
         rerun = clock() - t
-        if aside and aside.is_file():
-            merge(Path(record), aside)
         if mac == 0 and failed:
             named = ", ".join(failed[:10])
             warn(f"pre-land: failed only on the worker (Linux), green on the Mac: {named} -- "

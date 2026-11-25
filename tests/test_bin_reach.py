@@ -250,8 +250,7 @@ def test_a_run_audits_only_what_its_own_choice_left_out(tmp_path, monkeypatch) -
         at.bin_reach_audit, "audit", lambda r, c, s, _: audited.append((r, s)) or (0, "")
     )
     monkeypatch.setattr(at.pre_reuse, "stamp", lambda *_a: 0)
-    monkeypatch.setattr(at.remote_lane, "begin", lambda _r, rest, *_a: (rest, None))
-    monkeypatch.setattr(at.remote_lane, "end", lambda *_a: 0)
+    monkeypatch.setenv("GOH_LAND_REMOTE", "off")
     monkeypatch.setenv("GATES_OF_HECK_SUITE_NESTED_OK", "1")
     monkeypatch.delenv("GOH_LAND_VERDICTS_RECORD", raising=False)
     other = tmp_path / "other"

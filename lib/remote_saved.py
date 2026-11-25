@@ -92,6 +92,23 @@ def ended(junit: Path, now: float) -> float:
     return min(now, st.st_mtime) if st.st_size else now
 
 
+def whole(notes: list[dict]) -> dict:
+    """One land record's figure of every share of its pre-step (lib/remote_feed.py): the worker's
+    wall from the first launch to its last end, the rest summed, the worst outcome."""
+    if len(notes) < 2:
+        return dict(notes[0]) if notes else {}
+    out, rank = dict(notes[0]), ("remote", "failed", "fallback")
+    out["outcome"] = max((n["outcome"] for n in notes), key=rank.index)
+    out["cause"] = next((n["cause"] for n in notes if n.get("cause")), None)
+    out["fresh"] = any(n.get("fresh") for n in notes)
+    for k in ("tests", "mac_est_s", "rerun_s", "saved_s"):
+        out[k] = round(sum(n.get(k) or 0 for n in notes), 1)
+    ends = [n["t0"] + n["worker_s"] for n in notes if "t0" in n]
+    if ends and "t0" in out:
+        out["worker_s"] = round(max(ends) - out["t0"], 1)
+    return out
+
+
 def line(fig: dict) -> str:
     return PREFIX + json.dumps(fig, sort_keys=True)
 

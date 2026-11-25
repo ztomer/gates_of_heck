@@ -167,9 +167,7 @@ def test_the_real_shard_names_its_host_in_the_figure(tmp_path: Path, monkeypatch
     monkeypatch.delenv("GOH_LAND_PRE_TOOK", raising=False)
     monkeypatch.delenv("GOH_LAND_PRE_ONLY", raising=False)
     nodes = ["tests/test_remote_saved.py"]
-    monkeypatch.setattr(rl, "split", lambda root, ns, *_a, **_k: (list(ns), []))
-    local, share = rl.begin(REPO_ROOT, nodes)
-    assert local == [] and share is not None
+    share = rl.launch(REPO_ROOT, nodes, 0.0)
     rl.end(REPO_ROOT, share, "", av.merge_records, lambda ns: 0)
     (fig,) = rs.of_log(capsys.readouterr().out)
     assert fig["host"] == "unreachable.invalid" and fig["outcome"] == "fallback", fig

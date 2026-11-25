@@ -97,6 +97,7 @@ lib/prune_kept.py	base-code
 lib/queue_read.py	base-code
 lib/read_sets.py	base-code
 lib/read_tokens.py	base-code
+lib/remote_feed.py	base-code
 lib/remote_lane.py	base-code
 lib/remote_rates.py	base-code
 lib/remote_saved.py	base-code

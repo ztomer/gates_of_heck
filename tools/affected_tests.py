@@ -77,7 +77,7 @@ from lib import (
     main_red,
     pre_cpu,  # GOH.PREWIDTH: the pytest tree's CPU, for the land record's pre_run
     pre_reuse,
-    remote_lane,  # GOH.REMOTEWIRE: the Linux-safe share on the remote worker, concurrently
+    remote_feed,  # GOH.REMOTEWIRE: the Linux-safe share on the remote worker, concurrently
     source_closure,
     test_closure,
     test_slice,
@@ -345,11 +345,8 @@ def main(argv: list[str]) -> int:
     if args.run and (rc := fast_tests.run(root, affected(root, [], enqueue=False))):
         return rc  # every cheap judge, before the diff is read (GOH.PRESTEPFAILFAST): seconds
     changed = args.changed if args.changed is not None else changed_paths(root, args.base)
-    chosen = (
-        dict(sorted(readers(root, changed).items()))
-        if args.readers_only
-        else affected(root, changed)
-    )
+    which = readers if args.readers_only else affected
+    chosen = dict(sorted(which(root, changed).items()))
     if args.only == "diff-cov":  # GOH.LANDCHECK2 (land --check): the diff coverage judge alone
         return land_rustcov.judge(root, args.base, land_rustcov.selected(root, list(chosen)))
     if args.only == "judges":  # GOH.LANDCHECK2: the pre-step's first run, its whole-tree judges
@@ -424,25 +421,25 @@ def run(root: Path, changed: list[str], chosen: dict, base: str | None = None, r
          )  # fmt: skip
     record = os.environ.get("GOH_LAND_VERDICTS_RECORD", "")
     first = Path(f"{record}.judges") if record and record != os.devnull else None
-    local, share = remote_lane.begin(root, far, bool(judges or rest), [*judges, *rest])
-    rest = land_rustcov.paced(share, [*rest, *local]) if rust else local
-    for n, nodes in enumerate((judges, rest)):
-        if not nodes and not (rust and n == 1):  # a Rust change measures its workspace's tests
+    feed = remote_feed.begin(root, judges, rest, far, record, rust=bool(rust))  # GOH.REMOTECARRY
+    for n, part in enumerate((judges, rest)):
+        nodes = feed.rest() if n else part  # what the worker did not take
+        if not nodes and not (rust and n):  # a Rust change measures its workspace's tests
             continue
-        what = "judging the whole tree" if n == 0 else "the diff chose"
-        plain = [*av.carrying(record), "bash", str(root / "tools" / "pytest.sh"), "-q", *nodes]
+        what = "the diff chose" if n else "judging the whole tree"
+        plain = ["bash", str(root / "tools" / "pytest.sh"), "-q", *nodes]
+        plain = [*feed.words(), *av.carrying(record), *plain]
         cov = [*av.carrying(record), *land_rustcov.argv(root, rust, nodes)] if rust and n else None
         with pre_cpu.counted(), land_rustcov.named(record, kin if n else ""):
-            rc = timed(  # its own row (GOH.RELEASELANDGATE); no cwd: pytest.sh runs in its checkout
-                f"pre-land: {len(nodes)} tests {what}", cov or plain
-            )
-        if rc:
-            return remote_lane.cancel(share) or rc
-        if first and n == 0 and (rest or share) and Path(record).is_file():
+            # its own row (GOH.RELEASELANDGATE); no cwd: pytest.sh runs in its checkout
+            rc = timed(f"pre-land: {len(nodes)} tests {what}", cov or plain)
+        if rc := rc or (feed.early(_merge) if n == 0 else 0):
+            return feed.cancel() or rc
+        if first and n == 0 and (rest or far) and Path(record).is_file():
             Path(record).replace(first)  # the rest's run writes its own; _merge joins them
     if first and first.is_file():
         _merge(Path(record), first)
-    rc = remote_lane.end(root, share, record, _merge) or pre_reuse.stamp(record, base, list(chosen))
+    rc = feed.end(_merge) or pre_reuse.stamp(record, base, list(chosen))
     return rc or bin_reach_audit.after(root, changed, list(SKIPPED), CHOSEN_FOR)  # 1 in 10
 
 
