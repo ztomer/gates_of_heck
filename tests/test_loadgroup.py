@@ -9,7 +9,6 @@ on two, so "one worker" can never be a run that used one worker for everything.
 
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -101,8 +100,7 @@ def test_this_run_groups_me(request):
     worker = getattr(request.config, "workerinput", None)
     if worker is None or not getattr(request.config.option, "loadgroup", False):  # xdist's own
         pytest.skip("not an xdist loadgroup run")
-    mine = _loadgroup.map_path(worker["goh_loadgroup_dir"], worker["workerid"])
-    groups = json.loads(mine.read_text(encoding="utf-8"))
+    groups = _loadgroup.read_map(worker["goh_loadgroup_map"], worker["workerid"])
     assert groups.get(request.node.nodeid) == "loadgroup-self", groups.get(request.node.nodeid)
 
 
@@ -134,3 +132,19 @@ def test_a_group_is_every_mark_sorted_and_joined_as_xdist_names_it():
     assert _loadgroup.group(Item()) is None
     assert _loadgroup.group(Item(Mark("b"), Mark(name="a"))) == "a_b"
     assert _loadgroup.group(Item(Mark())) == "default"
+
+
+def test_every_workers_map_is_one_file_of_the_run(tmp_path):
+    """GOH.FSEVQUIET: a directory, and a temp and a rename per worker, were 24 events a run."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    import _loadgroup
+
+    one = tmp_path / "map"
+    maps = {f"gw{i}": {f"t.py::t{i}[{n}]": "g" for n in range(500)} for i in range(12)}
+    with ThreadPoolExecutor(12) as pool:
+        list(pool.map(lambda w: _loadgroup.add_map(one, w, maps[w]), maps))
+    assert {w: _loadgroup.read_map(one, w) for w in maps} == maps
+    assert [p.name for p in tmp_path.iterdir()] == ["map"]
+    with pytest.raises(KeyError):
+        _loadgroup.read_map(one, "gw99")

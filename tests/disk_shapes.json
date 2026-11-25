@@ -1,5 +1,12 @@
 {
- "allowed": {},
+ "allowed": {
+  "_db_on_disk.py": {
+   "sqlite": [
+    1,
+    "holds the suite home's own database open, so its journal files are made once a run"
+   ]
+  }
+ },
  "seed": {
   "_columns_fixture.py": {
    "sqlite": 2

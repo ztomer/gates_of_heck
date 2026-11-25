@@ -10,7 +10,7 @@ from pathlib import Path
 import db_core
 import goh_db
 import pytest
-from _db_on_disk import ENV, ON_DISK
+from _db_on_disk import ENV, ON_DISK, hold
 from conftest import REPO_ROOT
 
 TREE_READS = ("tests/",)  # each name of the list is a test of a file there
@@ -55,3 +55,23 @@ def test_every_listed_test_stands_says_why_and_the_list_only_shrinks() -> None:
 @pytest.mark.parametrize("env", [None, ""])
 def test_no_root_named_is_production(tmp_path, monkeypatch, env) -> None:
     assert not db_core.throwaway(tmp_path / "goh.db", {} if env is None else {ENV: env})
+
+
+def test_a_held_wal_database_keeps_its_files_and_every_writer_writes(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv(ENV)
+    path = tmp_path / "goh.db"
+    made = ["goh.db", "goh.db-shm", "goh.db-wal"]
+
+    def there() -> list[str]:
+        return sorted(p.name for p in tmp_path.iterdir())
+
+    _mode(path)
+    assert there() == ["goh.db"], "an unheld one's are removed at its close: the reading can tell"
+    con = hold(path)
+    ino = {n: (tmp_path / n).stat().st_ino for n in made}
+    with db_core.transaction(goh_db.SEAM, at=path) as w:
+        w.execute("UPDATE kv SET body = 'w'")
+    assert there() == made and {n: (tmp_path / n).stat().st_ino for n in made} == ino
+    assert con.execute("SELECT body FROM kv").fetchone() == ("w",)
+    con.close()
+    assert there() == ["goh.db"]
