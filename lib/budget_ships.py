@@ -37,7 +37,7 @@ def ship_rows(res: dict) -> list[dict]:
     """The `ship` row (its OWN run `own_s`, the queue's `land_wait_s` a field: GOH.SHIPSTARVE) and
     the `release` row of a ship result; none while running, one for a ship failed before release."""
     start, end = _parse(res.get("started", "")), _parse(res.get("finished", ""))
-    if not start or not end or res.get("schema") != 1 or "name" not in res:
+    if not start or not end or "name" not in res:
         return []
     repo = timing_ledger.repo_name(res["name"])
     ref = Path(str(res.get("result", ""))).stem or f"{res['name']}-{res['started']}"

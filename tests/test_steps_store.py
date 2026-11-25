@@ -192,7 +192,7 @@ def test_a_resumed_step_is_profiled_afresh(cache, tmp_path: Path, monkeypatch) -
     p = Path(ship_profile.profile(stem, "release"))
     p.write_text(json.dumps(step("first")) + "\n")
     ship_profile.keep({"steps": [{"name": "release", "timings": str(p)}]})
-    assert "GOH_TIMINGS" not in os.environ  # a later lock wait opens no new spool
+    assert os.environ.get("GOH_TIMINGS") is None  # a later lock wait opens no new spool
     assert [r["label"] for r in steps_store.rows(p) or ()] == ["first"] and not p.exists()
     again = Path(ship_profile.profile(stem, "release"))
     assert again == p and dump(cache.con) == []

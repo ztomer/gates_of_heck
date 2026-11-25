@@ -72,7 +72,8 @@ def test_a_ship_record_written_on_its_retry_is_the_row(tmp_path, monkeypatch):
     _failing(monkeypatch, 1)
     res = {"result": str(tmp_path / "ship" / "r" / "1.json"), "status": "running", "steps": []}
     ship_status.save(res)
-    assert ship_records.get(res["result"]) == res
+    got = ship_records.get(res["result"]) or {}
+    assert {k: got.get(k) for k in res} == res
 
 
 def test_a_newer_goh_db_refuses_a_ship_record_loudly(tmp_path, monkeypatch):

@@ -57,7 +57,7 @@ def test_a_green_reverify_records_the_ship_ok_and_runs_the_done_step(shipped, tm
     assert r.returncode == 0, r.stdout + r.stderr
     res = _result(tmp_path)
     assert res["status"] == "ok", res
-    assert "failed_step" not in res and "tail" not in res, res
+    assert res["failed_step"] is None and res["tail"] == [], res  # as a ship that never failed
     assert [(s["name"], s["status"]) for s in res["steps"]] == [
         ("suite", "skipped"),
         ("push", "ok"),

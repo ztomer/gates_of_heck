@@ -31,7 +31,8 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ship_records  # lib/, on the path from the line above
+import ship_columns  # lib/, on the path from the line above
+import ship_records
 import ship_status
 import state_paths
 
@@ -75,7 +76,7 @@ def keep(p: Path) -> str | None:
 
 
 def load(con: sqlite3.Connection, paths: list[Path]) -> None:
-    """Each file's record in (INSERT OR IGNORE on its result: a row is newer than its file), a
+    """Each file's record in (unless its result has a row: that is newer than its file), a
     dead worker's running result settled in its row, each file's bytes in `imports`."""
     now = time.time()
     for p in paths:
@@ -84,21 +85,17 @@ def load(con: sqlite3.Connection, paths: list[Path]) -> None:
         if not isinstance(rec, dict):
             continue
         if table == "ships" and ship_status._gone(rec):
-            have = con.execute("SELECT body FROM ships WHERE result=?", (result,)).fetchone()
-            live = json.loads(have[0]) if have else rec
+            have = ship_columns.read(con, "x.result = ?", (result,))
+            live = have[0][1] if have else rec
             if ship_status._gone(live):  # its row says running too (or there is none): settle
                 done = ship_status.abandoned(live, result)
-                con.execute(f"INSERT OR REPLACE INTO ships({ship_records.SHIP_ROW}) "
-                            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                            ship_records._row(done, result, now))  # fmt: skip
-        if table == "ships":
-            con.execute(f"INSERT OR IGNORE INTO ships({ship_records.SHIP_ROW}) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                        ship_records._row(rec, result, p.stat().st_mtime))  # fmt: skip
+                ship_columns.put(con, done, result, p.parent.name, now)
+        if con.execute(f"SELECT 1 FROM {table} WHERE result = ?", (result,)).fetchone():
+            pass  # a row is newer than its file
+        elif table == "ships":
+            ship_columns.put(con, rec, result, p.parent.name, p.stat().st_mtime)
         else:
-            pin = (result, Path(result).stem, json.dumps(rec), p.stat().st_mtime)
-            con.execute(f"INSERT OR IGNORE INTO ship_pins({ship_records.PIN_ROW}) "
-                        "VALUES (?,?,?,?)", pin)  # fmt: skip
+            ship_columns.put_pins(con, rec, result, p.stat().st_mtime)
         con.execute("INSERT OR IGNORE INTO imports(store, source, sha256, rows, at) "
                     "VALUES (?, ?, ?, ?, ?)",
                     (table, state_paths.column(con, str(p)), hashlib.sha256(raw).hexdigest(),

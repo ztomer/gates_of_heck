@@ -2,6 +2,7 @@
 
 A `goh ship` result was one JSON file per run under ship/<repo>/, rewritten at each step, and its
 install step's pins a `<result>.pins.json` sidecar. Both are rows now: `ships` and `ship_pins`,
+columns and child rows (lib/ship_columns.py, GOH.STEPTIMES),
 keyed by the RESULT path every caller already names a record by (GOH_SHIP_RESULT, `goh ship
 --status RESULT`, loopctl's --shipped), with the stem as `run`, the join key. The step logs, the
 sweep's record, the suite's profiles and the coverage summary stay files in the ship directory.
@@ -26,7 +27,6 @@ one spelling of the ship directory (`GOH_SHIP_DIR`). Invoked by `tools/ship.py`.
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import sqlite3
 import sys
@@ -37,13 +37,10 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_db  # lib/, beside this file: the one door to goh.db
+import ship_columns
 import state_paths
 
 PINS = ".pins.json"
-COLUMNS = ("item", "sha", "status", "started", "finished", "version")
-# A write names its columns: a table a later schema widened still takes it (GOH.OLDWRITERS).
-SHIP_ROW = ", ".join(("result", "run", "repo", *COLUMNS, "body", "at"))
-PIN_ROW = "result, run, body, at"
 
 
 def ship_dir() -> Path:
@@ -57,33 +54,25 @@ def pins_path(result: Path | str) -> Path:
     return Path(result).with_suffix(PINS)
 
 
-def _row(res: dict, result: str, now: float, repo: str = "") -> tuple:
-    p = Path(result)
-    vals = [res.get(c) for c in COLUMNS]
-    return (result, p.stem, repo or p.parent.name, *(None if v is None else str(v) for v in vals),
-            json.dumps(res), now)  # fmt: skip
-
-
 def _repo(con: sqlite3.Connection, res: dict) -> str:
-    """The repo column of RES: its key in a file of tokens, else "" (its directory's name)."""
-    return str(state_paths.repo_key(res.get("repo")) or "") if state_paths.tokens(con) else ""
+    """The repo column of RES: its key in a file of tokens, else its directory's name."""
+    key = str(state_paths.repo_key(res.get("repo")) or "") if state_paths.tokens(con) else ""
+    return key or Path(str(res["result"])).parent.name
 
 
 def put(res: dict) -> None:
     """Write RES (a whole ship record) as its result's row; a file this copy may not write is
     raised, never skipped (the ship's one record is no side record: lib/ship_status.py save)."""
     with goh_db.transaction() as con:
-        con.execute(f"INSERT OR REPLACE INTO ships({SHIP_ROW}) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                    _row(state_paths.put(con, "ships", res),
-                         state_paths.column(con, str(res["result"])), time.time(),
-                         _repo(con, res)))  # fmt: skip
+        ship_columns.put(con, state_paths.put(con, "ships", res),
+                         state_paths.column(con, str(res["result"])), _repo(con, res),
+                         time.time())  # fmt: skip
 
 
 def put_pins(result: Path | str, body: dict) -> None:
     with goh_db.refusable(), goh_db.transaction() as con:
-        con.execute(f"INSERT OR REPLACE INTO ship_pins({PIN_ROW}) VALUES (?,?,?,?)",
-                    (state_paths.column(con, str(result)), Path(result).stem,
-                     json.dumps(state_paths.put(con, "ship_pins", body)), time.time()))  # fmt: skip
+        ship_columns.put_pins(con, state_paths.put(con, "ship_pins", body),
+                              state_paths.column(con, str(result)), time.time())  # fmt: skip
 
 
 @contextlib.contextmanager
@@ -105,23 +94,17 @@ def _read(one: bool = False) -> Iterator[sqlite3.Connection | None]:
 
 def get(result: Path | str) -> dict | None:
     """RESULT's record (its row), else None."""
-    at, args = state_paths.where("result", state_paths.forms(result))
+    at, args = state_paths.where("x.result", state_paths.forms(result))
     with _read(one=True) as con:
-        row = (
-            con
-            and con.execute(
-                f"SELECT body FROM ships WHERE {at} ORDER BY result DESC", args
-            ).fetchone()
-        )
-    return state_paths.got("ships", json.loads(row[0])) if row else None
+        rows = ship_columns.read(con, at, args) if con else []
+    return state_paths.got("ships", rows[-1][1]) if rows else None
 
 
 def get_pins(result: Path | str) -> dict | None:
-    at, args = state_paths.where("result", state_paths.forms(result))
+    at, args = state_paths.where("x.result", state_paths.forms(result))
     with _read(one=True) as con:
-        row = con and con.execute(f"SELECT body FROM ship_pins WHERE {at} ORDER BY result DESC",
-                                  args).fetchone()  # fmt: skip
-    return state_paths.got("ship_pins", json.loads(row[0])) if row else None
+        rows = ship_columns.read_pins(con, at, args) if con else []
+    return state_paths.got("ship_pins", rows[-1][1]) if rows else None
 
 
 def in_dir(directory: Path) -> list[tuple[Path, dict]]:
@@ -130,13 +113,12 @@ def in_dir(directory: Path) -> list[tuple[Path, dict]]:
     directory = Path(directory)
     out: dict[str, dict] = {}
     ends = [f + end for f in state_paths.forms(directory) for end in (os.sep, chr(ord(os.sep) + 1))]
-    span = " OR ".join(["result >= ? AND result < ?"] * (len(ends) // 2))
+    span = " OR ".join(["x.result >= ? AND x.result < ?"] * (len(ends) // 2))
     with _read() as con:
-        for result, body in con.execute(f"SELECT result, body FROM ships WHERE {span} "
-                                        "ORDER BY result", ends) if con else ():  # fmt: skip
+        for result, rec in ship_columns.read(con, f"({span})", ends) if con else ():
             full = state_paths.decode(result)
             if Path(full).parent == directory:
-                out[full] = state_paths.got("ships", json.loads(body))
+                out[full] = state_paths.got("ships", rec)
     return [(Path(k), out[k]) for k in sorted(out)]
 
 
@@ -144,10 +126,8 @@ def live() -> list[tuple[Path, dict]]:
     """Every record, in ANY repo's directory, that still says running or bisecting (its worker
     may be gone: lib/ship_status.py settle_all)."""
     with _read() as con:
-        rows = con.execute("SELECT result, body FROM ships WHERE status IN ('running', "
-                           "'bisecting') ORDER BY result").fetchall() if con else []  # fmt: skip
-    return [(Path(state_paths.decode(r)), state_paths.got("ships", json.loads(b)))
-            for r, b in rows]  # fmt: skip
+        rows = ship_columns.read(con, "x.status IN ('running', 'bisecting')") if con else []
+    return [(Path(state_paths.decode(r)), state_paths.got("ships", rec)) for r, rec in rows]
 
 
 def repo_dirs(base: Path | None = None) -> list[Path]:

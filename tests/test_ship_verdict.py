@@ -131,6 +131,7 @@ def test_the_query_refuses_what_it_cannot_prove(tmp_path):
     dead.wait()
     _record(tmp_path, repo, pid=dead.pid)
     assert _verdict(tmp_path, repo, sha).returncode == 1  # no live worker above the caller
+    _record(tmp_path, repo, pid=dead.pid, status="ok")  # the next ship here would settle it aloud
 
 
 def _init(tmp_path: Path) -> Path:
