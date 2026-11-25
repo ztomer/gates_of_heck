@@ -63,11 +63,6 @@ def test_a_gate_that_never_asks_the_suite_is_a_recorded_miss(repo, tmp_path, env
     assert row["suite_why"].startswith("missed: the gate ran no whole suite to ask"), row
 
 
-def test_no_kept_record_from_the_enqueue_is_a_recorded_miss(repo, tmp_path, env):  # noqa: F811
-    row, _ = _land_row(repo, tmp_path, env, "true", "true")  # green, and it records nothing
-    assert row["suite_why"] == "missed: no kept record from the enqueue", row
-
-
 def test_land_profile_counts_the_decisions_by_reason():
     gatesrc = (
         "→ pre-land: the verdict the enqueue judged at 4e7c6f34 is not f0253b0f's (.gatesrc moved:"

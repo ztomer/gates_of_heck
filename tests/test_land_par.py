@@ -22,7 +22,6 @@ import subprocess
 import uuid
 from pathlib import Path
 
-import pytest
 from conftest import git, hermetic_env
 from orphan_kit import wait_for_file
 from test_affected_tests import _declare
@@ -74,6 +73,8 @@ def test_the_pre_land_and_the_gate_run_at_once_and_land(repo: Path, tmp_path: Pa
     row = json.loads((tmp_path / "timing" / "ledger.jsonl").read_text().splitlines()[-1])
     assert row["kind"] == "land" and row["exit"] == 0, row
     assert "pre_s" in row and "pre_run_s" in row, row  # the pre-land's seconds reach the land's row
+    # no enqueue, so no record to take: a miss, recorded (GOH.SUITEONCEMISS)
+    assert row["suite_why"] == "missed: no kept record from the enqueue", row
 
 
 def test_a_red_pre_land_stops_the_gate_and_is_the_one_named(repo: Path, tmp_path: Path) -> None:
@@ -132,20 +133,16 @@ def test_a_gate_that_hangs_dies_at_its_deadline_and_lands_nothing(
     assert not _alive(hang), out
 
 
-@pytest.mark.parametrize(
-    ("moved", "why"),
-    [("read.txt", "narrow: 1 moved path,"), ("pyproject.toml", "rerun: pyproject.toml moved")],
-)
 def test_a_land_whose_gate_reuses_the_kept_record_runs_one_pytest(
     repo: Path,
     tmp_path: Path,
     kit: dict,  # noqa: F811 -- the fixture imported above
-    moved: str,
-    why: str,
 ) -> None:
-    """Main moved MOVED after the enqueue: the old lander ran the pre-land again beside the gate
-    (NARROW the readers, RERUN the set), two test runs on one tree. Now the gate's suite is the
-    one run, and the decision is still on the land's row."""
+    """Main moved after the enqueue: the old lander ran the pre-land again beside the gate (NARROW
+    the readers, RERUN the set), two test runs on one tree. Now the gate's suite is the one run,
+    and the decision is still on the land's row. Asked of RERUN, the whole set again; which move is
+    which decision is lib/pre_reuse.py's (tests/test_pre_reuse.py)."""
+    moved, why = "pyproject.toml", "rerun: pyproject.toml moved"
     seen = tmp_path / "seen"
     kit = {**kit, "GOH_LAND_GATE": f"{kit['GOH_LAND_GATE']}; echo gate >> {seen}"}
     wt = lane(repo, tmp_path, "lane", {"b.txt": "the lane's\n"})

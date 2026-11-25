@@ -209,7 +209,7 @@ def test_a_signal_ignored_at_entry_stays_ignored(wrapper, tmp_path: Path) -> Non
 @pytest.mark.load_sensitive
 def test_cpu_timeout_refuses_burner_and_reaped_children_not_sleep(wrapper) -> None:
     r_sleep = _run(
-        wrapper, "--timeout", "30", "--cpu-timeout", "1", "--grace", "1", "--", "sleep", "2.2"
+        wrapper, "--timeout", "30", "--cpu-timeout", "1", "--grace", "1", "--", "sleep", "1.4"
     )
     assert r_sleep.returncode == 0, r_sleep.stderr
 

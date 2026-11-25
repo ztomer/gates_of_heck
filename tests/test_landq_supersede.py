@@ -86,11 +86,11 @@ def _second(wt: Path) -> str:
 
 
 @pytest.mark.load_sensitive
-def test_a_second_enqueue_stops_the_first_enqueues_pre_step(repo, tmp_path, env):
+def test_a_second_enqueue_stops_the_first_enqueues_pre_step_and_alone_files(repo, tmp_path, env):
     wt, _ = _land_wt(repo, tmp_path)
     env = _slow(env, tmp_path)
     pre, enqueuer = _first_running(env, wt, "T.RE")
-    _second(wt)
+    second = _second(wt)
     done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.RE", "--no-start")
     out = done.stdout + done.stderr
     try:  # stopped by the second enqueue, never by the release below
@@ -98,21 +98,9 @@ def test_a_second_enqueue_stops_the_first_enqueues_pre_step(repo, tmp_path, env)
         _until("the first pre-step stopped", lambda: pid_owner.gone(pre), 15)
         _until("the first enqueuer stopped", lambda: pid_owner.gone(enqueuer), 15)
     finally:
-        Path(env["GO"]).touch()
+        Path(env["GO"]).touch()  # a first pre-step still running would now pass and file
     _until("the second enqueue's end", lambda: not _markers(env))  # no process outlives the test
-
-
-@pytest.mark.load_sensitive
-def test_a_second_enqueue_files_no_request_for_the_replaced_sha(repo, tmp_path, env):
-    wt, _ = _land_wt(repo, tmp_path)
-    env = _slow(env, tmp_path)
-    _, enqueuer = _first_running(env, wt, "T.RS")
-    second = _second(wt)
-    done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.RS", "--no-start")
-    assert done.returncode == 0, done.stdout + done.stderr
-    Path(env["GO"]).touch()  # a first pre-step still running would now pass and file
     _until("the second request", lambda: [r for r in _requests(env) if r["sha"] == second])
-    _until("the first enqueuer ended", lambda: pid_owner.gone(enqueuer))
     assert [r["sha"] for r in _requests(env)] == [second]
 
 
