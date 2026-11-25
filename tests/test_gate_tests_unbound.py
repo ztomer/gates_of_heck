@@ -81,6 +81,9 @@ def _suite_commit(tmp_path: Path, how: str):
 
 @pytest.mark.parametrize("how", ["plain", "all", "paths"])
 def test_a_suite_the_commit_gate_runs_sees_none_of_gits_local_variables(tmp_path, how):
+    """And the converse, of the same commit: scrubbing the suite's environment must not cost the
+    gate its own binding. For `all` and `paths` the edit is modified and NOT staged; only the
+    commit's temporary index lists it."""
     main, got, out = _suite_commit(tmp_path, how)
 
     text = got.stdout + got.stderr
@@ -88,15 +91,6 @@ def test_a_suite_the_commit_gate_runs_sees_none_of_gits_local_variables(tmp_path
     seen = json.loads((out / "seen.json").read_text())
     assert seen == {}, f"the suite inherited git's repository variables: {seen}\n{text}"
     assert _git(main, "log", "--format=%s", "wt").splitlines() == ["ours", "one"], text
-
-
-@pytest.mark.parametrize("how", ["all", "paths"])
-def test_the_gates_own_git_still_reads_the_index_being_committed(tmp_path, how):
-    """The converse: scrubbing the suite's environment must not cost the gate its own binding.
-    The edit is modified and NOT staged; only the commit's temporary index lists it."""
-    _main, got, out = _suite_commit(tmp_path, how)
-
-    assert got.returncode == 0, got.stdout + got.stderr
     assert (out / "staged.txt").read_text().split() == ["test_probe.py"]
 
 
