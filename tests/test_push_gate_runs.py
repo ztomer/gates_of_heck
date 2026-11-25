@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
-from _todays_gates import _clean_checkout_of_todays_gates
+from _todays_gates import gates_part
 from conftest import native_goh_path
 from test_push_gate import GATE, PUSH_GATE, REPO_ROOT, _git, _repo
 from timing_bounds import patience
@@ -298,9 +298,12 @@ def _sibling_repo(tmp_path: Path, cargo: str | None, gate: str = SIBLING_GATE) -
 
 
 def _gates(tmp_path: Path) -> Path:
-    """The goh checkout an export carries: today's gates, a git checkout of their own, with no Rust
-    source -- a tenth of what each export of the whole checkout wrote and removed."""
-    return _clean_checkout_of_todays_gates(tmp_path / "goh", rust=False)
+    """The goh checkout an export carries: a git checkout of the push gate's own files and of the
+    crate a consumer names -- what each export of the whole estate wrote and removed was 1,700 file
+    events."""
+    part = ("gates/push_gate.sh", "gates/goh.sh", "gates/_push_siblings.py", "lib/gate_slot.py")
+    part += ("lib/repo_hold.py", "crates/goh-tui/Cargo.toml")
+    return gates_part(tmp_path / "goh" / "gates_of_heck", *part)
 
 
 def _report(tmp_path: Path) -> dict[str, str]:
