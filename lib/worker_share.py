@@ -24,17 +24,17 @@ the SELECTAUDIT land's coverage step ran the goh suite at `-n 4` for 11+ minutes
 7.9 of 16 cores, the other gate and its sibling steps long gone. Now the runners that CAN follow the
 count do, both ways: `live()` is cores // the gates admitted NOW (+1 for a run holding no slot,
 GOH_SHARE_OWN) // the steps of each enclosing gates/local_ci.sh running NOW (GOH_SHARE_STEPS, a
-file per scheduler). The goh suite starts xdist at its CEILING and every worker takes a TOKEN
-(`Pool`, flock'd files <pool>/tok-<i>, i < live share) before each test and gives it back after:
-a gate leaving grows the run within one test per worker, a gate admitted shrinks it the same way,
-and a worker without a token waits on a 0.2 s poll that costs nothing. Tokens beat re-sizing xdist
-(it has no live resize) and beat a per-test re-count in every worker (the count is re-read once per
+file per scheduler; `K/N` in it is a part by name, GOH.RUSTOVERLAP). The goh suite starts xdist at
+its CEILING and every worker takes a TOKEN (`Pool`, flock'd files <pool>/tok-<i>, i < live share)
+before each test and gives it back after: a gate leaving grows the run within one test per worker,
+one admitted shrinks it the same way, and a worker without a token waits on a 0.2 s poll. They beat
+re-sizing xdist (it has none live) and a per-test re-count in every worker (re-read once per
 GOH_SHARE_PERIOD seconds per worker, default 2). `cargo test` follows it per TEST BINARY: the
 admission names this file as cargo's runner (`run`), which hands each libtest binary the live
 RUST_TEST_THREADS -- unless the repo configures a runner of its own, which is never overridden.
 THE BOUND: the tokens of every gate sum to at most cores within one test of any admission (the
 incident's rule, now kept live); a runner with a fixed width (swift, xcodebuild, cargo's build
-jobs, nextest) keeps its share from its start, as before.
+jobs, nextest) keeps its share; cargo's tests beside the external suite are half a share over it.
 
 THE CHANNEL. The share reaches every runner a gate starts through the environment the runners
 themselves read, exported once at admission (lib/gate_slot.sh, lib/admission.py), so a consumer's
@@ -163,26 +163,26 @@ def own(directory: str, environ: dict[str, str] | None = None) -> int:
     return 0 if gate_slot.nested(directory) is not None else 1
 
 
-def steps(environ: dict[str, str] | None = None) -> int:
-    """The product of the running-step counts of every enclosing scheduler, at least 1 each: a file
-    that cannot be read (its scheduler is gone) divides by nothing."""
+def part_of(environ: dict[str, str] | None = None) -> tuple[int, int]:
+    """This run's (numerator, denominator) of its gate's share: the product over every enclosing
+    scheduler's file -- `N` run now, an equal part each, or `K/N`, this run's part by name; one that
+    cannot be read (its scheduler is gone) or says neither divides by nothing."""
+    num = den = 1
     env = os.environ if environ is None else environ
-    total = 1
     for path in filter(None, env.get(STEPS_ENV, "").split(":")):
-        try:
-            with open(path, encoding="utf-8") as f:
-                raw = f.read().strip()
-        except OSError:
-            continue
-        total *= max(1, int(raw)) if raw.isdigit() else 1
-    return total
+        with contextlib.suppress(OSError, ValueError), open(path, encoding="utf-8") as f:
+            top, _, n = f.read().strip().rpartition("/")
+            if 0 < int(top or "1") <= int(n):
+                num, den = num * int(top or "1"), den * int(n)
+    return num, den
 
 
 def live(environ: dict[str, str] | None = None) -> int:
-    """This runner's share NOW: its class's part of the cores now // the sibling steps now."""
+    """This runner's share NOW: its class's part of the cores now, its `part_of` of it."""
     env = os.environ if environ is None else environ
     directory = os.path.realpath(slot_dir(env))
-    return divide(land_share.share_of(directory, env, cores(env), own(directory, env)), steps(env))
+    num, den = part_of(env)
+    return divide(num * land_share.share_of(directory, env, cores(env), own(directory, env)), den)
 
 
 class Pool:

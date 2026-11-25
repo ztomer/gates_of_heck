@@ -132,6 +132,26 @@ def test_sibling_steps_divide_the_share_while_they_run_and_return_it_when_they_e
         me.close()
 
 
+def test_a_part_by_name_takes_its_fraction_and_the_whole_when_the_other_ends(tmp_path):
+    """GOH.RUSTOVERLAP: `K/N` is this run's part, under an enclosing scheduler's count as well; a
+    file that says no part (a half-written one, 0, a part over the whole) divides by nothing."""
+    outer, mine = tmp_path / "outer", tmp_path / "mine"
+    outer.write_text("2\n")
+    env = _env(tmp_path, GOH_SHARE_STEPS=f"{outer}:{mine}")
+    me = _hold(tmp_path, "slot-1")
+    try:
+        for said, want in (("3/4", 6), ("1/4", 2), ("1/64", 1), ("2", 4)):
+            mine.write_text(said + "\n")
+            assert worker_share.live(env) == want, said
+        for said in ("", "0", "0/4", "5/4", "3/", "1/4/2", "-1/4"):
+            mine.write_text(said + "\n")
+            assert worker_share.live(env) == 8, said
+        mine.unlink()
+        assert worker_share.live(env) == 8
+    finally:
+        me.close()
+
+
 def test_the_count_is_reread_once_a_period_not_per_test(tmp_path):
     env = _env(tmp_path)
     now = [0.0]
