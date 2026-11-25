@@ -28,7 +28,7 @@ darwin = pytest.mark.skipif(sys.platform != "darwin", reason="FSEvents is macOS 
 CHURNY = (
     "import os\n"
     "def test_churny(tmp_path):\n"
-    "    for i in range(400):\n"
+    "    for i in range(100):\n"
     "        d = tmp_path / f'd{i}'\n"
     "        d.mkdir()\n"
     "        (d / 'f').write_text('x')\n"
@@ -80,14 +80,14 @@ def _session(
 def _short_of_the_plant(body: str, rep: dict, ceiling: dict | None = None) -> str:
     """Why a clean window read less than the planted test made, or "": fseventsd can lose a run of
     records with no drop flag (lib/fs_events.py), and a verdict on such a window judges the loss.
-    The plant is the calibration: CHURNY makes 400 dirs, QUIET one file. A loss only undercounts,
+    The plant is the calibration: CHURNY makes 100 dirs, QUIET one file. A loss only undercounts,
     so a window that still read the churny test past a per-test ceiling under the plant is a
     reading of that ceiling: its red is a lower bound over the line (GOH.FSCHURNFLAKE: 354 of 400
     under load 30-110 refused a ship whose verdict was red all along)."""
     per_test = (ceiling or {}).get("per_test")  # no literal default: GOH.LOADSENSEGET's lint
-    floor = 400 if per_test is None else min(400, per_test + 1)
+    floor = 100 if per_test is None else min(100, per_test + 1)
     if CHURNY in body and rep["dirs_created"] < floor:
-        return f"the instrument lost events: read {rep['dirs_created']} of the 400 planted dirs"
+        return f"the instrument lost events: read {rep['dirs_created']} of the 100 planted dirs"
     if body == QUIET and rep["events"] < 1:
         return "the instrument lost events: read none of the planted write"
     return ""
@@ -122,20 +122,21 @@ def _one_session(
 @pytest.mark.load_sensitive
 @darwin
 def test_a_planted_churny_test_breaks_the_per_test_ceiling(tmp_path: Path) -> None:
-    r, rep = _session(tmp_path, CHURNY, {"per_test": 300, "per_test_run": 10_000})
+    r, rep = _session(tmp_path, CHURNY, {"per_test": 75, "per_test_run": 10_000})
     assert r.returncode == 1, r.stdout[-1500:] + r.stderr[-1500:]
-    assert "test_churny made" in r.stdout and "per-test ceiling 300" in r.stdout, r.stdout[-1500:]
-    assert rep["per_test"]["test_churny"] > 300 and rep["dirs_created"] > 300, rep
+    assert "test_churny made" in r.stdout and "per-test ceiling 75" in r.stdout, r.stdout[-1500:]
+    assert rep["per_test"]["test_churny"] > 75 and rep["dirs_created"] > 75, rep
     assert rep["faults"], rep
 
 
 def test_a_window_that_lost_events_but_read_past_the_ceiling_is_a_reading() -> None:
     """The window the v0.150.0 ship's suite read (354 of 400 dirs, load 30-110) judges a 300
-    per-test ceiling: a lower bound over it. One under the ceiling is still no reading, and a
+    per-test ceiling (here a quarter of each): a lower
+    bound over it. One under the ceiling is still no reading, and a
     ceiling the plant clears only whole still needs the whole plant."""
-    lossy = {"dirs_created": 354, "events": 700}
-    assert _short_of_the_plant(CHURNY, lossy, {"per_test": 300}) == ""
-    assert _short_of_the_plant(CHURNY, {"dirs_created": 290, "events": 580}, {"per_test": 300})
+    lossy = {"dirs_created": 88, "events": 175}
+    assert _short_of_the_plant(CHURNY, lossy, {"per_test": 75}) == ""
+    assert _short_of_the_plant(CHURNY, {"dirs_created": 72, "events": 145}, {"per_test": 75})
     assert _short_of_the_plant(CHURNY, lossy, {"per_test": 100_000})
     assert _short_of_the_plant(CHURNY, lossy)
 
@@ -143,9 +144,9 @@ def test_a_window_that_lost_events_but_read_past_the_ceiling_is_a_reading() -> N
 @pytest.mark.load_sensitive
 @darwin
 def test_a_planted_churny_test_breaks_the_per_run_ceiling(tmp_path: Path) -> None:
-    r, _ = _session(tmp_path, CHURNY, {"per_test": 100_000, "per_test_run": 200})
+    r, _ = _session(tmp_path, CHURNY, {"per_test": 100_000, "per_test_run": 50})
     assert r.returncode == 1, r.stdout[-1500:] + r.stderr[-1500:]
-    assert "over the ceiling 200 each" in r.stdout, r.stdout[-1500:]
+    assert "over the ceiling 50 each" in r.stdout, r.stdout[-1500:]
 
 
 # Two workers: the controller collects nothing and each worker deselects alike. The suite's own
@@ -167,10 +168,10 @@ def test_a_whole_run_over_the_mean_stays_red_with_nothing_deselected(
     the per-run ceiling holds it, in a plain session and under xdist (whose controller collects
     nothing)."""
     r, rep = _session(
-        tmp_path, CHURNY_AND_QUIET, {"per_test": 100_000, "per_test_run": 200}, *xdist, drops=()
+        tmp_path, CHURNY_AND_QUIET, {"per_test": 100_000, "per_test_run": 50}, *xdist, drops=()
     )
     assert r.returncode == 1, r.stdout[-1500:] + r.stderr[-1500:]
-    assert "over the ceiling 200 each" in r.stdout, r.stdout[-1500:]
+    assert "over the ceiling 50 each" in r.stdout, r.stdout[-1500:]
     assert rep["whole"] is True and rep["deselected"] == 0 and rep["tests_run"] == 2, rep
 
 
@@ -186,18 +187,18 @@ def test_a_carried_run_is_not_judged_by_the_whole_run_mean(
     reading of the ceiling `per_test_run` (re-set from a whole run). Its count is still written,
     and the per-test ceiling, which holds for any selection, still judges each test."""
     r, rep = _session(
-        tmp_path, CHURNY_AND_QUIET, {"per_test": 100_000, "per_test_run": 200}, *xdist,
+        tmp_path, CHURNY_AND_QUIET, {"per_test": 100_000, "per_test_run": 50}, *xdist,
         drops=("test_quiet",),
     )  # fmt: skip
     assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
     assert rep["whole"] is False and rep["deselected"] == 1 and rep["tests_run"] == 1, rep
-    assert rep["faults"] == [] and rep["events"] >= 400, rep
+    assert rep["faults"] == [] and rep["events"] >= 100, rep
     assert "a partial run" in r.stdout, r.stdout[-1500:]
     r, rep = _session(
-        tmp_path, CHURNY_AND_QUIET, {"per_test": 300, "per_test_run": 200}, *xdist,
+        tmp_path, CHURNY_AND_QUIET, {"per_test": 75, "per_test_run": 50}, *xdist,
         drops=("test_quiet",),
     )  # fmt: skip
-    assert r.returncode == 1 and "per-test ceiling 300" in r.stdout, r.stdout[-1500:]
+    assert r.returncode == 1 and "per-test ceiling 75" in r.stdout, r.stdout[-1500:]
 
 
 @pytest.mark.load_sensitive
@@ -209,7 +210,7 @@ def test_a_narrowed_run_is_not_judged_by_the_whole_run_mean(
     """A caller that names the file for a narrowed run (tools/pytest.sh) gets its count, not the
     whole run's verdict: a path or a -k selects, whatever deselects or not."""
     r, rep = _session(
-        tmp_path, CHURNY_AND_QUIET, {"per_test": 100_000, "per_test_run": 200}, *narrow
+        tmp_path, CHURNY_AND_QUIET, {"per_test": 100_000, "per_test_run": 50}, *narrow
     )
     assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
     assert rep["whole"] is False and rep["faults"] == [], rep
@@ -218,7 +219,7 @@ def test_a_narrowed_run_is_not_judged_by_the_whole_run_mean(
 @pytest.mark.load_sensitive
 @darwin
 def test_a_quiet_session_is_green_and_its_count_is_written(tmp_path: Path) -> None:
-    r, rep = _session(tmp_path, QUIET, {"per_test": 300, "per_test_run": 200})
+    r, rep = _session(tmp_path, QUIET, {"per_test": 75, "per_test_run": 50})
     assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
     assert rep["tests_run"] == 1 and rep["faults"] == [] and rep["dropped"] == 0, rep
     assert rep["teardown_entries"] >= 1, rep  # the passed test's tmp_path went; its root did not

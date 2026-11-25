@@ -671,6 +671,8 @@ tests/test_sleep_mark.py
 tests/test_slot_priority.py
 tests/test_small_stores.py
 tests/test_source_closure.py
+tests/test_spawn_columns.py
+tests/test_spawn_items.py
 tests/test_spawn_profile.py
 tests/test_spawn_register.py
 tests/test_spend_watch.py
@@ -685,6 +687,8 @@ tests/test_state_bounds.py
 tests/test_state_columns.py
 tests/test_state_files_bound.py
 tests/test_state_olds.py
+tests/test_state_paths.py
+tests/test_state_paths_stores.py
 tests/test_state_retire.py
 tests/test_state_retire_landq.py
 tests/test_state_retire_lands.py

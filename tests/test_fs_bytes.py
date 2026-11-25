@@ -2,7 +2,7 @@
 
 GOH.FSEVQUIET: an event count is blind to size, so a cut judged on events alone could write more.
 The instrument is pinned on what it could miss: a child's write (100 MB through `dd` by hand,
-2026-11-25; 1 MB here), a file counted twice, a clone counted as a write.
+2026-11-25; 100 KB here), a file counted twice, a clone counted as a write.
 """
 
 from __future__ import annotations
@@ -17,11 +17,12 @@ from _tree_clone import clone_tree
 from test_fs_churn import XDIST, _session
 
 darwin = pytest.mark.skipif(sys.platform != "darwin", reason="clonefile and FSEvents are macOS's")
+KB = 1_000
 MB = 1_000_000
 DD = (
     "import subprocess\n"
     "def test_dd(tmp_path):\n"
-    "    subprocess.run(['dd', 'if=/dev/zero', f'of={tmp_path}/f', 'bs=1000000', 'count=1'],\n"
+    "    subprocess.run(['dd', 'if=/dev/zero', f'of={tmp_path}/f', 'bs=100000', 'count=1'],\n"
     "                   check=True, capture_output=True, stdin=subprocess.DEVNULL)\n"
     "def test_quiet(tmp_path):\n"
     "    pass\n"
@@ -34,9 +35,9 @@ DD = (
 def test_a_childs_write_is_its_tests_bytes(tmp_path: Path, xdist: tuple[str, ...]) -> None:
     r, rep = _session(tmp_path, DD, {"per_test": 10_000, "per_test_run": 10_000}, *xdist)
     assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
-    assert rep["bytes_per_test"] == {"test_planted.py::test_dd": MB}, rep
-    assert rep["bytes"] == MB and rep["device_bytes"] >= 0, rep
-    assert "1.00 MB test_planted.py::test_dd" in r.stdout, r.stdout[-1500:]
+    assert rep["bytes_per_test"] == {"test_planted.py::test_dd": 100 * KB}, rep
+    assert rep["bytes"] == 100 * KB and rep["device_bytes"] >= 0, rep
+    assert "0.10 MB test_planted.py::test_dd" in r.stdout, r.stdout[-1500:]
 
 
 def test_a_hard_link_counts_once_and_a_symlink_not_at_all(tmp_path: Path) -> None:

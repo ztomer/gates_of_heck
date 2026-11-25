@@ -86,6 +86,9 @@
   "test_state_columns.py": {
    "sqlite": 1
   },
+  "test_state_paths_stores.py": {
+   "sqlite": 3
+  },
   "test_state_retire.py": {
    "sqlite": 2
   },
