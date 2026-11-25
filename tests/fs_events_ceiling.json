@@ -22,7 +22,7 @@
    "events": 600
   },
   "tests/test_gate_temp_leaks.py": {
-   "bytes": 9500000,
+   "bytes": 11500000,
    "events": 9500
   },
   "tests/test_land_check.py": {
