@@ -103,7 +103,16 @@ HOME_DEFAULTS = {
     "UV_CACHE_DIR": ".cache/uv",
 }
 
-GITCONFIG = "[user]\n\tname = goh suite\n\temail = suite@goh.test\n[init]\n\tdefaultBranch = main\n"
+# The suite's git writes no more than its tests read (GOH.FSEVQUIET): an empty template (git's own
+# is 14 sample hooks and two notes in every `git init` and `git clone`), no background maintenance,
+# a fetched pack kept as one file, never unpacked into loose objects, and nothing synced to the SSD:
+# a fixture outlives no power cut.
+GITCONFIG = (
+    "[user]\n\tname = goh suite\n\temail = suite@goh.test\n"
+    "[init]\n\tdefaultBranch = main\n\ttemplateDir = ~/.git-template\n"
+    "[core]\n\tfsync = none\n[maintenance]\n\tauto = false\n[gc]\n\tauto = 0\n"
+    "[transfer]\n\tunpackLimit = 1\n[pack]\n\twriteReverseIndex = false\n"
+)
 
 
 # A ship's run inputs (tools/ship.py exports them to its release step, whose gate runs this suite)
@@ -228,6 +237,8 @@ def furnish(home: Path, reads: tuple[str, ...]) -> Path:
     real = Path(os.environ.get(MARKER) or REAL_HOME)
     home.mkdir(parents=True, exist_ok=True)
     (home / ".gitconfig").write_text(GITCONFIG)
+    for part in ("hooks", "info"):  # git's own template has both, and scripts write into them
+        (home / ".git-template" / part).mkdir(parents=True, exist_ok=True)
     (home / ".cache").mkdir(exist_ok=True)
     for rel in reads:
         if (real / rel).exists():

@@ -69,6 +69,25 @@ def test_the_suite_runs_in_its_own_home() -> None:
     assert ident == "suite@goh.test", "the suite's git identity is not its own minimal one"
 
 
+def test_the_suites_git_writes_no_more_than_its_tests_read(tmp_path: Path) -> None:
+    """GOH.FSEVQUIET: each `git init`, `git clone` and fetch of a test made git's sample hooks, a
+    loose object per object fetched and a sync of it all to the SSD."""
+
+    def git(*args: str) -> str:
+        return subprocess.run(["git", *args], capture_output=True, text=True, check=True,
+                              cwd=tmp_path, stdin=subprocess.DEVNULL).stdout  # fmt: skip
+
+    git("init", "-q", "a")
+    assert not list((tmp_path / "a/.git/hooks").iterdir()) and (tmp_path / "a/.git/info").is_dir()
+    git("-C", "a", "commit", "-q", "--allow-empty", "-m", "x")
+    git("init", "-q", "b")
+    git("-C", "b", "fetch", "-q", "../a")
+    kept = [p for p in (tmp_path / "b/.git/objects").rglob("*") if p.is_file()]
+    assert sorted(p.suffix for p in kept) == [".idx", ".pack"], kept
+    said = [git("config", k).strip() for k in ("core.fsync", "maintenance.auto")]
+    assert said == ["none", "false"]
+
+
 def test_the_push_gate_refuses_the_users_push_cache(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
