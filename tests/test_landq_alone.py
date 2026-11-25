@@ -14,7 +14,16 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT, hermetic_env
-from test_landq_batch import FAKE_LOOPCTL, GATE, gate_runs, landq, lane, recorded
+from test_landq_batch import (
+    FAKE_LOOPCTL,
+    GATE,
+    enqueue_all,
+    gate_runs,
+    in_process,
+    landq,
+    lane,
+    recorded,
+)
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import land_records
@@ -34,10 +43,12 @@ def env(tmp_path: Path) -> dict[str, str]:
                         GATE_LOG=str(tmp_path / "gate.log"))  # fmt: skip
 
 
-def _enqueue(env: dict[str, str], wt: Path, item: str, *extra: str) -> None:
-    pre = {**env, "GOH_LAND_PRE": "true"}
-    done = landq(pre, "--enqueue", "--foreground", "--land", str(wt), "--item", item,
-                 "--no-start", *extra)  # fmt: skip
+def _enqueue(env: dict[str, str], wt: Path, item: str, *no_pre: str) -> None:
+    if not no_pre:
+        enqueue_all(env, [(wt, item)])
+        return
+    done = in_process(env, "--enqueue", "--foreground", "--land", str(wt), "--item", item,
+                      "--no-start", *no_pre)  # fmt: skip
     assert done.returncode == 0, done.stdout + done.stderr
 
 
