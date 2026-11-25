@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import ast
+import contextlib
 import os
+import sqlite3
 from pathlib import Path
 
 import db_core
@@ -32,8 +34,12 @@ def test_a_tests_own_database_leaves_no_file_beside_it(tmp_path, monkeypatch) ->
     assert _mode(tmp_path / "mine" / "goh.db") == ("memory", ["goh.db"])
     monkeypatch.delenv(ENV)  # production's own: the reading above can tell the two apart
     assert _mode(tmp_path / "wal" / "goh.db") == ("wal", ["goh.db", "goh.db-shm", "goh.db-wal"])
-    small, large = ((tmp_path / d / "goh.db").stat().st_size for d in ("mine", "wal"))
-    assert small * 3 < large, (small, large)
+    pages, sizes = [], []  # 512-byte pages: a table with one row is one of them, not 4 KB
+    for d in ("mine", "wal"):
+        with contextlib.closing(sqlite3.connect(tmp_path / d / "goh.db")) as con:
+            pages.append(con.execute("PRAGMA page_size").fetchone()[0])
+        sizes.append((tmp_path / d / "goh.db").stat().st_size)
+    assert pages == [512, 4096] and sizes[0] < sizes[1], (pages, sizes)
 
 
 def test_a_database_outside_the_run_is_never_a_throwaway(tmp_path) -> None:
