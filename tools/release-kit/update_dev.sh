@@ -6,21 +6,26 @@
 # Pipeline (the union of the ancestors' hard-won steps, in the order that
 # matters):
 #   1. build          run BUILD_CMD in the current directory
-#   2. quit running   a live copy cannot be replaced from under itself — the
-#                     swap "succeeds" and keeps serving the old binary, so you
-#                     test the build you just replaced. Quit gracefully
-#                     (osascript), then pkill as fallback.
-#   3. install        replace $DEST_DIR/$APP_NAME (ditto — preserves signature,
-#                     symlinks and metadata a plain cp can mangle), then READ IT
-#                     BACK: the destination must equal the source (diff -r)
-#   4. de-quarantine  /usr/bin/xattr BY ABSOLUTE PATH: Homebrew's python xattr
+#   2. stage          ditto the bundle (preserves signature, symlinks and metadata a plain cp can
+#                     mangle) into a hidden directory of this run beside the installed copy, then
+#                     READ IT BACK: the staged copy must equal the source (diff -r). Nothing
+#                     installed or running is touched before step 5 (GOH.DEVSWAP, 2026-11-25: the
+#                     old order quit the app and removed $DEST first, so a failed ditto left no app,
+#                     nothing running, and "nothing installed")
+#   3. de-quarantine  /usr/bin/xattr BY ABSOLUTE PATH: Homebrew's python xattr
 #                     shadows it and does not implement -r; bare `xattr -dr`
 #                     printed usage and reported success with quarantine still
 #                     set (found on this machine). Then VERIFY the flag is gone
 #                     instead of assuming.
-#   5. sign           ad-hoc codesign when available (keeps macOS from
+#   4. sign           ad-hoc codesign when available (keeps macOS from
 #                     re-flagging the bundle after the copy)
-#   6. launch         the app is put back as it was: a copy step 2 quit is relaunched
+#   5. quit running   a live copy cannot be replaced from under itself — the
+#                     swap "succeeds" and keeps serving the old binary, so you
+#                     test the build you just replaced. Quit gracefully
+#                     (osascript), then pkill as fallback.
+#   6. swap           two renames on one volume: the old copy aside, the staged one in. A failed
+#                     second rename puts the old copy back. Nothing changes the bundle after it.
+#   7. launch         the app is put back as it was: a copy step 5 quit is relaunched
 #                     (GOH.APPSTATE: a private menu-bar app was left STOPPED by three kit installs on
 #                     2026-11-07/08), and seen running again before it says so. --no-launch
 #                     keeps it stopped; --launch / UPDATE_DEV_LAUNCH=1 launches one that was
@@ -62,6 +67,8 @@ set -euo pipefail
 GOH="${GOH_DIR:-$HOME/Projects/gates_of_heck}"
 # shellcheck disable=SC1091
 source "$GOH/tui/lib.sh"
+# shellcheck source=lib/pid_owner.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../../lib/pid_owner.sh" || exit 1   # a saved pid is signalled by its stamp (GOH.STRAYSIGNAL)
 
 APP_NAME="${APP_NAME:-}"
 BUILD_CMD="${BUILD_CMD:-}"
@@ -91,14 +98,129 @@ DEST="$DEST_DIR/$APP_NAME"
 
 section "update_dev → $DEST"
 
+# The staged copy: $STAGE/<base>.new, the one it replaces $STAGE/<base>.old. LaunchServices must see
+# the app ONCE, and what keeps it away is the EXTENSION: `lsregister -R` registered an .app inside a
+# hidden directory, skipped a .new, and refused one named to it (-10811; probed 2026-11-25). The
+# base name stays, because codesign and dyld derive a plist-less bundle's identifier and executable
+# from it. The directory names its owner, so a killed run's is told from a live one's.
+STAGE="$DEST_DIR/.$APP_NAME.goh-devswap.$$"
+STAGED="$STAGE/$APP_BASE.new"
+DITTO_PID=""
+DITTO_STAMP=""
+SWAPPING=0
+
+present() { [ -e "$1" ] || [ -L "$1" ]; }
+
+# rename(2) itself: an existing target is an error, where mv(1) would move INTO it.
+rename_to() {
+  "$GOH_PY" -I -S -c 'import os, sys
+try: os.rename(sys.argv[1], sys.argv[2])
+except OSError as e: sys.exit(str(e))' "$1" "$2"
+}
+
+# unstage <dir> -- remove a staging directory; the old copy in it goes back first when nothing
+# stands at $DEST, and the directory is kept when it cannot.
+unstage() {
+  if present "$1/$APP_BASE.old" && ! present "$DEST"; then
+    rename_to "$1/$APP_BASE.old" "$DEST" \
+      || { err "the previous copy could not be put back: it is at $1/$APP_BASE.old"; return 1; }
+    warn "the previous copy is back at $DEST"
+  fi
+  rm -rf "$1" 2>/dev/null || { chmod -R u+w "$1" 2>/dev/null; rm -rf "$1"; } || warn "could not remove $1"
+}
+
+finish() {
+  local rc=$? told="interrupted before the swap -- nothing installed"
+  trap '' HUP INT TERM
+  if [ -n "$DITTO_PID" ]; then
+    goh_pid_kill TERM "$DITTO_STAMP" || true   # refused once the number is no longer that ditto
+    wait "$DITTO_PID" 2>/dev/null || true
+  fi
+  if [ "$SWAPPING" = 1 ] && ! present "$STAGED"; then told="interrupted after the swap -- installed $DEST"; fi
+  unstage "$STAGE" || true
+  if [ "$rc" -ge 129 ]; then
+    err "$told"
+    [ "$WAS_RUNNING" = 0 ] || warn "${PROCESS_NAME} had been asked to quit and was not relaunched: open $DEST"
+  fi
+  exit "$rc"
+}
+
+# A killed run's leftovers, and the copy it had moved aside; a live owner's are its own. The number
+# in the name is not the owner by itself: a process there that started after the directory was
+# last written is a stranger handed the number since (goh_pid_alive_since, GOH.STRAYSIGNAL3).
+for left in "$DEST_DIR/.$APP_NAME.goh-devswap."*; do
+  owner="${left##*.}"
+  case "$owner" in "" | *[!0-9]*) continue ;; esac
+  [ "$owner" = "$$" ] || ! goh_pid_alive_since "$owner" "$left" || continue
+  unstage "$left" || true
+done
+
 # ── 1. build ─────────────────────────────────────────────────────────────────
 info "building: ${BUILD_CMD}"
 bash -c "$BUILD_CMD" || die "build failed (${BUILD_CMD})"
 [ -d "$APP_PATH" ] || die "build did not produce $APP_PATH"
 
-# ── 2. quit any running copy first ───────────────────────────────────────────
+# ── 2. stage beside the installed copy, and read it back ─────────────────────
+trap finish EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+{ mkdir -p "$DEST_DIR" && mkdir "$STAGE"; } \
+  || die "could not write to $DEST_DIR (try sudo, or set DEST_DIR) -- nothing installed"
+step "staging the new copy in $STAGE"
+# In the background: a signal reaches `wait` at once, where a foreground ditto would defer the trap.
+ditto "$APP_PATH" "$STAGED" &
+DITTO_PID=$!
+DITTO_STAMP="$(goh_pid_stamp "$DITTO_PID")" || DITTO_STAMP=""   # already ended: nothing to stop
+copied=0
+wait "$DITTO_PID" || copied=$?
+DITTO_PID=""
+[ "$copied" = 0 ] || die "ditto could not copy $APP_PATH to $DEST_DIR (try sudo, or set DEST_DIR) -- nothing installed"
+# Read the copy back (G16): `ditto` exiting 0 is not the copy being there. Compared BEFORE the
+# xattr and signing steps change it, symlinks as links (--no-dereference).
+if ! { [ -d "$STAGED" ] && diff -rq --no-dereference "$APP_PATH" "$STAGED" >/dev/null 2>&1; }; then
+  die "update_dev: $STAGED differs from $APP_PATH after ditto -- nothing installed"
+fi
+# A directory its owner cannot write cannot be renamed into another one (EACCES): asked of both
+# bundles here, before anything running is quit.
+for bundle in "$STAGED" "$DEST"; do
+  if [ -d "$bundle" ] && [ ! -L "$bundle" ] && [ ! -w "$bundle" ]; then
+    chmod u+w "$bundle" 2>/dev/null || die "$bundle is not yours to replace (try sudo) -- nothing installed"
+  fi
+done
+
+# ── 3. clear Gatekeeper xattrs — then PROVE it took ──────────────────────────
+XATTR=/usr/bin/xattr
+step "clearing quarantine/provenance attributes"
+"$XATTR" -dr com.apple.quarantine "$STAGED" 2>/dev/null || true
+find "$STAGED" -exec "$XATTR" -d com.apple.provenance {} + 2>/dev/null || true
+if "$XATTR" -pr com.apple.quarantine "$STAGED" >/dev/null 2>&1; then
+  warn "com.apple.quarantine is still set — the app may refuse to launch"
+else
+  ok "quarantine clear"
+fi
+
+# ── 4. sign ──────────────────────────────────────────────────────────────────
+# A bundle that arrived already validly signed KEEPS its signature: an
+# unconditional ad-hoc re-sign would clobber a real identity the build chose
+# deliberately (a private Rust app's Makefile picks the first valid codesigning identity).
+# Unsigned/invalid bundles still get the ad-hoc fallback.
+if command -v codesign >/dev/null 2>&1; then
+  if codesign -v "$STAGED" >/dev/null 2>&1; then
+    step "existing signature is valid — keeping it"
+  else
+    step "ad-hoc signing"
+    if codesign --force --deep --sign - "$STAGED" >/dev/null 2>&1; then
+      ok "signed"
+    else
+      warn "ad-hoc signing failed; the app should still launch"
+    fi
+  fi
+fi
+
+# ── 5. quit any running copy ─────────────────────────────────────────────────
 if pgrep -x "$PROCESS_NAME" >/dev/null 2>&1; then
-  WAS_RUNNING=1  # step 6 puts it back unless --no-launch
+  WAS_RUNNING=1  # step 7 puts it back unless --no-launch
   info "quitting the running ${PROCESS_NAME} (relaunched after the install)"
   osascript -e "tell application \"${APP_BASE}\" to quit" >/dev/null 2>&1 || true
   for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -111,58 +233,36 @@ if pgrep -x "$PROCESS_NAME" >/dev/null 2>&1; then
     sleep 0.3
   done
   # A copy still up is neither replaced (it keeps serving the old binary) nor opened again later
-  # (an `open` of a running app is a reopen, step 6).
+  # (an `open` of a running app is a reopen, step 7).
   if pgrep -x "$PROCESS_NAME" >/dev/null 2>&1; then
     die "${PROCESS_NAME} would not quit, gracefully or by signal -- nothing installed"
   fi
 fi
 
-# ── 3. replace the installed copy ────────────────────────────────────────────
-if [ -d "$DEST" ]; then
+# ── 6. swap ──────────────────────────────────────────────────────────────────
+RC=0
+AT_HAND="every artifact is installed"
+if present "$DEST"; then
   step "replacing $DEST (config/state elsewhere is untouched)"
-  rm -rf "$DEST"
+  rename_to "$DEST" "$STAGE/$APP_BASE.old" || RC=1
 else
   step "first install"
 fi
-mkdir -p "$DEST_DIR"
-ditto "$APP_PATH" "$DEST" || die "could not write to $DEST_DIR (try sudo, or set DEST_DIR)"
-# Read the destination back (G16): `ditto` exiting 0 is not the copy being there. Compared BEFORE
-# the xattr and signing steps change the installed bundle, symlinks as links (--no-dereference).
-if ! { [ -d "$DEST" ] && diff -rq --no-dereference "$APP_PATH" "$DEST" >/dev/null 2>&1; }; then
-  die "update_dev: $DEST differs from $APP_PATH after ditto -- nothing installed"
-fi
-
-# ── 4. clear Gatekeeper xattrs — then PROVE it took ──────────────────────────
-XATTR=/usr/bin/xattr
-step "clearing quarantine/provenance attributes"
-"$XATTR" -dr com.apple.quarantine "$DEST" 2>/dev/null || true
-find "$DEST" -exec "$XATTR" -d com.apple.provenance {} + 2>/dev/null || true
-if "$XATTR" -pr com.apple.quarantine "$DEST" >/dev/null 2>&1; then
-  warn "com.apple.quarantine is still set — the app may refuse to launch"
+SWAPPING=1
+[ "$RC" != 0 ] || rename_to "$STAGED" "$DEST" || RC=1
+unstage "$STAGE" || true   # the old copy goes, or comes back when the new one is not in
+trap - EXIT HUP INT TERM
+if [ "$RC" != 0 ]; then
+  err "update_dev: could not swap the new copy into $DEST -- nothing installed"
+  [ -d "$DEST" ] || exit 1
+  # The old copy is what step 7 puts back; --launch asked for the new one.
+  AT_HAND="the new copy is NOT installed"
+  LAUNCH=0
 else
-  ok "quarantine clear"
+  ok "installed $DEST"
 fi
 
-# ── 5. sign ──────────────────────────────────────────────────────────────────
-# A bundle that arrived already validly signed KEEPS its signature: an
-# unconditional ad-hoc re-sign would clobber a real identity the build chose
-# deliberately (a private Rust app's Makefile picks the first valid codesigning identity).
-# Unsigned/invalid bundles still get the ad-hoc fallback.
-if command -v codesign >/dev/null 2>&1; then
-  if codesign -v "$DEST" >/dev/null 2>&1; then
-    step "existing signature is valid — keeping it"
-  else
-    step "ad-hoc signing"
-    if codesign --force --deep --sign - "$DEST" >/dev/null 2>&1; then
-      ok "signed"
-    else
-      warn "ad-hoc signing failed; the app should still launch"
-    fi
-  fi
-fi
-
-ok "installed $DEST"
-if [ -n "${AFTER_INSTALL_CMD:-}" ]; then
+if [ "$RC" = 0 ] && [ -n "${AFTER_INSTALL_CMD:-}" ]; then
   info "installing the companion artifacts: ${AFTER_INSTALL_CMD}"
   bash -c "$AFTER_INSTALL_CMD" || die "companion install failed (${AFTER_INSTALL_CMD}) -- nothing launched"
 fi
@@ -173,7 +273,7 @@ if [ "$LAUNCH" = 1 ] || { [ "$WAS_RUNNING" = 1 ] && [ "$NO_LAUNCH" = 0 ]; }; the
     # step is the ONE launch path; a caller that opens the app again after it reintroduces that
     # reopen.
     ok "${PROCESS_NAME} is already running (not opened again: that would be a reopen)"
-    exit
+    exit "$RC"
   fi
   if [ "$WAS_RUNNING" = 1 ]; then info "relaunching ${PROCESS_NAME} (it was running before the install)"; else info "launching"; fi
   # The app gets launchd's LOGIN environment, never this script's (GOH.TRANSIENTDIR): `open` hands
@@ -189,8 +289,9 @@ if [ "$LAUNCH" = 1 ] || { [ "$WAS_RUNNING" = 1 ] && [ "$NO_LAUNCH" = 0 ]; }; the
     warn "open $DEST failed -- registering it with LaunchServices and retrying once"
     "$LSREG" -f "$DEST" >/dev/null 2>&1 || warn "lsregister -f $DEST failed"
     if ! env -i "$OPENER" "$DEST"; then
-      err "relaunch failed: open $DEST failed twice -- ${PROCESS_NAME} is NOT running (every artifact is installed; open it by hand)"
-      exit 4
+      err "relaunch failed: open $DEST failed twice -- ${PROCESS_NAME} is NOT running (${AT_HAND}; open it by hand)"
+      [ "$RC" != 0 ] || RC=4
+      exit "$RC"
     fi
   fi
   # Seen running before it is said (G15): `open` returning is not the app being up.
@@ -205,8 +306,10 @@ if [ "$LAUNCH" = 1 ] || { [ "$WAS_RUNNING" = 1 ] && [ "$NO_LAUNCH" = 0 ]; }; the
   fi
 elif [ "$WAS_RUNNING" = 1 ]; then
   warn "${PROCESS_NAME} was running and is now STOPPED (--no-launch): open $DEST"
-else
+elif [ "$RC" = 0 ]; then
   info "launch it with: open $DEST   (or re-run with --launch)"
 fi
-exit
+[ "$RC" = 0 ] || exit "$RC"
+# `command exit`: the trap-only `finish` stays seen by shellcheck (tests/test_parse_guard.py)
+command exit
 } # parse-guard
