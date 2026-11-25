@@ -9,3 +9,4 @@
 * GOH.PYSLOWTESTS: `test_landq` judges a land once, through the wait a lane uses (its record, its end-to-end row, its exit); `test_landq_alone` drains two lands a case, the marked one first or second.
 * GOH.PYSLOWTESTS: `test_carry_shadow` and `test_release_gate` ask the real tree on the run's one graph (`release_gate.names` takes one); `test_affected_binary_reach` reads the crate once.
 * GOH.PYSLOWTESTS: `test_push_gate_runs` makes 11 pushes, not 25: one over an export root holding all a past run leaves, and one repo's three beside a live run.
+* GOH.PYSLOWTESTS: `test_ship` asks the version rule in process and folds what only a release asks into one ship of a tagged head (34 cases, 22 left).

@@ -72,9 +72,15 @@ def _calls(tmp_path: Path) -> list[list[str]]:
 
 
 def test_the_success_path_ships_every_step_and_records_the_item_done(shipped, tmp_path):
-    r = _ship(shipped, tmp_path, "--wait", "--item", "X.ONE", "--summary", "did the thing")
+    """Its preflight (GOH.SHIPPREFLIGHT) runs in the repo, with the version and the summary."""
+    check = ('test -f f.txt && test "$GOH_SHIP_VERSION" = 1.1.0 && test {version} = 1.1.0 '
+             '&& echo "$GOH_SHIP_SUMMARY" > ' + str(tmp_path / "seen"))  # fmt: skip
+    r = _ship(shipped, tmp_path, "--wait", "--item", "X.ONE", "--summary", "did the thing",
+              GOH_SHIP_PREFLIGHT=check)  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
     res = _result(tmp_path)
+    assert (tmp_path / "seen").read_text().strip() == "did the thing"
+    assert res["preflight"] == [check.replace("{version}", "1.1.0")]
     assert res["status"] == "ok", res
     assert [(s["name"], s["status"]) for s in res["steps"]] == [
         ("suite", "skipped"),  # no GOH_SHIP_FULL_SUITE declared (tests/test_ship_starve.py)
@@ -99,6 +105,7 @@ def test_a_failing_step_names_itself_and_carries_its_last_40_log_lines(shipped, 
     noisy = 'for i in $(seq 1 100); do echo "line $i"; done; exit 3'
     env: dict[str, str] = {}
     if step == "push":
+        env["GOH_SHIP_RELEASE"] = PUSHING_KIT  # without its key the hand-off is pushed first
         hooks = tmp_path / "hooks"
         hooks.mkdir()
         (hooks / "pre-push").write_text("#!/bin/sh\n" + noisy + "\n")
@@ -197,14 +204,6 @@ def test_a_dirty_tree_is_refused_before_it_starts(shipped, tmp_path):
     assert "uncommitted" in r.stderr
 
 
-def test_a_head_already_tagged_skips_the_release(shipped, tmp_path):
-    git(shipped, "tag", "v1.0.1")
-    r = _ship(shipped, tmp_path, "--wait")
-    assert r.returncode == 0, r.stdout + r.stderr
-    rel = next(s for s in _result(tmp_path)["steps"] if s["name"] == "release")
-    assert rel["status"] == "skipped" and "v1.0.1" in rel["why"]
-
-
 def _refusing_pre_push(repo: Path, tmp_path: Path) -> None:
     """A pre-push hook that refuses every push it gates: the hand-off alone is not pushable."""
     hooks = tmp_path / "hooks"
@@ -234,41 +233,35 @@ def test_a_release_kit_that_pushes_lands_the_hand_off_without_the_separate_push(
     assert git(shipped, "ls-remote", "origin", "refs/heads/main").split()[0] == res["sha"]
 
 
-def test_without_the_key_the_hand_off_is_pushed_first_and_its_gate_is_heard(shipped, tmp_path):
-    _refusing_pre_push(shipped, tmp_path)
-    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_RELEASE=PUSHING_KIT)
-    assert r.returncode == 1
-    assert _result(tmp_path)["failed_step"] == "push"
-
-
-def test_a_pushing_kit_on_a_head_already_tagged_still_pushes(shipped, tmp_path):
+def test_a_head_already_tagged_skips_the_release_and_what_only_a_release_asks(shipped, tmp_path):
+    """No release step runs: nothing is cut, so an empty Unreleased is not refused and no preflight
+    runs; and a kit that would have pushed pushed nothing, so the push step does."""
+    _changelog(shipped, EMPTY_UNRELEASED)
     git(shipped, "tag", "v1.0.1")
-    r = _ship(
-        shipped, tmp_path, "--wait", GOH_SHIP_RELEASE=PUSHING_KIT, GOH_SHIP_RELEASE_PUSHES="1"
-    )
+    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_RELEASE=PUSHING_KIT,
+              GOH_SHIP_RELEASE_PUSHES="1", GOH_SHIP_PREFLIGHT=LEDGER_REFUSES)  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
-    steps = {s["name"]: s["status"] for s in _result(tmp_path)["steps"]}
-    assert steps["push"] == "ok" and steps["release"] == "skipped", steps
+    steps = {s["name"]: s for s in _result(tmp_path)["steps"]}
+    assert steps["push"]["status"] == "ok", steps
+    assert steps["release"]["status"] == "skipped" and "v1.0.1" in steps["release"]["why"], steps
 
 
-@pytest.mark.parametrize(
-    ("subject", "want"),
-    [
-        ("fix: a", "1.0.1"),
-        ("feat: a", "1.1.0"),
-        ("feat!: a", "2.0.0"),
-        ("chore: a", "1.0.1"),
-        ("not conventional", "1.0.1"),
-    ],
-)
-def test_the_next_version_follows_conventional_commits(shipped, tmp_path, subject, want):
-    git(shipped, "reset", "-q", "--hard", "v1.0.0")
-    (shipped / "g.txt").write_text(subject)
-    git(shipped, "add", "g.txt")
-    git(shipped, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", subject)
-    r = _ship(shipped, tmp_path, "--wait")
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert _result(tmp_path)["version"] == want
+def test_the_next_version_follows_conventional_commits(shipped):
+    """Asked of plan()'s own rule; a whole ship cuts the version it answers (the success path)."""
+    sys.path.insert(0, str(REPO_ROOT / "lib"))
+    import ship_version
+
+    got = {}
+    for subject in ("fix: a", "feat: a", "feat!: a", "chore: a", "not conventional"):
+        git(shipped, "reset", "-q", "--hard", "v1.0.0")
+        (shipped / "g.txt").write_text(subject)
+        git(shipped, "add", "g.txt")
+        git(shipped, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", subject)
+        got[subject] = ship_version.next_version(
+            shipped, ship_version.newest_tag(shipped), None, None
+        )
+    assert got == {"fix: a": "1.0.1", "feat: a": "1.1.0", "feat!: a": "2.0.0", "chore: a": "1.0.1",
+                   "not conventional": "1.0.1"}  # fmt: skip
 
 
 def test_goh_ship_runs_this_file_and_passes_its_exit_code(shipped, tmp_path):
@@ -297,19 +290,6 @@ BUMP_RELEASE = ('printf "%s\\n" "$GOH_SHIP_VERSION" > VERSION && git add VERSION
                 '"v$GOH_SHIP_VERSION"')  # fmt: skip
 
 
-def test_the_result_names_the_landed_commit_not_the_hand_off(shipped, tmp_path):
-    """GOH.SHIPADOPT: a release kit that commits its bump lands a commit the hand-off never had;
-    the pilot's result (and so `loopctl done`'s record) named the hand-off commit instead."""
-    handoff = git(shipped, "rev-parse", "HEAD").strip()
-    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_RELEASE=BUMP_RELEASE)
-    assert r.returncode == 0, r.stdout + r.stderr
-    res = _result(tmp_path)
-    landed = git(shipped, "ls-remote", "origin", "refs/heads/main").split()[0]
-    assert landed != handoff
-    assert res["sha"] == landed, res
-    assert res["handoff_sha"] == handoff, res
-
-
 def _path_with(tmp_path: Path, cliff: str | None) -> str:
     """PATH with git-cliff replaced by CLIFF's script (None: no git-cliff at all)."""
     bin_ = tmp_path / "cliffbin"
@@ -325,13 +305,24 @@ def _path_with(tmp_path: Path, cliff: str | None) -> str:
     return f"{bin_}:/usr/bin:/bin"
 
 
-def test_the_next_version_is_git_cliffs_answer(shipped, tmp_path):
+def test_the_next_version_is_git_cliffs_answer_and_the_result_names_the_landed_commit(
+    shipped, tmp_path
+):
     """The bump is the maintained tool's (git-cliff --bumped-version), not a hand copy of its rule:
-    whatever it answers is the version, so a repo's own cliff.toml [bump] is honoured."""
+    whatever it answers is the version, so a repo's own cliff.toml [bump] is honoured.
+
+    GOH.SHIPADOPT: a release kit that commits its bump lands a commit the hand-off never had; the
+    pilot's result (and so `loopctl done`'s record) named the hand-off commit instead."""
+    handoff = git(shipped, "rev-parse", "HEAD").strip()
     path = _path_with(tmp_path, "#!/bin/sh\necho v7.8.9\n")
-    r = _ship(shipped, tmp_path, "--wait", PATH=path)
+    r = _ship(shipped, tmp_path, "--wait", PATH=path, GOH_SHIP_RELEASE=BUMP_RELEASE)
     assert r.returncode == 0, r.stdout + r.stderr
-    assert _result(tmp_path)["version"] == "7.8.9"
+    res = _result(tmp_path)
+    assert res["version"] == "7.8.9"
+    landed = git(shipped, "ls-remote", "origin", "refs/heads/main").split()[0]
+    assert landed != handoff
+    assert res["sha"] == landed, res
+    assert res["handoff_sha"] == handoff, res
 
 
 def test_without_git_cliff_the_ship_is_refused_naming_it(shipped, tmp_path):
@@ -368,7 +359,7 @@ def _changelog(repo: Path, text: str) -> None:
 EMPTY_UNRELEASED = "# CHANGELOG\n\n## Unreleased\n\n## v1.0.0\n\n* the first\n"
 
 
-@pytest.mark.parametrize("args", [(), ("--item", "X.ONE"), ("--bump", "patch")])
+@pytest.mark.parametrize("args", [("--item", "X.ONE"), ("--bump", "patch")])
 def test_an_empty_unreleased_is_refused_before_the_push(shipped, tmp_path, args):
     """GOH.SHIPUNRELEASED: a private Rust app's ship pushed main, then its release kit's
     changelog_cut said `Unreleased is empty: nothing to release`. A release step that will run (with
@@ -384,14 +375,6 @@ def test_an_empty_unreleased_is_refused_before_the_push(shipped, tmp_path, args)
     assert gdb.shipped(tmp_path / "ship.json") is None
 
 
-def test_an_empty_unreleased_is_not_refused_when_no_release_runs(shipped, tmp_path):
-    """HEAD already tagged: the release step is skipped, so nothing is cut and nothing refused."""
-    _changelog(shipped, EMPTY_UNRELEASED)
-    git(shipped, "tag", "v1.0.1")
-    r = _ship(shipped, tmp_path, "--wait")
-    assert r.returncode == 0, r.stdout + r.stderr
-
-
 # ---- GOH.SHIPPREFLIGHT: a release precondition knowable before the push is asked before it ----
 # token-pool's kit refused after the push ("CHANGELOG.md has no '## Unreleased' section"), a
 # private consumer's after its push too ("its plan's done ledger has no row for v5.18.0"). A repo
@@ -401,7 +384,7 @@ def test_an_empty_unreleased_is_not_refused_when_no_release_runs(shipped, tmp_pa
 LEDGER_REFUSES = 'echo "the done ledger has no row for v{version}" >&2; exit 1'
 
 
-@pytest.mark.parametrize("args", [(), ("--item", "X.ONE"), ("--bump", "patch")])
+@pytest.mark.parametrize("args", [("--item", "X.ONE"), ("--bump", "patch")])
 def test_a_failing_preflight_refuses_with_its_reason_and_leaves_origin_untouched(
     shipped, tmp_path, args
 ):
@@ -416,24 +399,9 @@ def test_a_failing_preflight_refuses_with_its_reason_and_leaves_origin_untouched
     assert [c for c in _calls(tmp_path) if c[0] != "shippable"] == []  # only the read-only item ask
 
 
-def test_the_preflight_runs_in_the_repo_with_the_version_and_a_pass_ships(shipped, tmp_path):
-    check = ('test -f f.txt && test "$GOH_SHIP_VERSION" = 1.1.0 && test {version} = 1.1.0 '
-             '&& echo "$GOH_SHIP_SUMMARY" > ' + str(tmp_path / "seen"))  # fmt: skip
-    r = _ship(shipped, tmp_path, "--wait", "--summary", "the title", GOH_SHIP_PREFLIGHT=check)
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert (tmp_path / "seen").read_text().strip() == "the title"
-    assert _result(tmp_path)["preflight"] == [check.replace("{version}", "1.1.0")]
-
-
-def test_no_release_step_runs_no_preflight(shipped, tmp_path):
-    git(shipped, "tag", "v1.0.1")  # HEAD already tagged: the release step is skipped
-    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_PREFLIGHT=LEDGER_REFUSES)
-    assert r.returncode == 0, r.stdout + r.stderr
-
-
 def test_a_hung_preflight_is_bounded_and_refused(shipped, tmp_path):
     before = git(shipped, "ls-remote", "origin")
-    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_PREFLIGHT="sleep 60", GOH_SHIP_TIMEOUT="2")
+    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_PREFLIGHT="sleep 60", GOH_SHIP_TIMEOUT="1")
     assert r.returncode == 2, r.stdout + r.stderr
-    assert "timed out after 2s" in r.stderr, r.stderr  # the bound, not the sleep, ended it
+    assert "timed out after 1s" in r.stderr, r.stderr  # the bound, not the sleep, ended it
     assert git(shipped, "ls-remote", "origin") == before
