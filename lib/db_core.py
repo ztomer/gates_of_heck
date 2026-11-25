@@ -56,6 +56,7 @@ from pathlib import Path
 
 REAL_HOME_ENV = "GATES_OF_HECK_SUITE_REAL_HOME"  # tests/suite_home.py MARKER
 REAL_XDG_STATE_ENV = "GATES_OF_HECK_SUITE_REAL_XDG_STATE_HOME"
+THROWAWAY_ENV = "GATES_OF_HECK_DB_THROWAWAY"  # the suite run's root (tests/_suite_plugins.py)
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from tui.lib import warn  # noqa: E402 -- the root, on the path from the line above
@@ -208,12 +209,24 @@ def busy_ms(seam: Seam) -> int:
     return int(raw) if raw.isdigit() else seam.busy_ms
 
 
-def _settings(con: sqlite3.Connection, seam: Seam, fresh: bool) -> None:
+def throwaway(p: Path, env: Mapping[str, str] | None = None) -> bool:
+    """P is a test's own file, under the suite run's root (GOH.FSEVQUIET): it keeps its journal in
+    memory, syncs nothing and has small pages. A WAL file's -wal and -shm are made and removed at
+    every open, and a 4 KiB page per table of every migration was the largest file a test left.
+    Never a shared file, nor the suite home's. A test of WAL, of locking or of a crash clears it."""
+    root = (os.environ if env is None else env).get(THROWAWAY_ENV)
+    return bool(root) and Path(os.path.realpath(p)).is_relative_to(os.path.realpath(root))
+
+
+def _settings(con: sqlite3.Connection, seam: Seam, fresh: bool, p: Path) -> None:
     con.execute(f"PRAGMA busy_timeout={busy_ms(seam)}")
-    if fresh:  # before the first table: a file's vacuum mode is fixed at creation
+    mine = throwaway(p)
+    if fresh:  # before the first table: a file's vacuum mode and page size are fixed at creation
+        if mine:
+            con.execute("PRAGMA page_size=512")
         con.execute("PRAGMA auto_vacuum=INCREMENTAL")
-    con.execute("PRAGMA journal_mode=WAL")
-    con.execute(f"PRAGMA synchronous={seam.synchronous}")
+    con.execute(f"PRAGMA journal_mode={'MEMORY' if mine else 'WAL'}")
+    con.execute(f"PRAGMA synchronous={'OFF' if mine else seam.synchronous}")
 
 
 def _ro(p: Path, seam: Seam) -> sqlite3.Connection:
@@ -332,7 +345,7 @@ def _opened(
     con = sqlite3.connect(p, isolation_level=None, timeout=busy_ms(seam) / 1000)
     refusal: NewerFile | None = None
     try:
-        _settings(con, seam, fresh)
+        _settings(con, seam, fresh, p)
         if why := newer(con, seam):
             refusal = NewerFile(why)
         elif not record and (why := not_of_record(con, seam)):

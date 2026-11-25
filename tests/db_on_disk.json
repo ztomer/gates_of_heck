@@ -1,0 +1,13 @@
+{
+ "tests/test_db_bounds_with.py::test_a_kill_loses_nothing_and_doubles_nothing": "crash recovery is the subject",
+ "tests/test_db_contract.py::test_a_kill_leaves_the_file_and_the_rerun_completes": "crash recovery is the subject",
+ "tests/test_db_contract.py::test_the_copy_is_taken_under_the_write_lock": "locking is the subject",
+ "tests/test_db_core.py::test_a_transaction_commits_rolls_back_and_times_its_wait": "asserts the WAL mode itself",
+ "tests/test_db_core.py::test_the_instrument_reaches_a_suite_child_and_counts_a_busy_timeout": "locking is the subject",
+ "tests/test_durations_db.py::test_two_runs_ending_together_keep_both_readings": "locking is the subject",
+ "tests/test_hook_ledgers.py::test_a_busy_database_lets_the_spawn_through_spilled_and_counted": "locking is the subject",
+ "tests/test_landq_db.py::test_a_kill_after_the_enqueue_filed_leaves_the_request_pending_only": "crash recovery is the subject",
+ "tests/test_landq_db.py::test_a_kill_after_the_land_record_leaves_the_request_done_only": "crash recovery is the subject",
+ "tests/test_state_backfill.py::test_a_kill_then_a_run_is_one_clean_run": "crash recovery is the subject",
+ "tests/test_state_strip.py::test_a_kill_then_a_run_is_one_clean_run": "crash recovery is the subject"
+}

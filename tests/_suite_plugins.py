@@ -10,6 +10,7 @@ here, not there.
 * `_xdist_usage`: a worker's collection error is the run's (GOH.REMOTEREDSILENT).
 * `_kept_store`: the kept verdict rows, seeded from and merged into the real goh-cache.db once by
   the controller (GOH.VERDICTDB).
+* `_db_on_disk`: a test's goh.db journals in memory (GOH.FSEVQUIET).
 * here: a `process_template` is the RUN's inside a session (tests/_tree_clone.py, GOH.FSCHURN3),
   and then a pytest a test starts takes a basetemp root of its own (tests/suite_tmp.py `own_root`,
   GOH.NESTEDBASETEMP): no conftest hook or fixture asks for the basetemp before this one runs.
@@ -31,6 +32,7 @@ pytest_plugins = [
     "_xdist_usage",
     "_kept_store",
     "_land_waive",
+    "_db_on_disk",
 ]
 
 
