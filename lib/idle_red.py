@@ -88,6 +88,16 @@ def sweep(main: Path, sha: str, log: Path) -> str:
     )
 
 
+def offs() -> list[str]:
+    """A reuse path off whose filing failed, filed now (reuse_audit.file_unfiled)."""
+    try:
+        import reuse_audit  # lib/, on the path above
+
+        return [f"reuse audit: {line}" for line in reuse_audit.file_unfiled()]
+    except Exception as e:  # noqa: BLE001 -- the report never breaks the lander
+        return [f"reuse audit: an off path's fault not filed: {e.__class__.__name__}: {e}"]
+
+
 def file_red(main: Path, green: str, sha: str, log: Path) -> str:
     try:
         loopctl = os.environ.get("GOH_LOOPCTL") or str(

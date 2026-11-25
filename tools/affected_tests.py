@@ -74,6 +74,7 @@ from lib import (
     declared_reads,
     fast_tests,
     land_rustcov,  # GOH.LANDRUSTCOV: a Rust change's run measures its lines
+    live_reads,
     main_red,
     pre_cpu,  # GOH.PREWIDTH: the pytest tree's CPU, for the land record's pre_run
     pre_reuse,
@@ -86,8 +87,8 @@ from lib import (
 from lib.step_timings import timed
 from tui.lib import counted, info, ok
 
-# Tree readers that neither a test name nor a tree-walking call in their own source gives away.
-ALWAYS = ("tests/test_self_walk.py", "tests/test_python_from_head.py")
+# Readers of every diff no pattern sees: of the tree, and of the live loop (lib/live_reads.py).
+ALWAYS = ("tests/test_self_walk.py", "tests/test_python_from_head.py", *live_reads.LIVE)
 # The tree readers that judge the TEXT of every tracked file, whatever its kind: a diff of any file
 # is theirs to read, release text included (lib/release_gate.py `names`, GOH.REUSEOFFLANDED5: the
 # release set left the self-walk out, and v0.140.3's changelog heading broke its home-path count).
@@ -95,8 +96,7 @@ TEXT_JUDGES = ("tests/test_self_walk.py",)
 SKIPPED: list[str] = []  # what the last enqueue choice's binary reach left out (GOH.BINREACH)
 CHOSEN_FOR: list[tuple] = []  # the (root, change) SKIPPED was chosen for: `run` audits no other
 TREE_NAMED = re.compile(r"^\s*def (test_every_|test_no_)", re.MULTILINE)
-# ... or that RUNS a tool over the whole checkout, `cwd=REPO_ROOT` (tests/test_gate_temp_leaks.py
-# runs `structural.sh --full` there; GOH.PREPARITY: red in two lands no pre-step chose it for).
+# ... or RUNS a tool over the whole checkout, `cwd=REPO_ROOT` (tests/test_gate_temp_leaks.py).
 TREE_READ = tree_walk.TREE_READ
 
 
@@ -240,7 +240,7 @@ def tree_readers(root: Path, tests: dict[str, str] | None = None) -> dict[str, s
     found: dict[str, str] = {}
     for rel, text in tests.items():
         if rel in ALWAYS:
-            found[rel] = "a tree reader no pattern sees (ALWAYS)"
+            found[rel] = "a reader no pattern sees (ALWAYS)"
         elif TREE_NAMED.search(text):
             found[rel] = "defines a test_every_/test_no_ test"
         elif TREE_READ.search(text):

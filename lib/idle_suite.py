@@ -169,6 +169,8 @@ def run(
             say(f"idle full suite on {sha[:8]}: {filed}")
             if moved := idle_red.sweep(main, sha, log_of(q, sha)):
                 say(f"idle full suite on {sha[:8]}: {moved}")
+        for line in idle_red.offs():  # a reuse path off whose fault a suite could not file
+            say(line)
         if outcome in ("green", "red"):  # main's reading at SHA, a land's waiver's evidence
             say(reading(main, sha, outcome, log_of(q, sha)))
     finally:

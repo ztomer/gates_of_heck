@@ -236,10 +236,12 @@ def reuse_lines() -> list[str]:
     except ImportError:
         return []
     try:
+        new = reuse_audit.file_unfiled()
         off = reuse_audit.unfiled()
     except (OSError, ValueError):
         return []
-    return [f"✗ goh reuse audit: {line} -- file it by hand, or `reuse_audit.py report`"
+    said = [f"⚠ goh reuse audit: {line}" for line in new]
+    return said + [f"✗ goh reuse audit: {line} -- file it by hand, or `reuse_audit.py report`"
             for line in off]  # fmt: skip
 
 

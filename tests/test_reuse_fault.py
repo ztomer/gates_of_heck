@@ -133,3 +133,28 @@ def test_the_funnel_gives_any_prediction_its_verify_after(fake_loopctl) -> None:
     assert reuse_fault._file(loopctl, {"id": "GOH.Z", "class_of": "none", "class_why": "w"})[0] == 0
     got = {f["id"]: f.get("verify_after") for f in filed(fake_loopctl)}
     assert got == {"GOH.X": {"lands": 5}, "GOH.Y": {"ships": 1}, "GOH.Z": None}, got
+
+
+def test_an_off_a_suite_could_not_file_is_filed_by_the_next_reader(
+    fake_loopctl,  # noqa: F811
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """GOH.REUSEOFFTEST: the suite's shadow turned `test` off under the suite home, which hides
+    the loop, and for 27 hours nothing filed it. The next reader under the owner's home does, once,
+    and the record names the item."""
+    import os
+
+    loopctl = os.environ["GOH_LOOPCTL"]
+    monkeypatch.setenv("GOH_LOOPCTL", str(tmp_path / "gone.py"))
+    _off_by_a_repeated_red()
+    assert reuse_audit.state("landed")["fault"].startswith("not filed: no loopctl")
+    assert reuse_audit.file_unfiled() == [], "no loopctl here either: still unfiled, and said"
+    assert len(reuse_audit.unfiled()) == 1
+    monkeypatch.setenv("GOH_LOOPCTL", loopctl)
+    said = ["landed off (disagree): filed GOH.REUSEOFFLANDED"]
+    assert reuse_audit.file_unfiled() == said
+    rec = reuse_audit.state("landed")
+    assert rec["state"] == "off" and rec["fault"] == "filed GOH.REUSEOFFLANDED", rec
+    assert reuse_audit.file_unfiled() == [] and reuse_audit.unfiled() == []
+    assert len(filed(fake_loopctl)) == 1

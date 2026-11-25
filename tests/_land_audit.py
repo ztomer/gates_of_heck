@@ -18,6 +18,16 @@ import sys
 from collections.abc import Callable
 
 TEST, CARRY = "test", "carry"
+_LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "lib")
+
+
+def _live(node: str) -> bool:
+    sys.path.insert(0, _LIB)
+    try:
+        import live_reads  # lib/: the modules whose input no reuse key holds (GOH.REUSEOFFTEST)
+    finally:
+        sys.path.pop(0)
+    return live_reads.live(node)
 
 
 def audited(plan: dict, same: set[str], ident: str, rootdir: str, in_store) -> set[str]:
@@ -26,6 +36,9 @@ def audited(plan: dict, same: set[str], ident: str, rootdir: str, in_store) -> s
     if in_store is None:
         plan["lines"].append("land verdicts: none reused after all: no verdict store to audit in")
         return set()
+    if unkeyed := {n for n in same if _live(n)}:  # no key holds what they read: they run
+        plan["lines"].append(f"land verdicts: {len(unkeyed)} of them RUN: they read the live loop")
+        same = same - unkeyed
     nodes = sorted(same)
     with in_store() as (_, audit):
         decided = audit.use_many("test", [{"identity": ident, "node": n} for n in nodes])

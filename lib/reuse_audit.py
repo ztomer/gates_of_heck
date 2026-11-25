@@ -139,6 +139,27 @@ def _off(p: reuse.ReusePath, rec: dict, cause: str, why: str, line: dict) -> Non
     rec["fault"] = file_fault(p, cause, why, line)
 
 
+def file_unfiled() -> list[str]:
+    """File again each off whose filing failed; one line a path filed. A suite's shadow turns a path
+    off under the suite home, which hides the loop's checkout, so it can file nothing there: the
+    idle lander and SessionStart, under the owner's home, file it (GOH.REUSEOFFTEST)."""
+    out = []
+    if not unfiled():
+        return out
+    with _locked():
+        for name, p in reuse.PATHS.items():
+            rec = reuse_audit_store.get(name)
+            if not rec or rec.get("state") != "off":
+                continue
+            if str(rec.get("fault") or "").startswith("filed "):
+                continue
+            rec["fault"] = file_fault(p, rec["cause"], rec["why"], rec.get("evidence") or {})
+            _write(rec)
+            if rec["fault"].startswith("filed "):
+                out.append(f"{name} off ({rec['cause']}): {rec['fault']}")
+    return out
+
+
 def state(path: str) -> dict:
     """The path's recorded state: {"state": "on"|"off", "cause", "why", "window", ...}."""
     p = reuse._path(path)
