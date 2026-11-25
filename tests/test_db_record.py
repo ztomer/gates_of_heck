@@ -26,12 +26,14 @@ from _tree_clone import from_template
 from conftest import REPO_ROOT, git, hermetic_env
 from timing_bounds import patience
 
-COPY = ("lib/db_core.py", "lib/db_record.py", "lib/db_schema.py", "lib/db_waits.py",
-        "lib/goh_db.py", "lib/lock_order.py", "lib/lock_order.tsv", "lib/pid_owner.py",
-        "lib/goh_db_schema", "lib/state_paths.py", "tui/lib.py", "tui/stylerc")  # fmt: skip
-TREE_READS = ("lib/db_core.py", "lib/db_record.py", "lib/db_schema.py", "lib/db_waits.py",
-              "lib/goh_db.py", "lib/lock_order.py", "lib/lock_order.tsv", "lib/pid_owner.py",
-              "lib/goh_db_schema/", "lib/state_paths.py", "tui/lib.py", "tui/stylerc")  # fmt: skip
+COPY = ("lib/db_core.py", "lib/db_record.py", "lib/db_schema.py", "lib/db_settings.py",
+        "lib/db_waits.py", "lib/goh_db.py", "lib/lock_order.py", "lib/lock_order.tsv",
+        "lib/pid_owner.py", "lib/goh_db_schema", "lib/state_paths.py", "tui/lib.py",
+        "tui/stylerc")  # fmt: skip
+TREE_READS = ("lib/db_core.py", "lib/db_record.py", "lib/db_schema.py", "lib/db_settings.py",
+              "lib/db_waits.py", "lib/goh_db.py", "lib/lock_order.py", "lib/lock_order.tsv",
+              "lib/pid_owner.py", "lib/goh_db_schema/", "lib/state_paths.py", "tui/lib.py",
+              "tui/stylerc")  # fmt: skip
 
 DRIVER = """
 import sys
