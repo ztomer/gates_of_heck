@@ -17,6 +17,7 @@ bytes) and `test_release_kit_update_dev.py` (the dev-machine install). Neither s
 with a real-release run, so neither carries the xdist group below.
 """
 
+import hashlib
 import subprocess
 from pathlib import Path
 
@@ -24,7 +25,7 @@ import pytest
 from _tree_clone import clone_tree, template
 
 # Same xdist group as test_release_hardening.py: its mid-run-edit test corrupts release.sh on purpose.
-from conftest import FAKE_GH, REPO_ROOT, hermetic_env
+from conftest import FAKE_GH, REPO_ROOT, hermetic_env, native_goh_path
 
 RELEASE = REPO_ROOT / "tools" / "release-kit" / "release.sh"
 
@@ -60,7 +61,7 @@ def add_github_origin(proj: Path, bare: Path) -> None:
 
 
 GIT_WRAPPER = """\
-#!/usr/bin/env bash
+#!/bin/sh
 printf 'git %s\\n' "$*" >> "${GOHKIT_GIT_LOG:?}"
 exec /usr/bin/git "$@"
 """
@@ -124,6 +125,8 @@ def run_release(
     env["GH_STATE"] = str(kit["gh_state"])
     env["GH_LOG"] = str(kit["gh_log"])
     env["GOHKIT_GIT_LOG"] = str(kit["git_log"])
+    # The suite's goh, named: else every release stamps this checkout's sources (25 git calls).
+    env["GOH_BIN"] = str(native_goh_path())
     env.update(
         {
             "GIT_AUTHOR_NAME": "t",
@@ -157,8 +160,8 @@ def run_release(
 
 
 class TestSequencing:
-    def test_happy_path_runs_every_step_in_order(self, kit):
-        r = run_release(kit)  # push asserted in its own test below
+    def test_happy_path_runs_every_step_in_order_and_a_second_run_does_none_again(self, kit):
+        r = run_release(kit)
         assert r.returncode == 0, r.stdout + r.stderr
 
         # changelog step passed → tag exists as an ANNOTATED tag
@@ -167,9 +170,29 @@ class TestSequencing:
         # gh was called to create the release with the stanza body as notes
         log = kit["gh_log"].read_text()
         assert f"gh release view {TAG}" in log
-        assert f"gh release create {TAG}" in log
+        assert log.count(f"gh release create {TAG}") == 1
         notes = (kit["gh_state"] / f"notes-{TAG}").read_text()
         assert STANZA_BODY.splitlines()[0] in notes
+
+        # the branch and the tag are on origin, in ONE push: two left a window where the branch
+        # carried a release tag the remote lacked, and the pre-push gate refuses exactly that
+        # (`goh tag-version --remote`). One push is one gate run, and a refused one leaves neither.
+        first = sh(kit["proj"], "rev-parse", TAG).strip()
+        head = sh(kit["proj"], "rev-parse", "HEAD").strip()
+        for ref, sha in ((f"refs/tags/{TAG}", first), ("refs/heads/main", head)):
+            assert sh(kit["origin"], "rev-parse", "--verify", ref).strip() == sha
+        pushes = [c for c in kit["git_log"].read_text().splitlines() if c.startswith("git push")]
+        assert pushes == [f"git push origin main {TAG}"], pushes
+
+        # the second run, the same release: neither the tag nor the GitHub release is made again
+        kit["git_log"].write_text("")
+        r = run_release(kit)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "git tag -a" not in kit["git_log"].read_text()
+        assert "already exists" in r.stdout
+        assert sh(kit["proj"], "rev-parse", TAG).strip() == first
+        creates = kit["gh_log"].read_text().count(f"gh release create {TAG}")
+        assert creates == 1, "second run re-created the GitHub release"
 
     def test_gate_failure_blocks_everything_and_names_the_step(self, kit):
         r = run_release(kit, "--gate", "false", "--no-push")
@@ -179,9 +202,9 @@ class TestSequencing:
         assert not (kit["proj"] / ".git" / "refs" / "tags" / TAG).exists()
         assert not kit["gh_log"].exists() or "create" not in kit["gh_log"].read_text()
 
-    def test_archive_build_sees_tracked_files_only(self, kit):
-        """The tarball a consumer builds from has no gitignored files. A build
-        that needs one passes locally and must fail HERE, before the tag."""
+    def test_the_archive_build_and_the_verify_command_block_the_tag(self, kit):
+        """The tarball a consumer builds from has no gitignored files. A build that needs one
+        passes locally and must fail HERE, before the tag; so must a verify command that does."""
         proj = kit["proj"]
         (proj / ".gitignore").write_text("vendor/\n")
         (proj / "vendor").mkdir()
@@ -195,23 +218,18 @@ class TestSequencing:
         # the archive step in a fresh extraction, so both cannot be the same dir.
         sh(proj, "add", "-f", "vendor/dep.txt")
         commit_all(proj)
-        r = run_release(
-            kit,
-            "--no-push",
-            "--archive-build",
-            'test -f vendor/dep.txt && test "$PWD" != "$OLDPWD"',
-        )
-        assert r.returncode == 0, r.stdout + r.stderr
-
-    def test_verify_runs_with_the_version_and_blocks_the_tag(self, kit):
-        proj = kit["proj"]
-        r = run_release(kit, "--no-push", "--verify", 'test "$GOH_RELEASE_VERSION" = 9.9.9')
+        args = ("--no-push", "--archive-build",
+                'test -f vendor/dep.txt && test "$PWD" != "$OLDPWD"', "--verify")  # fmt: skip
+        r = run_release(kit, *args, 'test "$GOH_RELEASE_VERSION" = 9.9.9')
         assert r.returncode != 0
         assert "'verify'" in r.stdout + r.stderr
         assert not (proj / ".git" / "refs" / "tags" / TAG).exists()
-        r = run_release(kit, "--no-push", "--verify", f'test "$GOH_RELEASE_VERSION" = {VERSION}')
+        r = run_release(kit, *args, f'test "$GOH_RELEASE_VERSION" = {VERSION}')
         assert r.returncode == 0, r.stdout + r.stderr
         assert sh(proj, "cat-file", "-t", TAG).strip() == "tag"
+        # --no-push: origin untouched, and no release of a tag it does not have
+        assert TAG not in sh(kit["origin"], "tag", "-l")
+        assert "--no-push implies no GitHub release" in r.stderr, r.stderr
 
     def test_missing_changelog_stanza_fails_naming_the_step(self, kit):
         (kit["proj"] / "CHANGELOG.md").write_text("## v9.9.9\n\n- other\n")
@@ -225,74 +243,16 @@ class TestSequencing:
         assert not (kit["proj"] / ".git" / "refs" / "tags" / TAG).exists()
         assert not kit["gh_log"].exists() or "create" not in kit["gh_log"].read_text()
 
-    def test_push_pushes_branch_and_tag_to_origin(self, kit):
-        r = run_release(kit)
-        assert r.returncode == 0, r.stdout + r.stderr
-        refs = sh(kit["origin"], "rev-parse", "--verify", f"refs/tags/{TAG}")
-        assert refs.strip() == sh(kit["proj"], "rev-parse", TAG).strip()
-        assert (
-            sh(kit["origin"], "rev-parse", "--verify", "refs/heads/main").strip()
-            == sh(kit["proj"], "rev-parse", "HEAD").strip()
-        )
-
-    def test_branch_and_tag_go_in_one_push(self, kit):
-        """Two pushes left a window where the branch carried a release tag the remote lacked, and
-        the pre-push gate now refuses exactly that (`goh tag-version --remote`). One push also
-        means one gate run, and a refused push leaves neither ref behind."""
-        r = run_release(kit, "--skip-release")
-        assert r.returncode == 0, r.stdout + r.stderr
-        pushes = [c for c in kit["git_log"].read_text().splitlines() if c.startswith("git push")]
-        assert pushes == [f"git push origin main {TAG}"], pushes
-
-    def test_no_push_leaves_origin_untouched(self, kit):
-        r = run_release(kit, "--no-push", "--skip-release")
-        assert r.returncode == 0, r.stdout + r.stderr
-        out = sh(kit["origin"], "tag", "-l")
-        assert TAG not in out
-
-
-# ── idempotency ──────────────────────────────────────────────────────────────
-
-
-class TestIdempotency:
-    def test_second_run_skips_existing_tag(self, kit):
-        assert run_release(kit).returncode == 0
-        first = sh(kit["proj"], "rev-parse", TAG).strip()
-
-        kit["git_log"].write_text("")
-        r = run_release(kit)
-        assert r.returncode == 0, r.stdout + r.stderr
-
-        calls = kit["git_log"].read_text()
-        assert "git tag -a" not in calls, calls
-        assert "already exists" in r.stdout
-        assert sh(kit["proj"], "rev-parse", TAG).strip() == first
-
-    def test_second_run_skips_existing_github_release(self, kit):
-        assert run_release(kit).returncode == 0
-        creates = kit["gh_log"].read_text().count(f"gh release create {TAG}")
-        assert creates == 1
-
-        r = run_release(kit)
-        assert r.returncode == 0, r.stdout + r.stderr
-        creates = kit["gh_log"].read_text().count(f"gh release create {TAG}")
-        assert creates == 1, "second run re-created the GitHub release"
-
 
 # ── dry run ──────────────────────────────────────────────────────────────────
 
 
 class TestDryRun:
-    def test_the_buffered_copy_runs_without_a_shell_error(self, kit):
-        """The self-buffered copy runs from $TMPDIR, where `../../gates/_from_head.sh` is nothing:
-        every release since 4cc8976 printed "No such file" and "command not found" first."""
-        r = run_release(kit, "--dry-run")
-        assert r.returncode == 0, r.stdout + r.stderr
-        for sign in ("No such file", "command not found", "syntax error"):
-            assert sign not in r.stderr, r.stderr
-
     def test_dry_run_has_zero_side_effects(self, kit):
         marker = kit["proj"] / "gate-marker"
+        (kit["proj"] / "unpushed").write_text("")  # so a push of the branch would be seen
+        commit_all(kit["proj"])
+        before = sh(kit["origin"], "for-each-ref")
         r = run_release(
             kit,
             "--dry-run",
@@ -306,17 +266,17 @@ class TestDryRun:
             "/nonexistent.tar.gz",
         )
         assert r.returncode == 0, r.stdout + r.stderr
+        # The self-buffered copy runs from $TMPDIR, where `../../gates/_from_head.sh` is nothing:
+        # every release since 4cc8976 printed "No such file" and "command not found" first.
+        for sign in ("No such file", "command not found", "syntax error"):
+            assert sign not in r.stderr, r.stderr
 
         assert "[dry-run]" in r.stdout
+        assert "(repo t/proj)" in r.stdout, r.stdout  # the slug, read through `insteadOf`
         assert not marker.exists(), "dry-run executed the gate"
         out = sh(kit["proj"], "tag", "-l")
         assert TAG not in out, "dry-run created the tag"
-        refs = sh(kit["origin"], "for-each-ref").strip()
-        assert TAG not in refs, "dry-run pushed the tag"
-        assert (
-            sh(kit["origin"], "rev-parse", "--verify", "refs/heads/main").strip()
-            == sh(kit["proj"], "rev-parse", "HEAD").strip()
-        ), "dry-run pushed commits"
+        assert sh(kit["origin"], "for-each-ref") == before, "dry-run pushed"
         assert not kit["gh_log"].exists() or "create" not in kit["gh_log"].read_text()
 
 
@@ -352,37 +312,10 @@ def gh_creates(kit: dict) -> list[str]:
 
 
 class TestBackfill:
-    def test_hand_made_earlier_tag_is_released_from_its_stanza_before_the_current(self, hand_tags):
-        r = run_release(hand_tags)
-        assert r.returncode == 0, r.stdout + r.stderr
-        creates = gh_creates(hand_tags)
-        assert [c.split()[3] for c in creates] == ["v1.1.0", TAG], creates
-        assert "--latest=false" in creates[0], "a backfill must not steal Latest"
-        assert "--latest=false" not in creates[1], "the release being cut stays Latest"
-        notes = (hand_tags["gh_state"] / "notes-v1.1.0").read_text()
-        assert "the hand-made one" in notes
-        assert "already released" not in notes and STANZA_BODY.splitlines()[0] not in notes
-        # idempotent: a second run finds the backfilled release and leaves it
-        assert run_release(hand_tags).returncode == 0
-        assert [c.split()[3] for c in gh_creates(hand_tags)].count("v1.1.0") == 1
-
-    def test_earlier_tag_with_a_release_is_left_alone(self, hand_tags):
-        r = run_release(hand_tags)
-        assert r.returncode == 0, r.stdout + r.stderr
-        created = [c.split()[3] for c in gh_creates(hand_tags)]
-        assert "v1.1.0" in created, "backfill never ran -- this test would pass vacuously"
-        assert "v1.0.5" not in created, created
-
-    def test_earlier_tag_without_a_stanza_is_warned_not_fatal(self, hand_tags):
-        r = run_release(hand_tags)
-        assert r.returncode == 0, r.stdout + r.stderr
-        out = r.stdout + r.stderr
-        warned = [line for line in out.splitlines() if "v1.0.0" in line]
-        assert warned and "stanza" in warned[0] and "⚠" in warned[0], out
-        assert not any(c.split()[3] == "v1.0.0" for c in gh_creates(hand_tags))
-        assert "v1.1.0-rc1" not in out, "a pre-release tag is not a version of the kit's scheme"
-
-    def test_dry_run_plans_each_backfill_and_creates_nothing(self, hand_tags):
+    def test_hand_made_earlier_tags_are_released_from_their_stanzas_before_the_current(
+        self, hand_tags
+    ):
+        # The dry run plans each backfill, creates nothing and reaches no network.
         r = run_release(hand_tags, "--dry-run")
         assert r.returncode == 0, r.stdout + r.stderr
         plans = [
@@ -394,8 +327,26 @@ class TestBackfill:
         assert not log.exists() or "release list" not in log.read_text(), (
             "dry-run touched the network"
         )
-        git_calls = hand_tags["git_log"].read_text() if hand_tags["git_log"].exists() else ""
-        assert "ls-remote" not in git_calls, "dry-run touched the network"
+        assert "ls-remote" not in hand_tags["git_log"].read_text(), "dry-run touched the network"
+
+        r = run_release(hand_tags)
+        assert r.returncode == 0, r.stdout + r.stderr
+        creates = gh_creates(hand_tags)
+        # v1.0.5 has its release and is left alone; v1.0.0 has no stanza; the rc is no version tag
+        assert [c.split()[3] for c in creates] == ["v1.1.0", TAG], creates
+        assert "--latest=false" in creates[0], "a backfill must not steal Latest"
+        assert "--latest=false" not in creates[1], "the release being cut stays Latest"
+        notes = (hand_tags["gh_state"] / "notes-v1.1.0").read_text()
+        assert "the hand-made one" in notes
+        assert "already released" not in notes and STANZA_BODY.splitlines()[0] not in notes
+        out = r.stdout + r.stderr
+        warned = [line for line in out.splitlines() if "v1.0.0" in line]
+        assert warned and "stanza" in warned[0] and "⚠" in warned[0], out
+        assert "v1.1.0-rc1" not in out, "a pre-release tag is not a version of the kit's scheme"
+
+        # idempotent: a second run finds the backfilled release and leaves it
+        assert run_release(hand_tags).returncode == 0
+        assert [c.split()[3] for c in gh_creates(hand_tags)] == ["v1.1.0", TAG]
 
 
 # ── tap bump ─────────────────────────────────────────────────────────────────
@@ -440,15 +391,14 @@ def bare_head(bare: Path) -> str:
 
 
 class TestTap:
-    def test_bump_rewrites_url_and_sha_and_pushes(self, kit, tap):
+    def test_bump_rewrites_url_and_sha_pushes_and_is_not_recommitted(self, kit, tap):
         _, bare = tap
         artifact = kit["proj"] / "artifact.tar.gz"
         artifact.write_bytes(b"payload-bytes")
+        args = ("--tap", str(bare), "--cask", "foo", "--artifact", str(artifact))
 
-        r = run_release(kit, "--tap", str(bare), "--cask", "foo", "--artifact", str(artifact))
+        r = run_release(kit, *args)
         assert r.returncode == 0, r.stdout + r.stderr
-
-        import hashlib
 
         want_sha = hashlib.sha256(b"payload-bytes").hexdigest()
         content = bare_show(bare, "main", "Casks/foo.rb")
@@ -456,15 +406,8 @@ class TestTap:
         assert f'sha256 "{want_sha}"' in content
         assert "v0.0.0" not in content
 
-    def test_unchanged_formula_is_not_recommitted(self, kit, tap):
-        _, bare = tap
-        artifact = kit["proj"] / "artifact.tar.gz"
-        artifact.write_bytes(b"payload-bytes")
-        args = ("--tap", str(bare), "--cask", "foo", "--artifact", str(artifact))
-        assert run_release(kit, *args).returncode == 0
         head_before = bare_head(bare)
-
-        r = run_release(kit, *args)
+        r = run_release(kit, *args)  # the same formula again
         assert r.returncode == 0, r.stdout + r.stderr
         assert "nothing to commit" in r.stdout
         assert bare_head(bare) == head_before
@@ -475,22 +418,26 @@ class TestTap:
 # CI check, no release), and any other URL ending in `.git` -- this kit's own local origin -- as one.
 
 
-@pytest.mark.parametrize(
-    "url, slug",
-    [
-        ("https://github.com/o/r.git", "o/r"),
-        ("https://github.com/o/r", "o/r"),
-        ("git@github.com:o/r", "o/r"),
-        ("https://gitlab.com/o/r.git", None),
-        ("/srv/git/r.git", None),
-    ],
-)
-def test_the_slug_is_read_from_any_github_origin_and_no_other(kit, url, slug):
-    sh(kit["proj"], "remote", "set-url", "origin", url)
+SLUGS = {
+    "https://github.com/o/r.git": "o/r",
+    "https://github.com/o/r": "o/r",
+    "git@github.com:o/r": "o/r",
+    "https://gitlab.com/o/r.git": "",
+    "/srv/git/r.git": "",
+}
+
+
+def test_the_slug_is_read_from_any_github_origin_and_no_other():
+    """One shell reads them all; that release.sh asks it, `insteadOf` and all, is the dry run's."""
+    prog = f'. "{RELEASE.parent / "gh_release.sh"}"; for u; do echo "$(github_slug "$u")"; done'
+    got = subprocess.run(["bash", "-c", prog, "slug", *SLUGS], capture_output=True, text=True,
+                         stdin=subprocess.DEVNULL, check=True)  # fmt: skip
+    assert got.stdout.split("\n")[:-1] == list(SLUGS.values()), got.stdout + got.stderr
+
+
+def test_an_origin_that_is_no_github_is_said_and_gets_no_release(kit):
+    sh(kit["proj"], "remote", "set-url", "origin", "/srv/git/r.git")
     r = run_release(kit, "--dry-run")
     out = r.stdout + r.stderr
     assert r.returncode == 0, out
-    if slug:
-        assert f"(repo {slug})" in out, out
-    else:
-        assert "is not a github.com remote" in out and "(repo " not in out, out
+    assert "is not a github.com remote" in out and "(repo " not in out, out
