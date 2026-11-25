@@ -30,6 +30,7 @@ from pathlib import Path
 
 GIT_INIT_TEXT = re.compile(r"\bgit\s+(?:-C\s+\S+\s+)?init\b")
 COPIERS = {"copytree"}
+WORD = re.compile(rf"init\b|{'|'.join(sorted(COPIERS))}")  # `fast_init` ends in the first
 
 
 def _strs(nodes) -> list[str]:
@@ -94,7 +95,8 @@ class _Sites(ast.NodeVisitor):
 def sites(text: str) -> list[int]:
     """The line of every site in one file's source, in order."""
     v = _Sites()
-    v.visit(ast.parse(text))
+    if WORD.search(text):  # else no site could be spelled: not parsed
+        v.visit(ast.parse(text))
     return sorted(v.lines)
 
 

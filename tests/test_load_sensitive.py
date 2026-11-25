@@ -213,28 +213,30 @@ def test_a_planted_unmarked_waiting_test_is_refused_and_a_reasonless_mark_is_sta
 def test_every_load_sensitive_test_carries_the_marker() -> None:
     """THE GATE: a test that sleeps, reads a clock, polls, spawns beside itself, signals, waits or
     names a deadline says so -- `@pytest.mark.load_sensitive` above it."""
-    missing = _unmarked(ls.Census.of(TESTS))
+    census = ls.Census.of(TESTS)  # read once (1.7 s) for the three rules of the tree
+    missing = _unmarked(census)
     assert not missing, (
         f"load-sensitive, without @pytest.mark.{ls.MARK}: {len(missing)} -- bound each wait "
         "(timing_bounds.patience, GiveUp) and mark it (tests/load_sensitive.py says why each is "
         "named):\n  " + "\n  ".join(missing)
     )
+    _no_mark_without_a_signal_or_a_reason(census)
+    _every_historical_load_failure_is_in_the_set(census)
 
 
-def test_no_mark_without_a_signal_or_a_reason() -> None:
+def _no_mark_without_a_signal_or_a_reason(census: ls.Census) -> None:
     """A mark the derivation does not back names a test load cannot move, unless the test
     has a deadline the scan cannot see; then the mark says which (`reason=`)."""
-    stale = _stale(ls.Census.of(TESTS))
+    stale = _stale(census)
     assert not stale, (
         "marked load_sensitive, but nothing in the test or what it reaches can move with load, and "
         "the mark gives no reason= -- drop it or say why:\n  " + "\n  ".join(stale)
     )
 
 
-def test_every_historical_load_failure_is_in_the_set() -> None:
+def _every_historical_load_failure_is_in_the_set(census: ls.Census) -> None:
     """Each load-only failure seen so far (lands on busy boxes, hosted runners, consumer pushes)
     names a test that still exists and is marked, so the set holds every one seen."""
-    census = ls.Census.of(TESTS)
     marked = census.marked()
     entries = json.loads(HISTORY.read_text(encoding="utf-8"))
     assert entries, "tests/load_history.json is empty"

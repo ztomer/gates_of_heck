@@ -21,6 +21,7 @@ from conftest import REPO_ROOT
 
 # A decorator that rebinds the name it decorates on purpose.
 REBINDERS = {"setter", "getter", "deleter", "overload", "register"}
+_HOLDERS = (ast.stmt, ast.excepthandler, ast.match_case)
 
 
 def _decorator_name(node: ast.expr) -> str:
@@ -36,7 +37,9 @@ def _decorator_name(node: ast.expr) -> str:
 def shadowed(source: str) -> list[tuple[str, list[int]]]:
     """Every `(name, [lines])` a body in `source` binds twice with `def` or `class`."""
     found = []
-    for node in ast.walk(ast.parse(source)):
+    todo: list[ast.AST] = [ast.parse(source)]
+    for node in todo:  # breadth first, as ast.walk, without the expressions: none holds a `def`
+        todo += [n for n in ast.iter_child_nodes(node) if isinstance(n, _HOLDERS)]
         body = getattr(node, "body", None)
         if not isinstance(body, list):
             continue

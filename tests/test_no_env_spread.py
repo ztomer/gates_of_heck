@@ -35,6 +35,8 @@ def _is_environ(node: ast.AST) -> bool:
 def spreads(source: str) -> list[int]:
     """The line of every `os.environ` spread in `source`."""
     found = []
+    if "environ" not in source:
+        return found  # not parsed
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Dict):
             if any(

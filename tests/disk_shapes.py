@@ -20,10 +20,12 @@ Not read: a database or a clone made by a script a test runs; the run's own ceil
 from __future__ import annotations
 
 import ast
+import re
 
 from git_init_lint import _name, _strs
 
 GOH = {"REPO_ROOT", "ROOT", "GOH_ROOT"}
+WORD = re.compile(r"\bsqlite3\b|clone|worktree")
 IN_MEMORY = (":memory:", "mode=memory", "vfs=memdb")
 
 
@@ -74,7 +76,8 @@ def _clones(node: ast.AST, strs: list[str], helper: bool) -> bool:
 def sites(text: str) -> list[tuple[str, int]]:
     """(shape, line) of every site in one file's source, in order."""
     v = _Sites()
-    v.visit(ast.parse(text))
+    if WORD.search(text):  # else no shape could be spelled: not parsed
+        v.visit(ast.parse(text))
     return sorted(v.found, key=lambda s: s[1])
 
 

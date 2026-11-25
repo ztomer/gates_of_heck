@@ -17,10 +17,13 @@ of a file the test itself wrote.
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 BASES = {"REPO_ROOT", "ROOT", "GOH_ROOT"}
 COPIES = {"copy", "copy2", "copyfile", "copytree", "symlink"}
+ROOT_NAME = re.compile(rf"\b(?:{'|'.join(sorted(BASES))})\b")
+COPY = re.compile(rf"\b(?:{'|'.join(sorted(COPIES))}|symlink_to)\b|\bread_(?:bytes|text)\b")
 
 
 def _names(node: ast.AST) -> set[str]:
@@ -47,6 +50,8 @@ def _repo_names(tree: ast.AST) -> set[str]:
 
 def findings(source: str) -> list[int]:
     """The line of every hand copy of the goh tree in `source`."""
+    if not (ROOT_NAME.search(source) and COPY.search(source)):
+        return []  # neither the tree nor a copy named: not parsed (1.7 s over the suite)
     tree = ast.parse(source)
     repo = _repo_names(tree)
     found = []

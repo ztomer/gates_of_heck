@@ -4,6 +4,7 @@ no test in tests/ asserts an elapsed time under a literal number."""
 from __future__ import annotations
 
 import ast
+import re
 
 import pytest
 import timing_bounds
@@ -27,6 +28,10 @@ from conftest import REPO_ROOT
 CLOCKS = {"monotonic", "monotonic_ns", "perf_counter", "perf_counter_ns", "time", "time_ns"}
 NAMED = {"elapsed", "waited", "wall", "dt", "took"}
 KEYS = {"ms", "cpu_ms"}
+WORD = re.compile(
+    rf"\b(?:{'|'.join(sorted(CLOCKS))})\s*\(|\b(?:{'|'.join(sorted(NAMED))})\b"
+    r"|\b(?:cpu_)?ms[\"']|\bwait_until\b"
+)
 # Ten minutes and more is a plausibility window or a hang guard, which no load a test meets reaches:
 # tests/stamp_age.py holds a stamp "just taken" at -5..600 s, ruling out one from another hour.
 HANG_S = 600.0
@@ -73,9 +78,11 @@ def _run_queue_only(n: ast.AST) -> float | None:
 
 def bounds(src: str) -> list[int]:
     """The lines of `src` that bound an elapsed time by a literal (above)."""
-    tree = ast.parse(src)
+    if not WORD.search(src):
+        return []  # no clock, no duration's name, no wait: not parsed
+    nodes = list(ast.walk(ast.parse(src)))
     names = set(NAMED)
-    for n in ast.walk(tree):
+    for n in nodes:
         if isinstance(n, (ast.Assign, ast.AnnAssign)) and n.value is not None and _since(n.value):
             targets = n.targets if isinstance(n, ast.Assign) else [n.target]
             names |= {t.id for t in targets if isinstance(t, ast.Name)}
@@ -93,7 +100,7 @@ def bounds(src: str) -> list[int]:
         return bool(unit) and v is not None and v / unit < HANG_S
 
     found: set[int] = set()
-    for n in ast.walk(tree):
+    for n in nodes:
         deadline = isinstance(n, ast.BinOp) and isinstance(n.op, ast.Add) and _clock(n.left)
         if deadline and (_number(n.right) or _called(n.right) == "patience"):
             found.add(n.lineno)
@@ -235,8 +242,8 @@ def test_no_test_plants_the_run_queue_and_leaves_the_clamp_to_the_host() -> None
 
     found = []
     for p in sorted((REPO_ROOT / "tests").glob("*.py")):
-        tree = ast.parse(p.read_text(encoding="utf-8"))
-        for fn in ast.walk(tree):
+        text = p.read_text(encoding="utf-8")
+        for fn in ast.walk(ast.parse(text)) if "load_factor" in text else ():
             if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
             planted = {

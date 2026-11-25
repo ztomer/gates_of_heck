@@ -75,6 +75,11 @@ STORES: dict[str, tuple[str, tuple[str, ...]]] = {
     "shell verdicts": ("V2 goh-cache.db 0003 shell_verdicts", ("verdicts",)),
 }
 SEGMENT = {seg: store for store, (_, segs) in STORES.items() for seg in segs}
+_SEGS = "|".join(re.escape(s) for s in sorted(SEGMENT, key=len, reverse=True))
+NAMES = re.compile(
+    rf"""["'/{{}}$](?:{_SEGS})(?=["'/{{}}$\\])"""
+    rf"""|(?:{"|".join(re.escape(s) for s in SEGMENT if s.startswith("."))})["']"""
+)
 JOINS = {
     "join",
     "joinpath",
@@ -116,6 +121,8 @@ def _strings(node: ast.AST) -> list[str]:
 
 def python_hits(rel: str, text: str) -> list[tuple[str, int, str]]:
     """(store, line, literal) for each store a Python file names."""
+    if not NAMES.search(text):
+        return []  # no string ends or begins at a store's name: not parsed
     try:
         tree = ast.parse(text)
     except SyntaxError:

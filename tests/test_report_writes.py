@@ -43,6 +43,9 @@ from conftest import REPO_ROOT
 SHELL_INFO = re.compile(r"^\s*info\s+")
 SHELL_STEP = re.compile(r"^\s*step\s+")
 
+# A Python file that does not call both is not parsed (1.9 s over the tree).
+INFO, STEP = re.compile(r"\binfo\b"), re.compile(r"\bstep\b")
+
 # Build output and vendored copies are not writers in this repo.
 SKIP = {".git", "target", "bin", "__pycache__", ".venv"}
 
@@ -65,7 +68,8 @@ def _called(stmt: ast.stmt) -> str | None:
 
 def _python_findings(path: Path) -> list[str]:
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+        tree = ast.parse(text if INFO.search(text) and STEP.search(text) else "")
     except (OSError, SyntaxError, ValueError):
         return []
     out: list[str] = []

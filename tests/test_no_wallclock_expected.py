@@ -24,6 +24,7 @@ outlive the code it excuses.
 from __future__ import annotations
 
 import ast
+import re
 from collections import Counter
 
 from conftest import REPO_ROOT
@@ -39,6 +40,7 @@ ALLOW: dict[tuple[str, str], str] = {
 }
 
 _NOW = {"now", "utcnow"}
+_WORD = re.compile(r"\.\s*(?:today|strftime|now|utcnow)\b")
 _DATEISH = {"date", "strftime", "year", "month", "day"}
 
 
@@ -59,6 +61,8 @@ def _is_clock_date(node: ast.AST, parent: ast.AST | None) -> bool:
 
 def clock_dates(source: str) -> list[str]:
     """Each wall-clock calendar read in `source`, as the call's own source text."""
+    if not _WORD.search(source):
+        return []  # no such call: not parsed (1.8 s over the suite)
     tree = ast.parse(source)
     parents = {child: p for p in ast.walk(tree) for child in ast.iter_child_nodes(p)}
     return [ast.unparse(n) for n in ast.walk(tree) if _is_clock_date(n, parents.get(n))]
@@ -80,10 +84,7 @@ def test_no_test_builds_an_expected_date_from_the_wall_clock():
         "(GOH_TODAY / suite_home.PINNED_TODAY) or judge a stamp by its age, or add the call to "
         f"ALLOW with its reason (GOH.MIDNIGHTDATE): {bad}"
     )
-
-
-def test_an_allowed_clock_read_that_is_gone_is_stale():
-    stale = sorted(k for k in ALLOW if k not in _found())
+    stale = sorted(k for k in ALLOW if k not in found)
     assert not stale, f"ALLOW names a clock read no test makes any more; delete it: {stale}"
     assert all(ALLOW.values()), "an ALLOW entry needs its reason"
 
