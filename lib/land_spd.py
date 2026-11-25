@@ -7,9 +7,10 @@ every member. This module is the one definition, three parts:
 
     once(rows)         a BATCH'S SHARED RUNS COUNT ONCE: the members of a batch (the record's
                        `batch.id`) share one lander run -- its pre-land, its gate, its slot wait,
-                       its steps -- so the owner (the member whose request names the batch, else
-                       the first) keeps them and the others keep only what is their own (e2e,
-                       enqueue pre-step, queue wait, retries, earlier attempts)
+                       its steps, what it did with the kept verdicts -- so the owner (the member
+                       whose request names the batch, else the first) keeps them and the others
+                       keep only what is their own (e2e, enqueue pre-step, queue wait, retries,
+                       earlier attempts)
     first_attempt(..)  the START of a land's e2e: the earliest of the chain's requests, filings and
                        the item's enqueue logs (`<queue>/logs/enqueue-<ns>-<item>.log`, made when
                        `goh land --enqueue` starts) since the item's previous landing -- a red
@@ -135,7 +136,7 @@ def once(rows: list[dict]) -> list[dict]:
         r = row
         if row.get("batch") and owner[row["batch"]] != row["ref"]:
             r = {**row, "stages": {k: v for k, v in row["stages"].items() if k in OWN},
-                 "parents": {}}  # fmt: skip
+                 "parents": {}, "kind": None, "decisions": {}, "gates": 0}  # fmt: skip
         out.append(r)
     return out
 

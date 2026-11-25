@@ -42,6 +42,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import land_records  # lib/: the land records' one door (GOH.STATEDB)
+import land_steps  # the land's logs: which commit its gate judged
 import timing_ledger
 
 PLAIN = "land e2e plain"
@@ -89,14 +90,24 @@ def _start(path: Path, rec: dict) -> tuple[dt.datetime | None, str]:
 
 
 def gate_row(gates: list[dict], repo: str, rec: dict) -> dict:
-    """The `land` row land.sh wrote inside the landing's run (a batch's items share it), or {}."""
+    """The `land` row of the gate that judged the landing (a batch's items share it), or {}. A
+    batch's run holds each of its gates, red halves and speculative ones too, so the row is the one
+    whose `sha` is the tip the record's log says was gated (land_steps.gated; a landed record's own
+    commit where the log is gone); the last in the run's time where neither the rows nor the record
+    name one (GOH.DIFFCOVPARSE)."""
     start, end = _when(rec.get("started")), _when(rec.get("finished"))
     if start is None or end is None:
         return {}
     lo, hi = start.timestamp() - 1, end.timestamp() + 30
     found = [g for g in gates if g.get("repo") == repo and "cpu_s" in g
              and lo <= g.get("epoch", 0) <= hi]  # fmt: skip
-    return found[-1] if found else {}
+    if not found:
+        return {}
+    tips = [land_steps.gated(rec), *([str(rec.get("sha") or "")[:8]] * (rec["state"] == "landed"))]
+    for tip in filter(None, tips):
+        if named := [g for g in found if str(g.get("sha") or "").startswith(tip)]:
+            return named[-1]
+    return {} if tips[0] and all(g.get("sha") for g in found) else found[-1]
 
 
 def gate_cpu(gates: list[dict], repo: str, rec: dict) -> float | None:

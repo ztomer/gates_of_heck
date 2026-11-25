@@ -190,6 +190,7 @@ def land(q: Path, item: str, chain: list[tuple[Path, dict]], gates: list[dict],
             "parents": parents, "end": end, "repo": rec.get("repo"),
             "landed": rec.get("landed") or rec.get("sha"),
             "batch": (rec.get("batch") or {}).get("id"),
+            "gates": (rec.get("batch") or {}).get("gates") or 1,
             "pre_affected": rec.get("pre_affected"), "pre_run": rec.get("pre_run"),
             "kind": land_spd.lander_kind(found),
             "shadow": land_spd.shadows(gates, repo, chain), "shadowed": "shadow_f" in g,
@@ -304,6 +305,9 @@ def render(by: dict[str, list[dict]], min_s: float = 0.0) -> str:
     known = known_parents([r for g in by.values() for r in g])
     for name, group in by.items():
         out.append(f"── {name}: {len(group)} lands ({', '.join(r['item'] for r in group)})")
+        if extra := sum(r["gates"] - 1 for r in group if r.get("gates")):
+            out.append("   the gate, its steps and phases are the one that landed each; "
+                       f"{extra} more ran in their batches, counted in none of them")  # fmt: skip
         out.append(f"{'stage':<58} {'n':>3} {'median':>9} {'max':>9} {'cpu-s':>8} {'share':>6} "
                    f"{'load':>6}")  # fmt: skip
         for t in table(group, min_s, known):

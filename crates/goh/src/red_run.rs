@@ -91,25 +91,50 @@ struct Declared {
     name: Option<String>,
 }
 
+/// The (removed, added) line counts a hunk's `@@ -a[,b] +c[,d] @@` line announces, context lines in
+/// both; None for any other line.
+fn hunk_counts(line: &str) -> Option<(u32, u32)> {
+    let mut words = line.strip_prefix("@@ ")?.split(' ');
+    let mut count = |sign: char| -> Option<u32> {
+        let range = words.next()?.strip_prefix(sign)?;
+        range
+            .split_once(',')
+            .map_or(Some(1), |(_, n)| n.parse().ok())
+    };
+    Some((count('-')?, count('+')?))
+}
+
 /// The test declarations on one side of a unified diff (`+` added, `-` removed), in diff order. An
 /// attribute line (`#[test]`) names the test declared below it; a declaration line under an
 /// attribute that is context (a test renamed in place, `app_updates` de40622) is one too -- the
 /// diff is read at `-U1` so that context line is there to see.
+///
+/// A hunk's own lines are counted off by its `@@` line, never read as a header: an added line whose
+/// text starts with `++ ` is `+++ ...` in the diff, and named the file of every test after it
+/// (GOH.DIFFCOVPARSE).
 fn declared(diff: &str, side: char) -> Vec<Declared> {
     let mut path = String::new();
+    let mut left = (0, 0); // the open hunk's removed and added lines still to come
     let mut out: Vec<Declared> = Vec::new();
     let mut context_attr = false;
     // An attribute on this side whose name is on the next declaration line of this side.
     let mut pending: Option<usize> = None;
     for line in diff.lines() {
-        if let Some(p) = line.strip_prefix("+++ ") {
+        let header = left == (0, 0);
+        left = hunk_counts(line).unwrap_or_else(|| {
+            (
+                left.0 - u32::from(left.0 > 0 && line.starts_with(['-', ' '])),
+                left.1 - u32::from(left.1 > 0 && line.starts_with(['+', ' '])),
+            )
+        });
+        if let Some(p) = line.strip_prefix("+++ ").filter(|_| header) {
             // A deleted file's `+++` is /dev/null: its removed tests keep the `---` path.
             if p != "/dev/null" {
                 p.strip_prefix("b/").unwrap_or(p).clone_into(&mut path);
             }
             context_attr = false;
             pending = None;
-        } else if let Some(p) = line.strip_prefix("--- ") {
+        } else if let Some(p) = line.strip_prefix("--- ").filter(|_| header) {
             if let Some(old) = p.strip_prefix("a/") {
                 old.clone_into(&mut path);
             }

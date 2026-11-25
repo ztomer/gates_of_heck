@@ -18,6 +18,7 @@ from conftest import REPO_ROOT
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import land_profile
 import land_records
+import land_steps
 
 T0 = dt.datetime(2026, 11, 18, 15, 0, tzinfo=dt.UTC)
 REPO = "/p/gates_of_heck"
@@ -161,3 +162,32 @@ def test_the_command_reads_the_queue_and_the_ledger(queue, tmp_path, monkeypatch
     assert "── instrumented loaded: 1 lands" in capsys.readouterr().out
     with pytest.raises(SystemExit):
         land_profile.main(["--since", "yesterday"])
+
+
+TABLE = "-- top 20 steps by wall time --\n"
+
+
+def test_a_double_gates_steps_are_both_counted_once() -> None:
+    """GOH.DIFFCOVPARSE: a land whose diff changes the gate code runs two gates on ONE timings file,
+    so the second report's rows are both gates'; the spool's rows are too."""
+    first, second = "  60.00 s  rc=0   wt   ./gates/a.sh\n", "  5.00 s  rc=0   wt   ./gates/a.sh\n"
+    log = f"→ [1/1] (.gatesrc) ./gates/a.sh\n{TABLE}{first}-- x\n{TABLE}{first}{second}-- x\n"
+    (got,) = land_steps.gate_steps([log])
+    assert (got["label"], got["wall"]) == ("gates/a.sh", 65.0)
+
+
+def test_a_bisected_batchs_steps_and_phases_are_the_landing_gates(tmp_path: Path) -> None:
+    """The owner's batch: gate1 red, gate2 landed it, its whole text copied into the owner's log."""
+    q = tmp_path / "q"
+    ran = "✓ landed aaaa1111 on main in /p\n  ✓ phase 'report': 7 s\n"
+    stem = f"{int(at(0).timestamp() * 1e9):020d}-GOH.O"
+    own = f"batch {stem}: landed by the gate run {stem}.gate2.log\n{ran}"
+    put(q, 0, "GOH.O", "landed", 1, 9, own,
+        batch={"id": stem, "items": 2, "gates": 3})  # fmt: skip
+    for n, (text, s) in enumerate((("✓ phase 'report': 90 s\n", 900), (ran, 70)), 1):
+        (q / "logs" / f"{stem}.gate{n}.log").write_text(text)
+        (q / "logs" / f"{stem}.gate{n}.timings.jsonl").write_text(step("./gates/a.sh", s) + "\n")
+    (row,) = land_profile.lands(q, [])
+    assert row["stages"]["    step gates/a.sh"][0] == 70.0
+    assert row["stages"]["        phase report"][0] == 7.0
+    assert "2 more ran in their batches" in land_profile.render({"plain": [row]})

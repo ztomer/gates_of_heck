@@ -134,20 +134,14 @@ def _hunks(top: str, base: str) -> dict[str, tuple[str, list[tuple[int, int, int
     """new path -> (old path, [(old start, old count, new start, new count)]) of BASE..HEAD."""
     out = _git(
         top, "-c", "core.quotePath=false", "diff", "-U0", "--no-color", "--no-ext-diff",
-        "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/", "-M", "--diff-filter=d",
+        "--no-textconv", "--no-prefix", "-M", "--diff-filter=d",
         base, "HEAD", "--", ":(glob)**/*.rs",
     )  # fmt: skip
+    import diff_cov  # gates/, on the path above: the one reader of a diff's hunks
+
     found: dict[str, tuple[str, list]] = {}
-    old = new = None
-    for line in (out or "").splitlines():
-        if line.startswith("--- "):
-            old = None if line[4:] == "/dev/null" else line[6:]
-        elif line.startswith("+++ "):
-            new = line[6:]
-            found[new] = (old or "", [])
-        elif new and (m := HUNK.match(line)):
-            a, b, c, d = (int(m.group(i) or 1) for i in (1, 2, 3, 4))
-            found[new][1].append((a, b, c, d))
+    for old, new, hunk in diff_cov.hunks(out or ""):
+        found.setdefault(new, (old or "", []))[1].append(hunk)
     return found
 
 

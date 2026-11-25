@@ -158,6 +158,24 @@ fn a_test_whose_signature_changed_is_the_same_test() {
     assert_eq!(added_tests(js), Vec::<String>::new());
 }
 
+/// GOH.DIFFCOVPARSE: an added line whose text starts with `++ ` is `+++ ` in the diff, and a removed
+/// one starting with `-- ` is `--- `: read as headers they renamed the file of every test after.
+#[test]
+fn a_hunk_line_that_reads_like_a_header_keeps_its_file() {
+    let diff = concat!(
+        "diff --git a/t.py b/t.py\n--- a/t.py\n+++ b/t.py\n@@ -1,2 +1,3 @@\n",
+        " x = 1\n",
+        "--- a/old.sql\n",
+        "+++ b/notes.md\n",
+        "+def test_after():\n",
+        "diff --git a/u.py b/u.py\n--- a/u.py\n+++ b/u.py\n@@ -0,0 +1 @@\n+def test_u():\n",
+    );
+    assert_eq!(
+        added_tests(diff),
+        vec!["t.py: def test_after():", "u.py: def test_u():"]
+    );
+}
+
 #[test]
 fn a_test_moved_to_another_hunk_is_the_same_test_and_a_new_name_is_new() {
     let moved = concat!(

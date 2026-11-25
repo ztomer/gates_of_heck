@@ -26,6 +26,10 @@ import steps_store  # lib/, beside this file: a land's steps in goh-cache.db
 
 RUN_LOG = re.compile(r"^batch \S+: \w+ by the gate run (\S+\.log)$", re.MULTILINE)
 TIMINGS = re.compile(r"^timings: (\S+)\s*$", re.MULTILINE)
+LANDED = re.compile(r"^✓ landed ([0-9a-f]{8})", re.MULTILINE)
+FAILED = re.compile(
+    r"^✗ land\.sh: the (?:gate|pre-land tests) failed on ([0-9a-f]{8})", re.MULTILINE
+)
 TOP_STEP = re.compile(r"^→ \[\d+/\d+\] \(\.gatesrc\) (.+?)\s*$", re.MULTILINE)
 NUM = r"(\d+(?:\.\d+)?)"
 TABLE_ROW = re.compile(rf"^\s*{NUM} s(?:\s+{NUM} s cpu)?\s+rc=\d+\s+(\S+)\s+(.+?)\s*$")
@@ -42,14 +46,27 @@ def label(raw: str) -> str:
 def logs_of(q: Path, path: Path, rec: dict) -> list[Path]:
     """The land's log files: its record's, its own, its batch gate's -- the gate run its own log
     names (`... by the gate run NAME`, lib/landq_batch.py own_log) when another item's batch
-    landed it, so the second item of a batch reads the gate that landed it too."""
+    landed it, so the second item of a batch reads the gate that landed it too. The gate that judged
+    it stands before its batch's others: a bisected batch's first gate is the red one."""
     logs = q / "logs"
     found = [Path(rec["log"])] if rec.get("log") else []
-    found += [logs / f"{path.stem}.log", *sorted(logs.glob(f"{path.stem}.gate*.log"))]
+    found.append(logs / f"{path.stem}.log")
     for log in list(found):
         with contextlib.suppress(OSError):
-            found += [logs / n for n in RUN_LOG.findall(log.read_text(errors="replace"))]
-    return list(dict.fromkeys(found))
+            judged = RUN_LOG.findall(log.read_text(errors="replace"))
+            found += [logs / n for n in reversed(judged)]
+    return list(dict.fromkeys([*found, *sorted(logs.glob(f"{path.stem}.gate*.log"))]))
+
+
+def gated(rec: dict) -> str:
+    """The commit (8 hex) the gate that judged REC landed or went red on, from its log; "" when
+    the log is gone or names none."""
+    try:
+        text = Path(str(rec["log"])).read_text(errors="replace") if rec.get("log") else ""
+    except OSError:
+        return ""
+    tips = (LANDED if rec.get("state") == "landed" else FAILED).findall(text)
+    return tips[-1] if tips else ""
 
 
 def kept_timings(q: Path, path: Path, rec: dict) -> list[Path]:
@@ -91,7 +108,10 @@ def steps_from_timings(path: Path) -> list[dict] | None:
 
 def steps_from_log(text: str) -> list[dict]:
     """The gate steps of a land log's LAST step table (the timings file is gone); a row that is not
-    one of the gate's own steps is nested, its parent unknown (`?`)."""
+    one of the gate's own steps is nested, its parent unknown (`?`). The last holds BOTH gates of a
+    land that ran two (main's, then its own): they share one GOH_TIMINGS, and the second's report
+    reads all of it, so adding the first table counts main's gate twice (GOH.DIFFCOVPARSE: both in
+    172 of 172 such lands)."""
     tops = {label(t) for t in TOP_STEP.findall(text)}
     blocks = text.split("-- top 20 steps by wall time --")
     if len(blocks) < 2:
@@ -113,7 +133,8 @@ def steps_from_log(text: str) -> list[dict]:
 
 
 def gate_steps(found: list[str], kept: list[Path] | tuple = ()) -> list[dict]:
-    """The gate's steps: from its timings kept in the queue's logs, else the one a log names when
+    """The steps of the gate that judged the land (`logs_of`), each gate it ran summed (one spool,
+    `steps_from_log`): from its timings kept in the queue's logs, else the one a log names when
     it is left (lands before GOH.LANDLEAKS), else from its log's table."""
     for p in kept:
         got = steps_from_timings(p)
@@ -132,17 +153,16 @@ def gate_steps(found: list[str], kept: list[Path] | tuple = ()) -> list[dict]:
 
 
 def phases(found: list[str]) -> dict[str, float]:
-    """The coverage step's phases, from the land's logs (lib/log_follow.py carries them there) and
-    its gate's own `<timings>.log` where an older land left one."""
+    """The coverage step's phases, from the first of the land's logs that has them (where
+    lib/log_follow.py carries them), else its gate's own `<timings>.log` where an older land left
+    one. One of them, never their sum: a batch item's own log holds its gate's whole text, and the
+    gate's log is read beside it: every phase of a batch land counted twice (GOH.DIFFCOVPARSE)."""
+    got = next((g for text in found if (g := PHASE.findall(text))), [])
+    if not got:
+        for p in dict.fromkeys(p for text in found for p in TIMINGS.findall(text)):
+            with contextlib.suppress(OSError):
+                got += PHASE.findall(Path(p + ".log").read_text(errors="replace"))
     out: dict[str, float] = {}
-    seen = list(found)
-    for text in found:
-        for p in dict.fromkeys(TIMINGS.findall(text)):
-            try:
-                seen.append(Path(p + ".log").read_text(errors="replace"))
-            except OSError:
-                continue
-    for text in seen:
-        for name, secs in PHASE.findall(text):
-            out[name] = out.get(name, 0.0) + float(secs)
+    for name, secs in got:
+        out[name] = out.get(name, 0.0) + float(secs)
     return out

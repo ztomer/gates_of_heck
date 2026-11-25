@@ -229,7 +229,7 @@ def read_attempts(queue: Path, birth_of: Callable[[Path], float | None] = birth)
         if rec.get("state") != "landed":
             text = log.read_text(errors="replace") if log is not None and log.is_file() else ""
             cause = land_cause.classify(rec, text)
-            step = land_cause.detail(text) if cause == "gate-step" else ""
+            step = land_cause.detail(text, rec) if cause == "gate-step" else ""
         out.append(
             Attempt(
                 stem=path.stem,

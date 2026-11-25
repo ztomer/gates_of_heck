@@ -167,6 +167,52 @@ def test_a_pre_steps_own_log_is_read_when_the_record_only_points_at_it(tmp_path)
     assert lc.classify({"why": why}, "") == "pre-test"  # the pre-land tests failed: said, unnamed
 
 
+OWN = "enqueue pre-step: the pre-land tests failed on d3dee048 (exit 1, its output is {}) -- fix"
+UNCOVERED = "    ✗ [diff-coverage] 1 of 1 changed executable line uncovered (base 1):\n"
+JUDGE = "✗ file events (GOH.FSCHURN2): 255137446 bytes left written by a run of 3351\n"
+TAIL = "✗ land.sh: the pre-land tests failed on d3dee048 in 9 s -- nothing landed\n"
+
+
+@pytest.mark.parametrize(
+    ("own", "cause"),
+    [
+        (UNCOVERED, "diff-cov"),
+        ("✗ [diff-coverage] 1 allowlist entry stale, delete:\n", "diff-cov"),
+        ("load: deadline of 600s expired: the command\n", "deadline"),
+        ("✗ structural: file length <= 500 failed (native)\n", "structural"),
+        ("✗ land.sh: GOH.X conflicts with main 93496d92 -- the rebase was aborted\n", "conflict"),
+        ("  ✗ phase 'external: x' failed\n✗ external: x\n" + JUDGE, "gate-step"),
+        ("✗ land.sh: the pre-land tests were green on d3 but wrote no record\n", "gate-step"),
+        ("bringing up nodes...\n", "pre-test"),
+        # what a failing TEST printed is no class of its land's red
+        ("_____ test_x _____\nE  assert '" + UNCOVERED + "'\nload: deadline of 9s expired\n"
+         "✗ structural: x failed\n✗ land.sh: GOH.X conflicts with main 1\n=== short test ===\n"
+         "FAILED tests/test_a.py::test_b - E\n", "pre-test"),
+    ],
+    ids=["diff-cov", "stale-allow", "deadline", "structural", "conflict", "judge", "no-record",
+         "silent", "quoted"],
+)  # fmt: skip
+def test_a_pre_step_red_is_classed_by_its_own_log(tmp_path, own: str, cause: str) -> None:
+    """GOH.DIFFCOVPARSE: the record holds the `why` and an excerpt; the pre-step's log says why. The
+    6 of 317 reds so misread said `pre-test` with no test failed: the file-events ceiling, a verdict
+    record never written."""
+    path = tmp_path / "prestep.log"
+    path.write_text(own + TAIL)
+    rec = {"why": OWN.format(path)}
+    assert lc.classify(rec, "") == cause
+    if own.endswith(JUDGE):
+        assert lc.detail("", rec) == "pre-land: " + JUDGE.strip()
+
+
+def test_a_test_that_quotes_a_refusal_never_classes_the_land() -> None:
+    """The record's excerpt holds each failing test's section, so a test OF land.sh that failed on
+    `conflicts with main` or `(exit -15)` read as the land's own."""
+    for quoted in ("conflicts with main", "the gate never ran", "(exit -15)",
+                   "✗ structural: x failed", "release canary: REFUSED"):  # fmt: skip
+        log = f"{PRE_RED}____ test_b ____\nE  {quoted}\n{quoted}\nFAILED tests/a.py::test_b - E\n"
+        assert lc.classify({"why": "exit 1"}, log) == "pre-test", quoted
+
+
 def test_a_gate_step_red_names_its_step_and_the_first_line_that_says_why() -> None:
     log = (
         "✗ [5/10] printed 1 ✗ line above and exited 0\n"
@@ -261,4 +307,5 @@ def test_a_named_why_is_kept_and_a_landed_record_has_no_cause(tmp_path) -> None:
     assert lc.explain({"state": "red", "why": why, "log": str(tmp_path / "none")}) == {
         "cause": "conflict", "cause_detail": ""}  # fmt: skip
     assert lc.classify({"why": "HEAD moved"}, "") == "tip-moved"  # a ship's enqueued sha moved
+    assert lc.classify({"why": "HEAD moved: main is at 1"}, "") == "tip-moved"
     assert lc.explain({"state": "landed", "why": "exit 1"}) == {}

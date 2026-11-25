@@ -63,6 +63,8 @@ def test_a_batchs_shared_runs_count_once_its_own_stages_per_item(tmp_path: Path)
     for shared_stage in ("lander run", "  pre-land", "  gate", "    slot wait"):
         assert t[shared_stage]["n"] == 1, shared_stage
     assert t["  pre-land"]["median_s"] == 120.0 and t["  gate"]["median_s"] == 800.0
+    s = land_spd.summary(q, rows)  # and what that one run did with the verdicts (DIFFCOVPARSE)
+    assert (s["whole_rerun"], s["whole_rerun_of"], s["pre_why"]) == (1, 1, {"unrecorded": 1})
 
 
 def test_the_e2e_starts_at_the_first_enqueue_attempt_red_ones_included(tmp_path: Path) -> None:

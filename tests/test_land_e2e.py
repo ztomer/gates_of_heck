@@ -213,6 +213,28 @@ def test_the_e2e_carries_its_gates_cpu_for_the_relative_guard(ledger: Path) -> N
     assert row["cpu_s"] == 900.0
 
 
+def test_a_batch_items_gate_row_is_the_gate_that_judged_it(ledger: Path) -> None:
+    """GOH.DIFFCOVPARSE: a bisected batch's run holds three gates, the last one another item's; the
+    row is the one whose sha the item's log says landed or went red, or (the log gone) its own."""
+    red = "✗ land.sh: the gate failed on eeee0000 under main 0000aaaa's gates -- x\n"
+    put(ledger, 0.0, "GOH.R", "red", 1.0, 9.0, red, sha="c" * 40)
+    low = "✓ landed aaaa1111 on main in /p\n"  # GOH.L landed below GOH.A, on A's gated tip
+    for item, sha in (("GOH.A", "aaaa1111"), ("GOH.L", "f" * 8), ("GOH.G", "aaaa1111")):
+        put(ledger, 0.0, item, "landed", 1.0, 9.0, low, sha=f"{sha}{'0' * 32}")
+    (ledger / "logs" / f"{ns(0.0)}-GOH.G.log").unlink()
+    put(ledger, 0.0, "GOH.S", "landed", 1.0, 9.0, "✓ landed dddd4444 on main\n", sha="d" * 40)
+    gates = [{"kind": "land", "repo": "goh", "cpu_s": float(i), "sha": f"{sha}0000",
+              "epoch": (T0 + dt.timedelta(minutes=3 + i)).timestamp()}
+             for i, sha in enumerate(("eeee0000", "aaaa1111", "bbbb2222"))]  # fmt: skip
+    got = {r["item"]: land_e2e.gate_row(gates, "goh", r)
+           for _, r in land_records.records(ledger, keys=land_e2e.KEYS)}  # fmt: skip
+    assert got == {"GOH.R": gates[0], "GOH.A": gates[1], "GOH.L": gates[1], "GOH.G": gates[1],
+                   "GOH.S": {}}  # what it landed is no row's  # fmt: skip
+    bare = [{k: v for k, v in g.items() if k != "sha"} for g in gates]  # rows of before the field
+    (_, rec), *_ = land_records.records(ledger, keys=land_e2e.KEYS)
+    assert land_e2e.gate_row(bare, "goh", rec) == bare[-1]
+
+
 def test_the_e2e_says_when_its_land_reused_the_enqueues_pre_step_verdict(ledger: Path) -> None:
     """GOH.PRELANDTWICE: a land that ran no second pre-step is a shorter wall for a reason."""
     put(ledger, 0.0, "GOH.A", "landed", 1.0, 4.0)

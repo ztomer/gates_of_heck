@@ -23,7 +23,7 @@ made with, so `goh land --report`'s `cause` column (lib/landq_report.py) is the 
     killed      the pre-land tests died to a signal (`exit -15`: the agent's own exit, not a test)
     diff-cov    the pre-step's diff-coverage judge refused: changed lines no test runs
     gate-step   a gate step failed and no test or structural line says why (clippy, the file-events
-                ceiling ...): `detail` names the step; GOH.REDOTHER
+                ceiling ...), or such a judge of the pre-step did: `detail` names it; GOH.REDOTHER
     unclassified none of the above: a FAULT OF THIS CLASSIFIER, never a bucket. `goh land --report`
                 names each one's log (GOH.REDOTHER)
 
@@ -37,9 +37,12 @@ named by its log's last line.
 
 The first that applies wins, in that order. The enqueue-stage reds (a pre-step or a guard check)
 leave their failing nodes only in the record's `why`, or in the pre-step's own log it points at;
-both are read with the same node rules as a gate log (GOH.REDOTHER). Telling a defect from a
-load-flaky failure needs a rerun, which a log does not hold: `pre-test` and `gate-test` say
-where it failed, never which.
+both are read with the same node rules as a gate log (GOH.REDOTHER). A PRE-STEP RED IS CLASSED BY
+ITS OWN LOG (GOH.DIFFCOVPARSE): the record's holds its `why` and an excerpt, so every class is read
+from the pre-step's log too (`said`), and a red no test explains is the judge's that log names last.
+In both a failing test's section is what that TEST printed, so no class is read from one.
+Telling a defect from a load-flaky failure needs a rerun, which a log does not hold: `pre-test`
+and `gate-test` say where it failed, never which.
 
 Why a land went red (GOH.PREPARITY), read from its done record and log: `tip-moved`, `conflict`,
 `canary` (a consumer's red), `deadline` (the pre-land tests reached their deadline with nothing
@@ -72,7 +75,16 @@ RATCHET_FILES = ("tests/test_self_walk.py", "tests/test_gate_temp_leaks.py")
 NODE = re.compile(r"(tests/[^\s,()]+\.py(?:::[^\s,()]+)?)")
 GUARD_REFUSED = re.compile(r"^check: guard tests \d+/\d+: REFUSED in [^:]*: (.+)$", re.MULTILINE)
 ERRORED = re.compile(r"^\s*ERROR (tests/[^\s:]+\.py(?:::[^\s]+)?)", re.MULTILINE)
-PRESTEP_LOG = re.compile(r"its output is (\S+\.log)")
+PRESTEP_LOG = re.compile(r"(?:its output is|way; log) (\S+\.log)")
+# The pre-step's diff-coverage judge (gates/diff_cov.py), and the stale allowlist it also refuses.
+DIFF_COV = re.compile(
+    r"(\[diff-coverage\] (?:\d+ of \d+ changed executable lines? uncovered"
+    r"|\d+ allowlist entr(?:y|ies) stale))"
+)
+# What a pre-step's own log says of a red no test explains: a judge's `✗` line, or land.sh's own.
+JUDGE_LINE = re.compile(
+    r"^\s*(✗ (?!land\.sh:|phase )\S.*|✗ land\.sh: the pre-land tests were green .*)$", re.MULTILINE
+)
 KILLED = re.compile(r"\(exit -\d+[,)]")
 SIGNALLED = re.compile(r"^exit (?:-\d+|129|1[3-5]\d)\b")  # a shell's 128+N is a signal's
 MAIN_MOVED = re.compile(r"main is at \w+ after the merge, not the gated")
@@ -151,6 +163,30 @@ def excerpt(log: str, each: int = EACH, most: int = MOST) -> str:
     return "\n".join(out)
 
 
+def _own(rec: dict) -> str:
+    """The pre-step's own log, which REC's `why` points at; "" when it names none or it is gone."""
+    pointed = PRESTEP_LOG.search(str(rec.get("why") or ""))
+    try:
+        return Path(pointed.group(1)).read_text(errors="replace") if pointed else ""
+    except OSError:
+        return ""
+
+
+def said(log: str) -> str:
+    """LOG without its failing tests' sections: what the run said, never what a test of a land
+    printed or asserted (a section ends at the next rule or FAILED/ERROR line, at any indent)."""
+    out, inside = [], False
+    for line in log.splitlines():
+        bare = line.strip()
+        if SECTION.match(bare):
+            inside = True
+        elif inside and (RULE.match(bare) or bare.startswith(("FAILED ", "ERROR "))):
+            inside = False
+        if not inside:
+            out.append(line)
+    return "\n".join(out)
+
+
 def is_ratchet(node: str) -> bool:
     return bool(RATCHET_NAME.search(node)) or node.split("::")[0] in RATCHET_FILES
 
@@ -163,22 +199,19 @@ def nodes(rec: dict, log: str) -> list[str]:
     for line in GUARD_REFUSED.findall(log):
         found += NODE.findall(line)
     found += NODE.findall(why)
-    pointed = PRESTEP_LOG.search(why)
-    if pointed:
-        try:
-            text = Path(pointed.group(1)).read_text(errors="replace")
-        except OSError:
-            text = ""
+    if text := said(_own(rec)):
         found += failed_tests(text) + ERRORED.findall(text)
     return list(dict.fromkeys(n.rstrip(" -") for n in found))
 
 
-def detail(log: str) -> str:
+def detail(log: str, rec: dict | None = None) -> str:
     """For a `gate-step` red: the failed step and the first line that says why ("" when the log
-    names no failed step). `goh land --report` shows it where a test node would be."""
+    names no failed step); for a pre-step's REC, the last judge its own log names. `goh land
+    --report` shows it where a test node would be."""
     steps = STEP_FAILED.findall(log)
     if not steps:
-        return ""
+        judged = JUDGE_LINE.findall(said(_own(rec or {})))
+        return f"pre-land: {judged[-1][:160]}" if judged else ""
     lines = (re.sub(r"^\d+:", "", ln) for ln in log.splitlines())  # the digest numbers its lines
     why = next(
         (
@@ -194,7 +227,9 @@ def detail(log: str) -> str:
 def classify(rec: dict, log: str) -> str:
     """The cause of one red attempt (CAUSES); a landed one has none and is never asked."""
     why = str(rec.get("why") or "")
-    if "tip moved" in why or why == "HEAD moved":
+    tests = nodes(rec, log)
+    log = f"{said(log)}\n{said(_own(rec))}"
+    if "tip moved" in why or "HEAD moved" in why:
         return "tip-moved"
     if MAIN_MOVED.search(log):
         return "main-moved"
@@ -207,10 +242,9 @@ def classify(rec: dict, log: str) -> str:
     if KILLED.search(why) or KILLED.search(log) or SIGNALLED.search(why):
         return "killed"
     pre_red = "the pre-land tests failed" in log or "the pre-land tests failed" in why
-    tests = nodes(rec, log)
     if pre_red and not tests and "deadline of" in log:
         return "deadline"
-    if "changed executable lines uncovered" in why + log:
+    if DIFF_COV.search(why) or DIFF_COV.search(log):
         return "diff-cov"
     if STRUCTURAL_LINE.search(log) or STRUCTURAL.search(log):
         return "structural"
@@ -221,10 +255,10 @@ def classify(rec: dict, log: str) -> str:
         return "pre-test"
     if tests and ("pre-land green" in log or GATE_FAILED.search(log)):
         return "gate-test"
+    if detail(log, rec):
+        return "gate-step"
     if pre_red:
         return "pre-test"  # the tool says the pre-land tests failed and names none
-    if detail(log):
-        return "gate-step"
     return "unclassified"
 
 
@@ -239,12 +273,12 @@ def explain(rec: dict) -> dict:
     except OSError:
         log = ""
     cause = classify(rec, log)
-    said = next(iter(nodes(rec, log)), "") or detail(log)
+    named = next(iter(nodes(rec, log)), "") or detail(log, rec)
     if cause == "unclassified":
         cause = LANDER
-        said = said or next((ln for ln in reversed(log.splitlines()) if ln.strip()), "")
-    out = {"cause": cause, "cause_detail": said.strip()[:WIDE]}
+        named = named or next((ln for ln in reversed(log.splitlines()) if ln.strip()), "")
+    out = {"cause": cause, "cause_detail": named.strip()[:WIDE]}
     why = str(rec.get("why") or "").strip()
     if BARE.match(why):
-        out["why"] = f"{why}: {cause}" + (f", {out['cause_detail']}" if said.strip() else "")
+        out["why"] = f"{why}: {cause}" + (f", {out['cause_detail']}" if named.strip() else "")
     return out

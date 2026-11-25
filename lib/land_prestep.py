@@ -61,10 +61,7 @@ NO_VERDICT = re.compile(r"pre-land: no verdict[: ] ?(.*?) -- the gate decides")
 # The diff coverage judge's own verdict (gates/diff_cov.py TAG): when it is what failed, the land's
 # verdict line names it, not "the pre-land tests failed ... (exit 1)" (GOH.LANDCHECK2: GOH-TINY's
 # two diff coverage reds said only that, 2026-11-22).
-DIFFCOV = re.compile(
-    r"(\[diff-coverage\] (?:\d+ of \d+ changed executable lines? uncovered"
-    r"|\d+ allowlist entr(?:y|ies) stale))"
-)
+DIFFCOV = land_cause.DIFF_COV  # the classifier's own reading of it
 
 
 def no_verdict(lines: list[str]) -> dict | None:

@@ -11,14 +11,19 @@ the real instrumented build once).
 
 from __future__ import annotations
 
+import importlib
 import json
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from conftest import REPO_ROOT, commit_all, git, hermetic_env
 from timing_bounds import patience
 
+sys.path[:0] = [str(REPO_ROOT / "gates"), str(REPO_ROOT / "lib")]
+cov_risk = importlib.import_module("cov_risk")
+diff_cov = importlib.import_module("diff_cov")
 DIFF_COV = REPO_ROOT / "gates" / "diff_cov.py"
 BASE = "pub fn a() -> u32 {\n    1\n}\n"
 # Lines 4-6 are added: `pub fn b`, its body, its close.
@@ -292,3 +297,58 @@ def test_no_parts_and_no_changed_rust_line_passes_saying_so(repo: Path, tmp_path
     r = _run(repo, tmp_path / "missing")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "no changed Rust line" in r.stdout, r.stdout
+
+
+# GOH.DIFFCOVPARSE: `git diff -U0 --no-prefix`'s own output (git 2.x) of a file with a space in its
+# name whose change adds the lines `++ src/other.rs` and `@@ -1 +9 @@` and removes `-- gone`, then
+# of one whose name git quotes.
+HEADERLIKE = """diff --git a b.rs a b.rs
+index ce45e04..1f9ca4c 100644
+--- a b.rs\t
++++ a b.rs\t
+@@ -1,0 +2,4 @@ fn a() {}
++const C: &str = "
++++ src/other.rs
++@@ -1 +9 @@
++";
+@@ -4,2 +8 @@ fn a() {}
+-fn z() {}
+--- gone
++fn z() { 1; }
+\\ No newline at end of file
+diff --git "q\\"t\\011.rs" "q\\"t\\011.rs"
+index 587be6b..975fbec 100644
+--- "q\\"t\\011.rs"
++++ "q\\"t\\011.rs"
+@@ -1 +1 @@
+-x
++y
+diff --git new.rs new.rs
+new file mode 100644
+--- /dev/null
++++ new.rs
+@@ -0,0 +1 @@
++fn n() {\x0c}
+"""
+
+
+def test_an_added_line_that_reads_like_a_header_keeps_its_file(monkeypatch: pytest.MonkeyPatch):
+    """An added line starting with `++ ` is `+++ ` in the diff: the file after it was a ghost, and
+    every later change of the real one went unjudged. So was a file with a space in its name."""
+    monkeypatch.setattr(diff_cov, "_git", lambda _top, *a: HEADERLIKE if "diff" in a else "")
+    assert dict(diff_cov.changed_lines("/r", "HEAD")) == {
+        "a b.rs": {2, 3, 4, 5, 8}, 'q"t\t.rs': {1}, "new.rs": {1}}  # fmt: skip
+    monkeypatch.setattr(cov_risk, "_git", lambda _top, *_a: HEADERLIKE)
+    assert cov_risk._hunks("/r", "HEAD") == {  # the same reader, its old sides too
+        "a b.rs": ("a b.rs", [(1, 0, 2, 4), (4, 2, 8, 1)]),
+        'q"t\t.rs': ('q"t\t.rs', [(1, 1, 1, 1)]),
+        "new.rs": ("", [(0, 0, 1, 1)]),
+    }
+
+
+def test_a_line_is_what_git_counts_as_one(tmp_path: Path):
+    """A form feed or U+2028 ends no line to git or lcov: an allowlisted text after one was looked
+    up at another line's number."""
+    f = tmp_path / "f.rs"
+    f.write_text("// a\x0cb\u2028c\r\nfn z() {}\n", encoding="utf-8")
+    assert diff_cov._lines_of(str(f)) == ["// a\x0cb\u2028c", "fn z() {}"]

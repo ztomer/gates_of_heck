@@ -62,6 +62,7 @@ import os
 import re
 import sys
 from collections import defaultdict
+from collections.abc import Iterator
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
@@ -74,7 +75,11 @@ from tui.lib import counted, err, info, measure, warn  # noqa: E402  (lcov_merge
 TAG = "[diff-coverage]"
 GIT_TIMEOUT = 120
 MODES = ("on", "warn", "off")
-HUNK = re.compile(r"^@@ -\S+ \+(\d+)(?:,(\d+))? @@")
+HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+QUOTED = re.compile(
+    r'\\([abtnvfr"\\]|[0-7]{3})'
+)  # git's C-quoting of a name (core.quotePath=false)
+ESCAPES = {"a": "\a", "b": "\b", "t": "\t", "n": "\n", "v": "\v", "f": "\f", "r": "\r"}
 
 
 class Refused(Exception):
@@ -117,6 +122,39 @@ def resolve_base(top: str, given: str) -> tuple[str, str] | None:
     return None
 
 
+def _named(raw: str) -> str | None:
+    """The path a `--- `/`+++ ` header line names, None for /dev/null: git ends a name with a space
+    in it with a tab, and C-quotes one with a quote, a backslash or a control character."""
+    raw = raw.removesuffix("\t")
+    if raw.startswith('"'):
+        return QUOTED.sub(
+            lambda m: chr(int(m[1], 8)) if m[1].isdigit() else ESCAPES.get(m[1], m[1]), raw[1:-1]
+        )
+    return None if raw == "/dev/null" else raw
+
+
+def hunks(diff: str) -> Iterator[tuple[str | None, str, tuple[int, int, int, int]]]:
+    """(old path, new path, (old start, old count, new start, new count)) of each hunk of DIFF, a
+    `git diff -U0 --no-prefix`. A hunk's own lines are counted off by its `@@` line and never read
+    as a header: an added line whose text starts with `++ ` is `+++ ...` in the diff, and read as a
+    header it named a file that is not there and left the rest of its own unjudged
+    (GOH.DIFFCOVPARSE)."""
+    old = new = None
+    left = 0
+    for line in diff.split("\n"):  # git's lines end at a newline alone: never splitlines()
+        if m := HUNK.match(line):  # a hunk's own line starts with its sign, never with an `@`
+            a, b, c, d = (int(m[i] or 1) for i in (1, 2, 3, 4))
+            left = b + d
+            if new is not None:
+                yield old, new, (a, b, c, d)
+        elif left:
+            left -= line.startswith(("+", "-"))
+        elif line.startswith("--- "):
+            old = _named(line[4:])
+        elif line.startswith("+++ "):
+            new = _named(line[4:])
+
+
 def changed_lines(top: str, base: str) -> dict[str, set[int]]:
     """repo-relative path -> the new-side line numbers the change adds or edits (the working tree
     against `base`, renames followed, untracked files whole)."""
@@ -127,15 +165,8 @@ def changed_lines(top: str, base: str) -> dict[str, set[int]]:
     if out is None:
         raise Refused(f"git diff from {base} failed")
     changed: dict[str, set[int]] = defaultdict(set)
-    cur = None
-    for line in out.splitlines():
-        if line.startswith("+++ "):
-            cur = None if line[4:] == "/dev/null" else line[4:]
-        elif cur is not None and line.startswith("@@"):
-            m = HUNK.match(line)
-            if m:
-                start, count = int(m.group(1)), int(m.group(2) or 1)
-                changed[cur].update(range(start, start + count))
+    for _old, rel, (_a, _b, start, count) in hunks(out):
+        changed[rel].update(range(start, start + count))
     others = _git(top, "ls-files", "--others", "--exclude-standard", "-z", "--", ":(glob)**/*.rs")
     for rel in (others or "").split("\0"):
         if rel:
@@ -146,7 +177,7 @@ def changed_lines(top: str, base: str) -> dict[str, set[int]]:
 
 def _line_count(path: str) -> int:
     try:
-        with open(path, encoding="utf-8", errors="replace") as handle:
+        with open(path, encoding="utf-8", errors="replace", newline="\n") as handle:
             return sum(1 for _ in handle)
     except OSError:
         return 0
@@ -154,8 +185,10 @@ def _line_count(path: str) -> int:
 
 def _lines_of(path: str) -> list[str] | None:
     try:
-        with open(path, encoding="utf-8", errors="replace") as handle:
-            return [ln.strip() for ln in handle.read().splitlines()]
+        with open(path, encoding="utf-8", errors="replace", newline="\n") as handle:
+            return [
+                ln.strip() for ln in handle
+            ]  # the lines git and lcov count: a form feed is text
     except OSError:
         return None
 
