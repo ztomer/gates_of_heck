@@ -20,7 +20,7 @@
     "one roadmap, open entries only": {"count": 252, "why": "rule 5 (GOH.ROADMAPIDS): code comments and configs cite plan ids from before the 2026-11-08 rephase (a plan name and a dotted number), which docs/BACKLOG.md says resolve at 1a7c444 (`git show 1a7c444:docs/BACKLOG.md`); the entry each named is in git, not the plan, so the rule reads them dead. roadmap_seed.json holds the same sites per file; rule 5's grace ends 2026-12-01"},
     "no bare open of an app": {"count": 1, "why": "tests/test_launch_app.py, the control arm a bare open must be: the Python shape, in grace until 2026-11-23, is seeded that day (its entry would read stale before it)"},
     "no hand-rolled TUI mark": {"count": 151, "why": "tui_marks_seed.json's sites (GOH.LINTDELTA fixed py_lint_ceiling.py's), every one seeded (GOH.TUIMARKS; GOH.GRACEEND seeded the 6 it once missed: tools/lint.py, changelog_cut.py, build-goh.sh, and swift_toolchain.sh:28, a zsh refusal before any lib can load, from 6c43a02)"},
-    "no hard-coded home paths": {"count": 136, "why": "goh never opted into GOH_NO_HOME_PATHS, the rule it ships: its tests, docs and CHANGELOG name home-directory paths"},
+    "no hard-coded home paths": {"count": 135, "why": "goh never opted into GOH_NO_HOME_PATHS, the rule it ships: its tests, docs and CHANGELOG name home-directory paths"},
     "no locale variable set by bash itself": {"count": 1, "why": "locale_prefix_seed.json: tests/fixtures/homebrew_tap/Casks/divoom-control.rb, a copy of the tap's cask, its uninstall heredoc read since GOH.LOCALERUBY"},
     "no process kill by name": {"count": 9, "why": "kill_by_name_allow.json, each entry reviewed or unreviewed with its reason"}
   }
