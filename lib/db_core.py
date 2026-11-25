@@ -56,7 +56,6 @@ from pathlib import Path
 
 REAL_HOME_ENV = "GATES_OF_HECK_SUITE_REAL_HOME"  # tests/suite_home.py MARKER
 REAL_XDG_STATE_ENV = "GATES_OF_HECK_SUITE_REAL_XDG_STATE_HOME"
-THROWAWAY_ENV = "GATES_OF_HECK_DB_THROWAWAY"  # the suite run's root (tests/_suite_plugins.py)
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from tui.lib import warn  # noqa: E402 -- the root, on the path from the line above
@@ -64,6 +63,7 @@ from tui.lib import warn  # noqa: E402 -- the root, on the path from the line ab
 sys.path.insert(0, str(ROOT / "lib"))
 import db_record  # noqa: E402 -- lib/, on the path from the line above
 import db_schema  # noqa: E402 -- lib/: one schema file, its head and how it is applied
+import db_settings  # noqa: E402 -- lib/: the pragmas, and a test's own file
 import db_waits  # noqa: E402 -- lib/: the lock-wait instrument's rows
 import state_paths  # noqa: E402 -- lib/: the state root
 from db_schema import (  # noqa: E402, F401 -- lib/: this module's API too
@@ -209,24 +209,6 @@ def busy_ms(seam: Seam) -> int:
     return int(raw) if raw.isdigit() else seam.busy_ms
 
 
-def throwaway(p: Path, env: Mapping[str, str] | None = None) -> bool:
-    """P is a test's own file, under the suite run's root (tests/_db_on_disk.py): it journals in
-    memory, syncs nothing and has small pages. Never a shared file, nor the suite home's."""
-    root = (os.environ if env is None else env).get(THROWAWAY_ENV)
-    return bool(root) and Path(os.path.realpath(p)).is_relative_to(os.path.realpath(root))
-
-
-def _settings(con: sqlite3.Connection, seam: Seam, fresh: bool, p: Path) -> None:
-    con.execute(f"PRAGMA busy_timeout={busy_ms(seam)}")
-    mine = throwaway(p)
-    if fresh:  # before the first table: a file's vacuum mode and page size are fixed at creation
-        if mine:
-            con.execute("PRAGMA page_size=512")
-        con.execute("PRAGMA auto_vacuum=INCREMENTAL")
-    con.execute(f"PRAGMA journal_mode={'MEMORY' if mine else 'WAL'}")
-    con.execute(f"PRAGMA synchronous={'OFF' if mine else seam.synchronous}")
-
-
 def _ro(p: Path, seam: Seam) -> sqlite3.Connection:
     sqlite_check()
     if not p.is_file():
@@ -343,7 +325,7 @@ def _opened(
     con = sqlite3.connect(p, isolation_level=None, timeout=busy_ms(seam) / 1000)
     refusal: NewerFile | None = None
     try:
-        _settings(con, seam, fresh, p)
+        db_settings.apply(con, p, busy_ms(seam), seam.synchronous, fresh)
         if why := newer(con, seam):
             refusal = NewerFile(why)
         elif not record and (why := not_of_record(con, seam)):

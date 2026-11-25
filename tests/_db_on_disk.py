@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-ENV = "GATES_OF_HECK_DB_THROWAWAY"  # lib/db_core.py THROWAWAY_ENV
+ENV = "GATES_OF_HECK_DB_THROWAWAY"  # lib/db_settings.py THROWAWAY_ENV
 
 
 @functools.cache

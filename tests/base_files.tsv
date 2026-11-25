@@ -40,6 +40,7 @@ lib/db_core.py	base-code
 lib/db_record.py	base-code
 lib/db_safe.py	base-code
 lib/db_schema.py	base-code
+lib/db_settings.py	base-code
 lib/db_waits.py	base-code
 lib/declared_reads.py	base-code
 lib/durations.py	base-code

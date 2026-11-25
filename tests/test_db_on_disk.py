@@ -1,5 +1,5 @@
 """A test's goh.db leaves no journal files, and the tests that need one are a list that only shrinks
-(tests/_db_on_disk.py, lib/db_core.py `throwaway`)."""
+(tests/_db_on_disk.py, lib/db_settings.py `throwaway`)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 import db_core
+import db_settings
 import goh_db
 import pytest
 from _db_on_disk import ENV, hold, on_disk
@@ -37,10 +38,10 @@ def test_a_tests_own_database_leaves_no_file_beside_it(tmp_path, monkeypatch) ->
 
 def test_a_database_outside_the_run_is_never_a_throwaway(tmp_path) -> None:
     env = {ENV: str(tmp_path / "run")}
-    assert db_core.throwaway(tmp_path / "run" / "a" / "goh.db", env)
-    assert not db_core.throwaway(tmp_path / "goh.db", env)
-    assert not db_core.throwaway(tmp_path / "run2" / "goh.db", env)
-    assert not db_core.throwaway(tmp_path / "goh.db", {})
+    assert db_settings.throwaway(tmp_path / "run" / "a" / "goh.db", env)
+    assert not db_settings.throwaway(tmp_path / "goh.db", env)
+    assert not db_settings.throwaway(tmp_path / "run2" / "goh.db", env)
+    assert not db_settings.throwaway(tmp_path / "goh.db", {})
 
 
 def test_every_listed_test_stands_says_why_and_the_list_only_shrinks() -> None:
@@ -54,7 +55,7 @@ def test_every_listed_test_stands_says_why_and_the_list_only_shrinks() -> None:
 
 @pytest.mark.parametrize("env", [None, ""])
 def test_no_root_named_is_production(tmp_path, monkeypatch, env) -> None:
-    assert not db_core.throwaway(tmp_path / "goh.db", {} if env is None else {ENV: env})
+    assert not db_settings.throwaway(tmp_path / "goh.db", {} if env is None else {ENV: env})
 
 
 def test_a_held_wal_database_keeps_its_files_and_every_writer_writes(tmp_path, monkeypatch) -> None:
