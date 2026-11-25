@@ -13,6 +13,9 @@ does not depend on a compile, and 25 s of real clippy over one-line crates was t
 cost. Two things stay on REAL cargo, on purpose: `test_real_cargo_end_to_end` (the one red-and-green
 proof of this gate, which also checks the planted text against what the real tools print, so the
 recorded answers cannot drift) and the coverage pair (llvm-cov numbers have no recording).
+
+GOH.PYSLOWTESTS: a scenario runs the GROUP its rule is in (GOH_RUST_GROUPS, the gate's own switch);
+all three run in the end-to-end test and from a subdir. A crate is a clone of one made once a run.
 """
 
 import os
@@ -24,6 +27,7 @@ import _fake_cargo
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _tree_clone import from_template
 from conftest import REPO_ROOT
 
 LEGACY = REPO_ROOT / "tests" / "fixtures" / "rust_gate_legacy.sh"
@@ -73,35 +77,31 @@ def _git(crate: Path, *args: str) -> None:
     )
 
 
-def mkcrate(tmp: Path) -> Path:
+def _seed(tmp: Path) -> None:
     # A git repo, like every repo the gate runs on: the house no-#[allow]
     # checker scans TRACKED Rust files, so a bare directory is not a subject.
     (tmp / "src").mkdir(parents=True)
     (tmp / "Cargo.toml").write_text(CARGO_TOML)
     (tmp / "src" / "lib.rs").write_text("")  # a target, or cargo has no package to lock
     # A TRACKED lockfile, like every Rust repo in the estate: the gate treats it as an input.
-    subprocess.run(
-        ["cargo", "generate-lockfile", "--offline"],
-        cwd=tmp,
-        capture_output=True,
-        check=True,
-        stdin=subprocess.DEVNULL,
-    )
+    subprocess.run(["cargo", "generate-lockfile", "--offline"], cwd=tmp, capture_output=True,
+                   check=True, stdin=subprocess.DEVNULL)  # fmt: skip
     fast_init(tmp)
     _git(tmp, "add", "Cargo.lock")
-    _git(
-        tmp,
-        "-c",
-        "user.email=t@t",
-        "-c",
-        "user.name=t",
-        "commit",
-        "-q",
-        "--allow-empty",
-        "-m",
-        "init",
-    )
-    return tmp
+    _git(tmp, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty",
+         "-m", "init")  # fmt: skip
+
+
+@pytest.fixture
+def crate(tmp_path, tmp_path_factory):
+    """`crate(NAME, BODY)`: a fresh crate, a clone of the run's one."""
+
+    def make(name: str, body: str = LIB_CLEAN) -> Path:
+        c = from_template(tmp_path_factory, "rust-gate-parity", _seed, tmp_path / name)
+        write_lib(c, body)
+        return c
+
+    return make
 
 
 def write_lib(c: Path, body: str) -> None:
@@ -109,36 +109,12 @@ def write_lib(c: Path, body: str) -> None:
     _git(c, "add", "-A")
 
 
-def run_script(script: Path, crate: Path, env: dict | None = None) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["/bin/bash", str(script), str(crate)],
-        cwd=crate,
-        capture_output=True,
-        text=True,
-        env={**os.environ, **(env or {})},
-        stdin=subprocess.DEVNULL,
-        check=False,
-    )
-
-
-@pytest.fixture(scope="module")
-def warm_crate(tmp_path_factory):
-    """One compiled crate so clippy's dependency build doesn't dominate."""
-    c = mkcrate(tmp_path_factory.mktemp("warm"))
-    write_lib(c, LIB_CLEAN)
-    r = subprocess.run(
-        ["cargo", "build", "-q"], cwd=c, capture_output=True, stdin=subprocess.DEVNULL, check=False
-    )
-    assert r.returncode == 0, r.stderr.decode()[:500]
-    return c
-
-
-def clone(warm: Path, dest: Path) -> Path:
-    c = mkcrate(dest)
-    shutil.rmtree(c / "src")
-    shutil.copytree(warm / "src", c / "src")
-    _git(c, "add", "-A")
-    return c
+def run_script(script: Path, crate: Path, groups: str = "", **env: str):
+    if groups:
+        env["GOH_RUST_GROUPS"] = groups
+    return subprocess.run(["/bin/bash", str(script), str(crate)], cwd=crate, capture_output=True,
+                          text=True, env={**os.environ, **env}, stdin=subprocess.DEVNULL,
+                          check=False)  # fmt: skip
 
 
 @pytest.fixture(autouse=True)
@@ -158,92 +134,56 @@ def fake(tmp_path, monkeypatch) -> Path:
     return where
 
 
-def fresh(tmp: Path, body: str = LIB_CLEAN) -> Path:
-    """A crate for a faked test: no compile, so no warm copy to clone."""
-    c = mkcrate(tmp)
-    write_lib(c, body)
-    return c
-
-
-def test_real_cargo_end_to_end(tmp_path, warm_crate):
+def test_real_cargo_end_to_end(crate):
     """THE one red-and-green proof of this gate on REAL cargo (everything else here is recorded):
     a clean crate passes both scripts, and a real clippy finding fails both. It also pins the
     recorded answers the faked tests plant: the real tools still print the markers they read."""
-    c = clone(warm_crate, tmp_path / "clean")
-    assert run_script(LEGACY, c).returncode == 0
-    assert run_script(CURRENT, c).returncode == 0
-    c = clone(warm_crate, tmp_path / "clippy")
-    write_lib(c, LIB_WARN)
-    old = run_script(LEGACY, c)
-    new = run_script(CURRENT, c)
-    assert old.returncode != 0 and new.returncode != 0
-    assert CLIPPY_MARKER in (old.stderr + old.stdout).lower()
-    assert CLIPPY_MARKER in (new.stderr + new.stdout).lower()
+    c = crate("clean")
+    old, new = run_script(LEGACY, c), run_script(CURRENT, c)
+    assert (old.returncode, new.returncode) == (0, 0), new.stdout + new.stderr
+    # LEGACY warned and skipped without tools/check_no_allow.py -- which is how every repo without a
+    # vendored copy went unchecked. CURRENT never skips.
+    said = new.stdout + new.stderr
+    assert "missing" in (old.stdout + old.stderr).lower()
+    assert "skipped" not in said.lower() and "no #[allow]" in said, said
+    assert "no coverage floor" in said.lower(), said
+    c = crate("clippy", LIB_WARN)
+    for r in (run_script(LEGACY, c), run_script(CURRENT, c)):
+        assert r.returncode != 0 and CLIPPY_MARKER in (r.stderr + r.stdout).lower(), r
     # The recorded text is what a real tool says: the planted answers carry the markers the faked
     # tests read, and the real fmt (cheap: no compile) and clippy still print them.
     assert FMT_MARKER in FMT_RED and CLIPPY_MARKER in CLIPPY_RED.lower()
     write_lib(c, LIB_DIRTY)
-    fmt = subprocess.run(
-        ["cargo", "fmt", "--all", "--", "--check"],
-        cwd=c,
-        capture_output=True,
-        text=True,
-        stdin=subprocess.DEVNULL,
-        check=False,
-    )
+    fmt = subprocess.run(["cargo", "fmt", "--all", "--", "--check"], cwd=c, capture_output=True,
+                         text=True, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert fmt.returncode != 0 and FMT_MARKER in fmt.stdout + fmt.stderr
 
 
-def test_clean_crate_both_pass(tmp_path, fake):
-    c = fresh(tmp_path / "clean")
-    assert run_script(LEGACY, c).returncode == 0
-    assert run_script(CURRENT, c).returncode == 0
-
-
-def test_dirty_fmt_both_fail_and_show_output(tmp_path, fake):
-    c = fresh(tmp_path / "fmt", LIB_DIRTY)
+def test_dirty_fmt_both_fail_and_show_output(crate, fake):
+    c = crate("fmt", LIB_DIRTY)
     _fake_cargo.plant_red(fake, "fmt", FMT_RED, code=1, stream="stdout")
-    old = run_script(LEGACY, c)
-    new = run_script(CURRENT, c)
-    assert old.returncode != 0 and new.returncode != 0
-    # Contract property 2 in BOTH: failing tool output is printed.
-    assert FMT_MARKER in old.stderr or FMT_MARKER in old.stdout
-    assert FMT_MARKER in new.stderr or FMT_MARKER in new.stdout
+    for r in (run_script(LEGACY, c), run_script(CURRENT, c, "crate")):
+        # Contract property 2 in BOTH: failing tool output is printed.
+        assert r.returncode != 0 and FMT_MARKER in r.stderr + r.stdout, r
 
 
-def test_clippy_warning_both_fail(tmp_path, fake):
-    c = fresh(tmp_path / "clippy", LIB_WARN)
+def test_clippy_warning_both_fail(crate, fake):
+    c = crate("clippy", LIB_WARN)
     _fake_cargo.plant_red(fake, "clippy", CLIPPY_RED, code=101)
-    old = run_script(LEGACY, c)
-    new = run_script(CURRENT, c)
-    assert old.returncode != 0 and new.returncode != 0
-    assert CLIPPY_MARKER in (old.stderr + old.stdout).lower()
-    assert CLIPPY_MARKER in (new.stderr + new.stdout).lower()
+    for r in (run_script(LEGACY, c), run_script(CURRENT, c, "crate")):
+        assert r.returncode != 0 and CLIPPY_MARKER in (r.stderr + r.stdout).lower(), r
 
 
-def test_allow_attr_fails_when_checker_installed(tmp_path, fake):
+def test_allow_attr_fails_when_checker_installed(crate, fake):
     # LEGACY needed a repo-local copy of the checker; CURRENT runs the house
     # one regardless.
-    c = fresh(tmp_path / "allow-old", LIB_ALLOW)
+    c = crate("allow-old", LIB_ALLOW)
     (c / "tools").mkdir()
     shutil.copy(CHECKER, c / "tools" / "check_no_allow.py")
     assert run_script(LEGACY, c).returncode != 0
-    c = fresh(tmp_path / "allow-new", LIB_ALLOW)
-    r = run_script(CURRENT, c)
+    r = run_script(CURRENT, crate("allow-new", LIB_ALLOW), "repo")
     assert r.returncode != 0
     assert "no #[allow]" in r.stdout + r.stderr
-
-
-def test_no_allow_is_never_skipped_for_want_of_a_local_copy(tmp_path, fake):
-    # LEGACY warned and skipped without tools/check_no_allow.py — which is how
-    # every repo without a vendored copy went unchecked. CURRENT never skips.
-    c = fresh(tmp_path / "nochecker")
-    old = run_script(LEGACY, c)
-    new = run_script(CURRENT, c)
-    assert old.returncode == 0 and new.returncode == 0
-    assert "missing" in (old.stdout + old.stderr).lower()
-    assert "skipped" not in (new.stdout + new.stderr).lower()
-    assert "no #[allow]" in new.stdout + new.stderr
 
 
 def test_cargo_subdir_argument_supported_by_both(tmp_path, fake):
@@ -258,13 +198,8 @@ def test_cargo_subdir_argument_supported_by_both(tmp_path, fake):
     (inner / "src" / "lib.rs").write_text(LIB_CLEAN)
     # The real shape: a TRACKED lockfile. (The legacy script's unlocked clippy used to write it, and
     # the current gate, run second, found what the first had made.)
-    subprocess.run(
-        ["cargo", "generate-lockfile", "--offline"],
-        cwd=inner,
-        capture_output=True,
-        check=True,
-        stdin=subprocess.DEVNULL,
-    )
+    subprocess.run(["cargo", "generate-lockfile", "--offline"], cwd=inner, capture_output=True,
+                   check=True, stdin=subprocess.DEVNULL)  # fmt: skip
     fast_init(repo)
     _git(repo, "add", "-A")
     _, log = _fake_cargo.install(fake)  # the fixture's own fake, for its call log
@@ -287,27 +222,21 @@ def test_cargo_subdir_argument_supported_by_both(tmp_path, fake):
 # ── coverage floor (current gate only; the legacy fork predates it) ──────────
 
 
-def test_no_floor_warns_and_skips_coverage(tmp_path, fake):
-    c = fresh(tmp_path / "nocovfloor")
-    r = run_script(CURRENT, c)
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "no coverage floor" in (r.stdout + r.stderr).lower()
-
-
-def test_floor_set_runs_coverage_green(tmp_path, warm_crate):
-    c = clone(warm_crate, tmp_path / "covgreen")
-    write_lib(c, LIB_TESTED)
+def test_floor_set_runs_coverage_green(crate):
+    c = crate("covgreen", LIB_TESTED)
     write_gatesrc(c, "GOH_COV_FLOOR_RUST=50\n")
-    r = run_script(CURRENT, c)
+    r = run_script(CURRENT, c, "coverage")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "coverage" in (r.stdout + r.stderr).lower()
 
 
-def test_floor_set_fails_when_uncovered(tmp_path, warm_crate):
-    c = clone(warm_crate, tmp_path / "covred")
-    write_lib(c, LIB_UNTESTED)
+def test_floor_set_fails_when_uncovered_and_a_floors_file_lowers_one_crate(crate, tmp_path):
+    """Red at the uniform 80, then GOH.CRATEFLOOR on the same build: GOH_COV_FLOOR_RUST and
+    GOH_COV_FLOORS_JSON together -- the crate the file names answers to its own floor, with the
+    floors file REACHING the merger (it was passed only when no uniform floor was set)."""
+    c = crate("covred", LIB_UNTESTED)
     write_gatesrc(c, "GOH_COV_FLOOR_RUST=80\n")
-    r = run_script(CURRENT, c)
+    r = run_script(CURRENT, c, "coverage")
     assert r.returncode != 0, r.stdout + r.stderr
     combined = (r.stdout + r.stderr).lower()
     assert "coverage" in combined
@@ -315,20 +244,13 @@ def test_floor_set_fails_when_uncovered(tmp_path, warm_crate):
     # argparse/exit-2 territory, and a miswired gate must not hide there.
     # (Rust mode reports "0.0% of coverable lines (floor 80%, 0/3 lines)".)
     assert "uncovered lines" in combined, r.stdout + r.stderr
-
-
-def test_a_floors_file_lowers_one_crate_while_the_floor_stays(tmp_path, warm_crate):
-    """GOH.CRATEFLOOR: GOH_COV_FLOOR_RUST and GOH_COV_FLOORS_JSON together -- the crate the file
-    names answers to its own floor, with the floors file REACHING the merger (it was passed only
-    when no uniform floor was set)."""
-    c = clone(warm_crate, tmp_path / "covcrate")
-    write_lib(c, LIB_UNTESTED)  # 0%: red at the uniform 80, as test_floor_set_fails_when_uncovered
     floors = tmp_path / "floors.json"
     floors.write_text(
         '{"crate_floors": {"parity": {"floor": 0, "reason": "nothing here is tested yet"}}}'
     )
     write_gatesrc(c, f"GOH_COV_FLOOR_RUST=80\nGOH_COV_FLOORS_JSON={floors}\n")
-    r = run_script(CURRENT, c, {"GOH_COV_DIFF": "off"})  # the floor is the subject, not the diff
+    # The floor is the subject, not the diff:
+    r = run_script(CURRENT, c, "coverage", GOH_COV_DIFF="off")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "crate parity: 0.0%" in r.stdout + r.stderr, r.stdout + r.stderr
 
@@ -340,10 +262,10 @@ def test_a_floors_file_lowers_one_crate_while_the_floor_stays(tmp_path, warm_cra
 # the floor defers it at commit time - by NAME, never by silence.
 
 
-def test_deferred_coverage_is_named_and_not_run(tmp_path, fake):
-    c = fresh(tmp_path / "covdefer", LIB_UNTESTED)
+def test_deferred_coverage_is_named_and_not_run(crate, fake):
+    c = crate("covdefer", LIB_UNTESTED)
     write_gatesrc(c, "GOH_COV_FLOOR_RUST=80\n")
-    r = run_script(CURRENT, c, {"GOH_RUST_COVERAGE": "defer"})
+    r = run_script(CURRENT, c, "coverage", GOH_RUST_COVERAGE="defer")
     combined = r.stdout + r.stderr
     assert r.returncode == 0, "an uncovered crate passes only if coverage did not run: " + combined
     assert "coverage deferred" in combined.lower(), combined
@@ -353,10 +275,10 @@ def test_deferred_coverage_is_named_and_not_run(tmp_path, fake):
 # measures nothing; the ship measures every floor over what landed since the last ship. An
 # uncovered crate under an 80% floor is green here only because nothing was measured -- and the
 # tests still ran (a red test stays red at a land).
-def test_plain_coverage_runs_the_tests_and_never_the_instrumented_run(tmp_path, fake):
-    c = fresh(tmp_path / "covplain", LIB_UNTESTED)
+def test_plain_coverage_runs_the_tests_and_never_the_instrumented_run(crate, fake):
+    c = crate("covplain", LIB_UNTESTED)
     write_gatesrc(c, "GOH_COV_FLOOR_RUST=80\n")
-    r = run_script(CURRENT, c, {"GOH_RUST_COVERAGE": "plain", "GOH_PROVEN": "0"})
+    r = run_script(CURRENT, c, "coverage", GOH_RUST_COVERAGE="plain", GOH_PROVEN="0")
     combined = r.stdout + r.stderr
     assert r.returncode == 0, combined
     assert "coverage: not measured at a land" in combined, combined
@@ -365,18 +287,18 @@ def test_plain_coverage_runs_the_tests_and_never_the_instrumented_run(tmp_path, 
     assert "llvm-cov" not in combined + calls, combined
 
 
-def test_plain_coverage_keeps_a_red_test_red(tmp_path, fake):
-    c = fresh(tmp_path / "covplainred", LIB_TESTED)
+def test_plain_coverage_keeps_a_red_test_red(crate, fake):
+    c = crate("covplainred", LIB_TESTED)
     write_gatesrc(c, "GOH_COV_FLOOR_RUST=80\n")
     _fake_cargo.plant_red(fake, "test", "test adds ... FAILED\n", code=101)
-    r = run_script(CURRENT, c, {"GOH_RUST_COVERAGE": "plain", "GOH_PROVEN": "0"})
+    r = run_script(CURRENT, c, "coverage", GOH_RUST_COVERAGE="plain", GOH_PROVEN="0")
     assert r.returncode != 0, r.stdout + r.stderr
 
 
-def test_an_unknown_coverage_mode_fails(tmp_path, fake):
-    c = fresh(tmp_path / "covmode", LIB_TESTED)
+def test_an_unknown_coverage_mode_fails(crate, fake):
+    c = crate("covmode", LIB_TESTED)
     write_gatesrc(c, "GOH_COV_FLOOR_RUST=50\n")
-    r = run_script(CURRENT, c, {"GOH_RUST_COVERAGE": "skip"})
+    r = run_script(CURRENT, c, "coverage", GOH_RUST_COVERAGE="skip")
     assert r.returncode != 0, r.stdout + r.stderr
     assert "GOH_RUST_COVERAGE" in r.stdout + r.stderr
 
@@ -388,19 +310,19 @@ def test_an_unknown_coverage_mode_fails(tmp_path, fake):
 # the gate every Rust repo runs is where the class closes.
 
 
-def test_a_stale_lockfile_fails_the_gate_and_is_not_rewritten(tmp_path, fake):
-    c = fresh(tmp_path / "stale")
+def test_a_stale_lockfile_fails_the_gate_and_is_not_rewritten(crate, fake):
+    c = crate("stale")
     # A manifest change the lockfile does not record: the package's version moved.
     (c / "Cargo.toml").write_text(CARGO_TOML.replace('version = "0.1.0"', 'version = "0.2.0"'))
     before = (c / "Cargo.lock").read_bytes()
-    got = run_script(CURRENT, c)
+    got = run_script(CURRENT, c, "crate")
     assert got.returncode != 0, got.stdout + got.stderr
     assert "--locked" in got.stdout + got.stderr, got.stdout + got.stderr
     assert (c / "Cargo.lock").read_bytes() == before, "the gate rewrote the lockfile it was judging"
 
 
-def test_a_missing_lockfile_is_refused_not_generated(tmp_path, fake):
-    c = fresh(tmp_path / "nolock")
+def test_a_missing_lockfile_is_refused_not_generated(crate, fake):
+    c = crate("nolock")
     _git(c, "rm", "-q", "Cargo.lock")
     got = run_script(CURRENT, c)
     assert got.returncode != 0 and "Cargo.lock" in got.stdout + got.stderr, got.stdout + got.stderr

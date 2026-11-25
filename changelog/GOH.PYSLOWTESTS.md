@@ -5,3 +5,4 @@
 * GOH.PYSLOWTESTS: `test_ship_starve` waits for the line that says the ship waits for the land lock (it sat out a 30 s give-up on a file no ship writes since the state database), judges `own_s` on a clock of its own (the old assertion could not fail), and `test_ship`'s hung-step test no longer meets its bound in the push.
 * GOH.PYSLOWTESTS: `test_push_release_reuse` judges the push's decision in process over the land's own record and keeps one whole land and push, its sampled pushes and the release commit's own land.
 * GOH.PYSLOWTESTS: `test_bench_lock` re-checks the lock every 0.1 s and waits for the line a process prints, not for a guess at how long the lock takes.
+* GOH.PYSLOWTESTS: `test_rust_gate` runs a scenario in the group its rule is in (`GOH_RUST_GROUPS`) over a clone of one crate; the whole gate runs in the end-to-end test and from a subdir.
