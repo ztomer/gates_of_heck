@@ -116,7 +116,7 @@ def gap(root: Path, record: Path, base: str) -> tuple[Gap | None, str]:
     mains = {n: bool(b) for n, b in got["passed"].items()}
     carried = lv.carried(mains, chosen, False, lv._builds(changed, root))
     said: list[str] = []
-    carried -= lv._read_audit.undeclared(said, got, carried, changed, base)  # an undeclared read
+    carried -= lv._read_audit.undeclared(said, got, carried, changed, base, root)
     # ... and what the pre-step CARRIED onto this tree: its store record's (GOH.READKEYVERDICT)
     own = reuse.lookup_suite(root, tree, tools)[0] or {}
     ran = {**dict.fromkeys(trusted, False), **{n: bool(b) for n, b in rec["passed"].items()}}

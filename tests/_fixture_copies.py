@@ -31,6 +31,7 @@ def _cloned(real, src, dst, symlinks=False, *more, **options):
     os.makedirs(os.path.dirname(os.path.abspath(dst)), exist_ok=True)
     clone_tree(tree, dst)
     for here, _dirs, files in os.walk(tree):
+        sys.audit("os.scandir", os.path.normpath(os.path.join(src, os.path.relpath(here, tree))))
         for f in files:
             rel = os.path.relpath(os.path.join(here, f), tree)
             sys.audit("open", os.path.join(os.fspath(src), rel), "rb", os.O_RDONLY)

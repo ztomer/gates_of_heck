@@ -248,17 +248,14 @@ def passed(root: Path, junit: str) -> list[str]:
 
 
 def reads(root: Path, junit: str) -> dict[str, list[str]]:
-    """{test file: what its tests read on the worker}, from each case's property (tests/
-    _shard_run.py); a file with a case that says nothing was not watched, and is left out."""
-    out: dict[str, set[str]] = {}
-    blind = set()
-    for tc in ET.fromstring(junit).iter("testcase"):
-        f = read_sets.file_of(node_id(root, tc.get("classname", ""), tc.get("name", "")))
-        said = [p.get("value") or "" for p in tc.iter("property") if p.get("name") == "goh_reads"]
-        if not said:
-            blind.add(f)
-        out.setdefault(f, set()).update(*map(json.loads, said))
-    return {f: read_sets.kept(paths) for f, paths in out.items() if f not in blind}
+    """What the worker's tests read (lib/read_sets.py `heard`), from each case's property (tests/
+    _shard_run.py)."""
+    return read_sets.heard(
+        (node_id(root, tc.get("classname", ""), tc.get("name", "")),
+         [json.loads(p.get("value") or "[]") for p in tc.iter("property")
+          if p.get("name") == "goh_reads"])
+        for tc in ET.fromstring(junit).iter("testcase")
+    )  # fmt: skip
 
 
 def unfinished(root: Path, nodes: list[str], junit: str, got: dict[str, str], rc: int) -> list[str]:

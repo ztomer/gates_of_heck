@@ -219,7 +219,8 @@ def test_the_workers_passes_bring_what_they_read(tree: Path) -> None:
     share = _share(tree, 0, _junit(said, 3), [F, G])
     assert rl.end(tree, share, str(record), av.merge_records, lambda ns: 1) == 0
     got = json.loads(record.read_text())
-    assert got["remote"] == [ONE, TWO, GEE] and got["remote_reads"] == {F: ["a", "b"]}
+    assert got["remote"] == [ONE, TWO, GEE]
+    assert got["remote_reads"] == {F: [], ONE: ["a"], TWO: ["b"]}
 
 
 ONE_RED = [("tests.test_f", "one", [], RED)]
@@ -300,4 +301,4 @@ def test_a_real_shard_whose_workers_die_says_what_it_had_to_run(tmp_path: Path) 
     got = rl.kinds(tmp_path, junit)
     assert rc == 0 and got == {f"{G}::test_g": "passed"}, got
     assert rl.unfinished(tmp_path, [G], junit, got, rc) == []
-    assert rl.reads(tmp_path, junit) == {G: [G]}
+    assert rl.reads(tmp_path, junit) == {G: [], f"{G}::test_g": [G]}
