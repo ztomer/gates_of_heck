@@ -47,15 +47,8 @@ def test_a_push_nobody_classed_ship_keeps_its_own_build_dir(tmp_path, monkeypatc
     got = _push(repo, tmp_path, tmp_path / "exports")
     assert got.returncode == 0, got.stdout + got.stderr
     assert _used(tmp_path) != _cargo_build_dir(repo)
-
-
-def test_a_ship_push_of_a_dirty_checkout_keeps_its_own_build_dir(tmp_path, monkeypatch):
-    repo = _cargo_repo(tmp_path)
-    (repo / "src" / "lib.rs").write_text("pub fn edited() {}\n")  # uncommitted
-    monkeypatch.setenv("GOH_GATE_CLASS", "ship")
-    got = _push(repo, tmp_path, tmp_path / "exports")
-    assert got.returncode == 0, got.stdout + got.stderr
-    assert _used(tmp_path) != _cargo_build_dir(repo), "shared a build dir with a dirty checkout"
+    # and the path-keyed default this push took is no in-tree build dir: nothing to name
+    assert "builds inside the export" not in got.stdout + got.stderr
 
 
 def test_an_edit_made_during_a_shared_build_is_made_newer_than_it(tmp_path):
@@ -77,7 +70,9 @@ def test_an_edit_made_during_a_shared_build_is_made_newer_than_it(tmp_path):
     assert clean.stat().st_mtime == old, "an unchanged file was touched (it would rebuild)"
 
 
-def test_the_share_is_refused_off_the_pushed_commit(tmp_path):
+def test_the_share_is_refused_off_the_pushed_commit_and_to_a_dirty_checkout(tmp_path):
+    """The whole decision: push_gate.sh points a ship's export at what this prints (the test above),
+    and leaves the export its own build dir when it prints nothing (the push nobody classed)."""
     repo = _cargo_repo(tmp_path)
     head = _git(repo, "rev-parse", "HEAD")
     ask = ["python3", str(SHARE), "--shared", str(repo)]
@@ -87,7 +82,11 @@ def test_the_share_is_refused_off_the_pushed_commit(tmp_path):
     off = subprocess.run(
         [*ask, "0" * 40], capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL
     ).stdout
-    assert on == _cargo_build_dir(repo) and off == "", (on, off)
+    (repo / "src" / "lib.rs").write_text("pub fn edited() {}\n")  # uncommitted
+    dirty = subprocess.run(
+        [*ask, head], capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL
+    ).stdout
+    assert on == _cargo_build_dir(repo) and (off, dirty) == ("", ""), (on, off, dirty)
 
 
 INTREE = "builds inside the export at .build"
@@ -102,13 +101,6 @@ def test_an_in_tree_build_dir_is_named_at_push(tmp_path, monkeypatch):
     got = _push(repo, tmp_path, tmp_path / "exports")
     assert got.returncode == 0, got.stdout + got.stderr
     assert INTREE in got.stdout + got.stderr, got.stdout + got.stderr
-
-
-def test_the_path_keyed_default_is_not_named(tmp_path, monkeypatch):
-    repo = _cargo_repo(tmp_path)
-    monkeypatch.delenv("GOH_GATE_CLASS", raising=False)
-    got = _push(repo, tmp_path, tmp_path / "exports")
-    assert got.returncode == 0 and "builds inside the export" not in got.stdout + got.stderr
 
 
 def test_in_tree_reads_real_paths(tmp_path):

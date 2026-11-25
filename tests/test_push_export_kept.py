@@ -13,13 +13,14 @@ which could make a changed file look fresh.
 
 from pathlib import Path
 
-from test_push_gate import _git
+from _gatesrc_kit import STRUCTURAL_RAN
+from test_push_gate import GATE, _git, _repo
 from test_push_gate_runs import _cargo_repo, _push, _run_litter
 
 # The gate builds; cargo says `Compiling x` only for a crate it judged stale.
-CARGO_GATE = """#!/usr/bin/env bash
+CARGO_GATE = f"""#!/usr/bin/env bash
 set -euo pipefail
-printf 'cwd=%s\\n' "$PWD" >> "$GATE_REPORT"
+{STRUCTURAL_RAN}printf 'cwd=%s\\n' "$PWD" >> "$GATE_REPORT"
 n=$(cargo build --offline 2>&1 | grep -c 'Compiling x' || true)
 printf 'compiled=%s\\n' "$n" >> "$GATE_REPORT"
 printf left > left-by-the-gate.txt
@@ -57,9 +58,9 @@ def test_an_unchanged_push_rebuilds_nothing_and_a_change_rebuilds_its_crate(tmp_
 
 
 def test_what_a_gate_left_in_its_tree_does_not_reach_the_next_push(tmp_path):
-    repo = _gated_repo(tmp_path)
+    repo = _repo(tmp_path)  # no cargo: what a kept tree still holds is git's doing
     (repo / "tools" / "gate.sh").write_text(
-        CARGO_GATE.replace("exit 0\n", "[ -e seen.txt ] && exit 1\ntouch seen.txt\nexit 0\n")
+        GATE.replace("exit 0\n", "[ -e seen.txt ] && exit 1\ntouch seen.txt\nexit 0\n")
     )
     _git(repo, "commit", "-qam", "a gate that is red on what the last run left")
     _push_ok(repo, tmp_path)
@@ -68,7 +69,7 @@ def test_what_a_gate_left_in_its_tree_does_not_reach_the_next_push(tmp_path):
 
 
 def test_a_kept_tree_whose_checkout_is_gone_is_removed_with_its_marker(tmp_path):
-    repo = _gated_repo(tmp_path)
+    repo = _repo(tmp_path)
     _push_ok(repo, tmp_path)
     export_root = tmp_path / "exports"
     kept = [p for p in export_root.iterdir() if p.suffix == ".kept"]
@@ -76,6 +77,6 @@ def test_a_kept_tree_whose_checkout_is_gone_is_removed_with_its_marker(tmp_path)
     marker = kept[0].with_suffix(".source")
     marker.write_text(f"{tmp_path / 'deleted-checkout'}\n")
     (tmp_path / "other").mkdir()
-    other = _cargo_repo(tmp_path / "other")
+    other = _repo(tmp_path / "other")
     _push_ok(other, tmp_path)
     assert not kept[0].exists() and not marker.exists()
