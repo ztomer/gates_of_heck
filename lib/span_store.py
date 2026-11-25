@@ -81,12 +81,18 @@ def instant(row: dict) -> float:
     return epoch
 
 
+def text(v: object) -> str:
+    """V as a text a column can hold (a lone surrogate is no UTF-8: one such row would wedge the
+    spool it is in)."""
+    return str(v).encode("utf-8", "replace").decode("utf-8")
+
+
 def _fit(col: str, v: Any) -> Any:
     """V as COL holds it; None when it is of no such type."""
     if v is None:
         return None
     if col in TEXT:
-        return str(v) if isinstance(v, (str, int, float)) else None
+        return text(v) if isinstance(v, (str, int, float)) else None
     if not isinstance(v, (bool, int, float)) or not math.isfinite(v):
         return None
     if col in REAL:
@@ -114,7 +120,7 @@ def steps_of(row: dict) -> list[tuple[str, float]]:
             and len(pair) == 2
             and _fit("wall_s", pair[1]) is not None
         ):
-            found.append((str(pair[0]), float(pair[1])))
+            found.append((text(pair[0]), float(pair[1])))
     return found
 
 
@@ -122,11 +128,8 @@ def put(con: sqlite3.Connection, row: dict) -> bool:
     """ROW's span, inside the caller's transaction; False when it is there already, or is no span
     at all (no kind, no wall time of 0 or more)."""
     try:
-        kind, repo, run = (
-            str(row["kind"]),
-            key(str(row.get("repo") or "")),
-            str(row.get("ref") or ""),
-        )
+        kind, run = text(row["kind"]), text(row.get("ref") or "")
+        repo = key(text(row.get("repo") or ""))
         at, vals = instant(row), _values(row)
     except (KeyError, TypeError, ValueError):
         return False

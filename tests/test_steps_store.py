@@ -161,6 +161,14 @@ def test_the_land_s_steps_are_the_same_from_the_table(cache, tmp_path: Path) -> 
     assert land_steps.steps_from_timings(tmp_path / "none.timings.jsonl") is None
 
 
+def test_bytes_no_column_holds_are_replaced_and_the_rest_is_kept(cache, tmp_path: Path) -> None:
+    """One torn or odd line is never the reason a spool stays for ever."""
+    p = spool(tmp_path, [step("a"), step("lone \ud800 surrogate"), step("b")])
+    p.write_bytes(p.read_bytes() + b'{"label": "torn \xff"\n[1]\n"x"\n')
+    assert steps_store.ingest(p)
+    assert [r["label"] for r in steps_store.rows(p) or ()] == ["a", "lone ? surrogate", "b"]
+
+
 def test_a_spool_taken_in_twice_is_the_same_rows(cache, tmp_path: Path, monkeypatch) -> None:
     """A kill between the commit and the removal leaves it: read once, taken in to nothing new."""
     p = spool(tmp_path, LINES)

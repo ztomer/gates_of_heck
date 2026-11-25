@@ -233,12 +233,14 @@ def p95(kind: str, repo: str, rows: list[dict] | None = None) -> tuple[float, in
 
 def _spool(row: dict, path: Path | None = None) -> bool:
     target = path or ledger_path()
-    line = (json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+    line = (json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n").encode(
+        "utf-8", "replace"
+    )
     if len(line) > MAX_LINE:  # the optional detail goes first, never the measurement
         row = {k: v for k, v in row.items() if k != "top_steps"}
-        line = (json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")[
-            :MAX_LINE
-        ]
+        line = (json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n").encode(
+            "utf-8", "replace"
+        )[:MAX_LINE]
     try:
         state_append.append(target, line)
     except (OSError, RuntimeError):

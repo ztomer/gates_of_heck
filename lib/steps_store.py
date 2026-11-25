@@ -55,6 +55,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import goh_cache_db
 import state_paths
 import step_timings
+from span_store import text
 
 SUFFIX = ".timings.jsonl"
 SHIP = re.compile(r"(\d{8}T\d{6}Z-[0-9a-f]+|v\d+\.\d+\.\d+)\.(.+)")
@@ -70,7 +71,7 @@ INSERT = (f"INSERT INTO steps({', '.join(COLUMNS)}) "
 # How long after its last line a spool is nobody's: a land's is moved beside its log when the land
 # is over, a ship step's is written where it is, and a step may be long.
 LAND_IDLE_S, SHIP_IDLE_S = 3600, 6 * 3600
-FAULTS = (sqlite3.Error, OSError, RuntimeError)
+FAULTS = (sqlite3.Error, OSError, RuntimeError, ValueError)
 
 
 def named(spool: Path | str) -> tuple[str, str]:
@@ -94,7 +95,7 @@ def _ends(lines: list[dict], mtime: float) -> list[float]:
 
 def _folds(lines: list[dict]) -> dict[int, list[int]]:
     """The lines that go in a FOLDED row, by the first of them: one such row a parent."""
-    parents = {r.get("parent") for r in lines}
+    parents = {str(r.get("parent") or "") for r in lines}
     by: dict[str, list[int]] = {}
     for i, r in enumerate(lines):
         if (r.get("tier") == "native" and r.get("rc") == 0 and not r.get("control")
@@ -107,14 +108,14 @@ def _folds(lines: list[dict]) -> dict[int, list[int]]:
 def _record(r: dict, seq: int, at: float) -> dict:
     rc, pid, cwd = r.get("rc"), r.get("pid"), r.get("cwd")
     return {
-        "seq": seq, "at": at, "label": str(r["label"]), "tier": str(r.get("tier") or ""),
-        "parent": str(r.get("parent") or "") or None,
-        "dir": state_paths.encode(str(cwd)) if cwd else None,
+        "seq": seq, "at": at, "label": text(r["label"]), "tier": text(r.get("tier") or ""),
+        "parent": text(r.get("parent") or "") or None,
+        "dir": state_paths.encode(text(cwd)) if cwd else None,
         "ms": max(0.0, _number(r.get("ms")) or 0.0), "rc": rc if isinstance(rc, int) else -1,
         "control": int(r.get("control") is True), "calls": 1,
         "pid": pid if isinstance(pid, int) else None,
         **{c: _number(r.get(c)) for c in NUMBERS},
-        **{c: str(r[c]) if r.get(c) else None for c in TEXTS}}  # fmt: skip
+        **{c: text(r[c]) if r.get(c) else None for c in TEXTS}}  # fmt: skip
 
 
 def records(lines: list[dict], run: str, part: str, mtime: float, fold: bool = True) -> list[dict]:

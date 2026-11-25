@@ -186,7 +186,7 @@ def load(path: str) -> list[dict]:
     import json
 
     rows = []
-    with open(path, encoding="utf-8") as fh:
+    with open(path, encoding="utf-8", errors="replace") as fh:
         for line in fh:
             line = line.strip()
             if not line:

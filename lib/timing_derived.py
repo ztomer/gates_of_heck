@@ -37,7 +37,7 @@ def _attempts() -> list[dict]:
 
     reds: dict[str, int] = {}
     out = []
-    for run, rec in land_records.records(land_attempts.queue_dir()):
+    for run, rec in land_records.records(land_attempts.queue_dir(), keys=land_attempts.KEYS):
         path = Path(f"{run}.json")
         item = land_attempts.item_of(path, rec)
         n = reds.get(item, 0)

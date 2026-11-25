@@ -119,6 +119,14 @@ def test_what_is_no_measurement_is_no_span_and_never_raises(bad: dict) -> None:
     assert not span_store.put(memory(), {**row(), **bad})
 
 
+def test_a_row_with_a_text_no_column_holds_never_wedges_the_spool(ledger) -> None:
+    odd = row("push", sha="a\ud800", ref="r\ud800", top_steps=[["s\ud800", 1.0]])
+    assert timing_ledger._spool(row("suite")) and timing_ledger._spool({**odd, "sha": "x"})
+    ledger.spool.write_bytes(ledger.spool.read_bytes().replace(b'"x"', b'"a\\ud800"'))
+    assert timing_ledger.drain() == 2 and ledger.spool.read_bytes() == b""
+    assert sorted(r.get("sha", "") for r in spans(ledger.con)) == ["", "a?"]
+
+
 def test_every_field_a_shell_writer_names_has_a_column() -> None:
     named: set[str] = set()
     for p in (*REPO_ROOT.glob("lib/*.sh"), *REPO_ROOT.glob("tools/*.sh"),
@@ -206,7 +214,7 @@ def test_the_derived_rows_are_the_records_own(monkeypatch, capsys) -> None:
     when = {"started": "2026-11-20T10:00:00+00:00", "finished": "2026-11-20T10:05:00+00:00"}
     rec = {**when, "item": "A.B", "repo": "/r/gates_of_heck", "state": "red", "mode": "land"}
     lands = [("1-A.B", rec), ("2-A.B", {**rec, "state": "landed"}), ("3-A.B", rec), ("4-X", {})]
-    monkeypatch.setattr("land_records.records", lambda q: lands)
+    monkeypatch.setattr("land_records.records", lambda q, keys: lands)
     ship = {**when, "schema": 1, "name": "ztools", "result": "/s/r1.json", "status": "ok",
             "steps": [{"name": "release", "seconds": 9.0, "status": "ok"}]}  # fmt: skip
     monkeypatch.setattr("ship_records.every", lambda: [(Path("r1"), ship)])

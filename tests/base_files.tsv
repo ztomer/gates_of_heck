@@ -59,6 +59,7 @@ lib/identity_cache.py	base-code
 lib/killtree.py	base-code
 lib/land_attempts.py	base-code
 lib/land_cause.py	base-code
+lib/land_columns.py	base-code
 lib/land_records.py	base-code
 lib/land_rustcov.py	base-code
 lib/land_share.py	base-code
