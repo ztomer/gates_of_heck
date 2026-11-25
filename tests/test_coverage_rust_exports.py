@@ -206,11 +206,13 @@ def test_a_valid_but_empty_run_is_named_and_measures_nothing(tmp_path):
 
 # ── B2: the LAUNDERING hole — a failing export that leaves its file behind ──
 # Completeness keyed on part-file existence/size used to pass these: the file
-# was there, so "100%" was reported over garbage. Red-proofed against pre-fix
-# coverage_gate.sh (both variants exited 0).
+# was there, so "100%" was reported over it. Red-proofed against pre-fix
+# coverage_gate.sh (it exited 0).
 
 
-def test_failed_export_leaving_EMPTY_part_hard_fails(tmp_path):
+def test_failed_export_leaving_a_whole_report_hard_fails(tmp_path):
+    """The run failed and left a report that would pass at 100%: without the exit-0 marker it is
+    never measured coverage. (A garbage report left behind takes the same branch: no marker.)"""
     parts = {"lib.info": "", "all.info": build_part(1, "_Za", 5, FULL_COVER)}
     proj = setup_fixture(tmp_path, parts)
     r = run_rust_gate(
@@ -220,34 +222,6 @@ def test_failed_export_leaving_EMPTY_part_hard_fails(tmp_path):
     combined = r.stdout + r.stderr
     assert "expected but missing" in combined
     assert "covfix (lib)" in combined, "the failed export must be NAMED"
-
-
-def test_failed_export_leaving_GARBAGE_part_hard_fails(tmp_path):
-    # A partial/garbage export left behind by a FAILED run: without the
-    # exit-0 marker this must never count as measured coverage.
-    parts = {"lib.info": build_part(1, "_Za", 5, FULL_COVER)}
-    proj = setup_fixture(tmp_path, parts)
-    r = run_rust_gate(
-        proj,
-        tmp_path / "bin",
-        tmp_path / "meta.json",
-        tmp_path / "canned-parts",
-        fail_leave="SF:src/lib.rs\nDA:1,1\nDA:2,1\ngarbage-truncated-rec",
-    )
-    assert r.returncode == 1, r.stdout + r.stderr
-    combined = r.stdout + r.stderr
-    assert "expected but missing" in combined
-    assert "covfix (lib)" in combined
-
-
-def test_every_declared_target_exported_is_green(tmp_path):
-    parts = {
-        "lib.info": build_part(1, "_Za", 5, FULL_COVER),
-        "all.info": build_part(1, "_Za", 5, FULL_COVER),
-    }
-    proj = setup_fixture(tmp_path, parts)
-    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts")
-    assert r.returncode == 0, r.stdout + r.stderr
 
 
 # ── C: merger FN parsing ────────────────────────────────────────────────────
@@ -346,7 +320,7 @@ def test_coverage_build_never_shares_the_build_dir(tmp_path):
     cargo call must see the build-dir pinned to the gate's OWN directory for
     this project: since 2026-10-17 that is `$GOH_COV_CACHE/<path key>/build`,
     outside the tree so a recreated push worktree keeps it (BACKLOG 5.1), and
-    the target dir stays in the tree."""
+    the target dir stays in the tree. And the gate is green: every declared target was exported."""
     proj = setup_fixture(
         tmp_path,
         {
@@ -383,18 +357,18 @@ def test_coverage_build_never_shares_the_build_dir(tmp_path):
 
 
 def test_a_crate_type_lib_is_enumerated_as_a_lib(tmp_path):
-    for kinds in (["rlib", "cdylib"], ["cdylib"], ["staticlib"], ["dylib"], ["proc-macro"]):
-        case = tmp_path / "-".join(kinds)
-        case.mkdir()
-        meta = {
-            "packages": [
-                {
-                    "name": "covfix",
-                    "version": "0.1.0",
-                    "targets": [{"name": "covfix", "kind": kinds}],
-                }
-            ]
-        }
-        proj = setup_fixture(case, {"lib.info": build_part(1, "_Za", 5, FULL_COVER)}, meta=meta)
-        r = run_rust_gate(proj, case / "bin", case / "meta.json", case / "canned-parts")
-        assert r.returncode == 0, (kinds, r.stdout + r.stderr)
+    """One package of each kind in one workspace, and a run that fails: it names every target it
+    lost, so a kind the enumeration skips is one name short."""
+    kinds = (["rlib", "cdylib"], ["cdylib"], ["staticlib"], ["dylib"], ["proc-macro"])
+    packages = [
+        {"name": f"fix-{'-'.join(k)}", "version": "0.1.0", "targets": [{"name": "x", "kind": k}]}
+        for k in kinds
+    ]
+    parts = {"lib.info": build_part(1, "_Za", 5, FULL_COVER)}
+    proj = setup_fixture(tmp_path, parts, meta={"packages": packages})
+    r = run_rust_gate(
+        proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts", drop="report"
+    )
+    text = r.stdout + r.stderr
+    assert r.returncode == 1 and "expected but missing" in text, text
+    assert [p["name"] for p in packages if f"{p['name']} (lib)" not in text] == [], text

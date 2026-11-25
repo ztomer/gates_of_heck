@@ -173,7 +173,6 @@ def _mk_crate(root: Path, lib: str) -> Path:
     (c / "src").mkdir(parents=True)
     (c / "Cargo.toml").write_text(CARGO_TOML)
     (c / "src" / "lib.rs").write_text(lib)
-    (c / "src" / "lib.rs").with_suffix(".rs")
     (c / "tests").mkdir()
     (c / "tests" / "all.rs").write_text(TEST_ALL)
     # A real crate carries its lockfile: the gate's old `clean --workspace` WROTE one here as a side
@@ -194,8 +193,9 @@ def test_rust_end_to_end_green_then_red(tmp_path):
     r = run_gate(crate, "--lang", "rust", "--floor", "100")
     assert r.returncode == 0, r.stdout + r.stderr
 
-    gapped = _mk_crate(tmp_path / "gap", LIB_WITH_GAP)
-    r2 = run_gate(gapped, "--lang", "rust", "--floor", "100")
+    # The same crate grows the gap, as a repository does: its warm instrumented build is reused.
+    (crate / "src" / "lib.rs").write_text(LIB_WITH_GAP)
+    r2 = run_gate(crate, "--lang", "rust", "--floor", "100")
     assert r2.returncode == 1
     # Exact uncovered-line reporting is the contract: the gate must say WHICH
     # lines, not just that a percentage slipped. unused() occupies lines 5-7.
@@ -271,29 +271,16 @@ def test_failed_export_leaving_file_behind_fails_the_gate_by_name(tmp_path):
     assert "incomplete" in combined.lower()
     assert "covfix" in combined
     assert "Traceback" not in r.stderr  # a named refusal, not a crash
-
-
-def test_failed_export_shows_its_own_output(tmp_path):
     # The export's stdout/stderr went to /dev/null until 2026-09-21, so a
     # failing test under coverage was reported as "export failed" and nothing
     # else -- a defect that reached the push with no evidence. The gate keeps
     # the log beside the part and prints its tail on failure.
-    proj = tmp_path / "proj"
-    proj.mkdir()
-    r = _run_with_fake_cargo(tmp_path, str(proj), "--lang", "rust", "--floor", "50")
-    assert r.returncode == 1
     assert "the-real-reason" in r.stderr, r.stderr
-    log = proj / "target" / "llvm-cov" / "lcov-parts" / "part-workspace.info.log"
+    parts = proj / "target" / "llvm-cov" / "lcov-parts"
+    log = parts / "part-workspace.info.log"
     assert log.exists() and "the-real-reason" in log.read_text()
-
-
-def test_ok_marker_absent_even_though_part_file_exists(tmp_path):
     # The precise mechanism: the part file exists on disk, the marker does
     # not — the gate must treat that as MISSING, not as measured data.
-    proj = tmp_path / "proj"
-    proj.mkdir()
-    _run_with_fake_cargo(tmp_path, str(proj), "--lang", "rust", "--floor", "50")
-    parts = proj / "target" / "llvm-cov" / "lcov-parts"
     part = parts / "part-workspace.info"
     assert part.exists()  # the export DID leave a file behind...
     assert not (parts / "part-workspace.info.ok").exists()  # ...never marked ok

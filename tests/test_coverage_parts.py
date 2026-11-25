@@ -102,12 +102,12 @@ def _parts(proj: Path) -> Path:
     return proj / "target" / "llvm-cov" / "lcov-parts"
 
 
-def _made(proj: Path, env: dict, n: int, skip: int = 0) -> Path:
+def _made(proj: Path, env: dict, n: int) -> Path:
     """Every part of an n-shard run, collected as gate.yml's artifacts are: one directory."""
     merge = proj / "target" / "cov-merge"
     shutil.rmtree(merge, ignore_errors=True)
     merge.mkdir(parents=True)
-    for part in ["workspace", *(f"{k}/{n}" for k in range(1, n + 1) if k != skip)]:
+    for part in ["workspace", *(f"{k}/{n}" for k in range(1, n + 1))]:
         # a part judges no floor: 100 is far above what any one part covers
         r = _gate(proj, env, "100", GOH_COV_PART=part)
         out = r.stdout + r.stderr
@@ -129,24 +129,28 @@ def test_the_merged_shards_give_the_unsharded_runs_verdict(tmp_path):
             assert r.returncode == 0, r.stdout + r.stderr
             summary = json.loads((_parts(proj) / "summary.json").read_text())
     assert whole == {GREEN: 0, RED: 1}, whole  # the fixture's calibration: the floor bites
-    merge = _made(proj, env, 3)
+    merge = _made(proj, env, 2)
     assert sorted(p.name for p in merge.glob("*.info")) == [
-        "part-external-1-of-3.info", "part-external-2-of-3.info", "part-external-3-of-3.info",
-        "part-workspace.info",
+        "part-external-1-of-2.info", "part-external-2-of-2.info", "part-workspace.info",
     ]  # fmt: skip
     merged = {}
     for floor in (GREEN, RED):
         r = _gate(proj, env, floor, GOH_COV_PARTS_IN="target/cov-merge")
         merged[floor] = r.returncode
-        assert "merging 4 coverage parts" in r.stdout + r.stderr, r.stdout + r.stderr
+        assert "merging 3 coverage parts" in r.stdout + r.stderr, r.stdout + r.stderr
         if floor == GREEN:
             assert json.loads((merge / "summary.json").read_text()) == summary
     assert merged == whole
 
 
 def test_a_merge_missing_one_shard_is_incomplete_not_smaller(tmp_path):
+    """The parts are canned, as three shards would write them (the test above makes real ones)."""
     proj, env = _proj(tmp_path)
-    _made(proj, env, 3, skip=2)
+    merge = proj / "target" / "cov-merge"
+    merge.mkdir(parents=True)
+    for name in ("workspace", "external-1-of-3", "external-3-of-3"):
+        (merge / f"part-{name}.info").write_text("SF:src/ext.rs\nDA:1,1\nend_of_record\n")
+        (merge / f"part-{name}.info.ok").touch()
     r = _gate(proj, env, "0", GOH_COV_PARTS_IN="target/cov-merge")
     out = r.stdout + r.stderr
     assert r.returncode == 1, out
@@ -154,9 +158,20 @@ def test_a_merge_missing_one_shard_is_incomplete_not_smaller(tmp_path):
 
 
 def test_a_part_is_one_of_two_spellings(tmp_path):
+    """The function reads the spelling, all five in one shell; the gate stopping on its 2 is the
+    last run's."""
     proj, env = _proj(tmp_path)
-    for bad in ("0/2", "3/2", "a/2", "2", "1/2/3"):
-        r = _gate(proj, env, "0", GOH_COV_PART=bad)
-        assert r.returncode == 2 and "give 'workspace' or K/N" in r.stderr, (bad, r.stderr)
+    bad = ("0/2", "3/2", "a/2", "2", "1/2/3")
+    script = (
+        f". '{COV_GATE.parent}/_coverage_parts.sh'; err() {{ echo \"$*\" >&2; }}; EXTERNAL=true\n"
+        'for p; do GOH_COV_PART="$p" cov_part_mode 2>/dev/null; echo "$p $?"; done\n'
+        'GOH_COV_PART=2 cov_part_mode; GOH_COV_PART=2/3 cov_part_mode && echo "$COV_EXT_PART"\n'
+    )
+    r = subprocess.run(
+        ["/bin/bash", "-c", script, "spellings", *bad],
+        capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL, check=False,
+    )  # fmt: skip
+    assert r.stdout.splitlines() == [*(f"{b} 2" for b in bad), "part-external-2-of-3"], r.stderr
+    assert "give 'workspace' or K/N" in r.stderr, r.stderr
     r = _gate(proj, env, "0", GOH_COV_PART="1/2", GOH_COV_PARTS_IN="target")
     assert r.returncode == 2 and "one run each" in r.stderr, r.stderr

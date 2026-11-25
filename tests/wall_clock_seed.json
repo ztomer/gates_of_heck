@@ -32,7 +32,7 @@
   "test_commit_hook_git_env.py": 2,
   "test_commit_msg_git_env.py": 1,
   "test_container_runtime.py": 2,
-  "test_coverage_external.py": 2,
+  "test_coverage_external.py": 1,
   "test_coverage_gate_cpp_merge.py": 1,
   "test_coverage_incremental.py": 3,
   "test_coverage_one_build.py": 2,

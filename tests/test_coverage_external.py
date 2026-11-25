@@ -16,16 +16,17 @@ import conftest
 import pytest
 from conftest import REPO_ROOT, hermetic_env
 from env_probe import probe_sh, read_probe
+from test_coverage_parts import SUITE, _proj
 
 
-def run_gate(cwd: Path, *args: str) -> subprocess.CompletedProcess:
+def run_gate(cwd: Path, *args: str, env: dict | None = None) -> subprocess.CompletedProcess:
     """`coverage_gate.sh` in `cwd`, with no inherited GOH_* (an ambient floor or command)."""
     return subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "coverage_gate.sh"), *args, str(cwd)],
         cwd=cwd,
         capture_output=True,
         text=True,
-        env=hermetic_env(),
+        env=hermetic_env() if env is None else env,
         timeout=600,
         stdin=subprocess.DEVNULL,
         check=False,
@@ -78,65 +79,20 @@ def _crate(root: Path) -> Path:
 
 
 def test_a_binary_covered_only_from_outside_is_counted(tmp_path: Path) -> None:
+    """And CMD, the run that counts it, has the caller's environment. CMD is a suite that builds
+    crates of its own: the instrumented build's environment (`RUSTC_WRAPPER`, `CARGO_LLVM_COV*`, the
+    coverage target dir) leaked into it made every cargo fixture inside the suite an instrumented
+    build in the wrong target dir, and a nested coverage gate fail (2026-10-06, four suites red).
+    CMD gets the caller's environment, plus the profile destination and `$GOH_COVERAGE_BIN_DIR`."""
     crate = _crate(tmp_path)
-    alone = run_gate(crate, "--lang", "rust", "--floor", FLOOR)
+    env = hermetic_env(CARGO_TARGET_DIR=str(tmp_path / "callers-target"))
+    alone = run_gate(crate, "--lang", "rust", "--floor", FLOOR, env=env)
     assert alone.returncode == 1, "cargo test alone should NOT cover a bin with no tests"
-    seen = run_gate(
-        crate,
-        "--lang",
-        "rust",
-        "--floor",
-        FLOOR,
-        "--external",
-        '"$GOH_COVERAGE_BIN_DIR/binonly" go',
-    )
-    assert seen.returncode == 0, seen.stdout + seen.stderr
-
-
-def test_a_failing_external_command_is_a_missing_part_not_a_smaller_report(tmp_path: Path) -> None:
-    crate = _crate(tmp_path)
-    r = run_gate(crate, "--lang", "rust", "--floor", "0", "--external", "exit 3")
-    assert r.returncode != 0, r.stdout + r.stderr
-    assert "external: exit 3" in r.stdout + r.stderr, r.stdout + r.stderr
-
-
-def test_external_is_a_rust_only_seam(tmp_path: Path) -> None:
-    r = run_gate(tmp_path, "--lang", "py", "--floor", "0", "--external", "true")
-    assert r.returncode == 2 and "rust-only" in r.stdout + r.stderr, r.stdout + r.stderr
-
-
-def test_the_external_command_runs_in_the_callers_environment(tmp_path: Path) -> None:
-    """CMD is a suite that builds crates of its own: the instrumented build's environment
-    (`RUSTC_WRAPPER`, `CARGO_LLVM_COV*`, the coverage target dir) leaked into it made every cargo
-    fixture inside the suite an instrumented build in the wrong target dir, and a nested coverage
-    gate fail (2026-10-06, four suites red). CMD gets the caller's environment, plus the profile
-    destination and `$GOH_COVERAGE_BIN_DIR`."""
-    crate = _crate(tmp_path)
     seen = tmp_path / "seen.env"
     # Names, plus the values asserted on: never the caller's whole environment (GOH.ENVDUMP).
     kept = ("RUSTC_WRAPPER", "CARGO_TARGET_DIR", "LLVM_PROFILE_FILE")
     probe = f'{probe_sh(seen, keep=kept)}; "$GOH_COVERAGE_BIN_DIR/binonly" go'
-    env = hermetic_env(CARGO_TARGET_DIR=str(tmp_path / "callers-target"))
-    r = subprocess.run(
-        [
-            "/bin/bash",
-            str(REPO_ROOT / "gates" / "coverage_gate.sh"),
-            "--lang",
-            "rust",
-            "--floor",
-            "0",
-            "--external",
-            probe,
-            str(crate),
-        ],
-        cwd=crate,
-        capture_output=True,
-        text=True,
-        env=env,
-        timeout=600,
-        stdin=subprocess.DEVNULL,
-        check=False,
-    )
+    r = run_gate(crate, "--lang", "rust", "--floor", FLOOR, "--external", probe, env=env)
     assert r.returncode == 0, r.stdout + r.stderr
     got = read_probe(seen)
     leaked = sorted(k for k in got if k.startswith(("CARGO_LLVM_COV", "__CARGO_LLVM_COV")))
@@ -147,6 +103,21 @@ def test_the_external_command_runs_in_the_callers_environment(tmp_path: Path) ->
     assert not incremental_added, "the instrumented build's CARGO_INCREMENTAL reached CMD"
     assert got.get("LLVM_PROFILE_FILE"), "CMD's instrumented runs must know where to profile"
     assert "%p" not in got["LLVM_PROFILE_FILE"], "one profile per process: thousands of files"
+
+
+def test_a_failing_external_command_is_a_missing_part_not_a_smaller_report(tmp_path: Path) -> None:
+    proj, env = _proj(tmp_path)  # a fake cargo: CMD's exit is the gate's to read, not the build's
+    r = run_gate(proj, "--lang", "rust", "--floor", "0", "--external", "exit 3", env=env)
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert "external: exit 3" in r.stdout + r.stderr, r.stdout + r.stderr
+    # the same gate over a CMD that passes: the failure above is CMD's exit and nothing else
+    ok = run_gate(proj, "--lang", "rust", "--floor", "0", "--external", SUITE, env=env)
+    assert ok.returncode == 0, ok.stdout + ok.stderr
+
+
+def test_external_is_a_rust_only_seam(tmp_path: Path) -> None:
+    r = run_gate(tmp_path, "--lang", "py", "--floor", "0", "--external", "true")
+    assert r.returncode == 2 and "rust-only" in r.stdout + r.stderr, r.stdout + r.stderr
 
 
 def test_a_scrubbed_test_environment_keeps_the_profile_destination(monkeypatch, tmp_path) -> None:
