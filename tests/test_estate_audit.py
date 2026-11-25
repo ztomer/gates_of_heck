@@ -173,49 +173,6 @@ def test_a_new_advisory_is_reported_by_the_next_run_and_at_session_start(tmp_pat
     assert f"NEW {PLANTED}" in out and "hit/Cargo.lock" in out, out
 
 
-def test_first_seen_survives_the_next_run(tmp_path, estate):
-    state, db = tmp_path / "state.json", _db(tmp_path, planted=True)
-    first = _audit(estate, state, db)["advisories"][PLANTED]["first_seen"]
-    data = estate_state(state)
-    old = (dt.datetime.now(dt.UTC) - dt.timedelta(days=5)).isoformat(timespec="seconds")
-    data["advisories"][PLANTED]["first_seen"] = old
-    put_estate_state(state, data)
-    again = _audit(estate, state, db)["advisories"][PLANTED]["first_seen"]
-    assert again == old != first
-    out = _hook(state)
-    assert "1 standing advisory" in out and "NEW" not in out, out
-
-
-def test_the_first_run_is_a_baseline_not_news(tmp_path, estate):
-    state = tmp_path / "state.json"
-    found = _audit(estate, state, _db(tmp_path, planted=True))
-    assert found["advisories"][PLANTED]["first_seen"] is None, found
-    out = _hook(state)
-    assert "NEW" not in out and "1 standing advisory in 2 lockfiles" in out, out
-
-
-def test_a_tree_the_repo_excludes_is_set_aside(tmp_path, estate):
-    hit = estate / "hit"
-    (hit / "vendor" / "x").mkdir(parents=True)
-    (hit / "vendor" / "x" / "Cargo.lock").write_text((hit / "Cargo.lock").read_text())
-    write_gatesrc(hit, GATED + "export GOH_EXCLUDE='^vendor/'\n")
-    _git(hit, "add", "-A")
-    _git(hit, "commit", "-qm", "vendored")
-    found = _audit(estate, tmp_path / "state.json", _db(tmp_path, planted=True))
-    assert found["excluded"] == 1, found
-    assert "hit/vendor/x/Cargo.lock" not in found["advisories"][PLANTED]["lockfiles"], found
-
-
-def test_a_repos_own_exemption_is_honoured(tmp_path, estate):
-    (estate / "hit" / ".cargo").mkdir()
-    (estate / "hit" / ".cargo" / "audit.toml").write_text(
-        f'[advisories]\nignore = ["{PLANTED}"]  # fixture\n'
-    )
-    state = tmp_path / "state.json"
-    found = _audit(estate, state, _db(tmp_path, planted=True))
-    assert found["advisories"][PLANTED]["lockfiles"] == ["group/clean/nested/Cargo.lock"], found
-
-
 def test_a_job_that_never_ran_is_reported(tmp_path):
     assert "never run" in _hook(tmp_path / "absent.json")
 
@@ -233,95 +190,84 @@ def _ungated(root: Path) -> Path:
     return _repo(root / "references", "vendored-clone", "goh-fixture-crate", gated=False)
 
 
-def test_an_ungated_repo_is_not_reported_red_and_is_named(tmp_path, estate):
-    """No house gate runs in a repo without a `.gatesrc`, so no push of its lockfile is red and
-    the session hook must not say it is. It is NAMED, not silently dropped: a house repo that lost
-    its `.gatesrc` would otherwise be unaudited and look clean."""
+NESTED, HIT = "group/clean/nested/Cargo.lock", "hit/Cargo.lock"
+
+
+def test_what_a_run_reads_and_what_it_sets_aside(tmp_path, estate):
+    """One estate holding a repo for each rule, one run and the next (GOH.PYSLOW2: nine runs):
+    * a tree the repo's GOH_EXCLUDE names is set aside, and counted;
+    * a repo with no `.gatesrc` is not red -- no house gate runs there, so no push of its lockfile
+      is -- and is NAMED, not silently dropped: a house repo that lost its `.gatesrc` would
+      otherwise be unaudited and look clean;
+    * a registered repo outside the root follows the same rule;
+    * the first run is a baseline, not news; `first_seen` survives the next run;
+    * the next run: `hit` lost its .gatesrc, and `gated` has an exemption of its own."""
+    hit, outside = estate / "hit", tmp_path / "elsewhere"
+    (hit / "vendor" / "x").mkdir(parents=True)
+    (hit / "vendor" / "x" / "Cargo.lock").write_text((hit / "Cargo.lock").read_text())
+    write_gatesrc(hit, GATED + "export GOH_EXCLUDE='^vendor/'\n")
+    _git(hit, "add", "-A")
+    _git(hit, "commit", "-qm", "vendored")
     _ungated(estate)
-    state = tmp_path / "state.json"
-    found = _audit(estate, state, _db(tmp_path, planted=True))
-    assert found["advisories"][PLANTED]["lockfiles"] == [
-        "group/clean/nested/Cargo.lock",
-        "hit/Cargo.lock",
-    ], found
-    assert found["lockfiles"] == 3, found
-    assert found["ungated"] == ["references/vendored-clone"], found
-    out = _hook(state)
-    assert "vendored-clone/Cargo.lock" not in out, out
-
-
-def test_a_repo_that_lost_its_gatesrc_drops_out_visibly(tmp_path, estate):
-    """The same repo, gated then not: reported while gated, named as ungated once it is not."""
+    gated = _repo(outside, "gated", "goh-fixture-crate").resolve()
+    bare = _repo(outside, "bare", "goh-fixture-crate", gated=False).resolve()
     state, db = tmp_path / "state.json", _db(tmp_path, planted=True)
-    assert "hit/Cargo.lock" in _audit(estate, state, db)["advisories"][PLANTED]["lockfiles"]
-    (estate / "hit" / ".gatesrc").unlink()
+    (tmp_path / "installed_repos").write_text(f"{gated}\n{bare}\n")
+
     found = _audit(estate, state, db)
-    assert "hit/Cargo.lock" not in found["advisories"][PLANTED]["lockfiles"], found
-    assert found["ungated"] == ["hit"], found
-
-
-def test_a_registered_repo_outside_the_root_follows_the_same_rule(tmp_path, estate):
-    outside = tmp_path / "elsewhere"
-    gated = _repo(outside, "gated", "goh-fixture-crate")
-    bare = _repo(outside, "bare", "goh-fixture-crate", gated=False)
-    state = tmp_path / "state.json"
-    (tmp_path / "installed_repos").write_text(f"{gated.resolve()}\n{bare.resolve()}\n")
-    found = _audit(estate, state, _db(tmp_path, planted=True))
-    assert str(gated.resolve() / "Cargo.lock") in found["advisories"][PLANTED]["lockfiles"], found
-    assert str(bare.resolve()) in found["ungated"], found
-    assert str(bare.resolve() / "Cargo.lock") not in found["advisories"][PLANTED]["lockfiles"]
-
-
-def test_the_session_hook_says_how_many_were_set_aside_and_why(tmp_path, estate):
-    _ungated(estate)
-    state = tmp_path / "state.json"
-    _audit(estate, state, _db(tmp_path, planted=False))
-    lines = [x for x in _hook(state).splitlines() if "ungated" in x]
-    assert len(lines) == 1, lines
-    assert "1 repo" in lines[0] and ".gatesrc" in lines[0], lines
+    assert list(found["advisories"]) == [PLANTED], found
+    locks = found["advisories"][PLANTED]["lockfiles"]
+    assert sorted(locks) == sorted([NESTED, HIT, str(gated / "Cargo.lock")]), found
+    assert (found["lockfiles"], found["excluded"]) == (4, 1), found
+    assert sorted(found["ungated"]) == sorted(["references/vendored-clone", str(bare)]), found
+    assert found["advisories"][PLANTED]["first_seen"] is None, found
+    out = _hook(state)
+    assert "NEW" not in out and "1 standing advisory in 3 lockfiles" in out, out
+    assert "vendored-clone/Cargo.lock" not in out, out
+    lines = [x for x in out.splitlines() if "ungated" in x]
+    assert len(lines) == 1 and "2 repos" in lines[0] and ".gatesrc" in lines[0], lines
     assert "references/vendored-clone" in lines[0], lines
 
-
-def test_the_session_hook_is_silent_about_ungated_when_there_are_none(tmp_path, estate):
-    state = tmp_path / "state.json"
-    _audit(estate, state, _db(tmp_path, planted=False))
-    assert _hook(state) == ""
-
-
-def _fixed_since(state: Path, estate: Path, *, new: bool) -> None:
-    """The run named the planted crate in hit/Cargo.lock; then the lock moved on (GOH.EA3): a private consumer's
-    pulldown-cmark 0.13.4 -> 0.13.6 landed after the daily run, and the hook still said red."""
-    if new:
-        data = estate_state(state)
-        data["advisories"][PLANTED]["first_seen"] = dt.datetime.now(dt.UTC).isoformat()
-        put_estate_state(state, data)
-    lock = estate / "hit" / "Cargo.lock"
-    lock.write_text(lock.read_text().replace('version = "1.0.0"', 'version = "1.0.1"'))
-
-
-@pytest.mark.parametrize("new", [True, False], ids=["new", "standing"])
-def test_a_lock_fixed_since_the_run_is_not_reported_red(tmp_path, estate, new):
-    state = tmp_path / "state.json"
-    _audit(estate, state, _db(tmp_path, planted=True))
-    _fixed_since(state, estate, new=new)
-    out = _hook(state)
-    red = [x for x in out.splitlines() if "hit/Cargo.lock" in x and "fixed since the run" not in x]
-    assert red == [], out
-    assert "fixed since the run" in out and "hit/Cargo.lock" in out, out
-    # The lock that still carries the version is still reported.
-    assert "NEW" in out if new else "1 standing advisory in 1 lockfile" in out, out
-    if new:
-        assert "group/clean/nested/Cargo.lock is red" in out, out
-
-
-def test_a_lock_that_cannot_be_reread_is_never_reported_fixed(tmp_path, estate):
-    state = tmp_path / "state.json"
-    _audit(estate, state, _db(tmp_path, planted=True))
+    old = (dt.datetime.now(dt.UTC) - dt.timedelta(days=5)).isoformat(timespec="seconds")
     data = estate_state(state)
-    data["advisories"][PLANTED]["first_seen"] = dt.datetime.now(dt.UTC).isoformat()
+    data["advisories"][PLANTED]["first_seen"] = old
     put_estate_state(state, data)
-    (estate / "hit" / "Cargo.lock").unlink()
-    (estate / "group" / "clean" / "nested" / "Cargo.lock").write_text("[[package\nnot toml")
+    (hit / ".gatesrc").unlink()
+    (gated / ".cargo").mkdir()
+    (gated / ".cargo" / "audit.toml").write_text(
+        f'[advisories]\nignore = ["{PLANTED}"]  # fixture\n'
+    )
+    found = _audit(estate, state, db)
+    assert found["advisories"][PLANTED]["first_seen"] == old, found
+    assert found["advisories"][PLANTED]["lockfiles"] == [NESTED], found
+    assert "hit" in found["ungated"], found
+    out = _hook(state)
+    assert "1 standing advisory" in out and "NEW" not in out, out
+
+
+def test_a_lock_fixed_since_the_run_is_not_reported_red(tmp_path, estate):
+    """The run named the planted crate in hit/Cargo.lock; then the lock moved on (GOH.EA3): a
+    private consumer's pulldown-cmark 0.13.4 -> 0.13.6 landed after the daily run, and the hook
+    still said red. So for a standing advisory and a new one; a lock that cannot be reread is never
+    fixed."""
+    state = tmp_path / "state.json"
+    data = _audit(estate, state, _db(tmp_path, planted=True))
+    lock, nested = estate / "hit" / "Cargo.lock", estate / NESTED
+    lock.write_text(lock.read_text().replace('version = "1.0.0"', 'version = "1.0.1"'))
+    for new in (False, True):
+        if new:
+            data["advisories"][PLANTED]["first_seen"] = dt.datetime.now(dt.UTC).isoformat()
+            put_estate_state(state, data)
+        out = _hook(state)
+        red = [x for x in out.splitlines() if HIT in x and "fixed since the run" not in x]
+        assert red == [], out
+        assert "fixed since the run" in out and HIT in out, out
+        # The lock that still carries the version is still reported.
+        assert "NEW" in out if new else "1 standing advisory in 1 lockfile" in out, out
+        if new:
+            assert f"{NESTED} is red" in out, out
+    lock.unlink()
+    nested.write_text("[[package\nnot toml")
     out = _hook(state)
     assert "fixed since the run" not in out, out
-    assert "hit/Cargo.lock" in out and "group/clean/nested/Cargo.lock" in out, out
+    assert HIT in out and NESTED in out, out

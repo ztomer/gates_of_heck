@@ -162,7 +162,6 @@
   "tests/test_cwd_and_py_gate.py": 2,
   "tests/test_dep_currency_native_parity.py": 3,
   "tests/test_display_frames.py": 1,
-  "tests/test_estate_audit.py": 1,
   "tests/test_estate_corpus.py": 3,
   "tests/test_estate_corpus_cache.py": 1,
   "tests/test_estate_gate_coverage.py": 3,
