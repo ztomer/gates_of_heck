@@ -154,6 +154,7 @@ tests/_schedule.py	base-code
 tests/_setup_work.py	base-code
 tests/_shard.py	base-code
 tests/_tree_clone.py	base-code
+tests/_tree_pool.py	base-code
 tests/_tree_guard.py	base-code
 tests/_whole_run.py	base-code
 tests/ci_shape.py	base-code

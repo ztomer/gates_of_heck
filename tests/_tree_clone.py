@@ -24,6 +24,7 @@ import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
+import _tree_pool
 from _reused_tmp import reused_mkdtemp
 from timing_bounds import patience
 
@@ -62,13 +63,31 @@ def clone_tree(src: Path | str, dst: Path | str) -> None:
     if os.path.lexists(dst):
         raise FileExistsError(errno.EEXIST, "clone target exists", str(dst))
     if _CLONEFILE is not None:
-        if _CLONEFILE(os.fsencode(src), os.fsencode(dst), 0) == 0:
-            _unseal_clone(src, dst)
+        mine, its = _tree_pool.real_of(dst), _tree_pool.origin(_tree_pool.real_of(src), _is_sealed)
+        if _tree_pool.take(its, mine, _clone_part, _is_sealed):
+            return
+        if _CLONEFILE(os.fsencode(its), os.fsencode(dst), 0) == 0:
+            _unseal_clone(its, dst)
+            _tree_pool.given(its, mine)
             return
         err = ctypes.get_errno()
         if err not in _FALL_BACK:
             raise OSError(err, os.strerror(err), str(dst))
     copytree_clone(src, dst)
+
+
+_NOFOLLOW = 1  # CLONE_NOFOLLOW
+
+
+def _clone_part(src: str, dst: str) -> None:
+    if _CLONEFILE(os.fsencode(src), os.fsencode(dst), _NOFOLLOW) != 0:
+        err = ctypes.get_errno()
+        raise OSError(err, os.strerror(err), dst)
+
+
+def _is_sealed(path: str) -> bool:
+    """Whether the directory PATH of a template is one `_seal` made read-only."""
+    return not os.access(path, os.W_OK)
 
 
 # THE SHARED TEMPLATE IS SEALED (GOH.FSCHURN3). A run-wide template is every worker's, so a git
@@ -96,13 +115,13 @@ def _seal(tree: Path) -> None:
         dirs = _sealable(git_dir)
         for d in reversed(dirs):  # the innermost first: the git dir itself last
             d.chmod(0o555)
-        _SEALED[os.path.abspath(git_dir)] = tuple(os.path.relpath(d, git_dir) for d in dirs)
+        _SEALED[os.path.realpath(git_dir)] = tuple(os.path.relpath(d, git_dir) for d in dirs)
 
 
 def _known_seals(tree: Path) -> None:
     """Register the seals of a template another worker built (the directories it sealed)."""
     for git_dir in _repositories(tree):
-        key = os.path.abspath(git_dir)
+        key = os.path.realpath(git_dir)
         if key not in _SEALED:
             dirs = [d for d in _sealable(git_dir) if not os.access(d, os.W_OK)]
             if dirs:
@@ -112,7 +131,7 @@ def _known_seals(tree: Path) -> None:
 def _unseal_clone(src: Path | str, dst: Path | str) -> None:
     """The clone `dst` of `src` (a template, or a part of one) writable where the template is
     sealed: a chmod of each sealed directory the clone holds, never a walk of the clone."""
-    src = os.path.abspath(src)
+    src = _tree_pool.real_of(src)
     for git_dir, parts in _SEALED.items():
         if git_dir == src or git_dir.startswith(src.rstrip("/") + "/"):
             for part in parts:
@@ -122,7 +141,7 @@ def _unseal_clone(src: Path | str, dst: Path | str) -> None:
 def unsealed_rmtree(tree: Path | str) -> None:
     """`shutil.rmtree` of a tree that may hold sealed repositories (this process's, or a killed
     one's stage): every directory's write bit back first."""
-    tree = os.path.abspath(tree)
+    tree = _tree_pool.real_of(tree)
     for git_dir in [g for g in _SEALED if g.startswith(tree.rstrip("/") + "/")]:
         del _SEALED[git_dir]
     for here, _dirs, _files in os.walk(tree):
@@ -375,6 +394,8 @@ _RUN_ROOT: list[Path] = []
 def run_wide(root: Path) -> None:
     """Every later `process_template` in this process builds into `root`, once per run."""
     _RUN_ROOT[:] = [Path(root)]
+    if _CLONEFILE is not None:
+        _tree_pool.install(str(root), _clone_part, _is_sealed)
 
 
 def run_head_cache() -> Path:

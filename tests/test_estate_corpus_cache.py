@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _tree_clone import clone_tree
 from conftest import REPO_ROOT, native_goh_path
 from test_proven import goh  # noqa: F401  (fixture: a committed copy of the gates)
 from test_proven_goh_content import _export
@@ -191,7 +192,9 @@ def _goh_export(gates: Path, tmp_path: Path) -> Path:
 def _moved(export: Path, where: Path) -> Path:
     """The same export at another path: the next land's ~/.cache/goh/head/<sha>."""
     dest = where / export.name
-    shutil.copytree(export, dest, symlinks=True)
+    dest.mkdir(parents=True)
+    for entry in sorted(export.iterdir()):  # the run's template's: pooled (tests/_tree_pool.py)
+        clone_tree(entry, dest / entry.name)
     return dest
 
 
