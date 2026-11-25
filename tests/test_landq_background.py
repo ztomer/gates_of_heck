@@ -16,7 +16,7 @@ import pytest
 from conftest import git, hermetic_env
 from orphan_kit import wait_for_file
 from test_landq import FAKE_LOOPCTL, LANDQ, _land_wt, landq, recorded
-from timing_bounds import GiveUp, assert_sooner, patience
+from timing_bounds import GiveUp, patience
 
 sys.path.insert(0, str(LANDQ.parent.parent / "lib"))
 import land_records  # lib/, on the path above
@@ -44,13 +44,17 @@ def test_enqueue_land_backgrounds_its_long_pre_step_and_the_wait_follows_it(repo
     given --wait (nor --foreground) it says so, runs in the background and returns at once; the
     lane's `--wait ITEM` then follows the pre-step into the queue and the land."""
     wt, tip = _land_wt(repo, tmp_path)
-    env = {**env, "GOH_LAND_GATE": "true", "GOH_LAND_PRE": "sleep 20"}
-    t0 = time.monotonic()
+    env = {
+        **env,
+        "GOH_LAND_GATE": "true",
+        "GOH_LAND_PRE": wait_for_file(tmp_path / "go", seconds=90),
+    }
     done = landq(env, "--enqueue", "--land", str(wt), "--item", "T.BG", "--no-start")
     out = done.stdout + done.stderr
     assert done.returncode == 0, out
-    # the pass: checks and a spawn; the failure: an enqueue that sat through the 20 s pre-step
-    assert_sooner(time.monotonic() - t0, 3, 20, "the backgrounded enqueue")
+    # ordered, never timed (GOH.TEMPLEAKSETUP): the pre-step ends at a file only this test writes,
+    # so an enqueue that sat through it could not have returned 0
+    (tmp_path / "go").touch()
     assert "runs long" in out and "background" in out and "--wait T.BG" in out, out
     waited = landq(env, "--wait", "T.BG", "--timeout", str(patience(90)))
     assert waited.returncode == 0, waited.stdout + waited.stderr

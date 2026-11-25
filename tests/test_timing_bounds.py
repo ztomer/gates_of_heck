@@ -62,19 +62,16 @@ def test_the_pattern_sees_each_shape() -> None:
         assert not LITERAL.search(line), line
 
 
-def test_a_quiet_box_bounds_at_slack_times_the_pass(monkeypatch) -> None:
-    monkeypatch.setattr(timing_bounds, "thread_stretch", lambda: 1.0)
-    monkeypatch.setattr(timing_bounds, "load_factor", lambda: 1.0)
-    assert timing_bounds.bound(2, 60) == 6.0
-
-
-def test_a_loaded_box_stretches_it_but_never_toward_the_failure(monkeypatch) -> None:
-    monkeypatch.setattr(timing_bounds, "thread_stretch", lambda: 1.0)
-    monkeypatch.setattr(timing_bounds, "load_factor", lambda: 4.0)
-    assert timing_bounds.bound(2, 60) == 24.0
-    monkeypatch.setattr(timing_bounds, "thread_stretch", lambda: 1.0)
-    monkeypatch.setattr(timing_bounds, "load_factor", lambda: 40.0)
+@pytest.mark.load_sensitive
+@pytest.mark.parametrize("load", [1.0, 4.0, 40.0])
+def test_a_bound_is_placed_by_its_failure_at_any_load(monkeypatch, load) -> None:
+    """GOH.TEMPLEAKSETUP: a pass was bounded by its quiet time stretched by a model of the load,
+    and a 1.5 s start read 9.7 s where the model said x2.5. The failure takes 60 s at any load."""
+    monkeypatch.setattr(timing_bounds, "stretch", lambda: load)
     assert timing_bounds.bound(2, 60) == 45.0
+    timing_bounds.assert_sooner(44.0, 2, 60, "a pass the load stretched x22")
+    with pytest.raises(AssertionError, match="a hang"):
+        timing_bounds.assert_sooner(60.0, 2, 60, "a hang")
 
 
 def test_patience_stretches_a_give_up_deadline_by_the_load(monkeypatch) -> None:
@@ -89,7 +86,6 @@ def test_a_clamped_thread_stretches_a_bound_past_the_run_queue(monkeypatch) -> N
     monkeypatch.setattr(timing_bounds, "load_factor", lambda: 3.0)
     monkeypatch.setattr(timing_bounds, "thread_stretch", lambda: 12.0)
     assert timing_bounds.patience(10) == 120.0
-    assert timing_bounds.bound(2, 60) == 45.0  # never toward the failure
     monkeypatch.setattr(timing_bounds, "thread_stretch", lambda: 1.0)
     assert timing_bounds.patience(10) == 30.0
 
@@ -125,6 +121,8 @@ def test_no_test_plants_the_run_queue_and_leaves_the_clamp_to_the_host() -> None
 def test_a_failure_not_clear_of_its_pass_is_a_design_error() -> None:
     with pytest.raises(ValueError, match="lengthen"):
         timing_bounds.bound(2, 5)
+    with pytest.raises(ValueError, match="lengthen"):
+        timing_bounds.bound(1.5, 8)  # goh ship's detached start, red at load 40
 
 
 @pytest.mark.load_sensitive

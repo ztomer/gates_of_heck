@@ -36,6 +36,24 @@ def test_a_fixture_over_the_setup_ceiling_fails_the_test_that_triggered_it(tmp_p
     assert "test_b_second setup" not in r.stdout, r.stdout
 
 
+def test_a_fixtures_counted_work_makes_room_for_itself_alone(tmp_path) -> None:
+    """GOH.TEMPLEAKSETUP: a cold tree lint read 30.5 s against 20 s at load 30. A fixture says how
+    much it had to do; one that did none, or the next test's, keeps the plain ceiling."""
+    said = "import _setup_work\n" + FIXTURE_SLEEPER.replace(
+        "    time.sleep(0.6)\n", "    time.sleep(0.6)\n    _setup_work.did({n}, 100)\n"
+    )
+    r = planted(tmp_path, said.format(n=3), setup_ceiling=0.3)
+    assert r.returncode == 0, r.stdout + r.stderr
+    r = planted(tmp_path, said.format(n=0), setup_ceiling=0.3)
+    assert r.returncode == 1, r.stdout + r.stderr
+    next_one = said.format(n=3) + (
+        "\n@pytest.fixture\ndef idle():\n    time.sleep(0.6)\n\ndef test_c(idle):\n    pass\n"
+    )
+    r = planted(tmp_path, next_one, setup_ceiling=0.3)
+    assert r.returncode == 1 and "test_c setup took" in r.stdout, r.stdout + r.stderr
+    assert "test_a_first setup" not in r.stdout, r.stdout
+
+
 def test_a_fixture_under_the_setup_ceiling_passes(tmp_path) -> None:
     r = planted(tmp_path, FIXTURE_SLEEPER, setup_ceiling=30)
     assert r.returncode == 0, r.stdout + r.stderr

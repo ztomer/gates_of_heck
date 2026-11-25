@@ -48,6 +48,7 @@ import time
 from collections import deque
 from pathlib import Path
 
+import _setup_work
 import pytest
 from _reused_tmp import reused_mkdtemp
 
@@ -389,6 +390,7 @@ def pytest_runtest_makereport(item, call):
     now = _cpu_s()
     cpu = now - item.stash.get(_CPU_MARK, now)
     item.stash[_CPU_MARK] = now
+    work = _setup_work.take()
     missed = kept_misses()
     rep.goh_pole_cold = missed > item.stash.get(_MISS_MARK, missed)
     item.stash[_MISS_MARK] = missed
@@ -401,7 +403,7 @@ def pytest_runtest_makereport(item, call):
     if rep.when not in ("setup", "call") or not rep.passed:
         return
     setup = rep.when == "setup"
-    ceiling = setup_ceiling(item.nodeid) if setup else SLOW.get(item.nodeid, CEILING_S)
+    ceiling = setup_ceiling(item.nodeid) + work if setup else SLOW.get(item.nodeid, CEILING_S)
     factor = load_factor(call.start, call.stop)
     if judged_s(call.duration, factor, rep.goh_pole) > ceiling:
         stretch = f" x{factor:.2g} for the box's load and speed" if factor > 1 else ""

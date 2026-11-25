@@ -28,8 +28,12 @@ import subprocess
 from pathlib import Path
 
 import _kept_store
+import _setup_work
 import pytest
 from conftest import REPO_ROOT, hermetic_env
+
+# One shell file's shellcheck: 80.8 CPU s for the 114 of a cold tree (2026-11-23), rounded up.
+FILE_S = 0.8
 
 
 def shell_verdicts() -> Path:
@@ -54,12 +58,14 @@ def records(db: Path | None = None, checker: str = "shell-lint") -> set[str]:
 def tree_lint(goh) -> Path:
     store = shell_verdicts()
     store.parent.mkdir(parents=True, exist_ok=True)
+    before = records()
     with (store.parent / "tree-lint.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)  # one worker lints; the others wait, then read
         r = subprocess.run([str(goh), "shell-lint"], cwd=REPO_ROOT, capture_output=True, text=True,
                            env=hermetic_env(), stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
     assert records(), "goh shell-lint recorded no verdict in the session's goh-cache.db"
+    _setup_work.did(len(records() - before), FILE_S)  # what this session had to lint, by count
     return store
 
 

@@ -23,6 +23,7 @@ import _goh_db_fixture as gdb
 import pytest
 from _shipped_kit import FAKE_LOOPCTL, make_shipped, shipped_clone  # noqa: F401  (re-exported)
 from conftest import REPO_ROOT, git, hermetic_env, native_goh_path, run_goh
+from orphan_kit import wait_for_file
 from timing_bounds import GiveUp, assert_sooner
 
 SHIP = REPO_ROOT / "tools" / "ship.py"
@@ -59,6 +60,10 @@ def _result(tmp_path: Path) -> dict:
     rec = gdb.shipped(tmp_path / "ship.json")
     assert rec is not None, f"no ship row for {tmp_path / 'ship.json'}"
     return rec
+
+
+def _status(tmp_path: Path) -> str:
+    return (gdb.shipped(tmp_path / "ship.json") or {}).get("status", "")
 
 
 def _calls(tmp_path: Path) -> list[list[str]]:
@@ -145,18 +150,24 @@ def test_the_bound_kills_a_hung_step_and_its_whole_group_leaving_no_orphan(shipp
 
 @pytest.mark.load_sensitive
 def test_started_detached_it_returns_at_once_and_the_worker_finishes_alone(shipped, tmp_path):
-    t0 = time.monotonic()
-    r = _ship(shipped, tmp_path, "--item", "X.ONE", GOH_SHIP_INSTALL="sleep 8")
-    assert r.returncode == 0, r.stdout + r.stderr
-    # the pass: plan and spawn; the failure: a start that ran the pipeline, its 8 s install included
-    assert_sooner(time.monotonic() - t0, 1.5, 8, "goh ship's detached start")
+    # ORDERED, never timed (GOH.TEMPLEAKSETUP: 1.5 s quiet, 9.7 s at load 40, against a 6 s bound;
+    # the red left its worker running, the session's teardown error on another test). The install
+    # waits for a file only this test writes, so a start that ran the pipeline could not return 0.
+    go = tmp_path / "install-may-end"
+    install = wait_for_file(go, seconds=60)
+    try:
+        r = _ship(shipped, tmp_path, "--item", "X.ONE", GOH_SHIP_INSTALL=install)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert _status(tmp_path) == "running", "the worker had ended when its start returned"
+    finally:
+        go.touch()  # whatever the verdict, the worker ends inside this test
+        give_up = GiveUp(90)
+        while not give_up.passed() and _status(tmp_path) == "running":
+            time.sleep(0.5)
     assert "goh ship started" in r.stdout
     assert str(tmp_path / "ship.json") in r.stdout
     # GOH.TOOLTIMEOUT: the start says it runs long and was backgrounded, and how to block on it
     assert "runs long" in r.stdout and "--wait" in r.stdout and "--status" in r.stdout, r.stdout
-    give_up = GiveUp(90)
-    while not give_up.passed() and _result(tmp_path)["status"] == "running":
-        time.sleep(0.5)
     res = _result(tmp_path)
     assert res["status"] == "ok", res
     status = subprocess.run([sys.executable, str(SHIP), "--status", str(tmp_path / "ship.json")],

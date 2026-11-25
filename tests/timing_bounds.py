@@ -2,12 +2,14 @@
 
 A bound picked as "a few times what the pass takes on my box" flakes on a box other sessions
 load, and refuses pushes for reasons unrelated to the change pushed: 15 s -> 63.8 s at load 38,
-a speedup of 2.98 against 3.0 at load 55 (2026-10-08). A bound has two ends. The pass path,
-`expected_s` on a quiet box, is stretched by the box's load (`_drift_guard.load_factor()`) and
-SLACK. The failure the test exists to rule out -- a timeout that never fires, a sleep run to its
-end -- takes `failure_s`, and the bound never passes FAILURE_SHARE of it, or the test cannot tell
-the two apart. A test whose failure is not well clear of its pass (FAILURE_SHARE x failure_s <
-SLACK x expected_s) is a design error, refused here: lengthen the failure.
+a speedup of 2.98 against 3.0 at load 55 (2026-10-08). The failure the test exists to rule out --
+a timeout that never fires, a sleep run to its end -- takes `failure_s` or more at ANY load, so
+the bound is FAILURE_SHARE of it and reads no load. It used to be the pass stretched by a model of
+the load, and no model held: a 1.5 s start read 9.7 s at load 40 where the run queue said x2.5
+(GOH.TEMPLEAKSETUP), so load alone turned a pass red far from any failure.
+A test whose failure is not well clear of its pass (FAILURE_SHARE x failure_s < CLEAR x expected_s)
+is a design error, refused here: lengthen the failure, or order two events (a child that waits for
+a file the test writes) and time nothing. How long a phase may take at all is the drift guard's.
 
 A GIVE-UP deadline ("wait until X appears, then assert") has no false pass to guard against: a
 longer wait can only cost time on a failure. `patience(seconds)` stretches it by the load; a fixed
@@ -29,8 +31,8 @@ from _drift_guard import load_factor, thread_stretch
 
 # THE QOS CLAMP (GOH.SUITEDRIFTBUILD). A lane or work gate's suite runs under `taskpolicy -c
 # utility`, which the run queue cannot see: x25-35 on a clamped thread where `load_factor` said
-# x3.2. Every bound here stretches by the larger of the run queue and the stretch last measured on
-# this process's own thread (`thread_stretch`); a bound toward a failure stays capped below it.
+# x3.2. Every give-up here stretches by the larger of the run queue and the stretch last measured
+# on this process's own thread (`thread_stretch`).
 
 
 def stretch() -> float:
@@ -38,24 +40,24 @@ def stretch() -> float:
     return max(load_factor(), thread_stretch())
 
 
-SLACK = 3.0
+CLEAR = 5.0  # 1.5 s read 9.7 s, x6.5, at load 40: a failure under 6.7 passes' time is no test
 FAILURE_SHARE = 0.75
 
 
 def bound(expected_s: float, failure_s: float) -> float:
-    """The most a pass may take on this box now."""
-    if FAILURE_SHARE * failure_s < SLACK * expected_s:
+    """The most a pass may take: short of the failure by a quarter of it, at any load."""
+    if FAILURE_SHARE * failure_s < CLEAR * expected_s:
         raise ValueError(
             f"a {failure_s:g} s failure is not clear of a {expected_s:g} s pass: lengthen it"
         )
-    return min(expected_s * SLACK * stretch(), FAILURE_SHARE * failure_s)
+    return FAILURE_SHARE * failure_s
 
 
 def assert_sooner(elapsed: float, expected_s: float, failure_s: float, what: str) -> None:
     limit = bound(expected_s, failure_s)
     assert elapsed < limit, (
-        f"{what}: took {elapsed:.1f} s against {limit:.1f} s (a {expected_s:g} s pass x"
-        f"{SLACK:g} x{stretch():.2g} for the box's load; the failure takes {failure_s:g} s)"
+        f"{what}: took {elapsed:.1f} s against {limit:.1f} s (a pass takes {expected_s:g} s on "
+        f"a quiet box; the failure takes {failure_s:g} s at any load)"
     )
 
 

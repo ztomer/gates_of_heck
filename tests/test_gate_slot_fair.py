@@ -112,11 +112,8 @@ def test_a_short_gate_is_admitted_while_long_gates_hold_every_slot(tmp_path):
     try:
         for h in holders:
             h.wait_for("TAKEN")
-        t0 = time.monotonic()
         short = Waiter(tmp_path, "commit", 2, 0.05, klass="short")
-        short.wait_for("TAKEN", 20)
-        waited = time.monotonic() - t0
-        assert waited < timing_bounds.patience(10), f"a short gate waited {waited:.1f}s"
+        short.wait_for("TAKEN", 20)  # ordered, not timed: the holders end only when released
         assert all(h.proc.poll() is None and h.taken() for h in holders)
     finally:
         _cleanup(short, *holders)

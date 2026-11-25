@@ -40,7 +40,7 @@ def env(tmp_path: Path) -> dict[str, str]:
     )
 
 
-SLOW_JUDGE = "import time\n\n\ndef test_every_thing_slowly():\n    time.sleep(60)\n"
+SLOW_JUDGE = "import time\n\n\ndef test_every_thing_slowly():\n    time.sleep(120)\n"
 
 
 def test_the_set_is_the_cheapest_measured_tests_within_the_budget() -> None:
@@ -86,12 +86,12 @@ def test_goh_s_cheap_structural_judges_are_candidates_on_its_own_tree(tmp_path, 
 
 @pytest.mark.load_sensitive
 def test_a_red_cheap_judge_is_refused_before_a_slow_judge_finishes(repo, tmp_path, env) -> None:
-    """The map judge is measured at 5 ms, the slow judge at 60 s: both are judges, so before
+    """The map judge is measured at 5 ms, the slow judge at 120 s: both are judges, so before
     GOH.PRESTEPFAILFAST one run held both and its verdict came after the sleep."""
     table = tmp_path / "goh.db"
     durations.record({"dur": {
         "tests/test_wiring.py::test_every_script_has_a_row_in_the_map": 0.005,
-        "tests/test_slow_judge.py::test_every_thing_slowly": 60.0,
+        "tests/test_slow_judge.py::test_every_thing_slowly": 120.0,
     }}, db=table)  # fmt: skip
     files = {"docs/map.md": "| `old.py` | a row |\n", "lib/old.py": "", "lib/new.py": "",
              "tools/pytest.sh": PYTEST, "tests/test_wiring.py": MAP_JUDGE,
@@ -104,7 +104,7 @@ def test_a_red_cheap_judge_is_refused_before_a_slow_judge_finishes(repo, tmp_pat
     assert done.returncode == 2 and "nothing enqueued" in out, out
     assert "tests/test_wiring.py::test_every_script_has_a_row_in_the_map" in out, out
     assert "no row in docs/map.md for: ['new.py']" in out, out
-    assert_sooner(took, 10, 60, "a red fast judge's refusal")  # the slow judge sleeps 60 s
+    assert_sooner(took, 10, 120, "a red fast judge's refusal")  # the slow judge sleeps 120 s
     assert _pending(tmp_path) == []
 
 

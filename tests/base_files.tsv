@@ -125,6 +125,7 @@ tests/_read_audit.py	base-code
 tests/_reused_tmp.py	base-code
 tests/_same_tree.py	base-code
 tests/_schedule.py	base-code
+tests/_setup_work.py	base-code
 tests/_shard.py	base-code
 tests/_tree_clone.py	base-code
 tests/_tree_guard.py	base-code
