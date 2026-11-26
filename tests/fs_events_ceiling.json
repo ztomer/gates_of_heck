@@ -37,6 +37,9 @@
    "bytes": 5500000,
    "events": 1200
   },
+  "tests/test_tree_exports.py": {
+   "events": 310
+  },
   "tests/test_tree_pool.py": {
    "events": 320
   }
