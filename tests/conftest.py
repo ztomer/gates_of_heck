@@ -381,11 +381,11 @@ subprocess.Popen.__init__ = _measured_popen_init
 GOH_BUILD_RECORD = "goh-builds.log"
 
 
-def _shared_tmp(tmp_path_factory) -> Path:
-    """The temp root every xdist worker shares (each worker's basetemp is a child of it).
-    Without xdist, basetemp itself."""
+def _build_home(tmp_path_factory) -> Path:
+    """Where the goh binary and its build record live, for the writer and every reader: the WHOLE
+    run's (lib/build_once.py, GOH.BUILDONCE), else the temp root every xdist worker shares."""
     base = tmp_path_factory.getbasetemp()
-    return base.parent if os.environ.get("PYTEST_XDIST_WORKER") else base
+    return build_once.run_dir(base.parent if os.environ.get("PYTEST_XDIST_WORKER") else base)
 
 
 @pytest.fixture(scope="session")
@@ -411,7 +411,7 @@ def native_goh(tmp_path_factory) -> Path:
     root; every other worker waits on the lock and reads that copy. No test reads cargo's target
     path while a build of it can be running.
     """
-    shared = build_once.run_dir(_shared_tmp(tmp_path_factory))  # one per WHOLE run: GOH.BUILDONCE
+    shared = _build_home(tmp_path_factory)
     published = build_once.home(shared, "goh-bin", REPO_ROOT) / "goh"
     # GOH_TEST_BIN: a binary built elsewhere, used as is -- the coverage gate's INSTRUMENTED build
     # (GOH_COV_RUST_EXTERNAL), whose profiles are this suite's share of the crate's coverage. A
@@ -455,7 +455,7 @@ def run_goh(cwd: Path, *args: str, **kw) -> subprocess.CompletedProcess:
 @pytest.fixture(scope="session")
 def goh_build_count(tmp_path_factory, goh) -> int:
     """How many times this session built goh (after this worker's own fixture resolved)."""
-    return len((_shared_tmp(tmp_path_factory) / GOH_BUILD_RECORD).read_text().splitlines())
+    return len((_build_home(tmp_path_factory) / GOH_BUILD_RECORD).read_text().splitlines())
 
 
 @pytest.fixture(autouse=True, scope="session")
