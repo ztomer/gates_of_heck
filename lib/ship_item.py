@@ -92,7 +92,7 @@ def work_refusal(repo: Path) -> str | None:
         return why
     import gate_goal
 
-    got = gate_goal.current(conf)
+    got = gate_goal.current(conf, repo.resolve().name)
     if got is not None and got.median_s is None:
         sys.stderr.write(f"⚠ {got.line()}\n")  # not judged, said: never a silent pass
     if got is not None and got.over:

@@ -3,10 +3,13 @@
 
     gate_goal.py            the reading, one line (what `goh land-profile` prints too)
 
-THE READING. The median wall time of the newest `gate_goal.quiet_lands` finished lands whose load
-at their start was quiet -- `run_ends` `land` rows (lib/run_ends.py, goh.db 0024), load1 per core
-under lib/long_pole.py QUIET_LOAD, the line every quiet reading of the suite uses -- against
-`gate_goal.seconds` (tests/test_work_ceiling.json: the owner's 5 minutes). Fewer quiet lands than
+THE READING. The median lock-held gate wall time of the newest `gate_goal.quiet_lands` landed
+lands of the repo whose load at their start was quiet -- the land queue's done records
+(lib/land_records.py, goh.db `lands`: `started` to `finished` is the lander holding the lock, and
+`load_start` the load it read; `run_ends` holds no `land` rows), load per core under
+lib/long_pole.py QUIET_LOAD, the line every quiet reading of the suite uses -- against
+`gate_goal.seconds` (tests/test_work_ceiling.json: the owner's 5 minutes; GOH.GATEUNDER5: "median
+lock-held gate time under 5 min over 20 lands, from landq done records"). Fewer quiet lands than
 the window is NOT JUDGED, said with the count, never a pass and never a refusal.
 
 THE REFUSAL. `goh ship` of a repo holding that file refuses while the median is over the goal,
@@ -34,8 +37,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import datetime as dt
+
+import land_records
 import long_pole  # lib/: QUIET_LOAD, the suite's one quiet line
-import run_ends
+import state_paths
 import worker_share
 
 CONFIG = Path(__file__).resolve().parent.parent / "tests" / "test_work_ceiling.json"
@@ -63,16 +69,35 @@ class Reading:
         )
 
 
-def reading(rows: Iterable[Mapping], conf: Mapping, cores: int) -> Reading | None:
-    """The reading of ROWS (run_ends rows, any order) under CONF's `gate_goal`; None without one."""
+KEYS = ("repo", "state", "started", "finished", "load_start")
+
+
+def _when(stamp: object) -> float | None:
+    try:
+        return dt.datetime.fromisoformat(str(stamp)).timestamp()
+    except ValueError:
+        return None
+
+
+def held(rec: Mapping) -> float | None:
+    """A done record's lock-held gate seconds (`started` to `finished`), None for none."""
+    start, end = _when(rec.get("started")), _when(rec.get("finished"))
+    return end - start if start is not None and end is not None and end >= start else None
+
+
+def reading(records: Iterable[Mapping], conf: Mapping, cores: int,
+            repo: str | None = None) -> Reading | None:  # fmt: skip
+    """The reading of RECORDS (land done records, any order; REPO's alone, by name, when given)
+    under CONF's `gate_goal`; None without one."""
     goal = conf.get("gate_goal")
     if not goal:
         return None
     window = int(goal.get("quiet_lands", 20))
-    lands = sorted((r for r in rows if r.get("kind") == "land" and r.get("outcome") == "finished"
-                    and r.get("wall_s") is not None and r.get("load1") is not None),
-                   key=lambda r: r.get("started") or 0, reverse=True)  # fmt: skip
-    quiet = [float(r["wall_s"]) for r in lands if r["load1"] / cores < long_pole.QUIET_LOAD]
+    lands = sorted((r for r in records if r.get("state") == "landed" and held(r) is not None
+                    and r.get("load_start") is not None
+                    and (repo is None or Path(str(r.get("repo", ""))).name == repo)),
+                   key=lambda r: _when(r.get("started")) or 0, reverse=True)  # fmt: skip
+    quiet = [held(r) for r in lands if float(r["load_start"]) / cores < long_pole.QUIET_LOAD]
     quiet = quiet[:window]
     if len(quiet) < window:
         return Reading(float(goal["seconds"]), window, len(quiet), None)
@@ -82,11 +107,12 @@ def reading(rows: Iterable[Mapping], conf: Mapping, cores: int) -> Reading | Non
     return Reading(float(goal["seconds"]), window, len(quiet), median)
 
 
-def current(conf: Mapping | None = None) -> Reading | None:
-    """The reading of goh.db's run_ends now (CONF: tests/test_work_ceiling.json)."""
+def current(conf: Mapping | None = None, repo: str = "gates_of_heck") -> Reading | None:
+    """The reading of the land queue's done records now (CONF: tests/test_work_ceiling.json)."""
     if conf is None:
         conf = json.loads(CONFIG.read_text(encoding="utf-8"))
-    return reading(run_ends.rows(), conf, worker_share.cores())
+    rows = [rec for _run, rec in land_records.records(state_paths.landq_dir(), keys=KEYS)]
+    return reading(rows, conf, worker_share.cores(), repo)
 
 
 if __name__ == "__main__":
