@@ -27,6 +27,7 @@ from pathlib import Path
 import _quiet_pack
 import _tree_pool
 from _reused_tmp import reused_mkdtemp
+from _test_work import shared_setup
 from timing_bounds import patience
 
 # clonefile(2) cannot serve these: another volume, a filesystem without clones. Any other error is
@@ -218,7 +219,8 @@ def _run_template(parent: Path, key: str, build, keep_quiet: bool = True) -> Pat
                 if stage.exists():
                     unsealed_rmtree(stage)
                 stage.mkdir()
-                _build_quietly(build, stage / key, keep_quiet)
+                with shared_setup():  # the run's build, not the asking test's (GOH.TESTWORK)
+                    _build_quietly(build, stage / key, keep_quiet)
                 os.rename(stage, done)
         finally:
             os.close(fd)

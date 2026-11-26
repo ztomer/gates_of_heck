@@ -27,6 +27,7 @@ import sys
 from pathlib import Path
 
 import suite_tmp
+from _test_work import shared_setup
 from _tree_clone import _run_template
 from conftest import REPO_ROOT
 
@@ -81,7 +82,8 @@ def shared(root: Path, store: Path) -> test_closure.Closure:
 @functools.cache
 def real() -> test_closure.Closure:
     """The run's graph of REPO_ROOT, read (or filled) on this worker's first use."""
-    return shared(REPO_ROOT, _store())
+    with shared_setup():  # the process's graph, not the asking test's (GOH.TESTWORK)
+        return shared(REPO_ROOT, _store())
 
 
 @functools.cache

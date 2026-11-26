@@ -22,10 +22,10 @@ from timing_bounds import patience
 
 TREE_READS = ("tests/test_work_ceiling.json", "tests/")  # the list names files there
 CONF = test_work.config()
-NAMED = 504  # the entries of tests/test_work_ceiling.json `named`, only ever lowered
+NAMED = 512  # the entries of tests/test_work_ceiling.json `named`, only ever lowered
 NEW = {"cpu_s": 0.1, "procs": 5, "git_repos": 1, "cargo_builds": 0, "tree_walks": 0}
 
-PLANTED = """import hashlib, os, subprocess
+PLANTED = """import functools, hashlib, os, subprocess
 
 def test_procs():
     for _ in range(6):
@@ -40,11 +40,11 @@ def test_cargo():
     subprocess.run(["cargo", "+stable", "build", "-q"], executable="/usr/bin/true", check=True)
 
 def test_walk(tmp_path):
-    for mark in ("gates/structural.sh", "tests/conftest.py", "lib/goh_db.py"):  # a goh tree's
+    for mark in ("tests/conftest.py", "lib/goh_db.py", "lib/test_work.py"):  # a goh tree's
         (tmp_path / mark).parent.mkdir(exist_ok=True)
         (tmp_path / mark).touch()
     (tmp_path / "a" / "b").mkdir(parents=True)
-    assert len(list(os.walk(tmp_path))) == 6
+    assert len(list(os.walk(tmp_path))) == 5
     small = tmp_path / "a"  # a fixture repository's walk is no walk of the tree
     (small / ".git").mkdir()
     assert len(list(os.walk(small))) == 3
@@ -54,6 +54,21 @@ def test_cpu():  # ~0.17 CPU s on an M-series core, one call: no loop to spin
 
 def test_shared(three_procs):
     pass
+
+@functools.cache
+def _filled_once():  # a process-wide cache: whichever test asks first fills it
+    for _ in range(2):
+        subprocess.run(["true"], check=True)
+
+
+def test_fills_a_cache():
+    _filled_once()
+
+def test_built_once():
+    from _test_work import shared_setup
+    with shared_setup():  # a template a run builds once: the run's, whichever test asks first
+        for _ in range(4):
+            subprocess.run(["true"], check=True)
 """
 CONFTEST = """import subprocess, pytest
 
@@ -81,7 +96,7 @@ def _session(tmp_path: Path, conf: dict, mode: str = "judge") -> tuple[str, dict
         cwd=tmp_path, env=env, check=False, capture_output=True, text=True,
         stdin=subprocess.DEVNULL, timeout=patience(120),
     )  # fmt: skip
-    assert "6 passed" in r.stdout, r.stdout[-2000:]
+    assert "8 passed" in r.stdout, r.stdout[-2000:]
     return r.stdout, {**json.loads(out.read_text()), "rc": r.returncode}
 
 
@@ -98,7 +113,9 @@ def test_a_test_over_each_default_is_red_naming_the_fault_and_the_exception_form
     assert rows["test_planted.py::test_git"]["git_repos"] == 2
     assert rows["test_planted.py::test_walk"]["tree_walks"] == 1, rows  # the fixture's is none
     assert rows["test_planted.py::test_shared"]["procs"] == 0, rows  # the session fixture's ...
-    assert rows[test_work.SHARED]["procs"] == 3, rows  # ... is the run's shared setup
+    assert rows["test_planted.py::test_built_once"]["procs"] == 0, rows  # and a build's ...
+    assert rows["test_planted.py::test_fills_a_cache"]["procs"] == 0, rows  # and a cache's ...
+    assert rows[test_work.SHARED]["procs"] == 3 + 4 + 2, rows  # ... are the run's shared setup
     lines = [ln for ln in out.splitlines() if ln.startswith("✗")]
     assert len(lines) == len(FAULTY), lines  # the quiet test and the shared setup: no fault
 
@@ -175,7 +192,8 @@ def test_the_rows_are_recorded_and_read_back_idle_and_loaded(monkeypatch) -> Non
     assert test_work.record("r2", {"f.py::a": _row(procs=12)}, True, 17.0, 40.0, cores=16)
     assert test_work.record("r3", {"f.py::a": _row(procs=80)}, False, 1.0, 1.0)  # not whole
     read = test_work.readings()
-    assert set(read) == {"f.py"}, read  # the cold and the shared rows are no reading
+    assert set(read) == {"f.py", "g.py"}, read  # a cold row is a reading; the shared row none
+    assert read["g.py"]["idle"]["procs"] == 99
     assert read["f.py"]["idle"]["procs"] == 9 and read["f.py"]["loaded"]["procs"] == 12
     assert read["f.py"]["runs"] == {"idle": 1, "loaded": 1}
     entry = test_work.seed(read, {**CONF, "new": NEW})["f.py"]

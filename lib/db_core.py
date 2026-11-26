@@ -43,6 +43,7 @@ of lib/lock_order.tsv. Pinned by tests/test_db_core.py.
 from __future__ import annotations
 
 import contextlib
+import functools
 import json
 import os
 import pwd
@@ -184,8 +185,11 @@ def shared(p: Path, env: Mapping[str, str] | None = None) -> bool:
     return Path(os.path.realpath(p)).parent in shared_dirs(env)
 
 
+@functools.cache
 def writer() -> str:
-    """The goh that writes: `goh <git describe>` of this checkout, `goh unknown` without git."""
+    """The goh that writes: `goh <git describe>` of this checkout, `goh unknown` without git. Once a
+    process: the code that writes is the code this process loaded (GOH.TESTWORK: a `git describe`
+    per migrated file was a process per fresh database)."""
     try:
         out = subprocess.run(["git", "-C", str(ROOT), "describe", "--tags", "--match", "v[0-9]*"],
                              capture_output=True, text=True, check=False, timeout=10,

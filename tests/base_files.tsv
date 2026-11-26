@@ -129,6 +129,7 @@ lib/steps_store.py	base-code
 lib/suite_cache_guard.sh	base-code
 lib/test_closure.py	base-code
 lib/test_slice.py	base-code
+lib/test_work.py	base-code
 lib/timing_derived.py	base-code
 lib/timing_ledger.py	base-code
 lib/timing_ledger.sh	base-code
@@ -161,6 +162,7 @@ tests/_schedule.py	base-code
 tests/_setup_work.py	base-code
 tests/_shard.py	base-code
 tests/_shard_run.py	base-code
+tests/_test_work.py	base-code
 tests/_tree_clone.py	base-code
 tests/_tree_guard.py	base-code
 tests/_tree_pool.py	base-code

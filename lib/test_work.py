@@ -215,12 +215,15 @@ def loaded(load: float | None, cores: int | None) -> bool:
 
 def fold(runs: Iterable[tuple[bool, Mapping[str, Mapping]]]) -> dict[str, dict]:
     """{file: {"idle": {dim: worst}, "loaded": {dim: worst}, "runs": {"idle": n, "loaded": n}}}
-    of RUNS, each (loaded, {node: its counts}); cold rows and the shared setup left out."""
+    of RUNS, each (loaded, {node: its counts}); the shared setup left out. A COLD row is read too:
+    it is never judged, but the next run may be warm and is judged, and a ceiling set from warm
+    rows alone missed 2 tests that read cold in every seeding run (a cargo build, 17 processes)
+    and refused a land's pre-step (2026-11-25)."""
     out: dict[str, dict] = {}
     for is_loaded, rows in runs:
         kind, seen = "loaded" if is_loaded else "idle", set()
         for node, row in rows.items():
-            if node == SHARED or row.get("cold"):
+            if node == SHARED:
                 continue
             f = node.split("::")[0]
             got = out.setdefault(f, {"idle": {}, "loaded": {}, "runs": {"idle": 0, "loaded": 0}})
