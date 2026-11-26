@@ -432,9 +432,9 @@ CASES = [
     *_canary_cases_spawn.CASES,
 ]
 
-# Gates this cannot fixture, with the reason. Each is a claim someone can challenge, which is the
-# point of writing it down rather than quietly covering ten and reporting eleven.
+# Gates this cannot fixture, each a claim with its reason, never ten covered reported as eleven.
 UNCOVERED = {
+    **_canary_cases_busy.UNCOVERED,  # a message-and-range gate: its own file
     # Added 2026-10-01 after the canary found it DECLARED AND UNREACHED -- the state its own
     # failure message calls "running in five repos with nothing showing it can fail". This gate
     # came out of a real published defect (a private server workspace: an amend was refused twice

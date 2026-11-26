@@ -3,7 +3,7 @@
 lanes (GOH.SETTINGPROOF).
 
     checks/check_setting_proof.py staged MSGFILE [ROOT]   # commit-msg: the staged diff, MSGFILE
-    checks/check_setting_proof.py range [BASE] [ROOT]     # each commit of BASE..HEAD: a land step
+    checks/check_setting_proof.py [range [BASE] [ROOT]]   # each commit of BASE..HEAD: a land step
     checks/check_setting_proof.py read --before FROM..TO --after FROM..TO [--repo R] [--lane-kind K]
                                                           # the two trailers, read from goh.db
 
@@ -261,12 +261,14 @@ def commits(log: str) -> Iterable[tuple[str, str, str]]:
 
 
 def judge_range(root: Path, base: str) -> tuple[list[str], int]:
+    """The refusals of each commit of BASE..HEAD in ROOT, and how many were read; -1 when BASE does
+    not resolve (git log refuses the range)."""
     try:
-        _git(root, "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")
+        fmt = f"--format={COMMIT}%H%n%B{BODY_END}"
+        log = _git(root, "log", "--no-merges", "--reverse", "-p", "-U0", "--no-color",
+                   "--no-ext-diff", fmt, f"{base}..HEAD")  # fmt: skip
     except subprocess.CalledProcessError:
         return [], -1
-    log = _git(root, "log", "--no-merges", "--reverse", "-p", "-U0", "--no-color", "--no-ext-diff",
-               f"--format={COMMIT}%H%n%B{BODY_END}", f"{base}..HEAD")  # fmt: skip
     out, n = [], 0
     for sha, message, diff in commits(log):
         n += 1
@@ -363,7 +365,7 @@ def main(argv: list[str]) -> int:
     rd.add_argument("--repo", default="gates_of_heck")
     rd.add_argument("--lane-kind", default="suite")
     rd.add_argument("--lane-repo", default=None)
-    args = ap.parse_args(argv)
+    args = ap.parse_args(argv or ["range"])  # bare: the land step's own question, main..HEAD here
     if args.mode == "read":
         return read(args)
     root = Path(args.root).resolve()
@@ -372,12 +374,14 @@ def main(argv: list[str]) -> int:
         found = verdict(diff, Path(args.message).read_text(encoding="utf-8"))
         n = 1
     else:
-        found, n = judge_range(root, args.base)
-        if n < 0:
+        # goh's tree (this file in it) is the surface's own: every entry must still match its file,
+        # so an empty or moved tree is red here, never a pass over nothing (check_empty_scope.py).
+        found = stale(root) if (root / "checks" / "check_setting_proof.py").is_file() else []
+        got, n = judge_range(root, args.base)
+        found += got
+        if n < 0 and not found:
             warn(f"{TAG} not judged: {args.base} does not resolve here, so no range was read")
             return 0
-        if (root / "checks" / "check_setting_proof.py").is_file():  # goh's tree: the surface's own
-            found += stale(root)
     for f in found:
         err(f"{TAG} {f}")
     if found:

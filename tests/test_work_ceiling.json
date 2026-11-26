@@ -68,7 +68,6 @@
   "tests/test_check_python_formatted.py": {"procs": 12, "why": "unreviewed: stood before the rule (GOH.TESTWORK)"},
   "tests/test_check_raw_audit.py": {"procs": 11, "why": "unreviewed: stood before the rule (GOH.TESTWORK)"},
   "tests/test_check_roadmap.py": {"cpu_s": 3.0, "procs": 20, "why": "unreviewed: stood before the rule (GOH.TESTWORK)"},
-  "tests/test_check_setting_proof.py::test_the_chain_end_to_end_in_a_planted_repo": {"procs": 9, "why": "the one end-to-end test of the settings-proof chain: two commits and their shas in a planted repo, git's own hunk header, the range CLI (its git rev-parse and git log) and the staged path's git diff (GOH.SETTINGPROOF)"},
   "tests/test_check_saved_pid_kill.py": {"cpu_s": 6.0, "why": "unreviewed: stood before the rule (GOH.TESTWORK)"},
   "tests/test_check_shell_lint.py": {"procs": 12, "why": "unreviewed: stood before the rule (GOH.TESTWORK)"},
   "tests/test_check_swift_warnings.py": {"procs": 15, "why": "unreviewed: stood before the rule (GOH.TESTWORK)"},

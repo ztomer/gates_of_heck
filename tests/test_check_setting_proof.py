@@ -4,23 +4,21 @@ A utility clamp slowed lanes x9-25 for days because only lands were read (GOH.SE
 test names the fault it plants: a settings change with no reading, with the lands' alone, with a
 side or the conditions missing; a change off the surface (not judged); a function the surface
 names; a surface entry that no longer matches its file. The logic runs in-process over diff text;
-one test drives the chain end to end -- git's own hunk headers, `range` on the command line and
-`staged` -- in one small planted repo.
+one test per chain drives it end to end through git -- `range` (git log and its hunk headers)
+and `staged` (the index) -- each in one small planted repo.
 """
 
 from __future__ import annotations
 
-import subprocess
+import re
 import sys
 
 import pytest
-from conftest import REPO_ROOT, git, hermetic_env, write
-from timing_bounds import patience
+from conftest import REPO_ROOT, git, write
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
 import check_setting_proof as proof
 
-CHECK = REPO_ROOT / "checks" / "check_setting_proof.py"
 LANDS = "Reading-lands: kind=land: before 526 s n=8 [a..b]; after 480 s n=6 [c..d]; load/core < 1.5"
 LANES = (
     "Reading-lanes: kind=suite: before 210 s n=3 [a..b]; after 205 s n=2 [c..d]; load/core < 1.5"
@@ -130,41 +128,31 @@ def test_the_reading_is_quiet_windowed_and_by_class() -> None:
     ]
 
 
-def test_the_chain_end_to_end_in_a_planted_repo(repo, tmp_path) -> None:
-    """git's own hunk header names the function; `range` on the command line reads each commit of
-    BASE..HEAD (a lands-only commit red by its sha, a whole one green); `staged` reads the index."""
+def test_the_range_chain_end_to_end_in_a_planted_repo(repo) -> None:
+    """git's own hunk header names the function a body line is in, and `range` reads each commit of
+    BASE..HEAD from git log: a lands-only commit is red by its sha, a commit off the surface not."""
     write(repo, "lib/worker_share.py", "def divide(total, gates):\n    return total // gates\n")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "base")
-    base = git(repo, "rev-parse", "HEAD").strip()
     write(
         repo, "lib/worker_share.py", "def divide(total, gates):\n    return total // (gates + 1)\n"
     )
-    git(
-        repo,
-        "-c",
-        "user.name=t",
-        "-c",
-        "user.email=t@t",
-        "commit",
-        "-q",
-        "-am",
-        f"perf: x\n\n{LANDS}",
-    )
-    bad = git(repo, "rev-parse", "HEAD").strip()
-    argv = [sys.executable, str(CHECK), "range", base, str(repo)]
-    run = subprocess.run(argv, capture_output=True,
-                         text=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL,
-                         check=False, timeout=patience(60))  # fmt: skip
-    assert run.returncode == 1, run.stdout + run.stderr
-    assert f"{bad[:12]}: a settings change (lib/worker_share.py" in run.stderr
-    assert (
-        "no `Reading-lanes:` trailer" in run.stderr and "Reading-lands:` trailer" not in run.stderr
-    )
-    write(repo, "lib/worker_share.py", "def divide(total, gates):\n    return total // gates\n")
+    msg = f"perf: x\n\n{LANDS}"
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-am", msg)
+    got, n = proof.judge_range(repo, "HEAD~1")
+    assert n == 1 and len(got) == 1, got
+    assert re.match(r"[0-9a-f]{12}: a settings change \(lib/worker_share.py: return total", got[0])
+    assert "no `Reading-lanes:` trailer" in got[0] and "Reading-lands:` trailer" not in got[0]
+    assert proof.judge_range(repo, "no-such-base") == ([], -1)
+
+
+def test_the_staged_chain_reads_the_index(repo, tmp_path) -> None:
+    """`staged` (the commit-msg layer's mode) reads the index and the message file: red without
+    the readings, git's `#` comment lines ignored, green with both."""
+    write(repo, "lib/gate_lanes.py", "PRE_SLOTS = 3\n")
     git(repo, "add", "-A")
     msg = tmp_path / "MSG"
-    msg.write_text("perf: back\n\n# a git comment line\n", encoding="utf-8")
+    msg.write_text(f"perf: x\n\n# {LANES}\n", encoding="utf-8")
     assert proof.main(["staged", str(msg), str(repo)]) == 1
     msg.write_text(BOTH, encoding="utf-8")
     assert proof.main(["staged", str(msg), str(repo)]) == 0

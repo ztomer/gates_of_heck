@@ -56,3 +56,12 @@ CASES = [
         {"lib/stop.py": "import pid_owner\npid_owner.signal(pid_owner.read_stamp('p'), 9)\n"},
     ),
 ]
+
+# Gates this harness cannot fixture, folded into _canary_cases.UNCOVERED (that file is at its cap).
+UNCOVERED = {
+    "check_setting_proof.py": (
+        "it judges goh's OWN settings surface and a commit's MESSAGE over a range of commits, "
+        "which no consumer tree has and a map of files cannot express; goh's "
+        "tests/test_check_setting_proof.py drives it red in a planted repo"
+    ),
+}
