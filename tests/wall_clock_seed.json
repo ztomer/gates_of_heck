@@ -139,5 +139,22 @@
   "test_unreaped_spawn_native_parity.py": 2,
   "test_xctrace_profile.py": 1,
   "test_xexit.py": 2
+ },
+ "sleep_wait": {
+  "test_bench_hold.py": 1,
+  "test_bench_lock.py": 1,
+  "test_bounded_run_interrupt.py": 2,
+  "test_cache_bounds.py": 1,
+  "test_check_python_formatted.py": 1,
+  "test_gate_slot.py": 1,
+  "test_gate_slot_fair.py": 2,
+  "test_gate_slot_linux.py": 1,
+  "test_landq_look.py": 1,
+  "test_load_gate_inflight.py": 1,
+  "test_load_tool.py": 1,
+  "test_ordered_pool.py": 1,
+  "test_parse_guard.py": 1,
+  "test_slot_priority.py": 1,
+  "test_worker_share.py": 1
  }
 }
