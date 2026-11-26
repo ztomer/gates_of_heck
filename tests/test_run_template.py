@@ -53,7 +53,9 @@ def test_concurrent_workers_build_a_template_once_and_share_it(tmp_path: Path) -
     assert log.read_text().count("built") == 1, log.read_text()
     (path,) = paths
     assert (Path(path) / "f").read_text() == "x"
-    assert sorted(x.name for x in (tmp_path / "run").iterdir()) == ["k", "k.lock"]
+    # ...and its one claim (lib/build_once.py, GOH.BUILDONCE): a second build is refused.
+    assert sorted(x.name for x in (tmp_path / "run").iterdir()) == ["builds", "k", "k.lock"]
+    assert len(list((tmp_path / "run" / "builds").iterdir())) == 1
 
 
 def test_a_templates_repositories_hold_no_loose_objects(tmp_path_factory, tmp_path: Path) -> None:
