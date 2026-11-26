@@ -393,6 +393,10 @@ def main(argv: list[str]) -> int:
         print(render(by, a.min_s))
         print("\n".join(land_spd.render(k, v) for k, v in figures.items()))
         print(bin_reach_audit.audit_line(audits))
+        import gate_goal  # lib/: the gate's goal, read from run_ends (GOH.SUITETOTAL)
+
+        goal = gate_goal.current()
+        print(goal.line() if goal else "gate goal: none configured")
     return 0
 
 

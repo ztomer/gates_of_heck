@@ -10,7 +10,8 @@
   "at push", naming nobody; a held lock now refuses before anything starts, naming its holder's
   record, pid and state (lib/ship_lock.py, GOH.SHIPBISECTCOV).
 * the suite's work: no ship while the newest whole run is over a `whole_run` ceiling
-  (`work_refusal`, lib/test_work.py, GOH.SUITETOTAL).
+  (`work_refusal`, lib/test_work.py, GOH.SUITETOTAL), nor while the quiet lands' median gate is
+  over its goal (lib/gate_goal.py).
 
 Each returns why the ship is refused, or None. Pinned by tests/test_ship_item.py.
 
@@ -86,4 +87,14 @@ def work_refusal(repo: Path) -> str | None:
 
     import test_work
 
-    return test_work.ship_refusal(json.loads(ceilings.read_text(encoding="utf-8")))
+    conf = json.loads(ceilings.read_text(encoding="utf-8"))
+    if why := test_work.ship_refusal(conf):
+        return why
+    import gate_goal
+
+    got = gate_goal.current(conf)
+    if got is not None and got.median_s is None:
+        sys.stderr.write(f"⚠ {got.line()}\n")  # not judged, said: never a silent pass
+    if got is not None and got.over:
+        return f"{got.line()}: no ship while the gate is over its goal on a quiet machine"
+    return None
