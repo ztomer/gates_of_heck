@@ -22,7 +22,7 @@ from timing_bounds import patience
 
 TREE_READS = ("tests/test_work_ceiling.json", "tests/")  # the list names files there
 CONF = test_work.config()
-NAMED = 512  # the entries of tests/test_work_ceiling.json `named`, only ever lowered
+NAMED = 481  # the entries of tests/test_work_ceiling.json `named`, only ever lowered
 NEW = {"cpu_s": 0.1, "procs": 5, "git_repos": 1, "cargo_builds": 0, "tree_walks": 0}
 
 PLANTED = """import functools, hashlib, os, subprocess
