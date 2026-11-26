@@ -77,7 +77,11 @@ def real_of(path: object) -> str:
 
 
 def eligible(src: str) -> bool:
-    return bool(_ROOT) and src.startswith(_ROOT[0] + os.sep) and any(t in src for t in TEMPLATES)
+    """A template of this run: under its root, or under the owner's run that keeps the templates of
+    every pytest run of it (lib/build_once.py GOH_BUILD_RUN, GOH.BUILDONCE)."""
+    run = os.environ.get("GOH_BUILD_RUN", "")
+    roots = (_ROOT[0], os.path.realpath(run)) if _ROOT and run else tuple(_ROOT)
+    return any(src.startswith(r + os.sep) for r in roots) and any(t in src for t in TEMPLATES)
 
 
 def _changes(src: str, dst: str, stamp: int, sealed: Sealed) -> tuple[list[str], list[str], int]:

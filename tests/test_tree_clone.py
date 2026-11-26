@@ -22,6 +22,14 @@ from _tree_clone import clone_tree, copytree_clone, from_template, process_templ
 from conftest import commit_all, git, write
 
 
+@pytest.fixture(autouse=True)
+def _this_runs_own_templates(monkeypatch) -> None:
+    """These test a pytest run's OWN template builds, keyed by their tmp_path's name: inside an
+    owner's run (GOH_BUILD_RUN, lib/build_once.py) a later pytest run of it would take the first
+    one's and see no build of its own."""
+    monkeypatch.delenv("GOH_BUILD_RUN", raising=False)
+
+
 def _state(r: Path) -> tuple:
     """Everything a test could have written that another test could read."""
     return (

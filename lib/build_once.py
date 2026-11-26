@@ -181,7 +181,11 @@ def building(run: Path, kind: str, key: str, caller: str) -> Iterator[None]:
     """`claim`, then the build the block makes, its seconds kept in the marker for `record`."""
     claim(run, kind, key, caller)
     t0 = time.monotonic()
-    yield
+    try:
+        yield
+    except BaseException:
+        _marker(run, kind, key).unlink(missing_ok=True)  # a build that failed was no build
+        raise
     with open(_marker(run, kind, key), "a", encoding="utf-8") as f:
         f.write(f"{time.monotonic() - t0:.3f}\n")
 

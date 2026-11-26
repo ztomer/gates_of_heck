@@ -115,3 +115,11 @@ def test_a_second_build_of_one_template_is_refused(
     shutil.rmtree(tmp_path / "k")
     with pytest.raises(build_once.BuiltTwice, match=r"template \(.*/k\)"):
         _run_template(tmp_path, "k", lambda p: p.mkdir(parents=True), keep_quiet=False)
+
+
+def test_a_build_that_failed_leaves_no_claim(tmp_path: Path) -> None:
+    with pytest.raises(ValueError), build_once.building(tmp_path, "template", "k", "first"):
+        raise ValueError("the build failed")
+    with build_once.building(tmp_path, "template", "k", "again"):  # a retry is the one build
+        pass
+    assert [c.split(" (pid")[0] for _, c, _ in build_once.builds(tmp_path)] == ["again"]
