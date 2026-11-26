@@ -20,6 +20,8 @@ here, not there.
   GOH.PYHARNESS), the plugins below and every test file among them.
 * here, first: INT and QUIT, inherited ignored (the rust gate's `( suite ) &`), are put back before
   a test starts a child (tests/_inherited_signals.py, GOH.RUSTOVERLAP).
+* `_test_work`: each test's CPU, processes, git repos, cargo builds and tree walks, recorded and
+  held under a ceiling (GOH.TESTWORK, lib/test_work.py).
 * `_land_waive`: a land's reds that are main's or a newer rule's, waived by a reading on main or
   warned (GOH.MAINREDWAIVE, GOH.RULEINFLIGHT, lib/land_waive.py).
 """
@@ -50,6 +52,7 @@ pytest_plugins = [
     "_land_waive",
     "_db_on_disk",
     "_quiet_tmp",
+    "_test_work",
 ]
 
 

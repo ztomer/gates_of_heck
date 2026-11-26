@@ -61,6 +61,11 @@ for f in "${GUARDS[@]}"; do
     fi
 done
 [ "${#DUE[@]}" -gt 0 ] || exit 0
+# What the commit stages, and the checkout it is staged in, for a guard that judges what the commit
+# ADDS (tests/test_test_work_new.py, GOH.TESTWORK): its HEAD side is `git -C FROM show HEAD:path`.
+GATES_OF_HECK_STAGED_PATHS="$( (goh_bind_hook_index; git diff --cached --name-only --diff-filter=ACMR) 2>/dev/null || true)"
+GATES_OF_HECK_STAGED_FROM="$(pwd -P)"
+export GATES_OF_HECK_STAGED_PATHS GATES_OF_HECK_STAGED_FROM
 
 . "$HERE/_common.sh"
 # The gated repo's own config, unknown when this script is linted (GOH.SHX):
