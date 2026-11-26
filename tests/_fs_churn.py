@@ -71,6 +71,7 @@ if _LIB not in sys.path:
 import _fs_bytes  # noqa: E402  (tests/, beside this file)
 import _fs_ceilings  # noqa: E402
 import _whole_run  # noqa: E402
+import count_advisory  # noqa: E402  (lib/)
 import fs_events  # noqa: E402
 import pytest  # noqa: E402
 
@@ -294,6 +295,9 @@ def pytest_sessionfinish(session, exitstatus) -> None:
         )
     for line in _fs_bytes.summary(rep):
         (tr.write_line if tr else print)(line)
+    faults, warned = count_advisory.split(faults)
+    for f in warned:
+        (tr.write_line if tr else print)(f"⚠ file events, advisory at a release push: {f}")
     for f in faults:
         line = f"✗ file events (GOH.FSCHURN2, tests/fs_events_ceiling.json): {f}"
         (tr.write_line if tr else print)(line)

@@ -51,6 +51,7 @@ from timing_bounds import patience
 _LIB = str(Path(__file__).resolve().parent.parent / "lib")
 if _LIB not in sys.path:
     sys.path.append(_LIB)
+import count_advisory  # noqa: E402  (lib/)
 import test_work  # noqa: E402  (lib/)
 
 MODE = os.environ.pop("GATES_OF_HECK_TEST_WORK", "")
@@ -403,9 +404,11 @@ def pytest_sessionfinish(session) -> None:
             json.dumps({"whole": whole, **load, "rows": rows}) + "\n", encoding="utf-8"
         )
     found = test_work.faults(rows, conf, new_only=MODE == "new")
-    notes: list[str] = []
     if whole and MODE != "new":
         found += test_work.stale(rows, conf, past)
+    found, warned = count_advisory.split(found, release=None if MODE != "new" else False)
+    notes: list[str] = []
+    if whole and MODE != "new":
         over, notes = test_work.total_faults(rows, conf)  # GOH.SUITETOTAL
         found += over
     if MODE != "new":  # a file over its recent norm (GOH.SUITETOTAL): its counts decide
@@ -418,6 +421,8 @@ def pytest_sessionfinish(session) -> None:
         f"{' and recorded' if kept else ''} (lib/test_work.py)")  # fmt: skip
     for n in notes:
         say(f"⚠ test work (GOH.SUITETOTAL): {n}")  # a land's log carries it
+    for f in warned:
+        say(f"⚠ test work (GOH.TESTWORK), at its line, advisory at a release push: {f}")
     for f in found:
         say(f"✗ test work (GOH.TESTWORK): {f}")
     if found and session.exitstatus == 0:

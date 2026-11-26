@@ -32,6 +32,7 @@ lib/build_once.py	base-code
 lib/cache_rows.py	base-code
 lib/candidate_columns.py	base-code
 lib/consumer_reads.py	base-code
+lib/count_advisory.py	base-code
 lib/cov_env.py	base-code
 lib/crate_reach.py	base-code
 lib/db_bounds.py	base-code

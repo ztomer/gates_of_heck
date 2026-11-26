@@ -191,7 +191,7 @@ info "release: building goh as $TAG beside the land (pid $prebuild)"
 
 # Its push gate takes the same reduced set: release files only on a parent whose land was green
 # (.gatesrc GOH_PUSH_RELEASE_REUSE, lib/release_gate.py push-decide; anything else is the full gate).
-timed "release: push main" git push origin main
+timed "release: push main" env GATES_OF_HECK_COUNTS_ADVISORY=release git push origin main
 notes="$(mktemp "$(goh_tmp)/goh-release-notes.XXXXXX")"
 awk -v h="## $TAG" 'index($0, h) == 1 && (length($0) == length(h) || substr($0, length(h) + 1, 1) == " ") { on = 1; next }
     on && /^## / { exit } on { print }' CHANGELOG.md | sed -e '/./,$!d' >"$notes"
@@ -207,7 +207,7 @@ else
     warn "release: the build of goh as $TAG failed (exit $prebuild_rc); the tag push builds it:"
     tail -n 5 "$prebuild_log" | sed 's/^/    /' >&2
 fi
-timed "release: push the tag" git push origin "refs/tags/$TAG"
+timed "release: push the tag" env GATES_OF_HECK_COUNTS_ADVISORY=release git push origin "refs/tags/$TAG"
 # THE GITHUB RELEASE (GOH.SELFGHRELEASE). From GOH.SHIPKIT on this kit pushed the tag and made no
 # release, so v0.96.0.. stood release-less and `gh release list` kept v0.95.0 Latest: the state the
 # consumer kit backfills. The same step as release.sh's (tools/release-kit/gh_release.sh): every
