@@ -12,6 +12,7 @@ and a step log's `tail`; then the profile table (`ship_profile.table`); and the 
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -32,6 +33,15 @@ from tui.lib import err, info, ok, step
 TAIL = 40  # a failed step's last log lines, carried in the result
 profile = ship_profile.profile  # each step's GOH_TIMINGS file (tools/ship.py's one name for it)
 ticks = ship_quiet.ticks  # the tick counters a step's `idle_pct` is read between (GOH.SHIPQUIET)
+
+
+def result_file(value: str) -> str:
+    """argparse's `type` for ship's mode flags (--status, --worker, --verify): an empty value (an
+    unset variable, a glob that matched nothing) is refused, never read as "no flag", which fell
+    through and STARTED a ship (GOH.SHIPEMPTYMODE, found from token-pool 2026-11-25)."""
+    if not value:
+        raise argparse.ArgumentTypeError("needs a result file, not an empty value")
+    return value
 
 
 def quiet_settings(cfg: dict[str, str]) -> list[float]:

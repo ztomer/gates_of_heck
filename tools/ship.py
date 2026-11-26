@@ -129,7 +129,7 @@ from ship_version import (
 from tui.lib import err, info, ok, step
 
 STEPS = ("suite", "push", "release", "install", "verify", "done")
-save, tail = ship_status.save, ship_status.tail  # the record (goh.db row + file), a step log
+save, tail, result_file = ship_status.save, ship_status.tail, ship_status.result_file
 GRACE, DEFAULT_TIMEOUT = 5, 3600
 _HELD: dict[str, float] = {}  # "at": time.monotonic() when this worker took the land lock
 KEYS = ("GOH_SHIP_RELEASE", "GOH_SHIP_INSTALL", "GOH_SHIP_TIMEOUT", "GOH_SHIP_RELEASE_PUSHES",
@@ -431,9 +431,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--allow-diffcov", metavar="REASON", help="ship despite uncovered lines")
     ap.add_argument("--wait", action="store_true", help="run in the foreground, a mark per step")
     ap.add_argument("--out", help="the result JSON (default ~/.local/state/goh/ship/REPO/...)")
-    ap.add_argument("--status", metavar="RESULT", help="print a result's marks")
-    ap.add_argument("--worker", metavar="RESULT", help=argparse.SUPPRESS)
-    ap.add_argument("--verify", metavar="RESULT", help=argparse.SUPPRESS)
+    ap.add_argument("--status", type=result_file, metavar="RESULT", help="print a result's marks")
+    ap.add_argument("--worker", type=result_file, metavar="RESULT", help=argparse.SUPPRESS)
+    ap.add_argument("--verify", type=result_file, metavar="RESULT", help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
     if args.verify:  # a re-run of a ship failed at verify resumes it there (GOH.SHIPREVERIFY)
         if ship_verify.reopen(ship_status.record(args.verify), dry=True):
