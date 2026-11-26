@@ -94,3 +94,65 @@ def test_the_ceilings_stand_over_the_readings_and_only_fall() -> None:
     most = CONF["whole_run"]
     assert most["cpu_s"] <= CPU_S and most["procs"] <= PROCS, most
     assert most["cpu_s"] > 3789.4 and most["procs"] > 32502  # the loaded reading, the highest
+
+
+SLOW = {"norm_runs": 5, "min_runs": 2, "factor": 2.0, "min_s": 0.05}
+SLOW_PLANT = {
+    "test_slow_work.py": """import hashlib, subprocess
+
+def test_slow_and_busier():
+    hashlib.pbkdf2_hmac("sha256", b"x", b"y", 2_000_000)
+    for _ in range(4):
+        subprocess.run(["true"], check=True, stdin=subprocess.DEVNULL)
+""",
+    "test_slow_box.py": """import hashlib
+
+def test_slow_alone():
+    hashlib.pbkdf2_hmac("sha256", b"x", b"y", 2_000_000)
+""",
+    "test_steady.py": "def test_quick():\n    pass\n",
+}
+NORM = {**dict.fromkeys(test_work.DIMS, 0.0), "cpu_s": 0.01, "procs": 1.0}
+
+
+def test_the_land_names_a_file_over_its_norm_and_blocks_only_when_its_counts_grew(
+    tmp_path: Path,
+) -> None:
+    """Three planted files against a norm of 0.01 CPU s and 1 process a test: the slow one whose
+    processes grew blocks, the slow one alone warns, the steady one says nothing."""
+    for name, body in SLOW_PLANT.items():
+        (tmp_path / name).write_text(body)
+    conf = {"new": NEW, "named": {}, "slow": SLOW}
+    norms = dict.fromkeys(SLOW_PLANT, NORM)
+    env = hermetic_env(
+        GATES_OF_HECK_TEST_WORK="judge", GATES_OF_HECK_TEST_WORK_CEILING=json.dumps(conf),
+        GATES_OF_HECK_TEST_WORK_NORMS=json.dumps(norms),
+        PYTHONPATH=f"{REPO_ROOT / 'tests'}:{REPO_ROOT / 'lib'}",
+    )  # fmt: skip
+    r = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "no:xdist", "-p",
+         "_test_work", "-W", "ignore", "--rootdir", str(tmp_path), *SLOW_PLANT],
+        cwd=tmp_path, env=env, check=False, capture_output=True, text=True,
+        stdin=subprocess.DEVNULL, timeout=patience(120),
+    )  # fmt: skip
+    out = r.stdout
+    assert "3 passed" in out and r.returncode == 1, out[-2000:]
+    block = [ln for ln in out.splitlines() if ln.startswith("✗ test work")]
+    warn = [ln for ln in out.splitlines() if ln.startswith("⚠ test work (GOH.SUITETOTAL)")]
+    assert len(block) == 1 and "test_slow_work.py read" in block[0], out[-2000:]
+    assert "its work grew: procs 4.0 a test (norm 1.0)" in block[0], block
+    assert len(warn) == 1 and "test_slow_box.py read" in warn[0], out[-2000:]
+    assert "counts did not grow" in warn[0] and "test_steady.py" not in out, out[-2000:]
+
+
+def test_a_files_norm_is_the_median_of_its_recent_landed_runs(monkeypatch) -> None:
+    Held().lay(monkeypatch)
+    conf = {"slow": {**SLOW, "norm_runs": 3}}
+    row = dict.fromkeys(test_work.DIMS, 0)
+    for i, (cpu, head) in enumerate([(9.0, "a"), (1.0, "b"), (2.0, None), (3.0, "c"), (5.0, "d")]):
+        rows = {"f.py::t": {**row, "cpu_s": cpu}, "f.py::u": {**row, "cpu_s": cpu}}
+        assert test_work.record(f"r{i}", rows, False, 1.0, 1.0, head=head)
+    norms = test_work.file_norms(conf)  # the newest 3 of a commit: 5, 3, 1 -- not 2 (no head)
+    assert norms["f.py"]["cpu_s"] == 3.0, norms
+    assert test_work.file_norms({"slow": {**SLOW, "min_runs": 9}}) == {}  # too few readings
+    assert test_work.file_norms({}) == {}  # no window configured: no norm

@@ -38,6 +38,7 @@ import os
 import re
 import resource
 import shlex
+import subprocess
 import sys
 import threading
 import time
@@ -45,6 +46,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from timing_bounds import patience
 
 _LIB = str(Path(__file__).resolve().parent.parent / "lib")
 if _LIB not in sys.path:
@@ -54,6 +56,7 @@ import test_work  # noqa: E402  (lib/)
 MODE = os.environ.pop("GATES_OF_HECK_TEST_WORK", "")
 CEILING = os.environ.pop("GATES_OF_HECK_TEST_WORK_CEILING", "")
 OUT = os.environ.pop("GATES_OF_HECK_TEST_WORK_OUT", "")
+NORMS = os.environ.pop("GATES_OF_HECK_TEST_WORK_NORMS", "")  # {file: norm} in place of goh.db's
 PROP = "goh_test_work"  # a teardown report's user property: the test's counts
 LISTS = frozenset(("os.scandir", "os.listdir"))
 SPAWNS = frozenset(("subprocess.Popen", "os.posix_spawn", "os.posix_spawnp", "os.system",
@@ -339,6 +342,33 @@ def _whole(config) -> bool:
     return _whole_run.whole(config) and not deselected
 
 
+def _head(config) -> str | None:
+    """The commit the run's tree is, None when it is not one (a dirty tree, no git): what lands is
+    the commit a land's pre-step ran, so its rows are that change's (lib/test_work.py)."""
+    root, git = str(config.rootpath), ["git", "-C", str(config.rootpath)]
+    try:
+        dirty = subprocess.run(
+            [*git, "status", "--porcelain", "-uno"],
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            timeout=patience(30),
+            check=False,
+        )
+        head = subprocess.run(
+            [*git, "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            timeout=patience(30),
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    clean = dirty.returncode == 0 and not dirty.stdout.strip() and head.returncode == 0
+    return head.stdout.strip() if clean and root else None
+
+
 def _load() -> float | None:
     try:
         return round(os.getloadavg()[0], 2)
@@ -362,8 +392,9 @@ def pytest_sessionfinish(session) -> None:
     conf = test_work.config(CEILING or None)
     run = f"{os.getpid()}:{time.time():.3f}"
     past = test_work.history(conf, db) if db is not None and whole else None  # before this run's
+    norms = json.loads(NORMS) if NORMS else test_work.file_norms(conf, db) if db else {}
     kept = db is not None and test_work.record(
-        run, rows, whole, _LOAD0[0], _load(), db, cores=os.cpu_count()
+        run, rows, whole, _LOAD0[0], _load(), db, cores=os.cpu_count(), head=_head(session.config)
     )
     if OUT:
         load = {"load1": _LOAD0[0], "load_end": _load(), "cores": os.cpu_count()}
@@ -376,12 +407,16 @@ def pytest_sessionfinish(session) -> None:
         found += test_work.stale(rows, conf, past)
         over, notes = test_work.total_faults(rows, conf)  # GOH.SUITETOTAL
         found += over
+    if MODE != "new":  # a file over its recent norm (GOH.SUITETOTAL): its counts decide
+        slow, notes_slow = test_work.slow_files(rows, conf, norms)
+        found += slow
+        notes += notes_slow
     tr = session.config.pluginmanager.get_plugin("terminalreporter")
     say = tr.write_line if tr else print
     say(f"→ test work: {len(rows) - (test_work.SHARED in rows)} tests counted"
         f"{' and recorded' if kept else ''} (lib/test_work.py)")  # fmt: skip
     for n in notes:
-        say(f"⚠ test work (GOH.SUITETOTAL): {n}")
+        say(f"⚠ test work (GOH.SUITETOTAL): {n}")  # a land's log carries it
     for f in found:
         say(f"✗ test work (GOH.TESTWORK): {f}")
     if found and session.exitstatus == 0:

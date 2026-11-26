@@ -241,19 +241,95 @@ def ship_refusal(conf: Mapping, db: Path | None = None) -> str | None:
             " is back under")  # fmt: skip
 
 
+def per_file(rows: Mapping[str, Mapping]) -> dict[str, dict[str, float]]:
+    """{file: {"tests": n, dim: its tests' mean}} of a run's warm rows (GOH.SUITETOTAL): a mean,
+    so a land's selection of a file reads against a whole run's of it."""
+    sums: dict[str, dict[str, float]] = {}
+    for node, row in rows.items():
+        if node == SHARED or row.get("cold"):
+            continue
+        got = sums.setdefault(node.split("::")[0], dict.fromkeys(("tests", *DIMS), 0.0))
+        got["tests"] += 1
+        for dim in DIMS:
+            got[dim] += float(row.get(dim, 0))
+    return {
+        f: {"tests": g["tests"], **{d: g[d] / g["tests"] for d in DIMS}} for f, g in sums.items()
+    }
+
+
+def file_norms(conf: Mapping, db: Path | None = None) -> dict[str, dict[str, float]]:
+    """{file: its recent norm}: per dimension the median of its per-test means over the newest
+    `slow.norm_runs` recorded runs of a commit (`head`, a landed change's pre-step) that ran it;
+    a file read in fewer than `slow.min_runs` of them has none. {} without goh.db."""
+    slow = conf.get("slow", {})
+    if not slow:
+        return {}
+    runs: dict[str, list[dict[str, float]]] = {}
+    try:
+        with goh_db.ro(db, db is not None) as con:
+            picked = [r for (r,) in con.execute(
+                "SELECT run FROM test_work_runs WHERE head IS NOT NULL ORDER BY at DESC LIMIT ?",
+                (int(slow["norm_runs"]),))]  # fmt: skip
+            for run in picked:
+                rows = {node: dict(zip(DIMS, vals, strict=True)) | {"cold": cold}
+                        for node, *vals, cold in con.execute(
+                            f"SELECT node, {', '.join(DIMS)}, cold FROM test_work WHERE run = ?",
+                            (run,))}  # fmt: skip
+                for f, means in per_file(rows).items():
+                    runs.setdefault(f, []).append(means)
+    except FAULTS:
+        return {}
+    out = {}
+    for f, seen in runs.items():
+        if len(seen) >= int(slow.get("min_runs", 1)):
+            out[f] = {d: sorted(m[d] for m in seen)[len(seen) // 2] for d in DIMS}
+    return out
+
+
+def slow_files(
+    rows: Mapping[str, Mapping], conf: Mapping, norms: Mapping[str, Mapping[str, float]]
+) -> tuple[list[str], list[str]]:
+    """(blocks, warnings): each file this run read over its recent norm (NORMS, `file_norms`) by
+    `slow.factor` a test and `slow.min_s` in all. It BLOCKS only when a count (processes, repos,
+    builds, walks) rose with it -- the work grew; CPU alone is a warning naming it, because one
+    CPU reading moves with the box (19 files crossed 1 s between two idle whole runs)."""
+    slow = conf.get("slow", {})
+    if not slow:
+        return [], []
+    factor, least = float(slow["factor"]), float(slow["min_s"])
+    blocks, warns = [], []
+    for f, now in sorted(per_file(rows).items()):
+        was = norms.get(f)
+        if not was or now["cpu_s"] <= was["cpu_s"] * factor:
+            continue
+        if (now["cpu_s"] - was["cpu_s"]) * now["tests"] < least:
+            continue
+        grew = [f"{d} {now[d]:.1f} a test (norm {was[d]:.1f})" for d in COUNTS
+                if now[d] > was[d] * factor and now[d] > was[d]]  # fmt: skip
+        line = (
+            f"{f} read {now['cpu_s']:.2f} CPU s a test over {int(now['tests'])} tests, over"
+            f" {factor:g}x its recent norm {was['cpu_s']:.2f}"
+        )
+        if grew:
+            blocks.append(f"{line}, and its work grew: {'; '.join(grew)} -- cut it, or name it")
+        else:
+            warns.append(f"{line}; its counts did not grow, so it is the box or a cache: a warning")
+    return blocks, warns
+
+
 def record(run: str, rows: Mapping[str, Mapping], whole: bool, load1: float | None,
            load_end: float | None, db: Path | None = None, why: str = "",
-           cores: int | None = None) -> bool:  # fmt: skip
-    """RUN's rows in ONE transaction; False (one stderr line) when they cannot be written: the
-    instrument never fails the run."""
+           cores: int | None = None, head: str | None = None) -> bool:  # fmt: skip
+    """RUN's rows in ONE transaction, HEAD the commit its tree was (None: not a commit's); False
+    (one stderr line) when they cannot be written: the instrument never fails the run."""
     now = time.time()
     try:
         with goh_db.transaction(db, db is not None) as con:
             con.execute(
                 "INSERT OR REPLACE INTO test_work_runs(run, whole, tests, load1, load_end, cores,"
-                " why, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                " why, head, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (run, int(whole), sum(n != SHARED for n in rows), load1, load_end, cores,
-                 why or None, now),
+                 why or None, head, now),
             )  # fmt: skip
             con.executemany(
                 "INSERT OR REPLACE INTO test_work(run, node, cpu_s, procs, git_repos,"
