@@ -240,7 +240,7 @@ def named_stop(out: str) -> str:
 def run(root: Path, *args, **kw) -> list[str]:
     """`_checked` as ONE run of builds (lib/build_once.py, GOH.BUILDONCE): its guard tests' pytest
     runs share one goh test binary, built by the first to ask; a second build is refused."""
-    with build_once.owned() as built:
+    with build_once.in_environ(root) as built:  # this process's maps are the run's too
         return _checked(root, *args, built=built, **kw)
 
 

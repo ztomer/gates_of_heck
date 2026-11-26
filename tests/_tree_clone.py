@@ -30,6 +30,9 @@ from _reused_tmp import reused_mkdtemp
 from _test_work import shared_setup
 from timing_bounds import patience
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from lib import build_once  # GOH.BUILDONCE: a run's templates are once
+
 # clonefile(2) cannot serve these: another volume, a filesystem without clones. Any other error is
 # a real one and is raised.
 _FALL_BACK = {errno.EXDEV, errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS}
@@ -195,9 +198,14 @@ def template(factory, key: str, build) -> Path:
 
 def _run_dir(factory) -> Path:
     """The directory every worker of this run shares: an xdist worker's basetemp is
-    `<run>/popen-gwN`, a lone session's is the run's own."""
+    `<run>/popen-gwN`, a lone session's is the run's own -- or, inside an owner's run of this tree
+    (lib/build_once.py, GOH.BUILDONCE), that run's, which every pytest run of it shares."""
     base = factory.getbasetemp()
-    return base.parent if os.environ.get("PYTEST_XDIST_WORKER") else base
+    return _owned(base.parent if os.environ.get("PYTEST_XDIST_WORKER") else base)
+
+
+def _owned(default: Path) -> Path:
+    return build_once.home_for(default, "templates", Path(__file__).resolve().parents[1])
 
 
 def _run_template(parent: Path, key: str, build, keep_quiet: bool = True) -> Path:
@@ -219,7 +227,7 @@ def _run_template(parent: Path, key: str, build, keep_quiet: bool = True) -> Pat
                 if stage.exists():
                     unsealed_rmtree(stage)
                 stage.mkdir()
-                with shared_setup():  # the run's build, not the asking test's (GOH.TESTWORK)
+                with shared_setup(), build_once.template_build(parent, key):  # GOH.TESTWORK
                     _build_quietly(build, stage / key, keep_quiet)
                 os.rename(stage, done)
         finally:
@@ -429,7 +437,7 @@ def process_template(key: str, build, keep_quiet: bool = True) -> Path:
     wrote it (no maintenance-off keys), for a template that must be what git itself makes."""
     if key not in _PROCESS_TEMPLATES and _RUN_ROOT:
         _PROCESS_TEMPLATES[key] = _run_template(
-            _RUN_ROOT[0] / "goh-process-templates", key, build, keep_quiet
+            _owned(_RUN_ROOT[0]) / "goh-process-templates", key, build, keep_quiet
         )
         _known_seals(_PROCESS_TEMPLATES[key])
     if key not in _PROCESS_TEMPLATES:

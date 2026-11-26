@@ -426,9 +426,9 @@ def native_goh(tmp_path_factory) -> Path:
                 (shared / GOH_BUILD_RECORD).write_text("provided\n")
             published = Path(provided)
         elif not published.exists():
-            who = os.environ.get("PYTEST_CURRENT_TEST", "") or "the session's first test"
-            build_once.claim(shared, "goh test binary", str(REPO_ROOT), f"native_goh for {who}")
-            built = _build_goh()
+            who = f"native_goh for {os.environ.get('PYTEST_CURRENT_TEST', '') or 'a first test'}"
+            with build_once.building(shared, "goh test binary", str(REPO_ROOT), who):
+                built = _build_goh()
             with open(shared / GOH_BUILD_RECORD, "a") as record:
                 record.write(f"{os.environ.get('PYTEST_XDIST_WORKER', 'master')}\n")
             published.parent.mkdir(parents=True, exist_ok=True)

@@ -30,8 +30,9 @@ from pathlib import Path
 
 try:
     from checks import _prose_mask
-    from lib import declared_reads, source_closure, test_slice
+    from lib import build_once, declared_reads, source_closure, test_slice
 except ImportError:  # lib/ itself on the path
+    import build_once  # type: ignore[no-redef]
     import declared_reads  # type: ignore[no-redef]
     import source_closure  # type: ignore[no-redef]
     import test_slice  # type: ignore[no-redef]
@@ -106,7 +107,12 @@ class Closure:
     """The dependency graph of a tree, built lazily: file -> what it imports or sources
     (lib/source_closure.py), and file -> the scripts its text names."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path) -> None:  # the run's tree: mapped ONCE per run (GOH.BUILDONCE)
+        made = build_once.shared("dependency map", root, lambda: self._build(root))
+        self.__dict__.update(self._build(root) if made is None else {**made, "root": root})
+
+    def _build(self, root: Path) -> dict:
+        """The map of ROOT, read from its files: what `__init__` builds when no run holds it."""
         self.root = root
         self.texts = _files(root)
         self.scripts = [p for p in self.texts if not Path(p).name.startswith("test_")]
@@ -130,6 +136,7 @@ class Closure:
             if listed.is_file()
             else set()
         )
+        return self.__dict__
 
     def code(self, rel: str) -> str:
         """`rel`'s code with its prose blanked (checks/_prose_mask.py): a docstring or comment

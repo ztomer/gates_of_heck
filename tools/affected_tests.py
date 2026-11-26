@@ -69,7 +69,7 @@ import lib.affected_verdict as av
 from lib import (
     bin_reach_audit,
     binary_runners,
-    build_once,  # GOH.BUILDONCE: one goh test binary per --run
+    build_once,  # GOH.BUILDONCE: --run is one run of builds (its maps, both runs' binary)
     consumer_reads,
     declared_reads,
     fast_tests,
@@ -358,9 +358,8 @@ def main(argv: list[str]) -> int:
         whole = args.changed is None and not args.readers_only
         base = pre_reuse.base_sha(root, args.base) if whole else None  # ONE run per change: av
         rust = land_rustcov.plan(root, args.base) if args.rust_cov and whole else None
-        with build_once.in_environ():  # the judges' and the rest's runs: one build (BUILDONCE)
-            go = functools.partial(run, root, changed, chosen, base, rust)
-            rc = av.whole(root, list(chosen), base, whole, go, rust is not None)
+        go = functools.partial(run, root, changed, chosen, base, rust)
+        rc = av.whole(root, list(chosen), base, whole, go, rust is not None)
         return rc or canary(root, changed)
     for rel, why in chosen.items():
         print(f"{rel}  # {why}" if args.why else rel)
@@ -446,4 +445,5 @@ def run(root: Path, changed: list[str], chosen: dict, base: str | None = None, r
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    with build_once.for_argv(sys.argv[1:]):
+        sys.exit(main(sys.argv[1:]))
