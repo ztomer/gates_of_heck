@@ -18,6 +18,8 @@ here, not there.
   GOH.NESTEDBASETEMP): no conftest hook or fixture asks for the basetemp before this one runs.
 * here, first: pytest's rewritten test files are kept between runs (tests/_rewrite_store.py,
   GOH.PYHARNESS), the plugins below and every test file among them.
+* here, first: INT and QUIT, inherited ignored (the rust gate's `( suite ) &`), are put back before
+  a test starts a child (tests/_inherited_signals.py, GOH.RUSTOVERLAP).
 * `_land_waive`: a land's reds that are main's or a newer rule's, waived by a reading on main or
   warned (GOH.MAINREDWAIVE, GOH.RULEINFLIGHT, lib/land_waive.py).
 """
@@ -27,6 +29,7 @@ from pathlib import Path
 
 import _closure_clones
 import _fixture_copies
+import _inherited_signals
 import _quiet_git
 import _quiet_tmp
 import _rewrite_store
@@ -34,6 +37,7 @@ from _clone_copies import install
 from _tree_clone import run_wide
 from suite_tmp import own_root
 
+_inherited_signals.restore()
 _rewrite_store.install()
 
 pytest_plugins = [
