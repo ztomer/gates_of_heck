@@ -264,7 +264,7 @@
   "tests/test_live_reads.py": {"cpu_s": 2.5, "why": "unreviewed: stood before the rule (GOH.TESTWORK)"},
   "tests/test_live_root_leak.py": {"procs": 11, "why": "unreviewed: stood before the rule (GOH.TESTWORK)"},
   "tests/test_load_bare.py": {"procs": 17, "why": "unreviewed: stood before the rule (GOH.TESTWORK)"},
-  "tests/test_load_burning.py": {"procs": 21, "why": "unreviewed: stood before the rule (GOH.TESTWORK)"},
+  "tests/test_load_burning.py": {"procs": 50, "why": "polls ps until the spinner burns FLOOR_S of CPU, so its count follows the box's load (read 21, 22, 25); twice the highest"},
   "tests/test_load_gate_inflight.py": {"cpu_s": 2.5, "procs": 14, "why": "unreviewed: stood before the rule (GOH.TESTWORK)"},
   "tests/test_load_locks.py": {"cargo_builds": 2, "why": "unreviewed: stood before the rule (GOH.TESTWORK)"},
   "tests/test_load_orphan_exemption.py": {"procs": 12, "why": "unreviewed: stood before the rule (GOH.TESTWORK)"},
