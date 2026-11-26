@@ -11,6 +11,7 @@ import weakref
 from pathlib import Path
 
 import _pytest.tmpdir
+import _quiet_git
 import _quiet_pack
 import pytest
 from _tree_clone import clone_tree
@@ -19,8 +20,12 @@ from conftest import commit_all, git, write
 
 @pytest.fixture(autouse=True)
 def _nothing_runs(monkeypatch) -> None:
-    """No child an earlier test of this worker started and never waited for."""
+    """No child an earlier test of this worker started and never waited for, and no `GIT_*`
+    variable of the caller's that turns the quiet path off (tests/_quiet_git.py `serve`): these
+    tests are about that path, and a release runs them under its own git environment."""
     monkeypatch.setattr(_quiet_pack, "_CHILDREN", weakref.WeakSet())
+    for key in [k for k in os.environ if k.startswith("GIT_") and k not in _quiet_git._ENV_READ]:
+        monkeypatch.delenv(key)
 
 
 def _packs(repo: Path) -> list[str]:
