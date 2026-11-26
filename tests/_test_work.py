@@ -251,9 +251,11 @@ def pytest_runtest_setup(item) -> None:
 def shared_setup() -> Iterator[None]:
     """The work inside is the run's `<shared setup>`, never the test that asked first: a template a
     run or a process builds once (tests/_tree_clone.py `_run_template`), a graph filled once a
-    process (tests/_tree_graph.py `real`). Which test pays such a build is the scheduler's choice:
-    a land's pre-step, 231 judges in one serial process, charged one test 16 processes for a
-    template that a whole run had charged to another file (2026-11-25)."""
+    process (tests/_tree_graph.py `real`), and the harness's own work serving a test's git in
+    process (tests/_quiet_git.py `serve`: the test's command is the one `true` it starts). Which
+    test pays a build is the scheduler's choice: a land's pre-step, 231 judges in one serial
+    process, charged one test 16 processes for a template a whole run had charged to another file
+    (2026-11-25)."""
     if _wide[0]:
         yield
         return

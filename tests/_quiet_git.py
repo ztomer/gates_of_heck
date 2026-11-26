@@ -31,6 +31,7 @@ from pathlib import Path
 
 import _quiet_worktree
 from _quiet_pack import LOCK, _put, _sha, flush, is_quiet, keep, own, quietly, started, watch
+from _test_work import shared_setup
 
 REAL = "GATES_OF_HECK_REAL_GIT"
 _ENV_READ = {
@@ -409,7 +410,9 @@ def serve(argv: object, cwd: object, env: Mapping[str, str] | None, root: str) -
         top = os.path.realpath(os.path.join(os.fsdecode(cwd or os.getcwd()), here))
         if not top.startswith(root + os.sep):
             return False
-        with LOCK, quietly():
+        # The git it serves is the test's one process (the `true` below); what serving it runs is
+        # the harness's, never the test's (GOH.TESTWORK: a `rev-parse` per check, 5 or 6 by state).
+        with LOCK, quietly(), shared_setup():
             if command == "config":
                 _config(top, conf, args)
                 return True
