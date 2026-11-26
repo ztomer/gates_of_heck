@@ -33,6 +33,8 @@ from timing_bounds import patience
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib import build_once  # GOH.BUILDONCE: a run's templates are once
 
+build_once.AROUND[:] = [shared_setup]  # every once-a-run build is the run's (GOH.TESTWORK)
+
 # clonefile(2) cannot serve these: another volume, a filesystem without clones. Any other error is
 # a real one and is raised.
 _FALL_BACK = {errno.EXDEV, errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS}
@@ -197,9 +199,8 @@ def template(factory, key: str, build) -> Path:
 
 
 def _run_dir(factory) -> Path:
-    """The directory every worker of this run shares: an xdist worker's basetemp is
-    `<run>/popen-gwN`, a lone session's is the run's own -- or, inside an owner's run of this tree
-    (lib/build_once.py, GOH.BUILDONCE), that run's, which every pytest run of it shares."""
+    """Every worker's: an xdist worker's basetemp is `<run>/popen-gwN`, a lone session's is the
+    run's own -- inside an owner's run of this tree (GOH.BUILDONCE), that run's, every pytest's."""
     base = factory.getbasetemp()
     return _owned(base.parent if os.environ.get("PYTEST_XDIST_WORKER") else base)
 
@@ -227,7 +228,7 @@ def _run_template(parent: Path, key: str, build, keep_quiet: bool = True) -> Pat
                 if stage.exists():
                     unsealed_rmtree(stage)
                 stage.mkdir()
-                with shared_setup(), build_once.template_build(parent, key):  # GOH.TESTWORK
+                with build_once.template_build(parent, key):  # in shared_setup (AROUND)
                     _build_quietly(build, stage / key, keep_quiet)
                 os.rename(stage, done)
         finally:

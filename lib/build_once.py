@@ -175,13 +175,20 @@ def claim(run: Path, kind: str, key: str, caller: str) -> None:
         f.write(f"{caller} (pid {os.getpid()})\n")
 
 
+AROUND: list[Callable[[], contextlib.AbstractContextManager]] = []  # each build runs inside these
+
+
 @contextlib.contextmanager
 def building(run: Path, kind: str, key: str, caller: str) -> Iterator[None]:
-    """`claim`, then the build the block makes, its seconds kept in the marker for `record`."""
+    """`claim`, then the build the block makes -- inside every AROUND context this process
+    registered (the suite's shared setup, tests/_tree_clone.py) -- its seconds kept for `record`."""
     claim(run, kind, key, caller)
     t0 = time.monotonic()
     try:
-        yield
+        with contextlib.ExitStack() as around:
+            for make in AROUND:
+                around.enter_context(make())
+            yield
     except BaseException:
         _marker(run, kind, key).unlink(missing_ok=True)  # a build that failed was no build
         raise

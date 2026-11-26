@@ -123,3 +123,24 @@ def test_a_build_that_failed_leaves_no_claim(tmp_path: Path) -> None:
     with build_once.building(tmp_path, "template", "k", "again"):  # a retry is the one build
         pass
     assert [c.split(" (pid")[0] for _, c, _ in build_once.builds(tmp_path)] == ["again"]
+
+
+def test_every_build_runs_inside_the_registered_contexts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The suite registers its shared setup (tests/_tree_clone.py): a run's build is charged to the
+    run, never to the test that asked first (GOH.TESTWORK)."""
+    import contextlib
+
+    seen: list[str] = []
+
+    @contextlib.contextmanager
+    def around():
+        seen.append("in")
+        yield
+        seen.append("out")
+
+    monkeypatch.setattr(build_once, "AROUND", [around])
+    with build_once.building(tmp_path, "template", "k", "first"):
+        seen.append("build")
+    assert seen == ["in", "build", "out"]
