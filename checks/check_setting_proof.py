@@ -150,17 +150,23 @@ HOW = (
 
 
 def touched(diff: str) -> list[tuple[Setting, str]]:
-    """(setting, the changed line) for each surface entry a `-U0` unified DIFF touches."""
+    """(setting, the changed line) for each surface entry a `-U0` unified DIFF touches. A file new
+    to the tree (`--- /dev/null`) has no before to read, so its lines are no settings change: a
+    repo's first commit, or a tree committed whole (the self-hosted hook test)."""
     hits: list[tuple[Setting, str]] = []
-    path, ctx, header = "", "", False
+    path, ctx, header, new = "", "", False, False
     for line in diff.splitlines():
         if line.startswith("diff --git "):
-            header = True  # file headers until the first hunk: a removed `-- x` line is no header
+            header, new = True, False  # headers until the first hunk: a removed `-- x` is no header
             continue
         if header and (line.startswith(("+++ ", "--- "))):
             name = line[4:].strip()
-            if name != "/dev/null":
+            if name == "/dev/null":
+                new = new or line.startswith("--- ")
+            else:
                 path = name[2:] if name[:2] in ("a/", "b/") else name
+            continue
+        if new:
             continue
         if m := HUNK.match(line):
             ctx, header = m.group(1), False

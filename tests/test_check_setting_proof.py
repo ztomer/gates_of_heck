@@ -148,11 +148,25 @@ def test_the_range_chain_end_to_end_in_a_planted_repo(repo) -> None:
 
 def test_the_staged_chain_reads_the_index(repo, tmp_path) -> None:
     """`staged` (the commit-msg layer's mode) reads the index and the message file: red without
-    the readings, git's `#` comment lines ignored, green with both."""
+    the readings, git's `#` comment lines ignored, green with both. The file is committed first: a
+    file new to the tree has no before."""
+    write(repo, "lib/gate_lanes.py", "PRE_SLOTS = 2\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "base")
     write(repo, "lib/gate_lanes.py", "PRE_SLOTS = 3\n")
     git(repo, "add", "-A")
     msg = tmp_path / "MSG"
     msg.write_text(f"perf: x\n\n# {LANES}\n", encoding="utf-8")
     assert proof.main(["staged", str(msg), str(repo)]) == 1
     msg.write_text(BOTH, encoding="utf-8")
+    assert proof.main(["staged", str(msg), str(repo)]) == 0
+
+
+def test_a_file_new_to_the_tree_has_no_before_and_is_not_judged(repo, tmp_path) -> None:
+    """A file a commit adds whole (a repo's first commit; the self-hosted hook test commits goh's
+    tree that way) has no before to read, so its settings are no settings change."""
+    write(repo, "lib/gate_lanes.py", "PRE_SLOTS = 3\n")
+    git(repo, "add", "-A")
+    msg = tmp_path / "MSG"
+    msg.write_text("chore: first\n", encoding="utf-8")
     assert proof.main(["staged", str(msg), str(repo)]) == 0
