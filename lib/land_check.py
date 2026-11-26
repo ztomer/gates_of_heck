@@ -55,6 +55,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT)]
 from lib import (  # noqa: E402
+    build_once,
     check_jobs,
     check_verdict,
     cov_risk,
@@ -236,8 +237,16 @@ def named_stop(out: str) -> str:
     return "; ".join([*errors[:2], *files[:3], *(f"not found: {n}" for n in lost[:2])])[:400]
 
 
-def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=False, no_pre=False,
-        cov=True, reqs: list[dict] | None = None, rules=False, door=""):  # fmt: skip
+def run(root: Path, *args, **kw) -> list[str]:
+    """`_checked` as ONE run of builds (lib/build_once.py, GOH.BUILDONCE): its guard tests' pytest
+    runs share one goh test binary, built by the first to ask; a second build is refused."""
+    with build_once.owned() as built:
+        return _checked(root, *args, built=built, **kw)
+
+
+def _checked(root: Path, q: Path | None = None, say=print, repo: str = "", tables=False,
+             no_pre=False, cov=True, reqs: list[dict] | None = None, rules=False, door="",
+             built: Path | None = None):  # fmt: skip
     """Every guard over ROOT; the refusing guards' names ([] is green). SAY prints a line. TABLES
     (`goh land --check`) adds every judge the change can break (`judge_tests`) and, unless not COV
     (a batch's ratchet phase, lib/landq_ratchet.py), diff coverage; NO_PRE `steps`' no-pre lint,
@@ -246,6 +255,7 @@ def run(root: Path, q: Path | None = None, say=print, repo: str = "", tables=Fal
     (`check`, `rules`, `enqueue`): its green is kept, and the enqueue takes one kept for the same
     tree, base and gate code (lib/check_verdict.py); "" (a batch's phase) does neither."""
     env = {**_env(root), **({"GOH_RUST_COVERAGE": "defer"} if no_pre else {})}
+    env.update({build_once.ENV: str(built)} if built else {})
     at = ["git", "rev-parse", "HEAD"]
     rc, head, _ = _run(at, root, env, 60) if repo and not reqs else (1, "", 0)
     reqs = reqs or [{"repo": repo, "sha": head.strip()}] * (rc == 0)

@@ -320,6 +320,8 @@ def mk_xcrun_find_shim(bin_dir: Path, swift_path: Path) -> Path:
 # (was a 36-line verbatim duplicate in both — one copy now).
 from _fake_gh import FAKE_GH  # noqa: F401  -- re-exported: the release kit's tests import it here
 
+from lib import build_once  # noqa: E402  (GOH.BUILDONCE)
+
 
 def _build_goh() -> Path:
     r = subprocess.run(
@@ -409,8 +411,8 @@ def native_goh(tmp_path_factory) -> Path:
     root; every other worker waits on the lock and reads that copy. No test reads cargo's target
     path while a build of it can be running.
     """
-    shared = _shared_tmp(tmp_path_factory)
-    published = shared / "goh-bin" / "goh"
+    shared = build_once.run_dir(_shared_tmp(tmp_path_factory))  # one per WHOLE run: GOH.BUILDONCE
+    published = build_once.home(shared, "goh-bin", REPO_ROOT) / "goh"
     # GOH_TEST_BIN: a binary built elsewhere, used as is -- the coverage gate's INSTRUMENTED build
     # (GOH_COV_RUST_EXTERNAL), whose profiles are this suite's share of the crate's coverage. A
     # copy would still count; a rebuild here would not be instrumented.
@@ -424,10 +426,12 @@ def native_goh(tmp_path_factory) -> Path:
                 (shared / GOH_BUILD_RECORD).write_text("provided\n")
             published = Path(provided)
         elif not published.exists():
+            who = os.environ.get("PYTEST_CURRENT_TEST", "") or "the session's first test"
+            build_once.claim(shared, "goh test binary", str(REPO_ROOT), f"native_goh for {who}")
             built = _build_goh()
             with open(shared / GOH_BUILD_RECORD, "a") as record:
                 record.write(f"{os.environ.get('PYTEST_XDIST_WORKER', 'master')}\n")
-            published.parent.mkdir(exist_ok=True)
+            published.parent.mkdir(parents=True, exist_ok=True)
             staging = published.with_suffix(".staging")
             shutil.copy2(built, staging)
             staging.rename(published)  # atomic: readers see all of it or none

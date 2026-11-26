@@ -141,6 +141,8 @@ CALLER_INPUTS = (
     # the suite's share.
     "GOH_TEST_BIN",
     "GOH_COVERAGE_BIN_DIR",
+    # ... and the run whose builds are once (lib/build_once.py, GOH.BUILDONCE): a check's 8 runs.
+    "GOH_BUILD_RUN",
     # ... and the same goh for the gate scripts a test runs (gates/_goh_bin.sh, GOH.COVGOHBIN):
     # dropped here, their runs stayed the release build's and left no profile.
     "GOH_COV_GOH",
