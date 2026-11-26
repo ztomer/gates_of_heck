@@ -20,6 +20,7 @@ from pathlib import Path
 import _kept_store
 import _self_walk as w
 import pytest
+import suite_tmp
 from _self_walk import Result
 from _tree_clone import template
 from conftest import hermetic_env
@@ -245,7 +246,11 @@ def trees(native_goh: Path, tmp_path_factory) -> dict:
         for name, planted in (("goh", {}), ("planted", plants)):
             w.walked_tree(root / name, seed, planted)
 
-    root = template(tmp_path_factory, "self-walk", build)
+    # The plants carry a SESSION's nonce, so the two trees are this pytest run's alone: inside an
+    # owner's run (lib/build_once.py, GOH.BUILDONCE) a later pytest run of it must not take them --
+    # its walk would find the plants' bytes already linted. Keyed by the run's own root, made anew.
+    run = os.stat(os.environ[suite_tmp.MARKER])
+    root = template(tmp_path_factory, f"self-walk-{run.st_ino}-{run.st_ctime_ns}", build)
     built = {name: (root / name, w.walk_env(env, mine / f"{name}-env"))
              for name in ("goh", "planted")}  # fmt: skip
     labels = [r["scanner"] for r in reg]

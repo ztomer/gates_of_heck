@@ -59,8 +59,7 @@ class BuiltTwice(RuntimeError):
 
 def run_dir(default: Path) -> Path:
     """The run's directory when an owner named one (ENV), else DEFAULT (a lone pytest run's)."""
-    named = os.environ.get(ENV, "")
-    return Path(named) if named and os.path.isdir(named) else Path(default)
+    return current() or Path(default)
 
 
 @contextlib.contextmanager
@@ -70,9 +69,9 @@ def owned(tree: Path | None = None) -> Iterator[Path]:
     to its children as ENV."""
     named = os.environ.get(ENV, "")
     if named and os.path.isdir(named):
-        yield Path(named)
+        yield Path(os.path.realpath(named))
         return
-    made = Path(tempfile.mkdtemp(prefix=PREFIX, dir=goh_tmp()))
+    made = Path(os.path.realpath(tempfile.mkdtemp(prefix=PREFIX, dir=goh_tmp())))
     if tree is not None:
         (made / "tree").write_text(os.path.realpath(tree), encoding="utf-8")
     try:
@@ -104,8 +103,8 @@ def in_environ(tree: Path | None = None) -> Iterator[Path]:
 
 def current() -> Path | None:
     """The run this process is inside, if an owner named one."""
-    named = os.environ.get(ENV, "")
-    return Path(named) if named and os.path.isdir(named) else None
+    named = os.environ.get(ENV, "")  # resolved: /var is /private/var, as a tree's own paths are
+    return Path(os.path.realpath(named)) if named and os.path.isdir(named) else None
 
 
 def run_of(path: Path) -> Path:
