@@ -71,6 +71,10 @@ def _enqueue(env: dict[str, str], wt: Path, item: str) -> subprocess.Popen:
 def test_an_enqueue_pre_step_stops_the_idle_suite_within_its_poll(repo, tmp_path, env, monkeypatch):
     for k in (*idle_suite.IN_SUITE, idle_suite.OFF_ENV):
         monkeypatch.delenv(k, raising=False)
+    # No ship in flight, said here: this env has no goh.db, and an unknown ship reads as one in
+    # flight (lib/full_run.py ships_in_flight), so the suite would answer "shipping" whatever
+    # the pre-step does.
+    monkeypatch.setattr(idle_suite.full_run, "ships_in_flight", lambda _repo: [])
     write(repo, ".gatesrc", "GOH_SHIP_FULL_SUITE=on\n")
     commit_all(repo, "declares a full suite")
     wt, _ = _land_wt(repo, tmp_path)
