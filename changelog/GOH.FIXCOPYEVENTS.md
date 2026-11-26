@@ -1,1 +1,0 @@
-* GOH.FIXCOPYEVENTS: `tests/test_fixture_copies.py`'s options test copies a two-file fixture where it copied the 25-file one twice more: 158 file events at a land's load, over its file's ceiling of 150 and red on every land that selected it (3 seen 2026-11-25), now 17 at `-n 6`. The same three branches stay shutil's: a destination that exists, an option, another tree.

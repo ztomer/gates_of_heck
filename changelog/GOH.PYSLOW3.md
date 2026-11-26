@@ -1,1 +1,0 @@
-* GOH.PYSLOW3: 30 slow test files are cut by work that proved nothing twice: a fixture gate says its structural layer ran, a hook's rule is asked in process, and a wait is for the event instead of a sleep.

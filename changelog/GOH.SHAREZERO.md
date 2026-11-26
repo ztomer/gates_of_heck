@@ -1,1 +1,0 @@
-* GOH.SHAREZERO: a gate run off the land path that no held slot counts (a consumer release nested in a slot while goh lands hold both) gets its share instead of a ZeroDivisionError in `lib/land_share.py` `weighted()`; agent-feed v0.7.0's release gate died on it.

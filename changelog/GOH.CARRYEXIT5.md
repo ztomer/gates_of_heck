@@ -1,1 +1,0 @@
-* GOH.CARRYEXIT5: a carried run handed test ids that it neither ran nor carried is red, each id named on an `ERROR` line, instead of pytest's "no tests ran" (exit 5) counting green because other nodes were carried (GOH.SHAREZERO's pre-step group of 2026-11-23). Ids all carried stay green, and a run handed no ids is unchanged (`tests/_whole_run.py` `unrun`).

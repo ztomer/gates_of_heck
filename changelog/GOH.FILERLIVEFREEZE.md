@@ -1,1 +1,0 @@
-* GOH.FILERLIVEFREEZE: `tests/test_filer_live_rules.py` judges goh's filers against the live queue's rules minus the owner's freezes, so a legitimate freeze on gates_of_heck (FRZ.QUEUEDB-GOH, 2026-11-23, which turned every goh gate red) no longer reds the suite; every other live rule still applies. A planted freeze in a copy of the live rules is the red-first test.

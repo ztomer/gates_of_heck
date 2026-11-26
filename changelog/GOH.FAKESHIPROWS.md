@@ -1,1 +1,0 @@
-* GOH.FAKESHIPROWS: `goh test-ships` lists the ship rows a test left in goh.db (a result path under the system's temp roots, never one in the ship directory), and `--delete` removes them with their pin rows. A test that ran goh ship against the live goh.db left 54 such rows, which every ship statistic counted.

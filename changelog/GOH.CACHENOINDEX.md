@@ -1,1 +1,0 @@
-* GOH.CACHENOINDEX: measured that Spotlight does not index `~/.cache/goh` (the push worktrees and HEAD exports): a probe file there was never found by `mdfind` while a control written to `~/Downloads` at the same second was. The roots stay where they are; `lib/tmp_root.sh` records the measurement and how to repeat it.

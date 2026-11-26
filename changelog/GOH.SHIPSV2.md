@@ -1,1 +1,0 @@
-- goh.db 0009 adds `ships_v2`: ships_v1's columns plus the record `body`, so the loop's ship readers (steps, pid, failed_step, own_s, summary, created, timeout_s, handoff_sha) read rows instead of result files. ships_v1 is unchanged. (GOH.SHIPSV2)
