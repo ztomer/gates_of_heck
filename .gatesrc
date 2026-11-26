@@ -187,7 +187,12 @@ GOH_RUFF_CONFIG_PARITY=on
 # not judge that crates/goh/src/shapes/table.rs does not name is red (from 2026-11-23, the grace).
 # It runs where a scanner lands (tools/land.sh); with no estate on the machine (CI) it says
 # UNSCOPED and judges nothing.
-GOH_CI_STEPS='./gates/rust_gate.sh:./gates/structural.sh --full:cargo test --workspace --doc --locked:./gates/goh.sh status-markers:./gates/goh.sh shape-diff . --estate --since main:./gates/py_staged.sh --all .:"$GOH_PY" ./gates/path_invariance.py -- ./gates/structural.sh --full:"$GOH_PY" ./checks/check_lock_order.py .:"$GOH_PY" ./checks/check_saved_pid_kill.py .:"$GOH_PY" ./scripts/release_canary.py'
+# THE SETTINGS PROOF (GOH.SETTINGPROOF): checks/check_setting_proof.py refuses a commit of main..HEAD
+# whose diff touches the settings surface (QoS, worker counts and shares, gate slots, PRE_SLOTS: its
+# SURFACE) without `Reading-lands:` and `Reading-lanes:` trailers, each a before and an after on the
+# same quiet line -- a utility clamp slowed lanes x9-25 for days while only lands were read. The
+# commit-msg layer (tools/commit_msg.sh) asks first; this step is where `--no-verify` ends.
+GOH_CI_STEPS='./gates/rust_gate.sh:./gates/structural.sh --full:cargo test --workspace --doc --locked:./gates/goh.sh status-markers:./gates/goh.sh shape-diff . --estate --since main:./gates/py_staged.sh --all .:"$GOH_PY" ./gates/path_invariance.py -- ./gates/structural.sh --full:"$GOH_PY" ./checks/check_lock_order.py .:"$GOH_PY" ./checks/check_saved_pid_kill.py .:"$GOH_PY" ./checks/check_setting_proof.py range main .:"$GOH_PY" ./scripts/release_canary.py'
 # How many of those steps run at once. Serial is the default because only a repo can say which of
 # its steps write the same file, so each candidate here was CLOSED rather than assumed (measured
 # 2026-10-16):
@@ -225,7 +230,7 @@ GOH_LAND_PRE='"$GOH_PY" tools/affected_tests.py --run --structural --rust-cov --
 # land-gate steps (each verbatim one of GOH_CI_STEPS) beside the declared guard tests, in seconds
 # (GOH.LANDCHECK, lib/land_check.py): the structural gate, lint as the gate runs it, the lock order,
 # the saved-pid probes -- what refused lands after a 200-900 s pre-step, refused before it.
-GOH_LAND_CHECK_STEPS='./gates/structural.sh --full:./gates/goh.sh status-markers:./gates/goh.sh shape-diff . --estate --since main:./gates/py_staged.sh --all .:"$GOH_PY" ./checks/check_lock_order.py .:"$GOH_PY" ./checks/check_saved_pid_kill.py .'
+GOH_LAND_CHECK_STEPS='./gates/structural.sh --full:./gates/goh.sh status-markers:./gates/goh.sh shape-diff . --estate --since main:./gates/py_staged.sh --all .:"$GOH_PY" ./checks/check_lock_order.py .:"$GOH_PY" ./checks/check_saved_pid_kill.py .:"$GOH_PY" ./checks/check_setting_proof.py range main .'
 # ...and a `--no-pre` enqueue, whose skipped pre-step ran the Rust lint, runs these too (GOH.NOPREBATCH:
 # GOH.NITS3's clippy finding went unchecked into a batch and took it down), its coverage deferred.
 GOH_LAND_NOPRE_STEPS='./gates/rust_gate.sh'

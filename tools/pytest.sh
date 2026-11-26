@@ -242,6 +242,11 @@ if "events" in r:
     # The last report, kept: `python3 tests/_fs_ceilings.py REPORT` lowers the lists by a whole one.
     cp -f "$GATES_OF_HECK_FS_EVENTS" "${XDG_CACHE_HOME:-$HOME/.cache}/goh/fs-events-last.json" 2>/dev/null || true
 fi
+# The class the run was admitted as (`slot_class`; a nested run, its gate's GOH_SHARE_CLASS): a whole
+# run in a lane worktree is the lanes' side of a settings change's reading (GOH.SETTINGPROOF,
+# checks/check_setting_proof.py `read`).
+suite_class_seen="${GATE_SLOT_CLASS:-${GOH_SHARE_CLASS:-}}"
+[ -z "$suite_class_seen" ] || fs_fields+=(--field "slot_class=$suite_class_seen")
 [ "$#" -ne 0 ] || goh_span_record "$suite_kind" goh "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" --field "exit=$rc" "${fs_fields[@]}"
 # A SATURATED fseventsd IS NAMED (GOH.FSEVCHURN): it sat at 6.9 GB after 2 d 18 h (2026-11-23) and
 # the run only read it as slow. A whole run ends with its RSS judged: quiet under 1 GB, else one `✗`
