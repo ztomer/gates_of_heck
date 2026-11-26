@@ -270,24 +270,29 @@ def test_the_verdict_names_each_broken_ceiling() -> None:
     assert len(verdict(rep, 10, {"per_test": 5000, "per_test_run": 500}, whole=False)) == 1
 
 
-def test_a_large_argument_run_that_carried_nothing_is_judged_by_the_means() -> None:
-    """A land's pre-step (GOH.FSEVQUIET): its tests are named, so no run is `whole`, and nothing is
-    carried. Its bytes are judged in a window that lost events, its events are not."""
-    at = {"per_test": 100, "per_test_run": 50, "bytes_per_test_run": 1000, "mean_from": 10}
-    rep = {"events": 400, "teardown_entries": 101, "per_test": {}, "bytes": 10_001, "deselected": 0}
-    faults = verdict(rep, 10, at, whole=False)
-    assert len(faults) == 2 and "50.1 each" in faults[0] and "10001 bytes" in faults[1], faults
-    assert verdict(rep, 9, at, whole=False) == []  # a selection this small is no sample
-    assert len(verdict(rep, 9, at)) == 2  # a whole run is judged at any size
-    assert verdict({**rep, "deselected": 1}, 10, at, whole=False) == []  # what is left of a run
-    lost = {"unmeasured": "drops", "teardown_entries": 101, "bytes": 10_001}
-    assert len(verdict(lost, 10, at, whole=False)) == 1
-    assert verdict({**lost, "bytes": 10_000}, 10, at, whole=False) == []
+def test_a_large_selection_is_judged_by_its_tests_and_never_by_the_whole_run_means() -> None:
+    """The DIFFCOVPARSE pre-step (2026-11-25), replayed: the 3,751 tests a Rust change chose because
+    they run goh read 69.7 events each, over the whole suite's 60, red although no test or file
+    broke its own. A selection is no sample of the suite, however large (GOH.FSEVQUIET); the same
+    reading in a whole run is red, and a selection's worst test is judged at any size."""
+    at = json.loads((REPO_ROOT / "tests" / "fs_events_ceiling.json").read_text())
+    worst = {"test_structural_full_leaves_no": 2055}
+    rep = {"events": 207_551, "teardown_entries": 53_874, "per_test": worst, "deselected": 0}
+    rep |= {"bytes": 97_199_519, "files": {}}  # its bytes without the byte-named files
+    assert verdict(rep, 3751, at, whole=False) == []
+    (fault,) = verdict(rep, 3751, at)
+    assert "261425 file events" in fault and "69.7 each" in fault, fault
+    planted = {**rep, "per_test": {**worst, "test_planted": at["per_test"] + 1}}
+    (fault,) = verdict(planted, 3751, at, whole=False)
+    assert "test_planted made" in fault, fault
+    lost = {"unmeasured": "drops", "teardown_entries": 101, "bytes": 10**9}
+    assert verdict(lost, 10, at, whole=False) == []
+    assert len(verdict(lost, 10, at)) == 1  # a whole run's bytes, in a window that lost events
 
 
 def test_a_byte_named_file_is_out_of_the_mean_and_the_rest_is_not() -> None:
-    """A pre-step that drew the three heaviest named files read 76,138 bytes a test (2026-11-25)."""
-    at = {"per_test": 1, "per_test_run": 1, "bytes_per_test_run": 10, "mean_from": 1}
+    """A run that drew the three heaviest named files read 76,138 bytes a test (2026-11-25)."""
+    at = {"per_test": 1, "per_test_run": 1, "bytes_per_test_run": 10}
     files = {"a.py": {"all_bytes": 9000, "tests": 1}, "b.py": {"all_bytes": 90, "tests": 9}}
     rep = {"unmeasured": "drops", "teardown_entries": 0, "bytes": 9090, "files": files}
     assert verdict(rep, 10, {**at, "named": {"a.py": {"bytes": 9000}}}) == []
@@ -316,7 +321,7 @@ def test_a_lands_pre_step_is_counted_and_a_narrowed_run_by_hand_is_not() -> None
 
 def test_the_recorded_ceiling_is_a_ratchet_with_both_bounds() -> None:
     ceiling = json.loads((REPO_ROOT / "tests" / "fs_events_ceiling.json").read_text())
-    keys = ("per_test", "per_test_run", "bytes_per_test_run", "mean_from")
+    keys = ("per_test", "per_test_run", "bytes_per_test_run")
     assert all(isinstance(ceiling.get(k), int) and ceiling[k] > 0 for k in keys), ceiling
 
 

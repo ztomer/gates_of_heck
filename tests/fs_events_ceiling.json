@@ -2,7 +2,6 @@
  "per_test": 4500,
  "per_test_run": 60,
  "bytes_per_test_run": 30000,
- "mean_from": 2000,
  "new": {
   "events": 150,
   "bytes": 1000000

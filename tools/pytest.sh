@@ -223,8 +223,8 @@ fi
 # (tests/fs_events_ceiling.json) judges only a WHOLE run: a carried run (suite:carried, the rust
 # gate's external pytest inside a land) deselects what the pre-step passed, and the change's own
 # tests are no sample of it (GOH.FSCEILINGRED). A land's pre-step (arguments, and its verdict record)
-# is counted as well (GOH.FSEVQUIET), and a caller that names the file (GATES_OF_HECK_FS_EVENTS)
-# gets any narrowed run counted.
+# is counted as well (GOH.FSEVQUIET), judged by its tests' and files' ceilings, never the means, and
+# a caller that names the file (GATES_OF_HECK_FS_EVENTS) gets any narrowed run counted.
 [ "$#" -ne 0 ] && [ -z "${GOH_LAND_VERDICTS_RECORD:-}" ] || export GATES_OF_HECK_FS_EVENTS="${GATES_OF_HECK_FS_EVENTS:-$PYTEST_DEBUG_TEMPROOT/fs-events.json}"
 [ "$#" -ne 0 ] || goh_span_start
 rc=0
