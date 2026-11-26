@@ -3,6 +3,8 @@
  "headroom": {"cpu_s": 2.0, "count": 1.5},
  "judged_each_run": ["procs", "git_repos", "cargo_builds", "tree_walks"],
  "stale_runs": 3,
+ "whole_run": {"cpu_s": 4360, "procs": 33150},
+ "whole_run_headroom": {"cpu_s": 1.3, "procs": 1.05},
  "named": {
   "tests/test_advisory_db.py": {"cpu_s": 2.5, "procs": 14, "why": "unreviewed: stood before the rule (GOH.TESTWORK)"},
   "tests/test_affected_binary.py": {"cpu_s": 30.0, "tree_walks": 2, "why": "unreviewed: stood before the rule (GOH.TESTWORK)"},

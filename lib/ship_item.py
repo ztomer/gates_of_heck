@@ -9,6 +9,8 @@
 * the lock: on 2026-11-22 a ship's worker found `.ship.lock` held by a bisecting ship and failed
   "at push", naming nobody; a held lock now refuses before anything starts, naming its holder's
   record, pid and state (lib/ship_lock.py, GOH.SHIPBISECTCOV).
+* the suite's work: no ship while the newest whole run is over a `whole_run` ceiling
+  (`work_refusal`, lib/test_work.py, GOH.SUITETOTAL).
 
 Each returns why the ship is refused, or None. Pinned by tests/test_ship_item.py.
 
@@ -71,3 +73,17 @@ def lock_refusal(result: Path) -> str | None:
     lock = result.parent / ".ship.lock"
     who = ship_lock.holder(lock)
     return f"another goh ship holds {lock}: {who}" if who else None
+
+
+def work_refusal(repo: Path) -> str | None:
+    """A repo whose suite holds whole-run ceilings (tests/test_work_ceiling.json `whole_run`) ships
+    only while its newest recorded whole run is under them (lib/test_work.py, GOH.SUITETOTAL)."""
+    ceilings = repo / "tests" / "test_work_ceiling.json"
+    if not ceilings.is_file():
+        return None
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import json
+
+    import test_work
+
+    return test_work.ship_refusal(json.loads(ceilings.read_text(encoding="utf-8")))

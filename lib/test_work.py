@@ -180,6 +180,67 @@ def history(conf: Mapping, db: Path | None = None) -> dict[str, dict[str, list[f
     return out
 
 
+TOTALS = ("cpu_s", "procs")  # GOH.SUITETOTAL: what a whole run's ceiling holds
+
+
+def totals(rows: Mapping[str, Mapping]) -> dict[str, float]:
+    """A run's TOTALS: every test's and the shared setup's, cold ones too (the run paid them)."""
+    return {d: round(sum(float(r.get(d, 0)) for r in rows.values()), 3) for d in TOTALS}
+
+
+def total_faults(rows: Mapping[str, Mapping], conf: Mapping) -> tuple[list[str], list[str]]:
+    """(faults, notes) of a WHOLE run's totals against `whole_run`, a ceiling that only falls
+    (GOH.SUITETOTAL): over it is red, and a run under it by more than `whole_run_headroom` is a note
+    naming the lower ceiling to set (a note, not a red: one run's CPU moved 12% idle to loaded)."""
+    most, room = conf.get("whole_run", {}), conf.get("whole_run_headroom", {})
+    got, faults, notes = totals(rows), [], []
+    for dim, ceiling in most.items():
+        if got[dim] > ceiling:
+            faults.append(
+                f"a whole run's {dim} {_show(dim, got[dim])}, over its ceiling"
+                f" {_show(dim, ceiling)} (tests/test_work_ceiling.json whole_run): the suite's"
+                " total only falls -- take the work out elsewhere, never raise the ceiling"
+            )
+        elif dim in room and got[dim] * room[dim] < ceiling:
+            lower = math.ceil(got[dim] * room[dim])
+            notes.append(f"a whole run's {dim} {_show(dim, got[dim])}: lower whole_run {dim} to"
+                         f" {lower} (from {_show(dim, ceiling)})")  # fmt: skip
+    return faults, notes
+
+
+def newest_totals(db: Path | None = None) -> tuple[str, dict[str, float]] | None:
+    """(run, its totals) of the newest whole run goh.db holds; None for none."""
+    try:
+        with goh_db.ro(db, db is not None) as con:
+            got = con.execute(
+                "SELECT run FROM test_work_runs WHERE whole = 1 ORDER BY at DESC LIMIT 1"
+            ).fetchone()
+            if got is None:
+                return None
+            sums = con.execute(
+                f"SELECT {', '.join(f'COALESCE(SUM({d}), 0)' for d in TOTALS)} FROM test_work"
+                " WHERE run = ?", (got[0],),
+            ).fetchone()  # fmt: skip
+    except FAULTS:
+        return None
+    return got[0], dict(zip(TOTALS, (float(v) for v in sums), strict=True))
+
+
+def ship_refusal(conf: Mapping, db: Path | None = None) -> str | None:
+    """Why a ship is refused: the newest recorded whole run is over a `whole_run` ceiling."""
+    newest = newest_totals(db)
+    if newest is None:
+        return None
+    run, got = newest
+    over = [f"{d} {_show(d, got[d])} > {_show(d, c)}" for d, c in conf.get("whole_run", {}).items()
+            if got.get(d, 0) > c]  # fmt: skip
+    if not over:
+        return None
+    return (f"the newest whole suite run ({run}) is over its ceilings: {'; '.join(over)}"
+            " (tests/test_work_ceiling.json whole_run, GOH.SUITETOTAL): no ship until a whole run"
+            " is back under")  # fmt: skip
+
+
 def record(run: str, rows: Mapping[str, Mapping], whole: bool, load1: float | None,
            load_end: float | None, db: Path | None = None, why: str = "",
            cores: int | None = None) -> bool:  # fmt: skip

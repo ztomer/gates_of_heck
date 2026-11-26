@@ -184,7 +184,7 @@ def plan(args: argparse.Namespace) -> dict:
     except ValueError:
         name = repo.name
     why = ship_item.item_refusal(repo, loopctl(), args.item, name) if args.item else None
-    why = why or ship_item.hook_refusal(repo, ROOT)
+    why = why or ship_item.hook_refusal(repo, ROOT) or ship_item.work_refusal(repo)
     if why:
         raise Refused(why)
     cfg = config(repo)

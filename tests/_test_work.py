@@ -371,12 +371,17 @@ def pytest_sessionfinish(session) -> None:
             json.dumps({"whole": whole, **load, "rows": rows}) + "\n", encoding="utf-8"
         )
     found = test_work.faults(rows, conf, new_only=MODE == "new")
+    notes: list[str] = []
     if whole and MODE != "new":
         found += test_work.stale(rows, conf, past)
+        over, notes = test_work.total_faults(rows, conf)  # GOH.SUITETOTAL
+        found += over
     tr = session.config.pluginmanager.get_plugin("terminalreporter")
     say = tr.write_line if tr else print
     say(f"→ test work: {len(rows) - (test_work.SHARED in rows)} tests counted"
         f"{' and recorded' if kept else ''} (lib/test_work.py)")  # fmt: skip
+    for n in notes:
+        say(f"⚠ test work (GOH.SUITETOTAL): {n}")
     for f in found:
         say(f"✗ test work (GOH.TESTWORK): {f}")
     if found and session.exitstatus == 0:
