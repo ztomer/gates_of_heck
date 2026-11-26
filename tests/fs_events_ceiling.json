@@ -17,6 +17,12 @@
   "tests/test_gate_temp_leaks.py": {
    "events": 3600
   },
+  "tests/test_goh_config.py": {
+   "events": 610
+  },
+  "tests/test_grown.py": {
+   "events": 310
+  },
   "tests/test_land_driver.py": {
    "bytes": 11500000,
    "events": 2600
@@ -30,6 +36,9 @@
   "tests/test_state_cutover.py": {
    "bytes": 5500000,
    "events": 1200
+  },
+  "tests/test_tree_pool.py": {
+   "events": 320
   }
  }
 }
