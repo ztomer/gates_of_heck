@@ -17,9 +17,6 @@
   "tests/test_gate_temp_leaks.py": {
    "events": 3600
   },
-  "tests/test_land_check.py": {
-   "events": 3600
-  },
   "tests/test_land_driver.py": {
    "bytes": 11500000,
    "events": 2600
