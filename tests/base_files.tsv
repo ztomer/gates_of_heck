@@ -28,6 +28,7 @@ lib/binary_runners.py	base-code
 lib/body_columns.py	base-code
 lib/body_tables.py	base-code
 lib/budget_ships.py	base-code
+lib/build_once.py	base-code
 lib/cache_rows.py	base-code
 lib/candidate_columns.py	base-code
 lib/consumer_reads.py	base-code

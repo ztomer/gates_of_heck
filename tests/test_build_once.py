@@ -36,10 +36,10 @@ def test_the_owner_makes_and_removes_the_run_and_a_caller_inside_it_reuses_it(
 ) -> None:
     monkeypatch.delenv(build_once.ENV, raising=False)
     with build_once.in_environ() as run:
-        assert run.is_dir() and os.environ[build_once.ENV] == str(run)
+        assert run.is_dir() and os.environ.get(build_once.ENV) == str(run)
         with build_once.owned() as inner:
             assert inner == run  # inside a run: the same one, not a second
         assert run.is_dir()  # the inner caller removed nothing
         assert build_once.run_dir(Path("/elsewhere")) == run
-    assert not run.exists() and build_once.ENV not in os.environ
+    assert not run.exists() and os.environ.get(build_once.ENV) is None
     assert build_once.run_dir(Path("/elsewhere")) == Path("/elsewhere")
