@@ -392,9 +392,10 @@ def pytest_sessionfinish(session) -> None:
     conf = test_work.config(CEILING or None)
     run = f"{os.getpid()}:{time.time():.3f}"
     past = test_work.history(conf, db) if db is not None and whole else None  # before this run's
-    norms = json.loads(NORMS) if NORMS else test_work.file_norms(conf, db) if db else {}
+    head = _head(session.config) if db is not None else None
+    norms = json.loads(NORMS) if NORMS else test_work.file_norms(conf, db, head) if db else {}
     kept = db is not None and test_work.record(
-        run, rows, whole, _LOAD0[0], _load(), db, cores=os.cpu_count(), head=_head(session.config)
+        run, rows, whole, _LOAD0[0], _load(), db, cores=os.cpu_count(), head=head
     )
     if OUT:
         load = {"load1": _LOAD0[0], "load_end": _load(), "cores": os.cpu_count()}

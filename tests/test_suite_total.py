@@ -123,7 +123,9 @@ def test_the_land_names_a_file_over_its_norm_and_blocks_only_when_its_counts_gre
     for name, body in SLOW_PLANT.items():
         (tmp_path / name).write_text(body)
     conf = {"new": NEW, "named": {}, "slow": SLOW}
-    norms = dict.fromkeys(SLOW_PLANT, NORM)
+    nodes = ("test_slow_work.py::test_slow_and_busier", "test_slow_box.py::test_slow_alone",
+             "test_steady.py::test_quick")  # fmt: skip
+    norms = dict.fromkeys(nodes, NORM)
     env = hermetic_env(
         GATES_OF_HECK_TEST_WORK="judge", GATES_OF_HECK_TEST_WORK_CEILING=json.dumps(conf),
         GATES_OF_HECK_TEST_WORK_NORMS=json.dumps(norms),
@@ -145,7 +147,7 @@ def test_the_land_names_a_file_over_its_norm_and_blocks_only_when_its_counts_gre
     assert "counts did not grow" in warn[0] and "test_steady.py" not in out, out[-2000:]
 
 
-def test_a_files_norm_is_the_median_of_its_recent_landed_runs(monkeypatch) -> None:
+def test_a_tests_norm_is_the_median_of_its_own_readings_in_other_changes_runs(monkeypatch) -> None:
     Held().lay(monkeypatch)
     conf = {"slow": {**SLOW, "norm_runs": 3}}
     row = dict.fromkeys(test_work.DIMS, 0)
@@ -153,6 +155,26 @@ def test_a_files_norm_is_the_median_of_its_recent_landed_runs(monkeypatch) -> No
         rows = {"f.py::t": {**row, "cpu_s": cpu}, "f.py::u": {**row, "cpu_s": cpu}}
         assert test_work.record(f"r{i}", rows, False, 1.0, 1.0, head=head)
     norms = test_work.file_norms(conf)  # the newest 3 of a commit: 5, 3, 1 -- not 2 (no head)
-    assert norms["f.py"]["cpu_s"] == 3.0, norms
+    assert norms["f.py::t"]["cpu_s"] == 3.0, norms
+    assert test_work.file_norms(conf, exclude="d")["f.py::t"]["cpu_s"] == 3.0  # c, b, a: 3
     assert test_work.file_norms({"slow": {**SLOW, "min_runs": 9}}) == {}  # too few readings
     assert test_work.file_norms({}) == {}  # no window configured: no norm
+
+
+def test_a_stage_that_ran_one_cheap_test_of_a_file_makes_no_norm_for_the_rest(monkeypatch) -> None:
+    """The red of 2026-11-26: earlier stages of the same land ran 1 of a file's 12 tests (0.001 s);
+    by file that was a norm of 0.00 for all 12. By node the others have none, and a zero norm,
+    where it is a test's own, is named and never judged."""
+    Held().lay(monkeypatch)
+    row = dict.fromkeys(test_work.DIMS, 0)
+    for i in range(2):
+        assert test_work.record(f"p{i}", {"f.py::cheap": {**row, "cpu_s": 0.0}}, False, 1.0, 1.0,
+                                head=f"earlier{i}")  # fmt: skip
+    conf = {"slow": {**SLOW, "min_runs": 2}}
+    norms = test_work.file_norms(conf)
+    assert set(norms) == {"f.py::cheap"}, norms
+    now = {f"f.py::t{i}": {**row, "cpu_s": 0.5, "procs": 1} for i in range(12)}
+    assert test_work.slow_files(now, conf, norms) == ([], [])  # the 12 have no norm: nothing judged
+    blocks, warns = test_work.slow_files({**now, "f.py::cheap": {**row, "cpu_s": 0.5, "procs": 1}},
+                                         {"slow": {**SLOW, "min_s": 0.1}}, norms)  # fmt: skip
+    assert blocks == [] and len(warns) == 1 and "a norm of no CPU" in warns[0], (blocks, warns)

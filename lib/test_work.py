@@ -257,59 +257,68 @@ def per_file(rows: Mapping[str, Mapping]) -> dict[str, dict[str, float]]:
     }
 
 
-def file_norms(conf: Mapping, db: Path | None = None) -> dict[str, dict[str, float]]:
-    """{file: its recent norm}: per dimension the median of its per-test means over the newest
-    `slow.norm_runs` recorded runs of a commit (`head`, a landed change's pre-step) that ran it;
-    a file read in fewer than `slow.min_runs` of them has none. {} without goh.db."""
+def file_norms(conf: Mapping, db: Path | None = None,
+               exclude: str | None = None) -> dict[str, dict[str, float]]:  # fmt: skip
+    """{node: its recent norm}: per dimension the median of the TEST's warm readings over the newest
+    `slow.norm_runs` recorded runs of a commit other than EXCLUDE (the run's own: a land's earlier
+    stages are the same change, never its history); a test read in fewer than `slow.min_runs` has
+    none. By node, never a file's mean: a land's stage that ran one 0.001 s test of a file made a
+    norm of 0.00 for its 12 (tests/test_state_backfill.py, 2026-11-26). {} without goh.db."""
     slow = conf.get("slow", {})
     if not slow:
         return {}
-    runs: dict[str, list[dict[str, float]]] = {}
+    seen: dict[str, list[dict[str, float]]] = {}
     try:
         with goh_db.ro(db, db is not None) as con:
             picked = [r for (r,) in con.execute(
-                "SELECT run FROM test_work_runs WHERE head IS NOT NULL ORDER BY at DESC LIMIT ?",
-                (int(slow["norm_runs"]),))]  # fmt: skip
+                "SELECT run FROM test_work_runs WHERE head IS NOT NULL AND head IS NOT ?"
+                " ORDER BY at DESC LIMIT ?", (exclude, int(slow["norm_runs"])))]  # fmt: skip
             for run in picked:
-                rows = {node: dict(zip(DIMS, vals, strict=True)) | {"cold": cold}
-                        for node, *vals, cold in con.execute(
-                            f"SELECT node, {', '.join(DIMS)}, cold FROM test_work WHERE run = ?",
-                            (run,))}  # fmt: skip
-                for f, means in per_file(rows).items():
-                    runs.setdefault(f, []).append(means)
+                for node, *vals in con.execute(
+                    f"SELECT node, {', '.join(DIMS)} FROM test_work WHERE run = ? AND cold = 0",
+                    (run,),
+                ):
+                    if node != SHARED:
+                        seen.setdefault(node, []).append(dict(zip(DIMS, vals, strict=True)))
     except FAULTS:
         return {}
-    out = {}
-    for f, seen in runs.items():
-        if len(seen) >= int(slow.get("min_runs", 1)):
-            out[f] = {d: sorted(m[d] for m in seen)[len(seen) // 2] for d in DIMS}
-    return out
+    least = int(slow.get("min_runs", 1))
+    return {n: {d: sorted(m[d] for m in got)[len(got) // 2] for d in DIMS}
+            for n, got in seen.items() if len(got) >= least}  # fmt: skip
 
 
 def slow_files(
     rows: Mapping[str, Mapping], conf: Mapping, norms: Mapping[str, Mapping[str, float]]
 ) -> tuple[list[str], list[str]]:
-    """(blocks, warnings): each file this run read over its recent norm (NORMS, `file_norms`) by
+    """(blocks, warnings): each file whose tests this run read over their recent norms (NORMS,
+    `file_norms`, by node: the file's mean over the tests that have one, against theirs) by
     `slow.factor` a test and `slow.min_s` in all. It BLOCKS only when a count (processes, repos,
     builds, walks) rose with it -- the work grew; CPU alone is a warning naming it, because one
-    CPU reading moves with the box (19 files crossed 1 s between two idle whole runs)."""
+    CPU reading moves with the box (19 files crossed 1 s between two idle whole runs). A norm of no
+    CPU is no reading of the file's work: never judged, named."""
     slow = conf.get("slow", {})
     if not slow:
         return [], []
     factor, least = float(slow["factor"]), float(slow["min_s"])
+    mine = {n: r for n, r in rows.items() if n in norms and n != SHARED and not r.get("cold")}
+    now, was = per_file(mine), per_file({n: {**norms[n], "cold": False} for n in mine})
     blocks, warns = [], []
-    for f, now in sorted(per_file(rows).items()):
-        was = norms.get(f)
-        if not was or now["cpu_s"] <= was["cpu_s"] * factor:
+    for f, cur in sorted(now.items()):
+        old = was[f]
+        if (
+            cur["cpu_s"] <= old["cpu_s"] * factor
+            or (cur["cpu_s"] - old["cpu_s"]) * cur["tests"] < least
+        ):
             continue
-        if (now["cpu_s"] - was["cpu_s"]) * now["tests"] < least:
-            continue
-        grew = [f"{d} {now[d]:.1f} a test (norm {was[d]:.1f})" for d in COUNTS
-                if now[d] > was[d] * factor and now[d] > was[d]]  # fmt: skip
         line = (
-            f"{f} read {now['cpu_s']:.2f} CPU s a test over {int(now['tests'])} tests, over"
-            f" {factor:g}x its recent norm {was['cpu_s']:.2f}"
+            f"{f} read {cur['cpu_s']:.2f} CPU s a test over {int(cur['tests'])} tests, over"
+            f" {factor:g}x its recent norm {old['cpu_s']:.2f}"
         )
+        if old["cpu_s"] <= 0:
+            warns.append(f"{line}: a norm of no CPU is no reading of its work, not judged")
+            continue
+        grew = [f"{d} {cur[d]:.1f} a test (norm {old[d]:.1f})" for d in COUNTS
+                if cur[d] > old[d] * factor and cur[d] > old[d]]  # fmt: skip
         if grew:
             blocks.append(f"{line}, and its work grew: {'; '.join(grew)} -- cut it, or name it")
         else:
